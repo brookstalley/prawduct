@@ -137,8 +137,19 @@ one chunk (batch-durable-edits learning); token-budget guardrail tests are antic
   empty/no-match returns empty (negative path); repo-local invocation via `python3
   bin/prawduct-hook` against THIS repo's artifacts returns sane candidates (check-own-signals
   learning).
-- **Acceptance:** running the subcommand on this plan's own text surfaces
-  `cross-cutting-concerns.md` and the critic protocol among candidates.
+- **Acceptance (as corrected at build):** running the subcommand on this plan's own text ranks
+  `docs/norms.md` first among candidates. The originally-written acceptance named
+  `cross-cutting-concerns.md` and the critic protocol, but neither is in the work-model corpus
+  (`.prawduct/artifacts/*.md` + CLAUDE.md + `docs/` + `methodology/`) — a pre-existing corpus
+  property, corrected here rather than widened silently. Verified repo-locally at build
+  (2026-07-16): `docs/norms.md` top at 61 matched terms via `--file`, `--artifacts-only`, and
+  stdin paths. The automated *live-repo* self-check test is explicitly descoped — repo-coupled
+  tests break as the corpus evolves; hermetic seeded-repo CLI tests cover the behavior instead.
+- **As built:** `jurisdiction_candidates(text, files)` takes `(path, content)` pairs, not "the
+  existing index" as planned — the flat-union index cannot attribute terms per artifact
+  (docstring records this). `--artifacts-only` added beyond plan (restricts to the `governed_by:`
+  target set) with dedicated tests; directive verbs deliberately NOT exempted (weak-but-real
+  overlap signal for ranking, unlike orphan detection which drops them).
 
 ### Chunk 3: Exception rails — `revisit:` field + advisory probes
 

@@ -114,7 +114,7 @@
   The chunk-header regex only matches the template's "### Chunk 01: [Name]" form; plans using "## Chunk 01 — title" (h2, em-dash) exit 1 "chunk not found" even though the chunk exists, so reviewers learn to hand-wave the exit — and a real missing-deliverable BLOCKING can then hide behind the dismissed exit (false-negative habituation). Distinct from the verify-chunk-refs ref-TOKEN-extraction family (BLD-2R9X glob, BLD-8F2Q path::symbol, BLD-4K7P <>/URL tokens, BLD-5V8F symbol/backlog-ref) — this is the chunk-HEADER detection regex (which chunks exist at all). Fix-shape: loosen header regex to ^#{2,3}\s+Chunk\s+(\w+)\s*[:—–-]; and/or distinguish "cannot parse" from "ref missing" in the exit contract. Same cmd_verify_chunk_refs surface as BLD-4K7P — could ride in one pass. Governance-protected → full Critic + PR review.
 
 - **[WMK-4Q9T]** Work-model term tripwire flags ordinary English words and file-path fragments as ungoverned terms — desensitizes the one tripwire meant to catch real undocumented requirements
-  `effort: S · impact: M · area: work-model · source: user · added: 2026-06-22 · status: open · stage: design · related: WMK-7D3R, WMK-1P4Q, GOV-7T2M, GOV-4C7X · refs: UserPromptSubmit hook (work-model term extraction), lib/work_model_index.py, incoming-bugs/archive/work-model-term-tripwire-flags-ordinary-prose-words.md · reviewed: 2026-07-12`
+  `effort: S · impact: M · area: work-model · source: user · added: 2026-06-22 · status: open · stage: design · related: WMK-7D3R, WMK-1P4Q, GOV-7T2M, GOV-4C7X · refs: UserPromptSubmit hook (work-model term extraction), lib/work_model_index.py, incoming-bugs/archive/work-model-term-tripwire-flags-ordinary-prose-words.md · reviewed: 2026-07-16`
 
   The prompt-term extractor treats common adjectives/adverbs/verbs and singularized file-path fragments (e.g. "incoming-bug" from incoming-bugs/) as candidate domain terms, firing the "terms not found in any governing artifact" tripwire on most natural-language prompts. Noise PERSISTS as of 2026-06-22 — it fired on THIS very session's prompt ("urgent, wrap-up, awaiting, model-id, fold, single-owner, ceiling, cross-linked…"). Pure noise today, but desensitizes tripwire #1 (requirements-precede-code). WMK-7D3R is the staleness/rebuild sibling and explicitly says probe PRECISION was "separate, covered by the review-fixes plan Chunk 2" — verify whether that precision pass shipped before sizing; the 2026-06-11 Scriob repros + this session's recurrence show the noise is live regardless (so file NEW; if review-fixes Chunk 2 shipped a partial fix, this is the incomplete-fix follow-up). Fix-shape: stoplist/POS-filter to nouns; don't tokenize path-like strings; scope firing to build-intent prompts or recurring terms.
 
@@ -139,6 +139,10 @@
   (cf. CRT-5M9J). Subsumed by the governance kernel redesign program GOV-4C7X, which carries
   the deletion; this item stays open until the deletion actually ships, then archive it
   `closed-by:` the shipping kernel-redesign plan scope.
+
+  **Re-checked 2026-07-16** (Critic C-B3, norm-lifecycle Chunk 2): still accurate and unresolved.
+  Not implicated in the norm-lifecycle work — the jurisdiction subcommand bypasses the cached
+  index, so it is unaffected by this item's noise classes.
 
 - **[CRT-6W2N]** Governance gates + Critic/PR skills have no supported git-worktree workflow — the learned "run Critic/PR from the primary session" workaround breaks across working copies, forcing every worktree work cycle off-protocol
   `effort: L · impact: M · area: worktree · source: user · added: 2026-06-22 · status: open · stage: requirements · related: STH-4K7N, CRT-8D2W, CRT-2K9F, REL-7P3X · refs: lib/gates.py, bin/prawduct-hook (infer-critic-mode, check-cumulative-critic, test-evidence), skills/critic, skills/pr, Stop hook, incoming-bugs/archive/governance-gates-and-critic-pr-skills-dont-compose-with-git-worktrees.md · reviewed: 2026-06-22`
@@ -552,7 +556,7 @@
   From the 2026-06-09 framework review (skills agent). (1) The nine investigation themes (~100 lines, ~50% of the skill) read once per janitor run — move theme details to a bundled companion file (the pattern the Critic already uses with review-protocol.md etc.) and keep SKILL.md as dispatcher + process. (2) Clarify that Step 2.5 Backlog Health emits read-only NOTE findings and Step 7 Reconcile is where those findings drive /prawduct:backlog update calls — the linkage is currently implicit. (3) Reframe the 'fresh eyes' line toward pattern-detection + infer-and-confirm, and say what to do when the user cannot confirm a preference divergence (file a backlog item rather than resolving unilaterally). (builder)
 
 - **[WMK-7D3R]** Work-model index never rebuilds on artifact deletion — retired vocabulary lingers
-  `effort: S · impact: S · area: work-model · source: builder · added: 2026-06-09 · status: open · stage: design · related: WMK-1P4Q, GOV-7T2M · refs: bin/prawduct-hook, lib/work_model_index.py · reviewed: 2026-07-02`
+  `effort: S · impact: S · area: work-model · source: builder · added: 2026-06-09 · status: open · stage: design · related: WMK-1P4Q, GOV-7T2M · refs: bin/prawduct-hook, lib/work_model_index.py · reviewed: 2026-07-16`
 
   From the 2026-06-09 framework review. The staleness check (bin/prawduct-hook, build-index path) compares
   remaining artifact mtimes to the index mtime, so deleting an artifact never triggers a rebuild and its
@@ -568,6 +572,10 @@
   same fix-shape: file-set in the staleness fingerprint, or document SessionStart force-rebuild
   as the guarantee). The probe-precision thread this item pointed sideways at continued in
   GOV-7T2M/WMK-4Q9T.
+
+  **Re-checked 2026-07-16** (Critic C-B3, norm-lifecycle Chunk 2): still accurate and unresolved.
+  Not implicated in the norm-lifecycle work — the jurisdiction subcommand bypasses the cached
+  index, so the mtime-only staleness gap doesn't affect it.
 
 - **[CRT-6J4P]** Mode-inference rule 1b chains across work-cycle/bundle boundaries — prior bundle's cumulative vouches for a new plan's first chunk
   `effort: S · impact: S · area: governance/critic · source: reflection · added: 2026-06-10 · status: open · stage: design · related: CRT-8W3F, CRT-4J8W, CRT-7B4M, CRT-2N7V, CRT-8H3R · refs: lib/critic_mode.py (_rule_postfix_fix_fires, _cumulative_anchor), skills/critic/SKILL.md · reviewed: 2026-07-13`
@@ -1074,6 +1082,11 @@
   **Governance.** Touches governance-protected code (`lib/critic_consolidate.py`, `lib/gates.py`, possibly `lib/coverage_algebra.py`) with existing pinning tests (`tests/test_critic_consolidate.py:340-345` pins the current dirty-tree/no-head_commit verify behavior — will need updating). → feature-branch + full Critic + PR.
 
   Cross-link note (triage, 2026-07-14): the upstream distinctness IDs above are discodon-side ids. Local mapping — CRT-8F3K → local counterpart **CRT-9K7T** (forked coordinator never writes findings); CRT-J4PM and CRT-K7VF have **no local backlog item** (upstream-only report ids, kept in the prose for the distinctness argument). Confirmed DISTINCT from all local family members (CRT-9K7T, CRT-5D8Q, COV-7K4N, CRT-8H3R) — cross-linked in `related:`, not merged. (user)
+
+- **[GOV-8N4V]** `infer-critic-mode` misses a set `active_build_plan` — fail-safes to `final` and verify-chunk-refs sees "no current chunk" despite a resolvable pointer and a declared chunk mode
+  `effort: S · impact: M · area: governance · source: critic · added: 2026-07-16 · status: open · stage: ready · related: BLD-5J8N, BLD-7W2J · refs: lib/critic_mode.py, bin/prawduct-hook (infer-critic-mode, verify-chunk-refs), .prawduct/artifacts/build-plan-norm-lifecycle.md`
+
+  Observed 2026-07-16 during norm-lifecycle Chunk 2's review on feature/norm-lifecycle: `prawduct-hook infer-critic-mode` reported "no active build plan and no other rule fired — fail-safe to final" and verify-chunk-refs saw "no current chunk", even though project-state.yaml `active_build_plan: artifacts/build-plan-norm-lifecycle.md` was set and the plan's Chunk 2 declares `Critic mode: chunk`. Failed SAFE here (final ⊇ chunk — a broader review than required), but the same current-chunk/plan derivation feeds the stop-hook gate, so the miss is not confined to mode choice. Likely the derivation doesn't resolve the pointer, or expects a different Status-section shape than the plan uses. Overlap check before fixing separately: BLD-5J8N is the chunk-HEADER regex leg of cmd_verify_chunk_refs ("## Chunk NN — Title" h2/em-dash style exits "chunk not found") — if build-plan-norm-lifecycle.md uses that header style, this may be the same parser gap surfacing at the plan/current-chunk derivation layer; verify against both readers before fixing either alone. BLD-7W2J is the single-slot pointer design (different failure: pointer repointed between parallel plans, not a set pointer going unresolved). Governance-protected (lib/critic_mode.py, bin/prawduct-hook) → full Critic + PR review. (critic)
 
 ## Promoted
 

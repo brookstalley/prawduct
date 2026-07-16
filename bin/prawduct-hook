@@ -2985,7 +2985,9 @@ _USAGE = (
     "Usage: prawduct-hook "
     "{clear [--session-start|--force]|critic-begin --mode <m>|critic-end|critic-consolidate|"
     "subagent-stop|"
-    "stop|build-index|user-prompt-submit|test-status|validate-evidence|"
+    "stop|build-index|user-prompt-submit|"
+    "jurisdiction [--file <path>|<text...>] [--artifacts-only]|"
+    "test-status|validate-evidence|"
     "test-evidence record [--from-junit <r>|--from-counts passed=N failed=M skipped=K|--no-rerun] [-- pytest args]|"
     "check-cumulative-critic|"
     "verify-chunk-refs [chunk_id]|verify-coverage|"
@@ -3132,6 +3134,92 @@ def cmd_user_prompt_submit(project_dir: Path) -> int:
     return 0
 
 
+def cmd_jurisdiction(project_dir: Path, argv: list[str]) -> int:
+    """On-demand authoring aid: given plan/prompt text, list the governing
+    artifacts whose vocabulary the text's salient terms fall under — the
+    INVERSION of the orphan tripwire (orphans = terms NO artifact covers;
+    jurisdiction = which artifacts cover this text's terms). It seeds a plan's
+    ``governed_by:`` field with mechanical candidates for the planner's
+    judgment; it is NEVER a gate, so every path returns 0.
+
+    Input, first match wins: ``--file <path>`` reads the text from a file;
+    otherwise the positional args are joined as the text; otherwise stdin.
+    ``--artifacts-only`` restricts the corpus to ``.prawduct/artifacts/``
+    (the rest of the corpus — CLAUDE.md, docs/, methodology/ — is dropped).
+
+    Output: one line per candidate, ranked (count desc, path asc):
+    ``<path relative to project dir>  (<count>: term1, term2, ...)``. No
+    matches prints nothing. Fail-open — a bad ``--file`` path or any other
+    error prints a NOTE to stderr and still exits 0.
+    """
+    prawduct_dir = get_prawduct_dir(project_dir)
+    if not prawduct_dir.is_dir():
+        return 0  # not a Prawduct-governed repo — stay silent (mirrors build-index)
+
+    # Manual argv parse (no argparse — matches the other subcommands' style).
+    artifacts_only = False
+    file_arg: str | None = None
+    positional: list[str] = []
+    i = 0
+    while i < len(argv):
+        token = argv[i]
+        if token == "--artifacts-only":
+            artifacts_only = True
+        elif token == "--file":
+            i += 1
+            if i < len(argv):
+                file_arg = argv[i]
+        elif token.startswith("--file="):
+            file_arg = token[len("--file=") :]
+        else:
+            positional.append(token)
+        i += 1
+
+    try:
+        wmi = _work_model_load_lib()
+
+        # Resolve the text to place (first match wins): file, then positional,
+        # then stdin. A missing --file raises FileNotFoundError -> NOTE below.
+        if file_arg is not None:
+            text = Path(file_arg).read_text(encoding="utf-8", errors="replace")
+        elif positional:
+            text = " ".join(positional)
+        else:
+            text = sys.stdin.read()
+        if not text.strip():
+            return 0  # nothing to place -> nothing to print
+
+        paths = _work_model_corpus_paths(project_dir, prawduct_dir)
+        if artifacts_only:
+            artifacts_root = prawduct_dir / "artifacts"
+            paths = [p for p in paths if artifacts_root in p.parents]
+
+        # Build (relpath, content) pairs; the pure function ranks and caps.
+        files: list[tuple[str, str]] = []
+        for p in paths:
+            try:
+                content = p.read_text(encoding="utf-8", errors="replace")
+            except OSError:
+                continue  # unreadable corpus file contributes nothing
+            try:
+                rel = str(p.relative_to(project_dir))
+            except ValueError:
+                rel = str(p)  # outside the project dir (unexpected) -> absolute
+            files.append((rel, content))
+
+        for cand in wmi.jurisdiction_candidates(text, files):
+            print(f"{cand['path']}  ({cand['count']}: {', '.join(cand['matched'])})")
+    except (OSError, ValueError) as exc:
+        # Missing/unreadable --file, decode issues, etc. This is an authoring
+        # aid, never a gate — surface the reason, but exit 0.
+        print(f"NOTE: prawduct-hook jurisdiction could not run: {exc}", file=sys.stderr)
+        return 0
+    except Exception as exc:  # prawduct:allow prawduct/broad-except -- authoring aid must never error out; always exit 0
+        print(f"NOTE: prawduct-hook jurisdiction skipped (error): {exc}", file=sys.stderr)
+        return 0
+    return 0
+
+
 def main() -> int:
     if len(sys.argv) < 2:
         print(_USAGE, file=sys.stderr)
@@ -3154,6 +3242,8 @@ def main() -> int:
         return cmd_build_index(project_dir)
     elif command == "user-prompt-submit":
         return cmd_user_prompt_submit(project_dir)
+    elif command == "jurisdiction":
+        return cmd_jurisdiction(project_dir, sys.argv[2:])
     elif command == "stop":
         return cmd_stop(project_dir, _read_stop_stdin())
     elif command == "test-status":
