@@ -7,6 +7,16 @@
 
 ## Open
 
+- **[GOV-6N4W]** UserPromptSubmit "norm-shaped prompt" classifier — detect norm-birth phrasing at prompt time and nudge capture
+  `effort: M · impact: M · area: governance · source: builder · added: 2026-07-16 · status: open · stage: idea · related: GOV-7Q4N, WMK-4Q9T, WMK-1P4Q · refs: .prawduct/artifacts/build-plan-norm-lifecycle.md (Out of scope + Chunk 6), docs/norms.md`
+
+  Deferred follow-up filed from the norm-lifecycle build plan (declared out of scope there; Chunk 6 directs this filing). Detect norm-birth phrasing in user prompts at UserPromptSubmit time — "we should always X", "from now on Y", "never Z again" — and nudge capture into the norm registry (Direction section + preferences row) so a norm is born recorded instead of ambient. Deferred for precision risk per the work-model review history: the work-model prompt-term tripwire (WMK-4Q9T) shows prompt-time classifiers misfire on ordinary prose and desensitize the very nudge they power — a norm-shaped classifier must clear that bar before it ships. Idea-stage: needs a design pass on the detection signal (phrase patterns vs. heavier classification), its false-positive posture, and usage evidence from shipped v1 norm capture (advisory probes + janitor Norm Health + doctor ratification) that prompt-time detection adds value over capture-at-reflection. Governance-protected (hooks) → full Critic + PR review. (builder)
+
+- **[JNT-8E3P]** Erosion metrics automation — compute the janitor Norm Health sweep's distance-from-norm measurements instead of hand-deriving them
+  `effort: M · impact: M · area: janitor · source: builder · added: 2026-07-16 · status: open · stage: idea · related: GOV-7Q4N · refs: skills/janitor/SKILL.md (Norm Health theme), docs/norms.md (§ Trajectory), .prawduct/project-state.yaml (norm_health:)`
+
+  Deferred follow-up filed from the norm-lifecycle build plan (Chunk 6 directive). v1's Norm Health sweep measures erosion by hand: the janitor searches for violation sites per norm and manually records the point-in-time measurement (date + per-norm distance, e.g. "3 violation sites, 2 open exceptions") under `norm_health:` in `project-state.yaml` so the next sweep sees the trend. Automate the measurement: violation-site counting and trending computed by code (per-norm search signal → counts → trend deltas against the recorded `norm_health:` history) so the sweep's erosion numbers are derived rather than hand-counted — cheaper sweeps, comparable numbers across runs, and the trajectory failure the theme exists to catch (many individually-defensible exceptions summing to a dead norm) becomes mechanical. Idea-stage: needs a design pass on how a norm declares its machine-checkable violation signal (e.g. a search pattern on its Enforcement row) — most norms carry prose-only constraints, so v1 automation likely scopes to norms that can declare one, with the manual path remaining for the rest. (builder)
+
 - **[GOV-3P8K]** Deterministic tripwire for the ephemeral-ref firewall — grep/hook check that auto-flags ephemeral build identifiers leaking into committed code comments / durable specs
   `effort: M · impact: S · area: gates · source: critic · added: 2026-07-14 · status: open · stage: idea · refs: skills/critic/review-protocol.md (Goal 4 — Coherence, ephemeral-ref check), docs/principles.md (Principle 13 durable-artifact clause), .prawduct/cross-cutting-concerns.md (Durable-artifact self-containment row — "Deterministic grep tripwire deliberately deferred")`
 
@@ -114,7 +124,7 @@
   The chunk-header regex only matches the template's "### Chunk 01: [Name]" form; plans using "## Chunk 01 — title" (h2, em-dash) exit 1 "chunk not found" even though the chunk exists, so reviewers learn to hand-wave the exit — and a real missing-deliverable BLOCKING can then hide behind the dismissed exit (false-negative habituation). Distinct from the verify-chunk-refs ref-TOKEN-extraction family (BLD-2R9X glob, BLD-8F2Q path::symbol, BLD-4K7P <>/URL tokens, BLD-5V8F symbol/backlog-ref) — this is the chunk-HEADER detection regex (which chunks exist at all). Fix-shape: loosen header regex to ^#{2,3}\s+Chunk\s+(\w+)\s*[:—–-]; and/or distinguish "cannot parse" from "ref missing" in the exit contract. Same cmd_verify_chunk_refs surface as BLD-4K7P — could ride in one pass. Governance-protected → full Critic + PR review.
 
 - **[WMK-4Q9T]** Work-model term tripwire flags ordinary English words and file-path fragments as ungoverned terms — desensitizes the one tripwire meant to catch real undocumented requirements
-  `effort: S · impact: M · area: work-model · source: user · added: 2026-06-22 · status: open · stage: design · related: WMK-7D3R, WMK-1P4Q, GOV-7T2M, GOV-4C7X · refs: UserPromptSubmit hook (work-model term extraction), lib/work_model_index.py, incoming-bugs/archive/work-model-term-tripwire-flags-ordinary-prose-words.md · reviewed: 2026-07-12`
+  `effort: S · impact: M · area: work-model · source: user · added: 2026-06-22 · status: open · stage: design · related: WMK-7D3R, WMK-1P4Q, GOV-7T2M, GOV-4C7X · refs: UserPromptSubmit hook (work-model term extraction), lib/work_model_index.py, incoming-bugs/archive/work-model-term-tripwire-flags-ordinary-prose-words.md · reviewed: 2026-07-16`
 
   The prompt-term extractor treats common adjectives/adverbs/verbs and singularized file-path fragments (e.g. "incoming-bug" from incoming-bugs/) as candidate domain terms, firing the "terms not found in any governing artifact" tripwire on most natural-language prompts. Noise PERSISTS as of 2026-06-22 — it fired on THIS very session's prompt ("urgent, wrap-up, awaiting, model-id, fold, single-owner, ceiling, cross-linked…"). Pure noise today, but desensitizes tripwire #1 (requirements-precede-code). WMK-7D3R is the staleness/rebuild sibling and explicitly says probe PRECISION was "separate, covered by the review-fixes plan Chunk 2" — verify whether that precision pass shipped before sizing; the 2026-06-11 Scriob repros + this session's recurrence show the noise is live regardless (so file NEW; if review-fixes Chunk 2 shipped a partial fix, this is the incomplete-fix follow-up). Fix-shape: stoplist/POS-filter to nouns; don't tokenize path-like strings; scope firing to build-intent prompts or recurring terms.
 
@@ -139,6 +149,10 @@
   (cf. CRT-5M9J). Subsumed by the governance kernel redesign program GOV-4C7X, which carries
   the deletion; this item stays open until the deletion actually ships, then archive it
   `closed-by:` the shipping kernel-redesign plan scope.
+
+  **Re-checked 2026-07-16** (Critic C-B3, norm-lifecycle Chunk 2): still accurate and unresolved.
+  Not implicated in the norm-lifecycle work — the jurisdiction subcommand bypasses the cached
+  index, so it is unaffected by this item's noise classes.
 
 - **[CRT-6W2N]** Governance gates + Critic/PR skills have no supported git-worktree workflow — the learned "run Critic/PR from the primary session" workaround breaks across working copies, forcing every worktree work cycle off-protocol
   `effort: L · impact: M · area: worktree · source: user · added: 2026-06-22 · status: open · stage: requirements · related: STH-4K7N, CRT-8D2W, CRT-2K9F, REL-7P3X · refs: lib/gates.py, bin/prawduct-hook (infer-critic-mode, check-cumulative-critic, test-evidence), skills/critic, skills/pr, Stop hook, incoming-bugs/archive/governance-gates-and-critic-pr-skills-dont-compose-with-git-worktrees.md · reviewed: 2026-06-22`
@@ -460,11 +474,6 @@
 
   Workflow preferences (`Branching: direct`, `PR creation: wait_for_user`, `PR merge: wait_for_user`) are read by `building.md` and `/pr` but have no allowed-vocabulary or shape check. A typo or unknown value would silently default. Candidate: small Critic checklist line ("Workflow values must be one of X / Y / Z") OR a tiny config-presence test. Low priority — current values are stable. (critic, 2026-05-01)
 
-- **[MET-3P7B]** Lift "assign a mechanism per preference" pattern into methodology
-  `effort: M · impact: M · area: methodology · source: critic · added: 2026-05-01 · status: open · stage: research · reviewed: 2026-06-10`
-
-  The Enforcement section added to `project-preferences.md` (and the template, 2026-05-01) encodes a methodology insight: every preference must be assigned to Linter / Test / Critic when it's captured, with a false-confidence guardrail that escalates weak tests to Critic. Currently lives only in the artifact + template. Candidate: weave into `methodology/discovery.md` (when capturing preferences) and `methodology/planning.md` (when designing test specs). Validate the pattern against 2-3 more preferences first before promoting. (critic)
-
 - **[CRT-6T1V]** Critic check: test helpers duplicating production logic
   `effort: M · impact: M · area: critic · source: reflection · added: 2026-04-16 · status: open · stage: design · reviewed: 2026-06-10`
 
@@ -552,7 +561,7 @@
   From the 2026-06-09 framework review (skills agent). (1) The nine investigation themes (~100 lines, ~50% of the skill) read once per janitor run — move theme details to a bundled companion file (the pattern the Critic already uses with review-protocol.md etc.) and keep SKILL.md as dispatcher + process. (2) Clarify that Step 2.5 Backlog Health emits read-only NOTE findings and Step 7 Reconcile is where those findings drive /prawduct:backlog update calls — the linkage is currently implicit. (3) Reframe the 'fresh eyes' line toward pattern-detection + infer-and-confirm, and say what to do when the user cannot confirm a preference divergence (file a backlog item rather than resolving unilaterally). (builder)
 
 - **[WMK-7D3R]** Work-model index never rebuilds on artifact deletion — retired vocabulary lingers
-  `effort: S · impact: S · area: work-model · source: builder · added: 2026-06-09 · status: open · stage: design · related: WMK-1P4Q, GOV-7T2M · refs: bin/prawduct-hook, lib/work_model_index.py · reviewed: 2026-07-02`
+  `effort: S · impact: S · area: work-model · source: builder · added: 2026-06-09 · status: open · stage: design · related: WMK-1P4Q, GOV-7T2M · refs: bin/prawduct-hook, lib/work_model_index.py · reviewed: 2026-07-16`
 
   From the 2026-06-09 framework review. The staleness check (bin/prawduct-hook, build-index path) compares
   remaining artifact mtimes to the index mtime, so deleting an artifact never triggers a rebuild and its
@@ -568,6 +577,10 @@
   same fix-shape: file-set in the staleness fingerprint, or document SessionStart force-rebuild
   as the guarantee). The probe-precision thread this item pointed sideways at continued in
   GOV-7T2M/WMK-4Q9T.
+
+  **Re-checked 2026-07-16** (Critic C-B3, norm-lifecycle Chunk 2): still accurate and unresolved.
+  Not implicated in the norm-lifecycle work — the jurisdiction subcommand bypasses the cached
+  index, so the mtime-only staleness gap doesn't affect it.
 
 - **[CRT-6J4P]** Mode-inference rule 1b chains across work-cycle/bundle boundaries — prior bundle's cumulative vouches for a new plan's first chunk
   `effort: S · impact: S · area: governance/critic · source: reflection · added: 2026-06-10 · status: open · stage: design · related: CRT-8W3F, CRT-4J8W, CRT-7B4M, CRT-2N7V, CRT-8H3R · refs: lib/critic_mode.py (_rule_postfix_fix_fires, _cumulative_anchor), skills/critic/SKILL.md · reviewed: 2026-07-13`
@@ -1046,7 +1059,64 @@
 
   Dedup note (2026-07-14): distinct facet from COV-5H3N — that item is the *wrong-default-to-main* case when `base_branch:` is UNSET; this is the *stale-remote* case when `base_branch: develop` IS set and origin/develop trails local. Both live in `_resolve_base_branch`; keep separate, cross-linked. Adjacent to PR-7T2K (local-vs-origin divergence breaking a gate, but on the feature branch's push-state at merge, not the base branch) and umbrella'd by ENV-2W7K (gitflow base detection, Wave 2).
 
+- **[CRT-7H2W]** `/prawduct:critic verify-resolutions` anchors its head to the WORKING tree while the cumulative/PR gate targets the COMMITTED HEAD tree — a dirty tree with judgeable uncommitted files leaves check-cumulative-critic `uncovered` after verify-resolutions reports success
+  `effort: M · impact: M · area: critic · source: user · added: 2026-07-14 · status: open · stage: ready · related: CRT-9K7T, CRT-5D8Q, COV-7K4N, CRT-8H3R · refs: lib/critic_consolidate.py:239-297, lib/gates.py:911-980, lib/coverage_algebra.py, lib/critic_mode.py:452, lib/gitstate.py:161`
+
+  **Upstream defect** reported by the discodon product (their backlog id CRT-T9RX, local-capture fallback; canonical tracker https://github.com/brookstalley/prawduct/issues). Confirmed in prawduct's own source on branch develop, 2026-07-14.
+
+  **Symptom.** After a `cumulative` review, the builder commits a fix and runs `/prawduct:critic verify-resolutions`, which reports success and records resolution facts — but `prawduct-hook check-cumulative-critic` still reports `uncovered` (exit 1). The only (undocumented) remedy is `git stash` the WIP so working==committed, then re-run verify-resolutions. Observed live on PR #1472 (feature/research-latency→develop): cumulative anchored committed tree 9d32e1bc3185; after a post-cumulative commit (with .devcontainer/* + an artifact .md + backlog.md still uncommitted) verify-resolutions anchored working tree 1aefcf85; the gate wanted committed HEAD 89c9a3bf023b → no path composes → uncovered.
+
+  **Root cause (exact sites, verified in code).**
+  - verify-resolutions records `head_tree = capture["tree"]` — the WORKING tree, WIP included — at `lib/critic_consolidate.py:251`.
+  - cumulative records `head_tree = capture["head_tree"]` — the COMMITTED HEAD tree — at `lib/critic_consolidate.py:232` (explicit comment: "the committed state, not the dirty tree"; notes-and-excludes WIP at :234-238).
+  - `check-cumulative-critic` targets `HEAD^{tree}` (committed) at `lib/gates.py:923`, then calls `coverage_algebra.coverage_verdict(facts, merge_base_tree, HEAD^{tree}, ...)` at :928.
+  - So verify-resolutions' review EDGE terminates at the working-tree node, which is not the target the PR gate asks about → composition finds no path → `uncovered`.
+
+  This is the two-target design stated in `lib/coverage_algebra.py:5-8`: the PR gate is Q1 (merge-base tree → HEAD tree) and the Stop-hook Critic gate is Q2 (session baseline tree → WORKING tree, confirmed at `lib/gates.py:604` where `target = capture["tree"]`). verify-resolutions' single head anchor can serve only one of them once the working tree diverges from committed HEAD — today it serves Q2 and breaks Q1.
+
+  **Mechanism refinement — it is NOT "any dirty tree" (this narrows severity and explains the intermittency).** The coverage algebra has a free-edge bridge (`lib/coverage_algebra.py:180-189` and `:301-315`): it probes a free edge from the working-tree node back to committed HEAD, and that edge qualifies IFF the uncommitted delta is entirely non-judgeable. Since `METADATA_PREFIXES = ('.prawduct/', '.claude/settings.json')` (`lib/gitstate.py:161`), uncommitted `.prawduct/*` docs compose SILENTLY via the free edge and the bug never shows. What actually breaks PR #1472 is the `.devcontainer/*` files — plain config, judgeable (`is_judgeable_path` at `coverage_algebra.py:59` returns True: not metadata-prefixed, not a protected .md) — so the free edge fails and the gate goes uncovered. Trigger, precisely: verify-resolutions on a dirty tree that contains uncommitted CODE/CONFIG (judgeable) while closing a COMMITTED delta. Docs-only WIP hides it; a stray config file exposes it.
+
+  **Distinct from the CRT/COV family (cross-link, do not merge).** CRT-8F3K = coordinator writeback never lands. CRT-J4PM = roster/mode-label gate rejection. CRT-K7VF = accepts a FOREIGN-lineage cumulative (base/lineage). CRT-5D8Q = metadata-exemption boundary disagreement (shipped — is_judgeable_path unified it). COV-7K4N = false-uncovered from a stale origin/<base> (base anchor). CRT-8H3R = mode inference latches a sibling-branch anchor (base/lineage). THIS item is a HEAD-anchor mismatch inside a single valid lineage — a different axis than every one of those.
+
+  **Recommended fix — layered pair.**
+  1. STRUCTURAL (the real fix): make verify-resolutions' head anchor intent-aware in `lib/critic_consolidate.py` (the else-branch at :239-290). Branch on whether a COMMITTED delta exists since the prior review's `commit_reviewed` (there is already `_committed_files_since` in `lib/critic_mode.py:452`): (a) committed delta exists → builder committed the fix (PR-gate / post-commit case) → anchor `head_tree = capture["head_tree"]`, `head_commit = dispatch_commit`, note-and-exclude WIP exactly like cumulative at :232-238 → edge `prior_head → committed HEAD` → PR gate composes with no stash dance; (b) no committed delta, dirty subset of prior `files_reviewed` (the fix-in-progress signal mode-inference rule-1 keys on) → keep `head_tree = capture["tree"]` (working) → Stop-hook gate composes, and the PR gate legitimately can't pass until the fix is committed (correct). This resolves the irreducible two-target tension by reading intent from git state instead of forcing one anchor, and it PRESERVES CRT-4J8W's dirty-tree-verify capability (the thing :251 was designed to enable). Sound: the reviewer then reviews `prior_head..committed-HEAD` and vouches for exactly what ships.
+  2. CHEAP DIAGNOSTIC (ship regardless, mirrors COV-7K4N's stale-base hint): extend `check-cumulative-critic`'s `uncovered` remedy text (`lib/gates.py:969-979`) with a dirty-tree branch, and have verify-resolutions emit a WARNING at record time when it anchors to a dirty working tree carrying judgeable WIP ("anchored to working tree X; the cumulative/PR gate targets committed HEAD Y — if you're closing a committed delta, stash or commit the WIP and re-run"). This alone removes the worst part: reported-success-then-silently-uncovered with an undocumented stash remedy.
+
+  **Rejected:** the reporter's "tolerate/normalize the working-tree anchor in composition" — that would wave UNREVIEWED judgeable uncommitted changes through the gate (an unsound integrity hole). Do not.
+
+  **Governance.** Touches governance-protected code (`lib/critic_consolidate.py`, `lib/gates.py`, possibly `lib/coverage_algebra.py`) with existing pinning tests (`tests/test_critic_consolidate.py:340-345` pins the current dirty-tree/no-head_commit verify behavior — will need updating). → feature-branch + full Critic + PR.
+
+  Cross-link note (triage, 2026-07-14): the upstream distinctness IDs above are discodon-side ids. Local mapping — CRT-8F3K → local counterpart **CRT-9K7T** (forked coordinator never writes findings); CRT-J4PM and CRT-K7VF have **no local backlog item** (upstream-only report ids, kept in the prose for the distinctness argument). Confirmed DISTINCT from all local family members (CRT-9K7T, CRT-5D8Q, COV-7K4N, CRT-8H3R) — cross-linked in `related:`, not merged. (user)
+
+- **[GOV-8N4V]** `infer-critic-mode` misses a set `active_build_plan` — fail-safes to `final` and verify-chunk-refs sees "no current chunk" despite a resolvable pointer and a declared chunk mode
+  `effort: S · impact: M · area: governance · source: critic · added: 2026-07-16 · status: open · stage: ready · related: BLD-5J8N, BLD-7W2J · refs: lib/critic_mode.py, bin/prawduct-hook (infer-critic-mode, verify-chunk-refs), .prawduct/artifacts/build-plan-norm-lifecycle.md`
+
+  Observed 2026-07-16 during norm-lifecycle Chunk 2's review on feature/norm-lifecycle: `prawduct-hook infer-critic-mode` reported "no active build plan and no other rule fired — fail-safe to final" and verify-chunk-refs saw "no current chunk", even though project-state.yaml `active_build_plan: artifacts/build-plan-norm-lifecycle.md` was set and the plan's Chunk 2 declares `Critic mode: chunk`. Failed SAFE here (final ⊇ chunk — a broader review than required), but the same current-chunk/plan derivation feeds the stop-hook gate, so the miss is not confined to mode choice. Likely the derivation doesn't resolve the pointer, or expects a different Status-section shape than the plan uses. Overlap check before fixing separately: BLD-5J8N is the chunk-HEADER regex leg of cmd_verify_chunk_refs ("## Chunk NN — Title" h2/em-dash style exits "chunk not found") — if build-plan-norm-lifecycle.md uses that header style, this may be the same parser gap surfacing at the plan/current-chunk derivation layer; verify against both readers before fixing either alone. BLD-7W2J is the single-slot pointer design (different failure: pointer repointed between parallel plans, not a set pointer going unresolved). Governance-protected (lib/critic_mode.py, bin/prawduct-hook) → full Critic + PR review. (critic)
+
+- **[GOV-5D2W]** Advisory `show` reconstructs evidence with an empty probe registry — probe re-run silently no-ops for every probe family
+  `effort: S · impact: S · area: governance · source: critic · added: 2026-07-16 · status: open · stage: ready · related: GOV-6H4P · refs: lib/advisory_cmd.py, bin/prawduct-hook`
+
+  Probe registration lives only in cmd_clear (bin/prawduct-hook ~line 690), so lib/advisory_cmd.show_advisory's probe re-run reconstructs evidence against an empty probe registry and silently no-ops for every probe family. Pre-existing graceful degradation surfaced by the norm-lifecycle Chunk 3 Critic review (fact rev-20260716T173555Z-10a0f433, NOTE). Fix shape: a shared register-all-probes helper both call sites use. (critic)
+
+## Promoted
+
 ## Archive
+
+- **[GOV-7Q4N]** Norm lifecycle — treat governing-artifact statements as binding norms with a full lifecycle
+  `effort: L · impact: L · area: governance · source: user · added: 2026-07-16 · status: shipped · stage: ready · closed-by: norm-lifecycle · related: MET-3P7B, GOV-3P8K · refs: build-plan-norm-lifecycle.md, docs/norms.md · reviewed: 2026-07-16`
+
+  Treat normative statements in governing artifacts as **binding norms** with a full lifecycle: birth/retroactivity, jurisdiction, rulings, exceptions with expiry, transitions, and erosion/decay health. Origin: discodon incident — async-tool work built a bespoke telemetry system parallel to the declared OTel substrate, and **every governance layer laundered the divergence** (Critic Goal 6, PR review, and doc-freshness each resolved the mismatch by syncing the strategy artifact to the code, i.e. the norm was rewritten to match the violation instead of the violation being flagged). Root cause: prawduct's coherence model is one-directional — artifacts track code — with no concept of normative statements that *bind* code. Design complete: build plan at `.prawduct/artifacts/build-plan-norm-lifecycle.md` (being authored the same session as this filing, 2026-07-16 — confirm the plan file landed before promoting). Adjacent-not-duplicate: MET-3P7B (assign an enforcement mechanism per preference — a norm-enforcement sibling at methodology level), GOV-3P8K (deterministic tripwire for durable-artifact coherence). (user)
+
+  Promoted 2026-07-16: plan-landed caveat confirmed — `.prawduct/artifacts/build-plan-norm-lifecycle.md` exists and `project-state.yaml` `active_build_plan` points to it. In active build on `feature/norm-lifecycle` (Chunk 1 complete).
+
+  Shipped 2026-07-16: all six chunks of `build-plan-norm-lifecycle.md` built on `feature/norm-lifecycle` (Chunks 1–6, `d8d1ef6`…`f78bb73` "time-domain sweeps + adoption path"); closing cumulative Critic review passed with 0 blocking findings. Archived on the branch so it ships in the closing PR. Supersedes the earlier "stays promoted" disposition, which predated Chunks 5–6 landing.
+
+- **[MET-3P7B]** Lift "assign a mechanism per preference" pattern into methodology
+  `effort: M · impact: M · area: methodology · source: critic · added: 2026-05-01 · status: shipped · stage: research · closed-by: norm-lifecycle · related: GOV-7Q4N · refs: docs/norms.md (§ Birth, § Enforcement), templates/project-preferences.md (§ Enforcement) · reviewed: 2026-07-16`
+
+  The Enforcement section added to `project-preferences.md` (and the template, 2026-05-01) encodes a methodology insight: every preference must be assigned to Linter / Test / Critic when it's captured, with a false-confidence guardrail that escalates weak tests to Critic. Currently lives only in the artifact + template. Candidate: weave into `methodology/discovery.md` (when capturing preferences) and `methodology/planning.md` (when designing test specs). Validate the pattern against 2-3 more preferences first before promoting. (critic)
+
+  Closed 2026-07-16 by the norm-lifecycle bundle (GOV-7Q4N), which subsumes the ask at a stronger level than the item's candidates: `docs/norms.md` § Birth makes an Enforcement-table row — mechanism assigned and existing-or-filed, audit home per the Audit-home rule — a requirement of norm *capture* itself; the preferences Enforcement table is designated the product's norm index and gained Audit home/Why columns (template); and `methodology/discovery.md` ("A norm surfaced"), `methodology/planning.md` (Governing Artifacts / `governed_by:` reconciliation), and `methodology/building.md` all route norm capture through `docs/norms.md`. The false-confidence guardrail (weak test → escalate to Critic) remains in the template's Enforcement section — now on the mandatory capture path, its point of use — consistent with norms.md § Deliberate Non-Design keeping per-mechanism guidance in the table. The "validate against 2-3 more preferences" precondition is moot: the pattern was validated by generalizing it to all norms. Residual: none. (This repo's own artifact table predates the new columns; the designed upgrade route is the Chunk 6 adoption path — `norm-registry-unratified` advisory + `/prawduct:doctor` ratification — tracked by that machinery, not this item.)
 
 - **[CRT-2K9F]** PR-gate ledger fallback should select the newest record that covers HEAD — interleaved Critic→PR cycles silently invalidate the earlier branch
   `effort: S · impact: M · area: critic · source: user · added: 2026-06-22 · status: shipped · stage: design · closed-by: kernel-evidence-store · related: CRT-8W3F, CRT-4J8W, CRT-7M2D · refs: lib/gates.py (compute_pr_gate, _pr_gate_record_qualifies, _evaluate_pr_gate_record, _ledger_fallback_record — all deleted in the v3 cutover), .prawduct/.critic-findings.json (no longer read by any gate) · reviewed: 2026-07-13`

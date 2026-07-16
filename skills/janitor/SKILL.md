@@ -145,6 +145,18 @@ Has past work left behind artifacts that no longer serve a purpose?
 - Resolved TODOs — comments marking work that was done but the marker wasn't removed
 - Stale build plans — `.prawduct/artifacts/build-plan.md` from completed work (all Status items checked). Clean up: delete plan file
 
+### Norm Health
+
+Are the product's declared norms (`## Direction` sections in `.prawduct/artifacts/*.md`, norm rows in the preferences Enforcement table — `docs/norms.md`) still holding, still justified, and still moving? This is the deep time-domain sweep the advisory probes cannot do: probes fire only on machine-readable hooks (dates, backlog-id literals, structural presence); this theme owns the judgment half. When the product has no ratified norms, note that and move on — ratification is `/prawduct:doctor`'s flow, not the janitor's.
+
+- **Erosion — distance from each norm.** Measure global distance: violation sites (search for what the norm constrains), waiver pragmas and open exception items pointing at it, new code that quietly stopped following it. Point-in-time distance suffices on a first run; **record the measurement** so the next sweep sees the *trend* — many individually-defensible exceptions summing to a dead norm is exactly what no single diff review can see. Record shape: `norm_health:` in `project-state.yaml` is a list, one entry per sweep — `- date: <YYYY-MM-DD>` plus a `measurements:` map of norm handle → one-line distance (e.g. `"telemetry-substrate": "3 violation sites, 2 open exceptions"`). **Append** a new entry per sweep (the trend *is* the history — never overwrite), keep the last 3 entries and prune older ones (git holds the full history).
+- **Decay — norms that outlived their why.** A norm whose why rests on completed/abandoned work or a dead condition (the migration shipped; the scale assumption broke). Backlog-id-citing whys fire mechanically (the `dead-why` advisory); *prose* whys are this sweep's judgment. Cross-reference the Obsolescence theme rather than duplicating it: Obsolescence finds the dead code and completed migrations; Norm Health asks whether a norm's rationale died with them.
+- **Stalled transitions.** For each `Status: in-transition` norm: is the tracking item live and moving? Is the interim rule still serving new work, or are builders routing around it? (The `stalled-transition` advisory catches the mechanical unedited-past-window case; the sweep judges the rest.)
+- **Event-bound exception triggers.** Walk each open exception item whose `revisit:` is a free-text trigger rather than a date ("when the collector export ships") and ask: has this fired? Dated `revisit:` clocks fire mechanically (`revisit-due` advisory); event triggers fire only here.
+- **Registry hygiene needing judgment** — norm statements that drifted from what the team actually holds; Direction entries whose *descriptive* surroundings went stale. Structural integrity (whys present, mechanisms exist, tracking ids on in-transition entries) is `/prawduct:doctor`'s registry-integrity check, not this sweep (`docs/doctor-vs-janitor.md`).
+
+Erosion and decay findings enter Reconcile with the explicit fork — **re-affirm the norm and schedule cleanup, or retire it** (see Step 3). **Stamp the sweep:** on completing this theme (even with zero findings), write `norm_health_last_run: <today>` (top-level scalar) in `project-state.yaml` — the committed fact that resolves the `norm-health-sweep-overdue` advisory, mirroring `backlog_last_groomed_at`.
+
 $ARGUMENTS
 
 Arguments are optional. When provided, they adjust the janitor's behavior:
@@ -153,7 +165,7 @@ Arguments are optional. When provided, they adjust the janitor's behavior:
 - **Scope**: Limit investigation to specific themes. Example: `/prawduct:janitor scope=vcs,tests`
 - **Survey only**: Produce findings without executing fixes. Example: `/prawduct:janitor survey-only`
 
-Theme shorthand for scope: `vcs`, `structure`, `code`, `docs`, `templates`, `tests`, `deps`, `api`, `control`, `obsolescence`
+Theme shorthand for scope: `vcs`, `structure`, `code`, `docs`, `templates`, `tests`, `deps`, `api`, `control`, `obsolescence`, `norms`
 
 ## Process
 
@@ -213,6 +225,8 @@ You cannot determine which without the user. For each divergence, use the infer-
 Batch related divergences — don't ask one per message. Group by theme and present as a single confirm-or-correct block. Read fatigue signals: if the user starts answering with just "yes" or "sounds good," compress remaining questions into a single batch or infer more aggressively.
 
 **This pattern extends beyond preferences.** Any finding where "drift or evolution?" is genuinely unclear should be reconciled: architectural patterns that don't match stated conventions, test approaches that diverge from declared strategy, documentation that contradicts implementation. When in doubt about intent, infer and confirm — don't interrogate.
+
+**Norm Health erosion/decay findings always reconcile through the explicit fork** (`docs/norms.md` § Trajectory): **re-affirm and schedule cleanup** (⇒ a backlog item for the violations), or **retire the norm** (⇒ a recorded amendment). The chosen arm is itself recorded — an erosion finding must never evaporate by nobody deciding. Present both arms with a recommendation; the owner chooses.
 
 **Record resolutions immediately.** If the user says preferences are stale, updating `project-preferences.md` becomes part of the janitor's work. If the user says code drifted, the fix enters triage with appropriate severity. Don't leave resolutions in conversation alone — they must reach an artifact or the findings list.
 

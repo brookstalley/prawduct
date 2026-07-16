@@ -61,7 +61,7 @@ Each preference is enforced by one of three mechanisms. This table is the source
 |---|---|---|---|
 | **Test** | `tests/preferences/test_*.py` | Structural rules with named exceptions (AST checks, config-presence checks) | Bakes the rule into CI; refuses to be silent. Cost: test must be re-validated when the rule's shape changes. |
 | **Linter** | (none configured for prawduct) | Mechanical style/naming rules already solved by ruff/eslint/etc. | Best tool for the job when configured. Currently N/A — preferences in this category fall through to Critic. |
-| **Critic** | `/critic` review (Goal 4: Project Preferences) | Judgment-required rules (boundary detection, semantic naming, "appropriate" anything) | No false-confidence test. Cost: requires a reviewer per chunk; misses violations between reviews. |
+| **Critic** | `/critic` review (Goal 4: Norms) | Judgment-required rules (boundary detection, semantic naming, "appropriate" anything) | No false-confidence test. Cost: requires a reviewer per chunk; misses violations between reviews. |
 | **Session config** | Read by Claude/methodology at session boundaries (e.g., `building.md` reads `Branching`; `/pr` reads `PR creation`) | Workflow-level decisions (when to branch, when to PR) | Configuration, not enforcement. Validated by user observing Claude's behavior, not by a test or a reviewer. |
 
 | Preference | Mechanism | Enforcement artifact |

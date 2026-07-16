@@ -1999,3 +1999,91 @@ class TestTestEvidenceKnobs:
         ev = json.loads((repo / ".prawduct" / ".test-evidence.json").read_text())
         assert ev["passed"] == 1
         assert ev["command"].startswith("python3 -m pytest")
+
+
+class TestJurisdictionSubcommand:
+    """`prawduct-hook jurisdiction [--file <path>|<text...>] [--artifacts-only]`
+    (norm-lifecycle Chunk 2) is the on-demand authoring aid that seeds a plan's
+    `governed_by:` — the inverse of the orphan tripwire. It reads the same
+    governing corpus the work-model index indexes, ranks artifacts by salient-
+    term overlap, and — being an aid, never a gate — ALWAYS exits 0 (a bad
+    `--file` path yields a stderr NOTE, not a failure).
+    """
+
+    def _seed(self, tmp_path: Path) -> Path:
+        repo = tmp_path / "consumer"
+        artifacts = repo / ".prawduct" / "artifacts"
+        artifacts.mkdir(parents=True)
+        (artifacts / "telemetry-strategy.md").write_text(
+            "# Telemetry Substrate\n"
+            "The **telemetry** substrate governs **tracing** and observability.\n"
+        )
+        return repo
+
+    def test_positional_text_surfaces_the_governing_artifact(self, tmp_path):
+        repo = self._seed(tmp_path)
+        result = _run_in(
+            repo, "jurisdiction", "unify the telemetry substrate for tracing"
+        )
+        assert result.returncode == 0, result.stderr
+        # Path is relative to the project dir; the matched terms are listed.
+        assert ".prawduct/artifacts/telemetry-strategy.md" in result.stdout
+        assert "telemetry" in result.stdout and "tracing" in result.stdout
+
+    def test_file_input_matches_positional(self, tmp_path):
+        repo = self._seed(tmp_path)
+        plan = repo / "plan.txt"
+        plan.write_text("adopt the telemetry substrate as the tracing layer")
+        result = _run_in(repo, "jurisdiction", "--file", str(plan))
+        assert result.returncode == 0, result.stderr
+        assert ".prawduct/artifacts/telemetry-strategy.md" in result.stdout
+
+    def test_no_overlap_prints_nothing_and_exits_zero(self, tmp_path):
+        repo = self._seed(tmp_path)
+        result = _run_in(repo, "jurisdiction", "quaternion holography magnetosphere")
+        assert result.returncode == 0, result.stderr
+        assert result.stdout.strip() == ""
+
+    def test_missing_file_is_fail_open_note_not_error(self, tmp_path):
+        # An unreadable --file is an aid failure, not a gate failure: NOTE + 0.
+        repo = self._seed(tmp_path)
+        result = _run_in(repo, "jurisdiction", "--file", str(repo / "nope.md"))
+        assert result.returncode == 0
+        assert result.stdout.strip() == ""
+        assert "NOTE" in result.stderr
+
+    def test_artifacts_only_excludes_docs_corpus(self, tmp_path):
+        # The full corpus spans artifacts + CLAUDE.md + docs/ + methodology/;
+        # --artifacts-only restricts to `.prawduct/artifacts/` (the governed_by:
+        # target set). A docs/ file sharing the query's vocabulary must appear
+        # without the flag and vanish with it.
+        repo = self._seed(tmp_path)
+        docs = repo / "docs"
+        docs.mkdir()
+        (docs / "style-guide.md").write_text(
+            "# Style\nAll **tracing** conventions live here.\n"
+        )
+        full = _run_in(repo, "jurisdiction", "unify telemetry tracing")
+        assert "docs/style-guide.md" in full.stdout
+        restricted = _run_in(
+            repo, "jurisdiction", "--artifacts-only", "unify telemetry tracing"
+        )
+        assert restricted.returncode == 0, restricted.stderr
+        assert "docs/style-guide.md" not in restricted.stdout
+        assert ".prawduct/artifacts/telemetry-strategy.md" in restricted.stdout
+
+    def test_stdin_input_when_no_text_or_file(self, tmp_path):
+        repo = self._seed(tmp_path)
+        home = repo.parent / "_home"
+        home.mkdir(exist_ok=True)
+        result = subprocess.run(
+            ["python3", str(HOOK), "jurisdiction"],
+            input="adopt the telemetry substrate for tracing",
+            capture_output=True, text=True, timeout=20,
+            env={"HOME": str(home), "CLAUDE_PROJECT_DIR": str(repo),
+                 "CLAUDE_PLUGIN_ROOT": str(ROOT),
+                 "PATH": os.environ.get("PATH", "/usr/bin:/bin"),
+                 "PYTHONDONTWRITEBYTECODE": "1"},
+        )
+        assert result.returncode == 0, result.stderr
+        assert ".prawduct/artifacts/telemetry-strategy.md" in result.stdout

@@ -22,12 +22,15 @@ $ARGUMENTS
 > 1. `.prawduct/learnings.md` — concise rules from past mistakes (always exists)
 > 2. `.prawduct/learnings-detail.md` — deeper root cause analysis (may not exist)
 > 3. `.prawduct/artifacts/project-preferences.md` — project conventions and choices (may not exist)
+> 4. `## Direction` sections in `.prawduct/artifacts/*.md` — the product's ratified norms (may not exist; grep the artifacts directory for `## Direction` and read only the files that carry one)
 >
 > The caller is working on: **[topic from arguments]**
 >
 > Return ONLY the content relevant to that work. Structure your response:
 >
 > **Relevant Rules** — quote matching rules from learnings.md directly, grouped by their section header. Include the section header for context.
+>
+> **Governing Norms** — matching Direction entries (statement + why + status), each named with its artifact. Norms are statute to the learnings' case law (`docs/norms.md`) — they *bind* the caller's work, so surface them beside the rules. Skip this section entirely if no Direction section exists or none governs the topic.
 >
 > **Key Context** — from learnings-detail.md, only if it adds actionable information beyond the concise rule. Skip this section entirely if the rules are self-sufficient.
 >

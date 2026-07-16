@@ -329,3 +329,102 @@ def test_requirement_verbs_are_never_the_orphan():
 def test_harness_injected_content_never_fires():
     blob = "<system-reminder>provenance attestation doxastic ledger</system-reminder>"
     assert wmi.nudge_for(blob, PRECISION_INDEX) is None
+
+
+# --- Jurisdiction assist (norm-lifecycle Chunk 2): the orphan-detection inverse
+# ``find_orphan_terms`` answers "which salient terms does NO artifact cover".
+# ``jurisdiction_candidates`` answers the complement "which artifacts cover this
+# text's salient terms" — the mechanical seed for a plan's ``governed_by:``.
+# Same salience machinery (stoplist + _MIN_LEN + frequency floor), so common
+# words and short tokens can never PRODUCE a match, just as they can never
+# BECOME an orphan.
+
+# Two governing artifacts whose vocabulary (headings + bold, per
+# extract_vocabulary) overlaps a plan by different amounts.
+_JURIS_FILE_A = (
+    "artifacts/telemetry-strategy.md",
+    "# Telemetry Substrate\n"
+    "The **telemetry** substrate governs **tracing** and observability.\n",
+)  # vocab: telemetry, substrate, tracing (+ observability)
+_JURIS_FILE_B = (
+    "artifacts/backlog-notes.md",
+    "# Notes\nStray **telemetry** mention, nothing else here.\n",
+)  # vocab: telemetry (+ notes/stray/mention)
+
+
+def test_jurisdiction_ranks_higher_overlap_first():
+    # Text shares 3 salient terms with A (telemetry, substrate, tracing) and 1
+    # with B (telemetry) -> A must rank first, B second.
+    cands = wmi.jurisdiction_candidates(
+        "unify the telemetry substrate for tracing pipelines",
+        [_JURIS_FILE_A, _JURIS_FILE_B],
+    )
+    assert [c["path"] for c in cands] == [
+        "artifacts/telemetry-strategy.md",
+        "artifacts/backlog-notes.md",
+    ]
+    assert cands[0]["count"] == 3
+    assert cands[0]["matched"] == ["substrate", "telemetry", "tracing"]  # sorted
+    assert cands[1]["count"] == 1 and cands[1]["matched"] == ["telemetry"]
+
+
+def test_jurisdiction_shape_is_path_matched_count():
+    cand = wmi.jurisdiction_candidates("telemetry tracing", [_JURIS_FILE_A])[0]
+    assert set(cand) == {"path", "matched", "count"}
+    assert isinstance(cand["path"], str)
+    assert cand["matched"] == sorted(cand["matched"])  # always sorted
+    assert cand["count"] == len(cand["matched"])
+
+
+def test_jurisdiction_floor_common_and_short_words_never_match():
+    # The file's vocabulary DOES contain common/floor words (quality,
+    # performance, development) and a 3-char token (api). None may surface as a
+    # match: floor words are filtered from the text's salient terms, and the
+    # <4-char token is below _MIN_LEN in BOTH the text and extract_vocabulary.
+    common_file = (
+        "artifacts/x.md",
+        "# Quality and Performance\nThe **development** api improves **widget** flow\n",
+    )
+    cands = wmi.jurisdiction_candidates(
+        "improve development quality performance widget api", [common_file]
+    )
+    assert len(cands) == 1
+    # Only the genuine domain term survives — never the floor/common words or
+    # the short token.
+    assert cands[0]["matched"] == ["widget"]
+    for noise in ("quality", "performance", "development", "improve", "api"):
+        assert noise not in cands[0]["matched"]
+
+
+def test_jurisdiction_empty_text_is_empty():
+    assert wmi.jurisdiction_candidates("", [_JURIS_FILE_A]) == []
+    # All-stopword / all-floor text has no salient terms either.
+    assert wmi.jurisdiction_candidates("please do this for us", [_JURIS_FILE_A]) == []
+
+
+def test_jurisdiction_no_overlap_is_empty():
+    # Genuine salient terms, but none appear in any file's vocabulary.
+    assert wmi.jurisdiction_candidates(
+        "quaternion holography magnetosphere", [_JURIS_FILE_A, _JURIS_FILE_B]
+    ) == []
+
+
+def test_jurisdiction_respects_limit_and_tie_breaks_on_path():
+    # Ten files all sharing exactly one term (telemetry) -> a full count tie.
+    # The deterministic tie-break is path ascending, and the cap is `limit`.
+    files = [
+        (f"artifacts/f{i}.md", "# T\nThe **telemetry** system\n") for i in range(10)
+    ]
+    # Feed them OUT of path order to prove the sort, not iteration, orders them.
+    files_shuffled = list(reversed(files))
+
+    capped = wmi.jurisdiction_candidates("telemetry", files_shuffled, limit=3)
+    assert [c["path"] for c in capped] == [
+        "artifacts/f0.md",
+        "artifacts/f1.md",
+        "artifacts/f2.md",
+    ]
+    # Default limit is 8.
+    default = wmi.jurisdiction_candidates("telemetry", files_shuffled)
+    assert len(default) == 8
+    assert [c["path"] for c in default] == [f"artifacts/f{i}.md" for i in range(8)]

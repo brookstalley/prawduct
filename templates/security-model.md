@@ -19,6 +19,17 @@ last_validated: null
 
 # Security Model
 
+## Direction
+
+<!-- Normative statements that BIND future work — not descriptions of current behavior. Each
+     entry: a bold **Statement.**, then `Why:` (required), `Status:` (steady-state | in-transition
+     + its tracking item), and optional `Retroactivity:` / `Rulings:` lines. Norms bind;
+     descriptions track — see `docs/norms.md` for the anatomy, the normative-vs-descriptive test,
+     and the lifecycle rules. This is the artifact's norm home; when the product has declared
+     none, delete this whole section — an empty `## Direction` heading reads as ratified norms
+     to the advisory probes; record `norm_registry_ratified: none — no norms to ratify` in
+     `project-state.yaml` instead. Don't restate the rules here. -->
+
 ## Authentication
 
 <!-- How do users identify themselves?
