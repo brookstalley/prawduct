@@ -1,213 +1,238 @@
 # Backlog Service — Data Model
 
-`status: draft v1 — drilled down from backlog-service-prd.md §7/§7a/§16 (2026-07-16) · source: planning session · stage: design`
+`status: draft v2 — independent-review fold (2026-07-16): B1 fixed (open-state transitions are now crash-safe via an idempotent set-status op + decoder precedence); ready-work restated as list-then-fan-out (M1); cache gains an ETag validator (M2) + a briefing-counts snapshot reconciling GV2 (M3); Q4 routed to query-side fan-out, not the per-clone cache (M4); a single authority fixed per field + corrected write-cost attribution (M5); verification encoding resolved to one authority (M6); dead node_id cache column dropped (m1); redirect facet added to the taxonomy (m2); duplicate→target timeline read stated (m3); block evolution is additive-only-forever (m4); duplicated-block rule (m5). Prior v1: initial drill-down from PRD §7/§7a. · source: planning session · stage: design`
 
 **Parent:** `documentation/backlog-service-prd.md` (PRD v4) and, through it,
 `documentation/backlog-service-requirements.md` (DM1–7, Q1–5). This doc fixes the **field-level
-GitHub encoding** the PRD deliberately left to "the next level," plus the **optional-cache schema**.
+GitHub encoding** the PRD left to "the next level," plus the **optional-cache schema**.
 
 **Design rule (the lock-in learning).** A persisted schema's requirements are *its consumers' future
-queries*, not GitHub's mechanism. Every field below cites the query (Q1–Q5, ready-work,
-stale-verification, provenance) or the requirement (DM/CC/TF/XP) that justifies it. A field no
-consumer queries is not added (the retired-`git_sha` precedent — a dead-read field becomes a misread
-field). **Encoding validation is advisory and tolerant** (DM1): a natural variant of the same meaning
-(`[]` vs absent, `null` vs unset) normalizes, never hard-fails; the hard fail is reserved for genuine
-ambiguity (unknown *status*, malformed ID).
+queries*, not GitHub's mechanism. Every field cites the query (Q1–Q5, ready-work, stale-verification,
+provenance) or requirement (DM/CC/TF/XP) that justifies it. A field no consumer queries is not added
+(the retired-`git_sha` precedent — a dead-read field becomes a misread field). **Encoding validation is
+advisory and tolerant** (DM1): a natural variant of the same meaning normalizes, never hard-fails; the
+hard fail is reserved for genuine ambiguity (unknown *status*, malformed ID).
+
+**One authority per field (M5).** Every field has exactly **one** authoritative encoding; a value is
+mirrored to a second location **only where the mirror serves a distinct consumer** (see §1.2). This
+bounds write-amplification. *Write-cost note (corrected):* only **creating an issue or a comment** is a
+GitHub "content-creation" against the tight **~500/hr** cap; label add/remove, body PATCH, and
+state changes are ordinary calls against the **5k/hr core** limit + latency (AG5). So mirroring costs
+*latency + core budget*, not the scarce content budget — except a mirror that takes the form of a
+*comment*, which does spend it (why verification-as-a-comment is dropped, §1.2/M6).
 
 **Altitude & foreign-API note.** This is *design intent* — which GitHub primitive encodes which
-concept, and the round-trip block's shape — not the exact REST/GraphQL JSON field names. Those are a
-`verify-api` step at build time (planning "Foreign API Verification"): read the live payloads before
-writing handlers; the shapes below are the contract the probe confirms, not an assumption to build on.
+concept — not the exact REST/GraphQL JSON field names. Those are a `verify-api` step at build
+(planning "Foreign API Verification"): read the live payloads before writing handlers.
 
 ---
 
 ## 1. Entities
 
-The system of record is **GitHub Issues**; entities are *projections* onto GitHub primitives. The
-optional cache (§6) is a projection of the same fields for the queries GitHub can't serve
-read-your-writes (Q1-fulltext, Q3).
+System of record = **GitHub Issues**; entities are *projections* onto GitHub primitives. The optional
+cache (§6) projects the same fields for the queries GitHub can't serve read-your-writes.
 
-### 1.1 Item (the central entity — one GitHub issue)
+### 1.1 Item (one GitHub issue)
 
-| Field | Type / values | GitHub encoding | Justified by |
+| Field | Type / values | **Authority** (one per field) | Justified by |
 |---|---|---|---|
-| `id` | `owner/repo#number` (canonical); `repo#number` (short, same-owner only) | issue **number** (immutable except on transfer, §5) | DM4 · every ref |
-| `node_id` | opaque string | issue **node-id** | DM4 (transfer-stable fallback — *verify in S2*) |
+| `id` | `owner/repo#number` (canon); `repo#number` (short, same-owner) | issue **number** (immutable except transfer, §5) | DM4 · every ref |
+| `node_id` | opaque | issue **node-id** (entity-level transfer fallback; *not* cached, m1) | DM4 (verify transfer-stability in S2) |
 | `title` | string | issue **title** | AG2, Q1 |
-| `body` | markdown + one fenced `prawduct:` block (§2) | issue **body** | AG2, DM1 round-trip |
-| `status` | `submitted \| open \| in-progress \| shipped \| dropped` | open/closed **+ `state_reason` + `status:` label** (§4) | DM2, ready-work |
-| `stage` | `idea \| research \| requirements \| design \| ready` (soft) | **`stage:` label** | DM2, ready-work, GV1 `pick` |
-| `area` `effort` `impact` `source` `kind` | soft per-project enums | **labels** (`area:`, `effort:`, …); org **Issue Fields** where owner is an org (GA, org-only) | DM1, Q1 |
-| `added` `reviewed` | date | timeline/events; `reviewed` mirrored to `prawduct:` block for Q-speed | DM1, TF2 (stale-verification) |
-| `assignee` / claim | GitHub user or agent identity | issue **assignee** + `claimed-at` in block | CC3, ready-work |
-| `verification` | `{by, on}` list | marker comment **or** `verified:YYYY-MM-DD` label + block | TF2 (stale-verification query) |
-| `relationships` | see §1.3 | native dependencies / sub-issues / refs | DM3, ready-work |
-| `provenance` | see §1.5 | `prawduct:` block + `source:<product>` label | XP2 |
-| `history` | append-only | issue **timeline/events** (native) | CC4 (replaces git's audit log) |
+| `body` | markdown + one `prawduct:` block (§2) | issue **body** | AG2, round-trip |
+| `status` | `submitted \| open \| in-progress \| shipped \| dropped` | open/closed **+ `state_reason`** (closed) **+ `status:` label** (open sub-states) — §4 | DM2, ready-work |
+| `stage` | `idea…ready` (soft) | **`stage:` label only** (not mirrored to block) | DM2, ready-work, `pick` |
+| `area` `effort` `impact` `source` `kind` | soft enums | **labels** (org Fields where owner is an org) | DM1 (`kind` = the soft-enum extension, not a DM1-named field) |
+| `reviewed` / verification | `{by, on}` | **`prawduct:` block `verified`** (round-trip) + **cache `reviewed`** (the TF2 date-range query) — *no label, no marker-comment* (M6) | TF2 |
+| `assignee` / claim | user/agent + `claimed_at` | issue **assignee** (claim) + block `claimed_at` (visible staleness) | CC3, ready-work |
+| `relationships` | §1.3 | native dependencies / sub-issues / refs | DM3, ready-work |
+| `provenance` | §1.5 | block (detail) + `source:<product>` label (the coarse XP2/Q4 filter) | XP2 |
+| `history` | append-only | issue **timeline/events** (native) | CC4 |
 
-*Soft enums (DM1):* a `stage:`/`kind:` value the project hasn't declared is **flagged, not rejected**
-(scriob's `kind:` on 158 items is the precedent). Validation writes an advisory, never blocks the write.
+*Soft enums (DM1):* an undeclared `stage:`/`kind:` value is **flagged, not rejected** (scriob's `kind:`
+on 158 items). `added` is display/sort metadata (sort-by-date under Q1), not a standalone query key.
 
-### 1.2 Comment
-Threaded, attributed, timestamped → **native issue comments** (DM5). No projection needed; the cache
-mirrors comment text only for Q1-fulltext / Q3 similarity.
+### 1.2 Field authority & justified mirrors
+- **Native/label-authoritative, block-unmirrored:** `status`, `stage`, `area/effort/impact/kind`,
+  `assignee`. Changing them is a label/state call (core budget), never a content-creation.
+- **Block-authoritative, unmirrored:** `verified`, `claimed_at`, `attachments`, `superseded_by`.
+- **Two justified mirrors** (each side serves a *distinct* consumer, not the same value twice):
+  - `id:` — the **label** makes old refs *queryable/resolvable*; the **block `id_aliases`** is the
+    export round-trip record.
+  - `source:` — the **label** is the coarse Q4/XP2 *filter*; the **block provenance** is the detail.
 
-### 1.3 Relationship
-| Kind | GitHub encoding | Query need |
-|---|---|---|
-| `blocks` / `blocked-by` | **native issue dependencies** (GA 8/2025, ≤50/type) | ready-work ("blockers all closed") — *must be queryable*, DM3 |
-| parent / child | **native sub-issues** (GA 4/2025, ≤8 levels) | split (AU3), rollup |
-| `related` · `superseded-by` | issue **references** / `superseded-by:` in block + redirect label | DM3, merge redirect (AU3/DM7) |
-
-### 1.4 Claim (not a separate row — Item facet)
-`assignee` = atomic take; `claimed-at` timestamp in the block gives **visible staleness**; a **default
-claim-staleness TTL** (§4) drives auto-unclaim/flag so `pick` can't starve (CC3, M11). Residual
-double-take race is accepted (CC3) — take-and-verify, not a mutex.
-
-### 1.5 Provenance (upstream submissions — Item facet)
-`{source_product, source_version, session_ref, submitted_at}` in the `prawduct:` block + a
-`source:<product>` label for Q4/XP2 filtering. **Provenance is untrusted until triaged** (a submitter
-sets its own claimed source) — lands in `status: submitted` (see Security Model §5).
-
-### 1.6 Attachment
-No public GitHub attachment API (verified). Encoding: **release-asset wrap** (default) *or*
-**attachments-branch via git-data API** — both no-PR, deterministic (G1). Item block stores
-`attachments: [{name, url, kind}]`. Native inline-upload is attended-only; inline-on-private gated by
-S5 (D9/DM6).
+### 1.3 Comment · 1.4 Claim · 1.5 Provenance · 1.6 Attachment
+- **Comment** → native issue comments (DM5); cache mirrors text only for Q1-fulltext/Q3.
+- **Claim** (Item facet) → `assignee` atomic take; block `claimed_at` = visible staleness; **default
+  claim-staleness TTL** drives auto-unclaim/flag so `pick` can't starve (CC3, M11). Residual double-take
+  race accepted (take-and-verify).
+- **Provenance** (Item facet) → `{source_product, source_version, session_ref, submitted_at}` in the
+  block + `source:<product>` label. **Untrusted until triaged** — the block is attacker-controllable
+  self-assertion wherever the actor has write (Security Model §5/F3); lands in `status: submitted`.
+- **Attachment** → **release-asset wrap** (default) *or* **attachments-branch via git-data API** (both
+  no-PR, G1); block `attachments: [{name,url,kind}]`; native inline attended-only; inline-on-private → S5.
 
 ---
 
 ## 2. The `prawduct:` body block (exact round-trip of non-native fields)
 
-Native features encode what they fit; a **single fenced block** at the end of the issue body carries
-what GitHub has no native slot for, so export/round-trip is lossless (MG2). Tolerant parse: unknown
-keys are preserved verbatim (forward-compat), missing keys default.
+A **single fenced block** at the end of the body carries what GitHub has no native slot for, so
+export round-trips losslessly (MG2). **Block-authoritative fields only** — it does *not* mirror
+`stage`/`status` (those are label/state-authoritative, §1.2). Tolerant parse: unknown keys preserved
+verbatim (forward-compat); missing keys default. **Exactly one block per issue** — the parser takes the
+**last** fenced `prawduct` block and flags any earlier one (the BKL-7M4Q duplicated-paragraph origin +
+CC5 human edits make a doubled/misplaced block plausible; last-block-wins is deterministic, m5).
 
 ````
 ```prawduct
-v: 1                         # block schema version (§7 — never deferred silently)
-id_aliases: [BKL-7M4Q]       # migrated PFX; old refs resolve forever (DM4)
-stage: ready                 # mirrored from label for one-read parse
-reviewed: 2026-07-16         # TF2 stale-verification without a timeline scan
+v: 1                         # block schema version (§7 — additive-only-forever)
+id_aliases: [BKL-7M4Q]       # migrated PFX; old refs resolve forever (label + here)
+verified: [{by: …, on: …}]   # TF2 round-trip authority (query runs off cache `reviewed`)
 claimed_at: 2026-07-16T…Z    # CC3 visible staleness
-verified: [{by: …, on: …}]   # TF2
-provenance: {source: scriob, version: …, session: …}   # XP2
-superseded_by: owner/repo#123                            # merge redirect (DM7/AU3)
+provenance: {source: scriob, version: …, session: …}   # XP2 detail (label = coarse filter)
+superseded_by: owner/repo#123                            # merge/duplicate redirect (DM7/AU3)
 attachments: [{name, url, kind}]                         # DM6
 ```
 ````
 
-The block is the **authority for non-native fields**; labels/native features are the authority for
-what they encode. On conflict (a human edits a label directly, CC5), reconciliation prefers the
-native/label value and re-stamps the block (labels are cheap to re-derive; §4).
+Every block field is **self-asserted** and forgeable by any write-capable actor (Security Model §5);
+only the GitHub **API identity** is trustworthy for attribution.
 
 ---
 
 ## 3. Label taxonomy (namespaced — GV6 coexistence)
 
-All prawduct labels are **namespaced with a `<facet>:` prefix** so they never collide with a repo's
-existing labels (GV6): `stage:`, `status:`, `kind:`, `area:`, `effort:`, `impact:`, `source:`,
-`id:`, `verified:`. Provisioned + reconciled by `/prawduct:onboard`/`doctor` (GV5). **Non-prawduct
-issues/labels are out-of-scope, not malformed** — the adapter ignores issues lacking any `stage:`/`id:`
-marker rather than treating them as broken backlog items.
+All prawduct labels are **`<facet>:`-namespaced** so they never collide with a repo's existing labels
+(GV6): `stage:`, `status:`, `kind:`, `area:`, `effort:`, `impact:`, `source:`, `id:`, `verified:`,
+and **`superseded-by:`** (the redirect facet used by merge/transfer, §1.3/§5 — m2). Provisioned +
+reconciled by `/prawduct:onboard`/`doctor` (GV5). **Non-prawduct issues/labels are out-of-scope, not
+malformed** — the adapter ignores issues carrying no `stage:`/`id:` marker (but see the
+anonymous-quarantine reconciliation, Security Model §6/F7: an unlabeled non-collaborator filing *is*
+the quarantine state, surfaced to triage, not silently ignored).
 
 ---
 
 ## 4. State machines
 
-**Two orthogonal axes (DM2) — never flattened.**
+**Two orthogonal axes (DM2), never flattened.**
 
-**status** = `open/closed` × `state_reason` × `status:` label:
-- `submitted` → open + `status:submitted` (triage landing, XP2)
-- `open` → open, no `status:` label
-- `in-progress` → open + `status:in-progress` (+ assignee)
-- `shipped` → **closed + `state_reason: completed`**
-- `dropped` → **closed + `state_reason: not_planned`**
-- (`state_reason: duplicate` from a human "close as duplicate" is decoded as `dropped` + `superseded_by`; decoder stays **fail-open** on unknown reasons)
+**status** — closed states carry meaning in `state_reason`; open sub-states carry it **only** in the
+`status:` label (there is nothing else to encode them):
+- `submitted` → open + `status:submitted` · `open` → open, no `status:` label · `in-progress` →
+  open + `status:in-progress` (+ assignee)
+- `shipped` → **closed + `state_reason: completed`** · `dropped` → **closed + `state_reason:
+  not_planned`**
+- human "close as duplicate" → `state_reason: duplicate`, decoded as `dropped` + `superseded_by`
+  **read from the `marked_as_duplicate` timeline event** (state_reason names the *kind*, not the
+  *target* — m3); decoder stays **fail-open** on unknown reasons.
 
 **stage** = `stage:` label only: `idea → research → requirements → design → ready`. Load-bearing:
-`pick` only routes `stage: ready` items to code (else to discovery) — DM2/GV1.
+`pick` routes only `stage: ready` to code (else discovery) — DM2/GV1.
 
-**Compound-transition integrity (CC1/M5).** `in-progress → shipped` = *two* non-atomic calls (PATCH
-state=closed/completed; remove `status:in-progress`). GitHub has no multi-attribute transaction, so:
-1. **Canonical write order:** mutate the **open/closed + state_reason** axis *first* (the authority),
-   then reconcile the `status:` label.
-2. **Self-healing reconciliation:** the `status:` label is *derived* from open/closed+state_reason
-   wherever derivable, so a crash between calls leaves a stale label that the next read re-derives —
-   no contradictory item survives. (Open question §8: whether `status:` is needed at all for
-   shipped/dropped, since state_reason already carries them — likely only `submitted`/`in-progress`
-   need a label.)
+**Crash-safe transitions (B1 — delivers the CC1 "a crashed client never half-writes" guarantee).**
+Because open sub-states live *only* in the `status:` label, a naive
+remove-then-add is not crash-safe (a crash strands zero or two labels). So status changes go through
+one idempotent op:
 
-Ready-work query (the `pick` engine): `state=open AND stage:ready AND no open blockers AND unassigned
-(or claim past TTL)` — all **structured**, served **online read-your-writes** off the REST list
-endpoint (Q1-structured, M8), no cache required.
+> **`set-status(item, target)`** — (1) if `target` is closed, set open/closed+`state_reason` *first*
+> (the authority); (2) **add** `status:target` *before* removing any other `status:` label (never a
+> zero-label window); (3) remove the other `status:` labels. Re-running is a no-op.
+
+**Decoder precedence** resolves the transient/torn state deterministically: for an **open** issue,
+`in-progress > submitted > (none = open)`; multiple `status:` labels → highest wins and reconciliation
+removes the losers; for a **closed** issue, `state_reason` is authoritative and any `status:` label is
+meaningless → reconciliation strips it. So a crash mid-transition always reads as a *valid* state and
+self-heals on the next write — no contradictory item survives (this closes v1's false "wherever
+derivable" claim).
+
+**Ready-work query (the `pick` engine)** = `state=open AND stage:ready AND unassigned` — **these three
+are REST *list*-endpoint filters**, served **online, read-your-writes** in one call (M8 stands). But
+the remaining two predicates are **not** list filters and force a **per-candidate fan-out** (M1):
+- **"no open blockers"** — native dependencies aren't a list parameter → one dependency fetch per
+  candidate (GraphQL sub-connection or N+1 REST).
+- **"claim past TTL"** — `claimed_at` (block / assignment event) isn't list-range-filterable → per-item
+  check on the reaping path.
+
+So `pick` is **list-then-fan-out**: online and consistent (no cache needed), but O(candidates) reads,
+not one call — cheap at portfolio scale, but the latency/read cost is real and paced under the core
+limit. (A cross-repo blocker's state is only reliably seen online — a per-clone cache can misjudge it.)
 
 ---
 
 ## 5. Identifiers
 
-- **Canonical `owner/repo#number`** — GitHub's own cross-ref syntax (auto-links, globally unique,
-  disambiguates same-named repos across owners, O1). **Short `repo#number` only in same-owner
-  contexts** (ambiguous under federation otherwise).
-- **Immutable except on `gh issue transfer`**, which renumbers → transfer writes a **redirect** via
-  the same `id:` alias machinery + a `superseded_by`-style forward. Store `node_id` as the
-  transfer-stable fallback (*undocumented across transfer → prove in S2, don't assume*).
-- **Migrated `PFX-XXXX` → permanent `id:PFX-XXXX` alias labels** + `id_aliases` block entries; old
-  refs resolve forever. **No new PFX minted.** Absorbs the portfolio's 27–58 hand-minted prefixes per
-  project (DM4) — prawduct's own `BKL/ADR/ADV/MET/CRT…` is the multi-prefix stress case (§8.9/S2).
+- **Canonical `owner/repo#number`** — GitHub's own cross-ref syntax; **short `repo#number` same-owner
+  only** (ambiguous under federation).
+- **Immutable except `gh issue transfer`** (renumbers) → transfer writes a **`superseded-by:` redirect**
+  via the alias machinery; store `node_id` as the transfer-stable fallback (*undocumented → prove S2*).
+- **Migrated `PFX-XXXX` → permanent `id:PFX-XXXX` alias labels** + `id_aliases` block entries; old refs
+  resolve forever; **no new PFX**. Absorbs 27–58 hand-minted prefixes/project (DM4); prawduct's own
+  `BKL/ADR/ADV/MET/CRT…` is the multi-prefix stress case (S2).
+- **Alias uniqueness is an integrity constraint** — an `id:PFX` alias must resolve to **exactly one**
+  live item; the importer/adapter rejects (flags) a *second* item claiming an existing alias, so ref
+  resolution can't be hijacked by a colliding `id:` label (Security Model §5/F3).
 
 ---
 
 ## 6. Optional cache schema (projection — off by default)
 
-The cache is **derived personal state, never the truth** (D5); it exists only where GitHub can't serve
-a query read-your-writes or offline. SQLite, per-clone, **gitignored**, `git-common-dir`-keyed (shared
-across a clone's worktrees, like the evidence store). **Every table/index is a Q-projection** — no
-field the queries don't need:
+**Derived personal state, never the truth** (D5) — exists only where GitHub can't serve a query
+read-your-writes or offline. SQLite, per-clone, **gitignored**, `git-common-dir`-keyed. **Every column
+is a Q-projection** (no dead fields — the retired-`git_sha` rule). *Security note (F4/F5):* the cache is
+**as sensitive as its most-sensitive stored body** (issue bodies carry pasted secrets), and it
+authorizes at **fetch** time — cross-repo entries must **revalidate on read** (Security Model §3/§4).
 
 | Table / index | Serves | Notes |
 |---|---|---|
-| `item(id, node_id, title, body, status, stage, area, effort, impact, source, assignee, added, reviewed, updated_at, **fetched_at**)` | Q1-structured, ready-work, Q5 counts | `fetched_at` = **visible age** (G3); a decision-driving read revalidates |
-| `item_fts(title, body)` (FTS5) | Q1-fulltext, Q3 lexical | the read-your-writes path GitHub search lacks (§9) |
-| `comment(item_id, body, author, created_at)` | Q1-fulltext, Q3 | text mirror only |
-| `relationship(src, kind, dst)` | ready-work (blockers), Q4 rollup | mirrors native deps/sub-issues |
-| `cursor(scope, since)` | Q2 incremental refresh | the primitive for cheap sweeps + prefetch |
+| `item(id, title, body, status, stage, area, effort, impact, source, assignee, added, reviewed, updated_at, **etag**, fetched_at)` | Q1-structured, ready-work, Q5, TF2 (`reviewed` date-range) | `etag`/validator = the **conditional-request** column G3's revalidation needs (M2); `fetched_at` = visible age. **No `node_id`** (dead-read, m1) |
+| `item_fts(title, body)` (FTS5) | Q1-fulltext, Q3 lexical | the read-your-writes path GitHub search lacks |
+| `comment(item_id, body, author, created_at)` | Q1-fulltext, Q3 | text mirror |
+| `relationship(src, kind, dst)` | ready-work blockers (per-clone) | *within one repo*; cross-repo blockers checked online |
+| `cursor(scope, since)` | Q2 incremental refresh | primitive for sweeps/prefetch |
+| `briefing_counts(scope, counts_json, fetched_at)` | **GV2** — session-start counts | the **P0 persisted-counts floor** the PRD admits (M3): a degenerate cache w/ visible age so "start never waits"; distinct from the always-derived Q5 read path |
 
-Counts/rollups are **derived on read** (Q5), never persisted (the D14 discipline; dead-persisted
-counts are the retired-`git_sha` failure mode). The cache **never silently serves stale** (G3): age is
-visible and a decision-read revalidates via conditional request.
+**Q4 (cross-project rollup) is NOT cache-served** — the cache is per-clone (one project). Q4 is
+**query-side fan-out + merge across owners** (PRD §8.3-Q4, M4), not a cache or GitHub-native feature.
+**Counts:** Q5 rollups are derived on read; the *only* persisted count is the `briefing_counts`
+snapshot (GV2), which carries visible age and is never treated as truth. The cache **never silently
+serves stale** (G3): age visible; a decision-driving read revalidates via conditional request (`etag`).
 
 ---
 
 ## 7. Schema versioning (never deferred on a one-word note)
 
-The scriob precedent (697 commits unversioned → coordinated breaking retrofit) makes this explicit,
-not silent:
-- **`prawduct:` block** carries `v:` (currently `1`); readers tolerate higher/unknown keys (forward-
-  compat) and a `migrate` **legend-refresh** reconciles the block's known-key set additively.
-- **Cache** carries `schema_version`; a mismatch triggers a rebuild-from-GitHub (cache is derived, so
+- **`prawduct:` block** carries `v:` (currently `1`); readers tolerate unknown/higher keys
+  (forward-compat) and a `migrate` **legend-refresh** reconciles the known-key set **additively**.
+  **Block evolution is additive-only, forever** — a key's *meaning* is never redefined in place (that
+  would silently mis-decode under old readers, the scriob breaking-retrofit precedent, m4); a genuine
+  semantics change mints a *new* key and deprecates the old, never a `v:1→v:2` reinterpretation.
+- **Cache** carries `schema_version`; a mismatch triggers **rebuild-from-GitHub** (cache is derived, so
   a rebuild is always safe — never a data-loss migration).
-- **Adding an optional field reaches onboarded repos only via a migrate/triage refresh** (the
-  templates-are-scaffold-only learning): wire both the per-item backfill and the legend refresh.
+- **Adding an optional field** reaches onboarded repos only via a migrate/triage refresh (templates are
+  scaffold-only): wire both the per-item backfill and the legend refresh.
 
 ---
 
 ## 8. Constraints, invariants & open questions
 
-**Invariants:** nothing hard-deleted by normal operation (DM7 — merge/split/drop preserve bodies +
-leave redirects); tolerant validation (DM1 — flag, don't reject); two axes never flattened (DM2);
-cache is subordinate + age-visible (G3/D5).
+**Invariants:** nothing hard-deleted (DM7 — merge/split/drop preserve bodies + leave redirects);
+tolerant validation (DM1); two axes never flattened (DM2); one authority per field (§1.2); alias
+uniqueness (§5); cache subordinate + age-visible + fetch-time-scoped (G3/D5/F4).
 
-**Open questions (for the build / verify-api, not blockers to this altitude):**
-1. Does `status:` need a label for `shipped`/`dropped`, or does `state_reason` alone suffice? (Fewer
-   labels = fewer compound-transition calls = cheaper under the ~500/hr write cap.) — decide at build.
-2. Exact REST/GraphQL JSON shapes for dependencies, sub-issues, `state_reason`, timeline events —
-   **`verify-api` probe before writing handlers** (do not draft from docs).
-3. `node_id` stability across `gh issue transfer` — **prove in S2**.
-4. Attachment default (release-asset vs attachments-branch) — **S5** settles inline-on-private.
+**Open questions (build / `verify-api`, not altitude blockers):**
+1. Exact REST/GraphQL shapes for dependencies, sub-issues, `state_reason`, timeline events —
+   **`verify-api` probe before writing handlers**.
+2. `node_id` stability across transfer — **prove in S2**.
+3. Attachment default (release-asset vs attachments-branch) — **S5** (inline-on-private).
+4. Ready-work fan-out cost at scale — measure in S2 alongside the migration write-burst.
+
+*(v1's open question "does `status:` need a label for shipped/dropped" is now **resolved**: shipped/
+dropped are `state_reason`-authoritative with **no** `status:` label; only the open sub-states
+submitted/in-progress carry one — §4.)*
 
 ## 9. Traceability
-Every DM1–7 and Q1–Q5 is represented: DM1→§1.1/§3; DM2→§4; DM3→§1.3; DM4→§5; DM5→§1.2; DM6→§1.6;
-DM7→§8. Q1-structured→§4 ready-work + §6; Q1-fulltext/Q3→§6 (`item_fts`); Q2→§6 (`cursor`); Q4→§6
-(`relationship`) + `source:` labels; Q5→§6 (derived-on-read). ready-work→§4; stale-verification (TF2)→
-§1.1 `verification` + block `reviewed`; provenance (XP2)→§1.5.
+DM1→§1.1/§3; DM2→§4; DM3→§1.3; DM4→§5; DM5→§1.3; DM6→§1.6; DM7→§8. Q1-structured→§4 ready-work + §6;
+Q1-fulltext/Q3→§6 (`item_fts`); Q2→§6 (`cursor`); **Q4→query-side fan-out (NOT the cache), §6 note**;
+Q5→§6 (derived-on-read + the `briefing_counts` GV2 exception). ready-work→§4 (list-then-fan-out);
+stale-verification (TF2)→§1.1 `verified` + cache `reviewed`; provenance (XP2)→§1.5 + `source:` label
+(the XP2 filter — *not* Q4).
