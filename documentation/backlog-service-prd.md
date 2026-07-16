@@ -1,6 +1,6 @@
 # Backlog Service — Product Requirements & High-Level Design (PRD)
 
-`status: draft v3 — owner-feedback pass folded (2026-07-14): identity resolved (GitHub App across owned orgs + user token for public/foreign filing — O2/D8); ID strategy resolved (repo-prefixed GitHub numbers, owner/repo#number canonical, PFX → migration alias — O4/D4); attachments reprioritized + inline-on-private spike added (O3/D9/S5); org model clarified to federated multi-owner (O1/D3); cache-freshness spike (S4) re-scoped to gate the cache layer, not the slice; §11 spikes re-tiered by what they gate — only S1 (→ HTTP decision) and S2 (migration dry-run / first slice) gate the core, S3 (tuning)/S4/S5 settle with their layer or feature. Prior v2: cache = optional/read-through, gh-vs-http reopened as a spike. · added: 2026-07-14 · source: planning session · stage: design`
+`status: draft v4 — independent-review pass folded (2026-07-16): a fresh-eyes design critic + a GitHub-fact verifier reviewed v3. Folded: slice-scope reframed to what the cacheless online slice truly delivers — one live *view* (kills stale-views, pain #2) + zero-conflict + zero-token CRUD + online-consistent pick — NOT the #1 stale-*content* pain, which needs TF2/TF3 + the one-time migration scrub (B1/M7); Q1 split so ready-work/pick runs online-consistent in the slice (M8); minimal persisted counts admitted to the P0 floor (GV2/M3); write budget corrected to 80/min AND ~500/hr — ~10× tighter, sizes the migration (fact #3); two-axis write-order + reconciliation (CC1/M5); rollback redefined as idempotent resumable import (MG1/M6); default claim-TTL so pick can't starve (CC3/M11); ID immutability boundary on transfer (D4/M4); export fidelity contract (G5/M10); migration reframed prawduct-first + pre-migration scrub (owner, 2026-07-16). Opened O5 — P0-slice auth/transport (App-vs-adopter-reproducibility + the cloud-proxy `proxy-injected` finding, B2) — leaning inherit-session-auth with `gh` as portable transport (reopens S1), owner to confirm. Four requirements written back to the parent (CC5/PV4/GV6/MG4). Prior v3: owner-feedback pass (O1–O4/D3–D9); prior v2: cache = optional/read-through, gh-vs-http reopened. · added: 2026-07-14 · source: planning session · stage: design`
 
 **Parent:** `documentation/backlog-service-requirements.md` — the problem, the 8-project evidence
 sweep, and the adopt-vs-build decision that selected **GitHub Issues as system of record + a
@@ -22,8 +22,10 @@ spec the whole system so the slice is cut from a coherent whole.
 A backlog a fleet of agents and one human can trust: **one live source of truth per project, mutated
 only by deterministic code, reachable from every checkout, and free.** The backlog stops being a
 merge-prone markdown file an LLM edits by hand and becomes GitHub Issues fronted by a thin prawduct
-adapter — so item state is never stale-by-checkout, CRUD costs zero model tokens, and every adopter
-already owns the backend.
+adapter — so item state is never stale-*by-checkout*, CRUD costs zero model tokens, and every adopter
+already owns the backend. *Precisely (B1):* one-live-view kills stale **views** (the portfolio's #2
+pain); stale **content** (the #1 pain — `ready` items already shipped) is attacked by verification +
+grooming (TF2/TF3) plus a one-time pre-migration scrub, not by centralization alone.
 
 ## 2. Users & personas
 
@@ -52,7 +54,7 @@ already owns the backend.
 - Two agents in parallel worktrees + a human in a browser mutate concurrently with **no lost updates and no merge conflicts, ever.**
 - **Every checkout sees the same live state** — the observed "66 closed items shown as open" worktree becomes structurally impossible.
 - A consumer files upstream **with no local checkout and no drop-box** of the target.
-- discodon's ~317 open items **migrate with IDs preserved**, and grooming gets *cheaper*.
+- discodon's ~317 open items **migrate with IDs preserved** (prawduct's own backlog migrates *first* — dogfood — and both are *scrubbed* before import, §8.9); grooming gets *cheaper* **once the optional read-cache lands** — the 48-reader sweep is a cache-served workload (§9); the cacheless slice is rate-safe only for low-fan-out use.
 - **$0/month**, with **no per-project cost** as the portfolio grows.
 
 ## 5. Governing invariants (violate any and the design is wrong)
@@ -61,14 +63,18 @@ already owns the backend.
 - **G2 — Never block a session.** A backend failure must never hang, crash, or corrupt: it **degrades cleanly** — writes fail fast with a clear, retryable error (an offline write-queue is an *optional* enhancement, §8.1); reads serve from the read-through cache when warm, else return a clear "unavailable" with guidance. Gates and hooks that read backlog state must tolerate "unavailable" gracefully. *Never-block means never-hang/corrupt + graceful degradation — not "always works offline."*
 - **G3 — One live view, and freshness beats latency.** GitHub is the single source of truth; every checkout reads the same current state. Any cached read carries **visible age**, and a read that drives a decision **revalidates** (cheap conditional request) rather than trusting the cache. **The cache must never silently serve stale data — silent staleness is the exact failure this project exists to kill.** (This is why the cache is subordinate and optional, §6.)
 - **G4 — Adopter-reproducible & free.** Any adopter can stand this up at $0 — including adopters in private repos the owner cannot access. No backend, and no *client dependency*, bespoke to one machine (see the gh-vs-http spike, §11-S1).
-- **G5 — Cheap exit.** Full-fidelity export to plain files any time; the backlog is never hostage to a vendor or server. Export doubles as backup.
+- **G5 — Cheap exit.** Full-fidelity export to plain files any time; the backlog is never hostage to a vendor or server. Export doubles as backup. *("Full-fidelity" = a cheap **dump** that also serializes the native graph — dependencies, sub-issues, timeline, assignees; re-import into a *non-GitHub* backend is non-trivial, so cheap means cheap-out, not lossless one-liner re-import — fidelity contract in §8.9/MG2, M10.)*
 
 ## 6. Target architecture
 
 The center of gravity is deliberately small. **The minimal viable system is a thin *online* CLI over
-GitHub with no cache and no queue** — and it already delivers the #1 win (trust / one-live-view) for
-free, because it always reads live. Everything else is an *optional* layer earning its keep for a
-specific workload.
+GitHub with no cache and no queue** — and it already delivers, for free because it always reads live:
+**one live *view* (kills the stale-views pain, #2), zero merge conflicts (#3), zero-token deterministic
+CRUD, and — once Q1 is split (§8.3) — an online, read-your-writes-consistent `pick`.** It does **not**
+by itself deliver the #1 pain (stale/wrong *content*): that needs verification + grooming (TF2/TF3,
+P1) and the one-time pre-migration scrub (§8.9). The slice is necessary but not sufficient for the top
+pain — an honest scope, not a re-scope (B1). Everything else is an *optional* layer earning its keep
+for a specific workload.
 
 ```
   /prawduct:backlog skill (GV1)     MCP server          human → GitHub web UI
@@ -110,10 +116,10 @@ structured body block for exact round-trip of non-native fields.
 | prawduct concept | GitHub encoding | Notes / requirement |
 |---|---|---|
 | title / body | issue title / body | body carries a fenced `prawduct:` block for exact round-trip |
-| **status** (submitted→open→in-progress→shipped/dropped) | open/closed **+ state-reason** (completed=shipped, not-planned=dropped) **+ `status:` label** for submitted/in-progress | two axes must survive (DM2) |
+| **status** (submitted→open→in-progress→shipped/dropped) | open/closed **+ state-reason** (completed=shipped, not-planned=dropped; GitHub now also emits `duplicate` — decoder stays fail-open) **+ `status:` label** for submitted/in-progress | two axes must survive (DM2); compound transitions are multi-call → canonical write-order + self-healing reconciliation (CC1, §8.2, M5) |
 | **stage** (idea→…→ready) | **`stage:` label** | load-bearing: `pick` routing enforces requirements-precede-code |
-| area / effort / impact / source | **labels**; org **Issue Fields** where the owner is an org (enhancement) | soft per-project vocabularies (DM1); labels fit them; org Fields unavailable on personal accounts |
-| **stable ID** (`owner/repo#number` canonical; `repo#number` short) | GitHub's issue **number** is the ID going forward; migrated `PFX-XXXX` become permanent **alias labels** (`id:…`) + body-block entries so old refs resolve | **D4/O4 resolved (§10)** — `owner/repo#number` is GitHub's own cross-ref syntax (auto-links, globally unique, disambiguates same-named repos across owners); no *new* PFX minted |
+| area / effort / impact / source | **labels**; org **Issue Fields** where the owner is an org (**GA 2026-07-02**, org-only — an enhancement, currently dead for the all-personal portfolio) | soft per-project vocabularies (DM1); labels fit them; org Fields unavailable on personal accounts |
+| **stable ID** (`owner/repo#number` canonical; `repo#number` short — **same-owner contexts only**) | GitHub's issue **number** is the ID going forward; migrated `PFX-XXXX` become permanent **alias labels** (`id:…`) + body-block entries so old refs resolve | **D4/O4 (§10)** — canonical form is GitHub's own cross-ref syntax; **immutable except on `gh issue transfer`, which renumbers → redirect via the same alias machinery** (M4); absorbs the portfolio's 27–58 hand-minted prefixes/project (DM4); no *new* PFX minted |
 | relationships: blocks/blocked-by · parent/child · related | **native dependencies** (GA 8/2025) · **sub-issues** (GA 4/2025) · references | ready-work query needs blockers queryable (DM3) |
 | comments | issue comments | threaded, attributed, timestamped (DM5) |
 | **claim / assignee** | issue **assignee** (human or agent identity) | atomic-take + verify; residual race accepted (CC3) |
@@ -123,9 +129,9 @@ structured body block for exact round-trip of non-native fields.
 
 **Encoding validation is advisory and tolerant** (DM1): unknown values are *flagged*, never rejected
 (a fail-closed validator here is a latent fail-close — learning on tolerating natural encoding
-variants). **Two adversarial gaps this table surfaces** (see §13): a repo's *existing* Issues/labels
-may collide with prawduct's taxonomy, and a human editing in the GitHub UI can introduce label/state
-drift the adapter must reconcile.
+variants). **Two adversarial gaps this table surfaces** (now first-class parent requirements, §15): a
+repo's *existing* Issues/labels may collide with prawduct's taxonomy (**GV6**), and a human editing in
+the GitHub UI can introduce label/state drift the adapter must reconcile (**CC5**).
 
 ### 7a. Persisted-schema decision research (mandated by the lock-in learning)
 
@@ -159,31 +165,33 @@ Priority = importance (P0 core / P1 important / P2 valuable / P3 nice-to-have), 
 
 ### 8.2 Truth, freshness & integrity
 - **[P0]** Single live view; freshness beats latency; visible age; no silent staleness (TF1, G3).
-- **[P0]** Atomic mutations; a crashed client never half-writes (CC1).
+- **[P0]** Atomic mutations; a crashed client never half-writes (CC1). *Create is one atomic call; compound status transitions touch ≥2 GitHub primitives across two axes (§7) — so the adapter commits a **canonical write-order** + an **idempotent, self-healing reconciliation** (labels re-derived from open/closed + state-reason where derivable), and §16 Test Specs carry a partial-transition-recovery case (M5).*
 - **[P1]** No lost updates — optimistic concurrency (compare-and-set on state/updated-at), clean-fail-for-retry (CC2).
-- **[P1]** Claims consistent-enough — assignee atomic-take + verify; staleness visible; reaping is policy (CC3).
+- **[P1]** Claims consistent-enough — assignee atomic-take + verify; staleness visible; reaping is policy (CC3). *A **default claim-staleness TTL** (visible-age on the assignee timestamp) auto-unclaims/flags abandoned claims so the P0 `pick` can't silently starve as fleet agents die mid-work; human override stays the policy (M11).*
 - **[P1]** Every mutation records actor identity, kept as per-item history (CC4).
 - **[P1]** Verification first-class & cheap — record + query "premise re-checked" (TF2).
 - **[P1]** Mass grooming is a supported workload (TF3).
-- **[P1]** Human-UI drift reconciliation — tolerate + reconcile label/state changes a human makes directly in GitHub (adversarial §13).
+- **[P1]** Human-UI drift reconciliation — tolerate + reconcile label/state changes a human makes directly in GitHub (**CC5**; distinct from GV3 item↔ship reconciliation — this is encoding↔direct-edit).
 
 ### 8.3 Query
 - **[P1]** Changed-since cursor (Q2) — engine for incremental refresh + sweeps.
-- **[P1]** Structured filters + full-text, sort, paginate (Q1) — *served from cache to avoid GitHub search-index lag (§13).*
+- **[P0-reachable]** **Structured** field/label filters, sort, paginate (Q1-structured) — the Issues REST **list** endpoint is read-your-writes consistent, so these run **online in the cacheless slice**; this is what carries the ready-work query behind `pick` (GV1). *(M8 — split from the search path below.)*
+- **[P1]** **Full-text** filter (Q1-fulltext) — served from cache to avoid GitHub's search-index lag (not read-your-writes; §9, §13).
 - **[P1]** Lexical similarity for dedup (Q3, lexical) — *cache-based, read-your-writes consistent.*
 - **[P2]** Semantic similarity for dedup (Q3, semantic — GitHub hybrid search GA 4/2026).
 - **[P2]** Cross-project queries + rollup (Q4). *O1 (federated multi-owner):* native Projects v2 rollup only spans **one owner**; **cross-owner** rollup is **query-side fan-out + merge** in our layer, not a GitHub-native feature.
 - **[P1]** Counts/rollups derived on read (Q5).
 
 ### 8.4 Cross-project flow
-- **[P1]** File upstream directly — no upstream checkout, no drop-box, no git (XP1).
+*(Post-slice: these + anonymous filing ride the public/foreign identity plane (§8.5/O5) — not slice-1 content.)*
+- **[P1]** File upstream directly — no upstream checkout, no drop-box, no git (XP1). *Migrating prawduct's own backlog makes it the live upstream target and **retires the `incoming-bugs/` drop-box** (§8.9).*
 - **[P1]** Provenance + `submitted` triage landing (XP2).
-- **[P2]** Anonymous filing on public projects (PV3) — **with abuse handling (§13).**
+- **[P2]** Anonymous filing on public projects (PV3) — **with abuse handling (PV4)**; enablement gated on the retro-governance path (`MET-6T4K`).
 - *XP3 (private submit-without-read) is **out** — owner-descoped.*
 
 ### 8.5 Privacy, access & auth
 - **[P0]** Per-project visibility inherits repo access — structural, free (PV1).
-- **[P0]** Agents authenticate with real, scoped, revocable credentials — not a shared secret (PV2). *Identity model resolved (O2/D8):* **GitHub App installed across owned orgs** (per-owner rate bucket, scoped, revocable, `[bot]` attribution) + a **user token** (`gh`/OAuth/PAT) for public/foreign repos the fleet isn't a member of. Per-**agent** attribution rides in the payload (assignee/marker), since neither transport carries agent-level actor identity. Governs rate-limit headroom, §9/§13.
+- **[P0]** Agents authenticate with real, scoped, revocable credentials — not a shared secret (PV2). *Portfolio identity model (O2/D8):* **GitHub App installed across owned orgs** (per-owner rate bucket, scoped, revocable, `[bot]` attribution) + a **user token** (`gh`/OAuth/PAT) for public/foreign repos the fleet isn't a member of. *P0-slice auth is **O5-open** (§11):* the slice **inherits the session's `gh`/token identity** — local = the human's terminal identity; cloud = proxied user (`proxy-injected`); Actions = the Claude App bot — so "authed as the user" is strictly true only locally. Per-**agent** attribution rides in the payload (assignee/marker), since no transport carries agent-level actor identity, and the adapter validates identity early. Governs rate-limit headroom, §9/§13.
 - **[P2]** Public submission surface, per-project choice (PV3).
 
 ### 8.6 Automation enablement
@@ -192,8 +200,8 @@ Priority = importance (P0 core / P1 important / P2 valuable / P3 nice-to-have), 
 - **[P2]** Events (webhooks) or cheap polling (AU1).
 
 ### 8.7 Governance integration
-- **[P0]** `/prawduct:backlog` keeps its UX contract; stage-aware `pick` survives (GV1).
-- **[P0]** Session briefing reads counts from cache/online, refreshed async — start never waits (GV2).
+- **[P0]** `/prawduct:backlog` keeps its UX contract; stage-aware `pick` survives (GV1). *Its ready-work query is Q1-structured (open, blockers closed, unclaimed, `stage: ready`) — served **online, consistent** off the REST list endpoint, so `pick` needs no cache in the slice (M8).*
+- **[P0]** Session briefing reads counts from cache/online, refreshed async — start never waits (GV2). *Even the cacheless slice keeps a **minimal persisted counts file** (a degenerate cache with visible age) so "start never waits" holds without a blocking round-trip; the detached refresh (D6) writes it (M3).*
 - **[P0]** Zero-cost per-project provisioning via onboard/doctor — one command or none (GV5), **including the label taxonomy + coexistence with the repo's existing Issues (§13).**
 - **[P1]** Traceability replaces atomicity — record `closed-by`; reconciliation sweep detects drift both directions (GV3). *(General retro-governance is out — §14.)*
 - **[P0]** Adopter-reproducible backend shipped inside the plugin (GV4, G4).
@@ -201,19 +209,20 @@ Priority = importance (P0 core / P1 important / P2 valuable / P3 nice-to-have), 
 ### 8.8 Data model
 - **[P0]** Structured, queryable metadata; soft per-project enums (DM1).
 - **[P0]** Two axes: status + stage, not flattened (DM2).
-- **[P0]** Stable, cross-project-unambiguous IDs; permanent redirects on merge; legacy-alias absorption (DM4). *Resolved (D4/O4, §10):* `owner/repo#number` canonical / `repo#number` short; migrated `PFX-XXXX` kept only as permanent aliases; no new PFX minted.
+- **[P0]** Stable, cross-project-unambiguous IDs; permanent redirects on merge; legacy-alias absorption (DM4). *Resolved (D4/O4, §10):* `owner/repo#number` canonical / `repo#number` short (**same-owner only** — ambiguous under O1 federation otherwise); migrated `PFX-XXXX` kept only as permanent aliases; no new PFX minted. *Immutability boundary (M4):* the canonical ID is immutable **except on `gh issue transfer`** (renumbers) → transfer leaves a redirect via the same alias machinery; store the node-id too (its stability across transfer is undocumented → prove in S2).
 - **[P1]** Relationships queryable (DM3) · **[P1]** threaded comments (DM5) · **[P1]** nothing hard-deleted (DM7).
 - **[P1]** Attachments (DM6) — **inline screenshots are a top use case** (owner, 2026-07-14), so not a P2 rough-edge. Robust default: release-asset wrap *or* attachments-branch via git-data API (both no-PR, G1-clean); native inline-upload is attended-only; inline-on-private gated by **S5** (D9). *(≥10 MB via the same wrap.)*
 
 ### 8.9 Migration & exit
-- **[P0]** One-shot importer: IDs, metadata, bodies, sections preserved verbatim; existing IDs stay valid (MG1). **Highest-risk operation — own design + dry-run + rollback (§13).**
-- **[P0]** Full-fidelity export to files, scriptable, any time (MG2, G5).
-- **[P0]** Per-project adoption; file + service backlogs coexist across the portfolio, never within one project (MG3).
+- **[P0]** One-shot importer: IDs, metadata, bodies, sections preserved verbatim; existing IDs stay valid (MG1). **Highest-risk operation.** GitHub has **no clean issue-delete and never reuses numbers**, so "rollback" is a fiction — recovery is instead an **idempotent, resumable import keyed on the `id:PFX` alias label (skip-if-exists)** with a durable checkpoint; abandoning a bad run = close-as-not-planned + re-run into the same repo with dedup. S2 proves **resumability + idempotency**, not just body-fidelity (M6).
+- **[P0]** **Pre-migration scrub (MG4)** — don't carry stale/obsolete/duplicate items into the new store (that would re-seed the #1 stale-content pain). Groom live items (close dead-premise/already-shipped, merge dupes); decide **archive scope** — keep the historical archive as the MG2 export file + migrate only a recent-shipped window (also the lever that keeps the write-burst inside the ~500/hr budget, §9); **dispose, never hard-delete** (DM7); model-assisted, **owner-confirmed** dispositions, then deterministic import (AG1/G1). **prawduct migrates first** (dogfood; smaller blast radius than discodon; stress-tests multi-prefix absorption — `BKL/ADR/ADV/MET/CRT…` in one repo) and runs the scrub for real; **adopters get an optional advisory pre-scan** (flag likely-stale via TF2 + likely-dup via Q3; skippable).
+- **[P0]** Full-fidelity export to files, scriptable, any time (MG2, G5). *Fidelity contract (M10):* the flat files must serialize the **native graph** too — dependencies, sub-issue trees, timeline/events (audit, CC4), assignee history — not just the body block; exit *reconstruction* into a fresh backend is non-trivial for that graph, so "cheap exit" means cheap *dump*, not lossless one-liner re-import. §16 Data Model pins the on-disk representation.
+- **[P0]** Per-project adoption; file + service backlogs coexist across the portfolio, never within one project (MG3). *Migrating prawduct's backlog also **retires the `incoming-bugs/` drop-box** (XP1 becomes the upstream path) and removes `backlog.md` from the strip-`.prawduct`-from-main plan; prawduct then reads its own governance counts through the adapter — a dogfood risk the G2 never-block floor covers.*
 
 ## 9. Non-functional targets (concretized)
 - **Cost (NF1):** **$0/month.** GitHub Issues, labels, org Fields free; no server. No per-project cost.
 - **Ops (NF2):** near-zero — GitHub hosts the store; the only optional local part is a cache file.
-- **Rate limits (NF3):** GitHub gives ~5k/hr core, tightest **80 writes/min** and **10 semantic searches/min**. The *warm-cache* read path never touches GitHub; the budget is spent on **writes + sync**. *Identity model resolved (O2/D8):* a **GitHub App installation gets its own bucket per owner** — **5,000/hr baseline, +50/hr per repo and per user beyond 20, cap 12,500** (verified) — so each owned org's heavy traffic (sweeps, grooming, migration) is isolated in its own bucket rather than concentrated in the human's personal quota. Public/foreign filing runs on a user token but is **low-volume**, so concentration there is moot. S3 measures a real cold sweep + write-heavy grooming under this model. **Also:** GitHub's search index is not read-your-writes consistent — Q1/Q3 that must see just-written items run against the cache, not GitHub search.
+- **Rate limits (NF3):** GitHub gives ~5k/hr core, tightest **80 content-creations/min *and* ~500/hr** (a *secondary* limit — verified 2026-07-16; the migration write-burst must pace across **time**, not just per-minute) and **10 semantic searches/min**. The *warm-cache* read path never touches GitHub; the budget is spent on **writes + sync**. *Identity model resolved (O2/D8):* a **GitHub App installation gets its own bucket per owner** — **5,000/hr baseline, +50/hr per repo and per user beyond 20, cap 12,500** (verified) — so each owned org's heavy traffic (sweeps, grooming, migration) is isolated in its own bucket rather than concentrated in the human's personal quota — **but (i) the ~500 content-creations/hr *secondary* cap still binds inside any bucket** (which is why the migration scrub, §8.9, trims what gets written), and **(ii) the P0 slice runs on the *user token* (O5), so until the App is adopted this isolation doesn't apply and writes land on the personal bucket** — tolerable for a personal portfolio at ~200 writes/day, though the migration burst is the stress point. Public/foreign filing runs on a user token but is **low-volume**, so concentration there is moot. S3 measures a real cold sweep + write-heavy grooming under this model. **Also:** GitHub's search index is not read-your-writes consistent — Q1/Q3 that must see just-written items run against the cache, not GitHub search.
 
 ## 10. Key design decisions
 - **D1 — GitHub Issues as system of record; Projects v2 only for cross-repo rollup.** (Parent doc's Build/Adopt/Buy.)
@@ -223,19 +232,19 @@ Priority = importance (P0 core / P1 important / P2 valuable / P3 nice-to-have), 
 - **D5 — Cache is optional, read-through, gitignored, git-common-dir keyed, revalidate-on-decision.** The core is correct without it (online-only). Reverses v1's mandatory-mirror stance per owner feedback + §13.
 - **D6 — Sync is synchronous; background refresh is a detached subprocess** (no-asyncio convention); staleness re-evaluated against the cursor.
 - **D7 — GitHub-native throughout, with a clean internal seam + export as the exit** — no premature multi-backend abstraction. *(State the requirement breadth explicitly — "a GitHub-hosted repo" — rather than letting today's client shape it, per the "one instance colonizes the requirement" learning.)*
-- **D8 — Identity model: GitHub App across owned orgs + user token for the public/foreign plane (O2, 2026-07-14).** Derived from which goals each mechanism *can't* meet: the public/foreign plane (upstream/anonymous filing on repos the fleet isn't a member of) **structurally requires a user token** — you can't install an App you don't own — so a user credential can never be retired. A **fine-grained PAT can't be the "spans my orgs" credential** (single resource-owner, verified). So the scoped, safe realization of "leverage one sign-in across my orgs" is a **GitHub App installed per owned org** (per-owner rate bucket, scoped, revocable, `[bot]` attribution); `gh`/user creds are a legitimate low-ceremony *bootstrap* that upgrades to the App when rate/attribution bite. Implies a **credential-resolution layer keyed by target owner**. **Couples to S1:** App auth (JWT→installation token) fits HTTP, not `gh` — this nudges S1 toward HTTP for auth-bearing calls.
+- **D8 — Identity model: GitHub App across owned orgs + user token for the public/foreign plane (O2, 2026-07-14).** Derived from which goals each mechanism *can't* meet: the public/foreign plane (upstream/anonymous filing on repos the fleet isn't a member of) **structurally requires a user token** — you can't install an App you don't own — so a user credential can never be retired. A **fine-grained PAT can't be the "spans my orgs" credential** (single resource-owner, verified). So the scoped, safe realization of "leverage one sign-in across my orgs" is a **GitHub App installed per owned org** (per-owner rate bucket, scoped, revocable, `[bot]` attribution); `gh`/user creds are a legitimate low-ceremony *bootstrap* that upgrades to the App when rate/attribution bite. Implies a **credential-resolution layer keyed by target owner**. **Couples to S1:** App auth (JWT→installation token) fits HTTP, not `gh` — this nudges S1 toward HTTP for auth-bearing calls. **Reopened by O5 (2026-07-16):** the App is now *optional* (not in the P0 slice), and cloud Claude Code sessions proxy the token as `proxy-injected` (breaking raw-HTTP-from-env) — so the slice **inherits the session's `gh`/token identity** and `gh` regains first-class-transport status. See O5 / §11-S1.
 - **D9 — Attachments: release-asset (or attachments-branch) is the deterministic default; native inline is attended-only (O3, 2026-07-14).** The only mechanism that renders screenshots natively-inline *and* respects private-repo access is the `user-attachments` flow — and it's **browser/session-cookie auth, undocumented** (verified; `gh-image`/`gh-attach` both fall back to release-mode for CI), so it can't be the G1 data plane; it's an opt-in *attended* "pretty images" mode at most. Robust, API-only, PR-free options: **release-asset wrap** (release clutter, containable under a reserved tag) and **attachments-branch via git-data API** (off-main → untouched by the strip-`.prawduct`-from-main plan; no working tree, no PR). The tiebreaker — **does either render *inline* on a *private* repo?** — is **S5**. Leaning release-asset pending S5. Rejected: storing images under `.prawduct/issues/` on `main` (stripped from releases *and* forces commit+PR).
 
 ## 11. Open decisions & spikes to settle
 
-**Spikes & pre-build questions — tiered by what they gate.** A spike earns "settle before build" only if its answer changes the design of the *next* increment (§16: core lib → CLI → one GitHub round-trip → importer dry-run). By that test only two items gate the core; the rest gate a later optional layer or a feature, or are runtime tuning that rides along with the build. (S-labels are stable — they're referenced in §8/§9/§12/§13 — only the grouping changed.)
+**Spikes & pre-build questions — tiered by what they gate.** A spike earns "settle before build" only if its answer changes the design of the *next* increment (§16: core lib → CLI → one GitHub round-trip → importer dry-run). By that test only two spikes gate the core (**S1, S2**) — plus one **owner decision, O5** (P0-slice auth/transport, in the owner-decisions block below); the rest gate a later optional layer or a feature, or are runtime tuning that rides along with the build. (S-labels are stable — they're referenced in §8/§9/§12/§13 — only the grouping changed.)
 
 **Tier 1 — gates the thin slice (settle or prove first):**
-- **S1 — `gh` CLI vs direct HTTP — effectively a decision, not an open spike.** D8 already leans this to **HTTP** for auth-bearing calls (App installation tokens are JWT-based; `gh` can't mint them cleanly; HTTP handles App + user tokens directly), with `gh` surviving only as a low-ceremony bootstrap. Residual questions are narrow: whether to support `gh` as a fallback at all (G4 dependency footprint for minimal/CI environments) and confirm HTTP ETag/conditional-GET for cache revalidation. `gh` shields us from API drift; HTTP tracks it. Deliverable: **confirm HTTP + spec the auth flow** (tied to O2/D8). *(Latency is a footnote, not a criterion.)*
+- **S1 — `gh` CLI vs direct HTTP — REOPENED (was "effectively HTTP"; the 2026-07-16 Claude-Code-auth check unsettled it).** Two forces now pull toward keeping `gh` a **first-class transport**, not just a bootstrap: **(a)** *cloud* Claude Code sessions authenticate through a **GitHub proxy** that injects the placeholder `proxy-injected` as the env token — `gh` works (proxied) but **raw HTTP reading that token does not**, unless the proxy also intercepts arbitrary HTTPS to `api.github.com` (unknown — the core S1 test); **(b)** dropping the App from the slice (O5) removes the JWT-minting argument that was HTTP's main pro. HTTP still wins where a *real* token is in hand (ETag/conditional-GET revalidation, zero binary dependency, tracks API drift). Deliverable: **test the cloud-proxy behavior for raw HTTP; then choose `gh`-portable-default (HTTP as optimization) vs HTTP-with-`gh`-fallback; spec the auth flow for the slice's actual credential (O5); confirm ETag/conditional-GET + the no-delete / number-non-reuse facts M6 leans on.** `gh` shields us from API drift; HTTP tracks it. *(Latency is a footnote.)*
 - **S2 — Migration dry-run** on discodon (317 open + 1,754-line archive): body-fidelity, ID aliasing, relationship reconstruction, archive-as-closed-issues volume/noise, rollback. Migration is the riskiest single op — and **this is not throwaway spike code; it *is* the thin slice's proving increment** (§16 already lists "importer dry-run"). Doing it first de-risks the foundational adopt-GitHub bet (MG1: existing IDs stay valid) at the earliest point.
 
 **Tier 2 — gates a later optional layer or feature (settle when you build it, not before the core):**
-- **S3 — Rate limits under the App-installation model** (O2/D8) — **runtime tuning, not design-gating.** Its answer is a *number* that changes pacing constants (batch size, backoff), not architecture: the design is already rate-limit-defensive (cache-first reads bypass GitHub; writes are the only budget; GitHub hard-caps writes at 80/min ≈ 4,800/hr, under the 5k App baseline). Measure a cold sweep + write-heavy grooming *during* the build and tune; the migration write-burst it worries about overlaps S2's volume analysis.
+- **S3 — Rate limits under the App-installation model** (O2/D8) — **mostly runtime tuning, with one load-bearing constant.** Most of its answer is *numbers* that set pacing constants (batch size, backoff). **But the corrected write budget — 80/min *and* ~500 content-creations/hr (fact #3), ~10× tighter than v3's "≈4,800/hr" and *not* relieved by the App's per-owner bucket (it's a secondary limit) — makes migration write-pacing genuinely gating for S2**, not a later optimization: the discodon import (317 open + a 1,754-line archive) can exceed 500 creates/hr and must pace across time, which is exactly why the scrub trims the archive (§8.9). Measure a cold sweep + write-heavy grooming during the build and tune the rest.
 - **S4 — Cache freshness protocol** — **travels with the optional cache; does not gate the slice.** The **principle** (visible age + revalidate-on-decision, G3) is locked now; the **protocol** is settled only when perf data justifies building the optional cache (D5). Online-only, every read is live, so revalidation is trivially satisfied. When built: how a read "revalidates on decision" cheaply (conditional request / per-item since) without defeating the cache.
 - **S5 — Attachment inline rendering on private repos** (gates the O3 default, D9) — a real spike, but it gates the **attachments feature**, not the architecture. Cheap experiment: on one private repo, embed (a) a release-asset download URL and (b) an attachments-branch raw URL via `![]()` and observe which renders inline for an authenticated viewer. Decides release-asset vs attachments-branch; if *neither* renders inline on private, inline-on-private is achievable only via the attended native flow. Settle when attachments are built.
 
@@ -244,19 +253,22 @@ Priority = importance (P0 core / P1 important / P2 valuable / P3 nice-to-have), 
 - **O2 — Agent identity → RESOLVED: GitHub App across owned orgs + user token for public/foreign (D8).** Not "PAT vs App as a start" — a fine-grained PAT can't span orgs, and the public/foreign plane forces a user token regardless; the App is the scoped realization of "one identity across my orgs."
 - **O3 — Attachment strategy → RESOLVED: release-asset (or attachments-branch), native-inline attended-only; reprioritized up (D9).** Gated by S5. `.prawduct/issues/`-on-main rejected.
 - **O4 — Ongoing ID strategy → RESOLVED: repo-prefixed GitHub numbers, `owner/repo#number` canonical, PFX → migration alias (D4).**
+- **O5 — P0-slice auth & transport → OPEN (owner call; raised by the 2026-07-16 review, B2; sharpened by a Claude-Code-auth check).** D8 resolved the *portfolio* identity model, but not *what the buildable slice authenticates as, or over which transport.* Findings: **(i)** locally the adapter inherits the session's `gh`/token identity — same as the human's terminal, no separate Claude-Code identity; **(ii)** a registered App has a private key + a "whose App does an adopter use?" problem that strains GV4/GV5; **(iii)** *cloud* Claude Code sessions don't mount `~/.config/gh` — they proxy the token as the placeholder `proxy-injected`, so **raw HTTP reading the env token breaks in cloud** while `gh` keeps working; **(iv)** in GitHub *Actions* the actor is the **Claude App bot**, not the user; **(v)** `git push` identity can differ from `gh` identity. **Recommendation:** the adapter **inherits the session's GitHub auth** (never manages its own credential); **`gh` is the portable transport** (survives local + cloud-proxy), raw HTTP an *optimization* where a real token is in hand — **which reopens S1**. The App stays an **optional per-owner rate/attribution upgrade**, never required to adopt. Per-agent/actor attribution rides in the payload (CC4) regardless; the adapter validates identity early (`gh api user` vs `git config user.email`). *Left open for the owner.*
 
 ## 12. Risks & mitigations
 | Risk | Mitigation |
 |---|---|
 | **Cache re-creates the staleness we exist to kill** | cache optional + read-through + **visible age + revalidate-on-decision**; never silently serves stale (G3/D5) |
+| **Slice mistaken for solving the #1 (content-trust) pain** | §1/§4/§6 state it honestly: the online slice kills stale **views** (#2) + conflicts (#3) + gives online `pick`; stale **content** needs TF2/TF3 (P1) + the one-time scrub (B1/M7) |
+| **Cloud/Actions identity ≠ local `gh`** | adapter inherits the session's auth, never manages its own; `gh` is the portable transport across local + cloud-proxy; records the *actual* actor + validates identity early (O5) |
 | GitHub **search index lag** (not read-your-writes) | dedup/query that must see just-written items runs against the cache, not GitHub search (§9) |
-| **Rate-limit concentration** across the fleet | **GitHub App installation gives a per-owner bucket** (5k–12.5k/hr, D8) isolating each owned org's traffic; public/foreign filing is low-volume on a user token; sweeps paced + batched; warm reads from cache (NF3) |
+| **Rate-limit concentration** across the fleet | **GitHub App installation gives a per-owner bucket** (5k–12.5k/hr, D8) isolating each owned org's traffic — **but only once adopted (O5); the P0 slice's user token lands on the personal bucket**, and the **~500 content-creations/hr *secondary* cap binds inside every bucket** (fact #3) → migration/grooming pace across time + the scrub trims write volume (§8.9); public/foreign filing is low-volume; warm reads from cache (NF3) |
 | GitHub rate limits under mass grooming | warm-cache reads bypass GitHub; writes/semantic paced; batch idempotent |
 | No public attachment API (native inline is browser/session-only) | robust default = release-asset wrap *or* attachments-branch via git-data API (both no-PR, G1); native inline as an attended-only enhancement; **S5** settles inline-on-private (D9) |
 | Claim double-pick race | assignee take-and-verify; documented residual race, not a mutex (CC3) |
 | GitHub outage | never-block floor (fail-fast+retry); optional queue + cache degrade gracefully (G2) |
 | Vendor lock-in | cheap full-fidelity export (G5/MG2) |
-| **Migration drops an already-shipped part / breaks a guard** | import against the **spec roster** not the open-work list; canonical checkout only; wire backfill **and** legend-refresh; sweep guards **with tests** (learnings) |
+| **Migration drops an already-shipped part / breaks a guard** | import against the **spec roster** not the open-work list; canonical checkout only; **idempotent resumable import keyed on the `id:` alias (no "rollback" on GitHub, M6)**; **pre-migration scrub disposes stale/dupes so they never enter the store (MG4)**; wire backfill **and** legend-refresh; sweep guards **with tests** (learnings) |
 | **Label taxonomy drift** across repos / **collision with existing Issues** | GV5 provisions + reconciles the taxonomy; namespace prawduct's labels; coexistence design (§13) |
 | **Public-submission spam** (PV3) | abuse handling in the Security Model (§16); PV3 is per-project opt-in |
 | Human-UI edits create unexpected state | advisory-tolerant validation + reconciliation sweep (§8.2) |
@@ -275,7 +287,24 @@ Priority = importance (P0 core / P1 important / P2 valuable / P3 nice-to-have), 
 | 9 | understated | Migration is the riskiest single op | **Folded** — MG1 note + S2 |
 | 10 | user-need | Human-in-GitHub-UI drift (feature + drift source; no stage affordances) | **Folded** — §8.2 reconciliation; UX gap noted |
 
-*Not yet independently reviewed.* An independent Critic/fresh-eyes pass is available before the next level if desired (Principle 14).
+### 13a. Independent review (fresh-eyes design critic + GitHub-fact verifier, 2026-07-16) — folded into v4
+| # | Sev | Finding | Disposition in v4 |
+|---|---|---|---|
+| B1 | high | §6 mislabeled one-live-view as "the #1 win (trust)"; parent ranks stale *content* #1, stale *views* #2 | **Folded** — §1/§4/§6 reworded to the slice's true scope; #1 pain → TF2/TF3 + scrub |
+| B2 | high | P0-slice auth undecided; App collides with GV4/GV5; cloud proxy + Actions-App complicate it | **Opened O5** (owner) + S1 reopened; slice inherits session auth, `gh` portable transport |
+| M3 | major | GV2 "start never waits" needs persistence the no-cache slice lacks | **Folded** — minimal persisted counts file in the P0 floor |
+| M4 | major | number-as-ID mutates on transfer (vs DM4 "never change"); short form ambiguous under O1 | **Folded** — immutability-except-transfer + redirect; short form same-owner-only |
+| M5 | major | CC1 "no half-write" unattainable for two-axis status (multi-call transitions) | **Folded** — canonical write-order + self-healing reconciliation; §16 recovery test |
+| M6 | major | MG1 "rollback" impossible (no delete, numbers never reused) | **Folded** — idempotent resumable import keyed on `id:` alias; S2 proves it |
+| M7 | major | §9/§4 rate-safety for 48-agent grooming silently assumes the P1 cache | **Folded** — §4/§9 caveat: grooming-cheaper is cache-gated |
+| M8 | major | GV1 `pick` (P0) filed under Q1 (P1/cache); structured vs search consistency conflated | **Folded (a win)** — Q1 split; ready-work runs online-consistent, rescues `pick` in the slice |
+| M9 | major | §15 forward traceability false — 3 §8 capabilities have no parent ID | **Folded** — CC5/PV4/GV6 written back to parent; §15 re-run |
+| M10 | major | G5 "cheap full-fidelity exit" vs D7 native-graph use | **Folded** — export fidelity contract stated (G5/§8.9) |
+| M11 | major | CC3 reaping undefined → P0 `pick` can starve in a fleet | **Folded** — default claim-staleness TTL |
+| fact-3 | major | write budget is 80/min **and ~500/hr**, not "≈4,800/hr" (~10× tighter) | **Folded** — NF3/S3/§12 corrected; sizes migration + scrub |
+| facts 10/12/13 | minor | `state_reason: duplicate`; node-id-transfer undocumented; Issue Fields now GA | **Folded** — §7 notes; prove node-id in S2 |
+
+*Independent review folded (2026-07-16, Principle 14):* a fresh-eyes design critic + a GitHub-fact verifier reviewed v3; confirmed findings are folded above and inline. Backward traceability re-checked (every parent ID → §8); the three v3 forward gaps are closed by writing CC5/PV4/GV6 back to the parent, plus MG4 for the scrub (§15). A further independent pass is available before the build plan if desired.
 
 ## 14. Explicitly out of scope
 - **Retro-governance / onboarding out-of-compliance PRs / existing-repo onboarding** — its own future spec; parked in `MET-6T4K`. GV3 does the minimal reconciliation sweep; the general capability is separate.
@@ -286,14 +315,18 @@ Priority = importance (P0 core / P1 important / P2 valuable / P3 nice-to-have), 
 
 ## 15. Traceability
 Every §8 capability cites its parent requirement ID; every requirement ID in
-`backlog-service-requirements.md` appears in §8 (coverage check passed at v1; re-run before sign-off).
+`backlog-service-requirements.md` appears in §8. **Re-run 2026-07-16:** backward direction (parent → §8)
+holds for DM1–7, AG1–6, CC1–5, TF1–3, Q1–5, XP1–3, PV1–4, AU1–3, GV1–6, MG1–4, NF1–3. The three v3
+forward gaps (human-UI-drift, submission-abuse, label-taxonomy — capabilities that traced only to §13)
+are closed by adding **CC5, PV4, GV6** to the parent; the owner-directed scrub adds **MG4**. §8 now
+cites these (CC5→§8.2, PV4→§8.4, GV6→§8.7, MG4→§8.9).
 
 ## 16. What "drilling down" produces next (only after confidence in this level)
 1. **Data Model** — field-level GitHub encoding + optional-cache schema (fields derived from §7a).
 2. **Non-Functional Requirements** — latency/rate-limit/cost budgets made testable.
-3. **Security Model** — auth per D8 (App installation tokens + user-token public/foreign plane; credential-resolution keyed by target owner), token scope/revocation, provenance trust, **public-submission abuse** (§13-7).
+3. **Security Model** — auth per D8 **+ the O5 slice-auth/transport decision** (inherit session auth; `gh` portable transport; App as optional upgrade; credential-resolution keyed by target owner), token scope/revocation, provenance trust, **public-submission abuse (PV4)**.
 4. **API contract** — CLI/MCP surface: operations, return-value error model, versioning/compat.
 5. **Test Specifications** — incl. migration guard-sweep + offline/never-block behaviors.
-6. **Build plan** — thin vertical slice first (core lib → CLI → one GitHub round-trip → importer dry-run), architecture proven before widening. `.prawduct/artifacts/`.
+6. **Build plan** — thin vertical slice first (core lib → CLI → one GitHub round-trip → **prawduct-first scrub + importer dry-run**, §8.9/MG4), architecture proven before widening. `.prawduct/artifacts/`.
 
-Only two §11 items gate the core: **S1** (confirm HTTP + auth spec) and **S2** (the migration dry-run — which *is* the slice's first increment). **S3/S4/S5** settle with their layer or feature, not before. Until this level is agreed, no build plan and no field-level schema.
+Two §11 spikes gate the core — **S1** (transport/auth: test the cloud-proxy, choose `gh`-portable vs HTTP, spec the flow) and **S2** (the migration dry-run — the slice's first increment, run **prawduct-first** and after the scrub) — plus one **owner decision, O5** (P0-slice auth/transport). **S3** now carries one load-bearing constant (the ~500/hr write cap that paces migration); **S4/S5** settle with their layer/feature. Until this level is agreed, no build plan and no field-level schema.

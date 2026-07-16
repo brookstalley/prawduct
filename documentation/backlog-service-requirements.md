@@ -1,6 +1,6 @@
 # Backlog Service — Requirements
 
-`status: draft v3 — owner review incorporated 2026-07-14 · added: 2026-07-13 · source: discovery session · stage: requirements`
+`status: draft v3.1 — owner review incorporated 2026-07-14; PRD independent-review pass fed back 2026-07-16 — four requirements discovered during PRD design written back here per Principle 6: CC5 (human-UI-edit drift reconciliation), PV4 (public-submission abuse handling), GV6 (label-taxonomy provisioning + existing-Issues coexistence), MG4 (one-time pre-migration scrub) · added: 2026-07-13 · source: discovery session · stage: requirements`
 
 Predecessor spec for the current git-file system: `documentation/backlog-system-requirements.md` —
 item *semantics* (metadata, stage routing, archive discipline) carry forward; its storage and
@@ -114,6 +114,13 @@ MUST unless marked SHOULD.
   reaping stays a policy/human call.
 - **CC4** Every mutation records actor identity — which human, or which agent acting for whom, from
   which project/session — kept as per-item history. Git's free audit log gets replaced, not lost.
+- **CC5** The adapter tolerates and reconciles **out-of-band human edits** made directly in the
+  GitHub UI: a collaborator who removes a `stage:` label, closes an issue with no state-reason, or
+  relabels an item must not corrupt the two-axis encoding (DM2). Drift is detected and either
+  self-heals (labels re-derived from open/closed + state-reason where derivable) or is surfaced
+  advisory — never silently mis-decoded. *Distinct from GV3* (item↔ship reconciliation): this is
+  encoding↔direct-edit reconciliation, and it is a first-class feature (the human UI is a supported
+  editing surface), not merely an error path.
 
 ### Truth & freshness
 
@@ -165,6 +172,11 @@ speed. Centralization alone fixes stale *views* (TF1); stale *content* needs TF2
   prawduct itself and for any public downstream repo. "Anonymous" means **no prior relationship with
   the repo owner** — requiring the filer to hold a GitHub account (or sign up on a self-hosted page)
   is acceptable friction (owner, 2026-07-14). Private projects need not accept anonymous filing (XP3).
+- **PV4** Public submission surfaces (PV3) carry **abuse handling**: the anonymous-filing path must
+  be rate-limitable and moderatable (spam/abuse triage), and its safety composes with the
+  retro-governance path (`MET-6T4K`) that governs every out-of-band contribution before merge. PV3
+  is per-project opt-in; enabling it depends on this. (Distinct from TF3, which is about *not*
+  mistaking legitimate mass grooming for abuse; PV4 is about actual hostile submission.)
 
 ### Automation enablement
 
@@ -192,6 +204,12 @@ speed. Centralization alone fixes stale *views* (TF1); stale *content* needs TF2
 - **GV5** Zero-cost provisioning: `/prawduct:onboard` (and `doctor`) provisions a project's
   backlog surface automatically. Eight projects today and there will always be more — per-project
   setup is one command or none.
+- **GV6** Adoption **provisions and reconciles the label taxonomy** and **coexists with a repo's
+  existing Issues**: `/prawduct:onboard`/`doctor` create prawduct's namespaced labels (`stage:`,
+  `status:`, `kind:`, `id:` …) without colliding with labels or issues the repo already uses, keep
+  the taxonomy consistent across repos, and never assume an empty tracker. A repo adopted mid-life
+  already has Issues, labels, and milestones — the adapter treats non-prawduct items as
+  out-of-scope, not as malformed backlog.
 
 ### Migration & exit
 
@@ -202,6 +220,19 @@ speed. Centralization alone fixes stale *views* (TF1); stale *content* needs TF2
   hostage to a vendor or a server; export doubles as backup.
 - **MG3** Per-project adoption: projects migrate independently; file-based and service backlogs
   coexist across the portfolio during transition (never within one project).
+- **MG4** Migration supports a **one-time pre-migration scrub** so stale, obsolete, and duplicate
+  items are *not* carried into the new store (garbage-in-garbage-out would re-seed the #1
+  stale-content pain the project exists to kill — the moment you touch every item is the moment to
+  groom). The scrub: (a) grooms live items (close dead-premise / already-shipped, merge duplicates);
+  (b) decides **archive scope** — keep the historical archive as the MG2 export file and migrate
+  only a recent-shipped window rather than minting a closed issue per ancient item (also the lever
+  that keeps the migration inside the write-rate budget, NF3); (c) **disposes, never hard-deletes**
+  (DM7) — scrubbed items are closed/dropped-with-reason in the file backlog (git preserves them) or
+  live in the export; (d) is **model-assisted, human-confirmed** (candidates surfaced via TF2
+  stale-verification + Q3 similarity; the owner confirms dispositions; deterministic import then runs
+  on the cleaned set, AG1). prawduct's own backlog runs the scrub for real (dogfood); adopters get an
+  **optional advisory pre-scan** (flag likely-stale/dup candidates, skippable — we can surface but
+  not groom their data).
 
 ### Non-functional
 
@@ -329,6 +360,8 @@ story. Full agent reports available on request; what matters for the decision:
   tightest: 80 writes/min, 10 semantic searches/min — sweeps must pace). **One real gap: no public
   API for issue attachments** (workaround: release assets or orphan branch, both API-supported).
   Privacy: issues inherit repo visibility — the only candidate where PV1 is structural, free.
+  *(Correction, verified 2026-07-16: the write cap is 80 content-creations/min **and ~500/hr** — a
+  secondary limit; migration especially must pace across time, not just per-minute.)*
 - **Linear** — best-in-class agent ecosystem (official hosted MCP, agents as non-seat teammates,
   OpenAI's Symphony uses it as an agent control plane). **Per-seat, not per-workspace** (Basic
   $10/user/mo, verified 2026-06): one workspace holds all teams/projects with unlimited issues on
