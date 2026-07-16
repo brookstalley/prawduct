@@ -362,8 +362,30 @@ methodology text names real commands. 6 last. Implementation is medium+ work: fe
       text alongside it (review-cycle.md is the token-unguarded home if review-protocol.md can't
       afford it). Also revisit the deferred norm-registry-unratified 2nd arm once Chunk 5's
       Enforcement columns exist.
-- [ ] Chunk 5: Authoring surfaces — planning/building/discovery + templates
-- [ ] Chunk 6: Time-domain sweeps + adoption path (cumulative-final)
+- [x] Chunk 5: Authoring surfaces — planning/building/discovery + templates. Built + Critic
+      chunk-mode passed 2026-07-16 (0 blocking / 0 warning / 1 note).
+      BUILT: planning.md "Governing Artifacts" (`governed_by:` frontmatter seeded by
+      `prawduct-hook jurisdiction`; per-norm reconciliation dispositions
+      `conforms | ruling needed | exception | amendment proposed | inapplicable because X`;
+      the `[DECISION: …]` form — the sibling docs/norms.md forward-referenced, now landed;
+      new-structural-context prompt). building.md "A Norm Surfaced Mid-Build" tripwire.
+      discovery.md characteristic-flip protocol + norm-capture, in "Discovery Recurs".
+      templates/build-plan.md `governed_by:` filled example; templates/project-preferences.md
+      Enforcement table gains Audit-home + Why columns + pointer rows; six strategy-class
+      templates get an identical `## Direction` guidance block. review-cycle.md
+      "Governing-Artifact Reconciliation" (the Chunk-4-deferred Goal 2 check, at its documented
+      token-unguarded home). VERIFIED: labels grep-identical across all touched files (Done-when
+      met); jurisdiction on a toy plan ranks `docs/norms.md` top (acceptance met); full suite
+      1772 green. TOKEN BUDGET: building.md's norm-birth tripwire PAID FOR in place by
+      compressing Delegating/Decision-Research/Session-Scope/Boundary guidance — ceiling held at
+      4600 (~4587), no bump (plan success line "stay green without raising budgets"); test comment
+      updated. NOTE (recorded re-deferral): with the Enforcement columns now in the *template*,
+      the norm-registry-unratified 2nd arm (deferred at Chunk 3) still can't fire until *existing
+      products* adopt the columns via the Chunk 6 doctor path — **re-deferred to Chunk 6**;
+      `lib/norm_probes.py` correctly untouched.
+- [ ] Chunk 6: Time-domain sweeps + adoption path (cumulative-final). Also: implement the
+      norm-registry-unratified 2nd arm (Enforcement-table-lacks-columns) once the doctor
+      adoption path exists, per the Chunk 5 re-deferral above.
 
 Context: implementing on feature/norm-lifecycle, one commit per chunk, per-chunk Critic reviews.
 Chunks 4-6 are doc chunks; 4 is the enforcement keystone (token ceiling: review-protocol.md

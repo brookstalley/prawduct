@@ -19,6 +19,15 @@ last_validated: null
 
 # Security Model
 
+## Direction
+
+<!-- Normative statements that BIND future work — not descriptions of current behavior. Each
+     entry: a bold **Statement.**, then `Why:` (required), `Status:` (steady-state | in-transition
+     + its tracking item), and optional `Retroactivity:` / `Rulings:` lines. Norms bind;
+     descriptions track — see `docs/norms.md` for the anatomy, the normative-vs-descriptive test,
+     and the lifecycle rules. This is the artifact's norm home; leave it out (or write "No standing
+     norms yet") when the product has declared none. Don't restate the rules here. -->
+
 ## Authentication
 
 <!-- How do users identify themselves?

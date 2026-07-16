@@ -83,6 +83,11 @@ class TestBuildingMethodology:
         # unchanged: prefer trimming over bumping, place canonical detail in
         # the file that owns the concept (discovery.md for rigor, review-cycle
         # for per-mode behavior) and keep building.md to condensed pointers.
+        # Norm-lifecycle Chunk 5 (GOV-7Q4N) added the "A Norm Surfaced
+        # Mid-Build" tripwire and PAID FOR IT in place: the ceiling held at 4600
+        # (the plan's "stay green without raising budgets" success line), the
+        # addition offset by compressing the Delegating and Decision-Research
+        # guidance (canonical norm detail lives in docs/norms.md). ~4587 now.
         tokens = estimate_tokens(self.content)
         assert tokens < 4600, f"building.md is ~{tokens} tokens, should be <4600"
 

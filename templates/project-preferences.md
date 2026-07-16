@@ -61,9 +61,12 @@ Each preference above should be enforced by one of three mechanisms — assign t
 | **Test** | `tests/preferences/test_*.py` (or equivalent) | Structural rules with named exceptions (AST checks, config-presence checks) | Bakes the rule into CI; refuses to be silent. Cost: re-validate when the rule's shape changes. |
 | **Critic** | `/critic` review (Goal 4: Project Preferences) | Judgment-required rules (semantic naming, "appropriate" anything, what counts as a "boundary") | No false-confidence test. Cost: requires reviewer per chunk; misses violations between reviews. |
 
-| Preference | Mechanism | Enforcement artifact |
-|---|---|---|
-| *(fill in as preferences are captured)* | | |
+This per-preference table is the product's **norm index** (`docs/norms.md`): each row assigns a norm its **mechanism** (linter / test / Critic) and its **audit home** — `janitor` (only the deep sweep sees it) or `advisory` (a mechanical probe fires on it). A row may be a **pointer** to a `## Direction` section instead of restating the norm, and every norm carries its **why** (a whyless norm is unenforceable at its edges).
+
+| Preference / norm | Mechanism | Enforcement artifact | Audit home | Why |
+|---|---|---|---|---|
+| *(a code-level convention)* | Test | `tests/preferences/test_*.py` | janitor | *(the constraint's rationale)* |
+| norm lives in `observability-strategy.md` § Direction | Critic | — | advisory | *(pointer row — the why lives in the Direction entry)* |
 
 **Rule for adding a new preference:** assign a mechanism. If the preference can be expressed as "every file/function/config matches pattern X with named exceptions" → write a test. If a linter rule already exists for it → configure the linter. If it requires understanding intent → assign to Critic. Never leave a preference unassigned.
 

@@ -50,6 +50,14 @@ If any can't be answered, requirements aren't clear enough (Principle 6 — Requ
 
 The Confidence Check runs at a chunk's *start*; requirements also arrive *during* a build, and the #1 way they enter undocumented is designing them fluently **in chat** and flowing them into code with no artifact between. **Triggered, not always-on:** when a tripwire fires — a noun the artifacts don't contain, design you can't trace to a parent one rung up, a taxonomy invented in chat, the same thing revised 2-3×, or an "are we sure / is this solved" signal — *stop, name it, write or locate the parent requirement, then resume.* Never silently *invent* a requirement any more than you'd *drop* one (Principle 6, mirror of #2).
 
+### A Norm Surfaced Mid-Build
+
+The requirement tripwire has a sibling: "we should always X" is **norm birth** — stop and capture
+before code proceeds (a `project-preferences.md` row or a `## Direction` entry: statement + why +
+retroactivity). Departing from a norm that already governs your change is a recorded `[DECISION: …]`
+— never a silent divergence or a norm edited to bless your own code. Norms bind; descriptions track
+(`docs/norms.md`; `methodology/planning.md` "Governing Artifacts").
+
 ## The Build Cycle
 
 **Establish a clean baseline.** Before the first work cycle of a session:
@@ -101,7 +109,7 @@ Scale to chunk significance. When you can't verify, say so (Principle 5).
 
 ## Session Scope Discipline
 
-Limit work cycles to 1-3 chunks for medium+ work. Critic review quality degrades across a large diff, and context compaction within a long session can lose governance context. This composes with per-chunk review: a multi-chunk plan simply spans multiple sessions — per-chunk reviews accumulate, the final/cumulative review lands with the last chunk, and session boundaries don't reset the plan.
+Limit work cycles to 1-3 chunks for medium+ work — Critic quality degrades across a large diff, and long-session compaction can lose governance context. This composes with per-chunk review: a multi-chunk plan spans multiple sessions — per-chunk reviews accumulate, the final/cumulative review lands with the last chunk, and session boundaries don't reset the plan.
 
 **Complete required governance at chunk boundaries, then affirmatively signal when `/clear` is safe.** When you've completed 2-3 chunks, or the user switches tasks, complete in order:
 
@@ -117,7 +125,7 @@ Two categories of action require investigation before commitment:
 
 ### Boundary Investigation (when changes cross contract surfaces)
 
-Contract surfaces are boundaries where components interact: API endpoints, database schemas, IPC, frontend/backend type contracts, configuration interfaces. See `.prawduct/artifacts/boundary-patterns.md` for this project's documented contract surfaces.
+Contract surfaces — API endpoints, DB schemas, IPC, frontend/backend type contracts, config interfaces — are where components interact; see `.prawduct/artifacts/boundary-patterns.md` for this project's documented ones.
 
 When you modify files that affect a contract surface:
 1. **Recognize** the boundary crossing — any change to a producer with known consumers.
@@ -127,23 +135,19 @@ When you modify files that affect a contract surface:
 
 ### Decision Research (when choices constrain future options)
 
-A decision is "major" when it has: **lock-in** (hard to reverse — a persisted format/schema is ALWAYS lock-in, reversal cost not LOC: enumerate the questions the data must answer — its consumers' future queries — before designing fields), **pervasiveness** (used across many files), **structural impact** (shapes architecture), **external dependency** (long-term reliance on a library/service), or **volatility** (correctness depends on timely / fast-moving / post-cutoff data — knowledge gaps want reasoning, volatility gaps want web research; see `methodology/discovery.md` "Calibrate Rigor").
+A decision is "major" when it has: **lock-in** (hard to reverse — a persisted format is always lock-in, measured by reversal cost not LOC; enumerate the data's future consumer queries before designing fields), **pervasiveness** (many files), **structural impact** (shapes architecture), **external dependency** (long-term library/service reliance), or **volatility** (correctness rests on fast-moving / post-cutoff data — web-research it, don't recall; see `methodology/discovery.md` "Calibrate Rigor").
 
-Research scales to impact: **medium-impact** (pervasive pattern, non-core dependency) → quick research in the main context; **high-impact** (lock-in, structural, core dependency) → spawn a research subagent that investigates best practices, established patterns, and library health, returning a concise recommendation.
-
-Presentation scales to user engagement: **low** → decide and state briefly; **medium** (default) → recommend with context, invite feedback; **high** → present options with trade-offs, let the user choose.
-
-Record major decisions in the most affected artifact: what was decided, alternatives considered, rationale, trade-offs accepted.
+Research scales to impact: **medium** (pervasive pattern, non-core dep) → quick in-context research; **high** (lock-in, structural, core dep) → a research subagent returns a concise recommendation on patterns and library health. Presentation scales to engagement: **low** → decide and state briefly; **medium** (default) → recommend and invite feedback; **high** → present options with trade-offs for the user to choose. Record major decisions in the most affected artifact: what, alternatives, rationale, trade-offs.
 
 ## Delegating Work to Subagents
 
-**When the user asks you to do work in a subagent, do it** (Principle 23). Delegation is also valuable when chunks are independent and parallelizable, when a well-scoped chunk benefits from a clean context, or when the main context is getting large.
+**When the user asks you to work in a subagent, do it** (Principle 23) — also when chunks are independent and parallelizable, a well-scoped chunk benefits from a clean context, or the main context is large.
 
-**How to delegate:** give the subagent the chunk spec and referenced artifacts, the project directory path, the instruction **"Read the build cycle via `/prawduct:methodology building`, then `.prawduct/.subagent-briefing.md` for project conventions and learnings,"** and instructions to run the full test suite before and after implementation.
+**How:** give the subagent the chunk spec and referenced artifacts, the project directory path, the instruction **"Read the build cycle via `/prawduct:methodology building`, then `.prawduct/.subagent-briefing.md` for conventions and learnings,"** and to run the full suite before and after.
 
-**Parallel chunks:** launch independent chunks as separate subagents, wait for results, run the combined test suite, then proceed to Critic review. Merge conflicts are the main agent's responsibility. Parallel subagents in a *shared* worktree can see each other's partial changes — use worktree isolation (`isolation: "worktree"`) for truly independent chunks. The compliance canary may fire O(agents × edits) during parallel work; that noise is expected — acknowledge it in the session reflection.
+**Parallel chunks:** launch independent chunks as separate subagents, await results, run the combined suite, then Critic. Merge conflicts are the main agent's job. Shared-worktree subagents see each other's partial changes — use `isolation: "worktree"` for truly independent chunks. The canary may fire O(agents × edits); that noise is expected — note it in the reflection.
 
-**What stays in the main agent:** Critic review, reflection, and state updates. The subagent implements; the main agent maintains governance.
+**What stays in the main agent:** Critic, reflection, state updates. The subagent implements; the main agent governs.
 
 ## Working With Specs
 

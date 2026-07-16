@@ -50,6 +50,22 @@ One common entry point is **a backlog item at an early `stage:`** (`idea`/`resea
 
 If you can answer all three, capture them in the build plan's Requirements Confidence field and proceed. If you can't answer one in a sentence, one round of clarification will probably get you there — the cheapest close is often a 60-second sketch ("here's what I think you want — confirm?"), not a full discovery session. The build cycle's `Before You Build: Confidence Check` (`methodology/building.md`) is the same pattern at the next stage (Principles 6 and 20).
 
+**A structural characteristic flipped.** The six characteristics (human interface, unattended,
+programmatic interface, multiple parties, sensitive data, multi-process/distributed) are the
+product's **ambient norms** — unwritten assumptions the whole design rests on. When one flips
+(single-user becomes multi-user; a local tool starts handling sensitive data), that flip is a
+recorded decision, and it forces two things: **re-derive** the artifacts that characteristic
+triggers (a multi-user flip re-opens auth, data isolation, and audit; a sensitive-data flip
+re-opens the security model), and run an **assumption audit** — walk the assumptions the old
+classification licensed and surface the ones the new reality invalidates. The audit's output is
+**backlog requirements**, not a mental note. Update `classification` in `project-state.yaml` so the
+flip is durable (`docs/norms.md`, Ambient norms).
+
+**A norm surfaced.** When discovery produces a statement meant to bind future work ("all money is
+integer cents", "every asset is vector"), capture it as a norm at birth — **statement + why +
+retroactivity** — in the governing artifact's `## Direction` section or a `project-preferences.md`
+row, not as loose prose a later build has to re-infer (`docs/norms.md`).
+
 ## Reconciling an Existing or Docs-First Product
 
 A product may arrive with material already in hand — an existing codebase, or requirements/architecture/vision docs written outside a discovery session. Onboarding leaves `project-state.yaml` template-default; nothing backfills it automatically, so the Critic can't calibrate rigor and the build gates won't engage. When the session briefing's **DISCOVERY NOT CAPTURED** nudge fires (template-default state + product-definition work in the repo), discovery's job is to **reconcile**, not re-interview:

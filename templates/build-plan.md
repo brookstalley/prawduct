@@ -18,6 +18,13 @@ depends_on:
   - artifact: test-specifications
   - artifact: dependency-manifest
   - artifact: operational-spec
+governed_by:
+  # Governing artifacts whose `## Direction` norms bind this plan. Seed with
+  # `prawduct-hook jurisdiction`; omit when the product has declared no norms.
+  # Each entry records a reconciliation disposition (`docs/norms.md`):
+  # conforms | ruling needed | exception | amendment proposed | inapplicable because X.
+  - artifact: data-model
+    disposition: conforms
 last_validated: 2026-07-03
 ---
 
