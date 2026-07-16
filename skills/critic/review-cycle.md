@@ -129,15 +129,15 @@ These flag; they never adjudicate whether an item "really" closed (the builder's
 
 ### Governing-Artifact Reconciliation
 
-When the plan declares `governed_by:`, verify each listed artifact carries a recorded reconciliation
-disposition (`conforms` | `ruling needed` | `exception` | `amendment proposed` | `inapplicable
-because X`). A `governed_by:` entry with no disposition, or a chunk that edits a governed artifact's
-`## Direction` content with no matching recorded decision, means applicability was **assumed, not
-recorded** (`docs/norms.md`, "Applicability is recorded, not assumed") → **WARNING** (Goal 2). This
-is the planning-time counterpart to the Normative-authority departure check — it catches the missing
-*reconciliation*, distinct from the departure itself. A plan with no `governed_by:` field in a
-product that already carries `## Direction` sections is itself the gap → **NOTE** recommending the
-`prawduct-hook jurisdiction` seed.
+When the plan declares `governed_by:`, verify each listed artifact carries a recorded disposition
+**for each of its Direction norms** (`conforms` | `ruling needed` | `exception` | `amendment
+proposed` | `inapplicable because X`). A governing norm with no disposition line means
+applicability was **assumed, not recorded** (`docs/norms.md`, "Applicability is recorded, not
+assumed") → **WARNING** (Goal 2). This arm grades only the missing planning *paperwork*: an actual
+departure, amendment, or `## Direction` edit without a recorded decision is the Authority Rule's
+territory and stays **BLOCKING** via Goal 3 — never downgraded to this WARNING. A plan with no
+`governed_by:` field in a product that already carries `## Direction` sections is itself the gap →
+**NOTE** recommending the `prawduct-hook jurisdiction` seed.
 
 ## Directional Change Review
 

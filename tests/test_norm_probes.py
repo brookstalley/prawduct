@@ -211,6 +211,35 @@ class TestDeadWhyProbe:
         )
         assert np.probe_dead_why(ProjectState({}), _cb(tmp_path)) == []
 
+    def test_fires_when_cited_id_is_on_a_wrapped_why_continuation(self, tmp_path):
+        # The spec's own Anatomy example wraps its Why: across physical lines —
+        # an id after the wrap point must still be mechanically detectable.
+        _write_backlog(tmp_path, _item("MIG-4C1K", section="Archive", status="shipped"))
+        _write_artifact(
+            tmp_path,
+            "observability-strategy.md",
+            _direction_artifact(
+                "- **All telemetry rides OpenTelemetry.**\n"
+                "  Why: one substrate for causality across turns, tools, and eval;\n"
+                "  the MIG-4C1K migration made a second correlation system redundant.\n"
+            ),
+        )
+        out = np.probe_dead_why(ProjectState({}), _cb(tmp_path))
+        assert len(out) == 1 and "observability-strategy.md→MIG-4C1K" in out[0].trigger_summary
+
+    def test_detached_paragraph_after_blank_line_does_not_join_the_why(self, tmp_path):
+        # Descriptive surroundings separated by a blank line stand alone — an id
+        # there is not part of the Why and must not fire.
+        _write_backlog(tmp_path, _item("MIG-4C1K", section="Archive", status="shipped"))
+        _write_artifact(
+            tmp_path,
+            "observability-strategy.md",
+            _direction_artifact(
+                "- **X.**\n  Why: because reasons.\n\n  current-state note: MIG-4C1K shipped last quarter.\n"
+            ),
+        )
+        assert np.probe_dead_why(ProjectState({}), _cb(tmp_path)) == []
+
     def test_iso_datestamp_shape_does_not_false_fire(self, tmp_path):
         # `ISO-8601` matches the id regex but resolves to no backlog item → no fire.
         _write_backlog(tmp_path, _item("KEEP-0000", status="open"))
@@ -256,6 +285,22 @@ class TestStalledTransitionProbe:
         assert len(out) == 1
         assert out[0].type == "stalled-transition"
         assert "observability-strategy.md→OBS-4C1K" in out[0].trigger_summary
+
+    def test_fires_when_tracking_id_is_on_a_wrapped_status_continuation(self, tmp_path):
+        # A Status: line that soft-wraps before naming its tracking item (the
+        # Anatomy example's shape) must still be seen by the stall scan.
+        _write_backlog(tmp_path, _item("OBS-4C1K", status="open"))  # added: 120 days ago
+        _write_artifact(
+            tmp_path,
+            "observability-strategy.md",
+            _direction_artifact(
+                "- **X.**\n"
+                "  Status: in-transition — collector export\n"
+                "  tracked in OBS-4C1K; interim: new work emits spans anyway.\n"
+            ),
+        )
+        out = np.probe_stalled_transition(ProjectState({}), _cb(tmp_path))
+        assert len(out) == 1 and "observability-strategy.md→OBS-4C1K" in out[0].trigger_summary
 
     def test_silent_when_tracking_item_recently_edited(self, tmp_path):
         # A fresh `reviewed:` floor advances past the window → healthy transition.

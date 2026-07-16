@@ -21,10 +21,12 @@ depends_on:
 governed_by:
   # Governing artifacts whose `## Direction` norms bind this plan. Seed with
   # `prawduct-hook jurisdiction`; omit when the product has declared no norms.
-  # Each entry records a reconciliation disposition (`docs/norms.md`):
+  # Each entry records one disposition line PER NORM in that artifact (`docs/norms.md`):
   # conforms | ruling needed | exception | amendment proposed | inapplicable because X.
   - artifact: data-model
-    disposition: conforms
+    dispositions:
+      - "all timestamps UTC ISO-8601 → conforms"
+      - "money as integer minor units → inapplicable because this plan touches no money fields"
 last_validated: 2026-07-03
 ---
 

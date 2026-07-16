@@ -223,7 +223,8 @@ when the declared substrate cannot serve new work, the choices are (a) accelerat
 migration or (b) record a **stopgap** — a bounded exception per the standard above, its expiry
 tied to the tracking item — never (c) build a third system silently. Stall detection is
 mechanical: the tracking item's backlog entry unedited (no status, stage, or content change)
-for the staleness window — default 30 days, configurable — raises an advisory.
+for the 30-day stall window raises an advisory (a fixed window today; a config surface is
+deferred until any probe needs one).
 
 ### Trajectory — erosion and decay
 

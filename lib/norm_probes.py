@@ -147,6 +147,12 @@ _BACKLOG_ID_RE = re.compile(r"\b[A-Z]{2,4}-[A-Z0-9]{4}\b")
 # distinguishable from prose that merely mentions ``## Direction`` in a code span.
 _HEADING_RE = re.compile(r"^(#{1,6})\s+(.*\S)\s*$")
 
+# A physical line that STARTS a new logical unit inside a Direction section: a
+# list item (``- `` / ``* ``) or a capitalized ``Field:`` label (``Why:``,
+# ``Status:``, ``Retroactivity:``, ``Rulings:``). Anything else non-blank is a
+# markdown soft-wrap continuation of the previous logical line.
+_FIELD_OR_ITEM_RE = re.compile(r"^\s*(?:[-*]\s|[A-Z][A-Za-z-]*:)")
+
 # Norm-entry field markers (docs/norms.md § Anatomy). Case-sensitive to the
 # canonical capitalization — these are machine-readable markers, not prose.
 _WHY_RE = re.compile(r"^\s*Why:")
@@ -250,13 +256,21 @@ def _label(item: BacklogItem) -> str:
 
 
 def _direction_lines(text: str) -> list[str]:
-    """Every line inside a ``## Direction`` section (heading lines excluded).
+    """Every LOGICAL line inside a ``## Direction`` section (heading lines excluded).
 
     A section opens at a heading whose text is exactly ``Direction`` (any level)
     and closes at the next heading of equal-or-higher level. Heading lines are
     never yielded, so a ``Why:``/``Status:`` scan sees only entry content. Prose
     that mentions ``## Direction`` inside a paragraph or code span is not a
-    heading and never opens a section."""
+    heading and never opens a section.
+
+    Physical lines that don't start a new logical unit (:data:`_FIELD_OR_ITEM_RE`)
+    and don't follow a blank line are markdown soft-wrap continuations, joined
+    onto the previous logical line — the spec's own Anatomy example wraps its
+    ``Why:`` across physical lines, and a backlog id cited after the wrap point
+    must still be seen by the mechanical scans (dead-why, stalled-transition).
+    A paragraph after a blank line stands alone: detached descriptive
+    surroundings never merge into a field line."""
     out: list[str] = []
     in_section = False
     section_level = 0
@@ -269,7 +283,11 @@ def _direction_lines(text: str) -> list[str]:
             elif in_section and level <= section_level:
                 in_section = False
             continue  # never treat a heading line itself as entry content
-        if in_section:
+        if not in_section:
+            continue
+        if line.strip() and not _FIELD_OR_ITEM_RE.match(line) and out and out[-1].strip():
+            out[-1] = out[-1].rstrip() + " " + line.strip()
+        else:
             out.append(line)
     return out
 

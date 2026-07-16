@@ -91,8 +91,8 @@ An assumption is a decision made on the user's behalf, surfaced for correction �
 ### Governing Artifacts
 
 Some artifacts don't just describe the product — they **bind** future work: a `## Direction`
-section in a strategy-class artifact (observability, security, API contract, NFRs, operational
-spec, data model) or a norm row in `project-preferences.md`. Norms bind; descriptions track
+section in a strategy-class artifact (observability, security, architecture, API contract, NFRs,
+operational spec, data model) or a norm row in `project-preferences.md`. Norms bind; descriptions track
 (`docs/norms.md`). A plan states which norms govern it and reconciles against them *before* code.
 
 **Declare `governed_by:` in the plan frontmatter**, alongside `depends_on:` — the governing

@@ -474,11 +474,6 @@
 
   Workflow preferences (`Branching: direct`, `PR creation: wait_for_user`, `PR merge: wait_for_user`) are read by `building.md` and `/pr` but have no allowed-vocabulary or shape check. A typo or unknown value would silently default. Candidate: small Critic checklist line ("Workflow values must be one of X / Y / Z") OR a tiny config-presence test. Low priority — current values are stable. (critic, 2026-05-01)
 
-- **[MET-3P7B]** Lift "assign a mechanism per preference" pattern into methodology
-  `effort: M · impact: M · area: methodology · source: critic · added: 2026-05-01 · status: open · stage: research · reviewed: 2026-06-10`
-
-  The Enforcement section added to `project-preferences.md` (and the template, 2026-05-01) encodes a methodology insight: every preference must be assigned to Linter / Test / Critic when it's captured, with a false-confidence guardrail that escalates weak tests to Critic. Currently lives only in the artifact + template. Candidate: weave into `methodology/discovery.md` (when capturing preferences) and `methodology/planning.md` (when designing test specs). Validate the pattern against 2-3 more preferences first before promoting. (critic)
-
 - **[CRT-6T1V]** Critic check: test helpers duplicating production logic
   `effort: M · impact: M · area: critic · source: reflection · added: 2026-04-16 · status: open · stage: design · reviewed: 2026-06-10`
 
@@ -1105,14 +1100,23 @@
 
 ## Promoted
 
+## Archive
+
 - **[GOV-7Q4N]** Norm lifecycle — treat governing-artifact statements as binding norms with a full lifecycle
-  `effort: L · impact: L · area: governance · source: user · added: 2026-07-16 · status: promoted · stage: ready · related: MET-3P7B, GOV-3P8K · refs: build-plan-norm-lifecycle.md · reviewed: 2026-07-16`
+  `effort: L · impact: L · area: governance · source: user · added: 2026-07-16 · status: shipped · stage: ready · closed-by: norm-lifecycle · related: MET-3P7B, GOV-3P8K · refs: build-plan-norm-lifecycle.md, docs/norms.md · reviewed: 2026-07-16`
 
   Treat normative statements in governing artifacts as **binding norms** with a full lifecycle: birth/retroactivity, jurisdiction, rulings, exceptions with expiry, transitions, and erosion/decay health. Origin: discodon incident — async-tool work built a bespoke telemetry system parallel to the declared OTel substrate, and **every governance layer laundered the divergence** (Critic Goal 6, PR review, and doc-freshness each resolved the mismatch by syncing the strategy artifact to the code, i.e. the norm was rewritten to match the violation instead of the violation being flagged). Root cause: prawduct's coherence model is one-directional — artifacts track code — with no concept of normative statements that *bind* code. Design complete: build plan at `.prawduct/artifacts/build-plan-norm-lifecycle.md` (being authored the same session as this filing, 2026-07-16 — confirm the plan file landed before promoting). Adjacent-not-duplicate: MET-3P7B (assign an enforcement mechanism per preference — a norm-enforcement sibling at methodology level), GOV-3P8K (deterministic tripwire for durable-artifact coherence). (user)
 
   Promoted 2026-07-16: plan-landed caveat confirmed — `.prawduct/artifacts/build-plan-norm-lifecycle.md` exists and `project-state.yaml` `active_build_plan` points to it. In active build on `feature/norm-lifecycle` (Chunk 1 complete).
 
-## Archive
+  Shipped 2026-07-16: all six chunks of `build-plan-norm-lifecycle.md` built on `feature/norm-lifecycle` (Chunks 1–6, `d8d1ef6`…`f78bb73` "time-domain sweeps + adoption path"); closing cumulative Critic review passed with 0 blocking findings. Archived on the branch so it ships in the closing PR. Supersedes the earlier "stays promoted" disposition, which predated Chunks 5–6 landing.
+
+- **[MET-3P7B]** Lift "assign a mechanism per preference" pattern into methodology
+  `effort: M · impact: M · area: methodology · source: critic · added: 2026-05-01 · status: shipped · stage: research · closed-by: norm-lifecycle · related: GOV-7Q4N · refs: docs/norms.md (§ Birth, § Enforcement), templates/project-preferences.md (§ Enforcement) · reviewed: 2026-07-16`
+
+  The Enforcement section added to `project-preferences.md` (and the template, 2026-05-01) encodes a methodology insight: every preference must be assigned to Linter / Test / Critic when it's captured, with a false-confidence guardrail that escalates weak tests to Critic. Currently lives only in the artifact + template. Candidate: weave into `methodology/discovery.md` (when capturing preferences) and `methodology/planning.md` (when designing test specs). Validate the pattern against 2-3 more preferences first before promoting. (critic)
+
+  Closed 2026-07-16 by the norm-lifecycle bundle (GOV-7Q4N), which subsumes the ask at a stronger level than the item's candidates: `docs/norms.md` § Birth makes an Enforcement-table row — mechanism assigned and existing-or-filed, audit home per the Audit-home rule — a requirement of norm *capture* itself; the preferences Enforcement table is designated the product's norm index and gained Audit home/Why columns (template); and `methodology/discovery.md` ("A norm surfaced"), `methodology/planning.md` (Governing Artifacts / `governed_by:` reconciliation), and `methodology/building.md` all route norm capture through `docs/norms.md`. The false-confidence guardrail (weak test → escalate to Critic) remains in the template's Enforcement section — now on the mandatory capture path, its point of use — consistent with norms.md § Deliberate Non-Design keeping per-mechanism guidance in the table. The "validate against 2-3 more preferences" precondition is moot: the pattern was validated by generalizing it to all norms. Residual: none. (This repo's own artifact table predates the new columns; the designed upgrade route is the Chunk 6 adoption path — `norm-registry-unratified` advisory + `/prawduct:doctor` ratification — tracked by that machinery, not this item.)
 
 - **[CRT-2K9F]** PR-gate ledger fallback should select the newest record that covers HEAD — interleaved Critic→PR cycles silently invalidate the earlier branch
   `effort: S · impact: M · area: critic · source: user · added: 2026-06-22 · status: shipped · stage: design · closed-by: kernel-evidence-store · related: CRT-8W3F, CRT-4J8W, CRT-7M2D · refs: lib/gates.py (compute_pr_gate, _pr_gate_record_qualifies, _evaluate_pr_gate_record, _ledger_fallback_record — all deleted in the v3 cutover), .prawduct/.critic-findings.json (no longer read by any gate) · reviewed: 2026-07-13`
