@@ -413,6 +413,20 @@ methodology text names real commands. 6 last. Implementation is medium+ work: fe
       green; labels grep-identical (`Audit home`/`Why` across template, probe, doctor).
       Follow-ups filed: GOV-6N4W (norm-shaped-prompt classifier), JNT-8E3P (erosion metrics
       automation). Change-log entry added (norm-lifecycle, chunks 1-6).
+      CRITIC (closing cumulative, rev-20260716T193632Z-d03969aa, coordinator ×3 over
+      merge-base 3ebf914 → f78bb73): 0 blocking / 5 warnings / 8 notes — "ready to proceed."
+      All 5 warnings + 6 actionable notes fixed in a94ed51 (Goal-4 label rename both
+      preferences files; per-norm dispositions granularity incl. the WARNING-never-downgrades-
+      BLOCKING split in review-cycle.md; "No standing norms yet" placeholder dropped from all
+      six templates — delete-the-section + record `norm_registry_ratified` instead, blocks
+      still byte-identical; doctor write-policy wording unified; `norm_health:` record shape
+      specified (append-only dated list, keep last 3); probes join soft-wrapped Why/Status
+      continuations (+3 tests, 1781 green); spec stall-window "configurable" promise
+      reconciled to the recorded deferral; planning.md gains architecture; Observability
+      registry row points strategy-conformance at the Norm-lifecycle row). Backlog notes
+      actioned: GOV-7Q4N and MET-3P7B shipped/archived (closed-by: norm-lifecycle).
+      VERIFY-RESOLUTIONS (rev-20260716T200008Z-595c1b71): 0/0/0, 5 resolution facts —
+      composed coverage spans merge-base → HEAD; PR gate unblocked.
 
-Context: all six chunks built. Closing cumulative review (the /prawduct:pr create gate) runs
-against merge-base...HEAD after the Chunk 6 commit.
+Context: all six chunks built and reviewed; cumulative + verify-resolutions facts compose over
+the full branch. Ready for /prawduct:pr create (merge waits for owner review per preferences).
