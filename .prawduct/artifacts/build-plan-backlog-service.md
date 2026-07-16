@@ -51,12 +51,17 @@ step for the S1 residuals and run first.
 ## Status
 
 - [x] Chunk 01: S1 settlement — live-API probes + field-level design artifacts
-- [ ] Chunk 02: Walking skeleton — create/get/list round-trip through the new CLI
+- [x] Chunk 02: Walking skeleton — create/get/list round-trip through the new CLI
 - [ ] Chunk 03: Mutation surface — update, close, comment, claim, verification stamp
 - [ ] Chunk 04: Query & pick — ready-work, filters, changed-since cursor
 - [ ] Chunk 05: Importer + export — S2 migration dry-run on discodon
 - [ ] Chunk 06: Governance integration — skill service-mode, briefing, provisioning, docs
-Context: Chunk 01 complete (S1 settled, design keystone landed; Critic final → 0 blocking). Next: Chunk 02.
+Context: Chunk 02 complete — the add/get/list vertical slice (CLI → command → core → HTTP
+client) round-trips a real issue on the scratch repo, body block intact, and the never-block
+floor fails fast (<2 s) under a cut network; Critic chunk → 0 blocking, arg-validation warning
+fixed. Next: Chunk 03 (mutation surface). NOTE: checkboxes are hand-marked because regen-views is
+blocked on this branch — the four Chunk 01 design artifacts each declare `scope: backlog-service`
+in frontmatter and regen-views' plan-discovery mis-reads them as duplicate plans (filed for fix).
 
 ## Scaffolding
 

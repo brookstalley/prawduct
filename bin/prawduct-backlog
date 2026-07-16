@@ -1,0 +1,67 @@
+#!/usr/bin/env python3
+"""
+prawduct-backlog — GitHub Issues backlog service CLI (plugin runtime).
+
+A thin dispatcher, mirroring ``bin/prawduct-hook``'s bootstrap: a lib-free top
+level that seeds ``sys.path`` from ``CLAUDE_PLUGIN_ROOT`` (falling back to this
+script's parent so it runs directly in tests / ``--plugin-dir`` probes) and
+lazily imports the bundled ``lib/backlog_service_cmd``. Pre-dispatch code fails
+open on a ``lib/`` ImportError (an incomplete plugin install), printing a clear
+message rather than crashing — the same rule the hook's bootstrap follows.
+
+All flags, encoding, HTTP, and rendering live in ``lib/`` (command layer ->
+core -> HTTP client). This file only resolves the project dir + plugin root and
+delegates. Usage: see ``prawduct-backlog --help``.
+"""
+
+from __future__ import annotations
+
+import os
+import sys
+from pathlib import Path
+
+
+def _plugin_root() -> str:
+    """Plugin root for importing the bundled ``lib/`` (``CLAUDE_PLUGIN_ROOT`` or
+    this script's parent dir). Mirrors ``bin/prawduct-hook._plugin_root``."""
+    env_root = os.environ.get("CLAUDE_PLUGIN_ROOT")
+    if env_root:
+        return env_root
+    return str(Path(__file__).resolve().parent.parent)
+
+
+def _get_project_dir() -> Path:
+    """Resolve the project dir to the session's active git worktree.
+
+    Bootstrap-resilient: falls back to ``CLAUDE_PROJECT_DIR``/cwd if the plugin
+    ``lib/`` cannot be imported, so a broken install never crashes here — the
+    command that needs ``lib/`` surfaces the import error with its own handling.
+    """
+    lib_root = _plugin_root()
+    if lib_root not in sys.path:
+        sys.path.insert(0, lib_root)
+    try:
+        from lib import gitstate  # noqa: PLC0415 — lazy keeps the top level lib-free
+    except ImportError:
+        return Path(os.environ.get("CLAUDE_PROJECT_DIR", ".")).resolve()
+    return gitstate.resolve_project_dir(os.environ.get("CLAUDE_PROJECT_DIR"), Path.cwd())
+
+
+def main() -> int:
+    lib_root = _plugin_root()
+    if lib_root not in sys.path:
+        sys.path.insert(0, lib_root)
+    try:
+        from lib import backlog_service_cmd  # noqa: PLC0415 — lazy per-command import
+    except ImportError:
+        print(
+            "prawduct-backlog unavailable (could not import the plugin lib/ from "
+            "${CLAUDE_PLUGIN_ROOT})",
+            file=sys.stderr,
+        )
+        return 1
+    return backlog_service_cmd.run(_get_project_dir(), sys.argv[1:])
+
+
+if __name__ == "__main__":
+    sys.exit(main())
