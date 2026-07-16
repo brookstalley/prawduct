@@ -179,6 +179,17 @@ one chunk (batch-durable-edits learning); token-budget guardrail tests are antic
   this repo's current state (rare-and-high-signal bar).
 - **Acceptance:** a synthetic expired exception surfaces exactly one advisory at sync and clears
   via the existing dismiss/resolve lifecycle.
+- **As built (recorded deferrals):** (1) `norm-registry-unratified` implements only the
+  no-Direction-anywhere trigger arm; the "Enforcement table lacks the norm columns" arm is
+  **deferred until the columns exist** (Chunk 5 templates + doctor adoption) — the literal
+  trigger would false-fire on every product today, including this repo. Revisit when Chunk 5
+  lands. (2) The stall window is a module constant (`STALL_WINDOW_DAYS = 30`) with a WHY
+  comment, not configurable — no probe-threshold config surface exists (sibling backlog probes
+  are also bare constants); "configurable" is deferred until any probe needs it. (3) The 5th
+  probe (`norm-health-sweep-overdue`) landed here reading a `norm_health_last_run` project-state
+  scalar (the `backlog_last_groomed_at` pattern); the janitor writes the stamp in Chunk 6.
+  (4) Zero-fire acceptance is a deliberately repo-coupled tripwire test, not hermetic — it must
+  fail if this repo ratifies a Direction section without the sweep stamp.
 
 ### Chunk 4: Enforcement surfaces — Critic/PR consolidation + digest
 
@@ -306,3 +317,22 @@ vocabulary). 4 and 5 depend on 1 and reference 2's command (5) — build after t
 methodology text names real commands. 6 last. Implementation is medium+ work: feature-branch
 (`feature/norm-lifecycle`), commit this plan as the first act on the branch, repoint
 `active_build_plan` when work starts.
+
+## Status
+
+- [x] Chunk 1: Canonical spec + registry row (keystone) — built + tabletop-hardened (10-agent
+      adversarial fan-out) + Critic final keystone passed 2026-07-16; commit d8d1ef6.
+- [x] Chunk 2: Jurisdiction assist — built (as-built notes in the chunk) + Critic final +
+      verify-resolutions passed 2026-07-16; commit 4bd291b.
+- [x] Chunk 3: Exception rails — `revisit:` field + five probes (revisit-due, dead-why,
+      stalled-transition, norm-registry-unratified, norm-health-sweep-overdue — the 5th landed
+      here, not deferred; janitor writes the stamp in Chunk 6). 31 tests; zero-fire against this
+      repo enforced by a repo-coupled tripwire test. As-built deferrals recorded in the chunk.
+- [ ] Chunk 4: Enforcement surfaces — Critic/PR consolidation + digest
+- [ ] Chunk 5: Authoring surfaces — planning/building/discovery + templates
+- [ ] Chunk 6: Time-domain sweeps + adoption path (cumulative-final)
+
+Context: implementing on feature/norm-lifecycle, one commit per chunk, per-chunk Critic reviews.
+Chunks 4-6 are doc chunks; 4 is the enforcement keystone (token ceiling: review-protocol.md
+< 3450 est tokens — consolidation deletions pay for additions; small precedented bump only if
+unavoidable).

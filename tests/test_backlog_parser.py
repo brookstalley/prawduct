@@ -72,6 +72,26 @@ class TestItemParse:
         assert item.refs == ["requirements-x.md#5", "arch-y.md"]
         assert item.related == ["CRT-3X9D", "STH-9V4K"]
 
+    def test_revisit_field(self):
+        # `revisit:` (norm-lifecycle exceptions/stopgaps, docs/norms.md): the
+        # typed accessor surfaces both the dated and event-trigger forms; absent
+        # -> None. probe_revisit_due consumes the accessor, not raw metadata.
+        bl = parse_backlog(
+            "## Open\n"
+            "- [GOV-1A2B] Dated exception\n"
+            "  `effort: S · impact: S · area: governance · source: user · "
+            "added: 2026-07-01 · status: open · revisit: 2026-08-01`\n"
+            "- [GOV-3C4D] Event-bound stopgap\n"
+            "  `effort: S · impact: S · area: governance · source: user · "
+            "added: 2026-07-01 · status: open · revisit: when Y reaches subsystem Q`\n"
+            "- [GOV-5E6F] No clock\n"
+            "  `effort: S · impact: S · area: governance · source: user · "
+            "added: 2026-07-01 · status: open`\n"
+        )
+        assert bl.items[0].revisit == "2026-08-01"
+        assert bl.items[1].revisit == "when Y reaches subsystem Q"
+        assert bl.items[2].revisit is None
+
     def test_body_excludes_metadata_bar(self):
         item = parse_backlog(STRUCTURED).items[0]
         assert "Free-form body paragraph one." in item.body
