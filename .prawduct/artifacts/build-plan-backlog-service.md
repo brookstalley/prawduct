@@ -144,8 +144,8 @@ skills/backlog/SKILL.md      # existing skill — gains the service-mode path in
     (`owner/repo#number` canonical, `repo#number` short, `repo-number`/`repo/number` accepted;
     node-id stored against transfer renumbering), `id:PFX-XXXX` alias-label scheme
   - new `.prawduct/artifacts/api-contract-backlog-cli.md` — operations, flags, JSON + human
-    output shapes, exit codes, the return-value error model, and the CLI versioning/compat
-    decision (recorded, not silent)
+    output shapes, exit codes, the return-value error model, and the CLI versioning,
+    deprecation, and compatibility decisions (each recorded, not silent)
   - new `.prawduct/artifacts/security-model-backlog-service.md` — token sources (`GH_TOKEN` →
     `gh auth token` fallback), storage/scope/revocation posture, credential resolution keyed by
     target owner, and the D8 App-upgrade path (specced as the seam this slice plugs into, not built)
@@ -162,9 +162,10 @@ skills/backlog/SKILL.md      # existing skill — gains the service-mode path in
 - **Critic mode:** final
   <!-- Override: this chunk lands the schema/contract keystone every later chunk builds on. -->
 - **Done when:**
-  0. verify-api — probe the live API: issue create/get/list/update, labels CRUD, `state_reason`,
-     assignee set/verify, dependencies (blocked-by) + sub-issues endpoints, `since` param,
-     ETag/conditional GET; capture shapes in `.prawduct/artifacts/api-notes-github-issues.md`
+  0. verify-api — probe the live API: issue create/get/list/update, issue comments
+     (create/list), labels CRUD, `state_reason`, assignee set/verify, dependencies (blocked-by)
+     + sub-issues endpoints, `since` param, ETag/conditional GET; capture shapes in
+     new `.prawduct/artifacts/api-notes-github-issues.md`
   1. Acceptance criteria met
   2. `/prawduct:critic` run and blocking findings resolved
   3. Committed and chunk marked `[x]` in Status
@@ -201,10 +202,12 @@ skills/backlog/SKILL.md      # existing skill — gains the service-mode path in
 ### Chunk 03: Mutation surface — update, close, comment, claim, verification stamp
 
 - **Description:** The rest of the write path: field-wise update, close/reopen with the two-axis
-  state mapping, threaded comments, claim as assignee take-and-verify (atomic-ish; residual race
-  documented, CC3), and the TF2 verification stamp — "premise re-checked against code" as one
-  call. Trust/staleness is the portfolio's #1 measured pain; the stamp write-side lands here,
-  its staleness query in Chunk 04.
+  state mapping, claim as assignee take-and-verify (atomic-ish; residual race documented, CC3),
+  and the TF2 verification stamp — "premise re-checked against code" as one call — plus the
+  basic comment primitive (`comment add|list`) the stamp rides on. The full DM5 comment surface
+  is P1 and deferred (see Deferred scope); GitHub's native comments give threading/attribution
+  by construction, so nothing here forecloses it. Trust/staleness is the portfolio's #1 measured
+  pain; the stamp write-side lands here, its staleness query in Chunk 04.
 - **Depends on:** Chunk 02
 - **Artifacts consumed:** `data-model-backlog-service.md` (state matrix, stamp encoding)
 - **Deliverables:** update/close/reopen/comment/claim/verify ops in `lib/backlog_service.py` +
@@ -337,6 +340,8 @@ for the P0 invariants (G1–G5) to hold:
 - **Dedup-on-create advisory (AG3/Q3)** beyond Chunk 06's lexical stopgap; semantic search (P2).
 - **CC2 optimistic concurrency** (compare-and-set on updated-at) — claims' take-and-verify ships
   in Chunk 03; general lost-update protection is P1 follow-on.
+- **DM5 full comment surface** (P1) — threaded drill-down UX beyond Chunk 03's basic
+  `comment add|list` primitive; GitHub's native comments keep threading/attribution available.
 - **GitHub App identity (D8 full)** — per-owner rate buckets, `[bot]` attribution; this slice
   runs the sanctioned user-token bootstrap. Pull forward when rate/attribution bite.
 - **XP1/XP2 upstream filing + drop-box retirement; PV3 anonymous surface + abuse handling.**

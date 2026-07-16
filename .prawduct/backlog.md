@@ -1050,6 +1050,21 @@
 
   Dedup note (2026-07-14): distinct facet from COV-5H3N — that item is the *wrong-default-to-main* case when `base_branch:` is UNSET; this is the *stale-remote* case when `base_branch: develop` IS set and origin/develop trails local. Both live in `_resolve_base_branch`; keep separate, cross-linked. Adjacent to PR-7T2K (local-vs-origin divergence breaking a gate, but on the feature branch's push-state at merge, not the base branch) and umbrella'd by ENV-2W7K (gitflow base detection, Wave 2).
 
+- **[BLD-6T4R]** `verify-chunk-refs` forward-ref (`new`) exclusion is line-local, not chunk-scoped — a file declared `new` on a chunk's Deliverables line flags as missing when re-referenced elsewhere in the same chunk
+  `effort: S · impact: M · area: build-plan · source: critic · added: 2026-07-16 · status: open · stage: ready · related: BLD-3M7K, BLD-4K7P, BLD-5J8N · refs: lib/buildplan_refs.py (_BUILD_PLAN_NEW_QUALIFIER_RE, offset-keyed exclusion ~line 344)`
+
+  A file declared with the `new` qualifier on a chunk's Deliverables line (`new \`path\``) is still
+  flagged as a missing ref when the same path is re-referenced WITHOUT the prefix elsewhere in the
+  same chunk section (e.g. a Done-when step). The exclusion keys on the token's start offset — only
+  the exact `new \`path\`` occurrence is exempt — so it is line-local, not chunk-scoped. Observed
+  2026-07-16 during the backlog-service plan review (Critic NOTE on
+  `.prawduct/artifacts/build-plan-backlog-service.md` ~line 167: `api-notes-github-issues.md`
+  declared `new` on Deliverables, re-referenced in a Done-when step). Distinct variant within the
+  verify-chunk-refs false-positive family: BLD-3M7K is token CLASSIFICATION (git-ref/branch-like
+  prose tokens misread as paths); this is the forward-ref exclusion's SCOPE. Fix direction: once a
+  path is declared `new` anywhere in a chunk section, exempt all same-chunk re-references of that
+  path. Low urgency — verify-chunk-refs is not wired into any gate. (critic)
+
 ## Archive
 
 - **[CRT-2K9F]** PR-gate ledger fallback should select the newest record that covers HEAD — interleaved Critic→PR cycles silently invalidate the earlier branch
