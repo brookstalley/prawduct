@@ -9,11 +9,19 @@ exist. The expectation table is the seven strategy-class artifacts: five
 required only when the characteristic is recorded present in
 ``classification.structural``. Coverage is satisfied by the file EXISTING, whatever
 its content: a deliberate ``(not relevant — <reason>)`` stub is as valid as a full
-spec, so there is one mechanism (presence) and no separate decline list. A final
-repo-coupled test asserts the probe FIRES against THIS repo's committed state — the
-live-fixture proof the coverage fix exists to demonstrate (the inverse of the norm
-suite's zero-fire tripwire): the moment this repo adds ``data-model.md`` (real or
-stub), that test flips, which is the forcing function working as designed.
+spec, so there is one mechanism (presence) and no separate decline list.
+
+**Staging (layer 0 vs layer 1).** The whole probe stays silent until the product
+records at least one structural characteristic
+(:func:`~lib.coverage_probes.structural_characteristics_recorded`). Until then the
+product has not told governance what it *is*, so the upstream nudge — layer 0
+(discovery-not-captured, emitted from ``bin/prawduct-hook``, exercised in
+``test_discovery_capture_nudge``) — owns it, and this probe holds back so exactly one
+layer nudges. THIS repo is in that pre-capture state (no ``classification.structural``
+block), so the layer-1 probe is SILENT here — the coverage nudge for this repo is
+layer 0's. Once characteristics are recorded the probe takes over; the final
+repo-coupled test pins the silence, and it flips the moment this repo records its
+characteristics (the staged transition Chunk 05 dogfoods).
 """
 
 from __future__ import annotations
@@ -105,10 +113,27 @@ def _write_state(tmp_path, characteristics: dict | None = None) -> None:
     (d / "project-state.yaml").write_text(content, encoding="utf-8")
 
 
-# --- positive fire: universal -------------------------------------------------
+# ``has_human_interface`` is a NON-triggered characteristic (it implies no specific
+# strategy artifact), so recording it opens the staging gate — the probe now
+# speaks — without contributing a triggered arm to the missing set. The universal
+# arms are what fire, in isolation, on top of it.
+_GATE_OPEN = {"has_human_interface": {"modality": "terminal"}}
+
+
+def _open_gate(tmp_path, extra: dict | None = None) -> None:
+    """Write a state that records >=1 structural characteristic so the layer-1
+    staging gate is open. ``extra`` records additional characteristics on top."""
+    chars = dict(_GATE_OPEN)
+    if extra:
+        chars.update(extra)
+    _write_state(tmp_path, chars)
+
+
+# --- positive fire: universal (staging gate open) -----------------------------
 
 
 def test_fires_when_universal_artifact_absent(tmp_path):
+    _open_gate(tmp_path)
     out = cp.probe_strategy_artifact_missing(_state(), _cb(tmp_path))
     assert len(out) == 1
     adv = out[0]
@@ -124,6 +149,7 @@ def test_lists_all_five_universal_when_none_exist(tmp_path):
     # No narrowing to the common case: every universal artifact appears, not just
     # the first one wired ([[the COMMON / AVAILABLE instance silently narrows the
     # requirement to itself]]).
+    _open_gate(tmp_path)
     out = cp.probe_strategy_artifact_missing(_state(), _cb(tmp_path))
     summary = out[0].trigger_summary
     for name in cp.UNIVERSAL_ARTIFACTS:
@@ -131,9 +157,11 @@ def test_lists_all_five_universal_when_none_exist(tmp_path):
 
 
 # --- silence: coverage is existence, content is irrelevant --------------------
+# (gate open in each — these isolate the existence predicate, not the staging gate)
 
 
 def test_silent_when_all_universal_present(tmp_path):
+    _open_gate(tmp_path)
     _write_all_universal(tmp_path)
     assert cp.probe_strategy_artifact_missing(_state(), _cb(tmp_path)) == []
 
@@ -141,6 +169,7 @@ def test_silent_when_all_universal_present(tmp_path):
 def test_not_relevant_stub_satisfies_coverage(tmp_path):
     # A one-line "(not relevant)" stub is a valid recorded decision — the probe
     # checks presence, not content; decision quality is the Critic's concern.
+    _open_gate(tmp_path)
     for name in cp.UNIVERSAL_ARTIFACTS:
         _write_artifact(tmp_path, name, "# Security Model\n\n(Not relevant — offline single-file CLI.)\n")
     assert cp.probe_strategy_artifact_missing(_state(), _cb(tmp_path)) == []
@@ -149,9 +178,37 @@ def test_not_relevant_stub_satisfies_coverage(tmp_path):
 def test_empty_stub_file_still_satisfies_coverage(tmp_path):
     # Even an empty file counts — existence is the whole predicate. (A content-quality
     # bar, if wanted, belongs to the Critic, not this probe.)
+    _open_gate(tmp_path)
     for name in cp.UNIVERSAL_ARTIFACTS:
         _write_artifact(tmp_path, name, "")
     assert cp.probe_strategy_artifact_missing(_state(), _cb(tmp_path)) == []
+
+
+# --- staging gate: layer 1 stays silent until structural characteristics recorded
+
+
+def test_silent_when_no_structural_recorded_even_with_universal_missing(tmp_path):
+    # THE staging gate: universal artifacts are absent, but no structural
+    # characteristic is recorded, so layer 0 owns the nudge and this probe holds
+    # back — no double-nag. (Distinct from "all present" silence above: here the
+    # artifacts are MISSING and the probe is still silent.)
+    assert cp.probe_strategy_artifact_missing(_state(), _cb(tmp_path)) == []  # no state file at all
+
+
+def test_silent_when_structural_block_all_null(tmp_path):
+    # Template-default structural (every characteristic null) reads as unrecorded —
+    # the never-captured state layer 0 owns.
+    _write_state(tmp_path, {c: None for c in cp.STRUCTURAL_CHARACTERISTICS})
+    assert cp.probe_strategy_artifact_missing(_state(), _cb(tmp_path)) == []
+
+
+def test_fires_once_structural_recorded_and_universal_missing(tmp_path):
+    # Gate opens the moment one characteristic is recorded — then the missing
+    # universal artifacts fire (the layer-0 → layer-1 transition Chunk 05 dogfoods).
+    _open_gate(tmp_path)
+    out = cp.probe_strategy_artifact_missing(_state(), _cb(tmp_path))
+    assert len(out) == 1
+    assert "data-model.md" in out[0].trigger_summary
 
 
 # --- characteristic-triggered arms --------------------------------------------
@@ -191,17 +248,19 @@ def test_triggered_scalar_true_records_characteristic(tmp_path):
 
 
 def test_triggered_silent_when_characteristic_null(tmp_path):
-    # Unrecorded (template null) → the triggered artifact is NOT required; that gap
-    # (uncaptured characteristics) is layer 0's nudge, not this probe's.
+    # Gate open (has_human_interface recorded), but the triggered characteristics
+    # are null → their artifacts are NOT required; that gap is layer 0's, not this
+    # arm's. (Gate opened via a non-triggered characteristic so this isolates
+    # triggered-arm silence from the staging gate.)
     _write_all_universal(tmp_path)
-    _write_state(tmp_path, {"exposes_programmatic_interface": None, "multi_process_distributed": None})
+    _open_gate(tmp_path, {"exposes_programmatic_interface": None, "multi_process_distributed": None})
     assert cp.probe_strategy_artifact_missing(_state(), _cb(tmp_path)) == []
 
 
 def test_triggered_silent_when_characteristic_false(tmp_path):
     # An explicit negative records "not this characteristic" → artifact not required.
     _write_all_universal(tmp_path)
-    _write_state(tmp_path, {"exposes_programmatic_interface": "false"})
+    _open_gate(tmp_path, {"exposes_programmatic_interface": "false"})
     assert cp.probe_strategy_artifact_missing(_state(), _cb(tmp_path)) == []
 
 
@@ -213,9 +272,10 @@ def test_triggered_silent_when_artifact_present(tmp_path):
     assert cp.probe_strategy_artifact_missing(_state(), _cb(tmp_path)) == []
 
 
-def test_triggered_silent_when_no_structural_block(tmp_path):
-    # No classification block at all (this repo's shape) → nothing recorded → the
-    # triggered arms stay silent; only universal absence can fire.
+def test_silent_when_no_structural_block_present(tmp_path):
+    # No classification block at all (THIS repo's shape) → nothing recorded → the
+    # staging gate holds the whole probe back (even the universal arms), because
+    # layer 0 owns a product that has not yet recorded what it is.
     _write_all_universal(tmp_path)
     (tmp_path / ".prawduct").mkdir(parents=True, exist_ok=True)
     (tmp_path / ".prawduct" / "project-state.yaml").write_text(
@@ -262,6 +322,49 @@ def test_structural_recorded_ignores_matching_comment_text(tmp_path):
     assert cp._structural_recorded(_cb(tmp_path), "exposes_programmatic_interface") is False
 
 
+# --- the shared staging predicate (layer-0 / layer-1 boundary) -----------------
+
+
+def _state_path(tmp_path) -> Path:
+    return tmp_path / ".prawduct" / "project-state.yaml"
+
+
+def test_characteristics_recorded_true_when_any_present(tmp_path):
+    # >=1 present (a non-triggered one here) → recorded → gate open.
+    _write_state(tmp_path, {"has_human_interface": {"modality": "terminal"}})
+    assert cp.structural_characteristics_recorded(_state_path(tmp_path)) is True
+
+
+def test_characteristics_recorded_false_when_all_null(tmp_path):
+    # Template default (every characteristic null) → unrecorded → layer 0 owns it.
+    _write_state(tmp_path, {c: None for c in cp.STRUCTURAL_CHARACTERISTICS})
+    assert cp.structural_characteristics_recorded(_state_path(tmp_path)) is False
+
+
+def test_characteristics_recorded_false_when_block_absent(tmp_path):
+    # No classification block at all (this repo's shape) → unrecorded.
+    (tmp_path / ".prawduct").mkdir(parents=True, exist_ok=True)
+    _state_path(tmp_path).write_text(
+        "schema_version: 6\nproduct_identity:\n  name: x\n", encoding="utf-8"
+    )
+    assert cp.structural_characteristics_recorded(_state_path(tmp_path)) is False
+
+
+def test_characteristics_recorded_false_when_file_missing(tmp_path):
+    # No project-state.yaml → unreadable → fail toward silence (layer 0 guards
+    # is_file() separately; the predicate must not raise).
+    assert cp.structural_characteristics_recorded(_state_path(tmp_path)) is False
+
+
+def test_characteristics_recorded_covers_all_six(tmp_path):
+    # Every one of the six characteristics, recorded alone, opens the gate — no
+    # narrowing to only the two triggered ones.
+    for characteristic in cp.STRUCTURAL_CHARACTERISTICS:
+        _write_state(tmp_path, {characteristic: "true"})
+        assert cp.structural_characteristics_recorded(_state_path(tmp_path)) is True, characteristic
+    assert len(cp.STRUCTURAL_CHARACTERISTICS) == 6
+
+
 # --- breadth: all seven, no narrowing -----------------------------------------
 
 
@@ -300,6 +403,7 @@ def test_strategy_class_set_is_union_and_deduped_across_modules():
 def test_advisory_id_is_stable_and_evidence_is_invariant(tmp_path):
     # evidence must not enumerate the volatile missing set (compute_id hashes it),
     # so the advisory keeps one identity across sessions and as the set shrinks.
+    _open_gate(tmp_path)
     out = cp.probe_strategy_artifact_missing(_state(), _cb(tmp_path))
     ev = out[0].evidence
     assert "data-model" not in "\n".join(ev)  # specifics live in trigger_summary, not evidence
@@ -312,6 +416,7 @@ def test_advisory_id_is_stable_and_evidence_is_invariant(tmp_path):
 def test_advisory_id_invariant_across_missing_set(tmp_path):
     # A universal-only fixture and a universal+triggered fixture must yield the
     # SAME advisory id — the missing set is trigger_summary, not evidence.
+    _open_gate(tmp_path)
     id_universal = compute_id(
         cp.FEATURE, "strategy-artifact-missing", cp.PROBE_VERSION,
         cp.probe_strategy_artifact_missing(_state(), _cb(tmp_path))[0].evidence,
@@ -327,6 +432,7 @@ def test_advisory_id_invariant_across_missing_set(tmp_path):
 
 
 def test_registered_probe_runs_through_roster(tmp_path):
+    _open_gate(tmp_path)
     cp.register()
     results = run_all_probes(_state(), _cb(tmp_path))
     assert any(c.type == "strategy-artifact-missing" for c in results)
@@ -336,18 +442,19 @@ def test_registered_probe_runs_through_roster(tmp_path):
     assert adv.probe_version == cp.PROBE_VERSION
 
 
-# --- dogfood: the live empty fixture ------------------------------------------
+# --- dogfood: the live pre-capture fixture ------------------------------------
 
 
-def test_fires_exactly_once_against_this_repo_composed_with_all_families():
-    """Live-fixture proof: this repo has no strategy-class artifacts, so the
-    coverage probe fires here — the reference repo's blind spot, now visible.
-    Composed with the full probe roster (mirroring bin/prawduct-hook cmd_clear),
-    it emits EXACTLY ONE strategy-artifact-missing advisory (not a churn), and its
-    characteristics are unrecorded so only the universal arms contribute. This is a
-    deliberate tripwire: adding data-model.md (a real spec or a (not relevant)
-    stub) shrinks the list, and filling every strategy-class artifact flips the
-    test, which is the forcing function working."""
+def test_layer1_silent_against_this_repo_pending_structural_capture():
+    """Live-fixture proof of the staging: THIS repo records no structural
+    characteristics (no ``classification.structural`` block), so layer 1 is SILENT
+    here — the coverage nudge for this repo is layer 0's (discovery-not-captured,
+    tested in ``test_discovery_capture_nudge``). Composed with the full probe roster
+    (mirroring bin/prawduct-hook cmd_clear) it emits ZERO strategy-artifact-missing
+    advisories. This is a deliberate staged tripwire: the moment this repo records
+    its characteristics (the Chunk 05 dogfood), layer 0 clears and this flips to
+    firing the missing universal artifacts — the forcing function advancing one
+    staged nudge at a time."""
     from lib.backlog_probes import register as reg_backlog
     from lib.upstream_probes import register as reg_upstream
     from lib.api_versioning_probes import register as reg_api
@@ -361,12 +468,73 @@ def test_fires_exactly_once_against_this_repo_composed_with_all_families():
     reg_norm()
     cp.register()
 
+    # Guard the premise: if this repo ever records a structural characteristic, the
+    # staging flips and this test's expectation must be revisited (fail loud here,
+    # not silently pass on a stale premise).
+    assert cp.structural_characteristics_recorded(
+        REPO_ROOT / ".prawduct" / "project-state.yaml"
+    ) is False, "this repo now records structural characteristics — layer 1 staging flips; update this dogfood"
+
     codebase = Codebase(root=REPO_ROOT)
     results = run_all_probes(_state(), codebase)
     coverage_hits = [c for c in results if c.type == "strategy-artifact-missing"]
-    assert len(coverage_hits) == 1
-    summary = coverage_hits[0].trigger_summary
-    assert "data-model.md" in summary
-    # This repo records no structural characteristics, so the triggered arms stay
-    # silent — only the universal artifacts drive the nudge.
-    assert "(required" not in summary
+    assert coverage_hits == []
+
+
+# --- staging: exactly one layer speaks per fixture ----------------------------
+# The three layers stage on the shared structural-recorded boundary and layer 2's
+# artifact-existence gate: layer 0 (discovery-not-captured) owns "characteristics
+# unrecorded"; layer 1 (this probe) owns "recorded, artifacts missing"; layer 2
+# (norm-registry-unratified) owns "artifacts exist, norms unratified". On a fixture
+# sitting cleanly at one stage, exactly that layer fires — no double-nag.
+
+
+def _write_code(tmp_path) -> None:
+    (tmp_path / "app.py").write_text("print('hi')\n", encoding="utf-8")
+
+
+def _layer0_fires(tmp_path) -> bool:
+    # The hook's layer-0 fire decision (bin/prawduct-hook), evaluated on its inputs.
+    from lib import gitstate
+
+    sp = _state_path(tmp_path)
+    return bool(
+        sp.is_file()
+        and gitstate._has_product_definition_work(tmp_path)
+        and not cp.structural_characteristics_recorded(sp)
+    )
+
+
+def _layer1_fires(tmp_path) -> bool:
+    return cp.probe_strategy_artifact_missing(_state(), _cb(tmp_path)) != []
+
+
+def _layer2_fires(tmp_path) -> bool:
+    from lib import norm_probes
+
+    return norm_probes.probe_norm_registry_unratified(_state(), _cb(tmp_path)) != []
+
+
+def test_stage_layer0_only_when_characteristics_unrecorded(tmp_path):
+    # Product work + domain filled but no structural characteristic recorded, no
+    # artifacts → only layer 0.
+    _write_code(tmp_path)
+    _write_state(tmp_path, {c: None for c in cp.STRUCTURAL_CHARACTERISTICS})
+    assert (_layer0_fires(tmp_path), _layer1_fires(tmp_path), _layer2_fires(tmp_path)) == (True, False, False)
+
+
+def test_stage_layer1_only_when_recorded_and_artifacts_missing(tmp_path):
+    # Structural recorded (gate open), no strategy artifacts → only layer 1. Layer 2
+    # is silent because no strategy-class artifact exists yet (its existence gate).
+    _write_code(tmp_path)
+    _open_gate(tmp_path)
+    assert (_layer0_fires(tmp_path), _layer1_fires(tmp_path), _layer2_fires(tmp_path)) == (False, True, False)
+
+
+def test_stage_layer2_only_when_artifacts_exist_unratified(tmp_path):
+    # Structural recorded + every expected artifact present (so layer 1 is silent) +
+    # no `## Direction` anywhere → only layer 2 (ratify the norms).
+    _write_code(tmp_path)
+    _open_gate(tmp_path)  # has_human_interface → expected set is the 5 universal
+    _write_all_universal(tmp_path)  # stubs, no Direction sections
+    assert (_layer0_fires(tmp_path), _layer1_fires(tmp_path), _layer2_fires(tmp_path)) == (False, False, True)

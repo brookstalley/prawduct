@@ -33,6 +33,18 @@ gap — a product whose characteristics were never captured — is layer 0's nud
 (discovery not captured), not this probe's. So a triggered arm fails toward
 silence on anything it cannot read as clearly present.
 
+**The whole probe stages behind layer 0.** It stays silent until the product has
+recorded at least one structural characteristic
+(:func:`structural_characteristics_recorded`) — the shared boundary predicate layer
+0 fires on the negation of. A product that has not captured *what it is* gets the
+upstream nudge (record your characteristics), not the downstream one (author the
+artifacts those characteristics imply); firing both at once would double-nag. Once
+characteristics are recorded, layer 0 clears and layer 1 takes over — the universal
+arms always, the triggered arms per characteristic. This is why the universal arms,
+though expected of every product, are gated too: "every product" means every
+product that has told the framework it *is* a product by recording its
+characteristics.
+
 **Coverage is satisfied by the artifact existing — full stop.** Its content may be
 a real spec OR a deliberate ``(not relevant to this project — <reason>)`` stub: for a
 tiny product that genuinely does not need a formal security model, a one-line stub
@@ -93,6 +105,20 @@ STRATEGY_CLASS_ARTIFACTS: tuple[str, ...] = UNIVERSAL_ARTIFACTS + tuple(
     name for name, _ in TRIGGERED_ARTIFACTS
 )
 
+# The six structural characteristics discovery captures (methodology/discovery.md;
+# templates/project-state.yaml classification.structural). The two triggered arms
+# above name only the two that imply a specific artifact; this is the full set, so
+# the staging predicate below can ask "were the characteristics captured at all?"
+# rather than only about the two artifact-bearing ones.
+STRUCTURAL_CHARACTERISTICS: tuple[str, ...] = (
+    "has_human_interface",
+    "runs_unattended",
+    "exposes_programmatic_interface",
+    "has_multiple_party_types",
+    "handles_sensitive_data",
+    "multi_process_distributed",
+)
+
 # Directory (relative to the product root) holding generated strategy-class artifacts.
 _ARTIFACTS_REL = (".prawduct", "artifacts")
 
@@ -125,9 +151,9 @@ def _opens_nested_block(lines: list[str], key_idx: int) -> bool:
     return False
 
 
-def _structural_recorded(codebase: Codebase, characteristic: str) -> bool:
+def _structural_recorded_at(state_path: Path, characteristic: str) -> bool:
     """True when ``classification.structural.<characteristic>`` is recorded *present*
-    in the raw ``project-state.yaml``.
+    in the raw ``project-state.yaml`` at ``state_path``.
 
     ``ProjectState`` is a column-0-only scan (no PyYAML — advisory_store.py), so a
     probe cannot read a nested ``classification.structural.*`` value through it;
@@ -139,7 +165,7 @@ def _structural_recorded(codebase: Codebase, characteristic: str) -> bool:
     triggered arm fails toward silence on anything it cannot read as clearly present.
     """
     try:
-        lines = _state_path(codebase).read_text(encoding="utf-8").splitlines()
+        lines = state_path.read_text(encoding="utf-8").splitlines()
     except (OSError, UnicodeDecodeError):
         return False
     in_classification = False
@@ -173,6 +199,40 @@ def _structural_recorded(codebase: Codebase, characteristic: str) -> bool:
     return False
 
 
+def _structural_recorded(codebase: Codebase, characteristic: str) -> bool:
+    """``Codebase`` wrapper over :func:`_structural_recorded_at` (reads the
+    codebase's own ``project-state.yaml``). The triggered arms call through here."""
+    return _structural_recorded_at(_state_path(codebase), characteristic)
+
+
+def structural_characteristics_recorded(state_path: Path) -> bool:
+    """True when the product has recorded *at least one* structural characteristic
+    present in ``classification.structural``.
+
+    This is the **shared staging boundary** between layer 0 (discovery-not-captured,
+    emitted from ``bin/prawduct-hook``) and layer 1 (this module's strategy-artifact
+    probe). Layer 0 fires on its *negation*; layer 1 speaks only on its truth — so
+    exactly one layer nudges a given product (one actionable nudge at a time;
+    docs/norms.md § Enforcement). Both sides key off THIS predicate rather than each
+    re-deciding "were characteristics captured?", so the boundary can't drift
+    (transcription across surfaces flattens quantifiers).
+
+    "Recorded" is defined as ≥1 characteristic present, not all six answered,
+    because the template default is ``null`` for every characteristic and ``null``
+    doubles as the "not applicable" answer — so "all six non-null" is unreachable for
+    any real product (every product leaves some characteristic inapplicable). ≥1
+    present is the tractable floor: an all-``null`` (or absent) block reads as
+    unrecorded — the template-default / never-captured state layer 0 owns — while a
+    block that records even one characteristic reads as captured, and layer 1 takes
+    over. A stricter "answered" sentinel distinct from ``null`` is a discovery-schema
+    change out of this probe's scope.
+    """
+    return any(
+        _structural_recorded_at(state_path, characteristic)
+        for characteristic in STRUCTURAL_CHARACTERISTICS
+    )
+
+
 def _missing_universal(codebase: Codebase) -> list[str]:
     return [name for name in UNIVERSAL_ARTIFACTS if not _artifact_exists(codebase, name)]
 
@@ -198,7 +258,18 @@ def probe_strategy_artifact_missing(state: ProjectState, codebase: Codebase):
     while the volatile per-artifact detail lives in ``trigger_summary`` (not
     id-affecting), mirroring ``norm-registry-unratified``. Each triggered artifact
     is annotated with the characteristic that requires it, so the reader sees why.
+
+    **Staging gate.** The whole probe stays silent until the product records at
+    least one structural characteristic (:func:`structural_characteristics_recorded`).
+    Until then a product has not yet captured *what it is*, so requiring the
+    artifacts *what it is* would imply is premature — that upstream gap is layer 0's
+    nudge (discovery-not-captured), and firing both layers at once would double-nag a
+    fresh product. Once characteristics are recorded, layer 0 clears and this probe
+    takes over: the universal arms fire regardless of *which* characteristics, the
+    triggered arms per their recorded characteristic.
     """
+    if not structural_characteristics_recorded(_state_path(codebase)):
+        return []
     universal_missing = _missing_universal(codebase)
     triggered_missing = _missing_triggered(codebase)
     if not universal_missing and not triggered_missing:

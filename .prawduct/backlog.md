@@ -7,17 +7,6 @@
 
 ## Open
 
-- **[GOV-EXI2]** `norm-registry-unratified` advisory adoption blind spot — Enforcement-table-lacks-norm-columns disjunct never fires without strategy-class artifacts
-  `effort: M · impact: M · area: governance/advisory · source: user · added: 2026-07-16 · status: open · stage: design · related: GOV-7Q4N, GOV-6N4W · refs: lib/norm_probes.py (norm-registry-unratified probe), docs/norms.md (§ Adoption, § Enforcement), .prawduct/.governance-ledger.jsonl (Chunk 3 review R-1)`
-
-  The `norm-registry-unratified` advisory requires strategy-class artifacts to exist before firing, so a product whose norms live only in project-preferences.md (Enforcement table) + learnings — with no strategy-class artifacts — never gets the ratification nudge. Prawduct itself is in this blind spot: its own norm registry is unratified and the advisory stays silent. The disjunct that would catch it ("Enforcement table lacks norm columns") was deliberately deferred in Chunk 3 (Critic finding R-1) to hit the norm-lifecycle build's "zero advisories against this repo" acceptance criterion.
-
-  Fix-shape: make the "Enforcement-table-lacks-norm-columns" disjunct fire independently of strategy-class artifacts, relying on the one-shot + shared-answer + clears-on-ratify-or-record-none mechanism (already built) to keep the broad nudge tolerable rather than narrowing the trigger.
-
-  Design question to resolve: false-nag posture on mass upgrade — every pre-norm product would fire once on adoption day; confirm the one-shot/shared-state clearing makes that acceptable (it was designed to) vs. the narrowing that traded away the signal.
-
-  Governance-protected (probes/hooks) → full Critic + PR review. (user)
-
 - **[GOV-6N4W]** UserPromptSubmit "norm-shaped prompt" classifier — detect norm-birth phrasing at prompt time and nudge capture
   `effort: M · impact: M · area: governance · source: builder · added: 2026-07-16 · status: open · stage: idea · related: GOV-7Q4N, WMK-4Q9T, WMK-1P4Q · refs: .prawduct/artifacts/build-plan-norm-lifecycle.md (Out of scope + Chunk 6), docs/norms.md`
 
@@ -1112,6 +1101,19 @@
 ## Promoted
 
 ## Archive
+
+- **[GOV-EXI2]** `norm-registry-unratified` advisory adoption blind spot — Enforcement-table-lacks-norm-columns disjunct never fires without strategy-class artifacts
+  `effort: M · impact: M · area: governance/advisory · source: user · added: 2026-07-16 · status: shipped · stage: design · closed-by: structural-coverage · related: GOV-7Q4N, GOV-6N4W · refs: lib/norm_probes.py (norm-registry-unratified probe), docs/norms.md (§ Adoption, § Enforcement), .prawduct/.governance-ledger.jsonl (Chunk 3 review R-1) · reviewed: 2026-07-16`
+
+  The `norm-registry-unratified` advisory requires strategy-class artifacts to exist before firing, so a product whose norms live only in project-preferences.md (Enforcement table) + learnings — with no strategy-class artifacts — never gets the ratification nudge. Prawduct itself is in this blind spot: its own norm registry is unratified and the advisory stays silent. The disjunct that would catch it ("Enforcement table lacks norm columns") was deliberately deferred in Chunk 3 (Critic finding R-1) to hit the norm-lifecycle build's "zero advisories against this repo" acceptance criterion.
+
+  Fix-shape: make the "Enforcement-table-lacks-norm-columns" disjunct fire independently of strategy-class artifacts, relying on the one-shot + shared-answer + clears-on-ratify-or-record-none mechanism (already built) to keep the broad nudge tolerable rather than narrowing the trigger.
+
+  Design question to resolve: false-nag posture on mass upgrade — every pre-norm product would fire once on adoption day; confirm the one-shot/shared-state clearing makes that acceptable (it was designed to) vs. the narrowing that traded away the signal.
+
+  Governance-protected (probes/hooks) → full Critic + PR review. (user)
+
+  Shipped 2026-07-16 (closed-by: structural-coverage): resolved by design — the structural-coverage staging chain closes the blind spot upstream rather than by ungating layer 2. Layer 1 (strategy-artifact-missing) now nudges a product with no strategy-class artifacts to author them (a `(not relevant — …)` stub counts and still creates the file); once any strategy artifact exists — even an all-stub set — layer 2 (norm-registry-unratified) fires the ratification nudge as before. So a product whose norms live only in preferences + learnings is reached transitively (layer 1 → files exist → layer 2), and layer 2's artifact-existence gate becomes correct staging instead of a blind spot. The original ungate-arm-(b) fix-shape is deliberately NOT taken (the DECISION line in build-plan-structural-coverage.md Requirements Confidence). Recorded in docs/norms.md § Enforcement (structural-coverage staging table).
 
 - **[GOV-7Q4N]** Norm lifecycle — treat governing-artifact statements as binding norms with a full lifecycle
   `effort: L · impact: L · area: governance · source: user · added: 2026-07-16 · status: shipped · stage: ready · closed-by: norm-lifecycle · related: MET-3P7B, GOV-3P8K · refs: build-plan-norm-lifecycle.md, docs/norms.md · reviewed: 2026-07-16`

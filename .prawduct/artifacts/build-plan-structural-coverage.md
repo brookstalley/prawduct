@@ -38,21 +38,30 @@ my picks as vetoable); Chunk 01's keystone confirms the declined-answer schema a
 
 - [x] Chunk 01: Coverage keystone — expectation model + existence-based probe (one artifact end-to-end)
 - [x] Chunk 02: Full layer-1 table — all 7 strategy-class artifacts (universal + structurally-triggered)
-- [ ] Chunk 03: Layer 0 + staging — sharpen DISCOVERY-NOT-CAPTURED; stage the three advisories; resolve GOV-EXI2
+- [x] Chunk 03: Layer 0 + staging — sharpen DISCOVERY-NOT-CAPTURED; stage the three advisories; resolve GOV-EXI2
 - [ ] Chunk 04: Doctor / onboarding / methodology / propagation
 - [ ] Chunk 05: Dogfood against the empty fixture + close (cumulative-final)
-Context: Chunks 01-02 complete on `feature/structural-coverage`. Layer 1 is whole:
-`lib/coverage_probes.py` carries the full expectation table — 5 universal artifacts always
-required, 2 characteristic-triggered (api-contract ← `exposes_programmatic_interface`;
-architecture ← `multi_process_distributed`) required only when the characteristic is recorded
-present in `classification.structural` (read via the raw-YAML `_structural_recorded` scanner,
-since `load_project_state` is column-0-only). One stable advisory, id unchanged from Chunk 01
-(evidence invariant; missing set lives in `trigger_summary`, per-arm annotated). Against this
-repo: exactly the 5 universal fire (no `classification` block → characteristics unrecorded →
-triggered arms silent). `STRATEGY_CLASS_ARTIFACTS` now lives once in coverage_probes and is
-imported by `norm_probes` (dedup). Full suite green (1802 passed). Critic chunk-mode clean
-(0 blocking / 0 warning / 1 note — untracked uv.lock, left as an owner decision;
-fact rev-20260716T221342Z-27a8e651). Next: Chunk 03 (layer 0 + staging).
+Context: Chunks 01-03 complete on `feature/structural-coverage`. The three-layer chain now
+STAGES on one shared boundary predicate — `coverage_probes.structural_characteristics_recorded`
+(≥1 of the six structural characteristics recorded present; ≥1-not-all-six because template
+`null` doubles as "not applicable", making all-six-answered unreachable). Layer 0
+(DISCOVERY-NOT-CAPTURED, `bin/prawduct-hook`) fires on its negation; layer 1 (the
+strategy-artifact probe) returns [] until its truth — exact complements, zero double-fire. So
+the WHOLE layer-1 probe (universal arms included) now gates on characteristics being recorded:
+"every product needs a data model" means every product that has recorded what it is. This
+CHANGED Chunk 02's behavior — universal arms no longer fire on an unrecorded repo — per the
+staging DECISION and the Chunk 05 narrative ("layer 0 clears, the layer-1 universal arms …
+fire"). Layer 0 sharpened: fires whenever `classification.structural` is absent/empty/all-null
++ product work (the gap that let prawduct's own domain-filled-but-characteristic-less state pass
+silently); `_discovery_uncaptured` now only selects the never-ran vs structural-specific message
+variant. docs/norms.md § Enforcement carries the three-layer staging table. GOV-EXI2 resolved-
+by-design (Open→Archive, closed-by=structural-coverage): the chain closes the blind spot
+upstream (layer 1 nudges stub/artifact creation → layer 2's existence gate then fires
+ratification), so arm (b) is deliberately NOT ungated. Against this repo (dogfooded non-mutating):
+layer 0 fires (structural-not-recorded variant), layers 1 & 2 silent — exactly one layer, the
+pre-capture state Chunk 05 advances. Full suite green (1816 passed). Critic chunk-mode clean
+(0 blocking / 0 warning / 1 note — untracked uv.lock, owner decision;
+fact rev-20260716T224903Z-207ead7d). Next: Chunk 04 (doctor / onboarding / methodology / propagation).
 
 **Chunk 01 deferred NOTES — status:** citation precision ✓ (docstring derives 5 = planning.md's
 9 universal ∩ 7 strategy-class); dedup ✓ (`STRATEGY_CLASS_ARTIFACTS` single-homed in
