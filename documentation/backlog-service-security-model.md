@@ -20,6 +20,7 @@ token in-process), **(2) provenance trust** (cross-project / anonymous filing le
 | A hostile *upstream* / *anonymous* submission (spam, poisoned item, impersonated `source`) | §5 untrusted-until-triaged + §6 abuse controls + retro-governance |
 | A human UI edit corrupting encoded state | CC5 reconciliation (Data Model §4) — integrity, not adversary |
 | Acting as the wrong identity (git≠gh, cloud proxy, Actions bot) | §1 validate-identity-early + attribute off the API identity |
+| Unattended run: hung on an auth prompt, runaway writes, or bulk changes misattributed to the human | §1a — never-prompt/fail-clean (G2), self-paced + idempotent + reversible, `automated:` actor marker (CC4) |
 | **Not defended (out of scope):** GitHub itself compromised; a trusted collaborator with repo write acting maliciously; nation-state; the owner's own laptop compromise | GitHub's model + repo-access trust is the boundary (PV1) |
 
 ---
@@ -52,6 +53,36 @@ a gap rather than silently under-functioning.
 live `gh`-ssh vs HTTPS-remote split), the adapter resolves and records the **API identity**
 (`gh api user`) as the actor for every mutation — never the git-push identity — and surfaces a mismatch
 (`gh api user` login vs `git config user.email`) as an advisory rather than acting on a wrong identity.
+
+### 1a. Unattended operation — no human present (closes the §1 residual)
+
+The background-worker persona (PRD §2) and the async briefing refresh (GV2) run with **no human to
+re-authenticate or approve**. The contract there:
+
+- **Identity is whatever the runtime provides; the adapter never prompts.** Cloud scheduled routine →
+  proxied user (`proxy-injected` via `gh`); GitHub Action → the Claude App bot; local cron/daemon or a
+  detached refresh subprocess (D6) → the owner's on-disk `gh` token. The adapter uses the identity it
+  is given and **never triggers an interactive `gh auth login`** — there is no TTY to answer it.
+- **Auth failure fails clean, never hangs (G2).** An expired/revoked/absent token in an unattended run
+  degrades exactly like the current session briefing does (broad-caught → skipped, never blocks start):
+  fail fast with a retryable, logged error; reads fall back to cache-or-"unavailable"; gates/hooks
+  tolerate it. **Never block, never hang, never half-write** — the never-block floor *is* the
+  auth-failure mode.
+- **Automated actors are marked as such (CC4).** A bulk unattended sweep acting *as the proxied user*
+  must not misattribute dozens of machine mutations to the human personally. Every unattended mutation
+  carries an `automated: true` + worker-identity marker in the payload, so the timeline audit
+  distinguishes "the owner did this" from "an unattended worker under the owner's identity did this."
+  (The Actions path already attributes as the App `[bot]`; the proxied-user path needs the explicit
+  marker.)
+- **Self-limiting blast radius.** Unattended writes self-pace under the ~500/hr cap and are
+  **idempotent + re-runnable** (a scheduled job may overlap or retry) and **reversible** (DM7 — nothing
+  hard-deleted), because no human is watching to catch a runaway.
+- **Scope.** Unattended operation acts **only where the runtime identity already has access** — no
+  unattended anonymous/foreign filing (PV3 is an *attended*, opt-in surface needing a human-supplied
+  user token).
+
+*Operationalizes G2 (never-block), CC4 (attribution), PV2 (real revocable creds) for the
+background-worker persona — not a new requirement.*
 
 ---
 
@@ -146,6 +177,7 @@ token) requires none of this — which is why the App is optional (GV4/GV5).
 - No encryption-at-rest beyond what GitHub / the OS provide (the cache is derived, non-secret, local).
 
 ## 9. Traceability
-PV1→§2; PV2→§1 (no shared secret) / §2 (BOLA); PV3→§6; PV4→§6; O5/D8→§1; CC4→§5; XP2→§5; G1 (no model
-in data plane)→ implicit (deterministic adapter); G2 (never-block) → §1 degradation; G4/G5→§3/§7.
+PV1→§2; PV2→§1 (no shared secret) / §2 (BOLA); PV3→§6; PV4→§6; O5/D8→§1; CC4→§5/§1a; XP2→§5; G1 (no
+model in data plane)→ implicit (deterministic adapter); G2 (never-block) → §1a (unattended) + §1
+degradation; G4/G5→§3/§7.
 OWASP API design failures (BOLA / mass-assignment / excessive-exposure)→§2.
