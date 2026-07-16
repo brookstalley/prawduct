@@ -1,6 +1,6 @@
 # Backlog Service — Data Model
 
-`status: draft v3 — GV3 coherence (2026-07-16): added a closed_by field to Item §1.1 — GV3's ship-traceability handle had no field home, surfaced by the API-contract independent review; native close-ref authoritative on close-on-merge, the block field the manual-close fallback, and the bidirectional drift sweep is a janitor list+timeline scan (API contract §2.6). Prior v2 — independent-review fold (2026-07-16): B1 fixed (open-state transitions are now crash-safe via an idempotent set-status op + decoder precedence); ready-work restated as list-then-fan-out (M1); cache gains an ETag validator (M2) + a briefing-counts snapshot reconciling GV2 (M3); Q4 routed to query-side fan-out, not the per-clone cache (M4); a single authority fixed per field + corrected write-cost attribution (M5); verification encoding resolved to one authority (M6); dead node_id cache column dropped (m1); redirect facet added to the taxonomy (m2); duplicate→target timeline read stated (m3); block evolution is additive-only-forever (m4); duplicated-block rule (m5). Prior v1: initial drill-down from PRD §7/§7a. · source: planning session · stage: design`
+`status: draft v3 — coherence touch-up (2026-07-16, §5): field-home added for two operation-idempotency markers (`split-op:` and `source-key:`), the field homes for the split / file-upstream keys the Test-Specs review made the API contract pin (§2.3/§2.4). Prior v3 — GV3 coherence (2026-07-16): added a closed_by field to Item §1.1 — GV3's ship-traceability handle had no field home, surfaced by the API-contract independent review; native close-ref authoritative on close-on-merge, the block field the manual-close fallback, and the bidirectional drift sweep is a janitor list+timeline scan (API contract §2.6). Prior v2 — independent-review fold (2026-07-16): B1 fixed (open-state transitions are now crash-safe via an idempotent set-status op + decoder precedence); ready-work restated as list-then-fan-out (M1); cache gains an ETag validator (M2) + a briefing-counts snapshot reconciling GV2 (M3); Q4 routed to query-side fan-out, not the per-clone cache (M4); a single authority fixed per field + corrected write-cost attribution (M5); verification encoding resolved to one authority (M6); dead node_id cache column dropped (m1); redirect facet added to the taxonomy (m2); duplicate→target timeline read stated (m3); block evolution is additive-only-forever (m4); duplicated-block rule (m5). Prior v1: initial drill-down from PRD §7/§7a. · source: planning session · stage: design`
 
 **Parent:** `documentation/backlog-service-prd.md` (PRD v4) and, through it,
 `documentation/backlog-service-requirements.md` (DM1–7, Q1–5). This doc fixes the **field-level
@@ -179,6 +179,15 @@ limit. (A cross-repo blocker's state is only reliably seen online — a per-clon
 - **Alias uniqueness is an integrity constraint** — an `id:PFX` alias must resolve to **exactly one**
   live item; the importer/adapter rejects (flags) a *second* item claiming an existing alias, so ref
   resolution can't be hijacked by a colliding `id:` label (Security Model §5/F3).
+- **Operation-idempotency markers** (parallel machinery to `id:`/`superseded-by:`, but idempotency-only,
+  never identity) — a resumable compound op stamps its outputs with a marker derived from the call's own
+  arguments, so a re-run finds and skips what it already produced (API contract §2.3/§2.4):
+  - **`split-op:<token>#<index>`** — `token` = a digest of *(parent canonical id, ordered child specs)*;
+    stamped on each child so a resumed `split` skips children already made and creates only the missing.
+  - **`source-key:<digest>`** — `digest` = *(submitter identity, source item ref / title+body digest)*;
+    stamped on a `file-upstream` item so a re-file returns the existing item rather than duplicating.
+  Both are self-derived from the call (like the `id:PFX` skip-if-exists), findable via the same
+  label/marker lookup; encoding (label vs block entry) is a build-time detail.
 
 ---
 

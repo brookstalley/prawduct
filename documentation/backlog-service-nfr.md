@@ -255,7 +255,7 @@ find the point where the cacheless floor stops sufficing and a layer earns its k
 |---|---|---|---|
 | **Items per repo** | discodon ~**317 open** + a 1,754-line archive | GitHub Issues scales far past this; **our** limit is the read fan-out to sweep them (§3.3) | S2 |
 | **Legacy prefixes absorbed per project** | **27–58** hand-minted PFX → alias labels | absorbed as `id:` labels; prawduct's own `BKL/ADR/ADV/MET/CRT…` is the multi-prefix stress case | S2 |
-| **Dedup corpus** | **500+ items** (Q3) | lexical dedup is cache-served (read-your-writes); semantic is P2, hybrid-gated | build |
+| **Dedup corpus** | **500+ items** (Q3) | lexical dedup is cache-served (read-your-writes); semantic is P2 (GA, on by default; ~10/min, no per-repo gate) | build |
 | **Concurrent actors** | 2 agents (parallel worktrees) + 1 human, up to a **48-agent** grooming sweep (TF3) | **correctness** (no lost updates) is CC2 optimistic-concurrency, *not* an NFR here; the **NFR ceiling is the shared read budget** — 48 cacheless readers exhaust one user bucket (§3.3), so high fan-out is **cache- or App-gated** | S3 |
 | **Steady write rate** | ~**200 writes/day** | ≈ 8/hr avg — wide margin under 500/hr content + 900 pts/min | **assumed** / owner estimate (PRD §9) — not yet telemetry-observed |
 | **Local cache disk** | O(portfolio size) — bodies + comments + FTS | bounded, rebuildable-from-GitHub, gitignored; not a dollar cost (§2) | build |

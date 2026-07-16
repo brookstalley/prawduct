@@ -1,6 +1,6 @@
 # Backlog Service — Test Specifications
 
-`status: draft v2 — independent-review fold (2026-07-16): a fresh-eyes test/design critic + a GitHub-platform-fact verifier reviewed v1 (the same two-reviewer pattern the Data Model / Security / API-contract / NFR drill-downs used). BLOCKING fixes — (1) coverage holes behind false traceability pointers closed: GV3 closed_by/drift-sweep (new GOV-1), F5 cache-gitignore/doctor (new SEC-8), NF1 cost-O(1) + operability design-guaranteed rows (new OPS-1..3), Q2 sync/cursor (new QRY-5), AU2 batch partial-success (new BATCH-1), XP1/XP2 file-upstream (new XP-1) — each was routed in v1 to a test that did not cover it; (2) CONTRACT-1 overclaim corrected — a shape-diff guards SHAPE drift only, behavioral fidelity (read-your-writes timing, the replication window, timeline ordering) is spike-verified-once + L5-guarded, not "what makes L1 trustworthy." FACT fixes — QRY-3 semantic branch re-grounded (semantic search is GA-on-by-default at 10/min, NO per-repo hybrid gate — the API-contract C5 rewording is itself inaccurate → peer-doc flag); QRY-1 "documented" replication window → "observed/undocumented, L2-owed"; ENC-6 pinned to the GraphQL MarkedAsDuplicateEvent.canonical shape (the REST issue-event carries no canonical field); dependency terms aligned to REST blocked_by/blocking. METHOD — CRASH-3 (split) marked blocked-on an upstream idempotency-key decision (API §2.3 "by link" is not a concrete matching key); "single seam" → "primary seam." Prior v1: initial drill-down from PRD §16(5) — five test layers, the transport-seam-fake isolation decision, the catalogue + coverage matrix. · source: planning session · stage: design`
+`status: draft v3 — peer-doc coherence sweep closed (2026-07-16): the four §8 debts this drill-down filed are now resolved in the peers and the loop is closed here — CRASH-3 un-blocked and asserts full no-duplication against the `split-op:` key API §2.3 now pins; XP-1 asserts `file-upstream` retry-dedup against the `source-key:` marker API §2.4 now pins; §8 debts 1 (semantic-gate) + 4 (never-deletes) marked resolved against the API §12b/PRD §9 corrections. Prior v2 — independent-review fold (2026-07-16): a fresh-eyes test/design critic + a GitHub-platform-fact verifier reviewed v1 (the same two-reviewer pattern the Data Model / Security / API-contract / NFR drill-downs used). BLOCKING fixes — (1) coverage holes behind false traceability pointers closed: GV3 closed_by/drift-sweep (new GOV-1), F5 cache-gitignore/doctor (new SEC-8), NF1 cost-O(1) + operability design-guaranteed rows (new OPS-1..3), Q2 sync/cursor (new QRY-5), AU2 batch partial-success (new BATCH-1), XP1/XP2 file-upstream (new XP-1) — each was routed in v1 to a test that did not cover it; (2) CONTRACT-1 overclaim corrected — a shape-diff guards SHAPE drift only, behavioral fidelity (read-your-writes timing, the replication window, timeline ordering) is spike-verified-once + L5-guarded, not "what makes L1 trustworthy." FACT fixes — QRY-3 semantic branch re-grounded (semantic search is GA-on-by-default at 10/min, NO per-repo hybrid gate — the API-contract C5 rewording is itself inaccurate → peer-doc flag); QRY-1 "documented" replication window → "observed/undocumented, L2-owed"; ENC-6 pinned to the GraphQL MarkedAsDuplicateEvent.canonical shape (the REST issue-event carries no canonical field); dependency terms aligned to REST blocked_by/blocking. METHOD — CRASH-3 (split) marked blocked-on an upstream idempotency-key decision (API §2.3 "by link" is not a concrete matching key); "single seam" → "primary seam." Prior v1: initial drill-down from PRD §16(5) — five test layers, the transport-seam-fake isolation decision, the catalogue + coverage matrix. · source: planning session · stage: design`
 
 **Parent:** `documentation/backlog-service-prd.md` (PRD v4 — §4 success criteria, §5 invariants G1–G5, §8 capabilities),
 `documentation/backlog-service-nfr.md` (§9 target→owner map — the testable throughline),
@@ -138,20 +138,18 @@ decoder / re-runs the op and asserts a valid state + idempotent completion. No r
   ref to A resolves to B); the re-run closes A with the redirect intact; the op **never closes-then-
   orphans**; a third run is a no-op. Both bodies preserved (DM7 — nothing hard-deleted).
 
-**CRASH-3 — `split` recover-by-cleanup** (→ AU3, API §2.3; **BLOCKED — see below**)
+**CRASH-3 — `split` recover-by-cleanup, keyed on the `split-op:` token** (→ AU3, API §2.3/§2.1)
 - Level: unit
-- Setup: parent item P; a split into children C1, C2.
-- Action: run `split P → {C1,C2}` with the fake failing after C1 is created and linked; then re-run.
-- Expected (**partial, until the key is pinned**): the re-run detects children **already linked to P as
-  sub-issues** and does **not create more children than requested** (a bounded-duplication guarantee);
-  final state has exactly two linked children; a further run is a no-op.
-- **Blocked-on-upstream-decision (Requirements-Precede-Code):** unlike `import` (`id:PFX` alias),
-  `merge` (`superseded-by:`), and `verify` ((actor,date)), the parents never pin split's **matching
-  key** — API §2.3 says only "detect already-created children **by link**," which does not decide *which*
-  requested child a pre-existing linked child corresponds to on a re-run with the same arguments. Until
-  the Data Model / API contract pin that key, the full "creates only C2, no duplicate C1" assertion is
-  **undecidable**; this test asserts only the weaker bounded-duplication property. **Filed as a peer-doc
-  coherence debt (§8).**
+- Setup: parent item P; a split into children C1, C2. The call derives a stable `split-op:<token>` from
+  *(P's canonical id, the ordered specs of C1,C2)* and stamps each child `split-op:<token>#<index>`
+  (API §2.3, Data Model §5).
+- Action: run `split P → {C1,C2}` with the fake failing after C1 is created and stamped `…#0`; then
+  re-run with the **same arguments** (→ same token); then once more.
+- Expected: the re-run recomputes the token, finds C1 already stamped `#0`, and creates **only C2**
+  (stamped `#1`) — **no duplicate C1**; final state has exactly two linked children; the third run is a
+  no-op. A run with **changed** child specs mints a **new** token (a new split, correctly not a resume).
+  *(v1 could only assert bounded-duplication because the parents pinned no matching key — API §2.3 now
+  pins the `split-op:` token, so the full no-duplicate assertion is decidable.)*
 
 **CRASH-4 — `import` resumable / idempotent** (→ MG1/M6, API §2.5)
 - Level: integration
@@ -427,9 +425,9 @@ decoder / re-runs the op and asserts a valid state + idempotent completion. No r
   runs and returns results (rate-limited by the 10/min budget → `rate_limited` if exceeded, **not**
   `unsupported`); `--semantic` where the capability is **absent** → `unsupported` (a **capability probe**,
   not a per-repo hybrid-search enable-gate — that gate does not exist). With no cache, `--text` →
-  `unsupported` (needs the cache). **Peer-doc coherence flag (§8):** the API contract's §2.2 /C5 wording
-  "semantic … GitHub hybrid-search-gated" and "hybrid-search enablement" is inaccurate — semantic search
-  is GA-on-by-default; there is no per-repo hybrid gate.
+  `unsupported` (needs the cache). *(This corrected the API contract's earlier "semantic … hybrid-search
+  enablement-gated" wording — no such per-repo gate exists; semantic search is GA-on-by-default. The peer
+  is now fixed: API §2.2/§4/§7 + §12b/K3 — see §8 debt 1, resolved.)*
 
 **QRY-4 — `counts` derived on read; `rollup` cross-owner fan-out** (→ Q5/Q4, API §2.2)
 - Level: unit
@@ -618,17 +616,19 @@ decoder / re-runs the op and asserts a valid state + idempotent completion. No r
   **idempotent** (already-applied items converge, the previously-rate-limited ones now apply); the mass
   grooming workload (TF3) is paced under the write caps (pacing constants are L3/S3, correctness here).
 
-**XP-1 — `file-upstream` provenance + submitted-landing + auth-by-target-owner** (→ XP1/XP2, API §2.4, Security §1)
+**XP-1 — `file-upstream` provenance + submitted-landing + auth-by-target-owner + `source-key:` dedup** (→ XP1/XP2, API §2.4, Security §1)
 - Level: integration
 - Setup: a target project owned by a **different owner**; the caller has no local checkout of it.
-- Action: `file-upstream` into the target.
+- Action: `file-upstream` into the target; then **re-file the same source item** (same submitter + source
+  digest → same `source-key:`), simulating a retry; then a distinct source item.
 - Expected: the item is filed with **no upstream checkout and no drop-box**; it carries stamped
-  **provenance** (`source:` + submitter identity) and lands in **`submitted`** (a triage state, not the
-  working backlog); auth **resolves by the target owner** (owned repo → session identity; foreign repo →
-  user token, Security §1). Distinct from SEC-7 (that is the *anonymous/non-collaborator* path; this is
-  *authenticated* cross-project filing). **Peer-doc coherence flag (§8):** the `keyed` idempotency the API
-  contract attributes to `file-upstream` (§2.4) has **no key mechanism specified** in the parents — the
-  dedup assertion is deferred until it is pinned upstream.
+  **provenance** (`source:` + submitter identity) and a **`source-key:<digest>`** marker (API §2.4, Data
+  Model §5), and lands in **`submitted`** (a triage state, not the working backlog); auth **resolves by
+  the target owner** (owned repo → session identity; foreign repo → user token, Security §1). The **retry
+  returns the existing upstream item** (matched by `source-key:`) rather than creating a duplicate; the
+  distinct source item creates a new one. Distinct from SEC-7 (the *anonymous/non-collaborator* path;
+  this is *authenticated* cross-project filing) and from AG3 advisory dedup (this is deliberate
+  retry-safety, not a similarity hint).
 
 ### 3.14 Cost & operability (NF1 / NF2 — design-guaranteed §16(5) rows)
 
@@ -678,7 +678,7 @@ Named here for traceability; **designed in PRD §11 / NFR §3**, not re-designed
 fact, not a repeatable assertion.
 
 - **SPIKE-S1** — cloud-proxy transport reach (does the proxy intercept arbitrary HTTPS or only `gh`?);
-  confirm ETag/304; confirm the no-delete / issue-number-non-reuse facts M6 leans on. *(Coherence flag,
+  confirm ETag/304; confirm the **issue-number-non-reuse** fact M6 leans on. *(Coherence flag,
   §8: "GitHub never deletes issues" is false — a repo admin / org owner **can** permanently delete an
   issue; the load-bearing half is "never **reuses** numbers" — the per-repo counter skips a deleted
   number, never re-issues it — which holds; the migration tests lean only on the no-reuse half.)*
@@ -745,7 +745,7 @@ duplicates (the same behavior stated in 4–5 docs) collapse to one row.
 | AG1 one-non-interactive-call / no TTY | **INV-2**, SEC-6 |
 | CC1/M5 crash-safe two-axis transition | **CRASH-1** |
 | AU3 merge redirect-before-close | **CRASH-2** |
-| AU3 split recover-by-cleanup *(implied-not-named)* | **CRASH-3** (bounded-dup only — **blocked** on split-key decision, §8) |
+| AU3 split recover-by-cleanup, keyed | **CRASH-3** (full no-duplicate — `split-op:` key pinned in API §2.3) |
 | MG1/M6 import resumable/idempotent | **CRASH-4**, MIG-1 |
 | TF2 verify keyed idempotent | **CRASH-5** |
 | CC3/M11 claim take-and-verify / TTL reap | **CRASH-6** |
@@ -811,12 +811,12 @@ duplicates (the same behavior stated in 4–5 docs) collapse to one row.
 | Security "not defended" list | **anti-tests** — §8 |
 
 **Deferred (named, not yet an L1 test — honest gaps):** `attach` idempotency (key is S5-dependent —
-becomes concrete once SPIKE-S5 resolves); **`split` matching key** (CRASH-3 is bounded-dup-only until the
-key is pinned upstream, §8); **`file-upstream` `keyed` idempotency** (no key mechanism specified upstream
-— XP-1 defers the dedup assertion, §8); the exact CLI exit-code integers (build-time coherence check vs
+becomes concrete once SPIKE-S5 resolves); the exact CLI exit-code integers (build-time coherence check vs
 `prawduct-hook`, API §11); `~200 writes/day` steady-state (an owner estimate → telemetry, not a test,
 §8); the `discodon` marooned-item / stale-snapshot rescue (SOL-K3PN) — an S2 migration observation, not
-an L1 case. Each is listed so it is **visibly owed**, not silently dropped.
+an L1 case. Each is listed so it is **visibly owed**, not silently dropped. *(The v1 `split` and
+`file-upstream` idempotency-key gaps have since been **resolved** — the keys are pinned in API §2.3/§2.4,
+so CRASH-3/XP-1 assert them fully; see §8 debts 2–3.)*
 
 ## 8. Out of scope / anti-tests, and known limits
 
@@ -842,18 +842,20 @@ fidelity, which CONTRACT-1's shape-diff cannot guarantee (§2.1, §6). A GitHub 
 This is stated, not hidden — the alternative (pretending a shape-diff proves behavior) is the exact
 over-claim this doc's discipline forbids.
 
-**Peer-doc coherence debts filed here (not fixed — Scope Discipline, P12; these belong to already-committed
-peer docs):**
-1. **Semantic-search gating framing** — the API contract §2.2 / §12a(C5) wording "semantic … hybrid-search-gated"
-   / "hybrid-search enablement" is inaccurate: improved/semantic issue search is **GA, on by default**
-   (~10/min), with **no per-repo hybrid gate**. QRY-3 re-grounds the `unsupported` branch on a genuine
-   capability-absence probe; the peer wording should be corrected in a separate touch-up.
-2. **`split` idempotency/matching key** — API §2.3 says "detect already-created children **by link**," which
-   is not a concrete matching key; CRASH-3 can only assert bounded-duplication until it is pinned.
-3. **`file-upstream` `keyed` idempotency** — API §2.4 marks it `keyed` but specifies no key; XP-1 defers the
-   dedup assertion until it is pinned.
-4. **"GitHub never deletes issues"** — false (admins can permanently delete); the load-bearing "never
-   **reuses** numbers" half holds (already flagged in NFR §10a; SPIKE-S1 confirms).
+**Peer-doc coherence debts filed here — all four RESOLVED in the 2026-07-16 sweep** (the peers were
+touched-up right after this drill-down; recorded here as the close-the-loop trail):
+1. **Semantic-search gating framing** — the API contract's "semantic … hybrid-search-gated" / "hybrid-search
+   enablement" wording was inaccurate: improved/semantic issue search is **GA, on by default** (~10/min),
+   with **no per-repo hybrid gate**. **Resolved** — API §2.2/§4/§7 reframe `--semantic`'s `unsupported` as a
+   capability probe (API §12b/K3); NFR §7 + PRD §9 corrected. QRY-3 already encodes this.
+2. **`split` idempotency/matching key** — was "detect already-created children **by link**," not a concrete
+   key. **Resolved** — API §2.3 pins the **`split-op:<token>#<index>`** key (Data Model §5); CRASH-3 now
+   asserts full no-duplication.
+3. **`file-upstream` `keyed` idempotency** — API §2.4 marked it `keyed` with no key. **Resolved** — API §2.4
+   pins the **`source-key:`** marker (Data Model §5); XP-1 now asserts retry-dedup.
+4. **"GitHub never deletes issues"** — false (admins can permanently delete). **Resolved** — API §2.5 + PRD
+   §9/§11/§13 lean only on the load-bearing "never **reuses** numbers" (delete is an admin-only destructive
+   action; a deleted number is retired, not recycled); SPIKE-S1 confirms.
 
 ## 9. Self-review (adversarial, 2026-07-16)
 
@@ -863,7 +865,7 @@ peer docs):**
 | T2 | honesty | Do any "tests" secretly assert an unmeasurable/one-time thing as if repeatable? | **Separated** — L3 (numbers) and L4 (one-time spikes) are pulled out of the L1 pass/fail bulk (§2); §8 states L3 is not CI-green. |
 | T3 | completeness | Did the drill-down drop an obligation? | **§7 matrix** maps every catalogued cluster to a test or an explicit anti-test/deferral; the previously **implied-not-named** obligations (split-cleanup, null-vs-absent, ambiguous_id, F4 cache-auth, F1 withhold, PV3 enable-gate) are named tests. **v2 closed six coverage holes the independent review caught** (GV3, F5, batch, file-upstream, sync, cost/operability) that v1 had routed to non-covering pointers. |
 | T4 | trust | Can the L1 suite go false-green if the fake lies? | **Named as a bounded limit, not overclaimed** — CONTRACT-1 guards **shape** only; **behavioral** fidelity is spike-verified-once + L5-guarded (§2.1/§8). v1's "CONTRACT-1 makes L1 trustworthy" was an over-claim — corrected. |
-| T5 | crash-testing realism | Is "kill mid-transition" actually testable deterministically? | **Yes** — the canonical write-orders make each intermediate state deterministic; the fake fails the n-th call and the test decodes + re-runs (CRASH-1/2/4). **CRASH-3 (split) is the exception** — its matching key is unspecified upstream, so it is bounded-dup-only and blocked (§8). |
+| T5 | crash-testing realism | Is "kill mid-transition" actually testable deterministically? | **Yes** — the canonical write-orders make each intermediate state deterministic; the fake fails the n-th call and the test decodes + re-runs (CRASH-1/2/4). **CRASH-3 (split)** was v2's exception (no upstream matching key); the 2026-07-16 sweep pinned the `split-op:` key in API §2.3, so CRASH-3 now asserts full no-duplication (§8 debt 2 resolved). |
 | T6 | coherence | Does a test lean on a false platform fact? | **Four flagged and corrected/filed** (§8): semantic-search gate (fixed in QRY-3), the 404-window "documented" claim (softened in QRY-1), the duplicate-canonical transport (ENC-6 pinned to GraphQL), and "never deletes issues" (SPIKE-S1 note). |
 | T7 | proportionality | Is a full test-spec proportional for a personal $0 tool? | **Yes, bounded** — depth tracks the **governance** stakes (this backend underpins prawduct's own backlog); most tests are cheap L1 unit tests against one fake; the expensive layers (L4 spikes) already existed as §11 spikes; the cost/ops tests (OPS-1..3) are one-line delegation assertions. |
 | T8 | front-coverage | Does testing the core stand in for the whole contract? | **Guarded** — §1.1 attaches each test to a front; CLI-only concerns (exit codes, pipe safety, non-interactive env) get their own tests; MCP is one smoke + inherited (flagged intentional, not a gap). |
