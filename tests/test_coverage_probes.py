@@ -26,18 +26,27 @@ characteristics (the staged transition Chunk 05 dogfoods).
 
 from __future__ import annotations
 
+import sys
 from pathlib import Path
 
 import pytest
 
-from lib.advisory_store import (
+# Self-sufficient on sys.path — don't depend on another test module having
+# inserted the repo root first (under parallel file distribution a worker may run
+# only lib-importing files that all assume it, and none inserts it). Mirrors the
+# idiom in tests/test_advisory_store.py / test_advisory_cmd.py.
+_REPO_ROOT = Path(__file__).resolve().parent.parent
+if str(_REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(_REPO_ROOT))
+
+from lib.advisory_store import (  # noqa: E402
     Codebase,
     ProjectState,
     clear_registry,
     compute_id,
     run_all_probes,
 )
-from lib import coverage_probes as cp
+from lib import coverage_probes as cp  # noqa: E402
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 
@@ -385,6 +394,46 @@ def test_all_seven_strategy_class_covered_when_everything_missing(tmp_path):
     for name in cp.STRATEGY_CLASS_ARTIFACTS:
         assert name in summary
     assert len(cp.STRATEGY_CLASS_ARTIFACTS) == 7
+
+
+# --- the shared expectation-table helper (missing_expected_artifacts) ----------
+# One answer to "what does this product owe?", consumed by the probe, the
+# coverage-status doctor check, and the coverage-scaffold helper (single-homed).
+
+
+def test_missing_expected_lists_universal_when_none_recorded(tmp_path):
+    # Independent of the staging gate: with no characteristic recorded, the five
+    # universal artifacts are still the expected-and-absent set (the scaffold can
+    # offer them pre-capture), and no triggered arm (characteristics unrecorded).
+    _write_state(tmp_path, {c: None for c in cp.STRUCTURAL_CHARACTERISTICS})
+    out = cp.missing_expected_artifacts(_cb(tmp_path))
+    assert [name for name, _ in out] == list(cp.UNIVERSAL_ARTIFACTS)
+    assert all(characteristic is None for _, characteristic in out)
+
+
+def test_missing_expected_adds_triggered_when_recorded(tmp_path):
+    # A recorded characteristic adds its triggered artifact, annotated, AFTER the
+    # universal ones (stable order for every consumer).
+    _write_state(tmp_path, {"exposes_programmatic_interface": {"consumers": "external"}})
+    out = cp.missing_expected_artifacts(_cb(tmp_path))
+    assert [name for name, _ in out] == list(cp.UNIVERSAL_ARTIFACTS) + ["api-contract.md"]
+    assert out[-1] == ("api-contract.md", "exposes_programmatic_interface")
+
+
+def test_missing_expected_empty_when_all_present(tmp_path):
+    _open_gate(tmp_path)
+    _write_all_universal(tmp_path)
+    assert cp.missing_expected_artifacts(_cb(tmp_path)) == []
+
+
+def test_missing_expected_excludes_present_files(tmp_path):
+    # Present files (spec or stub) drop out of the missing set; absent ones remain.
+    _write_state(tmp_path, {"exposes_programmatic_interface": {"consumers": "external"}})
+    _write_artifact(tmp_path, "data-model.md")
+    _write_artifact(tmp_path, "api-contract.md")
+    names = [name for name, _ in cp.missing_expected_artifacts(_cb(tmp_path))]
+    assert "data-model.md" not in names and "api-contract.md" not in names
+    assert "security-model.md" in names
 
 
 def test_strategy_class_set_is_union_and_deduped_across_modules():

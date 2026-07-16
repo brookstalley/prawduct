@@ -22,6 +22,8 @@ Before you can build anything well, you need to understand what kind of thing yo
 
 These are independent dimensions, not categories — a product can have any combination, and each one you detect changes what you need to build.
 
+**Recording the characteristics is load-bearing, not bookkeeping.** Capture each in `classification.structural`, because the framework keys the product's *strategy-class artifact coverage* off it. Five artifacts are expected of every product (data model, security model, non-functional requirements, operational spec, observability strategy); two more are triggered by a recorded characteristic — an API contract when the product exposes a programmatic interface, a system architecture when it is multi-process or distributed. Until the characteristics are recorded the framework can't know what the product owes, so it nudges you to record them first (the **DISCOVERY NOT CAPTURED** signal). Once recorded, it expects each implied artifact to *exist* — a real spec, or a one-line `(not relevant — <reason>)` decision recorded where a reader will find it. `/prawduct:doctor` reports which layer is active; `prawduct-hook coverage-scaffold` drops the stubs in one act for you to fill.
+
 ## Risk Calibration
 
 After detecting structural characteristics, assess risk. Risk drives how much discovery you do. The counts below are the **typical shape, not a quota** — concrete anchors, always governed by the pacing judgment in "Read the room on pacing" below:

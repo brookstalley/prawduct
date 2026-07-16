@@ -50,6 +50,8 @@ Write all generated artifacts to `.prawduct/artifacts/` — the Critic reads fro
 
 Artifact depth scales to risk: a personal utility gets a 1-page brief and minimal data model; a financial platform gets deep specs with edge-case coverage. The framework doesn't skip artifacts for low-risk products — it scales them. If an artifact is genuinely not applicable, note that briefly and move on; don't generate content to fill a template.
 
+The **strategy-class** artifacts (data model, security model, non-functional requirements, operational spec, observability strategy, plus the characteristic-triggered API contract and architecture) are coverage-tracked once discovery records the product's structural characteristics: the framework detects one that was *never created* — the gap reactive review can't see — and nudges via the `strategy-artifact-missing` advisory and the `/prawduct:doctor` coverage check. "Note that briefly and move on" is that record: a one-line `(not relevant — <reason>)` stub in `.prawduct/artifacts/<name>` **is** coverage (the file existing is the whole check; whether the decision holds is the Critic's call). `prawduct-hook coverage-scaffold` drops those stubs in one act. See `methodology/discovery.md` for the characteristic → artifact map.
+
 ## Build Planning
 
 The build plan decomposes artifacts into buildable chunks — coherent units of work with clear deliverables and acceptance criteria.

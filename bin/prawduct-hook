@@ -723,18 +723,11 @@ def cmd_clear(project_dir: Path, argv: list[str] | None = None) -> int:
         if lib_root not in sys.path:
             sys.path.insert(0, lib_root)
         from lib.advisory_store import run_sync_advisories  # noqa: PLC0415 — lazy keeps top-level import cheap
-        from lib.backlog_probes import register as _register_backlog_probes  # noqa: PLC0415
-        from lib.upstream_probes import register as _register_upstream_probes  # noqa: PLC0415
-        from lib.api_versioning_probes import register as _register_api_versioning_probe  # noqa: PLC0415
-        from lib.gitignore_probes import register as _register_gitignore_probe  # noqa: PLC0415
-        from lib.norm_probes import register as _register_norm_probes  # noqa: PLC0415
-        from lib.coverage_probes import register as _register_coverage_probes  # noqa: PLC0415
-        _register_backlog_probes()  # register the backlog feature's probes before the roster runs
-        _register_upstream_probes()  # + the upstream-bug-reporting receiving-side probe
-        _register_api_versioning_probe()  # + the api-design versioning-undecided migration nudge
-        _register_gitignore_probe()  # + the session-file .gitignore contract-drift nudge
-        _register_norm_probes()  # + the norm-lifecycle time-domain probes (docs/norms.md § Enforcement)
-        _register_coverage_probes()  # + structural-coverage: strategy-class artifact coverage (methodology/planning.md)
+        from lib.probe_families import register_all as _register_all_probes  # noqa: PLC0415
+        # Register the full probe roster (lib/probe_families is the one place the
+        # family list lives — shared with `advisory show` reconstruction so neither
+        # call site runs the roster against an empty registry).
+        _register_all_probes()
         run_sync_advisories(
             project_dir, sync_version=_plugin_manifest_version() or ""
         )
@@ -2648,6 +2641,225 @@ def cmd_advisory(project_dir: Path, argv: list[str]) -> int:
     return advisory_cmd.run(project_dir, argv)
 
 
+def _coverage_scaffold_stub(artifact_name: str) -> str:
+    """A neutral placeholder for a missing strategy-class artifact.
+
+    It deliberately does NOT pre-fill ``(not relevant)`` — whether an artifact is
+    relevant is the owner's decision to record, not the tool's to guess. Coverage
+    is satisfied by the file existing (any content), so dropping this stub clears
+    the layer-1 nudge and leaves the owner to fill it: a real spec, or a one-line
+    ``(not relevant — <reason>)`` decision the Critic can then weigh."""
+    title = artifact_name.removesuffix(".md").replace("-", " ").title()
+    return (
+        f"# {title}\n\n"
+        "<!--\n"
+        "Strategy-class artifact expected by structural coverage. Replace this stub\n"
+        "with EITHER a real specification, OR a one-line decision that it is not\n"
+        "relevant to this product, for example:\n\n"
+        "    (Not relevant — <reason>.)\n\n"
+        "Coverage is satisfied by this file existing; the Critic and risk\n"
+        "calibration judge whether the decision holds. See /prawduct:methodology planning.\n"
+        "-->\n\n"
+        "_Unwritten stub — author this artifact, or record why it is not relevant._\n"
+    )
+
+
+def cmd_coverage_status(project_dir: Path, argv: list[str]) -> int:
+    """Report the structural-coverage chain status (the doctor coverage check).
+
+    Reports all three layers of the coverage chain, reading the SAME expectation
+    table the probe fires on (``lib/coverage_probes.missing_expected_artifacts``) —
+    never a transcription, so the doctor check can't drift from the nudge:
+
+      - **Layer 0 (discovery):** are structural characteristics recorded?
+      - **Layer 1 (artifacts):** which expected strategy-class artifacts are missing?
+      - **Layer 2 (norms):** are the product's norms ratified?
+
+    and names the ONE layer that currently owns the nudge (the chain stages, so
+    exactly one speaks) plus its fix path. ``--json`` emits the structured status
+    for the doctor skill; default is human-readable.
+
+    Read-only and informational — always exits 0. A broken plugin import or a
+    faulty sub-check degrades to a NOTE / "unknown", never a crash (a health
+    *report* must not fail the operator's shell)."""
+    want_json = "--json" in argv
+    lib_root = _plugin_root()
+    if lib_root not in sys.path:
+        sys.path.insert(0, lib_root)
+    try:
+        from lib import coverage_probes as cp  # noqa: PLC0415 — lazy keeps top-level cheap
+        from lib import advisory_store as store  # noqa: PLC0415
+        from lib import norm_probes  # noqa: PLC0415
+    except ImportError as exc:
+        print(f"NOTE: coverage-status unavailable (plugin lib/ not importable: {exc})", file=sys.stderr)
+        return 0
+
+    state_path = project_dir / ".prawduct" / "project-state.yaml"
+    codebase = store.make_codebase(project_dir)
+    recorded = cp.structural_characteristics_recorded(state_path)
+    missing = cp.missing_expected_artifacts(codebase)  # [(name, characteristic|None)]
+
+    # Layer 2 composes over the norm probe (its own gate is "strategy artifacts
+    # exist AND registry unratified"). The probe is declared non-raising, but a
+    # health report must not crash on a malformed state, so degrade to "unknown"
+    # and NAME the reason on stderr rather than swallow it.
+    norms_unratified: bool | None
+    try:
+        proj_state = store.load_project_state(project_dir)
+        norms_unratified = bool(norm_probes.probe_norm_registry_unratified(proj_state, codebase))
+    except Exception as exc:  # prawduct:allow prawduct/broad-except -- report must not crash; degrade layer 2 to unknown + log
+        print(f"NOTE: coverage-status layer-2 (norm ratification) check skipped: {exc}", file=sys.stderr)
+        norms_unratified = None
+
+    # Which single layer currently owns the nudge (the chain stages).
+    if not recorded:
+        active_layer: int | None = 0
+        fix: str | None = "record structural characteristics: /prawduct:methodology discovery"
+    elif missing:
+        active_layer = 1
+        fix = ("author each missing artifact (/prawduct:methodology planning), or drop stubs "
+               "in one act: prawduct-hook coverage-scaffold --apply")
+    elif norms_unratified:
+        active_layer = 2
+        fix = "ratify the product's norms via /prawduct:doctor"
+    else:
+        active_layer = None
+        fix = None
+
+    if want_json:
+        import json as _json  # noqa: PLC0415
+        print(_json.dumps({
+            "structural_recorded": recorded,
+            "missing_artifacts": [{"artifact": name, "characteristic": char} for name, char in missing],
+            "norms_unratified": norms_unratified,
+            "active_layer": active_layer,
+            "fix": fix,
+        }, indent=2))
+        return 0
+
+    print("Structural coverage (three-layer chain):")
+    print(f"  Layer 0 · discovery         : characteristics {'RECORDED' if recorded else 'NOT RECORDED'}")
+    if missing:
+        print(f"  Layer 1 · strategy artifacts : {len(missing)} expected artifact(s) missing")
+        for name, char in missing:
+            suffix = "" if char is None else f"  (required — {char} recorded)"
+            print(f"       - {name}{suffix}")
+    else:
+        print("  Layer 1 · strategy artifacts : all expected artifacts present")
+    if norms_unratified is None:
+        print("  Layer 2 · norm ratification : unknown (norm check unavailable)")
+    elif norms_unratified:
+        print("  Layer 2 · norm ratification : norms not yet ratified")
+    else:
+        print("  Layer 2 · norm ratification : ratified or not yet applicable")
+    if active_layer is not None:
+        print(f"  Active nudge → Layer {active_layer}: {fix}")
+    elif norms_unratified is None:
+        # Layers 0-1 satisfied, but layer 2 couldn't be checked — don't claim the
+        # whole chain is satisfied (the --json consumer discriminates on the
+        # norms_unratified: null field; the human reader gets this explicit line).
+        print("  Active nudge → none actionable: layers 0-1 satisfied; layer 2 (norms) could not be checked.")
+    else:
+        print("  Active nudge → none: the coverage chain is satisfied.")
+    return 0
+
+
+def cmd_coverage_scaffold(project_dir: Path, argv: list[str]) -> int:
+    """Drop stub files for the expected-but-missing strategy-class artifacts.
+
+    The coverage forcing function nudges a product to author (or explicitly
+    decline) each strategy-class artifact. Resolving several at once should be a
+    30-second confirm-and-fill, not a chore — this drops a neutral stub for each
+    missing expected artifact in one act, which the owner then fills with a real
+    spec or a one-line ``(not relevant — <reason>)`` decision.
+
+    Default is a **DRY RUN**: it lists what it WOULD create and changes nothing.
+    ``--apply`` writes the stubs. Two guarantees keep the owner in control: the
+    framework never silently auto-stubs (``--apply`` is the owner's confirm — that
+    a relevance decision is theirs to make, not the tool's to default), and it
+    never overwrites an existing file (an authored artifact or a prior stub is left
+    untouched). Reads the SAME expectation table as the probe and the status check
+    (``lib/coverage_probes.missing_expected_artifacts``).
+
+    Exit 0 on dry run or successful ``--apply``; exit 1 if the plugin ``lib/`` is
+    not importable (a state-mutating command must not claim success on a broken
+    install — mirrors ``regen-views``)."""
+    apply = "--apply" in argv
+    want_json = "--json" in argv
+    lib_root = _plugin_root()
+    if lib_root not in sys.path:
+        sys.path.insert(0, lib_root)
+    try:
+        from lib import coverage_probes as cp  # noqa: PLC0415 — lazy keeps top-level cheap
+        from lib import advisory_store as store  # noqa: PLC0415
+    except ImportError as exc:
+        print(f"error: coverage-scaffold could not import the plugin lib/ ({exc})", file=sys.stderr)
+        return 1
+
+    state_path = project_dir / ".prawduct" / "project-state.yaml"
+    codebase = store.make_codebase(project_dir)
+    recorded = cp.structural_characteristics_recorded(state_path)
+    missing = cp.missing_expected_artifacts(codebase)  # [(name, characteristic|None)]
+    artifacts_dir = project_dir / ".prawduct" / "artifacts"
+
+    created: list[str] = []
+    skipped_existing: list[str] = []
+    if apply and missing:
+        try:
+            artifacts_dir.mkdir(parents=True, exist_ok=True)
+        except OSError as exc:
+            print(f"error: could not create {artifacts_dir} ({exc})", file=sys.stderr)
+            return 1
+        for name, _char in missing:
+            dest = artifacts_dir / name
+            if dest.exists():  # never overwrite — an authored artifact or prior stub stays
+                skipped_existing.append(name)
+                continue
+            try:
+                _core().atomic_write_text(dest, _coverage_scaffold_stub(name))
+                created.append(name)
+            except OSError as exc:
+                print(f"NOTE: could not write {dest} ({exc})", file=sys.stderr)
+
+    if want_json:
+        import json as _json  # noqa: PLC0415
+        print(_json.dumps({
+            "structural_recorded": recorded,
+            "missing_artifacts": [{"artifact": name, "characteristic": char} for name, char in missing],
+            "applied": apply,
+            "created": created,
+            "skipped_existing": skipped_existing,
+        }, indent=2))
+        return 0
+
+    if not missing:
+        print("No missing expected strategy-class artifacts — coverage is satisfied.")
+        return 0
+
+    def _line(name: str, char: str | None) -> str:
+        return f"       - {name}" + ("" if char is None else f"  (required — {char} recorded)")
+
+    if not recorded:
+        print("Note: structural characteristics are not yet recorded (layer 0). Recording them")
+        print("      first (/prawduct:methodology discovery) may add characteristic-triggered")
+        print("      artifacts to this set.")
+    if apply:
+        print(f"coverage-scaffold — created {len(created)} stub file(s) in .prawduct/artifacts/:")
+        for name, char in missing:
+            if name in created:
+                print(_line(name, char))
+        if skipped_existing:
+            print(f"  skipped {len(skipped_existing)} existing file(s): {', '.join(skipped_existing)}")
+        print("Fill each with a real spec or a '(not relevant — <reason>)' decision, then git add them.")
+    else:
+        print(f"coverage-scaffold (dry run) — would create {len(missing)} stub file(s) in .prawduct/artifacts/:")
+        for name, char in missing:
+            print(_line(name, char))
+        print("Each stub is a neutral placeholder for you to fill (a real spec, or a")
+        print("'(not relevant — <reason>)' decision). Re-run with --apply to create them.")
+    return 0
+
+
 def cmd_resolve_base(project_dir: Path) -> int:
     """Print the resolved diff/merge base for the PR/coverage gates and the
     reviewer/cumulative diff.
@@ -3039,6 +3251,7 @@ _USAGE = (
     "infer-critic-mode [args]|"
     "resolve-base|"
     "evidence {status|list [--kind <k>] [-n <count>]}|advisory <subcmd> [args]|"
+    "coverage-status [--json]|coverage-scaffold [--apply] [--json]|"
     "migrate-plugin [--apply] [--json]|init-product <target> --name <name> [--apply] [--json]|"
     "update-gitignore|"
     "audit-learnings [--apply] [--json]|repo-disable [--local] [--apply] [--json]}"
@@ -3332,6 +3545,10 @@ def main() -> int:
         return cmd_bug_inbox(project_dir)
     elif command == "advisory":
         return cmd_advisory(project_dir, sys.argv[2:])
+    elif command == "coverage-status":
+        return cmd_coverage_status(project_dir, sys.argv[2:])
+    elif command == "coverage-scaffold":
+        return cmd_coverage_scaffold(project_dir, sys.argv[2:])
     elif command == "migrate-plugin":
         return cmd_migrate_plugin(project_dir, sys.argv[2:])
     elif command == "init-product":

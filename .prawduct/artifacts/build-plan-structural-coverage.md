@@ -39,7 +39,7 @@ my picks as vetoable); Chunk 01's keystone confirms the declined-answer schema a
 - [x] Chunk 01: Coverage keystone — expectation model + existence-based probe (one artifact end-to-end)
 - [x] Chunk 02: Full layer-1 table — all 7 strategy-class artifacts (universal + structurally-triggered)
 - [x] Chunk 03: Layer 0 + staging — sharpen DISCOVERY-NOT-CAPTURED; stage the three advisories; resolve GOV-EXI2
-- [ ] Chunk 04: Doctor / onboarding / methodology / propagation
+- [x] Chunk 04: Doctor / onboarding / methodology / propagation
 - [ ] Chunk 05: Dogfood against the empty fixture + close (cumulative-final)
 Context: Chunks 01-03 complete on `feature/structural-coverage`. The three-layer chain now
 STAGES on one shared boundary predicate — `coverage_probes.structural_characteristics_recorded`
@@ -59,16 +59,36 @@ by-design (Open→Archive, closed-by=structural-coverage): the chain closes the 
 upstream (layer 1 nudges stub/artifact creation → layer 2's existence gate then fires
 ratification), so arm (b) is deliberately NOT ungated. Against this repo (dogfooded non-mutating):
 layer 0 fires (structural-not-recorded variant), layers 1 & 2 silent — exactly one layer, the
-pre-capture state Chunk 05 advances. Full suite green (1816 passed). Critic chunk-mode clean
-(0 blocking / 0 warning / 1 note — untracked uv.lock, owner decision;
-fact rev-20260716T224903Z-207ead7d). Next: Chunk 04 (doctor / onboarding / methodology / propagation).
+pre-capture state Chunk 05 advances.
 
-**Chunk 01 deferred NOTES — status:** citation precision ✓ (docstring derives 5 = planning.md's
-9 universal ∩ 7 strategy-class); dedup ✓ (`STRATEGY_CLASS_ARTIFACTS` single-homed in
-coverage_probes, imported by norm_probes); staging-caveat docstring ✓ (resolved by completion —
-the table is now whole); dogfood strengthened ✓ (exactly-one, composed with the full roster).
-- **Still carried → Chunk 04:** the coverage probe family inherits GOV-5D2W's `cmd_clear`-only
-  registration (the `advisory show` reconstruction no-ops) — address in the registration/doctor chunk.
+Chunk 04 complete: the doctor / methodology / propagation half plus the carried GOV-5D2W fix.
+(a) Two new `bin/prawduct-hook` subcommands — `coverage-status` (reports the three-layer chain,
+naming the one staged layer that owns the nudge + its fix; `--json` for the doctor skill) and
+`coverage-scaffold` (dry-run by default, `--apply` drops neutral placeholder stubs for the
+missing expected artifacts, never overwriting, never auto-deciding relevance). Both read the SAME
+expectation table via a new public `coverage_probes.missing_expected_artifacts` (single-homed —
+the probe, the status check, and the scaffold share it; no transcription). (b) Doctor SKILL gains
+Health Check #11 (coverage) + a routing row + `coverage-status`/`coverage-scaffold` in
+allowed-tools. (c) discovery.md operationalizes "recording characteristics is load-bearing → the
+artifacts they imply"; planning.md Proportionality cross-references the coverage tracking + stub
+mechanism; guard tests added (test_v5_methodology). (d) cross-cutting-concerns.md gains the
+Strategy-class-artifact-coverage row + a Known-Gaps note. GOV-5D2W closed (shipped): new
+`lib/probe_families.register_all()` is the shared roster both `cmd_clear` and
+`advisory_cmd.show_advisory` register through, so `advisory show` reconstruction no longer scans
+an empty registry (regression test test_show_self_registers_probe_roster_for_reconstruction).
+Filed GOV-2T6K: `templates/architecture.md` missing (additive authoring-template gap; coverage
+still works via the scaffold stub). Also fixed a pre-existing baseline flake in a separate commit
+(test_kernel_v3_upgrade.py + test_coverage_probes.py lacked the sys.path root-insert idiom).
+
+Next: **Chunk 05** (cumulative-final) — dogfood against this repo's empty fixture: observe layer 0
+fire, then RECORD prawduct's own six structural characteristics (a discovery/reconcile act, NOT
+authoring artifacts) and observe the chain advance to layer 1 firing "artifacts missing." Stop
+there (authoring the 7 artifacts is deferred to a filed follow-up). Capture as a before/after
+fixture test, not a live-repo-coupled assertion. Then `/prawduct:critic cumulative` → PR-ready.
+
+**Chunk 01 deferred NOTES — status:** all resolved. citation precision ✓; dedup ✓
+(`STRATEGY_CLASS_ARTIFACTS` single-homed); staging-caveat docstring ✓; dogfood strengthened ✓;
+GOV-5D2W registration gap ✓ (fixed this chunk via `lib/probe_families`).
 
 ## Scaffolding
 

@@ -247,6 +247,30 @@ def _missing_triggered(codebase: Codebase) -> list[tuple[str, str]]:
     ]
 
 
+def missing_expected_artifacts(codebase: Codebase) -> list[tuple[str, str | None]]:
+    """The expected-but-absent strategy-class artifacts as ``(filename,
+    characteristic)`` pairs — ``characteristic`` is ``None`` for a universal
+    artifact and the triggering flag for a characteristic-triggered one.
+
+    This is the coverage expectation table applied to one codebase, and it is the
+    single answer to "what does this product owe?" shared by three surfaces: the
+    layer-1 probe (which nudges), the ``coverage-status`` doctor check (which
+    reports), and the ``coverage-scaffold`` helper (which drops stubs). Homing the
+    computation here keeps the table from being transcribed across those surfaces
+    (transcription flattens quantifiers). Universal artifacts are listed first, then
+    the triggered ones, so every consumer renders the missing set in one order.
+
+    Independent of the layer-0/1 staging gate: it reports the raw expected set
+    (universal always; a triggered artifact only when its characteristic is recorded
+    present), leaving *whether to nudge yet* to :func:`probe_strategy_artifact_missing`.
+    So the scaffold helper can offer the universal stubs even before characteristics
+    are recorded, while the probe still holds its nudge for layer 0.
+    """
+    return [(name, None) for name in _missing_universal(codebase)] + [
+        (name, characteristic) for name, characteristic in _missing_triggered(codebase)
+    ]
+
+
 def probe_strategy_artifact_missing(state: ProjectState, codebase: Codebase):
     """Fire when an expected strategy-class artifact file does not exist.
 
@@ -270,13 +294,12 @@ def probe_strategy_artifact_missing(state: ProjectState, codebase: Codebase):
     """
     if not structural_characteristics_recorded(_state_path(codebase)):
         return []
-    universal_missing = _missing_universal(codebase)
-    triggered_missing = _missing_triggered(codebase)
-    if not universal_missing and not triggered_missing:
+    missing = missing_expected_artifacts(codebase)
+    if not missing:
         return []
     listed = ", ".join(
-        universal_missing
-        + [f"{name} (required — {characteristic} recorded)" for name, characteristic in triggered_missing]
+        name if characteristic is None else f"{name} (required — {characteristic} recorded)"
+        for name, characteristic in missing
     )
     return [
         AdvisoryCandidate(

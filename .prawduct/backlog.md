@@ -7,6 +7,15 @@
 
 ## Open
 
+- **[GOV-2T6K]** `templates/architecture.md` authoring template is missing — a product triggered into an architecture spec has nothing to start from
+  `effort: S · impact: S · area: governance · source: builder · added: 2026-07-16 · status: open · stage: ready · refs: templates/, lib/coverage_probes.py (TRIGGERED_ARTIFACTS)`
+
+  `architecture` is one of the seven strategy-class artifacts (the characteristic-triggered arm fired by `multi_process_distributed`; the sibling triggered artifact `api-contract` ships a template, and every universal strategy-class artifact has one), but `templates/architecture.md` does not exist. So a product that records `multi_process_distributed` and runs `/prawduct:methodology planning` to author its architecture spec has no template to start from — every other strategy-class artifact hands the author a scaffold, this one does not.
+
+  Scope is an additive authoring-template gap, NOT a hole in the shipped coverage mechanism: the `coverage-scaffold` helper drops a neutral, template-independent stub, and a stub satisfies the strategy-artifact-missing probe, so coverage still functions end-to-end. What's missing is the human-facing starting-point document for writing a real architecture spec.
+
+  Fix-shape: add `templates/architecture.md` matching the structure/tone of the other strategy-class templates (`api-contract.md`, `security-model.md`, `data-model.md`, …), including the `(not relevant to this project — <reason>)` stub affordance the coverage mechanism recognizes. Discovered during structural-coverage Chunk 04; also recorded in `.prawduct/cross-cutting-concerns.md` Known Gaps. (builder)
+
 - **[GOV-6N4W]** UserPromptSubmit "norm-shaped prompt" classifier — detect norm-birth phrasing at prompt time and nudge capture
   `effort: M · impact: M · area: governance · source: builder · added: 2026-07-16 · status: open · stage: idea · related: GOV-7Q4N, WMK-4Q9T, WMK-1P4Q · refs: .prawduct/artifacts/build-plan-norm-lifecycle.md (Out of scope + Chunk 6), docs/norms.md`
 
@@ -1093,14 +1102,16 @@
 
   Observed 2026-07-16 during norm-lifecycle Chunk 2's review on feature/norm-lifecycle: `prawduct-hook infer-critic-mode` reported "no active build plan and no other rule fired — fail-safe to final" and verify-chunk-refs saw "no current chunk", even though project-state.yaml `active_build_plan: artifacts/build-plan-norm-lifecycle.md` was set and the plan's Chunk 2 declares `Critic mode: chunk`. Failed SAFE here (final ⊇ chunk — a broader review than required), but the same current-chunk/plan derivation feeds the stop-hook gate, so the miss is not confined to mode choice. Likely the derivation doesn't resolve the pointer, or expects a different Status-section shape than the plan uses. Overlap check before fixing separately: BLD-5J8N is the chunk-HEADER regex leg of cmd_verify_chunk_refs ("## Chunk NN — Title" h2/em-dash style exits "chunk not found") — if build-plan-norm-lifecycle.md uses that header style, this may be the same parser gap surfacing at the plan/current-chunk derivation layer; verify against both readers before fixing either alone. BLD-7W2J is the single-slot pointer design (different failure: pointer repointed between parallel plans, not a set pointer going unresolved). Governance-protected (lib/critic_mode.py, bin/prawduct-hook) → full Critic + PR review. (critic)
 
-- **[GOV-5D2W]** Advisory `show` reconstructs evidence with an empty probe registry — probe re-run silently no-ops for every probe family
-  `effort: S · impact: S · area: governance · source: critic · added: 2026-07-16 · status: open · stage: ready · related: GOV-6H4P · refs: lib/advisory_cmd.py, bin/prawduct-hook`
-
-  Probe registration lives only in cmd_clear (bin/prawduct-hook ~line 690), so lib/advisory_cmd.show_advisory's probe re-run reconstructs evidence against an empty probe registry and silently no-ops for every probe family. Pre-existing graceful degradation surfaced by the norm-lifecycle Chunk 3 Critic review (fact rev-20260716T173555Z-10a0f433, NOTE). Fix shape: a shared register-all-probes helper both call sites use. (critic)
-
 ## Promoted
 
 ## Archive
+
+- **[GOV-5D2W]** Advisory `show` reconstructs evidence with an empty probe registry — probe re-run silently no-ops for every probe family
+  `effort: S · impact: S · area: governance · source: critic · added: 2026-07-16 · status: shipped · stage: ready · closed-by: structural-coverage · related: GOV-6H4P · refs: lib/advisory_cmd.py, lib/probe_families.py, bin/prawduct-hook, tests/test_advisory_cmd.py · reviewed: 2026-07-16`
+
+  Probe registration lives only in cmd_clear (bin/prawduct-hook ~line 690), so lib/advisory_cmd.show_advisory's probe re-run reconstructs evidence against an empty probe registry and silently no-ops for every probe family. Pre-existing graceful degradation surfaced by the norm-lifecycle Chunk 3 Critic review (fact rev-20260716T173555Z-10a0f433, NOTE). Fix shape: a shared register-all-probes helper both call sites use. (critic)
+
+  Shipped 2026-07-16 (closed-by: structural-coverage): resolved by structural-coverage Chunk 04 — exactly the item's fix-shape. Created `lib/probe_families.py` with `register_all()` as the shared probe-registration helper, and wired both `bin/prawduct-hook` cmd_clear and `lib/advisory_cmd.show_advisory` to it, so `advisory show` reconstruction now registers the full probe roster before re-running probes (previously it scanned an empty registry and no-op'd for every family). Regression test: `tests/test_advisory_cmd.py::test_show_self_registers_probe_roster_for_reconstruction`.
 
 - **[GOV-EXI2]** `norm-registry-unratified` advisory adoption blind spot — Enforcement-table-lacks-norm-columns disjunct never fires without strategy-class artifacts
   `effort: M · impact: M · area: governance/advisory · source: user · added: 2026-07-16 · status: shipped · stage: design · closed-by: structural-coverage · related: GOV-7Q4N, GOV-6N4W · refs: lib/norm_probes.py (norm-registry-unratified probe), docs/norms.md (§ Adoption, § Enforcement), .prawduct/.governance-ledger.jsonl (Chunk 3 review R-1) · reviewed: 2026-07-16`
