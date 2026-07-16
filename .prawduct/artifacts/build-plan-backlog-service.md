@@ -50,13 +50,13 @@ step for the S1 residuals and run first.
 
 ## Status
 
-- [ ] Chunk 01: S1 settlement — live-API probes + field-level design artifacts
+- [x] Chunk 01: S1 settlement — live-API probes + field-level design artifacts
 - [ ] Chunk 02: Walking skeleton — create/get/list round-trip through the new CLI
 - [ ] Chunk 03: Mutation surface — update, close, comment, claim, verification stamp
 - [ ] Chunk 04: Query & pick — ready-work, filters, changed-since cursor
 - [ ] Chunk 05: Importer + export — S2 migration dry-run on discodon
 - [ ] Chunk 06: Governance integration — skill service-mode, briefing, provisioning, docs
-Context: Plan authored 2026-07-16; nothing built. Next: Chunk 01.
+Context: Chunk 01 complete (S1 settled, design keystone landed; Critic final → 0 blocking). Next: Chunk 02.
 
 ## Scaffolding
 

@@ -231,7 +231,14 @@ Priority = importance (P0 core / P1 important / P2 valuable / P3 nice-to-have), 
 **Spikes & pre-build questions — tiered by what they gate.** A spike earns "settle before build" only if its answer changes the design of the *next* increment (§16: core lib → CLI → one GitHub round-trip → importer dry-run). By that test only two items gate the core; the rest gate a later optional layer or a feature, or are runtime tuning that rides along with the build. (S-labels are stable — they're referenced in §8/§9/§12/§13 — only the grouping changed.)
 
 **Tier 1 — gates the thin slice (settle or prove first):**
-- **S1 — `gh` CLI vs direct HTTP — effectively a decision, not an open spike.** D8 already leans this to **HTTP** for auth-bearing calls (App installation tokens are JWT-based; `gh` can't mint them cleanly; HTTP handles App + user tokens directly), with `gh` surviving only as a low-ceremony bootstrap. Residual questions are narrow: whether to support `gh` as a fallback at all (G4 dependency footprint for minimal/CI environments) and confirm HTTP ETag/conditional-GET for cache revalidation. `gh` shields us from API drift; HTTP tracks it. Deliverable: **confirm HTTP + spec the auth flow** (tied to O2/D8). *(Latency is a footnote, not a criterion.)*
+- **S1 — `gh` CLI vs direct HTTP → RESOLVED (2026-07-16): direct HTTP confirmed, auth flow specced.**
+  Live probes (captured in `.prawduct/artifacts/api-notes-github-issues.md`) confirmed every P0
+  endpoint family over plain stdlib-style HTTPS with a user token (`Authorization: Bearer`),
+  including ETag/conditional-GET (304 on match, single + list endpoints) for the future cache
+  layer. `gh` survives only as the token bootstrap (`gh auth token` fallback behind `GH_TOKEN`) —
+  the auth flow and the owner-keyed App-upgrade seam are specced in
+  `.prawduct/artifacts/security-model-backlog-service.md`. *(Prior analysis retained below in
+  §10-D2/D8; latency was a footnote, and stayed one.)*
 - **S2 — Migration dry-run** on discodon (317 open + 1,754-line archive): body-fidelity, ID aliasing, relationship reconstruction, archive-as-closed-issues volume/noise, rollback. Migration is the riskiest single op — and **this is not throwaway spike code; it *is* the thin slice's proving increment** (§16 already lists "importer dry-run"). Doing it first de-risks the foundational adopt-GitHub bet (MG1: existing IDs stay valid) at the earliest point.
 
 **Tier 2 — gates a later optional layer or feature (settle when you build it, not before the core):**

@@ -1051,7 +1051,7 @@
   Dedup note (2026-07-14): distinct facet from COV-5H3N — that item is the *wrong-default-to-main* case when `base_branch:` is UNSET; this is the *stale-remote* case when `base_branch: develop` IS set and origin/develop trails local. Both live in `_resolve_base_branch`; keep separate, cross-linked. Adjacent to PR-7T2K (local-vs-origin divergence breaking a gate, but on the feature branch's push-state at merge, not the base branch) and umbrella'd by ENV-2W7K (gitflow base detection, Wave 2).
 
 - **[BLD-6T4R]** `verify-chunk-refs` forward-ref (`new`) exclusion is line-local, not chunk-scoped — a file declared `new` on a chunk's Deliverables line flags as missing when re-referenced elsewhere in the same chunk
-  `effort: S · impact: M · area: build-plan · source: critic · added: 2026-07-16 · status: open · stage: ready · related: BLD-3M7K, BLD-4K7P, BLD-5J8N · refs: lib/buildplan_refs.py (_BUILD_PLAN_NEW_QUALIFIER_RE, offset-keyed exclusion ~line 344)`
+  `effort: S · impact: M · area: build-plan · source: critic · added: 2026-07-16 · reviewed: 2026-07-16 · status: open · stage: ready · related: BLD-3M7K, BLD-4K7P, BLD-5J8N · refs: lib/buildplan_refs.py (_BUILD_PLAN_NEW_QUALIFIER_RE, offset-keyed exclusion ~line 344, _looks_like_file_path)`
 
   A file declared with the `new` qualifier on a chunk's Deliverables line (`new \`path\``) is still
   flagged as a missing ref when the same path is re-referenced WITHOUT the prefix elsewhere in the
@@ -1064,6 +1064,32 @@
   prose tokens misread as paths); this is the forward-ref exclusion's SCOPE. Fix direction: once a
   path is declared `new` anywhere in a chunk section, exempt all same-chunk re-references of that
   path. Low urgency — verify-chunk-refs is not wired into any gate. (critic)
+
+  Variant log (2026-07-16, backlog-service final-mode Critic review): `verify-chunk-refs` exit 1
+  on `.prawduct/artifacts/build-plan-backlog-service.md` line 144 — backticked ID-grammar prose
+  tokens (`owner/repo#number`, `repo/number`) parsed as plan-referenced file paths and flagged
+  missing. Strictly this is the token-CLASSIFICATION facet (BLD-3M7K's `_looks_like_file_path`
+  over-match, same family as branch-like slash tokens), logged here as this session's
+  verify-chunk-refs FP record. Same fix-the-classification rule applies: never demote the check
+  to a warning — fix what it classifies as a path (ID-grammar tokens with `#`, and slash tokens
+  that are format grammar rather than repo paths, should be excluded from the path heuristic).
+
+- **[ENV-7C4K]** `prawduct-hook` on PATH resolves to the installed plugin cache (stale version) inside framework-repo worktrees — Critic `critic-begin` silently wrote no kernel-v3 manifest until re-dispatched with repo-local `bin/prawduct-hook`
+  `effort: S · impact: M · area: environments · source: reflection · added: 2026-07-16 · status: open · stage: ready · related: ENV-2W7K, CRT-6W2N · refs: bin/prawduct-hook, skills/critic/SKILL.md (critic-begin dispatch), CLAUDE.md (Critic data-plane commands)`
+
+  Observed 2026-07-16 during the backlog-service Chunk 01 Critic run in a framework-repo
+  worktree: bare `prawduct-hook` on PATH resolved to the *installed plugin cache* binary (2.3.3)
+  while the worktree carries the repo-local `bin/prawduct-hook` (3.0.4 lineage). The Critic
+  coordinator's `critic-begin` ran the stale binary and silently wrote no kernel-v3 dispatch
+  manifest — no error, no manifest, wrong-version semantics — until the coordinator was
+  re-dispatched with `bin/prawduct-hook` explicitly. Dogfooding-specific hazard: product repos
+  legitimately run the plugin-cache binary; the skew bites only in the framework repo, where the
+  checkout is a newer lineage than the installed plugin. Fix-shape (either or both): (a) skills/
+  docs invoked inside the framework repo prefer the repo-local binary — resolve
+  `bin/prawduct-hook` at the repo root ahead of PATH; (b) fail loudly on version skew — the
+  invoked binary compares its self-reported version against the repo's expected lineage and
+  refuses to proceed silently. A silent no-op in the review data plane is the worst failure mode
+  here; loud beats clever. (reflection)
 
 ## Archive
 

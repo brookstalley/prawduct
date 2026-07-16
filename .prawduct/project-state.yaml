@@ -562,6 +562,27 @@ views_enabled: true
 active_build_plan: artifacts/build-plan-backlog-service.md
 
 # =============================================================================
+# DESIGN DECISIONS (recorded, per api-contract template)
+# =============================================================================
+# Recorded 2026-07-16 (backlog-service P0 design settlement). Full rationale:
+# artifacts/api-contract-backlog-cli.md (Versioning / Error Model sections).
+
+design_decisions:
+  api_versioning_approach: >-
+    prawduct-backlog CLI: integer JSON-envelope field `v` (whole-surface), active at
+    v:1 from first release; bumps only on breaking change; additive never bumps.
+    Deprecations: >=1 minor plugin release window, stderr warning + envelope
+    `deprecated` field; removal only with a v bump. Surface experimental until the
+    P0 slice ships (its closing cumulative review), then stable as a whole.
+  api_error_model_approach: >-
+    Return-value errors end-to-end (no exceptions past bin/): stable `error.kind`
+    vocabulary (usage|auth|not_found|validation|conflict|network|rate_limited|
+    server|internal) + `retryable` + `retry_after`; exit codes 0/1/2/3 where 3 =
+    retryable transport (the never-block floor's shell-visible signal); 403 is
+    rate_limited only with retry-after or x-ratelimit-remaining:0, else auth;
+    no automatic retries in P0.
+
+# =============================================================================
 # COVERAGE EVIDENCE (opt-in, v1.4+)
 # =============================================================================
 # When true, the Critic requires every changed file to appear in
