@@ -322,9 +322,9 @@ are closed by adding **CC5, PV4, GV6** to the parent; the owner-directed scrub a
 cites these (CC5→§8.2, PV4→§8.4, GV6→§8.7, MG4→§8.9).
 
 ## 16. What "drilling down" produces next (only after confidence in this level)
-1. **Data Model** — field-level GitHub encoding + optional-cache schema (fields derived from §7a).
+1. **Data Model** — field-level GitHub encoding + optional-cache schema (fields derived from §7a). → **drafted (2026-07-16):** `documentation/backlog-service-data-model.md`.
 2. **Non-Functional Requirements** — latency/rate-limit/cost budgets made testable.
-3. **Security Model** — auth per D8 **+ the O5 slice-auth/transport decision** (inherit session auth; `gh` portable transport; App as optional upgrade; credential-resolution keyed by target owner), token scope/revocation, provenance trust, **public-submission abuse (PV4)**.
+3. **Security Model** — auth per D8 **+ the O5 slice-auth/transport decision** (inherit session auth; `gh` portable transport; App as optional upgrade; credential-resolution keyed by target owner), token scope/revocation, provenance trust, **public-submission abuse (PV4)**. → **drafted (2026-07-16):** `documentation/backlog-service-security-model.md`.
 4. **API contract** — CLI/MCP surface: operations, return-value error model, versioning/compat.
 5. **Test Specifications** — incl. migration guard-sweep + offline/never-block behaviors.
 6. **Build plan** — thin vertical slice first (core lib → CLI → one GitHub round-trip → **prawduct-first scrub + importer dry-run**, §8.9/MG4), architecture proven before widening. `.prawduct/artifacts/`.
