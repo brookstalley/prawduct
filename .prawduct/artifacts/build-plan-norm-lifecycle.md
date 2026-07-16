@@ -81,14 +81,15 @@ time-domain organs (advisories = cheap deterministic probes, janitor = deep swee
 characteristics** in project-state classification are ambient norms — a flip triggers re-derivation
 of structurally-triggered artifacts plus an assumption audit.
 
-**The authority rule (verbatim — the load-bearing text all enforcement surfaces reference):**
+**The authority rule (canonical text lives in `docs/norms.md` § The Authority Rule — enforcement
+surfaces reference it, never restate it):**
 
-> Norms bind; descriptions track. When work diverges from a normative statement, that divergence
-> is an architectural decision — conform, or amend the norm explicitly as a vetoable decision with
-> rationale. When code diverges from a *descriptive* statement, update the artifact. A changeset
-> that edits a governing artifact's normative content to match its own code is making a decision,
-> not fixing drift — review it as an undocumented architectural decision (Goal 3, BLOCKING)
-> unless the decision is explicit and reasoned.
+> Norms bind; descriptions track. When work departs from a normative statement, that departure
+> is an architectural decision. Exactly four resolutions exist, and three of them are recorded
+> decisions: conform, amend the norm, record a ruling at its edge, or take a bounded exception.
+> What is never available is silent departure. [+ the general severity rule: any departure /
+> normative-content change / norm birth without a recorded decision → Goal 3, BLOCKING; and the
+> recorded-decision standard: owner-visible/vetoable, reasoned, timely, durably homed.]
 
 ## Surfaces enumerated (project-wide concept — full cascade)
 
@@ -148,8 +149,11 @@ one chunk (batch-durable-edits learning); token-budget guardrail tests are antic
   (b) New `lib/norm_probes.py` registering advisory probes via `lib/advisory_store.py`:
   **revisit-due** (dated `revisit:` in the past on an open item → one stable advisory);
   **dead-why** (a norm why/status line citing a backlog id that is archived/shipped → the norm is
-  up for review); **stalled-transition** (an `in-transition` norm whose tracking backlog item is
-  untouched past a staleness window); **norm-registry-unratified** (one-shot post-upgrade: the
+  up for review); **stalled-transition** (an `in-transition` norm whose tracking backlog item's
+  entry is unedited — no status, stage, or content change — past the staleness window, default
+  30 days, configurable); **norm-health-sweep-overdue** (Direction sections exist but the
+  janitor Norm Health sweep has never run / is past its window — the sweep stamps committed
+  project state the probe reads); **norm-registry-unratified** (one-shot post-upgrade: the
   product has strategy-class artifacts but no Direction section anywhere, or a preferences
   Enforcement table without the norm columns → one stable advisory pointing at the
   `/prawduct:doctor` ratification flow (Chunk 6 — same release, so the target exists at ship
@@ -249,8 +253,9 @@ one chunk (batch-durable-edits learning); token-budget guardrail tests are antic
   decision made by default, the exact anti-pattern this plan exists to kill, and the
   "auto-enable belongs with visibility, not with enforcement" learning applies verbatim.
   (b) One recurring health check — norm-registry
-  integrity (Direction statements have whys; preferences rows have mechanisms; classification
-  currency vs observable code signals). `skills/learnings/SKILL.md`: lookup also indexes Direction
+  integrity (Direction statements have whys, citing backlog ids where the rationale rests on
+  tracked work; preferences rows have mechanisms that exist; in-transition entries carry
+  tracking ids; classification currency vs observable code signals). `skills/learnings/SKILL.md`: lookup also indexes Direction
   sections so `/prawduct:learnings <topic>` returns governing norms beside case-law rules.
   Adoption path for existing products (documented in `docs/norms.md`'s adoption section, executed
   by doctor/janitor): additive and non-destructive — annotate existing strategy artifacts'

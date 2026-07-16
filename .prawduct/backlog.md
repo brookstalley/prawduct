@@ -1075,10 +1075,14 @@
 
   Cross-link note (triage, 2026-07-14): the upstream distinctness IDs above are discodon-side ids. Local mapping — CRT-8F3K → local counterpart **CRT-9K7T** (forked coordinator never writes findings); CRT-J4PM and CRT-K7VF have **no local backlog item** (upstream-only report ids, kept in the prose for the distinctness argument). Confirmed DISTINCT from all local family members (CRT-9K7T, CRT-5D8Q, COV-7K4N, CRT-8H3R) — cross-linked in `related:`, not merged. (user)
 
+## Promoted
+
 - **[GOV-7Q4N]** Norm lifecycle — treat governing-artifact statements as binding norms with a full lifecycle
-  `effort: L · impact: L · area: governance · source: user · added: 2026-07-16 · status: open · stage: ready · related: MET-3P7B, GOV-3P8K · refs: build-plan-norm-lifecycle.md`
+  `effort: L · impact: L · area: governance · source: user · added: 2026-07-16 · status: promoted · stage: ready · related: MET-3P7B, GOV-3P8K · refs: build-plan-norm-lifecycle.md · reviewed: 2026-07-16`
 
   Treat normative statements in governing artifacts as **binding norms** with a full lifecycle: birth/retroactivity, jurisdiction, rulings, exceptions with expiry, transitions, and erosion/decay health. Origin: discodon incident — async-tool work built a bespoke telemetry system parallel to the declared OTel substrate, and **every governance layer laundered the divergence** (Critic Goal 6, PR review, and doc-freshness each resolved the mismatch by syncing the strategy artifact to the code, i.e. the norm was rewritten to match the violation instead of the violation being flagged). Root cause: prawduct's coherence model is one-directional — artifacts track code — with no concept of normative statements that *bind* code. Design complete: build plan at `.prawduct/artifacts/build-plan-norm-lifecycle.md` (being authored the same session as this filing, 2026-07-16 — confirm the plan file landed before promoting). Adjacent-not-duplicate: MET-3P7B (assign an enforcement mechanism per preference — a norm-enforcement sibling at methodology level), GOV-3P8K (deterministic tripwire for durable-artifact coherence). (user)
+
+  Promoted 2026-07-16: plan-landed caveat confirmed — `.prawduct/artifacts/build-plan-norm-lifecycle.md` exists and `project-state.yaml` `active_build_plan` points to it. In active build on `feature/norm-lifecycle` (Chunk 1 complete).
 
 ## Archive
 
