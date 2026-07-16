@@ -3,6 +3,32 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-07-16: Norm lifecycle — normative authority across governing artifacts (norm-lifecycle)
+
+<!-- prawduct: type=feature | chunks=1,2,3,4,5,6 -->
+<!-- Statusless on feature/norm-lifecycle = release-pending once merged. Large framework
+     change, plan at .prawduct/artifacts/build-plan-norm-lifecycle.md (GOV-7Q4N), one
+     commit per chunk, per-chunk Critic + closing cumulative. -->
+
+**Parent:** GOV-7Q4N — a consuming product's telemetry-substrate divergence was laundered into
+legitimacy through the doc-freshness pipeline (every reviewer executed instructions correctly;
+the framework had no concept of a statement that *binds* future work).
+
+**What:** Norms bind; descriptions track. Canonical spec at `docs/norms.md` (authority rule,
+normative/descriptive test, lifecycle: birth/retroactivity, rulings, amendment, exceptions with
+expiry, transitions, erosion/decay, characteristic flips; adoption path with the incident as
+worked example). Enforcement consolidated into Critic Goal 4/3 + PR protocol + digests
+(event-domain); five advisory probes in `lib/norm_probes.py` on machine-readable hooks only
+(time-domain, cheap — incl. the two-arm `norm-registry-unratified`, gated on strategy-class
+artifacts); janitor **Norm Health** theme with the re-affirm-or-retire fork + committed
+`norm_health_last_run` stamp (time-domain, deep); doctor **Norm Ratification Flow** (owner
+confirm-or-correct, additive writes, `norm_registry_ratified` shared answer) + registry-integrity
+health check #10 (repair). Authoring: plan `governed_by:` seeded by `prawduct-hook jurisdiction`
+(work-model index inversion), planning reconciliation dispositions, norm-birth tripwire in
+building/discovery, `## Direction` blocks + Enforcement norm columns (Audit home / Why) across
+templates; `/prawduct:learnings` surfaces Direction norms beside case-law rules. Backlog gains
+`revisit:`. Follow-ups filed: GOV-6N4W (prompt classifier), JNT-8E3P (erosion metrics).
+
 ## 2026-07-14: Ephemeral-reference firewall — durable artifacts stay self-contained (ephemeral-ref-firewall)
 
 <!-- prawduct: type=feature | release=v3.0.4 | status=shipped -->

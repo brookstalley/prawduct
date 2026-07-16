@@ -383,11 +383,36 @@ methodology text names real commands. 6 last. Implementation is medium+ work: fe
       the norm-registry-unratified 2nd arm (deferred at Chunk 3) still can't fire until *existing
       products* adopt the columns via the Chunk 6 doctor path — **re-deferred to Chunk 6**;
       `lib/norm_probes.py` correctly untouched.
-- [ ] Chunk 6: Time-domain sweeps + adoption path (cumulative-final). Also: implement the
-      norm-registry-unratified 2nd arm (Enforcement-table-lacks-columns) once the doctor
-      adoption path exists, per the Chunk 5 re-deferral above.
+- [x] Chunk 6: Time-domain sweeps + adoption path (cumulative-final). Built 2026-07-16.
+      BUILT: janitor SKILL.md "Norm Health" theme (erosion distance + trend recorded under
+      `norm_health:`; decay via prose-why judgment cross-referencing Obsolescence; stalled
+      transitions; event-bound trigger walk; judgment-hygiene with integrity explicitly routed
+      to doctor) + `norms` scope shorthand + Reconcile gains the re-affirm-or-retire fork +
+      the sweep stamps `norm_health_last_run` (top-level scalar, mirrors
+      `backlog_last_groomed_at` — the write side Chunk 3's probe forward-declared).
+      doctor SKILL.md: Norm Ratification Flow (read → propose via the normative/descriptive
+      test → batch confirm-or-correct → additive writes → record `norm_registry_ratified`,
+      "no norms to ratify" valid) + Health Check #10 norm-registry integrity (applies only
+      where ratified norms exist — absence routes to the ratification cue, not a finding) +
+      routing-table row; allowed-tools gain Edit/Write (plan-mandated — the flow writes
+      owner-confirmed governance state; flow preamble carves the exception to read-and-guide).
+      learnings SKILL.md: lookup indexes `## Direction` sections — "Governing Norms" returned
+      beside case-law rules. docs/norms.md needed NO edit — the adoption section + telemetry-
+      substrate worked example landed with Chunk 1 (acceptance verified against the shipped
+      text). Chunk 5 re-deferral RESOLVED: norm-registry-unratified 2nd arm
+      (Enforcement-table-lacks-norm-columns, `Audit home`/`Why` cells) implemented in
+      lib/norm_probes.py. [DECISION: both trigger arms gated on a strategy-class artifact
+      existing, per the canonical docs/norms.md § Adoption scoping — Chunk 3's ungated
+      phrasing would fire on every pre-norm product with a preferences table (incl. this
+      repo, which has no strategy artifacts and stays correctly silent); rare-and-high-signal
+      is the hard bar | user can veto → ungate the table arm]. Evidence string made
+      arm-independent (stable advisory id; live arms named in trigger_summary — probes
+      unreleased, no deployed ids to preserve; PROBE_VERSION stays 1).
+      VERIFIED: 1778 tests green (+6 for the 2nd arm: both positives, gate, no-index-table
+      silence, fact suppression, cross-arm id stability); zero-fire repo tripwire still
+      green; labels grep-identical (`Audit home`/`Why` across template, probe, doctor).
+      Follow-ups filed: GOV-6N4W (norm-shaped-prompt classifier), JNT-8E3P (erosion metrics
+      automation). Change-log entry added (norm-lifecycle, chunks 1-6).
 
-Context: implementing on feature/norm-lifecycle, one commit per chunk, per-chunk Critic reviews.
-Chunks 4-6 are doc chunks; 4 is the enforcement keystone (token ceiling: review-protocol.md
-< 3450 est tokens — consolidation deletions pay for additions; small precedented bump only if
-unavoidable).
+Context: all six chunks built. Closing cumulative review (the /prawduct:pr create gate) runs
+against merge-base...HEAD after the Chunk 6 commit.

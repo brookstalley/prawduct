@@ -80,6 +80,26 @@ def _direction_artifact(*entries: str) -> str:
     return body + "\n"
 
 
+# Preferences files for the unratified probe's second arm: an Enforcement index
+# table without / with the norm columns (Audit home, Why). Both carry the
+# mechanism-descriptions table too, so the header scan must pick the right one.
+_PREFS_WITHOUT_NORM_COLUMNS = (
+    "# Project Preferences\n\n## Enforcement\n\n"
+    "| Mechanism | Where it lives | What it catches | Trade-off |\n|---|---|---|---|\n"
+    "| **Test** | `tests/` | structural rules | re-validation cost |\n\n"
+    "| Preference | Mechanism | Enforcement artifact |\n|---|---|---|\n"
+    "| naming | Critic | reviewer reads the diff |\n"
+)
+_PREFS_WITH_NORM_COLUMNS = (
+    "# Project Preferences\n\n## Enforcement\n\n"
+    "| Mechanism | Where it lives | What it catches | Trade-off |\n|---|---|---|---|\n"
+    "| **Test** | `tests/` | structural rules | re-validation cost |\n\n"
+    "| Preference / norm | Mechanism | Enforcement artifact | Audit home | Why |\n"
+    "|---|---|---|---|---|\n"
+    "| naming | Critic | reviewer reads the diff | janitor | consistency |\n"
+)
+
+
 # =============================================================================
 # revisit-due
 # =============================================================================
@@ -326,6 +346,59 @@ class TestNormRegistryUnratifiedProbe:
         _write_artifact(tmp_path, "build-plan-foo.md", "# Build Plan\n\nChunks.\n")
         assert np.probe_norm_registry_unratified(ProjectState({}), _cb(tmp_path)) == []
 
+    # --- second arm: the Enforcement index table lacks the norm columns -------
+
+    def test_fires_when_direction_present_but_table_lacks_norm_columns(self, tmp_path):
+        # Ratification began (Direction exists) but the index can't carry it.
+        _write_artifact(tmp_path, "security-model.md", _direction_artifact("- **X.**\n  Why: because.\n"))
+        _write_artifact(tmp_path, "project-preferences.md", _PREFS_WITHOUT_NORM_COLUMNS)
+        out = np.probe_norm_registry_unratified(ProjectState({}), _cb(tmp_path))
+        assert len(out) == 1
+        assert "Enforcement table lacks the norm columns" in out[0].trigger_summary
+        assert out[0].recommended_action == "/prawduct:doctor"
+
+    def test_silent_when_direction_present_and_table_has_norm_columns(self, tmp_path):
+        _write_artifact(tmp_path, "security-model.md", _direction_artifact("- **X.**\n  Why: because.\n"))
+        _write_artifact(tmp_path, "project-preferences.md", _PREFS_WITH_NORM_COLUMNS)
+        assert np.probe_norm_registry_unratified(ProjectState({}), _cb(tmp_path)) == []
+
+    def test_silent_when_table_lacks_columns_but_no_strategy_artifact(self, tmp_path):
+        # The strategy-artifact gate scopes BOTH arms (docs/norms.md § Adoption):
+        # a product with no architectural-direction artifacts — this repo's own
+        # shape — has nothing to ratify, so a pre-norm table alone never fires.
+        _write_artifact(tmp_path, "build-plan-foo.md", "# Build Plan\n\nChunks.\n")
+        _write_artifact(tmp_path, "project-preferences.md", _PREFS_WITHOUT_NORM_COLUMNS)
+        assert np.probe_norm_registry_unratified(ProjectState({}), _cb(tmp_path)) == []
+
+    def test_silent_when_prefs_has_no_index_table(self, tmp_path):
+        # Only the mechanism-descriptions table (no `Preference…` header): nothing
+        # to extend → fail toward silence; structural absence is arm 1's job.
+        _write_artifact(tmp_path, "security-model.md", _direction_artifact("- **X.**\n  Why: because.\n"))
+        prefs = (
+            "# Project Preferences\n\n## Enforcement\n\n"
+            "| Mechanism | Where it lives | What it catches | Trade-off |\n|---|---|---|---|\n"
+            "| **Test** | `tests/` | structural rules | re-validation cost |\n"
+        )
+        _write_artifact(tmp_path, "project-preferences.md", prefs)
+        assert np.probe_norm_registry_unratified(ProjectState({}), _cb(tmp_path)) == []
+
+    def test_ratified_fact_suppresses_second_arm_too(self, tmp_path):
+        _write_artifact(tmp_path, "security-model.md", _direction_artifact("- **X.**\n  Why: because.\n"))
+        _write_artifact(tmp_path, "project-preferences.md", _PREFS_WITHOUT_NORM_COLUMNS)
+        state = ProjectState({np.RATIFIED_FACT: "2026-07-16"})
+        assert np.probe_norm_registry_unratified(state, _cb(tmp_path)) == []
+
+    def test_advisory_id_stable_across_arms(self, tmp_path):
+        # Arm 1 (no Direction anywhere) and arm 2 (Direction present, columns
+        # missing) must share one advisory id — the evidence is arm-independent.
+        _write_artifact(tmp_path, "security-model.md", "# Security Model\n\nProse.\n")
+        a = np.probe_norm_registry_unratified(ProjectState({}), _cb(tmp_path))[0]
+        _write_artifact(tmp_path, "security-model.md", _direction_artifact("- **X.**\n  Why: because.\n"))
+        _write_artifact(tmp_path, "project-preferences.md", _PREFS_WITHOUT_NORM_COLUMNS)
+        b = np.probe_norm_registry_unratified(ProjectState({}), _cb(tmp_path))[0]
+        assert _id(a) == _id(b)
+        assert a.trigger_summary != b.trigger_summary  # the live arm(s) are named
+
 
 # =============================================================================
 # norm-health-sweep-overdue
@@ -396,7 +469,10 @@ class TestSilentAgainstThisRepo:
     def test_no_norm_lifecycle_advisories_fire_here_today(self):
         # The rare-and-high-signal bar: this repo has no dated `revisit:` values,
         # no `## Direction` heading in any .prawduct/artifacts/*.md, and no
-        # strategy-class artifact present — so every norm-lifecycle probe is silent.
+        # strategy-class artifact present — so every norm-lifecycle probe is
+        # silent. (This repo's own preferences Enforcement table predates the
+        # norm columns, which is exactly why the unratified probe's second arm
+        # is gated on strategy-class artifacts existing.)
         repo_root = Path(__file__).resolve().parents[1]
         state = load_project_state(repo_root)
         codebase = make_codebase(repo_root)

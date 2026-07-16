@@ -3,7 +3,7 @@ description: Health-check, repair, and maintain an already-onboarded Prawduct re
 argument-hint: "[no args — runs in the product repo]"
 user-invocable: true
 disable-model-invocation: false
-allowed-tools: Bash(prawduct-hook verify-operator-verification *), Bash(prawduct-hook audit-learnings *), Bash(prawduct-hook update-gitignore), Read, Glob
+allowed-tools: Bash(prawduct-hook verify-operator-verification *), Bash(prawduct-hook audit-learnings *), Bash(prawduct-hook update-gitignore), Read, Glob, Edit, Write
 ---
 
 You are managing prawduct product-repo health under the **plugin** distribution model. Prawduct is installed as a Claude Code plugin (dev-time governance); a product commits only the install *reference* plus its own `.prawduct/` state — no framework files. Every flow operates on the consumer's own repo: there is no framework checkout to call back to.
@@ -31,6 +31,7 @@ For the product's **own codebase craft** — code/docs/tests/dependency quality 
 | "enable coverage" / "turn on F4" / "enable operator verification" / "turn on F10" / similar | **Enable a gate**: see Enable-Gate Flow |
 | "verify VRF-NN" / "drain operator verification" / "mark verified" | **Verify**: see Verify Flow |
 | "audit learnings" / "retire structurally-enforced learnings" / "check lifecycle metadata" / similar | **Audit Learnings**: see Audit-Learnings Flow |
+| "ratify norms" / the `norm-registry-unratified` advisory pointed here / "review candidate norms" / similar | **Ratify Norms**: see Norm Ratification Flow |
 
 ## Health Check Flow (current dir is a product repo)
 
@@ -45,11 +46,22 @@ Plugin-native — read the consumer's OWN `.prawduct/` and `.claude/` with Read 
 7. **External backlog files** — if `TODO.md` / `BACKLOG.md` / `ROADMAP.md` / `IDEAS.md` exist in the repo root or `.github/` and aren't recorded in `backlog_external_imports`, report them and recommend **`/prawduct:backlog import <path>`** (don't auto-import — the user confirms). This is the explicit health-check surface for the same signal the `external-backlog-detected` session-start advisory raises ambiently; both resolve on `backlog_external_imports`.
 8. **Gitignore contract** — `.gitignore` should carry the session-file entries and must NOT ignore retired entries (`.prawduct/artifacts/build-plan.md` — build plans are tracked artifacts; an ignored plan plus the tracked `active_build_plan:` pointer breaks every other clone). Stale line present or session entries missing → run `prawduct-hook update-gitignore` (it prints any `unignored:` paths — advise `git add` on those that exist on disk). This checks the prawduct *contract* only; general gitignore hygiene (build artifacts, editor files, secrets) is the janitor's Version Control Hygiene theme (`docs/doctor-vs-janitor.md`).
 9. **API versioning decision** — if the repo exposes an API (`classification.structural.exposes_programmatic_interface: true`, or a Glob-able `openapi`/`swagger` spec or `*.proto` file in the tree — the `api-versioning` advisory additionally scans source for web-framework imports, which this read/Glob-only check does not) but no versioning decision is recorded (`api_versioning_decided` unset *and* `design_decisions.api_versioning_approach` null), report **degraded** and recommend recording the decision — a versioning + deprecation scheme, or an explicit dated deferral with a revisit trigger (`/prawduct:methodology discovery` / `/prawduct:methodology planning` capture it; `templates/api-contract.md` details it). Read-and-guide only — present the one-line `project-state.yaml` edit, don't auto-edit (consistent with #6/#7 and Enable-Gate). This is the on-demand health-check surface for the same signal the `api-versioning` session-start advisory raises ambiently; both resolve on a recorded decision. "API" is any programmatic surface others call (network service, library/SDK, on-device/platform, CLI) — an internal-only surface records "none — internal-only" and is healthy.
+10. **Norm-registry integrity** — when the product has ratified norms (`## Direction` sections in `.prawduct/artifacts/*.md`, or norm rows in the preferences Enforcement table — `docs/norms.md`), check each: every Direction entry carries a **Why** (citing backlog ids *literally* where the rationale rests on tracked work — the citation is what makes decay mechanically detectable); every `Status: in-transition` entry names a live tracking backlog item; every Enforcement row names a mechanism that actually exists (a named-but-never-built mechanism is the aspirational failure with extra steps); pointer rows point at a Direction section that exists; and `project-state.yaml` classification matches observable code signals (e.g. `multi_party: false` alongside a login/auth surface suggests a characteristic flipped without the recorded decision — `docs/norms.md` § Ambient norms). A product with **no** ratified norms is not a finding here — that is the Ratification Flow's cue (the `norm-registry-unratified` advisory raises it ambiently). Report degraded with the specific entries; the fixes are owner decisions (backfill the why, re-point the row, amend the norm), never auto-edits.
 
 Classify and report:
 - **healthy**: install reference + `distribution: plugin` + no residue + core state present + discovery captured (or no product work yet) → "Your prawduct plugin setup is healthy."
-- **degraded**: governance works but something is off (missing anchor, a missing non-critical file, discovery uncaptured despite product work, or an exposed API with no recorded versioning decision) — list each with its implication and the fix.
+- **degraded**: governance works but something is off (missing anchor, a missing non-critical file, discovery uncaptured despite product work, an exposed API with no recorded versioning decision, or norm-registry integrity findings) — list each with its implication and the fix.
 - **broken**: no install reference, or file-sync residue still committed — recommend `/prawduct:migrate` (or installing the plugin first).
+
+## Norm Ratification Flow (the `norm-registry-unratified` advisory's landing target)
+
+Turns the direction a product's owner **already declared** into ratified norms — `## Direction` sections and Enforcement rows (`docs/norms.md` § Adoption). Binding force comes from the owner's declaration; ratification *records* it, never creates it. Detection and surfacing are automatic (the advisory + session briefing); execution stays on-demand and **ratification stays with the owner** — auto-binding norms would be a norm-birth decision made by default. This is the one doctor flow that writes prose: it records the owner's confirmed decisions into governance state (`.prawduct/` artifacts), additively and non-destructively — never product code, never a rewrite of product content.
+
+1. **Read** the product's strategy-class artifacts (`observability-strategy.md`, `security-model.md`, `architecture.md`, `api-contract.md`, `nonfunctional-requirements.md`, `operational-spec.md`, `data-model.md` — whichever exist in `.prawduct/artifacts/`), `project-preferences.md`, and `.prawduct/learnings.md`.
+2. **Propose candidate norms** — statements a decision plainly stands behind (the `docs/norms.md` normative/descriptive test: "if the code changed and this sentence were updated to match, would a decision have been silently unmade?"). Draft each as statement + why + status (`steady-state`, or `in-transition` naming the tracking backlog item; cite backlog ids literally in whys where the rationale rests on tracked work). Classify conservatively — genuinely ambiguous prose is presented as a question, not asserted as a candidate.
+3. **Batch for confirm-or-correct** (the janitor Step-3 Reconcile pattern): present all candidates in one block for the owner to confirm, correct, or strike. Never ask one per message.
+4. **Write the ratified norms** — only what the owner confirmed: a `## Direction` section in the artifact each norm governs (the original narrative prose stays — the Direction entry is the ratified form beside it, per `docs/norms.md` § Anatomy), plus an Enforcement row per norm (pointer rows for artifact-homed norms; assign each row's mechanism and audit home — a mechanism that doesn't exist yet is filed as backlog work at birth). If the Enforcement table predates the norm columns, extend it via the legend-refresh pattern — add the `Audit home` and `Why` columns additively, preserving every existing row.
+5. **Record the outcome** — set `norm_registry_ratified: <today>` (top-level scalar) in `project-state.yaml`. A **"no norms to ratify"** outcome is valid (proportionality) and records `norm_registry_ratified: none — no norms to ratify` instead. Either answer is shared state: one teammate's ratification clears the advisory for everyone on next sync.
 
 ## Enable-Gate Flow (coverage F4 / operator-verification F10)
 
@@ -98,7 +110,7 @@ The audit is read-only by default. Promotion is always advisory — `learnings.m
 
 ## Important Notes
 
-- Onboarding lives in **`/prawduct:onboard`** (scaffold a new or existing repo via `prawduct-hook init-product`, or route a pre-2.0 file-sync repo to `/prawduct:migrate`). This skill (`doctor`) covers an already-onboarded repo: health-check, enable-gate, verify, audit-learnings.
+- Onboarding lives in **`/prawduct:onboard`** (scaffold a new or existing repo via `prawduct-hook init-product`, or route a pre-2.0 file-sync repo to `/prawduct:migrate`). This skill (`doctor`) covers an already-onboarded repo: health-check, enable-gate, verify, audit-learnings, ratify-norms.
 - Health Check and Audit-Learnings decide from the consumer's OWN `.prawduct/` — no framework checkout, no sync.
 - Enabling a gate is a `project-state.yaml` flag flip; the BLOCKING consequence is immediate on the next relevant gate (governance is modeled as CI — see `/prawduct:methodology`).
 - Hooks and governance activate in the target's own Claude Code session, not the current one.

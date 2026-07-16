@@ -4,8 +4,9 @@ Five deterministic ``ProbeFn(state, codebase)`` probes surfacing the *time-domai
 cheap* enforcement row of ``docs/norms.md`` § Enforcement — the Session-sync
 contract. Each reads only **machine-readable hooks** (dated ``revisit:`` values,
 backlog-id literals on norm ``Why:``/``Status:`` lines, the ``Status:
-in-transition`` token, structural presence/absence of ``## Direction`` sections
-and strategy-class artifacts) — never prose interpretation. Each yields at most
+in-transition`` token, structural presence/absence of ``## Direction`` sections,
+strategy-class artifacts, and the Enforcement index table's norm columns) —
+never prose interpretation. Each yields at most
 **one** :class:`~lib.advisory_store.AdvisoryCandidate` with *count-independent*
 evidence, so the advisory id is one stable nudge (no churn as the firing set
 changes; the live list lives in ``trigger_summary``). Rare-and-high-signal is a
@@ -56,16 +57,20 @@ Design note — per-probe lock-in (fires / clears / reader-action)
   staleness so the reader can accelerate the migration or record a stopgap.
 
 - **norm-registry-unratified** — *Fires:* one-shot post-upgrade — a strategy-class
-  artifact exists (:data:`STRATEGY_CLASS_ARTIFACTS`) AND no ``## Direction``
-  section exists in ANY ``.prawduct/artifacts/*.md``. *Clears:* ratification (a
-  ``## Direction`` section appears) OR the shared-state answer
-  :data:`RATIFIED_FACT` is recorded (a valid "no norms to ratify" outcome — one
-  teammate's answer clears it for everyone). *Reader-action:* points at the
-  ``/prawduct:doctor`` ratification flow. *Deliberate narrowing:* the second
-  trigger arm — "the preferences Enforcement table lacks the norm columns" — is
-  deferred until that table gains the norm columns (via the project-preferences
-  template + doctor ratification); implementing it before the columns exist would
-  false-fire on every product, including this repo.
+  artifact exists (:data:`STRATEGY_CLASS_ARTIFACTS`) AND the registry is
+  unratified on either arm: (a) no ``## Direction`` section exists in ANY
+  ``.prawduct/artifacts/*.md``, or (b) the preferences Enforcement index table
+  lacks the norm columns (:data:`_NORM_INDEX_COLUMNS` — ratification began but
+  the index cannot carry it). Both arms are gated on a strategy-class artifact
+  existing (``docs/norms.md`` § Adoption scopes the advisory so): a product with
+  no architectural-direction artifacts has nothing to ratify, and nagging it
+  would break the rare-and-high-signal bar. *Clears:* the ``/prawduct:doctor``
+  ratification flow resolving both arms (Direction sections written / table
+  extended) OR the shared-state answer :data:`RATIFIED_FACT` is recorded (a
+  valid "no norms to ratify" outcome — one teammate's answer clears it for
+  everyone). *Reader-action:* points at the ``/prawduct:doctor`` ratification
+  flow. The evidence string is arm-independent so the advisory id stays stable
+  as the firing arm changes; the live arm(s) are named in ``trigger_summary``.
 
 - **norm-health-sweep-overdue** — *Fires:* ``## Direction`` sections exist AND the
   janitor Norm Health sweep stamp :data:`SWEEP_STAMP` is absent or older than
@@ -114,6 +119,11 @@ STRATEGY_CLASS_ARTIFACTS = (
     "operational-spec.md",
     "data-model.md",
 )
+
+# The norm columns the preferences Enforcement index table gains at ratification
+# (templates/project-preferences.md). Exact cell text — these are machine-readable
+# markers, not prose; missing either one means the table predates the norm index.
+_NORM_INDEX_COLUMNS = ("Audit home", "Why")
 
 # Shared-state answer that clears norm-registry-unratified (mirrors
 # api_versioning_probes.RESOLUTION_FACT). Truthy — including a recorded "none —
@@ -282,6 +292,31 @@ def _extract_ids(line: str) -> list[str]:
     return _BACKLOG_ID_RE.findall(line)
 
 
+def _norm_index_lacks_columns(codebase: Codebase) -> bool:
+    """True when the preferences Enforcement index table exists but lacks the norm columns.
+
+    The index table is identified by its header row: a markdown table row whose
+    first cell starts with ``Preference`` (the ratified header reads
+    ``Preference / norm``; the pre-norm template read ``Preference``). Lacking
+    either :data:`_NORM_INDEX_COLUMNS` cell means the table predates the norm
+    index. No preferences file, or no such table, fails toward silence — there
+    is nothing to extend, and structural absence of the registry is the first
+    trigger arm's job. The first matching header decides (one index table per
+    preferences file, per the template)."""
+    text = _read_text(codebase.root / ".prawduct" / "artifacts" / "project-preferences.md")
+    if not text:
+        return False
+    for line in text.splitlines():
+        stripped = line.strip()
+        if not stripped.startswith("|"):
+            continue
+        cells = [c.strip() for c in stripped.strip("|").split("|")]
+        if not cells or not cells[0].startswith("Preference"):
+            continue
+        return not all(col in cells for col in _NORM_INDEX_COLUMNS)
+    return False
+
+
 # =============================================================================
 # Probes
 # =============================================================================
@@ -419,28 +454,38 @@ def probe_stalled_transition(state: ProjectState, codebase: Codebase):
 
 
 def probe_norm_registry_unratified(state: ProjectState, codebase: Codebase):
-    """Fire once post-upgrade: strategy-class artifacts exist but no norms are ratified.
+    """Fire once post-upgrade: strategy-class artifacts exist but the registry is unratified.
 
-    Suppressed when (a) the shared-state :data:`RATIFIED_FACT` answer is recorded
-    (a "no norms to ratify" outcome is valid and clears it for everyone), (b) any
-    ``## Direction`` section exists (ratification has begun), or (c) no
-    strategy-class artifact is present. Points at the ``/prawduct:doctor``
-    ratification flow."""
+    Two trigger arms, one stable advisory: (a) no ``## Direction`` section exists
+    in ANY artifact — nothing is ratified; (b) the preferences Enforcement index
+    table lacks the norm columns (:func:`_norm_index_lacks_columns`) —
+    ratification began but the index cannot carry it. Both arms are gated on a
+    strategy-class artifact existing. Suppressed when the shared-state
+    :data:`RATIFIED_FACT` answer is recorded (a "no norms to ratify" outcome is
+    valid and clears it for everyone). Points at the ``/prawduct:doctor``
+    ratification flow, which resolves both arms."""
     if state.get(RATIFIED_FACT):
         return []
     paths = _artifact_paths(codebase)
     if not any(p.name in STRATEGY_CLASS_ARTIFACTS for p in paths):
         return []
-    if any(_has_direction_heading(_read_text(p)) for p in paths):
+    arms: list[str] = []
+    if not any(_has_direction_heading(_read_text(p)) for p in paths):
+        arms.append("no `## Direction` section is ratified in any artifact")
+    if _norm_index_lacks_columns(codebase):
+        arms.append("the preferences Enforcement table lacks the norm columns (Audit home / Why)")
+    if not arms:
         return []
     return [
         AdvisoryCandidate(
             type="norm-registry-unratified",
-            evidence=("strategy-class artifacts exist but no `## Direction` section is ratified in any artifact",),
+            evidence=(
+                "strategy-class artifacts exist but the norm registry is unratified "
+                "(no `## Direction` sections, or the Enforcement table lacks the norm columns)",
+            ),
             trigger_summary=(
-                "This product has strategy-class artifacts but no ratified norms (`## Direction` "
-                "sections). Ratify the direction its owner already declared, or record that there "
-                "are none to ratify."
+                f"Norm registry unratified: {'; '.join(arms)}. Ratify the direction the "
+                "owner already declared, or record that there are none to ratify."
             ),
             recommended_action="/prawduct:doctor",
             priority="info",
