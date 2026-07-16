@@ -36,14 +36,32 @@ my picks as vetoable); Chunk 01's keystone confirms the declined-answer schema a
 
 ## Status
 
-- [ ] Chunk 01: Coverage keystone — expectation model + declined-answer schema + one artifact end-to-end
+- [x] Chunk 01: Coverage keystone — expectation model + existence-based probe (one artifact end-to-end)
 - [ ] Chunk 02: Full layer-1 table — all 7 strategy-class artifacts (universal + structurally-triggered)
 - [ ] Chunk 03: Layer 0 + staging — sharpen DISCOVERY-NOT-CAPTURED; stage the three advisories; resolve GOV-EXI2
 - [ ] Chunk 04: Doctor / onboarding / methodology / propagation
 - [ ] Chunk 05: Dogfood against the empty fixture + close (cumulative-final)
-Context: Plan drafted 2026-07-16 on `feature/structural-coverage`; awaiting owner approval of the
-three DECISION lines before Chunk 01. Nothing built. `active_build_plan` still points at the
-finished norm-lifecycle plan — repoint to this file at build-start.
+Context: Chunk 01 complete on `feature/structural-coverage` (commits b8f3758, c260c22). The
+existence-based coverage keystone: `lib/coverage_probes.py` fires a `strategy-artifact-missing`
+advisory when a strategy-class artifact file is absent — content-agnostic, so a `(not relevant)`
+stub counts (owner-approved decline→stub pivot; the four DECISION lines are ruled on). Fires
+exactly once against this repo today (data-model.md missing) — the live-fixture proof. Cumulative
+Critic clean (0 blocking / 0 warning / 9 note; fact rev-20260716T214450Z-f696a248). `active_build_plan`
+repointed here. Next: Chunk 02.
+
+**Deferred NOTES carried to Chunk 02** (Critic cumulative, non-blocking):
+- Citation precision: `coverage_probes.py` cites *planning.md "Universal artifacts"* as authority for
+  the 5-universal set, but that section lists 9. The 5 are the **intersection** of planning.md's
+  universal artifacts ∩ the 7 strategy-class artifacts (`docs/norms.md § Where Norms Live`) — state
+  the derivation precisely when the table widens.
+- Dedup: the strategy-class filename list will be duplicated across `lib/norm_probes.py`
+  (`STRATEGY_CLASS_ARTIFACTS`) and `lib/coverage_probes.py` at widening — extract a shared constant.
+- Docstring: surface the "one artifact wired; rest extend the tuple" staging caveat up into the
+  module docstring (currently only on the `UNIVERSAL_ARTIFACTS` comment).
+- Dogfood test: strengthen the live-repo assertion from `any(...)` toward "exactly one, composed
+  with all families" (backlog-at-most per the reviewer).
+- Registration gap: the new probe family inherits GOV-5D2W's `cmd_clear`-only registration (the
+  `advisory show` reconstruction no-ops) — address in Chunk 04 (registration/doctor).
 
 ## Scaffolding
 
