@@ -30,6 +30,9 @@ inference as a vetoable assumption. Full model: `methodology/discovery.md` "Cali
 - **Never silently drop a requirement — or silently *invent* one.** Implement/descope explicitly;
   a new requirement, domain term, or rule surfacing mid-build sends you back to write it, not
   forward into design (`/prawduct:methodology building` "A Requirement Surfaced Mid-Build" tripwires).
+- **Norms bind; descriptions track** (`docs/norms.md`). Direction sections and preferences norms
+  lead the code — departing from one is a decision to record (amend / ruling / bounded
+  exception), never doc-drift to sync; amending a norm to match your own code is the tell.
 - **Invoke the Critic (`/prawduct:critic`) after medium+ work.** Never write Critic findings
   yourself — the independence is the whole value. After a coordinator review (`final`/
   `cumulative` at 5+ changed files), run `prawduct-hook critic-consolidate` before reading the

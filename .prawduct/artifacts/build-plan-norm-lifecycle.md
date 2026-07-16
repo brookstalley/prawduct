@@ -328,7 +328,24 @@ methodology text names real commands. 6 last. Implementation is medium+ work: fe
       stalled-transition, norm-registry-unratified, norm-health-sweep-overdue — the 5th landed
       here, not deferred; janitor writes the stamp in Chunk 6). 31 tests; zero-fire against this
       repo enforced by a repo-coupled tripwire test. As-built deferrals recorded in the chunk.
-- [ ] Chunk 4: Enforcement surfaces — Critic/PR consolidation + digest
+- [~] Chunk 4: Enforcement surfaces — IN PROGRESS (paused at user request 2026-07-16).
+      DONE: review-protocol.md consolidation (authority preamble incl. unmarked-prose binding +
+      decidability test + recorded-decision anti-self-certification + unruled-edge trigger;
+      Goal 4 norms rewrite; Goal 6 strategy-line deleted; Learnings Cross-Check extended;
+      resolvable ${CLAUDE_SKILL_DIR} spec path); pr/review-protocol.md norm-amendment bullet;
+      both digest lines; token test 3450→3530 (content ~3529, under the diet formula ~3533 —
+      [DECISION: the plan's "without raising budgets" success line was over-tight; the real
+      lock is the diet formula, preserved | user can veto → deeper trim]).
+      TABLETOP: billboard replay PASSES; laundering replay FAILED on first text (closed binding
+      enumeration + unresolvable spec path + self-documenting amendment) — all three fixed in
+      the current text, BUT THE FIX IS NOT RE-VERIFIED.
+      RESUME WITH: (1) re-run the laundering judge against the fixed protocol text (fresh
+      workflow; do NOT resume the cached run — prompts unchanged means stale cache); (2) full
+      suite + test-evidence record; (3) /prawduct:critic final (enforcement keystone) +
+      resolutions; (4) commit Chunk 4. Deferred to Chunk 5 (recorded): a Goal 2
+      "plan lacks governed_by: reconciliation" check — the governed_by mechanic doesn't exist
+      until Chunk 5's planning.md lands; add the check text alongside it (review-cycle.md is
+      the token-unguarded home if review-protocol.md can't afford it).
 - [ ] Chunk 5: Authoring surfaces — planning/building/discovery + templates
 - [ ] Chunk 6: Time-domain sweeps + adoption path (cumulative-final)
 
