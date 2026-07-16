@@ -994,7 +994,7 @@
   as written. (critic)
 
 - **[BKL-5D2C]** Move the backlog out of git to a centralized, agent-friendly issue-tracking service
-  `effort: L · impact: L · area: backlog · source: user · added: 2026-07-13 · status: open · stage: requirements · related: BKL-7M4Q, BKL-8T3W, BKL-3R8P · refs: documentation/backlog-service-requirements.md · reviewed: 2026-07-14`
+  `effort: L · impact: L · area: backlog · source: user · added: 2026-07-13 · status: open · stage: ready · related: BKL-7M4Q, BKL-8T3W, BKL-3R8P · refs: documentation/backlog-service-requirements.md, documentation/backlog-service-prd.md, .prawduct/artifacts/build-plan-backlog-service.md · reviewed: 2026-07-16`
 
   Umbrella requirement for replacing .prawduct/backlog.md (git-file backlog, LLM-mediated
   mutation) with a centralized backlog/issue service that is fast, non-blocking,
@@ -1003,8 +1003,12 @@
   edits, drop-box upstream reporting. Requirements doc:
   documentation/backlog-service-requirements.md (draft v2 2026-07-13, evidence-sharpened;
   prior-art research complete — recommendation: adopt GitHub Issues as system of record + build
-  a thin deterministic adapter in the plugin; awaiting owner review). stage:
-  requirements — design starts after owner vets the doc's pushback and open questions. Related:
+  a thin deterministic adapter in the plugin). Design complete 2026-07-16: PRD
+  documentation/backlog-service-prd.md (draft v3, owner decisions O1–O4 resolved 2026-07-14)
+  and build plan .prawduct/artifacts/build-plan-backlog-service.md (authored 2026-07-16 — P0
+  slice: S1 probes+design artifacts → walking skeleton → mutations → query/pick → S2 importer
+  dry-run on discodon → governance integration; P1+ layers explicitly deferred to follow-on
+  plans). stage: ready — buildable. Related:
   BKL-7M4Q (crash-safe mutation — superseded by CC1 if this ships), BKL-8T3W (shipped-drift
   surfacing — becomes GV3 reconciliation), BKL-3R8P (dedup — becomes Q3/AU3), XP flow replaces
   skills/report-bug drop-box. (user)

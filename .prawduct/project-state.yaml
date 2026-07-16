@@ -557,7 +557,9 @@ views_enabled: true
 # 2026-07-14: cleared at v3.0.0 release — kernel-evidence-store shipped; plan
 # retained under artifacts/ as a historical record (checkboxes derive from the
 # change-log's status=shipped entries).
-active_build_plan: null
+# 2026-07-16: pointed at build-plan-backlog-service.md (BKL-5D2C) — plan authored
+# on feature branch; nothing built yet.
+active_build_plan: artifacts/build-plan-backlog-service.md
 
 # =============================================================================
 # COVERAGE EVIDENCE (opt-in, v1.4+)
