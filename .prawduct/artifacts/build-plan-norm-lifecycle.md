@@ -328,24 +328,40 @@ methodology text names real commands. 6 last. Implementation is medium+ work: fe
       stalled-transition, norm-registry-unratified, norm-health-sweep-overdue — the 5th landed
       here, not deferred; janitor writes the stamp in Chunk 6). 31 tests; zero-fire against this
       repo enforced by a repo-coupled tripwire test. As-built deferrals recorded in the chunk.
-- [~] Chunk 4: Enforcement surfaces — IN PROGRESS (paused at user request 2026-07-16).
-      DONE: review-protocol.md consolidation (authority preamble incl. unmarked-prose binding +
+- [x] Chunk 4: Enforcement surfaces — Critic/PR consolidation + digest. Built + tabletop
+      re-verified + Critic passed 2026-07-16; chunk commit 99fb0c8 (committed WIP/UNREVIEWED at
+      the pause; reviewed post-commit — see CRITIC below).
+      BUILT: review-protocol.md consolidation (authority preamble incl. unmarked-prose binding +
       decidability test + recorded-decision anti-self-certification + unruled-edge trigger;
       Goal 4 norms rewrite; Goal 6 strategy-line deleted; Learnings Cross-Check extended;
       resolvable ${CLAUDE_SKILL_DIR} spec path); pr/review-protocol.md norm-amendment bullet;
       both digest lines; token test 3450→3530 (content ~3529, under the diet formula ~3533 —
       [DECISION: the plan's "without raising budgets" success line was over-tight; the real
       lock is the diet formula, preserved | user can veto → deeper trim]).
-      TABLETOP: billboard replay PASSES; laundering replay FAILED on first text (closed binding
-      enumeration + unresolvable spec path + self-documenting amendment) — all three fixed in
-      the current text, BUT THE FIX IS NOT RE-VERIFIED.
-      RESUME WITH: (1) re-run the laundering judge against the fixed protocol text (fresh
-      workflow; do NOT resume the cached run — prompts unchanged means stale cache); (2) full
-      suite + test-evidence record; (3) /prawduct:critic final (enforcement keystone) +
-      resolutions; (4) commit Chunk 4. Deferred to Chunk 5 (recorded): a Goal 2
-      "plan lacks governed_by: reconciliation" check — the governed_by mechanic doesn't exist
-      until Chunk 5's planning.md lands; add the check text alongside it (review-cycle.md is
-      the token-unguarded home if review-protocol.md can't afford it).
+      TABLETOP (re-verified — this is the fix that was previously unverified): billboard replay
+      PASSES (yields a boundary-ruling finding, not silence or a mechanical block); laundering
+      replay now PASSES 3/3 independent judges — each classifies the strategy amendment as a
+      BLOCKING undocumented decision (NOT documentation freshness), citing the unmarked-prose-
+      binds clause + the "amending a norm to match your own code" tell. The three first-text
+      failure causes (closed binding enumeration, unresolvable spec path, self-documenting
+      amendment) are all resolved.
+      TESTS: full suite 1772 passed / 0 failed / 0 skipped; test-evidence recorded (current).
+      CRITIC: /prawduct:critic requested as `final` → ran as `cumulative` (final had an empty
+      diff since the chunk was already committed; cumulative over merge-base…99fb0c8 is the
+      correct superset, re-covering Chunks 1-3 harmlessly). Result: 0 blocking, 1 warning,
+      5 notes — "ready to proceed." The warning (tabletop re-verification unperformed, read off
+      the then-stale Status) is resolved by the re-verification above. Notes dispositioned:
+      registry-row forward-declares Chunks 5-6 coverage (lands there); norm_probes.py
+      ephemeral-ref cleared in this finalization; eight→nine scenario count — the shipped
+      Scenario Index carries nine (a 9th "temporary incident bypass" row was added during
+      Chunk 1 hardening; the plan's earlier "eight" is superseded planning, left as build
+      record); GOV-7Q4N stays promoted (advanced, not shipped); advisory-show no-op is
+      pre-existing (GOV-5D2W).
+      Deferred to Chunk 5 (recorded): a Goal 2 "plan lacks governed_by: reconciliation" check —
+      the governed_by mechanic doesn't exist until Chunk 5's planning.md lands; add the check
+      text alongside it (review-cycle.md is the token-unguarded home if review-protocol.md can't
+      afford it). Also revisit the deferred norm-registry-unratified 2nd arm once Chunk 5's
+      Enforcement columns exist.
 - [ ] Chunk 5: Authoring surfaces — planning/building/discovery + templates
 - [ ] Chunk 6: Time-domain sweeps + adoption path (cumulative-final)
 

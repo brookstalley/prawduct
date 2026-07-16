@@ -61,11 +61,11 @@ Design note — per-probe lock-in (fires / clears / reader-action)
   ``## Direction`` section appears) OR the shared-state answer
   :data:`RATIFIED_FACT` is recorded (a valid "no norms to ratify" outcome — one
   teammate's answer clears it for everyone). *Reader-action:* points at the
-  ``/prawduct:doctor`` ratification flow. *Deliberate narrowing (recorded in the
-  build plan's Chunk 3 as-built note):* the plan's second trigger arm — "the
-  preferences Enforcement table lacks the norm columns" — is deferred until the
-  columns exist (Chunk 5 templates + doctor adoption); implementing it literally
-  today would false-fire on every product, including this repo.
+  ``/prawduct:doctor`` ratification flow. *Deliberate narrowing:* the second
+  trigger arm — "the preferences Enforcement table lacks the norm columns" — is
+  deferred until that table gains the norm columns (via the project-preferences
+  template + doctor ratification); implementing it before the columns exist would
+  false-fire on every product, including this repo.
 
 - **norm-health-sweep-overdue** — *Fires:* ``## Direction`` sections exist AND the
   janitor Norm Health sweep stamp :data:`SWEEP_STAMP` is absent or older than
