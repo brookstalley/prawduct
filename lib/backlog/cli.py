@@ -30,7 +30,7 @@ from . import context, core, ids, query
 # write only with ``--claim`` (handled in ``_is_write``).
 _WRITE_OPS: frozenset[str] = frozenset(
     {"file", "status", "update", "comment", "claim", "unclaim",
-     "link", "unlink", "provision", "reconcile-labels"}
+     "link", "unlink", "provision", "reconcile-labels", "import", "merge"}
 )
 
 # code → exit class. A code absent here (should not happen) falls back to 1.
@@ -69,6 +69,9 @@ _HELP = (
     "  unlink   <id> --edge blocks|blocked-by|parent|child|related --to <target-id> [--repo owner/repo]\n"
     "  provision --repo owner/repo\n"
     "  reconcile-labels --repo owner/repo   (GV6 taxonomy reconcile, coexistence-safe)\n"
+    "  import   --repo owner/repo --from <backlog.md> [--archive <archive.md>]   (resumable/idempotent)\n"
+    "  export   --repo owner/repo --to <dir>   (full-fidelity dump incl. native graph)\n"
+    "  merge    <source-id> --into <target-id> [--repo owner/repo]   (fold A→B, redirect-before-close)\n"
     "global: --json  (machine envelope on stdout; default is human)\n"
 )
 
@@ -126,13 +129,19 @@ def run(project_dir, argv: list[str], *, transport=None) -> int:
             result = _run_link(op, rest, transport)
         elif op == "provision":
             result = _run_provision(rest, transport)
+        elif op == "import":
+            result = _run_import(rest, transport, project_dir)
+        elif op == "export":
+            result = _run_export(rest, transport)
+        elif op == "merge":
+            result = _run_merge(rest, transport)
         else:
             return _emit(
                 core.error(
                     "validation",
                     f"unknown op {op!r} (expected file|get|status|update|comment|"
                     "list|pick|counts|refresh-counts|claim|unclaim|link|unlink|"
-                    "provision|reconcile-labels)",
+                    "provision|reconcile-labels|import|export|merge)",
                 ),
                 json_mode=json_mode,
                 usage=True,
@@ -461,6 +470,93 @@ def _run_provision(rest: list[str], transport):
     return core.provision_labels(transport, owner=owner, repo=repo)
 
 
+def _run_import(rest: list[str], transport, project_dir):
+    from pathlib import Path  # noqa: PLC0415 — only migration ops need a path
+
+    from . import migrate  # noqa: PLC0415 — lazy: no migration import cost on other paths
+
+    flags, _positionals, err = _parse_flags(rest, valued={"repo", "from", "archive"})
+    if err:
+        return core.error("validation", err)
+    parsed = ids.parse_repo(flags.get("repo", ""))
+    if parsed is None:
+        return core.error("validation", "import requires --repo owner/repo")
+    if "from" not in flags:
+        return core.error("validation", "import requires --from <backlog.md path>")
+    owner, repo = parsed
+    content, err = _read_source(flags["from"], "--from")
+    if err:
+        return core.error("validation", err)
+    archive_content = None
+    if "archive" in flags:
+        archive_content, err = _read_source(flags["archive"], "--archive")
+        if err:
+            return core.error("validation", err)
+    transport = _resolve_transport(transport)
+    checkpoint = migrate.Checkpoint(
+        migrate.checkpoint_path(Path(project_dir)),
+        f"{owner}/{repo}",
+        migrate.run_key(content, archive_content),
+    )
+    return migrate.import_backlog(
+        transport,
+        owner=owner,
+        repo=repo,
+        content=content,
+        archive_content=archive_content,
+        checkpoint=checkpoint,
+    )
+
+
+def _run_export(rest: list[str], transport):
+    from pathlib import Path  # noqa: PLC0415 — only migration ops need a path
+
+    from . import migrate  # noqa: PLC0415 — lazy
+
+    flags, _positionals, err = _parse_flags(rest, valued={"repo", "to"})
+    if err:
+        return core.error("validation", err)
+    parsed = ids.parse_repo(flags.get("repo", ""))
+    if parsed is None:
+        return core.error("validation", "export requires --repo owner/repo")
+    if "to" not in flags:
+        return core.error("validation", "export requires --to <dir>")
+    owner, repo = parsed
+    transport = _resolve_transport(transport)
+    return migrate.export_backlog(transport, owner=owner, repo=repo, dest=Path(flags["to"]))
+
+
+def _run_merge(rest: list[str], transport):
+    from . import migrate  # noqa: PLC0415 — lazy
+
+    flags, positionals, err = _parse_flags(rest, valued={"repo", "into"})
+    if err:
+        return core.error("validation", err)
+    if not positionals:
+        return core.error("validation", "merge requires a <source-id>")
+    target = flags.get("into")
+    if not target:
+        return core.error("validation", "merge requires --into <target-id>")
+    default_owner, err = _default_owner(flags)
+    if err:
+        return core.error("validation", err)
+    transport = _resolve_transport(transport)
+    return migrate.merge(
+        transport, source_raw=positionals[0], target_raw=target, default_owner=default_owner
+    )
+
+
+def _read_source(path_str: str, flag: str) -> tuple[str | None, str | None]:
+    """Read a migration input file; returns ``(content, error)``. A read failure is
+    a ``validation`` error (the caller passed a bad path) — never a raised exception."""
+    from pathlib import Path  # noqa: PLC0415
+
+    try:
+        return Path(path_str).read_text(), None
+    except OSError as exc:
+        return None, f"cannot read {flag} {path_str!r}: {type(exc).__name__}"
+
+
 # --- plumbing ----------------------------------------------------------------
 
 
@@ -569,6 +665,21 @@ def _print_human_ok(data) -> None:
         # A link/unlink result.
         verb = "linked" if data.get("linked") else "unlinked"
         print(f"{verb} {data.get('item')} --{data.get('edge')}--> {data.get('target')}")
+    elif "total_source" in data:
+        # An import result (checked before `items`: an export result also carries an
+        # `items` key, so the migration results are matched first on their own keys).
+        print(
+            f"{data.get('repo')}: imported {len(data.get('created', []))} created, "
+            f"{len(data.get('skipped', []))} skipped, "
+            f"{len(data.get('collisions', []))} collision(s) of "
+            f"{data.get('total_source')} source item(s)"
+        )
+    elif "dir" in data and "count" in data:
+        # An export result (its `items` is a list of id strings, not item dicts).
+        print(f"{data.get('repo')}: exported {data.get('count')} item(s) to {data.get('dir')}")
+    elif "merged" in data:
+        # A merge result.
+        print(f"merged {data.get('source')} --superseded-by--> {data.get('target')}")
     elif "candidates" in data:
         # A pick result — ranked ready-work.
         candidates = data.get("candidates", [])

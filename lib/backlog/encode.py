@@ -83,6 +83,7 @@ NAMESPACED_LABEL_PREFIXES: tuple[str, ...] = (
     "id:",
     "verified:",
     "superseded-by:",
+    "import-key:",  # idempotency-only marker for an id-less imported item (Data Model §5)
 )
 
 _BLOCK_RE = re.compile(
@@ -118,6 +119,15 @@ class Block:
 
     def id_aliases(self) -> list[str]:
         return parse_list(self.fields.get("id_aliases"))
+
+    def superseded_by(self) -> str | None:
+        """The merge/transfer redirect target (Data Model §1.2 — block-authoritative,
+        unmirrored), or ``None``. A ref to a merged-away source resolves *through*
+        this to its survivor (``ids.resolve_redirect``); the ``merge`` op writes it
+        **before** closing the source so a crash leaves the source open-but-redirected
+        (a valid, resolvable state — CRASH-2)."""
+        value = self.fields.get("superseded_by")
+        return value or None
 
     def claimed_at(self) -> str | None:
         """The ``claimed_at`` visible-staleness stamp (CC3), or ``None``.
@@ -210,6 +220,22 @@ def upsert_block_field(body: str | None, key: str, value: str | None) -> str:
     rendered = serialize_block(block.fields)
     if human:
         return f"{human}\n\n{rendered}\n"
+    return f"{rendered}\n"
+
+
+def compose_body(human: str | None, block_fields: dict[str, str]) -> str:
+    """Compose an issue body from human text + a fresh ``prawduct:`` block's fields.
+
+    The **single** body↔block attachment framing (serialize + the blank-line
+    separator) that ``export`` round-trips depend on — every writer that emits a
+    fresh block (``file``, ``import``) goes through here, so the separator/newline
+    convention lives in exactly one place and the two paths can never silently
+    diverge (Data Model §2). An empty human body yields the block alone.
+    """
+    rendered = serialize_block(block_fields)
+    text = (human or "").rstrip("\n")
+    if text:
+        return f"{text}\n\n{rendered}\n"
     return f"{rendered}\n"
 
 
@@ -501,6 +527,7 @@ def decode_item(issue: dict, *, canonical_id: str | None = None) -> tuple[dict, 
         "url": issue.get("html_url"),
         "labels": labels,
         "id_aliases": block.id_aliases(),
+        "superseded_by": block.superseded_by(),
         "block_version": block.version(),
     }
     return item, warnings

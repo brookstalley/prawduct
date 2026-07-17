@@ -14,9 +14,11 @@ and require a ``default_owner`` (the target repo's owner). Absent one they are a
 ``validation`` error rather than a silent guess.
 
 This module is a **pure, function-level seam** (Test Specs §2.1): no transport,
-no I/O. Alias resolution and redirects (``id:PFX`` aliases, ``superseded-by:``)
-are separate machinery built with the importer; this module handles only the
-spelling→canonical normalization (D4/DM4, ID-1).
+no I/O. It also holds the **PFX-alias & redirect machinery** the importer uses
+(D4/DM4/§5): the pure label helpers (``alias_label``/``pfx_from_alias_label``)
+and the redirect-follow (``resolve_redirect``) whose GitHub lookup is **injected**
+as a callback — so the module stays transport-free while still owning the
+resolution *logic*. The spelling→canonical normalization (ID-1) is above.
 """
 
 from __future__ import annotations
@@ -147,3 +149,67 @@ def parse_repo(spec: str) -> tuple[str, str] | None:
     if not owner or not repo or not _valid_segment(owner) or not _valid_segment(repo):
         return None
     return owner, repo
+
+
+# --- PFX aliases & redirects (the importer's identity machinery, D4/DM4/§5) ---
+#
+# A migrated item keeps its hand-minted ``PFX-XXXX`` id forever as a permanent
+# ``id:PFX-XXXX`` alias **label** (queryable/resolvable) plus an ``id_aliases``
+# block entry (the export round-trip record) — Data Model §1.2/§5. **No new PFX is
+# ever minted.** Alias uniqueness is an integrity constraint: an ``id:PFX`` must
+# resolve to **exactly one** live item (§5) — a second claimant is a collision the
+# importer flags (``alias_collision``), so ref resolution can't be hijacked.
+
+ALIAS_FACET = "id"
+
+# A hand-minted prefix id: a letter, then letters/digits, ``-``, then 1+ alnum
+# (e.g. ``BKL-7M4Q``, ``ADR-12``, ``A-1``). Deliberately lenient — the same reason
+# ``legacy.ID_RE`` is: the importer absorbs whatever ID-shaped token a source used
+# across its 27–58 hand-minted prefixes (MIG-2) rather than minting a new scheme.
+_PFX_RE = re.compile(r"[A-Za-z][A-Za-z0-9]*-[A-Za-z0-9]+")
+
+
+def is_pfx(token: str | None) -> bool:
+    """Whether ``token`` is a well-formed hand-minted ``PFX-XXXX`` id."""
+    if not token:
+        return False
+    return re.fullmatch(_PFX_RE, token.strip()) is not None
+
+
+def alias_label(pfx: str) -> str:
+    """The permanent ``id:PFX-XXXX`` alias label for a migrated id (Data Model §5)."""
+    return f"{ALIAS_FACET}:{pfx.strip()}"
+
+
+def pfx_from_alias_label(name: str) -> str | None:
+    """The ``PFX`` an ``id:`` alias label carries, or ``None`` if ``name`` is not a
+    well-formed alias label. (An ``id:`` label whose value is not PFX-shaped is not
+    treated as an alias — the importer never mints one, so a malformed value is a
+    human artifact, ignored here.)"""
+    prefix = f"{ALIAS_FACET}:"
+    if not name.startswith(prefix):
+        return None
+    pfx = name[len(prefix) :]
+    return pfx if is_pfx(pfx) else None
+
+
+def resolve_redirect(canonical: str, *, fetch, max_hops: int = 16) -> str:
+    """Follow ``superseded_by`` redirects from ``canonical`` to the final live item.
+
+    ``fetch(canonical) -> target_canonical_or_None`` reads one item's redirect
+    target (the block ``superseded_by`` field) — **injected** so this stays pure of
+    the transport. Used by the merge/transfer redirect (a ref to a merged-away
+    source resolves to its survivor — CRASH-2). Bounded by ``max_hops`` and a
+    seen-set so a redirect **cycle** (a human A→B, B→A edit) terminates at where it
+    is rather than looping forever (fail-open: return the last node visited)."""
+    seen: set[str] = set()
+    current = canonical
+    for _ in range(max_hops):
+        if current in seen:
+            return current  # cycle guard — fail open at the current node
+        seen.add(current)
+        target = fetch(current)
+        if not target or target == current:
+            return current
+        current = target
+    return current

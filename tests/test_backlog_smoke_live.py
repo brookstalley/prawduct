@@ -201,3 +201,164 @@ def test_list_pick_round_trip(transport, capsys):
     blob = "".join(output_sink)
     for marker in _TOKEN_MARKERS:
         assert marker not in blob
+
+
+# A minimal live-import fixture (kept inline so the gated module needs no extra
+# sys.path wiring for the offline fixtures package).
+_LIVE_BACKLOG_MD = """# Backlog — L5 import smoke
+
+## Open
+
+- **[SMK-0001]** live import smoke item one
+  `effort: S · impact: S · area: core · source: builder · status: open · stage: ready`
+
+  Created by the Chunk-05 import smoke; safe to close.
+
+## Archive
+
+- **[SMK-0002]** live import smoke archived item
+  `effort: S · impact: S · area: core · source: builder · status: shipped`
+
+  An archived item; imports closed.
+"""
+
+
+def test_import_export_round_trip(transport, capsys, tmp_path):
+    """A real ``import``→``export`` round-trip through the CLI front (Chunk 05).
+
+    The per-front L5 for migration: import a tiny ``backlog.md`` into the live repo
+    (idempotent — safe to re-run), then export the repo and confirm the manifest +
+    the imported items land. ``import`` uses ``project_dir`` for its checkpoint, so
+    this drives ``cli.run`` with a real dir (not ``None``).
+    """
+    parsed = ids.parse_repo(_LIVE_REPO)
+    assert parsed, f"BACKLOG_LIVE_REPO must be owner/repo, got {_LIVE_REPO!r}"
+
+    src = tmp_path / "backlog.md"
+    src.write_text(_LIVE_BACKLOG_MD)
+    out_dir = tmp_path / "export"
+
+    code = cli.run(
+        str(tmp_path),
+        ["import", "--repo", _LIVE_REPO, "--from", str(src), "--json"],
+        transport=transport,
+    )
+    imported = json.loads(capsys.readouterr().out)
+    assert code == 0, imported
+    assert imported["status"] == "ok", imported
+
+    code = cli.run(
+        str(tmp_path),
+        ["export", "--repo", _LIVE_REPO, "--to", str(out_dir), "--json"],
+        transport=transport,
+    )
+    exported = json.loads(capsys.readouterr().out)
+    assert code == 0, exported
+    assert exported["status"] == "ok", exported
+    assert (out_dir / "export-manifest.json").exists()
+
+    # Re-import is a full no-op (idempotent, keyed on the id: alias — CRASH-4 live).
+    code = cli.run(
+        str(tmp_path),
+        ["import", "--repo", _LIVE_REPO, "--from", str(src), "--json"],
+        transport=transport,
+    )
+    reimported = json.loads(capsys.readouterr().out)
+    assert code == 0
+    assert reimported["data"]["created"] == []  # nothing re-created
+
+    blob = json.dumps([imported, exported, reimported])
+    for marker in _TOKEN_MARKERS:
+        assert marker not in blob
+
+
+def test_merge_round_trip(transport, capsys):
+    """A real ``merge`` through the CLI front: fold a duplicate into a survivor
+    (redirect-before-close). Source ends up closed + redirected; the survivor is
+    untouched (both bodies preserved — DM7)."""
+    parsed = ids.parse_repo(_LIVE_REPO)
+    assert parsed, f"BACKLOG_LIVE_REPO must be owner/repo, got {_LIVE_REPO!r}"
+
+    output_sink: list[str] = []
+    code, _ = _run_cli(capsys, ["provision", "--repo", _LIVE_REPO], transport, output_sink)
+    assert code == 0
+
+    code, dup = _run_cli(
+        capsys,
+        ["file", "--repo", _LIVE_REPO, "--title", "prawduct L5 merge source",
+         "--body", "Duplicate; folded by the merge smoke."],
+        transport, output_sink,
+    )
+    assert code == 0, dup
+    code, keep = _run_cli(
+        capsys,
+        ["file", "--repo", _LIVE_REPO, "--title", "prawduct L5 merge target",
+         "--body", "Survivor of the merge smoke; safe to close."],
+        transport, output_sink,
+    )
+    assert code == 0, keep
+
+    code, merged = _run_cli(
+        capsys, ["merge", dup["data"]["id"], "--into", keep["data"]["id"]], transport, output_sink
+    )
+    assert code == 0, merged
+    assert merged["data"]["superseded_by"] == keep["data"]["id"]
+
+    code, got = _run_cli(capsys, ["get", dup["data"]["id"]], transport, output_sink)
+    assert code == 0
+    assert got["data"]["status"] == "dropped"  # closed, not deleted
+    assert got["data"]["superseded_by"] == keep["data"]["id"]
+
+    blob = "".join(output_sink)
+    for marker in _TOKEN_MARKERS:
+        assert marker not in blob
+
+
+def test_blocked_item_excluded_from_pick(transport, capsys):
+    """The Chunk-05 Done-when-0 live check: the ``blocked_by`` *read* shape ``pick``
+    parses is confirmed against live GitHub (Chunk 03 built it against the fake
+    only). Link a real blocker → ``pick`` excludes the blocked item; close the
+    blocker → ``pick`` includes it. A live-shape mismatch would surface a blocked
+    item as ready — this catches it."""
+    parsed = ids.parse_repo(_LIVE_REPO)
+    assert parsed, f"BACKLOG_LIVE_REPO must be owner/repo, got {_LIVE_REPO!r}"
+
+    output_sink: list[str] = []
+    code, _ = _run_cli(capsys, ["provision", "--repo", _LIVE_REPO], transport, output_sink)
+    assert code == 0
+
+    code, blocked = _run_cli(
+        capsys,
+        ["file", "--repo", _LIVE_REPO, "--title", "prawduct L5 blocked item",
+         "--body", "Blocked; should not be picked until its blocker closes.", "--stage", "ready"],
+        transport, output_sink,
+    )
+    assert code == 0, blocked
+    code, blocker = _run_cli(
+        capsys,
+        ["file", "--repo", _LIVE_REPO, "--title", "prawduct L5 blocker",
+         "--body", "The blocker; close me to unblock.", "--stage", "ready"],
+        transport, output_sink,
+    )
+    assert code == 0, blocker
+
+    code, linked = _run_cli(
+        capsys,
+        ["link", blocked["data"]["id"], "--edge", "blocked-by", "--to", blocker["data"]["id"]],
+        transport, output_sink,
+    )
+    assert code == 0, linked
+
+    code, picked = _run_cli(capsys, ["pick", "--repo", _LIVE_REPO, "--limit", "50"], transport, output_sink)
+    assert code == 0
+    assert blocked["data"]["id"] not in {c["id"] for c in picked["data"]["candidates"]}
+
+    code, _ = _run_cli(capsys, ["status", blocker["data"]["id"], "--to", "shipped"], transport, output_sink)
+    assert code == 0
+    code, picked2 = _run_cli(capsys, ["pick", "--repo", _LIVE_REPO, "--limit", "50"], transport, output_sink)
+    assert code == 0
+    assert blocked["data"]["id"] in {c["id"] for c in picked2["data"]["candidates"]}
+
+    blob = "".join(output_sink)
+    for marker in _TOKEN_MARKERS:
+        assert marker not in blob

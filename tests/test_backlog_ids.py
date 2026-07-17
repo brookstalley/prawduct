@@ -106,3 +106,46 @@ class TestParseRepo:
     @pytest.mark.parametrize("spec", ["", "norepo", "a/b/c", "octo/", "/repo"])
     def test_invalid_owner_repo(self, spec):
         assert ids.parse_repo(spec) is None
+
+
+class TestPfxAliases:
+    """The PFX-alias machinery (D4/DM4/§5): a hand-minted ``PFX-XXXX`` ↔ its
+    permanent ``id:PFX-XXXX`` alias label. No new PFX is ever minted."""
+
+    @pytest.mark.parametrize("pfx", ["BKL-7M4Q", "ADR-12", "A-1", "DIS-0001", "P00-2001"])
+    def test_wellformed_pfx_accepted(self, pfx):
+        assert ids.is_pfx(pfx)
+
+    @pytest.mark.parametrize("token", ["", None, "nodash", "-1234", "BKL", "  ", "a b-1"])
+    def test_malformed_pfx_rejected(self, token):
+        assert not ids.is_pfx(token)
+
+    def test_alias_label_roundtrips(self):
+        assert ids.alias_label("BKL-7M4Q") == "id:BKL-7M4Q"
+        assert ids.pfx_from_alias_label("id:BKL-7M4Q") == "BKL-7M4Q"
+
+    def test_alias_label_tolerates_whitespace(self):
+        assert ids.alias_label(" BKL-1 ") == "id:BKL-1"
+
+    @pytest.mark.parametrize("name", ["stage:ready", "id:not a pfx", "id:", "notid:BKL-1"])
+    def test_non_alias_label_returns_none(self, name):
+        assert ids.pfx_from_alias_label(name) is None
+
+
+class TestResolveRedirect:
+    """The pure redirect-follow (merge/transfer): a ref to a merged-away source
+    resolves to its survivor, with a cycle guard so it never loops (CRASH-2)."""
+
+    def test_follows_a_chain_to_the_end(self):
+        chain = {"o/r#1": "o/r#2", "o/r#2": "o/r#3"}
+        assert ids.resolve_redirect("o/r#1", fetch=chain.get) == "o/r#3"
+
+    def test_no_redirect_is_self(self):
+        assert ids.resolve_redirect("o/r#9", fetch=lambda _c: None) == "o/r#9"
+
+    def test_self_redirect_terminates(self):
+        assert ids.resolve_redirect("o/r#1", fetch=lambda _c: "o/r#1") == "o/r#1"
+
+    def test_cycle_terminates_fail_open(self):
+        cycle = {"o/r#1": "o/r#2", "o/r#2": "o/r#1"}
+        assert ids.resolve_redirect("o/r#1", fetch=cycle.get) in ("o/r#1", "o/r#2")

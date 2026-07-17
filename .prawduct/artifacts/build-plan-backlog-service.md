@@ -140,10 +140,26 @@ Critic (chunk mode) 0 blocking / 0 warning / 1 note — the note (fork-PR detect
 workflow-surfaced signal, not a native Actions var) resolved: renamed to `PRAWDUCT_PR_HEAD_REPO`,
 documented the required wiring at the read site, filed **SEC-8R3K** for the Chunk-06 Actions wiring;
 `verify-resolutions` clean. **L5 smokes queued** (live `gh`): `refresh-counts` against a throwaway
-repo, and the SEC-5/6 behaviors under a real Actions context. The `[ ]` boxes above stay unchecked by
-design — `regen-views` flips them to `[x]` only at release. Still a design artifact **promoted
-2026-07-16**; owner sign-off pending. Next: Chunk 05 (importer + alias machinery + minimal `merge` +
-`export`, `final` mode), or owner sign-off + slice merge.
+repo, and the SEC-5/6 behaviors under a real Actions context. Chunk 05 (importer + alias machinery +
+minimal `merge` + `export`) built + committed 2026-07-17 (`final` mode): a new `lib/backlog/migrate.py`
+— `import` (idempotent/resumable, keyed on the permanent `id:PFX` alias written **atomically in the
+create** so a crash still converges via the label query; a durable `Checkpoint` accelerator; no
+rollback — M6), the alias machinery in `ids.py` (`PFX-XXXX`→`id:PFX` label + `id_aliases` block +
+`resolve_redirect`), a minimal `merge` (fold A→B, **redirect-before-close** — CRASH-2, block-authoritative
+`superseded_by`, nothing hard-deleted), `export` (full-fidelity JSON dump incl. the native graph:
+deps/sub-issues/timeline/assignees — layout pinned in Data Model §8), and a write-`Pacer` (content
+budget 80/min+500/hr, injectable clock). Transport+fake gained `list_sub_issues`/`list_timeline`;
+`encode.decode_item` now surfaces `superseded_by`; `import-key:` idempotency marker added for id-less
+items (Data Model §5). CLI: `import`/`export`/`merge`. Offline suite green (2134 passed, +49; a
+human-mode output-shadowing bug on `export` caught by driving the CLI at Verify and fixed + regression-
+tested). Design decision: a *create* failure aborts import (content budget, resumable); a *status-
+reconcile* failure defers to a warning (core budget, transient — the re-run converges). **L5 smokes
+queued** (live `gh`): `import`+`export` round-trip, `merge`, and the Done-when-0 blocker check (link a
+real blocker → `pick` excludes it — confirms the `blocked_by` read shape Chunk 03 built against the
+fake only). The `[ ]` boxes above stay unchecked by design — `regen-views` flips them to `[x]` only at
+release. Still a design artifact **promoted 2026-07-16**; owner sign-off pending. Next: Chunk 06
+(SPIKE-S2 dry-run + MG4 scrub + prawduct-first real migration, `cumulative-final`), or owner sign-off +
+slice merge.
 
 ## Scaffolding
 

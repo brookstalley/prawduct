@@ -154,11 +154,9 @@ def _body_with_block(body: str, *, automated: bool = False, worker: str | None =
         fields["automated"] = "true"
         if worker:
             fields["worker"] = worker
-    block = encode.serialize_block(fields)
-    text = body.rstrip("\n")
-    if text:
-        return f"{text}\n\n{block}\n"
-    return f"{block}\n"
+    # The body↔block framing is shared with the importer via encode.compose_body,
+    # so the two fresh-block writers can never diverge on separator/newline.
+    return encode.compose_body(body, fields)
 
 
 def _body_update_preserving_block(old_body: str, new_body: str) -> str:

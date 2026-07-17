@@ -5,10 +5,10 @@
 
 ## 2026-07-17: Backlog service — GitHub Issues as the system-of-record (backlog-service)
 
-<!-- prawduct: type=feature | scope=backlog-service-v1 | chunks=01,02,03 -->
+<!-- prawduct: type=feature | scope=backlog-service-v1 | chunks=01,02,03,04,05 -->
 <!-- Statusless on feature/backlog-prd-owner-feedback = release-pending once merged.
      Large subsystem; plan at .prawduct/artifacts/build-plan-backlog-service.md, one
-     commit per chunk, per-chunk Critic. Chunks 04–06 pending. -->
+     commit per chunk, per-chunk Critic. Chunk 06 pending. -->
 
 **Parent:** BKL-5D2C — replace the markdown backlog (slow, merge-conflict-prone, git-coupled;
 the deepest measured pain being stale/untrusted item state) with **GitHub Issues as the
@@ -30,6 +30,23 @@ system-of-record** via a deterministic `prawduct-hook backlog` adapter (PRD §16
   sub-issues + a block-list `related`) in `core.py`. PROV-2 (non-prawduct issues ignored) and the
   observed 404-after-create replication window (bounded settle-retry) handled. Live `list`/`pick`
   round-trip queued as an L5 smoke.
+- **Chunk 04 — governance surface (GV2/GV6/SEC-5/SEC-6):** `refresh-counts` (the `briefing_counts`
+  degenerate cache — a schema-versioned JSON snapshot at `<git-common-dir>/prawduct/`, atomic write,
+  visible age, network-independent) in a new `lib/backlog/snapshot.py`; `reconcile-labels` (GV6
+  coexistence reconcile — create-missing, foreign labels untouched, idempotent); the never-block floor
+  (a backend-down `unavailable` never hangs/corrupts); and the unattended-context guards (SEC-5
+  Actions write-withhold, SEC-6 `automated`/`worker` marking) in a new pure `lib/backlog/context.py`.
+  The D6 detached-refresh warm rides `transport.spawn_detached` (egress discipline). L5 smokes queued.
+- **Chunk 05 — importer + alias machinery + minimal `merge` + `export` (MG1/MG2/DM4/AU3):** a new
+  `lib/backlog/migrate.py` — `import` (idempotent/resumable, keyed on the permanent `id:PFX` alias
+  written atomically in the create; a durable checkpoint accelerator; no rollback, M6), the alias
+  machinery (`ids.py`: `PFX-XXXX` → `id:PFX` label + `id_aliases` block + redirect-follow), a minimal
+  `merge` (fold A→B, **redirect-before-close** so a crash leaves the source open-but-redirected —
+  CRASH-2; nothing hard-deleted), `export` (full-fidelity JSON dump incl. the native graph — deps,
+  sub-issues, timeline, assignees), and a write-`Pacer` (content-budget 80/min+500/hr, injectable
+  clock). Transport/fake gained `list_sub_issues`/`list_timeline`; the export on-disk layout is pinned
+  in Data Model §8. Fixture-proven (MIG-1…4, CRASH-2/CRASH-4); the live SPIKE-S2 + real migration stay
+  in Chunk 06. `import`+`export`+`merge` L5 smokes + the Done-when-0 live blocker check queued.
 
 **Classification:** structural
 

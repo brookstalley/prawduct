@@ -208,6 +208,17 @@ class Transport:
     ) -> None:
         raise NotImplementedError
 
+    def list_sub_issues(self, owner: str, repo: str, number: int) -> list[dict]:
+        """The child issues under ``number`` (native sub-issues) — what ``export``
+        serializes for the sub-issue tree. Returns ``[{owner, repo, number, ref}]``."""
+        raise NotImplementedError
+
+    def list_timeline(self, owner: str, repo: str, number: int) -> list[dict]:
+        """The native timeline/events for ``number`` (audit history, CC4) — what
+        ``export`` serializes and GV3/`closed_by` reads. Returns a list of
+        ``{event, actor, created_at, ...}`` dicts (the shape ``verify-api`` pins)."""
+        raise NotImplementedError
+
     def list_labels(self, owner: str, repo: str) -> list[dict]:
         raise NotImplementedError
 
@@ -438,6 +449,47 @@ class GhTransport(Transport):
             if exc.code == "not_found":  # already unlinked — idempotent
                 return
             raise
+
+    def list_sub_issues(self, owner: str, repo: str, number: int) -> list[dict]:
+        """The child issues under ``number`` (native sub-issues) — for ``export``'s
+        graph dump. Ref-based so it is cross-repo capable. Shape recorded by the
+        Chunk-05 ``verify-api`` step; the L1 suite exercises it through the fake."""
+        result = self._api(
+            ["api", f"repos/{owner}/{repo}/issues/{number}/sub_issues", "--paginate"]
+        )
+        out: list[dict] = []
+        for child in result if isinstance(result, list) else []:
+            repo_info = child.get("repository") or {}
+            c_owner = (repo_info.get("owner") or {}).get("login") or owner
+            c_repo = repo_info.get("name") or repo
+            c_number = child.get("number")
+            out.append(
+                {"owner": c_owner, "repo": c_repo, "number": c_number,
+                 "ref": f"{c_owner}/{c_repo}#{c_number}"}
+            )
+        return out
+
+    def list_timeline(self, owner: str, repo: str, number: int) -> list[dict]:
+        """The native timeline for ``number`` (audit history, CC4) — for ``export``'s
+        graph dump and (later) GV3/`closed_by`. Returns the raw event dicts, each
+        reduced to the non-secret fields the dump keeps. Shape recorded by the
+        Chunk-05 ``verify-api`` step; behavior (event *ordering*) is an L5-owed
+        re-check CONTRACT-1 cannot see (Test Specs §6)."""
+        result = self._api(
+            ["api", f"repos/{owner}/{repo}/issues/{number}/timeline", "--paginate"]
+        )
+        out: list[dict] = []
+        for event in result if isinstance(result, list) else []:
+            if not isinstance(event, dict):
+                continue
+            out.append(
+                {
+                    "event": event.get("event"),
+                    "actor": (event.get("actor") or {}).get("login"),
+                    "created_at": event.get("created_at"),
+                }
+            )
+        return out
 
     def list_labels(self, owner: str, repo: str) -> list[dict]:
         result = self._api(

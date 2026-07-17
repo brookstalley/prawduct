@@ -38,6 +38,7 @@ _FACET_COLORS: dict[str, str] = {
     "id": "ededed",
     "verified": "0e8a16",
     "superseded-by": "b60205",
+    "import-key": "ededed",  # idempotency-only marker for an id-less import (Data Model §5)
 }
 _DEFAULT_COLOR = "ededed"
 

@@ -53,6 +53,10 @@ class _RepoState:
         #   sub_issues[n] = the child issues of parent issue n
         self.blocked_by: dict[int, set[tuple[str, str, int]]] = {}
         self.sub_issues: dict[int, set[tuple[str, str, int]]] = {}
+        # A minimal native timeline per issue (what export serializes for CC4/audit;
+        # a close/reopen/assign event is appended as the mutation happens, so the
+        # dump has a real — if shallow — event history to round-trip, MIG-3).
+        self.timeline: dict[int, list[dict]] = {}
         # Replication window (QRY-1): number → remaining reads to hide it for,
         # modelling GitHub's observed brief 404-after-create window.
         self.hidden: dict[int, int] = {}
@@ -294,6 +298,8 @@ class FakeGitHub(Transport):
                 "the requested GitHub resource was not found",
                 details={"operation": f"api repos/{owner}/{repo}/issues/{number}"},
             )
+        old_state = issue.get("state")
+        old_logins = [a["login"] for a in issue.get("assignees", []) if a]
         for key in ("title", "body", "state", "state_reason"):
             if key in fields:
                 issue[key] = fields[key]
@@ -307,7 +313,30 @@ class FakeGitHub(Transport):
         if fields.get("state") == "open":
             issue["state_reason"] = None
         self._stamp(state, issue)
+        self._record_timeline(state, issue, number, old_state, old_logins)
         return dict(issue)
+
+    def _record_timeline(
+        self, state: _RepoState, issue: dict, number: int, old_state, old_logins: list
+    ) -> None:
+        """Append the native timeline events a state/assignee change produces — the
+        minimal audit trail ``export`` serializes (MIG-3). Only the transitions the
+        dump cares about (close/reopen/assign/unassign) are recorded."""
+        events = state.timeline.setdefault(number, [])
+        stamp = issue["updated_at"]
+        new_state = issue.get("state")
+        if new_state != old_state:
+            events.append(
+                {"event": "closed" if new_state == "closed" else "reopened",
+                 "actor": self.user["login"], "created_at": stamp}
+            )
+        new_logins = [a["login"] for a in issue.get("assignees", []) if a]
+        for login in new_logins:
+            if login not in old_logins:
+                events.append({"event": "assigned", "actor": login, "created_at": stamp})
+        for login in old_logins:
+            if login not in new_logins:
+                events.append({"event": "unassigned", "actor": login, "created_at": stamp})
 
     def add_labels(
         self, owner: str, repo: str, number: int, labels: list[str]
@@ -407,6 +436,30 @@ class FakeGitHub(Transport):
                 }
             )
         return out
+
+    def list_sub_issues(self, owner: str, repo: str, number: int) -> list[dict]:
+        self._maybe_unreachable()
+        self.calls.append(("list_sub_issues", owner, repo, number))
+        state = self._repo(owner, repo)
+        out: list[dict] = []
+        for c_owner, c_repo, c_number in sorted(state.sub_issues.get(number, set())):
+            out.append(
+                {"owner": c_owner, "repo": c_repo, "number": c_number,
+                 "ref": f"{c_owner}/{c_repo}#{c_number}"}
+            )
+        return out
+
+    def list_timeline(self, owner: str, repo: str, number: int) -> list[dict]:
+        self._maybe_unreachable()
+        self.calls.append(("list_timeline", owner, repo, number))
+        state = self._repo(owner, repo)
+        if number not in state.issues:
+            raise TransportError(
+                "not_found",
+                "the requested GitHub resource was not found",
+                details={"operation": f"api repos/{owner}/{repo}/issues/{number}/timeline"},
+            )
+        return [dict(event) for event in state.timeline.get(number, [])]
 
     def add_blocked_by(
         self, owner: str, repo: str, number: int, *,

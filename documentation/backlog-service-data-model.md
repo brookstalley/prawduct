@@ -190,7 +190,11 @@ limit. (A cross-repo blocker's state is only reliably seen online — a per-clon
     stamped on each child so a resumed `split` skips children already made and creates only the missing.
   - **`source-key:<digest>`** — `digest` = *(submitter identity, source item ref / title+body digest)*;
     stamped on a `file-upstream` item so a re-file returns the existing item rather than duplicating.
-  Both are self-derived from the call (like the `id:PFX` skip-if-exists), findable via the same
+  - **`import-key:<digest>`** — `digest` = *(title, body)* of an **id-less** imported item (one with no
+    hand-minted `PFX`); the importer's skip-if-exists key for items that have no `id:PFX` alias to key on,
+    so an id-less item is still resumable/non-duplicating. **Idempotency-only, never an identity** — it is
+    deliberately *not* an `id:` alias (a synthetic value must never be mistaken for a real ref).
+  These are self-derived from the call (like the `id:PFX` skip-if-exists), findable via the same
   label/marker lookup; encoding (label vs block entry) is a build-time detail.
 
 ---
@@ -254,12 +258,17 @@ uniqueness (§5); cache subordinate + age-visible + fetch-time-scoped (G3/D5/F4)
 2. `node_id` stability across transfer — **prove in S2**.
 3. Attachment default (release-asset vs attachments-branch) — **S5** (inline-on-private).
 4. Ready-work fan-out cost at scale — measure in S2 alongside the migration write-burst.
-5. Export **on-disk file layout** — deferred to the export build chunk (build plan Chunk 05), bounded
-   by the NFR §8 fidelity contract; the serialized fields are §1.1 (timeline/history), §1.3
-   (relationships), §2 (block) + the native graph. **Not a queried lock-in schema** — re-import into a
-   non-GitHub backend is out of scope (MG2/M10), so the exact layout is a build choice, not an altitude
-   decision. (Resolves PRD §8.9/MG2's forward pointer, which previously over-promised that this doc
-   "pins the on-disk representation".)
+5. Export **on-disk file layout** — **resolved** (the export build chunk), bounded by the NFR §8
+   fidelity contract. **Layout:** a destination directory holding **one `item-<number>.json` per
+   in-scope item** plus an **`export-manifest.json`** (`{schema, repo, exported_at, count, items}`).
+   Each item file carries the decoded projection (`id`/`node_id`/`title`/`body`/`status`/`stage`/
+   `labels`/`assignees`), the verbatim `prawduct:` **block**, `id_aliases`, `superseded_by`, the
+   **native graph** (`relationships.blocked_by` / `relationships.sub_issues` as refs, and the
+   `timeline`), and a `schema` version. JSON (diffable, greppable, tool-agnostic). **Not a queried
+   lock-in schema** — re-import into a non-GitHub backend is out of scope (MG2/M10), so the layout is a
+   build choice bounded only by fidelity, versioned (`EXPORT_SCHEMA_VERSION`) so a future bump is a
+   clean re-dump, never a data migration. (Resolves PRD §8.9/MG2's forward pointer, which previously
+   over-promised that this doc "pins the on-disk representation".)
 
 *(v1's open question "does `status:` need a label for shipped/dropped" is now **resolved**: shipped/
 dropped are `state_reason`-authoritative with **no** `status:` label; only the open sub-states
