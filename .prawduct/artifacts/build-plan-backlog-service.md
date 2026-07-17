@@ -562,6 +562,15 @@ tests/
   1. Acceptance criteria **and the must-fix pre-sign-off conditions (BKL-4W7H, BKL-8P2R)** met and tests pass
   2. Committed, then `/prawduct:critic cumulative` run and blocking findings resolved
   3. Chunk marked `[x]` in Status; the slice branch is PR-ready (`/prawduct:pr create`)
+- **SPIKE-S2 settled facts (2026-07-17 live dry-run — ~209 items into a throwaway repo, repos disposable):**
+  - ✅ **Body/ID/section fidelity** preserved verbatim (`fidelity_ok: true`) — MG1 body-fidelity confirmed live.
+  - ✅ **Aliasing (MIG-2):** 208 hand-minted `PFX`→`id:PFX` aliases; **zero new PFX minted** — existing IDs preserved.
+  - ✅ **Resume idempotency (CRASH-4):** a full re-import created **0 duplicates** — skip-if-exists on the alias holds live.
+  - ⚠️ **`pick` fan-out (PROBE-LAT):** ~**12.4 s**, **flat** across 1/3/5 candidates → NOT N+1 (fan-out is cheap/batched), but ~**6× the NFR <2 s target**, dominated by the `_all_issues` full-scan over paginated `gh` subprocesses. The <2 s floor needs the raw-HTTP/GraphQL fast-path (W1) or a scoped query, not the `gh`-subprocess path.
+  - ⚠️ **`node_id` across `gh issue transfer`: NOT stable** (settles ID-4) — the node_id re-mints on transfer (it encodes the repo). Nothing may key on it as a cross-repo permanent identifier. Transfer is a W3 op → no slice impact, but the fact is pinned.
+  - ℹ️ **Relationships:** `reconstructed: false` is **benign for this source** — prawduct's backlog uses soft `related:` (×132) and **zero** native `blocked_by`/`sub-issue` fields; the importer doesn't map `related:`→native (preserved in-body). **MIG-3 native-graph reconstruction is UNPROVEN, not failed** — a source with real sub-issue trees needs a separate test.
+  - ℹ️ **Archive volume:** ~117 of ~209 created closed (dropped) — workable.
+  - **Spike-script gap:** step-7's automated `check_node_id_transfer` left the destination empty (didn't transfer); the fact was settled by a manual probe. Fix before the script is reused.
 
 ## Post-slice widening — roadmap (lower resolution)
 
