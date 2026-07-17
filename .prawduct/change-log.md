@@ -3,6 +3,27 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-07-17: Default PR merge strategy → merge commit (was squash) (fix)
+
+<!-- prawduct: type=fix -->
+<!-- Statusless = release-pending once merged. Small behavioral default flip in skills/pr +
+     template default; no build plan. Governance-protected (skills/) → full Critic + PR. -->
+
+**Parent:** WT-7M4K — `/prawduct:pr`'s squash default erases each commit's identity on merge, so a
+reused worktree branch keeps a *pre-squash* merge-base and every "what's new" computation
+(SessionStart, `infer-critic-mode`/cumulative-Critic interval, `pr create`) over-counts
+already-merged commits and re-reviews shipped code. Recurring in practice (discodon, prawduct v3.0.4).
+
+**What:** Flipped the `/prawduct:pr` Merge Flow default from squash to **merge commit**
+(`gh pr merge --merge`) in `skills/pr/SKILL.md`, and added an explicit `PR merge strategy: merge
+commit` default row to `templates/project-preferences.md` so onboarded products inherit it visibly
+and can still override (squash/rebase remain available — it's a preference, not a hard-code).
+Merge-commit keeps a merged branch's commits reachable from the base, so its merge-base stays
+correct and the gates stop over-counting. Reconciled this repo's own `project-preferences.md`
+(the parenthetical no longer "overrides" a squash default — it now matches it) and rescoped WT-7M4K
+to its residual (detection + post-merge hygiene for the squash-override and reused-branch cases;
+severity medium-high → medium).
+
 ## 2026-07-17: Ratification seeds the Norm Health sweep baseline (fix)
 
 <!-- prawduct: type=fix -->
