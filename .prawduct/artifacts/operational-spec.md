@@ -13,6 +13,18 @@ last_validated: null
      backed up, and recovered. There is no server — deployment is a version promotion. Written
      toward the operational model we want. -->
 
+## Direction
+
+<!-- Ratified norms (2026-07-17). The Release Flow section below holds the descriptive detail; these
+     are their binding form. See docs/norms.md. -->
+
+- **Versioning is conservative: a small feature is a patch bump, not a minor-per-feature.**
+  Why: keeps the version number meaningful rather than inflating it — the plugin semver is the one handle a consumer reads and the auto-update cache key, so it should track real significance. A departure (a minor bump for a small change, or the reverse) is a recorded decision, not a reflex.
+  Status: steady-state. Judgment norm — no mechanical size test; audited by the janitor.
+- **Gitflow: `develop` is the integration branch (features branch off it and merge back); `main` is the release surface and only ever holds releases; the `develop`→`main` promotion is a separate, deliberate tree-set step, never a `/prawduct:pr`.**
+  Why: keeping releases on `main` as single-parent promotions (content-identical to `develop`, divergent history) is what lets the branch-pinned marketplace resolve a clean release while feature granularity stays on `develop`; conflating the two would either ship integration WIP or lose the release boundary.
+  Status: steady-state.
+
 ## Deployment
 
 Prawduct is a **Claude Code plugin**, and it *is* its own single-plugin, git-backed marketplace.

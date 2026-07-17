@@ -664,6 +664,16 @@ operator_verification_required: false
 api_versioning_decided: "plugin-semver + evidence-schema-version; CLI internal, external-consumer versioning deferred (revisit: first non-prawduct caller of prawduct-hook)"
 
 # =============================================================================
+# NORM REGISTRY RATIFICATION (advisory-probe resolution signal)
+# =============================================================================
+# Flat top-level scalar the norm-registry-unratified probe reads (column-0
+# scalar). Truthy = the owner ratified the norm registry -> suppress the nudge.
+# The ratified norms live in `## Direction` sections across the strategy
+# artifacts, indexed in artifacts/project-preferences.md section Enforcement.
+
+norm_registry_ratified: "2026-07-17 — 20 Direction norms across the 7 strategy artifacts; preferences Enforcement index carries the norm columns (Audit home / Why)"
+
+# =============================================================================
 # DEPRECATED TERMS
 # =============================================================================
 # Track vocabulary changes to catch stale references.
