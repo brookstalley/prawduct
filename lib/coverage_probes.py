@@ -7,7 +7,12 @@ norm that was *never created* is invisible to all of them. These probes make tha
 absence detectable — the coverage chain that a product with no strategy-class
 artifacts is currently missing.
 
-**Layer 1 — strategy-class artifact coverage (this module).** The seven
+This module owns the chain's two staged nudges: **layer 0**
+(:func:`probe_discovery_not_captured` — structural characteristics never recorded)
+and **layer 1** (:func:`probe_strategy_artifact_missing` — characteristics recorded
+but expected artifacts absent), complements on the shared staging predicate.
+
+**Layer 1 — strategy-class artifact coverage.** The seven
 strategy-class artifacts (``docs/norms.md`` § Where Norms Live) split into two
 arms:
 
@@ -126,7 +131,7 @@ _ARTIFACTS_REL = (".prawduct", "artifacts")
 # template ``null`` sentinel plus explicit negatives. Any other recorded value — a
 # nested attribute block (``consumers:`` / ``topology:`` …) or a truthy scalar —
 # means the characteristic is present, so its triggered artifact is required.
-_ABSENT_VALUES = frozenset({"null", "~", "none", "false", "no", "off"})
+_ABSENT_VALUES = frozenset({"null", "~", "none", "false", "no", "off", "0"})
 
 
 def _artifact_exists(codebase: Codebase, artifact_filename: str) -> bool:
@@ -140,14 +145,14 @@ def _state_path(codebase: Codebase) -> Path:
     return codebase.root / ".prawduct" / "project-state.yaml"
 
 
-def _opens_nested_block(lines: list[str], key_idx: int) -> bool:
+def _opens_nested_block(lines: list[str], key_idx: int, key_indent: int) -> bool:
     """True if the first non-blank, non-comment line after ``key_idx`` is indented
-    deeper than four spaces — i.e. the characteristic key opens a nested attribute
+    deeper than ``key_indent`` — i.e. the characteristic key opens a nested attribute
     block (recording presence) rather than being a bare key with nothing under it."""
     for nxt in lines[key_idx + 1:]:
         if not nxt.strip() or nxt.lstrip().startswith("#"):
             continue
-        return (len(nxt) - len(nxt.lstrip(" "))) > 4
+        return (len(nxt) - len(nxt.lstrip(" "))) > key_indent
     return False
 
 
@@ -163,30 +168,51 @@ def _structural_recorded_at(state_path: Path, characteristic: str) -> bool:
     explicit negative (:data:`_ABSENT_VALUES`), or the block / key / file is missing
     — all of which mean the characteristic is unrecorded (layer 0's nudge), so a
     triggered arm fails toward silence on anything it cannot read as clearly present.
+
+    Indentation is tracked *relative to the levels the file actually uses* (the
+    template's 2/4-space steps are the common case, not a requirement): the first
+    indent seen under ``classification:`` is its direct-child level, and the first
+    indent seen under ``structural:`` is the characteristic-key level. A file
+    reformatted to 3- or 4-space steps with a characteristic recorded must read as
+    recorded — a false "unrecorded" here would pin the layer-0 discovery advisory
+    on a repo whose owner already answered.
     """
     try:
         lines = state_path.read_text(encoding="utf-8").splitlines()
     except (OSError, UnicodeDecodeError):
         return False
     in_classification = False
+    child_indent: int | None = None  # direct-child level of classification (domain:, structural:, …)
     in_structural = False
+    key_indent: int | None = None  # characteristic-key level under structural:
     for idx, line in enumerate(lines):
         if not line.strip() or line.lstrip().startswith("#"):
             continue
         indent = len(line) - len(line.lstrip(" "))
         if indent == 0:
             in_classification = line.startswith("classification:")
+            child_indent = None
             in_structural = False
+            key_indent = None
             continue
         if not in_classification:
             continue
-        if indent == 2:
+        if child_indent is None:
+            child_indent = indent
+        if indent <= child_indent:
             # A sibling key of classification (domain:, structural:, risk_profile: …)
-            # — we are inside structural only while this one is `structural:`.
-            in_structural = line.strip().startswith("structural:")
+            # — we are inside structural only while this one is `structural:`. A line
+            # shallower than the established child level is malformed relative to the
+            # block; fail toward silence by leaving structural.
+            in_structural = indent == child_indent and line.strip().startswith("structural:")
+            key_indent = None
             continue
-        if not in_structural or indent != 4:
-            continue  # 6-space nested attribute lines, or keys outside structural
+        if not in_structural:
+            continue
+        if key_indent is None:
+            key_indent = indent
+        if indent != key_indent:
+            continue  # nested attribute lines of a characteristic block
         key, _, rest = line.strip().partition(":")
         if key != characteristic:
             continue
@@ -195,7 +221,7 @@ def _structural_recorded_at(state_path: Path, characteristic: str) -> bool:
             return value.lower() not in _ABSENT_VALUES
         # Empty inline value: a nested attribute block records presence; a bare
         # key with nothing under it does not (fail toward silence).
-        return _opens_nested_block(lines, idx)
+        return _opens_nested_block(lines, idx, key_indent)
     return False
 
 
@@ -209,8 +235,8 @@ def structural_characteristics_recorded(state_path: Path) -> bool:
     """True when the product has recorded *at least one* structural characteristic
     present in ``classification.structural``.
 
-    This is the **shared staging boundary** between layer 0 (discovery-not-captured,
-    emitted from ``bin/prawduct-hook``) and layer 1 (this module's strategy-artifact
+    This is the **shared staging boundary** between layer 0
+    (:func:`probe_discovery_not_captured`) and layer 1 (the strategy-artifact
     probe). Layer 0 fires on its *negation*; layer 1 speaks only on its truth — so
     exactly one layer nudges a given product (one actionable nudge at a time;
     docs/norms.md § Enforcement). Both sides key off THIS predicate rather than each
@@ -320,6 +346,67 @@ def probe_strategy_artifact_missing(state: ProjectState, codebase: Codebase):
     ]
 
 
+def probe_discovery_not_captured(state: ProjectState, codebase: Codebase):
+    """Layer 0 of the structural-coverage chain — discovery not captured.
+
+    Fires when the repo shows product-definition work (code OR docs markdown) but
+    ``classification.structural`` records no characteristic present — the product
+    has not told governance what it *is*, so rigor can't be calibrated, the
+    coverage chain stays blind, and requiring the artifacts those characteristics
+    would imply is premature (that's layer 1, staged behind this via the shared
+    predicate :func:`structural_characteristics_recorded` — exactly one of the two
+    speaks). Two variants share one advisory identity (fixed ``evidence``; the
+    variant lives in ``trigger_summary``): discovery never ran (both template
+    sentinels still null — ``gitstate._discovery_uncaptured``), or discovery ran
+    but the structural characteristics were never recorded.
+
+    Delivered through the advisory store rather than a hard session-start print so
+    it is dismissible per-clone (``/prawduct:advisory dismiss``) — a repo whose
+    owner considers discovery settled can decline the nudge without editing state,
+    while the default remains a recurring, prominent (``warn``-priority) prompt.
+    Gated on product-definition work so a freshly-scaffolded empty repo stays
+    silent; fail-soft like every probe (a scan failure reads as "no work").
+    """
+    from . import gitstate  # deferred: keep module import light for non-probe callers
+
+    state_path = _state_path(codebase)
+    if not state_path.is_file():
+        return []
+    if not gitstate._has_product_definition_work(codebase.root):
+        return []
+    if structural_characteristics_recorded(state_path):
+        return []
+    if gitstate._discovery_uncaptured(state_path):
+        summary = (
+            "DISCOVERY NOT CAPTURED: .prawduct/project-state.yaml has no classification or "
+            "product definition, but this repo has product work (code and/or docs/). Until "
+            "discovery is captured, governance can't calibrate rigor and the build gates "
+            "won't engage. Discovery RECONCILES existing requirements/architecture/code — "
+            "it reads what exists and backfills project-state.yaml rather than starting over."
+        )
+    else:
+        summary = (
+            "DISCOVERY NOT CAPTURED: .prawduct/project-state.yaml does not record this product's "
+            "structural characteristics (none present in classification.structural), but this "
+            "repo has product work (code and/or docs/). Structural characteristics decide which "
+            "strategy-class artifacts the product needs, so until they're captured governance "
+            "can't calibrate rigor and the coverage chain stays blind. Discovery RECONCILES "
+            "existing material — it backfills the characteristics rather than starting over."
+        )
+    return [
+        AdvisoryCandidate(
+            type="discovery-not-captured",
+            evidence=(
+                "product-definition work present but no structural characteristic recorded",
+            ),
+            trigger_summary=summary,
+            recommended_action="/prawduct:methodology discovery",
+            priority="warn",
+        )
+    ]
+
+
 def register() -> None:
     """Register the structural-coverage probes. Idempotent (register_probe overwrites)."""
     register_probe(FEATURE, "strategy-artifact-missing", PROBE_VERSION, probe_strategy_artifact_missing)
+    register_probe(FEATURE, "discovery-not-captured", PROBE_VERSION, probe_discovery_not_captured)

@@ -3,7 +3,57 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
-## 2026-07-17: SessionStart briefing no longer enumerates sibling worktrees (fix)
+## 2026-07-17: Release-audit fixes — fleet-safe layer-0 delivery, adoption-scoped norm severity, template/doc corrections (fix)
+
+<!-- prawduct: type=fix -->
+<!-- Statusless = release-pending once merged. Pre-release audit fix batch, no build plan
+     (precedent: GOV-8R3F, WT-7M4K entries) — each fix is small and independently tested;
+     governance-protected paths (lib/, bin/, skills/, templates/) → full Critic. -->
+
+**Parent:** Pre-release audit of the held 3.0.6 line (2026-07-17, four independent review
+passes + incoming-bugs cross-reference) found a cluster of defects sitting exactly where a
+product-repo session meets the new norm-lifecycle/structural-coverage machinery — all
+experiential, none crash-shaped; owner approved the fixes and the two design calls.
+
+**What:**
+- **Layer 0 (discovery-not-captured) is now an advisory-store probe** (`lib/coverage_probes.
+  probe_discovery_not_captured`, warn priority) instead of a hard non-dismissible print in
+  `cmd_clear` — dismissible per-clone via `/prawduct:advisory dismiss`, surfaced in the
+  briefing's ADVISORIES block, staging against layer 1 unchanged (shared predicate, both
+  probes now co-located). Owner call: visibility stays default-on; an owner who considers
+  discovery settled can decline without editing state.
+- **Critic norm-authority severity scoped to adoption** (`skills/critic/review-protocol.md`,
+  canonical statement in `docs/norms.md` § Severity): norm departure/birth findings are
+  BLOCKING only where ratified norms exist; in a norm-less product the same detections are
+  **NOTE** (WARNING is treated as a de-facto blocker in practice) — a repo is never blocked
+  into a lifecycle it hasn't adopted. Enforcement-table row updated to match, including the
+  PR reviewer's WARNING layering (previously over-claimed as BLOCKING). Protocol addition
+  paid for by in-block trims — the token-diet ceiling (3530) holds.
+- **Structural scanner hardened** (`lib/coverage_probes.py`): indentation now tracked
+  relative to the file's own levels (a 3-/4-space-reformatted state with a recorded
+  characteristic no longer reads as unrecorded — which would have pinned the layer-0
+  advisory permanently); `"0"` added to `_ABSENT_VALUES` (`exposes_programmatic_interface: 0`
+  no longer wrongly requires an api-contract).
+- **Advisory subsystem survives undecodable state** (`lib/advisory_store.load_project_state`):
+  `UnicodeDecodeError` now caught alongside `OSError` — previously a non-UTF-8
+  `project-state.yaml` killed the whole probe sync (hook path) or tracebacked
+  `advisory show` (CLI path).
+- **Wrong field name corrected**: `multi_party` → `has_multiple_party_types` in
+  `docs/norms.md` (flip protocol ×2) and `skills/doctor/SKILL.md` #10 — a model executing
+  the characteristic-flip protocol would have written a key no probe reads.
+- **Template Direction footgun removed** (six strategy-class templates): the `## Direction`
+  heading now lives *inside* the guidance comment (a kept empty heading read as ratified
+  norms and started the perpetual 60-day sweep clock), and the instruction licensing a
+  planning-time `norm_registry_ratified` write is replaced by routing "none to ratify"
+  through the doctor's owner-confirmed Ratification Flow.
+- **`docs/norms.md` reachable from product sessions**: new `norms` topic in
+  `/prawduct:methodology`; all 18 bare `docs/norms.md` citations across digests,
+  methodology guides, and skills replaced with the resolvable `/prawduct:methodology norms`.
+- `coverage-status` docstring no longer claims "exactly one layer speaks" (layers 1+2 can
+  both be active during partial authoring — matches docs and behavior).
+
+Out of scope, tracked: `templates/architecture.md` (GOV-2T6K), TST-6F2R (false-red test
+evidence — pending owner confirmation of approach).
 
 <!-- prawduct: type=fix | release=v3.0.5 | status=shipped -->
 

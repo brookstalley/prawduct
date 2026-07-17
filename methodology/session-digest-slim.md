@@ -16,7 +16,7 @@ restate; product repos receive the full digest (`methodology/session-digest.md`)
   hand-edits. "Done" = `update status=shipped` → `## Archive` (never strikethrough). An
   early-`stage:` item is an undocumented requirement — `pick` routes it to discovery.
 - **Feature-branch medium+ work.** Don't create PRs unless asked — then use `/prawduct:pr`.
-- **Norms bind; descriptions track** (`docs/norms.md`) — departures from Direction/preferences
+- **Norms bind; descriptions track** (`/prawduct:methodology norms`) — departures from Direction/preferences
   norms are recorded decisions (amend / ruling / exception), never doc-sync.
 
 ## How the agent shows up (stance)

@@ -95,7 +95,7 @@ An assumption is a decision made on the user's behalf, surfaced for correction �
 Some artifacts don't just describe the product — they **bind** future work: a `## Direction`
 section in a strategy-class artifact (observability, security, architecture, API contract, NFRs,
 operational spec, data model) or a norm row in `project-preferences.md`. Norms bind; descriptions track
-(`docs/norms.md`). A plan states which norms govern it and reconciles against them *before* code.
+(`/prawduct:methodology norms`). A plan states which norms govern it and reconciles against them *before* code.
 
 **Declare `governed_by:` in the plan frontmatter**, alongside `depends_on:` — the governing
 artifacts whose Direction norms (and preferences norms) bind this plan's work. Seed the list
@@ -113,7 +113,7 @@ head. A departure from a norm is never silent — you conform, or you record the
 `[DECISION: <what was decided> | <why, engaging the norm's why> | user can veto/override]`
 
 — the decision sibling of the `[ASSUMPTION: …]` form above. Amending a norm to bless your own code
-is the laundering tell (`docs/norms.md`); the Critic routes an unrecorded departure to a
+is the laundering tell (`/prawduct:methodology norms`); the Critic routes an unrecorded departure to a
 **BLOCKING** finding.
 
 **New structural context prompt.** When a chunk introduces a new execution context (a process, a

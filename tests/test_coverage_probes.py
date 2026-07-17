@@ -15,9 +15,9 @@ spec, so there is one mechanism (presence) and no separate decline list.
 records at least one structural characteristic
 (:func:`~lib.coverage_probes.structural_characteristics_recorded`). Until then the
 product has not told governance what it *is*, so the upstream nudge — layer 0
-(discovery-not-captured, emitted from ``bin/prawduct-hook``, exercised in
-``test_discovery_capture_nudge``) — owns it, and this probe holds back so exactly one
-layer nudges. The staged layer-0 → layer-1 transition is pinned by a fixture-based
+(:func:`~lib.coverage_probes.probe_discovery_not_captured`, an advisory-store probe;
+hook wiring exercised in ``test_discovery_capture_nudge``) — owns it, and this probe
+holds back so exactly one layer nudges. The staged layer-0 → layer-1 transition is pinned by a fixture-based
 before/after test on prawduct's own reconciled structural profile (the reference
 product dogfooding this chain), kept decoupled from the live ``project-state.yaml``
 so the proof re-runs whatever this repo records — an earlier repo-coupled zero-fire
@@ -551,15 +551,8 @@ def _write_code(tmp_path) -> None:
 
 
 def _layer0_fires(tmp_path) -> bool:
-    # The hook's layer-0 fire decision (bin/prawduct-hook), evaluated on its inputs.
-    from lib import gitstate
-
-    sp = _state_path(tmp_path)
-    return bool(
-        sp.is_file()
-        and gitstate._has_product_definition_work(tmp_path)
-        and not cp.structural_characteristics_recorded(sp)
-    )
+    # The real layer-0 probe (advisory-store delivery), not a re-derived predicate.
+    return cp.probe_discovery_not_captured(_state(), _cb(tmp_path)) != []
 
 
 def _layer1_fires(tmp_path) -> bool:
@@ -608,3 +601,129 @@ def test_layer1_and_layer2_overlap_during_partial_authoring(tmp_path):
     _open_gate(tmp_path)  # characteristics recorded → layer 0 clears
     _write_artifact(tmp_path, "security-model.md", "# Security Model\n\nProse, no Direction.\n")
     assert (_layer0_fires(tmp_path), _layer1_fires(tmp_path), _layer2_fires(tmp_path)) == (False, True, True)
+
+
+# --- indent tolerance: recorded is recorded, whatever the step width -----------
+# The scanner tracks the file's OWN indent levels (first child level under
+# classification:, first key level under structural:) instead of hard-coding the
+# template's 2/4-space steps. The failure this pins: a reformatted-but-recorded
+# state reading as "unrecorded" would fire the layer-0 discovery advisory forever
+# on a repo whose owner already answered.
+
+
+def _write_state_reindented(tmp_path, step: int) -> None:
+    """A recorded state using ``step``-space indentation throughout."""
+    i1, i2, i3 = " " * step, " " * (2 * step), " " * (3 * step)
+    content = (
+        "schema_version: 6\n"
+        "classification:\n"
+        f"{i1}domain: utility\n"
+        f"{i1}structural:\n"
+        f"{i2}has_human_interface:\n"
+        f"{i3}modality: terminal\n"
+        f"{i2}runs_unattended: null\n"
+        f"{i2}exposes_programmatic_interface: true\n"
+        f"{i1}risk_profile:\n"
+        f"{i2}overall: low\n"
+    )
+    d = tmp_path / ".prawduct"
+    d.mkdir(parents=True, exist_ok=True)
+    (d / "project-state.yaml").write_text(content, encoding="utf-8")
+
+
+@pytest.mark.parametrize("step", [2, 3, 4])
+def test_structural_recorded_tolerates_indent_width(tmp_path, step):
+    _write_state_reindented(tmp_path, step)
+    sp = _state_path(tmp_path)
+    assert cp.structural_characteristics_recorded(sp) is True
+    # nested-block form and scalar form both read as present at any width
+    assert cp._structural_recorded_at(sp, "has_human_interface") is True
+    assert cp._structural_recorded_at(sp, "exposes_programmatic_interface") is True
+    # explicit null still reads as absent at any width
+    assert cp._structural_recorded_at(sp, "runs_unattended") is False
+    # keys outside structural (risk_profile children) never leak in
+    assert cp._structural_recorded_at(sp, "overall") is False
+
+
+def test_absent_values_include_zero(tmp_path):
+    # `exposes_programmatic_interface: 0` is an explicit negative, not a recorded
+    # presence — it must not require an api-contract.
+    _write_state(tmp_path, {"exposes_programmatic_interface": "0", "has_human_interface": {"modality": "terminal"}})
+    out = cp.probe_strategy_artifact_missing(_state(), _cb(tmp_path))
+    assert len(out) == 1
+    assert "api-contract.md" not in out[0].trigger_summary
+
+
+# --- layer 0 probe: discovery-not-captured (advisory delivery) -----------------
+
+
+def _write_docs(tmp_path) -> None:
+    d = tmp_path / "docs"
+    d.mkdir(exist_ok=True)
+    (d / "vision.md").write_text("# Vision\n", encoding="utf-8")
+
+
+def test_layer0_probe_fires_on_unrecorded_with_work(tmp_path):
+    _write_code(tmp_path)
+    _write_state(tmp_path, {c: None for c in cp.STRUCTURAL_CHARACTERISTICS})
+    out = cp.probe_discovery_not_captured(_state(), _cb(tmp_path))
+    assert len(out) == 1
+    adv = out[0]
+    assert adv.type == "discovery-not-captured"
+    assert adv.priority == "warn"
+    assert "DISCOVERY NOT CAPTURED" in adv.trigger_summary
+    assert adv.recommended_action == "/prawduct:methodology discovery"
+
+
+def test_layer0_probe_silent_without_product_work(tmp_path):
+    # A just-scaffolded repo (state file, no code, no docs) is not nagged.
+    _write_state(tmp_path, {c: None for c in cp.STRUCTURAL_CHARACTERISTICS})
+    assert cp.probe_discovery_not_captured(_state(), _cb(tmp_path)) == []
+
+
+def test_layer0_probe_silent_without_state_file(tmp_path):
+    # No project-state.yaml at all → not a prawduct repo in the relevant sense;
+    # fail toward silence (the onboarding path owns that case).
+    _write_code(tmp_path)
+    assert cp.probe_discovery_not_captured(_state(), _cb(tmp_path)) == []
+
+
+def test_layer0_probe_silent_once_recorded(tmp_path):
+    _write_code(tmp_path)
+    _open_gate(tmp_path)
+    assert cp.probe_discovery_not_captured(_state(), _cb(tmp_path)) == []
+
+
+def test_layer0_probe_docs_only_work_counts(tmp_path):
+    # Docs-first products (no code yet) still get the nudge — the exact phase the
+    # code-gated project-preferences CRITICAL is blind to.
+    _write_docs(tmp_path)
+    _write_state(tmp_path, {c: None for c in cp.STRUCTURAL_CHARACTERISTICS})
+    assert len(cp.probe_discovery_not_captured(_state(), _cb(tmp_path))) == 1
+
+
+def test_layer0_probe_id_stable_across_variants(tmp_path):
+    # Both message variants share one advisory identity (fixed evidence), so a
+    # dismissal survives the state evolving from never-ran to structural-only.
+    _write_code(tmp_path)
+    never_ran = (
+        "classification:\n  domain: null\nproduct_definition:\n  vision: null\n"
+    )
+    d = tmp_path / ".prawduct"
+    d.mkdir(parents=True, exist_ok=True)
+    (d / "project-state.yaml").write_text(never_ran, encoding="utf-8")
+    (first,) = cp.probe_discovery_not_captured(_state(), _cb(tmp_path))
+    _write_state(tmp_path, {c: None for c in cp.STRUCTURAL_CHARACTERISTICS})
+    (second,) = cp.probe_discovery_not_captured(_state(), _cb(tmp_path))
+    assert first.evidence == second.evidence
+    assert first.trigger_summary != second.trigger_summary
+
+
+def test_layer0_probe_registered_in_roster(tmp_path):
+    _write_code(tmp_path)
+    _write_state(tmp_path, {c: None for c in cp.STRUCTURAL_CHARACTERISTICS})
+    cp.register()
+    results = run_all_probes(_state(), _cb(tmp_path))
+    assert any(c.type == "discovery-not-captured" for c in results)
+    # staging: the layer-1 probe held back while layer 0 speaks
+    assert not any(c.type == "strategy-artifact-missing" for c in results)
