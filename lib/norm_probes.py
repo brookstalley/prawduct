@@ -88,7 +88,7 @@ from datetime import date, datetime, timezone
 from pathlib import Path
 
 from .advisory_store import AdvisoryCandidate, Codebase, ProjectState, register_probe
-from .backlog import BacklogItem, parse_backlog
+from .backlog.legacy import BacklogItem, parse_backlog
 
 FEATURE = "norm-lifecycle"
 PROBE_VERSION = 1
