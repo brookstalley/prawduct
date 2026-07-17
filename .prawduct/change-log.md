@@ -3,6 +3,21 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-07-17: SessionStart briefing no longer enumerates sibling worktrees (fix)
+
+<!-- prawduct: type=fix | release=v3.0.5 | status=shipped -->
+
+**Parent:** WT-8Q3N — the SessionStart briefing enumerated sibling worktrees as `- <branch> @
+<path>`, which read as a menu of adoptable work and lured a session into working in a worktree it
+did not launch in (colliding with that worktree's own live session). Root cause was briefing noise,
+not a locking gap.
+
+**What:** Removed the sibling-worktree enumeration from `lib/briefing.py`; the briefing now orients
+the agent to its own worktree only ("work and gates are scoped to THIS worktree only; other
+worktrees belong to their own sessions; do not read or modify them"). `_detect_worktrees` still
+gates on >1 worktree and siblings remain discoverable via `git worktree list`. Regression test
+added. Shipped as the v3.0.5 hotfix off v3.0.4 (b5d952c on main); this entry reconciles develop.
+
 ## 2026-07-17: Default PR merge strategy → merge commit (was squash) (fix)
 
 <!-- prawduct: type=fix -->
