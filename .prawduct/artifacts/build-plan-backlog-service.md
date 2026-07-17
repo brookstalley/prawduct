@@ -31,7 +31,7 @@ swept the same session** (§ "Coherence debts" — API §1 CLI spelling, Data Mo
 pointer, API §2.5/MIG-5 scrub op-dependency). Prior v1: initial drill-down from PRD §16 item 6. · added: 2026-07-16 · source:
 planning session · stage: design · **PROMOTED 2026-07-16** to the active build plan
 (`active_build_plan → artifacts/build-plan-backlog-service.md`); the Stop-hook Critic gate is armed.
-Nothing built yet — Chunk 01 is next. Pending owner sign-off.`
+Chunk 01 (walking skeleton) built + committed; branch reconciled with develop (v3.0.4), offline suite green (1887 passed), Critic re-review clean (0 blocking). Live round-trip deferred to operator-verification VRF-003. Design still pending owner sign-off.`
 
 **Parent:** `documentation/backlog-service-prd.md` (PRD v4) and, through it,
 `documentation/backlog-service-requirements.md`. This plan is the **last level** of the layered
@@ -51,8 +51,9 @@ five siblings (`documentation/backlog-service-*.md`), this plan was **promoted**
 v2 fold + coherence sweep: moved here to `.prawduct/artifacts/build-plan-backlog-service.md` and
 pointed at by `active_build_plan` (so the Stop-hook Critic gate arms on it). The five sibling design
 docs stay in `documentation/`; this plan references them by section throughout. It remains a *design
-artifact pending owner sign-off* — **no chunk has been built** — but the tooling now treats it as the
-active plan. (PRD §16 item 6 named `.prawduct/artifacts/` as the destination; the design-phase copy in
+artifact pending owner sign-off* — **Chunk 01 (the walking skeleton) is now built and reviewed**
+(offline-verified, 0 blocking Critic findings; the live round-trip is deferred to VRF-003) — and the
+tooling treats it as the active plan. (PRD §16 item 6 named `.prawduct/artifacts/` as the destination; the design-phase copy in
 `documentation/` graduated here.)
 
 ---
@@ -118,9 +119,12 @@ rulings. The roadmap stays Medium by design until each layer's workload justifie
 - [ ] Chunk 06: SPIKE-S2 dry-run + MG4 scrub + prawduct-first real migration (dogfood, cumulative-final)
 - [ ] Roadmap (post-slice, lower resolution): W1 cache+sync · W2 search+dedup · Wv verify+grooming · W3 cross-project+automation · W4 attachments · W5 MCP · W6 App identity + offline queue · Wg GV3 janitor
 Context: Draft v2 authored 2026-07-16 (v1 + two independent reviews folded; the 3 peer-doc coherence
-debts swept the same session). Nothing built. This is a design artifact **promoted 2026-07-16** to the
-active build plan (gate armed); still pending owner sign-off. Next: owner sign-off → build Chunk 01
-(read `methodology/building.md` first).
+debts swept the same session). Chunk 01 built + committed 2026-07-17 (walking skeleton), branch
+reconciled with develop (v3.0.4), offline suite green, Critic re-review clean (0 blocking). The
+`[ ]` above stays unchecked by design until Done-when step 3's change-log entry flips it via
+`regen-views`; the live round-trip (step 0 / acceptance) is deferred to operator-verification VRF-003.
+Still a design artifact **promoted 2026-07-16**; owner sign-off pending. Next: VRF-003 live
+verification + owner sign-off, then Chunk 02 (read `methodology/building.md` first).
 
 ## Scaffolding
 
@@ -254,7 +258,8 @@ tests/
   (seam), §3.6 (envelope), §3.7 (IDs), §3.5 (block parse), §3.9 (security-negative), §3.11
   (provisioning), §6 (fake).
 - **Deliverables:** move the former `backlog.py` → new `lib/backlog/legacy.py` + repoint `lib/briefing.py`,
-  `lib/backlog_probes.py`, and their tests; new `lib/backlog/__init__.py`,
+  `lib/backlog_probes.py`, and their tests (and `lib/norm_probes.py`, whose `.backlog` import arrived
+  via the develop merge — repointed to `.backlog.legacy` in the merge reconciliation); new `lib/backlog/__init__.py`,
   new `lib/backlog/transport.py` (gh-only), new `lib/backlog/core.py` (`file`,`get`), new
   `lib/backlog/encode.py` (block + soft-enum), new `lib/backlog/ids.py`, new
   `lib/backlog/provision.py` (minimal), new `lib/backlog/cli.py`, the `backlog` dispatch line in

@@ -67,7 +67,7 @@ wrong agent_type). The consolidation core itself is `tests/test_critic_consolida
   the lingering marker (the floor) — confirm that too, then investigate the matcher
   string (`prawduct:critic-reviewer` vs `critic-reviewer`) against the installed version.
 
-## VRF-002 — Chunk 01 (backlog-service) — CLI file/get round-trip + JSON envelope
+## VRF-003 — Chunk 01 (backlog-service) — CLI file/get round-trip + JSON envelope
 
 **Status:** pending
 **Added:** 2026-07-16 (backlog-service Chunk 01 — walking skeleton)

@@ -50,6 +50,31 @@ dependency_graph:
     affects_artifacts: [agents/critic/SKILL.md, .prawduct/critic-review.md]
 
 # =============================================================================
+# DESIGN DECISIONS
+# =============================================================================
+# The two API keys are the framework-tracked recorded decisions the Exposed-API
+# Critic check + the api-versioning advisory read. They MIRROR
+# documentation/backlog-service-api-contract.md §4 (error model) and §5/§6
+# (versioning/deprecation) — authoritative there, mirrored here on build-plan
+# authoring (the deliberate deferral in api-contract's "Two recorded decisions"
+# note has fired: the backlog-service build plan is now the active plan).
+
+design_decisions:
+  api_versioning_approach:
+    scheme: "Plugin semver IS the version handle — no per-command /v1 handle. Two version surfaces, named separately so they can't be conflated: (1) the data-format wire (GitHub Issues + prawduct: block + label taxonomy) is versioned v:1 and additive-only-forever (Data Model §7 — a semantics change mints a new key, never a v:1→v:2 reinterpretation); (2) the CLI/MCP JSON surface is a tolerant-reader additive contract (new keys added, none removed/repurposed, unknown enums tolerated), granularity whole-surface with per-command stability tiers."
+    deprecation_policy: "A deprecated flag/field/exit-code survives >= one plugin minor cycle; removal only on a major, signalled by a stderr warning (never stdout) + a change-log record. A breaking output change rides a plugin major bump + deprecation window."
+    stability_tiers: "stable = item lifecycle, list/pick/counts, JSON envelope + code vocabulary, ID-normalization inputs · experimental (may break within a minor) = MCP front, search --semantic, attachments, rollup · internal (not a contract) = the core library return-value seam."
+    status: active
+    rationale: "Avoids the scriob tax (~697/700 commits shipped on an unchallenged 'versioning deferred' note, then a coordinated breaking retrofit). This is a recorded decision, explicitly not a deferral."
+    date: 2026-07-16
+  api_error_model_approach:
+    envelope: "One philosophy across three fronts: return-value internally ({status: ok|error, ...} with a stable code + message + details); at the CLI a JSON envelope {status:error, error:{code, message, retryable, details}} as sole stdout content plus a stable exit-code scheme (0=ok, 2=validation, 3=not_found, 4=conflict, 5=auth, 6=unavailable — aligned with prawduct-hook's conventions); MCP maps the same core result onto isError + content, reusing the identical code vocabulary."
+    codes: "validation, not_found, ambiguous_id, alias_collision, conflict, claim_conflict, auth, unavailable, rate_limited, unsupported — a fixed contract vocabulary, not free text (API §4 table)."
+    status: active
+    rationale: "Uniform from the first slice, not deferred. Errors are built from KNOWN fields, never by echoing raw gh/subprocess/HTTP output (Security §4 / SEC-1 — the denylist scrub is only a backstop). never-block (a caller's degrade-gracefully obligation) and retryable (a driver's transient-vs-permanent re-attempt hint) are kept as orthogonal axes (C3), never conflated."
+    date: 2026-07-16
+
+# =============================================================================
 # OPEN QUESTIONS
 # =============================================================================
 
