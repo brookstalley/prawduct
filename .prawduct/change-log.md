@@ -3,6 +3,29 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-07-17: Ratification seeds the Norm Health sweep baseline (fix)
+
+<!-- prawduct: type=fix -->
+<!-- Statusless = release-pending once merged. Small read-side probe fix + tests +
+     doc coherence. Governance-protected (skills/, lib/) → full Critic + PR. -->
+
+**Parent:** surfaced by the norm-registry ratification (Layer 2) landing on develop — it cleared
+`norm-registry-unratified` but immediately tripped `norm-health-sweep-overdue`, because that probe
+keyed only off the janitor sweep stamp (absent on a fresh repo) while `## Direction` sections now
+existed. Broke the repo-coupled tripwire `tests/test_norm_probes.py::TestSilentAgainstThisRepo`.
+
+**What:** `probe_norm_health_sweep_overdue` now treats the effective "last full norm engagement" as
+the **newer of the janitor sweep stamp and the ratification date** (`norm_registry_ratified`'s
+leading date, via a new `_leading_date` helper that tolerates the fact's descriptive suffix).
+Ratifying the registry is itself a deep pass over every norm, so a freshly-ratified repo isn't
+flagged sweep-overdue until the 60-day window elapses — the nudge no longer fires the same day it
+clears `norm-registry-unratified`. Re-baselined the repo-coupled tripwire to expect post-ratification
+silence (re-fires on genuine drift: the ratification ageing past the window with no janitor sweep, a
+`revisit:` expiring). Coherence: updated the probe docstring, the doctor SKILL step-5 contract (the
+recorded value must lead with the date — it's now load-bearing), the test module docstring, and the
+completed norm-lifecycle build plan's as-built note (its tripwire-must-fail claim is now superseded).
+Filed COV-4H7N (the doc-only/state-only fast-paths let this break slip onto develop unseen).
+
 ## 2026-07-17: Ratify prawduct's norm registry — 20 Direction norms (norm-lifecycle Layer 2)
 
 <!-- prawduct: type=docs -->
