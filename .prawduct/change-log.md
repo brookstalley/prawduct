@@ -3,6 +3,41 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-07-17: Ratify prawduct's norm registry — 20 Direction norms (norm-lifecycle Layer 2)
+
+<!-- prawduct: type=docs -->
+<!-- Statusless = release-pending once merged. Owner-ratified via the /prawduct:doctor
+     surface-by-exception flow; governance-state + artifacts only, no code. -->
+
+**Parent:** the norm-lifecycle Layer 2 close-out (`norm-registry-unratified` advisory) — the seven
+strategy artifacts authored under GOV-5K3M were deliberately descriptive (no `## Direction`
+sections), so the registry was unratified by design, handing the owner the ratification step. The
+owner ruled on the decision-worthy candidates; the rest were bulk-confirmed.
+
+**What:** Ratified 20 Direction norms across the strategy artifacts (statement + why + status per
+`docs/norms.md` Anatomy):
+- **data-model** (5): verdicts-from-facts / no-model-in-write-path (scoped to the Critic data plane),
+  facts append-only, views never authoritative, schema-ahead surfaced, two-stores-two-lifetimes.
+- **architecture** (4): reviewer-never-mutates-its-session, authority-closed / advice-soft,
+  local-first (stdlib runtime), least-authority write boundary.
+- **security-model** (2): untrusted-state-is-data, no-destructive-without-`--apply`.
+- **api-contract** (3): `api_versioning_approach`, `api_error_model_approach`, additive-first.
+- **observability-strategy** (2): severity-prefix + stdout/stderr split, single-writer ledger.
+- **nonfunctional-requirements** (2): review-wall-clock-P0, state-file-thresholds-are-advisory.
+- **operational-spec** (2): conservative versioning (judgment norm), gitflow develop/main.
+
+**Owner rulings:** state-file thresholds ratified as **advisory** (warn/advise, no mechanical
+enforcement — so over-threshold files are the nag's target, not violations, and no retroactivity
+applies); verdicts-from-facts **scoped to the Critic data plane** (honest — test-run/PR-review
+evidence is not yet on the store); conservative versioning bound as a **judgment** norm. Two wording
+fixes applied (stdlib scoped to the runtime; the true least-authority write boundary). The
+metrics/telemetry statement was left descriptive, not ratified.
+
+Extended `project-preferences.md` § Enforcement into the product's norm index (added `Audit home` +
+`Why` columns; 20 pointer rows). Recorded `norm_registry_ratified` in `project-state.yaml` — clears
+the `norm-registry-unratified` advisory; `coverage-status` now reports the chain fully satisfied
+(Layer 0/1/2).
+
 ## 2026-07-17: Norm-ratification flow surfaces by exception, not a flat wall (fix)
 
 <!-- prawduct: type=fix -->

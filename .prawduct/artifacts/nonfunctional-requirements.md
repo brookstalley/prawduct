@@ -11,15 +11,27 @@ last_validated: null
 <!-- Written toward the targets we want to hold, not a transcript of current measurements.
      Where a target is aspirational or where reality currently lags, the text says so. -->
 
+## Direction
+
+<!-- Ratified norms (2026-07-17). See docs/norms.md. -->
+
+- **Review wall-clock is a P0 constraint: cost = unit-cost × run-count, so run-count is the lever — fewer, well-scoped reviews — and the two independent reviews at the PR boundary run in parallel, never sequentially.**
+  Why: review latency is what determines whether governance feels like a partner or a tax; per-review cost is treated as fixed (reviewers inherit the session model — reviewer-model tiering was removed, the manifest's `tier` is telemetry only), so the only lever is how *often* we review, set by gate and chunk structure.
+  Status: steady-state.
+- **State-file growth past its size threshold is surfaced as an advisory warning that prompts compaction — it is never a hard block or mechanical enforcement.**
+  Why: oversized governance state is a real context-weight cost, but blocking a session on file size would be disproportionate for a local tool — this is advice (fail-soft), not authority; an over-threshold file is the nag's designed target, not a violation, so no ratification retroactivity applies.
+  Status: steady-state.
+
 ## Performance
 
 Prawduct's performance budget is dominated by one thing: **the wall-clock cost of independent
 review.** This is treated as a **P0 constraint**, because review latency is what determines whether
 governance feels like a partner or a tax.
 
-The governing model is **cost = unit-cost × run-count**. The reviewer model tier fixes the unit
-cost; **run-count is a design variable set by gate and chunk structure.** We therefore optimize
-run-count first (fewer, well-scoped reviews) and treat the per-review cost as fixed.
+The governing model is **cost = unit-cost × run-count**. Per-review cost is treated as fixed —
+reviewers inherit the session model (reviewer-model tiering was removed; the manifest's `tier` is
+telemetry only) — while **run-count is a design variable set by gate and chunk structure.** We
+therefore optimize run-count first (fewer, well-scoped reviews).
 
 Targets we want to hold:
 
@@ -83,10 +95,10 @@ probe or malformed state file never takes down a session.
 
 ## Cost Constraints
 
-- **The only meaningful operating cost is reviewer tokens.** Independent reviewers run on the most
-  capable model tier (opus, established as the efficiency frontier — a cheaper tier produced no
-  novel findings at higher net cost). The lever for cost is therefore **run-count**, controlled by
-  gate and chunk design, not by downgrading the reviewer.
+- **The only meaningful operating cost is reviewer tokens.** Independent reviewers inherit the
+  session model (reviewer-model tiering was removed — the manifest's `tier` is telemetry only and
+  selects no model). The lever for cost is therefore **run-count**, controlled by gate and chunk
+  design, not the reviewer model.
 - **No infrastructure cost.** No hosting, no external services, no databases — prawduct is a plugin
   distributed via a git-backed marketplace and runs entirely on the user's machine.
 - **Context weight is a cost.** Oversized governance state (backlog, learnings, project-state)
