@@ -634,7 +634,12 @@ views_enabled: true
 # PRD §16 item 6 drill-down. Promoted from documentation/ after v1 → two-reviewer
 # fold → v2 + the 3-debt coherence sweep. 6-chunk thin slice; Chunk 01 (walking
 # skeleton) built + live round-trip verified (operator-verification VRF-004).
-# Design artifact pending owner sign-off; gate armed for the build.
+# Design artifact CONDITIONALLY signed off 2026-07-17 (owner) after pre-sign-off seam
+# traces (CC5/G2/rate, verified in code): design holds, no flaw; 4 build-completeness
+# gaps filed. Must-fix conditions BKL-4W7H (PFX resolution + alias idempotency) + BKL-8P2R
+# (safe briefing/gate wiring) folded into Chunk 06 definition-of-done; BKL-3K9N (mid-import
+# 429 Retry-After) recommended before the live run. Next: SPIKE-S2 on a throwaway repo.
+# Gate armed for the build.
 active_build_plan: artifacts/build-plan-backlog-service.md
 
 # =============================================================================

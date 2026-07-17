@@ -31,7 +31,7 @@ swept the same session** (§ "Coherence debts" — API §1 CLI spelling, Data Mo
 pointer, API §2.5/MIG-5 scrub op-dependency). Prior v1: initial drill-down from PRD §16 item 6. · added: 2026-07-16 · source:
 planning session · stage: design · **PROMOTED 2026-07-16** to the active build plan
 (`active_build_plan → artifacts/build-plan-backlog-service.md`); the Stop-hook Critic gate is armed.
-Chunk 01 (walking skeleton) built + committed; branch reconciled with develop (v3.0.4), offline suite green (1887 passed), Critic re-review clean (0 blocking). Live round-trip verified live 2026-07-17 (operator-verification VRF-004). Design still pending owner sign-off.`
+Chunk 01 (walking skeleton) built + committed; branch reconciled with develop (v3.0.4), offline suite green (1887 passed), Critic re-review clean (0 blocking). Live round-trip verified live 2026-07-17 (operator-verification VRF-004). **Design CONDITIONALLY signed off 2026-07-17** (owner) after pre-sign-off scenario tracing of the CC5/G2/rate seams (three parallel traces, verified in code): the design holds with no flaw; four build-completeness gaps filed (BKL-4W7H/8P2R/3K9N/6X5D). BKL-4W7H (PFX read-resolution + alias idempotency) and BKL-8P2R (safe briefing/gate wiring + real-slowness test) are folded into Chunk 06 as must-fix-before-done; BKL-3K9N (mid-import 429 Retry-After) recommended before the live run; BKL-6X5D is adopter-scale. Next: SPIKE-S2 on a throwaway repo.`
 
 **Parent:** `documentation/backlog-service-prd.md` (PRD v4) and, through it,
 `documentation/backlog-service-requirements.md`. This plan is the **last level** of the layered
@@ -531,6 +531,25 @@ tests/
   `report-bug` files an `untriaged-upstream` issue into prawduct's own repo (verified end-to-end) with the
   `untriaged-upstream-reports` advisory counting labeled issues; the no-channel fallback still degrades
   cleanly to local capture.
+- **Pre-sign-off conditions (folded 2026-07-17 — conditional design sign-off).** Verified-in-code
+  scenario traces of the CC5/G2/rate seams before the irreversible migration found no design flaw but
+  four build-completeness gaps; two are **must-fix before this slice is marked done** (not optional
+  follow-ups), because they sit inside the acceptance criteria above:
+  - **BKL-4W7H (must-fix)** — the "every `PFX` ID resolving as an alias" criterion is currently false at
+    the read path: `is_pfx`/`alias_label`/`resolve_redirect` are wired nowhere in `get`/`pick`/`link`.
+    Wire PFX read-resolution, **and** make block `id_aliases` a fallback skip-authority in `_find_by_key`
+    (so a human-deleted `id:PFX` label can't turn a re-import into a permanent duplicate — GitHub never
+    reuses numbers); reconcile should re-derive a missing alias from the block. Test the delete-then-
+    reimport case. (Related: BKL-5R2K redirect-follow consumer.)
+  - **BKL-8P2R (must-fix)** — the "briefing reads live counts through the adapter" criterion must be wired
+    the safe way: call `snapshot.read` + detached `spawn_refresh`, **never** a synchronous `counts()`
+    (which paginates at the 30 s transport default vs NFR §6's "few s"); surface the snapshot age; add a
+    never-block test that injects real slowness (a stalling transport), not just an instant error.
+  - **BKL-3K9N (strongly recommended before the live run)** — honor `Retry-After` / bounded backoff on a
+    mid-import 429 and continue the same run, so shared-token contention during this chunk's repoint can't
+    hard-stop the irreversible import.
+  - **BKL-6X5D (not gating this dogfood)** — archive-window re-attribution/quantification + Pacer
+    900-pts/min modeling; load-bearing for the later adopter migrations, latent at prawduct's ~205 items.
 - **Type:** cumulative-final
   <!-- Last slice chunk: its review IS the one `/prawduct:critic cumulative` against merge-base…HEAD,
        and the `/prawduct:pr create` gate for the slice PR. Commit first, run cumulative once. -->
@@ -540,7 +559,7 @@ tests/
 - **Done when:**
   0. **SPIKE-S2** — run the live dry-run on a throwaway copy of prawduct's repo; record the settled
      facts (fan-out constant, node_id-across-transfer) back into NFR §4 / this plan
-  1. Acceptance criteria met and tests pass
+  1. Acceptance criteria **and the must-fix pre-sign-off conditions (BKL-4W7H, BKL-8P2R)** met and tests pass
   2. Committed, then `/prawduct:critic cumulative` run and blocking findings resolved
   3. Chunk marked `[x]` in Status; the slice branch is PR-ready (`/prawduct:pr create`)
 
