@@ -7,6 +7,11 @@
 
 ## Open
 
+- **[GOV-4M7K]** coverage-status layer-0 report should share the ambient nudge's product-work gate
+  `effort: S · impact: S · area: governance · source: critic · added: 2026-07-16 · status: open · stage: ready · refs: bin/prawduct-hook (cmd_coverage_status), lib/gitstate.py (_has_product_definition_work), skills/doctor/SKILL.md #11`
+
+  Critic NOTE (structural-coverage cumulative, R-2). cmd_coverage_status in bin/prawduct-hook computes layer-0-active purely from 'not structural_characteristics_recorded', WITHOUT the _has_product_definition_work gate that the ambient layer-0 briefing nudge (also in cmd_clear) applies. Consequence: on a freshly-onboarded empty repo (no code, no docs/) the doctor 'coverage-status' report says layer 0 is active / coverage degraded, while the ambient session-briefing advisory correctly stays SILENT (and doctor Health Check #6 also gates on product work). The doctor report is thus slightly more eager than the nudge it claims to mirror ('reads the SAME expectation table'). Fix: gate the coverage-status layer-0 determination on _has_product_definition_work too, so the report and the ambient nudge agree on a fresh repo. Bounded, cosmetic (a report line, no wrong behavior). refs: bin/prawduct-hook (cmd_coverage_status), lib/gitstate.py (_has_product_definition_work), skills/doctor/SKILL.md #11.
+
 - **[GOV-5K3M]** Author prawduct's 7 strategy-class artifacts (close the layer-1 coverage nudge)
   `effort: M · impact: M · area: governance · source: builder · added: 2026-07-16 · status: open · stage: ready · related: GOV-2T6K, GOV-EXI2 · refs: .prawduct/artifacts/, lib/coverage_probes.py (TRIGGERED_ARTIFACTS), .prawduct/cross-cutting-concerns.md`
 

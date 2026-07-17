@@ -595,3 +595,16 @@ def test_stage_layer2_only_when_artifacts_exist_unratified(tmp_path):
     _open_gate(tmp_path)  # has_human_interface → expected set is the 5 universal
     _write_all_universal(tmp_path)  # stubs, no Direction sections
     assert (_layer0_fires(tmp_path), _layer1_fires(tmp_path), _layer2_fires(tmp_path)) == (False, False, True)
+
+
+def test_layer1_and_layer2_overlap_during_partial_authoring(tmp_path):
+    # The honest limit of "one nudge at a time": layer 2's gate is INDEPENDENT (any
+    # strategy artifact exists + registry unratified), so it does NOT wait for layer 1
+    # to clear. While authoring is partial — one strategy artifact written, the rest
+    # still owed, no `## Direction` yet — layer 1 (author the rest) and layer 2 (ratify
+    # what exists) BOTH speak: two distinct asks, not a double-nag on one. Only the
+    # 0↔1 boundary is an exact complement (docs/norms.md § Structural-coverage staging).
+    _write_code(tmp_path)
+    _open_gate(tmp_path)  # characteristics recorded → layer 0 clears
+    _write_artifact(tmp_path, "security-model.md", "# Security Model\n\nProse, no Direction.\n")
+    assert (_layer0_fires(tmp_path), _layer1_fires(tmp_path), _layer2_fires(tmp_path)) == (False, True, True)

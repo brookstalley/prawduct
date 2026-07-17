@@ -142,9 +142,10 @@ def _coverage_probes():
     Same lazy idiom as _gitstate(). cmd_clear reaches
     ``structural_characteristics_recorded`` through here — the shared predicate that
     stages the layer-0 discovery nudge (below) against layer 1's strategy-artifact
-    probe, so exactly one layer speaks. Distinct from _coverage() (lib/coverage, the
-    diff-base/PR gates). The call site is inside cmd_clear's broad-caught briefing
-    region, so an import failure degrades to a skipped nudge, never a blocked start."""
+    probe; those two are exact complements, so layer 0 and layer 1 never both speak.
+    Distinct from _coverage() (lib/coverage, the diff-base/PR gates). The layer-0 call
+    site wraps this in its own broad-except, so an import or scan failure degrades to a
+    skipped nudge, never a blocked start."""
     lib_root = _plugin_root()
     if lib_root not in sys.path:
         sys.path.insert(0, lib_root)
@@ -682,34 +683,39 @@ def cmd_clear(project_dir: Path, argv: list[str] | None = None) -> int:
     # rich-but-characteristic-less state passed silently). _discovery_uncaptured
     # (both template sentinels still null) only picks the more-specific never-ran
     # message; the fire decision is the structural predicate alone.
-    if (
-        state_path.is_file()
-        and _gitstate()._has_product_definition_work(project_dir)
-        and not _coverage_probes().structural_characteristics_recorded(state_path)
-    ):
-        if _gitstate()._discovery_uncaptured(state_path):
-            print(
-                "DISCOVERY NOT CAPTURED: .prawduct/project-state.yaml has no classification or\n"
-                "product definition, but this repo has product work (code and/or docs/). Until\n"
-                "discovery is captured, governance can't calibrate rigor and the build gates\n"
-                "won't engage.\n"
-                "  → Run /prawduct:methodology discovery to capture it. If requirements, architecture, or an\n"
-                "    existing codebase are already here, discovery RECONCILES them — it reads what\n"
-                "    exists and backfills classification, structural characteristics, and product\n"
-                "    definition into project-state.yaml rather than starting over."
-            )
-        else:
-            print(
-                "DISCOVERY NOT CAPTURED: .prawduct/project-state.yaml does not record this product's\n"
-                "structural characteristics (classification.structural is absent, empty, or all-null),\n"
-                "but this repo has product work (code and/or docs/). Structural characteristics decide\n"
-                "which strategy-class artifacts the product needs, so until they're captured governance\n"
-                "can't calibrate rigor and the coverage chain stays blind.\n"
-                "  → Run /prawduct:methodology discovery to capture them. If requirements, architecture, or an\n"
-                "    existing codebase are already here, discovery RECONCILES them — it reads what exists\n"
-                "    and backfills the structural characteristics into project-state.yaml rather than\n"
-                "    starting over."
-            )
+    # Fail-soft like the advisory-probe block below: a lazy-import or scan failure
+    # here must degrade to a skipped nudge, never a blocked session start.
+    try:
+        if (
+            state_path.is_file()
+            and _gitstate()._has_product_definition_work(project_dir)
+            and not _coverage_probes().structural_characteristics_recorded(state_path)
+        ):
+            if _gitstate()._discovery_uncaptured(state_path):
+                print(
+                    "DISCOVERY NOT CAPTURED: .prawduct/project-state.yaml has no classification or\n"
+                    "product definition, but this repo has product work (code and/or docs/). Until\n"
+                    "discovery is captured, governance can't calibrate rigor and the build gates\n"
+                    "won't engage.\n"
+                    "  → Run /prawduct:methodology discovery to capture it. If requirements, architecture, or an\n"
+                    "    existing codebase are already here, discovery RECONCILES them — it reads what\n"
+                    "    exists and backfills classification, structural characteristics, and product\n"
+                    "    definition into project-state.yaml rather than starting over."
+                )
+            else:
+                print(
+                    "DISCOVERY NOT CAPTURED: .prawduct/project-state.yaml does not record this product's\n"
+                    "structural characteristics (classification.structural is absent, empty, or all-null),\n"
+                    "but this repo has product work (code and/or docs/). Structural characteristics decide\n"
+                    "which strategy-class artifacts the product needs, so until they're captured governance\n"
+                    "can't calibrate rigor and the coverage chain stays blind.\n"
+                    "  → Run /prawduct:methodology discovery to capture them. If requirements, architecture, or an\n"
+                    "    existing codebase are already here, discovery RECONCILES them — it reads what exists\n"
+                    "    and backfills the structural characteristics into project-state.yaml rather than\n"
+                    "    starting over."
+                )
+    except Exception as exc:  # prawduct:allow prawduct/broad-except -- the discovery nudge must never block session start
+        print(f"NOTE: discovery-capture nudge skipped: {exc}", file=sys.stderr)
 
     # Advisory PROBES are purely local: they read the consumer's own
     # `.prawduct/` (backlog.md, project-state.yaml), independent of any sync.
