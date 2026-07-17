@@ -72,13 +72,17 @@ Design note — per-probe lock-in (fires / clears / reader-action)
   flow. The evidence string is arm-independent so the advisory id stays stable
   as the firing arm changes; the live arm(s) are named in ``trigger_summary``.
 
-- **norm-health-sweep-overdue** — *Fires:* ``## Direction`` sections exist AND the
-  janitor Norm Health sweep stamp :data:`SWEEP_STAMP` is absent or older than
+- **norm-health-sweep-overdue** — *Fires:* ``## Direction`` sections exist AND
+  neither the janitor Norm Health sweep stamp :data:`SWEEP_STAMP` nor the
+  ratification date (:data:`RATIFIED_FACT`'s leading date) falls within
   :data:`SWEEP_WINDOW_DAYS`. The stamp is a committed top-level project-state
   scalar the sweep writes (the janitor theme lands the *write* side; this probe
   is read-only, mirroring how ``backlog-overdue-grooming`` reads
-  ``backlog_last_groomed_at``). *Clears:* running the sweep (which stamps a fresh
-  date). *Reader-action:* points at ``/prawduct:janitor`` (Norm Health).
+  ``backlog_last_groomed_at``). Ratifying the registry is itself a deep pass over
+  every norm, so it seeds the baseline the same as a sweep — otherwise this nudge
+  would trip the same day ratification clears ``norm-registry-unratified``.
+  *Clears:* running the sweep (which stamps a fresh date), or a fresh
+  ratification. *Reader-action:* points at ``/prawduct:janitor`` (Norm Health).
 """
 
 from __future__ import annotations
@@ -158,6 +162,12 @@ _IN_TRANSITION_RE = re.compile(r"Status:\s*in-transition")
 # NOT parse as a date (it belongs to the janitor sweep, not this probe).
 _DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 
+# A date at the START of a string, ignoring any trailing text. The
+# ``norm_registry_ratified`` fact leads with the ratification date (the doctor
+# flow's contract) but is commonly embellished ("2026-07-17 — 20 norms…"), so its
+# baseline date needs leading-match, not the strict full-match above.
+_LEADING_DATE_RE = re.compile(r"^(\d{4}-\d{2}-\d{2})")
+
 # Terminal backlog statuses — an item in one of these (or under an Archive
 # heading) is "dead" for decay purposes.
 _TERMINAL_STATUSES = ("shipped", "dropped")
@@ -213,6 +223,24 @@ def _parse_date(value) -> date | None:
         return None
     try:
         return date.fromisoformat(value)
+    except ValueError:
+        return None
+
+
+def _leading_date(value) -> date | None:
+    """Parse a date at the START of a string (trailing text ignored), else ``None``.
+
+    For the ``norm_registry_ratified`` fact, whose contract leads with the
+    ratification date but often carries a descriptive suffix. A dateless answer
+    ("none — no norms to ratify") returns ``None`` — and that answer means no
+    ``## Direction`` sections exist, so its caller never reaches here anyway."""
+    if not isinstance(value, str):
+        return None
+    match = _LEADING_DATE_RE.match(value.strip())
+    if not match:
+        return None
+    try:
+        return date.fromisoformat(match.group(1))
     except ValueError:
         return None
 
@@ -511,13 +539,22 @@ def probe_norm_health_sweep_overdue(state: ProjectState, codebase: Codebase):
 
     Reads the committed :data:`SWEEP_STAMP` (the janitor theme writes it; this
     probe is read-only). Guarded on ``## Direction`` sections existing, so an
-    unratified repo never sees it. Absent-or-stale stamp fires; a fresh stamp
-    suppresses. Points at ``/prawduct:janitor`` (Norm Health)."""
+    unratified repo never sees it. The effective "last full engagement" is the
+    NEWER of the sweep stamp and the ratification date (:data:`RATIFIED_FACT`):
+    ratifying the registry is itself a deep pass over every norm, so a
+    freshly-ratified repo is not overdue for a sweep until the window elapses —
+    otherwise ratification would trip this nudge the same day it clears
+    ``norm-registry-unratified``. Absent-or-stale on both fires; either being
+    fresh suppresses. Points at ``/prawduct:janitor`` (Norm Health)."""
     if not _any_direction(codebase):
         return []
-    last = _parse_date(state.get(SWEEP_STAMP))
-    if last is not None:
-        age = (datetime.now(timezone.utc).date() - last).days
+    engaged = [
+        d
+        for d in (_parse_date(state.get(SWEEP_STAMP)), _leading_date(state.get(RATIFIED_FACT)))
+        if d is not None
+    ]
+    if engaged:
+        age = (datetime.now(timezone.utc).date() - max(engaged)).days
         if age <= SWEEP_WINDOW_DAYS:
             return []
     return [

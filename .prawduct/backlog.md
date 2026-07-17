@@ -7,6 +7,17 @@
 
 ## Open
 
+- **[COV-4H7N]** Doc-only/state-only PR silently breaks a repo-coupled (non-hermetic) test — check-pr-doc-only AND test-status both assume non-code files can't change test outcomes
+  `effort: M · impact: M · area: governance/gates · source: builder · added: 2026-07-17 · status: open · stage: design · related: COV-2P7F, COV-6T3P, COV-8R2K · refs: lib/coverage.py (cmd_check_pr_doc_only — doc-only fast-path), lib/coverage_algebra.py (is_judgeable_path), bin/prawduct-hook (test-status / cmd_test_evidence), tests/test_norm_probes.py (TestSilentAgainstThisRepo)`
+
+  A doc-only/state-only change can break a live-state-coupled test with **no gate catching it**. Concrete: PR #125 (norm-registry ratification) changed only `.prawduct/*.md` + `project-state.yaml`, so `check-pr-doc-only` reported doc-only (skipped Critic + PR review + suite) AND `test-status` reported "current" (treats `project-state.yaml` as non-judgeable) — but `tests/test_norm_probes.py::TestSilentAgainstThisRepo` reads the **live** `project-state.yaml`, so ratifying the registry silently broke it on develop; only caught on the next unrelated branch's suite run.
+
+  **Root cause:** both the doc-only fast-path and test-status's judgeable-path classifier assume non-code files can't change test outcomes — but repo-coupled (**non-hermetic**) tests read committed state/docs, so a `.prawduct/*` edit CAN flip a test red.
+
+  **Possible fixes** (design pending — pick and reconcile with COV-2P7F): (a) test-status/doc-only should treat `project-state.yaml` (and any file a non-hermetic test reads) as judgeable; (b) doc-only PRs should still run the suite when repo-coupled tests exist; (c) narrow/inventory the non-hermetic tests so the assumption becomes true.
+
+  **Tension to resolve — this is a hard constraint on COV-2P7F.** COV-2P7F pushes the *opposite* direction (treat `.prawduct/**` as governance-only so a metadata edit escapes full gates). This item is the counterexample proving a *blanket* `.prawduct/**` exemption is unsound while non-hermetic tests exist: exempting `project-state.yaml` from the suite is exactly what let #125 break silently. Any COV-2P7F design must account for this — the safe exemption is narrower than "all of `.prawduct/**`", or fix (b)/(c) must land first. Also related: COV-6T3P (the `is_judgeable_path` predicate that classifies these paths) and COV-8R2K (coverage floor on non-code config). Stage: design — the problem/root cause are clear; which of (a)/(b)/(c) and how it reconciles with COV-2P7F is the open decision. Governance-protected (lib/gates, lib/coverage, hooks) → full Critic + PR review. (builder — finding this session)
+
 - **[GOV-8R3F]** Janitor Step-3 Reconcile surfaces candidates flat (single confirm-or-correct block); apply the shipped doctor surface-by-exception taxonomy
   `effort: M · impact: M · area: governance · source: reflection · added: 2026-07-17 · reviewed: 2026-07-17 · status: open · stage: ready · related: GOV-6N4W, GOV-4X9M, JNT-8E3P · refs: skills/janitor/SKILL.md (Step-3 Reconcile — the residual), skills/doctor/SKILL.md (steps 2-3, shipped clear-to-ratify/needs-a-ruling taxonomy — reuse precedent), docs/norms.md (§ Adoption)`
 

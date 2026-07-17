@@ -190,6 +190,10 @@ one chunk (batch-durable-edits learning); token-budget guardrail tests are antic
   scalar (the `backlog_last_groomed_at` pattern); the janitor writes the stamp in Chunk 6.
   (4) Zero-fire acceptance is a deliberately repo-coupled tripwire test, not hermetic — it must
   fail if this repo ratifies a Direction section without the sweep stamp.
+  *(As-built note superseded 2026-07-17: ratifying the registry now seeds the Norm Health sweep
+  baseline — the ratification date counts as a fresh full norm engagement — so the tripwire expects
+  post-ratification silence and re-fires only once that baseline ages past the sweep window, not the
+  instant a Direction section is ratified.)*
 
 ### Chunk 4: Enforcement surfaces — Critic/PR consolidation + digest
 
