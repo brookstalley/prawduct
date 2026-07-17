@@ -750,3 +750,33 @@ matrix: 11 cases (5 relax-only current, 5 judgeable-change stale, 1 `--from-coun
 plus 2 monkeypatch fail-toward-stale unit tests; full suite 1727 passed. The env-drift tradeoff
 (the incidental per-session re-run that catches dep/flake drift with no file footprint) was
 explicitly accepted by the owner as an expensive, undesigned safety net.
+
+## When validating a CLI's JSON output, feed the tool the raw bytes (direct pipe or file) — never `echo "$captured" | jq` under zsh, whose `echo` interprets `\n` and turns valid JSON into a false "malformed output" finding
+
+**Pattern**: During the VRF-003 live smoke (backlog-service Chunk 01, 2026-07-17), driving the CLI
+by hand, I captured `file --json` into a shell variable and ran `echo "$FILE_OUT" | jq`. jq failed
+with "Invalid string: control characters from U+0000 through U+001F must be escaped," the body field
+showing raw newlines around the appended ` ```prawduct / v: 1 ``` ` block. My first read was a real
+serializer defect — the `--json` envelope emitting unescaped newlines — exactly the class VRF-003's
+"`| jq .` never chokes" clause exists to catch. It looked like the highest-value possible outcome of
+the live pass: a real bug the offline L1 suite couldn't see.
+
+**Why it was a false positive**: before reporting it, I re-ran capturing stdout to a file and parsed
+with `python3 … json.loads` — result **OK**, body repr `'…\n\n```prawduct\nv: 1\n```\n'` with the
+newlines properly escaped, and only ONE raw `0x0a` in the whole file (the trailing `print` newline).
+The serializer (`cli.py::_emit` → `json.dumps(result)`) was correct all along. The corruption was
+introduced by **zsh's `echo` builtin**, which interprets backslash escapes by default (unlike POSIX
+sh / bash without `-e`): echoing the JSON string re-expanded every `\n` into a literal newline, and
+jq then correctly rejected the mangled bytes. The `get <id>` "empty ID" error that followed was a
+cascade — `ID=$(echo "$OUT" | jq -r .id)` returned empty because that jq had failed.
+
+**The fix / the discipline**: (1) Consume JSON from the raw bytes — pipe the command *directly*
+(`… --json | jq .`) or redirect to a file and validate that; for a definitive check use a real
+parser on the real bytes (`python3 -c 'import json; json.load(open(p))'`), which no shell can
+corrupt. (2) Do NOT "harden" the producer: the CLI's bytes were valid, standard JSON, and defending
+correct output against a specific shell's `echo` both distorts right behavior and can't actually fix
+a consumer that re-interprets escapes (root-cause discipline — the shell was the fault, not the
+code). (3) Verify before reporting: this nearly became a BLOCKING finding against a correct
+serializer; a strict-parser cross-check on the raw file is the cheap veto. Filed as durable rule +
+a VRF-003 "consuming the `--json` correctly" note so the next operator doesn't trip the same trap.
+Relates to Honest Confidence (#5), Root Cause Discipline (#16), Validate Before Propagating (#15).

@@ -69,8 +69,16 @@ wrong agent_type). The consolidation core itself is `tests/test_critic_consolida
 
 ## VRF-003 — Chunk 01 (backlog-service) — CLI file/get round-trip + JSON envelope
 
-**Status:** pending
+**Status:** verified (2026-07-17, throwaway repo `brookstalley/prawduct-backlog-smoke`)
 **Added:** 2026-07-16 (backlog-service Chunk 01 — walking skeleton)
+**Result:** L5 live smoke passed through `cli.run`; the hand round-trip confirmed every
+eyeball item — canonical `owner/repo#N` id, `stage:ready` label, `v: 1` body block,
+title/stage round-trip, `status`→`open`, valid `--json` (jq on the raw stdout), SEC-1 clean
+(no token / `proxy-injected` / `x-oauth` in std{out,err}), GV6 (namespaced labels created,
+GitHub-default + a fixture `keep-me` label untouched). SPIKE facts confirmed: issue numbers
+`1..4` monotonic/never-reused (M6); `If-None-Match` conditional GET returns `304 Not
+Modified` (ETag/304). Raw issue shape captured for the fake (CONTRACT-1): keys incl.
+`number`, `node_id` (`I_kwDO…`), `state`, `labels[].name`, timestamps.
 **Where to verify:** a throwaway GitHub repo with `gh` authenticated (`repo` scope). Run the
 gated L5 smoke, or drive the CLI by hand:
 
@@ -79,6 +87,12 @@ gated L5 smoke, or drive the CLI by hand:
     prawduct-hook backlog provision --repo you/throwaway
     prawduct-hook backlog file --repo you/throwaway --title smoke --body hi --stage ready --json
     prawduct-hook backlog get <printed-id> --json
+
+**Consuming the `--json` correctly (avoid a false "malformed output"):** pipe the command's
+stdout *directly* to jq (`… --json | jq .`) or redirect to a file. Do **not** capture into a
+shell variable and `echo "$out" | jq` under **zsh** — zsh's `echo` builtin interprets `\n`
+escapes, re-introducing raw newlines that make valid JSON look malformed. The `--json` bytes
+are correct (`json.dumps`, cli.py `_emit`); the corruption is consumer-side.
 
 **Why a human check (absorbs the Done-when step-0 `verify-api`/CONTRACT-1 obligation):** the
 L1 suite proves the logic against the in-process fake, but the fake's *behavior*
