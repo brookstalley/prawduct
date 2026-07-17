@@ -12,11 +12,6 @@
 
   Critic NOTE (structural-coverage cumulative, R-2). cmd_coverage_status in bin/prawduct-hook computes layer-0-active purely from 'not structural_characteristics_recorded', WITHOUT the _has_product_definition_work gate that the ambient layer-0 briefing nudge (also in cmd_clear) applies. Consequence: on a freshly-onboarded empty repo (no code, no docs/) the doctor 'coverage-status' report says layer 0 is active / coverage degraded, while the ambient session-briefing advisory correctly stays SILENT (and doctor Health Check #6 also gates on product work). The doctor report is thus slightly more eager than the nudge it claims to mirror ('reads the SAME expectation table'). Fix: gate the coverage-status layer-0 determination on _has_product_definition_work too, so the report and the ambient nudge agree on a fresh repo. Bounded, cosmetic (a report line, no wrong behavior). refs: bin/prawduct-hook (cmd_coverage_status), lib/gitstate.py (_has_product_definition_work), skills/doctor/SKILL.md #11.
 
-- **[GOV-5K3M]** Author prawduct's 7 strategy-class artifacts (close the layer-1 coverage nudge)
-  `effort: M · impact: M · area: governance · source: builder · added: 2026-07-16 · status: open · stage: ready · related: GOV-2T6K, GOV-EXI2 · refs: .prawduct/artifacts/, lib/coverage_probes.py (TRIGGERED_ARTIFACTS), .prawduct/cross-cutting-concerns.md`
-
-  Recording classification.structural for prawduct (structural-coverage Chunk 05 dogfood) advanced the coverage chain to layer 1: prawduct now owes all seven strategy-class artifacts, currently all missing. Author each in .prawduct/artifacts/ as a real spec OR a deliberate '(not relevant — <reason>)' stub (existence satisfies coverage). The set: data-model.md, security-model.md, nonfunctional-requirements.md, operational-spec.md, observability-strategy.md (universal); api-contract.md (triggered by exposes_programmatic_interface — document the bin/prawduct-hook CLI + JSON contracts, versioning/deprecation/error-model decisions); architecture.md (triggered by multi_process_distributed — process topology of the Critic coordinator/reviewer fan-out + shared tree-keyed evidence store). This is the deferred symptom-fix, correctly downstream of the system-fix (the coverage chain itself). NOTE: authoring architecture.md is missing its authoring template — see GOV-2T6K (templates/architecture.md). prawduct-hook coverage-scaffold --apply drops neutral stubs for all seven in one act as a starting point.
-
 - **[GOV-2T6K]** `templates/architecture.md` authoring template is missing — a product triggered into an architecture spec has nothing to start from
   `effort: S · impact: S · area: governance · source: builder · added: 2026-07-16 · status: open · stage: ready · refs: templates/, lib/coverage_probes.py (TRIGGERED_ARTIFACTS)`
 
@@ -1115,6 +1110,13 @@
 ## Promoted
 
 ## Archive
+
+- **[GOV-5K3M]** Author prawduct's 7 strategy-class artifacts (close the layer-1 coverage nudge)
+  `effort: M · impact: M · area: governance · source: builder · added: 2026-07-16 · status: shipped · stage: ready · closed-by: structural-coverage · related: GOV-2T6K, GOV-EXI2 · refs: .prawduct/artifacts/, lib/coverage_probes.py (TRIGGERED_ARTIFACTS), .prawduct/cross-cutting-concerns.md · reviewed: 2026-07-17`
+
+  Recording classification.structural for prawduct (structural-coverage Chunk 05 dogfood) advanced the coverage chain to layer 1: prawduct now owes all seven strategy-class artifacts, currently all missing. Author each in .prawduct/artifacts/ as a real spec OR a deliberate '(not relevant — <reason>)' stub (existence satisfies coverage). The set: data-model.md, security-model.md, nonfunctional-requirements.md, operational-spec.md, observability-strategy.md (universal); api-contract.md (triggered by exposes_programmatic_interface — document the bin/prawduct-hook CLI + JSON contracts, versioning/deprecation/error-model decisions); architecture.md (triggered by multi_process_distributed — process topology of the Critic coordinator/reviewer fan-out + shared tree-keyed evidence store). This is the deferred symptom-fix, correctly downstream of the system-fix (the coverage chain itself). NOTE: authoring architecture.md is missing its authoring template — see GOV-2T6K (templates/architecture.md). prawduct-hook coverage-scaffold --apply drops neutral stubs for all seven in one act as a starting point.
+
+  Shipped 2026-07-17 (closed-by: structural-coverage): all seven strategy-class artifacts now exist under `.prawduct/artifacts/` (api-contract.md, architecture.md, data-model.md, nonfunctional-requirements.md, observability-strategy.md, operational-spec.md, security-model.md), closing the layer-1 coverage nudge.
 
 - **[GOV-5D2W]** Advisory `show` reconstructs evidence with an empty probe registry — probe re-run silently no-ops for every probe family
   `effort: S · impact: S · area: governance · source: critic · added: 2026-07-16 · status: shipped · stage: ready · closed-by: structural-coverage · related: GOV-6H4P · refs: lib/advisory_cmd.py, lib/probe_families.py, bin/prawduct-hook, tests/test_advisory_cmd.py · reviewed: 2026-07-16`

@@ -32,8 +32,14 @@ by ungating layer 2). GOV-5D2W fixed en route (empty-registry `advisory show` no
 `lib/probe_families.register_all`). **Dogfooded on prawduct itself (Chunk 05):** recording
 prawduct's six reconciled structural characteristics advanced the live chain layer 0 → layer 1,
 naming all seven artifacts; the before/after transition is pinned by a fixture test decoupled from
-live state (retiring an earlier repo-coupled zero-fire assertion). Follow-ups: GOV-5K3M (author the
-7 artifacts), GOV-2T6K (`templates/architecture.md`).
+live state (retiring an earlier repo-coupled zero-fire assertion). **Follow-up GOV-5K3M done in
+this branch:** authored all seven strategy-class artifacts as real specs — grounded in the live
+system (parallel research over the CLI surface, persisted formats, and process topology) and
+written toward *intended* design, flagging target-vs-current divergence honestly — and recorded the
+exposed-interface decisions (`design_decisions.api_versioning_approach` / `api_error_model_approach`
+plus the flat `api_versioning_decided` resolution scalar) in `project-state.yaml`. Layer 1 now
+clears and the chain advances to Layer 2 (norm ratification — owner-driven via `/prawduct:doctor`,
+deliberately not auto-ratified). Remaining follow-up: GOV-2T6K (`templates/architecture.md`).
 
 ## 2026-07-16: Norm lifecycle — normative authority across governing artifacts (norm-lifecycle)
 
