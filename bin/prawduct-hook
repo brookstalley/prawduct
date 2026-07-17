@@ -137,23 +137,6 @@ def _coverage():
     return coverage
 
 
-def _coverage_probes():
-    """Lazy-import the structural-coverage probe helpers (lib/coverage_probes).
-    Same lazy idiom as _gitstate(). cmd_clear reaches
-    ``structural_characteristics_recorded`` through here — the shared predicate that
-    stages the layer-0 discovery nudge (below) against layer 1's strategy-artifact
-    probe; those two are exact complements, so layer 0 and layer 1 never both speak.
-    Distinct from _coverage() (lib/coverage, the diff-base/PR gates). The layer-0 call
-    site wraps this in its own broad-except, so an import or scan failure degrades to a
-    skipped nudge, never a blocked start."""
-    lib_root = _plugin_root()
-    if lib_root not in sys.path:
-        sys.path.insert(0, lib_root)
-    from lib import coverage_probes  # noqa: PLC0415 — lazy keeps top-level cheap + lib-free
-
-    return coverage_probes
-
-
 def _gates():
     """Lazy-import the session-end gate helpers + evidence/critic validators
     (lib/gates). Same lazy idiom as _gitstate(). cmd_stop (the inline hot-path
