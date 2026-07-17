@@ -25,10 +25,14 @@ decision — and any change to normative content without one, and any norm birth
 is an **undocumented architectural decision**: the Critic routes it to Goal 3, **BLOCKING**.
 This applies to every form in this spec (amendments, rulings, exceptions, stopgaps,
 retroactivity, characteristic flips), so no individual rule below needs its own severity.
-**Scoped to adoption:** BLOCKING presumes the product has ratified norms to depart *from* —
+**Scoped to adoption:** BLOCKING presumes the product has adopted norms to depart *from* —
 any `## Direction` section in `.prawduct/artifacts/*.md`, or norm rows in the preferences
-Enforcement table. In a product with **no** ratified norms, the same detections surface as
-**NOTE** (name the would-be norm and its capture path — a Direction entry or preferences row);
+Enforcement table. **Recorded classification fields count as adopted too:** recording a
+structural characteristic is how an ambient norm is adopted, so silently flipping a
+*recorded* characteristic is BLOCKING even where no Direction section exists (a
+never-recorded characteristic has no norm to depart from). In a product with **no** adopted
+norms on any of these surfaces, the same detections surface as **NOTE** (name the would-be
+norm and its capture path — a Direction entry or preferences row);
 a repo is never blocked into a lifecycle it has not adopted. The PR reviewer's norm-amendment
 check emits **WARNING** at its layer regardless (the cumulative Critic is the blocking organ —
 `skills/pr/review-protocol.md` explains the layering).

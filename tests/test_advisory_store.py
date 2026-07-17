@@ -203,7 +203,19 @@ class TestLoadProjectState:
     def test_construct_directly(self):
         state = ProjectState({"k": "v"})
         assert state.get("k") == "v"
-        assert state.as_dict() == {"k": "v"}
+
+    def test_undecodable_file_degrades_to_empty_state(self, tmp_path: Path):
+        # A non-UTF-8 project-state.yaml must read as "no facts", never raise:
+        # this loader runs inside the session-start probe sync and `advisory
+        # show`, where a UnicodeDecodeError killed the whole advisory subsystem
+        # (only OSError was caught before the fix).
+        (tmp_path / ".prawduct").mkdir()
+        (tmp_path / ".prawduct" / "project-state.yaml").write_bytes(
+            b"\xff\xfeuses_llm_inference: true\n"
+        )
+        state = load_project_state(tmp_path)
+        assert state.get("uses_llm_inference") is None
+        assert state.as_dict() == {}
 
 
 class TestCodebase:

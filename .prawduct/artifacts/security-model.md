@@ -39,7 +39,7 @@ runs on a developer's machine on Claude Code lifecycle events** (supply-chain / 
 
 **Not applicable — single actor, no privilege tiers.** There is nobody to authenticate and no
 access to partition. If this ever changes (a shared or multi-party governance surface), it is a
-`multi_party` characteristic flip that re-derives this model — not an incremental feature.
+`has_multiple_party_types` characteristic flip that re-derives this model — not an incremental feature.
 
 ## Supply-Chain & Plugin Trust (the primary concern)
 

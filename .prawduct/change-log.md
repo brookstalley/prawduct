@@ -55,6 +55,13 @@ experiential, none crash-shaped; owner approved the fixes and the two design cal
 Out of scope, tracked: `templates/architecture.md` (GOV-2T6K), TST-6F2R (false-red test
 evidence — pending owner confirmation of approach).
 
+Reconciliation with the "opt-out is a recorded artifact, not a suppression flag" learning:
+the layer-0 dismissal is per-clone suppression by design — the *durable* opt-out remains
+recording the characteristics (or their absence) in `project-state.yaml`; dismissal only
+quiets the reminder in one clone, owner-approved as the lesser burden.
+
+## 2026-07-17: SessionStart briefing no longer enumerates sibling worktrees (fix)
+
 <!-- prawduct: type=fix | release=v3.0.5 | status=shipped -->
 
 **Parent:** WT-8Q3N — the SessionStart briefing enumerated sibling worktrees as `- <branch> @

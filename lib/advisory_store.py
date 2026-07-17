@@ -37,6 +37,7 @@ from __future__ import annotations
 import hashlib
 import json
 import re
+import sys
 from dataclasses import dataclass, replace
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -246,7 +247,11 @@ def run_all_probes(state: ProjectState, codebase: Codebase) -> list[AdvisoryCand
         fn = record["fn"]
         try:
             produced = list(fn(state, codebase))
-        except Exception:  # prawduct:allow prawduct/broad-except -- a faulty probe must not block sync; skip it
+        except Exception as exc:  # prawduct:allow prawduct/broad-except -- a faulty probe must not block sync; skip it
+            print(
+                f"NOTE: advisory probe {record['feature']}/{record['probe_type']} skipped: {exc}",
+                file=sys.stderr,
+            )
             continue
         for cand in produced:
             candidates.append(
