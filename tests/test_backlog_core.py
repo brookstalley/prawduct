@@ -18,15 +18,35 @@ for _p in (str(_REPO_ROOT), str(_TESTS_DIR)):
 
 import pytest  # noqa: E402
 
-from lib.backlog import core  # noqa: E402
+from lib.backlog import core, encode  # noqa: E402
 from fakes.fake_github import FakeGitHub  # noqa: E402
 
 OWNER, REPO = "octo", "repo"
+
+_STATUS_LABELS = ["status:submitted", "status:in-progress"]
+_MUTATING = {"create_issue", "create_label", "update_issue", "add_labels", "remove_label", "create_comment"}
 
 
 @pytest.fixture
 def fake():
     return FakeGitHub()
+
+
+def _seed_item(fake, *, labels=(), body="b"):
+    """Create one open issue carrying `labels` (all pre-seeded so create succeeds)."""
+    fake.seed_labels(OWNER, REPO, sorted(set(list(labels) + _STATUS_LABELS)))
+    issue = fake.create_issue(OWNER, REPO, title="t", body=body, labels=list(labels))
+    return issue["number"]
+
+
+def _decoded_status(fake, number):
+    issue = fake.get_issue(OWNER, REPO, number)
+    return encode.decode_status(issue, encode.label_names(issue))[0]
+
+
+def _status_labels(item_or_data):
+    labels = item_or_data["labels"] if isinstance(item_or_data, dict) else item_or_data
+    return [name for name in labels if name.startswith("status:")]
 
 
 class TestFileItem:
@@ -167,3 +187,193 @@ class TestEnvelopeShape:
 
     def test_validation_is_not_retryable(self):
         assert core.error("validation", "bad")["error"]["retryable"] is False
+
+
+class TestSetStatus:
+    """The idempotent two-axis transition (Data Model §4 B1, CC1/M5)."""
+
+    def test_open_to_shipped_closes_and_strips_status_label(self, fake):
+        n = _seed_item(fake, labels=["status:in-progress"])
+        r = core.set_status(fake, id_raw=f"{OWNER}/{REPO}#{n}", target="shipped")
+        assert r["status"] == "ok"
+        assert r["data"]["status"] == "shipped"
+        assert _status_labels(r["data"]) == []  # closed states carry no status: label
+
+    def test_open_substate_transition_add_before_remove(self, fake):
+        n = _seed_item(fake, labels=["status:submitted"])
+        r = core.set_status(fake, id_raw=f"{OWNER}/{REPO}#{n}", target="in-progress")
+        assert r["data"]["status"] == "in-progress"
+        assert _status_labels(r["data"]) == ["status:in-progress"]  # loser gone
+
+    def test_reopen_clears_close_reason(self, fake):
+        n = _seed_item(fake, labels=[])
+        core.set_status(fake, id_raw=f"{OWNER}/{REPO}#{n}", target="shipped")
+        r = core.set_status(fake, id_raw=f"{OWNER}/{REPO}#{n}", target="in-progress")
+        issue = fake.get_issue(OWNER, REPO, n)
+        assert issue["state"] == "open" and issue["state_reason"] is None
+        assert r["data"]["status"] == "in-progress"
+
+    def test_rerun_is_a_noop(self, fake):
+        n = _seed_item(fake, labels=["status:in-progress"])
+        core.set_status(fake, id_raw=f"{OWNER}/{REPO}#{n}", target="shipped")
+        mark = len(fake.calls)
+        r = core.set_status(fake, id_raw=f"{OWNER}/{REPO}#{n}", target="shipped")
+        assert r["data"]["status"] == "shipped"
+        mutating = [c for c in fake.calls[mark:] if c[0] in _MUTATING]
+        assert mutating == []  # re-run touches nothing (idempotent)
+
+    def test_unknown_target_is_validation(self, fake):
+        n = _seed_item(fake)
+        r = core.set_status(fake, id_raw=f"{OWNER}/{REPO}#{n}", target="frozen")
+        assert r["status"] == "error" and r["error"]["code"] == "validation"
+
+    def test_bad_id_is_validation(self, fake):
+        r = core.set_status(fake, id_raw="not an id", target="shipped")
+        assert r["status"] == "error" and r["error"]["code"] == "validation"
+
+
+class TestSetStatusCrashSafety:
+    """CRASH-1 — set-status partial-transition recovery (Test Specs §3.2, CC1/M5).
+
+    Spec-coherence note: for a *closed* target the canonical order is
+    state-authority-first, then strip labels — there is no ``status:shipped`` label
+    in the taxonomy (Data Model §4), so the illustrative "(2) add status:shipped" in
+    Test Specs §3.2 does not apply; the closed ``state_reason`` is the authority the
+    decoder reads at every cut point, so there is never an unreadable window.
+    """
+
+    @pytest.mark.parametrize("fail_call", [1, 2])
+    def test_crash_at_each_cut_point_stays_valid_and_reruns_converge(self, fake, fail_call):
+        n = _seed_item(fake, labels=["status:in-progress"])  # open ∧ status:in-progress
+        fake.fail_at_mutation(fail_call)
+        r = core.set_status(fake, id_raw=f"{OWNER}/{REPO}#{n}", target="shipped")
+        assert r["status"] == "error" and r["error"]["code"] == "unavailable"
+        # the decoder reads a VALID status at the cut point — never a torn two-value
+        assert _decoded_status(fake, n) in {"in-progress", "shipped"}
+        # the first completing re-run reaches closed ∧ shipped, no status: label
+        r2 = core.set_status(fake, id_raw=f"{OWNER}/{REPO}#{n}", target="shipped")
+        assert r2["data"]["status"] == "shipped"
+        assert _status_labels(r2["data"]) == []
+        # a further re-run is a no-op
+        mark = len(fake.calls)
+        core.set_status(fake, id_raw=f"{OWNER}/{REPO}#{n}", target="shipped")
+        assert [c for c in fake.calls[mark:] if c[0] in _MUTATING] == []
+
+    def test_open_substate_transition_never_opens_a_zero_label_window(self, fake):
+        # submitted → in-progress with the loser-removal (call 2) failing: the label
+        # was added before the remove, so the item still carries a status label.
+        n = _seed_item(fake, labels=["status:submitted"])
+        fake.fail_at_mutation(2)  # 1 = add status:in-progress, 2 = remove status:submitted
+        r = core.set_status(fake, id_raw=f"{OWNER}/{REPO}#{n}", target="in-progress")
+        assert r["status"] == "error"
+        issue = fake.get_issue(OWNER, REPO, n)
+        present = _status_labels(encode.label_names(issue))
+        assert "status:in-progress" in present  # never a zero-label window
+        assert _decoded_status(fake, n) == "in-progress"  # precedence over the transient submitted
+        r2 = core.set_status(fake, id_raw=f"{OWNER}/{REPO}#{n}", target="in-progress")
+        assert _status_labels(r2["data"]) == ["status:in-progress"]
+
+
+class TestReconcilingWrite:
+    """ENC-5 — a torn / multi-label state self-heals on the next reconciling write."""
+
+    def test_two_open_labels_reconcile_removes_the_loser(self, fake):
+        n = _seed_item(fake, labels=["status:submitted", "status:in-progress"])
+        assert _decoded_status(fake, n) == "in-progress"  # (a) highest precedence
+        r = core.set_status(fake, id_raw=f"{OWNER}/{REPO}#{n}", target="in-progress")
+        assert _status_labels(r["data"]) == ["status:in-progress"]  # loser stripped
+
+    def test_closed_with_stray_status_label_is_stripped(self, fake):
+        n = _seed_item(fake, labels=["status:in-progress"])
+        # a human closes it in the UI (state only), leaving the stray label
+        fake.update_issue(OWNER, REPO, n, fields={"state": "closed", "state_reason": "completed"})
+        assert _decoded_status(fake, n) == "shipped"  # (b) state_reason authoritative
+        r = core.set_status(fake, id_raw=f"{OWNER}/{REPO}#{n}", target="shipped")
+        assert r["data"]["status"] == "shipped"
+        assert _status_labels(r["data"]) == []  # stray stripped
+
+
+class TestUpdateItem:
+    """update — field-wise edit with optimistic CAS (CC2) and mass-assignment guard (SEC-2)."""
+
+    def test_updates_title_and_body(self, fake):
+        n = _seed_item(fake)
+        r = core.update_item(fake, id_raw=f"{OWNER}/{REPO}#{n}", fields={"title": "new", "body": "changed"})
+        assert r["status"] == "ok" and r["data"]["title"] == "new"
+
+    def test_facet_edit_swaps_the_label(self, fake):
+        n = _seed_item(fake, labels=["stage:idea"])
+        r = core.update_item(fake, id_raw=f"{OWNER}/{REPO}#{n}", fields={"stage": "ready"})
+        assert r["data"]["stage"] == "ready"
+        assert "stage:ready" in r["data"]["labels"] and "stage:idea" not in r["data"]["labels"]
+
+    def test_unknown_facet_value_warns_not_rejects(self, fake):
+        # ENC-1 on the update path — flagged, not a validation error.
+        n = _seed_item(fake)
+        r = core.update_item(fake, id_raw=f"{OWNER}/{REPO}#{n}", fields={"stage": "brainstorm"})
+        assert r["status"] == "ok" and r["data"]["stage"] == "brainstorm"
+        assert any("brainstorm" in w for w in r["warnings"])
+
+    def test_empty_update_is_validation(self, fake):
+        n = _seed_item(fake)
+        r = core.update_item(fake, id_raw=f"{OWNER}/{REPO}#{n}", fields={})
+        assert r["status"] == "error" and r["error"]["code"] == "validation"
+
+    def test_cc2_stale_updated_at_is_conflict_retryable(self, fake):
+        n = _seed_item(fake)
+        stale = fake.get_issue(OWNER, REPO, n)["updated_at"]
+        core.update_item(fake, id_raw=f"{OWNER}/{REPO}#{n}", fields={"title": "moved"})  # someone else edits
+        r = core.update_item(
+            fake, id_raw=f"{OWNER}/{REPO}#{n}", fields={"title": "mine"}, expected_updated_at=stale
+        )
+        assert r["status"] == "error" and r["error"]["code"] == "conflict"
+        assert r["error"]["retryable"] is True
+
+    def test_cc2_fresh_updated_at_succeeds(self, fake):
+        n = _seed_item(fake)
+        fresh = fake.get_issue(OWNER, REPO, n)["updated_at"]
+        r = core.update_item(
+            fake, id_raw=f"{OWNER}/{REPO}#{n}", fields={"title": "ok"}, expected_updated_at=fresh
+        )
+        assert r["status"] == "ok"
+
+    @pytest.mark.parametrize(
+        "bad_field",
+        [{"node_id": "x"}, {"history": "[]"}, {"state": "closed"}, {"status": "shipped"},
+         {"assignee": "evil"}, {"automated": "yes"}, {"number": "99"}],
+    )
+    def test_sec2_protected_fields_are_rejected(self, fake, bad_field):
+        # SEC-2 — a native/protected field in the request is refused, never written.
+        n = _seed_item(fake)
+        r = core.update_item(fake, id_raw=f"{OWNER}/{REPO}#{n}", fields=bad_field)
+        assert r["status"] == "error" and r["error"]["code"] == "validation"
+        assert list(bad_field)[0] in r["error"]["details"]["rejected"]
+
+    def test_sec2_rejects_the_whole_request_even_with_a_valid_field(self, fake):
+        # A mix of a writable and a protected field is refused — the guard binds
+        # only documented fields; it does not silently apply the allowed part.
+        n = _seed_item(fake)
+        r = core.update_item(
+            fake, id_raw=f"{OWNER}/{REPO}#{n}", fields={"title": "ok", "node_id": "x"}
+        )
+        assert r["status"] == "error" and r["error"]["code"] == "validation"
+        assert fake.get_issue(OWNER, REPO, n)["title"] == "t"  # nothing was written
+
+
+class TestCommentItem:
+    def test_comment_is_attributed_to_the_api_identity(self, fake):
+        n = _seed_item(fake)
+        r = core.comment_item(fake, id_raw=f"{OWNER}/{REPO}#{n}", body="a note")
+        assert r["status"] == "ok"
+        assert r["data"]["actor"] == "octocat"  # API identity, never caller-supplied
+        assert r["data"]["item"] == f"{OWNER}/{REPO}#{n}"
+
+    def test_empty_comment_is_validation(self, fake):
+        n = _seed_item(fake)
+        r = core.comment_item(fake, id_raw=f"{OWNER}/{REPO}#{n}", body="   ")
+        assert r["status"] == "error" and r["error"]["code"] == "validation"
+
+    def test_comment_on_missing_item_is_not_found(self, fake):
+        fake.seed_labels(OWNER, REPO, _STATUS_LABELS)
+        r = core.comment_item(fake, id_raw=f"{OWNER}/{REPO}#999", body="hi")
+        assert r["status"] == "error" and r["error"]["code"] == "not_found"

@@ -42,6 +42,10 @@ _HELP = (
     "  file     --repo owner/repo --title T --body B "
     "[--stage S] [--kind K] [--area A] [--effort E] [--impact I] [--source SRC]\n"
     "  get      <id> [--repo owner/repo]\n"
+    "  status   <id> --to submitted|open|in-progress|shipped|dropped [--repo owner/repo]\n"
+    "  update   <id> [--title T] [--body B] [--stage S] [--kind K] [--area A] "
+    "[--effort E] [--impact I] [--source SRC] [--if-updated-at TS] [--repo owner/repo]\n"
+    "  comment  <id> --body B [--repo owner/repo]\n"
     "  provision --repo owner/repo\n"
     "global: --json  (machine envelope on stdout; default is human)\n"
 )
@@ -68,11 +72,21 @@ def run(project_dir, argv: list[str], *, transport=None) -> int:
             result = _run_file(rest, transport)
         elif op in ("get", "show"):
             result = _run_get(rest, transport)
+        elif op == "status":
+            result = _run_status(rest, transport)
+        elif op == "update":
+            result = _run_update(rest, transport)
+        elif op == "comment":
+            result = _run_comment(rest, transport)
         elif op == "provision":
             result = _run_provision(rest, transport)
         else:
             return _emit(
-                core.error("validation", f"unknown op {op!r} (expected file|get|provision)"),
+                core.error(
+                    "validation",
+                    f"unknown op {op!r} "
+                    "(expected file|get|status|update|comment|provision)",
+                ),
                 json_mode=json_mode,
                 usage=True,
             )
@@ -143,6 +157,74 @@ def _run_get(rest: list[str], transport):
     return core.get_item(transport, id_raw=id_raw, default_owner=default_owner)
 
 
+def _run_status(rest: list[str], transport):
+    flags, positionals, err = _parse_flags(rest, valued={"repo", "to"})
+    if err:
+        return core.error("validation", err)
+    if not positionals:
+        return core.error("validation", "status requires an <id>")
+    target = flags.get("to")
+    if not target:
+        return core.error(
+            "validation",
+            "status requires --to <target> (submitted|open|in-progress|shipped|dropped)",
+        )
+    default_owner, err = _default_owner(flags)
+    if err:
+        return core.error("validation", err)
+    transport = _resolve_transport(transport)
+    return core.set_status(
+        transport, id_raw=positionals[0], target=target, default_owner=default_owner
+    )
+
+
+def _run_update(rest: list[str], transport):
+    flags, positionals, err = _parse_flags(
+        rest,
+        valued={
+            "repo", "title", "body", "stage", "kind", "area",
+            "effort", "impact", "source", "if-updated-at",
+        },
+    )
+    if err:
+        return core.error("validation", err)
+    if not positionals:
+        return core.error("validation", "update requires an <id>")
+    fields = {
+        key: flags[key]
+        for key in ("title", "body", "stage", "kind", "area", "effort", "impact", "source")
+        if key in flags
+    }
+    default_owner, err = _default_owner(flags)
+    if err:
+        return core.error("validation", err)
+    transport = _resolve_transport(transport)
+    return core.update_item(
+        transport,
+        id_raw=positionals[0],
+        fields=fields,
+        expected_updated_at=flags.get("if-updated-at"),
+        default_owner=default_owner,
+    )
+
+
+def _run_comment(rest: list[str], transport):
+    flags, positionals, err = _parse_flags(rest, valued={"repo", "body"})
+    if err:
+        return core.error("validation", err)
+    if not positionals:
+        return core.error("validation", "comment requires an <id>")
+    if "body" not in flags:
+        return core.error("validation", "comment requires --body")
+    default_owner, err = _default_owner(flags)
+    if err:
+        return core.error("validation", err)
+    transport = _resolve_transport(transport)
+    return core.comment_item(
+        transport, id_raw=positionals[0], body=flags["body"], default_owner=default_owner
+    )
+
+
 def _run_provision(rest: list[str], transport):
     flags, positionals, err = _parse_flags(rest, valued={"repo"})
     if err:
@@ -164,6 +246,21 @@ def _resolve_transport(transport):
     from .transport import GhTransport  # lazy — no gh import cost on other paths
 
     return GhTransport()
+
+
+def _default_owner(flags: dict) -> tuple[str | None, str | None]:
+    """Resolve the same-owner default from ``--repo`` (for short IDs like ``repo#N``).
+
+    Returns ``(owner_or_None, error_or_None)``; a present-but-malformed ``--repo``
+    is an error string, an absent one is ``(None, None)``.
+    """
+    repo = flags.get("repo")
+    if not repo:
+        return None, None
+    parsed = ids.parse_repo(repo)
+    if parsed is None:
+        return None, "--repo must be owner/repo"
+    return parsed[0], None
 
 
 def _parse_flags(tokens: list[str], *, valued: set[str]):
@@ -216,7 +313,12 @@ def _emit(result: dict, *, json_mode: bool, usage: bool = False) -> int:
 
 
 def _print_human_ok(data) -> None:
-    if isinstance(data, dict) and "id" in data:
+    if isinstance(data, dict) and "item" in data and "url" in data:
+        # A comment result (distinct from an item — no status/stage axes).
+        print(f"commented on {data.get('item')} by {data.get('actor')}")
+        if data.get("url"):
+            print(f"  {data['url']}")
+    elif isinstance(data, dict) and "id" in data:
         line = data.get("id") or ""
         if data.get("title"):
             line = f"{line}  {data['title']}"

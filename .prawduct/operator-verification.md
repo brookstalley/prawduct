@@ -140,3 +140,33 @@ GET works. Run 2026-07-17 — see **Result** above.
   `proxy-injected` literal appears anywhere** in stdout/stderr (SEC-1).
 - `provision` creates the namespaced `stage:`/`status:` labels and leaves any pre-existing
   non-prawduct labels untouched (GV6).
+
+## VRF-005 — Chunk 02 (backlog-service) — live two-axis status transition + label-remove encoding
+
+**Status:** pending
+**Added:** 2026-07-17 (backlog-service Chunk 02 — state-machine keystone)
+**Where to verify:** a throwaway GitHub repo with `gh` authenticated (`repo` scope). Run the
+gated L5 status smoke, or drive the CLI by hand:
+
+    BACKLOG_LIVE_REPO=you/throwaway python -m pytest tests/test_backlog_smoke_live.py -q
+    # or:
+    prawduct-hook backlog status you/throwaway#<n> --to in-progress --json
+    prawduct-hook backlog status you/throwaway#<n> --to shipped --json
+
+**Why a human/live check (fake-unconfirmable):** the L1 suite proves the crash-safe write order
+(`set-status`, CRASH-1) and the CAS/mass-assignment guards against the in-process fake, but three
+behaviors are confirmed only against real GitHub —
+1. **label-remove path encoding:** `GhTransport.remove_label` URL-encodes the label name
+   (`quote(name, safe="")`), so `status:in-progress` → `status%3Ain-progress` in the DELETE path;
+   real `gh api`'s handling of the encoded colon is not exercisable by the fake.
+2. **reopen clears `state_reason`:** the transition `shipped → in-progress` PATCHes `state: open`
+   and expects GitHub to clear `state_reason` (the decoder relies on it).
+3. **`add_labels` is additive / never a zero-label window** on real GitHub during an open sub-state
+   transition (`submitted → in-progress`).
+
+**Verify (human eyeballs):**
+- `status --to in-progress` on an open item: the issue gains `status:in-progress` and (if it had
+  one) loses the prior open sub-state label; the decoded `status` is `in-progress`.
+- `status --to shipped`: the issue is **closed** with `state_reason: completed`, **no** `status:`
+  label remains, decoded `status` is `shipped`; a re-run is a clean no-op (exit 0, unchanged).
+- `--json` stays pure JSON; **no token / `proxy-injected` literal** appears anywhere (SEC-1).

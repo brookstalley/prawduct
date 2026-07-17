@@ -289,6 +289,67 @@ def decode_status(issue: dict, labels: list[str]) -> tuple[str, list[str]]:
     return status, warnings
 
 
+# --- status encoding (the write-side inverse of decode_status) ---------------
+#
+# Two orthogonal axes (Data Model §4). The status axis has ONE canonical GitHub
+# encoding per value: open sub-states live only in the `status:` label; closed
+# states live in `state_reason`; `open`/`shipped`/`dropped` carry no status label.
+_STATUS_ENCODING: "OrderedDict[str, tuple[str, str | None, str | None]]" = OrderedDict(
+    # status        (state,   state_reason,  status: label)
+    (
+        ("submitted", ("open", None, "status:submitted")),
+        ("open", ("open", None, None)),
+        ("in-progress", ("open", None, "status:in-progress")),
+        ("shipped", ("closed", "completed", None)),
+        ("dropped", ("closed", "not_planned", None)),
+    )
+)
+
+#: The valid `status` values, in a stable order.
+STATUS_VALUES: tuple[str, ...] = tuple(_STATUS_ENCODING)
+
+
+def encode_status(status: str) -> tuple[str, str | None, str | None]:
+    """Map a ``status`` value to its GitHub encoding ``(state, state_reason,
+    status_label)`` — the write-side inverse of :func:`decode_status` (ENC-2).
+
+    ``state`` is ``"open"``/``"closed"``; ``state_reason`` is set only for closed
+    states; ``status_label`` is set only for the open sub-states ``submitted`` /
+    ``in-progress`` (``open``/``shipped``/``dropped`` carry none — Data Model §4).
+    Raises ``KeyError`` for an unknown status (callers validate first).
+    """
+    return _STATUS_ENCODING[status]
+
+
+def canonical_status_label(status: str) -> str | None:
+    """The single ``status:`` label a given status should carry, or ``None``."""
+    return _STATUS_ENCODING[status][2]
+
+
+def status_labels_present(labels: list[str]) -> list[str]:
+    """The ``status:`` labels currently on an issue, full names, source order."""
+    return [f"status:{value}" for value in _facet_values(labels, "status")]
+
+
+def reconcile_status_labels(
+    present_status_labels: list[str], keep: str | None
+) -> tuple[list[str], list[str]]:
+    """Re-derive the canonical ``status:`` label set (Data Model §4): given the
+    labels present and the ONE that should remain (``keep``, or ``None`` for a closed
+    issue / plain ``open``), return ``(to_add, to_remove)`` — the canonical label to
+    add if missing, and every other present ``status:`` label to strip.
+
+    The single reconciliation primitive shared by both writers: a **set-status**
+    transition passes ``keep = canonical_status_label(target)`` (may need the add);
+    a **self-heal** of a torn/multi-label state passes ``keep =
+    canonical_status_label(decoded_current)`` (``to_add`` is empty — the decoded
+    label is already present — and only losers are stripped).
+    """
+    to_add = [keep] if (keep and keep not in present_status_labels) else []
+    to_remove = [name for name in present_status_labels if name != keep]
+    return to_add, to_remove
+
+
 def decode_item(issue: dict, *, canonical_id: str | None = None) -> tuple[dict, list[str]]:
     """Decode a GitHub issue JSON into the item projection (Data Model §1.1).
 

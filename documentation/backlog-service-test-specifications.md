@@ -119,15 +119,22 @@ decoder / re-runs the op and asserts a valid state + idempotent completion. No r
 
 **CRASH-1 — `set-status` partial-transition recovery** (→ CC1/M5, Data Model §4 B1, NFR §6 "crash-recovery test is owed")
 - Level: unit
-- Setup: an item `open ∧ status:in-progress`; target = `shipped` (a closed status). Canonical order:
-  (1) set closed + `state_reason`; (2) add `status:shipped` before removing any other `status:` label;
-  (3) remove `status:in-progress`.
+- Setup: an item `open ∧ status:in-progress`; target = `shipped` (a closed status). Canonical order for
+  a **closed** target: (1) set closed + `state_reason` — **the authority**: the decoded status is correct
+  from here on, whatever `status:` labels linger; (2) strip the stale open sub-state `status:` label(s).
+  *(The generic B1 "add `status:target` before removing any other" applies only to an **open** sub-state
+  target, whose sole encoding is the label — there is no `status:shipped`/`status:dropped` in the
+  taxonomy (Data Model §4), and a closed `state_reason` is the authority, so a closed target has no
+  zero-label window to guard.)*
 - Action: for each cut point k ∈ {after step 1, after step 2}, run `set-status(shipped)` with the fake
   failing call k+1 (`unavailable`); then decode the item; then re-run `set-status(shipped)` to completion
-  and once more.
-- Expected: at every cut point the decoder reads a **valid** status (never a zero-`status:`-label window,
-  never a corrupt two-value read); the first completing re-run reaches `closed ∧ shipped`; a further
-  re-run is a **no-op** (idempotent). Covers the "never a zero-label window" guarantee explicitly.
+  and once more. The **open sub-state** case (`submitted → in-progress`) — where add-before-remove is the
+  window that matters — is asserted as a companion (fail the remove; the item still carries `status:
+  in-progress`).
+- Expected: at every cut point the decoder reads a **valid** status — a closed `state_reason` reads as
+  `shipped` even while a stale `status:` label lingers, and the open-substate companion never opens a
+  zero-`status:`-label window (the new label is added before the old is removed); the first completing
+  re-run reaches `closed ∧ shipped`; a further re-run is a **no-op** (idempotent).
 
 **CRASH-2 — `merge` redirect-before-close** (→ AU3/DM7, API §2.3 C2)
 - Level: unit

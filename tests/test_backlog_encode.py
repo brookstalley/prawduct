@@ -163,6 +163,65 @@ class TestDecodeStatus:
         assert any("state_reason" in w for w in warns)
 
 
+class TestEncodeStatus:
+    """The write-side status encoder (Data Model §4) and its ENC-2 round-trip."""
+
+    def test_each_status_encodes_to_its_canonical_shape(self):
+        assert encode.encode_status("submitted") == ("open", None, "status:submitted")
+        assert encode.encode_status("open") == ("open", None, None)
+        assert encode.encode_status("in-progress") == ("open", None, "status:in-progress")
+        assert encode.encode_status("shipped") == ("closed", "completed", None)
+        assert encode.encode_status("dropped") == ("closed", "not_planned", None)
+
+    def test_closed_states_carry_no_status_label(self):
+        # There is no status:shipped / status:dropped in the taxonomy — closed
+        # states live in state_reason (Data Model §4).
+        assert encode.canonical_status_label("shipped") is None
+        assert encode.canonical_status_label("dropped") is None
+        assert encode.canonical_status_label("open") is None
+        assert encode.canonical_status_label("submitted") == "status:submitted"
+
+    def test_enc2_encode_then_decode_round_trips_every_status(self):
+        # ENC-2 — the two axes never flatten: encode → decode returns the same
+        # status, cleanly, for every value.
+        for status in encode.STATUS_VALUES:
+            state, reason, label = encode.encode_status(status)
+            issue = {"state": state, "state_reason": reason}
+            labels = [label] if label else []
+            decoded, warns = encode.decode_status(issue, labels)
+            assert decoded == status, (status, decoded)
+            assert warns == []
+
+
+class TestReconcileStatusLabels:
+    """The reconciliation primitive shared by set-status and self-heal (Data Model §4)."""
+
+    def test_add_missing_target_label(self):
+        add, remove = encode.reconcile_status_labels([], "status:in-progress")
+        assert add == ["status:in-progress"] and remove == []
+
+    def test_keep_present_target_and_strip_losers(self):
+        add, remove = encode.reconcile_status_labels(
+            ["status:submitted", "status:in-progress"], "status:in-progress"
+        )
+        assert add == [] and remove == ["status:submitted"]
+
+    def test_none_keep_strips_all(self):
+        # closed target / plain open — keep nothing.
+        add, remove = encode.reconcile_status_labels(["status:in-progress"], None)
+        assert add == [] and remove == ["status:in-progress"]
+
+    def test_already_canonical_is_noop(self):
+        add, remove = encode.reconcile_status_labels(["status:submitted"], "status:submitted")
+        assert add == [] and remove == []
+
+    def test_status_labels_present_filters_by_facet(self):
+        present = encode.status_labels_present(
+            ["status:submitted", "stage:ready", "area:cli"]
+        )
+        assert present == ["status:submitted"]
+
+
 class TestDecodeItem:
     def test_decodes_axes_independently(self):
         issue = {

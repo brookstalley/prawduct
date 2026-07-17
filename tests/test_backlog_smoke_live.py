@@ -1,7 +1,8 @@
 """L5 live smoke — one real round-trip **through the CLI front**, throwaway repo.
 
-This is the acceptance evidence for Chunk 01: ``provision`` → ``file`` → ``get``
-driven through ``cli.run`` (the ``prawduct-hook backlog <op>`` runner) against the
+This is the live acceptance evidence for the backlog service: ``provision`` →
+``file`` → ``get`` → ``status`` transition, each driven through ``cli.run`` (the
+``prawduct-hook backlog <op>`` runner) against the
 real ``gh``-backed transport — Test Specs §6 live-smoke set, and the build plan's
 Verification Strategy, which requires the per-front L5 to run **through the CLI
 front** because "a core-only test does not prove the CLI": flag parsing, the
@@ -109,5 +110,54 @@ def test_provision_file_get_round_trip(transport, capsys):
     # SEC-1 on real output: no token in any output path — assert over the actual
     # stdout+stderr the CLI emitted, plus the re-serialized envelopes for good measure.
     blob = "".join(output_sink) + json.dumps([provisioned, filed, got])
+    for marker in _TOKEN_MARKERS:
+        assert marker not in blob
+
+
+def test_status_transition_round_trip(transport, capsys):
+    """A real two-axis status transition through the CLI front (the state machine).
+
+    file (open) → status in-progress (open sub-state label) → status shipped
+    (closed + state_reason, status: label stripped) → get confirms the decoded
+    status. Exercises the crash-safe write path against live GitHub — where the
+    fake's label/state semantics are confirmed (CONTRACT-1 / VRF).
+    """
+    parsed = ids.parse_repo(_LIVE_REPO)
+    assert parsed, f"BACKLOG_LIVE_REPO must be owner/repo, got {_LIVE_REPO!r}"
+
+    output_sink: list[str] = []
+
+    code, _ = _run_cli(capsys, ["provision", "--repo", _LIVE_REPO], transport, output_sink)
+    assert code == 0
+
+    code, filed = _run_cli(
+        capsys,
+        ["file", "--repo", _LIVE_REPO, "--title", "prawduct L5 status smoke",
+         "--body", "Created by the live status-transition smoke; safe to close."],
+        transport, output_sink,
+    )
+    assert code == 0, filed
+    item_id = filed["data"]["id"]
+    assert filed["data"]["status"] == "open"  # new item is plain open
+
+    code, moved = _run_cli(capsys, ["status", item_id, "--to", "in-progress"], transport, output_sink)
+    assert code == 0, moved
+    assert moved["data"]["status"] == "in-progress"
+    assert "status:in-progress" in moved["data"]["labels"]
+
+    code, shipped = _run_cli(capsys, ["status", item_id, "--to", "shipped"], transport, output_sink)
+    assert code == 0, shipped
+    assert shipped["data"]["status"] == "shipped"
+    # closed states carry no status: label (Data Model §4)
+    assert not [l for l in shipped["data"]["labels"] if l.startswith("status:")]
+
+    # re-run is idempotent (a crashed client re-running converges, no error)
+    code, again = _run_cli(capsys, ["status", item_id, "--to", "shipped"], transport, output_sink)
+    assert code == 0 and again["data"]["status"] == "shipped"
+
+    code, got = _run_cli(capsys, ["get", item_id], transport, output_sink)
+    assert code == 0 and got["data"]["status"] == "shipped"
+
+    blob = "".join(output_sink)
     for marker in _TOKEN_MARKERS:
         assert marker not in blob

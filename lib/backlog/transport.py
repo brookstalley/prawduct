@@ -150,6 +150,24 @@ class Transport:
     ) -> dict:
         raise NotImplementedError
 
+    def update_issue(
+        self, owner: str, repo: str, number: int, *, fields: dict
+    ) -> dict:
+        raise NotImplementedError
+
+    def add_labels(
+        self, owner: str, repo: str, number: int, labels: list[str]
+    ) -> list[dict]:
+        raise NotImplementedError
+
+    def remove_label(self, owner: str, repo: str, number: int, name: str) -> None:
+        raise NotImplementedError
+
+    def create_comment(
+        self, owner: str, repo: str, number: int, *, body: str
+    ) -> dict:
+        raise NotImplementedError
+
 
 class GhTransport(Transport):
     """The real transport: drives ``gh`` as a subprocess."""
@@ -192,6 +210,83 @@ class GhTransport(Transport):
         return self._api(
             ["api", f"repos/{owner}/{repo}/labels", "--method", "POST", "--input", "-"],
             input_json=json.dumps(payload),
+        )
+
+    # -- mutations (the state-machine write path) --------------------------
+
+    def update_issue(
+        self, owner: str, repo: str, number: int, *, fields: dict
+    ) -> dict:
+        """PATCH the issue with **only the named fields** (``state``,
+        ``state_reason``, ``title``, ``body``). Core's mass-assignment guard
+        (SEC-2) decides which fields are allowed to reach here; the transport does
+        not second-guess a field it was handed."""
+        return self._api(
+            [
+                "api",
+                f"repos/{owner}/{repo}/issues/{number}",
+                "--method",
+                "PATCH",
+                "--input",
+                "-",
+            ],
+            input_json=json.dumps(fields),
+        )
+
+    def add_labels(
+        self, owner: str, repo: str, number: int, labels: list[str]
+    ) -> list[dict]:
+        """POST labels — **additive**, leaving already-present labels untouched, so
+        ``set-status`` can add the target label *before* removing the loser and
+        never open a zero-label window (Data Model §4 B1). Returns the full set."""
+        result = self._api(
+            [
+                "api",
+                f"repos/{owner}/{repo}/issues/{number}/labels",
+                "--method",
+                "POST",
+                "--input",
+                "-",
+            ],
+            input_json=json.dumps({"labels": labels}),
+        )
+        return result if isinstance(result, list) else []
+
+    def remove_label(self, owner: str, repo: str, number: int, name: str) -> None:
+        """DELETE one label. **Idempotent**: a label already absent 404s, and that
+        *is* the desired end state, so a ``not_found`` is swallowed — a re-run of a
+        half-applied transition converges rather than erroring."""
+        from urllib.parse import quote  # noqa: PLC0415 — only the delete path needs it
+
+        try:
+            self._api(
+                [
+                    "api",
+                    f"repos/{owner}/{repo}/issues/{number}/labels/{quote(name, safe='')}",
+                    "--method",
+                    "DELETE",
+                ]
+            )
+        except TransportError as exc:
+            if exc.code == "not_found":
+                return
+            raise
+
+    def create_comment(
+        self, owner: str, repo: str, number: int, *, body: str
+    ) -> dict:
+        """Add a native issue comment. Attribution is the API identity (GitHub
+        stamps the authenticated user), never a caller-supplied author."""
+        return self._api(
+            [
+                "api",
+                f"repos/{owner}/{repo}/issues/{number}/comments",
+                "--method",
+                "POST",
+                "--input",
+                "-",
+            ],
+            input_json=json.dumps({"body": body}),
         )
 
     # -- subprocess plumbing ----------------------------------------------

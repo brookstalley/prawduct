@@ -185,3 +185,89 @@ class TestBoundaryGuard:
         assert "ghp_" not in out  # no token on stdout
         assert "ghp_" not in err  # scrubbed on stderr too
         assert "[REDACTED]" in err  # surfaced (not swallowed), but redacted
+
+
+def _file(fake, capsys, **flags):
+    """File one item through the CLI and return its id (JSON path)."""
+    argv = ["file", "--repo", REPO, "--title", "t", "--body", "b", "--json"]
+    for key, value in flags.items():
+        argv += [f"--{key}", value]
+    code, out, _ = _run(argv, fake, capsys)
+    assert code == 0
+    return json.loads(out)["data"]["id"]
+
+
+class TestStatusCli:
+    def test_status_transition_json(self, capsys):
+        fake = FakeGitHub()
+        item_id = _file(fake, capsys)
+        code, out, err = _run(["status", item_id, "--to", "in-progress", "--json"], fake, capsys)
+        assert code == 0
+        payload = json.loads(out)  # ERR-2: pure JSON on stdout
+        assert payload["data"]["status"] == "in-progress"
+
+    def test_status_requires_target(self, capsys):
+        fake = FakeGitHub()
+        item_id = _file(fake, capsys)
+        code, out, err = _run(["status", item_id, "--json"], fake, capsys)
+        assert code == 2  # validation exit class
+        assert json.loads(out)["error"]["code"] == "validation"
+
+    def test_status_unknown_target_is_validation_exit(self, capsys):
+        fake = FakeGitHub()
+        item_id = _file(fake, capsys)
+        code, out, err = _run(["status", item_id, "--to", "frozen", "--json"], fake, capsys)
+        assert code == 2
+
+    def test_status_requires_id(self, capsys):
+        fake = FakeGitHub()
+        code, out, err = _run(["status", "--to", "shipped", "--json"], fake, capsys)
+        assert code == 2
+
+
+class TestUpdateCli:
+    def test_update_title_json(self, capsys):
+        fake = FakeGitHub()
+        item_id = _file(fake, capsys)
+        code, out, err = _run(["update", item_id, "--title", "renamed", "--json"], fake, capsys)
+        assert code == 0
+        assert json.loads(out)["data"]["title"] == "renamed"
+
+    def test_update_hyphenated_if_updated_at_flag_parses(self, capsys):
+        # The --if-updated-at flag (hyphen in the name) parses and drives the CAS.
+        fake = FakeGitHub()
+        item_id = _file(fake, capsys)
+        code, out, err = _run(
+            ["update", item_id, "--title", "x", "--if-updated-at", "1999-01-01T00:00:00Z", "--json"],
+            fake, capsys,
+        )
+        assert code == 4  # conflict exit class (stale)
+        assert json.loads(out)["error"]["code"] == "conflict"
+
+    def test_update_no_fields_is_validation(self, capsys):
+        fake = FakeGitHub()
+        item_id = _file(fake, capsys)
+        code, out, err = _run(["update", item_id, "--json"], fake, capsys)
+        assert code == 2
+
+
+class TestCommentCli:
+    def test_comment_json(self, capsys):
+        fake = FakeGitHub()
+        item_id = _file(fake, capsys)
+        code, out, err = _run(["comment", item_id, "--body", "a note", "--json"], fake, capsys)
+        assert code == 0
+        assert json.loads(out)["data"]["actor"] == "octocat"
+
+    def test_comment_human_mode(self, capsys):
+        fake = FakeGitHub()
+        item_id = _file(fake, capsys)
+        code, out, err = _run(["comment", item_id, "--body", "hi"], fake, capsys)
+        assert code == 0
+        assert "commented on" in out
+
+    def test_comment_requires_body(self, capsys):
+        fake = FakeGitHub()
+        item_id = _file(fake, capsys)
+        code, out, err = _run(["comment", item_id, "--json"], fake, capsys)
+        assert code == 2
