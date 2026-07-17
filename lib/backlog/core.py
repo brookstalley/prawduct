@@ -187,21 +187,28 @@ def get_item(
     *,
     id_raw: str,
     default_owner: str | None = None,
+    default_repo: tuple[str, str] | None = None,
     settle_retries: int = 0,
     sleeper=None,
 ) -> dict:
-    """Fetch one item by any accepted ID spelling; decode into the item shape.
+    """Fetch one item by any accepted ID spelling **or a hand-minted ``PFX`` alias**;
+    decode into the item shape.
 
-    ``settle_retries`` handles the **observed** brief post-create replication
-    window (QRY-1): reading *your own just-written item* can 404 momentarily. It
-    is opt-in and **only** for a read-your-own-write (create/claim verify) — a
-    plain ``get`` keeps ``settle_retries=0`` so a genuine not-found stays fast and
-    the never-block floor is never diluted with retries on real absences.
+    A ``PFX`` (e.g. ``BKL-0QR1``) is resolved via its ``id:PFX`` alias label against
+    ``default_repo`` (``--repo``); see :func:`resolve_ref` for the not-found /
+    collision / no-repo verdicts. ``settle_retries`` handles the **observed** brief
+    post-create replication window (QRY-1): reading *your own just-written item* can
+    404 momentarily. It is opt-in and **only** for a read-your-own-write
+    (create/claim verify) — a plain ``get`` keeps ``settle_retries=0`` so a genuine
+    not-found stays fast and the never-block floor is never diluted with retries on
+    real absences.
     """
-    nid = ids.normalize_id(id_raw, default_owner=default_owner)
-    if not nid.ok:
-        return error(nid.error or "validation", nid.message or f"bad ID {id_raw!r}")
     try:
+        nid = resolve_ref(
+            transport, id_raw, default_owner=default_owner, default_repo=default_repo
+        )
+        if not nid.ok:
+            return error(nid.error or "validation", nid.message or f"bad ID {id_raw!r}")
         issue = _get_issue_settling(
             transport, nid.owner, nid.repo, nid.number, settle_retries, sleeper
         )
@@ -240,6 +247,81 @@ def _get_issue_settling(
 
 def _default_settle_sleep(attempt: int) -> None:
     time.sleep(0.25 * (attempt + 1))
+
+
+# --- ref resolution (spelling + PFX alias) -----------------------------------
+#
+# Every id-taking op normalizes its ``id_raw`` through here. A canonical/short
+# spelling resolves purely (``ids.normalize_id``); a hand-minted ``PFX`` (e.g.
+# ``BKL-0QR1``, minted by a source before migration) has no ``owner/repo#number``
+# form, so it is resolved via its permanent ``id:PFX`` **alias label** — the read-
+# path half of MG1's "a migrated item's original id stays a valid ref forever".
+
+
+def resolve_ref(
+    transport: Transport,
+    id_raw: str,
+    *,
+    default_owner: str | None = None,
+    default_repo: tuple[str, str] | None = None,
+) -> "ids.NormalizedId":
+    """Normalize ``id_raw`` to a canonical ``owner/repo#number``, resolving a hand-
+    minted ``PFX`` alias via its ``id:PFX`` label when the plain spellings don't
+    match (MG1). ``default_repo`` (``(owner, repo)``, from ``--repo``) is the repo a
+    bare ``PFX`` is resolved against; absent it a ``PFX`` cannot resolve and is a
+    ``validation`` error (never a silent guess). A ``PFX`` that matches no live item
+    is ``not_found``; one that matches more than one is an ``alias_collision`` (the
+    §5 uniqueness invariant broke — flag it, never pick one). **Does a label search
+    for the PFX case**, so it may raise ``TransportError`` — call it inside the
+    caller's transport ``try``/``except`` (a real spelling does no I/O)."""
+    nid = ids.normalize_id(id_raw, default_owner=default_owner)
+    if nid.ok or not ids.is_pfx(id_raw):
+        # A resolved spelling, or an unresolved token that isn't a PFX either —
+        # return normalize_id's verdict verbatim (its error message is the right one).
+        return nid
+    pfx = id_raw.strip()
+    if not default_repo:
+        return ids.NormalizedId(
+            canonical=None,
+            error="validation",
+            message=(
+                f"hand-minted id {id_raw!r} needs a target repo to resolve — "
+                "pass --repo owner/repo (or use its owner/repo#number id)"
+            ),
+        )
+    owner, repo = default_repo
+    numbers = _numbers_for_alias(transport, owner, repo, pfx)
+    label = ids.alias_label(pfx)
+    if len(numbers) > 1:
+        return ids.NormalizedId(
+            canonical=None,
+            error="alias_collision",
+            message=(
+                f"alias {label} resolves to {len(numbers)} items in {owner}/{repo} "
+                f"({', '.join(f'#{n}' for n in numbers)}) — alias uniqueness violated"
+            ),
+        )
+    if not numbers:
+        return ids.NormalizedId(
+            canonical=None,
+            error="not_found",
+            message=f"no item with alias {label} in {owner}/{repo}",
+        )
+    number = numbers[0]
+    return ids.NormalizedId(
+        canonical=f"{owner}/{repo}#{number}", owner=owner, repo=repo, number=number
+    )
+
+
+def _numbers_for_alias(
+    transport: Transport, owner: str, repo: str, pfx: str
+) -> list[int]:
+    """The issue numbers carrying the ``id:PFX`` alias label (all states — a
+    migrated item may be closed). Exactly one on a healthy repo (§5)."""
+    issues = transport.list_issues(
+        owner, repo, state="all", labels=[ids.alias_label(pfx)], per_page=100, page=1
+    )
+    return [issue["number"] for issue in issues if issue.get("number") is not None]
 
 
 # --- status (set-status: the crash-safe two-axis transition) -----------------
@@ -595,10 +677,14 @@ def link(
     edge: str,
     target_raw: str,
     default_owner: str | None = None,
+    default_repo: tuple[str, str] | None = None,
 ) -> dict:
     """Set a typed edge from an item to a target (idempotent). ``edge`` is one of
-    ``blocks``/``blocked-by``/``parent``/``child``/``related``."""
-    return _mutate_edge(transport, id_raw, edge, target_raw, default_owner, add=True)
+    ``blocks``/``blocked-by``/``parent``/``child``/``related``. Either endpoint may
+    be a hand-minted ``PFX`` alias, resolved against ``default_repo`` (``--repo``)."""
+    return _mutate_edge(
+        transport, id_raw, edge, target_raw, default_owner, default_repo, add=True
+    )
 
 
 def unlink(
@@ -608,9 +694,12 @@ def unlink(
     edge: str,
     target_raw: str,
     default_owner: str | None = None,
+    default_repo: tuple[str, str] | None = None,
 ) -> dict:
     """Clear a typed edge from an item to a target (idempotent)."""
-    return _mutate_edge(transport, id_raw, edge, target_raw, default_owner, add=False)
+    return _mutate_edge(
+        transport, id_raw, edge, target_raw, default_owner, default_repo, add=False
+    )
 
 
 def _mutate_edge(
@@ -619,6 +708,7 @@ def _mutate_edge(
     edge: str,
     target_raw: str,
     default_owner: str | None,
+    default_repo: tuple[str, str] | None,
     *,
     add: bool,
 ) -> dict:
@@ -627,16 +717,22 @@ def _mutate_edge(
             "validation",
             f"unknown edge {edge!r}; expected one of {', '.join(_EDGE_TYPES)}",
         )
-    nid = ids.normalize_id(id_raw, default_owner=default_owner)
-    if not nid.ok:
-        return error(nid.error or "validation", nid.message or f"bad ID {id_raw!r}")
-    tid = ids.normalize_id(target_raw, default_owner=default_owner)
-    if not tid.ok:
-        return error(tid.error or "validation", tid.message or f"bad target ID {target_raw!r}")
-    if nid.canonical == tid.canonical:
-        return error("validation", "an item cannot be linked to itself")
-
     try:
+        nid = resolve_ref(
+            transport, id_raw, default_owner=default_owner, default_repo=default_repo
+        )
+        if not nid.ok:
+            return error(nid.error or "validation", nid.message or f"bad ID {id_raw!r}")
+        tid = resolve_ref(
+            transport, target_raw, default_owner=default_owner, default_repo=default_repo
+        )
+        if not tid.ok:
+            return error(
+                tid.error or "validation", tid.message or f"bad target ID {target_raw!r}"
+            )
+        if nid.canonical == tid.canonical:
+            return error("validation", "an item cannot be linked to itself")
+
         if edge == "blocked-by":
             _dep(transport, nid, tid, add=add)
         elif edge == "blocks":
@@ -703,6 +799,40 @@ def _related(transport: Transport, nid, target_canonical: str, *, add: bool) -> 
         transport.update_issue(nid.owner, nid.repo, nid.number, fields={"body": new_body})
 
 
+# --- alias self-heal (id:PFX label ↔ block id_aliases drift) -----------------
+#
+# The permanent ``id:PFX`` label is both the read-resolution key and the import
+# skip-authority, but a human can delete a per-issue label. The block
+# ``id_aliases`` field is the durable record of the same alias, so it is the
+# recovery source: this scan pairs every block-recorded PFX with the issue that
+# carries it, letting the importer skip-not-duplicate (``migrate._find_by_key``)
+# and ``reconcile-labels`` restore a deleted label — both keyed off one scan.
+
+
+def iter_alias_issues(transport: Transport, owner: str, repo: str):
+    """Yield ``(number, pfxs, label_names)`` for every issue in the repo (all
+    states, paginated): ``pfxs`` are the well-formed hand-minted ids recorded in the
+    body block ``id_aliases``; ``label_names`` are the issue's current label names
+    (so a caller can tell whether the matching ``id:PFX`` label is present). Raises
+    ``TransportError`` on a transport failure (caught at each caller's boundary)."""
+    page = 1
+    while True:
+        batch = transport.list_issues(owner, repo, state="all", per_page=100, page=page)
+        for issue in batch:
+            number = issue.get("number")
+            if number is None:
+                continue
+            block = encode.parse_block(issue.get("body"))
+            pfxs = [pfx for pfx in block.id_aliases() if ids.is_pfx(pfx)]
+            label_names = {
+                name for label in issue.get("labels", []) if (name := label.get("name"))
+            }
+            yield number, pfxs, label_names
+        if len(batch) < 100:
+            return
+        page += 1
+
+
 # --- provision ---------------------------------------------------------------
 
 
@@ -728,10 +858,15 @@ def provision_labels(transport: Transport, *, owner: str, repo: str) -> dict:
 
 def reconcile_labels(transport: Transport, *, owner: str, repo: str) -> dict:
     """Reconcile the full namespaced taxonomy (GV6): create any missing base
-    label, leave every existing/foreign label untouched, and report the
-    coexistence picture. Idempotent and collision-free (Data Model §3, PROV-1)."""
+    label, leave every existing/foreign label untouched, **re-derive any deleted
+    per-issue ``id:PFX`` alias label from the durable block ``id_aliases``**, and
+    report the coexistence picture. Idempotent and collision-free — drift is
+    corrected by *adding* what is missing, never by removing (Data Model §3, PROV-1,
+    DM7). The alias restore keeps MG1's "a migrated id resolves forever" true even
+    after a human deletes an alias label (the same drift the importer self-heals)."""
     try:
         result = provision.reconcile(transport, owner, repo)
+        restored = _restore_alias_labels(transport, owner, repo)
     except TransportError as exc:
         return from_transport_error(exc)
     except (OSError, json.JSONDecodeError) as exc:  # ERR-6
@@ -743,5 +878,23 @@ def reconcile_labels(transport: Transport, *, owner: str, repo: str) -> dict:
         "created": result.created,
         "existing": result.existing,
         "foreign_untouched": result.foreign_untouched,
+        "aliases_restored": restored,
     }
     return ok(data, result.warnings)
+
+
+def _restore_alias_labels(transport: Transport, owner: str, repo: str) -> list[str]:
+    """Re-add any ``id:PFX`` alias label that the block ``id_aliases`` records but
+    the issue no longer carries (a human deleted it). Add-only (ensures the label
+    definition, then adds it to the issue); returns the ``owner/repo#n → id:PFX``
+    restorations made. A repo with no drift restores nothing (idempotent)."""
+    restored: list[str] = []
+    for number, pfxs, label_names in iter_alias_issues(transport, owner, repo):
+        for pfx in pfxs:
+            label = ids.alias_label(pfx)
+            if label in label_names:
+                continue  # the alias label is present — nothing to restore
+            provision.ensure_labels(transport, owner, repo, [label])
+            transport.add_labels(owner, repo, number, [label])
+            restored.append(f"{owner}/{repo}#{number} → {label}")
+    return restored

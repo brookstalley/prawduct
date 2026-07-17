@@ -209,13 +209,17 @@ def _run_get(rest: list[str], transport):
         return core.error("validation", "get requires an <id>")
     id_raw = positionals[0]
     default_owner = None
+    default_repo = None
     if flags.get("repo"):
         parsed = ids.parse_repo(flags["repo"])
         if parsed is None:
             return core.error("validation", "--repo must be owner/repo")
         default_owner = parsed[0]
+        default_repo = parsed  # (owner, repo) — the repo a bare PFX resolves against
     transport = _resolve_transport(transport)
-    return core.get_item(transport, id_raw=id_raw, default_owner=default_owner)
+    return core.get_item(
+        transport, id_raw=id_raw, default_owner=default_owner, default_repo=default_repo
+    )
 
 
 def _run_status(rest: list[str], transport):
@@ -447,6 +451,9 @@ def _run_link(op: str, rest: list[str], transport):
     default_owner, err = _default_owner(flags)
     if err:
         return core.error("validation", err)
+    # --repo (already format-validated by _default_owner) is the repo an endpoint
+    # given as a bare PFX alias resolves against.
+    default_repo = ids.parse_repo(flags["repo"]) if flags.get("repo") else None
     transport = _resolve_transport(transport)
     fn = core.link if op == "link" else core.unlink
     return fn(
@@ -455,6 +462,7 @@ def _run_link(op: str, rest: list[str], transport):
         edge=edge,
         target_raw=target,
         default_owner=default_owner,
+        default_repo=default_repo,
     )
 
 

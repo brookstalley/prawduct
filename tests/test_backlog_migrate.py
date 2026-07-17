@@ -343,6 +343,47 @@ class TestImportResumable:
         assert (dis4.get("state") or "open").lower() == "closed"  # resume converged
 
 
+# --- BKL-4W7H: id:PFX alias self-heal (deleted label ↛ permanent duplicate) ---
+
+
+class TestAliasSelfHeal:
+    """A human-deleted ``id:PFX`` label must not turn a re-import into a permanent
+    duplicate (GitHub never reuses issue numbers). The block ``id_aliases`` record
+    is the fallback skip-authority, and the re-import self-heals the missing label
+    so the alias resolves again on the fast label path."""
+
+    def test_deleted_alias_label_reimport_neither_duplicates_nor_leaves_it_missing(self, fake):
+        _import(fake, DISCODON_MINI)
+        pfx = "DIS-0001"
+        number = _alias_issues(fake, pfx)[0]["number"]
+        total_before = len(fake.list_issues(OWNER, REPO, state="all"))
+
+        # A human deletes the id:PFX label; the block id_aliases record survives.
+        fake.remove_label(OWNER, REPO, number, ids.alias_label(pfx))
+        assert _alias_issues(fake, pfx) == []  # the label search now misses
+
+        # Re-import the SAME content: the block fallback finds the existing issue.
+        result = _import(fake, DISCODON_MINI)
+        assert result["status"] == "ok", result
+
+        healed = _alias_issues(fake, pfx)
+        assert [i["number"] for i in healed] == [number]  # same issue — no duplicate
+        assert len(fake.list_issues(OWNER, REPO, state="all")) == total_before
+        assert any("restored missing alias label" in w for w in result["warnings"])
+
+    def test_clean_reimport_never_scans_blocks(self, fake):
+        # Every id:PFX label intact ⇒ the label fast-path finds everything and the
+        # alias index is never built (no full-issue scan on the common resume path).
+        _import(fake, DISCODON_MINI)
+        fake.calls.clear()
+        result = _import(fake, DISCODON_MINI)
+        assert result["status"] == "ok"
+        # The block scan pages issues with NO label filter; the label fast-path
+        # always passes labels=[...]. An unfiltered list_issues ⇒ the scan ran.
+        unfiltered = [c for c in fake.calls if c[0] == "list_issues" and not c[4]]
+        assert unfiltered == []
+
+
 # --- CRASH-2 / merge ---------------------------------------------------------
 
 

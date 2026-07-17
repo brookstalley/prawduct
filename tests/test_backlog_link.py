@@ -19,7 +19,7 @@ for _p in (str(_REPO_ROOT), str(_TESTS_DIR)):
 
 import pytest  # noqa: E402
 
-from lib.backlog import cli, core, encode  # noqa: E402
+from lib.backlog import cli, core, encode, ids  # noqa: E402
 from fakes.fake_github import FakeGitHub  # noqa: E402
 
 OWNER, REPO = "octo", "repo"
@@ -38,6 +38,34 @@ def _file(fake, *, title="t", owner=OWNER, repo=REPO):
 
 def _num(id_raw):
     return int(id_raw.split("#")[1])
+
+
+class TestLinkByPfxAlias:
+    """BKL-4W7H: either endpoint may be a hand-minted PFX alias, resolved via its
+    id:PFX label against --repo — the same read-resolution ``get`` uses."""
+
+    def _seed_alias(self, fake, pfx):
+        label = ids.alias_label(pfx)
+        fake.seed_labels(OWNER, REPO, [label])
+        return fake.create_issue(OWNER, REPO, title="t", body="b", labels=[label])["number"]
+
+    def test_pfx_endpoint_resolves_to_its_issue(self, fake):
+        src = self._seed_alias(fake, "BKL-SRC1")
+        tgt = _file(fake, title="blocker")
+        result = core.link(
+            fake, id_raw="BKL-SRC1", edge="blocked-by", target_raw=tgt,
+            default_repo=(OWNER, REPO),
+        )
+        assert result["status"] == "ok", result
+        assert result["data"]["item"] == f"{OWNER}/{REPO}#{src}"
+        assert [x["ref"] for x in fake.list_blocked_by(OWNER, REPO, src)] == [tgt]
+
+    def test_pfx_endpoint_without_a_repo_is_validation(self, fake):
+        self._seed_alias(fake, "BKL-SRC1")
+        tgt = _file(fake, title="blocker")
+        result = core.link(fake, id_raw="BKL-SRC1", edge="related", target_raw=tgt)
+        assert result["status"] == "error"
+        assert result["error"]["code"] == "validation"
 
 
 class TestBlockedBy:

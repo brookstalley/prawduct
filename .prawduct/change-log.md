@@ -47,6 +47,13 @@ system-of-record** via a deterministic `prawduct-hook backlog` adapter (PRD §16
   clock). Transport/fake gained `list_sub_issues`/`list_timeline`; the export on-disk layout is pinned
   in Data Model §8. Fixture-proven (MIG-1…4, CRASH-2/CRASH-4); the live SPIKE-S2 + real migration stay
   in Chunk 06. `import`+`export`+`merge` L5 smokes + the Done-when-0 live blocker check queued.
+- **Chunk 06 pre-sign-off must-fix BKL-4W7H (offline part, 2026-07-17):** closed the `id:PFX`-alias
+  self-healing gap. `core.resolve_ref` wires PFX→canonical alias resolution into `get`/`link` (against
+  `--repo`); `migrate._find_by_key` gains a block-`id_aliases` fallback skip-authority (`_AliasIndex`,
+  one lazy scan per drifted run) that self-heals the missing label so a human-deleted `id:PFX` can't
+  turn a re-import into a permanent duplicate; `reconcile-labels` re-derives deleted aliases from the
+  block. The live migration (SPIKE-S2, dogfood, briefing/gate repoint, drop-box retirement) stays in
+  Chunk 06 (BKL-6M4T).
 
 **Classification:** structural
 

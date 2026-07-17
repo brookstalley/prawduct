@@ -535,12 +535,15 @@ tests/
   scenario traces of the CC5/G2/rate seams before the irreversible migration found no design flaw but
   four build-completeness gaps; two are **must-fix before this slice is marked done** (not optional
   follow-ups), because they sit inside the acceptance criteria above:
-  - **BKL-4W7H (must-fix)** — the "every `PFX` ID resolving as an alias" criterion is currently false at
-    the read path: `is_pfx`/`alias_label`/`resolve_redirect` are wired nowhere in `get`/`pick`/`link`.
-    Wire PFX read-resolution, **and** make block `id_aliases` a fallback skip-authority in `_find_by_key`
-    (so a human-deleted `id:PFX` label can't turn a re-import into a permanent duplicate — GitHub never
-    reuses numbers); reconcile should re-derive a missing alias from the block. Test the delete-then-
-    reimport case. (Related: BKL-5R2K redirect-follow consumer.)
+  - **BKL-4W7H (must-fix) — ✅ offline code + tests landed 2026-07-17.** The "every `PFX` ID resolving
+    as an alias" read-path gap is closed: `core.resolve_ref` wires PFX→canonical alias resolution into
+    `get` and `link` (against `--repo`); `migrate._find_by_key` gains a block `id_aliases` fallback
+    skip-authority (`_AliasIndex`, lazily built once per run) that also **self-heals** the missing
+    `id:PFX` label, so a human-deleted label can't turn a re-import into a permanent duplicate; and
+    `reconcile-labels` re-derives a deleted alias from the block (`aliases_restored`). Delete-then-
+    reimport + reconcile-restore + get/link-by-PFX tested. Coherence follow-up filed for PFX resolution
+    in the remaining single-id mutators (`status`/`update`/`comment`/`claim`/`unclaim`) and the CC5
+    decoder gaps. (Related: BKL-5R2K redirect-follow consumer — deliberately NOT folded in here.)
   - **BKL-8P2R (must-fix)** — the "briefing reads live counts through the adapter" criterion must be wired
     the safe way: call `snapshot.read` + detached `spawn_refresh`, **never** a synchronous `counts()`
     (which paginates at the 30 s transport default vs NFR §6's "few s"); surface the snapshot age; add a

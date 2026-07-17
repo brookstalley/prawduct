@@ -18,7 +18,7 @@ for _p in (str(_REPO_ROOT), str(_TESTS_DIR)):
 
 import pytest  # noqa: E402
 
-from lib.backlog import core, encode  # noqa: E402
+from lib.backlog import core, encode, ids  # noqa: E402
 from fakes.fake_github import FakeGitHub  # noqa: E402
 
 OWNER, REPO = "octo", "repo"
@@ -132,6 +132,49 @@ class TestGetItem:
         got = core.get_item(fake, id_raw="not-an-id-at-all")
         assert got["status"] == "error"
         assert got["error"]["code"] == "validation"
+
+
+class TestGetByPfxAlias:
+    """BKL-4W7H / MG1 read path — a hand-minted PFX (e.g. ``BKL-0QR1``) resolves via
+    its ``id:PFX`` alias label against ``--repo``, so a migrated id stays a valid
+    ref forever. A real spelling still resolves purely (no label search)."""
+
+    def _seed_alias(self, fake, pfx):
+        return _seed_item(fake, labels=[ids.alias_label(pfx)])
+
+    def test_pfx_resolves_to_its_aliased_issue(self, fake):
+        number = self._seed_alias(fake, "BKL-0QR1")
+        got = core.get_item(fake, id_raw="BKL-0QR1", default_repo=(OWNER, REPO))
+        assert got["status"] == "ok"
+        assert got["data"]["id"] == f"{OWNER}/{REPO}#{number}"
+
+    def test_pfx_without_a_repo_is_a_clear_validation_error(self, fake):
+        self._seed_alias(fake, "BKL-0QR1")
+        got = core.get_item(fake, id_raw="BKL-0QR1")  # no default_repo
+        assert got["status"] == "error"
+        assert got["error"]["code"] == "validation"
+        assert "--repo" in got["error"]["message"]
+
+    def test_unknown_pfx_is_not_found(self, fake):
+        got = core.get_item(fake, id_raw="BKL-9ZZZ", default_repo=(OWNER, REPO))
+        assert got["status"] == "error"
+        assert got["error"]["code"] == "not_found"
+
+    def test_colliding_pfx_is_flagged_not_guessed(self, fake):
+        # Two issues carry id:BKL-0QR1 — the §5 alias-uniqueness invariant broke.
+        self._seed_alias(fake, "BKL-0QR1")
+        self._seed_alias(fake, "BKL-0QR1")
+        got = core.get_item(fake, id_raw="BKL-0QR1", default_repo=(OWNER, REPO))
+        assert got["status"] == "error"
+        assert got["error"]["code"] == "alias_collision"
+
+    def test_canonical_id_bypasses_the_alias_search(self, fake):
+        core.file_item(fake, owner=OWNER, repo=REPO, title="X", body="b")
+        fake.calls.clear()
+        got = core.get_item(fake, id_raw=f"{OWNER}/{REPO}#1", default_repo=(OWNER, REPO))
+        assert got["status"] == "ok"
+        # A resolved spelling does no label search — only the get_issue.
+        assert not any(c[0] == "list_issues" for c in fake.calls)
 
 
 class TestBoundaryExceptions:

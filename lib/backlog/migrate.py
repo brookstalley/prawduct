@@ -428,10 +428,19 @@ def import_items(
     if checkpoint is not None:
         warnings.extend(checkpoint.warnings)
 
+    alias_index = _AliasIndex(transport, owner, repo)
     try:
         for record in records:
             key_label = record.key_label()
             existing = _find_by_key(transport, owner, repo, key_label)
+            healed = False
+            if not existing and record.pfx:
+                # The `id:PFX` label — the primary skip authority — is missing (a
+                # human deleted it). Fall back to the durable block `id_aliases`
+                # record (§5) so the re-import skips-not-duplicates: GitHub never
+                # reuses issue numbers, so a duplicate here would be permanent.
+                existing = alias_index.numbers_for(record.pfx)
+                healed = bool(existing)
             if len(existing) > 1:
                 # Alias uniqueness violated in the repo (§5) — flag, don't guess.
                 collisions.append(
@@ -439,9 +448,14 @@ def import_items(
                 )
                 continue
             if existing:
-                # The on-GitHub `id:PFX` alias is the SOLE skip authority — never the
-                # checkpoint (a stale/externally-deleted checkpoint entry must not
-                # skip an item that isn't actually on GitHub, or the item is lost).
+                # The skip authority is the on-GitHub alias — its `id:PFX` label, or
+                # (when a human deleted that label) its block `id_aliases` record —
+                # never the checkpoint (a stale/externally-deleted checkpoint entry
+                # must not skip an item that isn't actually on GitHub, or the item is
+                # lost). A block-recovered match self-heals the missing label so the
+                # alias resolves again and the next run skips on the fast label path.
+                if healed:
+                    _restore_alias_label(transport, owner, repo, existing[0], key_label, warnings)
                 # Reconcile only the status, so a resumed item created-but-crashed
                 # before its close still converges (CRASH-4).
                 _reconcile_status(transport, owner, repo, existing[0], record, warnings)
@@ -481,11 +495,59 @@ def import_items(
 def _find_by_key(transport: Transport, owner: str, repo: str, key_label: str) -> list[int]:
     """The issue numbers carrying ``key_label`` (an alias/idempotency marker). More
     than one is an integrity violation the caller flags. Searches all states — a
-    resumed item may already be closed (an archive import)."""
+    resumed item may already be closed (an archive import). The label is the
+    **primary** skip authority; when a PFX item's label is missing the caller falls
+    back to the block ``id_aliases`` via :class:`_AliasIndex`."""
     issues = transport.list_issues(
         owner, repo, state="all", labels=[key_label], per_page=100, page=1
     )
     return [issue["number"] for issue in issues if issue.get("number") is not None]
+
+
+class _AliasIndex:
+    """Lazily-built ``PFX → [issue numbers]`` index over the block ``id_aliases``
+    record — the re-import skip-authority when a human deleted the ``id:PFX`` label.
+
+    Built **once, on the first label-miss**, and cached: a clean import or resume
+    (every ``id:PFX`` label intact) never triggers the scan, so the common path
+    keeps its per-record label lookup; a drifted re-import pays exactly one full-
+    issue scan (not one per record). The scan (:func:`core.iter_alias_issues`) may
+    raise ``TransportError`` — it runs inside ``import_items``' resumable try."""
+
+    def __init__(self, transport: Transport, owner: str, repo: str) -> None:
+        self._transport = transport
+        self._owner = owner
+        self._repo = repo
+        self._index: dict[str, list[int]] | None = None
+
+    def numbers_for(self, pfx: str) -> list[int]:
+        if self._index is None:
+            self._index = self._build()
+        return list(self._index.get(pfx, ()))
+
+    def _build(self) -> dict[str, list[int]]:
+        index: dict[str, list[int]] = {}
+        for number, pfxs, _labels in core.iter_alias_issues(
+            self._transport, self._owner, self._repo
+        ):
+            for pfx in pfxs:
+                index.setdefault(pfx, []).append(number)
+        return index
+
+
+def _restore_alias_label(
+    transport: Transport, owner: str, repo: str, number: int, key_label: str, warnings: list
+) -> None:
+    """Re-add the ``id:PFX`` alias label the block recovered but the issue had lost,
+    so the alias resolves again (read path) and the next import skips on the fast
+    label path. Ensures the label definition first (a human may have deleted it
+    too), then adds it — add-only, never removes (DM7)."""
+    provision.ensure_labels(transport, owner, repo, [key_label])
+    transport.add_labels(owner, repo, number, [key_label])
+    warnings.append(
+        f"restored missing alias label {key_label} on {_canon(owner, repo, number)} "
+        "from the block id_aliases record"
+    )
 
 
 def _create_item(

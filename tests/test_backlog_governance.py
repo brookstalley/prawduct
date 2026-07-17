@@ -33,7 +33,7 @@ for _p in (str(_REPO_ROOT), str(_TESTS_DIR)):
 
 import pytest  # noqa: E402
 
-from lib.backlog import cli, context, core, encode, provision, query, snapshot  # noqa: E402
+from lib.backlog import cli, context, core, encode, ids, provision, query, snapshot  # noqa: E402
 from fakes.fake_github import FakeGitHub  # noqa: E402
 
 OWNER, REPO = "octo", "repo"
@@ -238,6 +238,32 @@ class TestReconcileLabels:
         fake.set_unreachable(True)
         res = core.reconcile_labels(fake, owner=OWNER, repo=REPO)
         assert res["error"]["code"] == "unavailable"
+
+    def _seed_aliased_issue(self, fake, pfx):
+        """An issue that records ``pfx`` in its block AND carries the id:PFX label."""
+        label = ids.alias_label(pfx)
+        fake.seed_labels(OWNER, REPO, [label])
+        body = encode.compose_body("why", {"v": "1", "id_aliases": encode.format_list([pfx])})
+        return fake.create_issue(OWNER, REPO, title="t", body=body, labels=[label])["number"]
+
+    def test_restores_a_deleted_id_pfx_alias_from_the_block(self, fake):
+        # BKL-4W7H: reconcile re-derives a human-deleted alias label from the durable
+        # block id_aliases record, so a migrated id resolves again (add-only, DM7).
+        pfx = "BKL-0QR1"
+        label = ids.alias_label(pfx)
+        number = self._seed_aliased_issue(fake, pfx)
+        fake.remove_label(OWNER, REPO, number, label)  # a human deletes it
+
+        res = core.reconcile_labels(fake, owner=OWNER, repo=REPO)
+        assert res["status"] == "ok"
+        assert res["data"]["aliases_restored"] == [f"{OWNER}/{REPO}#{number} → {label}"]
+        names = {label["name"] for label in fake.get_issue(OWNER, REPO, number)["labels"]}
+        assert label in names  # the alias label is back on the issue
+
+    def test_alias_restore_is_idempotent_when_labels_intact(self, fake):
+        self._seed_aliased_issue(fake, "BKL-0QR1")  # label present, nothing to restore
+        res = core.reconcile_labels(fake, owner=OWNER, repo=REPO)
+        assert res["data"]["aliases_restored"] == []
 
 
 # --- unattended context + Actions guard (unit truth table) -------------------
