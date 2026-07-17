@@ -7,6 +7,11 @@
 
 ## Open
 
+- **[SEC-8R3K]** Document the GitHub Actions workflow env-wiring required by the backlog SEC-5 guard (`PRAWDUCT_PR_HEAD_REPO`, `PRAWDUCT_ACTOR_AUTHORIZED`)
+  `effort: S · impact: S · area: security · source: critic · added: 2026-07-17 · status: open · stage: ready · refs: artifacts/build-plan-backlog-service.md`
+
+  The backlog SEC-5 guard reads two workflow-surfaced signals via `context.is_untrusted_trigger` / `actor_authorized`: `PRAWDUCT_PR_HEAD_REPO` (fork-PR detection) and `PRAWDUCT_ACTOR_AUTHORIZED` (the collaborator authorization check). These must be wired in the GitHub Actions workflow. Absent that wiring, the fork-PR defense-in-depth layer is inert — safe by construction (fork PRs get a read-only token) but the flag itself won't fire. Document the required env-wiring so the layer is actually engaged. Land alongside the Chunk-06 briefing / Actions wiring. Filed from Chunk 04 Critic NOTE.
+
 - **[GOV-4X9M]** Backfill-as-discovery: interview-driven strategy-artifact authoring with just-in-time nudges + layered opt-outs
   `effort: L · impact: L · area: governance · source: user · added: 2026-07-17 · reviewed: 2026-07-17 · status: open · stage: requirements · related: GOV-EXI2, GOV-5K3M`
 

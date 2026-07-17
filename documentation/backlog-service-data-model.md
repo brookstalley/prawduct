@@ -63,7 +63,9 @@ ref, no new stored field), with the block `closed_by` only as the **manual-close
 ### 1.2 Field authority & justified mirrors
 - **Native/label-authoritative, block-unmirrored:** `status`, `stage`, `area/effort/impact/kind`,
   `assignee`. Changing them is a label/state call (core budget), never a content-creation.
-- **Block-authoritative, unmirrored:** `verified`, `claimed_at`, `attachments`, `superseded_by`.
+- **Block-authoritative, unmirrored:** `verified`, `claimed_at`, `attachments`, `superseded_by`,
+  `automated`/`worker` (the unattended-actor marker — Security §1a/CC4; self-asserted like all block
+  fields, trustworthy for audit only insofar as the acting API identity is).
 - **Two justified mirrors** (each side serves a *distinct* consumer, not the same value twice):
   - `id:` — the **label** makes old refs *queryable/resolvable*; the **block `id_aliases`** is the
     export round-trip record.
@@ -100,6 +102,8 @@ claimed_at: 2026-07-16T…Z    # CC3 visible staleness
 provenance: {source: scriob, version: …, session: …}   # XP2 detail (label = coarse filter)
 superseded_by: owner/repo#123                            # merge/duplicate redirect (DM7/AU3)
 attachments: [{name, url, kind}]                         # DM6
+automated: true                                          # unattended-actor marker (Security §1a, CC4)
+worker: prawduct-hook                                    # the unattended worker id (paired with `automated`)
 ```
 ````
 
@@ -207,6 +211,14 @@ authorizes at **fetch** time — cross-repo entries must **revalidate on read** 
 | `relationship(src, kind, dst)` | ready-work blockers (per-clone) | *within one repo*; cross-repo blockers checked online |
 | `cursor(scope, since)` | Q2 incremental refresh | primitive for sweeps/prefetch |
 | `briefing_counts(scope, counts_json, fetched_at)` | **GV2** — session-start counts | the **P0 persisted-counts floor** the PRD admits (M3): a degenerate cache w/ visible age so "start never waits"; distinct from the always-derived Q5 read path |
+
+*On-disk (build decision, slice):* the SQLite `item`/`item_fts`/… tables arrive with the read-through
+cache (**W1**). The **slice ships only the `briefing_counts` floor**, and as a *degenerate* cache it is a
+small **JSON file** — `<git-common-dir>/prawduct/backlog-counts.json` (the same clone-shared,
+never-committed home as the evidence store; a scope-keyed map of `{counts, fetched_at}`,
+`schema`-versioned so an unreadable file is discarded and re-derived, never migrated). Not SQLite until
+W1 needs the query tables. The reader (session start) reads it **in-process** — zero-latency,
+network-independent (BLOCK-5); the writer is `refresh-counts` (inline or the D6 detached warm).
 
 **Q4 (cross-project rollup) is NOT cache-served** — the cache is per-clone (one project). Q4 is
 **query-side fan-out + merge across owners** (PRD §8.3-Q4, M4), not a cache or GitHub-native feature.

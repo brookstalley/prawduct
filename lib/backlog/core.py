@@ -86,12 +86,19 @@ def file_item(
     title: str,
     body: str,
     facets: dict[str, str] | None = None,
+    automated: bool = False,
+    worker: str | None = None,
 ) -> dict:
     """Create one item (AG2): ``title`` + ``body`` suffice; every facet optional.
 
     Returns the new item's ID immediately (dedup is advisory-async and deferred).
     Attribution is the resolved **API identity** (SEC-3), never the git-push
     identity. New items default to ``open`` (no ``status:`` label — Data Model §4).
+
+    When ``automated`` (an **unattended** run — Security §1a/SEC-6), the block is
+    stamped ``automated: true`` + a ``worker`` marker so a background sweep is not
+    misattributed to the human. The front resolves the unattended context (see
+    ``context.py``); ``core`` just records what it is told.
     """
     facets = facets or {}
     if not title or not title.strip():
@@ -120,7 +127,7 @@ def file_item(
         if labels:
             prov = provision.ensure_labels(transport, owner, repo, labels)
             warnings.extend(prov.warnings)
-        full_body = _body_with_block(body)
+        full_body = _body_with_block(body, automated=automated, worker=worker)
         issue = transport.create_issue(
             owner, repo, title=title, body=full_body, labels=labels
         )
@@ -137,9 +144,17 @@ def file_item(
     return ok(item, warnings)
 
 
-def _body_with_block(body: str) -> str:
-    """Append a minimal ``prawduct:`` block (``v: 1``) to the issue body."""
-    block = encode.serialize_block({"v": "1"})
+def _body_with_block(body: str, *, automated: bool = False, worker: str | None = None) -> str:
+    """Append a minimal ``prawduct:`` block (``v: 1``) to the issue body.
+
+    An unattended create stamps ``automated: true`` + a ``worker`` marker (CC4/
+    SEC-6) so a background sweep is not misattributed to the human."""
+    fields = {"v": "1"}
+    if automated:
+        fields["automated"] = "true"
+        if worker:
+            fields["worker"] = worker
+    block = encode.serialize_block(fields)
     text = body.rstrip("\n")
     if text:
         return f"{text}\n\n{block}\n"
@@ -709,5 +724,26 @@ def provision_labels(transport: Transport, *, owner: str, repo: str) -> dict:
         "repo": f"{owner}/{repo}",
         "created": result.created,
         "existing": result.existing,
+    }
+    return ok(data, result.warnings)
+
+
+def reconcile_labels(transport: Transport, *, owner: str, repo: str) -> dict:
+    """Reconcile the full namespaced taxonomy (GV6): create any missing base
+    label, leave every existing/foreign label untouched, and report the
+    coexistence picture. Idempotent and collision-free (Data Model §3, PROV-1)."""
+    try:
+        result = provision.reconcile(transport, owner, repo)
+    except TransportError as exc:
+        return from_transport_error(exc)
+    except (OSError, json.JSONDecodeError) as exc:  # ERR-6
+        log_diag(f"unexpected transport failure on reconcile-labels: {type(exc).__name__}")
+        return error("unavailable", "the backend request failed unexpectedly")
+
+    data = {
+        "repo": f"{owner}/{repo}",
+        "created": result.created,
+        "existing": result.existing,
+        "foreign_untouched": result.foreign_untouched,
     }
     return ok(data, result.warnings)

@@ -27,8 +27,9 @@ from __future__ import annotations
 
 import json
 from datetime import datetime, timezone
+from pathlib import Path
 
-from . import encode
+from . import encode, snapshot
 from .core import (
     DEFAULT_CLAIM_TTL_SECONDS,
     error,
@@ -228,6 +229,54 @@ def counts(transport: Transport, *, owner: str, repo: str) -> dict:
         "by_status": dict(sorted(by_status.items())),
         "by_stage": dict(sorted(by_stage.items())),
     }
+    return ok(data, warnings)
+
+
+# --- refresh-counts (persist the GV2 briefing snapshot) ----------------------
+
+
+def refresh_counts(
+    transport: Transport,
+    *,
+    project_dir: Path,
+    owner: str,
+    repo: str,
+    now: datetime | None = None,
+) -> dict:
+    """Derive live counts and **persist** them to the ``briefing_counts`` snapshot
+    so session start never waits (GV2/M3).
+
+    The write half of the counts story: :func:`counts` is the always-live read;
+    this stamps the same rollup into the degenerate cache with a visible
+    ``fetched_at``. On a backend failure it returns the error envelope and writes
+    **nothing** — the prior snapshot survives intact (never a corrupt or
+    regressing write; the old counts stay readable with a growing visible age). If
+    persistence itself is unavailable (not a git repo, or a filesystem error) the
+    fresh counts are still returned, with a warning — the refresh degrades, never
+    hangs or crashes.
+    """
+    result = counts(transport, owner=owner, repo=repo)
+    if result.get("status") != "ok":
+        return result  # backend down — do NOT clobber the last good snapshot
+
+    scope = f"{owner}/{repo}"
+    data = dict(result["data"])
+    warnings = list(result.get("warnings") or [])
+
+    path = snapshot.snapshot_path(project_dir)
+    if path is None:
+        warnings.append("counts not persisted: not inside a git repository")
+        data["persisted"] = False
+        data["fetched_at"] = None
+    else:
+        written = snapshot.write(path, scope, result["data"], now=now)
+        if written.get("status") == "written":
+            data["persisted"] = True
+            data["fetched_at"] = written.get("fetched_at")
+        else:
+            warnings.append(f"counts not persisted: {written.get('reason')}")
+            data["persisted"] = False
+            data["fetched_at"] = None
     return ok(data, warnings)
 
 

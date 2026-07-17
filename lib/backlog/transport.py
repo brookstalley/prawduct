@@ -643,3 +643,35 @@ def _extract_http_status(stderr_lower: str) -> int | None:
 
 def _looks_like_network(stderr_lower: str) -> bool:
     return any(signal in stderr_lower for signal in _NETWORK_SIGNALS)
+
+
+# --- Detached process spawn (the D6 briefing-refresh warm) -------------------
+
+
+def spawn_detached(argv: list[str], *, cwd, env: dict | None = None, popen=None) -> bool:
+    """Fire a **detached**, fire-and-forget subprocess and return immediately.
+
+    The one place under ``lib/backlog/`` that may spawn a process besides the
+    ``gh`` calls (egress discipline — all subprocess use funnels through this
+    module, held to the same **list-form, no ``shell=True``** safety). Used for the
+    D6 briefing-refresh warm: the child runs in its **own session**
+    (``start_new_session`` — not killed when the parent session ends) with stdio to
+    ``/dev/null``, so the parent never blocks and no asyncio is involved. Returns
+    ``True`` if the spawn was issued, ``False`` on an OS error (never raises — a
+    failed warm is non-fatal). ``popen`` is injectable for tests."""
+    import subprocess as _sp  # noqa: PLC0415 — module already owns subprocess; local alias for the seam
+
+    launcher = popen or _sp.Popen
+    try:
+        launcher(  # noqa: S603 — list-form argv, no shell (project preference)
+            argv,
+            cwd=str(cwd),
+            env=env,
+            stdin=_sp.DEVNULL,
+            stdout=_sp.DEVNULL,
+            stderr=_sp.DEVNULL,
+            start_new_session=True,
+        )
+    except OSError:
+        return False
+    return True

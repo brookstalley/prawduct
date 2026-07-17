@@ -114,7 +114,7 @@ rulings. The roadmap stays Medium by design until each layer's workload justifie
 - [ ] Chunk 01: Walking skeleton — package + `legacy.py` move, `gh` transport seam + fake, `file`, `get`, minimal `provision`, one real round-trip
 - [ ] Chunk 02: Two-axis status + decoder + self-healing reconciliation (the CC1/M5 keystone)
 - [ ] Chunk 03: Query & ready-work — `link`/`unlink`, `list`, `pick`, `claim`/`unclaim`, `counts`
-- [ ] Chunk 04: Governance surface — `refresh-counts`, `reconcile-labels`, never-block floor, unattended security
+- [ ] Chunk 04: Governance surface — `refresh-counts`, `reconcile-labels`, never-block floor, unattended security *(built 2026-07-17; `[ ]` until release per the views convention)*
 - [ ] Chunk 05: Importer + alias machinery + minimal `merge` + `export` (mechanism, fixture-proven)
 - [ ] Chunk 06: SPIKE-S2 dry-run + MG4 scrub + prawduct-first real migration (dogfood, cumulative-final)
 - [ ] Roadmap (post-slice, lower resolution): W1 cache+sync · W2 search+dedup · Wv verify+grooming · W3 cross-project+automation · W4 attachments · W5 MCP · W6 App identity + offline queue · Wg GV3 janitor
@@ -125,14 +125,25 @@ skeleton (VRF-004 live-verified), Chunk 02 the two-axis status state machine (cr
 status path queued as VRF-005), Chunk 03 query & ready-work (new `lib/backlog/query.py`: `list`/`pick`/
 `counts` online off the REST list endpoint; `claim`/`unclaim` atomic take-and-verify + TTL-reap;
 `link`/`unlink` native deps + sub-issues + block-list `related`; PROV-2; 404-after-create settle;
-live `list`/`pick` queued as an L5 smoke). Offline suite green (2049 passed); Chunk 03 Critic (chunk
-mode) 0 blocking — the one warning (claim two-write torn-state → M11 never-starve gap) fixed to a
-single atomic PATCH, +1 crash-safety test; NOTE-2 (live `blocked_by` read shape) folded into Chunk 05's
-verify-api. The `[ ]` boxes above stay unchecked by design — a statusless change-log entry is
-release-pending; `regen-views` flips them to `[x]` only at release (`status=shipped`), not at build.
-Still a design artifact **promoted 2026-07-16**; owner sign-off pending. Next: Chunk 04 (governance
-surface — `refresh-counts`, `reconcile-labels`, never-block floor, unattended security), or owner
-sign-off + slice merge.
+live `list`/`pick` queued as an L5 smoke). Chunk 04 governance surface built + committed 2026-07-17
+(new `lib/backlog/snapshot.py`: the GV2 `briefing_counts` degenerate cache at
+`<git-common-dir>/prawduct/backlog-counts.json` — atomic write, visible-age read, network-independent,
+schema-versioned, disposable; new `lib/backlog/context.py`: unattended detection + the SEC-5 Actions
+pwn-request guard, both env-resolved and pure; `refresh-counts` in `query.py` — derive+persist,
+never-clobber-on-backend-down; `reconcile-labels` in `provision.py` — GV6 coexistence reconcile
+(create-missing, foreign labels untouched, never-delete, idempotent); the SEC-5 write-withhold at the
+CLI boundary + the SEC-6 `automated`/`worker` marker on unattended creates; the D6 detached-refresh
+warm as `transport.spawn_detached` — the egress-discipline invariant kept subprocess in `transport.py`.
+Data Model §2 gained the `automated`/`worker` block fields — closing the coherence gap where Security
+§1a mandated the marker but no field home was pinned. Offline suite green (2085 passed, +36); Chunk 04
+Critic (chunk mode) 0 blocking / 0 warning / 1 note — the note (fork-PR detection keyed off a
+workflow-surfaced signal, not a native Actions var) resolved: renamed to `PRAWDUCT_PR_HEAD_REPO`,
+documented the required wiring at the read site, filed **SEC-8R3K** for the Chunk-06 Actions wiring;
+`verify-resolutions` clean. **L5 smokes queued** (live `gh`): `refresh-counts` against a throwaway
+repo, and the SEC-5/6 behaviors under a real Actions context. The `[ ]` boxes above stay unchecked by
+design — `regen-views` flips them to `[x]` only at release. Still a design artifact **promoted
+2026-07-16**; owner sign-off pending. Next: Chunk 05 (importer + alias machinery + minimal `merge` +
+`export`, `final` mode), or owner sign-off + slice merge.
 
 ## Scaffolding
 

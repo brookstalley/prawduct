@@ -12,8 +12,10 @@ own the envelope without a cycle. ``core`` wraps ``ensure_labels`` into the CLI
 about to apply, so a create never references a non-existent label.
 
 This is the **minimal** provision: create the closed-vocabulary base
-set + the labels a ``file`` needs. The GV6 drift/coexistence *reconcile*
-(``reconcile-labels``) is not yet implemented.
+set + the labels a ``file`` needs. :func:`reconcile` is the GV6 drift/coexistence
+*reconcile* — the idempotent re-run that re-establishes the full taxonomy and
+reports the coexistence picture (which foreign labels it left untouched), the
+primitive ``/prawduct:onboard`` / ``doctor`` call.
 """
 
 from __future__ import annotations
@@ -48,6 +50,18 @@ KNOWN_FACETS: tuple[str, ...] = tuple(_FACET_COLORS.keys())
 class ProvisionResult:
     created: list[str] = field(default_factory=list)
     existing: list[str] = field(default_factory=list)
+    warnings: list[str] = field(default_factory=list)
+
+
+@dataclass
+class ReconcileResult:
+    """The GV6 reconcile picture: what was created/already-present in **our**
+    namespace, and the **foreign** (non-prawduct) labels left untouched — the
+    coexistence proof (PROV-1: existing non-prawduct labels are never modified)."""
+
+    created: list[str] = field(default_factory=list)
+    existing: list[str] = field(default_factory=list)
+    foreign_untouched: list[str] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
 
 
@@ -91,6 +105,23 @@ def ensure_labels(
     """
     result = ProvisionResult()
     existing_names = {label.get("name") for label in transport.list_labels(owner, repo)}
+    _create_missing(transport, owner, repo, names, existing_names, result)
+    return result
+
+
+def _create_missing(
+    transport: Transport,
+    owner: str,
+    repo: str,
+    names: list[str],
+    existing_names: set,
+    result,
+) -> None:
+    """Create any namespaced ``names`` absent from ``existing_names`` (mutated in
+    place as labels are created). Collision-free (only ever *creates* labels it
+    does not find) and never touches a non-namespaced name. Shared by
+    :func:`ensure_labels` and :func:`reconcile` so the create-missing rule lives
+    once; ``result`` accumulates ``created``/``existing``/``warnings``."""
     for name in names:
         if name in existing_names:
             result.existing.append(name)
@@ -102,4 +133,24 @@ def ensure_labels(
         transport.create_label(owner, repo, name=name, color=color, description=description)
         result.created.append(name)
         existing_names.add(name)
+
+
+def reconcile(transport: Transport, owner: str, repo: str) -> ReconcileResult:
+    """GV6 coexistence reconcile: re-establish the base taxonomy, report the rest.
+
+    Lists the repo's labels **once**, ensures every base label exists (creating
+    only the missing **namespaced** ones — same collision-free rule as
+    :func:`ensure_labels`), and reports the **foreign** (non-prawduct) labels it
+    left completely untouched (PROV-1). Idempotent: a re-run against a fully
+    reconciled repo creates nothing. Never deletes or modifies an existing label —
+    drift is corrected by *adding* what is missing, never by removing what a human
+    or another tool added. Raises ``TransportError`` on a transport failure (caught
+    at the ``core`` boundary)."""
+    result = ReconcileResult()
+    all_labels = [label.get("name") for label in transport.list_labels(owner, repo)]
+    existing_names = {name for name in all_labels if name}
+    result.foreign_untouched = sorted(
+        name for name in existing_names if facet_of(name) is None
+    )
+    _create_missing(transport, owner, repo, base_labels(), existing_names, result)
     return result

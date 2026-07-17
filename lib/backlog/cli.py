@@ -21,7 +21,17 @@ from __future__ import annotations
 import json
 import sys
 
-from . import core, ids, query
+from . import context, core, ids, query
+
+# GitHub-mutating ops — refused under an untrusted-triggered Actions run absent an
+# explicit triggering-actor authorization check (SEC-5). Reads, ``counts``, and
+# ``refresh-counts`` (a read + a local snapshot write) are never withheld —
+# read-only reporting under such triggers is fine (Security §1b). ``pick`` is a
+# write only with ``--claim`` (handled in ``_is_write``).
+_WRITE_OPS: frozenset[str] = frozenset(
+    {"file", "status", "update", "comment", "claim", "unclaim",
+     "link", "unlink", "provision", "reconcile-labels"}
+)
 
 # code → exit class. A code absent here (should not happen) falls back to 1.
 _EXIT_CLASS: dict[str, int] = {
@@ -52,11 +62,13 @@ _HELP = (
     "[--per-page N] [--page N]\n"
     "  pick     --repo owner/repo [--limit N] [--claim] [--claim-ttl SECONDS]\n"
     "  counts   --repo owner/repo\n"
+    "  refresh-counts   --repo owner/repo   (derive + persist the briefing snapshot)\n"
     "  claim    <id> [--repo owner/repo] [--claim-ttl SECONDS]\n"
     "  unclaim  <id> [--repo owner/repo]\n"
     "  link     <id> --edge blocks|blocked-by|parent|child|related --to <target-id> [--repo owner/repo]\n"
     "  unlink   <id> --edge blocks|blocked-by|parent|child|related --to <target-id> [--repo owner/repo]\n"
     "  provision --repo owner/repo\n"
+    "  reconcile-labels --repo owner/repo   (GV6 taxonomy reconcile, coexistence-safe)\n"
     "global: --json  (machine envelope on stdout; default is human)\n"
 )
 
@@ -77,6 +89,14 @@ def run(project_dir, argv: list[str], *, transport=None) -> int:
     op = argv[0]
     rest = argv[1:]
 
+    # SEC-5 — withhold writes under an untrusted-triggered Actions run (pwn-request
+    # defense). Checked before dispatch so no mutating path can run at all.
+    if _is_write(op, rest) and context.writes_withheld():
+        return _emit(
+            core.error("auth", context.WITHHOLD_MESSAGE, retryable=False),
+            json_mode=json_mode,
+        )
+
     try:
         if op == "file":
             result = _run_file(rest, transport)
@@ -94,6 +114,10 @@ def run(project_dir, argv: list[str], *, transport=None) -> int:
             result = _run_pick(rest, transport)
         elif op == "counts":
             result = _run_counts(rest, transport)
+        elif op == "refresh-counts":
+            result = _run_refresh_counts(rest, transport, project_dir)
+        elif op == "reconcile-labels":
+            result = _run_reconcile_labels(rest, transport)
         elif op == "claim":
             result = _run_claim(rest, transport)
         elif op == "unclaim":
@@ -107,7 +131,8 @@ def run(project_dir, argv: list[str], *, transport=None) -> int:
                 core.error(
                     "validation",
                     f"unknown op {op!r} (expected file|get|status|update|comment|"
-                    "list|pick|counts|claim|unclaim|link|unlink|provision)",
+                    "list|pick|counts|refresh-counts|claim|unclaim|link|unlink|"
+                    "provision|reconcile-labels)",
                 ),
                 json_mode=json_mode,
                 usage=True,
@@ -152,6 +177,9 @@ def _run_file(rest: list[str], transport):
         if key in flags
     }
     transport = _resolve_transport(transport)
+    # Unattended context (SEC-6): a background/Actions run stamps its creates
+    # `automated: true` + a worker marker so a sweep is not misattributed.
+    automated = context.is_unattended()
     return core.file_item(
         transport,
         owner=owner,
@@ -159,6 +187,8 @@ def _run_file(rest: list[str], transport):
         title=flags.get("title", ""),
         body=flags.get("body", ""),
         facets=facets,
+        automated=automated,
+        worker=context.worker_marker() if automated else None,
     )
 
 
@@ -328,6 +358,34 @@ def _run_counts(rest: list[str], transport):
     return query.counts(transport, owner=owner, repo=repo)
 
 
+def _run_refresh_counts(rest: list[str], transport, project_dir):
+    flags, _positionals, err = _parse_flags(rest, valued={"repo"})
+    if err:
+        return core.error("validation", err)
+    parsed = ids.parse_repo(flags.get("repo", ""))
+    if parsed is None:
+        return core.error("validation", "refresh-counts requires --repo owner/repo")
+    owner, repo = parsed
+    transport = _resolve_transport(transport)
+    from pathlib import Path  # noqa: PLC0415 — only this op needs a path
+
+    return query.refresh_counts(
+        transport, project_dir=Path(project_dir), owner=owner, repo=repo
+    )
+
+
+def _run_reconcile_labels(rest: list[str], transport):
+    flags, _positionals, err = _parse_flags(rest, valued={"repo"})
+    if err:
+        return core.error("validation", err)
+    parsed = ids.parse_repo(flags.get("repo", ""))
+    if parsed is None:
+        return core.error("validation", "reconcile-labels requires --repo owner/repo")
+    owner, repo = parsed
+    transport = _resolve_transport(transport)
+    return core.reconcile_labels(transport, owner=owner, repo=repo)
+
+
 def _run_claim(rest: list[str], transport):
     flags, positionals, err = _parse_flags(rest, valued={"repo", "claim-ttl"})
     if err:
@@ -404,6 +462,14 @@ def _run_provision(rest: list[str], transport):
 
 
 # --- plumbing ----------------------------------------------------------------
+
+
+def _is_write(op: str, rest: list[str]) -> bool:
+    """Whether ``op`` performs a GitHub mutation (subject to the SEC-5 withhold).
+    ``pick`` mutates only with ``--claim``; everything else is fixed by op name."""
+    if op in _WRITE_OPS:
+        return True
+    return op == "pick" and "--claim" in rest
 
 
 def _resolve_transport(transport):
@@ -519,10 +585,15 @@ def _print_human_ok(data) -> None:
             _print_item_line(item)
         print(f"  {data.get('count', 0)} item(s)")
     elif "by_status" in data:
-        # A counts result.
+        # A counts / refresh-counts result.
         print(f"{data.get('repo')}: {data.get('total')} item(s)")
         print("  status: " + ", ".join(f"{k}={v}" for k, v in data.get("by_status", {}).items()))
         print("  stage:  " + ", ".join(f"{k}={v}" for k, v in data.get("by_stage", {}).items()))
+        if "persisted" in data:  # refresh-counts adds the snapshot outcome
+            if data.get("persisted"):
+                print(f"  snapshot written ({data.get('fetched_at')})")
+            else:
+                print("  snapshot NOT persisted (see warnings)")
     elif "item" in data and "url" in data:
         # A comment result (distinct from an item — no status/stage axes).
         print(f"commented on {data.get('item')} by {data.get('actor')}")
@@ -537,10 +608,14 @@ def _print_human_ok(data) -> None:
             bits.append(f"assignee={data['assignee']}")
         print("  " + "  ".join(bits))
     elif "created" in data:
-        print(
+        # provision / reconcile-labels.
+        line = (
             f"{data.get('repo')}: {len(data.get('created', []))} label(s) created, "
             f"{len(data.get('existing', []))} already present"
         )
+        if "foreign_untouched" in data:  # reconcile-labels reports coexistence
+            line += f", {len(data.get('foreign_untouched', []))} foreign untouched"
+        print(line)
     else:
         print(json.dumps(data))
 

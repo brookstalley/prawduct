@@ -69,6 +69,11 @@ class FakeGitHub(Transport):
         # Fault injection (armed via fail_at_mutation).
         self._fail_at: int | None = None
         self._mutation_count = 0
+        # Backend-down modelling (Test Specs §3.4 never-block): when set, every
+        # call — read or write — raises `unavailable`, as if GitHub were
+        # unreachable. Reads have no `fail_at_mutation` hook, so this is the way to
+        # exercise read-path degradation and the never-block floor.
+        self.unreachable = False
 
     # -- helpers -----------------------------------------------------------
 
@@ -78,6 +83,16 @@ class FakeGitHub(Transport):
             self.repos[key] = _RepoState()
         return self.repos[key]
 
+    def set_unreachable(self, flag: bool = True) -> None:
+        """Model GitHub being unreachable: every subsequent call raises a
+        retryable ``unavailable`` (the backend-down condition for never-block
+        tests). Clear with ``set_unreachable(False)``."""
+        self.unreachable = flag
+
+    def _maybe_unreachable(self) -> None:
+        if self.unreachable:
+            raise TransportError("unavailable", "GitHub is unreachable")
+
     def fail_at_mutation(self, n: int) -> None:
         """Arm: the n-th (1-based) mutating call after this returns raises
         ``unavailable`` once, then disarms. ``n <= 0`` disarms immediately."""
@@ -86,6 +101,7 @@ class FakeGitHub(Transport):
 
     def _check_fault(self) -> None:
         """Called at the top of every mutating method. Counts only while armed."""
+        self._maybe_unreachable()
         if self._fail_at is None:
             return
         self._mutation_count += 1
@@ -135,6 +151,7 @@ class FakeGitHub(Transport):
     # -- Transport interface ----------------------------------------------
 
     def get_authenticated_user(self) -> dict:
+        self._maybe_unreachable()
         self.calls.append(("get_authenticated_user",))
         if self._user_cache is None:
             self.user_resolutions += 1
@@ -176,6 +193,7 @@ class FakeGitHub(Transport):
         return dict(issue)
 
     def get_issue(self, owner: str, repo: str, number: int) -> dict:
+        self._maybe_unreachable()
         self.calls.append(("get_issue", owner, repo, number))
         state = self._repo(owner, repo)
         issue = state.issues.get(number)
@@ -200,6 +218,7 @@ class FakeGitHub(Transport):
         per_page: int = 100,
         page: int = 1,
     ) -> list[dict]:
+        self._maybe_unreachable()
         self.calls.append(
             ("list_issues", owner, repo, state, tuple(labels or ()), assignee)
         )
@@ -237,6 +256,7 @@ class FakeGitHub(Transport):
         return assignee in logins
 
     def list_labels(self, owner: str, repo: str) -> list[dict]:
+        self._maybe_unreachable()
         self.calls.append(("list_labels", owner, repo))
         state = self._repo(owner, repo)
         return [dict(label) for label in state.labels.values()]
@@ -369,6 +389,7 @@ class FakeGitHub(Transport):
     # -- native relationships (dependencies + sub-issues) ------------------
 
     def list_blocked_by(self, owner: str, repo: str, number: int) -> list[dict]:
+        self._maybe_unreachable()
         self.calls.append(("list_blocked_by", owner, repo, number))
         state = self._repo(owner, repo)
         out: list[dict] = []
