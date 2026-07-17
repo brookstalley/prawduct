@@ -9,7 +9,7 @@ Security §4) has a single choke point.
 
 The required transport is ``gh`` (O5, G4): free, portable, and it holds the
 credential itself (``~/.config/gh``) so the adapter never manages a token. The
-raw-HTTPS fast path is a later optimization (W1), not part of the slice.
+raw-HTTPS fast path is a possible later optimization, not yet implemented.
 
 Design:
 - ``GhTransport`` drives ``gh`` as a subprocess — **list-form args, never

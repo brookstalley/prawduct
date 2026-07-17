@@ -11,9 +11,9 @@ own the envelope without a cycle. ``core`` wraps ``ensure_labels`` into the CLI
 ``provision`` op; ``file`` calls ``ensure_labels`` for the concrete labels it is
 about to apply, so a create never references a non-existent label.
 
-Chunk-01 scope is the **minimal** provision: create the closed-vocabulary base
+This is the **minimal** provision: create the closed-vocabulary base
 set + the labels a ``file`` needs. The GV6 drift/coexistence *reconcile*
-(``reconcile-labels``) is a later chunk.
+(``reconcile-labels``) is not yet implemented.
 """
 
 from __future__ import annotations

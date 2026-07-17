@@ -254,7 +254,7 @@ def decode_status(issue: dict, labels: list[str]) -> tuple[str, list[str]]:
         elif reason == "not_planned":
             status = "dropped"
         elif reason == "duplicate":
-            status = "dropped"  # superseded_by is read from the timeline (Chunk 05+)
+            status = "dropped"  # superseded_by is read from the timeline (not yet implemented)
         else:
             status = "dropped"  # fail-open: a closed issue is not open work
             if reason:

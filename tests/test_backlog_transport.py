@@ -1,6 +1,6 @@
 """Tests for lib/backlog/transport.py — the egress seam.
 
-Covers the Chunk-01 transport obligations: SEC-1 (no token in any output, scrub
+Covers the transport obligations: SEC-1 (no token in any output, scrub
 backstop + build-from-known-fields), INV-2 (non-interactive env), the gh-failure
 → stable-code mapping (ERR-1 classes at the transport layer), and SEC-3's
 resolve-identity-once-per-process memoization mechanism.
@@ -9,6 +9,7 @@ resolve-identity-once-per-process memoization mechanism.
 from __future__ import annotations
 
 import json
+import subprocess
 import sys
 from pathlib import Path
 
@@ -128,6 +129,68 @@ class TestFailureMapping:
         err = self._map(1, dirty)
         assert not _leaks_secret(err.message)
         assert not _leaks_secret(json.dumps(err.details))
+
+
+class TestRunErrorBranches:
+    """The ``_run``/``_api`` failure branches raise a stable-code ``TransportError``
+    built from known fields — gh-missing, timeout, and an unparseable JSON body —
+    without shelling out (``subprocess.run`` is mocked) and without echoing raw output.
+    """
+
+    def test_gh_not_on_path_is_unavailable_not_retryable(self, monkeypatch):
+        # FileNotFoundError (gh absent from PATH) → unavailable, retryable=False.
+        def _boom(*args, **kwargs):
+            raise FileNotFoundError(2, "No such file or directory: 'gh'")
+
+        monkeypatch.setattr(tp.subprocess, "run", _boom)
+        t = tp.GhTransport()
+        with pytest.raises(tp.TransportError) as excinfo:
+            t._run(["api", "user"])
+        err = excinfo.value
+        assert err.code == "unavailable"
+        assert err.retryable is False
+        assert err.details.get("transport") == "gh"
+        assert not _leaks_secret(err.message)
+
+    def test_timeout_is_unavailable_with_operation(self, monkeypatch):
+        # subprocess.TimeoutExpired → unavailable; the operation (never the body)
+        # is surfaced in details.
+        def _slow(*args, **kwargs):
+            raise subprocess.TimeoutExpired(cmd=["gh"], timeout=kwargs.get("timeout", 1))
+
+        monkeypatch.setattr(tp.subprocess, "run", _slow)
+        t = tp.GhTransport()
+        with pytest.raises(tp.TransportError) as excinfo:
+            t._run(["api", "repos/o/r/issues"])
+        err = excinfo.value
+        assert err.code == "unavailable"
+        assert err.details.get("operation") == "api repos/o/r/issues"
+        assert not _leaks_secret(err.message)
+
+    def test_unparseable_json_body_is_unavailable_and_not_echoed(self, monkeypatch):
+        # _api parses _run's stdout; a non-JSON body maps to a known-field error
+        # (SEC-1) and the raw body is never placed in the message.
+        raw_body = "<html>502 Bad Gateway</html>"
+        monkeypatch.setattr(
+            tp.GhTransport, "_run", lambda self, args, input_json=None: raw_body
+        )
+        t = tp.GhTransport()
+        with pytest.raises(tp.TransportError) as excinfo:
+            t._api(["api", "repos/o/r/issues/1"])
+        err = excinfo.value
+        assert err.code == "unavailable"
+        assert "unparseable" in err.message.lower()
+        assert raw_body not in err.message
+        assert raw_body not in json.dumps(err.details)
+
+    def test_empty_stdout_parses_to_empty_dict(self, monkeypatch):
+        # A blank (whitespace-only) body is not an error — it decodes to {} so a
+        # 204-style response doesn't raise (the ``stdout.strip()`` guard).
+        monkeypatch.setattr(
+            tp.GhTransport, "_run", lambda self, args, input_json=None: "   \n"
+        )
+        t = tp.GhTransport()
+        assert t._api(["api", "repos/o/r/labels"]) == {}
 
 
 class TestIdentityMemoization:

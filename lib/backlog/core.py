@@ -9,7 +9,7 @@ exceptions caught here are the boundary ``TransportError`` (expected transport
 failures) and unexpected ``OSError``/``JSONDecodeError`` from the transport,
 which are mapped and logged, never swallowed (ERR-6).
 
-Chunk-01 ops: ``file``, ``get``, and the minimal ``provision``.
+Implemented ops: ``file``, ``get``, and the minimal ``provision``.
 """
 
 from __future__ import annotations
