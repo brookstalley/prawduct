@@ -1247,6 +1247,36 @@
 
 ## Archive
 
+- **[WT-8Q3N]** SessionStart briefing enumerates sibling worktrees (branch @ path), misdirecting the agent into working in the WRONG worktree/directory
+  `effort: M · impact: H · area: briefing · source: user · added: 2026-07-17 · reviewed: 2026-07-17 · status: shipped · stage: requirements · closed-by: fix/briefing-worktree-noise · related: CRT-6W2N, STH-4K7N, STH-3R8K, WT-7M4K, GOV-6H4P, STH-7B5N · refs: lib/briefing.py (_detect_worktrees + worktree-awareness block ~499-516)`
+
+  ROOT CAUSE (corrected per owner, 2026-07-17): This is NOT a session-lock problem and NOT two agents contending for the same directory. It is: the SessionStart briefing surfaces NOISE about sibling worktrees, the agent gets confused, and it goes and works in the WRONG directory. Remove the noise and the agent stays in its own worktree.
+
+  Clean, common repro (owner's words):
+  1. user clones repo in D1
+  2. user creates a worktree in D2
+  3. user starts claude in D1 and sets it to work
+  4. user starts another claude in D2 and sets it to work
+  5. D1's claude goes and starts working in D2  <-- the failure
+
+  Observed live 2026-07-17: a fresh session launched in the main checkout (D1, develop) read the briefing's enumerated worktree list, saw uncommitted Chunk 04 work in the prd-owner-feedback worktree (D2), judged it adoptable, EnterWorktree'd into D2, and began verifying/reviewing it — while D2 had its own live session actively doing that same work. No collision LOCK is needed to prevent this; the agent should simply never have been pointed at D2.
+
+  The offending code (lib/briefing.py ~509-516): the worktree-awareness block prints one orientation line ("hook is operating on <branch> at <path>. Other worktrees are NOT visible to gates this session.") and then a `for` loop that enumerates every SIBLING worktree as `- <branch> @ <path>`. That enumeration is the noise: it hands the agent a menu of other directories that contain live work, which reads as "here is more work you could pick up." The block was originally added for a gate-SCOPING reason (avoid the discodon "gate fired on the wrong tree" confusion), but its net effect is to MISDIRECT the agent into the wrong worktree.
+
+  FIX-SHAPE (minimal, and it is genuinely minimal — resist re-expanding this into a lock/heartbeat design; the owner has ruled that out):
+  - Drop the sibling enumeration (the `for w in worktrees` loop appending `- branch @ path`). Do not advertise other worktrees' branches or paths in the briefing.
+  - Keep the POSITIVE orientation the block was meant to give: "You are working in worktree <path> (branch <branch>); gates see only THIS worktree." Optionally add a firm "Other worktrees are separate sessions — do not read or modify them," WITHOUT naming or pathing them (nothing to wander toward).
+  - Sibling worktrees remain discoverable on demand (`git worktree list`) if the user actually asks — always-on enumeration is not needed to preserve that.
+  - Re-verify the original gate-scoping intent is still served by the orientation line alone (it is — the "gates see only this tree" caveat does not require listing the siblings).
+
+  SEPARATE, secondary concern (do NOT bundle into this fix): the evidence store is clone-shared by design (lib/evidence.py store_path -> git_common_dir), so a worktree's own legitimate Critic reviews still land in the main clone's .git/prawduct/evidence.jsonl. That is a by-design sharing decision, tracked on the advisory surface by GOV-6H4P; it is a cleanliness question, not the wrong-directory failure this item is about. Keep it linked, not merged.
+
+  Process lesson (candidate for learnings.md): "uncommitted work visible in a sibling worktree is NOT yours to adopt — a session works only in the worktree it launched in." Left as a lesson note here; capture separately on a branch off develop.
+
+  Filing note: this rewrite supersedes the original (concurrency/collision/heartbeat) framing per the owner's 2026-07-17 correction. Dropped STH-7B5N from related: (it was the session-lock item — no longer the right direction for THIS item).
+
+  Shipped 2026-07-17 (closed-by: fix/briefing-worktree-noise): PRIMARY fix implemented on branch fix/briefing-worktree-noise — lib/briefing.py drops the sibling-worktree enumeration and rewrites the orientation line to scope the agent to THIS worktree only (positive orientation + original gate-scoping intent preserved); tests/test_briefing_functions.py adds a regression guard; a durable learnings.md rule was added. SCOPE: this closes ONLY the misdirecting-enumeration fix. The SECONDARY belt-and-suspenders liveness DETECTION stays open under STH-7B5N, and the clone-shared evidence cleanliness question stays open under GOV-6H4P — both intentionally NOT closed by this item (kept in related:).
+
 - **[GOV-5K3M]** Author prawduct's 7 strategy-class artifacts (close the layer-1 coverage nudge)
   `effort: M · impact: M · area: governance · source: builder · added: 2026-07-16 · status: shipped · stage: ready · closed-by: structural-coverage · related: GOV-2T6K, GOV-EXI2 · refs: .prawduct/artifacts/, lib/coverage_probes.py (TRIGGERED_ARTIFACTS), .prawduct/cross-cutting-concerns.md · reviewed: 2026-07-17`
 
