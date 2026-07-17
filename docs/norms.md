@@ -352,11 +352,13 @@ puts in the owner's hands.
   norm columns), pointing at the fix.
 - **On demand, owner-ratified:** the `/prawduct:doctor` ratification flow reads the product's
   strategy artifacts, preferences, and learnings; proposes candidate norms (statement + why +
-  status, citing backlog ids in whys where the rationale rests on tracked work); batches them
-  for confirm-or-correct; and writes ratified norms into Direction sections and Enforcement
-  rows — additively and non-destructively. "No norms to ratify" is a valid outcome
-  (proportionality) and clears the advisory; the answer is shared-state, so one teammate's
-  ratification clears it for everyone.
+  status, citing backlog ids in whys where the rationale rests on tracked work); **triages**
+  them — decision-worthy candidates (aspirational, practice-not-written, wording fork, collision,
+  whyless) surfaced individually with their fork, the obvious rest bulk-confirmed in one line,
+  never a flat wall that buries the few real decisions and invites rubber-stamping — and writes
+  ratified norms into Direction sections and Enforcement rows, additively and non-destructively.
+  "No norms to ratify" is a valid outcome (proportionality) and clears the advisory; the answer
+  is shared-state, so one teammate's ratification clears it for everyone.
 
 **Worked example.** A product's observability strategy declared, in narrative prose, that
 OpenTelemetry was "the unified trace substrate" — while the collector export sat deferred in
