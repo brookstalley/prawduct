@@ -20,6 +20,43 @@ No size constraint on this file — it's the deep reference, consulted via `/lea
 
 Discovered ephemeral-ref-firewall (2026-07-14). Relates to Coherent Artifacts (#13), Clean Deployment (#10), Reasoned Decisions (#4), Living Documentation (#3), and the backlog `closed-by` durable-handle rule.
 
+## A red version/release-hygiene test on a feature branch is often a branch-STALENESS symptom, not a doc defect — check distance from the integration branch before patching the changelog
+
+**Pattern**: backlog-service Chunk 01 close-out (2026-07-17). Resumed a session whose prior turn had
+left a BLOCKING Critic finding: "CHANGELOG.md missing the current version (2.3.3) entry" — the suite
+was red because `test_changelog_has_current_version_entry` saw `VERSION`/`plugin.json` at 2.3.3 but
+`CHANGELOG.md`'s top entry at v2.3.2. The finding read as a one-line doc fix.
+
+**Root cause**: `feature/backlog-prd-owner-feedback` was cut from `develop` at v2.0.1 and never
+reconciled. Measured against `develop` (@ 3.0.4, the integration branch): **45 commits behind, 14
+ahead**. The 14 ahead were almost all *docs* (the PRD drill-down); the Chunk 01 code was uncommitted.
+The branch's `VERSION` had reached 2.3.3 via an ancestor `release-prep(v2.3.3)` commit, but the
+v2.3.3 CHANGELOG headline — and every entry through v3.0.4 — lives on `develop`, because the release
+flow adds the public headline on the integration side. So the branch had the version bump without its
+changelog entry: a pure staleness artifact.
+
+**Why patching would have been wrong** (Root Cause Discipline #16): (a) the v2.3.3 headline already
+exists downstream, so hand-adding it here fabricates divergent history that conflicts at merge; (b) it
+leaves the branch a full major version behind — including v3.0.0's *breaking rewrite of the review
+data plane* (append-only evidence fact store). The prior session's blocking Critic finding was itself
+recorded under the obsolete pre-v3.0.0 single-slot model. Patching the symptom would have shipped
+Chunk 01 reviewed under a governance model it will never merge under.
+
+**Fix**: merge `develop` in. `VERSION`/`CHANGELOG.md`/`plugin.json` all reconciled by auto-merge
+(→ 3.0.4, full changelog history), and the v3.0.0 fact-store data plane came with it. The merge was
+near-clean — one conflict (`active_build_plan`, exactly as the serial-merge-bookkeeping rule
+predicts) — because the branch's own commits were docs and the uncommitted Chunk 01 code auto-merged
+against v3.0.0's `bin/prawduct-hook` gate rewrite. One merge-boundary break surfaced (`norm_probes.py`
+importing the pre-move `.backlog` API — see the sweep-every-reader rule). Re-review under v3.0.0 came
+back 0 blocking.
+
+**Diagnostic before ANY changelog edit on a feature branch**: `git rev-list --count HEAD..<integration>`
+and `git merge-base <integration> HEAD`. If the branch is many releases / a major version behind,
+reconcile (merge the integration branch), don't patch. A Critic reviews the *tree*, not the branch
+*topology*, so it can correctly report the red suite while reading the symptom — the staleness
+diagnosis is the builder's to make. Relates to Root Cause Discipline (#16), Coherent Artifacts (#13),
+Honest Confidence (#5), and the sibling `check-cumulative-critic` stale-base gate diagnostic below.
+
 ## When `check-cumulative-critic` reports `uncovered` on a branch whose code you know was reviewed, suspect a stale base before running a fresh review — the gate anchors to `origin/<base>` by design, so unpushed integration commits drag already-shipped work into the required span
 
 **Pattern**: v3.0.3 release (2026-07-14). Wrapping a +0.0.1 release, `check-cumulative-critic`
