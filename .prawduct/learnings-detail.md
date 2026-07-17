@@ -753,11 +753,11 @@ explicitly accepted by the owner as an expensive, undesigned safety net.
 
 ## When validating a CLI's JSON output, feed the tool the raw bytes (direct pipe or file) — never `echo "$captured" | jq` under zsh, whose `echo` interprets `\n` and turns valid JSON into a false "malformed output" finding
 
-**Pattern**: During the VRF-003 live smoke (backlog-service Chunk 01, 2026-07-17), driving the CLI
+**Pattern**: During the VRF-004 live smoke (backlog-service Chunk 01, 2026-07-17), driving the CLI
 by hand, I captured `file --json` into a shell variable and ran `echo "$FILE_OUT" | jq`. jq failed
 with "Invalid string: control characters from U+0000 through U+001F must be escaped," the body field
 showing raw newlines around the appended ` ```prawduct / v: 1 ``` ` block. My first read was a real
-serializer defect — the `--json` envelope emitting unescaped newlines — exactly the class VRF-003's
+serializer defect — the `--json` envelope emitting unescaped newlines — exactly the class VRF-004's
 "`| jq .` never chokes" clause exists to catch. It looked like the highest-value possible outcome of
 the live pass: a real bug the offline L1 suite couldn't see.
 
@@ -778,5 +778,5 @@ correct output against a specific shell's `echo` both distorts right behavior an
 a consumer that re-interprets escapes (root-cause discipline — the shell was the fault, not the
 code). (3) Verify before reporting: this nearly became a BLOCKING finding against a correct
 serializer; a strict-parser cross-check on the raw file is the cheap veto. Filed as durable rule +
-a VRF-003 "consuming the `--json` correctly" note so the next operator doesn't trip the same trap.
+a VRF-004 "consuming the `--json` correctly" note so the next operator doesn't trip the same trap.
 Relates to Honest Confidence (#5), Root Cause Discipline (#16), Validate Before Propagating (#15).

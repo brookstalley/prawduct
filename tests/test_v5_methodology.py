@@ -112,6 +112,22 @@ class TestOtherMethodology:
         assert "not a one-time phase" in lower or "isn't a one-time phase" in lower or "continuous" in lower
         assert "/prawduct:learnings" in content
 
+    def test_discovery_operationalizes_coverage_expectation(self):
+        # Recording structural characteristics is tied to the strategy-class
+        # coverage chain — the methodology must not drift from the mechanism.
+        content = read_file("methodology/discovery.md")
+        lower = content.lower()
+        assert "classification.structural" in content
+        assert "coverage" in lower
+        assert "coverage-scaffold" in content  # the one-act stub helper is named
+        assert "not relevant" in lower  # a stub satisfies coverage (the decision)
+
+    def test_planning_cross_references_coverage(self):
+        content = read_file("methodology/planning.md")
+        assert "strategy-artifact-missing" in content  # the ambient detector
+        assert "coverage-scaffold" in content
+        assert "/prawduct:doctor" in content
+
     def test_reflection_learning_lifecycle(self):
         content = read_file("methodology/reflection.md")
         assert "Learning Lifecycle" in content

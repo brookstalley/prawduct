@@ -284,6 +284,33 @@ Probes fire **only** on the mechanical hooks named in the Session-sync row — d
 literals, structural presence — never on prose interpretation. Rare and high-signal is a hard
 bar. Anything subtler belongs to the janitor's judgment or the Critic's.
 
+**Structural-coverage staging — staged nudges, not a pile-on.** The structural-presence hooks form a
+three-layer chain that stages a product from "we don't yet know what this is" to "its norms are
+ratified," so a fresh product never gets three simultaneous nags. The layers key off one shared
+boundary — whether `classification.structural` records at least one characteristic
+(`lib/coverage_probes.structural_characteristics_recorded`) — plus layer 2's *independent*
+artifact-existence gate. The 0↔1 boundary is an exact complement (never both); 1→2 is sequential
+but not mutually exclusive (see below):
+
+| Layer | Fires when | Nudge |
+|---|---|---|
+| 0 — discovery not captured | product work exists but **no** structural characteristic is recorded | run discovery / reconcile — record what this product *is* |
+| 1 — strategy-artifact-missing | characteristics **recorded**, but an expected strategy-class artifact is absent | author the artifact (a `(not relevant — …)` stub counts) |
+| 2 — norm-registry-unratified | a strategy-class artifact **exists**, but the norm registry is unratified | ratify the direction, or record there is none |
+
+Layer 0 fires on the negation of the boundary predicate; layer 1 on its truth — exact
+complements, so 0 and 1 never double-fire. Layer 1 stays silent until characteristics are
+recorded *even for the universal artifacts* — "every product needs a data model" means every
+product that has told the framework it is one. Layer 2 keeps its OWN artifact-existence gate: it
+fires once *any* strategy-class artifact exists and the registry is unratified — you can ratify the
+direction of what you have already written — so it does **not** wait for layer 1 to clear. During
+*partial* authoring (some strategy artifacts written, others still owed) layer 1 (author the rest)
+and layer 2 (ratify what exists) therefore both speak — two distinct asks, not a double-nag on one.
+So the guarantee is proportionality (a fresh product never gets three simultaneous nags), not a hard
+one-at-a-time invariant. The common trajectory still reads as staged: an all-`(not relevant)` stub
+set creates every file in one act (layer 1 clears), then layer 2 nudges ratification. The chain
+advances as each layer's condition clears.
+
 **Honest limitations.** Work landed entirely outside governed sessions (an out-of-band hotfix
 pushed directly) meets no event-domain organ; the probes and the janitor sweep are the
 backstop, and they see only what left a hook or a global footprint. And the event-domain catch

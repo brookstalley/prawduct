@@ -3,6 +3,44 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-07-16: Structural coverage — a forcing function for what a product owes (structural-coverage)
+
+<!-- prawduct: type=feature | scope=structural-coverage | chunks=01,02,03,04,05 -->
+<!-- Statusless on feature/structural-coverage = release-pending once merged. Large
+     framework change, plan at .prawduct/artifacts/build-plan-structural-coverage.md,
+     one commit per chunk, per-chunk Critic + closing cumulative (Chunk 05). -->
+
+**Parent:** GOV-EXI2 — every framework mechanism is reactive (the Critic reviews diffs, the
+sibling probes inspect existing files), so an artifact / structural characteristic / norm that was
+*never created* is invisible to all of them (`[[reactive systems can't detect missing things]]`).
+
+**What:** A three-layer coverage chain that keys off what a product *is* to require what it should
+therefore *have*, staged so exactly one nudge fires at a time on the shared boundary predicate
+`coverage_probes.structural_characteristics_recorded`. **Layer 0** (DISCOVERY-NOT-CAPTURED,
+`bin/prawduct-hook`) — structural characteristics unrecorded; sharpened to fire on incomplete
+`classification.structural` with product-definition work present, not only template-default nulls.
+**Layer 1** (`lib/coverage_probes.py`) — the seven strategy-class artifacts: five universal
+(data-model, security-model, nonfunctional-requirements, operational-spec, observability-strategy)
+plus two characteristic-triggered (api-contract ← `exposes_programmatic_interface`, architecture ←
+`multi_process_distributed`); coverage satisfied by the file EXISTING (a `(not relevant — <reason>)`
+stub counts), single-homed in `missing_expected_artifacts` and shared by the probe, the
+`coverage-status` doctor check, and the `coverage-scaffold` stub helper. **Layer 2**
+(`norm-registry-unratified`) — retained, now proper staging behind layer 1. Doctor Health Check #11
++ routing row + two hook subcommands (`coverage-status`, `coverage-scaffold`);
+discovery/planning/onboarding surfaces updated. GOV-EXI2 resolved by the upstream layer-1 owner (not
+by ungating layer 2). GOV-5D2W fixed en route (empty-registry `advisory show` no-op, via
+`lib/probe_families.register_all`). **Dogfooded on prawduct itself (Chunk 05):** recording
+prawduct's six reconciled structural characteristics advanced the live chain layer 0 → layer 1,
+naming all seven artifacts; the before/after transition is pinned by a fixture test decoupled from
+live state (retiring an earlier repo-coupled zero-fire assertion). **Follow-up GOV-5K3M done in
+this branch:** authored all seven strategy-class artifacts as real specs — grounded in the live
+system (parallel research over the CLI surface, persisted formats, and process topology) and
+written toward *intended* design, flagging target-vs-current divergence honestly — and recorded the
+exposed-interface decisions (`design_decisions.api_versioning_approach` / `api_error_model_approach`
+plus the flat `api_versioning_decided` resolution scalar) in `project-state.yaml`. Layer 1 now
+clears and the chain advances to Layer 2 (norm ratification — owner-driven via `/prawduct:doctor`,
+deliberately not auto-ratified). Remaining follow-up: GOV-2T6K (`templates/architecture.md`).
+
 ## 2026-07-16: Norm lifecycle — normative authority across governing artifacts (norm-lifecycle)
 
 <!-- prawduct: type=feature | chunks=1,2,3,4,5,6 -->

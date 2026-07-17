@@ -31,7 +31,7 @@ swept the same session** (§ "Coherence debts" — API §1 CLI spelling, Data Mo
 pointer, API §2.5/MIG-5 scrub op-dependency). Prior v1: initial drill-down from PRD §16 item 6. · added: 2026-07-16 · source:
 planning session · stage: design · **PROMOTED 2026-07-16** to the active build plan
 (`active_build_plan → artifacts/build-plan-backlog-service.md`); the Stop-hook Critic gate is armed.
-Chunk 01 (walking skeleton) built + committed; branch reconciled with develop (v3.0.4), offline suite green (1887 passed), Critic re-review clean (0 blocking). Live round-trip deferred to operator-verification VRF-003. Design still pending owner sign-off.`
+Chunk 01 (walking skeleton) built + committed; branch reconciled with develop (v3.0.4), offline suite green (1887 passed), Critic re-review clean (0 blocking). Live round-trip verified live 2026-07-17 (operator-verification VRF-004). Design still pending owner sign-off.`
 
 **Parent:** `documentation/backlog-service-prd.md` (PRD v4) and, through it,
 `documentation/backlog-service-requirements.md`. This plan is the **last level** of the layered
@@ -52,7 +52,7 @@ v2 fold + coherence sweep: moved here to `.prawduct/artifacts/build-plan-backlog
 pointed at by `active_build_plan` (so the Stop-hook Critic gate arms on it). The five sibling design
 docs stay in `documentation/`; this plan references them by section throughout. It remains a *design
 artifact pending owner sign-off* — **Chunk 01 (the walking skeleton) is now built and reviewed**
-(offline-verified, 0 blocking Critic findings; the live round-trip is deferred to VRF-003) — and the
+(offline-verified, 0 blocking Critic findings; the live round-trip is verified — VRF-004) — and the
 tooling treats it as the active plan. (PRD §16 item 6 named `.prawduct/artifacts/` as the destination; the design-phase copy in
 `documentation/` graduated here.)
 
@@ -122,9 +122,9 @@ Context: Draft v2 authored 2026-07-16 (v1 + two independent reviews folded; the 
 debts swept the same session). Chunk 01 built + committed 2026-07-17 (walking skeleton), branch
 reconciled with develop (v3.0.4), offline suite green, Critic re-review clean (0 blocking). The
 `[ ]` above stays unchecked by design until Done-when step 3's change-log entry flips it via
-`regen-views`; the live round-trip (step 0 / acceptance) is deferred to operator-verification VRF-003.
-Still a design artifact **promoted 2026-07-16**; owner sign-off pending. Next: VRF-003 live
-verification + owner sign-off, then Chunk 02 (read `methodology/building.md` first).
+`regen-views`; the live round-trip (step 0 / acceptance) was verified live 2026-07-17 (operator-verification VRF-004).
+Still a design artifact **promoted 2026-07-16**; owner sign-off pending. Next: owner sign-off
+(VRF-004 live verification complete), then Chunk 02 (read `methodology/building.md` first).
 
 ## Scaffolding
 

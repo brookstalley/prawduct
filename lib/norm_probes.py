@@ -90,6 +90,14 @@ from pathlib import Path
 from .advisory_store import AdvisoryCandidate, Codebase, ProjectState, register_probe
 from .backlog.legacy import BacklogItem, parse_backlog
 
+# Strategy-class artifact filenames (docs/norms.md § Where Norms Live). Presence of
+# any is the heuristic for "this product has architectural direction that may carry
+# norms" — the trigger half of the one-shot unratified nudge. Imported from
+# coverage_probes, which owns the coverage expectation table this set is the union
+# of, rather than transcribed — one home for the list (the structural-coverage
+# plan's Module Boundaries; transcription across surfaces flattens quantifiers).
+from .coverage_probes import STRATEGY_CLASS_ARTIFACTS
+
 FEATURE = "norm-lifecycle"
 PROBE_VERSION = 1
 
@@ -106,19 +114,6 @@ STALL_WINDOW_DAYS = 30
 # 60 days keeps the sweep current enough to catch drift while staying well clear
 # of nagging a repo whose norms are healthy and recently swept.
 SWEEP_WINDOW_DAYS = 60
-
-# Strategy-class artifact filenames (docs/norms.md § Where Norms Live). Presence
-# of any of these is the heuristic for "this product has architectural direction
-# that may carry norms" — the trigger half of the one-shot unratified nudge.
-STRATEGY_CLASS_ARTIFACTS = (
-    "observability-strategy.md",
-    "security-model.md",
-    "architecture.md",
-    "api-contract.md",
-    "nonfunctional-requirements.md",
-    "operational-spec.md",
-    "data-model.md",
-)
 
 # The norm columns the preferences Enforcement index table gains at ratification
 # (templates/project-preferences.md). Exact cell text — these are machine-readable

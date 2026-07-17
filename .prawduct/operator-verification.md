@@ -67,10 +67,39 @@ wrong agent_type). The consolidation core itself is `tests/test_critic_consolida
   the lingering marker (the floor) — confirm that too, then investigate the matcher
   string (`prawduct:critic-reviewer` vs `critic-reviewer`) against the installed version.
 
-## VRF-003 — Chunk 01 (backlog-service) — CLI file/get round-trip + JSON envelope
+## VRF-003 — Chunk 05 — Coverage chain advances layer 0 → layer 1 in the live briefing
+
+**Status:** pending
+**Added:** 2026-07-16 (structural-coverage Chunk 05)
+**Where to verify:** The next real Claude Code session opened in this repo (a `clear`
+hook run), reading the SessionStart briefing.
+
+**Why a human/live check:** the layer transition is agent-verified below through the
+`coverage-status` doctor report, but the operator-facing surface is the SessionStart
+*briefing advisory* — whether the nudge a human actually sees has advanced from the
+discovery-not-captured line to the strategy-artifact-missing line. That end-to-end
+path (hook → probe roster → briefing text) is exercised only by a live session start.
+
+**Already observed (this session, via the real CLI — not needing a fresh session):**
+- BEFORE recording `classification.structural`, `prawduct-hook coverage-status`
+  reported `Layer 0 · discovery: characteristics NOT RECORDED`, `Active nudge → Layer 0`.
+- AFTER recording prawduct's six reconciled characteristics, the same command reports
+  `Layer 0 · discovery: characteristics RECORDED`, `Layer 1 · strategy artifacts: 7
+  expected artifact(s) missing`, `Active nudge → Layer 1` — the five universal plus
+  `api-contract.md (exposes_programmatic_interface)` and `architecture.md
+  (multi_process_distributed)`. `--json` confirms `active_layer: 1`,
+  `structural_recorded: true`. No strategy-class artifact was authored (fixture stays empty).
+
+**Verify (next session):**
+- The briefing NO LONGER prints the `DISCOVERY NOT CAPTURED` block (layer 0 cleared).
+- The coverage advisory now names the missing strategy-class artifacts (layer 1), and
+  it is a single `info` nudge, not a double-nag with any layer-0 or layer-2 line.
+
+## VRF-004 — Chunk 01 (backlog-service) — CLI file/get round-trip + JSON envelope
 
 **Status:** verified (2026-07-17, throwaway repo `brookstalley/prawduct-backlog-smoke`)
-**Added:** 2026-07-16 (backlog-service Chunk 01 — walking skeleton)
+**Added:** 2026-07-16 (backlog-service Chunk 01 — walking skeleton; renumbered from VRF-003
+on the 2026-07-17 develop merge — the id collided with structural-coverage's VRF-003 above)
 **Result:** L5 live smoke passed through `cli.run`; the hand round-trip confirmed every
 eyeball item — canonical `owner/repo#N` id, `stage:ready` label, `v: 1` body block,
 title/stage round-trip, `status`→`open`, valid `--json` (jq on the raw stdout), SEC-1 clean
@@ -101,9 +130,9 @@ exact JSON shapes) is confirmed only against live GitHub — Test Specs §2.1: b
 fidelity is the L4/L5 spikes' job, not the shape-diff. This live pass is where the real
 response shapes get captured to seed/confirm the fake (CONTRACT-1), and where SPIKE-S1's
 core-gating facts are confirmed: issue numbers are never reused (M6), ETag/304 conditional
-GET works. **Not yet run** — no throwaway repo / `gh` auth available in the build session.
+GET works. Run 2026-07-17 — see **Result** above.
 
-**Verify (human eyeballs):**
+**Verify (human eyeballs) — all confirmed 2026-07-17:**
 - `file` returns a canonical `owner/repo#N` id immediately; the issue exists with the
   `stage:ready` label and a `prawduct` body block (`v: 1`).
 - `get <id>` round-trips title/stage; `status` decodes to `open` (no status label).
