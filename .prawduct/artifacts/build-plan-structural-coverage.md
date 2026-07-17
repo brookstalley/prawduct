@@ -92,8 +92,10 @@ authored — the fixture stays empty; authoring is the filed follow-up GOV-5K3M 
 GOV-2T6K for `templates/architecture.md`). The before/after transition is pinned by a fixture
 test on prawduct's own profile, DECOUPLED from live state (retired the earlier repo-coupled
 zero-fire assertion — `[[repo-coupled zero-fire test]]` fragility), so the proof re-runs whatever
-the live repo records. Operator check VRF-003 queued (briefing advisory advances next session).
-Remaining: `/prawduct:critic cumulative` → resolve blocking → PR-ready (merge stays with owner).
+the live repo records. Operator check VRF-003 queued (briefing advisory advances next session). Cumulative Critic +
+verify-resolutions both clean (0/0/0 after resolving 3 warnings — honest 0↔1-vs-1↔2 staging docs +
+a fail-soft wrap on the layer-0 nudge, commit 256003c; R-2 NOTE → GOV-4M7K). Branch PR-ready —
+merge stays with the owner (`/prawduct:pr create` when you ask).
 
 **Chunk 01 deferred NOTES — status:** all resolved. citation precision ✓; dedup ✓
 (`STRATEGY_CLASS_ARTIFACTS` single-homed); staging-caveat docstring ✓; dogfood strengthened ✓;
