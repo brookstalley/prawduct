@@ -242,7 +242,7 @@ tests/
 - **Description:** Prove the whole path end-to-end at its thinnest: file an item, read it back — CLI →
   `core` → `transport` → GitHub → back — with the L1 fake for the deterministic suite and **one real
   round-trip** for the L5 smoke. Establishes the load-bearing seams every later chunk builds on: the
-  package (with `lib/backlog.py` relocated to `legacy.py` and importers repointed), the `gh`-only
+  package (with the former `backlog.py` relocated to `legacy.py` and importers repointed), the `gh`-only
   transport driver, the stateful fake, the return-value envelope + error model + exit-code scheme, ID
   normalization, the `prawduct:` block parse/serialize, and a **minimal** `provision` (create the
   namespaced labels `file` needs, idempotent, no-collision — PROV-1 only; the GV6 drift-reconcile and
@@ -253,7 +253,7 @@ tests/
   (identity validated early, non-interactive), §5 (attribution off the API identity); Test Specs §2.1
   (seam), §3.6 (envelope), §3.7 (IDs), §3.5 (block parse), §3.9 (security-negative), §3.11
   (provisioning), §6 (fake).
-- **Deliverables:** move `lib/backlog.py` → new `lib/backlog/legacy.py` + repoint `lib/briefing.py`,
+- **Deliverables:** move the former `backlog.py` → new `lib/backlog/legacy.py` + repoint `lib/briefing.py`,
   `lib/backlog_probes.py`, and their tests; new `lib/backlog/__init__.py`,
   new `lib/backlog/transport.py` (gh-only), new `lib/backlog/core.py` (`file`,`get`), new
   `lib/backlog/encode.py` (block + soft-enum), new `lib/backlog/ids.py`, new

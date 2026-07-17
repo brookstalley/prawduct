@@ -36,7 +36,8 @@ import re
 import subprocess
 from pathlib import Path
 
-from . import backlog, buildplan_refs, gates, gitstate
+from . import buildplan_refs, gates, gitstate
+from .backlog import legacy as backlog
 from .core import (
     BUILD_PLAN_POINTER_KEY,
     atomic_write_text,

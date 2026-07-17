@@ -30,7 +30,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from .advisory_store import AdvisoryCandidate, ProjectState, Codebase, register_probe
-from .backlog import parse_backlog
+from .backlog.legacy import parse_backlog
 
 FEATURE = "backlog"
 PROBE_VERSION = 1

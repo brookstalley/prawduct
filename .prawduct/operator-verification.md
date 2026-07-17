@@ -66,3 +66,34 @@ wrong agent_type). The consolidation core itself is `tests/test_critic_consolida
 - If findings do NOT appear event-driven, the session-end backstop must still block on
   the lingering marker (the floor) — confirm that too, then investigate the matcher
   string (`prawduct:critic-reviewer` vs `critic-reviewer`) against the installed version.
+
+## VRF-002 — Chunk 01 (backlog-service) — CLI file/get round-trip + JSON envelope
+
+**Status:** pending
+**Added:** 2026-07-16 (backlog-service Chunk 01 — walking skeleton)
+**Where to verify:** a throwaway GitHub repo with `gh` authenticated (`repo` scope). Run the
+gated L5 smoke, or drive the CLI by hand:
+
+    BACKLOG_LIVE_REPO=you/throwaway python -m pytest tests/test_backlog_smoke_live.py -q
+    # or:
+    prawduct-hook backlog provision --repo you/throwaway
+    prawduct-hook backlog file --repo you/throwaway --title smoke --body hi --stage ready --json
+    prawduct-hook backlog get <printed-id> --json
+
+**Why a human check (absorbs the Done-when step-0 `verify-api`/CONTRACT-1 obligation):** the
+L1 suite proves the logic against the in-process fake, but the fake's *behavior*
+(read-your-writes on create, real label-create semantics, `node_id`/number assignment, the
+exact JSON shapes) is confirmed only against live GitHub — Test Specs §2.1: behavioral
+fidelity is the L4/L5 spikes' job, not the shape-diff. This live pass is where the real
+response shapes get captured to seed/confirm the fake (CONTRACT-1), and where SPIKE-S1's
+core-gating facts are confirmed: issue numbers are never reused (M6), ETag/304 conditional
+GET works. **Not yet run** — no throwaway repo / `gh` auth available in the build session.
+
+**Verify (human eyeballs):**
+- `file` returns a canonical `owner/repo#N` id immediately; the issue exists with the
+  `stage:ready` label and a `prawduct` body block (`v: 1`).
+- `get <id>` round-trips title/stage; `status` decodes to `open` (no status label).
+- `--json` output is pure JSON on stdout (`| jq .` never chokes); **no token or the
+  `proxy-injected` literal appears anywhere** in stdout/stderr (SEC-1).
+- `provision` creates the namespaced `stage:`/`status:` labels and leaves any pre-existing
+  non-prawduct labels untouched (GV6).
