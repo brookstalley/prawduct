@@ -17,11 +17,12 @@ records at least one structural characteristic
 product has not told governance what it *is*, so the upstream nudge — layer 0
 (discovery-not-captured, emitted from ``bin/prawduct-hook``, exercised in
 ``test_discovery_capture_nudge``) — owns it, and this probe holds back so exactly one
-layer nudges. THIS repo is in that pre-capture state (no ``classification.structural``
-block), so the layer-1 probe is SILENT here — the coverage nudge for this repo is
-layer 0's. Once characteristics are recorded the probe takes over; the final
-repo-coupled test pins the silence, and it flips the moment this repo records its
-characteristics (the staged transition Chunk 05 dogfoods).
+layer nudges. The staged layer-0 → layer-1 transition is pinned by a fixture-based
+before/after test on prawduct's own reconciled structural profile (the reference
+product dogfooding this chain), kept decoupled from the live ``project-state.yaml``
+so the proof re-runs whatever this repo records — an earlier repo-coupled zero-fire
+assertion tied the test to the live pre-capture state and broke the moment that
+state advanced.
 """
 
 from __future__ import annotations
@@ -47,8 +48,6 @@ from lib.advisory_store import (  # noqa: E402
     run_all_probes,
 )
 from lib import coverage_probes as cp  # noqa: E402
-
-REPO_ROOT = Path(__file__).resolve().parents[1]
 
 
 @pytest.fixture(autouse=True)
@@ -491,43 +490,52 @@ def test_registered_probe_runs_through_roster(tmp_path):
     assert adv.probe_version == cp.PROBE_VERSION
 
 
-# --- dogfood: the live pre-capture fixture ------------------------------------
+# --- dogfood: prawduct's own staged transition (fixture, not live-coupled) -----
+
+# Prawduct's reconciled structural profile (methodology/discovery.md § Reconciling
+# an Existing Product): four characteristics recorded present, two absent. Kept as a
+# fixture — a decoupled copy of what the live project-state.yaml records — so the
+# transition proof re-runs regardless of the live file. Both triggered arms are lit
+# (api-contract ← exposes_programmatic_interface, architecture ←
+# multi_process_distributed), so prawduct owes the full seven-artifact set.
+_PRAWDUCT_PROFILE = {
+    "has_human_interface": {"modality": "terminal", "platform": "cross-platform"},
+    "runs_unattended": {"trigger": "event-driven"},
+    "exposes_programmatic_interface": {"consumers": "both"},
+    "has_multiple_party_types": None,
+    "handles_sensitive_data": None,
+    "multi_process_distributed": {"topology": "monolith-with-workers"},
+}
 
 
-def test_layer1_silent_against_this_repo_pending_structural_capture():
-    """Live-fixture proof of the staging: THIS repo records no structural
-    characteristics (no ``classification.structural`` block), so layer 1 is SILENT
-    here — the coverage nudge for this repo is layer 0's (discovery-not-captured,
-    tested in ``test_discovery_capture_nudge``). Composed with the full probe roster
-    (mirroring bin/prawduct-hook cmd_clear) it emits ZERO strategy-artifact-missing
-    advisories. This is a deliberate staged tripwire: the moment this repo records
-    its characteristics (the Chunk 05 dogfood), layer 0 clears and this flips to
-    firing the missing universal artifacts — the forcing function advancing one
-    staged nudge at a time."""
-    from lib.backlog_probes import register as reg_backlog
-    from lib.upstream_probes import register as reg_upstream
-    from lib.api_versioning_probes import register as reg_api
-    from lib.gitignore_probes import register as reg_gitignore
-    from lib.norm_probes import register as reg_norm
+def test_prawduct_profile_stages_layer0_to_layer1(tmp_path):
+    """The staged transition dogfooded on prawduct's OWN reconciled profile.
 
-    reg_backlog()
-    reg_upstream()
-    reg_api()
-    reg_gitignore()
-    reg_norm()
-    cp.register()
+    BEFORE — characteristics unrecorded (template-default null): layer 1 holds back,
+    the nudge is layer 0's (discovery-not-captured, tested in
+    ``test_discovery_capture_nudge``). AFTER — prawduct's profile recorded: layer 0
+    clears and layer 1 names exactly the seven strategy-class artifacts — the five
+    universal plus both triggered arms, because prawduct records both triggering
+    characteristics. Fixture-based on purpose: the earlier form asserted this repo's
+    live pre-capture state and broke the moment that state advanced.
+    """
+    # BEFORE: all-null structural → unrecorded → layer 1 silent (layer 0 owns it).
+    _write_state(tmp_path, {c: None for c in cp.STRUCTURAL_CHARACTERISTICS})
+    assert cp.structural_characteristics_recorded(_state_path(tmp_path)) is False
+    assert cp.probe_strategy_artifact_missing(_state(), _cb(tmp_path)) == []
 
-    # Guard the premise: if this repo ever records a structural characteristic, the
-    # staging flips and this test's expectation must be revisited (fail loud here,
-    # not silently pass on a stale premise).
-    assert cp.structural_characteristics_recorded(
-        REPO_ROOT / ".prawduct" / "project-state.yaml"
-    ) is False, "this repo now records structural characteristics — layer 1 staging flips; update this dogfood"
-
-    codebase = Codebase(root=REPO_ROOT)
-    results = run_all_probes(_state(), codebase)
-    coverage_hits = [c for c in results if c.type == "strategy-artifact-missing"]
-    assert coverage_hits == []
+    # AFTER: prawduct's profile recorded → layer 0 clears, layer 1 names all seven.
+    _write_state(tmp_path, _PRAWDUCT_PROFILE)
+    assert cp.structural_characteristics_recorded(_state_path(tmp_path)) is True
+    out = cp.probe_strategy_artifact_missing(_state(), _cb(tmp_path))
+    assert len(out) == 1
+    summary = out[0].trigger_summary
+    for name in cp.STRATEGY_CLASS_ARTIFACTS:
+        assert name in summary
+    # both triggered arms fire, each annotated with the characteristic that requires it
+    assert "api-contract.md (required — exposes_programmatic_interface recorded)" in summary
+    assert "architecture.md (required — multi_process_distributed recorded)" in summary
+    assert len(cp.STRATEGY_CLASS_ARTIFACTS) == 7
 
 
 # --- staging: exactly one layer speaks per fixture ----------------------------

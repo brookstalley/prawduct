@@ -35,6 +35,50 @@ distribution: plugin
 base_branch: develop
 
 # =============================================================================
+# CLASSIFICATION — structural characteristics (methodology/discovery.md)
+# =============================================================================
+# Reconciled from this codebase, not a discovery interview (discovery.md §
+# Reconciling an Existing Product): prawduct is a mature product, so its six
+# structural characteristics are read off what it already is. Recording them is
+# load-bearing — the strategy-class artifact coverage chain keys off this block
+# (layer 0 clears once >=1 is recorded; each recorded triggering characteristic
+# then owes its artifact). Four present, two absent; the two present *triggering*
+# characteristics make prawduct owe the full seven strategy-class artifacts.
+classification:
+  domain: developer-tool
+  structural:
+    # Present — operators read terminal output: bin/prawduct-hook reports, the
+    # SessionStart briefing, advisory/doctor text, the /prawduct:* skills.
+    has_human_interface:
+      modality: terminal
+      platform: cross-platform
+    # Present — SessionStart/Stop/UserPromptSubmit/SubagentStop hooks fire on
+    # Claude Code lifecycle events, not by human invocation; the pervasive
+    # fail-soft design (a probe never blocks session start) is the "design
+    # against silent failure" this characteristic implies.
+    runs_unattended:
+      trigger: event-driven
+    # Present — prawduct IS a Claude Code plugin plus a bin/prawduct-hook CLI with
+    # --json machine contracts: the harness (external) invokes hooks via
+    # settings.json, skills (internal) call the CLI. Triggers api-contract.md.
+    exposes_programmatic_interface:
+      consumers: both
+    # Absent — one actor class (the product owner) plus the AI runtime; no
+    # privilege tiers, trust boundaries, or data isolation between party types.
+    has_multiple_party_types: null
+    # Absent — persisted data is development-process metadata (state, learnings,
+    # evidence, findings, backlog); no PII/financial/health/credentials under
+    # regulatory obligation. (Universal security-model.md still applies —
+    # plugin-trust / supply-chain is a security concern regardless.)
+    handles_sensitive_data: null
+    # Present — the Critic coordinator fans out parallel critic-reviewer subagents
+    # writing partial findings files, then critic-consolidate merges them; the
+    # evidence store (evidence.jsonl) is shared and tree-keyed across all
+    # worktrees of the clone. Triggers architecture.md.
+    multi_process_distributed:
+      topology: monolith-with-workers
+
+# =============================================================================
 # DEPENDENCY GRAPH
 # =============================================================================
 

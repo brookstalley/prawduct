@@ -40,8 +40,8 @@ my picks as vetoable); Chunk 01's keystone confirms the declined-answer schema a
 - [x] Chunk 02: Full layer-1 table — all 7 strategy-class artifacts (universal + structurally-triggered)
 - [x] Chunk 03: Layer 0 + staging — sharpen DISCOVERY-NOT-CAPTURED; stage the three advisories; resolve GOV-EXI2
 - [x] Chunk 04: Doctor / onboarding / methodology / propagation
-- [ ] Chunk 05: Dogfood against the empty fixture + close (cumulative-final)
-Context: Chunks 01-03 complete on `feature/structural-coverage`. The three-layer chain now
+- [x] Chunk 05: Dogfood against the empty fixture + close (cumulative-final) — recorded prawduct's six reconciled structural characteristics; live chain advanced layer 0 → layer 1 (all 7 artifacts); before/after transition pinned by a decoupled fixture test; GOV-5K3M filed to author them
+Context: Chunks 01-05 complete on `feature/structural-coverage` (feature done, pending cumulative Critic + PR). The three-layer chain now
 STAGES on one shared boundary predicate — `coverage_probes.structural_characteristics_recorded`
 (≥1 of the six structural characteristics recorded present; ≥1-not-all-six because template
 `null` doubles as "not applicable", making all-six-answered unreachable). Layer 0
@@ -80,11 +80,20 @@ Filed GOV-2T6K: `templates/architecture.md` missing (additive authoring-template
 still works via the scaffold stub). Also fixed a pre-existing baseline flake in a separate commit
 (test_kernel_v3_upgrade.py + test_coverage_probes.py lacked the sys.path root-insert idiom).
 
-Next: **Chunk 05** (cumulative-final) — dogfood against this repo's empty fixture: observe layer 0
-fire, then RECORD prawduct's own six structural characteristics (a discovery/reconcile act, NOT
-authoring artifacts) and observe the chain advance to layer 1 firing "artifacts missing." Stop
-there (authoring the 7 artifacts is deferred to a filed follow-up). Capture as a before/after
-fixture test, not a live-repo-coupled assertion. Then `/prawduct:critic cumulative` → PR-ready.
+Chunk 05 complete (cumulative-final): dogfooded against this repo. Observed layer 0 fire
+(read-only `coverage-status`, pre-capture), then RECORDED prawduct's six reconciled structural
+characteristics in `classification.structural` (a discovery/reconcile act, NOT authoring
+artifacts — four present with provenance: has_human_interface, runs_unattended,
+exposes_programmatic_interface, multi_process_distributed; two absent: has_multiple_party_types,
+handles_sensitive_data). The live chain advanced exactly as designed: layer 0 cleared, layer 1
+now names all seven strategy-class artifacts (five universal + api-contract ←
+exposes_programmatic_interface + architecture ← multi_process_distributed). No artifact was
+authored — the fixture stays empty; authoring is the filed follow-up GOV-5K3M (blocked on
+GOV-2T6K for `templates/architecture.md`). The before/after transition is pinned by a fixture
+test on prawduct's own profile, DECOUPLED from live state (retired the earlier repo-coupled
+zero-fire assertion — `[[repo-coupled zero-fire test]]` fragility), so the proof re-runs whatever
+the live repo records. Operator check VRF-003 queued (briefing advisory advances next session).
+Remaining: `/prawduct:critic cumulative` → resolve blocking → PR-ready (merge stays with owner).
 
 **Chunk 01 deferred NOTES — status:** all resolved. citation precision ✓; dedup ✓
 (`STRATEGY_CLASS_ARTIFACTS` single-homed); staging-caveat docstring ✓; dogfood strengthened ✓;
