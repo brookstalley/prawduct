@@ -1,0 +1,580 @@
+---
+artifact: build-plan
+version: 2
+scope: backlog-service-v1
+depends_on:
+  - artifact: product-brief          # documentation/backlog-service-prd.md (PRD v4)
+  - artifact: requirements           # documentation/backlog-service-requirements.md
+  - artifact: data-model             # documentation/backlog-service-data-model.md (v3)
+  - artifact: nonfunctional-requirements  # documentation/backlog-service-nfr.md (v2)
+  - artifact: security-model         # documentation/backlog-service-security-model.md (v2)
+  - artifact: api-contract           # documentation/backlog-service-api-contract.md (v3)
+  - artifact: test-specifications    # documentation/backlog-service-test-specifications.md (v3)
+last_validated: 2026-07-16
+---
+
+# Backlog Service — Build Plan
+
+`status: draft v2 — independent-review fold (2026-07-16): a fresh-eyes build/sequencing critic + a
+coverage/traceability verifier reviewed v1 (the two-reviewer pattern the five sibling drill-downs
+used). BLOCKING/MAJOR fixes folded — (1) security-negative coverage was unallocated: SEC-1/2/3 now
+land in Chunks 01–02, SEC-5/6 in Chunk 04, and PV1/PV2 join the traceability table (Complete
+Delivery); (2) `verify`/TF2 was fully dropped — now a roadmap row (Wv) carrying CRASH-5; (3) Chunk 06's
+scrub silently depended on deferred `merge`/`search --like` — `merge` pulled into the slice (Chunk 05),
+scrub restated to model-surfaced dedup over `list`; (4) two wrong-section Data-Model citations (§7→§6
+cache/snapshot, §6→§1.6 attachments) corrected; CRASH-3 (split) mis-cited in Chunk 05 → CRASH-4. Chunk
+01 de-loaded (raw-HTTP → W1; provision trimmed to minimal); SPIKE-S2 isolated to Chunk 06; Chunk 04
+demoted to `chunk` mode (review-wall-clock). Owner decisions folded: `lib/backlog/` built from the
+start (`lib/backlog.py` → `lib/backlog/legacy.py`); CLI home = `prawduct-hook backlog`; prawduct's own
+briefing repoints at Chunk 06 (post-migration), not before. Three peer-doc coherence debts filed (§
+"Coherence debts"). Prior v1: initial drill-down from PRD §16 item 6. · added: 2026-07-16 · source:
+planning session · stage: design (not yet promoted to an active build plan — see "Promotion").`
+
+**Parent:** `documentation/backlog-service-prd.md` (PRD v4) and, through it,
+`documentation/backlog-service-requirements.md`. This plan is the **last level** of the layered
+plan (PRD §16 item 6): it consumes the five sibling drill-downs and turns *what the system must do*
+into *the order in which we build it and prove it*. It designs against their IDs (AG/CC/TF/Q/XP/
+PV/AU/GV/MG/DM/NF and the test IDs INV/ENC/CRASH/ID/…), never restating them.
+
+**Altitude — plan, not code.** This plan fixes *what to build in what order*, *which artifact each
+chunk consumes*, and *which named test IDs each chunk's "done when" must satisfy* — **not** function
+names, assertion syntax, or field layout (those are build-time, chosen by the Builder against
+`project-preferences` and the Data Model). A chunk is specific enough when the Builder never has to
+make a **technology** decision; the seams below are already decided upstream (transport = `gh`, O5;
+errors = return-value envelope, API §4; isolation = transport-seam fake, Test Specs §2.1).
+
+**Promotion.** This file lives with the design-phase drill-down set (`documentation/backlog-
+service-*.md`) so it stays coherent with its five siblings while the design settles. When the build
+actually starts it is **promoted**: copied/moved to `.prawduct/artifacts/build-plan-backlog-
+service.md` and pointed at by `active_build_plan` (so the Stop-hook Critic gate arms on it). Until
+then it is a *design artifact*, not an active build plan — no chunk here has been built. (PRD §16
+item 6 names `.prawduct/artifacts/` as the destination; this reconciles that with the sibling-doc
+pattern the other five drill-downs established.)
+
+---
+
+## Requirements Confidence
+
+**Level:** High (for the slice) / Medium (for the post-slice roadmap).
+
+**Why High for the slice.** The slice's problem, success criteria, and scope are each statable in
+one sentence and are pinned by a coherent, independently-reviewed parent set:
+- *Problem:* the backlog is a merge-prone markdown file an LLM edits by hand → stale-by-checkout,
+  token-costly, conflict-prone (PRD §1, requirements doc).
+- *Success:* one live view, zero merge conflicts, zero-token deterministic CRUD, online-consistent
+  `pick`, and prawduct's own backlog migrated with IDs preserved (PRD §4, §6).
+- *Scope:* the cacheless online CLI over GitHub + the prawduct-first migration; **not** the #1
+  stale-*content* pain (that needs TF2/TF3 + the scrub, honestly out of the slice — PRD §6/B1).
+
+No fast-moving or post-cutoff facts remain unverified: the load-bearing GitHub facts (number
+non-reuse, the 80/min + ~500/hr write caps, read-your-writes on the REST list endpoint, native
+deps/sub-issues GA dates, semantic-search GA) were verified during the NFR/API/Test-Spec drill-downs
+and are pinned in those docs. Two once-only spikes (S1, S2) fold into the slice as `verify-api`/
+dry-run steps rather than gating unknowns.
+
+**Why Medium for the roadmap.** The post-slice layers (cache, search, verification/grooming,
+cross-project, attachments, MCP, App identity) are specified at PRD altitude and deliberately **not**
+chunked to code-level here — each is detailed when its layer is reached (proportional effort;
+over-specifying deferred work is a named trap). S4 (cache protocol) and S5 (attachment
+inline-on-private) are genuinely open and gate their layer, not the architecture.
+
+**Resolved decisions (were v1 assumptions; ruled by the owner 2026-07-16):**
+- **Package = `lib/backlog/` from Chunk 01.** `lib/backlog.py` (the markdown-backlog parser) moves to
+  `lib/backlog/legacy.py`; its importers (`lib/briefing.py`, `lib/backlog_probes.py`) and their tests
+  repoint to the new path in Chunk 01 so the suite stays green. The markdown-backlog *workflow* is **not
+  maintained** during the build (breaking it is accepted) and is **retired at cutover** (Chunk 06,
+  after the bulk import to GitHub Issues). This makes the Data Model / API contract `lib/backlog/…`
+  paths literally true from day one.
+- **CLI home = `prawduct-hook backlog <op>`** — a subcommand group on the existing entry (matching the
+  `sys.argv[1]` dispatch → a `lib/backlog/cli.py` runner, the `advisory`/`init-product` pattern), not a
+  new `bin/` binary. Rationale: one entry point = one platform-exposure/executable/PATH surface (fewer
+  places a platform quirk bites); lazy per-subcommand import means zero startup cost on other commands;
+  the durable contract is the flags + JSON envelope + on-GitHub encoding, not the binary name (API §5).
+  *Coherence debt filed:* the API contract §1 spells the surface `prawduct backlog` — reconcile to
+  `prawduct-hook backlog` in the peer-doc sweep (see "Coherence debts").
+
+**Open assumptions / unknowns** (vetoable):
+- [ASSUMPTION: this plan details the slice (Chunks 01–06) fully and the widening (W1–Wv) as a roadmap;
+  the widening chunks are authored to code-level when their layer is picked up. | LOW impact | owner
+  can override — e.g. ask for a fully-chunked P1 cache plan now.]
+- [ASSUMPTION: SPIKE-S2 runs first against a **throwaway copy** of prawduct's own repo (Chunk 06 step 0),
+  then the **real** prawduct migration executes; discodon follows post-slice as an operational re-run of
+  the same importer. | LOW impact | owner can override the order/targets.]
+
+**What would raise confidence:** N/A for the slice — the two former MED assumptions are now owner
+rulings. The roadmap stays Medium by design until each layer's workload justifies building it.
+
+## Status
+
+- [ ] Chunk 01: Walking skeleton — package + `legacy.py` move, `gh` transport seam + fake, `file`, `get`, minimal `provision`, one real round-trip
+- [ ] Chunk 02: Two-axis status + decoder + self-healing reconciliation (the CC1/M5 keystone)
+- [ ] Chunk 03: Query & ready-work — `link`/`unlink`, `list`, `pick`, `claim`/`unclaim`, `counts`
+- [ ] Chunk 04: Governance surface — `refresh-counts`, `reconcile-labels`, never-block floor, unattended security
+- [ ] Chunk 05: Importer + alias machinery + minimal `merge` + `export` (mechanism, fixture-proven)
+- [ ] Chunk 06: SPIKE-S2 dry-run + MG4 scrub + prawduct-first real migration (dogfood, cumulative-final)
+- [ ] Roadmap (post-slice, lower resolution): W1 cache+sync · W2 search+dedup · Wv verify+grooming · W3 cross-project+automation · W4 attachments · W5 MCP · W6 App identity + offline queue · Wg GV3 janitor
+Context: Draft v2 authored 2026-07-16 (v1 + two independent reviews folded). Nothing built. This is a
+design artifact pending owner sign-off, then Promotion. Next: owner review of v2, then the peer-doc
+coherence sweep (3 debts), then Promotion.
+
+## Scaffolding
+
+### Project Initialization
+
+No new project — the service is built **into the existing prawduct plugin repo** (Python 3.10+, the
+established `bin/` + `lib/` + `tests/` layout). No new package manager, no new runtime. Dev deps are
+already present (`pytest`, `pytest-xdist`, `pytest-timeout`, `pyyaml` via `pyproject.toml`). The one
+external **runtime** dependency the slice adds is **`gh`** (the GitHub CLI) as the required portable
+transport (O5, G4) — free, standard, `brew`/`apt`-installable, and already present in most adopter
+environments; the adapter probes for it and degrades cleanly when absent (G2).
+
+### Dependencies
+
+- **Runtime:** `gh` (required transport, O5). Stdlib only otherwise — `subprocess` (list-form, no
+  `shell=True`), `json`. The raw-HTTP fast path and `sqlite3` cache arrive with **W1**, not the slice.
+  **No new third-party Python packages** in the slice.
+- **Dev/test:** the existing pytest stack. The **transport-seam fake** (Test Specs §6) is first-party
+  test code, not a dependency.
+
+Rationale per the "no bespoke backend" invariant (G4) and the sync/no-asyncio, return-value
+conventions (`project-preferences`). A dependency-manifest entry for `gh` is the one addition; if the
+project adopts a formal `dependency-manifest.md`, `gh` is its first backlog-service row.
+
+### Build & Test Configuration
+
+The existing `pytest tests/ -v` runs everything; new tests live under `tests/` organized by
+capability (`test_backlog_*.py`), with the five L-layers (Test Specs §2) mapped as:
+- **L1 (deterministic)** — the CI-fast bulk; runs every `pytest` invocation against the transport-seam
+  fake. Hermetic, offline, no `gh`, no network.
+- **L2 (contract probe, `verify-api`)** — a **marked, opt-in** target (e.g. `-m verify_api`) that hits
+  a throwaway real repo; **not** in the default CI run. Produces the recorded shapes CONTRACT-1 diffs
+  the fake against.
+- **L3 (build measurement, PROBE-LAT/PROBE-RATE)** — a marked measurement target run at chunk-close
+  before "done"; emits numbers vs the NFR targets, not pass/fail.
+- **L4 (spikes S1/S2)** — one-time scripts under `tests/spikes/`, run by hand during the slice; their
+  output is a settled fact recorded in the plan/NFR, not a CI test.
+- **L5 (live smoke + behavioral re-check)** — a marked, gated target (one real round-trip per front)
+  run pre-release/nightly, never in the fast loop.
+
+The default `pytest` run must stay **green with no `gh` and no network** — L2/L3/L4/L5 are all opt-in.
+This is the honesty line Test Specs §2 draws: the deterministic bulk never depends on a live GitHub.
+
+### Scaffold Verification
+
+After Chunk 01: `pytest tests/test_backlog_*.py` passes offline against the fake **and** the existing
+suite stays green after the `lib/backlog.py` → `lib/backlog/legacy.py` move (briefing + probes
+repointed); one real `prawduct-hook backlog get <known-issue>` round-trips against a live throwaway
+repo (the L5 smoke). All green = the layers connect and the rename didn't regress the framework.
+
+### Verification Strategy
+
+Each chunk is exercised **as an agent would drive it** — non-interactively through the CLI, parsing
+JSON from stdout (INV-2: stdin closed, no TTY). Beyond the L1 suite:
+- Every slice chunk adds a **one-real-op L5 smoke** through the CLI front against a throwaway repo,
+  so "the adapter wires the core correctly" is proven per front, not assumed (Test Specs §1.1 — a
+  core-only test does not prove the CLI).
+- The **migration** chunks (05/06) are verified by the **SPIKE-S2 dry-run** (body-fidelity diff, ID
+  aliasing, relationship reconstruction, resumability) and then by the **real prawduct migration**
+  itself — the dogfood is the acceptance test (owner reviews the scrub dispositions and the migrated
+  repo; **Visual change: yes**).
+- **L3 probes** (PROBE-LAT, PROBE-RATE) run during Chunks 05/06 to promote the NFR latency/rate
+  targets from `target` to measured. *Caveat (NFR §3.3):* the prawduct-first burst is **smaller** than
+  discodon (that's why it goes first) — so it is a **lower bound** on the ~500/hr content-creation
+  pacing constant; that constant stays `target`-grade until a larger burst (discodon, post-slice) runs.
+
+Verification infrastructure (the fake, the spike scripts, the throwaway repo) is **dev-only** and
+never ships in the plugin runtime (Principle 10).
+
+## Project Structure
+
+```
+lib/backlog/                    # the service package (built from Chunk 01)
+├── __init__.py
+├── legacy.py                   # ← moved from lib/backlog.py (markdown parser; retired at Chunk 06)
+├── transport.py                # the only egress: gh-subprocess driver (raw-HTTP fast path → W1)
+├── core.py                     # deterministic CRUD (G1); return-value envelope; the op implementations
+├── encode.py                   # prawduct: body block, two-axis status decoder/encoder, soft-enum
+├── ids.py                      # ID normalization, PFX alias resolution, redirects (D4)
+├── query.py                    # list / pick / counts (structured, online off the REST list endpoint)
+├── migrate.py                  # import (resumable/idempotent), export (full-fidelity graph), merge
+├── provision.py                # namespaced label taxonomy + coexistence reconcile (GV5/GV6)
+└── cli.py                      # the `prawduct-hook backlog <op>` runner (thin front over core)
+
+bin/prawduct-hook               # +1 dispatch line: `backlog` → lib.backlog.cli.run
+lib/briefing.py, lib/backlog_probes.py   # importers repointed to lib.backlog.legacy (Chunk 01)
+tests/
+├── test_backlog_*.py           # L1 bulk, per capability
+├── fakes/fake_github.py        # the stateful transport-seam fake (Test Specs §6)
+└── spikes/                     # L4 one-time spike scripts (S1, S2) — dev-only
+```
+
+### Module Boundaries
+
+- **`transport.py` is the sole egress.** No other module shells out or opens a socket. This is the
+  **primary test seam** (Test Specs §2.1): L1 injects `fakes/fake_github.py` here. Enforces O5 (gh
+  required; raw-HTTP fast path deferred to W1) and subprocess safety (list-form, no `shell=True`).
+- **`core.py` holds all CRUD logic; the CLI/MCP fronts are thin.** A test that exercises only `core`
+  proves the logic, not the front (Test Specs §1.1) — hence the per-front L5 smoke.
+- **The model client never touches the data plane (G1/INV-1).** No module under `lib/backlog/` imports
+  or calls a model; the scrub's model-assisted step (Chunk 06) lives in the *skill/workflow* layer and
+  hands `core`/`migrate` a concrete cleaned set, never a model call (MIG-5).
+- **Return-value errors; exceptions only at the CLI boundary** (`cli.py` `run()`), per
+  `project-preferences` "Error handling" and API §4.
+- **`legacy.py` is inert during the build.** After the Chunk 01 move it is imported only by
+  `briefing.py`/`backlog_probes.py` (repointed) and its own tests; the markdown-backlog workflow is not
+  extended. Chunk 06 retires it once prawduct reads its live backlog through the adapter.
+
+## Build Chunks — the thin slice
+
+> The slice is the PRD's buildable increment: **core lib → CLI → one GitHub round-trip → prawduct-
+> first scrub + importer dry-run** (§16 item 6). Chunk 01 is a thin vertical through *every* layer;
+> each later slice chunk widens one coherent capability. Every chunk commits before the next (the
+> per-chunk-commit contract that scopes `chunk`-mode Critic reviews). Paths the chunk **creates** are
+> prefixed `new`.
+
+### Chunk 01: Walking skeleton — package move + `gh` seam + `file` + `get` + minimal `provision`
+
+- **Description:** Prove the whole path end-to-end at its thinnest: file an item, read it back — CLI →
+  `core` → `transport` → GitHub → back — with the L1 fake for the deterministic suite and **one real
+  round-trip** for the L5 smoke. Establishes the load-bearing seams every later chunk builds on: the
+  package (with `lib/backlog.py` relocated to `legacy.py` and importers repointed), the `gh`-only
+  transport driver, the stateful fake, the return-value envelope + error model + exit-code scheme, ID
+  normalization, the `prawduct:` block parse/serialize, and a **minimal** `provision` (create the
+  namespaced labels `file` needs, idempotent, no-collision — PROV-1 only; the GV6 drift-reconcile and
+  PROV-2 list-ignore land later). Architecture-validation keystone.
+- **Depends on:** none
+- **Artifacts consumed:** API §2.1 (`file`,`get`), §2.5 (`provision`), §3–§4 (envelope + error model),
+  §5 (versioning); Data Model §1.1 (Item), §2 (block), §3 (labels), §5 (IDs/aliases); Security §1/§1a
+  (identity validated early, non-interactive), §5 (attribution off the API identity); Test Specs §2.1
+  (seam), §3.6 (envelope), §3.7 (IDs), §3.5 (block parse), §3.9 (security-negative), §3.11
+  (provisioning), §6 (fake).
+- **Deliverables:** move `lib/backlog.py` → new `lib/backlog/legacy.py` + repoint `lib/briefing.py`,
+  `lib/backlog_probes.py`, and their tests; new `lib/backlog/__init__.py`,
+  new `lib/backlog/transport.py` (gh-only), new `lib/backlog/core.py` (`file`,`get`), new
+  `lib/backlog/encode.py` (block + soft-enum), new `lib/backlog/ids.py`, new
+  `lib/backlog/provision.py` (minimal), new `lib/backlog/cli.py`, the `backlog` dispatch line in
+  `bin/prawduct-hook`, new `tests/fakes/fake_github.py` (stateful transport-seam fake).
+- **Tests (L1 unless noted):** INV-1 (zero model on the CRUD path), INV-2 (one non-interactive call,
+  no TTY); envelope JSON-sole-stdout / stderr-diagnostics (§3.6); ID normalization idempotence (ID-1,
+  §3.7); the block-parse subset — soft-enum tolerance (ENC-1), last-block-wins (ENC-3), tolerant parse
+  (ENC-4) — since `file`/`get` build the parser here; **SEC-1** (no token in any output — the envelope
+  is built from known fields, never by echoing raw `gh` output, API §4); **SEC-3** (attribution off the
+  API identity, not git-push — Security §5); `provision` idempotency + non-collision (PROV-1, §3.11).
+  **L5 smoke:** one real `file`+`get` round-trip.
+- **Acceptance criteria:** default `pytest` passes **offline, no `gh`, no network**, and the existing
+  suite stays green after the `legacy.py` move; one live `prawduct-hook backlog file`/`get` round-trips
+  against a throwaway repo; no token appears in any output path.
+- **Critic mode:** final
+  <!-- Override: this lands the transport-seam + fake + envelope + package-move keystone the entire
+       plan rests on — full coherence review before widening. It is the heaviest chunk by design (a
+       walking skeleton establishes every seam); de-loaded from v1 by deferring raw-HTTP (W1) and full
+       provisioning (Chunks 03/04). -->
+- **Foreign API:** gh CLI + GitHub REST/GraphQL
+- **Exposed API:** prawduct-hook-backlog-cli (realizes the recorded `api_versioning_approach` +
+  `api_error_model_approach` from API §4/§5 — the exit-code scheme aligned with `prawduct-hook`'s
+  existing exit conventions)
+- **Visual change:** yes — the CLI's JSON envelope + human-mode output format is a consumer contract;
+  a human look at the output shape belongs before merge.
+- **Done when:**
+  0. **verify-api** — probe live `gh`/`api.github.com` for `file`/`get`/label-create/list; capture the
+     real response shapes to seed the fake (CONTRACT-1). This step **absorbs SPIKE-S1's core-gating
+     confirmations**: ETag/304 conditional-GET works, and issue **numbers are never reused** (M6). The
+     cloud-proxy-reach question (raw-HTTP fast-path availability) is an **optimization**, deferred to W1.
+  1. Acceptance criteria met and tests pass
+  2. `/prawduct:critic` run and blocking findings resolved
+  3. Committed and chunk marked `[x]` in Status
+
+### Chunk 02: Two-axis status + decoder + self-healing reconciliation (the CC1/M5 keystone)
+
+- **Description:** Land the state machine the whole system depends on: the idempotent **`set-status`**
+  primitive (open/closed + `state_reason` + `status:` label across two axes), the **decoder** (fail-open
+  precedence, tolerant of `duplicate`/human-UI drift — CC5), the **canonical write-order** + **idempotent
+  self-healing reconciliation** (labels re-derived from open/closed + state-reason), plus `update`
+  (optimistic CAS → `conflict`, CC2) and `comment`. This is where "a crashed client never half-writes"
+  becomes real for compound transitions (M5).
+- **Depends on:** Chunk 01
+- **Artifacts consumed:** API §2.1 (`status`,`update`,`comment`), §3 (envelope); Data Model §1.1
+  (`status`/`stage`/`closed_by` fields), §2 (the block the encoder writes), §4 (state machines —
+  idempotent `set-status`); Test Specs §3.5 (encoding), §3.2 (crash-safety), §3.9 (security-negative);
+  PRD §8.2 (CC1/CC2/CC5), M5.
+- **Deliverables:** the two-axis decoder/encoder in `lib/backlog/encode.py`, `set-status` + `update` +
+  `comment` in `lib/backlog/core.py`, the reconciliation routine (re-derive labels from state),
+  fault-injection support in the fake (fail the n-th mutating call).
+- **Tests (L1):** ENC-2 (two-axis round-trip), ENC-5 (torn-state decode), decoder self-heal on human-UI
+  drift (§3.5); CRASH-1 (`set-status` partial-transition recovery: crash mid-transition → re-run
+  converges, labels self-heal — §3.2); CC2 optimistic-CAS `conflict` on stale `updated_at`; **SEC-2**
+  (mass-assignment guard — `update`/`status` write only the fields the caller named, never
+  attacker-supplied extras, §3.9). **L5 smoke:** one real `status` transition round-trip.
+- **Acceptance criteria:** a crash injected between the two axes of a status transition leaves a
+  *resolvable* state and a re-run converges idempotently (no half-write survives); a human-made label/
+  state edit is reconciled, not rejected; `update` cannot write an unnamed field.
+- **Critic mode:** final
+  <!-- Override: the state-machine keystone — its coherence must hold before Chunks 03–06 build on it. -->
+- **Done when:**
+  1. Acceptance criteria met and tests pass
+  2. `/prawduct:critic` run and blocking findings resolved
+  3. Committed and chunk marked `[x]` in Status
+
+### Chunk 03: Query & ready-work — `link`/`unlink`, `list`, `pick`, `claim`/`unclaim`, `counts`
+
+- **Description:** Rescue the `/prawduct:backlog pick` UX in the slice, online and consistent. Build
+  `list` (structured field/label filters, sort, paginate — **online off the REST list endpoint**,
+  read-your-writes-in-practice), `pick` (ready-work: `open ∧ stage:ready ∧ unassigned` via `list`, then
+  a **per-candidate fan-out** — implemented as a **batched-GraphQL** round-trip — for "no open blockers"
+  + "claim past TTL"), `link`/`unlink` (native dependencies + sub-issues, so blockers are queryable —
+  DM3), `claim`/`unclaim` (atomic take-and-verify + default staleness-TTL reap so `pick` can't starve —
+  CC3/M11), `counts` (rollups derived on read), and PROV-2 (`list`/decode ignores non-prawduct issues
+  as out-of-scope, except the anonymous-quarantine case).
+- **Depends on:** Chunk 02
+- **Artifacts consumed:** API §2.2 (`list`,`pick`,`counts`), §2.3 (`link`/`unlink`), §2.1 (`claim`);
+  Data Model §4 (ready-work list-then-fan-out), §1.1/§1.4 (assignee/TTL); Test Specs §3.8 (query
+  semantics), §3.2 (claim race — CRASH-6), §3.11 (PROV-2); PRD §8.3 (Q1-structured/M8), §8.2 (CC3/M11),
+  §8.7 (GV1).
+- **Deliverables:** `lib/backlog/query.py` (`list`,`pick`,`counts`), `link`/`unlink` + `claim`/`unclaim`
+  in `core.py`, the ready-work batched-GraphQL fan-out, the claim-TTL reap policy, PROV-2 decode filter.
+- **Tests (L1):** §3.8 query-semantics (structured filter/sort/paginate; the **observed** — not
+  documented — 404-replication-window-after-create handled via the fake's replication-window mode, an
+  L5-owed behavior); `pick` returns ranked candidates + *why* and honors blockers/TTL; CRASH-6 (claim
+  double-take race → `claim_conflict`, non-fatal, §3.2); PROV-2 (non-prawduct issues ignored, §3.11).
+  **L5 smoke:** one real `list`/`pick` round-trip.
+- **Known forward dependency:** `pick`'s < 2 s latency floor assumes the **batched-GraphQL** fan-out
+  (an N+1-REST-over-`gh` fan-out blows 2 s at 3–5 candidates, NFR §4 open-Q4). This chunk implements the
+  batched path; its measured floor (PROBE-LAT, candidate-parameterized) is **pinned by SPIKE-S2** in
+  Chunk 06 — noted here as a forward dependency, not a gate (correctness holds either way).
+- **Acceptance criteria:** `prawduct-hook backlog pick` returns the correct ready-work set (blockers
+  closed, unclaimed, `stage: ready`) online with no cache, matching the current skill's contract (GV1).
+- **Done when:**
+  1. Acceptance criteria met and tests pass
+  2. `/prawduct:critic` run and blocking findings resolved
+  3. Committed and chunk marked `[x]` in Status
+
+### Chunk 04: Governance surface — `refresh-counts`, `reconcile-labels`, never-block floor, unattended security
+
+- **Description:** Build the governance capability (tested, not yet wired to prawduct's own briefing —
+  that repoint is Chunk 06, post-migration, when prawduct's backlog is actually on GitHub Issues).
+  `refresh-counts` (the `briefing_counts` snapshot — a degenerate cache with visible age so session
+  start never waits, GV2/M3), `reconcile-labels` (the GV6 label-drift/coexistence reconcile deferred
+  from Chunk 01), the **never-block floor** (G2/AG4: a backend failure returns a clear retryable
+  `unavailable`, gates/hooks tolerate it, nothing hangs or corrupts), and the **unattended security**
+  behaviors (SEC-5 Actions-withhold, SEC-6 unattended-fail-clean).
+- **Depends on:** Chunk 03
+- **Artifacts consumed:** API §2.4 (`refresh-counts`), §2.5 (`reconcile-labels`); Data Model §6
+  (`briefing_counts` snapshot — the P0 persisted-counts floor), §3 (label taxonomy/coexistence);
+  Security §1a (unattended), §1b (Actions untrusted triggers); Test Specs §3.4 (never-block / graceful
+  degradation), §3.3 (freshness / visible age), §3.9 (SEC-5/SEC-6), §3.11 (reconcile); PRD §8.7
+  (GV2/GV5/GV6), §5 (G2/G3).
+- **Deliverables:** `refresh-counts` + the detached briefing-refresh subprocess (D6 — sync core,
+  subprocess warm, no asyncio), `reconcile-labels` in `provision.py`, degradation handling on the
+  transport error path, the unattended-context guards.
+- **Tests (L1):** §3.4 never-block (backend down → fail-fast retryable `unavailable`, no hang; gates
+  tolerate it); §3.3 visible-age on any snapshot read; SEC-5 (Actions context withholds
+  broad-token operations), SEC-6 (unattended failure is clean, never a hang or a half-write); GV6
+  reconcile leaves existing non-prawduct labels untouched. **L5 smoke:** `refresh-counts` writes a
+  snapshot against a live repo.
+- **Acceptance criteria:** with GitHub unreachable, `prawduct-hook backlog` ops fail fast with a clear
+  retryable error and a snapshot read still returns (with visible age) — never a hang, never a crash,
+  never a corrupt write; label reconcile is drift-correcting and collision-free.
+- **Critic mode:** chunk
+  <!-- Demoted from v1's `final` (review-wall-clock is P0): nothing structurally builds on this chunk's
+       coherence the way 02→03 does; cross-file coherence is caught by the Chunk-06 cumulative pass. -->
+- **Done when:**
+  1. Acceptance criteria met and tests pass
+  2. `/prawduct:critic` run and blocking findings resolved
+  3. Committed and chunk marked `[x]` in Status
+
+### Chunk 05: Importer + alias machinery + minimal `merge` + `export` (mechanism, fixture-proven)
+
+- **Description:** Build the **highest-risk operation** and its exit, proven on fixtures (the live spike
+  is Chunk 06). `import` (`backlog.md` + archive → issues): **idempotent, resumable**, keyed on the
+  `id:PFX` alias (skip-if-exists), durable checkpoint, **no "rollback"** (GitHub never reuses numbers —
+  recovery = re-run into the same repo, M6). The **alias machinery** (`PFX-XXXX` → permanent `id:PFX`
+  alias label + body-block entry + redirects, D4/M4). A **minimal `merge`** (fold A→B: preserve both
+  bodies, write the `superseded-by:` redirect **before** closing the source — the MG4 scrub in Chunk 06
+  needs it to dispose duplicates; AU3/DM7). And `export` — full-fidelity dump serializing the **native
+  graph** (deps, sub-issues, timeline, assignees), a cheap dump not lossless re-import (MG2/G5/M10).
+  *`export` stays in this chunk with `import`* because the MIG-1 test is an `import`→`export`→diff
+  round-trip — they are tested as a pair.
+- **Depends on:** Chunk 02 (encoding), Chunk 03 (relationships for graph export + `link`)
+- **Artifacts consumed:** API §2.5 (`import`,`export`), §2.3 (`merge`); Data Model §5 (`id:PFX` alias,
+  checkpoint), §1.1/§1.3/§2 (what `export` serializes — the block + native graph; *see coherence debt:
+  the on-disk export representation PRD §8.9/MG2 promised the Data Model would pin is not squarely
+  delivered there*); NFR §3 (write pacing — 80/min + ~500/hr), §8 (export fidelity); Test Specs §3.10
+  (MIG-1…MIG-4), §3.2 (CRASH-4 resumable import; CRASH-2 merge redirect-before-close); PRD §8.9, §11-S2.
+- **Deliverables:** `lib/backlog/migrate.py` (`import`,`export`), the minimal `merge`, alias/redirect
+  resolution in `ids.py`, the durable checkpoint, write-pacing (respect 80/min + ~500/hr).
+- **Tests (L1):** MIG-1 (verbatim body/ID/section fidelity via the `import`→`export` round-trip),
+  MIG-2 (multi-prefix absorption: every hand-minted `PFX` → permanent alias, no new PFX minted),
+  MIG-3 (export serializes the native graph), MIG-4 (cache rebuild no-data-loss — scaffolded; full
+  cache is W1); **CRASH-4** (crash mid-import → resume converges, no duplicates — *not CRASH-3, which is
+  `split`/W3*); **CRASH-2** (merge writes the redirect before closing the source; a crash leaves a
+  resolvable open-but-redirected source). **L3 PROBE-RATE:** the fixture import exercises write-pacing.
+- **Acceptance criteria:** a clean `import` → `export` round-trip on `discodon-mini` preserves IDs,
+  bodies, and sections verbatim; a crash-injected import resumes without duplicating; a merge never
+  closes-then-orphans.
+- **Critic mode:** final
+  <!-- Override: the riskiest single op; its mechanism must be sound before the real dogfood migration
+       in Chunk 06 builds on it. The live SPIKE-S2 is deliberately isolated to Chunk 06. -->
+- **Foreign API:** GitHub REST/GraphQL (issue create, `state_reason`, native deps/sub-issues, timeline,
+  `gh issue transfer` node_id)
+- **Done when:**
+  0. **verify-api** — record real shapes for the migration calls (create, label, dependency, sub-issue,
+     timeline, transfer) to seed the fake and back CONTRACT-1
+  1. Acceptance criteria met and tests pass
+  2. `/prawduct:critic` run and blocking findings resolved
+  3. Committed and chunk marked `[x]` in Status
+
+### Chunk 06: SPIKE-S2 dry-run + MG4 scrub + prawduct-first real migration (dogfood)
+
+- **Description:** Execute the real thing. First run **SPIKE-S2** (the live dry-run isolated from the
+  Chunk-05 mechanism). Then build the **MG4 scrub workflow** — **model-surfaced** stale/dup candidates
+  read from `list` output (the model reads the item list and proposes dispositions — *this is the
+  model-in-the-decision; it needs no `search --like`, which is the post-cache accelerator, W2*) →
+  **owner-confirmed** dispositions → `status`/`merge` on the cleaned set → deterministic `import` (the
+  model is in the *decision*, never the data plane — MIG-5/G1). Then **migrate prawduct's own backlog**
+  (the bulk import), **repoint prawduct's briefing/gates** through the adapter, **retire
+  `lib/backlog/legacy.py`** and the **`incoming-bugs/` drop-box** (XP1 becomes the upstream path). This
+  is the slice's completion and its acceptance test.
+- **Depends on:** Chunk 04 (governance read-path), Chunk 05 (importer, `merge`, `export`)
+- **Artifacts consumed:** API §2.5 (scrub workflow over `list`/`status`/`merge`/`import`; `export` as
+  the pre-migration backup); PRD §8.9 (MG4 scrub, prawduct-first, drop-box retirement, **MG3
+  coexistence**), §4 (dogfood success criterion); Data Model §3 (label coexistence with prawduct's
+  existing issues); Test Specs §3.10 (MIG-5 scrub keeps the model out of the data plane), §5 (SPIKE-S2).
+- **Deliverables:** new `tests/spikes/s2_migration.py` (the live dry-run), the scrub workflow (a
+  `/prawduct:backlog`-adjacent skill/workflow step + the deterministic `import` of the cleaned set), the
+  real migrated prawduct backlog repo, the `briefing.py`/gates repoint to the adapter, removal of
+  `lib/backlog/legacy.py` + the `incoming-bugs/` drop-box.
+- **Tests (L1):** MIG-5 (owner-confirmed dispositions; the `import` step receives a concrete cleaned
+  set, not a model call; nothing hard-deleted — dispose via status/merge, DM7). **SPIKE-S2 (L4, step 0):**
+  body-fidelity, ID aliasing, relationship reconstruction, archive volume/noise, resumability,
+  **batched-vs-N+1 fan-out** (pins `pick`'s PROBE-LAT floor from Chunk 03), **node_id stability across
+  transfer**. **Live dogfood:** the real prawduct migration is the acceptance evidence; **L5 smoke** on
+  the two CLI round-trips the slice supports (`file`, `import`+`export` — MCP is W5, not a slice front).
+- **Acceptance criteria:** prawduct's backlog is live on GitHub Issues with every `PFX` ID resolving as
+  an alias; the scrub disposed stale/dup items with owner confirmation (no silent drops, nothing
+  hard-deleted); the briefing reads live counts through the adapter; `legacy.py` + `incoming-bugs/` are
+  retired.
+- **Type:** cumulative-final
+  <!-- Last slice chunk: its review IS the one `/prawduct:critic cumulative` against merge-base…HEAD,
+       and the `/prawduct:pr create` gate for the slice PR. Commit first, run cumulative once. -->
+- **Visual change:** yes — the owner reviews the scrub dispositions and the migrated repo; append a
+  `.prawduct/operator-verification.md` entry (VRF) describing what to eyeball (a spot-check of migrated
+  bodies/IDs, the disposition list, the live briefing counts).
+- **Done when:**
+  0. **SPIKE-S2** — run the live dry-run on a throwaway copy of prawduct's repo; record the settled
+     facts (fan-out constant, node_id-across-transfer) back into NFR §4 / this plan
+  1. Acceptance criteria met and tests pass
+  2. Committed, then `/prawduct:critic cumulative` run and blocking findings resolved
+  3. Chunk marked `[x]` in Status; the slice branch is PR-ready (`/prawduct:pr create`)
+
+## Post-slice widening — roadmap (lower resolution)
+
+> These are the **optional P1/P2 layers** (PRD §6: "everything else earns its keep for a specific
+> workload"). Each is specified at PRD/artifact altitude and **detailed to code-level when its layer is
+> picked up** — not chunked here (proportional effort; deferred-work over-specification is a named
+> trap). Every one is dependency-noted and mapped to its §8 capability, its artifact sections, and its
+> test IDs, so nothing is silently dropped (Complete Delivery, P2).
+
+| ID | Layer | Delivers (§8 / API) | Consumes | Key tests | Gated by |
+|---|---|---|---|---|---|
+| **W1** | Read-through cache + `sync` | cache (SQLite, per-clone, gitignored, visible age, revalidate-on-decision) + `sync` (changed-since cursor, Q2); the raw-HTTP fast path + cloud-proxy-reach optimization (S1 residual) | Data Model §6 (cache schema), §7 (schema versioning), NFR §3/§8, PRD §8.1/§8.3 (D5, Q2) | MIG-4 (rebuild no-loss), §3.3 (visible age/revalidate) | **S4** (cache freshness protocol) — travels with the cache, does not gate the slice |
+| **W2** | Search + dedup | `search --text/--like` (cache-served, GitHub search not read-your-writes), dedup-on-create advisory-async (AG3), `--semantic` (P2, GA) | API §2.2, Data Model §6, NFR §9 | Q3 lexical/semantic, §3.8 | W1 (cache) for `--text`/`--like` |
+| **Wv** | Verification & grooming | `verify` (record + query "premise re-checked", TF2) + stale-verification query + mass grooming sweep (TF3); the layer that (with the scrub) attacks the **#1 stale-content** pain | API §2.1 (`verify`), Data Model §1.1 (`verified` list), PRD §8.2 (TF2/TF3) | **CRASH-5** (`verify` append-with-dedup, keyed on actor+date) | W3 (`batch`) for mass grooming; W1 (cache) for the stale-verification query |
+| **W3** | Cross-project + automation | `file-upstream` (XP1/XP2, public/foreign identity plane), `batch` (AU2), `merge`/`split` **full** (AU3, keyed idempotency — the slice built only minimal `merge`), `rollup` (Q4 cross-owner fan-out); **AU1** events/webhooks (the cheap-polling baseline is `sync`/W1; webhooks are the optional enhancement) | API §2.3/§2.4, Security §1/§2 (auth by target owner), Data Model §5 (`source-key:`/`split-op:` markers) | §3.13 (AU2/XP1-XP2), §3.9 (security-negative), CRASH-3 (split), §3.2 | user-token / public-plane auth (Security §1); PV3 anonymous gated on `MET-6T4K` |
+| **W4** | Attachments | `attach` (release-asset **or** attachments-branch via git-data API, both no-PR) | API §2.1 (`attach`), Data Model §1.6, PRD §8.8 (D9) | DM6 attach idempotency (key TBD by S5) | **S5** (inline-render on private) — decides the idempotency key |
+| **W5** | MCP surface | thin MCP server over the same core (experimental tier) | API §1/§7 | one smoke test (isError mapping, delegates to core — Test Specs §1.1) | none (thin) |
+| **W6** | App identity + offline queue | GitHub App per-owner rate/attribution upgrade (optional), offline write-queue (P2, provisional-ID reconcile-on-flush) | Security §1/§7 (D8), API §3 (queued envelope state) | §3.9 identity, provisional-ID reconcile | App registration (owner); S3 rate tuning |
+| **Wg** | GV3 reconciliation janitor | `closed_by` authority + bidirectional drift sweep (shipped-but-PR-died / merged-but-item-open) as a deterministic janitor workflow | API §2.6, Data Model §1.1 (`closed_by`), PRD §8.7 (GV3) | GOV-1 (§3.12) | none (rides the janitor) |
+
+**Roadmap sequencing note.** W1 (cache) unblocks W2 (`--text`/`--like` search) and Wv's
+stale-verification query. W3/W4/W5/W6/Wg are mutually independent and each cheap-ish; sequence them by
+which workload bites first (grooming fan-out → W1/W2/Wv; consumer upstream filing → W3; screenshots →
+W4). **discodon migration** (a PRD §4 success criterion — "~317 open items migrate with IDs preserved")
+is a **post-slice operational re-run of the Chunk-05 importer** against discodon (after its own scrub),
+not a new capability and not a dropped requirement. Each roadmap layer re-enters this plan for a
+code-level chunk breakdown at pick-up, and re-runs its own independent review.
+
+## Early Feedback Milestone
+
+**Milestone chunk:** 01 — after the walking skeleton, the owner (and any agent) can
+`prawduct-hook backlog file`/`get` against a real repo and see an item round-trip. The full slice value
+(live `pick`, zero-conflict CRUD, migrated backlog) lands at Chunk 06.
+
+## Governance Checkpoints
+
+**Commit & PR cadence:** commit per chunk after its Critic review passes (per-chunk commit is what
+scopes `chunk`-mode reviews; Chunks 01/02/05 override to `final` for keystone/risk coherence, Chunk 04
+runs `chunk`). The slice ships as **one PR** — Chunk 06 is `cumulative-final`, so its
+`/prawduct:critic cumulative` review is the `/prawduct:pr create` gate for the whole slice branch
+(Principle 14 at the bundle level). Per `project-preferences`, PRs are created and merged only when the
+owner asks (`wait_for_user`), merge strategy = merge-commit. **Review-count budget (P0 learning):** four
+heavy reviews across the slice (01/02/05 `final` + 06 `cumulative`); Chunk 04 was demoted from v1's
+`final` to keep the count honest.
+
+- **After Chunk 01 (architecture validation):** does the transport-seam + fake + envelope actually
+  prove the layers connect, and did the `legacy.py` move leave the framework green? Is the fake's
+  fidelity honest (CONTRACT-1 seeded from real shapes)? The point to catch a wrong foundational seam.
+- **After Chunk 02 (state-machine keystone):** does the two-axis decoder + reconciliation hold under
+  crash injection and human-UI drift, and does mass-assignment (SEC-2) hold, before Chunks 03–06 build
+  on it?
+- **After Chunk 05 (migration mechanism):** is the importer resumable/idempotent, `merge` crash-safe,
+  and `export` full-fidelity on fixtures before the live SPIKE-S2 and the real dogfood migration in 06?
+- **After Chunk 06 (cumulative, slice complete):** full-bundle review; the slice is PR-ready. Confirm
+  the honest scope held — the slice delivers stale-*views* + conflict-free + online `pick`, and the plan
+  did **not** silently claim the #1 stale-*content* win (that is TF2/TF3 + the scrub — Wv/W-roadmap).
+
+## Traceability — every slice P0 capability lands in a chunk
+
+| §8 capability (P0 unless noted) | Chunk |
+|---|---|
+| Deterministic CRUD, one-call `file`, JSON+human (AG1/AG2/AG6, G1) | 01 |
+| `provision` label taxonomy — minimal create (GV5) | 01 · full coexistence-reconcile (GV6) 04 · PROV-2 decode-ignore 03 |
+| Envelope + error model + exit codes (API §3/§4) | 01 |
+| Stable IDs, `PFX` aliases, redirects (DM4/D4) | 01 (normalize) · 05 (alias machinery) |
+| Per-project visibility inherits repo access (**PV1** — Security §2, delegated) | 01 (structural — GitHub-delegated) |
+| Real scoped/revocable credentials, not a shared secret (**PV2** — Security §1/§4) | 01 (inherits session `gh` auth, O5) |
+| No token in output · attribution off API identity · mass-assignment guard (SEC-1/SEC-3/SEC-2) | 01 (SEC-1/3) · 02 (SEC-2) |
+| Unattended fail-clean · Actions-context withhold (SEC-5/SEC-6, Security §1a/§1b) | 04 |
+| Two-axis status, crash-safe transitions, reconciliation (DM2/CC1/CC5, M5) | 02 |
+| No lost updates — optimistic CAS (CC2) · comments (DM5) | 02 |
+| Structured `list` online + `pick` ready-work (Q1-structured/GV1, M8) | 03 |
+| Relationships queryable (DM3) · claims + TTL reap (CC3, M11) | 03 |
+| Counts + briefing snapshot, start never waits (Q5/GV2, M3) | 03 (`counts`) · 04 (`refresh-counts` snapshot) |
+| Actor identity kept as per-item history (**CC4**, P1 — Security §5) | 01/02 (coverage by inheritance: native timeline `history` + attribution off API identity, SEC-3; named here for bookkeeping) |
+| Never-block floor + graceful degradation (AG4/G2) · freshness/visible-age (TF1/G3) | 04 |
+| One-shot resumable importer (MG1) · full-fidelity export (MG2/G5) · minimal `merge` (AU3, for the scrub) | 05 |
+| Pre-migration scrub, prawduct-first, drop-box retirement, coexistence (MG4/MG3) | 06 |
+| Adopter-reproducible backend shipped in the plugin (GV4/G4) | 01–06 (built in-plugin, `gh` transport) |
+
+*P1/P2 capabilities (cache, full-text/semantic search, dedup-async, **`verify`/TF2 + grooming/TF3**,
+`file-upstream`, `batch`, full `merge`/`split`, `rollup`, `AU1` events, attachments, MCP, App identity,
+offline queue, GV3 sweep) map to the W1–Wg roadmap rows above — deferred by design, not dropped.*
+
+## Coherence debts filed (peer-doc — sweep, do not fix here)
+
+Surfaced by the v2 independent review; collected for a peer-doc touch-up pass (P12 scope discipline —
+the previous drill-downs filed and swept debts the same way). None blocks Promotion; each is a wording/
+placement fix in a *sibling* doc:
+
+1. **API contract §1 — CLI surface spelling.** §1 writes the public surface as `prawduct backlog <op>`;
+   the owner-decided home is **`prawduct-hook backlog <op>`** (one entry point). Reconcile §1 (and any
+   `prawduct backlog` occurrences) to the real command, or state `prawduct backlog` as a doc-shorthand
+   with no separate binary.
+2. **Data Model — the on-disk export representation.** PRD §8.9/MG2 promises "§16 Data Model pins the
+   on-disk representation" of the full-fidelity export (the native graph — deps, sub-issues, timeline,
+   assignees). The Data Model does not squarely deliver a §-section for it (it is only implied by §1.1
+   `history`, §1.3 relationships, §2 block). Add a Data Model section (or a §6-adjacent export-format
+   note) so Chunk 05's `export` has a clean parent, or amend PRD §8.9 to point at NFR §8 as the fidelity
+   authority.
+3. **API §2.5 / Test Specs MIG-5 — the scrub's op dependencies.** Both describe the MG4 scrub as
+   "`list` + `search --like` surface → … → `status`/`merge`". In the slice, `search --like` is
+   post-cache (W2) and unavailable, so the slice scrub uses **model-surfaced dedup over `list`** + the
+   minimal `merge`. Reconcile the scrub's description to name `search --like` as the *post-cache
+   accelerator*, not a hard dependency, so the P0 MG4 scrub is buildable in the cacheless slice.
+
+---
+
+*Independent review folded (2026-07-16, Principle 14):* a fresh-eyes build/sequencing critic + a
+coverage/traceability verifier reviewed v1 (the two-reviewer pattern the five sibling drill-downs used).
+Confirmed findings are folded above and inline; the three residual peer-doc items are filed as coherence
+debts (not fixed here — scope discipline). Next: owner sign-off on v2 → the coherence sweep → Promotion
+to an active build plan (`.prawduct/artifacts/` + `active_build_plan`).
