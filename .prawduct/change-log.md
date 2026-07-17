@@ -3,6 +3,28 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-07-17: Backlog service — GitHub Issues as the system-of-record (backlog-service)
+
+<!-- prawduct: type=feature | scope=backlog-service-v1 | chunks=01,02 -->
+<!-- Statusless on feature/backlog-prd-owner-feedback = release-pending once merged.
+     Large subsystem; plan at .prawduct/artifacts/build-plan-backlog-service.md, one
+     commit per chunk, per-chunk Critic. Chunks 03–06 pending. -->
+
+**Parent:** BKL-5D2C — replace the markdown backlog (slow, merge-conflict-prone, git-coupled;
+the deepest measured pain being stale/untrusted item state) with **GitHub Issues as the
+system-of-record** via a deterministic `prawduct-hook backlog` adapter (PRD §16 item 6).
+
+**What (chunks built so far):**
+- **Chunk 01 — walking skeleton:** the `lib/backlog/` package (transport seam + in-process
+  fake, `file`/`get`, minimal `provision`), the `bin/prawduct-hook backlog` dispatch, and the
+  markdown parser moved to `legacy.py` (all readers repointed). Live round-trip verified (VRF-004).
+- **Chunk 02 — two-axis status state machine (CC1/M5 keystone):** crash-safe idempotent
+  `set-status` (state-authority-first, add-before-remove, self-healing reconciliation), `update`
+  (optimistic CAS → `conflict`, SEC-2 mass-assignment guard, block-preserving body edits), and
+  `comment`. Live status path queued as VRF-005.
+
+**Classification:** structural
+
 ## 2026-07-16: Structural coverage — a forcing function for what a product owes (structural-coverage)
 
 <!-- prawduct: type=feature | scope=structural-coverage | chunks=01,02,03,04,05 -->

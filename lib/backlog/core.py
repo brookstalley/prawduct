@@ -133,6 +133,26 @@ def _body_with_block(body: str) -> str:
     return f"{block}\n"
 
 
+def _body_update_preserving_block(old_body: str, new_body: str) -> str:
+    """Apply a caller's body edit while **preserving the existing ``prawduct:``
+    block**.
+
+    The block carries body-authoritative fields (``id_aliases``, ``verified``,
+    ``superseded_by`` …) that live ONLY in the body (Data Model §2) — a naive
+    full-body replacement would silently drop them (an MG2 / permanent-alias-loss
+    footgun). So: re-parse the existing block, strip any block the caller pasted
+    into the new text (the block is edited through its own fields, not free-text
+    ``--body``), and re-append the preserved block. No existing block → a fresh
+    ``v: 1`` (same as ``file``).
+    """
+    block = encode.parse_block(old_body)
+    human = encode.strip_block(new_body)
+    rendered = block.reserialize() if block.fields else encode.serialize_block({"v": "1"})
+    if human:
+        return f"{human}\n\n{rendered}\n"
+    return f"{rendered}\n"
+
+
 # --- get ---------------------------------------------------------------------
 
 
@@ -301,8 +321,12 @@ def update_item(
                 },
             )
 
-        # Direct fields (title/body) — one PATCH; labels are untouched by this.
-        patch = {key: fields[key] for key in _UPDATE_DIRECT if key in fields}
+        # Direct fields — one PATCH; labels are untouched by this. A body edit
+        # preserves the existing prawduct: block (block-authoritative fields live
+        # only in the body — Data Model §2); other direct fields pass through.
+        patch: dict = {k: fields[k] for k in _UPDATE_DIRECT if k in fields and k != "body"}
+        if "body" in fields:
+            patch["body"] = _body_update_preserving_block(issue.get("body") or "", fields["body"])
         if patch:
             issue = transport.update_issue(nid.owner, nid.repo, nid.number, fields=patch)
 

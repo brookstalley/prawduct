@@ -119,12 +119,15 @@ rulings. The roadmap stays Medium by design until each layer's workload justifie
 - [ ] Chunk 06: SPIKE-S2 dry-run + MG4 scrub + prawduct-first real migration (dogfood, cumulative-final)
 - [ ] Roadmap (post-slice, lower resolution): W1 cache+sync · W2 search+dedup · Wv verify+grooming · W3 cross-project+automation · W4 attachments · W5 MCP · W6 App identity + offline queue · Wg GV3 janitor
 Context: Draft v2 authored 2026-07-16 (v1 + two independent reviews folded; the 3 peer-doc coherence
-debts swept the same session). Chunk 01 built + committed 2026-07-17 (walking skeleton), branch
-reconciled with develop (v3.0.4), offline suite green, Critic re-review clean (0 blocking). The
-`[ ]` above stays unchecked by design until Done-when step 3's change-log entry flips it via
-`regen-views`; the live round-trip (step 0 / acceptance) was verified live 2026-07-17 (operator-verification VRF-004).
-Still a design artifact **promoted 2026-07-16**; owner sign-off pending. Next: owner sign-off
-(VRF-004 live verification complete), then Chunk 02 (read `methodology/building.md` first).
+debts swept the same session). Chunks 01–02 built + committed 2026-07-17: Chunk 01 the walking
+skeleton (VRF-004 live-verified), Chunk 02 the two-axis status state machine (crash-safe `set-status`,
+`update` with optimistic CAS + mass-assignment guard + block-preserving body edits, `comment`; live
+status path queued as VRF-005). Branch reconciled with develop (v3.0.4); offline suite green (1990
+passed); Chunk 02 Critic (cumulative/final over the slice) 0 blocking, warnings resolved. The `[ ]`
+boxes above stay unchecked by design — a statusless change-log entry is release-pending; `regen-views`
+flips them to `[x]` only at release (`status=shipped`), not at build. Still a design artifact
+**promoted 2026-07-16**; owner sign-off pending. Next: Chunk 03 (query & ready-work — `list`/`pick`/
+`claim`/`counts`), or owner sign-off + slice merge.
 
 ## Scaffolding
 

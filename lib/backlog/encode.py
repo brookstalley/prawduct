@@ -1,6 +1,6 @@
-"""Encoding: the ``prawduct:`` body block, soft-enum tolerance, and item decode.
+"""Encoding: the ``prawduct:`` block, soft enums, item decode, and status encoding.
 
-Three concerns, all pure (a function-level seam — Test Specs §2.1; no transport):
+Four concerns, all pure (a function-level seam — Test Specs §2.1; no transport):
 
 1. **The ``prawduct:`` block** (Data Model §2) — a single fenced ``prawduct``
    block at the end of an issue body carrying the non-native, block-authoritative
@@ -15,9 +15,15 @@ Three concerns, all pure (a function-level seam — Test Specs §2.1; no transpo
 
 3. **Item decode** — read a GitHub issue's state/labels/block into the item
    projection (Data Model §1.1). The two orthogonal axes (``status`` × ``stage``)
-   are never flattened (DM2). *The self-healing reconciling write* that strips
-   losing labels is the ``set-status`` keystone built next; this module decodes
-   with the same precedence but does not itself mutate.
+   are never flattened (DM2); ``decode_status`` resolves torn/multi-label states by
+   documented fail-open precedence but does not itself mutate.
+
+4. **Status encoding** — the write-side inverse of ``decode_status``:
+   ``_STATUS_ENCODING`` (the single source of truth) + ``encode_status`` map each
+   status to its ``(state, state_reason, status_label)`` shape (ENC-2), and
+   ``reconcile_status_labels`` is the pure label-derivation both the ``set-status``
+   transition and the self-heal apply (Data Model §4). Still pure — the mutation
+   itself lives in ``core.set_status`` over the transport.
 """
 
 from __future__ import annotations
@@ -35,16 +41,27 @@ STAGE_VALUES: tuple[str, ...] = (
     "design",
     "ready",
 )
-# The full status vocabulary (closed set — an unknown status is a hard reject).
-STATUS_VALUES: tuple[str, ...] = (
-    "submitted",
-    "open",
-    "in-progress",
-    "shipped",
-    "dropped",
+# The status axis has ONE canonical GitHub encoding per value (Data Model §4) — the
+# single source of truth: open sub-states live only in the `status:` label; closed
+# states live in `state_reason`; `open`/`shipped`/`dropped` carry no status label. An
+# unknown status is a hard reject. STATUS_VALUES / STATUS_OPEN_LABELS derive from it,
+# so the vocabulary can never drift from the encoding.
+_STATUS_ENCODING: "OrderedDict[str, tuple[str, str | None, str | None]]" = OrderedDict(
+    # status        (state,   state_reason,  status: label)
+    (
+        ("submitted", ("open", None, "status:submitted")),
+        ("open", ("open", None, None)),
+        ("in-progress", ("open", None, "status:in-progress")),
+        ("shipped", ("closed", "completed", None)),
+        ("dropped", ("closed", "not_planned", None)),
+    )
 )
-# Open sub-states that live *only* in a `status:` label (Data Model §4).
-STATUS_OPEN_LABELS: tuple[str, ...] = ("submitted", "in-progress")
+#: The full status vocabulary (closed set), stable order — derived from the SoT.
+STATUS_VALUES: tuple[str, ...] = tuple(_STATUS_ENCODING)
+#: Open sub-states that live *only* in a `status:` label (Data Model §4).
+STATUS_OPEN_LABELS: tuple[str, ...] = tuple(
+    status for status, (_state, _reason, label) in _STATUS_ENCODING.items() if label is not None
+)
 
 # Facets carried as `<facet>:value` labels (Data Model §3). `kind/area/effort/
 # impact/source` are open soft enums (any value accepted); `stage` has a known
@@ -128,6 +145,18 @@ def parse_block(body: str | None) -> Block:
             continue
         block.fields[key] = value.strip()  # last occurrence wins
     return block
+
+
+def strip_block(body: str | None) -> str:
+    """Return an issue body with any ``prawduct:`` block removed (human text only).
+
+    Used when a caller replaces the body: the block is body-authoritative and is
+    preserved separately, so a block the caller happens to paste into the new text
+    is dropped to avoid a duplicate (last-block-wins parse, Data Model §2).
+    """
+    if not body:
+        return ""
+    return _BLOCK_RE.sub("", body).rstrip("\n")
 
 
 def serialize_block(fields: dict[str, str]) -> str:
@@ -290,23 +319,8 @@ def decode_status(issue: dict, labels: list[str]) -> tuple[str, list[str]]:
 
 
 # --- status encoding (the write-side inverse of decode_status) ---------------
-#
-# Two orthogonal axes (Data Model §4). The status axis has ONE canonical GitHub
-# encoding per value: open sub-states live only in the `status:` label; closed
-# states live in `state_reason`; `open`/`shipped`/`dropped` carry no status label.
-_STATUS_ENCODING: "OrderedDict[str, tuple[str, str | None, str | None]]" = OrderedDict(
-    # status        (state,   state_reason,  status: label)
-    (
-        ("submitted", ("open", None, "status:submitted")),
-        ("open", ("open", None, None)),
-        ("in-progress", ("open", None, "status:in-progress")),
-        ("shipped", ("closed", "completed", None)),
-        ("dropped", ("closed", "not_planned", None)),
-    )
-)
-
-#: The valid `status` values, in a stable order.
-STATUS_VALUES: tuple[str, ...] = tuple(_STATUS_ENCODING)
+# (The `_STATUS_ENCODING` source of truth + STATUS_VALUES/STATUS_OPEN_LABELS are
+# defined at the top under Vocabularies; these are the functions over it.)
 
 
 def encode_status(status: str) -> tuple[str, str | None, str | None]:

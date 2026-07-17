@@ -301,6 +301,38 @@ class TestUpdateItem:
         r = core.update_item(fake, id_raw=f"{OWNER}/{REPO}#{n}", fields={"title": "new", "body": "changed"})
         assert r["status"] == "ok" and r["data"]["title"] == "new"
 
+    def test_body_update_preserves_the_prawduct_block(self, fake):
+        # A --body edit must NOT drop body-authoritative block fields (id_aliases,
+        # etc.) that live only in the body (Data Model §2) — the MG2/permanent-
+        # alias-loss footgun the update path would otherwise open.
+        fake.seed_labels(OWNER, REPO, _STATUS_LABELS)
+        body = "original text\n\n```prawduct\nv: 1\nid_aliases: [BKL-0007]\n```\n"
+        n = fake.create_issue(OWNER, REPO, title="t", body=body, labels=[])["number"]
+        r = core.update_item(fake, id_raw=f"{OWNER}/{REPO}#{n}", fields={"body": "rewritten body"})
+        assert r["status"] == "ok"
+        new_body = fake.get_issue(OWNER, REPO, n)["body"]
+        assert "rewritten body" in new_body and "original text" not in new_body  # text replaced
+        assert "id_aliases: [BKL-0007]" in new_body  # block preserved intact
+
+    def test_body_update_without_existing_block_adds_a_fresh_one(self, fake):
+        n = _seed_item(fake, body="plain, no block")
+        r = core.update_item(fake, id_raw=f"{OWNER}/{REPO}#{n}", fields={"body": "new plain"})
+        assert r["status"] == "ok"
+        new_body = fake.get_issue(OWNER, REPO, n)["body"]
+        assert "```prawduct" in new_body and "v: 1" in new_body
+
+    def test_body_update_drops_a_caller_pasted_block_no_duplicate(self, fake):
+        # The block is edited through its own fields, not free-text --body: a block
+        # the caller pastes in is stripped so there is never a duplicated block.
+        fake.seed_labels(OWNER, REPO, _STATUS_LABELS)
+        body = "x\n\n```prawduct\nv: 1\nid_aliases: [BKL-0001]\n```\n"
+        n = fake.create_issue(OWNER, REPO, title="t", body=body, labels=[])["number"]
+        pasted = "new\n\n```prawduct\nv: 1\nid_aliases: [ATTACKER]\n```\n"
+        core.update_item(fake, id_raw=f"{OWNER}/{REPO}#{n}", fields={"body": pasted})
+        new_body = fake.get_issue(OWNER, REPO, n)["body"]
+        assert new_body.count("```prawduct") == 1  # exactly one block
+        assert "BKL-0001" in new_body and "ATTACKER" not in new_body  # existing block wins
+
     def test_facet_edit_swaps_the_label(self, fake):
         n = _seed_item(fake, labels=["stage:idea"])
         r = core.update_item(fake, id_raw=f"{OWNER}/{REPO}#{n}", fields={"stage": "ready"})
