@@ -10,17 +10,30 @@ failures) and unexpected ``OSError``/``JSONDecodeError`` from the transport,
 which are mapped and logged, never swallowed (ERR-6).
 
 Implemented ops: ``file``, ``get``, the two-axis ``set-status`` transition,
-``update`` (optimistic CAS + mass-assignment guard), ``comment``, and the minimal
-``provision``.
+``update`` (optimistic CAS + mass-assignment guard), ``comment``, ``claim`` /
+``unclaim`` (atomic take-and-verify + visible staleness), ``link`` / ``unlink``
+(typed relationship edges), and the minimal ``provision``. The read side
+(``list`` / ``pick`` / ``counts``) lives in the sibling ``query`` module, which
+reuses this module's envelope helpers.
 """
 
 from __future__ import annotations
 
 import json
 import sys
+import time
+from datetime import datetime, timezone
 
 from . import encode, ids, provision
 from .transport import RETRYABLE_DEFAULTS, Transport, TransportError
+
+# The default claim-staleness TTL (CC3/M11). No upstream artifact pins a number,
+# so this is a build-time default: longer than any single agent work-cycle (a
+# claim is never reaped out from under live work) yet short enough that a claim
+# orphaned by a died fleet agent frees within a day so ``pick`` cannot starve.
+# Overridable per call (``claim_ttl_seconds``) — human policy stays the authority.
+# `query.pick` imports this so the reap threshold is defined once.
+DEFAULT_CLAIM_TTL_SECONDS: int = 24 * 60 * 60
 
 # --- The envelope (API §3/§4) ------------------------------------------------
 #
@@ -51,11 +64,11 @@ def error(
     }
 
 
-def _from_transport_error(exc: TransportError) -> dict:
+def from_transport_error(exc: TransportError) -> dict:
     return error(exc.code, exc.message, retryable=exc.retryable, details=exc.details)
 
 
-def _log(message: str) -> None:
+def log_diag(message: str) -> None:
     print(f"backlog: {message}", file=sys.stderr)
 
 
@@ -112,9 +125,9 @@ def file_item(
             owner, repo, title=title, body=full_body, labels=labels
         )
     except TransportError as exc:
-        return _from_transport_error(exc)
+        return from_transport_error(exc)
     except (OSError, json.JSONDecodeError) as exc:  # ERR-6 — unexpected boundary
-        _log(f"unexpected transport failure on file: {type(exc).__name__}")
+        log_diag(f"unexpected transport failure on file: {type(exc).__name__}")
         return error("unavailable", "the backend request failed unexpectedly")
 
     canonical = f"{owner}/{repo}#{issue.get('number')}"
@@ -161,21 +174,59 @@ def get_item(
     *,
     id_raw: str,
     default_owner: str | None = None,
+    settle_retries: int = 0,
+    sleeper=None,
 ) -> dict:
-    """Fetch one item by any accepted ID spelling; decode into the item shape."""
+    """Fetch one item by any accepted ID spelling; decode into the item shape.
+
+    ``settle_retries`` handles the **observed** brief post-create replication
+    window (QRY-1): reading *your own just-written item* can 404 momentarily. It
+    is opt-in and **only** for a read-your-own-write (create/claim verify) — a
+    plain ``get`` keeps ``settle_retries=0`` so a genuine not-found stays fast and
+    the never-block floor is never diluted with retries on real absences.
+    """
     nid = ids.normalize_id(id_raw, default_owner=default_owner)
     if not nid.ok:
         return error(nid.error or "validation", nid.message or f"bad ID {id_raw!r}")
     try:
-        issue = transport.get_issue(nid.owner, nid.repo, nid.number)
+        issue = _get_issue_settling(
+            transport, nid.owner, nid.repo, nid.number, settle_retries, sleeper
+        )
     except TransportError as exc:
-        return _from_transport_error(exc)
+        return from_transport_error(exc)
     except (OSError, json.JSONDecodeError) as exc:  # ERR-6
-        _log(f"unexpected transport failure on get: {type(exc).__name__}")
+        log_diag(f"unexpected transport failure on get: {type(exc).__name__}")
         return error("unavailable", "the backend request failed unexpectedly")
 
     item, warnings = encode.decode_item(issue, canonical_id=nid.canonical)
     return ok(item, warnings)
+
+
+def _get_issue_settling(
+    transport: Transport,
+    owner: str,
+    repo: str,
+    number: int,
+    settle_retries: int,
+    sleeper,
+) -> dict:
+    """``get_issue`` with a bounded retry on ``not_found`` (the post-create
+    replication window). Raises the last ``TransportError`` if it never settles."""
+    sleep = sleeper if sleeper is not None else _default_settle_sleep
+    attempt = 0
+    while True:
+        try:
+            return transport.get_issue(owner, repo, number)
+        except TransportError as exc:
+            if exc.code == "not_found" and attempt < settle_retries:
+                sleep(attempt)
+                attempt += 1
+                continue
+            raise
+
+
+def _default_settle_sleep(attempt: int) -> None:
+    time.sleep(0.25 * (attempt + 1))
 
 
 # --- status (set-status: the crash-safe two-axis transition) -----------------
@@ -251,9 +302,9 @@ def set_status(
 
         issue = transport.get_issue(nid.owner, nid.repo, nid.number)
     except TransportError as exc:
-        return _from_transport_error(exc)
+        return from_transport_error(exc)
     except (OSError, json.JSONDecodeError) as exc:  # ERR-6
-        _log(f"unexpected transport failure on status: {type(exc).__name__}")
+        log_diag(f"unexpected transport failure on status: {type(exc).__name__}")
         return error("unavailable", "the backend request failed unexpectedly")
 
     item, decode_warnings = encode.decode_item(issue, canonical_id=nid.canonical)
@@ -354,9 +405,9 @@ def update_item(
 
         issue = transport.get_issue(nid.owner, nid.repo, nid.number)
     except TransportError as exc:
-        return _from_transport_error(exc)
+        return from_transport_error(exc)
     except (OSError, json.JSONDecodeError) as exc:  # ERR-6
-        _log(f"unexpected transport failure on update: {type(exc).__name__}")
+        log_diag(f"unexpected transport failure on update: {type(exc).__name__}")
         return error("unavailable", "the backend request failed unexpectedly")
 
     item, decode_warnings = encode.decode_item(issue, canonical_id=nid.canonical)
@@ -385,9 +436,9 @@ def comment_item(
     try:
         comment = transport.create_comment(nid.owner, nid.repo, nid.number, body=body)
     except TransportError as exc:
-        return _from_transport_error(exc)
+        return from_transport_error(exc)
     except (OSError, json.JSONDecodeError) as exc:  # ERR-6
-        _log(f"unexpected transport failure on comment: {type(exc).__name__}")
+        log_diag(f"unexpected transport failure on comment: {type(exc).__name__}")
         return error("unavailable", "the backend request failed unexpectedly")
 
     data = {
@@ -397,6 +448,246 @@ def comment_item(
         "actor": (comment.get("user") or {}).get("login"),
     }
     return ok(data)
+
+
+# --- claim / unclaim (atomic take-and-verify + visible staleness) ------------
+
+
+def claim(
+    transport: Transport,
+    *,
+    id_raw: str,
+    default_owner: str | None = None,
+    claim_ttl_seconds: int = DEFAULT_CLAIM_TTL_SECONDS,
+    now: datetime | None = None,
+    sleeper=None,
+) -> dict:
+    """Atomically take an item (CC3/M11): set the assignee to the **API identity**
+    and stamp ``claimed_at`` (block-authoritative visible staleness), then
+    **verify** by re-reading. A different actor's **live** claim (within the TTL)
+    yields a non-fatal ``claim_conflict``; a claim aged past the TTL is reaped
+    (taken). A lost take-and-verify race also returns ``claim_conflict`` so the
+    caller re-picks. Idempotent for the same actor (re-stamps the heartbeat).
+    """
+    nid = ids.normalize_id(id_raw, default_owner=default_owner)
+    if not nid.ok:
+        return error(nid.error or "validation", nid.message or f"bad ID {id_raw!r}")
+    now = now or datetime.now(timezone.utc)
+
+    warnings: list[str] = []
+    try:
+        actor = transport.get_authenticated_user().get("login")
+        issue = transport.get_issue(nid.owner, nid.repo, nid.number)
+        current, _ = encode.decode_item(issue, canonical_id=nid.canonical)
+
+        holder = current.get("assignee")
+        if holder and holder != actor:
+            claimed_at = encode.parse_iso(current.get("claimed_at"))
+            # No stamp → cannot age it → treat as a live (human/UI) claim, never
+            # reaped out from under someone. Only a stamp past the TTL is reaped.
+            live = claimed_at is None or (now - claimed_at).total_seconds() <= claim_ttl_seconds
+            if live:
+                return error(
+                    "claim_conflict",
+                    f"{nid.canonical} is claimed by {holder}",
+                    details={"holder": holder, "claimed_at": current.get("claimed_at")},
+                )
+
+        # Take it in ONE atomic PATCH — the assignee *and* the claimed_at stamp
+        # together. Two separate writes could crash between them and strand an
+        # assignee-set/no-stamp item, which decodes as a *live* claim no TTL reap
+        # can free (the exact M11 never-starve gap, since a died agent never
+        # re-runs to converge). GitHub's issue PATCH sets `assignees` and `body`
+        # in a single request, so no torn intermediate state exists.
+        new_body = encode.upsert_block_field(
+            issue.get("body") or "", "claimed_at", now.isoformat()
+        )
+        transport.update_issue(
+            nid.owner,
+            nid.repo,
+            nid.number,
+            fields={"assignees": [actor], "body": new_body},
+        )
+
+        # Take-and-verify: re-read (settling the post-write window) and confirm we
+        # hold it — a concurrent claimant that won surfaces here as a conflict.
+        verify = _get_issue_settling(transport, nid.owner, nid.repo, nid.number, 3, sleeper)
+    except TransportError as exc:
+        return from_transport_error(exc)
+    except (OSError, json.JSONDecodeError) as exc:  # ERR-6
+        log_diag(f"unexpected transport failure on claim: {type(exc).__name__}")
+        return error("unavailable", "the backend request failed unexpectedly")
+
+    item, decode_warnings = encode.decode_item(verify, canonical_id=nid.canonical)
+    warnings.extend(decode_warnings)
+    if item.get("assignee") != actor:
+        return error(
+            "claim_conflict",
+            f"lost the claim race for {nid.canonical}; re-pick",
+            details={"holder": item.get("assignee")},
+        )
+    return ok(item, warnings)
+
+
+def unclaim(
+    transport: Transport,
+    *,
+    id_raw: str,
+    default_owner: str | None = None,
+) -> dict:
+    """Release a claim (idempotent): clear the assignee and the ``claimed_at``
+    stamp. Unclaiming an already-free item is a near-no-op (no redundant writes)."""
+    nid = ids.normalize_id(id_raw, default_owner=default_owner)
+    if not nid.ok:
+        return error(nid.error or "validation", nid.message or f"bad ID {id_raw!r}")
+    try:
+        issue = transport.get_issue(nid.owner, nid.repo, nid.number)
+        current, _ = encode.decode_item(issue, canonical_id=nid.canonical)
+        # One atomic PATCH clears assignee + stamp together (same crash-safety as
+        # claim). Empty when already free — an unclaimed item takes no writes.
+        old_body = issue.get("body") or ""
+        new_body = encode.upsert_block_field(old_body, "claimed_at", None)
+        patch: dict = {}
+        if current.get("assignee"):
+            patch["assignees"] = []
+        if new_body != old_body:
+            patch["body"] = new_body
+        if patch:
+            transport.update_issue(nid.owner, nid.repo, nid.number, fields=patch)
+        result = transport.get_issue(nid.owner, nid.repo, nid.number)
+    except TransportError as exc:
+        return from_transport_error(exc)
+    except (OSError, json.JSONDecodeError) as exc:  # ERR-6
+        log_diag(f"unexpected transport failure on unclaim: {type(exc).__name__}")
+        return error("unavailable", "the backend request failed unexpectedly")
+
+    item, warnings = encode.decode_item(result, canonical_id=nid.canonical)
+    return ok(item, warnings)
+
+
+# --- link / unlink (typed relationship edges) --------------------------------
+
+# The typed edges `link`/`unlink` set (API §2.3). `blocks`/`blocked-by` are native
+# dependencies (so a blocker is queryable — DM3, the ready-work predicate);
+# `parent`/`child` are native sub-issues; `related` has no native GitHub edge, so
+# it lives in the block as a `related: [ids]` list (block-authoritative, Data
+# Model §2 — parallel to `id_aliases`).
+_EDGE_TYPES: tuple[str, ...] = ("blocks", "blocked-by", "parent", "child", "related")
+
+
+def link(
+    transport: Transport,
+    *,
+    id_raw: str,
+    edge: str,
+    target_raw: str,
+    default_owner: str | None = None,
+) -> dict:
+    """Set a typed edge from an item to a target (idempotent). ``edge`` is one of
+    ``blocks``/``blocked-by``/``parent``/``child``/``related``."""
+    return _mutate_edge(transport, id_raw, edge, target_raw, default_owner, add=True)
+
+
+def unlink(
+    transport: Transport,
+    *,
+    id_raw: str,
+    edge: str,
+    target_raw: str,
+    default_owner: str | None = None,
+) -> dict:
+    """Clear a typed edge from an item to a target (idempotent)."""
+    return _mutate_edge(transport, id_raw, edge, target_raw, default_owner, add=False)
+
+
+def _mutate_edge(
+    transport: Transport,
+    id_raw: str,
+    edge: str,
+    target_raw: str,
+    default_owner: str | None,
+    *,
+    add: bool,
+) -> dict:
+    if edge not in _EDGE_TYPES:
+        return error(
+            "validation",
+            f"unknown edge {edge!r}; expected one of {', '.join(_EDGE_TYPES)}",
+        )
+    nid = ids.normalize_id(id_raw, default_owner=default_owner)
+    if not nid.ok:
+        return error(nid.error or "validation", nid.message or f"bad ID {id_raw!r}")
+    tid = ids.normalize_id(target_raw, default_owner=default_owner)
+    if not tid.ok:
+        return error(tid.error or "validation", tid.message or f"bad target ID {target_raw!r}")
+    if nid.canonical == tid.canonical:
+        return error("validation", "an item cannot be linked to itself")
+
+    try:
+        if edge == "blocked-by":
+            _dep(transport, nid, tid, add=add)
+        elif edge == "blocks":
+            # A blocks B ⇔ B is blocked-by A.
+            _dep(transport, tid, nid, add=add)
+        elif edge == "parent":
+            # target is the parent ⇒ this item is target's sub-issue.
+            _sub(transport, tid, nid, add=add)
+        elif edge == "child":
+            _sub(transport, nid, tid, add=add)
+        else:  # related — block-list machinery
+            _related(transport, nid, tid.canonical, add=add)
+    except TransportError as exc:
+        return from_transport_error(exc)
+    except (OSError, json.JSONDecodeError) as exc:  # ERR-6
+        verb = "link" if add else "unlink"
+        log_diag(f"unexpected transport failure on {verb}: {type(exc).__name__}")
+        return error("unavailable", "the backend request failed unexpectedly")
+
+    return ok(
+        {"item": nid.canonical, "edge": edge, "target": tid.canonical, "linked": add}
+    )
+
+
+def _dep(transport: Transport, blocked, blocker, *, add: bool) -> None:
+    """Add/remove a native dependency: ``blocked`` is blocked-by ``blocker``."""
+    fn = transport.add_blocked_by if add else transport.remove_blocked_by
+    fn(
+        blocked.owner,
+        blocked.repo,
+        blocked.number,
+        blocker_owner=blocker.owner,
+        blocker_repo=blocker.repo,
+        blocker_number=blocker.number,
+    )
+
+
+def _sub(transport: Transport, parent, child, *, add: bool) -> None:
+    """Add/remove a native sub-issue edge: ``child`` under ``parent``."""
+    fn = transport.add_sub_issue if add else transport.remove_sub_issue
+    fn(
+        parent.owner,
+        parent.repo,
+        parent.number,
+        child_owner=child.owner,
+        child_repo=child.repo,
+        child_number=child.number,
+    )
+
+
+def _related(transport: Transport, nid, target_canonical: str, *, add: bool) -> None:
+    """Add/remove a ``related`` ref in the item's block list (no native edge)."""
+    issue = transport.get_issue(nid.owner, nid.repo, nid.number)
+    block = encode.parse_block(issue.get("body"))
+    current = set(encode.parse_list(block.get("related")))
+    if add:
+        current.add(target_canonical)
+    else:
+        current.discard(target_canonical)
+    value = encode.format_list(sorted(current)) if current else None
+    old_body = issue.get("body") or ""
+    new_body = encode.upsert_block_field(old_body, "related", value)
+    if new_body != old_body:
+        transport.update_issue(nid.owner, nid.repo, nid.number, fields={"body": new_body})
 
 
 # --- provision ---------------------------------------------------------------
@@ -409,9 +700,9 @@ def provision_labels(transport: Transport, *, owner: str, repo: str) -> dict:
             transport, owner, repo, provision.base_labels()
         )
     except TransportError as exc:
-        return _from_transport_error(exc)
+        return from_transport_error(exc)
     except (OSError, json.JSONDecodeError) as exc:  # ERR-6
-        _log(f"unexpected transport failure on provision: {type(exc).__name__}")
+        log_diag(f"unexpected transport failure on provision: {type(exc).__name__}")
         return error("unavailable", "the backend request failed unexpectedly")
 
     data = {

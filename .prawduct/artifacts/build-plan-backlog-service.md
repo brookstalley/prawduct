@@ -119,15 +119,20 @@ rulings. The roadmap stays Medium by design until each layer's workload justifie
 - [ ] Chunk 06: SPIKE-S2 dry-run + MG4 scrub + prawduct-first real migration (dogfood, cumulative-final)
 - [ ] Roadmap (post-slice, lower resolution): W1 cache+sync · W2 search+dedup · Wv verify+grooming · W3 cross-project+automation · W4 attachments · W5 MCP · W6 App identity + offline queue · Wg GV3 janitor
 Context: Draft v2 authored 2026-07-16 (v1 + two independent reviews folded; the 3 peer-doc coherence
-debts swept the same session). Chunks 01–02 built + committed 2026-07-17: Chunk 01 the walking
+debts swept the same session). Chunks 01–03 built + committed 2026-07-17: Chunk 01 the walking
 skeleton (VRF-004 live-verified), Chunk 02 the two-axis status state machine (crash-safe `set-status`,
 `update` with optimistic CAS + mass-assignment guard + block-preserving body edits, `comment`; live
-status path queued as VRF-005). Branch reconciled with develop (v3.0.4); offline suite green (1990
-passed); Chunk 02 Critic (cumulative/final over the slice) 0 blocking, warnings resolved. The `[ ]`
-boxes above stay unchecked by design — a statusless change-log entry is release-pending; `regen-views`
-flips them to `[x]` only at release (`status=shipped`), not at build. Still a design artifact
-**promoted 2026-07-16**; owner sign-off pending. Next: Chunk 03 (query & ready-work — `list`/`pick`/
-`claim`/`counts`), or owner sign-off + slice merge.
+status path queued as VRF-005), Chunk 03 query & ready-work (new `lib/backlog/query.py`: `list`/`pick`/
+`counts` online off the REST list endpoint; `claim`/`unclaim` atomic take-and-verify + TTL-reap;
+`link`/`unlink` native deps + sub-issues + block-list `related`; PROV-2; 404-after-create settle;
+live `list`/`pick` queued as an L5 smoke). Offline suite green (2049 passed); Chunk 03 Critic (chunk
+mode) 0 blocking — the one warning (claim two-write torn-state → M11 never-starve gap) fixed to a
+single atomic PATCH, +1 crash-safety test; NOTE-2 (live `blocked_by` read shape) folded into Chunk 05's
+verify-api. The `[ ]` boxes above stay unchecked by design — a statusless change-log entry is
+release-pending; `regen-views` flips them to `[x]` only at release (`status=shipped`), not at build.
+Still a design artifact **promoted 2026-07-16**; owner sign-off pending. Next: Chunk 04 (governance
+surface — `refresh-counts`, `reconcile-labels`, never-block floor, unattended security), or owner
+sign-off + slice merge.
 
 ## Scaffolding
 
@@ -432,7 +437,10 @@ tests/
   `gh issue transfer` node_id)
 - **Done when:**
   0. **verify-api** — record real shapes for the migration calls (create, label, dependency, sub-issue,
-     timeline, transfer) to seed the fake and back CONTRACT-1
+     timeline, transfer) to seed the fake and back CONTRACT-1. **Include the `blocked_by` *read* shape
+     `pick`'s blocker fan-out parses** (Chunk 03 built `list_blocked_by` against the fake only; a
+     live-shape mismatch would silently surface a blocked item as ready) — add one L5 smoke that links a
+     real blocker and confirms `pick` excludes it.
   1. Acceptance criteria met and tests pass
   2. `/prawduct:critic` run and blocking findings resolved
   3. Committed and chunk marked `[x]` in Status

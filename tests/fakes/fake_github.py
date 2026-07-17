@@ -48,6 +48,14 @@ class _RepoState:
         # A monotonic tick so every mutation stamps a distinct `updated_at`
         # (what the optimistic-CAS `update` compares against — CC2).
         self.clock: int = 0
+        # Native relationships, ref-keyed (owner, repo, number):
+        #   blocked_by[n] = the issues that block issue n (pick's blocker fan-out)
+        #   sub_issues[n] = the child issues of parent issue n
+        self.blocked_by: dict[int, set[tuple[str, str, int]]] = {}
+        self.sub_issues: dict[int, set[tuple[str, str, int]]] = {}
+        # Replication window (QRY-1): number → remaining reads to hide it for,
+        # modelling GitHub's observed brief 404-after-create window.
+        self.hidden: dict[int, int] = {}
 
 
 class FakeGitHub(Transport):
@@ -100,6 +108,30 @@ class FakeGitHub(Transport):
         for name in names:
             state.labels.setdefault(name, {"name": name, "color": "ededed", "description": ""})
 
+    def arm_replication_window(
+        self, owner: str, repo: str, number: int, misses: int = 1
+    ) -> None:
+        """Arm the observed 404-after-create window (QRY-1): issue ``number`` will
+        be absent from the next ``misses`` reads (a ``get`` on it 404s; a ``list``
+        omits it), then appear. Models GitHub's brief post-create replication lag
+        so the adapter's bounded settle-retry can be exercised offline."""
+        self._repo(owner, repo).hidden[number] = max(0, misses)
+
+    def _replication_hidden(self, state: _RepoState, number: int) -> bool:
+        """Consume one read against the replication window for ``number``.
+
+        Returns True while the issue is still within its hide window (and
+        decrements it), False once it has settled (the common, un-armed case)."""
+        remaining = state.hidden.get(number, 0)
+        if remaining <= 0:
+            return False
+        remaining -= 1
+        if remaining == 0:
+            state.hidden.pop(number, None)
+        else:
+            state.hidden[number] = remaining
+        return True
+
     # -- Transport interface ----------------------------------------------
 
     def get_authenticated_user(self) -> dict:
@@ -147,13 +179,62 @@ class FakeGitHub(Transport):
         self.calls.append(("get_issue", owner, repo, number))
         state = self._repo(owner, repo)
         issue = state.issues.get(number)
-        if issue is None:
+        if issue is None or self._replication_hidden(state, number):
             raise TransportError(
                 "not_found",
                 "the requested GitHub resource was not found",
                 details={"operation": f"api repos/{owner}/{repo}/issues/{number}"},
             )
         return dict(issue)
+
+    def list_issues(
+        self,
+        owner: str,
+        repo: str,
+        *,
+        state: str = "open",
+        labels: list[str] | None = None,
+        assignee: str | None = None,
+        sort: str = "created",
+        direction: str = "asc",
+        per_page: int = 100,
+        page: int = 1,
+    ) -> list[dict]:
+        self.calls.append(
+            ("list_issues", owner, repo, state, tuple(labels or ()), assignee)
+        )
+        repo_state = self._repo(owner, repo)
+        want_labels = set(labels or ())
+        matched: list[dict] = []
+        for issue in repo_state.issues.values():
+            if state != "all" and (issue.get("state") or "open").lower() != state:
+                continue
+            names = {label["name"] for label in issue.get("labels", [])}
+            if want_labels and not want_labels.issubset(names):
+                continue
+            if not self._assignee_matches(issue, assignee):
+                continue
+            if self._replication_hidden(repo_state, issue["number"]):
+                continue  # still inside its post-create window
+            matched.append(issue)
+        key = "updated_at" if sort == "updated" else "created_at"
+        matched.sort(
+            key=lambda i: (i.get(key) or "", i["number"]),
+            reverse=(direction == "desc"),
+        )
+        start = max(0, (page - 1) * per_page)
+        return [dict(issue) for issue in matched[start : start + per_page]]
+
+    @staticmethod
+    def _assignee_matches(issue: dict, assignee: str | None) -> bool:
+        logins = [a["login"] for a in issue.get("assignees", []) if a]
+        if assignee is None:
+            return True
+        if assignee == "none":
+            return not logins
+        if assignee == "*":
+            return bool(logins)
+        return assignee in logins
 
     def list_labels(self, owner: str, repo: str) -> list[dict]:
         self.calls.append(("list_labels", owner, repo))
@@ -196,6 +277,12 @@ class FakeGitHub(Transport):
         for key in ("title", "body", "state", "state_reason"):
             if key in fields:
                 issue[key] = fields[key]
+        # `assignees` is a set-replacing field on the issue PATCH (how claim takes
+        # the assignee and its claimed_at stamp in one atomic write).
+        if "assignees" in fields:
+            logins = fields["assignees"] or []
+            issue["assignees"] = [{"login": login, "id": 0} for login in logins]
+            issue["assignee"] = issue["assignees"][0] if issue["assignees"] else None
         # GitHub clears `state_reason` when an issue is reopened.
         if fields.get("state") == "open":
             issue["state_reason"] = None
@@ -278,3 +365,85 @@ class FakeGitHub(Transport):
         }
         state.comments.setdefault(number, []).append(comment)
         return dict(comment)
+
+    # -- native relationships (dependencies + sub-issues) ------------------
+
+    def list_blocked_by(self, owner: str, repo: str, number: int) -> list[dict]:
+        self.calls.append(("list_blocked_by", owner, repo, number))
+        state = self._repo(owner, repo)
+        out: list[dict] = []
+        for b_owner, b_repo, b_number in sorted(state.blocked_by.get(number, set())):
+            blocker = self._repo(b_owner, b_repo).issues.get(b_number)
+            # A cross-repo blocker's state is read live (no cache to be stale).
+            b_state = (blocker.get("state") if blocker else "open") or "open"
+            out.append(
+                {
+                    "owner": b_owner,
+                    "repo": b_repo,
+                    "number": b_number,
+                    "state": b_state.lower(),
+                    "ref": f"{b_owner}/{b_repo}#{b_number}",
+                }
+            )
+        return out
+
+    def add_blocked_by(
+        self, owner: str, repo: str, number: int, *,
+        blocker_owner: str, blocker_repo: str, blocker_number: int,
+    ) -> None:
+        self._check_fault()
+        self.calls.append(("add_blocked_by", owner, repo, number, blocker_number))
+        state = self._repo(owner, repo)
+        self._require(state, owner, repo, number, "dependencies/blocked_by")
+        state.blocked_by.setdefault(number, set()).add(
+            (blocker_owner, blocker_repo, blocker_number)
+        )
+
+    def remove_blocked_by(
+        self, owner: str, repo: str, number: int, *,
+        blocker_owner: str, blocker_repo: str, blocker_number: int,
+    ) -> None:
+        self._check_fault()
+        self.calls.append(("remove_blocked_by", owner, repo, number, blocker_number))
+        state = self._repo(owner, repo)
+        self._require(state, owner, repo, number, "dependencies/blocked_by")
+        state.blocked_by.get(number, set()).discard(
+            (blocker_owner, blocker_repo, blocker_number)
+        )
+
+    def add_sub_issue(
+        self, owner: str, repo: str, number: int, *,
+        child_owner: str, child_repo: str, child_number: int,
+    ) -> None:
+        self._check_fault()
+        self.calls.append(("add_sub_issue", owner, repo, number, child_number))
+        state = self._repo(owner, repo)
+        self._require(state, owner, repo, number, "sub_issues")
+        state.sub_issues.setdefault(number, set()).add(
+            (child_owner, child_repo, child_number)
+        )
+
+    def remove_sub_issue(
+        self, owner: str, repo: str, number: int, *,
+        child_owner: str, child_repo: str, child_number: int,
+    ) -> None:
+        self._check_fault()
+        self.calls.append(("remove_sub_issue", owner, repo, number, child_number))
+        state = self._repo(owner, repo)
+        self._require(state, owner, repo, number, "sub_issue")
+        state.sub_issues.get(number, set()).discard(
+            (child_owner, child_repo, child_number)
+        )
+
+    def _require(
+        self, state: _RepoState, owner: str, repo: str, number: int, op: str
+    ) -> dict:
+        """Fetch issue ``number`` or raise the same ``not_found`` GitHub would."""
+        issue = state.issues.get(number)
+        if issue is None:
+            raise TransportError(
+                "not_found",
+                "the requested GitHub resource was not found",
+                details={"operation": f"api repos/{owner}/{repo}/issues/{number}/{op}"},
+            )
+        return issue

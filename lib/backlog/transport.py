@@ -142,6 +142,72 @@ class Transport:
     def get_issue(self, owner: str, repo: str, number: int) -> dict:
         raise NotImplementedError
 
+    def list_issues(
+        self,
+        owner: str,
+        repo: str,
+        *,
+        state: str = "open",
+        labels: list[str] | None = None,
+        assignee: str | None = None,
+        sort: str = "created",
+        direction: str = "asc",
+        per_page: int = 100,
+        page: int = 1,
+    ) -> list[dict]:
+        raise NotImplementedError
+
+    def list_blocked_by(self, owner: str, repo: str, number: int) -> list[dict]:
+        raise NotImplementedError
+
+    def add_blocked_by(
+        self,
+        owner: str,
+        repo: str,
+        number: int,
+        *,
+        blocker_owner: str,
+        blocker_repo: str,
+        blocker_number: int,
+    ) -> None:
+        raise NotImplementedError
+
+    def remove_blocked_by(
+        self,
+        owner: str,
+        repo: str,
+        number: int,
+        *,
+        blocker_owner: str,
+        blocker_repo: str,
+        blocker_number: int,
+    ) -> None:
+        raise NotImplementedError
+
+    def add_sub_issue(
+        self,
+        owner: str,
+        repo: str,
+        number: int,
+        *,
+        child_owner: str,
+        child_repo: str,
+        child_number: int,
+    ) -> None:
+        raise NotImplementedError
+
+    def remove_sub_issue(
+        self,
+        owner: str,
+        repo: str,
+        number: int,
+        *,
+        child_owner: str,
+        child_repo: str,
+        child_number: int,
+    ) -> None:
+        raise NotImplementedError
+
     def list_labels(self, owner: str, repo: str) -> list[dict]:
         raise NotImplementedError
 
@@ -197,6 +263,182 @@ class GhTransport(Transport):
     def get_issue(self, owner: str, repo: str, number: int) -> dict:
         return self._api(["api", f"repos/{owner}/{repo}/issues/{number}"])
 
+    def list_issues(
+        self,
+        owner: str,
+        repo: str,
+        *,
+        state: str = "open",
+        labels: list[str] | None = None,
+        assignee: str | None = None,
+        sort: str = "created",
+        direction: str = "asc",
+        per_page: int = 100,
+        page: int = 1,
+    ) -> list[dict]:
+        """List issues off the REST list endpoint — the ready-work query's engine
+        (Q1-structured, strongly consistent in practice). ``labels`` is an AND
+        filter; ``assignee`` accepts a login, ``"none"`` (unassigned), or ``"*"``
+        (any). The REST issues list also returns pull requests — those carry a
+        ``pull_request`` key and are dropped here (a list mechanic, not a backlog
+        concern; PROV-2's non-prawduct filtering is the query layer's job)."""
+        from urllib.parse import urlencode  # noqa: PLC0415 — only list builds a query string
+
+        params: list[tuple[str, str]] = [("state", state)]
+        if labels:
+            params.append(("labels", ",".join(labels)))
+        if assignee:
+            params.append(("assignee", assignee))
+        params += [
+            ("sort", sort),
+            ("direction", direction),
+            ("per_page", str(per_page)),
+            ("page", str(page)),
+        ]
+        path = f"repos/{owner}/{repo}/issues?{urlencode(params)}"
+        result = self._api(["api", path])
+        if not isinstance(result, list):
+            return []
+        return [
+            issue
+            for issue in result
+            if isinstance(issue, dict) and "pull_request" not in issue
+        ]
+
+    # -- relationships (native dependencies + sub-issues) ------------------
+    #
+    # Endpoint shapes for issue dependencies (GA 2025-08-21) and sub-issues are
+    # confirmed live by the Chunk-05 verify-api step (the migration chunk records
+    # the real dependency/sub-issue shapes); the L1 suite exercises them through
+    # the fake. The seam is ref-based (owner/repo/number) so it is cross-repo
+    # capable — a blocker in another repo is judged from a live read (Data Model
+    # §4). Should the real payload key differ, only these bodies change.
+
+    def list_blocked_by(self, owner: str, repo: str, number: int) -> list[dict]:
+        """The issues that block ``number`` — each with its live ``state`` so the
+        ``pick`` fan-out can judge "all blockers closed" in one fetch per
+        candidate. Returns ``[{owner, repo, number, state, ref}]``."""
+        result = self._api(
+            ["api", f"repos/{owner}/{repo}/issues/{number}/dependencies/blocked_by"]
+        )
+        out: list[dict] = []
+        for dep in result if isinstance(result, list) else []:
+            repo_info = dep.get("repository") or {}
+            dep_owner = (repo_info.get("owner") or {}).get("login") or owner
+            dep_repo = repo_info.get("name") or repo
+            dep_number = dep.get("number")
+            out.append(
+                {
+                    "owner": dep_owner,
+                    "repo": dep_repo,
+                    "number": dep_number,
+                    "state": (dep.get("state") or "open").lower(),
+                    "ref": f"{dep_owner}/{dep_repo}#{dep_number}",
+                }
+            )
+        return out
+
+    def add_blocked_by(
+        self,
+        owner: str,
+        repo: str,
+        number: int,
+        *,
+        blocker_owner: str,
+        blocker_repo: str,
+        blocker_number: int,
+    ) -> None:
+        blocker = self.get_issue(blocker_owner, blocker_repo, blocker_number)
+        self._api(
+            [
+                "api",
+                f"repos/{owner}/{repo}/issues/{number}/dependencies/blocked_by",
+                "--method",
+                "POST",
+                "--input",
+                "-",
+            ],
+            input_json=json.dumps({"issue_id": blocker.get("id") or blocker.get("node_id")}),
+        )
+
+    def remove_blocked_by(
+        self,
+        owner: str,
+        repo: str,
+        number: int,
+        *,
+        blocker_owner: str,
+        blocker_repo: str,
+        blocker_number: int,
+    ) -> None:
+        blocker = self.get_issue(blocker_owner, blocker_repo, blocker_number)
+        blocker_id = blocker.get("id") or blocker.get("node_id")
+        try:
+            self._api(
+                [
+                    "api",
+                    f"repos/{owner}/{repo}/issues/{number}/dependencies/blocked_by/{blocker_id}",
+                    "--method",
+                    "DELETE",
+                ]
+            )
+        except TransportError as exc:
+            if exc.code == "not_found":  # already unlinked — idempotent
+                return
+            raise
+
+    def add_sub_issue(
+        self,
+        owner: str,
+        repo: str,
+        number: int,
+        *,
+        child_owner: str,
+        child_repo: str,
+        child_number: int,
+    ) -> None:
+        child = self.get_issue(child_owner, child_repo, child_number)
+        self._api(
+            [
+                "api",
+                f"repos/{owner}/{repo}/issues/{number}/sub_issues",
+                "--method",
+                "POST",
+                "--input",
+                "-",
+            ],
+            input_json=json.dumps({"sub_issue_id": child.get("id") or child.get("node_id")}),
+        )
+
+    def remove_sub_issue(
+        self,
+        owner: str,
+        repo: str,
+        number: int,
+        *,
+        child_owner: str,
+        child_repo: str,
+        child_number: int,
+    ) -> None:
+        child = self.get_issue(child_owner, child_repo, child_number)
+        child_id = child.get("id") or child.get("node_id")
+        try:
+            self._api(
+                [
+                    "api",
+                    f"repos/{owner}/{repo}/issues/{number}/sub_issue",
+                    "--method",
+                    "DELETE",
+                    "--input",
+                    "-",
+                ],
+                input_json=json.dumps({"sub_issue_id": child_id}),
+            )
+        except TransportError as exc:
+            if exc.code == "not_found":  # already unlinked — idempotent
+                return
+            raise
+
     def list_labels(self, owner: str, repo: str) -> list[dict]:
         result = self._api(
             ["api", f"repos/{owner}/{repo}/labels", "--paginate"]
@@ -218,8 +460,10 @@ class GhTransport(Transport):
         self, owner: str, repo: str, number: int, *, fields: dict
     ) -> dict:
         """PATCH the issue with **only the named fields** (``state``,
-        ``state_reason``, ``title``, ``body``). Core's mass-assignment guard
-        (SEC-2) decides which fields are allowed to reach here; the transport does
+        ``state_reason``, ``title``, ``body``, ``assignees``). Core decides which
+        fields reach here — the ``update`` op's mass-assignment guard (SEC-2)
+        restricts user-driven edits to ``title``/``body``/facets; ``claim`` sets
+        ``assignees`` + the ``body`` stamp in one atomic PATCH. The transport does
         not second-guess a field it was handed."""
         return self._api(
             [

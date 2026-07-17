@@ -31,6 +31,7 @@ from __future__ import annotations
 import re
 from collections import OrderedDict
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
 
 # --- Vocabularies ------------------------------------------------------------
 
@@ -68,6 +69,22 @@ STATUS_OPEN_LABELS: tuple[str, ...] = tuple(
 # vocabulary (unknown → warning); `status` is closed (unknown → hard reject).
 OPEN_FACETS: tuple[str, ...] = ("kind", "area", "effort", "impact", "source")
 
+# The prawduct-namespaced label prefixes (Data Model §3). An issue carrying *any*
+# of these — or a `prawduct:` body block — is an in-scope backlog item; one with
+# neither is a plain repo issue the adapter ignores as out-of-scope (PROV-2/GV6).
+NAMESPACED_LABEL_PREFIXES: tuple[str, ...] = (
+    "stage:",
+    "status:",
+    "kind:",
+    "area:",
+    "effort:",
+    "impact:",
+    "source:",
+    "id:",
+    "verified:",
+    "superseded-by:",
+)
+
 _BLOCK_RE = re.compile(
     r"^```prawduct[ \t]*\n(?P<body>.*?)^```[ \t]*$",
     re.MULTILINE | re.DOTALL,
@@ -100,7 +117,16 @@ class Block:
             return 1
 
     def id_aliases(self) -> list[str]:
-        return _parse_list(self.fields.get("id_aliases"))
+        return parse_list(self.fields.get("id_aliases"))
+
+    def claimed_at(self) -> str | None:
+        """The ``claimed_at`` visible-staleness stamp (CC3), or ``None``.
+
+        Block-authoritative and unmirrored (Data Model §1.2): the claim's
+        timestamp lives only here, so ``pick``'s TTL reap reads it from the body.
+        """
+        value = self.fields.get("claimed_at")
+        return value or None
 
     def get(self, key: str) -> str | None:
         return self.fields.get(key)
@@ -159,6 +185,34 @@ def strip_block(body: str | None) -> str:
     return _BLOCK_RE.sub("", body).rstrip("\n")
 
 
+def has_block(body: str | None) -> bool:
+    """Whether ``body`` carries a ``prawduct:`` block (the native-filed marker)."""
+    return bool(body) and _BLOCK_RE.search(body) is not None
+
+
+def upsert_block_field(body: str | None, key: str, value: str | None) -> str:
+    """Return ``body`` with the block's ``key`` set to ``value`` (or removed when
+    ``value`` is ``None``), preserving the human text and every other block field.
+
+    The single primitive for editing one block-authoritative field in place
+    (Data Model §2): claim stamps ``claimed_at``, unclaim clears it. Creates a
+    fresh ``v: 1`` block if the body had none and a value is being set; clearing a
+    field on a blockless body is a no-op (never manufactures an empty block).
+    """
+    block = parse_block(body)
+    human = strip_block(body)
+    if value is None:
+        block.fields.pop(key, None)
+    else:
+        block.fields[key] = value
+    if not block.fields:
+        return human
+    rendered = serialize_block(block.fields)
+    if human:
+        return f"{human}\n\n{rendered}\n"
+    return f"{rendered}\n"
+
+
 def serialize_block(fields: dict[str, str]) -> str:
     """Build a fresh ``prawduct:`` block from field→formatted-value strings.
 
@@ -181,7 +235,8 @@ def _emit_block(fields: "OrderedDict[str, str]") -> str:
     return "\n".join(lines)
 
 
-def _parse_list(raw: str | None) -> list[str]:
+def parse_list(raw: str | None) -> list[str]:
+    """Parse a block list value (``[a, b]`` or bare ``a, b``) into ``[a, b]``."""
     if raw is None:
         return []
     text = raw.strip()
@@ -192,6 +247,28 @@ def _parse_list(raw: str | None) -> list[str]:
         if not text:
             return []
     return [item.strip() for item in text.split(",") if item.strip()]
+
+
+def format_list(items: list[str]) -> str:
+    """Render a list of values as the block's ``[a, b]`` form (inverse of
+    :func:`parse_list`)."""
+    return "[" + ", ".join(items) + "]"
+
+
+def parse_iso(ts: str | None) -> "datetime | None":
+    """Parse an ISO-8601 timestamp (tolerant of a trailing ``Z``); assume UTC when
+    naive. Returns ``None`` for a missing/unparseable value — a fail-open the
+    callers rely on (a claim whose stamp cannot be aged is treated as live, never
+    wrongly reaped)."""
+    if not ts:
+        return None
+    try:
+        dt = datetime.fromisoformat(ts.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    if dt.tzinfo is None:
+        return dt.replace(tzinfo=timezone.utc)
+    return dt
 
 
 # --- Soft enums --------------------------------------------------------------
@@ -251,6 +328,22 @@ def label_names(issue: dict) -> list[str]:
         if name:
             out.append(name)
     return out
+
+
+def is_prawduct_issue(issue: dict) -> bool:
+    """Whether a GitHub issue is an in-scope prawduct backlog item (PROV-2/GV6).
+
+    An item is ours if it carries any prawduct-namespaced label *or* a
+    ``prawduct:`` body block (a natively-filed item with no facets still carries
+    the block). A plain repo issue with neither is out-of-scope — ``list``/decode
+    ignore it (not malformed, just not ours). The SEC-7 anonymous-quarantine case
+    (an unlabeled non-collaborator filing surfaced to triage rather than ignored)
+    is a separate governance path and is **not** decided here.
+    """
+    labels = label_names(issue)
+    if any(name.startswith(prefix) for name in labels for prefix in NAMESPACED_LABEL_PREFIXES):
+        return True
+    return has_block(issue.get("body"))
 
 
 def _facet_value(labels: list[str], facet: str) -> str | None:
@@ -403,6 +496,7 @@ def decode_item(issue: dict, *, canonical_id: str | None = None) -> tuple[dict, 
         "impact": _facet_value(labels, "impact"),
         "source": _facet_value(labels, "source"),
         "assignee": assignee,
+        "claimed_at": block.claimed_at(),
         "url": issue.get("html_url"),
         "labels": labels,
         "id_aliases": block.id_aliases(),

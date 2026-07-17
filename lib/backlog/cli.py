@@ -21,7 +21,7 @@ from __future__ import annotations
 import json
 import sys
 
-from . import core, ids
+from . import core, ids, query
 
 # code → exit class. A code absent here (should not happen) falls back to 1.
 _EXIT_CLASS: dict[str, int] = {
@@ -46,6 +46,16 @@ _HELP = (
     "  update   <id> [--title T] [--body B] [--stage S] [--kind K] [--area A] "
     "[--effort E] [--impact I] [--source SRC] [--if-updated-at TS] [--repo owner/repo]\n"
     "  comment  <id> --body B [--repo owner/repo]\n"
+    "  list     --repo owner/repo [--status S] [--stage S] [--kind K] [--area A] "
+    "[--effort E] [--impact I] [--source SRC] [--assignee A|none|*] "
+    "[--state open|closed|all] [--sort created|updated] [--direction asc|desc] "
+    "[--per-page N] [--page N]\n"
+    "  pick     --repo owner/repo [--limit N] [--claim] [--claim-ttl SECONDS]\n"
+    "  counts   --repo owner/repo\n"
+    "  claim    <id> [--repo owner/repo] [--claim-ttl SECONDS]\n"
+    "  unclaim  <id> [--repo owner/repo]\n"
+    "  link     <id> --edge blocks|blocked-by|parent|child|related --to <target-id> [--repo owner/repo]\n"
+    "  unlink   <id> --edge blocks|blocked-by|parent|child|related --to <target-id> [--repo owner/repo]\n"
     "  provision --repo owner/repo\n"
     "global: --json  (machine envelope on stdout; default is human)\n"
 )
@@ -78,14 +88,26 @@ def run(project_dir, argv: list[str], *, transport=None) -> int:
             result = _run_update(rest, transport)
         elif op == "comment":
             result = _run_comment(rest, transport)
+        elif op == "list":
+            result = _run_list(rest, transport)
+        elif op == "pick":
+            result = _run_pick(rest, transport)
+        elif op == "counts":
+            result = _run_counts(rest, transport)
+        elif op == "claim":
+            result = _run_claim(rest, transport)
+        elif op == "unclaim":
+            result = _run_unclaim(rest, transport)
+        elif op in ("link", "unlink"):
+            result = _run_link(op, rest, transport)
         elif op == "provision":
             result = _run_provision(rest, transport)
         else:
             return _emit(
                 core.error(
                     "validation",
-                    f"unknown op {op!r} "
-                    "(expected file|get|status|update|comment|provision)",
+                    f"unknown op {op!r} (expected file|get|status|update|comment|"
+                    "list|pick|counts|claim|unclaim|link|unlink|provision)",
                 ),
                 json_mode=json_mode,
                 usage=True,
@@ -225,6 +247,150 @@ def _run_comment(rest: list[str], transport):
     )
 
 
+def _run_list(rest: list[str], transport):
+    flags, _positionals, err = _parse_flags(
+        rest,
+        valued={
+            "repo", "status", "stage", "kind", "area", "effort", "impact",
+            "source", "assignee", "state", "sort", "direction", "per-page", "page",
+        },
+    )
+    if err:
+        return core.error("validation", err)
+    parsed = ids.parse_repo(flags.get("repo", ""))
+    if parsed is None:
+        return core.error("validation", "list requires --repo owner/repo")
+    owner, repo = parsed
+    filters = {
+        key: flags[key]
+        for key in (
+            "status", "stage", "kind", "area", "effort", "impact", "source",
+            "assignee", "state",
+        )
+        if key in flags
+    }
+    per_page, err = _int_flag(flags, "per-page", 100)
+    if err:
+        return core.error("validation", err)
+    page, err = _int_flag(flags, "page", 1)
+    if err:
+        return core.error("validation", err)
+    transport = _resolve_transport(transport)
+    return query.list_items(
+        transport,
+        owner=owner,
+        repo=repo,
+        filters=filters,
+        sort=flags.get("sort", "created"),
+        direction=flags.get("direction", "asc"),
+        per_page=per_page,
+        page=page,
+    )
+
+
+def _run_pick(rest: list[str], transport):
+    flags, _positionals, err = _parse_flags(
+        rest, valued={"repo", "limit", "claim-ttl"}, boolean={"claim"}
+    )
+    if err:
+        return core.error("validation", err)
+    parsed = ids.parse_repo(flags.get("repo", ""))
+    if parsed is None:
+        return core.error("validation", "pick requires --repo owner/repo")
+    owner, repo = parsed
+    limit, err = _int_flag(flags, "limit", 1)
+    if err:
+        return core.error("validation", err)
+    ttl, err = _int_flag(flags, "claim-ttl", core.DEFAULT_CLAIM_TTL_SECONDS)
+    if err:
+        return core.error("validation", err)
+    transport = _resolve_transport(transport)
+    return query.pick(
+        transport,
+        owner=owner,
+        repo=repo,
+        limit=limit,
+        claim="claim" in flags,
+        claim_ttl_seconds=ttl,
+        default_owner=owner,
+    )
+
+
+def _run_counts(rest: list[str], transport):
+    flags, _positionals, err = _parse_flags(rest, valued={"repo"})
+    if err:
+        return core.error("validation", err)
+    parsed = ids.parse_repo(flags.get("repo", ""))
+    if parsed is None:
+        return core.error("validation", "counts requires --repo owner/repo")
+    owner, repo = parsed
+    transport = _resolve_transport(transport)
+    return query.counts(transport, owner=owner, repo=repo)
+
+
+def _run_claim(rest: list[str], transport):
+    flags, positionals, err = _parse_flags(rest, valued={"repo", "claim-ttl"})
+    if err:
+        return core.error("validation", err)
+    if not positionals:
+        return core.error("validation", "claim requires an <id>")
+    default_owner, err = _default_owner(flags)
+    if err:
+        return core.error("validation", err)
+    ttl, err = _int_flag(flags, "claim-ttl", core.DEFAULT_CLAIM_TTL_SECONDS)
+    if err:
+        return core.error("validation", err)
+    transport = _resolve_transport(transport)
+    return core.claim(
+        transport,
+        id_raw=positionals[0],
+        default_owner=default_owner,
+        claim_ttl_seconds=ttl,
+    )
+
+
+def _run_unclaim(rest: list[str], transport):
+    flags, positionals, err = _parse_flags(rest, valued={"repo"})
+    if err:
+        return core.error("validation", err)
+    if not positionals:
+        return core.error("validation", "unclaim requires an <id>")
+    default_owner, err = _default_owner(flags)
+    if err:
+        return core.error("validation", err)
+    transport = _resolve_transport(transport)
+    return core.unclaim(transport, id_raw=positionals[0], default_owner=default_owner)
+
+
+def _run_link(op: str, rest: list[str], transport):
+    flags, positionals, err = _parse_flags(rest, valued={"repo", "edge", "to"})
+    if err:
+        return core.error("validation", err)
+    if not positionals:
+        return core.error("validation", f"{op} requires an <id>")
+    edge = flags.get("edge")
+    if not edge:
+        return core.error(
+            "validation",
+            f"{op} requires --edge (blocks|blocked-by|parent|child|related)",
+        )
+    target = flags.get("to")
+    if not target:
+        return core.error("validation", f"{op} requires --to <target-id>")
+    default_owner, err = _default_owner(flags)
+    if err:
+        return core.error("validation", err)
+    transport = _resolve_transport(transport)
+    fn = core.link if op == "link" else core.unlink
+    return fn(
+        transport,
+        id_raw=positionals[0],
+        edge=edge,
+        target_raw=target,
+        default_owner=default_owner,
+    )
+
+
 def _run_provision(rest: list[str], transport):
     flags, positionals, err = _parse_flags(rest, valued={"repo"})
     if err:
@@ -263,12 +429,14 @@ def _default_owner(flags: dict) -> tuple[str | None, str | None]:
     return parsed[0], None
 
 
-def _parse_flags(tokens: list[str], *, valued: set[str]):
-    """Parse ``--key value`` / ``--key=value`` flags and positionals.
+def _parse_flags(tokens: list[str], *, valued: set[str], boolean: set[str] | None = None):
+    """Parse ``--key value`` / ``--key=value`` / ``--flag`` tokens and positionals.
 
-    Returns ``(flags, positionals, error_message)``. ``valued`` names the flags
-    that take a value; an unknown flag or a missing value is an error string.
+    Returns ``(flags, positionals, error_message)``. ``valued`` names flags that
+    take a value; ``boolean`` names presence-only flags (stored as ``"true"``). An
+    unknown flag, a missing value, or a value given to a boolean flag is an error.
     """
+    boolean = boolean or set()
     flags: dict[str, str] = {}
     positionals: list[str] = []
     i = 0
@@ -276,19 +444,34 @@ def _parse_flags(tokens: list[str], *, valued: set[str]):
         token = tokens[i]
         if token.startswith("--"):
             key, sep, value = token[2:].partition("=")
-            if key not in valued:
-                return {}, [], f"unknown flag: {token}"
-            if sep:
-                flags[key] = value
-            elif i + 1 < len(tokens):
-                flags[key] = tokens[i + 1]
-                i += 1
+            if key in boolean:
+                if sep:
+                    return {}, [], f"--{key} takes no value"
+                flags[key] = "true"
+            elif key in valued:
+                if sep:
+                    flags[key] = value
+                elif i + 1 < len(tokens):
+                    flags[key] = tokens[i + 1]
+                    i += 1
+                else:
+                    return {}, [], f"--{key} requires a value"
             else:
-                return {}, [], f"--{key} requires a value"
+                return {}, [], f"unknown flag: {token}"
         else:
             positionals.append(token)
         i += 1
     return flags, positionals, None
+
+
+def _int_flag(flags: dict, key: str, default: int) -> tuple[int, str | None]:
+    """Parse an integer flag; returns ``(value, error_or_None)``."""
+    if key not in flags:
+        return default, None
+    try:
+        return int(flags[key]), None
+    except (TypeError, ValueError):
+        return default, f"--{key} must be an integer, got {flags[key]!r}"
 
 
 def _emit(result: dict, *, json_mode: bool, usage: bool = False) -> int:
@@ -313,27 +496,61 @@ def _emit(result: dict, *, json_mode: bool, usage: bool = False) -> int:
 
 
 def _print_human_ok(data) -> None:
-    if isinstance(data, dict) and "item" in data and "url" in data:
+    if not isinstance(data, dict):
+        print(json.dumps(data))
+        return
+    if "edge" in data and "target" in data:
+        # A link/unlink result.
+        verb = "linked" if data.get("linked") else "unlinked"
+        print(f"{verb} {data.get('item')} --{data.get('edge')}--> {data.get('target')}")
+    elif "candidates" in data:
+        # A pick result — ranked ready-work.
+        candidates = data.get("candidates", [])
+        if not candidates:
+            print("no ready work")
+        for cand in candidates:
+            _print_item_line(cand)
+            if cand.get("why"):
+                print(f"    {cand['why']}")
+        print(f"  {data.get('count', len(candidates))} candidate(s)")
+    elif "items" in data:
+        # A list result.
+        for item in data.get("items", []):
+            _print_item_line(item)
+        print(f"  {data.get('count', 0)} item(s)")
+    elif "by_status" in data:
+        # A counts result.
+        print(f"{data.get('repo')}: {data.get('total')} item(s)")
+        print("  status: " + ", ".join(f"{k}={v}" for k, v in data.get("by_status", {}).items()))
+        print("  stage:  " + ", ".join(f"{k}={v}" for k, v in data.get("by_stage", {}).items()))
+    elif "item" in data and "url" in data:
         # A comment result (distinct from an item — no status/stage axes).
         print(f"commented on {data.get('item')} by {data.get('actor')}")
         if data.get("url"):
             print(f"  {data['url']}")
-    elif isinstance(data, dict) and "id" in data:
-        line = data.get("id") or ""
-        if data.get("title"):
-            line = f"{line}  {data['title']}"
-        print(line)
+    elif "id" in data:
+        _print_item_line(data)
         bits = [f"status={data.get('status')}"]
         if data.get("stage"):
             bits.append(f"stage={data['stage']}")
+        if data.get("assignee"):
+            bits.append(f"assignee={data['assignee']}")
         print("  " + "  ".join(bits))
-    elif isinstance(data, dict) and "created" in data:
+    elif "created" in data:
         print(
             f"{data.get('repo')}: {len(data.get('created', []))} label(s) created, "
             f"{len(data.get('existing', []))} already present"
         )
     else:
         print(json.dumps(data))
+
+
+def _print_item_line(item: dict) -> None:
+    """One-line item summary: ``<id>  <title>`` (used by get/list/pick)."""
+    line = item.get("id") or ""
+    if item.get("title"):
+        line = f"{line}  {item['title']}"
+    print(line)
 
 
 def _exit_code(result: dict) -> int:

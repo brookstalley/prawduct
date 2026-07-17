@@ -161,3 +161,43 @@ def test_status_transition_round_trip(transport, capsys):
     blob = "".join(output_sink)
     for marker in _TOKEN_MARKERS:
         assert marker not in blob
+
+
+def test_list_pick_round_trip(transport, capsys):
+    """A real ``list`` + ``pick`` round-trip through the CLI front (Chunk 03).
+
+    file a ``stage: ready`` item → ``list --stage ready`` sees it online
+    (read-your-writes in practice) → ``pick`` returns it as ready work with a
+    *why*. Proves the query fan-out wires to live GitHub, not just the fake.
+    """
+    parsed = ids.parse_repo(_LIVE_REPO)
+    assert parsed, f"BACKLOG_LIVE_REPO must be owner/repo, got {_LIVE_REPO!r}"
+
+    output_sink: list[str] = []
+
+    code, _ = _run_cli(capsys, ["provision", "--repo", _LIVE_REPO], transport, output_sink)
+    assert code == 0
+
+    code, filed = _run_cli(
+        capsys,
+        ["file", "--repo", _LIVE_REPO, "--title", "prawduct L5 pick smoke",
+         "--body", "Created by the Chunk-03 list/pick smoke; safe to close.", "--stage", "ready"],
+        transport, output_sink,
+    )
+    assert code == 0, filed
+    item_id = filed["data"]["id"]
+
+    code, listed = _run_cli(capsys, ["list", "--repo", _LIVE_REPO, "--stage", "ready"], transport, output_sink)
+    assert code == 0, listed
+    assert item_id in {i["id"] for i in listed["data"]["items"]}
+
+    code, picked = _run_cli(capsys, ["pick", "--repo", _LIVE_REPO, "--limit", "10"], transport, output_sink)
+    assert code == 0, picked
+    picked_ids = {c["id"] for c in picked["data"]["candidates"]}
+    assert item_id in picked_ids  # unassigned, no open blockers → ready work
+    for cand in picked["data"]["candidates"]:
+        assert cand["why"]
+
+    blob = "".join(output_sink)
+    for marker in _TOKEN_MARKERS:
+        assert marker not in blob

@@ -11,9 +11,11 @@ seam — see ``documentation/backlog-service-api-contract.md`` §1):
   test seam. No other module shells out or opens a socket.
 - ``ids``        — ID normalization to canonical ``owner/repo#number``.
 - ``encode``     — the ``prawduct:`` body block parse/serialize + soft-enum
-  tolerance + item decode.
+  tolerance + item decode + prawduct-issue detection (PROV-2).
 - ``core``       — deterministic CRUD (the return-value envelope + op
   implementations); the CLI/MCP fronts are thin over this.
+- ``query``      — the read side (``list``/``pick``/``counts``): structured
+  filters and stage-aware ready-work, online off the REST list endpoint.
 - ``provision``  — the namespaced label taxonomy (idempotent, collision-free).
 - ``cli``        — the ``prawduct-hook backlog <op>`` runner (thin front).
 

@@ -5,10 +5,10 @@
 
 ## 2026-07-17: Backlog service — GitHub Issues as the system-of-record (backlog-service)
 
-<!-- prawduct: type=feature | scope=backlog-service-v1 | chunks=01,02 -->
+<!-- prawduct: type=feature | scope=backlog-service-v1 | chunks=01,02,03 -->
 <!-- Statusless on feature/backlog-prd-owner-feedback = release-pending once merged.
      Large subsystem; plan at .prawduct/artifacts/build-plan-backlog-service.md, one
-     commit per chunk, per-chunk Critic. Chunks 03–06 pending. -->
+     commit per chunk, per-chunk Critic. Chunks 04–06 pending. -->
 
 **Parent:** BKL-5D2C — replace the markdown backlog (slow, merge-conflict-prone, git-coupled;
 the deepest measured pain being stale/untrusted item state) with **GitHub Issues as the
@@ -22,6 +22,14 @@ system-of-record** via a deterministic `prawduct-hook backlog` adapter (PRD §16
   `set-status` (state-authority-first, add-before-remove, self-healing reconciliation), `update`
   (optimistic CAS → `conflict`, SEC-2 mass-assignment guard, block-preserving body edits), and
   `comment`. Live status path queued as VRF-005.
+- **Chunk 03 — query & ready-work (GV1/DM3/CC3):** the read side in a new `lib/backlog/query.py`
+  (`list` structured filters/sort/paginate online off the REST list endpoint; `pick` list-then-fan-out
+  — assignee/claim-TTL + native-blocker predicates, cross-repo blockers judged from a live read,
+  ranked + *why*; `counts` derived on read), plus `claim`/`unclaim` (atomic take-and-verify in one
+  PATCH — crash-safe, TTL-reap so `pick` can't starve) and `link`/`unlink` (native dependencies +
+  sub-issues + a block-list `related`) in `core.py`. PROV-2 (non-prawduct issues ignored) and the
+  observed 404-after-create replication window (bounded settle-retry) handled. Live `list`/`pick`
+  round-trip queued as an L5 smoke.
 
 **Classification:** structural
 
