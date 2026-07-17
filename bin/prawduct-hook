@@ -137,23 +137,6 @@ def _coverage():
     return coverage
 
 
-def _coverage_probes():
-    """Lazy-import the structural-coverage probe helpers (lib/coverage_probes).
-    Same lazy idiom as _gitstate(). cmd_clear reaches
-    ``structural_characteristics_recorded`` through here — the shared predicate that
-    stages the layer-0 discovery nudge (below) against layer 1's strategy-artifact
-    probe; those two are exact complements, so layer 0 and layer 1 never both speak.
-    Distinct from _coverage() (lib/coverage, the diff-base/PR gates). The layer-0 call
-    site wraps this in its own broad-except, so an import or scan failure degrades to a
-    skipped nudge, never a blocked start."""
-    lib_root = _plugin_root()
-    if lib_root not in sys.path:
-        sys.path.insert(0, lib_root)
-    from lib import coverage_probes  # noqa: PLC0415 — lazy keeps top-level cheap + lib-free
-
-    return coverage_probes
-
-
 def _gates():
     """Lazy-import the session-end gate helpers + evidence/critic validators
     (lib/gates). Same lazy idiom as _gitstate(). cmd_stop (the inline hot-path
@@ -668,54 +651,12 @@ def cmd_clear(project_dir: Path, argv: list[str] | None = None) -> int:
                 "  Do this NOW, before responding to the user."
             )
 
-    # Layer 0 of the structural-coverage chain — discovery not captured. The gate
-    # is the SHARED staging predicate structural_characteristics_recorded: layer 0
-    # fires on its negation, layer 1 (lib/coverage_probes strategy-artifact probe)
-    # on its truth, so exactly one layer nudges (docs/norms.md § Enforcement). A
-    # product that has not recorded any of its six structural characteristics in
-    # classification.structural has not told governance what it *is* — so rigor
-    # can't be calibrated, the coverage chain stays blind, and requiring the
-    # artifacts those characteristics would imply is premature (that's layer 1,
-    # held back until this clears). Gated on product-definition work (code OR docs/)
-    # so a freshly-scaffolded empty repo stays silent. This sharpens the earlier
-    # domain+vision-null-only detection, which missed a repo that filled a domain
-    # and vision but never recorded structural characteristics (prawduct's own
-    # rich-but-characteristic-less state passed silently). _discovery_uncaptured
-    # (both template sentinels still null) only picks the more-specific never-ran
-    # message; the fire decision is the structural predicate alone.
-    # Fail-soft like the advisory-probe block below: a lazy-import or scan failure
-    # here must degrade to a skipped nudge, never a blocked session start.
-    try:
-        if (
-            state_path.is_file()
-            and _gitstate()._has_product_definition_work(project_dir)
-            and not _coverage_probes().structural_characteristics_recorded(state_path)
-        ):
-            if _gitstate()._discovery_uncaptured(state_path):
-                print(
-                    "DISCOVERY NOT CAPTURED: .prawduct/project-state.yaml has no classification or\n"
-                    "product definition, but this repo has product work (code and/or docs/). Until\n"
-                    "discovery is captured, governance can't calibrate rigor and the build gates\n"
-                    "won't engage.\n"
-                    "  → Run /prawduct:methodology discovery to capture it. If requirements, architecture, or an\n"
-                    "    existing codebase are already here, discovery RECONCILES them — it reads what\n"
-                    "    exists and backfills classification, structural characteristics, and product\n"
-                    "    definition into project-state.yaml rather than starting over."
-                )
-            else:
-                print(
-                    "DISCOVERY NOT CAPTURED: .prawduct/project-state.yaml does not record this product's\n"
-                    "structural characteristics (classification.structural is absent, empty, or all-null),\n"
-                    "but this repo has product work (code and/or docs/). Structural characteristics decide\n"
-                    "which strategy-class artifacts the product needs, so until they're captured governance\n"
-                    "can't calibrate rigor and the coverage chain stays blind.\n"
-                    "  → Run /prawduct:methodology discovery to capture them. If requirements, architecture, or an\n"
-                    "    existing codebase are already here, discovery RECONCILES them — it reads what exists\n"
-                    "    and backfills the structural characteristics into project-state.yaml rather than\n"
-                    "    starting over."
-                )
-    except Exception as exc:  # prawduct:allow prawduct/broad-except -- the discovery nudge must never block session start
-        print(f"NOTE: discovery-capture nudge skipped: {exc}", file=sys.stderr)
+    # Layer 0 of the structural-coverage chain (discovery not captured) is a probe
+    # — lib/coverage_probes.probe_discovery_not_captured — registered with the
+    # roster below and delivered through the advisory store, so it is dismissible
+    # per-clone (/prawduct:advisory dismiss) rather than an unconditional print.
+    # The staging against layer 1 (exactly one of the two speaks) lives with both
+    # probes in lib/coverage_probes on the shared predicate.
 
     # Advisory PROBES are purely local: they read the consumer's own
     # `.prawduct/` (backlog.md, project-state.yaml), independent of any sync.
@@ -2681,9 +2622,11 @@ def cmd_coverage_status(project_dir: Path, argv: list[str]) -> int:
       - **Layer 1 (artifacts):** which expected strategy-class artifacts are missing?
       - **Layer 2 (norms):** are the product's norms ratified?
 
-    and names the ONE layer that currently owns the nudge (the chain stages, so
-    exactly one speaks) plus its fix path. ``--json`` emits the structured status
-    for the doctor skill; default is human-readable.
+    and names the highest-priority active layer as the primary fix. Layers 0 and 1
+    are exact complements (never both), but layer 2's gate is independent, so
+    during partial authoring layers 1 and 2 can both be active (docs/norms.md
+    § Enforcement — proportionality, not a hard one-at-a-time invariant). ``--json``
+    emits the structured status for the doctor skill; default is human-readable.
 
     Read-only and informational — always exits 0. A broken plugin import or a
     faulty sub-check degrades to a NOTE / "unknown", never a crash (a health

@@ -77,7 +77,7 @@ across.
     briefing nags.
 - **Architectural change trigger:** if a repo ever needed multiple concurrent human actors,
   per-actor isolation, or a shared server-side store, that is a **structural characteristic flip**
-  (`multi_party`), not a tuning exercise — it re-derives the security and data models.
+  (`has_multiple_party_types`), not a tuning exercise — it re-derives the security and data models.
 
 ## Availability
 

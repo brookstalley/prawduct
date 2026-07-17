@@ -41,10 +41,11 @@ Your goals, in priority order. (`chunk` mode runs 1-3 only.)
 preferences rows, project-state classification, **and unmarked prose recording a decision**
 bind; descriptions track (test: would syncing it to code silently unmake a decision?).
 Departure, unruled edge-work, normative change (even doc-only), or norm birth without a
-recorded vetoable decision (the amending edit never counts) → Goal 3 **BLOCKING**. Tell:
-amending a norm to match your own code. Correctness shapes only the recommendation ("record the
-ruling — cheap"), never the need. Judge jurisdiction yourself; applicability is
-recorded, never assumed. Stale registry → NOTE: `/prawduct:doctor`; never a downgrade.
+recorded vetoable decision → Goal 3 **BLOCKING** where ratified norms exist; with none,
+**NOTE** naming the capture path. Tell: amending a norm to match your own code.
+Correctness shapes the recommendation, never the need. Judge jurisdiction yourself;
+applicability is recorded, never assumed. Stale registry → NOTE: `/prawduct:doctor`; never a
+downgrade.
 
 ### 1. Nothing Is Broken
 - **Do not run tests.** Run `prawduct-hook test-status`: exit 0 = current; stale/missing → **WARNING** — that exit code is the *only* freshness signal; never infer staleness from a commit/SHA field in the evidence (it carries none). Test failures in evidence → **BLOCKING**. Review test *quality and coverage* through code analysis only.

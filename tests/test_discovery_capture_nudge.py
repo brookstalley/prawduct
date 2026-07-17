@@ -1,4 +1,4 @@
-"""Tests for the discovery-capture nudge (`cmd_clear` session-start detection).
+"""Tests for the discovery-capture nudge (layer 0 of the structural-coverage chain).
 
 The gap this guards: a repo onboarded via `/prawduct:onboard` and then worked on
 docs-first (or as an existing codebase) accrues rich product-definition work while
@@ -9,8 +9,12 @@ discovery/architecture phase. The nudge fires when discovery is uncaptured AND t
 repo shows product-definition work (code OR docs/markdown); a freshly-onboarded
 empty repo (no code, no docs) stays silent.
 
-This is the first direct coverage for this `cmd_clear` detection family — the
-pre-existing project-preferences CRITICAL it sits beside had none.
+Delivery contract: the nudge is an advisory-store probe
+(`lib.coverage_probes.probe_discovery_not_captured`), synced by `cmd_clear`'s
+roster step and surfaced in the session briefing's ADVISORIES block — dismissible
+per-clone, unlike the hard print it replaced. The wiring tests below assert both
+surfaces: the store entry (the durable record) and the briefing text (what the
+session actually sees).
 """
 
 from __future__ import annotations
@@ -193,8 +197,23 @@ class TestHasProductDefinitionWork:
 
 
 # =============================================================================
-# Wiring — cmd_clear emits (or withholds) the nudge in the briefing
+# Wiring — cmd_clear syncs (or withholds) the nudge advisory; briefing surfaces it
 # =============================================================================
+
+
+def _active_nudges(repo: Path) -> list[dict]:
+    """The active discovery-not-captured advisories in the repo's store."""
+    import json
+
+    store_path = repo / ".prawduct" / ".advisories.json"
+    if not store_path.is_file():
+        return []
+    store = json.loads(store_path.read_text(encoding="utf-8"))
+    return [
+        a
+        for a in store.get("advisories", [])
+        if a.get("type") == "discovery-not-captured" and a.get("state") == "active"
+    ]
 
 
 class TestTemplateContract:
@@ -242,7 +261,8 @@ class TestNudgeWiring:
         repo = _repo(tmp_path, state=_UNCAPTURED_STATE, docs=True, code=False)
         _hook.cmd_clear(repo)
         out = capsys.readouterr().out
-        assert _NUDGE in out
+        assert len(_active_nudges(repo)) == 1
+        assert _NUDGE in out  # surfaced in the briefing's ADVISORIES block
         assert _ROUTE in out
         assert _PREFS_CRITICAL not in out
 
@@ -252,6 +272,7 @@ class TestNudgeWiring:
         repo = _repo(tmp_path, state=_UNCAPTURED_STATE, code=True, docs=False)
         _hook.cmd_clear(repo)
         out = capsys.readouterr().out
+        assert len(_active_nudges(repo)) == 1
         assert _NUDGE in out
         assert _PREFS_CRITICAL in out  # refactor-safety: prefs CRITICAL still wired
 
@@ -260,6 +281,7 @@ class TestNudgeWiring:
         repo = _repo(tmp_path, state=_UNCAPTURED_STATE, code=False, docs=False)
         _hook.cmd_clear(repo)
         out = capsys.readouterr().out
+        assert _active_nudges(repo) == []
         assert _NUDGE not in out
         assert _PREFS_CRITICAL not in out
 
@@ -269,6 +291,7 @@ class TestNudgeWiring:
         repo = _repo(tmp_path, state=_CAPTURED_STATE, docs=True, code=True)
         _hook.cmd_clear(repo)
         out = capsys.readouterr().out
+        assert _active_nudges(repo) == []
         assert _NUDGE not in out
 
     def test_structural_unrecorded_fires_sharpened_nudge(self, tmp_path, capsys):
@@ -279,8 +302,10 @@ class TestNudgeWiring:
         repo = _repo(tmp_path, state=_STRUCTURAL_UNRECORDED_STATE, code=True, docs=False)
         _hook.cmd_clear(repo)
         out = capsys.readouterr().out
+        nudges = _active_nudges(repo)
+        assert len(nudges) == 1
+        assert _STRUCT_VARIANT in nudges[0]["trigger_summary"]  # sharpened, not never-ran
         assert _NUDGE in out
-        assert _STRUCT_VARIANT in out  # the sharpened variant, not the never-ran one
         assert _ROUTE in out
 
     def test_recorded_structural_is_silent_even_without_vision(self, tmp_path, capsys):
@@ -296,4 +321,17 @@ class TestNudgeWiring:
         repo = _repo(tmp_path, state=state, code=True, docs=False)
         _hook.cmd_clear(repo)
         out = capsys.readouterr().out
+        assert _active_nudges(repo) == []
         assert _NUDGE not in out
+
+    def test_nudge_is_a_dismissible_warn_advisory(self, tmp_path, capsys):
+        # The whole point of advisory delivery (vs the hard print it replaced): the
+        # entry carries an id the owner can dismiss per-clone, at warn priority so
+        # it sorts above the info siblings; the briefing renders the dismiss path.
+        repo = _repo(tmp_path, state=_UNCAPTURED_STATE, docs=True, code=False)
+        _hook.cmd_clear(repo)
+        out = capsys.readouterr().out
+        (nudge,) = _active_nudges(repo)
+        assert nudge["priority"] == "warn"
+        assert nudge.get("id")
+        assert "/prawduct:advisory dismiss" in out

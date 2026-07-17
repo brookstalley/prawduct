@@ -61,12 +61,12 @@ triggers (a multi-user flip re-opens auth, data isolation, and audit; a sensitiv
 re-opens the security model), and run an **assumption audit** — walk the assumptions the old
 classification licensed and surface the ones the new reality invalidates. The audit's output is
 **backlog requirements**, not a mental note. Update `classification` in `project-state.yaml` so the
-flip is durable (`docs/norms.md`, Ambient norms).
+flip is durable (`/prawduct:methodology norms`, Ambient norms).
 
 **A norm surfaced.** When discovery produces a statement meant to bind future work ("all money is
 integer cents", "every asset is vector"), capture it as a norm at birth — **statement + why +
 retroactivity** — in the governing artifact's `## Direction` section or a `project-preferences.md`
-row, not as loose prose a later build has to re-infer (`docs/norms.md`).
+row, not as loose prose a later build has to re-infer (`/prawduct:methodology norms`).
 
 ## Reconciling an Existing or Docs-First Product
 

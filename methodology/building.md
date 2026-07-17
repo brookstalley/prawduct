@@ -56,7 +56,7 @@ The requirement tripwire has a sibling: "we should always X" is **norm birth** �
 before code proceeds (a `project-preferences.md` row or a `## Direction` entry: statement + why +
 retroactivity). Departing from a norm that already governs your change is a recorded `[DECISION: …]`
 — never a silent divergence or a norm edited to bless your own code. Norms bind; descriptions track
-(`docs/norms.md`; `methodology/planning.md` "Governing Artifacts").
+(`/prawduct:methodology norms`; `methodology/planning.md` "Governing Artifacts").
 
 ## The Build Cycle
 

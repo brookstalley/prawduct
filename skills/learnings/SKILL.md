@@ -30,7 +30,7 @@ $ARGUMENTS
 >
 > **Relevant Rules** — quote matching rules from learnings.md directly, grouped by their section header. Include the section header for context.
 >
-> **Governing Norms** — matching Direction entries (statement + why + status), each named with its artifact. Norms are statute to the learnings' case law (`docs/norms.md`) — they *bind* the caller's work, so surface them beside the rules. Skip this section entirely if no Direction section exists or none governs the topic.
+> **Governing Norms** — matching Direction entries (statement + why + status), each named with its artifact. Norms are statute to the learnings' case law (`/prawduct:methodology norms`) — they *bind* the caller's work, so surface them beside the rules. Skip this section entirely if no Direction section exists or none governs the topic.
 >
 > **Key Context** — from learnings-detail.md, only if it adds actionable information beyond the concise rule. Skip this section entirely if the rules are self-sufficient.
 >
