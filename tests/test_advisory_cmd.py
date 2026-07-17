@@ -211,6 +211,53 @@ class TestShow:
         assert result["evidence_reconstructed"] is False
         assert not result["advisory"].get("evidence")
 
+    def test_show_self_registers_probe_roster_for_reconstruction(self, tmp_path):
+        """GOV-5D2W regression: `advisory show` runs in a standalone process where
+        no session-start sync registered the probe roster. show_advisory must
+        register the roster itself before re-running probes — otherwise it scans an
+        EMPTY registry and reconstructs nothing for every real family. Drives the
+        real structural-coverage probe end to end: build a fixture where it fires,
+        compact its advisory, then CLEAR the registry (a fresh `advisory show`
+        process) and show. Reconstruction succeeding proves show self-registers."""
+        from lib import probe_families  # noqa: PLC0415
+
+        prawduct = tmp_path / ".prawduct"
+        prawduct.mkdir()
+        # Structural characteristic recorded (staging gate open) + no strategy
+        # artifacts → the coverage probe fires the strategy-artifact-missing advisory.
+        (prawduct / "project-state.yaml").write_text(
+            "schema_version: 6\n"
+            "classification:\n"
+            "  structural:\n"
+            "    has_human_interface:\n"
+            "      modality: terminal\n",
+            encoding="utf-8",
+        )
+        # Produce + compact the advisory the production way (register → sync →
+        # dismiss → sync compacts the dismissed entry, dropping its evidence).
+        probe_families.register_all()
+        run_sync_advisories(str(tmp_path))
+        coverage = [
+            a for a in read_store(str(tmp_path))["advisories"]
+            if a.get("feature") == "structural-coverage"
+        ]
+        assert coverage, "structural-coverage probe should fire on this fixture"
+        advisory_id = coverage[0]["id"]
+        _cmd.dismiss_advisory(str(tmp_path), advisory_id, "later")
+        run_sync_advisories(str(tmp_path))
+        compact = [
+            a for a in read_store(str(tmp_path))["advisories"] if a["id"] == advisory_id
+        ][0]
+        assert "evidence" not in compact, "dismissed entry should compact (evidence dropped)"
+        # Fresh process: nothing registered. Before the fix, show would reconstruct
+        # against this empty registry and no-op.
+        clear_registry()
+        result = _cmd.show_advisory(str(tmp_path), advisory_id)
+        assert result["evidence_reconstructed"] is True, (
+            "show must self-register the probe roster before reconstructing (GOV-5D2W)"
+        )
+        assert result["advisory"]["evidence"], "reconstructed evidence must be non-empty"
+
 
 # ---------------------------------------------------------------------------
 # resolve_advisory (action-driven, §4.3)

@@ -36,6 +36,29 @@ from lib import gitstate  # noqa: E402
 _NUDGE = "DISCOVERY NOT CAPTURED"
 _ROUTE = "/prawduct:methodology discovery"
 _PREFS_CRITICAL = "MUST create .prawduct/artifacts/project-preferences.md"
+# The sharpened layer-0 variant (discovery ran — domain/vision filled — but the
+# structural characteristics were never recorded) uses this distinct phrasing.
+_STRUCT_VARIANT = "does not record this product's"
+
+# A recorded structural block (>=1 characteristic present) — what "fully captured"
+# now requires. The layer-0 nudge is gated on the SHARED coverage predicate
+# (structural_characteristics_recorded), so a state with domain+vision but no
+# recorded characteristic is NOT "captured" for staging purposes.
+_STRUCTURAL_BLOCK_RECORDED = (
+    "  structural:\n"
+    "    has_human_interface:\n"
+    "      modality: terminal\n"
+)
+# A present-but-all-null structural block (the template default / never-recorded).
+_STRUCTURAL_BLOCK_NULL = (
+    "  structural:\n"
+    "    has_human_interface: null\n"
+    "    runs_unattended: null\n"
+    "    exposes_programmatic_interface: null\n"
+    "    has_multiple_party_types: null\n"
+    "    handles_sensitive_data: null\n"
+    "    multi_process_distributed: null\n"
+)
 
 _UNCAPTURED_STATE = (
     "classification:\n"
@@ -44,9 +67,22 @@ _UNCAPTURED_STATE = (
     "  vision: null\n"
     "distribution: plugin\n"
 )
+# Fully captured: domain, vision, AND >=1 structural characteristic recorded.
 _CAPTURED_STATE = (
     "classification:\n"
     "  domain: productivity\n"
+    f"{_STRUCTURAL_BLOCK_RECORDED}"
+    "product_definition:\n"
+    '  vision: "Turn ideas into software"\n'
+    "distribution: plugin\n"
+)
+# The sharpening's target: discovery ran (domain + vision filled) but structural
+# characteristics were never recorded (all null) — the gap the old domain/vision-only
+# detection missed. prawduct's own state is a sibling of this (no structural block).
+_STRUCTURAL_UNRECORDED_STATE = (
+    "classification:\n"
+    "  domain: productivity\n"
+    f"{_STRUCTURAL_BLOCK_NULL}"
     "product_definition:\n"
     '  vision: "Turn ideas into software"\n'
     "distribution: plugin\n"
@@ -180,6 +216,23 @@ class TestTemplateContract:
             "discovery nudge silently stops firing on freshly-onboarded repos."
         )
 
+    def test_shipped_template_reads_as_structural_unrecorded(self):
+        # The layer-0 fire decision is the coverage predicate. The template ships
+        # classification.structural with every characteristic null, so a fresh repo
+        # must read as "structural not recorded" — else the sharpened nudge silently
+        # stops firing on freshly-onboarded repos (the same failure class as above,
+        # for the structural gate).
+        from lib import coverage_probes
+
+        template = _ROOT / "templates" / "project-state.yaml"
+        assert coverage_probes.structural_characteristics_recorded(template) is False, (
+            "templates/project-state.yaml now reads as recording a structural "
+            "characteristic — the classification.structural default format changed. "
+            "Update the scanner in lib/coverage_probes.py or the template, or the "
+            "sharpened layer-0 discovery nudge (and layer-1 staging) stops firing on "
+            "freshly-onboarded repos."
+        )
+
 
 class TestNudgeWiring:
     def test_docs_first_repo_fires_nudge_not_prefs_critical(self, tmp_path, capsys):
@@ -211,8 +264,36 @@ class TestNudgeWiring:
         assert _PREFS_CRITICAL not in out
 
     def test_captured_discovery_is_silent(self, tmp_path, capsys):
-        # Discovery captured — no nudge even with product work present.
+        # Fully captured (domain + vision + a recorded structural characteristic) —
+        # no nudge even with product work present.
         repo = _repo(tmp_path, state=_CAPTURED_STATE, docs=True, code=True)
+        _hook.cmd_clear(repo)
+        out = capsys.readouterr().out
+        assert _NUDGE not in out
+
+    def test_structural_unrecorded_fires_sharpened_nudge(self, tmp_path, capsys):
+        # THE sharpening: domain + vision are filled (old detection would call this
+        # "captured" and stay silent), but no structural characteristic is recorded.
+        # Layer 0 now fires with the structural-specific variant — the gap that let
+        # prawduct's own rich-but-characteristic-less state pass silently.
+        repo = _repo(tmp_path, state=_STRUCTURAL_UNRECORDED_STATE, code=True, docs=False)
+        _hook.cmd_clear(repo)
+        out = capsys.readouterr().out
+        assert _NUDGE in out
+        assert _STRUCT_VARIANT in out  # the sharpened variant, not the never-ran one
+        assert _ROUTE in out
+
+    def test_recorded_structural_is_silent_even_without_vision(self, tmp_path, capsys):
+        # The fire decision is the structural predicate alone: once a characteristic
+        # is recorded, layer 0 clears (layer 1 takes over) — staging is one nudge at
+        # a time, keyed off the shared predicate, not off domain/vision.
+        state = (
+            "classification:\n"
+            "  domain: productivity\n"
+            f"{_STRUCTURAL_BLOCK_RECORDED}"
+            "distribution: plugin\n"
+        )
+        repo = _repo(tmp_path, state=state, code=True, docs=False)
         _hook.cmd_clear(repo)
         out = capsys.readouterr().out
         assert _NUDGE not in out

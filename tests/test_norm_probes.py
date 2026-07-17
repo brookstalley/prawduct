@@ -504,26 +504,38 @@ class TestRegistration:
 
 
 # =============================================================================
-# repo-coupled tripwire: ZERO norm-lifecycle advisories against THIS repo today
-# (deliberately NOT hermetic — it must fail the moment this repo ratifies a
-# Direction section without the janitor sweep stamp, forcing that pairing)
+# repo-coupled tripwire: exactly ONE norm-lifecycle advisory against THIS repo
+# today — the Layer-2 `norm-registry-unratified` nudge, now that the seven
+# strategy-class artifacts exist without ratified Direction sections. Deliberately
+# NOT hermetic: it must fail the moment this repo's norm state changes (a Direction
+# section ratified, the registry answer recorded, a dated `revisit:` expiring),
+# forcing a human to re-baseline.
 # =============================================================================
 
 
 class TestSilentAgainstThisRepo:
-    def test_no_norm_lifecycle_advisories_fire_here_today(self):
-        # The rare-and-high-signal bar: this repo has no dated `revisit:` values,
-        # no `## Direction` heading in any .prawduct/artifacts/*.md, and no
-        # strategy-class artifact present — so every norm-lifecycle probe is
-        # silent. (This repo's own preferences Enforcement table predates the
-        # norm columns, which is exactly why the unratified probe's second arm
-        # is gated on strategy-class artifacts existing.)
+    def test_only_layer2_unratified_advisory_fires_here_today(self):
+        # Baseline as of authoring the 7 strategy-class artifacts (GOV-5K3M): they
+        # now EXIST under .prawduct/artifacts/ but none declares a `## Direction`
+        # section (and the preferences Enforcement table predates the norm
+        # columns), so the Layer-2 `norm-registry-unratified` probe CORRECTLY fires,
+        # pointing at the /prawduct:doctor ratification flow. Everything else stays
+        # silent: no dated `revisit:` values, no dead-why (no shipped/archived
+        # backlog id in a Status/Why line), no in-transition stall. When this repo
+        # ratifies its Direction sections — or records `norm_registry_ratified`
+        # ("no norms to ratify" is a valid clearing answer) — Layer 2 clears and
+        # this test must be re-baselined to expect silence again. That required
+        # update is the forcing function.
         repo_root = Path(__file__).resolve().parents[1]
         state = load_project_state(repo_root)
         codebase = make_codebase(repo_root)
         np.register()
-        fired = [c for c in run_all_probes(state, codebase) if c.feature == "norm-lifecycle"]
-        assert fired == [], f"norm-lifecycle probes must be silent here; fired: {[c.type for c in fired]}"
+        fired = sorted(
+            c.type for c in run_all_probes(state, codebase) if c.feature == "norm-lifecycle"
+        )
+        assert fired == ["norm-registry-unratified"], (
+            f"expected only the Layer-2 unratified nudge to fire here; got: {fired}"
+        )
 
 
 def _id(candidate) -> str:

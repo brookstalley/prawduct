@@ -35,6 +35,50 @@ distribution: plugin
 base_branch: develop
 
 # =============================================================================
+# CLASSIFICATION — structural characteristics (methodology/discovery.md)
+# =============================================================================
+# Reconciled from this codebase, not a discovery interview (discovery.md §
+# Reconciling an Existing Product): prawduct is a mature product, so its six
+# structural characteristics are read off what it already is. Recording them is
+# load-bearing — the strategy-class artifact coverage chain keys off this block
+# (layer 0 clears once >=1 is recorded; each recorded triggering characteristic
+# then owes its artifact). Four present, two absent; the two present *triggering*
+# characteristics make prawduct owe the full seven strategy-class artifacts.
+classification:
+  domain: developer-tool
+  structural:
+    # Present — operators read terminal output: bin/prawduct-hook reports, the
+    # SessionStart briefing, advisory/doctor text, the /prawduct:* skills.
+    has_human_interface:
+      modality: terminal
+      platform: cross-platform
+    # Present — SessionStart/Stop/UserPromptSubmit/SubagentStop hooks fire on
+    # Claude Code lifecycle events, not by human invocation; the pervasive
+    # fail-soft design (a probe never blocks session start) is the "design
+    # against silent failure" this characteristic implies.
+    runs_unattended:
+      trigger: event-driven
+    # Present — prawduct IS a Claude Code plugin plus a bin/prawduct-hook CLI with
+    # --json machine contracts: the harness (external) invokes hooks via
+    # settings.json, skills (internal) call the CLI. Triggers api-contract.md.
+    exposes_programmatic_interface:
+      consumers: both
+    # Absent — one actor class (the product owner) plus the AI runtime; no
+    # privilege tiers, trust boundaries, or data isolation between party types.
+    has_multiple_party_types: null
+    # Absent — persisted data is development-process metadata (state, learnings,
+    # evidence, findings, backlog); no PII/financial/health/credentials under
+    # regulatory obligation. (Universal security-model.md still applies —
+    # plugin-trust / supply-chain is a security concern regardless.)
+    handles_sensitive_data: null
+    # Present — the Critic coordinator fans out parallel critic-reviewer subagents
+    # writing partial findings files, then critic-consolidate merges them; the
+    # evidence store (evidence.jsonl) is shared and tree-keyed across all
+    # worktrees of the clone. Triggers architecture.md.
+    multi_process_distributed:
+      topology: monolith-with-workers
+
+# =============================================================================
 # DEPENDENCY GRAPH
 # =============================================================================
 
@@ -48,6 +92,31 @@ dependency_graph:
   - decision_id: critic-as-separate-agent
     description: "Critic invoked via Task tool as independent agent, not in main context"
     affects_artifacts: [agents/critic/SKILL.md, .prawduct/critic-review.md]
+
+# =============================================================================
+# DESIGN DECISIONS
+# =============================================================================
+# Recorded decisions for the exposed programmatic interface (the prawduct-hook
+# CLI + hook lifecycle). Detailed in artifacts/api-contract.md; mirrored here per
+# templates/project-state.yaml. The flat top-level `api_versioning_decided`
+# scalar (below, near the opt-in flags) is the advisory-probe resolution signal.
+
+design_decisions:
+  api_versioning_approach:
+    scheme: "plugin semantic versioning (whole-surface; the auto-update cache key) plus independent evidence-store schema versioning for persisted facts"
+    granularity: "whole-surface for the plugin; per-store integer schema version for the evidence store"
+    status: active
+    rationale: "the CLI subcommand surface is internal — consumed only by skills shipped at the same plugin version — so it needs no per-subcommand version; persisted facts outlive a plugin version, so the evidence store carries its own schema version with schema-ahead (forward-incompat) detection"
+    revisit_trigger: "first tool other than prawduct's own skills that is meant to call prawduct-hook — add a documented stability tier and a --version handle before that consumer ships"
+    detailed_in: artifacts/api-contract.md
+    date: 2026-07-17
+  api_error_model_approach:
+    scheme: "exit codes are the contract on a documented scheme (harness hook 0=allow/2=block; CLI gate 0=pass/1=fail; usage error 2; unevaluable advisory gate fails open, unevaluable writer fails closed) plus a stable message-prefix vocabulary (CRITICAL/WARNING/NOTE/BLOCKED)"
+    channels: "stdout is agent-facing (composed into model context); stderr is user/diagnostics; no internal stack trace crosses the boundary"
+    status: active
+    rationale: "exit codes are the stable, allowlist-friendly signal skills bind to; failures are caught, attributed, and turned into an exit code + prefixed note, never raised across the boundary"
+    detailed_in: artifacts/api-contract.md
+    date: 2026-07-17
 
 # =============================================================================
 # OPEN QUESTIONS
@@ -557,7 +626,7 @@ views_enabled: true
 # 2026-07-14: cleared at v3.0.0 release — kernel-evidence-store shipped; plan
 # retained under artifacts/ as a historical record (checkboxes derive from the
 # change-log's status=shipped entries).
-active_build_plan: artifacts/build-plan-norm-lifecycle.md
+active_build_plan: artifacts/build-plan-structural-coverage.md
 
 # =============================================================================
 # COVERAGE EVIDENCE (opt-in, v1.4+)
@@ -583,6 +652,16 @@ coverage_required: false
 # setting `operator_verification_required: true`.
 
 operator_verification_required: false
+
+# =============================================================================
+# API VERSIONING DECISION (advisory-probe resolution signal)
+# =============================================================================
+# Flat top-level mirror of design_decisions.api_versioning_approach — the
+# api-versioning advisory probe reads only column-0 scalars, so this is its
+# readable resolution signal. Truthy = a decision was recorded → suppress the
+# nudge. See artifacts/api-contract.md for the full decision.
+
+api_versioning_decided: "plugin-semver + evidence-schema-version; CLI internal, external-consumer versioning deferred (revisit: first non-prawduct caller of prawduct-hook)"
 
 # =============================================================================
 # DEPRECATED TERMS

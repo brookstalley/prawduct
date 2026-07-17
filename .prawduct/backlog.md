@@ -7,6 +7,109 @@
 
 ## Open
 
+- **[GOV-4X9M]** Backfill-as-discovery: interview-driven strategy-artifact authoring with just-in-time nudges + layered opt-outs
+  `effort: L · impact: L · area: governance · source: user · added: 2026-07-17 · reviewed: 2026-07-17 · status: open · stage: requirements · related: GOV-EXI2, GOV-5K3M`
+
+  **Problem.** Prawduct nudges products to author strategy-class artifacts (the structural-coverage chain), but authoring is a *solo agent task* that (a) tends to codify current practice as if it were intended design, and (b) cannot know the owner's actual intent — intent lives in the owner's head, not the repo. Good outcomes today depend on a human steering the agent manually (observed live while authoring prawduct's own 7 artifacts, 2026-07-17). The Critic currently *rewards* the failure mode: the cumulative review praised the artifacts for being 'accurate to prawduct's actual system' — accuracy-to-current-code is the wrong success metric for a document meant to lead development.
+
+  **Direction — treat backfill as retroactive discovery (an interview), not solo documentation.** Reuse/generalize the existing new-product discovery flow rather than building a second one.
+  - **Elicit the mode, don't presume it:** first fork is 'draft a first pass from what's built, or come at it from first principles?' — plus 'capture current state (maintenance) vs. set direction'. Surface the true depth of what's missing (many owners *want* to know), framed as information+options, not alarm. Depth-gauged like discovery.
+  - **Stance:** backfilled artifacts state *intended design* (the target you'd defend to a skeptic) and flag divergences from current code as explicit owner decisions/backlog items — never silently enshrine a dubious current practice. Promote memory feedback_artifacts_express_intent into methodology (planning.md + one line per template + advisory/scaffold text).
+  - **Critic objective flip:** add a check so a purely-descriptive strategy artifact that rubber-stamps current behavior is a finding; accuracy-to-code alone is insufficient.
+
+  **Primary trigger — just-in-time, stakes-calibrated nudge.** When requested work would benefit from a missing/thin doc ('you asked to add logging but there's no observability-strategy'), propose addressing it first. Detection is LLM judgment (not a mechanical gate), likely built on the work-model tripwire / jurisdiction+coverage machinery (absence of an expected governing artifact for the work area). Calibrate to stakes (security-model before auth = gold; observability before a copy tweak = noise). Applies to doc states 1 (nonexistent) and 2 (stale); state 2 deferred.
+
+  **Layered opt-outs (a way-of-thinking, NOT a formal state machine):**
+  - Decline-once ('later') -> stay state 1, continue; RE-SURFACE relevance-triggered (same work area recurs), not calendar-triggered; judgment backs off on repeated decline. DEFAULT for ambiguity — never auto-write a 'not relevant' stub the owner didn't decide (Principle 6).
+  - Decline-this-doc ('not needed because X') -> author the (not relevant — X) stub = state 3, a recorded decision whose expiry is the app's characteristics; a structural-characteristic flip re-opens it (existing norms.md machinery) — so capture the assumption richly.
+  - Decline-everything ('I just want to code without docs') -> recorded, reversible, SCOPED project-preferences posture (suppresses proactive nudges; on-demand /prawduct:doctor still answers).
+
+  **Secondary (test, don't design): strengthen the advisory + agent behavior** to proactively surface/triage advisories in the agent's first response. Constraint: the agent never gets the first turn, so this can only ride the first response. Genuinely uncertain whether it helps or annoys — empirical, needs anti-annoyance tuning; not designed up front.
+
+  **Out of scope (now):** state-2 stale-doc detection; forcing anything (advisories only advise); a second discovery flow; designing the advisory tuning.
+
+  **Open questions:** detection heuristic + its home (extend work-model tripwire?); re-surfacing judgment mechanics; opt-out granularity; how the interview reuses discovery machinery; whether prawduct's own 7 artifacts get re-derived via the flow once it exists; does first-response proactive surfacing actually work.
+
+  **Doc-state lens (thinking tool):** 1 nonexistent · 2 stale · 3 exists-with-(not relevant)-opt-out · 4 good. Nudge 1 (now) and 2 (later).
+
+  **Provenance:** design conversation 2026-07-17 following the solo authoring of prawduct's 7 strategy-class artifacts (GOV-5K3M). Relates to GOV-EXI2 (reactive systems can't detect missing things), the structural-coverage chain, and memory feedback_artifacts_express_intent / feedback_advisor_first.
+
+  ---
+  ## Design refinements (conversation 2026-07-17, continued)
+
+  **Templates & interview-guidance homing:**
+  - VERIFIED: 6/7 strategy-class templates exist; `templates/architecture.md` is MISSING = GOV-2T6K, now a HARD DEPENDENCY (can't prompt authors to write an architecture spec with no scaffold).
+  - Templates carry GENERATION guidance only, no elicitation guidance — correct. Two kinds of meta: templates = deliverable-meta (stack-agnostic scaffold of what to produce); interview guidance = process-meta (how to elicit). Different homes.
+  - Interview TECHNIQUE is universal -> the shared discovery core (one central home). Interview TARGETING is artifact-specific but THIN -> extend discovery.md's existing '## Surface X' pattern to cover all 7 artifacts (today missing explicit data-model/security/architecture elicitation sections). NOT in templates; NO per-artifact interview files. Optional one-line pointer in each template -> discovery elicitation section (co-location without duplication).
+  - Artifact-specific targeting = the distinctive high-leverage question + where owners under-specify (e.g. data-model: consumers' future queries / persisted-format lock-in; security: threat model, interview MORE directively because owners under-claim; NFR: real target numbers, 'what breaks at 10x?'; api-contract: internal-vs-external consumers; architecture: cross-process failure modes).
+
+  **Divergence-approval = norm birth + retroactivity (reuse docs/norms.md wholesale, don't invent):**
+  - WHAT divergences: material gaps between the OWNER-RATIFIED intended design (the artifact's Direction = proportionate best-practice-for-this-project, pinned in the interview) and current code. Baseline is owner-ratified, which dissolves the 'can't pre-define best practices' problem. Proportionate to stakes; err toward surfacing (miss >> annoy).
+  - REVISIT: yes, via the existing norm lifecycle — new divergences caught by the Critic (departure from Direction = BLOCKING); baseline decay/erosion/stall caught by janitor Norm Health + advisories; evolving best-practice = norm amendment (recorded decision). Feed the lifecycle, don't rebuild it.
+  - 'Accept current divergences + document best practice as goal + backlog to align' = the norms.md MIGRATE retroactivity outcome: intended-design norm born Status:in-transition, divergences -> sized backlog item(s), the item WIRED as the norm's tracking ref so stall-detection prevents 'align later' rotting into 'never'. The three dispositions map to the three retroactivity outcomes: accept-and-align=Migrate / permanently-fine-here=Grandfather / old-and-new-coexist=Contain.
+
+  **Backlog as the responsible-deferral primitive:** every 'not now' in the flow (skip-doc-for-now, accept-divergences, defer-a-question) becomes a one-tap backlog item — agent drafts it, owner just affirms. This is the durable, re-surfacing record that makes 'later' honest. GUARD (from the pressure test): a deferral item must hang off an in-transition norm as its tracking ref, else backlog becomes a graveyard.
+
+  **The interview collapses Layer 1 + Layer 2:** the divergence/retroactivity machinery only has teeth if the intended design is a RATIFIED Direction norm, and ratification needs the owner present. Solo authoring can't ratify -> toothless descriptions (proven live: prawduct's own 7 artifacts, authored solo this session, have no Direction sections and engage none of this machinery). The interview produces Layer 1 + Layer 2 together (owner declares intent = ratification, retroactivity decided same sitting). Allow 'not ready to bind yet' -> descriptive + defer ratification as a backlog item; default toward collapsing.
+
+  **Pressure-test findings (red-teamed for false negatives; priority: miss-a-gap >> annoy — LLM deference gives non-annoyance for free):**
+  1. Extend the just-in-time nudge to LAYER 0 ('you're adding payments but I don't know what this product IS yet') — highest value, since the whole chain is downstream of recorded characteristics. Biggest hole: a user who skips discovery gets zero governance.
+  2. VALIDATE opt-outs against recorded/detected characteristics — a '(not relevant — tiny utility)' security stub on a product with handles_sensitive_data is a detectable CONTRADICTION -> challenge/block, don't accept at face value. Single highest-leverage tightening.
+  3. Bias toward surfacing/insisting; default-when-uncertain = surface not defer; present full stakes, don't soft-pedal.
+  4. Approval on the DIVERGENCES not the document; blanket 'looks good' that never engages the flagged forks is not ratification; Critic objective-flip (descriptive rubber-stamp = finding) applies to interview output.
+  5. Keep mechanical gates (advisory + Critic/PR) as judgment-INDEPENDENT backstops for detection misses; opt-outs suppress proactive nudges ONLY, never the gates.
+  6. Characteristic-DRIFT detection (re-detect from ongoing work; the work-model tripwire on payments/auth/PII terms is a proto-signal) is what makes n/a stubs self-expiring in practice.
+  7. Durable opt-out must be visible/attributed/reversible and repo-scoped-with-care (team: one dev's opt-out shouldn't silently gag the team's gates).
+
+  ---
+  ## Divergence model — Type 1 / Type 2 correction (conversation 2026-07-17, continued)
+
+  **CORRECTION to the divergence model (supersedes the single-divergence framing above):** there are THREE things, not two — (a) best practice = the agent's expert recommendation; (b) the ratified norm = what the owner binds; (c) the code. 'Divergence' splits into two gaps with OPPOSITE handling:
+  - **TYPE 1 — code below norm (b vs c):** documented goal is genuinely best practice, code lags. Approval = ratify the good norm + accept the code must be updated (norm-birth + MIGRATE retroactivity, backlog the alignment). The CODE is wrong. [This is the case the earlier 'divergence-approval = norm birth + retroactivity' section covers.]
+  - **TYPE 2 — norm below best practice (a vs b):** the owner wants to enshrine a sub-optimal practice AS the norm ('never use comments', 'plaintext HTTP credentials'). The NORM is wrong. Approval = the OPPOSITE of accept — clarify/validate/challenge so the owner chooses it eyes-open. This is the 'docs normalize mistakes' fear at the norm layer, where it gets the framework's authority.
+
+  This PUNCTURES the earlier claim that 'owner-ratified intended design IS the definition of best-practice, which dissolves the definition problem' — owner-ratification can enshrine garbage. Expertise (a) is a SEPARATE input from ratification (b); the interview is where they meet and the agent must not let (b) silently drop below (a).
+
+  **Type 2 mechanics (mostly reuse existing machinery):**
+  - Severity gradient: stylistic/defensible ('never use comments') -> challenge gently, defer gracefully (Principle 23, owner owns the product), ratify if insisted; genuine harm, esp. harm to THIRD PARTIES ('plaintext credentials' exposes the app's users) -> challenge hard, refuse to frame as recommended, record starkly.
+  - The required `why` (norms.md) is the Type-2 detector: a norm whose why doesn't survive scrutiny is the trip signal to challenge; a whyless/weak-why bad norm isn't quietly ratified.
+  - Ratify-against-advice is a LABELED decision, never laundered: recorded as 'adopted against recommendation: <agent objection>', never relabeled 'best practice'. The honest label is the point.
+  - Critic's Type-2 role is ANTI-LAUNDERING not veto: it can't override a recorded owner decision (Principle 23) but must verify a sub-optimal norm is honestly labeled as an override, not dressed as recommended practice.
+
+  **Net:** 'approval on divergences' is TWO approvals — Type 1 = 'hold the code to this good bar' (align code); Type 2 = 'confirm you're lowering the bar on purpose' (raise the bar, or record the lowering honestly). Type 2 is where 'docs should be more strident than the code' has the most force.
+
+  ---
+  ## Type 2 handling — no-veto correction (conversation 2026-07-17, continued)
+
+  **CORRECTION to Type 2 handling — the agent has NO VETO over a norm (supersedes 'refuse to frame as recommended' / 'challenge hard, refuse' language above):** Every best practice is a DEFEASIBLE HEURISTIC, and the developer holds context the agent cannot see. Literally every SE best practice is the wrong choice in some rare, legitimate case (e.g. plaintext credentials to an ancient microcontroller on an airgapped bus is correct, not a mistake). So the terminus is ALWAYS ratify — warn, explain, then defer (Principle 23 in full).
+
+  Corrected Type 2 flow:
+  1. Surface the general best practice + its reasoning (stays strident; the warning does NOT get softer).
+  2. ELICIT the why (the part previously under-weighted) — don't pre-judge the norm bad; ask. The why often reveals the 'wrong' practice is right in this context, i.e. it's the context the agent was missing.
+  3. Ratify — ALWAYS. The honesty of the RECORD scales to how the why holds up, not whether the agent agrees:
+     - why resolves the concern -> recorded as a legitimate context-specific decision (NOT 'against advice' — the agent was working from partial context).
+     - no adequate why for a genuinely risky choice -> still ratified (developer owns it), agent's unresolved concern noted honestly on the record.
+
+  The ONLY thing the agent ever declines is to LAUNDER (call something 'best practice' when it isn't, or omit the concern from the record). It never declines to ratify. Honest labeling != refusal.
+
+  This softens the earlier 'harm to third parties raises the bar' -> it raises WARNING INTENSITY and why-elicitation rigor, never the outcome toward refusal (the agent can't reliably assess third-party harm from partial context). Critic anti-laundering role holds but the LABEL REFLECTS THE WHY: a legitimate airgapped decision reads as a decision, not a warning banner; the Critic checks the why EXISTS and the choice is RECORDED, not that it agrees.
+
+  Candidate framework principle worth elevating: 'the agent is advisory on norm content, never a gate; every best practice is defeasible.' Strident warning + graceful deferral + honest record.
+
+- **[GOV-4M7K]** coverage-status layer-0 report should share the ambient nudge's product-work gate
+  `effort: S · impact: S · area: governance · source: critic · added: 2026-07-16 · status: open · stage: ready · refs: bin/prawduct-hook (cmd_coverage_status), lib/gitstate.py (_has_product_definition_work), skills/doctor/SKILL.md #11`
+
+  Critic NOTE (structural-coverage cumulative, R-2). cmd_coverage_status in bin/prawduct-hook computes layer-0-active purely from 'not structural_characteristics_recorded', WITHOUT the _has_product_definition_work gate that the ambient layer-0 briefing nudge (also in cmd_clear) applies. Consequence: on a freshly-onboarded empty repo (no code, no docs/) the doctor 'coverage-status' report says layer 0 is active / coverage degraded, while the ambient session-briefing advisory correctly stays SILENT (and doctor Health Check #6 also gates on product work). The doctor report is thus slightly more eager than the nudge it claims to mirror ('reads the SAME expectation table'). Fix: gate the coverage-status layer-0 determination on _has_product_definition_work too, so the report and the ambient nudge agree on a fresh repo. Bounded, cosmetic (a report line, no wrong behavior). refs: bin/prawduct-hook (cmd_coverage_status), lib/gitstate.py (_has_product_definition_work), skills/doctor/SKILL.md #11.
+
+- **[GOV-2T6K]** `templates/architecture.md` authoring template is missing — a product triggered into an architecture spec has nothing to start from
+  `effort: S · impact: S · area: governance · source: builder · added: 2026-07-16 · status: open · stage: ready · refs: templates/, lib/coverage_probes.py (TRIGGERED_ARTIFACTS)`
+
+  `architecture` is one of the seven strategy-class artifacts (the characteristic-triggered arm fired by `multi_process_distributed`; the sibling triggered artifact `api-contract` ships a template, and every universal strategy-class artifact has one), but `templates/architecture.md` does not exist. So a product that records `multi_process_distributed` and runs `/prawduct:methodology planning` to author its architecture spec has no template to start from — every other strategy-class artifact hands the author a scaffold, this one does not.
+
+  Scope is an additive authoring-template gap, NOT a hole in the shipped coverage mechanism: the `coverage-scaffold` helper drops a neutral, template-independent stub, and a stub satisfies the strategy-artifact-missing probe, so coverage still functions end-to-end. What's missing is the human-facing starting-point document for writing a real architecture spec.
+
+  Fix-shape: add `templates/architecture.md` matching the structure/tone of the other strategy-class templates (`api-contract.md`, `security-model.md`, `data-model.md`, …), including the `(not relevant to this project — <reason>)` stub affordance the coverage mechanism recognizes. Discovered during structural-coverage Chunk 04; also recorded in `.prawduct/cross-cutting-concerns.md` Known Gaps. (builder)
+
 - **[GOV-6N4W]** UserPromptSubmit "norm-shaped prompt" classifier — detect norm-birth phrasing at prompt time and nudge capture
   `effort: M · impact: M · area: governance · source: builder · added: 2026-07-16 · status: open · stage: idea · related: GOV-7Q4N, WMK-4Q9T, WMK-1P4Q · refs: .prawduct/artifacts/build-plan-norm-lifecycle.md (Out of scope + Chunk 6), docs/norms.md`
 
@@ -1093,14 +1196,36 @@
 
   Observed 2026-07-16 during norm-lifecycle Chunk 2's review on feature/norm-lifecycle: `prawduct-hook infer-critic-mode` reported "no active build plan and no other rule fired — fail-safe to final" and verify-chunk-refs saw "no current chunk", even though project-state.yaml `active_build_plan: artifacts/build-plan-norm-lifecycle.md` was set and the plan's Chunk 2 declares `Critic mode: chunk`. Failed SAFE here (final ⊇ chunk — a broader review than required), but the same current-chunk/plan derivation feeds the stop-hook gate, so the miss is not confined to mode choice. Likely the derivation doesn't resolve the pointer, or expects a different Status-section shape than the plan uses. Overlap check before fixing separately: BLD-5J8N is the chunk-HEADER regex leg of cmd_verify_chunk_refs ("## Chunk NN — Title" h2/em-dash style exits "chunk not found") — if build-plan-norm-lifecycle.md uses that header style, this may be the same parser gap surfacing at the plan/current-chunk derivation layer; verify against both readers before fixing either alone. BLD-7W2J is the single-slot pointer design (different failure: pointer repointed between parallel plans, not a set pointer going unresolved). Governance-protected (lib/critic_mode.py, bin/prawduct-hook) → full Critic + PR review. (critic)
 
-- **[GOV-5D2W]** Advisory `show` reconstructs evidence with an empty probe registry — probe re-run silently no-ops for every probe family
-  `effort: S · impact: S · area: governance · source: critic · added: 2026-07-16 · status: open · stage: ready · related: GOV-6H4P · refs: lib/advisory_cmd.py, bin/prawduct-hook`
-
-  Probe registration lives only in cmd_clear (bin/prawduct-hook ~line 690), so lib/advisory_cmd.show_advisory's probe re-run reconstructs evidence against an empty probe registry and silently no-ops for every probe family. Pre-existing graceful degradation surfaced by the norm-lifecycle Chunk 3 Critic review (fact rev-20260716T173555Z-10a0f433, NOTE). Fix shape: a shared register-all-probes helper both call sites use. (critic)
-
 ## Promoted
 
 ## Archive
+
+- **[GOV-5K3M]** Author prawduct's 7 strategy-class artifacts (close the layer-1 coverage nudge)
+  `effort: M · impact: M · area: governance · source: builder · added: 2026-07-16 · status: shipped · stage: ready · closed-by: structural-coverage · related: GOV-2T6K, GOV-EXI2 · refs: .prawduct/artifacts/, lib/coverage_probes.py (TRIGGERED_ARTIFACTS), .prawduct/cross-cutting-concerns.md · reviewed: 2026-07-17`
+
+  Recording classification.structural for prawduct (structural-coverage Chunk 05 dogfood) advanced the coverage chain to layer 1: prawduct now owes all seven strategy-class artifacts, currently all missing. Author each in .prawduct/artifacts/ as a real spec OR a deliberate '(not relevant — <reason>)' stub (existence satisfies coverage). The set: data-model.md, security-model.md, nonfunctional-requirements.md, operational-spec.md, observability-strategy.md (universal); api-contract.md (triggered by exposes_programmatic_interface — document the bin/prawduct-hook CLI + JSON contracts, versioning/deprecation/error-model decisions); architecture.md (triggered by multi_process_distributed — process topology of the Critic coordinator/reviewer fan-out + shared tree-keyed evidence store). This is the deferred symptom-fix, correctly downstream of the system-fix (the coverage chain itself). NOTE: authoring architecture.md is missing its authoring template — see GOV-2T6K (templates/architecture.md). prawduct-hook coverage-scaffold --apply drops neutral stubs for all seven in one act as a starting point.
+
+  Shipped 2026-07-17 (closed-by: structural-coverage): all seven strategy-class artifacts now exist under `.prawduct/artifacts/` (api-contract.md, architecture.md, data-model.md, nonfunctional-requirements.md, observability-strategy.md, operational-spec.md, security-model.md), closing the layer-1 coverage nudge.
+
+- **[GOV-5D2W]** Advisory `show` reconstructs evidence with an empty probe registry — probe re-run silently no-ops for every probe family
+  `effort: S · impact: S · area: governance · source: critic · added: 2026-07-16 · status: shipped · stage: ready · closed-by: structural-coverage · related: GOV-6H4P · refs: lib/advisory_cmd.py, lib/probe_families.py, bin/prawduct-hook, tests/test_advisory_cmd.py · reviewed: 2026-07-16`
+
+  Probe registration lives only in cmd_clear (bin/prawduct-hook ~line 690), so lib/advisory_cmd.show_advisory's probe re-run reconstructs evidence against an empty probe registry and silently no-ops for every probe family. Pre-existing graceful degradation surfaced by the norm-lifecycle Chunk 3 Critic review (fact rev-20260716T173555Z-10a0f433, NOTE). Fix shape: a shared register-all-probes helper both call sites use. (critic)
+
+  Shipped 2026-07-16 (closed-by: structural-coverage): resolved by structural-coverage Chunk 04 — exactly the item's fix-shape. Created `lib/probe_families.py` with `register_all()` as the shared probe-registration helper, and wired both `bin/prawduct-hook` cmd_clear and `lib/advisory_cmd.show_advisory` to it, so `advisory show` reconstruction now registers the full probe roster before re-running probes (previously it scanned an empty registry and no-op'd for every family). Regression test: `tests/test_advisory_cmd.py::test_show_self_registers_probe_roster_for_reconstruction`.
+
+- **[GOV-EXI2]** `norm-registry-unratified` advisory adoption blind spot — Enforcement-table-lacks-norm-columns disjunct never fires without strategy-class artifacts
+  `effort: M · impact: M · area: governance/advisory · source: user · added: 2026-07-16 · status: shipped · stage: design · closed-by: structural-coverage · related: GOV-7Q4N, GOV-6N4W · refs: lib/norm_probes.py (norm-registry-unratified probe), docs/norms.md (§ Adoption, § Enforcement), .prawduct/.governance-ledger.jsonl (Chunk 3 review R-1) · reviewed: 2026-07-16`
+
+  The `norm-registry-unratified` advisory requires strategy-class artifacts to exist before firing, so a product whose norms live only in project-preferences.md (Enforcement table) + learnings — with no strategy-class artifacts — never gets the ratification nudge. Prawduct itself is in this blind spot: its own norm registry is unratified and the advisory stays silent. The disjunct that would catch it ("Enforcement table lacks norm columns") was deliberately deferred in Chunk 3 (Critic finding R-1) to hit the norm-lifecycle build's "zero advisories against this repo" acceptance criterion.
+
+  Fix-shape: make the "Enforcement-table-lacks-norm-columns" disjunct fire independently of strategy-class artifacts, relying on the one-shot + shared-answer + clears-on-ratify-or-record-none mechanism (already built) to keep the broad nudge tolerable rather than narrowing the trigger.
+
+  Design question to resolve: false-nag posture on mass upgrade — every pre-norm product would fire once on adoption day; confirm the one-shot/shared-state clearing makes that acceptable (it was designed to) vs. the narrowing that traded away the signal.
+
+  Governance-protected (probes/hooks) → full Critic + PR review. (user)
+
+  Shipped 2026-07-16 (closed-by: structural-coverage): resolved by design — the structural-coverage staging chain closes the blind spot upstream rather than by ungating layer 2. Layer 1 (strategy-artifact-missing) now nudges a product with no strategy-class artifacts to author them (a `(not relevant — …)` stub counts and still creates the file); once any strategy artifact exists — even an all-stub set — layer 2 (norm-registry-unratified) fires the ratification nudge as before. So a product whose norms live only in preferences + learnings is reached transitively (layer 1 → files exist → layer 2), and layer 2's artifact-existence gate becomes correct staging instead of a blind spot. The original ungate-arm-(b) fix-shape is deliberately NOT taken (the DECISION line in build-plan-structural-coverage.md Requirements Confidence). Recorded in docs/norms.md § Enforcement (structural-coverage staging table).
 
 - **[GOV-7Q4N]** Norm lifecycle — treat governing-artifact statements as binding norms with a full lifecycle
   `effort: L · impact: L · area: governance · source: user · added: 2026-07-16 · status: shipped · stage: ready · closed-by: norm-lifecycle · related: MET-3P7B, GOV-3P8K · refs: build-plan-norm-lifecycle.md, docs/norms.md · reviewed: 2026-07-16`
