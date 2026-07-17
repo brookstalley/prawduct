@@ -3,6 +3,29 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-07-17: Norm-ratification flow surfaces by exception, not a flat wall (fix)
+
+<!-- prawduct: type=fix -->
+<!-- Statusless = release-pending once merged. Small prose/methodology fix, no build plan;
+     Critic final 0 blocking / 0 warning after verify-resolutions. -->
+
+**Parent:** GOV-8R3F — the doctor Norm Ratification Flow presented *all* candidate norms in one
+flat block ("confirm-or-correct"). At scale (prawduct's own ratification surfaced ~20 candidates)
+that becomes a wall the owner bounces off — or blanket-rubber-stamps, which silently defeats
+owner-ratification, the exact failure the flow exists to prevent.
+
+**What:** Rewrote `skills/doctor/SKILL.md` Norm Ratification steps 2-3 to *triage, then surface by
+exception*. Step 2 tags each candidate **clear-to-ratify** (a decision plainly stands behind it,
+statement matches the code today, why is obvious) vs **needs-a-ruling** (taxonomy: aspirational /
+practice-not-written / wording-fork / collision / whyless). Step 3 presents asymmetrically —
+needs-a-ruling individually with its fork + a recommendation, clear-to-ratify as one bulk-confirm
+line — and **bans the flat dump above ~6 candidates**. Guard: bulk-confirm stays an *explicit*
+confirm (silence ratifies nothing; no auto-ratification through the back door). Mirrored in
+`docs/norms.md` § Adoption, with a cross-cutting learning captured (the pattern generalizes to any
+owner confirm-or-correct batch). The sibling `skills/janitor/SKILL.md` Step-3 Reconcile shares the
+shape — held out for scope discipline as GOV-8R3F's residual (`stage: ready`, a port of the shipped
+taxonomy).
+
 ## 2026-07-16: Structural coverage — a forcing function for what a product owes (structural-coverage)
 
 <!-- prawduct: type=feature | scope=structural-coverage | chunks=01,02,03,04,05 -->

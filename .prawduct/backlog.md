@@ -7,6 +7,19 @@
 
 ## Open
 
+- **[GOV-8R3F]** Janitor Step-3 Reconcile surfaces candidates flat (single confirm-or-correct block); apply the shipped doctor surface-by-exception taxonomy
+  `effort: M · impact: M · area: governance · source: reflection · added: 2026-07-17 · reviewed: 2026-07-17 · status: open · stage: ready · related: GOV-6N4W, GOV-4X9M, JNT-8E3P · refs: skills/janitor/SKILL.md (Step-3 Reconcile — the residual), skills/doctor/SKILL.md (steps 2-3, shipped clear-to-ratify/needs-a-ruling taxonomy — reuse precedent), docs/norms.md (§ Adoption)`
+
+  The **doctor** Norm Ratification Flow shipped the surface-by-exception fix this cycle (`skills/doctor/SKILL.md` steps 2-3 + `docs/norms.md` § Adoption): a **clear-to-ratify vs. needs-a-ruling** taxonomy, a ban on flat-dumping ~6+ candidates, and an explicit bulk-confirm guard. That fixed the doctor's original failure mode — at scale, a one-block dump of every candidate becomes a wall-of-text the owner skims and rubber-stamps (the "blanket 'looks good' that never engages the forks" failure ratification exists to prevent — Principle 6; the GOV-4X9M "approval on the divergences, not the document" concern).
+
+  **Residual (this item):** the sibling **janitor Step-3 Reconcile** (`skills/janitor/SKILL.md`) still presents its candidates as a flat "single confirm-or-correct block" and carries the identical failure mode — it needs the same treatment.
+
+  Fix-shape: **reuse the shipped doctor taxonomy** — don't design a competing one. Apply the same clear-to-ratify / needs-a-ruling split to the janitor's Reconcile step: foreground only the candidates that need a decision (the doctor taxonomy already encodes which — ambiguous classification, high-stakes/security-relevant, `in-transition`, Type-2 sub-optimal-norm risk), collapse the clearly-safe ones into a bulk **confirm-in-summary** affordance, and honor the ~6-item flat-dump ban. Exception criterion, surfacing shape, and bulk-confirm guard are all already designed and proven in the doctor precedent — this is a port, not a fresh design.
+
+  Guard: surface-by-exception must **never silently ratify** the un-surfaced candidates — the collapsed set still gets an explicit bulk confirm (owner sees the count and can expand), matching the doctor's shipped guard, because auto-binding a norm the owner didn't engage is a norm-birth decision made by default (`docs/norms.md` § No auto-ratification).
+
+  Stage: ready — the fix-shape is proven by the shipped doctor precedent, so there is no open design question; the work is porting the existing clear-to-ratify/needs-a-ruling taxonomy onto the janitor's Step-3 Reconcile. Governance-protected (`skills/`) → full Critic + PR review.
+
 - **[GOV-4X9M]** Backfill-as-discovery: interview-driven strategy-artifact authoring with just-in-time nudges + layered opt-outs
   `effort: L · impact: L · area: governance · source: user · added: 2026-07-17 · reviewed: 2026-07-17 · status: open · stage: requirements · related: GOV-EXI2, GOV-5K3M`
 
