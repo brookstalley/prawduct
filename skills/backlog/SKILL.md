@@ -127,6 +127,9 @@ Surface likely-duplicate / overlapping items and propose merges. Idempotent and 
 2. Present each candidate pair/cluster with both titles + IDs and a one-line "why these look related." Ask which to merge, keep separate, or skip.
 3. On a confirmed merge: pick the surviving item, fold the other's body into it (preserve both — append the merged-in body under a `— merged from PFX-XXXX —` marker), set `related:`/`refs:` as appropriate, and `update <superseded> status=dropped` with `closes: <survivor>` recorded on the survivor. Report what merged.
 
+### scrub (migration to GitHub Issues)
+The **owner-confirmed cleanup** run once when a project moves its markdown backlog onto GitHub Issues through the backlog service (`prawduct-hook backlog <op>`). It surfaces stale/duplicate items *before* they become live issues (model proposes → owner confirms → the deterministic `status`/`merge`/`import` ops apply the cleaned set; the model is in the decision, never the data plane — MG4/G1). Distinct from `dedup`/`migrate` above, which edit `.prawduct/backlog.md` in place; this drives the service CLI and requires `gh`. **Full runbook: `migration-scrub.md`** (in this skill directory).
+
 ## Triage method
 
 GREAT triage so each project doesn't reinvent it. Run periodically (the janitor's Backlog Health step automates the surfacing). The moves, in order:

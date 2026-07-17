@@ -170,3 +170,28 @@ behaviors are confirmed only against real GitHub —
 - `status --to shipped`: the issue is **closed** with `state_reason: completed`, **no** `status:`
   label remains, decoded `status` is `shipped`; a re-run is a clean no-op (exit 0, unchanged).
 - `--json` stays pure JSON; **no token / `proxy-injected` literal** appears anywhere (SEC-1).
+
+## VRF-006 — Chunk 06 (backlog-service) — prawduct-first migration: scrub dispositions + migrated repo + live briefing
+
+**Status:** pending (deferred — the live migration itself is not yet run)
+**Added:** 2026-07-17 (backlog-service Chunk 06, offline deliverables landed; live
+migration/repoint/retirement deferred to an owner-run session after design sign-off)
+**Where to verify:** A real owner-driven session, after design sign-off, running the
+migration-scrub runbook (`skills/backlog/migration-scrub.md`) against a chosen target
+repo — first SPIKE-S2 (`tests/spikes/s2_migration.py`) on a throwaway copy, then the
+real prawduct backlog.
+
+**Why a human check:** the scrub's disposition decisions and the fidelity of the
+migrated backlog are, by design, owner-confirmed (MG4/MIG-5) — no automated test can
+sign off on *which* items are stale/duplicate or that the migrated bodies read
+correctly. Chunk 06's acceptance is the dogfood itself.
+
+**Verify (owner eyeballs):**
+- The **scrub disposition list** — every stale/dup disposition is one the owner
+  confirmed; no item was dropped silently and nothing was hard-deleted (dropped items
+  are *closed*, duplicates *merged+redirected*, bodies preserved).
+- A **spot-check of migrated bodies/IDs** — a handful of items read verbatim on
+  GitHub Issues and every hand-minted `PFX` resolves as an `id:PFX` alias.
+- The **live briefing counts** — session start reads the backlog count through the
+  adapter (not `legacy.py`), with a visible age, and never hangs when GitHub is slow.
+- `legacy.py` and the `incoming-bugs/` drop-box are retired only *after* the above.

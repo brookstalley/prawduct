@@ -7,6 +7,11 @@
 
 ## Open
 
+- **[BKL-6M4T]** Complete backlog-service Chunk 06 live migration (deferred)
+  `effort: L · impact: M · area: backlog-service · source: builder · added: 2026-07-17 · status: open · stage: ready · related: BKL-5R2K · refs: artifacts/build-plan-backlog-service.md, VRF-006`
+
+  Offline deliverables (scrub runbook, MIG-5 test, SPIKE-S2 script) landed 2026-07-17; the live, owner-in-the-loop remainder is deferred to a post-sign-off session: run SPIKE-S2 on a throwaway repo, run the real prawduct-first migration (scrub → import), repoint briefing/gates to the adapter, retire `lib/backlog/legacy.py` + the `incoming-bugs/` drop-box, then the single cumulative-critic that gates the slice PR. Blocked on design sign-off + a chosen target repo.
+
 - **[BKL-5R2K]** Wire the merge/transfer redirect-follow (`ids.resolve_redirect` / `migrate.resolve`) into a real get/pick consumer
   `effort: S · impact: S · area: backlog-service · source: critic · added: 2026-07-17 · status: open · stage: ready · refs: artifacts/build-plan-backlog-service.md`
 

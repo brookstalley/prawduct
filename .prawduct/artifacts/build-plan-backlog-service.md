@@ -157,9 +157,22 @@ reconcile* failure defers to a warning (core budget, transient — the re-run co
 queued** (live `gh`): `import`+`export` round-trip, `merge`, and the Done-when-0 blocker check (link a
 real blocker → `pick` excludes it — confirms the `blocked_by` read shape Chunk 03 built against the
 fake only). The `[ ]` boxes above stay unchecked by design — `regen-views` flips them to `[x]` only at
-release. Still a design artifact **promoted 2026-07-16**; owner sign-off pending. Next: Chunk 06
-(SPIKE-S2 dry-run + MG4 scrub + prawduct-first real migration, `cumulative-final`), or owner sign-off +
-slice merge.
+release. Still a design artifact **promoted 2026-07-16**; owner sign-off pending. **Chunk 06 —
+offline deliverables landed 2026-07-17** (the live migration is deferred, by owner decision, to an
+owner-driven session after design sign-off; the chunk therefore stays `[ ]` — its acceptance requires
+the live dogfood): the **MG4 scrub workflow runbook** (`skills/backlog/migration-scrub.md` + a `### scrub`
+pointer in the backlog SKILL) — model surfaces stale/dup candidates from `list`, owner confirms, the
+deterministic `status`/`merge`/`import` ops apply the cleaned set (the model is in the *decision*, never
+the data plane — API §2.5); the **MIG-5 test** (`TestScrubDataPlaneBoundary`, 3 L1 cases — disposition
+plan is data, nothing hard-deleted/DM7, disposal touches only named items, import op typed to consume a
+concrete record set; module-level model-freedom stays INV-1's job); and the **SPIKE-S2 spike script**
+(`tests/spikes/s2_migration.py`, L4 dev-only, `gh`-live, refuses without `--repo`+`--yes`, not collected
+by CI — fidelity/aliases/relationships/resume/pick-latency/node_id-across-transfer). Offline suite green
+(2144 passed, +3). **Deferred to the owner-run session (tracked, not dropped):** SPIKE-S2 live run,
+the real prawduct migration, the briefing/gates repoint to the adapter, and the `legacy.py` +
+`incoming-bugs/` retirement — filed as a backlog item and queued as **VRF-006**. Next: owner sign-off →
+the live migration session (SPIKE-S2 → real migration → repoint → retire), which completes the chunk and
+runs the single `cumulative` review that gates the slice PR.
 
 ## Scaffolding
 

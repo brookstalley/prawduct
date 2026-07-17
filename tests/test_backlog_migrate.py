@@ -13,6 +13,10 @@ Covers the highest-risk operations against the transport-seam fake (offline, no
   from GitHub with no loss/duplication — the W1 cache-rebuild property in miniature.
 - **CRASH-4** ``import`` resumes without duplicating after a mid-run failure.
 - **CRASH-2** ``merge`` writes the redirect before closing the source.
+- **MIG-5** the MG4 scrub keeps the model in the *decision*, not the data plane:
+  an owner-confirmed disposition plan (plain data) is applied through
+  ``status``/``merge`` — nothing hard-deleted (DM7) — and the import consumes a
+  concrete record set (module-level model-freedom is INV-1's job, not re-tested).
 - **PROBE-RATE** the write-pacer's decisions (deterministic clock, no real sleep).
 - The ``import``/``export``/``merge`` CLI front.
 """
@@ -397,6 +401,121 @@ class TestRedirectResolution:
 
     def test_no_redirect_returns_self(self):
         assert ids.resolve_redirect("r#1", fetch=lambda _c: None) == "r#1"
+
+
+# --- MIG-5: the scrub keeps the model in the decision, not the data plane -----
+
+# A concrete scrub corpus: a survivor, its duplicate, a stale item, and a live
+# item to leave untouched. This mirrors what the model surfaces from `list` —
+# but every test supplies the *disposition plan* as plain data (an owner's
+# already-confirmed decision), never a model call. The scrub's deterministic
+# tail then applies it through the same `status`/`merge`/`import` ops any caller
+# uses (API §2.5: the scrub is a workflow over these ops, not a new op).
+_SCRUB_BACKLOG = """# Backlog — scrub corpus
+
+## Open
+
+- **[KEEP-0001]** Canonical harbor-map item
+  `effort: M · impact: L · area: ui · source: user · added: 2026-05-01 · status: open · stage: ready`
+
+  The surviving item a duplicate folds into.
+
+- **[DUP-0002]** Harbor map (a near-duplicate of KEEP-0001)
+  `effort: M · impact: L · area: ui · source: user · added: 2026-05-02 · status: open · stage: ready`
+
+  The owner confirms merging this into KEEP-0001.
+
+- **[STALE-0003]** Abandoned fog-of-war spike
+  `effort: S · impact: S · area: ui · source: user · added: 2026-01-01 · status: open · stage: idea`
+
+  Unmoved for months; the owner confirms dropping it.
+
+- **[LIVE-0004]** Rate-limit the trade API
+  `effort: S · impact: M · area: backend · source: builder · added: 2026-05-02 · status: open · stage: ready`
+
+  A live item the scrub must leave untouched.
+"""
+
+
+class TestScrubDataPlaneBoundary:
+    """MIG-5 — the MG4 scrub is a model-assisted, owner-confirmed *workflow* over
+    ``list``/``status``/``merge``/``import`` (API §2.5); the model is in the
+    *decision*, never the data plane (G1). These assert the deterministic tail:
+    given an owner-confirmed disposition plan expressed purely as **data**,
+    disposal goes through ``status``/``merge`` (nothing hard-deleted, DM7) and the
+    import op consumes a concrete record set — no model call reaches a mutating op.
+    (Module-level model-freedom of the whole package is INV-1's contract.)"""
+
+    def _import_corpus(self, fake):
+        result = _import(fake, _SCRUB_BACKLOG)
+        assert result["status"] == "ok", result
+        # hand-minted PFX -> canonical GitHub id, read from the import result.
+        return {c["pfx"]: c["id"] for c in result["data"]["created"]}
+
+    def test_dispositions_are_data_and_nothing_is_hard_deleted(self, fake):
+        ids_by_pfx = self._import_corpus(fake)
+        assert set(ids_by_pfx) == {"KEEP-0001", "DUP-0002", "STALE-0003", "LIVE-0004"}
+
+        # The owner-confirmed disposition plan — plain data. The model's decision
+        # is already made and confirmed; nothing below consults a model.
+        plan = {
+            "merge": [{"source": "DUP-0002", "into": "KEEP-0001"}],
+            "drop": ["STALE-0003"],
+        }
+
+        # Apply the plan deterministically through the existing ops.
+        for m in plan["merge"]:
+            r = migrate.merge(
+                fake, source_raw=ids_by_pfx[m["source"]], target_raw=ids_by_pfx[m["into"]]
+            )
+            assert r["status"] == "ok", r
+        for pfx in plan["drop"]:
+            r = core.set_status(fake, id_raw=ids_by_pfx[pfx], target="dropped")
+            assert r["status"] == "ok", r
+
+        # DM7: nothing hard-deleted — every source item still exists on GitHub.
+        assert len(fake.list_issues(OWNER, REPO, state="all")) == 4
+
+        # The duplicate is disposed by redirect-then-close, its body preserved.
+        dup = core.get_item(fake, id_raw=ids_by_pfx["DUP-0002"])["data"]
+        assert dup["status"] == "dropped"
+        assert dup["superseded_by"] == ids_by_pfx["KEEP-0001"]
+
+        # The stale item is disposed by close, not removal.
+        assert core.get_item(fake, id_raw=ids_by_pfx["STALE-0003"])["data"]["status"] == "dropped"
+
+        # The survivor and the untouched live item stay open.
+        assert core.get_item(fake, id_raw=ids_by_pfx["KEEP-0001"])["data"]["status"] == "open"
+        assert core.get_item(fake, id_raw=ids_by_pfx["LIVE-0004"])["data"]["status"] == "open"
+
+    def test_disposal_touches_only_the_named_items(self, fake):
+        # Owner-confirmed means the deterministic tail disposes *exactly* what the
+        # plan names — it never autonomously closes an item the owner didn't pick.
+        ids_by_pfx = self._import_corpus(fake)
+        core.set_status(fake, id_raw=ids_by_pfx["STALE-0003"], target="dropped")
+
+        open_now = {i["number"] for i in fake.list_issues(OWNER, REPO, state="open")}
+        closed_now = {i["number"] for i in fake.list_issues(OWNER, REPO, state="closed")}
+        dropped_num = ids.normalize_id(ids_by_pfx["STALE-0003"]).number
+        assert closed_now == {dropped_num}  # only the named item moved
+        assert len(open_now) == 3
+
+    def test_import_op_is_typed_to_consume_a_concrete_record_set(self):
+        # Structural: the import op takes a concrete `records` list (data), never a
+        # callback/model handle — the model can only act *upstream*, by choosing
+        # which records to pass. This is the "concrete cleaned set, not a model
+        # call" boundary; package-wide model-freedom is INV-1.
+        import inspect
+
+        for name in ("import_items", "import_backlog", "merge"):
+            params = inspect.signature(getattr(migrate, name)).parameters
+            for p in params.values():
+                ann = str(p.annotation).lower()
+                assert not any(h in ann for h in ("callable", "model", "client")), (
+                    f"{name}.{p.name} must not accept a model/callback in the data plane"
+                )
+        records_ann = str(inspect.signature(migrate.import_items).parameters["records"].annotation)
+        assert "ImportRecord" in records_ann  # list[ImportRecord] — data, not a call
 
 
 # --- PROBE-RATE: the write-pacer's decisions (deterministic) ------------------
