@@ -10,7 +10,7 @@ The Critic reviews changes against principles and specifications as a **separate
 4. Read relevant `.prawduct/artifacts/`.
 5. Read `${CLAUDE_SKILL_DIR}/../../docs/principles.md` and `.prawduct/learnings.md` (the product's own) — `final` mode only.
 6. Decide checks from signals below.
-7. Pick execution strategy (see Review Execution).
+7. Follow the dispatch manifest's roster (see Review Execution).
 
 ## Modes
 
@@ -19,7 +19,7 @@ The Critic reviews changes against principles and specifications as a **separate
 - **`chunk`** — Goals 1-3 only, single-pass, scoped to the uncommitted diff. Target 1-2 min.
 - **`final`** — all 7 goals + Learnings Cross-Check + Backlog Reconciliation + Framework-Specific Checks. Coordinator pattern eligible. Target 4-10 min.
 - **`cumulative`** — `final`-mode goals scoped to `merge-base...HEAD` (the full PR bundle). Required by `/prawduct:pr create`. See `review-cycle.md`.
-- **`verify-resolutions`** — Goals 1-3 against the prior review's scope. Target 1-2 min. Demotion rules and the chain: `review-cycle.md`.
+- **`verify-resolutions`** — Goals 1-3 against the delta since the prior review fact. Target 1-2 min. Demotion rules: `review-cycle.md`.
 
 **Default:** mode missing, unrecognized, or inference unconfident → `final` (canonical rule: `review-cycle.md`). Never silently downgrade.
 
@@ -36,6 +36,15 @@ The Critic reviews changes against principles and specifications as a **separate
 ## Review Goals
 
 Your goals, in priority order. (`chunk` mode runs 1-3 only.)
+
+**Normative authority** (`${CLAUDE_SKILL_DIR}/../../docs/norms.md`). Direction sections,
+preferences rows, project-state classification, **and unmarked prose recording a decision**
+bind; descriptions track (test: would syncing it to code silently unmake a decision?).
+Departure, unruled edge-work, normative change (even doc-only), or norm birth without a
+recorded vetoable decision (the amending edit never counts) → Goal 3 **BLOCKING**. Tell:
+amending a norm to match your own code. Correctness shapes only the recommendation ("record the
+ruling — cheap"), never the need. Judge jurisdiction yourself; applicability is
+recorded, never assumed. Stale registry → NOTE: `/prawduct:doctor`; never a downgrade.
 
 ### 1. Nothing Is Broken
 - **Do not run tests.** Run `prawduct-hook test-status`: exit 0 = current; stale/missing → **WARNING** — that exit code is the *only* freshness signal; never infer staleness from a commit/SHA field in the evidence (it carries none). Test failures in evidence → **BLOCKING**. Review test *quality and coverage* through code analysis only.
@@ -77,11 +86,11 @@ Your goals, in priority order. (`chunk` mode runs 1-3 only.)
 
 ### 4. Everything Is Coherent
 - Artifacts are consistent with each other and with code.
-- **Bidirectional freshness**: code matches artifacts AND artifacts still describe code (model fields, architecture components). Stale artifact → **WARNING**.
-- **Project preferences**: `project-preferences.md` conventions (language, naming, structure, deps) must be followed → **BLOCKING** if violated.
+- **Bidirectional freshness** (descriptive content only — norms follow Normative authority above): code matches artifacts AND artifacts still describe code (model fields, architecture components). Stale artifact → **WARNING**.
+- **Norms**: `project-preferences.md` rows and Direction statements bind — unrecorded departure → **BLOCKING** via Goal 3; never "fix" divergence by artifact edit.
 - **Infrastructure coherence**: `infrastructure_dependencies` declared but code uses in-memory only → **WARNING**. Mocks must be documented, not silently substituted.
 - **README and top-level docs**: read the project's README and `docs/` when features change. Removed/renamed features or wrong setup → **WARNING**. Actively misleading instructions (wrong commands, deleted config refs) → **BLOCKING**.
-- **Documentation drift**: Comments, type annotations, or API docs that contradict the code they describe → **WARNING**.
+- **Documentation drift**: Comments, type annotations, or API docs that contradict the code they describe → **WARNING**. Same defect when a *product* durable artifact (comment, docstring, long-lived spec) rides its meaning on an ephemeral build id — a chunk number, build-plan, or work-cycle name — which dangles once the plan is deleted (Principle 13) → **WARNING**; build-cycle bookkeeping that records the work (e.g. change-log `chunks=`, backlog `closed-by:`, operator-verification) is exempt.
 - **Changelog scope**: When reviewing `change-log.md` or `change_log_history`, only check entries added/modified in the current changeset. Older entries are append-only history — don't flag stale terminology, outdated counts, or superseded descriptions. Same applies to commit messages and archived notes.
 - **Derived views**: `views_enabled` ⇒ Status, `release-notes.md`, and `scope_rollups:` derive from change-log tags via `regen-views`. Tag is canonical; view↔tag mismatch → **WARNING** ("run regen-views"). Flag tags, not derived files.
 - **CLAUDE.md size**: CLAUDE.md is an instruction file, not an architecture reference. Check project-specific content (outside PRAWDUCT markers): over ~150 lines → **WARNING** ("CLAUDE.md project content is N lines — move architecture, config tables, and component inventories to docs/ or .prawduct/artifacts/"). Applies to the current changeset.
@@ -96,7 +105,6 @@ Your goals, in priority order. (`chunk` mode runs 1-3 only.)
 ### 6. The System Can Be Understood
 - Error handling is present where failure is possible → **WARNING** if missing.
 - Logging is appropriate for debugging → **WARNING** if absent in new code paths.
-- If an observability strategy exists, implementation follows it → **WARNING** if diverged.
 - Correlation context and sensitive data filtering implemented as specified.
 - New capability with no way to detect failure → **BLOCKING**.
 - Growing collections without lifecycle management → **WARNING**.
@@ -121,7 +129,7 @@ This goal applies proportionally — a 2-line helper doesn't need design review.
 
 ### Learnings Cross-Check and Backlog Reconciliation
 
-**`final`/`cumulative` only.** See `review-cycle.md`: scan findings against `.prawduct/learnings.md` (escalate when a change reintroduces a warned-against pattern), then walk `.prawduct/backlog.md`, emitting **NOTE** findings for items resolved.
+**`final`/`cumulative` only.** See `review-cycle.md`: scan findings against `.prawduct/learnings.md` (escalate when a change reintroduces a warned-against pattern) and against Direction statements of the plan's `governed_by:` artifacts, then walk `.prawduct/backlog.md`, emitting **NOTE** findings for items resolved.
 
 ## Severity Levels
 
@@ -131,18 +139,18 @@ This goal applies proportionally — a 2-line helper doesn't need design review.
 
 ## Review Execution
 
-- **`chunk`, `verify-resolutions`, and `final` trivial/small**: single-pass — the fork reviews and persists it itself (steps 7-8); no subagents.
-- **`final` medium/large and `cumulative`**: coordinator pattern (below).
+The roster in the code-written dispatch manifest (`.prawduct/.critic-partials/manifest.json`, written by `critic-begin`) picks the path:
+
+- **Roster `["reviewer"]` — single-pass**: `chunk`, `verify-resolutions`, and `final`/`cumulative` under 5 changed files. The fork reviews inline, writes its one partial, and runs `critic-consolidate` itself; no subagents.
+- **Roster `correctness`/`design`/`sustainability` — coordinator pattern** (below): `final`/`cumulative` at 5+ changed files.
 
 ### Coordinator Pattern
 
-Persistence is **decoupled from the review** (`critic-persistence-redesign.md` — the coordinator never resumes to aggregate): reviewers write partials; `critic-consolidate` merges them into `.critic-findings.json` + the ledger anchor (no model in writes).
+Persistence is **decoupled from the review** (the coordinator never resumes to aggregate): reviewers write partials; `critic-consolidate` merges them against the code-written manifest into the evidence fact + `.critic-findings.json` + the ledger anchor — no model authors any file the data plane trusts.
 
-1. **Assess** (coordinator): read project state, run git diff, list changed files, and determine signals (size, type, boundaries). Run `prawduct-hook classify-diff-risk` — its verdict picks the tier chain (highest first; `reviewer-model-ab-2026-06-10.md`): `escalate` → `model: fable`, then `opus`; `standard` → `opus`, then `sonnet`. Use the first the harness accepts (fall back on a withdrawn model or dispatch error). Record what ran as the manifest `model`.
+1. **Assess** (coordinator): read project state and the manifest (review id, `commit_reviewed`, `files_changed`), run git diff, and determine signals (size, type, boundaries). Reviewers run on the **current session model** — do **not** pass a `model:` override; whatever model the session is on reviews the work. (Reviewer-model tiering was removed; the manifest's `tier` is telemetry only and selects no model.)
 
-2. **Write the manifest** `.prawduct/.critic-partials/manifest.json` — the source of truth for the pending review (keys: `review-cycle.md` "Recording Reviews"; validators: `lib/critic_consolidate.py`). Its `files_reviewed` must be non-empty — it becomes the record's `files_reviewed`, which a clean (zero-finding) review can't reconstruct.
-
-3. **Dispatch** three **`critic-reviewer`** subagents (Agent tool, `subagent_type: critic-reviewer`) on step 1's tier. Each reviews ONLY its goals and writes ONLY its partial to `.critic-partials/<role>.json` — never `.critic-findings.json`, `critic-consolidate`, or `critic-end`. Prompt template (substitute `<ROLE>`/`<GOALS>`/`<SHA>`):
+2. **Dispatch** three **`critic-reviewer`** subagents (Agent tool, `subagent_type: critic-reviewer`) with **no `model:` override** — they inherit the session model (`critic-reviewer` declares `model: inherit`). Each reviews ONLY its goals and writes ONLY its partial to `.critic-partials/<role>.json` — never `.critic-findings.json`, `critic-consolidate`, or `critic-end`. Prompt template (substitute `<ROLE>`/`<GOALS>`/`<SHA>` — the SHA is the manifest's `commit_reviewed`):
 
    > "Critic reviewer (`<ROLE>`). Read `[critic path]` for goal definitions. Review ONLY <GOALS>. Project: `[dir]`. Changed files: [list]. Signals: [summary]. Commit under review: `<SHA>` — record it verbatim as `commit_reviewed`. NO tests/builds. Write ONLY your partial to `.critic-partials/<ROLE>.json`; nothing else."
 
@@ -150,7 +158,7 @@ Persistence is **decoupled from the review** (`critic-persistence-redesign.md` �
    - **design reviewer** (role `design`) — Goals 4, 7 + the Framework-Specific Checks when they apply.
    - **sustainability reviewer** (role `sustainability`) — Goals 5, 6 + the Learnings Cross-Check and Backlog Reconciliation (as NOTE findings in its partial).
 
-4. **Stop — do not resume to aggregate.** The `SubagentStop` hook runs `critic-consolidate` as each reviewer finishes (no-op until all roles report, then merges once); the session-end backstop is the floor if it never fires. You do NOT write findings, append the ledger, or run `critic-end` — `critic-consolidate` does all three and clears the marker.
+3. **Stop — do not resume to aggregate.** The `SubagentStop` hook runs `critic-consolidate` as each reviewer finishes (no-op until all roles report, then merges once); the session-end backstop is the floor if it never fires. You do NOT write findings, append the ledger, or run `critic-end` — `critic-consolidate` does all three and clears the marker.
 
 ## Output Format
 
@@ -178,28 +186,26 @@ If no findings: "No issues found. Changes are ready to proceed."
 
 **Proportionality:** quick assessment for typos/formatting; full analysis for behavioral or structural changes.
 
-**Record findings (single-pass only — coordinator reviews persist via `critic-consolidate`):** Write to `.prawduct/.critic-findings.json`:
+**Record your judgment (single-pass only — coordinator reviewers get this schema from their agent definition):** write ONE partial to `.prawduct/.critic-partials/reviewer.json`, then run `prawduct-hook critic-consolidate` (it appends the review fact, regenerates `.critic-findings.json`, anchors the ledger event, and clears the marker — you write nothing else):
 
 ```json
 {
-  "timestamp": "YYYY-MM-DDTHH:MM:SSZ",
-  "duration_seconds": 180,
-  "mode": "final (full review, ready for push)",
-  "mode_chosen_by": "rule-3 final: last unchecked chunk of 4-chunk plan is in progress",
-  "model": "opus",
-  "commit_reviewed": "<git rev-parse HEAD at review time>",
-  "base_reviewed": null,
-  "files_reviewed": ["file1", "file2"],
+  "role": "reviewer",
+  "goals": "<the goals you ran, e.g. \"1-3\" or \"all 7\">",
+  "commit_reviewed": "<the manifest's commit_reviewed, verbatim>",
+  "model": "<the model id the review ran as, or null>",
+  "duration_seconds": 120,
   "findings": [
-    {"goal": "Nothing Is Unintended", "severity": "warning", "summary": "Description", "files": ["file1"]}
+    {"name": "<short title>", "goal": "Nothing Is Unintended", "severity": "warning", "recommendation": "<what to do>", "files": ["file1"]}
+  ],
+  "resolutions": [
+    {"review_id": "<prior fact id>", "fid": "R-1", "disposition": "fixed"}
   ],
   "summary": "N warnings. Changes ready to proceed."
 }
 ```
 
-`mode`: verbose form (see `review-cycle.md`'s two-form rule). The hook validator rejects bare short tokens. `duration_seconds`: best-estimate wall-clock. `mode_chosen_by`: `infer-critic-mode` rationale verbatim, or `"explicit-args"` when `$ARGUMENTS` overrode. `model`: the model id the review ran as. `files` (per finding): which files the finding is about (telemetry attribution). `commit_reviewed`: `git rev-parse HEAD` at review time — anchors the `verify-resolutions` delta. `base_reviewed`: in `cumulative` mode, the `git merge-base <base> HEAD` you reviewed against (with `<base>` from `prawduct-hook resolve-base`); otherwise `null`. `extends_cumulative` (CRT-4J8W): record `{"commit_reviewed": "<sha>"}` when the scope reason carries `extends-cumulative=<sha>` — the PR-gate chain anchor; else omit. All these fields optional for back-compat. For a clean review, findings is empty and summary says "No issues found."
-
-**Append to the governance ledger:** run `prawduct-hook ledger-append --event review.critic --scope <plan-scope> [--chunk <id>] [--model <id>]` — never hand-write the JSONL; `--scope` = the plan reviewed against (details: SKILL step 7).
+`files` (per finding): attribution; omit when not file-specific. `findings` is `[]` for a clean pass. `resolutions` — `verify-resolutions` mode ONLY: your judgment on each prior blocking/warning finding, joined by `(review_id, fid)` from the prior findings record; `disposition` is `fixed` or `waived` (`waived` requires a `rationale`). Consolidation validates each against the evidence store and fails closed on a resolution in any other mode. Schema validators: `lib/critic_consolidate.py` — a malformed partial fails consolidation loudly, so match it exactly.
 
 ## Review Cycle
 

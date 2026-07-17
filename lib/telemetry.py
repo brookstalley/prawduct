@@ -71,6 +71,10 @@ def _short_mode(mode) -> str:
 # family or the dimension is pure noise. Substring match (not an exact map) so a
 # new opus/sonnet *version* folds with no code change — the drift-resilience the
 # reviewer-model fallback chains chose over pinned ids.
+# PAUSED 2026-07-14: reviewer-model tiering was removed (emergency patch —
+# reviewers now run on the session model), so the framework currently feeds this
+# dimension only one family. The fold is retained unchanged for the planned
+# restore of tiering (change-log "reviewer-session-model").
 _MODEL_FAMILIES = ("opus", "sonnet", "haiku", "fable")
 
 

@@ -23,13 +23,21 @@ inference as a vetoable assumption. Full model: `methodology/discovery.md` "Cali
 - **Tests are contracts.** Fix the code, never weaken the test. Write tests alongside code, not after.
 - **There is no "pre-existing" exception.** If you find a problem — failing test, broad catch,
   stale artifact — fix it or explicitly flag why it can't be fixed now.
+- **Durable artifacts are self-contained.** A code comment, docstring, or long-lived spec must
+  never anchor its meaning to an ephemeral build id (a chunk like "chunk 03", a build-plan or
+  work-cycle name) — they're deleted when the work ships, so it dangles; carry the *why* inline.
+  Exception: bookkeeping that records the work (e.g. change-log `chunks=`, backlog `closed-by:`, PR/commit text).
 - **Never silently drop a requirement — or silently *invent* one.** Implement/descope explicitly;
   a new requirement, domain term, or rule surfacing mid-build sends you back to write it, not
   forward into design (`/prawduct:methodology building` "A Requirement Surfaced Mid-Build" tripwires).
+- **Norms bind; descriptions track** (`docs/norms.md`). Direction sections and preferences norms
+  lead the code — departing from one is a decision to record (amend / ruling / bounded
+  exception), never doc-drift to sync; amending a norm to match your own code is the tell.
 - **Invoke the Critic (`/prawduct:critic`) after medium+ work.** Never write Critic findings
-  yourself — the independence is the whole value. After a coordinator review (medium/large
-  `final`, `cumulative`), run `prawduct-hook critic-consolidate` before reading the findings
-  (idempotent no-op if the SubagentStop trigger already landed them — never read a stale file).
+  yourself — the independence is the whole value. After a coordinator review (`final`/
+  `cumulative` at 5+ changed files), run `prawduct-hook critic-consolidate` before reading the
+  findings (idempotent no-op if the SubagentStop trigger already landed them — never read a
+  stale file).
 - **Catch specific exceptions.** Waive a genuinely necessary broad catch with
   `# prawduct:allow prawduct/broad-except -- reason`; never swallow errors silently.
   (`prawduct:allow <scope>/<rule-id> -- reason` is the general intentional-waiver

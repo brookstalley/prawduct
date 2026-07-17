@@ -3,6 +3,242 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-07-16: Norm lifecycle — normative authority across governing artifacts (norm-lifecycle)
+
+<!-- prawduct: type=feature | chunks=1,2,3,4,5,6 -->
+<!-- Statusless on feature/norm-lifecycle = release-pending once merged. Large framework
+     change, plan at .prawduct/artifacts/build-plan-norm-lifecycle.md (GOV-7Q4N), one
+     commit per chunk, per-chunk Critic + closing cumulative. -->
+
+**Parent:** GOV-7Q4N — a consuming product's telemetry-substrate divergence was laundered into
+legitimacy through the doc-freshness pipeline (every reviewer executed instructions correctly;
+the framework had no concept of a statement that *binds* future work).
+
+**What:** Norms bind; descriptions track. Canonical spec at `docs/norms.md` (authority rule,
+normative/descriptive test, lifecycle: birth/retroactivity, rulings, amendment, exceptions with
+expiry, transitions, erosion/decay, characteristic flips; adoption path with the incident as
+worked example). Enforcement consolidated into Critic Goal 4/3 + PR protocol + digests
+(event-domain); five advisory probes in `lib/norm_probes.py` on machine-readable hooks only
+(time-domain, cheap — incl. the two-arm `norm-registry-unratified`, gated on strategy-class
+artifacts); janitor **Norm Health** theme with the re-affirm-or-retire fork + committed
+`norm_health_last_run` stamp (time-domain, deep); doctor **Norm Ratification Flow** (owner
+confirm-or-correct, additive writes, `norm_registry_ratified` shared answer) + registry-integrity
+health check #10 (repair). Authoring: plan `governed_by:` seeded by `prawduct-hook jurisdiction`
+(work-model index inversion), planning reconciliation dispositions, norm-birth tripwire in
+building/discovery, `## Direction` blocks + Enforcement norm columns (Audit home / Why) across
+templates; `/prawduct:learnings` surfaces Direction norms beside case-law rules. Backlog gains
+`revisit:`. Follow-ups filed: GOV-6N4W (prompt classifier), JNT-8E3P (erosion metrics).
+
+## 2026-07-14: Ephemeral-reference firewall — durable artifacts stay self-contained (ephemeral-ref-firewall)
+
+<!-- prawduct: type=feature | release=v3.0.4 | status=shipped -->
+<!-- Statusless on a feature branch = release-pending once merged. Medium framework
+     change, no build plan (governance prose + one Critic check): a self-containment
+     rule so ephemeral build identifiers (chunk labels, build-plan/work-cycle names)
+     don't leak into durable product artifacts (code comments, long-lived specs). One
+     final Critic. Owner-reported recurring leak; owner approved full-package scope. -->
+
+**Parent:** Owner report (2026-07-14) — ephemeral identifiers ("chunk 03", "the eval-trust
+build plan") recurring in durable artifacts (code comments, long-lived specs) where they mean
+nothing after the build plan is deleted.
+
+**What:** A firewall between build-cycle scaffolding and durable *product* artifacts. Build
+plans and chunk labels are deleted when work ships (`/prawduct:pr`, janitor) and aren't unique
+(every project has a "chunk 03"), so a durable artifact must never depend on one for its
+meaning — comments carry the *why* inline. The distinction is product-artifact vs build-cycle
+bookkeeping (change-log `chunks=`, backlog `closed-by:`, operator-verification, reflections,
+PR/commit text legitimately cite chunks). Installed at: Principle 13 (Coherent Artifacts, using
+Principle 10's construction-equipment metaphor); `methodology/building.md` builder rule;
+`methodology/session-digest.md` (product-facing carrier); Critic Goal 4 (`ephemeral-ref
+firewall` → WARNING). A deterministic grep tripwire was deliberately deferred (case-law-first; filed as `[GOV-3P8K]`).
+
+## 2026-07-14: Tree-validated test-evidence freshness (tree-validated-test-evidence)
+
+<!-- prawduct: type=feature | release=v3.0.3 | status=shipped -->
+<!-- Statusless on a feature branch = release-pending once merged. Medium framework
+     feature, no build plan: an ~89-line additive clause across lib/gates.py +
+     bin/prawduct-hook plus a validation matrix; the design spike served as the plan.
+     One final Critic + a verify-resolutions delta pass. -->
+
+**Parent:** `.prawduct/artifacts/spike-tree-validated-test-evidence.md` — the design spike for
+kernel-v3 §4's deferred "test evidence on the store" item. Advances COV-3R9K suggested-fix-1 (the
+ADDITIVE framing, distinct from the rejected replace-timestamp direction), closes the
+governance-metadata false-re-run and the restart false-stale surfaced in the v3.0.2 session.
+
+**Why:** test-evidence freshness (`tests_are_current`) keyed on the session timestamp (WHEN a run
+happened), not the tree it ran against — so a restart with no change, a `.prawduct/*.yaml` edit,
+or a doc-only edit all re-staled evidence and forced a full re-run. v3 tree-anchored REVIEW
+evidence but left TEST evidence on the timestamp model.
+
+**What:** an ADDITIVE tree-validity clause — `test-status` is current iff session-fresh OR the
+judgeable-scoped working tree is byte-identical to the tree the recorded run ran against
+(`evidence_tree`, captured via `evidence.capture_tree` at `record`; skipped for `--from-counts`).
+A disjunction that only ever relaxes stale→current, so it is structurally incapable of the
+false-STALE class that retired the content-hash fingerprint and `git_sha`. Classifies paths
+(`is_judgeable_path`), never file contents. The env-drift tradeoff (the incidental per-session
+re-run) was accepted by the owner. Validation matrix (§9): 11 relax/stale cases + 2
+fail-toward-stale unit tests; full suite 1727 passed. Review protocols and `building.md` need no
+prose change (they key off the `test-status` exit code).
+
+- `lib/gates.py`: `_test_evidence_tree_valid` helper + the OR-clause in `tests_are_current`;
+  `evidence_tree` optional-schema field.
+- `bin/prawduct-hook` (`cmd_test_evidence`): capture the working-tree SHA; skipped for `--from-counts`.
+- `tests/test_plugin_runtime.py`: `TestTreeValidatedFreshness` (matrix) + `TestTreeValidHelperFailsToStale` (fail-safe).
+- Dropped the spike's proposed `head_tree` field (no consumer reads it).
+
+## 2026-07-14: Test-evidence ingest on-ramps work with a declared test_command (test-evidence-declared-command-onramps)
+
+<!-- prawduct: type=fix | release=v3.0.2 | status=shipped -->
+<!-- Small bugfix, no build plan (a ~73-line CLI-validation relaxation across one
+     hook, its docstring, one methodology bullet, and three tests — proportional
+     effort warranted no plan, so no scope=/chunks=). Parent and provenance below. -->
+
+**Parent:** `methodology/building.md` Verify bullet already promised the ingest on-ramps
+(`--from-junit`, `--from-counts`, `--no-rerun`) as a universal way to record evidence *without*
+re-running — completing the single-run intent of the `test-evidence-single-run` work
+(COV-3R9K, `learnings.md`). The code contradicted that promise for the repos most likely to
+need it. Surfaced by a v3.x product session: a declared-`test_command` repo ran its full
+17,777-test suite, then was forced to re-run the *entire* suite through the hook just to stamp
+evidence, because every cheap on-ramp was rejected when `test_command:` was set.
+
+**Why:** `cmd_test_evidence` hard-rejected `--from-junit`, `--from-counts`, and `--no-rerun`
+whenever `project-state.yaml` declared a `test_command:`. The exclusion assumed "if you declared
+a runnable command, the hook can run it for you, so you don't need the on-ramps" — but the hook
+re-running the declared command pays full-suite cost a *second* time, running the identical
+command the builder just ran. So the products most likely to have large suites and to declare
+their command were the only ones with no way to avoid a redundant full re-run.
+
+**What:** Relaxed the exclusion, scoped by trust posture:
+- **`--from-junit` + declared `test_command:` → allowed.** A declared command MUST emit JUnit
+  (`{junit_xml}` is required), so ingesting the report the canonical command produced is honest,
+  machine-backed evidence — the single-run path for a declared-command repo.
+- **`--no-rerun` + declared `test_command:` → allowed.** Restamp reuses the existing record's
+  counts and re-derives only the F4a coverage half; it introduces no new counts, so no
+  scoped-subset risk.
+- **`--from-counts` + declared `test_command:` → still rejected**, but the error now **redirects
+  to `--from-junit`** (that command emits JUnit, so hand-typed counts — the one path with no
+  artifact — are unnecessary and the weakest posture). This preserves the scoped-subset
+  protection the knob exists for while fixing the discoverability half of the friction.
+- The RUN-path constraints (`{junit_xml}` placeholder, extra-args rejection) are now gated behind
+  a `will_run` flag so they apply only when the suite is actually run, not on ingest/restamp.
+- Docstring + `methodology/building.md` Verify bullet updated to prescribe the declared-command
+  single-run workflow.
+
+**Tests:** `tests/test_plugin_runtime.py` — the from-junit rejection test became an
+ingest-success test (a failing repo-test + passing ingested report → exit 0 proves the declared
+command is not re-run); added a restamp-with-`test_command:` test; the from-counts test now
+asserts the `--from-junit` redirect. Full suite green (1714 passed, 1 skipped, 0 failed).
+Independent Critic review (final, single-pass): **0 blocking**, 1 warning (this change-log
+entry), resolved here.
+
+## 2026-07-14: Reviewers run on the session model — reviewer-model tiering removed (reviewer-session-model)
+
+<!-- prawduct: type=fix | release=v3.0.1 | status=shipped -->
+<!-- Emergency patch, no build plan (a prose/test change across three dispatch
+     surfaces — proportional effort warranted no plan, so no scope=/chunks=). The
+     removed mechanism is PAUSED, not deleted: rationale is retained in lib/risk.py,
+     lib/telemetry.py, the A/B artifact, learnings, and backlog REL-5K8M for a
+     planned restore. -->
+
+**Parent:** User directive (2026-07-14): "prawduct is escalating to fable WAY too often …
+remove anything about deciding what model to use. if the user is on opus, use opus; if the
+user's on fable, use fable. don't try to switch intelligently." Reverses the reviewer-model
+tiering shipped across v2.1.x (`build-plan-reviewer-model-tiering.md`,
+`build-plan-reviewer-model-fallback.md`).
+
+**Why:** Model choice lived entirely in skill *prose*, not code. Three surfaces mapped a diff
+"tier" to a model: `skills/critic/SKILL.md` frontmatter pinned the coordinator to `model: opus`,
+and both `skills/critic/review-protocol.md` and `skills/pr/SKILL.md` mapped `classify-diff-risk`'s
+`escalate` verdict → `model: fable`. Because `escalate` fires for nearly any declared risk
+surface (broad by design), reviews escalated to Fable constantly. The user wants no intelligent
+switching — the reviewer should inherit whatever model the session runs on.
+
+**What:** Removed all reviewer-model selection so reviewers run on the **session model**
+(opus→opus, fable→fable):
+- `skills/critic/SKILL.md` — dropped the `model: opus` frontmatter pin (the fork now inherits the session model).
+- `skills/critic/review-protocol.md` — coordinator dispatches reviewers with no `model:` override (the `critic-reviewer` agent already declares `model: inherit`); `tier` is telemetry only.
+- `skills/pr/SKILL.md` — PR reviewer dispatched with no `model:` override; removed the now-unused `classify-diff-risk` from Step 3 prose and allowed-tools.
+- **Retained** (inert, for the planned restore): the `classify-diff-risk` command + `lib/risk.py`, the Critic `--tier` telemetry (pinned by `test_critic_consolidate.py`), and `review-stats` model-family aggregation. Model-recording plumbing still logs whatever ran.
+- Doc-tail reconciled with PAUSED notes (Critic-flagged): `lib/risk.py` docstring, `lib/telemetry.py` comment, the A/B artifact, the pinned-alias learning (now dormant), and backlog REL-5K8M (paused pending restore).
+
+**Tests:** `tests/preferences/test_reviewer_model_dispatch_prose.py` (renamed from
+`test_risk_escalation_prose.py`) rewritten as regression pins — reviewer-dispatch prose must direct
+the reviewer onto the session model and must not pin `model: fable`/`opus`/`sonnet`; the Critic
+skill frontmatter must carry no `model:` override. Full suite green (1713 passed, 1 skipped).
+Independent Critic review (final, coordinator — 3 reviewers on the **session model**, opus):
+**0 blocking**, 3 warning, 5 note — all warnings/notes were coherence doc-tail + this change-log
+entry, resolved above.
+
+## 2026-07-13: Session-file .gitignore contract-drift advisory probe (kernel-evidence-store)
+
+<!-- prawduct: type=feature | scope=kernel-evidence-store | release=v3.0.0 | status=shipped -->
+<!-- Built alongside the kernel-evidence-store branch and ships under its scope
+     (proportional effort: a ~100-line advisory probe warranted no build plan, so
+     it has no chunks= of its own). Its own parent requirement and provenance are
+     in the entry body below. Folding the release scope avoids the planless-scope
+     regen-views blocker; the systemic fix (accept planless scopes) is backlogged. -->
+
+**Parent:** `documentation/post-sync-advisory-spec.md` §1–2 (the advisory charter —
+surface *this project should probably do X* nudges that self-resolve off a committed shared
+fact). A fourth production probe under that mechanism, directly precedented by
+`lib/upstream_probes.py` (trigger and resolution are the same observable state). Originated
+from a prior-session review of the migration first-run experience: a plugin cannot start a
+turn to reconcile a drifted `.gitignore`, but a session-start advisory lands the directive
+in model context for the agent to act on at the first user turn.
+
+**Why:** A product repo's `.gitignore` can drift from the framework's session-file contract
+(`lib/core.py` `GITIGNORE_ENTRIES` / `RETIRED_GITIGNORE_ENTRIES` / `MANAGED_FILES`) — via a
+prawduct upgrade that extended the contract, a fresh clone, a hand-edited `.gitignore`, or a
+botched onboard. Session runtime files then get committed (cross-clone noise) or the tracked
+build-plan gets ignored, and nothing surfaced it. Probing the *drifted state itself* is
+strictly better than a version-delta banner line: cause-agnostic, persistent until fixed,
+and zero per-release maintenance (the contract lives in code).
+
+**What:** New `lib/gitignore_probes.py` registered in `bin/prawduct-hook` `cmd_clear`
+alongside the existing probe roster. It fires an `info` advisory (`recommended_action:
+prawduct-hook update-gitignore`, `/prawduct:doctor` as the alternative) when `.gitignore`
+diverges, and self-resolves once reconciled — the committed `.gitignore` is itself the
+shared answer store, so a teammate's fix resolves it for every clone on next sync (a
+documented, reasoned deviation from spec §7.1's `project-state.yaml`-fact default). The fire
+condition is EXACTLY `update_gitignore`'s `modified` condition: both read the new read-only
+`lib.core.gitignore_contract_drift` (backed by a pure `_contract_diff`), so the nudge can
+never outlive the fix. The hook never auto-edits the committed `.gitignore` (the no-noise
+guarantee stays intact). Tests: `tests/test_gitignore_probes.py` (fire/inert/self-resolve,
+count-independent evidence) + a fixer-parity and pairwise-disjointness guard in
+`tests/test_gitignore_management.py`.
+
+## 2026-07-13: Kernel v3 — shared evidence store; review gates answer by composition (kernel-evidence-store)
+
+<!-- prawduct: chunks=01,02,03,04,05,06 | type=feature | scope=kernel-evidence-store | release=v3.0.0 | status=shipped -->
+
+**Why:** The v2 review data plane kept evidence in single-slot, per-worktree files judged
+by mode label and mtime — so a chunk-reviewed branch still demanded a redundant cumulative
+re-review (CRT-J4PM), two predicates drew the metadata boundary differently and wedged the
+gate with no exit (CRT-5D8Q), a perfectly good review went "stale" at every session
+boundary, and worktrees couldn't see each other's evidence at all. Models also hand-wrote
+protocol files, so one malformed write could silently lose a review.
+
+**What:** Breaking release (gate attribution `since: 3.0.0`). Review evidence is now
+append-only FACTS in a store shared by all worktrees of the clone
+(`<git-common-dir>/prawduct/evidence.jsonl` — `lib/evidence.py`, D1–D3: tree-keyed capture
+via a temporary index; schema-versioned envelope; idempotent appends). Gates answer by
+composing facts over trees (`lib/coverage_algebra.py`, D6): the PR gate spans merge-base
+tree → HEAD tree, the Stop gate spans session base tree → working tree — no mode labels,
+no mtimes, no `extends_cumulative` chain bookkeeping. The review lifecycle is
+code-written end to end (D8: `critic-begin` writes the dispatch manifest,
+`critic-consolidate` appends the fact and regenerates `.critic-findings.json` as a derived
+view no gate reads); models write only judgment partials. Prose surfaces (protocols,
+methodology, digest) describe the composition data plane. Upgrade posture is zero-touch
+(C9): the store initializes lazily so no consumer needs a migration commit, v2-era state
+files are ignored with a block-with-remedy toward a fresh review, and schema-ahead facts
+fail both gates closed with the update remedy. End-to-end scenario proof:
+`tests/scenarios/test_kernel_v3_gate_cutover.py` (CRT-J4PM/CRT-5D8Q reproductions) +
+`tests/scenarios/test_kernel_v3_upgrade.py` (upgrade posture, worktree + sequential-session
+composition, discovery success criteria 1–4 trace in its module docstring). Chunk 06 also
+swept the plan's vestiges: `lib/critic_mode.py`'s multi-link chain arm (stays-deleted
+guards in `tests/test_critic_mode_inference.py`), dangling `TestChainAnchorParity`
+references, and the orphaned `.critic-test-findings.json` gitignore line.
+
 ## 2026-07-10: Critic consolidation tolerates `files: []` on a finding (critic-empty-files-tolerance)
 
 <!-- prawduct: chunks=01 | type=fix | scope=critic-empty-files-tolerance | release=v2.3.3 | status=shipped -->

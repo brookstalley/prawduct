@@ -34,9 +34,10 @@ HOOK = ROOT / "bin" / "prawduct-hook"
 _CODE_DIFF = " M src/app.py"
 _DOC_DIFF = " M docs/notes.md"
 MARKER_REL = ".prawduct/.critic-active"
-# The generic findings-freshness blocker's signature line — must be SUPPRESSED
-# when the more-specific abandoned-review blocker fires (one cause, one block).
-_GENERIC_CRITIC_MSG = "no Critic findings were recorded"
+# The generic coverage blocker's signature line (kernel-v3 chunk 04) — must be
+# SUPPRESSED when the more-specific abandoned-review blocker fires (one cause,
+# one block).
+_GENERIC_CRITIC_MSG = "no composed review coverage"
 _ABANDONED_MSG = "CRITIC REVIEW (not completed)"
 
 
@@ -116,12 +117,19 @@ _ROSTER = ["correctness", "design", "sustainability"]
 
 
 def _write_manifest(prawduct: Path, *, commit: str = _MOCK_HEAD) -> None:
+    # v3 dispatch-manifest shape (kernel v3 ch.03) — tree SHAs are opaque to
+    # the consolidator, so fakes suffice here.
     d = prawduct / ".critic-partials"
     d.mkdir(parents=True, exist_ok=True)
     (d / "manifest.json").write_text(json.dumps({
+        "id": "rev-test-0001",
         "mode": _FINAL_MODE, "mode_chosen_by": "rule-3", "roster": _ROSTER,
-        "commit_reviewed": commit, "files_reviewed": ["src/app.py"],
-        "scope": "demo", "model": "opus",
+        "roster_chosen_by": "test fixture",
+        "commit_reviewed": commit,
+        "base_commit": commit, "base_tree": "basetree000000000000",
+        "head_tree": "headtree000000000000", "head_commit": None,
+        "files_changed": ["src/app.py"], "files_reviewed": ["src/app.py"],
+        "tier": None, "scope": "demo", "chunk": None, "base_reviewed": None,
     }))
 
 
@@ -258,18 +266,61 @@ class TestChunk05ConsolidateOrBlock:
     blocks accordingly (critic-persistence-redesign Ch.05)."""
 
     def test_complete_partials_self_heal(self, tmp_path):
-        """Marker + complete partials at HEAD → the Stop hook runs
-        critic-consolidate itself (no model re-run): findings land, marker clears,
-        session ends clean."""
-        prawduct = _active_plan_repo(tmp_path)
-        _set_marker(prawduct)
-        _write_complete_review(prawduct)
-        result = _run_stop(tmp_path, status=_CODE_DIFF)
+        """Marker + complete partials at the current tree → the Stop hook runs
+        critic-consolidate itself (no model re-run): the fact lands, the marker
+        clears, and the healed fact COMPOSES over the session's diff (kernel-v3
+        chunk 04 — self-heal feeds the coverage gate rather than bypassing it),
+        so the session ends clean. Real git throughout: the dispatch manifest
+        and the gate's tree capture must agree on real tree SHAs."""
+        repo = tmp_path / "repo"
+        repo.mkdir()
+        subprocess.run(
+            ["git", "-c", "user.email=t@t", "-c", "user.name=t", "init", "-q", "-b", "main"],
+            cwd=str(repo), check=True, timeout=15,
+        )
+        (repo / ".gitignore").write_text(".prawduct/\n")
+        (repo / "src").mkdir()
+        (repo / "src" / "app.py").write_text("x = 1\n")
+        subprocess.run(
+            ["git", "-c", "user.email=t@t", "-c", "user.name=t", "add", "-A"],
+            cwd=str(repo), check=True, timeout=15,
+        )
+        subprocess.run(
+            ["git", "-c", "user.email=t@t", "-c", "user.name=t", "commit", "-q", "-m", "c1"],
+            cwd=str(repo), check=True, timeout=15,
+        )
+        prawduct = _active_plan_repo(repo)
+        (repo / "src" / "app.py").write_text("x = 2\n")  # the session's edit
+
+        home = repo.parent / "_home"
+        home.mkdir(exist_ok=True)
+        env = {
+            "HOME": str(home),
+            "CLAUDE_PROJECT_DIR": str(repo),
+            "CLAUDE_PLUGIN_ROOT": str(ROOT),
+            "PATH": "/usr/bin:/bin:/usr/local/bin:/opt/homebrew/bin",
+            "PYTHONDONTWRITEBYTECODE": "1",
+        }
+        begin = subprocess.run(
+            ["python3", str(HOOK), "critic-begin", "--mode", "chunk"],
+            capture_output=True, text=True, env=env, cwd=str(repo), timeout=20,
+        )
+        assert begin.returncode == 0, begin.stderr
+        # Single-pass roster: one "reviewer" partial, then abandon (no
+        # consolidate) — the background-by-default failure shape.
+        manifest = json.loads(
+            (prawduct / ".critic-partials" / "manifest.json").read_text()
+        )
+        _write_partial(prawduct, "reviewer", commit=manifest["commit_reviewed"])
+        result = subprocess.run(
+            ["python3", str(HOOK), "stop"],
+            capture_output=True, text=True, env=env, cwd=str(repo), timeout=20,
+        )
         assert result.returncode == 0, (
             f"complete partials must self-heal to a clean exit. "
             f"stdout={result.stdout!r} stderr={result.stderr!r}"
         )
-        # Findings written by the self-heal; marker cleared; partials consumed.
+        # Findings cache written by the self-heal; marker cleared; partials consumed.
         assert (prawduct / ".critic-findings.json").is_file()
         assert not (prawduct / ".critic-active").is_file()
         assert not (prawduct / ".critic-partials").exists()

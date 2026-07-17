@@ -33,10 +33,10 @@ ROOT = Path(__file__).resolve().parent.parent
 HOOK = ROOT / "bin" / "prawduct-hook"
 
 # The empirical diff is a non-`.md` code file. This keeps the gate's *other*
-# carveout — `_session_changes_are_doc_only` (an all-`.md` diff) — False, so the
-# only thing that could skip the gate is the Type -> designer_handoff_skip
-# branch. That isolation is the whole point: we are pinning the Type field's
-# effect, not the empirical doc-only shortcut.
+# carveout — `gates.session_changes_all_non_judgeable` (a fully non-judgeable
+# diff) — False, so the only thing that could skip the gate is the Type ->
+# designer_handoff_skip branch. That isolation is the whole point: we are
+# pinning the Type field's effect, not the empirical doc-only shortcut.
 _CODE_DIFF = " M src/app.py"
 
 
@@ -166,28 +166,45 @@ class TestDesignerHandoffSkipsCriticGate:
 # ---------------------------------------------------------------------------
 
 # Persisted-side (verbose) mode strings, pinned as literals: the advisory's
-# contract is over what reviews WRITE to .critic-findings.json, so the test
-# must break if either the constants or the acceptance set drifts.
+# contract is over the `mode` telemetry reviews record in their store FACT
+# (kernel-v3 chunk 04 — the advisory reads the latest review fact, never the
+# .critic-findings.json cache), so the test must break if either the
+# constants or the acceptance set drifts.
 _MODE_CHUNK = "chunk (lighter pass, not ready for push)"
 _MODE_FINAL = "final (full review, ready for push)"
 _MODE_CUMULATIVE = "cumulative (bundle review, ready for merge)"
 _MODE_VERIFY = "verify-resolutions (delta review, prior findings only)"
 
 
-def _all_complete_plan(tmp_path: Path, *, mode: str) -> Path:
-    """A multi-chunk plan with every chunk `[x]` and a latest findings record
-    in the given persisted-side mode — exactly the state the synthesis
-    advisory (`_critic_session_satisfies_gate` case 4/5) inspects."""
-    prawduct = tmp_path / ".prawduct"
-    artifacts = prawduct / "artifacts"
+def _all_complete_plan_repo(tmp_path: Path, *, mode: str | None) -> Path:
+    """A git repo with a multi-chunk plan, every chunk `[x]`, and (unless
+    ``mode`` is None) a latest review FACT in the given persisted-side mode —
+    exactly the state the synthesis advisory
+    (`_critic_session_satisfies_gate` case 4/5) inspects."""
+    import sys
+
+    sys.path.insert(0, str(ROOT))
+    from lib import evidence
+
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    subprocess.run(
+        ["git", "init", "-q", "-b", "main"], cwd=str(repo), check=True, timeout=15
+    )
+    artifacts = repo / ".prawduct" / "artifacts"
     artifacts.mkdir(parents=True)
     (artifacts / "build-plan.md").write_text(
         "# Build Plan\n\n## Status\n- [x] Chunk 01: A\n- [x] Chunk 02: B\n"
     )
-    (prawduct / ".critic-findings.json").write_text(
-        json.dumps({"mode": mode, "findings": [], "summary": "clean"})
-    )
-    return prawduct
+    if mode is not None:
+        result = evidence.append_fact(
+            repo,
+            "review",
+            "rev-advisory-1",
+            {"mode": mode, "findings": [], "files_reviewed": ["a.py"]},
+        )
+        assert result["status"] == "appended", result
+    return repo
 
 
 class TestSynthesisAdvisoryAcceptsCumulative:
@@ -197,22 +214,30 @@ class TestSynthesisAdvisoryAcceptsCumulative:
     `cumulative` instead of `final`; if the advisory ever stopped accepting
     cumulative records, every such plan would close with a spurious "run
     /prawduct:critic final" warning — re-introducing the duplicate full review
-    the rule removed. No prior test pinned this acceptance (learnings: an
-    untested governance bound rots silently)."""
+    the rule removed. Kernel-v3 chunk 04 re-sourced the mode from the latest
+    review FACT (no gate reads the findings cache); the acceptance set is
+    unchanged."""
 
-    def test_cumulative_record_satisfies_synthesis_advisory(self, tmp_path):
+    def test_cumulative_fact_satisfies_synthesis_advisory(self, tmp_path):
         from lib.gates import _critic_session_satisfies_gate
 
-        prawduct = _all_complete_plan(tmp_path, mode=_MODE_CUMULATIVE)
-        ok, reason = _critic_session_satisfies_gate(prawduct)
+        repo = _all_complete_plan_repo(tmp_path, mode=_MODE_CUMULATIVE)
+        ok, reason = _critic_session_satisfies_gate(repo)
         assert ok, f"cumulative must satisfy the synthesis advisory: {reason!r}"
 
-    def test_final_record_satisfies_synthesis_advisory(self, tmp_path):
+    def test_final_fact_satisfies_synthesis_advisory(self, tmp_path):
         from lib.gates import _critic_session_satisfies_gate
 
-        prawduct = _all_complete_plan(tmp_path, mode=_MODE_FINAL)
-        ok, reason = _critic_session_satisfies_gate(prawduct)
+        repo = _all_complete_plan_repo(tmp_path, mode=_MODE_FINAL)
+        ok, reason = _critic_session_satisfies_gate(repo)
         assert ok, f"final must satisfy the synthesis advisory: {reason!r}"
+
+    def test_no_review_fact_means_nothing_to_judge(self, tmp_path):
+        from lib.gates import _critic_session_satisfies_gate
+
+        repo = _all_complete_plan_repo(tmp_path, mode=None)
+        ok, _reason = _critic_session_satisfies_gate(repo)
+        assert ok
 
     @pytest.mark.parametrize("mode", [_MODE_CHUNK, _MODE_VERIFY])
     def test_goals_1_3_modes_still_trip_the_advisory(self, tmp_path, mode):
@@ -221,7 +246,7 @@ class TestSynthesisAdvisoryAcceptsCumulative:
         # into accepting ANY closing mode (a no-review rule).
         from lib.gates import _critic_session_satisfies_gate
 
-        prawduct = _all_complete_plan(tmp_path, mode=mode)
-        ok, reason = _critic_session_satisfies_gate(prawduct)
+        repo = _all_complete_plan_repo(tmp_path, mode=mode)
+        ok, reason = _critic_session_satisfies_gate(repo)
         assert not ok, f"{mode!r} must trip the synthesis advisory"
         assert "/prawduct:critic final" in reason

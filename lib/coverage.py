@@ -9,10 +9,11 @@ no mutation.
 
 Depends on its lib siblings ``core`` (for ``read_str_yaml_key`` — the canonical
 twin of the hook's parity-pinned inline mirror, reached directly as
-``critic_mode``/``views``/``buildplan_refs`` do) and ``buildplan_refs`` (for
-``_classify_trivial_change``), plus the stdlib — a clean DAG node
-(``buildplan_refs`` ← ``coverage``). The hook calls these lazily via
-``_coverage()``, keeping its top level lib-free (ch.1 isolation invariant).
+``critic_mode``/``views``/``buildplan_refs`` do) and — lazily, inside
+``_pr_diff_is_doc_only`` — ``coverage_algebra`` (for the one judgeability
+predicate, kernel-v3 chunk 04), plus the stdlib. The hook calls these lazily
+via ``_coverage()``, keeping its top level lib-free (ch.1 isolation
+invariant).
 
 The two coverage/critic *gate commands* that consume this layer
 (``cmd_verify_coverage`` / ``cmd_check_cumulative_critic``) stay in the hook for
@@ -34,7 +35,6 @@ import subprocess
 import sys
 from pathlib import Path
 
-from . import buildplan_refs
 from .core import read_str_yaml_key
 
 _BASE_BRANCH_KEY = "base_branch"
@@ -91,6 +91,51 @@ def _resolve_base_branch(project_dir: Path) -> tuple[str | None, str]:
     )
 
 
+def resolve_merge_base_tree(project_dir: Path) -> dict:
+    """Resolve base branch → merge-base commit → that commit's tree SHA —
+    the shared prelude of every gate/dispatch that anchors an interval at
+    the PR span. One implementation (kernel-v3 ch.06 review dedup):
+    ``gates.check_cumulative_critic``, ``gates._merge_base_verdict``, and
+    ``critic_consolidate.begin_review`` each carried a divergent copy — the
+    same drift class the judgeability-predicate consolidation killed.
+
+    Returns ``{"status": "ok", "base_branch", "merge_base", "tree"}`` or
+    ``{"status": "error", "step": "resolve-base" | "merge-base" |
+    "rev-parse", "reason"}``. ``reason`` carries the full detail; callers
+    map ``step`` onto their own error posture (loud stderr with a per-step
+    remedy, silent degradation, or an error dict).
+    """
+    from . import evidence  # noqa: PLC0415 -- lazy: mirrors the gates/consolidate import posture; avoids import-cycle risk at module load
+
+    base_branch, base_reason = _resolve_base_branch(project_dir)
+    if base_branch is None:
+        return {"status": "error", "step": "resolve-base", "reason": base_reason}
+    rc, merge_base, err = evidence.run_git(
+        project_dir, "merge-base", base_branch, "HEAD"
+    )
+    if rc != 0 or not merge_base:
+        return {
+            "status": "error",
+            "step": "merge-base",
+            "reason": f"merge-base {base_branch}..HEAD failed ({err})",
+        }
+    rc, tree, err = evidence.run_git(
+        project_dir, "rev-parse", f"{merge_base}^{{tree}}"
+    )
+    if rc != 0 or not tree:
+        return {
+            "status": "error",
+            "step": "rev-parse",
+            "reason": f"cannot resolve {merge_base[:12]}^{{tree}} ({err})",
+        }
+    return {
+        "status": "ok",
+        "base_branch": base_branch,
+        "merge_base": merge_base,
+        "tree": tree,
+    }
+
+
 def _coverage_resolve_base(project_dir: Path) -> tuple[str | None, str]:
     """Pick the git diff base for coverage verification. Mirrors
     ``_resolve_base`` in ``bin/test-reference-verify`` so writer (verifier)
@@ -132,18 +177,24 @@ def _coverage_changed_files(project_dir: Path, base: str) -> list[str]:
 
 
 def _pr_diff_is_doc_only(project_dir: Path) -> tuple[bool, str]:
-    """Shared helper: is the PR diff (``merge-base...HEAD``) all ``.md``?
+    """Shared helper: does the PR diff (``merge-base...HEAD``) need review?
 
     Returns ``(is_doc_only, status_message)``. ``is_doc_only`` is True only
-    when the diff is non-empty, every file ends in ``.md``, AND no file is
-    governance-protected (``skills/``, ``methodology/``, ``templates/``,
-    root ``CLAUDE.md`` — PR-5K8D). The status
-    message names the specific reason for False (``no-base``, ``git-failed``,
-    ``empty-diff``, ``not-doc-only: <files>``) so both the CLI gate and the
-    stop-hook Gate 3 can surface actionable detail without re-implementing
-    the diff inspection. Base resolution mirrors ``_coverage_resolve_base``
-    so the helper sees the same diff surface as the cumulative-Critic flow.
+    when the diff is non-empty and NO changed file is judgeable — the one
+    predicate (``coverage_algebra.is_judgeable_path``, kernel-v3 chunk 04)
+    answers this, replacing this helper's own ``.md`` + protected-path copy
+    (one of the divergent doc-only sites behind CRT-5D8Q). A
+    governance-protected ``.md`` (``skills/``, ``methodology/``,
+    ``templates/``, root ``CLAUDE.md`` — PR-5K8D) is judgeable, so it still
+    never rides the fast path. The status message names the specific reason
+    for False (``no-base``, ``git-failed``, ``empty-diff``,
+    ``not-doc-only: <files>``) so both the CLI gate and the stop-hook Gate 3
+    can surface actionable detail without re-implementing the diff
+    inspection. Base resolution mirrors ``_coverage_resolve_base`` so the
+    helper sees the same diff surface as the cumulative-Critic flow.
     """
+    from . import coverage_algebra  # noqa: PLC0415 — lazy keeps this module's import DAG light
+
     base, base_note = _coverage_resolve_base(project_dir)
     if base is None:
         return False, f"no-base: {base_note}"
@@ -162,25 +213,15 @@ def _pr_diff_is_doc_only(project_dir: Path) -> tuple[bool, str]:
     if not files:
         return False, f"empty-diff: no files changed in {base}...HEAD"
 
-    non_md = [f for f in files if not f.endswith(".md")]
-    if non_md:
-        sample = ", ".join(non_md[:3])
-        more = f" (+{len(non_md) - 3} more)" if len(non_md) > 3 else ""
-        return False, f"not-doc-only: PR includes non-.md files: {sample}{more}"
+    judgeable = coverage_algebra.judgeable_files(files)
+    if judgeable:
+        sample = ", ".join(judgeable[:3])
+        more = f" (+{len(judgeable) - 3} more)" if len(judgeable) > 3 else ""
+        return False, f"not-doc-only: PR includes review-needing files: {sample}{more}"
 
-    # Governance-protected paths are never doc-only even as .md: fork-skill
-    # prose, methodology, and templates ARE behavioral logic here, so a
-    # skills/*.md change must not skip the reviewers (PR-5K8D). Same bound
-    # list as the Type: trivial gate — one source of truth.
-    protected = [
-        v for f in files if (v := buildplan_refs.protected_path_violation(f))
-    ]
-    if protected:
-        sample = "; ".join(protected[:3])
-        more = f" (+{len(protected) - 3} more)" if len(protected) > 3 else ""
-        return False, f"not-doc-only: governance-protected paths in PR: {sample}{more}"
-
-    return True, f"doc-only: {len(files)} file(s) in {base}...HEAD all .md"
+    return True, (
+        f"doc-only: {len(files)} file(s) in {base}...HEAD, none judgeable"
+    )
 
 
 _CHANGE_LOG_REL_PATH = ".prawduct/change-log.md"
@@ -280,19 +321,20 @@ def check_change_log_entry(project_dir: Path) -> int:
 def check_pr_doc_only(project_dir: Path) -> int:
     """Fast-path gate for `/prawduct:pr create`: report whether the PR diff is doc-only.
 
-    Exit 0 when every file in ``merge-base...HEAD`` ends in ``.md`` and the
-    diff is non-empty — the `/prawduct:pr` skill uses this to skip the cumulative-
+    Exit 0 when the diff in ``merge-base...HEAD`` is non-empty and contains
+    no judgeable file (``coverage_algebra.is_judgeable_path`` — the one
+    predicate) — the `/prawduct:pr` skill uses this to skip the cumulative-
     Critic and PR-reviewer gates, mirroring the session-end stop-hook
-    behavior (`_session_changes_are_doc_only`) at the PR boundary. The
-    stop hook's PR-review evidence gate (Gate 3) consults the same helper
-    so a doc-only PR doesn't get blocked at session end for missing
+    carveout (`gates.session_changes_all_non_judgeable`) at the PR boundary.
+    The stop hook's PR-review evidence gate (Gate 3) consults the same
+    helper so a doc-only PR doesn't get blocked at session end for missing
     evidence — symmetric behavior across both gates.
 
-    Exit 1 otherwise (any non-``.md`` file, any governance-protected path —
-    skill/methodology/template prose is behavioral logic, never "docs" —
-    empty diff, no resolvable base branch, or git failure). Fails closed:
-    when the gate cannot be evaluated, fall through to the full review path
-    rather than silently skipping it.
+    Exit 1 otherwise (any judgeable file — including governance-protected
+    ``.md``: skill/methodology/template prose is behavioral logic, never
+    "docs" — empty diff, no resolvable base branch, or git failure). Fails
+    closed: when the gate cannot be evaluated, fall through to the full
+    review path rather than silently skipping it.
     """
     is_doc_only, status = _pr_diff_is_doc_only(project_dir)
     if is_doc_only:

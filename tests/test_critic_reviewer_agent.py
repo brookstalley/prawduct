@@ -134,11 +134,23 @@ class TestCoordinatorProseRewritten:
         assert "manifest" in text
         assert "critic-consolidate" in text
 
-    def test_skill_single_pass_steps_labeled(self):
+    def test_skill_single_pass_writes_partial_not_findings(self):
+        """kernel-v3 chunk 05 renegotiation (single-pass unification, design D8):
+        the old '(Single-pass only) Write findings to .critic-findings.json +
+        ledger-append + critic-end' steps are deleted — every mode now flows
+        begin(manifest) → partial(s) → critic-consolidate, and consolidate is
+        the ONLY writer of the findings cache and the ledger. The successor pin:
+        the single-pass fork writes its one `reviewer` partial and runs
+        consolidate itself; the skill never instructs authoring the findings
+        file or a ledger line."""
         text = SKILL.read_text()
-        # Steps 7-8 are now single-pass-only.
-        assert "(Single-pass only) Write findings" in text
-        assert "(Single-pass only)" in text.split("Run `prawduct-hook critic-end`", 1)[0][-400:]
+        assert ".critic-partials/reviewer.json" in text
+        assert "run `prawduct-hook critic-consolidate` yourself" in text
+        assert "ledger-append" not in text, (
+            "the skill must not instruct hand-appending the ledger — "
+            "critic-consolidate is the only ledger writer for reviews"
+        )
+        assert "Write findings** to `.prawduct/.critic-findings.json`" not in text
 
 
 class TestSinglePassUnchanged:

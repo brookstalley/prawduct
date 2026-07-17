@@ -288,16 +288,20 @@ class TestPluginStopGate:
         assert "`/prawduct:critic`" in result.stderr
         assert "`/critic`" not in result.stderr
 
-    def test_stop_passes_with_fresh_blocking_free_findings(self, tmp_path):
+    def test_findings_cache_alone_no_longer_clears_the_gate(self, tmp_path):
+        # Kernel-v3 chunk 04 still-blocks regression: a fresh, schema-valid,
+        # blocking-free .critic-findings.json is a derived CACHE (D7) — no
+        # gate reads it. Only a review FACT whose trees compose over the
+        # session's changes clears the gate, so this v2-satisfying state now
+        # blocks (real coverage lives in test_session_critic_gate.py and the
+        # gate-cutover scenarios).
         prawduct = self._active_plan_repo(tmp_path)
-        # A fresh, schema-valid, blocking-free findings file clears the gate
-        # (files_reviewed non-empty; mode omitted — it is optional, and bare
-        # short tokens are rejected by validate_critic_findings).
         (prawduct / ".critic-findings.json").write_text(json.dumps({
             "findings": [], "files_reviewed": ["src/app.py"], "summary": "No issues found.",
         }))
         result = run_plugin_hook("stop", tmp_path, git_status=" M src/app.py")
-        assert result.returncode == 0, (result.stdout, result.stderr)
+        assert result.returncode == 2, (result.stdout, result.stderr)
+        assert "no composed review coverage" in result.stderr
 
     def test_stop_passes_with_no_build_plan(self, tmp_path):
         prawduct = tmp_path / ".prawduct"
@@ -416,16 +420,13 @@ class TestPluginStopGateBackgroundDefer:
         assert landed.returncode == 2, (landed.stdout, landed.stderr)
         assert "CRITIC" in landed.stderr
 
-    def test_fresh_findings_pass_regardless_of_in_flight(self, tmp_path):
-        """When the gate is already satisfied (fresh blocking-free findings), an
-        in-flight array changes nothing — still a clean exit 0, no deferral note
-        (there was no blocker to defer)."""
-        prawduct = self._active_plan_repo(tmp_path)
-        (prawduct / ".critic-findings.json").write_text(json.dumps({
-            "findings": [], "files_reviewed": ["src/app.py"], "summary": "No issues found.",
-        }))
+    def test_satisfied_gate_emits_no_deferral_note(self, tmp_path):
+        """When no gate is in play (here: a doc-only diff — the kernel-v3
+        judgeability carveout), an in-flight array changes nothing — still a
+        clean exit 0 and NO deferral note (there was no blocker to defer)."""
+        self._active_plan_repo(tmp_path)
         result = run_plugin_hook(
-            "stop", tmp_path, git_status=self._CODE_DIFF,
+            "stop", tmp_path, git_status=" M docs/notes.md",
             stdin=self._stdin([{"id": "wf-1", "type": "workflow", "name": "x"}]),
         )
         assert result.returncode == 0, (result.stdout, result.stderr)
@@ -455,10 +456,12 @@ class TestPluginStopGateRegressions:
         _make_session_start(prawduct)
         return prawduct
 
-    def test_verify_resolutions_out_of_scope_file_blocks(self, tmp_path):
-        # (a) Findings declare files_reviewed=[a.py] in verify-resolutions mode,
-        # but the current diff also modifies b.py — out of the verify pass's
-        # declared scope, so the (fresh, valid) findings must NOT clear the gate.
+    def test_verify_resolutions_cache_with_out_of_scope_diff_still_blocks(self, tmp_path):
+        # (a) Kernel-v3 chunk 04: the v-r scope-subset mechanism is deleted —
+        # a verify-resolutions findings CACHE clears nothing (no gate reads
+        # it), and a diff beyond what any review saw is simply an uncovered
+        # tree. The v2-blocking state must STILL block (learnings: every
+        # deleted check keeps a still-blocks regression).
         prawduct = self._active_plan_repo(tmp_path)
         (prawduct / ".critic-findings.json").write_text(json.dumps({
             "findings": [],
@@ -470,10 +473,10 @@ class TestPluginStopGateRegressions:
             "stop", tmp_path, git_status=" M a.py\n M b.py",
         )
         assert result.returncode == 2, (result.stdout, result.stderr)
+        assert "no composed review coverage" in result.stderr
+        # The remedy names the verify-resolutions flow (the fact-recording
+        # successor of the deleted scope check).
         assert "verify-resolutions" in result.stderr
-        # The blocker names the out-of-scope widening (b.py is outside scope).
-        assert "outside scope" in result.stderr
-        assert "b.py" in result.stderr
 
     def test_trivial_chunk_outside_fileset_bounds_blocks(self, tmp_path):
         # (b) A chunk declaring Type: trivial that edits skills/ (a catastrophic-
@@ -964,15 +967,18 @@ class TestDocOnlyProtectedPaths:
         )
 
     @pytest.mark.parametrize(
-        ("relpath", "label"),
+        "relpath",
         [
-            ("skills/critic/SKILL.md", "skill-file-edited"),
-            ("methodology/building.md", "methodology-edited"),
-            ("templates/spec.md", "template-edited"),
-            ("CLAUDE.md", "claude-md-edited"),
+            "skills/critic/SKILL.md",
+            "methodology/building.md",
+            "templates/spec.md",
+            "CLAUDE.md",
         ],
     )
-    def test_protected_md_in_pr_is_not_doc_only(self, gitflow_repo, relpath, label):
+    def test_protected_md_in_pr_is_not_doc_only(self, gitflow_repo, relpath):
+        # Kernel-v3 chunk 04: the judgeability predicate answers this (a
+        # protected .md is judgeable), so the message names the file rather
+        # than the retired per-bound violation label.
         self._use_develop_base(gitflow_repo)
         target = gitflow_repo / relpath
         target.parent.mkdir(parents=True, exist_ok=True)
@@ -983,7 +989,7 @@ class TestDocOnlyProtectedPaths:
         r = _run_in(gitflow_repo, "check-pr-doc-only")
         assert r.returncode == 1, (r.stdout, r.stderr)
         out = r.stdout + r.stderr
-        assert label in out and relpath in out
+        assert "not-doc-only" in out and relpath in out
 
     def test_nested_claude_md_is_still_doc_only(self, gitflow_repo):
         # The CLAUDE.md bound is exact-match: a nested foo/CLAUDE.md is
@@ -1357,15 +1363,23 @@ class TestFromJunitIngest:
         assert res.returncode == 2
         assert "from-junit" in res.stderr.lower()
 
-    def test_rejects_combination_with_test_command(self, tmp_path):
-        repo = self._repo(tmp_path)
+    def test_ingests_with_declared_test_command(self, tmp_path):
+        # A declared test_command emits JUnit; the single-run path is to run it
+        # once and ingest its report — NOT re-run inside `record`. The repo's own
+        # test would FAIL if run; ingesting a passing report proves the declared
+        # command was not re-executed. (Was a rejection; the exclusion forced the
+        # exact double-run the on-ramp exists to remove — see change-log.)
+        repo = self._repo(tmp_path, "def test_bad():\n    assert False\n")
         (repo / ".prawduct" / "project-state.yaml").write_text(
             "test_command: python3 -m pytest --junit-xml={junit_xml} -q\n"
         )
-        junit = self._junit(repo)
+        junit = self._junit(repo, tests=2, failures=0)
         res = _run_in(repo, "test-evidence", "record", "--from-junit", str(junit))
-        assert res.returncode == 2
-        assert "test_command" in res.stderr
+        assert res.returncode == 0, res.stderr
+        ev = json.loads((repo / ".prawduct" / ".test-evidence.json").read_text())
+        assert (ev["passed"], ev["failed"]) == (2, 0)
+        assert ev["command"] == f"--from-junit {junit}"
+        assert junit.is_file()  # report read, not consumed
 
 
 class TestFromCountsIngest:
@@ -1483,6 +1497,10 @@ class TestFromCountsIngest:
         assert "from-counts" in res.stderr.lower()
 
     def test_rejects_combination_with_test_command(self, tmp_path):
+        # A declared test_command emits JUnit, so hand-typed counts (no artifact)
+        # stay rejected — but the error redirects to --from-junit, which ingests
+        # that report without a re-run (fixes the discoverability half: the agent
+        # need not guess the escape hatch).
         repo = self._repo(tmp_path)
         (repo / ".prawduct" / "project-state.yaml").write_text(
             "test_command: python3 -m pytest --junit-xml={junit_xml} -q\n"
@@ -1491,6 +1509,7 @@ class TestFromCountsIngest:
                       "passed=1", "failed=0")
         assert res.returncode == 2
         assert "test_command" in res.stderr
+        assert "from-junit" in res.stderr.lower()
 
     def test_head_tilde1_base_emits_advisory(self, tmp_path):
         # A repo NOT on main with no origin → the recorder's overlay base falls
@@ -1652,6 +1671,195 @@ class TestNoRerunRestamp:
         assert res.returncode == 2
         assert "no-rerun" in res.stderr.lower() or "restamp" in res.stderr.lower()
 
+    def test_allows_restamp_with_declared_test_command(self, tmp_path):
+        # Restamp reuses the existing record's counts and re-derives only the
+        # coverage half — no suite run — so a declared test_command is fine.
+        # Seed via --from-junit (the declared-command ingest path), then restamp.
+        repo = self._repo(tmp_path)
+        (repo / ".prawduct" / "project-state.yaml").write_text(
+            "test_command: python3 -m pytest --junit-xml={junit_xml} -q\n"
+        )
+        junit = repo / "r.xml"
+        junit.write_text(
+            '<testsuites><testsuite name="pytest" tests="4" failures="0" '
+            'errors="0" skipped="0" time="1.0"></testsuite></testsuites>\n'
+        )
+        assert _run_in(repo, "test-evidence", "record",
+                       "--from-junit", str(junit)).returncode == 0
+        assert _run_in(repo, "test-evidence", "record", "--no-rerun").returncode == 0
+        ev = json.loads((repo / ".prawduct" / ".test-evidence.json").read_text())
+        assert ev["passed"] == 4
+
+
+class TestTreeValidatedFreshness:
+    """spike-tree-validated-test-evidence.md §9 — the build gate for the
+    additive tree-validity clause. Each case seeds a real `record` (which
+    captures `evidence_tree`), backdates the record's timestamp so it PREDATES
+    the session (timestamp alone now reads stale), then asserts the tree clause
+    decides correctly: an unchanged judgeable tree reads `current` across the
+    session boundary; ANY judgeable change reads `stale`. Proves the disjunction
+    only ever relaxes stale->current — structurally incapable of the false-stale
+    that retired the fingerprint and git_sha mechanisms.
+    """
+
+    def _seed(self, tmp_path, name: str) -> Path:
+        repo = tmp_path / name
+        repo.mkdir()
+        (repo / ".prawduct").mkdir()
+        (repo / "src").mkdir()
+        # A judgeable src file to mutate in the "stale" cases; the suite itself
+        # is trivial and self-contained so the seed `record` never depends on
+        # import paths.
+        (repo / "src" / "app.py").write_text("def add(a, b):\n    return a + b\n")
+        (repo / "test_app.py").write_text("def test_ok():\n    assert True\n")
+        _git(repo, "init", "-b", "main")
+        _git(repo, "add", "-A")
+        _git(repo, "commit", "-m", "c1")
+        _make_session_start(repo / ".prawduct", offset_seconds=-60)
+        assert _run_in(repo, "test-evidence", "record").returncode == 0, "seed record"
+        ev_path = repo / ".prawduct" / ".test-evidence.json"
+        ev = json.loads(ev_path.read_text())
+        # End-to-end: a real run captures evidence_tree AND the F4a overlay's
+        # existing.update() preserves it.
+        assert isinstance(ev.get("evidence_tree"), str) and ev["evidence_tree"], \
+            "a real run must persist evidence_tree through the F4a overlay"
+        ev["timestamp"] = "2000-01-01T00:00:00Z"  # predate the session
+        ev_path.write_text(json.dumps(ev))
+        return repo
+
+    # --- relax-only: an unchanged judgeable tree stays current across sessions ---
+
+    def test_restart_no_change_is_current(self, tmp_path):
+        repo = self._seed(tmp_path, "restart")
+        assert _run_in(repo, "test-status").returncode == 0, \
+            "unchanged tree must read current despite predating the session"
+
+    def test_metadata_yaml_edit_is_current(self, tmp_path):
+        repo = self._seed(tmp_path, "meta")
+        (repo / ".prawduct" / "project-state.yaml").write_text("views_enabled: true\n")
+        assert _run_in(repo, "test-status").returncode == 0, \
+            ".prawduct/*.yaml is not judgeable — must stay current"
+
+    def test_non_protected_md_edit_is_current(self, tmp_path):
+        repo = self._seed(tmp_path, "doc")
+        (repo / "README.md").write_text("# notes\nchanged\n")
+        assert _run_in(repo, "test-status").returncode == 0, \
+            "a non-protected .md is not judgeable — must stay current"
+
+    def test_untracked_incoming_bug_note_is_current(self, tmp_path):
+        repo = self._seed(tmp_path, "bug")
+        (repo / "incoming-bugs").mkdir()
+        (repo / "incoming-bugs" / "report.md").write_text("# bug report\n")
+        assert _run_in(repo, "test-status").returncode == 0, \
+            "an untracked .md note is not judgeable — must stay current"
+
+    def test_verbatim_commit_is_current(self, tmp_path):
+        # Committing the already-recorded state must not invalidate: the tree's
+        # judgeable content is unchanged (only the record's own metadata moved).
+        repo = self._seed(tmp_path, "commit")
+        _git(repo, "add", "-A")
+        _git(repo, "commit", "-m", "commit recorded state verbatim")
+        assert _run_in(repo, "test-status").returncode == 0, \
+            "a verbatim commit preserves the judgeable tree — must stay current"
+
+    # --- correctly stale: any judgeable change re-stales ---
+
+    def test_src_edit_is_stale(self, tmp_path):
+        repo = self._seed(tmp_path, "src")
+        (repo / "src" / "app.py").write_text("def add(a, b):\n    return a + b + 1\n")
+        assert _run_in(repo, "test-status").returncode == 1, \
+            "a src edit is judgeable — must read stale"
+
+    def test_test_edit_is_stale(self, tmp_path):
+        repo = self._seed(tmp_path, "tst")
+        (repo / "test_app.py").write_text("def test_ok():\n    assert 1 == 1\n")
+        assert _run_in(repo, "test-status").returncode == 1, \
+            "a test edit is judgeable — must read stale"
+
+    def test_untracked_test_file_is_stale(self, tmp_path):
+        repo = self._seed(tmp_path, "newtest")
+        (repo / "test_extra.py").write_text("def test_x():\n    assert True\n")
+        assert _run_in(repo, "test-status").returncode == 1, \
+            "an untracked test file is judgeable — must read stale"
+
+    def test_lockfile_edit_is_stale(self, tmp_path):
+        repo = self._seed(tmp_path, "lock")
+        (repo / "uv.lock").write_text("# dependency footprint changed\n")
+        assert _run_in(repo, "test-status").returncode == 1, \
+            "a lockfile is judgeable — a recorded dep change must read stale"
+
+    def test_hook_edit_is_stale(self, tmp_path):
+        # The vetted judgeability predicate makes bin/prawduct-hook judgeable, so
+        # editing it invalidates — closing the inverse false-fresh the old
+        # metadata-filter patch introduced by skipping the hook itself.
+        repo = self._seed(tmp_path, "hook")
+        (repo / "bin").mkdir()
+        (repo / "bin" / "prawduct-hook").write_text("#!/usr/bin/env python3\n")
+        assert _run_in(repo, "test-status").returncode == 1, \
+            "the hook is judgeable — editing it must read stale"
+
+    # --- from-counts stays timestamp-only (captures no tree) ---
+
+    def test_from_counts_captures_no_tree_and_stays_stale_when_backdated(self, tmp_path):
+        # --from-counts is the untied on-ramp: it captures no evidence_tree, so a
+        # backdated count record reads stale (timestamp-only), preserving the
+        # pre-clause contract even though the working tree is unchanged.
+        repo = tmp_path / "counts"
+        repo.mkdir()
+        (repo / ".prawduct").mkdir()
+        (repo / "test_ok.py").write_text("def test_ok():\n    assert True\n")
+        _git(repo, "init", "-b", "main")
+        _git(repo, "add", "-A")
+        _git(repo, "commit", "-m", "c1")
+        _make_session_start(repo / ".prawduct", offset_seconds=-60)
+        assert _run_in(repo, "test-evidence", "record", "--from-counts",
+                       "passed=1", "failed=0").returncode == 0
+        ev_path = repo / ".prawduct" / ".test-evidence.json"
+        ev = json.loads(ev_path.read_text())
+        assert "evidence_tree" not in ev, "--from-counts must not capture a tree"
+        ev["timestamp"] = "2000-01-01T00:00:00Z"
+        ev_path.write_text(json.dumps(ev))
+        assert _run_in(repo, "test-status").returncode == 1, \
+            "backdated --from-counts is stale (timestamp-only; no tree clause)"
+
+
+class TestTreeValidHelperFailsToStale:
+    """The tree-validity clause must FAIL TOWARD STALE on any git error: a
+    capture or diff failure can only leave evidence stale, never flip it fresh
+    (the false-fresh a gate must never produce). Unit-level with monkeypatch —
+    these fail-safe branches are impractical to trigger through a real repo.
+    """
+
+    def _gates(self):
+        if str(ROOT) not in sys.path:
+            sys.path.insert(0, str(ROOT))
+        from lib import gates  # noqa: PLC0415 — in-process import, mirrors other lib unit tests
+        return gates
+
+    def test_capture_failure_reads_not_valid(self, monkeypatch):
+        gates = self._gates()
+        monkeypatch.setattr(
+            gates.evidence, "capture_tree",
+            lambda project_dir: {"status": "error", "reason": "git exploded"},
+        )
+        ok, reason = gates._test_evidence_tree_valid(ROOT, "deadbeefdeadbeef")
+        assert ok is False and "capture" in reason.lower()
+
+    def test_tree_diff_unavailable_reads_not_valid(self, monkeypatch):
+        gates = self._gates()
+        # capture succeeds but returns a DIFFERENT tree, so the diff path is
+        # reached; tree_diff then returns None (missing object / git failure).
+        monkeypatch.setattr(
+            gates.evidence, "capture_tree",
+            lambda project_dir: {"status": "ok", "tree": "1111111111111111"},
+        )
+        monkeypatch.setattr(
+            gates.evidence, "tree_diff",
+            lambda project_dir, a, b: None,
+        )
+        ok, reason = gates._test_evidence_tree_valid(ROOT, "2222222222222222")
+        assert ok is False and "diff" in reason.lower()
+
 
 class TestTestEvidenceKnobs:
     """Gate-soundness ch.2: `test_command:` / `tests_dirs:` in
@@ -1791,3 +1999,91 @@ class TestTestEvidenceKnobs:
         ev = json.loads((repo / ".prawduct" / ".test-evidence.json").read_text())
         assert ev["passed"] == 1
         assert ev["command"].startswith("python3 -m pytest")
+
+
+class TestJurisdictionSubcommand:
+    """`prawduct-hook jurisdiction [--file <path>|<text...>] [--artifacts-only]`
+    (norm-lifecycle Chunk 2) is the on-demand authoring aid that seeds a plan's
+    `governed_by:` — the inverse of the orphan tripwire. It reads the same
+    governing corpus the work-model index indexes, ranks artifacts by salient-
+    term overlap, and — being an aid, never a gate — ALWAYS exits 0 (a bad
+    `--file` path yields a stderr NOTE, not a failure).
+    """
+
+    def _seed(self, tmp_path: Path) -> Path:
+        repo = tmp_path / "consumer"
+        artifacts = repo / ".prawduct" / "artifacts"
+        artifacts.mkdir(parents=True)
+        (artifacts / "telemetry-strategy.md").write_text(
+            "# Telemetry Substrate\n"
+            "The **telemetry** substrate governs **tracing** and observability.\n"
+        )
+        return repo
+
+    def test_positional_text_surfaces_the_governing_artifact(self, tmp_path):
+        repo = self._seed(tmp_path)
+        result = _run_in(
+            repo, "jurisdiction", "unify the telemetry substrate for tracing"
+        )
+        assert result.returncode == 0, result.stderr
+        # Path is relative to the project dir; the matched terms are listed.
+        assert ".prawduct/artifacts/telemetry-strategy.md" in result.stdout
+        assert "telemetry" in result.stdout and "tracing" in result.stdout
+
+    def test_file_input_matches_positional(self, tmp_path):
+        repo = self._seed(tmp_path)
+        plan = repo / "plan.txt"
+        plan.write_text("adopt the telemetry substrate as the tracing layer")
+        result = _run_in(repo, "jurisdiction", "--file", str(plan))
+        assert result.returncode == 0, result.stderr
+        assert ".prawduct/artifacts/telemetry-strategy.md" in result.stdout
+
+    def test_no_overlap_prints_nothing_and_exits_zero(self, tmp_path):
+        repo = self._seed(tmp_path)
+        result = _run_in(repo, "jurisdiction", "quaternion holography magnetosphere")
+        assert result.returncode == 0, result.stderr
+        assert result.stdout.strip() == ""
+
+    def test_missing_file_is_fail_open_note_not_error(self, tmp_path):
+        # An unreadable --file is an aid failure, not a gate failure: NOTE + 0.
+        repo = self._seed(tmp_path)
+        result = _run_in(repo, "jurisdiction", "--file", str(repo / "nope.md"))
+        assert result.returncode == 0
+        assert result.stdout.strip() == ""
+        assert "NOTE" in result.stderr
+
+    def test_artifacts_only_excludes_docs_corpus(self, tmp_path):
+        # The full corpus spans artifacts + CLAUDE.md + docs/ + methodology/;
+        # --artifacts-only restricts to `.prawduct/artifacts/` (the governed_by:
+        # target set). A docs/ file sharing the query's vocabulary must appear
+        # without the flag and vanish with it.
+        repo = self._seed(tmp_path)
+        docs = repo / "docs"
+        docs.mkdir()
+        (docs / "style-guide.md").write_text(
+            "# Style\nAll **tracing** conventions live here.\n"
+        )
+        full = _run_in(repo, "jurisdiction", "unify telemetry tracing")
+        assert "docs/style-guide.md" in full.stdout
+        restricted = _run_in(
+            repo, "jurisdiction", "--artifacts-only", "unify telemetry tracing"
+        )
+        assert restricted.returncode == 0, restricted.stderr
+        assert "docs/style-guide.md" not in restricted.stdout
+        assert ".prawduct/artifacts/telemetry-strategy.md" in restricted.stdout
+
+    def test_stdin_input_when_no_text_or_file(self, tmp_path):
+        repo = self._seed(tmp_path)
+        home = repo.parent / "_home"
+        home.mkdir(exist_ok=True)
+        result = subprocess.run(
+            ["python3", str(HOOK), "jurisdiction"],
+            input="adopt the telemetry substrate for tracing",
+            capture_output=True, text=True, timeout=20,
+            env={"HOME": str(home), "CLAUDE_PROJECT_DIR": str(repo),
+                 "CLAUDE_PLUGIN_ROOT": str(ROOT),
+                 "PATH": os.environ.get("PATH", "/usr/bin:/bin"),
+                 "PYTHONDONTWRITEBYTECODE": "1"},
+        )
+        assert result.returncode == 0, result.stderr
+        assert ".prawduct/artifacts/telemetry-strategy.md" in result.stdout

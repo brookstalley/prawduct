@@ -23,7 +23,7 @@ from pathlib import Path
 
 import pytest
 
-from lib import gitstate
+from lib import gates, gitstate
 
 _ROOT = Path(__file__).resolve().parent.parent
 
@@ -189,7 +189,7 @@ class TestStatusCaptureOnce:
         monkeypatch.setattr(gitstate, "git_status_output", _boom)
         porcelain = " M src/app.py\n"
         assert gitstate.git_has_session_changes(project, porcelain) != ""
-        assert gitstate._session_changes_are_doc_only(project, porcelain) is False
+        assert gates.session_changes_all_non_judgeable(project, porcelain) is False
         assert gitstate.git_has_code_changes(project, porcelain) is True
         assert gitstate._get_session_changed_files(project, porcelain) == ["src/app.py"]
 
@@ -205,10 +205,10 @@ class TestStatusCaptureOnce:
         porcelain = " M a.md\n M b.py\n"
         monkeypatch.setattr(gitstate, "git_status_output", lambda _: porcelain)
         computed = gitstate._get_session_changed_files(project)
-        doc_only_computed = gitstate._session_changes_are_doc_only(project)
+        doc_only_computed = gates.session_changes_all_non_judgeable(project)
         monkeypatch.setattr(gitstate, "git_status_output", _boom)
         assert gitstate._get_session_changed_files(project, porcelain) == computed
-        assert gitstate._session_changes_are_doc_only(project, porcelain) == doc_only_computed
+        assert gates.session_changes_all_non_judgeable(project, porcelain) == doc_only_computed
 
     def test_default_none_still_computes(self, tmp_path, monkeypatch):
         # Backward compat: omitting the param computes via git_status_output.

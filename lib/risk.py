@@ -8,6 +8,13 @@ governance-gate bundle — that bundle class should buy depth. ``prawduct-hook
 classify-diff-risk [<base>]`` answers one question for the dispatching skill:
 does the review scope intersect a declared risk surface?
 
+**PAUSED (2026-07-14):** the reviewer-model consumer of this verdict was removed
+(emergency patch — reviewers now run on the session model, no tier→model chain).
+``classify-diff-risk`` still runs and the Critic still records the verdict as
+``--tier`` telemetry, but it currently selects **no** model. The A/B rationale
+above and the resolution/failure semantics below are retained verbatim for the
+planned restore of tiering (change-log ``reviewer-session-model``).
+
 **Resolution order** (the build plan's open-assumption, user-vetoable):
 
 1. An explicit ``risk_surfaces:`` list in ``project-state.yaml`` — the

@@ -3,7 +3,6 @@
 .prawduct/.bug-inbox
 .prawduct/.critic-active
 .prawduct/.critic-findings.json
-.prawduct/.critic-test-findings.json
 .prawduct/.governance-ledger.jsonl
 .prawduct/.pr-reviews/
 .prawduct/.session-base-tree

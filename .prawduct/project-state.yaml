@@ -17,7 +17,7 @@ backlog_format_version: 2
 # Last full backlog grooming (stamped by /prawduct:backlog list/pick/groom).
 # Timestamp, not a count — counts are always re-derived (D14). Resolves the
 # backlog-overdue-grooming advisory.
-backlog_last_groomed_at: 2026-07-02
+backlog_last_groomed_at: 2026-07-12
 
 # Distribution model. `plugin` = this repo is governed by the Prawduct plugin
 # (v2.0.0), not file-sync. Set in Chunk 13 when the repo cut over to dogfood its
@@ -554,11 +554,18 @@ views_enabled: true
 # v2.3.2 (2026-07-10): single-pr-bookkeeping shipped (PR #118); entry flipped to
 # status=shipped; pointer cleared. No release-pending plans remain. Plan files
 # are RETAINED as historical artifacts and regen via their scope= tags.
-# 2026-07-16: repointed at build-plan-backlog-service — the Backlog Service (GitHub
-# Issues as system-of-record + deterministic adapter), PRD §16 item 6 drill-down.
-# Promoted from documentation/ after v1 → two-reviewer fold → v2 + the 3-debt
-# coherence sweep. 6-chunk thin slice; nothing built yet (Chunk 01 next). Design
-# artifact pending owner sign-off; gate armed for the build.
+# 2026-07-14: cleared at v3.0.0 release — kernel-evidence-store shipped; plan
+# retained under artifacts/ as a historical record (checkboxes derive from the
+# change-log's status=shipped entries). develop then repointed at
+# artifacts/build-plan-norm-lifecycle.md (its own active line of work).
+# 2026-07-16 (merge-reconciled 2026-07-17): this feature branch
+# (feature/backlog-prd-owner-feedback) repoints at build-plan-backlog-service —
+# the Backlog Service (GitHub Issues as system-of-record + deterministic adapter),
+# PRD §16 item 6 drill-down. Promoted from documentation/ after v1 → two-reviewer
+# fold → v2 + the 3-debt coherence sweep. 6-chunk thin slice; Chunk 01 (walking
+# skeleton) built. Design artifact pending owner sign-off; gate armed for the
+# build. This branch's active plan is backlog-service; develop's norm-lifecycle
+# pointer is a separate line of work that reconciles when this branch merges.
 active_build_plan: artifacts/build-plan-backlog-service.md
 
 # =============================================================================
@@ -680,6 +687,9 @@ scope_rollups:
   hot-path-git-batching:
     chunks: ["01"]
     releases: ["v2.1.8"]
+  kernel-evidence-store:
+    chunks: ["01", "02", "03", "04", "05", "06"]
+    releases: ["v3.0.0"]
   legacy-backlog-format-probe:
     chunks: ["01"]
     releases: ["v2.0.17"]

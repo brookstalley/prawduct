@@ -83,6 +83,11 @@ class TestBuildingMethodology:
         # unchanged: prefer trimming over bumping, place canonical detail in
         # the file that owns the concept (discovery.md for rigor, review-cycle
         # for per-mode behavior) and keep building.md to condensed pointers.
+        # Norm-lifecycle Chunk 5 (GOV-7Q4N) added the "A Norm Surfaced
+        # Mid-Build" tripwire and PAID FOR IT in place: the ceiling held at 4600
+        # (the plan's "stay green without raising budgets" success line), the
+        # addition offset by compressing the Delegating and Decision-Research
+        # guidance (canonical norm detail lives in docs/norms.md). ~4587 now.
         tokens = estimate_tokens(self.content)
         assert tokens < 4600, f"building.md is ~{tokens} tokens, should be <4600"
 
@@ -234,14 +239,20 @@ class TestCriticSkill:
         assert "Instruction Clarity" in self.content
 
     def test_token_budget(self):
-        # Ceiling 3350 (unchanged by prose-diet Chunk 02): a prior audit found
-        # this file LEAN -- every goal bullet is a specific, severity-mapped
-        # check -- so the diet only removed citation tags (~3212 est tokens
-        # after). 3350 already binds tighter than the diet's post-diet +10%
-        # formula, so it stands. Posture: prefer trim over bump; relocate
-        # per-mode/record detail to review-cycle.md before adding here.
+        # Ceiling 3530 (was 3450, was 3350). The prose-diet audit found this
+        # file LEAN -- every goal bullet is a specific, severity-mapped check.
+        # 3450 held until the norm-lifecycle consolidation (2026-07-16,
+        # owner-approved GOV-7Q4N): the Normative-authority block landed in the
+        # Review Goals preamble, PAID FOR partly by deleting Goal 6's
+        # observability-strategy line and merging Goal 4's preferences check
+        # into it (four scattered divergence checks became one rule; canonical
+        # detail lives in docs/norms.md, this file carries only the pointer
+        # form). Net ~3524 est (words x1.3). Ceiling 3530 -- still UNDER the
+        # diet's own post-diet +10% formula (~3533), so the diet stays locked,
+        # with near-zero headroom BY DESIGN: the next addition must trim or
+        # relocate, not bump past the formula.
         tokens = estimate_tokens(self.content)
-        assert tokens < 3350, f"review-protocol.md is ~{tokens} tokens, should be <3350"
+        assert tokens < 3530, f"review-protocol.md is ~{tokens} tokens, should be <3530"
 
 
 # =============================================================================

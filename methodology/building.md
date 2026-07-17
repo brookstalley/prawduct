@@ -50,6 +50,14 @@ If any can't be answered, requirements aren't clear enough (Principle 6 — Requ
 
 The Confidence Check runs at a chunk's *start*; requirements also arrive *during* a build, and the #1 way they enter undocumented is designing them fluently **in chat** and flowing them into code with no artifact between. **Triggered, not always-on:** when a tripwire fires — a noun the artifacts don't contain, design you can't trace to a parent one rung up, a taxonomy invented in chat, the same thing revised 2-3×, or an "are we sure / is this solved" signal — *stop, name it, write or locate the parent requirement, then resume.* Never silently *invent* a requirement any more than you'd *drop* one (Principle 6, mirror of #2).
 
+### A Norm Surfaced Mid-Build
+
+The requirement tripwire has a sibling: "we should always X" is **norm birth** — stop and capture
+before code proceeds (a `project-preferences.md` row or a `## Direction` entry: statement + why +
+retroactivity). Departing from a norm that already governs your change is a recorded `[DECISION: …]`
+— never a silent divergence or a norm edited to bless your own code. Norms bind; descriptions track
+(`docs/norms.md`; `methodology/planning.md` "Governing Artifacts").
+
 ## The Build Cycle
 
 **Establish a clean baseline.** Before the first work cycle of a session:
@@ -74,9 +82,11 @@ Test at the right level — **unit** (functions and logic), **integration** (com
 
 **CLAUDE.md is instructions, not documentation.** It tells Claude how to work here — dev commands, test workflows, key conventions. Architecture descriptions and component inventories belong in `docs/` or `.prawduct/artifacts/`. Target: project-specific content under ~150 lines (the Critic warns above it).
 
+**Comments and durable specs are self-contained — explain *why*, never reference build scaffolding.** A code comment, docstring, or long-lived spec must not name a chunk ("chunk 03"), build-plan, or work-cycle — they're deleted when the work ships, so the reference resolves to nothing. Carry the reason inline: not `// per chunk 03` but `// OpenFoodFacts rate-limits burst lookups`. Exception: build-cycle bookkeeping that records the work (e.g. change-log `chunks=`, backlog `closed-by:`, reflections, commit/PR text) — there the id is the record (Principle 13).
+
 **Verify.** Two layers:
 
-- *Code:* Record **once**, at Verify — **not** after committing (a commit doesn't stale session-scoped evidence). Check `test-status` first (exit 0 = already passed; don't re-run). Record via `prawduct-hook test-evidence record`, or ingest an existing run — `--from-junit`, `--from-counts` (any toolchain), `--no-rerun` (restamp). Non-default suites: `test_command:`/`tests_dirs:`.
+- *Code:* Record **once**, at Verify — **not** after committing (a commit doesn't stale session-scoped evidence). Check `test-status` first (exit 0 = already passed; don't re-run). Record via `prawduct-hook test-evidence record`, or ingest an existing run — `--from-junit`, `--from-counts` (any toolchain), `--no-rerun` (restamp) — no re-run even when `test_command:` is declared (run it once with a real `--junit-xml` path, then `--from-junit` that report; `--from-counts` is for toolchains that can't emit JUnit). Non-default suites: `test_command:`/`tests_dirs:`.
 - *Product:* Launch it, call it, inspect output. If infrastructure dependencies are declared, verify against real instances — mocks are not verification.
 
 Scale to chunk significance. When you can't verify, say so (Principle 5).
@@ -87,7 +97,7 @@ Scale to chunk significance. When you can't verify, say so (Principle 5).
 
 **Critic review.** Run `/prawduct:critic` (no args) — the SKILL infers mode from git + build-plan state via `prawduct-hook infer-critic-mode` and records `mode_chosen_by`. Pass an explicit mode (e.g. `/prawduct:critic cumulative`) only to override; report override cases so inference can improve. The Critic runs as a separate agent with restricted tools. See Modes below.
 
-**Resolve findings.** After a **coordinator** review (medium/large `final`, `cumulative`), run `prawduct-hook critic-consolidate` before reading `.critic-findings.json` — an idempotent no-op when the `SubagentStop` trigger already consolidated, and it guarantees you never read the *previous* review's file if that trigger didn't fire. Then: fix blocking findings before proceeding. Address warnings. Document disagreements with rationale.
+**Resolve findings.** After a **coordinator** review (`final`/`cumulative` at 5+ changed files), run `prawduct-hook critic-consolidate` before reading `.critic-findings.json` — an idempotent no-op when the `SubagentStop` trigger already consolidated, and it guarantees you never read the *previous* review's file if that trigger didn't fire (single-pass reviews consolidate themselves). Then: fix blocking findings before proceeding — the follow-up `/prawduct:critic verify-resolutions` records the resolution facts that unblock them at the gates. Address warnings. Document disagreements with rationale.
 
 **Reflect — now, not at session end.** Append to `.prawduct/.session-reflected`: what the chunk delivered, what the Critic caught, what surprised you. A paragraph is enough. Add a rule to `learnings.md` only if this cycle produced one. Chunk-boundary reflection makes `/clear` instant later.
 
@@ -99,7 +109,7 @@ Scale to chunk significance. When you can't verify, say so (Principle 5).
 
 ## Session Scope Discipline
 
-Limit work cycles to 1-3 chunks for medium+ work. Critic review quality degrades across a large diff, and context compaction within a long session can lose governance context. This composes with per-chunk review: a multi-chunk plan simply spans multiple sessions — per-chunk reviews accumulate, the final/cumulative review lands with the last chunk, and session boundaries don't reset the plan.
+Limit work cycles to 1-3 chunks for medium+ work — Critic quality degrades across a large diff, and long-session compaction can lose governance context. This composes with per-chunk review: a multi-chunk plan spans multiple sessions — per-chunk reviews accumulate, the final/cumulative review lands with the last chunk, and session boundaries don't reset the plan.
 
 **Complete required governance at chunk boundaries, then affirmatively signal when `/clear` is safe.** When you've completed 2-3 chunks, or the user switches tasks, complete in order:
 
@@ -115,7 +125,7 @@ Two categories of action require investigation before commitment:
 
 ### Boundary Investigation (when changes cross contract surfaces)
 
-Contract surfaces are boundaries where components interact: API endpoints, database schemas, IPC, frontend/backend type contracts, configuration interfaces. See `.prawduct/artifacts/boundary-patterns.md` for this project's documented contract surfaces.
+Contract surfaces — API endpoints, DB schemas, IPC, frontend/backend type contracts, config interfaces — are where components interact; see `.prawduct/artifacts/boundary-patterns.md` for this project's documented ones.
 
 When you modify files that affect a contract surface:
 1. **Recognize** the boundary crossing — any change to a producer with known consumers.
@@ -125,23 +135,19 @@ When you modify files that affect a contract surface:
 
 ### Decision Research (when choices constrain future options)
 
-A decision is "major" when it has: **lock-in** (hard to reverse — a persisted format/schema is ALWAYS lock-in, reversal cost not LOC: enumerate the questions the data must answer — its consumers' future queries — before designing fields), **pervasiveness** (used across many files), **structural impact** (shapes architecture), **external dependency** (long-term reliance on a library/service), or **volatility** (correctness depends on timely / fast-moving / post-cutoff data — knowledge gaps want reasoning, volatility gaps want web research; see `methodology/discovery.md` "Calibrate Rigor").
+A decision is "major" when it has: **lock-in** (hard to reverse — a persisted format is always lock-in, measured by reversal cost not LOC; enumerate the data's future consumer queries before designing fields), **pervasiveness** (many files), **structural impact** (shapes architecture), **external dependency** (long-term library/service reliance), or **volatility** (correctness rests on fast-moving / post-cutoff data — web-research it, don't recall; see `methodology/discovery.md` "Calibrate Rigor").
 
-Research scales to impact: **medium-impact** (pervasive pattern, non-core dependency) → quick research in the main context; **high-impact** (lock-in, structural, core dependency) → spawn a research subagent that investigates best practices, established patterns, and library health, returning a concise recommendation.
-
-Presentation scales to user engagement: **low** → decide and state briefly; **medium** (default) → recommend with context, invite feedback; **high** → present options with trade-offs, let the user choose.
-
-Record major decisions in the most affected artifact: what was decided, alternatives considered, rationale, trade-offs accepted.
+Research scales to impact: **medium** (pervasive pattern, non-core dep) → quick in-context research; **high** (lock-in, structural, core dep) → a research subagent returns a concise recommendation on patterns and library health. Presentation scales to engagement: **low** → decide and state briefly; **medium** (default) → recommend and invite feedback; **high** → present options with trade-offs for the user to choose. Record major decisions in the most affected artifact: what, alternatives, rationale, trade-offs.
 
 ## Delegating Work to Subagents
 
-**When the user asks you to do work in a subagent, do it** (Principle 23). Delegation is also valuable when chunks are independent and parallelizable, when a well-scoped chunk benefits from a clean context, or when the main context is getting large.
+**When the user asks you to work in a subagent, do it** (Principle 23) — also when chunks are independent and parallelizable, a well-scoped chunk benefits from a clean context, or the main context is large.
 
-**How to delegate:** give the subagent the chunk spec and referenced artifacts, the project directory path, the instruction **"Read the build cycle via `/prawduct:methodology building`, then `.prawduct/.subagent-briefing.md` for project conventions and learnings,"** and instructions to run the full test suite before and after implementation.
+**How:** give the subagent the chunk spec and referenced artifacts, the project directory path, the instruction **"Read the build cycle via `/prawduct:methodology building`, then `.prawduct/.subagent-briefing.md` for conventions and learnings,"** and to run the full suite before and after.
 
-**Parallel chunks:** launch independent chunks as separate subagents, wait for results, run the combined test suite, then proceed to Critic review. Merge conflicts are the main agent's responsibility. Parallel subagents in a *shared* worktree can see each other's partial changes — use worktree isolation (`isolation: "worktree"`) for truly independent chunks. The compliance canary may fire O(agents × edits) during parallel work; that noise is expected — acknowledge it in the session reflection.
+**Parallel chunks:** launch independent chunks as separate subagents, await results, run the combined suite, then Critic. Merge conflicts are the main agent's job. Shared-worktree subagents see each other's partial changes — use `isolation: "worktree"` for truly independent chunks. The canary may fire O(agents × edits); that noise is expected — note it in the reflection.
 
-**What stays in the main agent:** Critic review, reflection, and state updates. The subagent implements; the main agent maintains governance.
+**What stays in the main agent:** Critic, reflection, state updates. The subagent implements; the main agent governs.
 
 ## Working With Specs
 
@@ -171,7 +177,11 @@ Tests are the most important artifact you produce: contracts that define correct
 
 After medium+ work, invoke the Critic as a separate agent. It receives signals (files changed, work type, work size) and reasons about what to check, through seven prioritized goals: **Nothing Is Broken**, **Nothing Is Missing**, **Nothing Is Unintended**, **Everything Is Coherent**, **Decisions Were Deliberate**, **The System Can Be Understood**, **The Design Is Sound** (definitions: `skills/critic/review-protocol.md`).
 
-In `final` mode the Critic also cross-checks learnings and reconciles the backlog. Medium/large `final` reviews use a coordinator pattern — parallel subagents for correctness (goals 1-3), design (4, 7), and sustainability (5-6).
+In `final` mode the Critic also cross-checks learnings and reconciles the backlog. `final`/`cumulative` reviews at 5+ changed files use a coordinator pattern — parallel subagents for correctness (goals 1-3), design (4, 7), and sustainability (5-6).
+
+### The evidence model
+
+Every consolidated review appends a **fact** to a store shared by all worktrees of the clone (`<git-common-dir>/prawduct/evidence.jsonl`; inspect with `prawduct-hook evidence status|list`). A fact records the trees it reviewed, so it never expires by time or session: a pre-commit review vouches for the verbatim commit, from any worktree, in any later session. The Critic and PR gates answer by **composing** facts over trees — mode labels don't matter; a rebase/amend changes the tree and correctly demands a fresh look. Blocking findings block until a `verify-resolutions` pass records resolution facts. `.critic-findings.json` is a derived view of the newest fact (no gate reads it); the writers are the review lifecycle commands, never you.
 
 ### Modes
 
@@ -179,8 +189,8 @@ In `final` mode the Critic also cross-checks learnings and reconciles the backlo
 
 - **`chunk`** — Goals 1-3 against the chunk's uncommitted diff.
 - **`final`** — all 7 goals + cross-checks + Framework-Specific Checks.
-- **`cumulative`** — all 7 goals against `merge-base...HEAD`. Gates `/prawduct:pr create`.
-- **`verify-resolutions`** — Goals 1-3 against the prior review's scope; re-review after fixing prior findings.
+- **`cumulative`** — all 7 goals against `merge-base...HEAD`. Feeds `/prawduct:pr create`'s gate.
+- **`verify-resolutions`** — Goals 1-3 against the delta since the prior review fact; re-review after fixing prior findings, and the only mode that records resolution facts.
 
 If the mode is missing, unrecognized, or inference cannot make a confident call, run `final` (canonical rule and per-mode table: `skills/critic/review-cycle.md`).
 
@@ -196,7 +206,7 @@ If the mode is missing, unrecognized, or inference cannot make a confident call,
 
 `/prawduct:pr` handles the full lifecycle (it detects git state and routes to create, update, merge, or status) and invokes the PR reviewer agent for independent release-readiness assessment of the full changeset — complementing the Critic's per-chunk reviews. Review criteria: the plugin's `skills/pr/review-protocol.md`. After merge, `/prawduct:pr` cleans up the build plan.
 
-**Cumulative-Critic gate.** `/prawduct:pr create` calls `prawduct-hook check-cumulative-critic` — required: a blocking-free record vouching for HEAD (a `cumulative` record, or a `verify-resolutions` chain record extending one; details in `skills/critic/review-cycle.md`). Sequence: land every non-`.md` fix, run `/prawduct:critic cumulative` once; post-cumulative fixes ride the chain (fix → commit → `verify-resolutions`). While it runs (~4-10 min), do findings-independent prep.
+**Cumulative-Critic gate.** `/prawduct:pr create` calls `prawduct-hook check-cumulative-critic` — composed review coverage must span merge-base → HEAD by tree with zero unresolved blocking findings (any modes compose; details in `skills/critic/review-cycle.md`). Sequence: land every non-`.md` fix, run `/prawduct:critic cumulative` once, commit verbatim; post-cumulative fixes take a `verify-resolutions` pass (delta cost), never a second full run. While it runs (~4-10 min), do findings-independent prep.
 
 ## Exception Handling
 

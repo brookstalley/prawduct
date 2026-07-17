@@ -5,6 +5,40 @@
      be overwritten on next regen. See change-log.md for full per-release
      bodies; this file is a digest. -->
 
+## v3.0.4
+
+**Entry:** 2026-07-14: Ephemeral-reference firewall — durable artifacts stay self-contained (ephemeral-ref-firewall)
+
+See `.prawduct/change-log.md` for full details.
+
+## v3.0.3
+
+**Entry:** 2026-07-14: Tree-validated test-evidence freshness (tree-validated-test-evidence)
+
+See `.prawduct/change-log.md` for full details.
+
+## v3.0.2
+
+**Entry:** 2026-07-14: Test-evidence ingest on-ramps work with a declared test_command (test-evidence-declared-command-onramps)
+
+See `.prawduct/change-log.md` for full details.
+
+## v3.0.1
+
+**Entry:** 2026-07-14: Reviewers run on the session model — reviewer-model tiering removed (reviewer-session-model)
+
+See `.prawduct/change-log.md` for full details.
+
+## v3.0.0
+
+**Entry:** 2026-07-13: Session-file .gitignore contract-drift advisory probe (kernel-evidence-store)
+
+**Chunks shipped:** 01, 02, 03, 04, 05, 06
+
+**Scope:** kernel-evidence-store
+
+See `.prawduct/change-log.md` for full details.
+
 ## v2.3.3
 
 **Entry:** 2026-07-10: Critic consolidation tolerates `files: []` on a finding (critic-empty-files-tolerance)
