@@ -168,6 +168,8 @@ the plugin no longer places them.
 | Session/gate state | `.prawduct/.*` (gitignored) | markers, partials, caches, session baselines, advisories | per-worktree |
 | Committed product state | `.prawduct/` (tracked) | project-state, backlog, learnings, artifacts, change log, build plan | shared via git, owned by the product |
 | Plugin (distributed) | plugin root | skills, hooks, methodology, CLI, templates | read-only; never placed into a repo |
+| Framework docs (this repo) | `documentation/` (tracked) | long-form requirements, PRDs, research, and the migration guide — human-facing working docs, framework-repo only (distinct from the plugin-bundled `docs/` reference) | committed to the framework repo |
+| Upstream bug intake (this repo) | `incoming-bugs/` (tracked) | bug reports products file upstream about prawduct itself, via `/prawduct:report-bug`; triaged into the backlog, then archived under `incoming-bugs/archive/` | committed to the framework repo |
 
 ## Communication Channels
 

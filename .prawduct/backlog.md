@@ -7,6 +7,13 @@
 
 ## Open
 
+- **[LRN-9K2P]** Modernize ~28 legacy terse learnings.md headings to self-contained "When X, do Y because Z" rule form
+  `effort: S · impact: S · area: memory/learnings · source: critic · added: 2026-07-17 · status: open · stage: ready · related: LRN-7M4D · refs: .prawduct/learnings.md, .prawduct/learnings-detail.md, methodology/reflection.md`
+
+  The 2026-07-17 learnings.md compaction reduced the file to header-only rules (narrative moved to learnings-detail.md). ~1/3 of the headings are legacy terse topic-labels (e.g. "Test subprocesses: HOME=tmp_path leaks Python's pyc cache into the test repo") that state the rule but not the inline *why*. Since the SessionStart briefing now surfaces headings only, their actionable why isn't visible without opening learnings-detail.md — still reachable via `/prawduct:learnings`, so **NOT a regression** (the briefing was headers-only before too).
+
+  Fix: reword the terse headings to carry rule + why in one line, matching the dominant "When X, do Y because Z" format the intro + `methodology/reflection.md` now describe. Surfaced by the Critic design + sustainability reviewers (NOTE, rev-20260717T192532Z). (critic)
+
 - **[COV-4H7N]** Doc-only/state-only PR silently breaks a repo-coupled (non-hermetic) test — check-pr-doc-only AND test-status both assume non-code files can't change test outcomes
   `effort: M · impact: M · area: governance/gates · source: builder · added: 2026-07-17 · status: open · stage: design · related: COV-2P7F, COV-6T3P, COV-8R2K · refs: lib/coverage.py (cmd_check_pr_doc_only — doc-only fast-path), lib/coverage_algebra.py (is_judgeable_path), bin/prawduct-hook (test-status / cmd_test_evidence), tests/test_norm_probes.py (TestSilentAgainstThisRepo)`
 
