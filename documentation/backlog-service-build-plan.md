@@ -26,8 +26,9 @@ cache/snapshot, §6→§1.6 attachments) corrected; CRASH-3 (split) mis-cited in
 01 de-loaded (raw-HTTP → W1; provision trimmed to minimal); SPIKE-S2 isolated to Chunk 06; Chunk 04
 demoted to `chunk` mode (review-wall-clock). Owner decisions folded: `lib/backlog/` built from the
 start (`lib/backlog.py` → `lib/backlog/legacy.py`); CLI home = `prawduct-hook backlog`; prawduct's own
-briefing repoints at Chunk 06 (post-migration), not before. Three peer-doc coherence debts filed (§
-"Coherence debts"). Prior v1: initial drill-down from PRD §16 item 6. · added: 2026-07-16 · source:
+briefing repoints at Chunk 06 (post-migration), not before. Three peer-doc coherence debts filed **and
+swept the same session** (§ "Coherence debts" — API §1 CLI spelling, Data Model export-representation
+pointer, API §2.5/MIG-5 scrub op-dependency). Prior v1: initial drill-down from PRD §16 item 6. · added: 2026-07-16 · source:
 planning session · stage: design (not yet promoted to an active build plan — see "Promotion").`
 
 **Parent:** `documentation/backlog-service-prd.md` (PRD v4) and, through it,
@@ -113,9 +114,9 @@ rulings. The roadmap stays Medium by design until each layer's workload justifie
 - [ ] Chunk 05: Importer + alias machinery + minimal `merge` + `export` (mechanism, fixture-proven)
 - [ ] Chunk 06: SPIKE-S2 dry-run + MG4 scrub + prawduct-first real migration (dogfood, cumulative-final)
 - [ ] Roadmap (post-slice, lower resolution): W1 cache+sync · W2 search+dedup · Wv verify+grooming · W3 cross-project+automation · W4 attachments · W5 MCP · W6 App identity + offline queue · Wg GV3 janitor
-Context: Draft v2 authored 2026-07-16 (v1 + two independent reviews folded). Nothing built. This is a
-design artifact pending owner sign-off, then Promotion. Next: owner review of v2, then the peer-doc
-coherence sweep (3 debts), then Promotion.
+Context: Draft v2 authored 2026-07-16 (v1 + two independent reviews folded; the 3 peer-doc coherence
+debts swept the same session). Nothing built. This is a design artifact pending owner sign-off, then
+Promotion. Next: owner sign-off on v2 → Promotion to an active build plan.
 
 ## Scaffolding
 
@@ -396,9 +397,10 @@ tests/
   round-trip — they are tested as a pair.
 - **Depends on:** Chunk 02 (encoding), Chunk 03 (relationships for graph export + `link`)
 - **Artifacts consumed:** API §2.5 (`import`,`export`), §2.3 (`merge`); Data Model §5 (`id:PFX` alias,
-  checkpoint), §1.1/§1.3/§2 (what `export` serializes — the block + native graph; *see coherence debt:
-  the on-disk export representation PRD §8.9/MG2 promised the Data Model would pin is not squarely
-  delivered there*); NFR §3 (write pacing — 80/min + ~500/hr), §8 (export fidelity); Test Specs §3.10
+  checkpoint), §1.1/§1.3/§2 (what `export` serializes — the block + native graph), §8 open-Q5 (the
+  on-disk export **layout** is a build-time decision here, bounded by the NFR §8 fidelity contract —
+  resolved in the coherence sweep); NFR §3 (write pacing — 80/min + ~500/hr), §8 (export fidelity);
+  Test Specs §3.10
   (MIG-1…MIG-4), §3.2 (CRASH-4 resumable import; CRASH-2 merge redirect-before-close); PRD §8.9, §11-S2.
 - **Deliverables:** `lib/backlog/migrate.py` (`import`,`export`), the minimal `merge`, alias/redirect
   resolution in `ids.py`, the durable checkpoint, write-pacing (respect 80/min + ~500/hr).
@@ -549,32 +551,31 @@ heavy reviews across the slice (01/02/05 `final` + 06 `cumulative`); Chunk 04 wa
 `file-upstream`, `batch`, full `merge`/`split`, `rollup`, `AU1` events, attachments, MCP, App identity,
 offline queue, GV3 sweep) map to the W1–Wg roadmap rows above — deferred by design, not dropped.*
 
-## Coherence debts filed (peer-doc — sweep, do not fix here)
+## Coherence debts — filed and swept (2026-07-16)
 
-Surfaced by the v2 independent review; collected for a peer-doc touch-up pass (P12 scope discipline —
-the previous drill-downs filed and swept debts the same way). None blocks Promotion; each is a wording/
-placement fix in a *sibling* doc:
+Surfaced by the v2 independent review; **all three swept in the peer docs the same session** (P12 scope
+discipline — the previous drill-downs filed and swept debts the same way). None blocked Promotion; each
+was a wording/placement fix in a *sibling* doc. Recorded here for the audit trail:
 
-1. **API contract §1 — CLI surface spelling.** §1 writes the public surface as `prawduct backlog <op>`;
-   the owner-decided home is **`prawduct-hook backlog <op>`** (one entry point). Reconcile §1 (and any
-   `prawduct backlog` occurrences) to the real command, or state `prawduct backlog` as a doc-shorthand
-   with no separate binary.
-2. **Data Model — the on-disk export representation.** PRD §8.9/MG2 promises "§16 Data Model pins the
-   on-disk representation" of the full-fidelity export (the native graph — deps, sub-issues, timeline,
-   assignees). The Data Model does not squarely deliver a §-section for it (it is only implied by §1.1
-   `history`, §1.3 relationships, §2 block). Add a Data Model section (or a §6-adjacent export-format
-   note) so Chunk 05's `export` has a clean parent, or amend PRD §8.9 to point at NFR §8 as the fidelity
-   authority.
-3. **API §2.5 / Test Specs MIG-5 — the scrub's op dependencies.** Both describe the MG4 scrub as
-   "`list` + `search --like` surface → … → `status`/`merge`". In the slice, `search --like` is
-   post-cache (W2) and unavailable, so the slice scrub uses **model-surfaced dedup over `list`** + the
-   minimal `merge`. Reconcile the scrub's description to name `search --like` as the *post-cache
-   accelerator*, not a hard dependency, so the P0 MG4 scrub is buildable in the cacheless slice.
+1. **API contract §1 — CLI surface spelling.** ~~§1 wrote the public surface as `prawduct backlog
+   <op>`.~~ **Resolved** — API §1 pins the canonical command to **`prawduct-hook backlog <op>`** (one
+   entry point, O5) and establishes `prawduct backlog` as the doc-set shorthand, legitimizing the prose
+   uses in PRD §6 / Test Specs §1.1 without churn.
+2. **Data Model — the on-disk export representation.** ~~PRD §8.9/MG2 promised "§16 Data Model pins the
+   on-disk representation," which the Data Model did not deliver.~~ **Resolved** — PRD §8.9/MG2's
+   pointer corrected to name the real authorities (fidelity = NFR §8; serialized fields = Data Model
+   §1.1/§1.3/§2); Data Model §8 gains open-Q5 stating the concrete on-disk **layout** is a build-time
+   decision (this chunk, Chunk 05), *not* a queried lock-in schema since re-import is out of scope.
+3. **API §2.5 / Test Specs MIG-5 — the scrub's op dependencies.** ~~Both described the MG4 scrub as
+   needing `list` + `search --like`, an op the slice defers.~~ **Resolved** — API §2.5 and MIG-5 now
+   name `search --like` as a **post-cache accelerator (W1/W2), not a slice dependency**; the cacheless
+   slice scrub uses model-surfaced dedup over `list` + the minimal `merge` (Chunk 05). The P0 MG4 scrub
+   is now buildable in the slice.
 
 ---
 
 *Independent review folded (2026-07-16, Principle 14):* a fresh-eyes build/sequencing critic + a
 coverage/traceability verifier reviewed v1 (the two-reviewer pattern the five sibling drill-downs used).
-Confirmed findings are folded above and inline; the three residual peer-doc items are filed as coherence
-debts (not fixed here — scope discipline). Next: owner sign-off on v2 → the coherence sweep → Promotion
+Confirmed findings are folded above and inline; the three residual peer-doc items were filed **and swept
+the same session** (see "Coherence debts — filed and swept"). Next: owner sign-off on v2 → Promotion
 to an active build plan (`.prawduct/artifacts/` + `active_build_plan`).

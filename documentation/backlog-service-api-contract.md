@@ -1,6 +1,6 @@
 # Backlog Service — API Contract
 
-`status: draft v3 — coherence touch-up (2026-07-16, §12b), folded from the §16(5) Test-Specs drill-down review: split idempotency pinned (`split-op:` token — was an undecidable "by link"); file-upstream idempotency pinned (`source-key:` marker — was "keyed" with no key); the v2 "semantic hybrid-search-enablement-gate" corrected (no such gate — semantic issue search is GA/on-by-default; `--semantic` `unsupported` is a capability probe); "never deletes issues" tightened to the load-bearing "never reuses numbers." Prior v2 — independent-review fold (2026-07-16): a fresh-eyes design critic + a gh/GitHub-fact verifier reviewed v1. Folded — C1: GV3 given a home (new §2.6) — closed_by is native-timeline-authoritative on close-on-merge, an optional handle on manual close, and the bidirectional drift sweep is a janitor workflow (coherence: closed_by added to Data Model §1.1 v3); C2: merge/split crash-safe recovery write-order specified (redirect-before-close, parallel to set-status); C3: retryable disentangled from the G2 never-block obligation (never-block = degrade on ALL errors, never retry-loop; retryable = orthogonal transient-vs-permanent hint for retry-drivers); C4: PV3/PV4 public-filing noted as native + delegated to Security §6; C5: "semantic pre-GA" corrected (semantic search is GA — the gate is per-repo hybrid-search enablement); C6: the "plugin semver IS the handle" claim scoped to the bundled CLI (MCP skew covered by its experimental tier); C7: verify/attach idempotency keys named; F2: list read-your-writes softened to strongly-consistent-in-practice; C10: gh exit 4 → auth mapping added; plus the offline-queue provisional-ID envelope state. The fact-verifier confirmed every load-bearing platform fact (80/min + ~500/hr caps, ETag/304, since-cursor, search-not-read-your-writes, MCP isError mapping, per-install lockstep, no-number-reuse). Prior v1: initial drill-down from PRD §16(4) — operation surface across three fronts + the two recorded decisions. · source: planning session · stage: design`
+`status: draft v3 — build-plan coherence sweep (2026-07-16, from the §16(6) Build-plan drill-down review): §1 canonical CLI pinned to `prawduct-hook backlog` (one entry point, O5; `prawduct backlog` established as doc-shorthand); §2.5 MG4 scrub `search --like` demoted to a post-cache accelerator (not a slice dependency — model-surfaced dedup over `list` in the cacheless slice). Prior v3 — coherence touch-up (2026-07-16, §12b), folded from the §16(5) Test-Specs drill-down review: split idempotency pinned (`split-op:` token — was an undecidable "by link"); file-upstream idempotency pinned (`source-key:` marker — was "keyed" with no key); the v2 "semantic hybrid-search-enablement-gate" corrected (no such gate — semantic issue search is GA/on-by-default; `--semantic` `unsupported` is a capability probe); "never deletes issues" tightened to the load-bearing "never reuses numbers." Prior v2 — independent-review fold (2026-07-16): a fresh-eyes design critic + a gh/GitHub-fact verifier reviewed v1. Folded — C1: GV3 given a home (new §2.6) — closed_by is native-timeline-authoritative on close-on-merge, an optional handle on manual close, and the bidirectional drift sweep is a janitor workflow (coherence: closed_by added to Data Model §1.1 v3); C2: merge/split crash-safe recovery write-order specified (redirect-before-close, parallel to set-status); C3: retryable disentangled from the G2 never-block obligation (never-block = degrade on ALL errors, never retry-loop; retryable = orthogonal transient-vs-permanent hint for retry-drivers); C4: PV3/PV4 public-filing noted as native + delegated to Security §6; C5: "semantic pre-GA" corrected (semantic search is GA — the gate is per-repo hybrid-search enablement); C6: the "plugin semver IS the handle" claim scoped to the bundled CLI (MCP skew covered by its experimental tier); C7: verify/attach idempotency keys named; F2: list read-your-writes softened to strongly-consistent-in-practice; C10: gh exit 4 → auth mapping added; plus the offline-queue provisional-ID envelope state. The fact-verifier confirmed every load-bearing platform fact (80/min + ~500/hr caps, ETag/304, since-cursor, search-not-read-your-writes, MCP isError mapping, per-install lockstep, no-number-reuse). Prior v1: initial drill-down from PRD §16(4) — operation surface across three fronts + the two recorded decisions. · source: planning session · stage: design`
 
 **Parent:** `documentation/backlog-service-prd.md` (PRD v4 — esp. AG1–6, G1–G5, O5/D8),
 `documentation/backlog-service-data-model.md` (entities, `set-status`, ready-work fan-out, IDs),
@@ -33,8 +33,14 @@ there before the build plan would be premature; they are authoritative *here* un
 | Front | Surface type | Consumers | Stability |
 |---|---|---|---|
 | **Core library** `lib/backlog/…` | in-process Python (sync, return-value) | CLI + MCP only (internal seam, D7) | internal — *not* a stable external contract; the CLI is the contract |
-| **CLI** `prawduct backlog <op>` | commands + flags + exit codes + stdout/stderr | prawduct's own skill & gates; **adopter** agents (GV4); scripts | **stable public contract** |
+| **CLI** `prawduct-hook backlog <op>` | commands + flags + exit codes + stdout/stderr | prawduct's own skill & gates; **adopter** agents (GV4); scripts | **stable public contract** |
 | **MCP** server | tool calls over the same core | any MCP client (P2) | **experimental** |
+
+**CLI invocation (O5).** The canonical command is **`prawduct-hook backlog <op>`** — a subcommand
+group on the plugin's existing entry point, *not* a second binary (one entry point = one
+platform-exposure/executable/PATH surface; the durable contract is the flags + JSON envelope +
+on-GitHub encoding, not the binary name — §5). **`prawduct backlog` is used as readable shorthand
+throughout the doc set** (PRD §6, Test Specs §1.1, this doc's prose).
 
 **Consumers = both internal and external.** External raises the stakes: an adopter's agent parses the
 CLI's JSON, so its output schema is a contract (§5). The canonical contract lives in **this doc + the
@@ -105,9 +111,12 @@ relationship ops (marker field-home: Data Model §5).
 | `export` | **yes** | full-fidelity dump to plain files: body block **plus** the native graph (deps, sub-issues, timeline, assignees) — cheap *dump*, not lossless one-liner re-import | MG2, G5 |
 | `provision` / `reconcile-labels` | **yes** | create/reconcile prawduct's namespaced label taxonomy without colliding with the repo's existing labels/Issues; the primitive `/prawduct:onboard`/`doctor` call | GV5, GV6 |
 
-*The MG4 **scrub** is a model-assisted, owner-confirmed **workflow** over these ops (`list`+`search --like`
-to surface stale/dup candidates → owner confirms → `status`/`merge`/`import` on the cleaned set), not a
-single deterministic op — the model is in the *decision*, never the data plane (G1/AG1).*
+*The MG4 **scrub** is a model-assisted, owner-confirmed **workflow** over these ops (`list` +
+**model-surfaced dedup** to surface stale/dup candidates → owner confirms → `status`/`merge`/`import`
+on the cleaned set), not a single deterministic op — the model is in the *decision*, never the data
+plane (G1/AG1). `search --like` is a **post-cache accelerator** (W1/W2 in the build plan), **not a
+slice dependency**: lexical similarity is cache-served (§2.2), so in the cacheless slice the model
+surfaces dup candidates by reading `list` output directly.*
 
 ### 2.6 Governance reconciliation (GV3)
 
