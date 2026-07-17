@@ -36,11 +36,11 @@ my picks as vetoable); Chunk 01's keystone confirms the declined-answer schema a
 
 ## Status
 
-- [x] Chunk 01: Coverage keystone — expectation model + existence-based probe (one artifact end-to-end)
-- [x] Chunk 02: Full layer-1 table — all 7 strategy-class artifacts (universal + structurally-triggered)
-- [x] Chunk 03: Layer 0 + staging — sharpen DISCOVERY-NOT-CAPTURED; stage the three advisories; resolve GOV-EXI2
-- [x] Chunk 04: Doctor / onboarding / methodology / propagation
-- [x] Chunk 05: Dogfood against the empty fixture + close (cumulative-final) — recorded prawduct's six reconciled structural characteristics; live chain advanced layer 0 → layer 1 (all 7 artifacts); before/after transition pinned by a decoupled fixture test; GOV-5K3M filed to author them
+- [ ] Chunk 01: Coverage keystone — expectation model + existence-based probe (one artifact end-to-end)
+- [ ] Chunk 02: Full layer-1 table — all 7 strategy-class artifacts (universal + structurally-triggered)
+- [ ] Chunk 03: Layer 0 + staging — sharpen DISCOVERY-NOT-CAPTURED; stage the three advisories; resolve GOV-EXI2
+- [ ] Chunk 04: Doctor / onboarding / methodology / propagation
+- [ ] Chunk 05: Dogfood against the empty fixture + close (cumulative-final) — recorded prawduct's six reconciled structural characteristics; live chain advanced layer 0 → layer 1 (all 7 artifacts); before/after transition pinned by a decoupled fixture test; GOV-5K3M filed to author them
 Context: Chunks 01-05 complete on `feature/structural-coverage` (feature done, pending cumulative Critic + PR). The three-layer chain now
 STAGES on one shared boundary predicate — `coverage_probes.structural_characteristics_recorded`
 (≥1 of the six structural characteristics recorded present; ≥1-not-all-six because template
