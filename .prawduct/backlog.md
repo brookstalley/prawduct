@@ -7,6 +7,11 @@
 
 ## Open
 
+- **[BKL-5R2K]** Wire the merge/transfer redirect-follow (`ids.resolve_redirect` / `migrate.resolve`) into a real get/pick consumer
+  `effort: S · impact: S · area: backlog-service · source: critic · added: 2026-07-17 · status: open · stage: ready · refs: artifacts/build-plan-backlog-service.md`
+
+  `get`/`pick` should auto-follow a `superseded_by` redirect to the survivor. The redirect-follow primitives (`ids.resolve_redirect` / `migrate.resolve`) were built and tested in backlog-service Chunk 05 but have no production consumer yet — the decoded item surfaces `superseded_by` so callers can follow the redirect manually today. Filed from Chunk 05 Critic R-5 note.
+
 - **[SEC-8R3K]** Document the GitHub Actions workflow env-wiring required by the backlog SEC-5 guard (`PRAWDUCT_PR_HEAD_REPO`, `PRAWDUCT_ACTOR_AUTHORIZED`)
   `effort: S · impact: S · area: security · source: critic · added: 2026-07-17 · status: open · stage: ready · refs: artifacts/build-plan-backlog-service.md`
 
