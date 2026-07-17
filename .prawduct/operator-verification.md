@@ -195,3 +195,13 @@ correctly. Chunk 06's acceptance is the dogfood itself.
 - The **live briefing counts** — session start reads the backlog count through the
   adapter (not `legacy.py`), with a visible age, and never hangs when GitHub is slow.
 - `legacy.py` and the `incoming-bugs/` drop-box are retired only *after* the above.
+
+**Drop-box retirement — verify the lockstep replacement (BKL-0QR1, resolved 2026-07-17 → option c):**
+`incoming-bugs/` is retired **only together with** its minimal same-repo replacement (PRD §8.9/MG5),
+never before it. Before/at the retirement, eyeball that the replacement is live:
+- `/prawduct:report-bug`, on the reachable-channel path, files an `untriaged-upstream`-labeled
+  **GitHub issue** into prawduct's own (public) repo via the adapter — no `incoming-bugs/` file write.
+- The `untriaged-upstream-reports` advisory counts those **labeled open issues**, not `incoming-bugs/*.md`.
+- The **no-channel fallback** still degrades cleanly to local capture + the canonical-tracker pointer.
+- Only *then* are `legacy.py` and `incoming-bugs/` retired. The full XP1 cross-owner/foreign-identity
+  plane stays **W3** — it is deliberately *not* in this slice.

@@ -494,17 +494,30 @@ tests/
   **owner-confirmed** dispositions → `status`/`merge` on the cleaned set → deterministic `import` (the
   model is in the *decision*, never the data plane — MIG-5/G1). Then **migrate prawduct's own backlog**
   (the bulk import), **repoint prawduct's briefing/gates** through the adapter, **retire
-  `lib/backlog/legacy.py`** and the **`incoming-bugs/` drop-box** (XP1 becomes the upstream path). This
+  `lib/backlog/legacy.py`**, and **retire the `incoming-bugs/` drop-box in lockstep with its minimal
+  same-repo replacement** (MG5 — `report-bug` files an `untriaged-upstream`-labeled issue via the adapter;
+  the receiving advisory counts labeled issues; the full XP1 cross-owner plane stays W3). This
   is the slice's completion and its acceptance test.
 - **Depends on:** Chunk 04 (governance read-path), Chunk 05 (importer, `merge`, `export`)
 - **Artifacts consumed:** API §2.5 (scrub workflow over `list`/`status`/`merge`/`import`; `export` as
-  the pre-migration backup); PRD §8.9 (MG4 scrub, prawduct-first, drop-box retirement, **MG3
-  coexistence**), §4 (dogfood success criterion); Data Model §3 (label coexistence with prawduct's
+  the pre-migration backup); PRD §8.9 (MG4 scrub, prawduct-first, drop-box retirement + **MG5 minimal
+  same-repo replacement**, **MG3 coexistence**), §4 (dogfood success criterion); Data Model §3 (label coexistence with prawduct's
   existing issues); Test Specs §3.10 (MIG-5 scrub keeps the model out of the data plane), §5 (SPIKE-S2).
 - **Deliverables:** new `tests/spikes/s2_migration.py` (the live dry-run), the scrub workflow (a
   `/prawduct:backlog`-adjacent skill/workflow step + the deterministic `import` of the cleaned set), the
   real migrated prawduct backlog repo, the `briefing.py`/gates repoint to the adapter, removal of
-  `lib/backlog/legacy.py` + the `incoming-bugs/` drop-box.
+  `lib/backlog/legacy.py` + the `incoming-bugs/` drop-box, **and its minimal same-repo replacement (MG5):
+  repoint `skills/report-bug` step 3 to file an `untriaged-upstream`-labeled GitHub issue into prawduct's
+  own repo via the adapter's create path (in place of the `incoming-bugs/` file write), and switch the
+  `untriaged-upstream-reports` advisory's count from `incoming-bugs/*.md` to labeled open issues. The
+  no-channel fallback (report-bug step 4: local capture + canonical-tracker pointer) is unchanged; the full
+  XP1 cross-owner/foreign-identity plane stays W3.**
+  <!-- RESOLVED (BKL-0QR1, owner sign-off 2026-07-17 → option c): the drop-box is retired IN LOCKSTEP with
+       a minimal same-repo replacement (MG5, PRD §8.9), never before it — so no upstream-channel gap opens.
+       Replacement = report-bug files an untriaged-upstream issue into prawduct's own PUBLIC repo via the
+       adapter (fixed target, public-issue-create — no new auth); the full XP1 cross-owner/foreign-identity/
+       private-target/XP2 surface stays W3. legacy.py retirement is unaffected. -->
+
 - **Tests (L1):** MIG-5 (owner-confirmed dispositions; the `import` step receives a concrete cleaned
   set, not a model call; nothing hard-deleted — dispose via status/merge, DM7). **SPIKE-S2 (L4, step 0):**
   body-fidelity, ID aliasing, relationship reconstruction, archive volume/noise, resumability,
@@ -514,7 +527,10 @@ tests/
 - **Acceptance criteria:** prawduct's backlog is live on GitHub Issues with every `PFX` ID resolving as
   an alias; the scrub disposed stale/dup items with owner confirmation (no silent drops, nothing
   hard-deleted); the briefing reads live counts through the adapter; `legacy.py` + `incoming-bugs/` are
-  retired.
+  retired **only after** their replacements are live — the briefing/gates read through the adapter, and
+  `report-bug` files an `untriaged-upstream` issue into prawduct's own repo (verified end-to-end) with the
+  `untriaged-upstream-reports` advisory counting labeled issues; the no-channel fallback still degrades
+  cleanly to local capture.
 - **Type:** cumulative-final
   <!-- Last slice chunk: its review IS the one `/prawduct:critic cumulative` against merge-base…HEAD,
        and the `/prawduct:pr create` gate for the slice PR. Commit first, run cumulative once. -->
