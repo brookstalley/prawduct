@@ -234,12 +234,16 @@ def _run_status(rest: list[str], transport):
             "validation",
             "status requires --to <target> (submitted|open|in-progress|shipped|dropped)",
         )
-    default_owner, err = _default_owner(flags)
+    default_owner, default_repo, err = _repo_defaults(flags)
     if err:
         return core.error("validation", err)
     transport = _resolve_transport(transport)
     return core.set_status(
-        transport, id_raw=positionals[0], target=target, default_owner=default_owner
+        transport,
+        id_raw=positionals[0],
+        target=target,
+        default_owner=default_owner,
+        default_repo=default_repo,
     )
 
 
@@ -260,7 +264,7 @@ def _run_update(rest: list[str], transport):
         for key in ("title", "body", "stage", "kind", "area", "effort", "impact", "source")
         if key in flags
     }
-    default_owner, err = _default_owner(flags)
+    default_owner, default_repo, err = _repo_defaults(flags)
     if err:
         return core.error("validation", err)
     transport = _resolve_transport(transport)
@@ -270,6 +274,7 @@ def _run_update(rest: list[str], transport):
         fields=fields,
         expected_updated_at=flags.get("if-updated-at"),
         default_owner=default_owner,
+        default_repo=default_repo,
     )
 
 
@@ -281,12 +286,16 @@ def _run_comment(rest: list[str], transport):
         return core.error("validation", "comment requires an <id>")
     if "body" not in flags:
         return core.error("validation", "comment requires --body")
-    default_owner, err = _default_owner(flags)
+    default_owner, default_repo, err = _repo_defaults(flags)
     if err:
         return core.error("validation", err)
     transport = _resolve_transport(transport)
     return core.comment_item(
-        transport, id_raw=positionals[0], body=flags["body"], default_owner=default_owner
+        transport,
+        id_raw=positionals[0],
+        body=flags["body"],
+        default_owner=default_owner,
+        default_repo=default_repo,
     )
 
 
@@ -405,7 +414,7 @@ def _run_claim(rest: list[str], transport):
         return core.error("validation", err)
     if not positionals:
         return core.error("validation", "claim requires an <id>")
-    default_owner, err = _default_owner(flags)
+    default_owner, default_repo, err = _repo_defaults(flags)
     if err:
         return core.error("validation", err)
     ttl, err = _int_flag(flags, "claim-ttl", core.DEFAULT_CLAIM_TTL_SECONDS)
@@ -416,6 +425,7 @@ def _run_claim(rest: list[str], transport):
         transport,
         id_raw=positionals[0],
         default_owner=default_owner,
+        default_repo=default_repo,
         claim_ttl_seconds=ttl,
     )
 
@@ -426,11 +436,16 @@ def _run_unclaim(rest: list[str], transport):
         return core.error("validation", err)
     if not positionals:
         return core.error("validation", "unclaim requires an <id>")
-    default_owner, err = _default_owner(flags)
+    default_owner, default_repo, err = _repo_defaults(flags)
     if err:
         return core.error("validation", err)
     transport = _resolve_transport(transport)
-    return core.unclaim(transport, id_raw=positionals[0], default_owner=default_owner)
+    return core.unclaim(
+        transport,
+        id_raw=positionals[0],
+        default_owner=default_owner,
+        default_repo=default_repo,
+    )
 
 
 def _run_link(op: str, rest: list[str], transport):
@@ -448,12 +463,9 @@ def _run_link(op: str, rest: list[str], transport):
     target = flags.get("to")
     if not target:
         return core.error("validation", f"{op} requires --to <target-id>")
-    default_owner, err = _default_owner(flags)
+    default_owner, default_repo, err = _repo_defaults(flags)
     if err:
         return core.error("validation", err)
-    # --repo (already format-validated by _default_owner) is the repo an endpoint
-    # given as a bare PFX alias resolves against.
-    default_repo = ids.parse_repo(flags["repo"]) if flags.get("repo") else None
     transport = _resolve_transport(transport)
     fn = core.link if op == "link" else core.unlink
     return fn(
@@ -545,12 +557,16 @@ def _run_merge(rest: list[str], transport):
     target = flags.get("into")
     if not target:
         return core.error("validation", "merge requires --into <target-id>")
-    default_owner, err = _default_owner(flags)
+    default_owner, default_repo, err = _repo_defaults(flags)
     if err:
         return core.error("validation", err)
     transport = _resolve_transport(transport)
     return migrate.merge(
-        transport, source_raw=positionals[0], target_raw=target, default_owner=default_owner
+        transport,
+        source_raw=positionals[0],
+        target_raw=target,
+        default_owner=default_owner,
+        default_repo=default_repo,
     )
 
 
@@ -584,19 +600,24 @@ def _resolve_transport(transport):
     return GhTransport()
 
 
-def _default_owner(flags: dict) -> tuple[str | None, str | None]:
-    """Resolve the same-owner default from ``--repo`` (for short IDs like ``repo#N``).
+def _repo_defaults(
+    flags: dict,
+) -> tuple[str | None, tuple[str, str] | None, str | None]:
+    """Resolve the ``--repo`` defaults a single-id op needs: the same-owner default
+    (for short ``repo#N`` ids) **and** the ``(owner, repo)`` a bare hand-minted
+    ``PFX`` alias resolves against (MG1 — a migrated item's original id stays a valid
+    ref forever, across every id-taking command).
 
-    Returns ``(owner_or_None, error_or_None)``; a present-but-malformed ``--repo``
-    is an error string, an absent one is ``(None, None)``.
+    Returns ``(default_owner, default_repo, error)``; a present-but-malformed
+    ``--repo`` is an error string, an absent one is ``(None, None, None)``.
     """
     repo = flags.get("repo")
     if not repo:
-        return None, None
+        return None, None, None
     parsed = ids.parse_repo(repo)
     if parsed is None:
-        return None, "--repo must be owner/repo"
-    return parsed[0], None
+        return None, None, "--repo must be owner/repo"
+    return parsed[0], parsed, None
 
 
 def _parse_flags(tokens: list[str], *, valued: set[str], boolean: set[str] | None = None):

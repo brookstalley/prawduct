@@ -104,6 +104,19 @@ class TestFailureMapping:
         assert err.code == "rate_limited"
         assert err.retryable is True
 
+    def test_rate_limit_surfaces_retry_after_when_present(self):
+        # BKL-3K9N — when gh echoes the header, thread it through so the importer
+        # honors the server's pause hint instead of guessing a backoff.
+        err = self._map(1, "gh: HTTP 429: too many requests (Retry-After: 42)")
+        assert err.code == "rate_limited"
+        assert err.details["retry_after"] == 42
+
+    def test_rate_limit_without_retry_after_omits_the_key(self):
+        # The common case (gh rarely surfaces the header) → no key → the importer
+        # falls back to exponential backoff.
+        err = self._map(1, "gh: API rate limit exceeded")
+        assert "retry_after" not in err.details
+
     def test_network_is_unavailable(self):
         err = self._map(1, "could not resolve host: api.github.com")
         assert err.code == "unavailable"

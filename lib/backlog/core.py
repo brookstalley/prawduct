@@ -333,6 +333,7 @@ def set_status(
     id_raw: str,
     target: str,
     default_owner: str | None = None,
+    default_repo: tuple[str, str] | None = None,
 ) -> dict:
     """Idempotent, crash-safe two-axis status transition (Data Model §4 B1, CC1/M5).
 
@@ -360,13 +361,16 @@ def set_status(
             "validation",
             f"unknown status {target!r}; expected one of {', '.join(encode.STATUS_VALUES)}",
         )
-    nid = ids.normalize_id(id_raw, default_owner=default_owner)
-    if not nid.ok:
-        return error(nid.error or "validation", nid.message or f"bad ID {id_raw!r}")
 
     target_state, target_reason, target_label = encode.encode_status(target)
     warnings: list[str] = []
     try:
+        # A bare hand-minted PFX resolves via its id:PFX alias (a label search — I/O),
+        # so resolution lives inside the transport try/except (MG1). A real spelling
+        # does no I/O.
+        nid = resolve_ref(transport, id_raw, default_owner=default_owner, default_repo=default_repo)
+        if not nid.ok:
+            return error(nid.error or "validation", nid.message or f"bad ID {id_raw!r}")
         issue = transport.get_issue(nid.owner, nid.repo, nid.number)
 
         # Step 1 — move the state authority first.
@@ -423,6 +427,7 @@ def update_item(
     fields: dict,
     expected_updated_at: str | None = None,
     default_owner: str | None = None,
+    default_repo: tuple[str, str] | None = None,
 ) -> dict:
     """Field-wise edit with optimistic CAS (CC2) and a mass-assignment guard (SEC-2).
 
@@ -448,12 +453,14 @@ def update_item(
             f"update cannot write field(s) {rejected}; writable fields are {sorted(allowed)}",
             details={"rejected": rejected},
         )
-    nid = ids.normalize_id(id_raw, default_owner=default_owner)
-    if not nid.ok:
-        return error(nid.error or "validation", nid.message or f"bad ID {id_raw!r}")
 
     warnings: list[str] = []
     try:
+        # A bare hand-minted PFX resolves via its id:PFX alias inside the transport
+        # try (a label search — I/O); a real spelling does no I/O (MG1).
+        nid = resolve_ref(transport, id_raw, default_owner=default_owner, default_repo=default_repo)
+        if not nid.ok:
+            return error(nid.error or "validation", nid.message or f"bad ID {id_raw!r}")
         issue = transport.get_issue(nid.owner, nid.repo, nid.number)
 
         # CC2 — optimistic CAS on updated_at (only when the caller supplied one).
@@ -519,16 +526,19 @@ def comment_item(
     id_raw: str,
     body: str,
     default_owner: str | None = None,
+    default_repo: tuple[str, str] | None = None,
 ) -> dict:
     """Add a native, attributed comment (DM5). Not idempotent. Attribution is the
     **API identity** (GitHub stamps the authenticated user), never caller-supplied.
     """
     if not body or not body.strip():
         return error("validation", "comment body is required")
-    nid = ids.normalize_id(id_raw, default_owner=default_owner)
-    if not nid.ok:
-        return error(nid.error or "validation", nid.message or f"bad ID {id_raw!r}")
     try:
+        # A bare hand-minted PFX resolves via its id:PFX alias inside the transport
+        # try (a label search — I/O); a real spelling does no I/O (MG1).
+        nid = resolve_ref(transport, id_raw, default_owner=default_owner, default_repo=default_repo)
+        if not nid.ok:
+            return error(nid.error or "validation", nid.message or f"bad ID {id_raw!r}")
         comment = transport.create_comment(nid.owner, nid.repo, nid.number, body=body)
     except TransportError as exc:
         return from_transport_error(exc)
@@ -553,6 +563,7 @@ def claim(
     *,
     id_raw: str,
     default_owner: str | None = None,
+    default_repo: tuple[str, str] | None = None,
     claim_ttl_seconds: int = DEFAULT_CLAIM_TTL_SECONDS,
     now: datetime | None = None,
     sleeper=None,
@@ -564,13 +575,15 @@ def claim(
     (taken). A lost take-and-verify race also returns ``claim_conflict`` so the
     caller re-picks. Idempotent for the same actor (re-stamps the heartbeat).
     """
-    nid = ids.normalize_id(id_raw, default_owner=default_owner)
-    if not nid.ok:
-        return error(nid.error or "validation", nid.message or f"bad ID {id_raw!r}")
     now = now or datetime.now(timezone.utc)
 
     warnings: list[str] = []
     try:
+        # A bare hand-minted PFX resolves via its id:PFX alias inside the transport
+        # try (a label search — I/O); a real spelling does no I/O (MG1).
+        nid = resolve_ref(transport, id_raw, default_owner=default_owner, default_repo=default_repo)
+        if not nid.ok:
+            return error(nid.error or "validation", nid.message or f"bad ID {id_raw!r}")
         actor = transport.get_authenticated_user().get("login")
         issue = transport.get_issue(nid.owner, nid.repo, nid.number)
         current, _ = encode.decode_item(issue, canonical_id=nid.canonical)
@@ -629,13 +642,16 @@ def unclaim(
     *,
     id_raw: str,
     default_owner: str | None = None,
+    default_repo: tuple[str, str] | None = None,
 ) -> dict:
     """Release a claim (idempotent): clear the assignee and the ``claimed_at``
     stamp. Unclaiming an already-free item is a near-no-op (no redundant writes)."""
-    nid = ids.normalize_id(id_raw, default_owner=default_owner)
-    if not nid.ok:
-        return error(nid.error or "validation", nid.message or f"bad ID {id_raw!r}")
     try:
+        # A bare hand-minted PFX resolves via its id:PFX alias inside the transport
+        # try (a label search — I/O); a real spelling does no I/O (MG1).
+        nid = resolve_ref(transport, id_raw, default_owner=default_owner, default_repo=default_repo)
+        if not nid.ok:
+            return error(nid.error or "validation", nid.message or f"bad ID {id_raw!r}")
         issue = transport.get_issue(nid.owner, nid.repo, nid.number)
         current, _ = encode.decode_item(issue, canonical_id=nid.canonical)
         # One atomic PATCH clears assignee + stamp together (same crash-safety as

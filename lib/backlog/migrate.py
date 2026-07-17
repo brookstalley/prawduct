@@ -134,6 +134,69 @@ class Pacer:
         return max(waits)
 
 
+class RateLimitBackoff:
+    """**Reactive** secondary-rate-limit handling for the irreversible import
+    (BKL-3K9N) — the counterpart to the Pacer's **proactive** pacing.
+
+    The Pacer keeps a well-behaved run *under* the content-creation caps, but a
+    shared token (the migration reads through the same identity the briefing/gates
+    use) can still trip a secondary 429. Without this, a mid-import 429 hard-stops
+    into a resumable error, and recovery is a fresh top-level re-run that re-hits the
+    still-unelapsed secondary window. Instead, on a ``rate_limited`` failure we
+    **pause and retry the same record in the same run** — honoring a server
+    ``Retry-After`` when the transport surfaced one (``details['retry_after']``),
+    else a bounded exponential backoff. Every import step is idempotent
+    (find-or-create skips, reconcile-status converges), so replaying a record after
+    the pause never duplicates.
+
+    **Bounded** — after ``max_retries`` the failure propagates and ``import_items``
+    returns its resumable envelope, so the never-block ceiling holds: a *persistent*
+    rate limit stops the run cleanly rather than spinning forever. Deterministic and
+    injectable (``sleep`` is a seam) so the L1 suite asserts the pause *decisions*
+    with no wall-clock wait.
+    """
+
+    def __init__(
+        self,
+        *,
+        max_retries: int = 5,
+        base_seconds: float = 2.0,
+        max_seconds: float = 60.0,
+        sleep=None,
+    ) -> None:
+        self.max_retries = max_retries
+        self.base_seconds = base_seconds
+        self.max_seconds = max_seconds
+        self._sleep = sleep or time.sleep
+        self.pauses = 0
+        self.total_paused = 0.0
+
+    def wait_seconds(self, attempt: int, details: dict | None = None) -> float:
+        """The pause before retry ``attempt`` (0-based): a server ``retry_after`` when
+        present, else exponential backoff (``base * 2**attempt``) — both floored at 0
+        and capped at ``max_seconds`` (so a hostile/huge Retry-After can't hang)."""
+        retry_after = _coerce_seconds((details or {}).get("retry_after"))
+        chosen = retry_after if retry_after is not None else self.base_seconds * (2 ** attempt)
+        return max(0.0, min(chosen, self.max_seconds))
+
+    def pause(self, attempt: int, details: dict | None = None) -> None:
+        wait = self.wait_seconds(attempt, details)
+        self._sleep(wait)
+        self.pauses += 1
+        self.total_paused += wait
+
+
+def _coerce_seconds(value) -> float | None:
+    """A Retry-After value (str or number) as a non-negative float, or ``None`` if
+    it is absent/unparseable (→ the caller's exponential backoff)."""
+    if value is None:
+        return None
+    try:
+        return max(0.0, float(value))
+    except (TypeError, ValueError):
+        return None
+
+
 # --- durable checkpoint (resumable import accelerator) -----------------------
 
 
@@ -380,6 +443,7 @@ def import_backlog(
     archive_content: str | None = None,
     checkpoint: Checkpoint | None = None,
     pacer: Pacer | None = None,
+    backoff: RateLimitBackoff | None = None,
 ) -> dict:
     """Import a ``.prawduct/backlog.md`` (+ optional separate archive file) into
     ``owner/repo``'s issues. Parses markdown into records (flagging duplicate-PFX
@@ -399,6 +463,7 @@ def import_backlog(
         collisions=collisions,
         checkpoint=checkpoint,
         pacer=pacer,
+        backoff=backoff,
     )
 
 
@@ -411,16 +476,21 @@ def import_items(
     collisions: list[dict] | None = None,
     checkpoint: Checkpoint | None = None,
     pacer: Pacer | None = None,
+    backoff: RateLimitBackoff | None = None,
 ) -> dict:
     """Deterministically import a concrete set of records (MIG-5: no model in the
     data plane). For each record: **find-or-create** by its key label (skip-if-
     exists — idempotent/resumable), then **reconcile status** (idempotent
     ``set-status``, so a resumed item created-but-not-closed converges). The key
     label is written **in the create**, so a crash after the create still skips on
-    re-run. Creation is paced (content budget). Returns an envelope; on a transport
-    failure it returns a **resumable** error carrying the progress so far — a re-run
-    completes the rest (no rollback, M6)."""
+    re-run. Creation is paced (content budget); a mid-run secondary rate limit is
+    **paused-and-retried in the same run** (``backoff`` — BKL-3K9N) rather than
+    hard-stopping into a fresh re-run that re-hits the unelapsed window. Returns an
+    envelope; on a non-rate-limit failure (or an exhausted rate-limit budget) it
+    returns a **resumable** error carrying the progress so far — a re-run completes
+    the rest (no rollback, M6)."""
     pacer = pacer or Pacer()
+    backoff = backoff or RateLimitBackoff()
     collisions = list(collisions or [])
     created: list[dict] = []
     skipped: list[dict] = []
@@ -431,45 +501,18 @@ def import_items(
     alias_index = _AliasIndex(transport, owner, repo)
     try:
         for record in records:
-            key_label = record.key_label()
-            existing = _find_by_key(transport, owner, repo, key_label)
-            healed = False
-            if not existing and record.pfx:
-                # The `id:PFX` label — the primary skip authority — is missing (a
-                # human deleted it). Fall back to the durable block `id_aliases`
-                # record (§5) so the re-import skips-not-duplicates: GitHub never
-                # reuses issue numbers, so a duplicate here would be permanent.
-                existing = alias_index.numbers_for(record.pfx)
-                healed = bool(existing)
-            if len(existing) > 1:
-                # Alias uniqueness violated in the repo (§5) — flag, don't guess.
-                collisions.append(
-                    {"key": key_label, "refs": [f"{owner}/{repo}#{n}" for n in existing]}
-                )
+            # The whole (idempotent) record is retried on a rate-limit pause, so a
+            # partial attempt never double-counts: outcomes are applied here, once,
+            # only after the record fully lands.
+            outcome = _import_one_with_retry(
+                transport, owner, repo, record, pacer, alias_index, backoff, warnings
+            )
+            if outcome["outcome"] == "collision":
+                collisions.append(outcome["collision"])
                 continue
-            if existing:
-                # The skip authority is the on-GitHub alias — its `id:PFX` label, or
-                # (when a human deleted that label) its block `id_aliases` record —
-                # never the checkpoint (a stale/externally-deleted checkpoint entry
-                # must not skip an item that isn't actually on GitHub, or the item is
-                # lost). A block-recovered match self-heals the missing label so the
-                # alias resolves again and the next run skips on the fast label path.
-                if healed:
-                    _restore_alias_label(transport, owner, repo, existing[0], key_label, warnings)
-                # Reconcile only the status, so a resumed item created-but-crashed
-                # before its close still converges (CRASH-4).
-                _reconcile_status(transport, owner, repo, existing[0], record, warnings)
-                skipped.append({"key": key_label, "id": _canon(owner, repo, existing[0])})
-                if checkpoint is not None:
-                    checkpoint.mark(key_label)
-                continue
-
-            issue = _create_item(transport, owner, repo, record, pacer)
-            number = issue.get("number")
-            _reconcile_status(transport, owner, repo, number, record, warnings)
-            created.append({"key": key_label, "id": _canon(owner, repo, number), "pfx": record.pfx})
+            (created if outcome["outcome"] == "created" else skipped).append(outcome["entry"])
             if checkpoint is not None:
-                checkpoint.mark(key_label)
+                checkpoint.mark(outcome["entry"]["key"])
     except TransportError as exc:
         result = core.from_transport_error(exc)
         result["error"]["details"].update(
@@ -490,6 +533,94 @@ def import_items(
         "total_source": len(records),
     }
     return core.ok(data, warnings)
+
+
+def _import_one_with_retry(
+    transport: Transport,
+    owner: str,
+    repo: str,
+    record: ImportRecord,
+    pacer: Pacer,
+    alias_index: "_AliasIndex",
+    backoff: RateLimitBackoff,
+    warnings: list[str],
+) -> dict:
+    """Import ONE record, **pausing-and-retrying the whole idempotent record** on a
+    ``rate_limited`` failure (bounded by ``backoff.max_retries``). Any other failure —
+    or an exhausted rate-limit budget — propagates to ``import_items``' resumable
+    handler. The successful attempt's warnings merge into ``warnings`` exactly once;
+    a retried attempt's partial warnings are discarded, never doubled (BKL-3K9N)."""
+    attempt = 0
+    while True:
+        try:
+            outcome = _import_one_record(transport, owner, repo, record, pacer, alias_index)
+            warnings.extend(outcome.pop("warnings"))
+            return outcome
+        except TransportError as exc:
+            if exc.code == "rate_limited" and attempt < backoff.max_retries:
+                backoff.pause(attempt, exc.details)
+                attempt += 1
+                continue
+            raise
+
+
+def _import_one_record(
+    transport: Transport,
+    owner: str,
+    repo: str,
+    record: ImportRecord,
+    pacer: Pacer,
+    alias_index: "_AliasIndex",
+) -> dict:
+    """Idempotently import ONE record: find-or-create by its key label, self-heal a
+    human-deleted alias, reconcile status. Returns an outcome dict —
+    ``created``/``skipped``/``collision`` — with the warnings it accrued (kept local
+    so a rate-limit replay of the whole record can't double-count). Every step is
+    idempotent, so replaying the whole record after a pause is safe."""
+    warnings: list[str] = []
+    key_label = record.key_label()
+    existing = _find_by_key(transport, owner, repo, key_label)
+    healed = False
+    if not existing and record.pfx:
+        # The `id:PFX` label — the primary skip authority — is missing (a human
+        # deleted it). Fall back to the durable block `id_aliases` record (§5) so the
+        # re-import skips-not-duplicates: GitHub never reuses issue numbers, so a
+        # duplicate here would be permanent.
+        existing = alias_index.numbers_for(record.pfx)
+        healed = bool(existing)
+    if len(existing) > 1:
+        # Alias uniqueness violated in the repo (§5) — flag, don't guess.
+        return {
+            "outcome": "collision",
+            "collision": {"key": key_label, "refs": [f"{owner}/{repo}#{n}" for n in existing]},
+            "warnings": warnings,
+        }
+    if existing:
+        # The skip authority is the on-GitHub alias — its `id:PFX` label, or (when a
+        # human deleted that label) its block `id_aliases` record — never the
+        # checkpoint (a stale/externally-deleted checkpoint entry must not skip an
+        # item that isn't actually on GitHub, or the item is lost). A block-recovered
+        # match self-heals the missing label so the alias resolves again and the next
+        # run skips on the fast label path.
+        if healed:
+            _restore_alias_label(transport, owner, repo, existing[0], key_label, warnings)
+        # Reconcile only the status, so a resumed item created-but-crashed before its
+        # close still converges (CRASH-4).
+        _reconcile_status(transport, owner, repo, existing[0], record, warnings)
+        return {
+            "outcome": "skipped",
+            "entry": {"key": key_label, "id": _canon(owner, repo, existing[0])},
+            "warnings": warnings,
+        }
+
+    issue = _create_item(transport, owner, repo, record, pacer)
+    number = issue.get("number")
+    _reconcile_status(transport, owner, repo, number, record, warnings)
+    return {
+        "outcome": "created",
+        "entry": {"key": key_label, "id": _canon(owner, repo, number), "pfx": record.pfx},
+        "warnings": warnings,
+    }
 
 
 def _find_by_key(transport: Transport, owner: str, repo: str, key_label: str) -> list[int]:
@@ -701,6 +832,7 @@ def merge(
     source_raw: str,
     target_raw: str,
     default_owner: str | None = None,
+    default_repo: tuple[str, str] | None = None,
 ) -> dict:
     """Fold ``source`` into ``target`` (AU3/DM7): the minimal merge the scrub needs
     to dispose duplicates. **Canonical write order** — write the block
@@ -709,16 +841,19 @@ def merge(
     target — a valid, resolvable state) and a re-run completes idempotently; it
     **never closes-then-orphans**. Nothing is hard-deleted — both bodies survive
     (the source is closed, not removed). Idempotent: a re-run is a no-op."""
-    sid = ids.normalize_id(source_raw, default_owner=default_owner)
-    if not sid.ok:
-        return core.error(sid.error or "validation", sid.message or f"bad source ID {source_raw!r}")
-    tid = ids.normalize_id(target_raw, default_owner=default_owner)
-    if not tid.ok:
-        return core.error(tid.error or "validation", tid.message or f"bad target ID {target_raw!r}")
-    if sid.canonical == tid.canonical:
-        return core.error("validation", "cannot merge an item into itself")
-
     try:
+        # Either endpoint may be a bare hand-minted PFX, resolved via its id:PFX
+        # alias (a label search — I/O), so resolution lives inside the transport try
+        # (MG1 — a migrated item's original id stays a valid merge endpoint forever).
+        sid = core.resolve_ref(transport, source_raw, default_owner=default_owner, default_repo=default_repo)
+        if not sid.ok:
+            return core.error(sid.error or "validation", sid.message or f"bad source ID {source_raw!r}")
+        tid = core.resolve_ref(transport, target_raw, default_owner=default_owner, default_repo=default_repo)
+        if not tid.ok:
+            return core.error(tid.error or "validation", tid.message or f"bad target ID {target_raw!r}")
+        if sid.canonical == tid.canonical:
+            return core.error("validation", "cannot merge an item into itself")
+
         # Confirm the target exists before redirecting the source at it (a dangling
         # redirect would strand the source pointing at nothing).
         transport.get_issue(tid.owner, tid.repo, tid.number)

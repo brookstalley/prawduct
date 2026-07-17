@@ -426,6 +426,35 @@ class TestMerge:
             "status"
         ] == "error"
 
+    def _file_with_alias(self, fake, pfx, *, title="t"):
+        cid = _file(fake, title=title)
+        number = int(cid.split("#")[1])
+        fake.seed_labels(OWNER, REPO, [ids.alias_label(pfx)])
+        fake.add_labels(OWNER, REPO, number, [ids.alias_label(pfx)])
+        return number
+
+    def test_merge_resolves_bare_pfx_endpoints(self, fake):
+        # BKL-7Q2N — both merge endpoints may be hand-minted PFX aliases (the scrub
+        # disposes duplicates by their original ids). Resolve each via id:PFX + --repo.
+        na = self._file_with_alias(fake, "SRC-0001", title="dup A")
+        nb = self._file_with_alias(fake, "DST-0001", title="keep B")
+        result = migrate.merge(
+            fake, source_raw="SRC-0001", target_raw="DST-0001", default_repo=(OWNER, REPO)
+        )
+        assert result["status"] == "ok", result
+        src = core.get_item(fake, id_raw="SRC-0001", default_repo=(OWNER, REPO))["data"]
+        assert src["status"] == "dropped"
+        assert src["superseded_by"] == f"{OWNER}/{REPO}#{nb}"
+        assert na != nb
+
+    def test_merge_bare_pfx_without_a_repo_is_a_validation_error(self, fake):
+        self._file_with_alias(fake, "SRC-0001")
+        self._file_with_alias(fake, "DST-0001")
+        result = migrate.merge(fake, source_raw="SRC-0001", target_raw="DST-0001")  # no --repo
+        assert result["status"] == "error"
+        assert result["error"]["code"] == "validation"
+        assert "--repo" in result["error"]["message"]
+
 
 # --- redirect resolution (ids.resolve_redirect, pure) ------------------------
 
@@ -612,6 +641,86 @@ class TestPacer:
         pacer = CountingPacer()
         _import(fake, DISCODON_MINI, pacer=pacer)
         assert pacer.calls == len(_DIS_PFXS)  # one paced create per source item
+
+
+# --- BKL-3K9N: reactive rate-limit backoff (pause-and-resume, never a hard-stop)
+
+
+class TestRateLimitBackoff:
+    """The reactive counterpart to the Pacer: a mid-import secondary 429 pauses and
+    retries the SAME idempotent record in the same run (honoring Retry-After when
+    present, else exponential backoff), and is **bounded** — a persistent limit falls
+    through to the resumable envelope rather than spinning forever."""
+
+    def _spy_backoff(self, **kw):
+        waited: list[float] = []
+        kw.setdefault("base_seconds", 1.0)
+        return migrate.RateLimitBackoff(sleep=waited.append, **kw), waited
+
+    # -- the backoff policy in isolation --------------------------------------
+
+    def test_exponential_backoff_without_retry_after(self):
+        b = migrate.RateLimitBackoff(base_seconds=2.0, max_seconds=60.0)
+        assert b.wait_seconds(0) == 2.0
+        assert b.wait_seconds(1) == 4.0
+        assert b.wait_seconds(2) == 8.0
+
+    def test_retry_after_is_honored_and_capped(self):
+        b = migrate.RateLimitBackoff(base_seconds=2.0, max_seconds=60.0)
+        assert b.wait_seconds(0, {"retry_after": 5}) == 5.0
+        assert b.wait_seconds(9, {"retry_after": 9999}) == 60.0  # a hostile hint can't hang
+
+    def test_unparseable_retry_after_falls_back_to_backoff(self):
+        b = migrate.RateLimitBackoff(base_seconds=3.0)
+        assert b.wait_seconds(0, {"retry_after": "soon"}) == 3.0
+        assert b.wait_seconds(0, {}) == 3.0
+
+    # -- wired into the importer ---------------------------------------------
+
+    def test_a_mid_import_429_pauses_and_resumes_the_same_run(self, fake):
+        _seed_labels(fake, DISCODON_MINI)
+        # The 1st create raises a one-shot 429; the backoff pauses and retries the
+        # same record — the run COMPLETES rather than hard-stopping.
+        fake.fail_at_mutation(1, code="rate_limited")
+        backoff, waited = self._spy_backoff()
+
+        result = _import(fake, DISCODON_MINI, backoff=backoff)
+
+        assert result["status"] == "ok", result  # resumed in-run, not aborted
+        for pfx in _DIS_PFXS:
+            assert len(_alias_issues(fake, pfx)) == 1  # every item once — no duplicate
+        assert backoff.pauses == 1
+        assert waited == [1.0]  # one exponential-backoff pause (attempt 0, base 1.0)
+
+    def test_pause_honors_a_server_retry_after(self, fake):
+        _seed_labels(fake, DISCODON_MINI)
+        fake.fail_at_mutation(1, code="rate_limited", details={"retry_after": 7})
+        backoff, waited = self._spy_backoff()
+
+        result = _import(fake, DISCODON_MINI, backoff=backoff)
+
+        assert result["status"] == "ok", result
+        assert waited == [7.0]  # the server hint, not the exponential default
+
+    def test_a_persistent_rate_limit_is_bounded_and_stays_resumable(self, fake):
+        _seed_labels(fake, DISCODON_MINI)
+        fake.set_rate_limited(True)  # every call keeps 429-ing
+        backoff, waited = self._spy_backoff(max_retries=3)
+
+        result = _import(fake, DISCODON_MINI, backoff=backoff)
+
+        # Bounded: exactly max_retries pauses, then it gives up cleanly (never-block).
+        assert backoff.pauses == 3
+        assert result["status"] == "error"
+        assert result["error"]["code"] == "rate_limited"
+        assert result["error"]["details"]["resumable"] is True
+
+    def test_a_completed_run_never_pauses(self, fake):
+        _seed_labels(fake, DISCODON_MINI)
+        backoff, waited = self._spy_backoff()
+        result = _import(fake, DISCODON_MINI, backoff=backoff)
+        assert result["status"] == "ok"
+        assert backoff.pauses == 0 and waited == []  # the happy path is untouched
 
 
 # --- the import / export / merge CLI front -----------------------------------

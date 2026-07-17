@@ -177,6 +177,77 @@ class TestGetByPfxAlias:
         assert not any(c[0] == "list_issues" for c in fake.calls)
 
 
+class TestMutatorsByPfxAlias:
+    """BKL-7Q2N / MG1 — every single-id mutator (not just get/link) resolves a bare
+    hand-minted ``PFX`` via its ``id:PFX`` alias against ``--repo``, so a migrated id
+    stays a valid ref forever across ``status``/``update``/``comment``/``claim``/
+    ``unclaim``. Absent ``--repo`` a bare PFX is a clear validation error, never a
+    silent guess; an unknown PFX is ``not_found`` (a real spelling still does no I/O)."""
+
+    PFX = "BKL-0QR1"
+
+    def _seed_alias(self, fake):
+        return _seed_item(fake, labels=[ids.alias_label(self.PFX)])
+
+    def test_status_resolves_a_bare_pfx(self, fake):
+        number = self._seed_alias(fake)
+        got = core.set_status(
+            fake, id_raw=self.PFX, target="in-progress", default_repo=(OWNER, REPO)
+        )
+        assert got["status"] == "ok", got
+        assert got["data"]["id"] == f"{OWNER}/{REPO}#{number}"
+        assert _decoded_status(fake, number) == "in-progress"
+
+    def test_update_resolves_a_bare_pfx(self, fake):
+        number = self._seed_alias(fake)
+        got = core.update_item(
+            fake, id_raw=self.PFX, fields={"title": "renamed"}, default_repo=(OWNER, REPO)
+        )
+        assert got["status"] == "ok", got
+        assert got["data"]["id"] == f"{OWNER}/{REPO}#{number}"
+
+    def test_comment_resolves_a_bare_pfx(self, fake):
+        number = self._seed_alias(fake)
+        got = core.comment_item(
+            fake, id_raw=self.PFX, body="a note", default_repo=(OWNER, REPO)
+        )
+        assert got["status"] == "ok", got
+        assert got["data"]["item"] == f"{OWNER}/{REPO}#{number}"
+
+    def test_claim_and_unclaim_resolve_a_bare_pfx(self, fake):
+        number = self._seed_alias(fake)
+        claimed = core.claim(fake, id_raw=self.PFX, default_repo=(OWNER, REPO))
+        assert claimed["status"] == "ok", claimed
+        assert claimed["data"]["id"] == f"{OWNER}/{REPO}#{number}"
+        released = core.unclaim(fake, id_raw=self.PFX, default_repo=(OWNER, REPO))
+        assert released["status"] == "ok", released
+        assert released["data"]["assignee"] is None
+
+    @pytest.mark.parametrize(
+        "call",
+        [
+            lambda f, pfx: core.set_status(f, id_raw=pfx, target="in-progress"),
+            lambda f, pfx: core.update_item(f, id_raw=pfx, fields={"title": "x"}),
+            lambda f, pfx: core.comment_item(f, id_raw=pfx, body="x"),
+            lambda f, pfx: core.claim(f, id_raw=pfx),
+            lambda f, pfx: core.unclaim(f, id_raw=pfx),
+        ],
+    )
+    def test_bare_pfx_without_a_repo_is_a_clear_validation_error(self, fake, call):
+        self._seed_alias(fake)
+        got = call(fake, self.PFX)  # no default_repo
+        assert got["status"] == "error"
+        assert got["error"]["code"] == "validation"
+        assert "--repo" in got["error"]["message"]
+
+    def test_unknown_pfx_mutation_is_not_found(self, fake):
+        got = core.set_status(
+            fake, id_raw="BKL-9ZZZ", target="in-progress", default_repo=(OWNER, REPO)
+        )
+        assert got["status"] == "error"
+        assert got["error"]["code"] == "not_found"
+
+
 class TestBoundaryExceptions:
     """ERR-6 — an unexpected transport OSError is caught and mapped, not swallowed."""
 

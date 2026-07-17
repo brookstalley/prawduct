@@ -653,6 +653,11 @@ class GhTransport(Transport):
             details["http_status"] = http
 
         if "rate limit" in scrubbed or http == 429 or (http == 403 and "rate" in scrubbed):
+            retry_after = _extract_retry_after(scrubbed)
+            if retry_after is not None:
+                # A non-secret integer; surfaced so the importer honors the server's
+                # pause hint instead of guessing a backoff (BKL-3K9N).
+                details["retry_after"] = retry_after
             return TransportError(
                 "rate_limited",
                 "GitHub rate limit reached",
@@ -675,6 +680,10 @@ class GhTransport(Transport):
 
 
 _HTTP_RE = re.compile(r"http[/ ](?:\d\.\d )?(\d{3})")
+# A server ``Retry-After`` (seconds) when gh surfaces the header in stderr. gh does
+# NOT reliably print it, so the common case is a miss (→ the importer's exponential
+# backoff); when it IS present, honoring it beats guessing (BKL-3K9N).
+_RETRY_AFTER_RE = re.compile(r"retry[- ]after[:\s]+(\d+)")
 _NETWORK_SIGNALS = (
     "could not resolve host",
     "connection refused",
@@ -690,6 +699,14 @@ _NETWORK_SIGNALS = (
 
 def _extract_http_status(stderr_lower: str) -> int | None:
     match = _HTTP_RE.search(stderr_lower)
+    return int(match.group(1)) if match else None
+
+
+def _extract_retry_after(stderr_lower: str) -> int | None:
+    """Best-effort parse of a ``Retry-After`` seconds value from gh's stderr, or
+    ``None`` when gh did not surface one (the common case — the caller then falls
+    back to bounded exponential backoff)."""
+    match = _RETRY_AFTER_RE.search(stderr_lower)
     return int(match.group(1)) if match else None
 
 

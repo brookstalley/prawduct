@@ -73,11 +73,18 @@ class FakeGitHub(Transport):
         # Fault injection (armed via fail_at_mutation).
         self._fail_at: int | None = None
         self._mutation_count = 0
+        self._fail_code = "unavailable"
+        self._fail_details: dict = {"injected": True}
         # Backend-down modelling (Test Specs §3.4 never-block): when set, every
         # call — read or write — raises `unavailable`, as if GitHub were
         # unreachable. Reads have no `fail_at_mutation` hook, so this is the way to
         # exercise read-path degradation and the never-block floor.
         self.unreachable = False
+        # Persistent secondary rate limit (BKL-3K9N): when set, every call raises
+        # `rate_limited` (carrying `details`, e.g. a `retry_after`), modelling a
+        # window that outlasts the reactive backoff's budget.
+        self._rate_limited = False
+        self._rate_limited_details: dict = {}
 
     # -- helpers -----------------------------------------------------------
 
@@ -96,12 +103,31 @@ class FakeGitHub(Transport):
     def _maybe_unreachable(self) -> None:
         if self.unreachable:
             raise TransportError("unavailable", "GitHub is unreachable")
+        if self._rate_limited:
+            raise TransportError(
+                "rate_limited",
+                "secondary rate limit (fault injection)",
+                details=dict(self._rate_limited_details),
+            )
 
-    def fail_at_mutation(self, n: int) -> None:
-        """Arm: the n-th (1-based) mutating call after this returns raises
-        ``unavailable`` once, then disarms. ``n <= 0`` disarms immediately."""
+    def set_rate_limited(self, flag: bool = True, *, details: dict | None = None) -> None:
+        """Model a persistent secondary rate limit: every subsequent call — read or
+        write — raises ``rate_limited`` (carrying ``details``, e.g. a ``retry_after``).
+        Clear with ``set_rate_limited(False)``. The importer's reactive backoff
+        exhausts its budget against this and falls through to a resumable envelope."""
+        self._rate_limited = flag
+        self._rate_limited_details = details or {}
+
+    def fail_at_mutation(
+        self, n: int, *, code: str = "unavailable", details: dict | None = None
+    ) -> None:
+        """Arm: the n-th (1-based) mutating call after this returns raises ``code``
+        (default ``unavailable``) once, then disarms. ``details`` rides the error
+        (e.g. ``{"retry_after": 5}`` for a one-shot 429). ``n <= 0`` disarms."""
         self._fail_at = n if n and n > 0 else None
         self._mutation_count = 0
+        self._fail_code = code
+        self._fail_details = details if details is not None else {"injected": True}
 
     def _check_fault(self) -> None:
         """Called at the top of every mutating method. Counts only while armed."""
@@ -112,9 +138,9 @@ class FakeGitHub(Transport):
         if self._mutation_count == self._fail_at:
             self._fail_at = None  # one-shot: the re-run must be allowed to complete
             raise TransportError(
-                "unavailable",
+                self._fail_code,
                 "injected transport failure (fault injection)",
-                details={"injected": True},
+                details=dict(self._fail_details),
             )
 
     def _stamp(self, state: _RepoState, issue: dict) -> None:
