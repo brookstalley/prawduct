@@ -29,7 +29,9 @@ start (`lib/backlog.py` → `lib/backlog/legacy.py`); CLI home = `prawduct-hook 
 briefing repoints at Chunk 06 (post-migration), not before. Three peer-doc coherence debts filed **and
 swept the same session** (§ "Coherence debts" — API §1 CLI spelling, Data Model export-representation
 pointer, API §2.5/MIG-5 scrub op-dependency). Prior v1: initial drill-down from PRD §16 item 6. · added: 2026-07-16 · source:
-planning session · stage: design (not yet promoted to an active build plan — see "Promotion").`
+planning session · stage: design · **PROMOTED 2026-07-16** to the active build plan
+(`active_build_plan → artifacts/build-plan-backlog-service.md`); the Stop-hook Critic gate is armed.
+Nothing built yet — Chunk 01 is next. Pending owner sign-off.`
 
 **Parent:** `documentation/backlog-service-prd.md` (PRD v4) and, through it,
 `documentation/backlog-service-requirements.md`. This plan is the **last level** of the layered
@@ -44,13 +46,14 @@ names, assertion syntax, or field layout (those are build-time, chosen by the Bu
 make a **technology** decision; the seams below are already decided upstream (transport = `gh`, O5;
 errors = return-value envelope, API §4; isolation = transport-seam fake, Test Specs §2.1).
 
-**Promotion.** This file lives with the design-phase drill-down set (`documentation/backlog-
-service-*.md`) so it stays coherent with its five siblings while the design settles. When the build
-actually starts it is **promoted**: copied/moved to `.prawduct/artifacts/build-plan-backlog-
-service.md` and pointed at by `active_build_plan` (so the Stop-hook Critic gate arms on it). Until
-then it is a *design artifact*, not an active build plan — no chunk here has been built. (PRD §16
-item 6 names `.prawduct/artifacts/` as the destination; this reconciles that with the sibling-doc
-pattern the other five drill-downs established.)
+**Promotion — done 2026-07-16.** Authored during the design phase in `documentation/` alongside its
+five siblings (`documentation/backlog-service-*.md`), this plan was **promoted** on completion of the
+v2 fold + coherence sweep: moved here to `.prawduct/artifacts/build-plan-backlog-service.md` and
+pointed at by `active_build_plan` (so the Stop-hook Critic gate arms on it). The five sibling design
+docs stay in `documentation/`; this plan references them by section throughout. It remains a *design
+artifact pending owner sign-off* — **no chunk has been built** — but the tooling now treats it as the
+active plan. (PRD §16 item 6 named `.prawduct/artifacts/` as the destination; the design-phase copy in
+`documentation/` graduated here.)
 
 ---
 
@@ -115,8 +118,9 @@ rulings. The roadmap stays Medium by design until each layer's workload justifie
 - [ ] Chunk 06: SPIKE-S2 dry-run + MG4 scrub + prawduct-first real migration (dogfood, cumulative-final)
 - [ ] Roadmap (post-slice, lower resolution): W1 cache+sync · W2 search+dedup · Wv verify+grooming · W3 cross-project+automation · W4 attachments · W5 MCP · W6 App identity + offline queue · Wg GV3 janitor
 Context: Draft v2 authored 2026-07-16 (v1 + two independent reviews folded; the 3 peer-doc coherence
-debts swept the same session). Nothing built. This is a design artifact pending owner sign-off, then
-Promotion. Next: owner sign-off on v2 → Promotion to an active build plan.
+debts swept the same session). Nothing built. This is a design artifact **promoted 2026-07-16** to the
+active build plan (gate armed); still pending owner sign-off. Next: owner sign-off → build Chunk 01
+(read `methodology/building.md` first).
 
 ## Scaffolding
 

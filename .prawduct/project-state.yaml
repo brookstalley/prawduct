@@ -554,7 +554,12 @@ views_enabled: true
 # v2.3.2 (2026-07-10): single-pr-bookkeeping shipped (PR #118); entry flipped to
 # status=shipped; pointer cleared. No release-pending plans remain. Plan files
 # are RETAINED as historical artifacts and regen via their scope= tags.
-active_build_plan: null
+# 2026-07-16: repointed at build-plan-backlog-service — the Backlog Service (GitHub
+# Issues as system-of-record + deterministic adapter), PRD §16 item 6 drill-down.
+# Promoted from documentation/ after v1 → two-reviewer fold → v2 + the 3-debt
+# coherence sweep. 6-chunk thin slice; nothing built yet (Chunk 01 next). Design
+# artifact pending owner sign-off; gate armed for the build.
+active_build_plan: artifacts/build-plan-backlog-service.md
 
 # =============================================================================
 # COVERAGE EVIDENCE (opt-in, v1.4+)
