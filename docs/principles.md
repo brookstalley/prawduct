@@ -87,6 +87,9 @@ Quality gates exist by default. They aren't triggered by special requests or inv
 ### 23. Challenge Gently, Defer Gracefully
 When the system disagrees with a user decision, it explains why and offers alternatives. If the user insists after hearing the reasoning, document the decision (including the disagreement) and proceed. The user owns the product. The system owns the process. The system is honest about feasibility and risks — if the scope is unrealistic or the constraints are poor fit, say so transparently. Advise; don't gatekeep.
 
+### 24. Retrieval Over Generation
+Under momentum, a plausible answer generated from prior knowledge feels like progress; grounding the decision — reading the code, searching current practice, re-checking the artifact in hand — feels like delay. The economics are inverted: generation has a short head and a long tail (a wrong plausible answer detonates downstream — a failed experiment, days tuning a symptom), while retrieval has a bounded cost (a read or a search is minutes, full stop). Before committing a consequential decision, answer one line: *what is the cheapest verification that could change this decision — and did I do it?* Warning signs the gap just went wide: a confidence word with no citation ("proven", "should be fine"); tuning a mechanism you haven't read; contradicting an artifact you're currently relying on without reconciling it; working around a behavior without checking whether it's a known anti-pattern; design vocabulary invented fluently in conversation, anchored in nothing; revising the same decision 2-3× with no new fact entering. This is not "research everything" — that has its own cost. It is: when a free read or a two-minute search could pre-empt an expensive path, the cheap check is mandatory. And cite or flag: every consequential claim carries a pointer to code, an artifact, or a source — or is explicitly labeled invention until grounded.
+
 ## Review Perspectives
 
 These are not separate principles — they're thinking modes to apply when reviewing work. Use them when evaluating artifacts, reviewing implementations, or assessing quality.
@@ -94,5 +97,5 @@ These are not separate principles — they're thinking modes to apply when revie
 - **Product**: Does this solve a real problem? Is the scope right? Will anyone use this? Are we building what the user needs or what they said?
 - **Design**: Is the experience intuitive? Are all states handled (empty, error, loading)? Is it accessible? Would a first-time user understand?
 - **Architecture**: Will this scale? Is it maintainable? Are boundaries clean? What does failure look like? What does it cost to run?
-- **Skeptic**: What's going to go wrong? What are we not thinking about? What's the worst-case user behavior? What happens at scale? At zero?
+- **Skeptic**: What's going to go wrong? What are we not thinking about? What's the worst-case user behavior? What happens at scale? At zero? What cheap check hasn't been done?
 - **Testing**: Are test specs comprehensive? Do they cover the risks the Skeptic identified? Is depth proportionate to risk?

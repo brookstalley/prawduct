@@ -40,6 +40,7 @@ These guide every decision. Apply them with judgment, not mechanically.
 21. **Structural Awareness** — Detect the product's structural characteristics early (human interface, unattended, API, multi-party, sensitive data, multi-process/distributed). They determine what to build.
 22. **Governance Is Structural** — Quality gates exist by default. Every change gets reviewed; every session ends with reflection.
 23. **Challenge Gently, Defer Gracefully** — Explain disagreements, offer alternatives, but the user owns the product.
+24. **Retrieval Over Generation** — Before a consequential decision, do the cheapest check that could change it (read the mechanism, search current practice) instead of committing a plausible generated answer. Cite or flag.
 
 Full principles with rationale and examples: `docs/principles.md`
 

@@ -89,6 +89,8 @@ Risk Calibration sets discovery *depth* for a new product. Within any work — p
 
 Questions 2 and 3 are different gaps with different remedies: a knowledge gap wants more reasoning or decomposition; a volatility gap wants research. (A design can be high on both.)
 
+**The gate is cost asymmetry, not curiosity** (Principle 24 — Retrieval Over Generation). When the gap between checking and being wrong is wide — a free read or a two-minute search against an experiment, a deploy, or days of rework — the cheap check is mandatory, not optional. The corrective is not "research everything"; it is noticing when the asymmetry just went wide and retrieving before you commit.
+
 **Re-run this when the domain expands — not just at kickoff.** A mid-work scope expansion resets your knowledge-confidence for the *new* surface. Treat it as its own work and re-ask the three questions — the most common way unresearched complexity enters is a mid-build expansion inheriting the original scope's (misplaced) confidence.
 
 **Research when the inputs OR the design depend on timely data:**

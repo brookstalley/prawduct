@@ -54,7 +54,7 @@ prawduct/
 │   ├── preferences/                      # Architecture/style preference tests
 │   └── scenarios/                        # Framework-validation scenarios
 ├── docs/
-│   ├── principles.md                  # Full 23 principles with rationale
+│   ├── principles.md                  # Full 24 principles with rationale
 │   ├── project-structure.md           # This file
 │   └── examples/                      # Observability strategy examples (API service, event-driven)
 ├── .prawduct/                         # Framework's own prawduct state

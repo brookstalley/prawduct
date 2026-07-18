@@ -791,3 +791,27 @@ When a forcing function (a coverage nudge, a required-artifact check, any "you m
 ## A repo-coupled (non-hermetic) test turns every "non-judgeable" doc/state change into a silent test-breaker — the doc-only and test-status classifiers assume non-code files can't change test outcomes
 
 Both PR fast-paths that skip the suite key off a path-based judgeability classifier: `check-pr-doc-only` skips review + suite when every changed file is `.md`/non-code, and `test-status` reports `current` when only "non-judgeable" paths (`.md`, `.prawduct/**` state) changed since the recorded run. That assumption — non-code files can't change test outcomes — is FALSE for any test that reads committed state or docs. prawduct's own `tests/test_norm_probes.py::TestSilentAgainstThisRepo` is a deliberately non-hermetic tripwire reading the live `project-state.yaml`; the norm-registry ratification (#125, a doc-only + `project-state.yaml` PR) cleared `norm-registry-unratified` but tripped `norm-health-sweep-overdue`, breaking it — and BOTH gates waved #125 through (doc-only skipped the suite; test-status called the tree `current`), so the red landed on develop unseen and surfaced only on the next unrelated branch's suite run. When you add a repo-coupled test that reads committed state, you take on a hidden coupling: either make it robust to the state transitions that WILL happen (here, ratification seeds the sweep baseline so the tripwire expects post-ratification silence), or ensure the judgeability classifiers treat its inputs as judgeable — never leave a non-hermetic test whose inputs the gates believe are inert. Filed [[backlog]] COV-4H7N (recorded as a hard constraint on COV-2P7F, which wants the opposite — `.prawduct/**` exempted from gates; a blanket exemption is unsound while non-hermetic tests exist). Relates to Tests Are Contracts (#1), Validate Before Propagating (#15), Governance Is Structural (#22), Honest Confidence (#5 — a skipped suite reads as "nothing to check" but wasn't), and [[A test asserting the framework repo's OWN state instead of the propagated contract gives false coverage]] (sibling non-hermetic-test hazard).
+
+## When committing a consequential decision under momentum, do the cheapest check that could change it FIRST (read the mechanism before tuning it, search current practice before working around a behavior, re-read the artifact you're relying on before contradicting it) — because generation has a short head and a long tail: the plausible unchecked answer costs nothing now and detonates downstream, while retrieval is minutes, full stop
+
+**Source:** upstream learning candidate from discodon
+(`prawduct-learning-retrieval-over-generation.md`, frontmatter-dated 2026-07-18 UTC),
+incorporated 2026-07-17 local time as Principle 24
+(Retrieval Over Generation) plus the cheap-check gate in `methodology/building.md` Decision
+Research, the cost-asymmetry framing in `methodology/discovery.md` Calibrate Rigor, a stance
+bullet in both session digests, and the "Tuning a mechanism you haven't read" Common Trap.
+
+**The incident that taught it:** a research-agent inner loop kept timing out / returning empty
+results. A multi-day, ~$15 eval campaign tuned model, round count, and prompts — parameters of
+a loop nobody had read. A 10-minute code read (the loop reserved no round for conclusion) and
+one web search (forced-synthesis-on-budget-exhaustion is a documented anti-pattern) would have
+collapsed the entire effort. The failure was not a knowledge gap — the ground truth was
+available and cheap; the miss was not checking when a check was cheap and decisive.
+
+**Detectors (any one firing = stop and do the cheap check):** confidence word with no citation;
+tuning an unread mechanism; an artifact in hand contradicting the choice, unreconciled;
+working around a behavior unchecked against known anti-patterns; ≥10× cost asymmetry ignored;
+novel design vocabulary with zero citations; revising the same decision 2-3× with no new fact;
+recalling fast-moving facts instead of looking them up. The prawduct "terms not found in any
+governing artifact" nudge is one of these detectors mechanized — treat it as a confabulation
+alarm, not noise.

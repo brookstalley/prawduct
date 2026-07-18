@@ -59,6 +59,14 @@ class TestBuildingMethodology:
         assert "Uninvestigated decisions" in self.content
         assert "Boundary blindness" in self.content
 
+    def test_retrieval_over_generation_anchors(self):
+        """The cheap-check gate and its Common Trap survive future token-diet
+        trims — Principle 24's operational anchors, pinned so the newest prose
+        isn't the silent casualty of the next compression pass."""
+        assert "The cheap-check gate" in self.content
+        assert "Retrieval Over Generation" in self.content
+        assert "Tuning a mechanism you haven't read" in self.content
+
     def test_references(self):
         """References subagent briefing, boundary patterns, learnings skill."""
         assert ".subagent-briefing.md" in self.content
@@ -87,7 +95,12 @@ class TestBuildingMethodology:
         # Mid-Build" tripwire and PAID FOR IT in place: the ceiling held at 4600
         # (the plan's "stay green without raising budgets" success line), the
         # addition offset by compressing the Delegating and Decision-Research
-        # guidance (canonical norm detail lives in docs/norms.md). ~4587 now.
+        # guidance (canonical norm detail lives in docs/norms.md). The
+        # retrieval-over-generation cycle (2026-07-17, MET-4V8Q) added the
+        # cheap-check gate + one Common Trap and PAID FOR THEM the same way:
+        # pointer form (detectors live in docs/principles.md #24) plus an
+        # editorial pass over redundant phrasing. ~4596 now — headroom is a
+        # few words BY DESIGN; the next addition trims or relocates first.
         tokens = estimate_tokens(self.content)
         assert tokens < 4600, f"building.md is ~{tokens} tokens, should be <4600"
 
@@ -379,12 +392,12 @@ class TestMethodologyPBT:
 
 
 # =============================================================================
-# docs/principles.md — the 23 principles (canonical source)
+# docs/principles.md — the 24 principles (canonical source)
 # =============================================================================
 
 
 class TestPrinciplesDoc:
-    """All 23 principles are present, named, and numbered in the canonical source.
+    """All 24 principles are present, named, and numbered in the canonical source.
 
     Before M4 this contract was held by `test_v5_templates.py::TestProductClaudePrinciples`
     against the file-sync `product-claude.md` template *copy*. Chunk 4 deleted that
@@ -417,6 +430,7 @@ class TestPrinciplesDoc:
         (21, "Structural Awareness"),
         (22, "Governance Is Structural"),
         (23, "Challenge Gently, Defer Gracefully"),
+        (24, "Retrieval Over Generation"),
     ]
 
     @pytest.mark.parametrize("num,name", PRINCIPLES, ids=[f"{n}-{name}" for n, name in PRINCIPLES])
@@ -424,14 +438,15 @@ class TestPrinciplesDoc:
         principles = read_file("docs/principles.md")
         assert f"### {num}. {name}" in principles, (
             f"docs/principles.md is missing the `### {num}. {name}` heading — "
-            "the 23 principles are the framework's foundation; a drop or renumber must fail loud."
+            "the 24 principles are the framework's foundation; a drop or renumber must fail loud."
         )
 
-    def test_exactly_23_numbered_principles(self):
-        """No principle is added/removed without updating this contract."""
+    def test_exactly_24_numbered_principles(self):
+        """No principle is added/removed without updating this contract.
+        24 (Retrieval Over Generation) added 2026-07-17 — MET-4V8Q, per Principle 19."""
         import re
         principles = read_file("docs/principles.md")
         headings = re.findall(r"^### (\d+)\. ", principles, re.MULTILINE)
-        assert [int(h) for h in headings] == list(range(1, 24)), (
-            f"expected principle headings 1..23 in order, found {headings}"
+        assert [int(h) for h in headings] == list(range(1, 25)), (
+            f"expected principle headings 1..24 in order, found {headings}"
         )

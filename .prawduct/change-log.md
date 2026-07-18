@@ -3,6 +3,40 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-07-17: Retrieval over generation — Principle 24 lands across the guidance surfaces (feature)
+
+<!-- prawduct: type=feature -->
+<!-- Statusless = release-pending once merged. Prose-only principle + methodology amendment,
+     no build plan (promoted MET-4V8Q; precedent: audit batch / ambient-merge-commit).
+     Governance-protected (CLAUDE.md, docs/principles.md, methodology/, skills/) → full Critic. -->
+
+**Parent:** MET-4V8Q — user-directed incorporation of discodon's upstream learning candidate
+(`prawduct-learning-retrieval-over-generation.md`): under momentum, builders substitute
+generation (a fluent, plausible answer from prior knowledge) for retrieval (the cheap act of
+grounding — a code read, a search, re-checking the artifact in hand). Days were lost tuning a
+mechanism nobody had read when a 10-minute read + one search would have collapsed the effort.
+Incorporated per Principle 19 (Evolving Principles), condensed to prawduct's voice — not
+verbatim.
+
+**What:** New **Principle 24 — Retrieval Over Generation** (Judgment) in `docs/principles.md`:
+the cost-asymmetry mechanism (generation's short head / long tail vs. retrieval's bounded
+cost), the cheap-check question ("what is the cheapest verification that could change this
+decision — and did I do it?"), six condensed warning-sign detectors, and the cite-or-flag
+rule; Skeptic review perspective gains "What cheap check hasn't been done?". Wired into the
+operational surfaces so it binds where decisions actually happen: `CLAUDE.md` principles
+roster (line 24); `methodology/building.md` Decision Research gains **the cheap-check gate**
+(+ detectors) and Common Traps gains **"Tuning a mechanism you haven't read"**;
+`methodology/discovery.md` Calibrate Rigor gains the cost-asymmetry gate ("mandatory, not
+optional; notice when the asymmetry just went wide"); both session digests carry a
+**Retrieval before generation** stance bullet (products get the full digest; this repo the
+slim) and the full digest's Judgment roster gains the principle. Prawduct itself learns it:
+rule + full narrative (incident, detectors) in `.prawduct/learnings.md` /
+`learnings-detail.md`. Rider (release-scope item from the 3.1.0 review): `skills/onboard`
+"Next: capture discovery" now names the **minimal-documentation path** — three cheap steps
+(record characteristics, `coverage-scaffold --apply`, doctor "none to ratify") and the
+coverage chain is permanently silent; prawduct is opinionated that absence be a recorded
+decision, not that documentation be voluminous.
+
 ## 2026-07-17: templates/architecture.md — the seventh strategy-class artifact gets its authoring scaffold (feature)
 
 <!-- prawduct: type=feature -->
