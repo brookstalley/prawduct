@@ -131,6 +131,7 @@ class TestFileStandard:
                 "Actual": "Two issues per source item.",
                 "Expected": "The second run skips existing items.",
                 "Evidence": "migrate.py:120",
+                "Env": "prawduct v3.1.0 (plugin)",  # §2: bugs carry the product version
             },
         )
         result = core.file_item(

@@ -3117,6 +3117,25 @@ def cmd_bug_inbox(project_dir: Path) -> int:
     return 0
 
 
+def cmd_version() -> int:
+    """Print the running prawduct plugin version (bare semver from the bundled
+    ``.claude-plugin/plugin.json``) and exit 0; exit 1 if the manifest is
+    unreadable.
+
+    The **deterministic version source** consumers stamp into upstream bug reports
+    (the ``Found in: prawduct vX.Y.Z`` field — XP2 provenance / the MG5 report-bug
+    path) instead of *recalling* a version from the model. A recalled version
+    drifts silently as the plugin updates; this one is read from the manifest at
+    call time. Output is one bare line (``3.1.0``, no ``v`` prefix, no decoration)
+    so a skill or script can capture it and format ``prawduct v<version>`` itself.
+    """
+    version = _plugin_manifest_version()
+    if not version:
+        return 1
+    print(version)
+    return 0
+
+
 def cmd_stamp_merged(project_dir: Path) -> int:
     """Stamp ``status=merged`` onto statusless tagged change-log entries.
 
@@ -3456,7 +3475,7 @@ _USAGE = (
     "verify-operator-verification <vrf-id>|"
     "check-pr-doc-only|check-change-log-entry|regen-views [--check]|stamp-merged|"
     "infer-critic-mode [args]|"
-    "resolve-base|"
+    "resolve-base|version|"
     "evidence {status|list [--kind <k>] [-n <count>]}|advisory <subcmd> [args]|"
     "coverage-status [--json]|coverage-scaffold [--apply] [--json]|"
     "migrate-plugin [--apply] [--json]|init-product <target> --name <name> [--apply] [--json]|"
@@ -3750,6 +3769,8 @@ def main() -> int:
         return cmd_evidence(project_dir, sys.argv[2:])
     elif command == "bug-inbox":
         return cmd_bug_inbox(project_dir)
+    elif command == "version":
+        return cmd_version()
     elif command == "advisory":
         return cmd_advisory(project_dir, sys.argv[2:])
     elif command == "backlog":

@@ -243,6 +243,91 @@ class TestArchiveAndCheckpoint:
         assert len(_alias_issues(fake, "DIS-0001")) == 1  # created despite the stale mark
 
 
+# --- MG4b: the owner-confirmed --archive-scope lever -------------------------
+
+
+class TestArchiveScope:
+    """MG4b — the owner-confirmed ``--archive-scope {all,open}`` lever. ``open``
+    imports only the live/open set as issues; the historical archive stays as the
+    MG2 export file (git history) rather than minting a closed issue per ancient
+    item. ``all`` is the pre-scrub default."""
+
+    _MAIN = "## Open\n\n- **[SCP-0001]** open item\n  `area: core · status: open`\n"
+    _ARCHIVE = (
+        "## Archive\n\n"
+        "- **[SCP-0002]** shipped item\n  `area: core · status: shipped`\n"
+        "- **[SCP-0003]** dropped item\n  `area: core · status: dropped`\n"
+    )
+
+    def test_apply_open_filters_closed_records(self):
+        records, _ = migrate.collect_records(self._MAIN, self._ARCHIVE)
+        kept, skipped = migrate.apply_archive_scope(records, "open")
+        assert skipped == 2  # the two closed archive items dropped
+        assert [r.status for r in kept] == ["open"]
+
+    def test_apply_all_keeps_everything(self):
+        records, _ = migrate.collect_records(self._MAIN, self._ARCHIVE)
+        kept, skipped = migrate.apply_archive_scope(records, "all")
+        assert skipped == 0 and len(kept) == 3
+
+    def test_import_open_scope_skips_archive_items(self, fake):
+        result = migrate.import_backlog(
+            fake, owner=OWNER, repo=REPO, content=self._MAIN,
+            archive_content=self._ARCHIVE, archive_scope="open",
+        )
+        assert result["status"] == "ok"
+        assert len(result["data"]["created"]) == 1  # only the open item
+        assert result["data"]["archive_skipped"] == 2
+        assert any("archive-scope open" in w for w in result["warnings"])
+        assert _alias_issues(fake, "SCP-0001")  # open item created
+        assert _alias_issues(fake, "SCP-0002") == []  # shipped item NOT minted
+        assert _alias_issues(fake, "SCP-0003") == []  # dropped item NOT minted
+
+    def test_import_all_scope_mints_closed_archive_issues(self, fake):
+        # The default preserves the pre-scrub behavior: archive items DO become
+        # closed issues (regression guard on MG4b `all`).
+        result = migrate.import_backlog(
+            fake, owner=OWNER, repo=REPO, content=self._MAIN,
+            archive_content=self._ARCHIVE, archive_scope="all",
+        )
+        assert result["status"] == "ok"
+        assert len(result["data"]["created"]) == 3
+        assert "archive_skipped" not in result["data"]
+        arc = _alias_issues(fake, "SCP-0002")[0]
+        assert (arc.get("state") or "open").lower() == "closed"
+
+    def test_default_scope_is_all(self, fake):
+        # No archive_scope passed → `all` (backward-compatible with every existing
+        # importer caller, incl. the owner's locked dogfood "import as-is" decision).
+        result = migrate.import_backlog(
+            fake, owner=OWNER, repo=REPO, content=self._MAIN, archive_content=self._ARCHIVE
+        )
+        assert len(result["data"]["created"]) == 3
+
+    def test_cli_open_scope(self, fake, tmp_path):
+        (tmp_path / "main.md").write_text(self._MAIN)
+        (tmp_path / "arc.md").write_text(self._ARCHIVE)
+        code = cli.run(
+            str(tmp_path),
+            ["import", "--repo", SCOPE, "--from", str(tmp_path / "main.md"),
+             "--archive", str(tmp_path / "arc.md"), "--archive-scope", "open", "--json"],
+            transport=fake,
+        )
+        assert code == 0
+        assert _alias_issues(fake, "SCP-0001")
+        assert _alias_issues(fake, "SCP-0002") == []
+
+    def test_cli_rejects_bad_scope(self, fake, tmp_path):
+        (tmp_path / "main.md").write_text(self._MAIN)
+        code = cli.run(
+            str(tmp_path),
+            ["import", "--repo", SCOPE, "--from", str(tmp_path / "main.md"),
+             "--archive-scope", "bogus", "--json"],
+            transport=fake,
+        )
+        assert code == 2  # validation error, before any write
+
+
 # --- MIG-3: export serializes the native graph -------------------------------
 
 
@@ -302,6 +387,27 @@ class TestCheckpointLossRebuild:
 
 # --- CRASH-4: import resumable / idempotent ----------------------------------
 
+# Minimal open-only fixtures for the resumable-envelope warnings regression: a
+# subset (DIS-0001) and its superset (DIS-0001 + DIS-0002). A re-import of the
+# superset self-heals the first (a mutation) and then creates the second (the
+# mutation that fails), so a completed record's warning precedes the cut.
+_ONE_OPEN_ITEM = """# Backlog — mini
+
+## Open
+
+- **[DIS-0001]** Add the harbor map overlay
+  `effort: M · impact: L · area: ui · source: user · added: 2026-05-01 · status: open · stage: ready`
+
+  Players want a top-down harbor map.
+"""
+
+_TWO_OPEN_ITEMS = _ONE_OPEN_ITEM + """
+- **[DIS-0002]** Rate-limit the trade API
+  `effort: S · impact: M · area: backend · source: builder · added: 2026-05-02 · status: open · stage: ready`
+
+  Bursts of trades exceed the upstream cap.
+"""
+
 
 class TestImportResumable:
     def test_crash_mid_import_resumes_without_duplicates(self, fake, tmp_path):
@@ -341,6 +447,30 @@ class TestImportResumable:
         assert second["status"] == "ok"
         dis4 = _alias_issues(fake, "DIS-0004")[0]
         assert (dis4.get("state") or "open").lower() == "closed"  # resume converged
+
+    def test_resumable_error_carries_accrued_self_heal_warnings(self, fake):
+        # Regression (BKL-9V2W): an alias self-heal audit line emitted by an
+        # already-completed record must ride the resumable TransportError envelope.
+        # It cannot be recovered on resume — the restored id:PFX label makes the
+        # record skip the fast label path, so the heal never re-runs — so dropping
+        # it from the error envelope loses the audit line permanently.
+        _seed_labels(fake, _TWO_OPEN_ITEMS)
+        _import(fake, _ONE_OPEN_ITEM)  # DIS-0001 lands on GitHub
+        number = _alias_issues(fake, "DIS-0001")[0]["number"]
+
+        # A human deletes DIS-0001's id:PFX label; the block id_aliases survives.
+        fake.remove_label(OWNER, REPO, number, ids.alias_label("DIS-0001"))
+
+        # Re-import the superset: DIS-0001 self-heals (mutation 1 — restores the
+        # label, emitting the audit line), then DIS-0002's create (mutation 2) hits
+        # the injected failure and returns the resumable envelope.
+        fake.fail_at_mutation(2)
+        result = _import(fake, _TWO_OPEN_ITEMS)
+
+        assert result["status"] == "error"
+        assert result["error"]["details"]["resumable"] is True
+        assert result["error"]["details"]["skipped"]  # DIS-0001 healed before the cut
+        assert any("restored missing alias label" in w for w in result["warnings"])
 
 
 # --- BKL-4W7H: id:PFX alias self-heal (deleted label ↛ permanent duplicate) ---

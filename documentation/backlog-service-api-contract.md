@@ -110,9 +110,10 @@ service is recorded as a flat `backlog_service_repo: owner/repo` scalar in
 briefing reads `snapshot.read` (file-only — the never-block "few s" bound is structural: no network
 call exists on the briefing path, and any timeout tuning belongs to the *detached*
 `snapshot.spawn_refresh` child it fires after reading) and surfaces the snapshot's **visible age**;
-the six markdown-premise advisory probes retire on the same switch — the backlog trio
-(`legacy-backlog-format`, `legacy-section-schema`, `backlog-overdue-grooming`) and the norm trio
-that judges item liveness from the same file (`revisit-due`, `dead-why`, `stalled-transition`);
+the seven markdown-premise advisory probes retire on the same switch — the backlog quartet
+(`legacy-backlog-format`, `backlog-service-migration-required`, `legacy-section-schema`,
+`backlog-overdue-grooming`) and the norm trio that judges item liveness from the same file
+(`revisit-due`, `dead-why`, `stalled-transition`);
 a frozen file must not generate nudges, and `external-backlog-detected` keeps its independent
 premise (full retirement table: post-sync-advisory-spec §8.2; shared predicate
 `backlog_probes.post_cutover`). **Unset:** the briefing parses
@@ -166,7 +167,9 @@ field home.)*
 - **Envelope.** Every JSON response is one envelope: `{"status":"ok","data":…,"warnings":[…]}` or the
   error form (§4). `warnings[]` carries the *advisory-but-not-fatal* signals — unknown soft-enum
   values, a human-UI drift the reconciler self-healed (CC5), a stale cache read's visible age — that
-  must never be an error (DM1).
+  must never be an error (DM1). A **resumable** error (a mid-run `import` cut) also carries top-level
+  `warnings[]`, so a self-heal audit line from an already-completed record is not lost — it can't be
+  re-emitted on resume (the restored alias label makes the record skip the fast path).
 - **Issue standard on `file`** (issue-standard §1/§2/§4; `lib/backlog/issuefmt.py`). `file` emits the
   §1 title shape (prepends the `area:` prefix, idempotently) and **audits** the created issue against
   the §4 thresholds. Findings ride in a **separate** top-level `lint` field —

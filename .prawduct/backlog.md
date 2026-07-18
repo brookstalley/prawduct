@@ -32,6 +32,8 @@
 
   Pre-sign-off rate-budget trace. (a) Doc-coherence: PRD §8.9 and requirements ~§228 credit the "recent-shipped archive window" as "the lever that keeps the write-burst inside the ~500/hr budget," and §9 attributes the fit to the scrub — circular, and neither quantifies the window (no N-months, no formula). But the Pacer is what GUARANTEES the ceiling (it sleeps to stay at 500/hr regardless of volume); the window is a throughput/noise lever, not a ceiling lever. Latent for the 204-item dogfood (204<500, so the lever isn't even needed — never stated). Fix: re-attribute (Pacer=ceiling via pace-across-time; window=throughput/noise) and quantify the window as a throughput target; reconcile the §8.9↔§9 circular reference. (b) Pacer 900 pts/min gap (inferred arithmetic, medium): the Pacer's docstring assumes a "pure-create workload" so the 80/min content cap binds before the 900 REST-pts/min burst — but the archive import is create+close (2 writes/archive item, migrate.py:453-455), so during the archive stretch points/min ≈ 80×5 + 80×5 + reads > 900. Mitigated INCIDENTALLY by gh-subprocess latency (not designed-in; breaks with the raw-HTTP fast-path D2/W1). Fix: meter total REST points (5/write,1/read) against 900/min in the Pacer, or explicitly document the reliance on transport latency + S3 confirmation. Minor doc-vs-code: the scrub runbook suggests importing archive items already-closed to avoid create-then-close churn, but create_issue has no state field — the importer always creates-open-then-reconciles, so that optimization is unbuilt (drives the 2-writes/archive-item cost).
 
+  **Progress (2026-07-18, owner-feedback pass):** the binary `--archive-scope {all,open}` lever now SHIPS (MG4b — `lib/backlog/{cli,migrate}.py`, honored by import + restructure-preview + the scrub runbook step 2c), and the **requirements** attribution is corrected (Pacer = ceiling via pace-across-time; the window = write-*volume*/throughput lever, not the rate ceiling), matched in migration-scrub.md + change-log. STILL OPEN: the same re-attribution in **PRD §8.9** + the §8.9↔§9 circular reference; the window **quantification** (N-months / a throughput formula); and **part (b)** — the Pacer metering total REST points (5/write, 1/read) against 900/min for the create+close archive stretch. Stays adopter-scale, not gating the dogfood.
+
 - **[BKL-6M4T]** Complete backlog-service Chunk 06 live migration (deferred)
   `effort: L · impact: M · area: backlog-service · source: builder · added: 2026-07-17 · reviewed: 2026-07-18 · status: open · stage: ready · related: BKL-5R2K · refs: artifacts/build-plan-backlog-service.md, VRF-006`
 
@@ -1285,11 +1287,6 @@
 
   From the test-evidence-environments review (the work that shipped TST-6F2R's multi-environment `test_commands` list): a product with one environment whose toolchain cannot emit JUnit is excluded from the declared-list form — the aggregated record has no way to accept a counts-only source alongside the JUnit-capable environments. Today's escape is a wrapper script, or repeated `--from-junit` for the JUnit halves plus nothing for the counts half. Design question: should `--from-counts` compose as one more aggregated source (i.e. a counts entry participating in the same multi-environment aggregation) rather than remaining an exclusive whole-record mode? Touches ENV-2W7K's "document --from-counts as the paved non-pytest path" — if composition ships, that documentation should describe the composed form. (critic)
 
-- **[BKL-9V2W]** migrate.import_items: resumable error envelope (TransportError path) drops accrued warnings[] — alias self-heal audit lines lost and never re-emitted on resume
-  `effort: S · impact: S · area: backlog-service · kind: bug · source: critic · added: 2026-07-18 · status: open · stage: ready · related: BKL-6M4T, BKL-3K9N`
-
-  Cumulative-Critic correctness reviewer NOTE (rev-20260718T144940Z): migrate.import_items' resumable mid-run error envelope (TransportError path) carries created/skipped/collisions but drops the accrued warnings[] — an alias self-heal audit line emitted by an already-completed record is lost, and it is never re-emitted on the re-run because the restored label makes the skip take the fast path. The live-migration audit trail should not lose these. Fix direction: include warnings in the error envelope, or re-emit them on resume. Same lost-audit-warning class as the known minor limitation recorded on BKL-3K9N (429-retry path); this is the TransportError-resume path.
-
 ## Promoted
 
 - **[BKL-5D2C]** Move the backlog out of git to a centralized, agent-friendly issue-tracking service
@@ -1362,6 +1359,13 @@
   **Governance.** Touches governance-protected code (`lib/critic_consolidate.py`, `lib/gates.py`, possibly `lib/coverage_algebra.py`) with existing pinning tests (`tests/test_critic_consolidate.py:340-345` pins the current dirty-tree/no-head_commit verify behavior — will need updating). → feature-branch + full Critic + PR.
 
   Cross-link note (triage, 2026-07-14): the upstream distinctness IDs above are discodon-side ids. Local mapping — CRT-8F3K → local counterpart **CRT-9K7T** (forked coordinator never writes findings); CRT-J4PM and CRT-K7VF have **no local backlog item** (upstream-only report ids, kept in the prose for the distinctness argument). Confirmed DISTINCT from all local family members (CRT-9K7T, CRT-5D8Q, COV-7K4N, CRT-8H3R) — cross-linked in `related:`, not merged. (user)
+
+- **[BKL-9V2W]** migrate.import_items: resumable error envelope (TransportError path) drops accrued warnings[] — alias self-heal audit lines lost and never re-emitted on resume
+  `effort: S · impact: S · area: backlog-service · kind: bug · source: critic · added: 2026-07-18 · reviewed: 2026-07-18 · status: shipped · stage: ready · related: BKL-6M4T, BKL-3K9N · closed-by: fix/import-resumable-warnings`
+
+  Cumulative-Critic correctness reviewer NOTE (rev-20260718T144940Z): migrate.import_items' resumable mid-run error envelope (TransportError path) carries created/skipped/collisions but drops the accrued warnings[] — an alias self-heal audit line emitted by an already-completed record is lost, and it is never re-emitted on the re-run because the restored label makes the skip take the fast path. The live-migration audit trail should not lose these. Fix direction: include warnings in the error envelope, or re-emit them on resume. Same lost-audit-warning class as the known minor limitation recorded on BKL-3K9N (429-retry path); this is the TransportError-resume path.
+
+  Shipped 2026-07-18 (closed-by: fix/import-resumable-warnings).
 
 - **[BKL-5R2K]** Wire the merge/transfer redirect-follow (`ids.resolve_redirect` / `migrate.resolve`) into a real get/pick consumer
   `effort: S · impact: S · area: backlog-service · source: critic · added: 2026-07-17 · reviewed: 2026-07-17 · status: shipped · stage: ready · refs: artifacts/build-plan-backlog-service.md · closed-by: Chunk-06`

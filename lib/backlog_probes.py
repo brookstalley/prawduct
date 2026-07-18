@@ -1,6 +1,6 @@
 """Post-sync advisory probes for the backlog feature (requirements §8.2).
 
-Four probes registered against the shared advisory infrastructure
+Five probes registered against the shared advisory infrastructure
 (:mod:`lib.advisory_store`). Each is a pure ``ProbeFn(state, codebase)`` that
 reads the consumer's own ``.prawduct/`` and returns at most one
 :class:`~lib.advisory_store.AdvisoryCandidate`. They never write — resolution is
@@ -11,7 +11,11 @@ resolves the advisory for everyone on next sync.
 adopting a new prawduct version with an unmigrated backlog (``/prawduct:backlog
 migrate``). It was the single production probe in framework v1.7.0
 (``tools/lib/backlog_probes.py``), deleted with the file-sync engine in M4, and
-re-ported here. The other three (``external-backlog-detected``,
+re-ported here. ``backlog-service-migration-required`` is its structured-format
+sibling (GV7): once a backlog *is* structured, this one nudges it onward onto the
+GitHub Issues service, so a repo that upgraded past prawduct's own cutover is told
+to migrate rather than silently losing its briefing count when the shared markdown
+read path eventually retires (MG3). The other three (``external-backlog-detected``,
 ``legacy-section-schema``, ``backlog-overdue-grooming``) were the v0.2-deferred
 roster.
 
@@ -224,9 +228,65 @@ def probe_legacy_backlog_format(state: ProjectState, codebase: Codebase):
     ]
 
 
+def probe_migration_required(state: ProjectState, codebase: Codebase):
+    """Fire when a **structured** markdown backlog holds live items and the project
+    has not cut over to the GitHub Issues service (``backlog_service_repo`` unset).
+
+    The GV7 migration-required signal. When the shared plugin eventually retires
+    its markdown read path at portfolio-wide migration (MG3), a repo that upgraded
+    but never migrated would lose its briefing count and grooming nudges
+    *silently* — the exact opposite of a "migration required" signal. This probe
+    makes it loud and early: as long as a structured backlog sits unmigrated, every
+    session says so.
+
+    **Distinct from ``legacy-backlog-format``**, which nudges a *pre-structured*
+    file toward the structured format and fires only when NO item carries a
+    ``[PFX-XXXX]`` id. This one nudges a *structured* file onto the service and
+    fires only when the structured format is already in use (≥1 ``[PFX-XXXX]`` id).
+    The two partition the space, so a backlog trips at most one of them.
+
+    Resolution: ``backlog_service_repo`` set at cutover (``post_cutover``) — the
+    same switch that retires the other markdown probes. ``warn`` priority (above
+    the ``info`` format/grooming nudges): unmigrated-at-upgrade is a real
+    signal-loss risk — though, like every advisory, never blocking.
+    """
+    if post_cutover(state):
+        return []
+    text = _read_text(_backlog_path(codebase))
+    if not text:
+        return []
+    parsed = parse_backlog(text)
+    if not any(item.item_id for item in parsed.items):
+        return []  # pre-structured file → legacy-backlog-format owns the nudge
+    pending = parsed.pending_items()
+    if not pending:
+        return []  # a frozen all-archived file has nothing live to migrate
+    # Evidence is qualitative and count-independent (it is hashed into the advisory
+    # id) so the id stays put as items come and go; the live count is in the summary.
+    return [
+        AdvisoryCandidate(
+            type="backlog-service-migration-required",
+            evidence=(
+                ".prawduct/backlog.md is a structured backlog not yet migrated to "
+                "GitHub Issues (backlog_service_repo unset)",
+            ),
+            trigger_summary=(
+                f"{len(pending)} pending items in the markdown backlog and no "
+                "backlog_service_repo — migrate to GitHub Issues before an upgrade "
+                "retires the shared markdown read path"
+            ),
+            recommended_action="/prawduct:backlog scrub",
+            priority="warn",
+        )
+    ]
+
+
 def register() -> None:
-    """Register the four backlog probes. Idempotent (register_probe overwrites)."""
+    """Register the five backlog probes. Idempotent (register_probe overwrites)."""
     register_probe(FEATURE, "legacy-backlog-format", PROBE_VERSION, probe_legacy_backlog_format)
+    register_probe(
+        FEATURE, "backlog-service-migration-required", PROBE_VERSION, probe_migration_required
+    )
     register_probe(FEATURE, "external-backlog-detected", PROBE_VERSION, probe_external_backlog)
     register_probe(FEATURE, "legacy-section-schema", PROBE_VERSION, probe_legacy_section_schema)
     register_probe(FEATURE, "backlog-overdue-grooming", PROBE_VERSION, probe_overdue_grooming)

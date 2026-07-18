@@ -42,7 +42,14 @@ prawduct-hook bug-inbox
 1. Read the template at `${CLAUDE_SKILL_DIR}/../../templates/incoming-bug-report.md`
    and fill every field. Be concrete: lead with the symptom, name the exact
    prawduct surface in **Component**, and mark verified-vs-inferred honestly in
-   **Root cause** (Principle 5 — Honest Confidence).
+   **Root cause** (Principle 5 — Honest Confidence). For **Found in**, run
+   `prawduct-hook version` and use its bare-semver output — e.g. `prawduct v3.1.0
+   (plugin)` — **source it, don't recall it** (a recalled version drifts as the
+   plugin updates; the command reads the running manifest). If it exits non-zero
+   or prints nothing (an unreadable manifest), write `prawduct v(unknown) (plugin)`
+   — never guess a version. This same version rides the MG5 repoint of this step
+   (filing an `untriaged-upstream` issue), so the provenance is deterministic
+   whether the report lands in the drop-box or as an issue (XP2).
 2. Derive a filename: kebab-case the title (lowercase, spaces and punctuation →
    single hyphens), append `.md`. E.g. *"Stop gate blocks on in-flight background
    work"* → `stop-gate-blocks-on-in-flight-background-work.md`.
