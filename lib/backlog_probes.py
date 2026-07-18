@@ -96,12 +96,27 @@ def probe_external_backlog(state: ProjectState, codebase: Codebase):
     ]
 
 
+def post_cutover(state: ProjectState) -> bool:
+    """True once the backlog lives on GitHub Issues (``backlog_service_repo``
+    set at migration cutover). Every probe whose premise is "the markdown file
+    IS the live backlog" retires on this switch — post-cutover the file is
+    frozen history and any nudge derived from it would be stale by construction.
+    Shared across probe families (this module's three markdown probes AND the
+    ``norm_probes`` trio that reads item liveness from the same file — one
+    predicate, not per-module copies). ``external-backlog-detected`` keeps
+    firing: stray TODO.md files are a problem regardless of where the real
+    backlog lives."""
+    return bool(state.get("backlog_service_repo"))
+
+
 def probe_legacy_section_schema(state: ProjectState, codebase: Codebase):
     """Fire when backlog.md uses the old ``## Active``/``## Queue`` schema.
 
     Resolution: ``backlog_format_version: 2`` recorded (migration folds the
     headings into the canonical Open/Promoted/Archive).
     """
+    if post_cutover(state):
+        return []
     if str(state.get("backlog_format_version", "")) == "2":
         return []
     text = _read_text(_backlog_path(codebase))
@@ -146,6 +161,8 @@ def probe_overdue_grooming(state: ProjectState, codebase: Codebase):
     computed here because the locked ``ProbeFn`` signature carries no clock.
     Resolution: ``backlog_last_groomed_at`` updated (by ``/prawduct:backlog``).
     """
+    if post_cutover(state):
+        return []
     text = _read_text(_backlog_path(codebase))
     if not text:
         return []
@@ -180,6 +197,8 @@ def probe_legacy_backlog_format(state: ProjectState, codebase: Codebase):
     "done" signal. ``parse_backlog`` already excludes HTML-comment and
     code-fence bullets, so template example bullets are not miscounted.
     """
+    if post_cutover(state):
+        return []
     if str(state.get("backlog_format_version", "")) == "2":
         return []
     text = _read_text(_backlog_path(codebase))

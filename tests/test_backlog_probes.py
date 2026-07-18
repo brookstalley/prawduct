@@ -194,3 +194,29 @@ class TestRegistration:
         bp.register()
         cands = run_all_probes(ProjectState({}), make_codebase(tmp_path))
         assert isinstance(cands, list)  # no crash with an empty repo
+
+
+class TestPostCutoverRetirement:
+    """Once ``backlog_service_repo`` is set (migration cutover), the probes whose
+    premise is 'the markdown file IS the live backlog' retire — a frozen file
+    must not generate nudges. external-backlog keeps its independent premise."""
+
+    _CUTOVER = {"backlog_service_repo": "octo/backlog"}
+
+    def test_legacy_format_probe_retires(self, tmp_path):
+        _write_backlog(tmp_path, "# Backlog\n" + "".join(f"- item {i}\n" for i in range(9)))
+        assert bp.probe_legacy_backlog_format(ProjectState(dict(self._CUTOVER)), _cb(tmp_path)) == []
+
+    def test_section_schema_probe_retires(self, tmp_path):
+        _write_backlog(tmp_path, "# Backlog\n## Active — next up\n- a\n## Queue\n- b\n")
+        assert bp.probe_legacy_section_schema(ProjectState(dict(self._CUTOVER)), _cb(tmp_path)) == []
+
+    def test_overdue_grooming_probe_retires(self, tmp_path):
+        _write_backlog(tmp_path, "# Backlog\n## Open\n" + "".join(
+            f"- **[X-{i:04d}]** item {i}\n" for i in range(40)))
+        assert bp.probe_overdue_grooming(ProjectState(dict(self._CUTOVER)), _cb(tmp_path)) == []
+
+    def test_external_backlog_probe_survives_cutover(self, tmp_path):
+        (tmp_path / "TODO.md").write_text("- do a thing\n", encoding="utf-8")
+        out = bp.probe_external_backlog(ProjectState(dict(self._CUTOVER)), _cb(tmp_path))
+        assert len(out) == 1 and out[0].type == "external-backlog-detected"

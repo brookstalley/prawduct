@@ -83,6 +83,18 @@ system-of-record** via a deterministic `prawduct-hook backlog` adapter (PRD §16
   `restructure-preview` op rendering the aggregate before/after owner-review artifact **from the
   same apply path the import consumes**. Build-plan MG1/MG6 reconciliation folded (Chunk 05 MIG-1
   note, Chunk 06 scrub flow, SPIKE-S2 settled-fact annotation); scrub runbook gains step 2b.
+- **Chunk 06 must-fix BKL-8P2R — briefing/gate repoint, the safe way (2026-07-18):** the session
+  briefing's backlog rollup is now **cutover-aware** on a new flat `backlog_service_repo:
+  owner/repo` scalar in `project-state.yaml` (written by the migration session; API §2.4). Set:
+  `briefing._backlog_pending_line` reads `snapshot.read` (file-only) with the **visible snapshot
+  age**, then fires the **detached** `snapshot.spawn_refresh` warm — the never-block "few s"
+  bound is **structural** (no synchronous network call exists on the briefing path; a stalled
+  backend cannot reach it), which is how the item's timeout-scoping requirement is satisfied.
+  Unset: the markdown parse is unchanged (MG3 coexistence). The three markdown-premise advisory
+  probes retire on the same switch (`legacy-backlog-format`, `legacy-section-schema`,
+  `backlog-overdue-grooming`); `external-backlog-detected` survives. The G2 never-block test
+  injects a child whose `wait` **raises** (fire-and-forget pinned, not just fast-error) plus a
+  wall-clock bound.
 
 **Classification:** structural
 

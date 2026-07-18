@@ -93,12 +93,14 @@ history of the source file) — a bad rewrite is always recoverable.
      `id:PFX` alias, so a re-run never duplicates), applying the confirmed
      restructure plan at create:
      `prawduct-hook backlog import --repo <owner/repo> --from .prawduct/backlog.md [--archive <archive>] [--restructure <plan.json>]`
-   - **Fold each duplicate** into its survivor (writes the `superseded-by:`
+   - **Fold each duplicate** into its survivor (writes the `superseded_by`
      redirect *before* closing the source, so a crash leaves a resolvable
      open-but-redirected item, never an orphan — AU3/CRASH-2):
-     `prawduct-hook backlog merge <duplicate-id> --into <survivor-id>`
+     `prawduct-hook backlog merge <duplicate-id> --into <survivor-id> --repo <owner/repo>`
+     (`--repo` is required for bare `PFX-XXXX` ids — alias resolution needs the
+     target repo)
    - **Close each stale item** (closed + preserved, not deleted):
-     `prawduct-hook backlog status <id> --to dropped`
+     `prawduct-hook backlog status <id> --to dropped --repo <owner/repo>`
 
    Ordering: import-then-dispose is always safe and idempotent. For a **large**
    backlog where the content-creation budget (≈80/min, ≈500/hr) is the scarce
@@ -112,6 +114,24 @@ rollup; spot-check a handful of migrated bodies and IDs; confirm every
 hand-minted `PFX` resolves as an `id:PFX` alias and every disposed item is
 *closed*, not missing. Total issue count = every source item — a dropped or
 merged item is still present, just closed.
+
+**5. Cut over.** Record the switch that makes the migrated repo the live
+backlog — a top-level scalar in `.prawduct/project-state.yaml`:
+
+```yaml
+backlog_service_repo: <owner/repo>
+```
+
+This single key (API §2.4) repoints the session briefing to the GV2 snapshot
+(`snapshot.read`, file-only, visible age + detached refresh warm — never a
+synchronous network call) and retires every markdown-premise advisory probe
+(the backlog trio `legacy-backlog-format` / `legacy-section-schema` /
+`backlog-overdue-grooming` AND the norm trio `revisit-due` / `dead-why` /
+`stalled-transition` — the frozen file must not generate nudges). **Do not set
+it before the import has been verified** (step 4) — once set, the briefing
+stops counting the markdown file. From here the markdown backlog is frozen
+history; `legacy.py` + `incoming-bugs/` retirement follows in lockstep with
+their replacements (build plan Chunk 06).
 
 ## What must never happen
 

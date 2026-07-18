@@ -540,3 +540,36 @@ class TestSilentAgainstThisRepo:
 
 def _id(candidate) -> str:
     return compute_id(np.FEATURE, candidate.type, np.PROBE_VERSION, candidate.evidence)
+
+
+class TestPostCutoverRetirement:
+    """The norm trio judges item liveness from `.prawduct/backlog.md`; once
+    `backlog_service_repo` is set (migration cutover) that file is frozen
+    history and all three retire (shared predicate: backlog_probes.post_cutover)."""
+
+    _CUTOVER = {"backlog_service_repo": "octo/backlog"}
+
+    def test_revisit_due_retires(self, tmp_path):
+        _write_backlog(tmp_path, _item("EXC-1A2B", extra=f"revisit: {_days_ago(3)}"))
+        assert np.probe_revisit_due(ProjectState(dict(self._CUTOVER)), _cb(tmp_path)) == []
+
+    def test_dead_why_retires(self, tmp_path):
+        _write_backlog(tmp_path, _item("MIG-4C1K", section="Archive", status="shipped"))
+        _write_artifact(
+            tmp_path,
+            "observability-strategy.md",
+            _direction_artifact(
+                "- **All telemetry rides OpenTelemetry.**\n"
+                "  Why: the MIG-4C1K migration made a second system redundant.\n"
+            ),
+        )
+        assert np.probe_dead_why(ProjectState(dict(self._CUTOVER)), _cb(tmp_path)) == []
+
+    def test_stalled_transition_retires(self, tmp_path):
+        _write_backlog(tmp_path, _item("OBS-4C1K", status="open"))
+        _write_artifact(
+            tmp_path,
+            "observability-strategy.md",
+            _direction_artifact("- **X.**\n  Status: in-transition — export tracked in OBS-4C1K\n"),
+        )
+        assert np.probe_stalled_transition(ProjectState(dict(self._CUTOVER)), _cb(tmp_path)) == []

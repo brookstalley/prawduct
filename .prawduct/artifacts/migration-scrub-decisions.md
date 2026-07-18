@@ -55,8 +55,21 @@ error is live and small).
 
 `skills/backlog/migration-scrub.md` (steps 0–4, incl. 2b restructure pre-pass). Sequence:
 re-confirm sign-off → author the v1 restructure plan for the keep set → `restructure-preview` →
-owner batch approval → `export` backup → `import --restructure` → apply the merges/drops above →
-verify counts + spot-check → BKL-8P2R briefing/gates repoint → retire `legacy.py` +
-`incoming-bugs/` in lockstep with the report-bug MG5 repoint → `/prawduct:critic cumulative` →
-slice PR. The full item survey (per-item gists, DUP clusters, staleness evidence) was produced
-2026-07-18; regenerate it if the source drifts materially before the run.
+owner batch approval → `import --restructure` (git history of the source is the pre-import
+backup) → `export` backup **after** the import (it dumps the migrated repo — running it before
+backs up nothing; ordering corrected 2026-07-18 per the holistic review) → apply the merges/drops
+above (all disposition commands take `--repo`) → verify counts + spot-check → activate the
+BKL-8P2R cutover (`backlog_service_repo: owner/repo` in project-state.yaml — the repoint code
+shipped 2026-07-18) → retire `legacy.py` + `incoming-bugs/` in lockstep with the report-bug MG5
+repoint → `/prawduct:critic cumulative` → slice PR. The full item survey (per-item gists, DUP
+clusters, staleness evidence) was produced 2026-07-18; regenerate it if the source drifts
+materially before the run.
+
+**Pre-run gate added 2026-07-18 (holistic Fable review):** the run is BLOCKED until the two
+transport/pagination defects are fixed and live-verified read-only against the real repo (>30
+labels, 127+ PRs): (1) `--paginate` multi-document JSON parsing in `list_labels`/`list_timeline`/
+`list_sub_issues`; (2) client-side PR filtering breaking the `len(batch) < per_page` pagination
+terminators in `_all_issues`/`iter_alias_issues`/`_scan_all`. Source-count note: the survey's
+"96 open" is now 94 open + 1 promoted + 122 archive = 217 (BKL-8N5K shipped to Archive in the
+same session — explained drift; the three `status: resolved` archive items were normalized to
+`shipped` on 2026-07-18 so they migrate as completed, not `not_planned`).

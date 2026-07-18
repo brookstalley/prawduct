@@ -64,6 +64,11 @@ STATUS_VALUES: tuple[str, ...] = tuple(_STATUS_ENCODING)
 STATUS_OPEN_LABELS: tuple[str, ...] = tuple(
     status for status, (_state, _reason, label) in _STATUS_ENCODING.items() if label is not None
 )
+#: Statuses whose GitHub state is `open` — the "pending work" set consumers sum
+#: over (the briefing rollup). Derived from the SoT so it can never drift.
+OPEN_STATUSES: tuple[str, ...] = tuple(
+    status for status, (state, _reason, _label) in _STATUS_ENCODING.items() if state == "open"
+)
 
 # Facets carried as `<facet>:value` labels (Data Model §3). `kind/area/effort/
 # impact/source` are open soft enums (any value accepted); `stage` has a known

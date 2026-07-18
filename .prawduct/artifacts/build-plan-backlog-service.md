@@ -178,9 +178,20 @@ shared `issuefmt` composer, verbatim `original_*` preservation via `encode.forma
 --restructure` + offline `restructure-preview` (the aggregate owner-review artifact, rendered from
 the same apply path the import consumes); the MG1/MG6 reconciliation folded into this plan, the
 test specs (MIG-6), Data Model §2, API §2.5, and the scrub runbook (step 2b). Critic `final`
-(0 blocking / 4 warn) + two `verify-resolutions` → clean; suite 2263. Remaining before the chunk
-closes: the owner-driven live migration (scrub dispositions + restructure plan + import), the
-BKL-8P2R briefing/gates repoint, and the `legacy.py` + `incoming-bugs/` retirement (MG5 lockstep).
+(0 blocking / 4 warn) + two `verify-resolutions` → clean; suite 2263. **BKL-8P2R built 2026-07-18**
+(must-fix #2): the briefing's backlog rollup is cutover-aware on the `backlog_service_repo`
+project-state scalar (API §2.4) — set: `snapshot.read` file-only + visible age + detached
+`spawn_refresh` warm (never-block is structural; no sync network on the briefing path); unset:
+markdown behavior unchanged. All six markdown-premise advisory probes (backlog trio + norm trio)
+retire on the same switch; `encode.OPEN_STATUSES` derived from the status SoT; runbook step 5
+"Cut over" is the switch's writer. Critic `final` (0 blocking / 5 warn) + `verify-resolutions` →
+clean; suite 2276. **The live-session "repoint" leg now reduces to writing the one cutover key**
+(the code is prebuilt behind the switch). Remaining before the chunk closes: the two
+pre-migration transport blockers from the 2026-07-18 holistic review (**BKL-2V6N** gh `--paginate`
+multi-document JSON; **BKL-5T3J** client-side PR filtering breaking pagination terminators — both
+must be fixed + live-verified read-only against the real repo), the owner-driven live migration
+(scrub dispositions + restructure plan + import + cutover key), and the `legacy.py` +
+`incoming-bugs/` retirement (MG5 lockstep).
 
 ## Scaffolding
 
