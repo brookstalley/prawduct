@@ -5,7 +5,7 @@
 
 ## 2026-07-17: Test evidence meets real environments — false-red guard, fallback deprecation, multi-environment test_commands (fix)
 
-<!-- prawduct: type=fix -->
+<!-- prawduct: type=fix | release=v3.1.0 | status=shipped -->
 <!-- Statusless = release-pending once merged. Code + tests, no build plan (promoted
      TST-6F2R; precedent: the v3.0.2 declared-command-onramps fix). Governance-protected
      (bin/, test-status gate input) → full Critic. -->
@@ -60,7 +60,7 @@ test environments, one evidence record.
 
 ## 2026-07-17: Retrieval over generation — Principle 24 lands across the guidance surfaces (feature)
 
-<!-- prawduct: type=feature -->
+<!-- prawduct: type=feature | release=v3.1.0 | status=shipped -->
 <!-- Statusless = release-pending once merged. Prose-only principle + methodology amendment,
      no build plan (promoted MET-4V8Q; precedent: audit batch / ambient-merge-commit).
      Governance-protected (CLAUDE.md, docs/principles.md, methodology/, skills/) → full Critic. -->
@@ -94,7 +94,7 @@ decision, not that documentation be voluminous.
 
 ## 2026-07-17: templates/architecture.md — the seventh strategy-class artifact gets its authoring scaffold (feature)
 
-<!-- prawduct: type=feature -->
+<!-- prawduct: type=feature | release=v3.1.0 | status=shipped -->
 <!-- Statusless = release-pending once merged. One new template + registry reconciliation, no
      build plan (small additive work, promoted GOV-2T6K). Governance-protected (templates/) →
      full Critic. -->
@@ -121,7 +121,7 @@ row and the Known Gaps follow-up now record the gap closed).
 
 ## 2026-07-17: Ambient merge-commit default — the standing-instruction surfaces state the merge strategy (fix)
 
-<!-- prawduct: type=fix -->
+<!-- prawduct: type=fix | release=v3.1.0 | status=shipped -->
 <!-- Statusless = release-pending once merged. Small guidance-prose batch, no build plan
      (precedent: the release-audit batch). Governance-protected (CLAUDE.md, methodology/,
      skills/, templates/) → full Critic. -->
@@ -147,7 +147,7 @@ branch contract. Discharges the guidance leg of WT-7M4K's residual (detection pr
 
 ## 2026-07-17: Release-audit fixes — fleet-safe layer-0 delivery, adoption-scoped norm severity, template/doc corrections (fix)
 
-<!-- prawduct: type=fix -->
+<!-- prawduct: type=fix | release=v3.1.0 | status=shipped -->
 <!-- Statusless = release-pending once merged. Pre-release audit fix batch, no build plan
      (precedent: GOV-8R3F, WT-7M4K entries) — each fix is small and independently tested;
      governance-protected paths (lib/, bin/, skills/, templates/) → full Critic. -->
@@ -219,7 +219,7 @@ added. Shipped as the v3.0.5 hotfix off v3.0.4 (b5d952c on main); this entry rec
 
 ## 2026-07-17: Default PR merge strategy → merge commit (was squash) (fix)
 
-<!-- prawduct: type=fix -->
+<!-- prawduct: type=fix | release=v3.1.0 | status=shipped -->
 <!-- Statusless = release-pending once merged. Small behavioral default flip in skills/pr +
      template default; no build plan. Governance-protected (skills/) → full Critic + PR. -->
 
@@ -240,7 +240,7 @@ severity medium-high → medium).
 
 ## 2026-07-17: Ratification seeds the Norm Health sweep baseline (fix)
 
-<!-- prawduct: type=fix -->
+<!-- prawduct: type=fix | release=v3.1.0 | status=shipped -->
 <!-- Statusless = release-pending once merged. Small read-side probe fix + tests +
      doc coherence. Governance-protected (skills/, lib/) → full Critic + PR. -->
 
@@ -263,7 +263,7 @@ Filed COV-4H7N (the doc-only/state-only fast-paths let this break slip onto deve
 
 ## 2026-07-17: Ratify prawduct's norm registry — 20 Direction norms (norm-lifecycle Layer 2)
 
-<!-- prawduct: type=docs -->
+<!-- prawduct: type=docs | release=v3.1.0 | status=shipped -->
 <!-- Statusless = release-pending once merged. Owner-ratified via the /prawduct:doctor
      surface-by-exception flow; governance-state + artifacts only, no code. -->
 
@@ -298,7 +298,7 @@ the `norm-registry-unratified` advisory; `coverage-status` now reports the chain
 
 ## 2026-07-17: Norm-ratification flow surfaces by exception, not a flat wall (fix)
 
-<!-- prawduct: type=fix -->
+<!-- prawduct: type=fix | release=v3.1.0 | status=shipped -->
 <!-- Statusless = release-pending once merged. Small prose/methodology fix, no build plan;
      Critic final 0 blocking / 0 warning after verify-resolutions. -->
 
@@ -321,7 +321,7 @@ taxonomy).
 
 ## 2026-07-16: Structural coverage — a forcing function for what a product owes (structural-coverage)
 
-<!-- prawduct: type=feature | scope=structural-coverage | chunks=01,02,03,04,05 -->
+<!-- prawduct: type=feature | scope=structural-coverage | chunks=01,02,03,04,05 | release=v3.1.0 | status=shipped -->
 <!-- Statusless on feature/structural-coverage = release-pending once merged. Large
      framework change, plan at .prawduct/artifacts/build-plan-structural-coverage.md,
      one commit per chunk, per-chunk Critic + closing cumulative (Chunk 05). -->
@@ -359,7 +359,7 @@ deliberately not auto-ratified). Remaining follow-up: GOV-2T6K (`templates/archi
 
 ## 2026-07-16: Norm lifecycle — normative authority across governing artifacts (norm-lifecycle)
 
-<!-- prawduct: type=feature | chunks=1,2,3,4,5,6 -->
+<!-- prawduct: type=feature | scope=norm-lifecycle | chunks=1,2,3,4,5,6 | release=v3.1.0 | status=shipped -->
 <!-- Statusless on feature/norm-lifecycle = release-pending once merged. Large framework
      change, plan at .prawduct/artifacts/build-plan-norm-lifecycle.md (GOV-7Q4N), one
      commit per chunk, per-chunk Critic + closing cumulative. -->

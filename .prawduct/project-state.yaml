@@ -321,7 +321,7 @@ views_enabled: true
 # field holds only the current in-progress plan (absent/empty -> the gates
 # fall back to artifacts/build-plan.md).
 
-active_build_plan: artifacts/build-plan-structural-coverage.md
+active_build_plan: null
 
 # =============================================================================
 # COVERAGE EVIDENCE (opt-in, v1.4+)
@@ -468,6 +468,9 @@ scope_rollups:
   legacy-backlog-format-probe:
     chunks: ["01"]
     releases: ["v2.0.17"]
+  norm-lifecycle:
+    chunks: ["1", "2", "3", "4", "5", "6"]
+    releases: ["v3.1.0"]
   prose-diet:
     chunks: ["01", "02", "03"]
     releases: ["v2.3.0"]
@@ -510,6 +513,9 @@ scope_rollups:
   stop-gate-defer:
     chunks: ["01"]
     releases: ["v2.2.2"]
+  structural-coverage:
+    chunks: ["01", "02", "03", "04", "05"]
+    releases: ["v3.1.0"]
   telemetry-model-id-normalization:
     chunks: ["01"]
     releases: ["v2.1.8"]

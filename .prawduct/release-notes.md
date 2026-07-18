@@ -5,6 +5,58 @@
      be overwritten on next regen. See change-log.md for full per-release
      bodies; this file is a digest. -->
 
+## v3.1.0
+
+### 2026-07-17: Test evidence meets real environments — false-red guard, fallback deprecation, multi-environment test_commands (fix)
+
+**Entry:** 2026-07-17: Test evidence meets real environments — false-red guard, fallback deprecation, multi-environment test_commands (fix)
+
+### 2026-07-17: Retrieval over generation — Principle 24 lands across the guidance surfaces (feature)
+
+**Entry:** 2026-07-17: Retrieval over generation — Principle 24 lands across the guidance surfaces (feature)
+
+### 2026-07-17: templates/architecture.md — the seventh strategy-class artifact gets its authoring scaffold (feature)
+
+**Entry:** 2026-07-17: templates/architecture.md — the seventh strategy-class artifact gets its authoring scaffold (feature)
+
+### 2026-07-17: Ambient merge-commit default — the standing-instruction surfaces state the merge strategy (fix)
+
+**Entry:** 2026-07-17: Ambient merge-commit default — the standing-instruction surfaces state the merge strategy (fix)
+
+### 2026-07-17: Release-audit fixes — fleet-safe layer-0 delivery, adoption-scoped norm severity, template/doc corrections (fix)
+
+**Entry:** 2026-07-17: Release-audit fixes — fleet-safe layer-0 delivery, adoption-scoped norm severity, template/doc corrections (fix)
+
+### 2026-07-17: Default PR merge strategy → merge commit (was squash) (fix)
+
+**Entry:** 2026-07-17: Default PR merge strategy → merge commit (was squash) (fix)
+
+### 2026-07-17: Ratification seeds the Norm Health sweep baseline (fix)
+
+**Entry:** 2026-07-17: Ratification seeds the Norm Health sweep baseline (fix)
+
+### 2026-07-17: Ratify prawduct's norm registry — 20 Direction norms (norm-lifecycle Layer 2)
+
+**Entry:** 2026-07-17: Ratify prawduct's norm registry — 20 Direction norms (norm-lifecycle Layer 2)
+
+### 2026-07-17: Norm-ratification flow surfaces by exception, not a flat wall (fix)
+
+**Entry:** 2026-07-17: Norm-ratification flow surfaces by exception, not a flat wall (fix)
+
+### structural-coverage
+
+**Entry:** 2026-07-16: Structural coverage — a forcing function for what a product owes (structural-coverage)
+
+**Chunks shipped:** 01, 02, 03, 04, 05
+
+### norm-lifecycle
+
+**Entry:** 2026-07-16: Norm lifecycle — normative authority across governing artifacts (norm-lifecycle)
+
+**Chunks shipped:** 1, 2, 3, 4, 5, 6
+
+See `.prawduct/change-log.md` for full details.
+
 ## v3.0.5
 
 **Entry:** 2026-07-17: SessionStart briefing no longer enumerates sibling worktrees (fix)
