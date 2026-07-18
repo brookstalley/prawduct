@@ -345,6 +345,17 @@ class TestValidateManifest:
         assert not ok
         assert "mode" in reason
 
+    def test_worktree_branch_nullable_accepted(self):
+        # PDT-WT9K visibility fields: both null (detached HEAD → branch None) and
+        # populated are valid; an absent key (older manifest) is fine too.
+        assert cc.validate_manifest(_manifest_dict(worktree=None, branch=None))[0]
+        assert cc.validate_manifest(_manifest_dict(worktree="/r", branch="main"))[0]
+
+    def test_non_string_worktree_rejected(self):
+        ok, reason = cc.validate_manifest(_manifest_dict(worktree=5))
+        assert not ok
+        assert "worktree" in reason
+
     @pytest.mark.parametrize("field", [
         "id", "mode_chosen_by", "roster", "roster_chosen_by",
         "commit_reviewed", "base_tree", "head_tree",
@@ -1045,6 +1056,76 @@ class TestVerifyResolutionsDispatch:
         result = _run_begin(repo, "--mode", "verify-resolutions")
         assert result.returncode == 2
         assert "scope-widened" in result.stderr
+
+
+class TestWorktreeVisibility:
+    """PDT-WT9K — the review makes its resolved target VISIBLE, and refuses when
+    the shell's repo differs from the resolved tree (never a silent wrong tree)."""
+
+    def test_manifest_carries_worktree_and_branch(self, tmp_path):
+        repo = tmp_path / "r"
+        _init_repo(repo)  # -b main
+        _commit_file(repo, "src/app.py", "x = 1\n", "init")
+        (repo / ".prawduct").mkdir()
+        (repo / "src/app.py").write_text("x = 2\n")  # a chunk diff
+        result = _run_begin(repo, "--mode", "chunk")
+        assert result.returncode == 0, f"stderr={result.stderr!r}"
+        manifest = json.loads((repo / PARTIALS_REL / "manifest.json").read_text())
+        assert Path(manifest["worktree"]).name == "r"
+        assert manifest["branch"] == "main"
+        # The dispatch print names the tree so a wrong one is obvious.
+        assert "reviewing worktree" in result.stdout
+        assert "branch main" in result.stdout
+
+    def test_refuses_when_cwd_repo_differs_from_resolved(self, tmp_path):
+        # Shell in repo A, but CLAUDE_PROJECT_DIR pinned to a DIFFERENT repo B —
+        # the review would target B while you work in A. Refuse loudly.
+        repo_a = tmp_path / "a"
+        _init_repo(repo_a)
+        _commit_file(repo_a, "a.py", "x = 1\n", "a")
+        repo_b = tmp_path / "b"
+        _init_repo(repo_b)
+        _commit_file(repo_b, "b.py", "y = 1\n", "b")
+        (repo_b / ".prawduct").mkdir()  # onboarded, so we reach the refuse
+        (repo_b / "b.py").write_text("y = 2\n")
+        result = subprocess.run(
+            ["python3", str(HOOK), "critic-begin", "--mode", "chunk"],
+            cwd=str(repo_a), capture_output=True, text=True,
+            env={**_git_env(repo_a), "CLAUDE_PLUGIN_ROOT": str(ROOT),
+                 "CLAUDE_PROJECT_DIR": str(repo_b)}, timeout=30,
+        )
+        assert result.returncode == 1
+        assert "refusing" in result.stderr
+        # And no manifest was written for the wrong tree.
+        assert not (repo_b / PARTIALS_REL / "manifest.json").exists()
+
+    def test_same_worktree_does_not_refuse(self, tmp_path):
+        # The common case: cwd IS the resolved tree — no refuse.
+        repo = tmp_path / "r"
+        _init_repo(repo)
+        _commit_file(repo, "src/app.py", "x = 1\n", "init")
+        (repo / ".prawduct").mkdir()
+        (repo / "src/app.py").write_text("x = 2\n")
+        result = _run_begin(repo, "--mode", "chunk")
+        assert result.returncode == 0, f"stderr={result.stderr!r}"
+        assert "refusing" not in result.stderr
+        assert (repo / PARTIALS_REL / "manifest.json").exists()
+
+    def test_detached_head_records_null_branch(self, tmp_path):
+        # gitstate.current_branch returns None on a detached HEAD (an honest
+        # null, not a misleading guess), so the manifest carries branch: null
+        # and validate_manifest accepts it — the case current_branch exists for.
+        repo = tmp_path / "r"
+        _init_repo(repo)
+        head = _commit_file(repo, "src/app.py", "x = 1\n", "init")
+        (repo / ".prawduct").mkdir()
+        _git(repo, "checkout", "--quiet", head)  # detach HEAD
+        (repo / "src/app.py").write_text("x = 2\n")
+        result = _run_begin(repo, "--mode", "chunk")
+        assert result.returncode == 0, f"stderr={result.stderr!r}"
+        manifest = json.loads((repo / PARTIALS_REL / "manifest.json").read_text())
+        assert manifest["branch"] is None
+        assert "(detached)" in result.stdout
 
 
 # ---------------------------------------------------------------------------

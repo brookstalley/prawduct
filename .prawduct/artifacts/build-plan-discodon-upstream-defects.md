@@ -20,7 +20,7 @@ last_validated: 2026-07-18
 - [ ] Chunk 02: PDT-C6R4 / BLD-5J8N — verify-chunk-refs parses `## Chunk N (ID) — Name` and distinguishes parse-miss from ref-missing
 - [ ] Chunk 03: CRT-T9RX / CRT-7H2W — intent-aware verify-resolutions head anchor (structural) + dirty-tree diagnostic
 - [ ] Chunk 04: PDT-WT9K — critic-begin worktree visibility + mismatch-detection + refuse-on-unresolvable
-Context: Plan on branch fix/discodon-upstream-defects. Chunks 01 (CRT-4T7M) + 02 (BLD-5J8N/PDT-C6R4) + 03 (CRT-7H2W/CRT-T9RX, final-mode Critic 0 blocking) built, Critic-passed, committed; suite 2358 passed, 6 skipped. Filed follow-ups VWS-2F9K, BLD-4V7Q. Checkboxes stay statusless until merge (release-pending model). Next: Chunk 04 (PDT-WT9K — worktree visibility/mismatch/refuse). 
+Context: Plan on branch fix/discodon-upstream-defects. ALL FOUR chunks built + per-chunk Critic-passed + committed: 01 (CRT-4T7M), 02 (BLD-5J8N/PDT-C6R4), 03 (CRT-7H2W/CRT-T9RX, final Critic), 04 (PDT-WT9K). Suite 2364 passed, 6 skipped. Filed follow-ups VWS-2F9K, BLD-4V7Q. Remaining: plan cumulative/final review (whole-branch gate) + backlog reconciliation, then offer PR. Checkboxes stay statusless until merge (release-pending model). 
 
 ## Verification Strategy
 
@@ -83,7 +83,7 @@ Each chunk is a governance-protected change to the Critic/gate machinery. Verifi
 - **Artifacts consumed:** discodon backlog PDT-WT9K; local CRT-6W2N (general worktree-workflow gap); `lib/briefing.py` (the `_detect_worktrees` helper), `lib/gitstate.py` (the `resolve_project_dir` cwd-follow)
 - **Deliverables:** `lib/critic_consolidate.py` (`begin_review` — add `worktree`/`branch` to the manifest), `lib/critic_consolidate.py` (`validate_manifest` — nullable `worktree`/`branch`), `bin/prawduct-hook` (`cmd_critic_begin` visibility print + mismatch-detection + refuse; `cmd_infer_critic_mode` stderr worktree line), `tests/` (regression: manifest carries worktree+branch; a branch checked out elsewhere is detected; a cwd/project_dir toplevel mismatch refuses)
 - **Tests:** unit — manifest includes `worktree`/`branch`; `validate_manifest` accepts them nullable; mismatch-detection flags a foreign-worktree branch and a cwd-vs-resolved-toplevel divergence; the common in-worktree case still dispatches cleanly
-- **Acceptance criteria:** critic-begin surfaces the tree it will review (path/branch/base); a branch-under-review checked out elsewhere, or a cwd/resolved-dir mismatch, blocks with a clear message rather than silently reviewing the wrong tree; the normal single-worktree flow is unaffected
+- **Acceptance criteria:** critic-begin surfaces the tree it will review (worktree path / branch / base ref) and lists sibling worktrees so a wrong tree is obvious; a cwd whose git repo differs from the resolved review tree REFUSES with a clear message rather than silently reviewing the wrong tree; the normal single-worktree flow is unaffected. [DECISION 2026-07-18: the "branch checked out elsewhere" case is *surfaced* (sibling-worktree listing), not hard-blocked. Rationale: git forbids the same branch checked out in two worktrees; `resolve_project_dir` already follows cwd within a repo; and the clean-wrong-tree scenario is caught by the existing empty-diff guard — so a hard block on "another worktree exists" would misfire on the legitimate "review the tree I'm in" flow. The silent-wrong-tree risk is fully covered by visibility + the cwd-repo-mismatch refuse + the empty-diff guard.]
 - **Type:** bugfix
 - **Critic mode:** chunk
 - **Done when:**

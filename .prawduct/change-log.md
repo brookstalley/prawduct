@@ -5,7 +5,7 @@
 
 ## 2026-07-18: discodon upstream defect fixes (discodon-upstream-defects)
 
-<!-- prawduct: type=bugfix | scope=discodon-upstream-defects | chunks=01,02,03 -->
+<!-- prawduct: type=bugfix | scope=discodon-upstream-defects | chunks=01,02,03,04 -->
 
 **Parent:** four prawduct defects filed upstream by the discodon product (their ids
 CRT-M3F8, PDT-C6R4, CRT-T9RX, PDT-WT9K), re-verified against `develop` (v3.1.0) by direct
@@ -49,6 +49,16 @@ CRT-4T7M (newly filed), BLD-5J8N, CRT-7H2W, CRT-6W2N. Plan:
   otherwise (both notes asserted); an end-to-end gate-composition proof in `test_cumulative_gate.py`.
   Final-mode Critic: 0 blocking; 2 warnings addressed (note tests added; plan `path:line` citations
   reformatted and the ref-token `:line` over-match filed as BLD-4V7Q).
+- **Chunk 04 — PDT-WT9K (critic-begin worktree visibility + refuse-on-unresolvable):** the dangerous
+  silent-wrong-tree root cause was already fixed (cwd-follow via `resolve_project_dir`); this adds the
+  hardening. `begin_review`'s manifest now carries `worktree`/`branch` (nullable; `branch` None on a
+  detached HEAD, via the new `gitstate.current_branch`); `cmd_critic_begin` prints the resolved
+  worktree/branch/base and lists sibling worktrees so a wrong tree is obvious, and REFUSES when the
+  shell's git repo differs from the resolved review tree; `cmd_infer_critic_mode` names the resolved
+  tree on stderr (stdout `<mode>|<rationale>` unchanged for the skill parser). `briefing._get_current_branch`
+  now delegates to `gitstate.current_branch` (de-duplicated, keeps its 'main' display default). Chunk
+  Critic: 0 blocking; 2 warnings addressed (detached-HEAD/nullable-validate edge tests added; the
+  "branch-elsewhere surfaced not blocked" reinterpretation recorded as a plan DECISION).
 
 ## 2026-07-17: Backlog service — GitHub Issues as the system-of-record (backlog-service)
 

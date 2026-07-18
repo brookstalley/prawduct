@@ -372,6 +372,10 @@ def begin_review(
         "scope": scope,
         "chunk": chunk,
         "base_reviewed": base_reviewed,
+        # Make the resolved target VISIBLE so a wrong-tree review is obvious
+        # instead of silent (PDT-WT9K). ``branch`` is None on a detached HEAD.
+        "worktree": str(project_dir),
+        "branch": gitstate.current_branch(project_dir),
     }
     ok, reason = validate_manifest(manifest)
     if not ok:
@@ -507,7 +511,9 @@ def validate_manifest(data) -> tuple[bool, str]:
     non-empty ``files_reviewed``, ``files_changed`` (a list, possibly empty —
     a same-tree verify-resolutions pass legitimately changes nothing).
     Nullable: ``base_commit``/``head_commit`` (a prior review of a dirty tree
-    has no commit), ``tier``/``scope``/``chunk``/``model``/``base_reviewed``.
+    has no commit), ``tier``/``scope``/``chunk``/``model``/``base_reviewed``,
+    ``worktree``/``branch`` (visibility fields; ``branch`` is None on a detached
+    HEAD — PDT-WT9K).
 
     The v2 (model-written) manifest shape carries none of the v3 interval
     fields, so it fails here loudly — a stale cached skill hand-authoring a
@@ -535,7 +541,7 @@ def validate_manifest(data) -> tuple[bool, str]:
     if not _str_list(data.get("files_changed")):
         return False, "'files_changed' must be a list of non-empty strings"
     for opt in ("base_commit", "head_commit", "tier", "scope", "chunk", "model",
-                "base_reviewed"):
+                "base_reviewed", "worktree", "branch"):
         val = data.get(opt)
         if val is not None and not _nonempty_str(val):
             return False, f"'{opt}' must be a non-empty string or null"
