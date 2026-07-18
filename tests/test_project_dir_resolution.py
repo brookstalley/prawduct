@@ -200,3 +200,91 @@ def test_get_project_dir_self_check_this_checkout(monkeypatch):
     assert hook.get_project_dir() == ROOT
     monkeypatch.delenv("CLAUDE_PROJECT_DIR", raising=False)
     assert hook.get_project_dir() == ROOT
+
+
+# ---------------------------------------------------------------------------
+# current_branch (gitstate probe — the branch label for the redirect note)
+# ---------------------------------------------------------------------------
+
+
+def test_current_branch_reports_worktree_and_primary(tmp_path, gitstate):
+    """The probe reads the branch at a given cwd — the worktree's own branch,
+    and the primary's, independently."""
+    primary = tmp_path / "primary"
+    _init_repo(primary)
+    wt = _add_worktree(primary, tmp_path / "wt", "feature")
+    assert gitstate.current_branch(wt) == "feature"
+    assert gitstate.current_branch(primary) == "main"
+
+
+def test_current_branch_none_outside_repo(tmp_path, gitstate):
+    """Not a git work tree → None (fail-open, no raise)."""
+    nogit = tmp_path / "nogit"
+    nogit.mkdir()
+    assert gitstate.current_branch(nogit) is None
+
+
+def test_current_branch_none_on_detached_head(tmp_path, gitstate):
+    """A detached HEAD reports the literal 'HEAD' from --abbrev-ref; that is not
+    a branch name, so it maps to None."""
+    primary = tmp_path / "primary"
+    _init_repo(primary)
+    head = _git(primary, "rev-parse", "HEAD").stdout.strip()
+    _git(primary, "checkout", "--quiet", head)  # detach
+    assert gitstate.current_branch(primary) is None
+
+
+# ---------------------------------------------------------------------------
+# Worktree-redirect note (STH-3R8K — Stop-path observability of the STH-4K7N
+# redirect: get_project_dir() resolved .prawduct/ away from CLAUDE_PROJECT_DIR)
+# ---------------------------------------------------------------------------
+
+
+def test_redirect_note_fires_when_resolved_differs_from_env(tmp_path, monkeypatch):
+    """The signal: resolved worktree toplevel != CLAUDE_PROJECT_DIR → a one-line
+    note naming the worktree, its branch, and the launch pin."""
+    primary = tmp_path / "primary"
+    _init_repo(primary)
+    wt = _add_worktree(primary, tmp_path / "wt", "feature")
+    hook = _load_hook()
+    monkeypatch.setenv("CLAUDE_PROJECT_DIR", str(primary.resolve()))
+    note = hook._worktree_redirect_note(wt)
+    assert note is not None
+    assert str(wt) in note
+    assert "feature" in note
+    assert str(primary.resolve()) in note
+
+
+def test_redirect_note_silent_when_resolved_equals_env(tmp_path, monkeypatch):
+    """Single-checkout / launched-in-worktree: env pin == resolved dir → no
+    redirect happened, so no note (no noise on the common path)."""
+    primary = tmp_path / "primary"
+    _init_repo(primary)
+    hook = _load_hook()
+    monkeypatch.setenv("CLAUDE_PROJECT_DIR", str(primary.resolve()))
+    assert hook._worktree_redirect_note(primary.resolve()) is None
+
+
+def test_redirect_note_silent_when_env_unset(tmp_path, monkeypatch):
+    """No CLAUDE_PROJECT_DIR pin → nothing to diverge from → no note."""
+    primary = tmp_path / "primary"
+    _init_repo(primary)
+    hook = _load_hook()
+    monkeypatch.delenv("CLAUDE_PROJECT_DIR", raising=False)
+    assert hook._worktree_redirect_note(primary.resolve()) is None
+
+
+def test_cmd_stop_emits_redirect_note_on_worktree(tmp_path, monkeypatch, capsys):
+    """Wiring: the Stop hook actually prints the note when it operates on a
+    redirected worktree. Asserted independently of the gate verdict — the note
+    is emitted before any gate logic and never contributes a blocker."""
+    primary = tmp_path / "primary"
+    _init_repo(primary)
+    wt = _add_worktree(primary, tmp_path / "wt", "feature")
+    (wt / ".prawduct").mkdir()  # governed repo — past cmd_stop's is_dir guard
+    hook = _load_hook()
+    monkeypatch.setenv("CLAUDE_PROJECT_DIR", str(primary.resolve()))
+    hook.cmd_stop(wt, {})
+    err = capsys.readouterr().err
+    assert "WORKTREE: .prawduct/ state resolved to worktree" in err
+    assert "feature" in err

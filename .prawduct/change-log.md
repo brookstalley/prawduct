@@ -3,6 +3,35 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-07-18: Stop hook surfaces the silent worktree `.prawduct/` redirect (stop-worktree-redirect-note)
+
+<!-- prawduct: type=feature | scope=stop-worktree-redirect-note -->
+<!-- Statusless: observability feature on develop, ahead of the batched develop→main release. -->
+
+**STH-3R8K.** `get_project_dir()` follows a session into a git worktree, resolving
+`.prawduct/` state to the worktree toplevel rather than `CLAUDE_PROJECT_DIR`
+(STH-4K7N). That redirect failed safe but *silently* — the Stop gates could
+evaluate a different tree than the launch dir with no announcement, and a wrong
+redirect (should the cwd-is-the-worktree assumption ever break) would mis-gate
+invisibly. The Stop path now makes it observable.
+
+- **Signal** (`bin/prawduct-hook`): new `_worktree_redirect_note(project_dir)`;
+  `cmd_stop` prints one stderr line — `WORKTREE: .prawduct/ state resolved to
+  worktree <path> for branch <b>, not CLAUDE_PROJECT_DIR <env> — the Stop gates
+  read THIS worktree` — exactly when the resolved dir differs from the env pin.
+  Emitted before gate logic; informational only, never a blocker. Silent on the
+  single-checkout / launched-in-worktree path (no redirect, no noise).
+- **Probe** (`lib/gitstate.py`): new reusable `current_branch(cwd)` (read-only
+  `git rev-parse --abbrev-ref HEAD`, fail-open — `None` on detached HEAD /
+  non-repo) supplies the branch label.
+- **Scope call**: the SessionStart digest/banner surface (named in the item's
+  refs) was deliberately scoped out — SessionStart runs in the launch dir and
+  cannot observe a mid-cycle worktree move, and would duplicate BRF-6K2D. The
+  Stop path is the only load-bearing surface (Critic-validated).
+- Regression tests (`tests/test_project_dir_resolution.py`, +7):
+  `current_branch` (worktree / primary / detached / off-repo), the note
+  (fires-on-differ, silent-on-equal, silent-on-env-unset), and `cmd_stop` wiring.
+
 ## 2026-07-18: Backlog service — resumable import envelope keeps its audit warnings (backlog-service)
 
 <!-- prawduct: type=bugfix | scope=backlog-service-v1 -->

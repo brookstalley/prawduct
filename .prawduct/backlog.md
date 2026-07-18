@@ -435,16 +435,6 @@
   entry and pass the branch down), unlike STH-6Q9D's three local targets — which is why it was left
   out of that chunk. Same fan-out theme as STH-6Q9D (shipped hot-path-git-batching). (builder)
 
-- **[STH-3R8K]** Surface a one-line signal when `get_project_dir` redirects `.prawduct/` resolution to a worktree toplevel
-  `effort: S · impact: S · area: stop-hook · source: critic · added: 2026-06-20 · status: open · stage: ready · related: STH-4K7N · refs: bin/prawduct-hook, hooks/digest.py, hooks/banner.py`
-
-  Surface a one-line signal when `get_project_dir` redirects `.prawduct/` resolution away from
-  `CLAUDE_PROJECT_DIR` to a worktree toplevel. Today the worktree redirect (STH-4K7N) is silent: the
-  load-bearing assumption that a hook process runs with the worktree as its cwd fails safe (toward
-  more gating) but invisibly. A brief stderr/briefing note on the Stop path ("operating on worktree
-  <path> for branch <b>") when toplevel != `CLAUDE_PROJECT_DIR` would make the redirect observable
-  and aid debugging if the assumption is ever false. (critic)
-
 - **[CRT-7Q2T]** Critic's no-test-execution rule is not structurally enforced for coordinator-dispatched subagents
   `effort: M · impact: M · area: governance/critic · source: reflection · added: 2026-06-10 · status: open · stage: design · related: CRT-3X9D, CRT-8D2W, CRT-9V4T · refs: skills/critic/SKILL.md (Structural Constraints), bin/prawduct-hook (critic-begin/critic-end) · reviewed: 2026-06-10`
 
@@ -1270,7 +1260,7 @@
 
   Update 2026-07-18 (cumulative-Critic R-4): PARTIAL fix landed in the slice PR — core.iter_alias_issues is now bounded (_ALIAS_SCAN_MAX_PAGES=100, diag line on cap trip, tested). Remaining direction folded in from the same finding: extract ONE shared issue-list paginator to replace the four near-identical loops (transport._api_paged / query._all_issues / migrate._scan_all / core.iter_alias_issues) and converge their bounds and cap-trip loudness — one place to fail loud instead of four divergent caps.
 - **[WT-7M4K]** Squash-merged worktree branch leaves a stale merge-base — SessionStart, `infer-critic-mode`/cumulative-Critic, and `pr create` over-count already-merged commits and re-review shipped code
-  `effort: L · impact: M · area: worktree · source: user · added: 2026-07-17 · reviewed: 2026-07-17 · status: open · stage: design · related: CRT-6W2N, PR-7T2K, BRF-6K2D · refs: incoming-bugs/archive/squash-merged-branch-left-stale-gates-review-merged-code-and-pr-would-replay.md, skills/pr/SKILL.md (squash default ~:138; post-merge hygiene; create pre-flight gate), bin/prawduct-hook (infer-critic-mode), skills/critic (cumulative interval), Stop/SessionStart briefing (worktree enumeration)`
+  `effort: L · impact: M · area: worktree · source: user · added: 2026-07-17 · reviewed: 2026-07-18 · status: open · stage: design · related: CRT-6W2N, PR-7T2K, BRF-6K2D · refs: incoming-bugs/archive/squash-merged-branch-left-stale-gates-review-merged-code-and-pr-would-replay.md, skills/pr/SKILL.md (merge-commit default ~:138; post-merge hygiene; create pre-flight gate), bin/prawduct-hook (infer-critic-mode), skills/critic (cumulative interval), Stop/SessionStart briefing (worktree enumeration)`
 
   **Update — merge-strategy leg handled (`pr-merge-commit-default`):** the `/pr` default flipped squash→merge-commit. A merge-commit merge keeps the branch's commits reachable from the base, so a reused worktree branch's merge-base stays correct and no gate silently re-reviews already-merged work — this dissolves the primary (default-path) failure mode. **This item stays open, rescoped to the residual:** defense-in-depth for what the default flip doesn't cover — a product that *overrides* back to squash (fix ideas #2/#3 merge-base staleness guards still apply there), and the general "a reused branch is behind the base after *any* merge" hygiene gap (fix ideas #1 detection, #4 post-merge hygiene, #5 docs nudge). Severity drops from medium-high to medium.
 
@@ -1342,6 +1332,18 @@
   Promoted 2026-07-17: Offline code + tests landed 2026-07-17 (commit 8ecd02e, cumulative-Critic 0 blocking). core.resolve_ref wires PFX→canonical alias resolution into get/link; migrate._find_by_key gains a block-id_aliases fallback skip-authority (_AliasIndex) that self-heals a human-deleted id:PFX label so a re-import can't duplicate; reconcile-labels re-derives deleted aliases. In-flight under the Chunk 06 slice (BKL-6M4T) — closes when the slice merges. Follow-ups spun off: BKL-7Q2N (mutator-side PFX resolution), BKL-9J3F (CC5 decoder gaps).
 
 ## Archive
+
+- **[STH-3R8K]** Surface a one-line signal when `get_project_dir` redirects `.prawduct/` resolution to a worktree toplevel
+  `effort: S · impact: S · area: stop-hook · source: critic · added: 2026-06-20 · reviewed: 2026-07-18 · status: shipped · stage: ready · related: STH-4K7N · closed-by: stop-worktree-redirect-note · refs: bin/prawduct-hook, hooks/digest.py, hooks/banner.py`
+
+  Surface a one-line signal when `get_project_dir` redirects `.prawduct/` resolution away from
+  `CLAUDE_PROJECT_DIR` to a worktree toplevel. Today the worktree redirect (STH-4K7N) is silent: the
+  load-bearing assumption that a hook process runs with the worktree as its cwd fails safe (toward
+  more gating) but invisibly. A brief stderr/briefing note on the Stop path ("operating on worktree
+  <path> for branch <b>") when toplevel != `CLAUDE_PROJECT_DIR` would make the redirect observable
+  and aid debugging if the assumption is ever false. (critic)
+
+  Shipped 2026-07-18 (closed-by: stop-worktree-redirect-note). Delivered: cmd_stop now emits a one-line stderr signal ("WORKTREE: .prawduct/ state resolved to worktree <path> for branch <b>, not CLAUDE_PROJECT_DIR (<env>) — the Stop gates read THIS worktree (STH-4K7N)") whenever get_project_dir() redirected .prawduct/ resolution to a worktree toplevel differing from CLAUDE_PROJECT_DIR. New reusable lib/gitstate.py current_branch() probe supplies the branch label; new _worktree_redirect_note() helper in bin/prawduct-hook computes it (silent when env unset or equal — no noise on the single-checkout / launched-in-worktree path). 7 tests added in tests/test_project_dir_resolution.py; full suite green (2371 passed); Critic final-mode clean (0/0/1). DELIBERATE SCOPE DECISION (not a silent drop of the refs' digest.py/banner.py mention): the SessionStart digest/banner surface was scoped OUT — (a) SessionStart runs in the launch dir and provably cannot observe a mid-cycle worktree move (the highest-risk case), so the Stop path is the load-bearing surface the critic named; (b) BRF-6K2D already emits SessionStart worktree-awareness, so a second SessionStart line would duplicate it. The Critic independently validated Stop-path as the correct surface.
 
 - **[BKL-9V2W]** migrate.import_items: resumable error envelope (TransportError path) drops accrued warnings[] — alias self-heal audit lines lost and never re-emitted on resume
   `effort: S · impact: S · area: backlog-service · kind: bug · source: critic · added: 2026-07-18 · reviewed: 2026-07-18 · status: shipped · stage: ready · related: BKL-6M4T, BKL-3K9N · closed-by: fix/import-resumable-warnings`

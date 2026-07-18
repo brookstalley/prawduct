@@ -1003,6 +1003,38 @@ def _read_stop_stdin() -> dict:
     return data if isinstance(data, dict) else {}
 
 
+def _worktree_redirect_note(project_dir: Path) -> str | None:
+    """One-line Stop-path signal when ``.prawduct/`` resolution was REDIRECTED
+    to a git-worktree toplevel that differs from ``CLAUDE_PROJECT_DIR``.
+
+    ``get_project_dir()`` follows the session into a worktree: the harness pins
+    ``CLAUDE_PROJECT_DIR`` to the launch dir, but a session that moved into a
+    worktree writes — and the Stop gates must read — that worktree's state
+    (STH-4K7N). That redirect otherwise fails safe but *silently*; surfacing it
+    makes the tree the gates below evaluate observable, and makes a wrong
+    redirect visible (should the cwd-is-the-worktree assumption ever break)
+    instead of invisibly mis-gating.
+
+    Returns ``None`` — no note, no noise — when the env pin is unset or already
+    equals the resolved dir (the common single-checkout / launched-in-worktree
+    case: no redirect happened). Observational only; never contributes a blocker."""
+    env_raw = os.environ.get("CLAUDE_PROJECT_DIR")
+    if not env_raw:
+        return None
+    try:
+        env_dir = Path(env_raw).resolve()
+    except Exception:  # prawduct:allow prawduct/broad-except -- a malformed env path must not crash the Stop hook
+        return None
+    if env_dir == project_dir:
+        return None
+    branch = _gitstate().current_branch(project_dir)
+    branch_str = f" for branch '{branch}'" if branch else ""
+    return (
+        f"WORKTREE: .prawduct/ state resolved to worktree {project_dir}{branch_str}, "
+        f"not CLAUDE_PROJECT_DIR ({env_dir}) — the Stop gates read THIS worktree (STH-4K7N)."
+    )
+
+
 def cmd_stop(project_dir: Path, stop_input: dict | None = None) -> int:
     """Check governance gates before session end.
 
@@ -1020,6 +1052,15 @@ def cmd_stop(project_dir: Path, stop_input: dict | None = None) -> int:
     # Skip if no .prawduct directory
     if not prawduct_dir.is_dir():
         return 0
+
+    # STH-3R8K: make STH-4K7N's silent worktree redirect observable. When the
+    # session moved into a git worktree, get_project_dir() resolved .prawduct/ to
+    # that worktree's toplevel rather than CLAUDE_PROJECT_DIR — announce it here
+    # so the tree the gates below evaluate is never a mystery (SessionStart ran
+    # in the launch dir and could not see a mid-cycle move). Informational only.
+    _redirect_note = _worktree_redirect_note(project_dir)
+    if _redirect_note:
+        print(_redirect_note, file=sys.stderr)
 
     blockers: list[str] = []
     canary_findings: list[str] = []
