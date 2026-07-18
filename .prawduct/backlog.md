@@ -34,6 +34,8 @@
 
   Pre-PR cleanup (2026-07-17 cumulative-Critic warning): strip 9 dangling build-plan chunk-number refs from shipped source before the slice PR (they resolve to nothing once /prawduct:pr deletes the build plan; durable ids like CC1/CRASH-2/DM7 already sit alongside). Locations: lib/backlog/transport.py:322,456,476; migrate.py:12,22,247,326,574; query.py:18. Also reconcile the two follow-up bodies (BKL-7Q2N/BKL-9J3F) that narrate BKL-4W7H as "shipped" once the slice actually merges.
 
+  Owner checkpoint 2026-07-18 — live run HELD; scrub dispositions (5 merges + 13 drops), restructure scope (open survivors only), and MIG-M4-REMOVE (import as-is) all owner-approved and recorded in artifacts/migration-scrub-decisions.md. The migration session executes against that artifact; re-confirm only sign-off + source drift.
+
 - **[BKL-5R2K]** Wire the merge/transfer redirect-follow (`ids.resolve_redirect` / `migrate.resolve`) into a real get/pick consumer
   `effort: S · impact: S · area: backlog-service · source: critic · added: 2026-07-17 · status: open · stage: ready · refs: artifacts/build-plan-backlog-service.md`
 
