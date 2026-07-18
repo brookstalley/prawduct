@@ -5,7 +5,7 @@
 
 ## 2026-07-18: discodon upstream defect fixes (discodon-upstream-defects)
 
-<!-- prawduct: type=bugfix | scope=discodon-upstream-defects | chunks=01,02 -->
+<!-- prawduct: type=bugfix | scope=discodon-upstream-defects | chunks=01,02,03 -->
 
 **Parent:** four prawduct defects filed upstream by the discodon product (their ids
 CRT-M3F8, PDT-C6R4, CRT-T9RX, PDT-WT9K), re-verified against `develop` (v3.1.0) by direct
@@ -36,6 +36,19 @@ CRT-4T7M (newly filed), BLD-5J8N, CRT-7H2W, CRT-6W2N. Plan:
   false-negative habituation. The `regen-views`/`CHUNK_LINE_RE` colon-Status residual is filed
   as VWS-2F9K (not silently expanded); the colon-form learning was updated. Verified via a
   3-case CLI exercise (located+ok / missing-ref / cannot-verify) on an H2 fixture.
+- **Chunk 03 — CRT-T9RX / CRT-7H2W (intent-aware verify-resolutions head anchor):**
+  `begin_review`'s verify-resolutions branch now reads intent from git: when a COMMITTED delta
+  exists since the prior review (`critic_mode._committed_files_since`), it anchors
+  `head_tree = capture["head_tree"]` (committed HEAD — the PR-gate target) and note-and-excludes
+  WIP like the cumulative branch; otherwise it keeps the working-tree anchor (the Stop-hook
+  target), preserving CRT-4J8W dirty-tree verify. So a post-cumulative fix that carries a stray
+  judgeable uncommitted file no longer leaves `check-cumulative-critic` `uncovered` after a
+  successful verify-resolutions. Diagnostic half of the CRT-7H2W layered pair also shipped: a
+  judgeable-WIP WARNING at record time and a dirty-tree hint in the gate's `uncovered` remedy.
+  Tests: manifest anchors committed HEAD in the committed-delta case + keeps the working tree
+  otherwise (both notes asserted); an end-to-end gate-composition proof in `test_cumulative_gate.py`.
+  Final-mode Critic: 0 blocking; 2 warnings addressed (note tests added; plan `path:line` citations
+  reformatted and the ref-token `:line` over-match filed as BLD-4V7Q).
 
 ## 2026-07-17: Backlog service — GitHub Issues as the system-of-record (backlog-service)
 

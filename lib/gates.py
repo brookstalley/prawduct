@@ -974,7 +974,10 @@ def check_cumulative_critic(project_dir: Path) -> int:
         "the fact composition needs. If a pre-commit review was followed by a "
         "selective commit (only part of the reviewed state committed), the "
         "commit's tree was never reviewed — /prawduct:critic verify-resolutions "
-        "reviews that delta and closes the gap.",
+        "reviews that delta and closes the gap. If verify-resolutions already ran "
+        "but the working tree still holds an uncommitted fix with no committed "
+        "delta, its fact anchored the WORKING tree, not committed HEAD — commit "
+        "(or stash) the WIP and re-run so the fact ends at the tree this gate targets.",
         file=sys.stderr,
     )
     return 1

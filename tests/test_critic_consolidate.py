@@ -986,6 +986,55 @@ class TestVerifyResolutionsDispatch:
         assert result.returncode == 1
         assert "no prior review" in result.stderr
 
+    def _seed_commit_then_fix_with_dirty_wip(self, repo: Path) -> tuple[str, str]:
+        """Prior review at the initial commit; the fix is COMMITTED (a real
+        committed delta since the prior review), then a judgeable uncommitted
+        file dirties the tree. Returns (fix commit sha, prior id)."""
+        head = _commit_file(repo, "src/app.py", "x = 1\n", "init")
+        head_tree = _git(repo, "rev-parse", "HEAD^{tree}").stdout.strip()
+        (repo / ".prawduct").mkdir(exist_ok=True)
+        prior_id = _seed_prior_review_with_blocker(
+            repo, head, head_tree=head_tree, head_commit=head
+        )
+        fix = _commit_file(repo, "src/app.py", "x = 2  # fixed\n", "fix blocker")
+        (repo / "src/extra.py").write_text("y = 3\n")  # judgeable uncommitted WIP
+        return fix, prior_id
+
+    def test_committed_fix_with_dirty_wip_anchors_committed_head(self, tmp_path):
+        # CRT-7H2W: with a committed delta since the prior review, the head
+        # anchors COMMITTED HEAD (the PR-gate target), not the dirty working
+        # tree — so a stray judgeable uncommitted file no longer leaves the PR
+        # gate uncovered after a successful verify-resolutions.
+        repo = tmp_path / "r"
+        _init_repo(repo)
+        fix, prior_id = self._seed_commit_then_fix_with_dirty_wip(repo)
+        result = _run_begin(repo, "--mode", "verify-resolutions")
+        assert result.returncode == 0, f"stderr={result.stderr!r}"
+        manifest = json.loads((repo / PARTIALS_REL / "manifest.json").read_text())
+        committed_tree = _git(repo, "rev-parse", "HEAD^{tree}").stdout.strip()
+        assert manifest["head_commit"] == fix          # committed HEAD, not None
+        assert manifest["head_tree"] == committed_tree  # committed tree, not working
+        prior_fact = next(f for f in _store_facts(repo, "review") if f["id"] == prior_id)
+        assert manifest["base_tree"] == prior_fact["body"]["head_tree"]
+        # The dirty-but-anchored-to-committed-HEAD diagnostic note fires.
+        assert "anchored to committed HEAD" in result.stderr
+
+    def test_uncommitted_fix_keeps_working_tree_anchor(self, tmp_path):
+        # Case (b): no committed delta — the fix is still in the working tree.
+        # The anchor stays the working tree (head_commit None) so the Stop-hook
+        # gate composes and the PR gate legitimately stays pending (CRT-4J8W
+        # dirty-tree verify preserved).
+        repo = tmp_path / "r"
+        _init_repo(repo)
+        head, _prior_id = self._seed_and_fix(repo)  # fix left UNCOMMITTED
+        result = _run_begin(repo, "--mode", "verify-resolutions")
+        assert result.returncode == 0, f"stderr={result.stderr!r}"
+        manifest = json.loads((repo / PARTIALS_REL / "manifest.json").read_text())
+        assert manifest["head_commit"] is None  # dirty tree, no committed delta
+        # The judgeable-WIP "uncovered until you commit" WARNING fires so the
+        # working-tree-vs-committed-HEAD mismatch is surfaced, not silent.
+        assert "vouches for the WORKING tree" in result.stderr
+
     def test_verify_scope_widened_exits_2(self, tmp_path):
         repo = tmp_path / "r"
         _init_repo(repo)

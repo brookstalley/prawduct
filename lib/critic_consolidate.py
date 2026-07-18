@@ -248,8 +248,51 @@ def begin_review(
                 "reason": f"prior review fact {prior.get('id')!r} records no head_tree",
             }
         base_commit = prior_body.get("head_commit")
-        head_tree = capture["tree"]
-        head_commit = dispatch_commit if capture["clean"] else None
+
+        # Intent-aware head anchor (CRT-7H2W). verify-resolutions serves two gate
+        # targets that DIVERGE once the working tree is dirty: the PR gate
+        # composes to COMMITTED HEAD, the Stop-hook gate to the WORKING tree. A
+        # single working-tree anchor left the PR gate ``uncovered`` whenever a
+        # committed fix carried along a stray judgeable uncommitted file. Read
+        # intent from git: if the builder COMMITTED work since the prior review
+        # (the post-cumulative-fix / PR-gate case), anchor the review edge at
+        # committed HEAD so it composes to the PR gate's target and note-and-
+        # exclude any WIP, exactly like the cumulative branch. Otherwise
+        # (fix-in-progress in a dirty tree) keep the working-tree anchor so the
+        # Stop-hook gate composes and the PR gate legitimately stays pending until
+        # the fix is committed — preserving CRT-4J8W dirty-tree verify.
+        from . import critic_mode  # noqa: PLC0415 — lazy; avoids an import cycle
+        prior_commit = prior_body.get("head_commit") or prior_body.get("dispatch_commit")
+        committed_since = (
+            critic_mode._committed_files_since(project_dir, prior_commit)
+            if prior_commit else set()
+        )
+        if committed_since:
+            head_tree = capture["head_tree"]  # committed HEAD — the PR-gate target
+            head_commit = dispatch_commit
+            if not capture["clean"]:
+                notes.append(
+                    "working tree dirty at verify-resolutions dispatch — anchored "
+                    "to committed HEAD (a committed delta exists since the prior "
+                    "review); uncommitted changes are NOT in the reviewed scope"
+                )
+        else:
+            head_tree = capture["tree"]  # working tree — the Stop-hook target
+            head_commit = dispatch_commit if capture["clean"] else None
+            if not capture["clean"]:
+                from . import coverage_algebra  # noqa: PLC0415 — lazy
+                wip = (
+                    evidence.tree_diff(project_dir, capture["head_tree"], capture["tree"])
+                    or []
+                )
+                if coverage_algebra.judgeable_files(wip):
+                    notes.append(
+                        "working tree dirty with judgeable uncommitted files and no "
+                        "committed delta since the prior review — this fact vouches "
+                        "for the WORKING tree, but the cumulative/PR gate targets "
+                        "committed HEAD, so it will read `uncovered` until you commit "
+                        "(or stash) the fix and re-run verify-resolutions"
+                    )
         delta = evidence.tree_diff(project_dir, base_tree, head_tree)
         if delta is None:
             return {

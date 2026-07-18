@@ -7,6 +7,11 @@
 
 ## Open
 
+- **[BLD-4V7Q]** verify-chunk-refs flags a false missing-ref on a backticked code-location token carrying a `:line` / `:line-range` suffix (`path:line`)
+  `effort: S · impact: S · area: critic · kind: bug · source: critic · added: 2026-07-18 · status: open · stage: ready · related: BLD-8F2Q, BLD-5J8N, BLD-3M7K, BLD-4K7P · refs: lib/buildplan_refs.py (_parse_build_plan_chunk_refs, _looks_like_file_path)`
+
+  `_parse_build_plan_chunk_refs` strips a `::symbol` suffix (the BLD-8F2Q carveout) but NOT a single `:line` / `:line-range` suffix, so a backticked code-location citation like `lib/critic_mode.py:452` or `lib/foo.py:5-8` is existence-checked literally as the whole `path:line` token and reported `missing-ref`. Same false-negative-habituation class BLD-5J8N just fixed at the chunk-HEADER layer, but here in the ref-TOKEN family (siblings: BLD-2R9X glob, BLD-8F2Q path::symbol, BLD-4K7P inline-code/URL, BLD-3M7K git-ref). Fix-shape: strip a trailing `:<digits>` or `:<digits>-<digits>` from a backticked path token before the existence check, mirroring the `::symbol` carveout, in `_parse_build_plan_chunk_refs` / `_looks_like_file_path`. Filed from /critic.
+
 - **[VWS-2F9K]** regen-views `CHUNK_LINE_RE` + the `chunks=`→Status-line match still require the colon `Status` form after BLD-5J8N broadened the em-dash form elsewhere — checkboxes silently fail to flip at merge
   `effort: S · impact: M · area: views · kind: bug · source: builder · added: 2026-07-18 · status: open · stage: ready · related: BLD-5J8N, GOV-8N4V · refs: lib/views.py (CHUNK_LINE_RE, collect_shipped_chunks), .prawduct/learnings-detail.md (colon-form learning)`
 
