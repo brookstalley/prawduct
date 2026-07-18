@@ -20,7 +20,7 @@ last_validated: 2026-07-18
 - [ ] Chunk 02: PDT-C6R4 / BLD-5J8N — verify-chunk-refs parses `## Chunk N (ID) — Name` and distinguishes parse-miss from ref-missing
 - [ ] Chunk 03: CRT-T9RX / CRT-7H2W — intent-aware verify-resolutions head anchor (structural) + dirty-tree diagnostic
 - [ ] Chunk 04: PDT-WT9K — critic-begin worktree visibility + mismatch-detection + refuse-on-unresolvable
-Context: Plan on branch fix/discodon-upstream-defects. ALL FOUR chunks built + per-chunk Critic-passed + committed: 01 (CRT-4T7M), 02 (BLD-5J8N/PDT-C6R4), 03 (CRT-7H2W/CRT-T9RX, final Critic), 04 (PDT-WT9K). Suite 2364 passed, 6 skipped. Filed follow-ups VWS-2F9K, BLD-4V7Q. Remaining: plan cumulative/final review (whole-branch gate) + backlog reconciliation, then offer PR. Checkboxes stay statusless until merge (release-pending model). 
+Context: COMPLETE on branch fix/discodon-upstream-defects. All four chunks built + per-chunk Critic-passed + committed (01 CRT-4T7M, 02 BLD-5J8N/PDT-C6R4, 03 CRT-7H2W/CRT-T9RX final Critic, 04 PDT-WT9K), plus a cumulative whole-branch review (0 blocking/0 warning/7 note) whose one code NOTE (bare-worktree KeyError) was fixed and covered by a verify-resolutions pass. PR gate `check-cumulative-critic` SATISFIED (2 facts, 0 unresolved blocking). Suite 2364 passed, 6 skipped. Resolved items archived (CRT-4T7M, BLD-5J8N, CRT-7H2W); follow-ups filed (VWS-2F9K, BLD-4V7Q); CRT-6W2N partially advanced. Ready for PR when the user asks. Checkboxes stay statusless until merge (release-pending model). 
 
 ## Verification Strategy
 
