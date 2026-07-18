@@ -17,16 +17,16 @@ last_validated: null
 
 # Data Model
 
-## Direction
-
-<!-- Normative statements that BIND future work — not descriptions of current behavior. Each
-     entry: a bold **Statement.**, then `Why:` (required), `Status:` (steady-state | in-transition
-     + its tracking item), and optional `Retroactivity:` / `Rulings:` lines. Norms bind;
-     descriptions track — see `docs/norms.md` for the anatomy, the normative-vs-descriptive test,
-     and the lifecycle rules. This is the artifact's norm home; when the product has declared
-     none, delete this whole section — an empty `## Direction` heading reads as ratified norms
-     to the advisory probes; record `norm_registry_ratified: none — no norms to ratify` in
-     `project-state.yaml` instead. Don't restate the rules here. -->
+<!-- OPTIONAL norm home ("Direction"). To record a norm, add a `## Direction` heading here with
+     entries — each: a bold **Statement.**, then `Why:` (required), `Status:` (steady-state |
+     in-transition + its tracking item), and optional `Retroactivity:` / `Rulings:` lines.
+     Normative statements BIND future work — not descriptions of current behavior. Norms bind;
+     descriptions track — see /prawduct:methodology norms for the anatomy, the
+     normative-vs-descriptive test, and the lifecycle rules. Add the heading ONLY with a real
+     entry: a bare `## Direction` heading reads as ratified norms to the advisory probes. A
+     product with no norms to declare leaves this comment as-is — "none to ratify" is recorded
+     owner-confirmed through the doctor's Norm Ratification Flow (/prawduct:doctor), never as a
+     side effect of authoring this artifact. Don't restate the rules here. -->
 
 ## Entities
 

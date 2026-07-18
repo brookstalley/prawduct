@@ -61,12 +61,12 @@ triggers (a multi-user flip re-opens auth, data isolation, and audit; a sensitiv
 re-opens the security model), and run an **assumption audit** — walk the assumptions the old
 classification licensed and surface the ones the new reality invalidates. The audit's output is
 **backlog requirements**, not a mental note. Update `classification` in `project-state.yaml` so the
-flip is durable (`docs/norms.md`, Ambient norms).
+flip is durable (`/prawduct:methodology norms`, Ambient norms).
 
 **A norm surfaced.** When discovery produces a statement meant to bind future work ("all money is
 integer cents", "every asset is vector"), capture it as a norm at birth — **statement + why +
 retroactivity** — in the governing artifact's `## Direction` section or a `project-preferences.md`
-row, not as loose prose a later build has to re-infer (`docs/norms.md`).
+row, not as loose prose a later build has to re-infer (`/prawduct:methodology norms`).
 
 ## Reconciling an Existing or Docs-First Product
 
@@ -88,6 +88,8 @@ Risk Calibration sets discovery *depth* for a new product. Within any work — p
 3. **Does correctness depend on timely, post-training-cutoff, or fast-moving data?** If yes, the gap is *volatility*: verify against current evidence — your training is stale by construction.
 
 Questions 2 and 3 are different gaps with different remedies: a knowledge gap wants more reasoning or decomposition; a volatility gap wants research. (A design can be high on both.)
+
+**The gate is cost asymmetry, not curiosity** (Principle 24 — Retrieval Over Generation). When the gap between checking and being wrong is wide — a free read or a two-minute search against an experiment, a deploy, or days of rework — the cheap check is mandatory, not optional. The corrective is not "research everything"; it is noticing when the asymmetry just went wide and retrieving before you commit.
 
 **Re-run this when the domain expands — not just at kickoff.** A mid-work scope expansion resets your knowledge-confidence for the *new* surface. Treat it as its own work and re-ask the three questions — the most common way unresearched complexity enters is a mid-build expansion inheriting the original scope's (misplaced) confidence.
 

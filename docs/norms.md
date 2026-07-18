@@ -25,6 +25,17 @@ decision — and any change to normative content without one, and any norm birth
 is an **undocumented architectural decision**: the Critic routes it to Goal 3, **BLOCKING**.
 This applies to every form in this spec (amendments, rulings, exceptions, stopgaps,
 retroactivity, characteristic flips), so no individual rule below needs its own severity.
+**Scoped to adoption:** BLOCKING presumes the product has adopted norms to depart *from* —
+any `## Direction` section in `.prawduct/artifacts/*.md`, or norm rows in the preferences
+Enforcement table. **Recorded classification fields count as adopted too:** recording a
+structural characteristic is how an ambient norm is adopted, so silently flipping a
+*recorded* characteristic is BLOCKING even where no Direction section exists (a
+never-recorded characteristic has no norm to depart from). In a product with **no** adopted
+norms on any of these surfaces, the same detections surface as **NOTE** (name the would-be
+norm and its capture path — a Direction entry or preferences row);
+a repo is never blocked into a lifecycle it has not adopted. The PR reviewer's norm-amendment
+check emits **WARNING** at its layer regardless (the cumulative Critic is the blocking organ —
+`skills/pr/review-protocol.md` explains the layering).
 
 Two corollaries:
 
@@ -90,7 +101,7 @@ Norms live where they already live — **no new file class, no norm IDs, no sche
   Status / Retroactivity / Rulings fields are normative; attached examples and current-state
   notes are descriptive surroundings, updatable as ordinary upkeep.
 - **`project-state.yaml` classification fields** — the *ambient* norms: structural
-  characteristics (`multi_party`, `handles_sensitive_data`, `runs_unattended`, …). These are
+  characteristics (`has_multiple_party_types`, `handles_sensitive_data`, `runs_unattended`, …). These are
   their own index and take no Enforcement-table row; their machinery is the characteristic-flip
   protocol below plus the doctor's classification-currency check.
 
@@ -251,8 +262,8 @@ decisions subject to challenge (Principle 19 extended to products) — enforced,
 The most load-bearing norms are never written as sentences, because they were universal at
 birth: single-user, single-tenant, one-region, trusted-input. Their written home is
 `project-state.yaml`'s classification. **Flipping a structural characteristic is a norm
-amendment** ("add sign-in and per-profile config" is not a feature — it flips `multi_party`),
-and it triggers, in order:
+amendment** ("add sign-in and per-profile config" is not a feature — it flips
+`has_multiple_party_types`), and it triggers, in order:
 
 1. **Record the flip** as a recorded decision — writing the classification field if it was
    never captured (the flip is often the field's first recording).
@@ -275,7 +286,7 @@ audit sees them.
 |---|---|---|
 | Prompt time | work-model tripwires | a norm-shaped requirement entering undocumented |
 | Planning | `governed_by:` reconciliation, seeded by `prawduct-hook jurisdiction` | jurisdiction + the per-norm disposition lines (incl. *inapplicable because X*); departures surfaced as decisions before code |
-| Review (event-domain) | Critic Goals 3/4 + Learnings Cross-Check; PR reviewer | departure without a recorded decision (BLOCKING, all forms); the amend tell incl. doc-only; flip follow-ups present; norm-staleness signals (→ NOTE recommending `/prawduct:doctor`). The Critic considers jurisdiction independently — `governed_by:` is an input, not a boundary. |
+| Review (event-domain) | Critic Goals 3/4 + Learnings Cross-Check; PR reviewer | departure without a recorded decision (Critic: BLOCKING, all forms, where ratified norms exist; NOTE in a norm-less product — see Severity above; PR reviewer: WARNING at its layer); the amend tell incl. doc-only; flip follow-ups present; norm-staleness signals (→ NOTE recommending `/prawduct:doctor`). The Critic considers jurisdiction independently — `governed_by:` is an input, not a boundary. |
 | Session sync (time-domain, cheap) | advisory probes | the mechanical hooks, canonically: **dated `revisit:` expiries; backlog-id literals in Status/Why lines whose items are shipped/archived (dead why); in-transition tracking items unedited past the window (stall); structural presence** (strategy artifacts with no Direction anywhere / missing Enforcement columns → unratified; Norm Health sweep overdue while Direction sections exist) |
 | Periodic (time-domain, deep) | janitor Norm Health theme | erosion distance + trend, decay in prose whys, event-bound triggers walked, registry hygiene — the re-affirm-or-retire fork |
 | Repair | `/prawduct:doctor` | ratification flow (below) + registry integrity: whys present, mechanisms exist, in-transition entries carry tracking ids, classification currency |
@@ -352,11 +363,13 @@ puts in the owner's hands.
   norm columns), pointing at the fix.
 - **On demand, owner-ratified:** the `/prawduct:doctor` ratification flow reads the product's
   strategy artifacts, preferences, and learnings; proposes candidate norms (statement + why +
-  status, citing backlog ids in whys where the rationale rests on tracked work); batches them
-  for confirm-or-correct; and writes ratified norms into Direction sections and Enforcement
-  rows — additively and non-destructively. "No norms to ratify" is a valid outcome
-  (proportionality) and clears the advisory; the answer is shared-state, so one teammate's
-  ratification clears it for everyone.
+  status, citing backlog ids in whys where the rationale rests on tracked work); **triages**
+  them — decision-worthy candidates (aspirational, practice-not-written, wording fork, collision,
+  whyless) surfaced individually with their fork, the obvious rest bulk-confirmed in one line,
+  never a flat wall that buries the few real decisions and invites rubber-stamping — and writes
+  ratified norms into Direction sections and Enforcement rows, additively and non-destructively.
+  "No norms to ratify" is a valid outcome (proportionality) and clears the advisory; the answer
+  is shared-state, so one teammate's ratification clears it for everyone.
 
 **Worked example.** A product's observability strategy declared, in narrative prose, that
 OpenTelemetry was "the unified trace substrate" — while the collector export sat deferred in

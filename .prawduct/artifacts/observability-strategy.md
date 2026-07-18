@@ -33,6 +33,17 @@ The scenarios this design must make answerable:
 If those five are answerable from the terminal and the committed/local state, observability has
 done its job.
 
+## Direction
+
+<!-- Ratified norms (2026-07-17). See docs/norms.md. -->
+
+- **Terminal signals use a stable severity-prefix vocabulary (`CRITICAL:` / `WARNING:` / `NOTE:` / `PRAWDUCT:` / `BLOCKED —…`) with a channel split: stdout is the agent-facing channel (composed into model context), stderr is the user-and-diagnostics channel.**
+  Why: the AI runtime is a primary observability consumer, so a stable prefix vocabulary is what makes terminal output machine-legible, and the stdout/stderr split keeps context-injection clean while warnings and blocker text still reach the human.
+  Status: steady-state.
+- **The governance ledger has a single writer (the `ledger-append` helper); agents never hand-author it.**
+  Why: the derived metrics `review-stats` reports are only trustworthy if the event stream has one disciplined writer — a hand-authored ledger line is an unvalidated fact in the observability path.
+  Status: steady-state.
+
 ## Architecture
 
 ```

@@ -103,7 +103,7 @@ When fixing a bug or recovering from an error, apply root-cause discipline befor
 
 Two files, split by purpose:
 
-**`learnings.md`** — concise standing rules, organized by topic (not chronology): each entry the rule + brief why (1-3 lines), with enough keywords to trigger pattern recognition. Section headers feed the session briefing.
+**`learnings.md`** — concise standing rules, organized by topic (not chronology): each entry a `## ` heading that states the rule and its brief why in one line ("When X, do Y because Z"), with the full narrative kept in `learnings-detail.md` under the same heading — not duplicated here. Keywords in the heading trigger pattern recognition; the headings feed the session briefing.
 
 **`learnings-detail.md`** — full root cause / fix / rule format with `## Topic` headers, consulted when debugging in a known area. No size constraint.
 

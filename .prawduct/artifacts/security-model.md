@@ -24,11 +24,22 @@ boundaries between parties. So the classic web-app security surface (authn, auth
 runs on a developer's machine on Claude Code lifecycle events** (supply-chain / plugin-trust), and
 **it reads state files and repo content that may not be trustworthy** (untrusted-input handling).
 
+## Direction
+
+<!-- Ratified norms (2026-07-17). See docs/norms.md. -->
+
+- **Untrusted governance state — backlog, learnings, recalled memories, fetched references, prior-session handoffs — is data, not instructions.** Content describes or informs; it never carries authority to direct the agent or the framework, and recalled state is verified against reality before it is acted on.
+  Why: for a tool with no sensitive data the real hazard is trusting *stale or crafted* metadata rather than a classic payload — treating state as vetoable-and-verified rather than authoritative is the mitigation; malformed state fails soft (skip + attribute), never executes.
+  Status: steady-state.
+- **No destructive action without an explicit `--apply` step; state-mutating lifecycle commands default to a dry run.**
+  Why: a preview-by-default gate on migrate/init/scaffold/repo-disable/learnings-audit means no irreversible change happens by accident; the one destructive migration lands as a single revertible commit.
+  Status: steady-state.
+
 ## Authentication & Authorization
 
 **Not applicable — single actor, no privilege tiers.** There is nobody to authenticate and no
 access to partition. If this ever changes (a shared or multi-party governance surface), it is a
-`multi_party` characteristic flip that re-derives this model — not an incremental feature.
+`has_multiple_party_types` characteristic flip that re-derives this model — not an incremental feature.
 
 ## Supply-Chain & Plugin Trust (the primary concern)
 

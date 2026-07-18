@@ -1246,11 +1246,20 @@ class TestTestEvidenceRecord:
         assert _run_in(repo, "validate-evidence").returncode == 0
 
     def test_failing_suite_exits_nonzero_but_still_writes(self, tmp_path):
-        repo = self._repo_with_test(tmp_path, "def test_bad():\n    assert False\n")
+        # A mixed run (some pass, some fail): at least one pass proves the
+        # suite launched in a working environment, so the failure is real
+        # evidence and must be recorded, not dropped. The 0-passed-only-errors
+        # fallback signature is the ONE deliberate carve-out — refused as a
+        # launch-environment error (TestDeclaredCommandEnvironments covers it).
+        repo = self._repo_with_test(
+            tmp_path,
+            "def test_ok():\n    assert True\n"
+            "def test_bad():\n    assert False\n",
+        )
         res = _run_in(repo, "test-evidence", "record")
         assert res.returncode == 1, res.stderr
         ev = json.loads((repo / ".prawduct" / ".test-evidence.json").read_text())
-        assert ev["failed"] >= 1 and ev["passed"] == 0
+        assert ev["failed"] >= 1 and ev["passed"] == 1
         # evidence is still schema-valid (a failing run is recorded, not dropped)
         assert _run_in(repo, "validate-evidence").returncode == 0
 
@@ -2087,3 +2096,233 @@ class TestJurisdictionSubcommand:
         )
         assert result.returncode == 0, result.stderr
         assert ".prawduct/artifacts/telemetry-strategy.md" in result.stdout
+
+
+# =============================================================================
+# test-evidence record — declared commands, multi-environment, false-red guard
+# =============================================================================
+
+
+class TestDeclaredCommandEnvironments:
+    """The record on-ramp for real environments: the interpreter fallback can
+    no longer persist a wrong-environment false-red (0 passed + only errors
+    refuses, with migration guidance), it nudges toward declaring the canonical
+    command on every run, and ``test_commands:`` lets a polyglot product
+    (backend + web + mobile) declare one environment-aware invocation per
+    suite — each emits its own JUnit, counts aggregate into ONE record, and
+    any launch failure fails the whole record rather than persisting partial
+    evidence."""
+
+    def _repo(self, tmp_path, name: str, state: str = "") -> Path:
+        repo = tmp_path / name
+        repo.mkdir()
+        (repo / ".prawduct").mkdir()
+        (repo / ".prawduct" / "project-state.yaml").write_text(state)
+        (repo / "README.md").write_text("t\n")
+        _git(repo, "init", "-b", "main")
+        _git(repo, "add", "-A")
+        _git(repo, "commit", "-m", "c1")
+        _make_session_start(repo / ".prawduct", offset_seconds=-60)
+        return repo
+
+    @staticmethod
+    def _junit_script(repo: Path, name: str, passed: int, failed: int = 0) -> str:
+        """A tiny runner writing a JUnit report to argv[1] — stands in for an
+        arbitrary toolchain (npm test, gradle, swift test) without depending
+        on one being installed."""
+        cases = "".join(
+            f'<testcase classname="c" name="p{i}" time="0.01"/>'
+            for i in range(passed)
+        ) + "".join(
+            f'<testcase classname="c" name="f{i}" time="0.01">'
+            '<failure message="boom"/></testcase>'
+            for i in range(failed)
+        )
+        xml = (
+            f'<?xml version="1.0"?><testsuite name="{name}" '
+            f'tests="{passed + failed}" failures="{failed}" errors="0" '
+            f'skipped="0" time="1.0">{cases}</testsuite>'
+        )
+        script = repo / f"run_{name}.py"
+        script.write_text(
+            "import sys, pathlib\n"
+            f"pathlib.Path(sys.argv[1]).write_text({xml!r})\n"
+            + ("sys.exit(1)\n" if failed else "sys.exit(0)\n")
+        )
+        return f"python3 {script} {{junit_xml}}"
+
+    def test_fallback_false_red_refused_nothing_persisted(self, tmp_path):
+        # The upstream discodon signature: every test dies at collection under
+        # the hook's interpreter (module not importable) -> 0 passed, errors>0.
+        repo = self._repo(tmp_path, "falsered")
+        (repo / "tests").mkdir()
+        (repo / "tests" / "test_env.py").write_text(
+            "import module_that_does_not_exist_xyz_6f2r\n"
+        )
+        r = _run_in(repo, "test-evidence", "record")
+        assert r.returncode == 2, r.stderr
+        assert "refusing to record" in r.stderr
+        assert "test_command" in r.stderr  # the migration guidance names the knob
+        assert not (repo / ".prawduct" / ".test-evidence.json").exists(), \
+            "a wrong-environment run must never persist evidence"
+
+    def test_fallback_pass_records_and_nudges(self, tmp_path):
+        repo = self._repo(tmp_path, "fallbackok")
+        (repo / "tests").mkdir()
+        (repo / "tests" / "test_ok.py").write_text("def test_ok():\n    assert True\n")
+        r = _run_in(repo, "test-evidence", "record")
+        assert r.returncode == 0, r.stderr
+        assert "falling back to the hook interpreter" in r.stderr  # the nudge
+        ev = json.loads((repo / ".prawduct" / ".test-evidence.json").read_text())
+        assert ev["passed"] == 1 and ev["failed"] == 0
+
+    def test_multi_commands_aggregate_one_record(self, tmp_path):
+        repo = self._repo(tmp_path, "polyglot")
+        a = self._junit_script(repo, "backend", passed=3)
+        b = self._junit_script(repo, "web", passed=2)
+        (repo / ".prawduct" / "project-state.yaml").write_text(
+            f"test_commands:\n  - {a}\n  - {b}\n"
+        )
+        r = _run_in(repo, "test-evidence", "record")
+        assert r.returncode == 0, r.stderr
+        ev = json.loads((repo / ".prawduct" / ".test-evidence.json").read_text())
+        assert ev["passed"] == 5 and ev["failed"] == 0
+        assert " ; ".join([a, b]) == ev["command"]
+
+    def test_multi_commands_red_records_honestly(self, tmp_path):
+        # A DECLARED command's failures are real evidence (unlike the fallback
+        # guard): recorded, and the exit mirrors the failing suite.
+        repo = self._repo(tmp_path, "polyred")
+        a = self._junit_script(repo, "backend", passed=3)
+        b = self._junit_script(repo, "web", passed=1, failed=1)
+        (repo / ".prawduct" / "project-state.yaml").write_text(
+            f"test_commands:\n  - {a}\n  - {b}\n"
+        )
+        r = _run_in(repo, "test-evidence", "record")
+        assert r.returncode == 1, r.stderr
+        ev = json.loads((repo / ".prawduct" / ".test-evidence.json").read_text())
+        assert ev["passed"] == 4 and ev["failed"] == 1
+
+    def test_both_keys_rejected(self, tmp_path):
+        repo = self._repo(
+            tmp_path, "bothkeys",
+            "test_command: python3 x.py {junit_xml}\n"
+            "test_commands:\n  - python3 y.py {junit_xml}\n",
+        )
+        r = _run_in(repo, "test-evidence", "record")
+        assert r.returncode == 2
+        assert "BOTH" in r.stderr
+
+    def test_missing_placeholder_names_the_command(self, tmp_path):
+        repo = self._repo(
+            tmp_path, "noplaceholder",
+            "test_commands:\n"
+            "  - python3 a.py {junit_xml}\n"
+            "  - python3 b.py\n",
+        )
+        r = _run_in(repo, "test-evidence", "record")
+        assert r.returncode == 2
+        assert "python3 b.py" in r.stderr and "{junit_xml}" in r.stderr
+
+    def test_launch_failure_persists_nothing(self, tmp_path):
+        repo = self._repo(tmp_path, "launchfail")
+        a = self._junit_script(repo, "backend", passed=3)
+        (repo / ".prawduct" / "project-state.yaml").write_text(
+            f"test_commands:\n  - {a}\n  - /nonexistent/runner_6f2r {{junit_xml}}\n"
+        )
+        r = _run_in(repo, "test-evidence", "record")
+        assert r.returncode == 2
+        assert "could not launch" in r.stderr
+        assert not (repo / ".prawduct" / ".test-evidence.json").exists(), \
+            "no partial multi-environment evidence"
+
+    def test_from_counts_rejected_with_declared_list(self, tmp_path):
+        repo = self._repo(
+            tmp_path, "countsreject",
+            "test_commands:\n  - python3 a.py {junit_xml}\n",
+        )
+        r = _run_in(repo, "test-evidence", "record",
+                    "--from-counts", "passed=1", "failed=0", "skipped=0")
+        assert r.returncode == 2
+        assert "--from-junit" in r.stderr  # redirected to the machine-backed ramp
+
+
+    def test_flow_style_list_refused_not_silently_ignored(self, tmp_path):
+        # The natural-but-unsupported spelling must refuse loudly — silently
+        # degrading to the interpreter fallback could persist GREEN
+        # partial-environment evidence for an invocation nobody declared.
+        repo = self._repo(
+            tmp_path, "flowstyle",
+            "test_commands: [python3 a.py {junit_xml}, python3 b.py {junit_xml}]\n",
+        )
+        r = _run_in(repo, "test-evidence", "record")
+        assert r.returncode == 2
+        assert "block sequence" in r.stderr
+        assert not (repo / ".prawduct" / ".test-evidence.json").exists()
+
+    def test_comment_lines_inside_list_do_not_truncate(self, tmp_path):
+        # A full-line comment (even at column 0) between items must not end
+        # the list — truncation would silently skip environments while the
+        # record claimed full evidence.
+        repo = self._repo(tmp_path, "commented")
+        a = self._junit_script(repo, "backend", passed=3)
+        b = self._junit_script(repo, "web", passed=2)
+        (repo / ".prawduct" / "project-state.yaml").write_text(
+            f"test_commands:\n  - {a}\n# the web half\n  - {b}\n"
+        )
+        r = _run_in(repo, "test-evidence", "record")
+        assert r.returncode == 0, r.stderr
+        ev = json.loads((repo / ".prawduct" / ".test-evidence.json").read_text())
+        assert ev["passed"] == 5
+
+    def test_unparseable_report_persists_nothing(self, tmp_path):
+        # The "unparseable report fails the whole record" half of the
+        # no-partial-evidence guarantee, pinned.
+        repo = self._repo(tmp_path, "garbage")
+        a = self._junit_script(repo, "backend", passed=3)
+        bad = repo / "run_bad.py"
+        bad.write_text(
+            "import sys, pathlib\n"
+            "pathlib.Path(sys.argv[1]).write_text('this is not xml')\n"
+        )
+        (repo / ".prawduct" / "project-state.yaml").write_text(
+            f"test_commands:\n  - {a}\n  - python3 {bad} {{junit_xml}}\n"
+        )
+        r = _run_in(repo, "test-evidence", "record")
+        assert r.returncode == 2
+        assert "could not parse" in r.stderr
+        assert not (repo / ".prawduct" / ".test-evidence.json").exists()
+
+    def test_repeated_from_junit_aggregates(self, tmp_path):
+        # The ingest on-ramp scales with test_commands: run each command
+        # yourself, ingest every report in one record.
+        repo = self._repo(tmp_path, "multijunit")
+        r1 = repo / "a.xml"
+        r1.write_text('<testsuite name="a" tests="3" failures="0" errors="0" '
+                      'skipped="0" time="1.0"/>')
+        r2 = repo / "b.xml"
+        r2.write_text('<testsuite name="b" tests="2" failures="1" errors="0" '
+                      'skipped="0" time="1.0"/>')
+        r = _run_in(repo, "test-evidence", "record",
+                    "--from-junit", str(r1), "--from-junit", str(r2))
+        assert r.returncode == 1, r.stderr  # a failure in any report
+        ev = json.loads((repo / ".prawduct" / ".test-evidence.json").read_text())
+        assert ev["passed"] == 4 and ev["failed"] == 1
+        assert str(r1) in ev["command"] and str(r2) in ev["command"]
+        # the caller's reports are never deleted
+        assert r1.exists() and r2.exists()
+
+
+    def test_anomalous_block_lines_refuse_whole_declaration(self, tmp_path):
+        # A bare dash or a wrapped command's continuation line makes the WHOLE
+        # declaration unparseable (loud exit 2) — never a partial list that
+        # silently skips environments.
+        for name, state in (
+            ("baredash", "test_commands:\n  - python3 a.py {junit_xml}\n  -\n  - python3 b.py {junit_xml}\n"),
+            ("wrapped", "test_commands:\n  - python3 a.py\n    {junit_xml}\n"),
+        ):
+            repo = self._repo(tmp_path, name, state)
+            r = _run_in(repo, "test-evidence", "record")
+            assert r.returncode == 2, f"{name}: {r.stderr}"
+            assert "block sequence" in r.stderr, name
+            assert not (repo / ".prawduct" / ".test-evidence.json").exists(), name

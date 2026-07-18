@@ -481,15 +481,23 @@ class TestAssembleSessionBriefingSections:
         out = briefing.assemble_session_briefing(tmp_path, [])
         assert "Other active branches: 1" in out and "feature/z: z work" in out
 
-    def test_worktrees_line(self, tmp_path, monkeypatch):
+    def test_worktree_orientation_without_sibling_enumeration(self, tmp_path, monkeypatch):
+        # The briefing orients the agent to ITS worktree but must NOT enumerate
+        # sibling worktrees' branches/paths — that list read as a menu of
+        # adoptable work and lured agents into working in the wrong worktree.
         self._state(tmp_path, "")
         monkeypatch.setattr(briefing, "_detect_worktrees", lambda d: [
             {"path": "/a", "branch": "main", "is_active": "true"},
             {"path": "/b", "branch": "side", "is_active": "false"},
         ])
         out = briefing.assemble_session_briefing(tmp_path, [])
-        assert "Worktrees: 2 attached" in out and "operating on 'main'" in out
-        assert "- side @ /b" in out
+        assert "operating on 'main'" in out
+        assert "scoped to THIS worktree only" in out
+        # Regression guard: the old "- <branch> @ <path>" sibling enumeration must not
+        # return. Guard the enumeration format and the sibling path — not the bare word
+        # "side", which collides with "conSIDEr" elsewhere in the briefing vocabulary.
+        assert "- side @ /b" not in out
+        assert "/b" not in out
 
     def test_staleness_lines_rendered(self, tmp_path):
         self._state(tmp_path, "")

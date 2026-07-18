@@ -115,10 +115,325 @@ system-of-record** via a deterministic `prawduct-hook backlog` adapter (PRD §16
   an open-but-redirected item (the CRASH-2 window). Fake gains `seed_pull_requests`.
 
 **Classification:** structural
+## 2026-07-17: Test evidence meets real environments — false-red guard, fallback deprecation, multi-environment test_commands (fix)
+
+<!-- prawduct: type=fix | release=v3.1.0 | status=shipped -->
+<!-- Statusless = release-pending once merged. Code + tests, no build plan (promoted
+     TST-6F2R; precedent: the v3.0.2 declared-command-onramps fix). Governance-protected
+     (bin/, test-status gate input) → full Critic. -->
+
+**Parent:** TST-6F2R (upstream discodon report): with no `test_command` declared,
+`test-evidence record` fell back to `sys.executable -m pytest` — the HOOK's interpreter — so a
+venv-isolated product's suite died wholesale at collection and the hook persisted a
+catastrophic false-red (discodon: 0 passed / 5074 failed) that polluted `test-status` and read
+as a mass regression. Owner scope ruling (3.1.0): fix now, with first-class migration guidance
+off the fallback, and make the declared path work reliably for multi-platform products (the
+game shipping iOS + Android; the app with SQL + Python + React/Vite) — one product, several
+test environments, one evidence record.
+
+**What:**
+- **False-red guard** (the report's load-bearing ask): an interpreter-fallback run with ZERO
+  passes and only failures/errors — the wrong-interpreter signature — is **refused** (exit 2,
+  nothing persisted) with migration guidance naming both declaration forms. Scoped to the
+  fallback: a declared command is the operator's deliberate environment-aware invocation, so
+  an all-red result there records honestly. The one carve-out from "a failing run is recorded,
+  not dropped" — that contract's test now uses a mixed run (a pass proves the environment
+  launched) and names the carve-out.
+- **Fallback deprecated-by-nudge:** every fallback run prints a stderr note explaining the
+  interpreter hazard and pointing at `test_command`/`test_commands`.
+- **`test_commands:` — the multi-environment form** (`bin/prawduct-hook`, new
+  `_read_str_list_yaml_key` block-sequence reader, stdlib-only): a list of canonical
+  invocations, one per environment, each run under the existing declared-command rules (shlex
+  list-form, mandatory `{junit_xml}`, no extra args) with its own JUnit report; counts
+  aggregate across all reports into ONE record (the existing multi-`<testsuite>` summation,
+  now spanning roots); any launch failure or unparseable report fails the whole record — no
+  partial evidence. Mutually exclusive with `test_command:` (both declared = error); the
+  ingest on-ramps (`--from-junit`, `--no-rerun`, `--from-counts` rejection) treat the list
+  exactly as they treat the scalar. Exit status requires every command to exit 0.
+- **Dogfooding:** prawduct's own `project-state.yaml` now declares
+  `test_command: python3 -m pytest tests/ --junit-xml={junit_xml} -q` — the repo no longer
+  rides the deprecated fallback it just guarded.
+- **Critic fix round** (all warnings resolved in-branch): a declared-but-unparseable
+  `test_commands` (flow style, nested mapping, empty) now REFUSES loudly instead of silently
+  degrading to the fallback (new `_yaml_top_level_key_present` presence probe — the silent
+  path could persist GREEN partial-environment evidence); full-line comments inside the block
+  sequence no longer truncate the list; `--from-junit` is now **repeatable** so the ingest
+  on-ramp scales with the list (one flag per report, aggregated, no-partial-evidence rules
+  preserved); the record's `command` field joins with ` ; ` (no implied short-circuit); guard
+  wording matches its condition (skips may accompany — the source incident had 35).
+- Coverage: 12 new cases (`TestDeclaredCommandEnvironments`) — refusal persists nothing,
+  fallback nudge, polyglot aggregation, honest red recording, both-keys error, per-command
+  placeholder validation, launch-failure and unparseable-report no-partial-record, flow-style
+  refusal, comment-tolerant lists, repeated `--from-junit` aggregation, `--from-counts`
+  redirect. `methodology/building.md` Verify bullet, the record docstring, and
+  `templates/project-state.yaml`'s TEST EXECUTION legend name the new knob; the
+  cross-cutting-concerns coverage row updated. Follow-up filed: mixed JUnit/non-JUnit
+  polyglots (`--from-counts` composition).
+
+## 2026-07-17: Retrieval over generation — Principle 24 lands across the guidance surfaces (feature)
+
+<!-- prawduct: type=feature | release=v3.1.0 | status=shipped -->
+<!-- Statusless = release-pending once merged. Prose-only principle + methodology amendment,
+     no build plan (promoted MET-4V8Q; precedent: audit batch / ambient-merge-commit).
+     Governance-protected (CLAUDE.md, docs/principles.md, methodology/, skills/) → full Critic. -->
+
+**Parent:** MET-4V8Q — user-directed incorporation of discodon's upstream learning candidate
+(`prawduct-learning-retrieval-over-generation.md`): under momentum, builders substitute
+generation (a fluent, plausible answer from prior knowledge) for retrieval (the cheap act of
+grounding — a code read, a search, re-checking the artifact in hand). Days were lost tuning a
+mechanism nobody had read when a 10-minute read + one search would have collapsed the effort.
+Incorporated per Principle 19 (Evolving Principles), condensed to prawduct's voice — not
+verbatim.
+
+**What:** New **Principle 24 — Retrieval Over Generation** (Judgment) in `docs/principles.md`:
+the cost-asymmetry mechanism (generation's short head / long tail vs. retrieval's bounded
+cost), the cheap-check question ("what is the cheapest verification that could change this
+decision — and did I do it?"), six condensed warning-sign detectors, and the cite-or-flag
+rule; Skeptic review perspective gains "What cheap check hasn't been done?". Wired into the
+operational surfaces so it binds where decisions actually happen: `CLAUDE.md` principles
+roster (line 24); `methodology/building.md` Decision Research gains **the cheap-check gate**
+(+ detectors) and Common Traps gains **"Tuning a mechanism you haven't read"**;
+`methodology/discovery.md` Calibrate Rigor gains the cost-asymmetry gate ("mandatory, not
+optional; notice when the asymmetry just went wide"); both session digests carry a
+**Retrieval before generation** stance bullet (products get the full digest; this repo the
+slim) and the full digest's Judgment roster gains the principle. Prawduct itself learns it:
+rule + full narrative (incident, detectors) in `.prawduct/learnings.md` /
+`learnings-detail.md`. Rider (release-scope item from the 3.1.0 review): `skills/onboard`
+"Next: capture discovery" now names the **minimal-documentation path** — three cheap steps
+(record characteristics, `coverage-scaffold --apply`, doctor "none to ratify") and the
+coverage chain is permanently silent; prawduct is opinionated that absence be a recorded
+decision, not that documentation be voluminous.
+
+## 2026-07-17: templates/architecture.md — the seventh strategy-class artifact gets its authoring scaffold (feature)
+
+<!-- prawduct: type=feature | release=v3.1.0 | status=shipped -->
+<!-- Statusless = release-pending once merged. One new template + registry reconciliation, no
+     build plan (small additive work, promoted GOV-2T6K). Governance-protected (templates/) →
+     full Critic. -->
+
+**Parent:** GOV-2T6K — a product that records `multi_process_distributed` is triggered into an
+architecture spec, but unlike every other strategy-class artifact there was no
+`templates/architecture.md` to author from (the `coverage-scaffold` neutral stub covers the
+coverage nudge, not the authoring path). Named a hard dependency of the structural-coverage
+release line; included in 3.1.0 by owner scope decision.
+
+**What:** Authored `templates/architecture.md` matching the sibling strategy-class templates'
+structure: guidance-comment header (Tier 1; generated on `multi_process_distributed`; broad
+surface definition — client+server, mobile+backend, services+workers, extension+host,
+game client+authoritative server, host+plugins; proportionate-to-risk note; stub affordance
+with the recorded-characteristic contradiction caveat), frontmatter (`depends_on`:
+product-brief, data-model, security-model, nonfunctional-requirements), the audit-corrected
+optional-Direction comment, and nine guidance-comment sections (Overview & Topology,
+Components & Responsibilities, Communication & Boundaries, Data Ownership & Consistency,
+Failure Modes & Resilience, Deployment & Version Skew, Scaling Model, Cross-Cutting Runtime
+Concerns, Decision Log). Boundary-of-responsibility rule throughout: this artifact names the
+topology; contracts point at api-contract/boundary-patterns, trust at security-model, targets
+at nonfunctional-requirements. Reconciled `.prawduct/cross-cutting-concerns.md` (the "6 of 7"
+row and the Known Gaps follow-up now record the gap closed).
+
+## 2026-07-17: Ambient merge-commit default — the standing-instruction surfaces state the merge strategy (fix)
+
+<!-- prawduct: type=fix | release=v3.1.0 | status=shipped -->
+<!-- Statusless = release-pending once merged. Small guidance-prose batch, no build plan
+     (precedent: the release-audit batch). Governance-protected (CLAUDE.md, methodology/,
+     skills/, templates/) → full Critic. -->
+
+**Parent:** PR-8W3D (related WT-7M4K). The `/pr` skill's squash→merge-commit flip only binds
+when `/prawduct:pr` runs; ad-hoc merges, worktree-exit integrations, and the moment `gh pr
+merge --merge` fails on a squash-only repo are all unguided — and the model's training prior
+(squash-and-merge as GitHub's dominant convention) fills that vacuum. Investigation confirmed
+no harness/system-prompt instruction favors squash; the bias is a model prior at unguided
+decision points, so the counter must be ambient (always in context), not skill-local.
+
+**What:** Stated the merge-commit default on every standing-instruction surface: CLAUDE.md
+Commit Conventions (new paragraph, parallel to the attribution rule — "overrides any harness
+default to the contrary"); `methodology/session-digest.md` (product repos — bullet beside the
+attribution bullet); `methodology/session-digest-slim.md` (deferral parenthetical updated;
+also added the missing `norms` topic to its guide list — audit-batch coherence). Hardened
+`skills/pr/SKILL.md` Merge Flow step 4: an absent preference means merge commit (a harness
+default, GitHub UI default, or model inclination is not a preference); a failing `--merge` is
+surfaced, **never** silently downgraded to `--squash`; a configured-squash branch is
+single-use (delete after merge, never reuse) — plus an Important-section bullet. The
+`templates/project-preferences.md` squash/rebase opt-in now carries the same single-use
+branch contract. Discharges the guidance leg of WT-7M4K's residual (detection probes remain).
+
+## 2026-07-17: Release-audit fixes — fleet-safe layer-0 delivery, adoption-scoped norm severity, template/doc corrections (fix)
+
+<!-- prawduct: type=fix | release=v3.1.0 | status=shipped -->
+<!-- Statusless = release-pending once merged. Pre-release audit fix batch, no build plan
+     (precedent: GOV-8R3F, WT-7M4K entries) — each fix is small and independently tested;
+     governance-protected paths (lib/, bin/, skills/, templates/) → full Critic. -->
+
+**Parent:** Pre-release audit of the held 3.0.6 line (2026-07-17, four independent review
+passes + incoming-bugs cross-reference) found a cluster of defects sitting exactly where a
+product-repo session meets the new norm-lifecycle/structural-coverage machinery — all
+experiential, none crash-shaped; owner approved the fixes and the two design calls.
+
+**What:**
+- **Layer 0 (discovery-not-captured) is now an advisory-store probe** (`lib/coverage_probes.
+  probe_discovery_not_captured`, warn priority) instead of a hard non-dismissible print in
+  `cmd_clear` — dismissible per-clone via `/prawduct:advisory dismiss`, surfaced in the
+  briefing's ADVISORIES block, staging against layer 1 unchanged (shared predicate, both
+  probes now co-located). Owner call: visibility stays default-on; an owner who considers
+  discovery settled can decline without editing state.
+- **Critic norm-authority severity scoped to adoption** (`skills/critic/review-protocol.md`,
+  canonical statement in `docs/norms.md` § Severity): norm departure/birth findings are
+  BLOCKING only where ratified norms exist; in a norm-less product the same detections are
+  **NOTE** (WARNING is treated as a de-facto blocker in practice) — a repo is never blocked
+  into a lifecycle it hasn't adopted. Enforcement-table row updated to match, including the
+  PR reviewer's WARNING layering (previously over-claimed as BLOCKING). Protocol addition
+  paid for by in-block trims — the token-diet ceiling (3530) holds.
+- **Structural scanner hardened** (`lib/coverage_probes.py`): indentation now tracked
+  relative to the file's own levels (a 3-/4-space-reformatted state with a recorded
+  characteristic no longer reads as unrecorded — which would have pinned the layer-0
+  advisory permanently); `"0"` added to `_ABSENT_VALUES` (`exposes_programmatic_interface: 0`
+  no longer wrongly requires an api-contract).
+- **Advisory subsystem survives undecodable state** (`lib/advisory_store.load_project_state`):
+  `UnicodeDecodeError` now caught alongside `OSError` — previously a non-UTF-8
+  `project-state.yaml` killed the whole probe sync (hook path) or tracebacked
+  `advisory show` (CLI path).
+- **Wrong field name corrected**: `multi_party` → `has_multiple_party_types` in
+  `docs/norms.md` (flip protocol ×2) and `skills/doctor/SKILL.md` #10 — a model executing
+  the characteristic-flip protocol would have written a key no probe reads.
+- **Template Direction footgun removed** (six strategy-class templates): the `## Direction`
+  heading now lives *inside* the guidance comment (a kept empty heading read as ratified
+  norms and started the perpetual 60-day sweep clock), and the instruction licensing a
+  planning-time `norm_registry_ratified` write is replaced by routing "none to ratify"
+  through the doctor's owner-confirmed Ratification Flow.
+- **`docs/norms.md` reachable from product sessions**: new `norms` topic in
+  `/prawduct:methodology`; all 18 bare `docs/norms.md` citations across digests,
+  methodology guides, and skills replaced with the resolvable `/prawduct:methodology norms`.
+- `coverage-status` docstring no longer claims "exactly one layer speaks" (layers 1+2 can
+  both be active during partial authoring — matches docs and behavior).
+
+Out of scope, tracked: `templates/architecture.md` (GOV-2T6K), TST-6F2R (false-red test
+evidence — pending owner confirmation of approach).
+
+Reconciliation with the "opt-out is a recorded artifact, not a suppression flag" learning:
+the layer-0 dismissal is per-clone suppression by design — the *durable* opt-out remains
+recording the characteristics (or their absence) in `project-state.yaml`; dismissal only
+quiets the reminder in one clone, owner-approved as the lesser burden.
+
+## 2026-07-17: SessionStart briefing no longer enumerates sibling worktrees (fix)
+
+<!-- prawduct: type=fix | release=v3.0.5 | status=shipped -->
+
+**Parent:** WT-8Q3N — the SessionStart briefing enumerated sibling worktrees as `- <branch> @
+<path>`, which read as a menu of adoptable work and lured a session into working in a worktree it
+did not launch in (colliding with that worktree's own live session). Root cause was briefing noise,
+not a locking gap.
+
+**What:** Removed the sibling-worktree enumeration from `lib/briefing.py`; the briefing now orients
+the agent to its own worktree only ("work and gates are scoped to THIS worktree only; other
+worktrees belong to their own sessions; do not read or modify them"). `_detect_worktrees` still
+gates on >1 worktree and siblings remain discoverable via `git worktree list`. Regression test
+added. Shipped as the v3.0.5 hotfix off v3.0.4 (b5d952c on main); this entry reconciles develop.
+
+## 2026-07-17: Default PR merge strategy → merge commit (was squash) (fix)
+
+<!-- prawduct: type=fix | release=v3.1.0 | status=shipped -->
+<!-- Statusless = release-pending once merged. Small behavioral default flip in skills/pr +
+     template default; no build plan. Governance-protected (skills/) → full Critic + PR. -->
+
+**Parent:** WT-7M4K — `/prawduct:pr`'s squash default erases each commit's identity on merge, so a
+reused worktree branch keeps a *pre-squash* merge-base and every "what's new" computation
+(SessionStart, `infer-critic-mode`/cumulative-Critic interval, `pr create`) over-counts
+already-merged commits and re-reviews shipped code. Recurring in practice (discodon, prawduct v3.0.4).
+
+**What:** Flipped the `/prawduct:pr` Merge Flow default from squash to **merge commit**
+(`gh pr merge --merge`) in `skills/pr/SKILL.md`, and added an explicit `PR merge strategy: merge
+commit` default row to `templates/project-preferences.md` so onboarded products inherit it visibly
+and can still override (squash/rebase remain available — it's a preference, not a hard-code).
+Merge-commit keeps a merged branch's commits reachable from the base, so its merge-base stays
+correct and the gates stop over-counting. Reconciled this repo's own `project-preferences.md`
+(the parenthetical no longer "overrides" a squash default — it now matches it) and rescoped WT-7M4K
+to its residual (detection + post-merge hygiene for the squash-override and reused-branch cases;
+severity medium-high → medium).
+
+## 2026-07-17: Ratification seeds the Norm Health sweep baseline (fix)
+
+<!-- prawduct: type=fix | release=v3.1.0 | status=shipped -->
+<!-- Statusless = release-pending once merged. Small read-side probe fix + tests +
+     doc coherence. Governance-protected (skills/, lib/) → full Critic + PR. -->
+
+**Parent:** surfaced by the norm-registry ratification (Layer 2) landing on develop — it cleared
+`norm-registry-unratified` but immediately tripped `norm-health-sweep-overdue`, because that probe
+keyed only off the janitor sweep stamp (absent on a fresh repo) while `## Direction` sections now
+existed. Broke the repo-coupled tripwire `tests/test_norm_probes.py::TestSilentAgainstThisRepo`.
+
+**What:** `probe_norm_health_sweep_overdue` now treats the effective "last full norm engagement" as
+the **newer of the janitor sweep stamp and the ratification date** (`norm_registry_ratified`'s
+leading date, via a new `_leading_date` helper that tolerates the fact's descriptive suffix).
+Ratifying the registry is itself a deep pass over every norm, so a freshly-ratified repo isn't
+flagged sweep-overdue until the 60-day window elapses — the nudge no longer fires the same day it
+clears `norm-registry-unratified`. Re-baselined the repo-coupled tripwire to expect post-ratification
+silence (re-fires on genuine drift: the ratification ageing past the window with no janitor sweep, a
+`revisit:` expiring). Coherence: updated the probe docstring, the doctor SKILL step-5 contract (the
+recorded value must lead with the date — it's now load-bearing), the test module docstring, and the
+completed norm-lifecycle build plan's as-built note (its tripwire-must-fail claim is now superseded).
+Filed COV-4H7N (the doc-only/state-only fast-paths let this break slip onto develop unseen).
+
+## 2026-07-17: Ratify prawduct's norm registry — 20 Direction norms (norm-lifecycle Layer 2)
+
+<!-- prawduct: type=docs | release=v3.1.0 | status=shipped -->
+<!-- Statusless = release-pending once merged. Owner-ratified via the /prawduct:doctor
+     surface-by-exception flow; governance-state + artifacts only, no code. -->
+
+**Parent:** the norm-lifecycle Layer 2 close-out (`norm-registry-unratified` advisory) — the seven
+strategy artifacts authored under GOV-5K3M were deliberately descriptive (no `## Direction`
+sections), so the registry was unratified by design, handing the owner the ratification step. The
+owner ruled on the decision-worthy candidates; the rest were bulk-confirmed.
+
+**What:** Ratified 20 Direction norms across the strategy artifacts (statement + why + status per
+`docs/norms.md` Anatomy):
+- **data-model** (5): verdicts-from-facts / no-model-in-write-path (scoped to the Critic data plane),
+  facts append-only, views never authoritative, schema-ahead surfaced, two-stores-two-lifetimes.
+- **architecture** (4): reviewer-never-mutates-its-session, authority-closed / advice-soft,
+  local-first (stdlib runtime), least-authority write boundary.
+- **security-model** (2): untrusted-state-is-data, no-destructive-without-`--apply`.
+- **api-contract** (3): `api_versioning_approach`, `api_error_model_approach`, additive-first.
+- **observability-strategy** (2): severity-prefix + stdout/stderr split, single-writer ledger.
+- **nonfunctional-requirements** (2): review-wall-clock-P0, state-file-thresholds-are-advisory.
+- **operational-spec** (2): conservative versioning (judgment norm), gitflow develop/main.
+
+**Owner rulings:** state-file thresholds ratified as **advisory** (warn/advise, no mechanical
+enforcement — so over-threshold files are the nag's target, not violations, and no retroactivity
+applies); verdicts-from-facts **scoped to the Critic data plane** (honest — test-run/PR-review
+evidence is not yet on the store); conservative versioning bound as a **judgment** norm. Two wording
+fixes applied (stdlib scoped to the runtime; the true least-authority write boundary). The
+metrics/telemetry statement was left descriptive, not ratified.
+
+Extended `project-preferences.md` § Enforcement into the product's norm index (added `Audit home` +
+`Why` columns; 20 pointer rows). Recorded `norm_registry_ratified` in `project-state.yaml` — clears
+the `norm-registry-unratified` advisory; `coverage-status` now reports the chain fully satisfied
+(Layer 0/1/2).
+
+## 2026-07-17: Norm-ratification flow surfaces by exception, not a flat wall (fix)
+
+<!-- prawduct: type=fix | release=v3.1.0 | status=shipped -->
+<!-- Statusless = release-pending once merged. Small prose/methodology fix, no build plan;
+     Critic final 0 blocking / 0 warning after verify-resolutions. -->
+
+**Parent:** GOV-8R3F — the doctor Norm Ratification Flow presented *all* candidate norms in one
+flat block ("confirm-or-correct"). At scale (prawduct's own ratification surfaced ~20 candidates)
+that becomes a wall the owner bounces off — or blanket-rubber-stamps, which silently defeats
+owner-ratification, the exact failure the flow exists to prevent.
+
+**What:** Rewrote `skills/doctor/SKILL.md` Norm Ratification steps 2-3 to *triage, then surface by
+exception*. Step 2 tags each candidate **clear-to-ratify** (a decision plainly stands behind it,
+statement matches the code today, why is obvious) vs **needs-a-ruling** (taxonomy: aspirational /
+practice-not-written / wording-fork / collision / whyless). Step 3 presents asymmetrically —
+needs-a-ruling individually with its fork + a recommendation, clear-to-ratify as one bulk-confirm
+line — and **bans the flat dump above ~6 candidates**. Guard: bulk-confirm stays an *explicit*
+confirm (silence ratifies nothing; no auto-ratification through the back door). Mirrored in
+`docs/norms.md` § Adoption, with a cross-cutting learning captured (the pattern generalizes to any
+owner confirm-or-correct batch). The sibling `skills/janitor/SKILL.md` Step-3 Reconcile shares the
+shape — held out for scope discipline as GOV-8R3F's residual (`stage: ready`, a port of the shipped
+taxonomy).
 
 ## 2026-07-16: Structural coverage — a forcing function for what a product owes (structural-coverage)
 
-<!-- prawduct: type=feature | scope=structural-coverage | chunks=01,02,03,04,05 -->
+<!-- prawduct: type=feature | scope=structural-coverage | chunks=01,02,03,04,05 | release=v3.1.0 | status=shipped -->
 <!-- Statusless on feature/structural-coverage = release-pending once merged. Large
      framework change, plan at .prawduct/artifacts/build-plan-structural-coverage.md,
      one commit per chunk, per-chunk Critic + closing cumulative (Chunk 05). -->
@@ -156,7 +471,7 @@ deliberately not auto-ratified). Remaining follow-up: GOV-2T6K (`templates/archi
 
 ## 2026-07-16: Norm lifecycle — normative authority across governing artifacts (norm-lifecycle)
 
-<!-- prawduct: type=feature | chunks=1,2,3,4,5,6 -->
+<!-- prawduct: type=feature | scope=norm-lifecycle | chunks=1,2,3,4,5,6 | release=v3.1.0 | status=shipped -->
 <!-- Statusless on feature/norm-lifecycle = release-pending once merged. Large framework
      change, plan at .prawduct/artifacts/build-plan-norm-lifecycle.md (GOV-7Q4N), one
      commit per chunk, per-chunk Critic + closing cumulative. -->

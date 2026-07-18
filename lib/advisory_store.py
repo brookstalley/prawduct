@@ -37,6 +37,7 @@ from __future__ import annotations
 import hashlib
 import json
 import re
+import sys
 from dataclasses import dataclass, replace
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -246,7 +247,11 @@ def run_all_probes(state: ProjectState, codebase: Codebase) -> list[AdvisoryCand
         fn = record["fn"]
         try:
             produced = list(fn(state, codebase))
-        except Exception:  # prawduct:allow prawduct/broad-except -- a faulty probe must not block sync; skip it
+        except Exception as exc:  # prawduct:allow prawduct/broad-except -- a faulty probe must not block sync; skip it
+            print(
+                f"NOTE: advisory probe {record['feature']}/{record['probe_type']} skipped: {exc}",
+                file=sys.stderr,
+            )
             continue
         for cand in produced:
             candidates.append(
@@ -403,8 +408,11 @@ def load_project_state(product_dir) -> ProjectState:
     if not path.is_file():
         return ProjectState(data)
     try:
-        text = path.read_text()
-    except OSError:
+        text = path.read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError):
+        # An undecodable state file must degrade to "no facts" — this loader runs
+        # inside the session-start probe sync and the advisory-show CLI, where a
+        # raise would kill the whole advisory subsystem instead of one probe.
         return ProjectState(data)
     for line in text.splitlines():
         if not line or line[0] in (" ", "\t", "#"):

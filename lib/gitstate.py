@@ -281,7 +281,8 @@ def _is_framework_tooling(f: Path, project_dir: Path) -> bool:
 
 
 # Suffixes that count as the product's own source code. Shared by the
-# project-preferences CRITICAL and the discovery-capture nudge in cmd_clear.
+# project-preferences CRITICAL (cmd_clear) and the discovery-capture probe
+# (lib/coverage_probes.probe_discovery_not_captured).
 _PRODUCT_CODE_SUFFIXES = (
     ".py", ".js", ".ts", ".go", ".rs", ".java", ".rb", ".swift", ".kt",
     ".c", ".cpp", ".h",

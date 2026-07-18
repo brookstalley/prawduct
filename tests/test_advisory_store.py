@@ -205,6 +205,19 @@ class TestLoadProjectState:
         assert state.get("k") == "v"
         assert state.as_dict() == {"k": "v"}
 
+    def test_undecodable_file_degrades_to_empty_state(self, tmp_path: Path):
+        # A non-UTF-8 project-state.yaml must read as "no facts", never raise:
+        # this loader runs inside the session-start probe sync and `advisory
+        # show`, where a UnicodeDecodeError killed the whole advisory subsystem
+        # (only OSError was caught before the fix).
+        (tmp_path / ".prawduct").mkdir()
+        (tmp_path / ".prawduct" / "project-state.yaml").write_bytes(
+            b"\xff\xfeuses_llm_inference: true\n"
+        )
+        state = load_project_state(tmp_path)
+        assert state.get("uses_llm_inference") is None
+        assert state.as_dict() == {}
+
 
 class TestCodebase:
     def test_make_codebase_roots_at_dir(self, tmp_path: Path):
@@ -279,7 +292,7 @@ class TestRegistry:
         candidates = run_all_probes(ProjectState(), make_codebase(tmp_path))
         assert candidates[0].type == "the-type"
 
-    def test_faulty_probe_skipped(self, tmp_path: Path):
+    def test_faulty_probe_skipped(self, tmp_path: Path, capsys):
         def _boom(state, codebase):
             raise RuntimeError("probe blew up")
 
@@ -288,6 +301,10 @@ class TestRegistry:
         candidates = run_all_probes(ProjectState(), make_codebase(tmp_path))
         # The faulty probe is skipped; the good one still produces its candidate.
         assert len(candidates) == 1
+        # ... and the skip is attributed on stderr, never silent.
+        err = capsys.readouterr().err
+        assert "advisory probe bad/boom skipped" in err
+        assert "probe blew up" in err
 
     def test_clear_registry(self, tmp_path: Path):
         register_probe("synthetic", "c", 1, lambda s, c: [_candidate()])

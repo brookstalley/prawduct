@@ -64,6 +64,36 @@
   `effort: S · impact: S · area: security · source: critic · added: 2026-07-17 · status: open · stage: ready · refs: artifacts/build-plan-backlog-service.md`
 
   The backlog SEC-5 guard reads two workflow-surfaced signals via `context.is_untrusted_trigger` / `actor_authorized`: `PRAWDUCT_PR_HEAD_REPO` (fork-PR detection) and `PRAWDUCT_ACTOR_AUTHORIZED` (the collaborator authorization check). These must be wired in the GitHub Actions workflow. Absent that wiring, the fork-PR defense-in-depth layer is inert — safe by construction (fork PRs get a read-only token) but the flag itself won't fire. Document the required env-wiring so the layer is actually engaged. Land alongside the Chunk-06 briefing / Actions wiring. Filed from Chunk 04 Critic NOTE.
+- **[LRN-9K2P]** Modernize ~28 legacy terse learnings.md headings to self-contained "When X, do Y because Z" rule form
+  `effort: S · impact: S · area: memory/learnings · source: critic · added: 2026-07-17 · status: open · stage: ready · related: LRN-7M4D · refs: .prawduct/learnings.md, .prawduct/learnings-detail.md, methodology/reflection.md`
+
+  The 2026-07-17 learnings.md compaction reduced the file to header-only rules (narrative moved to learnings-detail.md). ~1/3 of the headings are legacy terse topic-labels (e.g. "Test subprocesses: HOME=tmp_path leaks Python's pyc cache into the test repo") that state the rule but not the inline *why*. Since the SessionStart briefing now surfaces headings only, their actionable why isn't visible without opening learnings-detail.md — still reachable via `/prawduct:learnings`, so **NOT a regression** (the briefing was headers-only before too).
+
+  Fix: reword the terse headings to carry rule + why in one line, matching the dominant "When X, do Y because Z" format the intro + `methodology/reflection.md` now describe. Surfaced by the Critic design + sustainability reviewers (NOTE, rev-20260717T192532Z). (critic)
+
+- **[COV-4H7N]** Doc-only/state-only PR silently breaks a repo-coupled (non-hermetic) test — check-pr-doc-only AND test-status both assume non-code files can't change test outcomes
+  `effort: M · impact: M · area: governance/gates · source: builder · added: 2026-07-17 · status: open · stage: design · related: COV-2P7F, COV-6T3P, COV-8R2K · refs: lib/coverage.py (cmd_check_pr_doc_only — doc-only fast-path), lib/coverage_algebra.py (is_judgeable_path), bin/prawduct-hook (test-status / cmd_test_evidence), tests/test_norm_probes.py (TestSilentAgainstThisRepo)`
+
+  A doc-only/state-only change can break a live-state-coupled test with **no gate catching it**. Concrete: PR #125 (norm-registry ratification) changed only `.prawduct/*.md` + `project-state.yaml`, so `check-pr-doc-only` reported doc-only (skipped Critic + PR review + suite) AND `test-status` reported "current" (treats `project-state.yaml` as non-judgeable) — but `tests/test_norm_probes.py::TestSilentAgainstThisRepo` reads the **live** `project-state.yaml`, so ratifying the registry silently broke it on develop; only caught on the next unrelated branch's suite run.
+
+  **Root cause:** both the doc-only fast-path and test-status's judgeable-path classifier assume non-code files can't change test outcomes — but repo-coupled (**non-hermetic**) tests read committed state/docs, so a `.prawduct/*` edit CAN flip a test red.
+
+  **Possible fixes** (design pending — pick and reconcile with COV-2P7F): (a) test-status/doc-only should treat `project-state.yaml` (and any file a non-hermetic test reads) as judgeable; (b) doc-only PRs should still run the suite when repo-coupled tests exist; (c) narrow/inventory the non-hermetic tests so the assumption becomes true.
+
+  **Tension to resolve — this is a hard constraint on COV-2P7F.** COV-2P7F pushes the *opposite* direction (treat `.prawduct/**` as governance-only so a metadata edit escapes full gates). This item is the counterexample proving a *blanket* `.prawduct/**` exemption is unsound while non-hermetic tests exist: exempting `project-state.yaml` from the suite is exactly what let #125 break silently. Any COV-2P7F design must account for this — the safe exemption is narrower than "all of `.prawduct/**`", or fix (b)/(c) must land first. Also related: COV-6T3P (the `is_judgeable_path` predicate that classifies these paths) and COV-8R2K (coverage floor on non-code config). Stage: design — the problem/root cause are clear; which of (a)/(b)/(c) and how it reconciles with COV-2P7F is the open decision. Governance-protected (lib/gates, lib/coverage, hooks) → full Critic + PR review. (builder — finding this session)
+
+- **[GOV-8R3F]** Janitor Step-3 Reconcile surfaces candidates flat (single confirm-or-correct block); apply the shipped doctor surface-by-exception taxonomy
+  `effort: M · impact: M · area: governance · source: reflection · added: 2026-07-17 · reviewed: 2026-07-17 · status: open · stage: ready · related: GOV-6N4W, GOV-4X9M, JNT-8E3P · refs: skills/janitor/SKILL.md (Step-3 Reconcile — the residual), skills/doctor/SKILL.md (steps 2-3, shipped clear-to-ratify/needs-a-ruling taxonomy — reuse precedent), docs/norms.md (§ Adoption)`
+
+  The **doctor** Norm Ratification Flow shipped the surface-by-exception fix this cycle (`skills/doctor/SKILL.md` steps 2-3 + `docs/norms.md` § Adoption): a **clear-to-ratify vs. needs-a-ruling** taxonomy, a ban on flat-dumping ~6+ candidates, and an explicit bulk-confirm guard. That fixed the doctor's original failure mode — at scale, a one-block dump of every candidate becomes a wall-of-text the owner skims and rubber-stamps (the "blanket 'looks good' that never engages the forks" failure ratification exists to prevent — Principle 6; the GOV-4X9M "approval on the divergences, not the document" concern).
+
+  **Residual (this item):** the sibling **janitor Step-3 Reconcile** (`skills/janitor/SKILL.md`) still presents its candidates as a flat "single confirm-or-correct block" and carries the identical failure mode — it needs the same treatment.
+
+  Fix-shape: **reuse the shipped doctor taxonomy** — don't design a competing one. Apply the same clear-to-ratify / needs-a-ruling split to the janitor's Reconcile step: foreground only the candidates that need a decision (the doctor taxonomy already encodes which — ambiguous classification, high-stakes/security-relevant, `in-transition`, Type-2 sub-optimal-norm risk), collapse the clearly-safe ones into a bulk **confirm-in-summary** affordance, and honor the ~6-item flat-dump ban. Exception criterion, surfacing shape, and bulk-confirm guard are all already designed and proven in the doctor precedent — this is a port, not a fresh design.
+
+  Guard: surface-by-exception must **never silently ratify** the un-surfaced candidates — the collapsed set still gets an explicit bulk confirm (owner sees the count and can expand), matching the doctor's shipped guard, because auto-binding a norm the owner didn't engage is a norm-birth decision made by default (`docs/norms.md` § No auto-ratification).
+
+  Stage: ready — the fix-shape is proven by the shipped doctor precedent, so there is no open design question; the work is porting the existing clear-to-ratify/needs-a-ruling taxonomy onto the janitor's Step-3 Reconcile. Governance-protected (`skills/`) → full Critic + PR review.
 
 - **[GOV-4X9M]** Backfill-as-discovery: interview-driven strategy-artifact authoring with just-in-time nudges + layered opt-outs
   `effort: L · impact: L · area: governance · source: user · added: 2026-07-17 · reviewed: 2026-07-17 · status: open · stage: requirements · related: GOV-EXI2, GOV-5K3M`
@@ -154,19 +184,13 @@
 
   Candidate framework principle worth elevating: 'the agent is advisory on norm content, never a gate; every best practice is defeasible.' Strident warning + graceful deferral + honest record.
 
+  ---
+  **Note (2026-07-17):** the `templates/architecture.md` hard dependency (flagged under "Templates & interview-guidance homing" above) is satisfied — GOV-2T6K shipped 2026-07-17 (`closed-by: architecture-template`). All 7/7 strategy-class authoring templates now exist; this item is no longer blocked on scaffolding.
+
 - **[GOV-4M7K]** coverage-status layer-0 report should share the ambient nudge's product-work gate
   `effort: S · impact: S · area: governance · source: critic · added: 2026-07-16 · status: open · stage: ready · refs: bin/prawduct-hook (cmd_coverage_status), lib/gitstate.py (_has_product_definition_work), skills/doctor/SKILL.md #11`
 
   Critic NOTE (structural-coverage cumulative, R-2). cmd_coverage_status in bin/prawduct-hook computes layer-0-active purely from 'not structural_characteristics_recorded', WITHOUT the _has_product_definition_work gate that the ambient layer-0 briefing nudge (also in cmd_clear) applies. Consequence: on a freshly-onboarded empty repo (no code, no docs/) the doctor 'coverage-status' report says layer 0 is active / coverage degraded, while the ambient session-briefing advisory correctly stays SILENT (and doctor Health Check #6 also gates on product work). The doctor report is thus slightly more eager than the nudge it claims to mirror ('reads the SAME expectation table'). Fix: gate the coverage-status layer-0 determination on _has_product_definition_work too, so the report and the ambient nudge agree on a fresh repo. Bounded, cosmetic (a report line, no wrong behavior). refs: bin/prawduct-hook (cmd_coverage_status), lib/gitstate.py (_has_product_definition_work), skills/doctor/SKILL.md #11.
-
-- **[GOV-2T6K]** `templates/architecture.md` authoring template is missing — a product triggered into an architecture spec has nothing to start from
-  `effort: S · impact: S · area: governance · source: builder · added: 2026-07-16 · status: open · stage: ready · refs: templates/, lib/coverage_probes.py (TRIGGERED_ARTIFACTS)`
-
-  `architecture` is one of the seven strategy-class artifacts (the characteristic-triggered arm fired by `multi_process_distributed`; the sibling triggered artifact `api-contract` ships a template, and every universal strategy-class artifact has one), but `templates/architecture.md` does not exist. So a product that records `multi_process_distributed` and runs `/prawduct:methodology planning` to author its architecture spec has no template to start from — every other strategy-class artifact hands the author a scaffold, this one does not.
-
-  Scope is an additive authoring-template gap, NOT a hole in the shipped coverage mechanism: the `coverage-scaffold` helper drops a neutral, template-independent stub, and a stub satisfies the strategy-artifact-missing probe, so coverage still functions end-to-end. What's missing is the human-facing starting-point document for writing a real architecture spec.
-
-  Fix-shape: add `templates/architecture.md` matching the structure/tone of the other strategy-class templates (`api-contract.md`, `security-model.md`, `data-model.md`, …), including the `(not relevant to this project — <reason>)` stub affordance the coverage mechanism recognizes. Discovered during structural-coverage Chunk 04; also recorded in `.prawduct/cross-cutting-concerns.md` Known Gaps. (builder)
 
 - **[GOV-6N4W]** UserPromptSubmit "norm-shaped prompt" classifier — detect norm-birth phrasing at prompt time and nudge capture
   `effort: M · impact: M · area: governance · source: builder · added: 2026-07-16 · status: open · stage: idea · related: GOV-7Q4N, WMK-4Q9T, WMK-1P4Q · refs: .prawduct/artifacts/build-plan-norm-lifecycle.md (Out of scope + Chunk 6), docs/norms.md`
@@ -214,9 +238,11 @@
   The forked /prawduct:backlog skill mutates backlog.md non-atomically. Two corroborating incidents in hallucinote: (a) the skill died on an API socket error mid-run and left a PARTIAL file mutation — data corruption, not a clean rollback; (b) a Critic (2026-07-07) found a DUPLICATED paragraph the skill had emitted (non-idempotent write). Impact: a mid-run crash or retry can corrupt or duplicate backlog entries — the very tool meant to be the safe mutation path for the backlog is itself unsafe. Fix-shape: make backlog mutations transactional and idempotent — parse the file to a model, transform by item id, assert no duplicate ids / no dropped items, then write atomically (temp file + rename). Governance-protected (skill) → full Critic + PR review. (critic)
 
 - **[PR-7T2K]** PR gates validate local HEAD, not the pushed origin/<branch> that squash-merge uses — post-push commits silently dropped
-  `effort: M · impact: M · area: pr · source: user · added: 2026-07-09 · status: open · stage: ready · related: PR-2H8N`
+  `effort: M · impact: M · area: pr · source: user · added: 2026-07-09 · status: open · stage: ready · related: PR-2H8N · reviewed: 2026-07-17`
 
   The PR gates (change-log entry, cumulative-critic, evidence) validate the LOCAL commits, but `gh pr merge --squash` squashes what's on origin/<branch>. A commit made after the last push — very often the change-log entry the gate itself just forced the builder to add — never reaches origin, so the squash-merge silently drops it and the merged result is missing content the gates confirmed present. Reported by hallucinote (~June). Fix-shape: /prawduct:pr (or a PR gate) should assert `git rev-parse origin/<branch>` == local HEAD (branch fully pushed) before allowing merge, and fail loud with "unpushed commits — push before merging" otherwise. Governance-protected → full Critic + PR review.
+
+  Reviewed 2026-07-17 (ambient-merge-commit-default Critic C-B3): remains valid — the unpushed-commit hazard survives the squash→merge-commit flip, since a merge commit still merges what's on origin/<branch>, so post-push local commits are still silently dropped.
 
 - **[COV-4M2J]** Coverage floor is Python-only — `bin/test-reference-verify` symbol-grep can't reference non-Python (JS/TS/Go/…) changed files; bring-your-own-verifier via `--merge-into` is the only escape
   `effort: L · impact: M · area: coverage · source: builder · added: 2026-06-26 · status: open · stage: requirements · related: COV-3R9K, COV-8R2K, TST-2H9P · refs: bin/test-reference-verify (symbol-grep floor), lib/coverage.py (changed-files derivation), bin/prawduct-hook (verify-coverage, test-evidence record F4a overlay), skills/critic/review-cycle.md (Goal 1 F4b)`
@@ -537,7 +563,7 @@
 
 
 - **[PR-2H8N]** Key the `/pr` release-promotion guard off `resolve-base` instead of hardcoded branch names
-  `effort: S · impact: S · area: pr · source: critic · added: 2026-06-06 · status: open · stage: ready · related: REL-8K3M · reviewed: 2026-06-10`
+  `effort: S · impact: S · area: pr · source: critic · added: 2026-06-06 · status: open · stage: ready · related: REL-8K3M · reviewed: 2026-07-17`
 
   REL-8K3M's release-promotion guard in `skills/pr/SKILL.md` hardcodes `develop`/`main`/`master` to
   recognize a release/integration context. The skill's own merge-flow (step 7) already distinguishes
@@ -547,6 +573,8 @@
   present, and REL-8K3M targets prawduct's own gitflow case. Fix-shape: have the guard compare the
   current branch to `resolve-base`'s output (the integration base) and to the release surface, rather
   than a fixed name list. Filed from the REL-8K3M cumulative Critic NOTE on 2026-06-06. (critic)
+
+  Reviewed 2026-07-17 (ambient-merge-commit-default Critic C-B3): remains valid and unaffected by the squash→merge-commit default flip — the guard-keying gap is independent of merge strategy.
 
 - **[WMK-1P4Q]** Work-model parent-map injection (B2) + optional `vocabulary:` frontmatter convention
   `effort: M · impact: M · area: hooks · source: critic · added: 2026-06-06 · status: open · stage: idea · related: WMK-7D3R · refs: docs/work-model-spec.md, docs/work-model-enforcement.md · reviewed: 2026-06-10`
@@ -1096,13 +1124,6 @@
   the verdicts on the briefing surface, and key the synthesis advisory's fact read to the
   session's worktree/branch. Governance-protected → full Critic + PR review. (critic)
 
-- **[TST-6F2R]** `test-evidence record` with no declared test_command falls back to sys.executable pytest — venv-isolated projects record a catastrophic false-red
-  `effort: M · impact: M · area: test-evidence · source: user · added: 2026-07-13 · status: open · stage: ready · related: TST-3E8V, TST-6V2N, TST-7M3K · refs: bin/prawduct-hook (cmd_test_evidence run fallback, ~line 1903), incoming-bugs/archive/test-evidence-record-persists-false-red-when-test-command-undeclared.md`
-
-  Upstream bug from discodon (incoming-bugs/test-evidence-record-persists-false-red-when-test-command-undeclared.md, severity medium). When project-state.yaml declares no `test_command`, `test-evidence record` falls back to running `sys.executable -m pytest` — the HOOK's interpreter, not the project's venv. In venv-isolated projects (pipenv/poetry/conda), collection fails wholesale on ModuleNotFoundError and the record persists a catastrophic false-red (discodon: 0 passed / 5074 failed, all collection-level import errors) to `.prawduct/.test-evidence.json`, polluting test-status. Verified in the current tree at bin/prawduct-hook:1903-1907 (the report's ~1787-1792 line refs have drifted).
-
-  Fix direction per the report: fail loud — refuse to record (or exit 2 with a clear "wrong interpreter?" message) when collection-level import failure dominates the run (a suite where ~everything dies at collection is a launch-environment error, not a red suite) — and/or require an explicit `test_command` instead of guessing the interpreter (make the sys.executable fallback opt-in). Same code region as TST-3E8V (launch-failure handling) and the TST-6V2N-born writer; TST-7M3K/TST-4K2P shipped the surrounding record semantics. Governance-protected (test-status gate input) → full Critic + PR review. (user — upstream report from discodon)
-
 - **[GOV-4C7X]** Governance kernel redesign (v3) — SHA-keyed evidence store + coverage-algebra gates + deterministic Critic data plane
   `effort: L · impact: L · area: governance/kernel · source: user · added: 2026-07-12 · status: promoted · stage: design · related: CRT-5D8Q, GOV-7T2M, WMK-4Q9T, MIG-6B0R, CRT-9K7T · refs: .prawduct/artifacts/kernel-redesign-discovery.md, .prawduct/artifacts/kernel-inventory-2026-07-12.md, .prawduct/artifacts/build-plan-kernel-evidence-store.md, .prawduct/artifacts/kernel-v3-evidence-design.md · reviewed: 2026-07-12`
 
@@ -1258,6 +1279,45 @@
   `effort: S · impact: S · area: backlog-service · kind: task · source: critic · added: 2026-07-17 · status: open · stage: ready · related: BKL-2V6N`
 
   Critic note (sustainability, 2026-07-18 review of the BKL-2V6N fix): when _api_paged hits _PAGED_MAX_PAGES (100 pages x per_page), it returns the collected prefix indistinguishably from completion — the same silent-truncation class BKL-5T3J exists to kill, though reachable only at 10k+ entries per endpoint (labels/timeline/sub-issues). Fix direction: on cap trip, either raise TransportError(unavailable, 'result truncated at N pages') or surface a warning through the envelope so callers (export especially — the MG2 backup) can distinguish truncated from complete. Compare query._all_issues, which at least logs a diag line on its cap. Not migration-gating (prawduct scale is ~220).
+- **[WT-7M4K]** Squash-merged worktree branch leaves a stale merge-base — SessionStart, `infer-critic-mode`/cumulative-Critic, and `pr create` over-count already-merged commits and re-review shipped code
+  `effort: L · impact: M · area: worktree · source: user · added: 2026-07-17 · reviewed: 2026-07-17 · status: open · stage: design · related: CRT-6W2N, PR-7T2K, BRF-6K2D · refs: incoming-bugs/archive/squash-merged-branch-left-stale-gates-review-merged-code-and-pr-would-replay.md, skills/pr/SKILL.md (squash default ~:138; post-merge hygiene; create pre-flight gate), bin/prawduct-hook (infer-critic-mode), skills/critic (cumulative interval), Stop/SessionStart briefing (worktree enumeration)`
+
+  **Update — merge-strategy leg handled (`pr-merge-commit-default`):** the `/pr` default flipped squash→merge-commit. A merge-commit merge keeps the branch's commits reachable from the base, so a reused worktree branch's merge-base stays correct and no gate silently re-reviews already-merged work — this dissolves the primary (default-path) failure mode. **This item stays open, rescoped to the residual:** defense-in-depth for what the default flip doesn't cover — a product that *overrides* back to squash (fix ideas #2/#3 merge-base staleness guards still apply there), and the general "a reused branch is behind the base after *any* merge" hygiene gap (fix ideas #1 detection, #4 post-merge hygiene, #5 docs nudge). Severity drops from medium-high to medium.
+
+  Triaged from upstream bug report (discodon, prawduct v3.0.4, reported 2026-07-17). `/prawduct:pr` merges with the **squash** strategy by default (`skills/pr/SKILL.md:138`). After a squash-merge, a long-lived *worktree's* local feature branch still holds its original *granular* commits: their content is now on `origin/develop` under one squash SHA, but their commit **identities** are not — so the merge-base between the stale branch and `origin/develop` sits *before* the squash. Every prawduct surface that reasons about "what's new on this branch" via merge-base then over-counts already-merged work:
+  - `infer-critic-mode` picks `cumulative` and computes its interval as `merge-base(origin/develop, HEAD)..HEAD`, spending a full 4–10 min review re-reviewing shipped code and raising coherence findings about **already-merged artifacts** (facts about `develop`'s shipped state, not defects in the new work) that bury the real new-work findings.
+  - `/prawduct:pr create` would replay all N already-merged commits onto a develop that already has their squashed equivalent → conflicts or duplicate history.
+  - The `SessionStart` briefing enumerates the worktree/branch but does **not** detect that its content is already present upstream as a squash, so nothing warns operator or agent.
+
+  Observed concretely: worktree `wt-discodon-backlog` on `fix/obs-a9rd-debug-rounds` (already merged as squash #1493) read as **17 commits ahead** — 15 stale pre-squash commits + 2 genuinely-new. Caught only because the human operator *remembered* the prior merge; with no such memory an agent proceeds to `/prawduct:pr`, re-commits already-merged docs, and hits the wall at merge time (expensive) or lands duplicate history. Root cause: squash-merge erases the identity link the gates rely on to bound "new work," and there is **no post-merge step** that prunes/flags the stale branch.
+
+  **Fix menu (ranked by leverage in the report — several ship independently):**
+  1. *(cheapest, highest-signal, effectively `stage: ready` on its own)* SessionStart per-worktree "already-merged?" flag: `gh pr list --state merged --head <branch> -L1` → if a merged PR exists for this head, annotate the worktree "⚠ already merged as #NNNN — rebase onto origin/develop or start a fresh branch." Fallback when `gh` unavailable: empty `git diff origin/develop...HEAD` net-diff + non-empty `git log origin/develop..HEAD` (prefer this over `git cherry` — squash patch-ids don't match the individual commits').
+  2. `infer-critic-mode`/`cumulative` interval: detect a stale merge-base (net diff largely already-upstream, or a merged PR for the head) and refuse to silently review merged code — pick the mode against the rebased interval; at minimum the ahead-count message reads "N ahead, K already merged upstream."
+  3. `/prawduct:pr create` pre-flight staleness gate: verify the branch rebases cleanly onto `origin/<base>` and its net diff isn't already merged; refuse (or offer auto-rebase/reset-onto-develop) when squash-stale — last line of defense before conflict-time.
+  4. Post-merge hygiene (attacks the root): after a squash-merge, `/prawduct:pr` offers to delete the merged local branch / prune its worktree / rename `shipped/<name>`; a `/prawduct:janitor` or `/prawduct:doctor` check lists worktrees whose branches are already merged.
+  5. Docs nudge in the building guide's worktree section: after a branch squash-merges, reset onto `origin/<base>` before building the next increment (the failure mode is reusing a squash-merged branch for the follow-on).
+
+  **Distinctness (cross-linked, not duplicates):** PR-7T2K is the *inverse* squash hazard (gates validate local HEAD but squash merges origin/<branch>, so post-push commits are dropped). CRT-6W2N is the general "no supported worktree workflow" gap (this item is a specific squash-staleness hazard within it). BRF-6K2D is the same missing branch/merge-awareness reasoning in the briefing's "delete the plan" nudge (its mirror: branch *not* merged but nudge says done; here branch *is* merged but gates say not). Governance-protected (`skills/pr`, `bin/prawduct-hook`, Stop/SessionStart hooks) → full Critic + PR review.
+
+  `stage: design` — the problem/requirement is clear (detect a squash-stale worktree branch *before* wasting a cumulative review + PR attempt), but the approach across the five surfaces is an open design choice (which surfaces get the guard, gh-vs-git detection, whether to auto-rebase, where post-merge hygiene lives). Fix #1 is the cheapest ready-to-slice sub-fix. Route to `/prawduct:methodology planning`.
+
+- **[DOC-8L3F]** CLAUDE.md project content exceeds the ~150-line guidance (191 lines) — diet pass needed
+  `effort: S · impact: S · area: docs · source: critic · added: 2026-07-17 · status: open · stage: ready · related: MET-7R4J · refs: CLAUDE.md, methodology/building.md (~150-line guidance, :83), skills/critic/review-protocol.md (CLAUDE.md size warning, :97) · reviewed: 2026-07-17`
+
+  Critic WARNING from the ambient-merge-commit-default review: CLAUDE.md is at 191 lines against the ~150-line guidance ("CLAUDE.md is instructions, not documentation" — methodology/building.md:83; the Critic's review protocol warns above ~150). Needs a diet pass — move architecture/reference content to docs/ or .prawduct/artifacts/, compress redundant instruction. Overlaps MET-7R4J (methodology/CLAUDE.md redundancy and prompt-quality pass) — consider running the diet together with that consolidation; kept separate because MET-7R4J targets cross-file rule interference while this is the CLAUDE.md line-count budget itself. (critic)
+
+  2026-07-17 (retrieval-over-generation Critic C-B3): assessed — that cycle added one necessary roster line to CLAUDE.md (Principle 24; roster completeness beats the diet), leaving the count at ~190-191 lines. The diet pass remains this item's job; MET-7R4J stays the consolidation vehicle. (critic)
+
+- **[TST-8C4V]** Guard test binding the `lib/coverage_probes.py` expectation table to `templates/` scaffold existence
+  `effort: S · impact: S · area: tests · source: critic · added: 2026-07-17 · status: open · stage: ready · related: GOV-2T6K · refs: lib/coverage_probes.py (TRIGGERED_ARTIFACTS / expectation table), templates/`
+
+  From the architecture-template review (the work that closed GOV-2T6K): add a guard test asserting every expected artifact in the `lib/coverage_probes.py` expectation table has a corresponding authoring template under `templates/` — prevents a future expected artifact entering the table with no authoring template (the exact gap GOV-2T6K just closed for `architecture`). Note the coverage-scaffold stub is deliberately template-independent, so the test asserts **authoring-path parity**, not coverage correctness — coverage functions end-to-end with or without a template; what the test protects is the human-facing authoring starting point. (critic)
+
+- **[TST-5N2Q]** mixed JUnit/non-JUnit polyglot cannot combine `test_commands` with `--from-counts`
+  `effort: M · impact: S · area: test-evidence · source: critic · added: 2026-07-17 · status: open · stage: design · related: TST-6F2R, ENV-2W7K, COV-3R9K · refs: bin/prawduct-hook (test-evidence record — test_commands aggregation, --from-counts on-ramp)`
+
+  From the test-evidence-environments review (the work that shipped TST-6F2R's multi-environment `test_commands` list): a product with one environment whose toolchain cannot emit JUnit is excluded from the declared-list form — the aggregated record has no way to accept a counts-only source alongside the JUnit-capable environments. Today's escape is a wrapper script, or repeated `--from-junit` for the JUnit halves plus nothing for the counts half. Design question: should `--from-counts` compose as one more aggregated source (i.e. a counts entry participating in the same multi-environment aggregation) rather than remaining an exclusive whole-record mode? Touches ENV-2W7K's "document --from-counts as the paved non-pytest path" — if composition ships, that documentation should describe the composed form. (critic)
 
 ## Promoted
 
@@ -1339,6 +1399,71 @@
   Plan-coherence to fold when this is built (surfaced by the issue-standard Critic 2026-07-17, fact rev-20260717T235511Z): build-plan-backlog-service.md has NOT absorbed the issue-standard §5 MG1 revision ('bodies restructured to standard; original preserved verbatim') or this MG6 restructure pre-pass. Reconcile on build: Chunk 05 MIG-1 still says 'verbatim … fidelity'; the Chunk 06 MG4 scrub names no restructure pre-pass; and the SPIKE-S2 settled fact reads 'preserved verbatim'. render_body (lib/backlog/issuefmt.py) is the shared composer to reuse; issuefmt.lint is the audit-only pass to run over restructured items.
 
   Shipped 2026-07-17 (closed-by: Chunk-06): the MG6 restructure pre-pass shipped as part of the Chunk 06 slice (folds into BKL-6M4T's live migration).
+- **[TST-6F2R]** `test-evidence record` with no declared test_command falls back to sys.executable pytest — venv-isolated projects record a catastrophic false-red
+  `effort: M · impact: M · area: test-evidence · source: user · added: 2026-07-13 · status: shipped · stage: ready · closed-by: test-evidence-environments · related: TST-3E8V, TST-6V2N, TST-7M3K · refs: bin/prawduct-hook (cmd_test_evidence run fallback, ~line 1903), incoming-bugs/archive/test-evidence-record-persists-false-red-when-test-command-undeclared.md · reviewed: 2026-07-17`
+
+  Upstream bug from discodon (incoming-bugs/test-evidence-record-persists-false-red-when-test-command-undeclared.md, severity medium). When project-state.yaml declares no `test_command`, `test-evidence record` falls back to running `sys.executable -m pytest` — the HOOK's interpreter, not the project's venv. In venv-isolated projects (pipenv/poetry/conda), collection fails wholesale on ModuleNotFoundError and the record persists a catastrophic false-red (discodon: 0 passed / 5074 failed, all collection-level import errors) to `.prawduct/.test-evidence.json`, polluting test-status. Verified in the current tree at bin/prawduct-hook:1903-1907 (the report's ~1787-1792 line refs have drifted).
+
+  Fix direction per the report: fail loud — refuse to record (or exit 2 with a clear "wrong interpreter?" message) when collection-level import failure dominates the run (a suite where ~everything dies at collection is a launch-environment error, not a red suite) — and/or require an explicit `test_command` instead of guessing the interpreter (make the sys.executable fallback opt-in). Same code region as TST-3E8V (launch-failure handling) and the TST-6V2N-born writer; TST-7M3K/TST-4K2P shipped the surrounding record semantics. Governance-protected (test-status gate input) → full Critic + PR review. (user — upstream report from discodon)
+
+  Promoted 2026-07-17 for the 3.1.0 release line.
+
+  Shipped 2026-07-17 (closed-by: test-evidence-environments): delivered the false-red guard (refuse-to-persist with migration guidance), the fallback deprecation nudge, and the multi-environment `test_commands` list the owner's 3.1.0 scope ruling required (polyglot products: one command per environment, aggregated into one record); prawduct now dogfoods a declared test_command.
+
+- **[MET-4V8Q]** Retrieval-over-generation methodology incorporation — new Judgment principle + building/discovery/digest surfaces
+  `effort: M · impact: M · area: methodology · source: user · added: 2026-07-17 · status: shipped · stage: requirements · closed-by: retrieval-over-generation · refs: docs/principles.md, methodology/building.md, methodology/discovery.md, hooks/digest.py · reviewed: 2026-07-17`
+
+  From the discodon learning artifact (product-learning feedback; the artifact lives in the discodon repo): incorporate retrieval-over-generation into the methodology as a new Judgment principle, carried onto the building, discovery, and session-digest surfaces. Slated for the 3.1.0 release line. Requirements-stage: recover the source learning artifact from discodon and draft the principle text plus the exact surface changes before design/build. (user — from discodon learning artifact)
+
+  Shipped 2026-07-17 (closed-by: retrieval-over-generation). Requirement grounded by the user's directive plus the discodon source artifact; delivered as Principle 24 with building/discovery/digest/onboard surface changes and learnings capture.
+
+- **[GOV-2T6K]** `templates/architecture.md` authoring template is missing — a product triggered into an architecture spec has nothing to start from
+  `effort: S · impact: S · area: governance · source: builder · added: 2026-07-16 · status: shipped · stage: ready · closed-by: architecture-template · refs: templates/, lib/coverage_probes.py (TRIGGERED_ARTIFACTS) · reviewed: 2026-07-17`
+
+  `architecture` is one of the seven strategy-class artifacts (the characteristic-triggered arm fired by `multi_process_distributed`; the sibling triggered artifact `api-contract` ships a template, and every universal strategy-class artifact has one), but `templates/architecture.md` does not exist. So a product that records `multi_process_distributed` and runs `/prawduct:methodology planning` to author its architecture spec has no template to start from — every other strategy-class artifact hands the author a scaffold, this one does not.
+
+  Scope is an additive authoring-template gap, NOT a hole in the shipped coverage mechanism: the `coverage-scaffold` helper drops a neutral, template-independent stub, and a stub satisfies the strategy-artifact-missing probe, so coverage still functions end-to-end. What's missing is the human-facing starting-point document for writing a real architecture spec.
+
+  Fix-shape: add `templates/architecture.md` matching the structure/tone of the other strategy-class templates (`api-contract.md`, `security-model.md`, `data-model.md`, …), including the `(not relevant to this project — <reason>)` stub affordance the coverage mechanism recognizes. Discovered during structural-coverage Chunk 04; also recorded in `.prawduct/cross-cutting-concerns.md` Known Gaps. (builder)
+
+  Promoted 2026-07-17 for the 3.1.0 release line.
+
+  Shipped 2026-07-17 (closed-by: architecture-template): `templates/architecture.md` authored on the closing branch, matching the structure/tone of the other strategy-class templates and including the `(not relevant to this project — <reason>)` stub affordance.
+
+- **[PR-8W3D]** Ambient merge-commit default — carry the `/pr` squash→merge-commit flip onto the ambient guidance surfaces (CLAUDE.md, session digest, pr-skill, templates)
+  `effort: S · impact: M · area: pr · source: user · added: 2026-07-17 · reviewed: 2026-07-17 · status: shipped · stage: ready · closed-by: ambient-merge-commit-default · related: WT-7M4K · refs: CLAUDE.md, hooks/digest.py, skills/pr/SKILL.md, templates/project-preferences.md (PR merge strategy row ~:46)`
+
+  The `pr-merge-commit-default` scope flipped `/prawduct:pr`'s merge default squash→merge-commit (recorded in WT-7M4K's update note: a merge commit keeps the branch's commits reachable from the base, so merge-bases stay correct and gates don't re-review already-merged work). This item is the *ambient* leg: merges performed outside the `/pr` flow — an agent running `git merge` directly, release promotions, product sessions following CLAUDE.md/digest guidance — have no stated merge-strategy default, so an ambient squash/fast-forward can reintroduce the stale-merge-base hazard the `/pr` flip dissolved. Deliver the same merge-commit default on the ambient guidance surfaces: CLAUDE.md conventions, the always-injected session digest (hooks/digest.py), any remaining squash-era language in skills/pr/SKILL.md, and the templates (templates/project-preferences.md:46 already documents the merge-commit default for the `/pr` merge — align the ambient-merge guidance with it). Distinct from WT-7M4K's residual, which is detection/hygiene for branches already squash-stale; this is the default itself on non-/pr surfaces. (user)
+
+- **[WT-8Q3N]** SessionStart briefing enumerates sibling worktrees (branch @ path), misdirecting the agent into working in the WRONG worktree/directory
+  `effort: M · impact: H · area: briefing · source: user · added: 2026-07-17 · reviewed: 2026-07-17 · status: shipped · stage: requirements · closed-by: fix/briefing-worktree-noise · related: CRT-6W2N, STH-4K7N, STH-3R8K, WT-7M4K, GOV-6H4P, STH-7B5N · refs: lib/briefing.py (_detect_worktrees + worktree-awareness block ~499-516)`
+
+  ROOT CAUSE (corrected per owner, 2026-07-17): This is NOT a session-lock problem and NOT two agents contending for the same directory. It is: the SessionStart briefing surfaces NOISE about sibling worktrees, the agent gets confused, and it goes and works in the WRONG directory. Remove the noise and the agent stays in its own worktree.
+
+  Clean, common repro (owner's words):
+  1. user clones repo in D1
+  2. user creates a worktree in D2
+  3. user starts claude in D1 and sets it to work
+  4. user starts another claude in D2 and sets it to work
+  5. D1's claude goes and starts working in D2  <-- the failure
+
+  Observed live 2026-07-17: a fresh session launched in the main checkout (D1, develop) read the briefing's enumerated worktree list, saw uncommitted Chunk 04 work in the prd-owner-feedback worktree (D2), judged it adoptable, EnterWorktree'd into D2, and began verifying/reviewing it — while D2 had its own live session actively doing that same work. No collision LOCK is needed to prevent this; the agent should simply never have been pointed at D2.
+
+  The offending code (lib/briefing.py ~509-516): the worktree-awareness block prints one orientation line ("hook is operating on <branch> at <path>. Other worktrees are NOT visible to gates this session.") and then a `for` loop that enumerates every SIBLING worktree as `- <branch> @ <path>`. That enumeration is the noise: it hands the agent a menu of other directories that contain live work, which reads as "here is more work you could pick up." The block was originally added for a gate-SCOPING reason (avoid the discodon "gate fired on the wrong tree" confusion), but its net effect is to MISDIRECT the agent into the wrong worktree.
+
+  FIX-SHAPE (minimal, and it is genuinely minimal — resist re-expanding this into a lock/heartbeat design; the owner has ruled that out):
+  - Drop the sibling enumeration (the `for w in worktrees` loop appending `- branch @ path`). Do not advertise other worktrees' branches or paths in the briefing.
+  - Keep the POSITIVE orientation the block was meant to give: "You are working in worktree <path> (branch <branch>); gates see only THIS worktree." Optionally add a firm "Other worktrees are separate sessions — do not read or modify them," WITHOUT naming or pathing them (nothing to wander toward).
+  - Sibling worktrees remain discoverable on demand (`git worktree list`) if the user actually asks — always-on enumeration is not needed to preserve that.
+  - Re-verify the original gate-scoping intent is still served by the orientation line alone (it is — the "gates see only this tree" caveat does not require listing the siblings).
+
+  SEPARATE, secondary concern (do NOT bundle into this fix): the evidence store is clone-shared by design (lib/evidence.py store_path -> git_common_dir), so a worktree's own legitimate Critic reviews still land in the main clone's .git/prawduct/evidence.jsonl. That is a by-design sharing decision, tracked on the advisory surface by GOV-6H4P; it is a cleanliness question, not the wrong-directory failure this item is about. Keep it linked, not merged.
+
+  Process lesson (candidate for learnings.md): "uncommitted work visible in a sibling worktree is NOT yours to adopt — a session works only in the worktree it launched in." Left as a lesson note here; capture separately on a branch off develop.
+
+  Filing note: this rewrite supersedes the original (concurrency/collision/heartbeat) framing per the owner's 2026-07-17 correction. Dropped STH-7B5N from related: (it was the session-lock item — no longer the right direction for THIS item).
+
+  Shipped 2026-07-17 (closed-by: fix/briefing-worktree-noise): PRIMARY fix implemented on branch fix/briefing-worktree-noise — lib/briefing.py drops the sibling-worktree enumeration and rewrites the orientation line to scope the agent to THIS worktree only (positive orientation + original gate-scoping intent preserved); tests/test_briefing_functions.py adds a regression guard; a durable learnings.md rule was added. SCOPE: this closes ONLY the misdirecting-enumeration fix. The SECONDARY belt-and-suspenders liveness DETECTION stays open under STH-7B5N, and the clone-shared evidence cleanliness question stays open under GOV-6H4P — both intentionally NOT closed by this item (kept in related:).
 
 - **[GOV-5K3M]** Author prawduct's 7 strategy-class artifacts (close the layer-1 coverage nudge)
   `effort: M · impact: M · area: governance · source: builder · added: 2026-07-16 · status: shipped · stage: ready · closed-by: structural-coverage · related: GOV-2T6K, GOV-EXI2 · refs: .prawduct/artifacts/, lib/coverage_probes.py (TRIGGERED_ARTIFACTS), .prawduct/cross-cutting-concerns.md · reviewed: 2026-07-17`

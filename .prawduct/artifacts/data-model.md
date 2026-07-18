@@ -47,6 +47,27 @@ out where reality still lags.
    (`.advisories.json`, the evidence store, session state). A teammate's committed decision resolves
    an advisory for everyone; local nag state never pollutes the shared record.
 
+## Direction
+
+<!-- Ratified norms (2026-07-17). The descriptive Design Intent above motivates these; the entries
+     below are their binding form. See docs/norms.md. -->
+
+- **Governance verdicts on the Critic data plane are computed from the append-only fact ledger, never from mutable model-written state — no model sits in a fact's write path.** Facts are written by deterministic code; a reviewer's judgment enters only as validated content inside a partial that code checks against a code-written manifest before it becomes a fact.
+  Why: the governed party must never be able to certify itself — deriving every verdict from code-written facts is what keeps model judgment out of the authority path and lets any worktree reconstruct the same verdict from the same log.
+  Status: steady-state — scoped to the Critic data plane (kernel v3). Test-run and PR-review evidence still live in their own files; extending the store to subsume them (reserved kinds `test-run`/`pr-review`/`promotion`) is design direction, not yet a ratified norm.
+- **Facts are immutable and append-only; a state change is expressed as a new fact, never an edit or delete in place.**
+  Why: append-only history is what lets any checkout replay the same verdict from the same log — an in-place edit or delete would make the ledger unreproducible and a verdict unauditable.
+  Status: steady-state.
+- **Derived views are disposable and never authoritative — no gate reads a view to reach a verdict.**
+  Why: a view (`.critic-findings.json` and kin) exists for human/agent read-speed and may be regenerated or deleted at will; letting a gate trust one would smuggle mutable, model-adjacent state back into the authority path.
+  Status: steady-state.
+- **A fact written by a newer schema than the reader is surfaced as a loud block, never silently dropped.**
+  Why: forward-incompatibility must be visible — silently skipping an ahead-of-schema fact would let a gate render a verdict on incomplete evidence.
+  Status: steady-state. Mechanism: `evidence status` exit 2 (schema-ahead).
+- **Two stores, two lifetimes: shared committed *answers* are kept distinct from per-clone, gitignored *nags and caches*.**
+  Why: a teammate's committed decision must resolve state for everyone, while local nag/cache/session state must never pollute the shared record; collapsing the two would either leak local state into the repo or block a shared decision from propagating.
+  Status: steady-state.
+
 ## Entities
 
 Prawduct's stores fall into three tiers: **ledger** (source of truth), **committed curated state**

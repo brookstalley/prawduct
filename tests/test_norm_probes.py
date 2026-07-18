@@ -8,8 +8,9 @@ positive fire, the named negative-silence conditions, and advisory-id stability
 (one stable id across two runs with different firing items). A final
 repo-coupled tripwire test asserts ZERO norm-lifecycle advisories fire against
 THIS repo's committed state (the rare-and-high-signal bar) — deliberately not
-hermetic, so ratifying a Direction section here without the sweep stamp fails it. Registry isolation mirrors the sibling
-probe tests (autouse ``clear_registry``).
+hermetic, so drift trips it (the ratification ageing past the sweep window with
+no janitor run, a dated ``revisit:`` expiring). Registry isolation mirrors the
+sibling probe tests (autouse ``clear_registry``).
 """
 
 from __future__ import annotations
@@ -473,6 +474,45 @@ class TestNormHealthSweepOverdueProbe:
         _write_artifact(tmp_path, "architecture.md", "# Architecture\n\nProse.\n")
         assert np.probe_norm_health_sweep_overdue(ProjectState({}), _cb(tmp_path)) == []
 
+    def test_silent_when_ratified_within_window(self, tmp_path):
+        # Ratifying the registry is a full pass over every norm — a just-ratified
+        # repo is not overdue for a sweep, even with no janitor stamp yet.
+        _write_artifact(tmp_path, "architecture.md", _direction_artifact("- **X.**\n  Why: because.\n"))
+        state = ProjectState({np.RATIFIED_FACT: _days_ago(5)})
+        assert np.probe_norm_health_sweep_overdue(state, _cb(tmp_path)) == []
+
+    def test_silent_when_ratified_fact_has_description_suffix(self, tmp_path):
+        # The fact leads with the date then describes it — the leading date seeds
+        # the baseline (strict full-match would miss it).
+        _write_artifact(tmp_path, "architecture.md", _direction_artifact("- **X.**\n  Why: because.\n"))
+        state = ProjectState({np.RATIFIED_FACT: f"{_days_ago(5)} — 20 Direction norms across the artifacts"})
+        assert np.probe_norm_health_sweep_overdue(state, _cb(tmp_path)) == []
+
+    def test_fires_when_ratified_beyond_window_and_no_stamp(self, tmp_path):
+        # Ratified long ago with no sweep since → genuinely overdue.
+        _write_artifact(tmp_path, "architecture.md", _direction_artifact("- **X.**\n  Why: because.\n"))
+        state = ProjectState({np.RATIFIED_FACT: _days_ago(np.SWEEP_WINDOW_DAYS + 5)})
+        assert len(np.probe_norm_health_sweep_overdue(state, _cb(tmp_path))) == 1
+
+    def test_uses_newer_of_stamp_and_ratification(self, tmp_path):
+        # Ratified long ago but swept recently → the fresher engagement wins → silent.
+        _write_artifact(tmp_path, "architecture.md", _direction_artifact("- **X.**\n  Why: because.\n"))
+        state = ProjectState(
+            {
+                np.RATIFIED_FACT: _days_ago(np.SWEEP_WINDOW_DAYS + 30),
+                np.SWEEP_STAMP: _days_ago(5),
+            }
+        )
+        assert np.probe_norm_health_sweep_overdue(state, _cb(tmp_path)) == []
+
+    def test_window_boundary_is_inclusive(self, tmp_path):
+        # age == SWEEP_WINDOW_DAYS is still "fresh" (the guard is `<=`); one day past fires.
+        _write_artifact(tmp_path, "architecture.md", _direction_artifact("- **X.**\n  Why: because.\n"))
+        at_window = ProjectState({np.RATIFIED_FACT: _days_ago(np.SWEEP_WINDOW_DAYS)})
+        assert np.probe_norm_health_sweep_overdue(at_window, _cb(tmp_path)) == []
+        past_window = ProjectState({np.RATIFIED_FACT: _days_ago(np.SWEEP_WINDOW_DAYS + 1)})
+        assert len(np.probe_norm_health_sweep_overdue(past_window, _cb(tmp_path))) == 1
+
 
 # =============================================================================
 # registration + roster integration
@@ -504,28 +544,29 @@ class TestRegistration:
 
 
 # =============================================================================
-# repo-coupled tripwire: exactly ONE norm-lifecycle advisory against THIS repo
-# today — the Layer-2 `norm-registry-unratified` nudge, now that the seven
-# strategy-class artifacts exist without ratified Direction sections. Deliberately
-# NOT hermetic: it must fail the moment this repo's norm state changes (a Direction
-# section ratified, the registry answer recorded, a dated `revisit:` expiring),
-# forcing a human to re-baseline.
+# repo-coupled tripwire: NO norm-lifecycle advisory fires against THIS repo today.
+# The registry is ratified (`norm_registry_ratified` recorded + `## Direction`
+# sections present), which clears `norm-registry-unratified`; the ratification
+# date also seeds the Norm Health sweep baseline, so `norm-health-sweep-overdue`
+# stays silent inside the window. Deliberately NOT hermetic: it must fail the
+# moment this repo's norm state drifts — the ratification ageing past the sweep
+# window with no janitor sweep, a dated `revisit:` expiring, a dead-why, an
+# in-transition stall — forcing a human to re-baseline (and, for the sweep case,
+# to actually run `/prawduct:janitor`).
 # =============================================================================
 
 
 class TestSilentAgainstThisRepo:
-    def test_only_layer2_unratified_advisory_fires_here_today(self):
-        # Baseline as of authoring the 7 strategy-class artifacts (GOV-5K3M): they
-        # now EXIST under .prawduct/artifacts/ but none declares a `## Direction`
-        # section (and the preferences Enforcement table predates the norm
-        # columns), so the Layer-2 `norm-registry-unratified` probe CORRECTLY fires,
-        # pointing at the /prawduct:doctor ratification flow. Everything else stays
-        # silent: no dated `revisit:` values, no dead-why (no shipped/archived
-        # backlog id in a Status/Why line), no in-transition stall. When this repo
-        # ratifies its Direction sections — or records `norm_registry_ratified`
-        # ("no norms to ratify" is a valid clearing answer) — Layer 2 clears and
-        # this test must be re-baselined to expect silence again. That required
-        # update is the forcing function.
+    def test_no_norm_lifecycle_advisory_fires_here_today(self):
+        # Steady state after ratifying prawduct's own registry (norm-lifecycle
+        # Layer 2): `norm_registry_ratified` is recorded and the seven strategy
+        # artifacts carry `## Direction` sections, so `norm-registry-unratified`
+        # is cleared and — because the ratification date seeds the Norm Health
+        # sweep baseline — `norm-health-sweep-overdue` is suppressed inside the
+        # window. No dated `revisit:` is live, no dead-why, no in-transition
+        # stall, so every norm-lifecycle probe is silent. This tripwire re-fires
+        # when the state drifts (the sweep window lapses without a janitor run, a
+        # `revisit:` expires, …); that required re-baseline is the forcing function.
         repo_root = Path(__file__).resolve().parents[1]
         state = load_project_state(repo_root)
         codebase = make_codebase(repo_root)
@@ -533,8 +574,8 @@ class TestSilentAgainstThisRepo:
         fired = sorted(
             c.type for c in run_all_probes(state, codebase) if c.feature == "norm-lifecycle"
         )
-        assert fired == ["norm-registry-unratified"], (
-            f"expected only the Layer-2 unratified nudge to fire here; got: {fired}"
+        assert fired == [], (
+            f"expected no norm-lifecycle advisory to fire here; got: {fired}"
         )
 
 

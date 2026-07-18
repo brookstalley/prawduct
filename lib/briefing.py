@@ -499,23 +499,22 @@ def assemble_session_briefing(project_dir: Path, staleness: list[str]) -> str:
             lines.append(f"  - {owip}")
 
     # Worktree awareness — surface only when more than one worktree exists.
-    # Hooks operate on $CLAUDE_PROJECT_DIR; if the agent thinks they are in a
-    # different worktree, gates will look at the wrong tree. Surfacing this
-    # avoids silent confusion (see issue: discodon worktree gate firing on
-    # main repo branch state).
+    # Hooks operate on $CLAUDE_PROJECT_DIR; if the agent thinks it is in a
+    # different worktree, gates will look at the wrong tree. Orient the agent to
+    # THIS worktree only — deliberately WITHOUT enumerating sibling worktrees'
+    # branches/paths. That list read as a menu of adoptable work and lured
+    # agents into another worktree (which may hold another live session's WIP);
+    # siblings stay discoverable on demand via `git worktree list`.
     worktrees = _detect_worktrees(project_dir)
     if worktrees:
         active = next((w for w in worktrees if w.get("is_active") == "true"), None)
         active_branch = active.get("branch", "?") if active else "?"
         active_path = active.get("path", str(project_dir)) if active else str(project_dir)
         lines.append(
-            f"Worktrees: {len(worktrees)} attached — hook is operating on '{active_branch}' "
-            f"at {active_path}. Other worktrees are NOT visible to gates this session."
+            f"Worktree: operating on '{active_branch}' at {active_path} — work and gates "
+            f"are scoped to THIS worktree only. Other worktrees belong to their own "
+            f"sessions; do not read or modify them."
         )
-        for w in worktrees:
-            if w.get("is_active") == "true":
-                continue
-            lines.append(f"  - {w.get('branch', '?')} @ {w.get('path', '?')}")
 
     # Handoff from previous session
     handoff_path = prawduct_dir / ".session-handoff.md"

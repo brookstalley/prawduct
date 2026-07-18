@@ -40,6 +40,7 @@ These guide every decision. Apply them with judgment, not mechanically.
 21. **Structural Awareness** — Detect the product's structural characteristics early (human interface, unattended, API, multi-party, sensitive data, multi-process/distributed). They determine what to build.
 22. **Governance Is Structural** — Quality gates exist by default. Every change gets reviewed; every session ends with reflection.
 23. **Challenge Gently, Defer Gracefully** — Explain disagreements, offer alternatives, but the user owns the product.
+24. **Retrieval Over Generation** — Before a consequential decision, do the cheapest check that could change it (read the mechanism, search current practice) instead of committing a plausible generated answer. Cite or flag.
 
 Full principles with rationale and examples: `docs/principles.md`
 
@@ -120,6 +121,14 @@ overrides any harness default to the contrary. A product opts in by setting `Com
 in its `project-preferences.md` (default for new products is `none`). The always-injected session
 digest reinforces this for every product session, including migrated repos whose CLAUDE.md is
 only the thin governance anchor.
+
+**Merge commits by default.** Every merge — `gh pr merge --merge` for PRs, `git merge --no-ff`
+locally — lands as a true merge commit; this is the prawduct default and it overrides any
+harness default to the contrary. Squash/rebase-merge only when `project-preferences.md` sets
+`PR merge strategy` to say so or the user explicitly asks; an absent preference means merge
+commit, and a failing `--merge` is surfaced, never silently downgraded to `--squash`.
+Rewritten-history merges (squash, rebase) make branches single-use — delete after merge, never
+reuse (why and mechanics: `skills/pr/SKILL.md` Merge Flow step 4).
 
 ## The Learning Loop
 

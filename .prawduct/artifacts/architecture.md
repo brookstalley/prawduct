@@ -47,6 +47,24 @@ what we want to be true.
    the clone's shared evidence store (inside `.git`). Governance code and methodology ship in the
    plugin and stay there. This is what lets a repo commit only a tiny install reference.
 
+## Direction
+
+<!-- Ratified norms (2026-07-17). The descriptive Design Intent above motivates these; the entries
+     below are their binding form. See docs/norms.md. -->
+
+- **An independent reviewer never mutates the session it reviews — enforced at the mutation site, not by tool-restriction alone.**
+  Why: a dispatched subagent does not inherit the coordinator's tool limits, so the invariant must be enforced where mutation happens; this is the load-bearing governance guarantee — without it the reviewed party could quietly rewrite what it is being judged on.
+  Status: steady-state. Mechanism: `prawduct-hook clear` refuses while a review is active (`critic-begin` … `critic-consolidate`/`critic-end`).
+- **Authority fails closed; advice fails soft.**
+  Why: anything that produces or consumes a governance *verdict* blocks on incomplete, malformed, or ambiguous state (so governance means something), while anything that merely *informs* degrades to a note (so governance stays bearable) — the split is also an abuse-resistance property: you cannot make a gate pass by feeding it garbage, garbage makes it block.
+  Status: steady-state.
+- **Local-first: coordination is process-spawn + atomically-written files + the git object database — no network, no daemon, and the runtime carries no third-party dependencies (dev/test tooling excepted).**
+  Why: a governance layer that required infrastructure would not survive contact with "I just want to code," and a zero-dependency stdlib runtime shrinks the supply-chain surface to prawduct's own code plus git; any future network surface is a characteristic flip, not a quiet addition.
+  Status: steady-state.
+- **The plugin writes nothing into a governed repo except its own `.prawduct/` state, the shared evidence store, and the `.gitignore` / `.claude/settings*.json` it must reconcile — never framework files.**
+  Why: least authority over the machine is what makes running the plugin a safe trust decision and what lets a governed repo commit only a tiny install reference; framework code stays in the plugin, read-only from the repo's perspective.
+  Status: steady-state.
+
 ## Process Topology — "monolith with workers"
 
 The **monolith** is a single long-lived Claude Code session. The **workers** are short-lived: hook
@@ -150,6 +168,8 @@ the plugin no longer places them.
 | Session/gate state | `.prawduct/.*` (gitignored) | markers, partials, caches, session baselines, advisories | per-worktree |
 | Committed product state | `.prawduct/` (tracked) | project-state, backlog, learnings, artifacts, change log, build plan | shared via git, owned by the product |
 | Plugin (distributed) | plugin root | skills, hooks, methodology, CLI, templates | read-only; never placed into a repo |
+| Framework docs (this repo) | `documentation/` (tracked) | long-form requirements, PRDs, research, and the migration guide — human-facing working docs, framework-repo only (distinct from the plugin-bundled `docs/` reference) | committed to the framework repo |
+| Upstream bug intake (this repo) | `incoming-bugs/` (tracked) | bug reports products file upstream about prawduct itself, via `/prawduct:report-bug`; triaged into the backlog, then archived under `incoming-bugs/archive/` | committed to the framework repo |
 
 ## Communication Channels
 
