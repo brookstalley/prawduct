@@ -450,8 +450,8 @@ def set_status(
     warnings: list[str] = []
     try:
         # A bare hand-minted PFX resolves via its id:PFX alias (a label search — I/O),
-        # so resolution lives inside the transport try/except (MG1). A real spelling
-        # does no I/O.
+        # so resolution lives inside the transport try/except (MG1). A '#' or '/'
+        # spelling does no I/O.
         nid = resolve_ref(transport, id_raw, default_owner=default_owner, default_repo=default_repo)
         if not nid.ok:
             return error(nid.error or "validation", nid.message or f"bad ID {id_raw!r}")
@@ -541,7 +541,7 @@ def update_item(
     warnings: list[str] = []
     try:
         # A bare hand-minted PFX resolves via its id:PFX alias inside the transport
-        # try (a label search — I/O); a real spelling does no I/O (MG1).
+        # try (a label search — I/O); a '#' or '/' spelling does no I/O (MG1).
         nid = resolve_ref(transport, id_raw, default_owner=default_owner, default_repo=default_repo)
         if not nid.ok:
             return error(nid.error or "validation", nid.message or f"bad ID {id_raw!r}")
@@ -619,7 +619,7 @@ def comment_item(
         return error("validation", "comment body is required")
     try:
         # A bare hand-minted PFX resolves via its id:PFX alias inside the transport
-        # try (a label search — I/O); a real spelling does no I/O (MG1).
+        # try (a label search — I/O); a '#' or '/' spelling does no I/O (MG1).
         nid = resolve_ref(transport, id_raw, default_owner=default_owner, default_repo=default_repo)
         if not nid.ok:
             return error(nid.error or "validation", nid.message or f"bad ID {id_raw!r}")
@@ -664,7 +664,7 @@ def claim(
     warnings: list[str] = []
     try:
         # A bare hand-minted PFX resolves via its id:PFX alias inside the transport
-        # try (a label search — I/O); a real spelling does no I/O (MG1).
+        # try (a label search — I/O); a '#' or '/' spelling does no I/O (MG1).
         nid = resolve_ref(transport, id_raw, default_owner=default_owner, default_repo=default_repo)
         if not nid.ok:
             return error(nid.error or "validation", nid.message or f"bad ID {id_raw!r}")
@@ -732,7 +732,7 @@ def unclaim(
     stamp. Unclaiming an already-free item is a near-no-op (no redundant writes)."""
     try:
         # A bare hand-minted PFX resolves via its id:PFX alias inside the transport
-        # try (a label search — I/O); a real spelling does no I/O (MG1).
+        # try (a label search — I/O); a '#' or '/' spelling does no I/O (MG1).
         nid = resolve_ref(transport, id_raw, default_owner=default_owner, default_repo=default_repo)
         if not nid.ok:
             return error(nid.error or "validation", nid.message or f"bad ID {id_raw!r}")
