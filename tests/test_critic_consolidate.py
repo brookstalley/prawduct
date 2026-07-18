@@ -219,14 +219,50 @@ class TestValidatePartial:
         ok, reason = cc.validate_partial(p)
         assert ok, reason
 
-    def test_finding_files_with_empty_string_rejected(self):
+    def test_finding_files_with_blank_element_normalized_not_rejected(self):
+        # A blank/non-string element in ``files`` is optional attribution — it
+        # must be normalized away downstream, NOT fail-close the whole
+        # consolidation. (This previously rejected; that rejection WAS the
+        # defect — one reviewer's ``files:[""]`` on a file-less META-finding
+        # bricked every review.)
         p = _partial("correctness", "abc", findings=[
             {"name": "x", "goal": "g", "severity": "warning",
              "recommendation": "y", "files": ["a.py", ""]}
         ])
         ok, reason = cc.validate_partial(p)
-        assert not ok
-        assert "files" in reason
+        assert ok, reason
+
+    def test_finding_files_all_blank_accepted(self):
+        # ``files: [""]`` — the exact live trigger — must consolidate, not abort.
+        p = _partial("correctness", "abc", findings=[
+            {"name": "Learnings cross-check", "goal": "g", "severity": "note",
+             "recommendation": "y", "files": [""]}
+        ])
+        ok, reason = cc.validate_partial(p)
+        assert ok, reason
+
+    def test_finding_files_nonstring_element_accepted(self):
+        # A list holding a non-string element is tolerated at validation (it is
+        # dropped in merge_findings), consistent with the blank-element rule —
+        # only a non-*list* ``files`` value is a hard schema error.
+        p = _partial("correctness", "abc", findings=[
+            {"name": "x", "goal": "g", "severity": "warning",
+             "recommendation": "y", "files": [5, "a.py"]}
+        ])
+        ok, reason = cc.validate_partial(p)
+        assert ok, reason
+
+    def test_finding_files_not_a_list_rejected(self):
+        # A non-list ``files`` is still a hard schema error (a bare string is a
+        # common mis-emission) — only malformed *elements* are tolerated.
+        for bad in ("a.py", 5, {"a.py": 1}):
+            p = _partial("correctness", "abc", findings=[
+                {"name": "x", "goal": "g", "severity": "warning",
+                 "recommendation": "y", "files": bad}
+            ])
+            ok, reason = cc.validate_partial(p)
+            assert not ok, f"{bad!r} should be rejected"
+            assert "files" in reason
 
     @pytest.mark.parametrize("mutate,frag", [
         (lambda p: p.pop("role"), "role"),
@@ -389,6 +425,24 @@ class TestMergeFindings:
             "goal": "Nothing Is Broken", "severity": "warning",
             "title": "Stale evidence", "recommendation": "Re-run", "fid": "R-1",
         }]
+        assert "files" not in merged[0]
+
+    def test_blank_and_nonstring_files_elements_dropped(self):
+        # Both blank strings AND genuinely non-string elements normalize out,
+        # mirroring ``[]`` — only real path strings survive.
+        merged = cc.merge_findings([_partial("correctness", "a", findings=[
+            {"name": "Meta note", "goal": "Nothing Is Missing",
+             "severity": "note", "recommendation": "n",
+             "files": ["", 5, None, "  ", "a.py"]}
+        ])])
+        assert merged[0]["files"] == ["a.py"]
+
+    def test_all_blank_files_normalized_out_of_record(self):
+        # ``files: [""]`` collapses to no ``files`` key, like ``[]``.
+        merged = cc.merge_findings([_partial("correctness", "a", findings=[
+            {"name": "Meta note", "goal": "Nothing Is Missing",
+             "severity": "note", "recommendation": "n", "files": [""]}
+        ])])
         assert "files" not in merged[0]
 
     def test_dedup_keeps_highest_severity(self):

@@ -420,14 +420,15 @@ def validate_partial(data) -> tuple[bool, str]:
                 f"finding[{idx}] severity {f['severity']!r} not in "
                 f"{sorted(_SEVERITY_RANK)}"
             )
-        # ``files`` is optional attribution. Reviewers are told to *omit* it for
-        # non-file-specific findings (e.g. process/evidence NOTEs), but a model
-        # naturally emits ``[]`` for "no files" — semantically identical to
-        # omission. Accept an empty list rather than fail-closing the whole
-        # consolidation over a distinction that carries no meaning; ``[]`` is
-        # normalized away downstream (``merge_findings`` only keeps truthy files).
-        if "files" in f and not _str_list(f["files"]):
-            return False, f"finding[{idx}] 'files' must be a list of non-empty strings"
+        # ``files`` is optional attribution, normalized away downstream: a
+        # blank/non-string element is dropped in ``merge_findings`` and an
+        # all-blank list collapses to no ``files`` at all — exactly like ``[]``
+        # or an omitted key. Reject only a value that is not a list; a single
+        # malformed element must never fail-close the WHOLE consolidation over
+        # optional attribution (a reviewer's ``files:[""]`` on a file-less
+        # META-finding otherwise bricked every review).
+        if "files" in f and not isinstance(f["files"], list):
+            return False, f"finding[{idx}] 'files' must be a list"
     resolutions = data.get("resolutions")
     if resolutions is not None:
         if not isinstance(resolutions, list):
@@ -560,8 +561,14 @@ def merge_findings(partials: list[dict]) -> list[dict]:
     merged: dict[tuple, dict] = {}
     for partial in partials:
         for f in partial.get("findings", []):
-            files = f.get("files")
-            key = (f["goal"], f["name"], tuple(files) if files else ())
+            # Normalize optional attribution to non-empty string paths, so a
+            # blank/non-string element collapses to no ``files`` exactly like
+            # ``[]`` or an omitted key — the validator tolerates such elements
+            # rather than fail-closing, and normalization happens here.
+            files = [
+                x for x in (f.get("files") or []) if isinstance(x, str) and x.strip()
+            ]
+            key = (f["goal"], f["name"], tuple(files))
             entry = {
                 "goal": f["goal"],
                 "severity": f["severity"],
@@ -569,7 +576,7 @@ def merge_findings(partials: list[dict]) -> list[dict]:
                 "recommendation": f["recommendation"],
             }
             if files:
-                entry["files"] = list(files)
+                entry["files"] = files
             existing = merged.get(key)
             if existing is None or (
                 _SEVERITY_RANK[f["severity"]] > _SEVERITY_RANK[existing["severity"]]

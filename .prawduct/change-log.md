@@ -3,6 +3,28 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-07-18: discodon upstream defect fixes (discodon-upstream-defects)
+
+<!-- prawduct: type=bugfix | scope=discodon-upstream-defects | chunks=01 -->
+
+**Parent:** four prawduct defects filed upstream by the discodon product (their ids
+CRT-M3F8, PDT-C6R4, CRT-T9RX, PDT-WT9K), re-verified against `develop` (v3.1.0) by direct
+code read + three independent verification agents. Audit of the 9-defect batch: 5 fully
+fixed (CRT-W2NV, CRT-J4PM×2, CRT-8F3K, CRT-K7VF), TEV-9K2M core fixed with a by-design
+`--scope`/`--from-counts` residual; the four below had remaining work. Local items:
+CRT-4T7M (newly filed), BLD-5J8N, CRT-7H2W, CRT-6W2N. Plan:
+`.prawduct/artifacts/build-plan-discodon-upstream-defects.md`.
+
+**What (chunks built so far):**
+- **Chunk 01 — CRT-M3F8 / CRT-4T7M (critic-consolidate file-less/blank findings):**
+  `validate_partial` now rejects a finding's `files` only when it is not a list at all;
+  blank/non-string elements are normalized out in `merge_findings` (`[""]` → no `files`
+  key, exactly like `[]`). A reviewer's file-less META-finding (Learnings Cross-Check /
+  Backlog Reconciliation) no longer fail-closes the entire consolidation. The strict
+  derived-cache validator (`_validate_critic_findings_data`) is untouched — tolerant at the
+  reviewer-input boundary, strict on internally-generated data. Regression tests:
+  blank/all-blank/non-string elements accepted + normalized; non-list `files` still rejected.
+
 ## 2026-07-17: Backlog service — GitHub Issues as the system-of-record (backlog-service)
 
 <!-- prawduct: type=feature | scope=backlog-service-v1 | chunks=01,02,03,04,05 -->
