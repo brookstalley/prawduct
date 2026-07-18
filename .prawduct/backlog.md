@@ -1241,15 +1241,12 @@
 
   `stage: design` — the problem/requirement is clear (detect a squash-stale worktree branch *before* wasting a cumulative review + PR attempt), but the approach across the five surfaces is an open design choice (which surfaces get the guard, gh-vs-git detection, whether to auto-rebase, where post-merge hygiene lives). Fix #1 is the cheapest ready-to-slice sub-fix. Route to `/prawduct:methodology planning`.
 
-- **[MET-4V8Q]** Retrieval-over-generation methodology incorporation — new Judgment principle + building/discovery/digest surfaces
-  `effort: M · impact: M · area: methodology · source: user · added: 2026-07-17 · status: open · stage: requirements · refs: docs/principles.md, methodology/building.md, methodology/discovery.md, hooks/digest.py`
-
-  From the discodon learning artifact (product-learning feedback; the artifact lives in the discodon repo): incorporate retrieval-over-generation into the methodology as a new Judgment principle, carried onto the building, discovery, and session-digest surfaces. Slated for the 3.1.0 release line. Requirements-stage: recover the source learning artifact from discodon and draft the principle text plus the exact surface changes before design/build. (user — from discodon learning artifact)
-
 - **[DOC-8L3F]** CLAUDE.md project content exceeds the ~150-line guidance (191 lines) — diet pass needed
-  `effort: S · impact: S · area: docs · source: critic · added: 2026-07-17 · status: open · stage: ready · related: MET-7R4J · refs: CLAUDE.md, methodology/building.md (~150-line guidance, :83), skills/critic/review-protocol.md (CLAUDE.md size warning, :97)`
+  `effort: S · impact: S · area: docs · source: critic · added: 2026-07-17 · status: open · stage: ready · related: MET-7R4J · refs: CLAUDE.md, methodology/building.md (~150-line guidance, :83), skills/critic/review-protocol.md (CLAUDE.md size warning, :97) · reviewed: 2026-07-17`
 
   Critic WARNING from the ambient-merge-commit-default review: CLAUDE.md is at 191 lines against the ~150-line guidance ("CLAUDE.md is instructions, not documentation" — methodology/building.md:83; the Critic's review protocol warns above ~150). Needs a diet pass — move architecture/reference content to docs/ or .prawduct/artifacts/, compress redundant instruction. Overlaps MET-7R4J (methodology/CLAUDE.md redundancy and prompt-quality pass) — consider running the diet together with that consolidation; kept separate because MET-7R4J targets cross-file rule interference while this is the CLAUDE.md line-count budget itself. (critic)
+
+  2026-07-17 (retrieval-over-generation Critic C-B3): assessed — that cycle added one necessary roster line to CLAUDE.md (Principle 24; roster completeness beats the diet), leaving the count at ~190-191 lines. The diet pass remains this item's job; MET-7R4J stays the consolidation vehicle. (critic)
 
 - **[TST-8C4V]** Guard test binding the `lib/coverage_probes.py` expectation table to `templates/` scaffold existence
   `effort: S · impact: S · area: tests · source: critic · added: 2026-07-17 · status: open · stage: ready · related: GOV-2T6K · refs: lib/coverage_probes.py (TRIGGERED_ARTIFACTS / expectation table), templates/`
@@ -1268,6 +1265,13 @@
   Promoted 2026-07-17 for the 3.1.0 release line.
 
 ## Archive
+
+- **[MET-4V8Q]** Retrieval-over-generation methodology incorporation — new Judgment principle + building/discovery/digest surfaces
+  `effort: M · impact: M · area: methodology · source: user · added: 2026-07-17 · status: shipped · stage: requirements · closed-by: retrieval-over-generation · refs: docs/principles.md, methodology/building.md, methodology/discovery.md, hooks/digest.py · reviewed: 2026-07-17`
+
+  From the discodon learning artifact (product-learning feedback; the artifact lives in the discodon repo): incorporate retrieval-over-generation into the methodology as a new Judgment principle, carried onto the building, discovery, and session-digest surfaces. Slated for the 3.1.0 release line. Requirements-stage: recover the source learning artifact from discodon and draft the principle text plus the exact surface changes before design/build. (user — from discodon learning artifact)
+
+  Shipped 2026-07-17 (closed-by: retrieval-over-generation). Requirement grounded by the user's directive plus the discodon source artifact; delivered as Principle 24 with building/discovery/digest/onboard surface changes and learnings capture.
 
 - **[GOV-2T6K]** `templates/architecture.md` authoring template is missing — a product triggered into an architecture spec has nothing to start from
   `effort: S · impact: S · area: governance · source: builder · added: 2026-07-16 · status: shipped · stage: ready · closed-by: architecture-template · refs: templates/, lib/coverage_probes.py (TRIGGERED_ARTIFACTS) · reviewed: 2026-07-17`
