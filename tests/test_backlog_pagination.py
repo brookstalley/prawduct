@@ -191,6 +191,24 @@ class TestPrInterleaving:
         seen = list(core.iter_alias_issues(fake, OWNER, REPO))
         assert [n for n, _pfxs, _labels in seen] == [number]
 
+    def test_iter_alias_issues_bounds_a_pathological_repo(self, capsys):
+        class _Endless:
+            def __init__(self):
+                self.pages = 0
+
+            def list_issues(self, owner, repo, *, state, per_page, page, labels=None):
+                self.pages += 1
+                return [
+                    {"number": n, "body": "", "labels": []} for n in range(per_page)
+                ]
+
+        endless = _Endless()
+        rows = list(core.iter_alias_issues(endless, OWNER, REPO))
+        assert endless.pages == core._ALIAS_SCAN_MAX_PAGES
+        assert len(rows) == core._ALIAS_SCAN_MAX_PAGES * 100
+        # Cap trips loudly, never as silent truncation.
+        assert "alias scan hit" in capsys.readouterr().err
+
     def test_list_op_filters_prs_from_items(self, fake):
         fake.seed_pull_requests(OWNER, REPO, 4, state="open", labels=["area:cli"])
         _issue_with_alias(fake, "DIS-0001", title="real item")

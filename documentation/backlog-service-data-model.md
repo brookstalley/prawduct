@@ -189,6 +189,13 @@ limit. (A cross-repo blocker's state is only reliably seen online — a per-clon
 - **Migrated `PFX-XXXX` → permanent `id:PFX-XXXX` alias labels** + `id_aliases` block entries; old refs
   resolve forever; **no new PFX**. Absorbs 27–58 hand-minted prefixes/project (DM4); prawduct's own
   `BKL/ADR/ADV/MET/CRT…` is the multi-prefix stress case (S2).
+- **Digit-suffix disambiguation** — a digit-suffix token (`ADR-12`) matches both the shell
+  `repo-number` spelling and the PFX alias grammar. Precedence (deterministic, documented — never a
+  silent guess): with a target repo present, the **alias wins when an item carries it** (an exact,
+  uniqueness-checked match — MG1 outranks a guess at a repo name); the `repo-number` reading stands
+  when no item does; a double-claimed alias is `alias_collision`, never a pick. The `#` spellings
+  (`repo#number`, `owner/repo#number`) never match the alias grammar — they are the unambiguous
+  escape hatch (API contract §3).
 - **Alias uniqueness is an integrity constraint** — an `id:PFX` alias must resolve to **exactly one**
   live item; the importer/adapter rejects (flags) a *second* item claiming an existing alias, so ref
   resolution can't be hijacked by a colliding `id:` label (Security Model §5/F3).

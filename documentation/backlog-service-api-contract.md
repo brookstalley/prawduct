@@ -156,7 +156,10 @@ field home.)*
   backfillable. IDs accept `owner/repo#number` · `repo#number` · `repo-number` · `repo/number` and
   **normalize** to canonical (D4). Soft-enum values (`stage:`,`kind:`,…) are **advisory** — an unknown
   value is *flagged, not rejected* (DM1); the hard reject is reserved for genuine ambiguity (unknown
-  *status*, malformed ID).
+  *status*, malformed ID). A digit-suffix token (`ADR-12`) matches both `repo-number` and the
+  migrated-PFX alias grammar; precedence is fixed (Data Model §5): with `--repo` present the
+  uniqueness-checked alias wins when it exists, the `repo-number` reading stands when it doesn't,
+  and the `#` spellings never enter the alias path (the unambiguous escape hatch).
 - **Outputs.** Two modes (AG6): **JSON** (machine) and **human**. **JSON goes to stdout as the sole
   content**; all diagnostics, progress, and deprecation warnings go to **stderr** — so a piped `| jq`
   never chokes. Human mode prints the payload to stdout, narration to stderr.

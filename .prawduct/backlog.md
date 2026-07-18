@@ -23,13 +23,15 @@
   Pre-sign-off rate-budget trace. (a) Doc-coherence: PRD §8.9 and requirements ~§228 credit the "recent-shipped archive window" as "the lever that keeps the write-burst inside the ~500/hr budget," and §9 attributes the fit to the scrub — circular, and neither quantifies the window (no N-months, no formula). But the Pacer is what GUARANTEES the ceiling (it sleeps to stay at 500/hr regardless of volume); the window is a throughput/noise lever, not a ceiling lever. Latent for the 204-item dogfood (204<500, so the lever isn't even needed — never stated). Fix: re-attribute (Pacer=ceiling via pace-across-time; window=throughput/noise) and quantify the window as a throughput target; reconcile the §8.9↔§9 circular reference. (b) Pacer 900 pts/min gap (inferred arithmetic, medium): the Pacer's docstring assumes a "pure-create workload" so the 80/min content cap binds before the 900 REST-pts/min burst — but the archive import is create+close (2 writes/archive item, migrate.py:453-455), so during the archive stretch points/min ≈ 80×5 + 80×5 + reads > 900. Mitigated INCIDENTALLY by gh-subprocess latency (not designed-in; breaks with the raw-HTTP fast-path D2/W1). Fix: meter total REST points (5/write,1/read) against 900/min in the Pacer, or explicitly document the reliance on transport latency + S3 confirmation. Minor doc-vs-code: the scrub runbook suggests importing archive items already-closed to avoid create-then-close churn, but create_issue has no state field — the importer always creates-open-then-reconciles, so that optimization is unbuilt (drives the 2-writes/archive-item cost).
 
 - **[BKL-6M4T]** Complete backlog-service Chunk 06 live migration (deferred)
-  `effort: L · impact: M · area: backlog-service · source: builder · added: 2026-07-17 · reviewed: 2026-07-17 · status: open · stage: ready · related: BKL-5R2K · refs: artifacts/build-plan-backlog-service.md, VRF-006`
+  `effort: L · impact: M · area: backlog-service · source: builder · added: 2026-07-17 · reviewed: 2026-07-18 · status: open · stage: ready · related: BKL-5R2K · refs: artifacts/build-plan-backlog-service.md, VRF-006`
 
   Offline deliverables (scrub runbook, MIG-5 test, SPIKE-S2 script) landed 2026-07-17; the live, owner-in-the-loop remainder is deferred to a post-sign-off session: run SPIKE-S2 on a throwaway repo, run the real prawduct-first migration (scrub → import), repoint briefing/gates to the adapter, retire `lib/backlog/legacy.py` + the `incoming-bugs/` drop-box, then the single cumulative-critic that gates the slice PR. Blocked on design sign-off + a chosen target repo.
 
-  Pre-PR cleanup (2026-07-17 cumulative-Critic warning): strip 9 dangling build-plan chunk-number refs from shipped source before the slice PR (they resolve to nothing once /prawduct:pr deletes the build plan; durable ids like CC1/CRASH-2/DM7 already sit alongside). Locations: lib/backlog/transport.py:322,456,476; migrate.py:12,22,247,326,574; query.py:18. Also reconcile the two follow-up bodies (BKL-7Q2N/BKL-9J3F) that narrate BKL-4W7H as "shipped" once the slice actually merges.
+  Pre-PR cleanup (2026-07-17 cumulative-Critic warning): strip 9 dangling build-plan chunk-number refs from shipped source before the slice PR (they resolve to nothing once /prawduct:pr deletes the build plan; durable ids like CC1/CRASH-2/DM7 already sit alongside). Locations: lib/backlog/transport.py:322,456,476; migrate.py:12,22,247,326,574; query.py:18. Also reconcile the two follow-up bodies (BKL-7Q2N/BKL-9J3F) that narrate BKL-4W7H as "shipped" once the slice actually merges. UPDATE 2026-07-18 (cumulative-Critic R-6, resolved in the slice PR): the chunk-ref strip leg is DONE — all chunk-number refs removed from lib/backlog source. The BKL-7Q2N/BKL-9J3F body reconcile still pends the slice merge.
 
   Owner checkpoint 2026-07-18 — live run HELD; scrub dispositions (5 merges + 13 drops), restructure scope (open survivors only), and MIG-M4-REMOVE (import as-is) all owner-approved and recorded in artifacts/migration-scrub-decisions.md. The migration session executes against that artifact; re-confirm only sign-off + source drift.
+
+  Cutover checklist addition 2026-07-18 (cumulative-Critic R-7 — artifact cascade): at cutover, update `.prawduct/artifacts/architecture.md` — add the `lib/backlog` subsystem component, the `gh` runtime dependency, the clone-shared `backlog-counts.json` store, the briefing/gate repoint, and the drop-box replacement per MG5 — and note the `gh` runtime dependency in project-preferences.md's dependency inventory (rationale home stays PRD O5).
 
 - **[BKL-0QR1]** Chunk 06 retires incoming-bugs/ drop-box before its XP1 replacement exists (upstream-channel sequencing gap)
   `effort: S · impact: M · area: backlog-service · source: user · added: 2026-07-17 · reviewed: 2026-07-17 · status: open · stage: ready · related: BKL-6M4T · accepted-by: @brooks`
@@ -1188,22 +1190,6 @@
   retroactively stales existing composed coverage. Filed at stage=requirements — not buildable
   as written. (critic)
 
-- **[BKL-5D2C]** Move the backlog out of git to a centralized, agent-friendly issue-tracking service
-  `effort: L · impact: L · area: backlog · source: user · added: 2026-07-13 · status: open · stage: requirements · related: BKL-7M4Q, BKL-8T3W, BKL-3R8P · refs: documentation/backlog-service-requirements.md · reviewed: 2026-07-14`
-
-  Umbrella requirement for replacing .prawduct/backlog.md (git-file backlog, LLM-mediated
-  mutation) with a centralized backlog/issue service that is fast, non-blocking,
-  concurrency-safe, and cross-project. Motivating pain (all observed): slow LLM-in-the-loop
-  CRUD, non-atomic writes (BKL-7M4Q), merge conflicts from parallel humans+agents, git-coupled
-  edits, drop-box upstream reporting. Requirements doc:
-  documentation/backlog-service-requirements.md (draft v2 2026-07-13, evidence-sharpened;
-  prior-art research complete — recommendation: adopt GitHub Issues as system of record + build
-  a thin deterministic adapter in the plugin; awaiting owner review). stage:
-  requirements — design starts after owner vets the doc's pushback and open questions. Related:
-  BKL-7M4Q (crash-safe mutation — superseded by CC1 if this ships), BKL-8T3W (shipped-drift
-  surfacing — becomes GV3 reconciliation), BKL-3R8P (dedup — becomes Q3/AU3), XP flow replaces
-  skills/report-bug drop-box. (user)
-
 - **[MET-6T4K]** Assign-to-agent (GitHub issue→PR autopilot) bypasses the governed build cycle — needs gate + retro-governance path
   `effort: L · impact: L · area: methodology · source: user · added: 2026-07-14 · status: open · stage: research · related: BKL-5D2C · refs: documentation/backlog-service-requirements.md (Assign-to-agent subsection), docs/principles.md (P6, P22) · reviewed: 2026-07-14`
 
@@ -1276,9 +1262,11 @@
   Observed 2026-07-16 during norm-lifecycle Chunk 2's review on feature/norm-lifecycle: `prawduct-hook infer-critic-mode` reported "no active build plan and no other rule fired — fail-safe to final" and verify-chunk-refs saw "no current chunk", even though project-state.yaml `active_build_plan: artifacts/build-plan-norm-lifecycle.md` was set and the plan's Chunk 2 declares `Critic mode: chunk`. Failed SAFE here (final ⊇ chunk — a broader review than required), but the same current-chunk/plan derivation feeds the stop-hook gate, so the miss is not confined to mode choice. Likely the derivation doesn't resolve the pointer, or expects a different Status-section shape than the plan uses. Overlap check before fixing separately: BLD-5J8N is the chunk-HEADER regex leg of cmd_verify_chunk_refs ("## Chunk NN — Title" h2/em-dash style exits "chunk not found") — if build-plan-norm-lifecycle.md uses that header style, this may be the same parser gap surfacing at the plan/current-chunk derivation layer; verify against both readers before fixing either alone. BLD-7W2J is the single-slot pointer design (different failure: pointer repointed between parallel plans, not a set pointer going unresolved). Governance-protected (lib/critic_mode.py, bin/prawduct-hook) → full Critic + PR review. (critic)
 
 - **[BKL-6W9R]** transport: _api_paged page-cap trip is silent truncation — fail loud (or warn) at _PAGED_MAX_PAGES
-  `effort: S · impact: S · area: backlog-service · kind: task · source: critic · added: 2026-07-17 · status: open · stage: ready · related: BKL-2V6N`
+  `effort: S · impact: S · area: backlog-service · kind: task · source: critic · added: 2026-07-17 · reviewed: 2026-07-18 · status: open · stage: ready · related: BKL-2V6N`
 
   Critic note (sustainability, 2026-07-18 review of the BKL-2V6N fix): when _api_paged hits _PAGED_MAX_PAGES (100 pages x per_page), it returns the collected prefix indistinguishably from completion — the same silent-truncation class BKL-5T3J exists to kill, though reachable only at 10k+ entries per endpoint (labels/timeline/sub-issues). Fix direction: on cap trip, either raise TransportError(unavailable, 'result truncated at N pages') or surface a warning through the envelope so callers (export especially — the MG2 backup) can distinguish truncated from complete. Compare query._all_issues, which at least logs a diag line on its cap. Not migration-gating (prawduct scale is ~220).
+
+  Update 2026-07-18 (cumulative-Critic R-4): PARTIAL fix landed in the slice PR — core.iter_alias_issues is now bounded (_ALIAS_SCAN_MAX_PAGES=100, diag line on cap trip, tested). Remaining direction folded in from the same finding: extract ONE shared issue-list paginator to replace the four near-identical loops (transport._api_paged / query._all_issues / migrate._scan_all / core.iter_alias_issues) and converge their bounds and cap-trip loudness — one place to fail loud instead of four divergent caps.
 - **[WT-7M4K]** Squash-merged worktree branch leaves a stale merge-base — SessionStart, `infer-critic-mode`/cumulative-Critic, and `pr create` over-count already-merged commits and re-review shipped code
   `effort: L · impact: M · area: worktree · source: user · added: 2026-07-17 · reviewed: 2026-07-17 · status: open · stage: design · related: CRT-6W2N, PR-7T2K, BRF-6K2D · refs: incoming-bugs/archive/squash-merged-branch-left-stale-gates-review-merged-code-and-pr-would-replay.md, skills/pr/SKILL.md (squash default ~:138; post-merge hygiene; create pre-flight gate), bin/prawduct-hook (infer-critic-mode), skills/critic (cumulative interval), Stop/SessionStart briefing (worktree enumeration)`
 
@@ -1319,7 +1307,30 @@
 
   From the test-evidence-environments review (the work that shipped TST-6F2R's multi-environment `test_commands` list): a product with one environment whose toolchain cannot emit JUnit is excluded from the declared-list form — the aggregated record has no way to accept a counts-only source alongside the JUnit-capable environments. Today's escape is a wrapper script, or repeated `--from-junit` for the JUnit halves plus nothing for the counts half. Design question: should `--from-counts` compose as one more aggregated source (i.e. a counts entry participating in the same multi-environment aggregation) rather than remaining an exclusive whole-record mode? Touches ENV-2W7K's "document --from-counts as the paved non-pytest path" — if composition ships, that documentation should describe the composed form. (critic)
 
+- **[BKL-9V2W]** migrate.import_items: resumable error envelope (TransportError path) drops accrued warnings[] — alias self-heal audit lines lost and never re-emitted on resume
+  `effort: S · impact: S · area: backlog-service · kind: bug · source: critic · added: 2026-07-18 · status: open · stage: ready · related: BKL-6M4T, BKL-3K9N`
+
+  Cumulative-Critic correctness reviewer NOTE (rev-20260718T144940Z): migrate.import_items' resumable mid-run error envelope (TransportError path) carries created/skipped/collisions but drops the accrued warnings[] — an alias self-heal audit line emitted by an already-completed record is lost, and it is never re-emitted on the re-run because the restored label makes the skip take the fast path. The live-migration audit trail should not lose these. Fix direction: include warnings in the error envelope, or re-emit them on resume. Same lost-audit-warning class as the known minor limitation recorded on BKL-3K9N (429-retry path); this is the TransportError-resume path.
+
 ## Promoted
+
+- **[BKL-5D2C]** Move the backlog out of git to a centralized, agent-friendly issue-tracking service
+  `effort: L · impact: L · area: backlog · source: user · added: 2026-07-13 · status: promoted · stage: ready · related: BKL-7M4Q, BKL-8T3W, BKL-3R8P · refs: documentation/backlog-service-requirements.md, artifacts/build-plan-backlog-service.md · reviewed: 2026-07-18`
+
+  Umbrella requirement for replacing .prawduct/backlog.md (git-file backlog, LLM-mediated
+  mutation) with a centralized backlog/issue service that is fast, non-blocking,
+  concurrency-safe, and cross-project. Motivating pain (all observed): slow LLM-in-the-loop
+  CRUD, non-atomic writes (BKL-7M4Q), merge conflicts from parallel humans+agents, git-coupled
+  edits, drop-box upstream reporting. Requirements doc:
+  documentation/backlog-service-requirements.md (draft v2 2026-07-13, evidence-sharpened;
+  prior-art research complete — recommendation: adopt GitHub Issues as system of record + build
+  a thin deterministic adapter in the plugin; awaiting owner review). stage:
+  requirements — design starts after owner vets the doc's pushback and open questions. Related:
+  BKL-7M4Q (crash-safe mutation — superseded by CC1 if this ships), BKL-8T3W (shipped-drift
+  surfacing — becomes GV3 reconciliation), BKL-3R8P (dedup — becomes Q3/AU3), XP flow replaces
+  skills/report-bug drop-box. (user)
+
+  Promoted 2026-07-18 (cumulative-Critic sustainability note — stage/status were stale at requirements/open): the requirements doc was owner-vetted, design signed off, and the work is in active build under artifacts/build-plan-backlog-service.md, with the Chunk 06 slice at the PR boundary. Advanced status open→promoted, stage requirements→ready to reflect the in-build state; the "awaiting owner review" narrative above is historical. Live-migration remainder tracked by BKL-6M4T; closes when the backlog-service slice ships.
 
 - **[BKL-4W7H]** id:PFX alias not self-healing — PFX read-resolution unwired + alias-drift breaks import idempotency (CC5)
   `effort: M · impact: L · area: backlog-service · source: user · added: 2026-07-17 · status: promoted · stage: design · related: BKL-5R2K, BKL-6M4T, BKL-0QR1 · reviewed: 2026-07-17`

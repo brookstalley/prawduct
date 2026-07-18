@@ -325,8 +325,8 @@ class GhTransport(Transport):
     # -- relationships (native dependencies + sub-issues) ------------------
     #
     # Endpoint shapes for issue dependencies (GA 2025-08-21) and sub-issues are
-    # confirmed live by the Chunk-05 verify-api step (the migration chunk records
-    # the real dependency/sub-issue shapes); the L1 suite exercises them through
+    # confirmed live by the pre-migration verify-api spike (which records the
+    # real dependency/sub-issue shapes); the L1 suite exercises them through
     # the fake. The seam is ref-based (owner/repo/number) so it is cross-repo
     # capable — a blocker in another repo is judged from a live read (Data Model
     # §4). Should the real payload key differ, only these bodies change.
@@ -459,7 +459,7 @@ class GhTransport(Transport):
     def list_sub_issues(self, owner: str, repo: str, number: int) -> list[dict]:
         """The child issues under ``number`` (native sub-issues) — for ``export``'s
         graph dump. Ref-based so it is cross-repo capable. Shape recorded by the
-        Chunk-05 ``verify-api`` step; the L1 suite exercises it through the fake."""
+        pre-migration ``verify-api`` spike; the L1 suite exercises it through the fake."""
         result = self._api_paged(f"repos/{owner}/{repo}/issues/{number}/sub_issues")
         out: list[dict] = []
         for child in result:
@@ -477,7 +477,7 @@ class GhTransport(Transport):
         """The native timeline for ``number`` (audit history, CC4) — for ``export``'s
         graph dump and (later) GV3/`closed_by`. Returns the raw event dicts, each
         reduced to the non-secret fields the dump keeps. Shape recorded by the
-        Chunk-05 ``verify-api`` step; behavior (event *ordering*) is an L5-owed
+        pre-migration ``verify-api`` spike; behavior (event *ordering*) is an L5-owed
         re-check CONTRACT-1 cannot see (Test Specs §6)."""
         result = self._api_paged(f"repos/{owner}/{repo}/issues/{number}/timeline")
         out: list[dict] = []

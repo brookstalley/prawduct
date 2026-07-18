@@ -318,13 +318,31 @@ def resolve_ref(
     bare ``PFX`` is resolved against; absent it a ``PFX`` cannot resolve and is a
     ``validation`` error (never a silent guess). A ``PFX`` that matches no live item
     is ``not_found``; one that matches more than one is an ``alias_collision`` (the
-    §5 uniqueness invariant broke — flag it, never pick one). **Does a label search
-    for the PFX case**, so it may raise ``TransportError`` — call it inside the
-    caller's transport ``try``/``except`` (a real spelling does no I/O)."""
+    §5 uniqueness invariant broke — flag it, never pick one).
+
+    A digit-suffix token (``ADR-12``) matches BOTH the shell ``repo-number``
+    spelling and the PFX grammar. With ``default_repo`` present the alias is
+    authoritative when an item carries it — an exact, uniqueness-checked match
+    (MG1) beats a guess at a repo name — and the ``repo-number`` reading stands
+    when no item does. The ``#`` spellings never match the PFX grammar, so
+    ``repo#number`` / ``owner/repo#number`` are the unambiguous escape hatch.
+
+    **Does a label search for any token that can be an alias** (with
+    ``default_repo`` set), so it may raise ``TransportError`` — call it inside
+    the caller's transport ``try``/``except`` (a ``#`` or ``/`` spelling does
+    no I/O)."""
     nid = ids.normalize_id(id_raw, default_owner=default_owner)
-    if nid.ok or not ids.is_pfx(id_raw):
-        # A resolved spelling, or an unresolved token that isn't a PFX either —
-        # return normalize_id's verdict verbatim (its error message is the right one).
+    if nid.ok:
+        if default_repo and ids.is_pfx(id_raw):
+            # Both grammars match — alias-if-exists precedence (see docstring).
+            owner, repo = default_repo
+            verdict = _alias_verdict(transport, owner, repo, id_raw.strip())
+            if verdict is not None:
+                return verdict
+        return nid
+    if not ids.is_pfx(id_raw):
+        # An unresolved token that isn't a PFX either — return normalize_id's
+        # verdict verbatim (its error message is the right one).
         return nid
     pfx = id_raw.strip()
     if not default_repo:
@@ -337,23 +355,36 @@ def resolve_ref(
             ),
         )
     owner, repo = default_repo
+    verdict = _alias_verdict(transport, owner, repo, pfx)
+    if verdict is None:
+        return ids.NormalizedId(
+            canonical=None,
+            error="not_found",
+            message=f"no item with alias {ids.alias_label(pfx)} in {owner}/{repo}",
+        )
+    return verdict
+
+
+def _alias_verdict(
+    transport: Transport, owner: str, repo: str, pfx: str
+) -> "ids.NormalizedId | None":
+    """The alias reading of ``pfx`` against ``owner/repo``: the canonical id of
+    the unique item carrying ``id:PFX``, the ``alias_collision`` error when the
+    §5 uniqueness invariant broke, or ``None`` when no item carries the alias
+    (the caller decides whether that is ``not_found`` or a fallback)."""
     numbers = _numbers_for_alias(transport, owner, repo, pfx)
-    label = ids.alias_label(pfx)
     if len(numbers) > 1:
         return ids.NormalizedId(
             canonical=None,
             error="alias_collision",
             message=(
-                f"alias {label} resolves to {len(numbers)} items in {owner}/{repo} "
+                f"alias {ids.alias_label(pfx)} resolves to {len(numbers)} items "
+                f"in {owner}/{repo} "
                 f"({', '.join(f'#{n}' for n in numbers)}) — alias uniqueness violated"
             ),
         )
     if not numbers:
-        return ids.NormalizedId(
-            canonical=None,
-            error="not_found",
-            message=f"no item with alias {label} in {owner}/{repo}",
-        )
+        return None
     number = numbers[0]
     return ids.NormalizedId(
         canonical=f"{owner}/{repo}#{number}", owner=owner, repo=repo, number=number
@@ -878,14 +909,19 @@ def _related(transport: Transport, nid, target_canonical: str, *, add: bool) -> 
 # and ``reconcile-labels`` restore a deleted label — both keyed off one scan.
 
 
+_ALIAS_SCAN_MAX_PAGES: int = 100  # runaway guard, converged with transport/query
+
+
 def iter_alias_issues(transport: Transport, owner: str, repo: str):
     """Yield ``(number, pfxs, label_names)`` for every issue in the repo (all
     states, paginated): ``pfxs`` are the well-formed hand-minted ids recorded in the
     body block ``id_aliases``; ``label_names`` are the issue's current label names
     (so a caller can tell whether the matching ``id:PFX`` label is present). Raises
-    ``TransportError`` on a transport failure (caught at each caller's boundary)."""
+    ``TransportError`` on a transport failure (caught at each caller's boundary).
+    Bounded by ``_ALIAS_SCAN_MAX_PAGES`` so a pathological repo cannot spin
+    forever."""
     page = 1
-    while True:
+    while page <= _ALIAS_SCAN_MAX_PAGES:
         batch = transport.list_issues(owner, repo, state="all", per_page=100, page=page)
         for issue in batch:
             if encode.is_pull_request(issue):
@@ -902,6 +938,7 @@ def iter_alias_issues(transport: Transport, owner: str, repo: str):
         if len(batch) < 100:
             return
         page += 1
+    log_diag(f"alias scan hit the {_ALIAS_SCAN_MAX_PAGES}-page cap; results truncated")
 
 
 # --- provision ---------------------------------------------------------------

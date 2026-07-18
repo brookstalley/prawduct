@@ -8,7 +8,10 @@
 <!-- prawduct: type=feature | scope=backlog-service-v1 | chunks=01,02,03,04,05 -->
 <!-- Statusless on feature/backlog-prd-owner-feedback = release-pending once merged.
      Large subsystem; plan at .prawduct/artifacts/build-plan-backlog-service.md, one
-     commit per chunk, per-chunk Critic. Chunk 06 pending. -->
+     commit per chunk, per-chunk Critic. Chunk 06's OFFLINE deliverables ride in this
+     entry (must-fixes, restructure pre-pass, transport blockers) but 06 is deliberately
+     NOT tagged: its live-migration leg is deferred (owner hold, BKL-6M4T), so the 06
+     Status checkbox must not flip at release. -->
 
 **Parent:** BKL-5D2C — replace the markdown backlog (slow, merge-conflict-prone, git-coupled;
 the deepest measured pain being stale/untrusted item state) with **GitHub Issues as the

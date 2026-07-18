@@ -227,6 +227,56 @@ class TestGetByPfxAlias:
         assert not any(c[0] == "list_issues" for c in fake.calls)
 
 
+class TestDigitSuffixPfxDisambiguation:
+    """A digit-suffix token (``ADR-12``) matches BOTH the shell ``repo-number``
+    spelling and the PFX grammar. With a target repo present the alias is
+    authoritative when an item carries it (an exact, uniqueness-checked match —
+    MG1) and the ``repo-number`` reading stands when none does; the ``#``
+    spellings never enter the alias path, so they stay the escape hatch."""
+
+    PFX = "ADR-12"
+
+    def test_digit_suffix_alias_wins_over_the_repo_number_reading(self, fake):
+        number = _seed_item(fake, labels=[ids.alias_label(self.PFX)])
+        got = core.get_item(fake, id_raw=self.PFX, default_repo=(OWNER, REPO))
+        assert got["status"] == "ok"
+        assert got["data"]["id"] == f"{OWNER}/{REPO}#{number}"
+
+    def test_digit_suffix_without_an_alias_falls_back_to_repo_number(self, fake):
+        nid = core.resolve_ref(
+            fake, self.PFX, default_owner=OWNER, default_repo=(OWNER, REPO)
+        )
+        assert nid.ok
+        assert nid.canonical == f"{OWNER}/ADR#12"
+
+    def test_digit_suffix_collision_is_flagged_not_guessed(self, fake):
+        _seed_item(fake, labels=[ids.alias_label(self.PFX)])
+        _seed_item(fake, labels=[ids.alias_label(self.PFX)])
+        nid = core.resolve_ref(
+            fake, self.PFX, default_owner=OWNER, default_repo=(OWNER, REPO)
+        )
+        assert not nid.ok
+        assert nid.error == "alias_collision"
+
+    def test_hash_spelling_never_enters_the_alias_path(self, fake):
+        _seed_item(fake, labels=[ids.alias_label(self.PFX)])  # bait alias
+        fake.calls.clear()
+        nid = core.resolve_ref(
+            fake, "ADR#12", default_owner=OWNER, default_repo=(OWNER, REPO)
+        )
+        assert nid.ok
+        assert nid.canonical == f"{OWNER}/ADR#12"
+        assert not any(c[0] == "list_issues" for c in fake.calls)
+
+    def test_without_a_target_repo_the_repo_number_reading_stands(self, fake):
+        _seed_item(fake, labels=[ids.alias_label(self.PFX)])  # bait alias
+        fake.calls.clear()
+        nid = core.resolve_ref(fake, self.PFX, default_owner=OWNER)
+        assert nid.ok
+        assert nid.canonical == f"{OWNER}/ADR#12"
+        assert not any(c[0] == "list_issues" for c in fake.calls)
+
+
 class TestMutatorsByPfxAlias:
     """BKL-7Q2N / MG1 — every single-id mutator (not just get/link) resolves a bare
     hand-minted ``PFX`` via its ``id:PFX`` alias against ``--repo``, so a migrated id

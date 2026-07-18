@@ -15,7 +15,7 @@ window is handled by the caller's bounded settle-retry, ``core.get_item``).
   **live** claim" (an assignee whose ``claimed_at`` is past the staleness TTL is
   reap-eligible, not a live claim). Returns ranked candidates each with a *why*.
 - ``counts`` — per-project rollups derived **on read** (never persisted; the GV2
-  briefing snapshot is a separate op, Chunk 04).
+  briefing snapshot in :mod:`snapshot` is a separate op).
 
 Layering: this module sits **above** ``core`` — it reuses core's envelope
 (``ok``/``error``) and the ``pick --claim`` path delegates to ``core.claim`` so

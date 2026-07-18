@@ -9,8 +9,8 @@ INV-1), all **return-value** enveloped (project preference):
    resumable**, keyed on the permanent ``id:PFX`` alias label (skip-if-exists).
    The alias label is written **atomically in the create** — a crash after the
    create still converges on re-run via the label query, so recovery never
-   depends on the crashed process re-running (the Chunk-03 crash-safety learning
-   applied to the importer). There is **no rollback**: GitHub never reuses issue
+   depends on the crashed process re-running (the claim-atomicity lesson —
+   recovery must never hinge on the crashed actor returning — applied here). There is **no rollback**: GitHub never reuses issue
    numbers, so recovery is re-run into the same repo (M6). A durable ``Checkpoint``
    is a fast-path accelerator + audit record, never the correctness key. An
    owner-confirmed MG6 restructure plan (:mod:`restructure`) applies to the
@@ -21,7 +21,7 @@ INV-1), all **return-value** enveloped (project preference):
    timeline, assignees). Not a lossless one-liner re-import into a non-GitHub
    backend (out of scope, Data Model §8) — a *backup/inspection* dump (MG2/G5).
 
-3. **`merge`** (``merge``) — the minimal fold A→B the scrub needs (Chunk 06): a
+3. **`merge`** (``merge``) — the minimal fold A→B the migration scrub needs: a
    **redirect-before-close** so a crash leaves the source open-but-redirected (a
    valid, resolvable state — CRASH-2); nothing is hard-deleted (both bodies
    preserved — DM7). The redirect target is the block-authoritative
@@ -315,7 +315,7 @@ class Checkpoint:
 
 class ImportRecord:
     """One item to import — the **structured primitive** the deterministic import
-    consumes. The Chunk-06 scrub hands ``import_items`` a list of these (a concrete
+    consumes. The migration scrub hands ``import_items`` a list of these (a concrete
     cleaned set), never a model call or a file format (MIG-5): parsing markdown into
     records is a separate, upstream step (``_records_from_backlog``)."""
 
@@ -394,7 +394,7 @@ def _target_status(item: legacy.BacklogItem) -> str:
     metadata when it is a valid status, else inferred from the section (``## Archive``
     → closed). An unknown status value does not drive the axis (a bogus status is
     never applied), but it is **preserved verbatim in the block** (``_block_for``) so
-    nothing is silently dropped — the scrub can see it (Chunk 06)."""
+    nothing is silently dropped — the migration scrub can see it."""
     meta_status = (item.metadata.get("status") or "").strip()
     if meta_status in encode.STATUS_VALUES:
         return meta_status
@@ -741,7 +741,7 @@ def _reconcile_status(
 ) -> None:
     """Bring an item to its target status idempotently (only when it differs — a
     freshly-created ``open`` item needs no write). Reuses the crash-safe
-    ``core.set_status`` so the two-axis transition is the one in Chunk 02."""
+    ``core.set_status`` so the two-axis transition has exactly one implementation."""
     if number is None:
         return
     canonical = _canon(owner, repo, number)

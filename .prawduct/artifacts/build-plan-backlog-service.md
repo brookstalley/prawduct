@@ -303,8 +303,9 @@ tests/
 - **Return-value errors; exceptions only at the CLI boundary** (`cli.py` `run()`), per
   `project-preferences` "Error handling" and API §4.
 - **`legacy.py` is inert during the build.** After the Chunk 01 move it is imported only by
-  `briefing.py`/`backlog_probes.py` (repointed) and its own tests; the markdown-backlog workflow is not
-  extended. Chunk 06 retires it once prawduct reads its live backlog through the adapter.
+  `briefing.py`/`backlog_probes.py`/`norm_probes.py` (repointed) and its own tests; the
+  markdown-backlog workflow is not extended. Chunk 06 retires it once prawduct reads its live
+  backlog through the adapter.
 
 ## Build Chunks — the thin slice
 
