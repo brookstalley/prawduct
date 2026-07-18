@@ -127,6 +127,9 @@
 
   Candidate framework principle worth elevating: 'the agent is advisory on norm content, never a gate; every best practice is defeasible.' Strident warning + graceful deferral + honest record.
 
+  ---
+  **Note (2026-07-17):** the `templates/architecture.md` hard dependency (flagged under "Templates & interview-guidance homing" above) is satisfied — GOV-2T6K shipped 2026-07-17 (`closed-by: architecture-template`). All 7/7 strategy-class authoring templates now exist; this item is no longer blocked on scaffolding.
+
 - **[GOV-4M7K]** coverage-status layer-0 report should share the ambient nudge's product-work gate
   `effort: S · impact: S · area: governance · source: critic · added: 2026-07-16 · status: open · stage: ready · refs: bin/prawduct-hook (cmd_coverage_status), lib/gitstate.py (_has_product_definition_work), skills/doctor/SKILL.md #11`
 
@@ -1248,6 +1251,11 @@
 
   Critic WARNING from the ambient-merge-commit-default review: CLAUDE.md is at 191 lines against the ~150-line guidance ("CLAUDE.md is instructions, not documentation" — methodology/building.md:83; the Critic's review protocol warns above ~150). Needs a diet pass — move architecture/reference content to docs/ or .prawduct/artifacts/, compress redundant instruction. Overlaps MET-7R4J (methodology/CLAUDE.md redundancy and prompt-quality pass) — consider running the diet together with that consolidation; kept separate because MET-7R4J targets cross-file rule interference while this is the CLAUDE.md line-count budget itself. (critic)
 
+- **[TST-8C4V]** Guard test binding the `lib/coverage_probes.py` expectation table to `templates/` scaffold existence
+  `effort: S · impact: S · area: tests · source: critic · added: 2026-07-17 · status: open · stage: ready · related: GOV-2T6K · refs: lib/coverage_probes.py (TRIGGERED_ARTIFACTS / expectation table), templates/`
+
+  From the architecture-template review (the work that closed GOV-2T6K): add a guard test asserting every expected artifact in the `lib/coverage_probes.py` expectation table has a corresponding authoring template under `templates/` — prevents a future expected artifact entering the table with no authoring template (the exact gap GOV-2T6K just closed for `architecture`). Note the coverage-scaffold stub is deliberately template-independent, so the test asserts **authoring-path parity**, not coverage correctness — coverage functions end-to-end with or without a template; what the test protects is the human-facing authoring starting point. (critic)
+
 ## Promoted
 
 - **[TST-6F2R]** `test-evidence record` with no declared test_command falls back to sys.executable pytest — venv-isolated projects record a catastrophic false-red
@@ -1259,8 +1267,10 @@
 
   Promoted 2026-07-17 for the 3.1.0 release line.
 
+## Archive
+
 - **[GOV-2T6K]** `templates/architecture.md` authoring template is missing — a product triggered into an architecture spec has nothing to start from
-  `effort: S · impact: S · area: governance · source: builder · added: 2026-07-16 · status: promoted · stage: ready · refs: templates/, lib/coverage_probes.py (TRIGGERED_ARTIFACTS) · reviewed: 2026-07-17`
+  `effort: S · impact: S · area: governance · source: builder · added: 2026-07-16 · status: shipped · stage: ready · closed-by: architecture-template · refs: templates/, lib/coverage_probes.py (TRIGGERED_ARTIFACTS) · reviewed: 2026-07-17`
 
   `architecture` is one of the seven strategy-class artifacts (the characteristic-triggered arm fired by `multi_process_distributed`; the sibling triggered artifact `api-contract` ships a template, and every universal strategy-class artifact has one), but `templates/architecture.md` does not exist. So a product that records `multi_process_distributed` and runs `/prawduct:methodology planning` to author its architecture spec has no template to start from — every other strategy-class artifact hands the author a scaffold, this one does not.
 
@@ -1270,7 +1280,7 @@
 
   Promoted 2026-07-17 for the 3.1.0 release line.
 
-## Archive
+  Shipped 2026-07-17 (closed-by: architecture-template): `templates/architecture.md` authored on the closing branch, matching the structure/tone of the other strategy-class templates and including the `(not relevant to this project — <reason>)` stub affordance.
 
 - **[PR-8W3D]** Ambient merge-commit default — carry the `/pr` squash→merge-commit flip onto the ambient guidance surfaces (CLAUDE.md, session digest, pr-skill, templates)
   `effort: S · impact: M · area: pr · source: user · added: 2026-07-17 · reviewed: 2026-07-17 · status: shipped · stage: ready · closed-by: ambient-merge-commit-default · related: WT-7M4K · refs: CLAUDE.md, hooks/digest.py, skills/pr/SKILL.md, templates/project-preferences.md (PR merge strategy row ~:46)`

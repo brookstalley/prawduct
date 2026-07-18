@@ -3,6 +3,33 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-07-17: templates/architecture.md — the seventh strategy-class artifact gets its authoring scaffold (feature)
+
+<!-- prawduct: type=feature -->
+<!-- Statusless = release-pending once merged. One new template + registry reconciliation, no
+     build plan (small additive work, promoted GOV-2T6K). Governance-protected (templates/) →
+     full Critic. -->
+
+**Parent:** GOV-2T6K — a product that records `multi_process_distributed` is triggered into an
+architecture spec, but unlike every other strategy-class artifact there was no
+`templates/architecture.md` to author from (the `coverage-scaffold` neutral stub covers the
+coverage nudge, not the authoring path). Named a hard dependency of the structural-coverage
+release line; included in 3.1.0 by owner scope decision.
+
+**What:** Authored `templates/architecture.md` matching the sibling strategy-class templates'
+structure: guidance-comment header (Tier 1; generated on `multi_process_distributed`; broad
+surface definition — client+server, mobile+backend, services+workers, extension+host,
+game client+authoritative server, host+plugins; proportionate-to-risk note; stub affordance
+with the recorded-characteristic contradiction caveat), frontmatter (`depends_on`:
+product-brief, data-model, security-model, nonfunctional-requirements), the audit-corrected
+optional-Direction comment, and nine guidance-comment sections (Overview & Topology,
+Components & Responsibilities, Communication & Boundaries, Data Ownership & Consistency,
+Failure Modes & Resilience, Deployment & Version Skew, Scaling Model, Cross-Cutting Runtime
+Concerns, Decision Log). Boundary-of-responsibility rule throughout: this artifact names the
+topology; contracts point at api-contract/boundary-patterns, trust at security-model, targets
+at nonfunctional-requirements. Reconciled `.prawduct/cross-cutting-concerns.md` (the "6 of 7"
+row and the Known Gaps follow-up now record the gap closed).
+
 ## 2026-07-17: Ambient merge-commit default — the standing-instruction surfaces state the merge strategy (fix)
 
 <!-- prawduct: type=fix -->
