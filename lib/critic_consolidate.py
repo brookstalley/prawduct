@@ -248,8 +248,51 @@ def begin_review(
                 "reason": f"prior review fact {prior.get('id')!r} records no head_tree",
             }
         base_commit = prior_body.get("head_commit")
-        head_tree = capture["tree"]
-        head_commit = dispatch_commit if capture["clean"] else None
+
+        # Intent-aware head anchor (CRT-7H2W). verify-resolutions serves two gate
+        # targets that DIVERGE once the working tree is dirty: the PR gate
+        # composes to COMMITTED HEAD, the Stop-hook gate to the WORKING tree. A
+        # single working-tree anchor left the PR gate ``uncovered`` whenever a
+        # committed fix carried along a stray judgeable uncommitted file. Read
+        # intent from git: if the builder COMMITTED work since the prior review
+        # (the post-cumulative-fix / PR-gate case), anchor the review edge at
+        # committed HEAD so it composes to the PR gate's target and note-and-
+        # exclude any WIP, exactly like the cumulative branch. Otherwise
+        # (fix-in-progress in a dirty tree) keep the working-tree anchor so the
+        # Stop-hook gate composes and the PR gate legitimately stays pending until
+        # the fix is committed — preserving CRT-4J8W dirty-tree verify.
+        from . import critic_mode  # noqa: PLC0415 — lazy; avoids an import cycle
+        prior_commit = prior_body.get("head_commit") or prior_body.get("dispatch_commit")
+        committed_since = (
+            critic_mode._committed_files_since(project_dir, prior_commit)
+            if prior_commit else set()
+        )
+        if committed_since:
+            head_tree = capture["head_tree"]  # committed HEAD — the PR-gate target
+            head_commit = dispatch_commit
+            if not capture["clean"]:
+                notes.append(
+                    "working tree dirty at verify-resolutions dispatch — anchored "
+                    "to committed HEAD (a committed delta exists since the prior "
+                    "review); uncommitted changes are NOT in the reviewed scope"
+                )
+        else:
+            head_tree = capture["tree"]  # working tree — the Stop-hook target
+            head_commit = dispatch_commit if capture["clean"] else None
+            if not capture["clean"]:
+                from . import coverage_algebra  # noqa: PLC0415 — lazy
+                wip = (
+                    evidence.tree_diff(project_dir, capture["head_tree"], capture["tree"])
+                    or []
+                )
+                if coverage_algebra.judgeable_files(wip):
+                    notes.append(
+                        "working tree dirty with judgeable uncommitted files and no "
+                        "committed delta since the prior review — this fact vouches "
+                        "for the WORKING tree, but the cumulative/PR gate targets "
+                        "committed HEAD, so it will read `uncovered` until you commit "
+                        "(or stash) the fix and re-run verify-resolutions"
+                    )
         delta = evidence.tree_diff(project_dir, base_tree, head_tree)
         if delta is None:
             return {
@@ -329,6 +372,10 @@ def begin_review(
         "scope": scope,
         "chunk": chunk,
         "base_reviewed": base_reviewed,
+        # Make the resolved target VISIBLE so a wrong-tree review is obvious
+        # instead of silent (PDT-WT9K). ``branch`` is None on a detached HEAD.
+        "worktree": str(project_dir),
+        "branch": gitstate.current_branch(project_dir),
     }
     ok, reason = validate_manifest(manifest)
     if not ok:
@@ -420,14 +467,15 @@ def validate_partial(data) -> tuple[bool, str]:
                 f"finding[{idx}] severity {f['severity']!r} not in "
                 f"{sorted(_SEVERITY_RANK)}"
             )
-        # ``files`` is optional attribution. Reviewers are told to *omit* it for
-        # non-file-specific findings (e.g. process/evidence NOTEs), but a model
-        # naturally emits ``[]`` for "no files" — semantically identical to
-        # omission. Accept an empty list rather than fail-closing the whole
-        # consolidation over a distinction that carries no meaning; ``[]`` is
-        # normalized away downstream (``merge_findings`` only keeps truthy files).
-        if "files" in f and not _str_list(f["files"]):
-            return False, f"finding[{idx}] 'files' must be a list of non-empty strings"
+        # ``files`` is optional attribution, normalized away downstream: a
+        # blank/non-string element is dropped in ``merge_findings`` and an
+        # all-blank list collapses to no ``files`` at all — exactly like ``[]``
+        # or an omitted key. Reject only a value that is not a list; a single
+        # malformed element must never fail-close the WHOLE consolidation over
+        # optional attribution (a reviewer's ``files:[""]`` on a file-less
+        # META-finding otherwise bricked every review).
+        if "files" in f and not isinstance(f["files"], list):
+            return False, f"finding[{idx}] 'files' must be a list"
     resolutions = data.get("resolutions")
     if resolutions is not None:
         if not isinstance(resolutions, list):
@@ -463,7 +511,9 @@ def validate_manifest(data) -> tuple[bool, str]:
     non-empty ``files_reviewed``, ``files_changed`` (a list, possibly empty —
     a same-tree verify-resolutions pass legitimately changes nothing).
     Nullable: ``base_commit``/``head_commit`` (a prior review of a dirty tree
-    has no commit), ``tier``/``scope``/``chunk``/``model``/``base_reviewed``.
+    has no commit), ``tier``/``scope``/``chunk``/``model``/``base_reviewed``,
+    ``worktree``/``branch`` (visibility fields; ``branch`` is None on a detached
+    HEAD — PDT-WT9K).
 
     The v2 (model-written) manifest shape carries none of the v3 interval
     fields, so it fails here loudly — a stale cached skill hand-authoring a
@@ -491,7 +541,7 @@ def validate_manifest(data) -> tuple[bool, str]:
     if not _str_list(data.get("files_changed")):
         return False, "'files_changed' must be a list of non-empty strings"
     for opt in ("base_commit", "head_commit", "tier", "scope", "chunk", "model",
-                "base_reviewed"):
+                "base_reviewed", "worktree", "branch"):
         val = data.get(opt)
         if val is not None and not _nonempty_str(val):
             return False, f"'{opt}' must be a non-empty string or null"
@@ -560,8 +610,14 @@ def merge_findings(partials: list[dict]) -> list[dict]:
     merged: dict[tuple, dict] = {}
     for partial in partials:
         for f in partial.get("findings", []):
-            files = f.get("files")
-            key = (f["goal"], f["name"], tuple(files) if files else ())
+            # Normalize optional attribution to non-empty string paths, so a
+            # blank/non-string element collapses to no ``files`` exactly like
+            # ``[]`` or an omitted key — the validator tolerates such elements
+            # rather than fail-closing, and normalization happens here.
+            files = [
+                x for x in (f.get("files") or []) if isinstance(x, str) and x.strip()
+            ]
+            key = (f["goal"], f["name"], tuple(files))
             entry = {
                 "goal": f["goal"],
                 "severity": f["severity"],
@@ -569,7 +625,7 @@ def merge_findings(partials: list[dict]) -> list[dict]:
                 "recommendation": f["recommendation"],
             }
             if files:
-                entry["files"] = list(files)
+                entry["files"] = files
             existing = merged.get(key)
             if existing is None or (
                 _SEVERITY_RANK[f["severity"]] > _SEVERITY_RANK[existing["severity"]]

@@ -200,6 +200,26 @@ class TestComposedCoveragePasses:
         rc, _out, err = _run_gate(repo, capsys)
         assert rc == 0, err
 
+    def test_verify_resolutions_at_committed_head_composes_over_fix_commit(self, tmp_path, capsys):
+        # CRT-7H2W: a post-cumulative fix COMMIT is judgeable, so the cumulative
+        # fact alone does not cover it (cf. test_unreviewed_judgeable_commit_...
+        # _blocks). A verify-resolutions fact anchored at the COMMITTED HEAD tree
+        # — what begin_review now records when a committed delta exists since the
+        # prior review — bridges reviewed-tree -> committed HEAD, so the gate
+        # composes. Anchored at a dirty WORKING tree it would not; that is the
+        # point of the intent-aware head anchor.
+        repo = _branch_repo(tmp_path)
+        reviewed = _tree(repo)  # T_c — the cumulative-reviewed feature tip
+        _fact(repo, _tree(repo, "main"), reviewed, ["feature.py"])
+        _commit(repo, "feature.py", "y = 3  # fixed\n", "fix blocker")
+        fixed = _tree(repo)  # T_c2 — committed HEAD after the fix commit
+        _fact(
+            repo, reviewed, fixed, ["feature.py"],
+            mode="verify-resolutions (delta review, prior findings only)",
+        )
+        rc, _out, err = _run_gate(repo, capsys)
+        assert rc == 0, err
+
 
 # ---------------------------------------------------------------------------
 # Still blocks — one regression per deleted v2 acceptance path

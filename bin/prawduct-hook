@@ -869,6 +869,21 @@ def cmd_critic_begin(project_dir: Path, argv: list[str]) -> int:
         print("PRAWDUCT: not an onboarded repo — nothing to review or protect.")
         return 0
 
+    # PDT-WT9K: never SILENTLY review a tree other than where the work lives. If
+    # the shell's cwd is inside a git repo whose toplevel differs from the tree
+    # this review resolved to, the resolver honored the launch pin over a
+    # different repo/worktree at cwd — refuse rather than review the wrong tree.
+    cwd_top = _gitstate()._git_toplevel(Path.cwd())
+    if cwd_top is not None and cwd_top != project_dir:
+        print(
+            f"critic-begin: refusing — the shell is in {cwd_top} but the review "
+            f"resolved to a different tree {project_dir}. Run /prawduct:critic from "
+            "inside the worktree that holds the work (EnterWorktree), or unset "
+            "CLAUDE_PROJECT_DIR — so the review can't silently target the wrong tree.",
+            file=sys.stderr,
+        )
+        return 1
+
     consolidate = _critic_consolidate()
     result = consolidate.begin_review(project_dir, **opts)
     if result["status"] != "ok":
@@ -886,6 +901,25 @@ def cmd_critic_begin(project_dir: Path, argv: list[str]) -> int:
         f"{len(manifest['files_changed'])} file(s) changed, "
         f"tree {manifest['head_tree'][:12]}. Manifest: {result['path']}"
     )
+    # PDT-WT9K: surface the resolved target so a wrong-tree review is obvious.
+    base_ref = manifest.get("base_commit") or manifest.get("base_tree") or "?"
+    print(
+        f"PRAWDUCT: reviewing worktree {manifest.get('worktree')} "
+        f"branch {manifest.get('branch') or '(detached)'} "
+        f"base {base_ref[:12]} — confirm this is where the work lives."
+    )
+    siblings = [
+        w for w in _briefing()._detect_worktrees(project_dir)
+        if w.get("is_active") != "true"
+    ]
+    if siblings:
+        # ``branch`` is absent on a bare-repo worktree entry (git emits `bare`,
+        # not a branch/detached line) — guard like briefing's own consumer.
+        listed = "; ".join(f"{w.get('path', '?')} [{w.get('branch', '?')}]" for w in siblings)
+        print(
+            f"PRAWDUCT: {len(siblings)} other worktree(s) on this repo: {listed} "
+            "— if the work is in one of them, run /prawduct:critic from there."
+        )
     if _critic_marker().write_marker(prawduct_dir):
         print("PRAWDUCT: critic-active marker set (session-mutating clear is guarded).")
     return 0
@@ -2272,18 +2306,26 @@ def cmd_verify_chunk_refs(project_dir: Path, chunk_id: str | None) -> int:
     if chunk_id is None:
         chunk_id = os.environ.get("PRAWDUCT_VERIFY_CHUNK_ID")
     if chunk_id is None:
-        status = _buildplan_refs()._parse_build_plan_status(prawduct_dir)
-        current = status.get("current_chunk", "")
-        # current is e.g. "Chunk 02: F3 — …"
-        if not current.startswith("Chunk "):
+        # One canonical current-chunk resolution (shared with the stop hook and
+        # the Critic helper); handles both the "### Chunk NN:" and
+        # "## Chunk N (ID) — Name" Status-item forms.
+        chunk_id = _buildplan_refs()._current_chunk_id_from_status(prawduct_dir)
+        if chunk_id is None:
             print("ok: no current chunk in Status; nothing to verify")
             return 0
-        rest = current[len("Chunk "):]
-        chunk_id = rest.split(":", 1)[0].strip()
 
     refs = _buildplan_refs()._parse_build_plan_chunk_refs(prawduct_dir, chunk_id)
     if refs["error"]:
-        print(f"error: {refs['error']}", file=sys.stderr)
+        # The Goal-2 deliverable check could not RUN (plan or chunk section not
+        # located) — a distinct signal from "a named deliverable is missing"
+        # (the missing-ref lines below). Surfacing them differently stops a
+        # can't-parse exit from being dismissed as noise and masking a real
+        # missing-deliverable BLOCKING (the false-negative habituation BLD-5J8N).
+        print(
+            f"cannot-verify: {refs['error']}; Goal-2 deliverable check did not run "
+            "(is the chunk heading a recognized '### Chunk NN:' / '## Chunk N (ID) — Name' form?)",
+            file=sys.stderr,
+        )
         return 1
     missing = _buildplan_refs()._verify_chunk_refs(project_dir, refs)
     if missing:
@@ -2737,6 +2779,15 @@ def cmd_infer_critic_mode(project_dir: Path, args: str | None) -> int:
         return 1
     mode, rationale = infer_mode(project_dir, args)
     print(f"{mode}|{rationale}")
+    # PDT-WT9K: name the resolved tree on stderr (stdout stays the machine-read
+    # `<mode>|<rationale>` line the skill parses) so a wrong-tree inference is
+    # visible before the review is even dispatched.
+    branch = _gitstate().current_branch(project_dir)
+    print(
+        f"PRAWDUCT: inferring against worktree {project_dir} "
+        f"branch {branch or '(detached)'}.",
+        file=sys.stderr,
+    )
     return 0
 
 

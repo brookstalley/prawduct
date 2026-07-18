@@ -219,14 +219,50 @@ class TestValidatePartial:
         ok, reason = cc.validate_partial(p)
         assert ok, reason
 
-    def test_finding_files_with_empty_string_rejected(self):
+    def test_finding_files_with_blank_element_normalized_not_rejected(self):
+        # A blank/non-string element in ``files`` is optional attribution — it
+        # must be normalized away downstream, NOT fail-close the whole
+        # consolidation. (This previously rejected; that rejection WAS the
+        # defect — one reviewer's ``files:[""]`` on a file-less META-finding
+        # bricked every review.)
         p = _partial("correctness", "abc", findings=[
             {"name": "x", "goal": "g", "severity": "warning",
              "recommendation": "y", "files": ["a.py", ""]}
         ])
         ok, reason = cc.validate_partial(p)
-        assert not ok
-        assert "files" in reason
+        assert ok, reason
+
+    def test_finding_files_all_blank_accepted(self):
+        # ``files: [""]`` — the exact live trigger — must consolidate, not abort.
+        p = _partial("correctness", "abc", findings=[
+            {"name": "Learnings cross-check", "goal": "g", "severity": "note",
+             "recommendation": "y", "files": [""]}
+        ])
+        ok, reason = cc.validate_partial(p)
+        assert ok, reason
+
+    def test_finding_files_nonstring_element_accepted(self):
+        # A list holding a non-string element is tolerated at validation (it is
+        # dropped in merge_findings), consistent with the blank-element rule —
+        # only a non-*list* ``files`` value is a hard schema error.
+        p = _partial("correctness", "abc", findings=[
+            {"name": "x", "goal": "g", "severity": "warning",
+             "recommendation": "y", "files": [5, "a.py"]}
+        ])
+        ok, reason = cc.validate_partial(p)
+        assert ok, reason
+
+    def test_finding_files_not_a_list_rejected(self):
+        # A non-list ``files`` is still a hard schema error (a bare string is a
+        # common mis-emission) — only malformed *elements* are tolerated.
+        for bad in ("a.py", 5, {"a.py": 1}):
+            p = _partial("correctness", "abc", findings=[
+                {"name": "x", "goal": "g", "severity": "warning",
+                 "recommendation": "y", "files": bad}
+            ])
+            ok, reason = cc.validate_partial(p)
+            assert not ok, f"{bad!r} should be rejected"
+            assert "files" in reason
 
     @pytest.mark.parametrize("mutate,frag", [
         (lambda p: p.pop("role"), "role"),
@@ -309,6 +345,17 @@ class TestValidateManifest:
         assert not ok
         assert "mode" in reason
 
+    def test_worktree_branch_nullable_accepted(self):
+        # PDT-WT9K visibility fields: both null (detached HEAD → branch None) and
+        # populated are valid; an absent key (older manifest) is fine too.
+        assert cc.validate_manifest(_manifest_dict(worktree=None, branch=None))[0]
+        assert cc.validate_manifest(_manifest_dict(worktree="/r", branch="main"))[0]
+
+    def test_non_string_worktree_rejected(self):
+        ok, reason = cc.validate_manifest(_manifest_dict(worktree=5))
+        assert not ok
+        assert "worktree" in reason
+
     @pytest.mark.parametrize("field", [
         "id", "mode_chosen_by", "roster", "roster_chosen_by",
         "commit_reviewed", "base_tree", "head_tree",
@@ -389,6 +436,24 @@ class TestMergeFindings:
             "goal": "Nothing Is Broken", "severity": "warning",
             "title": "Stale evidence", "recommendation": "Re-run", "fid": "R-1",
         }]
+        assert "files" not in merged[0]
+
+    def test_blank_and_nonstring_files_elements_dropped(self):
+        # Both blank strings AND genuinely non-string elements normalize out,
+        # mirroring ``[]`` — only real path strings survive.
+        merged = cc.merge_findings([_partial("correctness", "a", findings=[
+            {"name": "Meta note", "goal": "Nothing Is Missing",
+             "severity": "note", "recommendation": "n",
+             "files": ["", 5, None, "  ", "a.py"]}
+        ])])
+        assert merged[0]["files"] == ["a.py"]
+
+    def test_all_blank_files_normalized_out_of_record(self):
+        # ``files: [""]`` collapses to no ``files`` key, like ``[]``.
+        merged = cc.merge_findings([_partial("correctness", "a", findings=[
+            {"name": "Meta note", "goal": "Nothing Is Missing",
+             "severity": "note", "recommendation": "n", "files": [""]}
+        ])])
         assert "files" not in merged[0]
 
     def test_dedup_keeps_highest_severity(self):
@@ -932,6 +997,55 @@ class TestVerifyResolutionsDispatch:
         assert result.returncode == 1
         assert "no prior review" in result.stderr
 
+    def _seed_commit_then_fix_with_dirty_wip(self, repo: Path) -> tuple[str, str]:
+        """Prior review at the initial commit; the fix is COMMITTED (a real
+        committed delta since the prior review), then a judgeable uncommitted
+        file dirties the tree. Returns (fix commit sha, prior id)."""
+        head = _commit_file(repo, "src/app.py", "x = 1\n", "init")
+        head_tree = _git(repo, "rev-parse", "HEAD^{tree}").stdout.strip()
+        (repo / ".prawduct").mkdir(exist_ok=True)
+        prior_id = _seed_prior_review_with_blocker(
+            repo, head, head_tree=head_tree, head_commit=head
+        )
+        fix = _commit_file(repo, "src/app.py", "x = 2  # fixed\n", "fix blocker")
+        (repo / "src/extra.py").write_text("y = 3\n")  # judgeable uncommitted WIP
+        return fix, prior_id
+
+    def test_committed_fix_with_dirty_wip_anchors_committed_head(self, tmp_path):
+        # CRT-7H2W: with a committed delta since the prior review, the head
+        # anchors COMMITTED HEAD (the PR-gate target), not the dirty working
+        # tree — so a stray judgeable uncommitted file no longer leaves the PR
+        # gate uncovered after a successful verify-resolutions.
+        repo = tmp_path / "r"
+        _init_repo(repo)
+        fix, prior_id = self._seed_commit_then_fix_with_dirty_wip(repo)
+        result = _run_begin(repo, "--mode", "verify-resolutions")
+        assert result.returncode == 0, f"stderr={result.stderr!r}"
+        manifest = json.loads((repo / PARTIALS_REL / "manifest.json").read_text())
+        committed_tree = _git(repo, "rev-parse", "HEAD^{tree}").stdout.strip()
+        assert manifest["head_commit"] == fix          # committed HEAD, not None
+        assert manifest["head_tree"] == committed_tree  # committed tree, not working
+        prior_fact = next(f for f in _store_facts(repo, "review") if f["id"] == prior_id)
+        assert manifest["base_tree"] == prior_fact["body"]["head_tree"]
+        # The dirty-but-anchored-to-committed-HEAD diagnostic note fires.
+        assert "anchored to committed HEAD" in result.stderr
+
+    def test_uncommitted_fix_keeps_working_tree_anchor(self, tmp_path):
+        # Case (b): no committed delta — the fix is still in the working tree.
+        # The anchor stays the working tree (head_commit None) so the Stop-hook
+        # gate composes and the PR gate legitimately stays pending (CRT-4J8W
+        # dirty-tree verify preserved).
+        repo = tmp_path / "r"
+        _init_repo(repo)
+        head, _prior_id = self._seed_and_fix(repo)  # fix left UNCOMMITTED
+        result = _run_begin(repo, "--mode", "verify-resolutions")
+        assert result.returncode == 0, f"stderr={result.stderr!r}"
+        manifest = json.loads((repo / PARTIALS_REL / "manifest.json").read_text())
+        assert manifest["head_commit"] is None  # dirty tree, no committed delta
+        # The judgeable-WIP "uncovered until you commit" WARNING fires so the
+        # working-tree-vs-committed-HEAD mismatch is surfaced, not silent.
+        assert "vouches for the WORKING tree" in result.stderr
+
     def test_verify_scope_widened_exits_2(self, tmp_path):
         repo = tmp_path / "r"
         _init_repo(repo)
@@ -942,6 +1056,76 @@ class TestVerifyResolutionsDispatch:
         result = _run_begin(repo, "--mode", "verify-resolutions")
         assert result.returncode == 2
         assert "scope-widened" in result.stderr
+
+
+class TestWorktreeVisibility:
+    """PDT-WT9K — the review makes its resolved target VISIBLE, and refuses when
+    the shell's repo differs from the resolved tree (never a silent wrong tree)."""
+
+    def test_manifest_carries_worktree_and_branch(self, tmp_path):
+        repo = tmp_path / "r"
+        _init_repo(repo)  # -b main
+        _commit_file(repo, "src/app.py", "x = 1\n", "init")
+        (repo / ".prawduct").mkdir()
+        (repo / "src/app.py").write_text("x = 2\n")  # a chunk diff
+        result = _run_begin(repo, "--mode", "chunk")
+        assert result.returncode == 0, f"stderr={result.stderr!r}"
+        manifest = json.loads((repo / PARTIALS_REL / "manifest.json").read_text())
+        assert Path(manifest["worktree"]).name == "r"
+        assert manifest["branch"] == "main"
+        # The dispatch print names the tree so a wrong one is obvious.
+        assert "reviewing worktree" in result.stdout
+        assert "branch main" in result.stdout
+
+    def test_refuses_when_cwd_repo_differs_from_resolved(self, tmp_path):
+        # Shell in repo A, but CLAUDE_PROJECT_DIR pinned to a DIFFERENT repo B —
+        # the review would target B while you work in A. Refuse loudly.
+        repo_a = tmp_path / "a"
+        _init_repo(repo_a)
+        _commit_file(repo_a, "a.py", "x = 1\n", "a")
+        repo_b = tmp_path / "b"
+        _init_repo(repo_b)
+        _commit_file(repo_b, "b.py", "y = 1\n", "b")
+        (repo_b / ".prawduct").mkdir()  # onboarded, so we reach the refuse
+        (repo_b / "b.py").write_text("y = 2\n")
+        result = subprocess.run(
+            ["python3", str(HOOK), "critic-begin", "--mode", "chunk"],
+            cwd=str(repo_a), capture_output=True, text=True,
+            env={**_git_env(repo_a), "CLAUDE_PLUGIN_ROOT": str(ROOT),
+                 "CLAUDE_PROJECT_DIR": str(repo_b)}, timeout=30,
+        )
+        assert result.returncode == 1
+        assert "refusing" in result.stderr
+        # And no manifest was written for the wrong tree.
+        assert not (repo_b / PARTIALS_REL / "manifest.json").exists()
+
+    def test_same_worktree_does_not_refuse(self, tmp_path):
+        # The common case: cwd IS the resolved tree — no refuse.
+        repo = tmp_path / "r"
+        _init_repo(repo)
+        _commit_file(repo, "src/app.py", "x = 1\n", "init")
+        (repo / ".prawduct").mkdir()
+        (repo / "src/app.py").write_text("x = 2\n")
+        result = _run_begin(repo, "--mode", "chunk")
+        assert result.returncode == 0, f"stderr={result.stderr!r}"
+        assert "refusing" not in result.stderr
+        assert (repo / PARTIALS_REL / "manifest.json").exists()
+
+    def test_detached_head_records_null_branch(self, tmp_path):
+        # gitstate.current_branch returns None on a detached HEAD (an honest
+        # null, not a misleading guess), so the manifest carries branch: null
+        # and validate_manifest accepts it — the case current_branch exists for.
+        repo = tmp_path / "r"
+        _init_repo(repo)
+        head = _commit_file(repo, "src/app.py", "x = 1\n", "init")
+        (repo / ".prawduct").mkdir()
+        _git(repo, "checkout", "--quiet", head)  # detach HEAD
+        (repo / "src/app.py").write_text("x = 2\n")
+        result = _run_begin(repo, "--mode", "chunk")
+        assert result.returncode == 0, f"stderr={result.stderr!r}"
+        manifest = json.loads((repo / PARTIALS_REL / "manifest.json").read_text())
+        assert manifest["branch"] is None
+        assert "(detached)" in result.stdout
 
 
 # ---------------------------------------------------------------------------

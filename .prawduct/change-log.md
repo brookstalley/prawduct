@@ -3,6 +3,68 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-07-18: discodon upstream defect fixes (discodon-upstream-defects)
+
+<!-- prawduct: type=bugfix | scope=discodon-upstream-defects | chunks=01,02,03,04 -->
+
+**Parent:** four prawduct defects filed upstream by the discodon product (their ids
+CRT-M3F8, PDT-C6R4, CRT-T9RX, PDT-WT9K), re-verified against `develop` (v3.1.0) by direct
+code read + three independent verification agents. Audit of the 9-defect batch: 5 fully
+fixed (CRT-W2NV, CRT-J4PM×2, CRT-8F3K, CRT-K7VF), TEV-9K2M core fixed with a by-design
+`--scope`/`--from-counts` residual; the four below had remaining work. Local items:
+CRT-4T7M (newly filed), BLD-5J8N, CRT-7H2W, CRT-6W2N. Plan:
+`.prawduct/artifacts/build-plan-discodon-upstream-defects.md`.
+
+**What (chunks built so far):**
+- **Chunk 01 — CRT-M3F8 / CRT-4T7M (critic-consolidate file-less/blank findings):**
+  `validate_partial` now rejects a finding's `files` only when it is not a list at all;
+  blank/non-string elements are normalized out in `merge_findings` (`[""]` → no `files`
+  key, exactly like `[]`). A reviewer's file-less META-finding (Learnings Cross-Check /
+  Backlog Reconciliation) no longer fail-closes the entire consolidation. The strict
+  derived-cache validator (`_validate_critic_findings_data`) is untouched — tolerant at the
+  reviewer-input boundary, strict on internally-generated data. Regression tests:
+  blank/all-blank/non-string elements accepted + normalized; non-list `files` still rejected.
+- **Chunk 02 — PDT-C6R4 / BLD-5J8N (verify-chunk-refs header parsing + loud parse-miss):**
+  the shared `lib/buildplan_refs.py` chunk parsers (`_chunk_section_lines`,
+  `_chunk_id_from_item_text`, `_current_chunk_id_from_status`) now match both the
+  `### Chunk NN:` and `## Chunk N (ID) — Name` (H2, em/en-dash, optional `(ID)`) forms via
+  `_CHUNK_HEADING_RE`/`_CHUNK_ITEM_RE` — the id must be followed by a separator/paren/EOL so a
+  notes sub-heading (`### Chunk 2 build-session decisions`) is not mistaken for a boundary.
+  This fixes both the Goal-2 deliverable gate AND `infer-critic-mode`'s chunk lookup (they share
+  the primitives — the GOV-8N4V facet). `cmd_verify_chunk_refs` now emits a distinct
+  `cannot-verify:` (gate could not run) vs `missing-ref:` (deliverable absent), curing the
+  false-negative habituation. The `regen-views`/`CHUNK_LINE_RE` colon-Status residual is filed
+  as VWS-2F9K (not silently expanded); the colon-form learning was updated. Verified via a
+  3-case CLI exercise (located+ok / missing-ref / cannot-verify) on an H2 fixture.
+- **Chunk 03 — CRT-T9RX / CRT-7H2W (intent-aware verify-resolutions head anchor):**
+  `begin_review`'s verify-resolutions branch now reads intent from git: when a COMMITTED delta
+  exists since the prior review (`critic_mode._committed_files_since`), it anchors
+  `head_tree = capture["head_tree"]` (committed HEAD — the PR-gate target) and note-and-excludes
+  WIP like the cumulative branch; otherwise it keeps the working-tree anchor (the Stop-hook
+  target), preserving CRT-4J8W dirty-tree verify. So a post-cumulative fix that carries a stray
+  judgeable uncommitted file no longer leaves `check-cumulative-critic` `uncovered` after a
+  successful verify-resolutions. Diagnostic half of the CRT-7H2W layered pair also shipped: a
+  judgeable-WIP WARNING at record time and a dirty-tree hint in the gate's `uncovered` remedy.
+  Tests: manifest anchors committed HEAD in the committed-delta case + keeps the working tree
+  otherwise (both notes asserted); an end-to-end gate-composition proof in `test_cumulative_gate.py`.
+  Final-mode Critic: 0 blocking; 2 warnings addressed (note tests added; plan `path:line` citations
+  reformatted and the ref-token `:line` over-match filed as BLD-4V7Q).
+- **Chunk 04 — PDT-WT9K (critic-begin worktree visibility + refuse-on-unresolvable):** the dangerous
+  silent-wrong-tree root cause was already fixed (cwd-follow via `resolve_project_dir`); this adds the
+  hardening. `begin_review`'s manifest now carries `worktree`/`branch` (nullable; `branch` None on a
+  detached HEAD, via the new `gitstate.current_branch`); `cmd_critic_begin` prints the resolved
+  worktree/branch/base and lists sibling worktrees so a wrong tree is obvious, and REFUSES when the
+  shell's git repo differs from the resolved review tree; `cmd_infer_critic_mode` names the resolved
+  tree on stderr (stdout `<mode>|<rationale>` unchanged for the skill parser). `briefing._get_current_branch`
+  now delegates to `gitstate.current_branch` (de-duplicated, keeps its 'main' display default). Chunk
+  Critic: 0 blocking; 2 warnings addressed (detached-HEAD/nullable-validate edge tests added; the
+  "branch-elsewhere surfaced not blocked" reinterpretation recorded as a plan DECISION).
+- **Cumulative review (whole branch, 0 blocking / 0 warning / 7 note):** post-cumulative resolution —
+  the sibling-worktree listing's `w['branch']` subscript could `KeyError` on a bare-repo worktree
+  entry (git emits `bare`, not a `branch`/`detached` line); made it defensive with `.get('branch','?')`
+  like `briefing`'s own consumer. Backlog reconciled: CRT-4T7M, BLD-5J8N, CRT-7H2W flipped shipped
+  (closed-by this branch); CRT-6W2N kept open with a partial-progress note.
+
 ## 2026-07-18: Backlog service — resumable import envelope keeps its audit warnings (backlog-service)
 
 <!-- prawduct: type=bugfix | scope=backlog-service-v1 -->

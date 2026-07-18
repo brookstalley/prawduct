@@ -134,6 +134,28 @@ def git_status_output(project_dir: Path) -> str | None:
         return None
 
 
+def current_branch(project_dir: Path) -> str | None:
+    """The current branch name, ``None`` on a detached HEAD or git failure.
+
+    Used to make the tree a review resolved to VISIBLE (PDT-WT9K) — a silent
+    wrong-tree review is the failure this surfaces, so a detached/failed probe
+    returns ``None`` rather than a misleading value."""
+    try:
+        result = subprocess.run(
+            ["git", "symbolic-ref", "--quiet", "--short", "HEAD"],
+            capture_output=True,
+            text=True,
+            cwd=str(project_dir),
+            timeout=10,
+        )
+        if result.returncode != 0:
+            return None
+        branch = result.stdout.strip()
+        return branch or None
+    except Exception:  # prawduct:allow prawduct/broad-except -- git failure must not crash hook
+        return None
+
+
 def git_has_changes(project_dir: Path, status_output: str | None = None) -> str:
     """Check if there are uncommitted changes. Returns first changed file or empty string.
 
