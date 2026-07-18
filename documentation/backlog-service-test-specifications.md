@@ -533,14 +533,31 @@ decoder / re-runs the op and asserts a valid state + idempotent completion. No r
   (a pasted `.env`/log in an issue body would otherwise reach a committed cache). Negative variant: a
   correctly-ignored cache passes clean.
 
-### 3.10 Migration guard-sweep (MG1–MG4)
+### 3.10 Migration guard-sweep (MG1–MG6)
 
 **MIG-1 — Verbatim body/ID/section fidelity** (→ MG1, PRD §8.9)
 - Level: integration
 - Setup: fixture `discodon-mini` (a representative `backlog.md` slice + archive lines).
 - Action: `import` then `export`; diff the round-trip.
-- Expected: IDs, metadata bars, bodies, and sections are preserved **verbatim**; existing `PFX-XXXX` IDs
-  stay valid as `id:PFX-XXXX` aliases; change-logs/learnings/commit refs that cite old IDs still resolve.
+- Expected: IDs, metadata bars, bodies, and sections are preserved **verbatim** *on the no-plan path*;
+  existing `PFX-XXXX` IDs stay valid as `id:PFX-XXXX` aliases; change-logs/learnings/commit refs that
+  cite old IDs still resolve. *(MG1 revision — issue-standard §5, owner decision 2026-07-17: with a
+  confirmed MG6 restructure plan, bodies are restructured-to-standard and the original preserved
+  verbatim in `original_title`/`original_body` + the export backup; IDs/sections still verbatim.
+  The plan path is specified by MIG-6 below.)*
+
+**MIG-6 — Restructure pre-pass: preserve, fail-closed, never auto-split** (→ MG6, issue-standard §5,
+Data Model §2)
+- Level: unit + integration (`tests/test_backlog_restructure.py`)
+- Setup: `discodon-mini` records + a v1 restructure plan (titles/kinds/sections/non-atomic flags).
+- Action: `restructure.parse_plan` + `apply`; `import --restructure`; `restructure-preview`.
+- Expected: validation is **fail-closed** (typo'd PFX / unknown key / bad kind refuses the whole run
+  *before* the data plane; nothing is created); a changed title/body stashes `original_title`/
+  `original_body` **verbatim-recoverable** (JSON-string block encoding survives fenced content); an
+  identical rewrite leaves no `original_*` residue; bodies compose through the shared
+  `issuefmt.render_body` templates; `kind:` backfills (relabel warns); non-atomic items are **flagged,
+  never split**; the preview renders from the same `apply` result the import consumes; re-run with a
+  plan stays idempotent (skip-if-exists — an existing issue is never rewritten).
 
 **MIG-2 — Multi-prefix absorption stress** (→ DM4, Data Model §5, NFR §7)
 - Level: unit
@@ -795,7 +812,8 @@ duplicates (the same behavior stated in 4–5 docs) collapse to one row.
 | Security §1a unattended: no-prompt/fail-clean/automated/idempotency-narrow | **SEC-6** |
 | F6/F7 PV3 enable-gate + quarantine *(enable-gate implied-not-named)* | **SEC-7** |
 | F5 cache-gitignored / doctor-verifies *(dropped in v1 — added)* | **SEC-8** |
-| MG1 verbatim import fidelity | **MIG-1** |
+| MG1 import fidelity (verbatim no-plan path; §5-revised plan path preserves originals) | **MIG-1**, MIG-6 |
+| MG6 restructure pre-pass (restructure, preserve, no split) | **MIG-6** |
 | DM4 multi-prefix absorption | **MIG-2** |
 | MG2/G5/M10 export native-graph fidelity | **MIG-3** |
 | Data Model §7 cache rebuild / schema-bump no-loss | **MIG-4** |
@@ -912,7 +930,8 @@ Every §3 test cites its parent; the reverse for the invariants/capabilities thi
 BATCH-1/MIG-5 · **Q1-struct**→QRY-1 · **Q1-full/Q3**→QRY-3 · **Q2**→QRY-5 · **Q4**→QRY-4 · **Q5**→QRY-4 ·
 **XP1/XP2**→XP-1 · **XP3**→§8 anti-test · **AU1**→QRY-5 (polling baseline) · **AU2**→BATCH-1 · **AU3**→
 CRASH-2/CRASH-3 · **GV1**→QRY-2 · **GV2**→BLOCK-5 · **GV3**→GOV-1 · **GV5/GV6**→PROV-1/PROV-2 · **MG1**→
-CRASH-4/MIG-1 · **MG2**→MIG-3 · **MG3**→(per-project coexistence — PROV/OPS-1) · **MG4**→MIG-5 · **PV2**→
+CRASH-4/MIG-1 · **MG2**→MIG-3 · **MG3**→(per-project coexistence — PROV/OPS-1) · **MG4**→MIG-5 ·
+**MG6**→MIG-6 · **PV2**→
 SEC-2/SEC-3 · **PV3/PV4**→SEC-7 · **NF1**→OPS-1/OPS-2 · **NF2**→OPS-3 · **NF3**→PROBE-RATE · **AG5**→
 PROBE-LAT · **F1**→SEC-5 · **F2**→SEC-1 · **F3**→ID-3 · **F4**→SEC-4 · **F5**→SEC-8 · **F6/F7**→SEC-7/
 PROV-2 · **S1/S2/S3/S5**→SPIKE-* · **verify-api / Data Model §8 open-Q1 / API §11**→CONTRACT-1 (shape) +

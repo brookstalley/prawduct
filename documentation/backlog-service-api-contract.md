@@ -107,14 +107,18 @@ relationship ops (marker field-home: Data Model §5).
 ### 2.5 Migration, exit & provisioning
 | Op | Idem | Purpose | Parent |
 |---|---|---|---|
-| `import` (migrate) | **yes, resumable** | `backlog.md`(+archive) → issues; keyed on the `id:PFX` alias (**skip-if-exists**), durable checkpoint; **no "rollback"** — GitHub **never reuses issue numbers** (a deleted number is *retired*, not recycled; deletion itself is an admin-only destructive action, not an ordinary op), so recovery = re-run into the same repo | MG1 |
+| `import` (migrate) | **yes, resumable** | `backlog.md`(+archive) → issues; keyed on the `id:PFX` alias (**skip-if-exists**), durable checkpoint; **no "rollback"** — GitHub **never reuses issue numbers** (a deleted number is *retired*, not recycled; deletion itself is an admin-only destructive action, not an ordinary op), so recovery = re-run into the same repo. `--restructure <plan.json>` applies the owner-confirmed **MG6 restructure plan** (issue-standard §5) to the parsed records **before** the data plane — fail-closed validation (typo'd PFX / unknown key refuses the whole run before anything is written), originals stashed verbatim (`original_title`/`original_body` block fields, Data Model §2), applied **at create only** (an existing issue is skipped, never rewritten) | MG1, MG6 |
+| `restructure-preview` | **yes** (offline) | the MG6 owner-review artifact: parse the source(s) exactly as `import` would, apply the plan, write the deterministic before/after markdown the owner approves **in aggregate** — generated from the same code path the import consumes, so what is reviewed is what gets written; needs no transport and touches nothing on GitHub | MG6 |
 | `export` | **yes** | full-fidelity dump to plain files: body block **plus** the native graph (deps, sub-issues, timeline, assignees) — cheap *dump*, not lossless one-liner re-import | MG2, G5 |
 | `provision` / `reconcile-labels` | **yes** | create/reconcile prawduct's namespaced label taxonomy without colliding with the repo's existing labels/Issues; the primitive `/prawduct:onboard`/`doctor` call | GV5, GV6 |
 
 *The MG4 **scrub** is a model-assisted, owner-confirmed **workflow** over these ops (`list` +
 **model-surfaced dedup** to surface stale/dup candidates → owner confirms → `status`/`merge`/`import`
 on the cleaned set), not a single deterministic op — the model is in the *decision*, never the data
-plane (G1/AG1). `search --like` is a **post-cache accelerator** (W1/W2 in the build plan), **not a
+plane (G1/AG1). The **MG6 restructure pre-pass** rides the same pattern: the model *proposes* a plan
+(titles/template bodies/`kind:` per issue-standard §5), `restructure-preview` renders the aggregate
+before/after artifact, the owner approves the batch, and `import --restructure` applies it
+deterministically. `search --like` is a **post-cache accelerator** (W1/W2 in the build plan), **not a
 slice dependency**: lexical similarity is cache-served (§2.2), so in the cacheless slice the model
 surfaces dup candidates by reading `list` output directly.*
 

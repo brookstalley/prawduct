@@ -12,7 +12,9 @@ INV-1), all **return-value** enveloped (project preference):
    depends on the crashed process re-running (the Chunk-03 crash-safety learning
    applied to the importer). There is **no rollback**: GitHub never reuses issue
    numbers, so recovery is re-run into the same repo (M6). A durable ``Checkpoint``
-   is a fast-path accelerator + audit record, never the correctness key.
+   is a fast-path accelerator + audit record, never the correctness key. An
+   owner-confirmed MG6 restructure plan (:mod:`restructure`) applies to the
+   parsed records *before* the data plane — at create only, never as an edit.
 
 2. **`export`** (``export_backlog``) — a cheap, full-fidelity **dump** to plain
    files: the body block **plus the native graph** (dependencies, sub-issues,
@@ -42,7 +44,7 @@ from collections import deque
 from datetime import datetime, timezone
 from pathlib import Path
 
-from . import core, encode, ids, legacy, provision
+from . import core, encode, ids, legacy, provision, restructure
 from .transport import Transport, TransportError
 
 # The facet metadata keys the importer consumes as `<facet>:value` labels (§3).
@@ -69,11 +71,17 @@ def _diag(message: str) -> None:
     print(f"backlog: {message}", file=sys.stderr)
 
 
-def run_key(content: str, archive_content: str | None = None) -> str:
-    """A stable digest of the import *source*, so a resume of the same backlog
-    shares its checkpoint entry while a different source starts fresh (the
-    checkpoint is keyed by ``(scope, run_key)``)."""
-    payload = (content or "") + "\x00" + (archive_content or "")
+def run_key(
+    content: str, archive_content: str | None = None, plan_text: str | None = None
+) -> str:
+    """A stable digest of the import *source* (+ any restructure plan), so a
+    resume of the same backlog shares its checkpoint entry while a different
+    source — or a different confirmed plan — starts fresh (the checkpoint is
+    keyed by ``(scope, run_key)``; the skip authority stays the on-GitHub
+    alias, so a fresh key only costs re-verification, never duplicates)."""
+    payload = (
+        (content or "") + "\x00" + (archive_content or "") + "\x00" + (plan_text or "")
+    )
     return hashlib.sha256(payload.encode()).hexdigest()[:12]
 
 
@@ -434,6 +442,22 @@ def _block_for(item: legacy.BacklogItem, pfx: str | None) -> dict:
 # --- import ------------------------------------------------------------------
 
 
+def collect_records(
+    content: str, archive_content: str | None = None
+) -> tuple[list[ImportRecord], list[dict]]:
+    """Parse the import source(s) into ``(records, collisions)`` — the shared
+    upstream step for both :func:`import_backlog` and the MG6
+    ``restructure-preview`` (which must see byte-for-byte the records the import
+    will consume)."""
+    seen_pfx: dict[str, str] = {}  # shared across both files → cross-file collisions
+    records, collisions = _records_from_backlog(content, seen_pfx)
+    if archive_content:
+        arc_records, arc_collisions = _records_from_backlog(archive_content, seen_pfx)
+        records.extend(arc_records)
+        collisions.extend(arc_collisions)
+    return records, collisions
+
+
 def import_backlog(
     transport: Transport,
     *,
@@ -441,21 +465,29 @@ def import_backlog(
     repo: str,
     content: str,
     archive_content: str | None = None,
+    plan: dict | None = None,
     checkpoint: Checkpoint | None = None,
     pacer: Pacer | None = None,
     backoff: RateLimitBackoff | None = None,
 ) -> dict:
     """Import a ``.prawduct/backlog.md`` (+ optional separate archive file) into
     ``owner/repo``'s issues. Parses markdown into records (flagging duplicate-PFX
-    collisions), then runs the deterministic :func:`import_items`. Resumable/
-    idempotent (MG1/CRASH-4)."""
-    seen_pfx: dict[str, str] = {}  # shared across both files → cross-file collisions
-    records, collisions = _records_from_backlog(content, seen_pfx)
-    if archive_content:
-        arc_records, arc_collisions = _records_from_backlog(archive_content, seen_pfx)
-        records.extend(arc_records)
-        collisions.extend(arc_collisions)
-    return import_items(
+    collisions), applies an optional owner-confirmed restructure ``plan`` (MG6 —
+    validated fail-closed *before* anything is written), then runs the
+    deterministic :func:`import_items`. Resumable/idempotent (MG1/CRASH-4); the
+    plan applies at create only — an item already on GitHub is skipped, never
+    rewritten."""
+    records, collisions = collect_records(content, archive_content)
+    plan_warnings: list[str] = []
+    restructured = 0
+    if plan is not None:
+        applied = restructure.apply(records, plan)
+        if not applied["ok"]:
+            return core.error("validation", applied["error"])
+        records = applied["records"]
+        plan_warnings = applied["warnings"]
+        restructured = len(applied["entries"])
+    result = import_items(
         transport,
         owner=owner,
         repo=repo,
@@ -465,6 +497,10 @@ def import_backlog(
         pacer=pacer,
         backoff=backoff,
     )
+    if plan is not None and result.get("status") == "ok":
+        result["data"]["restructured"] = restructured
+        result["warnings"] = plan_warnings + result["warnings"]
+    return result
 
 
 def import_items(

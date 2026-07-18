@@ -47,10 +47,52 @@ Propose two candidate sets:
 action, correct a survivor), or defers individual rows. **Apply nothing that is
 not confirmed.** Deferred rows stay live and untouched — never a silent drop.
 
+**2b. Restructure pre-pass (MG6 — issue-standard §5).** For the items being
+migrated (typically the open set; archive items may stay verbatim), *propose* a
+restructure plan as a JSON file — per item: a ≤72 `area:`-prefixed title,
+template body sections, and a `kind:`. **Flag non-atomic items
+(`"non_atomic": true`) for owner manual split — never auto-split** (splitting
+mints new IDs and is an owner scrub decision; 1 PFX = 1 issue).
+
+Plan shape (v1 — validation is fail-closed; a typo'd PFX or unknown key
+refuses the whole run, so match this exactly):
+
+```json
+{
+  "v": 1,
+  "items": {
+    "BKL-XXXX": {
+      "title": "area: specific summary (<=72 chars)",
+      "kind": "bug|feature|task|chore|spike",
+      "sections": {"Problem": "…", "Proposed change": "…",
+                    "Acceptance": "- [ ] …", "Scope-out": "…"},
+      "non_atomic": false,
+      "note": "free text shown in the preview"
+    }
+  }
+}
+```
+
+Every per-item key is optional (a `non_atomic`/`note`-only entry is a valid
+flag-only row). `sections` compose through the shared `issuefmt.render_body`
+templates — bug: Problem/Repro/Actual/Expected/Evidence(/Env); everything
+else: Problem/Proposed change/Acceptance/Scope-out(/Evidence); extra section
+keys are appended, never dropped. The title is normalized against the item's
+`area:` label, so a bare summary is also acceptable. Then render the
+aggregate review artifact and show it to the owner:
+`prawduct-hook backlog restructure-preview --from .prawduct/backlog.md [--archive <archive>] --plan <plan.json> --out <preview.md>`
+The owner reviews **in aggregate** (representative sample + the full
+before/after artifact) and approves the batch — not per-item. The preview is
+generated from the same code path the import consumes, so what is approved is
+byte-for-byte what gets written. Originals are preserved verbatim
+(`original_title`/`original_body` block fields + the MG2 export backup + git
+history of the source file) — a bad rewrite is always recoverable.
+
 **3. Apply the confirmed plan — deterministically.**
    - **Import** the source into issues (idempotent/resumable, keyed on the
-     `id:PFX` alias, so a re-run never duplicates):
-     `prawduct-hook backlog import --repo <owner/repo> --from .prawduct/backlog.md [--archive <archive>]`
+     `id:PFX` alias, so a re-run never duplicates), applying the confirmed
+     restructure plan at create:
+     `prawduct-hook backlog import --repo <owner/repo> --from .prawduct/backlog.md [--archive <archive>] [--restructure <plan.json>]`
    - **Fold each duplicate** into its survivor (writes the `superseded-by:`
      redirect *before* closing the source, so a crash leaves a resolvable
      open-but-redirected item, never an orphan — AU3/CRASH-2):

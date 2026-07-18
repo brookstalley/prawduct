@@ -28,6 +28,7 @@ Four concerns, all pure (a function-level seam — Test Specs §2.1; no transpor
 
 from __future__ import annotations
 
+import json
 import re
 from collections import OrderedDict
 from dataclasses import dataclass, field
@@ -281,6 +282,38 @@ def format_list(items: list[str]) -> str:
     return "[" + ", ".join(items) + "]"
 
 
+def format_text(text: str) -> str:
+    """Render arbitrary (possibly multi-line) text as a single-line block value.
+
+    JSON-string encoding: the block is line-based ``key: value`` (§2), so a
+    multi-line value like ``original_body`` must collapse to one line — and the
+    escaping also keeps a backtick fence inside the text from ever starting a
+    line and closing the block fence. Verbatim-recoverable via
+    :func:`parse_text`."""
+    return json.dumps(text, ensure_ascii=False)
+
+
+def parse_text(raw: str | None) -> str | None:
+    """Decode a :func:`format_text` block value back to the exact original text.
+
+    ``None``/empty → ``None``. A value that is not a JSON string (hand-edited or
+    pre-encoding) is returned as-is — tolerant parse, same posture as the rest of
+    the block."""
+    if raw is None:
+        return None
+    text = raw.strip()
+    if not text:
+        return None
+    if text.startswith('"'):
+        try:
+            decoded = json.loads(text)
+        except ValueError:
+            return text
+        if isinstance(decoded, str):
+            return decoded
+    return text
+
+
 def parse_iso(ts: str | None) -> "datetime | None":
     """Parse an ISO-8601 timestamp (tolerant of a trailing ``Z``); assume UTC when
     naive. Returns ``None`` for a missing/unparseable value — a fail-open the
@@ -372,7 +405,10 @@ def is_prawduct_issue(issue: dict) -> bool:
     return has_block(issue.get("body"))
 
 
-def _facet_value(labels: list[str], facet: str) -> str | None:
+def facet_value(labels: list[str], facet: str) -> str | None:
+    """The value of the first ``<facet>:value`` label, or ``None``. The single
+    facet-label scan (shared by decode, the linter, and the restructure
+    pre-pass — one implementation, not per-module copies)."""
     prefix = f"{facet}:"
     for name in labels:
         if name.startswith(prefix):
@@ -409,7 +445,7 @@ def decode_status(issue: dict, labels: list[str]) -> tuple[str, list[str]]:
                 warnings.append(
                     f"closed issue has unrecognized state_reason {reason!r}; decoded as dropped"
                 )
-        if _facet_value(labels, "status"):
+        if facet_value(labels, "status"):
             warnings.append(
                 "closed issue still carries a status: label (meaningless once closed; "
                 "reconciliation strips it)"
@@ -515,12 +551,12 @@ def decode_item(issue: dict, *, canonical_id: str | None = None) -> tuple[dict, 
         "title": issue.get("title"),
         "body": issue.get("body"),
         "status": status,
-        "stage": _facet_value(labels, "stage"),
-        "kind": _facet_value(labels, "kind"),
-        "area": _facet_value(labels, "area"),
-        "effort": _facet_value(labels, "effort"),
-        "impact": _facet_value(labels, "impact"),
-        "source": _facet_value(labels, "source"),
+        "stage": facet_value(labels, "stage"),
+        "kind": facet_value(labels, "kind"),
+        "area": facet_value(labels, "area"),
+        "effort": facet_value(labels, "effort"),
+        "impact": facet_value(labels, "impact"),
+        "source": facet_value(labels, "source"),
         "assignee": assignee,
         "claimed_at": block.claimed_at(),
         "automated": block.get("automated") == "true",

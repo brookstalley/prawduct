@@ -104,8 +104,17 @@ superseded_by: owner/repo#123                            # merge/duplicate redir
 attachments: [{name, url, kind}]                         # DM6
 automated: true                                          # unattended-actor marker (Security §1a, CC4)
 worker: prawduct-hook                                    # the unattended worker id (paired with `automated`)
+original_title: Add the harbor map overlay               # pre-migration title, verbatim (MG6 — only when the scrub changed it)
+original_body: "line one\nline two"                      # pre-migration body, verbatim; JSON-string-encoded to one line
 ```
 ````
+
+**`original_title` / `original_body` (MG6 restructure preservation).** Written by the importer only
+when an owner-confirmed restructure plan changed the item at create (issue-standard §5); absent
+otherwise. The block is line-based, so `original_body` (multi-line) is **JSON-string-encoded** to a
+single line (`encode.format_text` / recover verbatim with `encode.parse_text`) — the escaping also
+guarantees the stashed text can never open/close a fence line inside the block. `original_title` is
+single-line and stored raw. Both are write-once migration provenance, not consumed by any read path.
 
 Every block field is **self-asserted** and forgeable by any write-capable actor (Security Model §5);
 only the GitHub **API identity** is trustworthy for attribution.

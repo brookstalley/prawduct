@@ -70,6 +70,19 @@ system-of-record** via a deterministic `prawduct-hook backlog` adapter (PRD §16
   touches the exit code — reusable as the migration audit). CLI prints `lint:` findings to
   stderr; api-contract §3 + standard §4 updated. Built from the design parent (issue-standard
   doc), not a build-plan chunk.
+- **MG6 restructure pre-pass — BKL-8N5K (2026-07-17, Chunk 06 deliverable):** a new deterministic
+  `lib/backlog/restructure.py` (INV-1) implementing issue-standard §5 "restructure, preserve, no
+  split": fail-closed plan validation (a typo'd PFX or unknown key refuses the whole run before
+  the data plane), application through the shared `issuefmt` composer (`normalize_title` +
+  `render_body`, so a migrated body and a net-new one are layout-identical), verbatim `original_title`/
+  `original_body` preservation as block fields (new `encode.format_text`/`parse_text` — JSON-string
+  single-line encoding, fence-safe, recoverable byte-exact; Data Model §2), `kind:` backfill,
+  non-atomic **flagging** (never auto-split — 1 PFX = 1 issue), and a WARN-only `issuefmt.lint`
+  audit. CLI: `import --restructure <plan.json>` (plan applies **at create only** — skip-if-exists
+  means an existing issue is never rewritten; the plan digest keys the checkpoint) + the offline
+  `restructure-preview` op rendering the aggregate before/after owner-review artifact **from the
+  same apply path the import consumes**. Build-plan MG1/MG6 reconciliation folded (Chunk 05 MIG-1
+  note, Chunk 06 scrub flow, SPIKE-S2 settled-fact annotation); scrub runbook gains step 2b.
 
 **Classification:** structural
 

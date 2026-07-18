@@ -69,7 +69,10 @@ _HELP = (
     "  unlink   <id> --edge blocks|blocked-by|parent|child|related --to <target-id> [--repo owner/repo]\n"
     "  provision --repo owner/repo\n"
     "  reconcile-labels --repo owner/repo   (GV6 taxonomy reconcile, coexistence-safe)\n"
-    "  import   --repo owner/repo --from <backlog.md> [--archive <archive.md>]   (resumable/idempotent)\n"
+    "  import   --repo owner/repo --from <backlog.md> [--archive <archive.md>] "
+    "[--restructure <plan.json>]   (resumable/idempotent; plan applies at create — MG6)\n"
+    "  restructure-preview --from <backlog.md> [--archive <archive.md>] "
+    "--plan <plan.json> --out <preview.md>   (offline before/after review artifact)\n"
     "  export   --repo owner/repo --to <dir>   (full-fidelity dump incl. native graph)\n"
     "  merge    <source-id> --into <target-id> [--repo owner/repo]   (fold A→B, redirect-before-close)\n"
     "global: --json  (machine envelope on stdout; default is human)\n"
@@ -137,6 +140,8 @@ def run(project_dir, argv: list[str], *, transport=None) -> int:
             result = _run_provision(rest, transport)
         elif op == "import":
             result = _run_import(rest, transport, project_dir)
+        elif op == "restructure-preview":
+            result = _run_restructure_preview(rest)
         elif op == "export":
             result = _run_export(rest, transport)
         elif op == "merge":
@@ -147,7 +152,8 @@ def run(project_dir, argv: list[str], *, transport=None) -> int:
                     "validation",
                     f"unknown op {op!r} (expected file|get|status|update|comment|"
                     "list|pick|counts|refresh-counts|claim|unclaim|link|unlink|"
-                    "provision|reconcile-labels|import|export|merge)",
+                    "provision|reconcile-labels|import|restructure-preview|"
+                    "export|merge)",
                 ),
                 json_mode=json_mode,
                 usage=True,
@@ -501,7 +507,11 @@ def _run_import(rest: list[str], transport, project_dir):
 
     from . import migrate  # noqa: PLC0415 — lazy: no migration import cost on other paths
 
-    flags, _positionals, err = _parse_flags(rest, valued={"repo", "from", "archive"})
+    from . import restructure  # noqa: PLC0415 — lazy, migration ops only
+
+    flags, _positionals, err = _parse_flags(
+        rest, valued={"repo", "from", "archive", "restructure"}
+    )
     if err:
         return core.error("validation", err)
     parsed = ids.parse_repo(flags.get("repo", ""))
@@ -518,11 +528,20 @@ def _run_import(rest: list[str], transport, project_dir):
         archive_content, err = _read_source(flags["archive"], "--archive")
         if err:
             return core.error("validation", err)
+    plan = None
+    plan_text = None
+    if "restructure" in flags:
+        plan_text, err = _read_source(flags["restructure"], "--restructure")
+        if err:
+            return core.error("validation", err)
+        plan, err = restructure.parse_plan(plan_text)
+        if err:
+            return core.error("validation", err)
     transport = _resolve_transport(transport)
     checkpoint = migrate.Checkpoint(
         migrate.checkpoint_path(Path(project_dir)),
         f"{owner}/{repo}",
-        migrate.run_key(content, archive_content),
+        migrate.run_key(content, archive_content, plan_text),
     )
     return migrate.import_backlog(
         transport,
@@ -530,8 +549,73 @@ def _run_import(rest: list[str], transport, project_dir):
         repo=repo,
         content=content,
         archive_content=archive_content,
+        plan=plan,
         checkpoint=checkpoint,
     )
+
+
+def _run_restructure_preview(rest: list[str]):
+    """The MG6 owner-review artifact — offline (no transport, nothing written to
+    GitHub): parse the source(s) exactly as `import` would, apply the plan, and
+    write the deterministic before/after preview the owner approves in aggregate."""
+    from pathlib import Path  # noqa: PLC0415 — only migration ops need a path
+
+    from . import migrate, restructure  # noqa: PLC0415 — lazy
+
+    flags, _positionals, err = _parse_flags(
+        rest, valued={"from", "archive", "plan", "out"}
+    )
+    if err:
+        return core.error("validation", err)
+    for required in ("from", "plan", "out"):
+        if required not in flags:
+            return core.error(
+                "validation", f"restructure-preview requires --{required}"
+            )
+    content, err = _read_source(flags["from"], "--from")
+    if err:
+        return core.error("validation", err)
+    archive_content = None
+    if "archive" in flags:
+        archive_content, err = _read_source(flags["archive"], "--archive")
+        if err:
+            return core.error("validation", err)
+    plan_text, err = _read_source(flags["plan"], "--plan")
+    if err:
+        return core.error("validation", err)
+    plan, err = restructure.parse_plan(plan_text)
+    if err:
+        return core.error("validation", err)
+    records, collisions = migrate.collect_records(content, archive_content)
+    applied = restructure.apply(records, plan)
+    if not applied["ok"]:
+        return core.error("validation", applied["error"])
+    source_label = flags["from"] + (f" + {flags['archive']}" if "archive" in flags else "")
+    preview = restructure.render_preview(
+        applied, source_label=source_label, collisions=collisions
+    )
+    out_path = Path(flags["out"])
+    try:
+        out_path.write_text(preview, encoding="utf-8")
+    except OSError as exc:
+        # "unavailable", matching export's local-write failure class — an
+        # environment failure, not bad input.
+        return core.error(
+            "unavailable", f"could not write --out {flags['out']}: {type(exc).__name__}"
+        )
+    entries = applied["entries"]
+    data = {
+        "preview": str(out_path),
+        "plan_entries": len(entries),
+        "titles_rewritten": sum(1 for e in entries if e["title_changed"]),
+        "bodies_restructured": sum(1 for e in entries if e["body_changed"]),
+        "kinds_assigned": sum(1 for e in entries if e["kind_assigned"]),
+        "non_atomic_flagged": sum(1 for e in entries if e["non_atomic"]),
+        "lint_findings": sum(len(e["lint"]) for e in entries),
+        "collisions": len(collisions),
+        "total_source": len(records),
+    }
+    return core.ok(data, applied["warnings"])
 
 
 def _run_export(rest: list[str], transport):
@@ -704,15 +788,33 @@ def _print_human_ok(data) -> None:
         # A link/unlink result.
         verb = "linked" if data.get("linked") else "unlinked"
         print(f"{verb} {data.get('item')} --{data.get('edge')}--> {data.get('target')}")
+    elif "preview" in data:
+        # A restructure-preview result (checked before `total_source`, which it
+        # also carries — an unmatched new result type must not shadow into the
+        # import line).
+        print(
+            f"wrote restructure preview to {data.get('preview')}: "
+            f"{data.get('plan_entries')} plan entr(ies) over "
+            f"{data.get('total_source')} source item(s) — "
+            f"{data.get('titles_rewritten')} title(s), "
+            f"{data.get('bodies_restructured')} bod(ies), "
+            f"{data.get('kinds_assigned')} kind(s); "
+            f"{data.get('non_atomic_flagged')} flagged non-atomic, "
+            f"{data.get('lint_findings')} lint finding(s), "
+            f"{data.get('collisions')} collision(s)"
+        )
     elif "total_source" in data:
         # An import result (checked before `items`: an export result also carries an
         # `items` key, so the migration results are matched first on their own keys).
-        print(
+        line = (
             f"{data.get('repo')}: imported {len(data.get('created', []))} created, "
             f"{len(data.get('skipped', []))} skipped, "
             f"{len(data.get('collisions', []))} collision(s) of "
             f"{data.get('total_source')} source item(s)"
         )
+        if "restructured" in data:
+            line += f" ({data['restructured']} restructured by plan)"
+        print(line)
     elif "dir" in data and "count" in data:
         # An export result (its `items` is a list of id strings, not item dicts).
         print(f"{data.get('repo')}: exported {data.get('count')} item(s) to {data.get('dir')}")

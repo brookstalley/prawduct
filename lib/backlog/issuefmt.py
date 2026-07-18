@@ -5,7 +5,7 @@ sections, §4 lint thresholds), so *one* place owns the title shape, the section
 contract, and the quality thresholds. The net-new ``file`` path routes its title
 through :func:`normalize_title` and audits with :func:`lint`; the section composer
 :func:`render_body` serves callers that assemble a body from parts (the migration
-restructure pre-pass, MG6 — not yet built).
+restructure pre-pass, MG6 — :mod:`restructure` composes through it).
 
 **No model, ever (INV-1).** Everything here is pure/deterministic string work:
 the *content* of an issue is model-authored (or human-authored via Issue Forms);
@@ -22,6 +22,8 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
+
+from . import encode
 
 # The kinds the standard recognizes (§3). Under-populated in practice today, so
 # `file` going forward and the migration pre-pass must assign one.
@@ -140,8 +142,8 @@ def render_body(kind: str | None, sections: dict[str, str]) -> str:
     additive-forever, like the block). Empty/whitespace values are skipped so an
     omitted optional section leaves no empty heading. This is the *shared*
     composer, intended for callers that assemble a body from sections — the
-    migration restructure pre-pass (MG6, not yet built) will compose through here
-    so a migrated body and a net-new one are byte-identical in layout. The
+    migration restructure pre-pass (MG6, :mod:`restructure`) composes through
+    here so a migrated body and a net-new one are byte-identical in layout. The
     net-new ``file`` path authors the body directly (guided + linted), so it does
     not call this today.
     """
@@ -213,14 +215,6 @@ def lint(title: str, body: str, labels: list[str] | None = None) -> list[LintFin
     return findings
 
 
-def _facet(labels: list[str], facet: str) -> str | None:
-    prefix = f"{facet}:"
-    for name in labels:
-        if name.startswith(prefix):
-            return name[len(prefix):]
-    return None
-
-
 def _lint_title(title: str, labels: list[str]) -> list[LintFinding]:
     out: list[LintFinding] = []
     n = len(title)
@@ -244,9 +238,9 @@ def _lint_title(title: str, labels: list[str]) -> list[LintFinding]:
 
 def _lint_labels(labels: list[str]) -> list[LintFinding]:
     out: list[LintFinding] = []
-    if _facet(labels, "kind") is None:
+    if encode.facet_value(labels, "kind") is None:
         out.append(LintFinding("no-kind", f"no kind: label (assign one of {'/'.join(KINDS)})"))
-    if _facet(labels, "area") is None:
+    if encode.facet_value(labels, "area") is None:
         out.append(LintFinding("no-area", "no area: label"))
     if len(labels) > LABELS_MAX:
         out.append(LintFinding("too-many-labels", f"{len(labels)} labels (keep ≤ {LABELS_MAX})"))
@@ -257,7 +251,7 @@ def _lint_body(body: str, labels: list[str]) -> list[LintFinding]:
     out: list[LintFinding] = []
 
     # Section presence/emptiness — only when we know the template (kind present).
-    kind = _facet(labels, "kind")
+    kind = encode.facet_value(labels, "kind")
     template = _template_for(kind)
     if template is not None:
         present = _sections_present(body)

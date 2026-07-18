@@ -55,8 +55,11 @@ The adapter already models the recommended taxonomy: `kind/area/effort/impact/so
 > **Implemented (programmatic home):** `lib/backlog/issuefmt.py` — `normalize_title` (§1),
 > `render_body` (§2 composer, shared with migration), and `lint` (§4, WARN-only). Wired into the
 > `file` path (`core.file_item`): the title is normalized on create and the result is audited, with
-> findings in the envelope's `lint` field (never blocks). The migration pre-pass (MG6) and Issue
-> Forms (§5, consumer-UI home) remain to build.
+> findings in the envelope's `lint` field (never blocks). The **MG6 migration pre-pass (§5) is
+> implemented** — `lib/backlog/restructure.py` (fail-closed plan validation, application through
+> the shared composer, `original_*` preservation per Data Model §2) + `import --restructure` +
+> the offline `restructure-preview` owner-review artifact. Issue Forms (consumer-UI home,
+> BKL-7F3D) remain to build.
 
 - **`file` CLI + migration (programmatic):** a standard-aware **serializer** emits the title + section
   contract; a **WARN-only linter** audits. Issue *Forms* do NOT gate programmatic creation.

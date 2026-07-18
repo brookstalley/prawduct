@@ -172,7 +172,15 @@ by CI — fidelity/aliases/relationships/resume/pick-latency/node_id-across-tran
 the real prawduct migration, the briefing/gates repoint to the adapter, and the `legacy.py` +
 `incoming-bugs/` retirement — filed as a backlog item and queued as **VRF-006**. Next: owner sign-off →
 the live migration session (SPIKE-S2 → real migration → repoint → retire), which completes the chunk and
-runs the single `cumulative` review that gates the slice PR.
+runs the single `cumulative` review that gates the slice PR. **BKL-8N5K (MG6 restructure pre-pass)
+built 2026-07-17**: `lib/backlog/restructure.py` (fail-closed plan validation, apply through the
+shared `issuefmt` composer, verbatim `original_*` preservation via `encode.format_text`), `import
+--restructure` + offline `restructure-preview` (the aggregate owner-review artifact, rendered from
+the same apply path the import consumes); the MG1/MG6 reconciliation folded into this plan, the
+test specs (MIG-6), Data Model §2, API §2.5, and the scrub runbook (step 2b). Critic `final`
+(0 blocking / 4 warn) + two `verify-resolutions` → clean; suite 2263. Remaining before the chunk
+closes: the owner-driven live migration (scrub dispositions + restructure plan + import), the
+BKL-8P2R briefing/gates repoint, and the `legacy.py` + `incoming-bugs/` retirement (MG5 lockstep).
 
 ## Scaffolding
 
@@ -461,7 +469,11 @@ tests/
   (MIG-1…MIG-4), §3.2 (CRASH-4 resumable import; CRASH-2 merge redirect-before-close); PRD §8.9, §11-S2.
 - **Deliverables:** `lib/backlog/migrate.py` (`import`,`export`), the minimal `merge`, alias/redirect
   resolution in `ids.py`, the durable checkpoint, write-pacing (respect 80/min + ~500/hr).
-- **Tests (L1):** MIG-1 (verbatim body/ID/section fidelity via the `import`→`export` round-trip),
+- **Tests (L1):** MIG-1 (verbatim body/ID/section fidelity via the `import`→`export` round-trip —
+  *the no-plan path; the issue-standard §5 owner decision later revised MG1 to "bodies
+  restructured-to-standard when a confirmed MG6 plan says so, original preserved verbatim in
+  `original_*` + the export backup" — IDs/sections still verbatim, and this round-trip still
+  holds whenever no plan is supplied*),
   MIG-2 (multi-prefix absorption: every hand-minted `PFX` → permanent alias, no new PFX minted),
   MIG-3 (export serializes the native graph), MIG-4 (cache rebuild no-data-loss — scaffolded; full
   cache is W1); **CRASH-4** (crash mid-import → resume converges, no duplicates — *not CRASH-3, which is
@@ -491,8 +503,12 @@ tests/
   Chunk-05 mechanism). Then build the **MG4 scrub workflow** — **model-surfaced** stale/dup candidates
   read from `list` output (the model reads the item list and proposes dispositions — *this is the
   model-in-the-decision; it needs no `search --like`, which is the post-cache accelerator, W2*) →
-  **owner-confirmed** dispositions → `status`/`merge` on the cleaned set → deterministic `import` (the
-  model is in the *decision*, never the data plane — MIG-5/G1). Then **migrate prawduct's own backlog**
+  **owner-confirmed** dispositions → the **MG6 restructure pre-pass** (issue-standard §5, built
+  2026-07-17 as BKL-8N5K: model *proposes* a plan of ≤72 `area:`-titles + template bodies + `kind:`
+  backfills, `restructure-preview` renders the aggregate before/after artifact, owner approves the
+  batch; originals preserved verbatim in `original_*` block fields + the export backup; non-atomic
+  items **flagged, never auto-split**) → `status`/`merge` on the cleaned set → deterministic
+  `import [--restructure <plan>]` (the model is in the *decision*, never the data plane — MIG-5/G1). Then **migrate prawduct's own backlog**
   (the bulk import), **repoint prawduct's briefing/gates** through the adapter, **retire
   `lib/backlog/legacy.py`**, and **retire the `incoming-bugs/` drop-box in lockstep with its minimal
   same-repo replacement** (MG5 — `report-bug` files an `untriaged-upstream`-labeled issue via the adapter;
@@ -566,7 +582,10 @@ tests/
   2. Committed, then `/prawduct:critic cumulative` run and blocking findings resolved
   3. Chunk marked `[x]` in Status; the slice branch is PR-ready (`/prawduct:pr create`)
 - **SPIKE-S2 settled facts (2026-07-17 live dry-run — ~209 items into a throwaway repo, repos disposable):**
-  - ✅ **Body/ID/section fidelity** preserved verbatim (`fidelity_ok: true`) — MG1 body-fidelity confirmed live.
+  - ✅ **Body/ID/section fidelity** preserved verbatim (`fidelity_ok: true`) — MG1 body-fidelity confirmed
+    live. *(Settled pre-MG6, on the no-plan path. The MG1 contract was later revised — issue-standard §5:
+    with a confirmed restructure plan, bodies are restructured-to-standard and the original preserved
+    verbatim in `original_*`; the fact stands for what it tested and the real migration adds the plan.)*
   - ✅ **Aliasing (MIG-2):** 208 hand-minted `PFX`→`id:PFX` aliases; **zero new PFX minted** — existing IDs preserved.
   - ✅ **Resume idempotency (CRASH-4):** a full re-import created **0 duplicates** — skip-if-exists on the alias holds live.
   - ⚠️ **`pick` fan-out (PROBE-LAT):** ~**12.4 s**, **flat** across 1/3/5 candidates → NOT N+1 (fan-out is cheap/batched), but ~**6× the NFR <2 s target**, dominated by the `_all_issues` full-scan over paginated `gh` subprocesses. The <2 s floor needs the raw-HTTP/GraphQL fast-path (W1) or a scoped query, not the `gh`-subprocess path.
