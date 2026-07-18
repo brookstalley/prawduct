@@ -26,9 +26,11 @@ from pathlib import Path
 
 from lib import buildplan_refs, critic_mode, gates, gitstate
 from lib.buildplan_refs import (
+    _chunk_id_from_item_text,
     _chunk_ids_in_status_order,
     _chunk_section_lines,
     _count_build_plan_chunks,
+    _current_chunk_id_from_status,
     _iter_status_section_items,
     _iter_status_section_lines,
 )
@@ -211,6 +213,96 @@ class TestChunkSectionLines:
         content_lines = PLAN.splitlines()
         for line_num, line in lines:
             assert content_lines[line_num - 1] == line
+
+
+# The H2 / em-dash research-plan heading form (`## Chunk N (ID) — Name`) with
+# colon-less Status items — previously unparseable, which silently disabled the
+# Goal-2 deliverable check and per-chunk mode scoping for the WHOLE plan
+# (BLD-5J8N / PDT-C6R4). The `### Chunk 1 build-session decisions` sub-heading
+# (no separator after the id) must NOT be mistaken for chunk 1's boundary.
+PLAN_H2 = """# Build Plan — H2 Fixture (2026-07-18)
+
+## Status
+
+- [ ] Chunk 1 (RES-K3QP) — inner-agent budget transparency
+- [ ] Chunk 2 (RES-W8ND) — eval observability
+Context: mid-plan.
+
+## Build Chunks
+
+## Chunk 1 (RES-K3QP) — inner-agent budget transparency
+
+- **Type:** code
+- Deliverable: `lib/research_trace.py`
+
+### Chunk 1 build-session decisions (2026-07-18, finalized)
+
+- a notes sub-heading; its body must stay inside chunk 1
+- Deliverable: `lib/still_chunk_one.py`
+
+## Chunk 2 (RES-W8ND) — eval observability
+
+- **Type:** doc-only
+- Deliverable: `docs/obs.md`
+"""
+
+
+class TestH2ChunkHeadingForm:
+    def test_h2_paren_id_section_located(self):
+        found, lines = _chunk_section_lines(PLAN_H2, "1")
+        assert found
+        body = [ln for _n, ln in lines]
+        assert any("lib/research_trace.py" in ln for ln in body)
+
+    def test_leading_zero_tolerance_on_h2_form(self):
+        # "## Chunk 2 (…)" located via id "02".
+        found, lines = _chunk_section_lines(PLAN_H2, "02")
+        assert found
+        assert any("docs/obs.md" in ln for _n, ln in lines)
+
+    def test_notes_subheading_does_not_end_section(self):
+        # "### Chunk 1 build-session decisions" has no separator after the id,
+        # so it is body, not a sibling boundary — chunk 1 keeps its later refs.
+        _found, lines = _chunk_section_lines(PLAN_H2, "1")
+        body = [ln for _n, ln in lines]
+        assert any("lib/still_chunk_one.py" in ln for ln in body)
+        # …but the genuine sibling "## Chunk 2" still ends it.
+        assert not any("docs/obs.md" in ln for ln in body)
+
+    def test_h2_sibling_boundary_still_stops(self):
+        _found, lines = _chunk_section_lines(PLAN_H2, "2")
+        body = [ln for _n, ln in lines]
+        assert any("docs/obs.md" in ln for ln in body)
+        assert not any("research_trace" in ln for ln in body)
+
+
+class TestChunkIdFromItemText:
+    def test_colon_form(self):
+        assert _chunk_id_from_item_text("Chunk 02: second") == "02"
+
+    def test_em_dash_paren_id_form(self):
+        assert _chunk_id_from_item_text("Chunk 2 (RES-K3QP) — eval") == "2"
+
+    def test_em_dash_no_paren_form(self):
+        assert _chunk_id_from_item_text("Chunk 01 — first") == "01"
+
+    def test_bare_id_form(self):
+        assert _chunk_id_from_item_text("Chunk 3") == "3"
+
+    def test_non_chunk_item_is_none(self):
+        assert _chunk_id_from_item_text("tidy the docs") is None
+        # A word starting with "Chunk" but not the chunk form is not a match.
+        assert _chunk_id_from_item_text("Chunky monkey business") is None
+
+    def test_current_chunk_id_from_h2_status(self, tmp_path: Path):
+        prawduct = tmp_path / ".prawduct"
+        _write_plan(prawduct, PLAN_H2)
+        assert _current_chunk_id_from_status(prawduct) == "1"
+
+    def test_chunk_ids_in_status_order_h2(self, tmp_path: Path):
+        prawduct = tmp_path / ".prawduct"
+        _write_plan(prawduct, PLAN_H2)
+        assert _chunk_ids_in_status_order(prawduct) == ["1", "2"]
 
 
 # ---------------------------------------------------------------------------

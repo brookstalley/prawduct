@@ -7,6 +7,11 @@
 
 ## Open
 
+- **[VWS-2F9K]** regen-views `CHUNK_LINE_RE` + the `chunks=`→Status-line match still require the colon `Status` form after BLD-5J8N broadened the em-dash form elsewhere — checkboxes silently fail to flip at merge
+  `effort: S · impact: M · area: views · kind: bug · source: builder · added: 2026-07-18 · status: open · stage: ready · related: BLD-5J8N, GOV-8N4V · refs: lib/views.py (CHUNK_LINE_RE, collect_shipped_chunks), .prawduct/learnings-detail.md (colon-form learning)`
+
+  After BLD-5J8N broadened `verify-chunk-refs` + `infer-critic-mode` to accept the `## Chunk N (ID) — Name` / em-dash header form, `CHUNK_LINE_RE` (lib/views.py) and the `chunks=` tag → Status-line match were NOT broadened — they still require the colon `Status` form. Consequence: a build plan whose `## Status` checkbox LINES use the em-dash/colon-less form can pass the Goal-2 + mode-inference gates yet silently fail to flip its checkboxes at merge (partial/no flip). Also the `chunks=` tag → Status-line match is literal (no leading-zero tolerance — `Chunk 1` != `Chunk 01`). Fix-shape: broaden `CHUNK_LINE_RE` to the same separator set as `buildplan_refs._CHUNK_ITEM_RE`, and decide zero-padding-tolerant matching for `chunks=`.
+
 - **[BKL-2K8V]** pick latency ~12.4s at 209-issue scale — flat across candidates (not N+1) but 6x the NFR <2s floor; dominated by the gh-subprocess full-scan
   `effort: M · impact: M · area: backlog-service · source: user · added: 2026-07-17 · status: open · stage: design · related: BKL-6M4T`
 

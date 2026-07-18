@@ -131,7 +131,7 @@ A claim-conflict test stamped the holder's claim via `core.claim(now=NOW)` (fixe
 
 ## Build-plan fields use `**Title Case:**`, not snake_case
 
-## Build-plan chunk headings must use `### Chunk N:` colon form — em-dash fails the parsers silently
+## Build-plan chunk parsers accept `### Chunk N:` AND `## Chunk N (ID) — Name` (BLD-5J8N) — but `regen-views`/`chunks=` still key on the colon Status form
 
 ## Submodule and same-name function in __init__ shadow each other
 

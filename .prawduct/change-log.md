@@ -5,7 +5,7 @@
 
 ## 2026-07-18: discodon upstream defect fixes (discodon-upstream-defects)
 
-<!-- prawduct: type=bugfix | scope=discodon-upstream-defects | chunks=01 -->
+<!-- prawduct: type=bugfix | scope=discodon-upstream-defects | chunks=01,02 -->
 
 **Parent:** four prawduct defects filed upstream by the discodon product (their ids
 CRT-M3F8, PDT-C6R4, CRT-T9RX, PDT-WT9K), re-verified against `develop` (v3.1.0) by direct
@@ -24,6 +24,18 @@ CRT-4T7M (newly filed), BLD-5J8N, CRT-7H2W, CRT-6W2N. Plan:
   derived-cache validator (`_validate_critic_findings_data`) is untouched — tolerant at the
   reviewer-input boundary, strict on internally-generated data. Regression tests:
   blank/all-blank/non-string elements accepted + normalized; non-list `files` still rejected.
+- **Chunk 02 — PDT-C6R4 / BLD-5J8N (verify-chunk-refs header parsing + loud parse-miss):**
+  the shared `lib/buildplan_refs.py` chunk parsers (`_chunk_section_lines`,
+  `_chunk_id_from_item_text`, `_current_chunk_id_from_status`) now match both the
+  `### Chunk NN:` and `## Chunk N (ID) — Name` (H2, em/en-dash, optional `(ID)`) forms via
+  `_CHUNK_HEADING_RE`/`_CHUNK_ITEM_RE` — the id must be followed by a separator/paren/EOL so a
+  notes sub-heading (`### Chunk 2 build-session decisions`) is not mistaken for a boundary.
+  This fixes both the Goal-2 deliverable gate AND `infer-critic-mode`'s chunk lookup (they share
+  the primitives — the GOV-8N4V facet). `cmd_verify_chunk_refs` now emits a distinct
+  `cannot-verify:` (gate could not run) vs `missing-ref:` (deliverable absent), curing the
+  false-negative habituation. The `regen-views`/`CHUNK_LINE_RE` colon-Status residual is filed
+  as VWS-2F9K (not silently expanded); the colon-form learning was updated. Verified via a
+  3-case CLI exercise (located+ok / missing-ref / cannot-verify) on an H2 fixture.
 
 ## 2026-07-17: Backlog service — GitHub Issues as the system-of-record (backlog-service)
 

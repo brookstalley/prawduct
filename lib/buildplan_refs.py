@@ -69,12 +69,27 @@ def _iter_status_section_items(content: str):
             yield True, stripped[5:].strip()
 
 
+# Build-plan chunk id extraction — the two supported forms:
+#   "### Chunk 02: Name"            (H3, colon — the template default)
+#   "## Chunk 2 (RES-K3QP) — Name"  (H2, optional "(ID)", en/em dash — research plans)
+# The id is the first whitespace-delimited word after "Chunk", and it MUST be
+# followed by a separator (``: — – - (``) or end-of-line — so a notes heading
+# like "### Chunk 2 build-session decisions" is NOT mistaken for chunk 2's
+# deliverable heading. Leading zeros are tolerated downstream ("2" matches
+# "### Chunk 02:"). Previously only the colon form parsed, so an em-dash heading
+# silently disabled Goal-2 ref verification and per-chunk mode scoping for the
+# whole plan.
+_CHUNK_ID_SEP = r"\s*(?:[:—–(-]|$)"
+_CHUNK_HEADING_RE = re.compile(r"^#{2,3}\s+Chunk\s+(\w+)" + _CHUNK_ID_SEP)
+_CHUNK_ITEM_RE = re.compile(r"^Chunk\s+(\w+)" + _CHUNK_ID_SEP)
+
+
 def _chunk_id_from_item_text(text: str) -> str | None:
-    """``"Chunk 02: name"`` → ``"02"``; ``None`` for non-``Chunk NN:`` items."""
-    if not text.startswith("Chunk "):
-        return None
-    chunk_id = text[len("Chunk "):].split(":", 1)[0].strip()
-    return chunk_id or None
+    """``"Chunk 02: name"`` / ``"Chunk 2 (ID) — name"`` → ``"02"`` / ``"2"``;
+    ``None`` for non-chunk items. Accepts the colon (``### Chunk N:``) and the
+    em/en-dash + optional ``(ID)`` (``## Chunk N (ID) — name``) forms."""
+    m = _CHUNK_ITEM_RE.match(text)
+    return m.group(1) if m else None
 
 
 def _count_build_plan_chunks(prawduct_dir: Path) -> tuple[int, int]:
@@ -251,12 +266,14 @@ def _looks_like_file_path(token: str) -> bool:
 def _chunk_section_lines(
     content: str, chunk_id: str
 ) -> tuple[bool, list[tuple[int, str]]]:
-    """Locate the ``### Chunk <chunk_id>:`` section and return its body lines.
+    """Locate the ``Chunk <chunk_id>`` section and return its body lines.
 
     The one canonical chunk-section walk: name-anchored with leading-zero
-    tolerance (``"02"`` matches ``### Chunk 2:`` and vice versa), stops at the
-    next sibling ``### Chunk`` or ``## `` heading, and drops fenced code blocks
-    (project-structure diagrams aren't load-bearing prose). Returns
+    tolerance (``"02"`` matches ``### Chunk 2:`` and vice versa), matches both
+    supported heading forms (``### Chunk NN: Name`` and ``## Chunk N (ID) — Name``
+    via ``_CHUNK_HEADING_RE``), stops at the next sibling chunk heading or a
+    non-chunk ``## `` heading, and drops fenced code blocks (project-structure
+    diagrams aren't load-bearing prose). Returns
     ``(found, [(line_num, raw_line), ...])`` with 1-based line numbers into
     ``content``. This skeleton was previously copied in the three chunk-field
     parsers below and ``lib.critic_mode``'s ``**Critic mode:**`` reader; all
@@ -268,11 +285,9 @@ def _chunk_section_lines(
     section_lines: list[tuple[int, str]] = []
     for line_num, line in enumerate(content.splitlines(), start=1):
         stripped = line.strip()
-        if stripped.startswith("### Chunk "):
-            # Heading format: "### Chunk NN: Name"
-            rest = stripped[len("### Chunk "):]
-            head = rest.split(":", 1)[0].strip()
-            head_norm = head.lstrip("0") or "0"
+        heading = _CHUNK_HEADING_RE.match(stripped)
+        if heading:
+            head_norm = heading.group(1).lstrip("0") or "0"
             if in_section:
                 # Entered a sibling chunk; stop accumulating.
                 break
@@ -282,7 +297,7 @@ def _chunk_section_lines(
         if not in_section:
             continue
         if stripped.startswith("## "):
-            # Left the Build Chunks section entirely.
+            # Left the Build Chunks section entirely (a non-chunk H2).
             break
         if stripped.startswith("```"):
             in_fence = not in_fence
@@ -297,8 +312,9 @@ def _parse_build_plan_chunk_refs(prawduct_dir: Path, chunk_id: str) -> dict:
     """Extract backticked file-path references from a single chunk's section
     in ``.prawduct/artifacts/build-plan.md``.
 
-    The section is located by name (``### Chunk <chunk_id>:`` prefix, leading
-    zeros tolerant), and parsing stops at the next ``### `` or ``## `` heading
+    The section is located by ``_chunk_section_lines`` (both the ``### Chunk NN:``
+    and ``## Chunk N (ID) — Name`` heading forms, leading zeros tolerant), and
+    parsing stops at the next sibling chunk heading or a non-chunk ``## `` heading
     — sibling chunks' refs are NOT returned. Fenced code blocks (```...```)
     are skipped because project-structure diagrams aren't load-bearing prose.
     Paths preceded by the word ``new`` on the same line are skipped as
@@ -561,20 +577,15 @@ def _classify_trivial_change(
 
 def _current_chunk_id_from_status(prawduct_dir: Path) -> str | None:
     """Extract the chunk id of the first `- [ ]` item in the build-plan Status
-    section, e.g. ``"03"`` for ``- [ ] Chunk 03: Foo``. Returns ``None`` if
-    Status is missing, has no current chunk (all complete), or the chunk text
-    isn't in the expected ``Chunk NN:`` form.
+    section, e.g. ``"03"`` for ``- [ ] Chunk 03: Foo`` and ``"2"`` for
+    ``- [ ] Chunk 2 (ID) — Foo``. Returns ``None`` if Status is missing, has no
+    current chunk (all complete), or the item isn't a recognized chunk form.
 
     Mirrors the resolution logic in ``cmd_verify_chunk_refs`` so the stop
     hook and the Critic helper agree on "which chunk is current."
     """
     status = _parse_build_plan_status(prawduct_dir)
-    current = status.get("current_chunk", "")
-    if not current.startswith("Chunk "):
-        return None
-    rest = current[len("Chunk "):]
-    chunk_id = rest.split(":", 1)[0].strip()
-    return chunk_id or None
+    return _chunk_id_from_item_text(status.get("current_chunk", ""))
 
 
 def _verify_chunk_refs(project_dir: Path, refs: dict) -> list[dict]:

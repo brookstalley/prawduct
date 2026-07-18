@@ -20,7 +20,7 @@ last_validated: 2026-07-18
 - [ ] Chunk 02: PDT-C6R4 / BLD-5J8N — verify-chunk-refs parses `## Chunk N (ID) — Name` and distinguishes parse-miss from ref-missing
 - [ ] Chunk 03: CRT-T9RX / CRT-7H2W — intent-aware verify-resolutions head anchor (structural) + dirty-tree diagnostic
 - [ ] Chunk 04: PDT-WT9K — critic-begin worktree visibility + mismatch-detection + refuse-on-unresolvable
-Context: Plan on branch fix/discodon-upstream-defects. Chunk 01 built + Critic-passed (chunk mode, 0 blocking, 1 warning addressed) + committed; suite 2344 passed, 6 skipped. Checkboxes stay statusless until merge (release-pending model). Next: Chunk 02. 
+Context: Plan on branch fix/discodon-upstream-defects. Chunks 01 (CRT-4T7M) + 02 (BLD-5J8N/PDT-C6R4) built, Critic-passed, committed; suite 2355 passed, 6 skipped. Checkboxes stay statusless until merge (release-pending model). Next: Chunk 03 (CRT-7H2W/CRT-T9RX — final-mode review). 
 
 ## Verification Strategy
 
