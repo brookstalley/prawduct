@@ -121,6 +121,14 @@ in its `project-preferences.md` (default for new products is `none`). The always
 digest reinforces this for every product session, including migrated repos whose CLAUDE.md is
 only the thin governance anchor.
 
+**Merge commits by default.** Every merge — `gh pr merge --merge` for PRs, `git merge --no-ff`
+locally — lands as a true merge commit; this is the prawduct default and it overrides any
+harness default to the contrary. Squash/rebase-merge only when `project-preferences.md` sets
+`PR merge strategy` to say so or the user explicitly asks; an absent preference means merge
+commit, and a failing `--merge` is surfaced, never silently downgraded to `--squash`.
+Rewritten-history merges (squash, rebase) make branches single-use — delete after merge, never
+reuse (why and mechanics: `skills/pr/SKILL.md` Merge Flow step 4).
+
 ## The Learning Loop
 
 Reflect at **work boundaries**, not at session end. When a chunk concludes (Critic passes), a bug is fixed, an error is recovered from, or a judgment call is made — reflect *now*, while context is fresh. Append to `.prawduct/.session-reflected` as you go. The stop hook enforces only a session-end floor (a reflection exists), not this cadence — by the time the user says `/clear`, reflection should already be captured and the handoff fast.
