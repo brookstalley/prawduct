@@ -913,7 +913,9 @@ def cmd_critic_begin(project_dir: Path, argv: list[str]) -> int:
         if w.get("is_active") != "true"
     ]
     if siblings:
-        listed = "; ".join(f"{w['path']} [{w['branch']}]" for w in siblings)
+        # ``branch`` is absent on a bare-repo worktree entry (git emits `bare`,
+        # not a branch/detached line) — guard like briefing's own consumer.
+        listed = "; ".join(f"{w.get('path', '?')} [{w.get('branch', '?')}]" for w in siblings)
         print(
             f"PRAWDUCT: {len(siblings)} other worktree(s) on this repo: {listed} "
             "— if the work is in one of them, run /prawduct:critic from there."

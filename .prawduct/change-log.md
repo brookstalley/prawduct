@@ -59,6 +59,11 @@ CRT-4T7M (newly filed), BLD-5J8N, CRT-7H2W, CRT-6W2N. Plan:
   now delegates to `gitstate.current_branch` (de-duplicated, keeps its 'main' display default). Chunk
   Critic: 0 blocking; 2 warnings addressed (detached-HEAD/nullable-validate edge tests added; the
   "branch-elsewhere surfaced not blocked" reinterpretation recorded as a plan DECISION).
+- **Cumulative review (whole branch, 0 blocking / 0 warning / 7 note):** post-cumulative resolution —
+  the sibling-worktree listing's `w['branch']` subscript could `KeyError` on a bare-repo worktree
+  entry (git emits `bare`, not a `branch`/`detached` line); made it defensive with `.get('branch','?')`
+  like `briefing`'s own consumer. Backlog reconciled: CRT-4T7M, BLD-5J8N, CRT-7H2W flipped shipped
+  (closed-by this branch); CRT-6W2N kept open with a partial-progress note.
 
 ## 2026-07-17: Backlog service — GitHub Issues as the system-of-record (backlog-service)
 
