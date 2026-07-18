@@ -18,6 +18,15 @@ depends_on:
   - artifact: test-specifications
   - artifact: dependency-manifest
   - artifact: operational-spec
+governed_by:
+  # Governing artifacts whose `## Direction` norms bind this plan. Seed with
+  # `prawduct-hook jurisdiction`; omit when the product has declared no norms.
+  # Each entry records one disposition line PER NORM in that artifact (`/prawduct:methodology norms`):
+  # conforms | ruling needed | exception | amendment proposed | inapplicable because X.
+  - artifact: data-model
+    dispositions:
+      - "all timestamps UTC ISO-8601 → conforms"
+      - "money as integer minor units → inapplicable because this plan touches no money fields"
 last_validated: 2026-07-03
 ---
 

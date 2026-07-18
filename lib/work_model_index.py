@@ -218,6 +218,68 @@ def find_orphan_terms(prompt: str, index: dict) -> list[str]:
     ]
 
 
+def jurisdiction_candidates(
+    text: str, files: Iterable[tuple[str, str]], *, limit: int = 8
+) -> list[dict]:
+    """Which governing artifacts have *jurisdiction* over this text — the
+    INVERSION of orphan detection.
+
+    ``find_orphan_terms`` asks the negative question: which of a prompt's
+    salient terms does NO artifact cover (the new-requirement tripwire). This
+    asks the positive one: for a plan/prompt, which artifacts' vocabularies
+    already cover its salient terms — i.e. which artifacts plausibly *govern*
+    it. It reuses the exact same salience machinery so the two answers stay
+    complements over one term-set: the stoplist (via ``salient_terms``), the
+    ``_MIN_LEN`` floor, and the common-English frequency floor (``_in_floor``)
+    are all applied unchanged. Common words and short tokens can therefore
+    never *produce* a jurisdiction match, mirroring the fact that they can
+    never *become* an orphan — precision is symmetric on purpose.
+
+    Directive verbs are deliberately NOT exempted here (unlike
+    ``find_orphan_terms``, which drops them so "extend X" never reports
+    *extend* as the missing domain term). For jurisdiction they are ordinary
+    shared vocabulary — an artifact and a plan both talking about *enforce*
+    is a weak-but-real overlap signal — and ranking, not exemption, sorts
+    signal from noise.
+
+    ``text`` is the plan/prompt to place; ``files`` is an iterable of
+    ``(path, content)`` pairs (the governing corpus). Each file's vocabulary
+    is harvested with ``extract_vocabulary`` (headings + bold + declared
+    vocabulary — the same conservative surface the index is built from);
+    ``matched`` is the text's floor-filtered salient terms present in that
+    vocabulary.
+
+    Returns candidates with ``count > 0`` only, ranked by count descending
+    then path ascending (a stable, deterministic tie-break), capped at
+    ``limit``. Shape::
+
+        [{"path": str, "matched": [sorted terms], "count": int}, ...]
+
+    This SEEDS a plan's ``governed_by:`` field — a mechanically-derived
+    candidate list for the planner's judgment (a term-overlap heuristic, not
+    a semantic ruling), never an authority. Reconciling each candidate
+    (conform / ruling / amendment / inapplicable) stays the author's call.
+    """
+    # Floor-filter the text's salient terms once — the intersection below then
+    # inherits the floor for free, so common words never surface as matches.
+    salient = {t for t in salient_terms(text) if not _in_floor(t)}
+    if not salient:
+        return []
+
+    candidates: list[dict] = []
+    for path, content in files:
+        matched = sorted(salient & extract_vocabulary(content))
+        if matched:
+            candidates.append(
+                {"path": str(path), "matched": matched, "count": len(matched)}
+            )
+
+    # count desc, then path asc — path is the stable secondary key so ties
+    # resolve deterministically regardless of corpus iteration order.
+    candidates.sort(key=lambda c: (-c["count"], c["path"]))
+    return candidates[:limit]
+
+
 # A requirement verb preceded by one of these reads as a NOUN, not a directive:
 # "the build failed", "thanks for the support". Skipping those keeps status
 # chatter from counting as requirement-shaped (Critic NOTE, review-fixes ch.2).

@@ -22,6 +22,8 @@ Before you can build anything well, you need to understand what kind of thing yo
 
 These are independent dimensions, not categories — a product can have any combination, and each one you detect changes what you need to build.
 
+**Recording the characteristics is load-bearing, not bookkeeping.** Capture each in `classification.structural`, because the framework keys the product's *strategy-class artifact coverage* off it. Five artifacts are expected of every product (data model, security model, non-functional requirements, operational spec, observability strategy); two more are triggered by a recorded characteristic — an API contract when the product exposes a programmatic interface, a system architecture when it is multi-process or distributed. Until the characteristics are recorded the framework can't know what the product owes, so it nudges you to record them first (the **DISCOVERY NOT CAPTURED** signal). Once recorded, it expects each implied artifact to *exist* — a real spec, or a one-line `(not relevant — <reason>)` decision recorded where a reader will find it. `/prawduct:doctor` reports which layer is active; `prawduct-hook coverage-scaffold` drops the stubs in one act for you to fill.
+
 ## Risk Calibration
 
 After detecting structural characteristics, assess risk. Risk drives how much discovery you do. The counts below are the **typical shape, not a quota** — concrete anchors, always governed by the pacing judgment in "Read the room on pacing" below:
@@ -50,6 +52,22 @@ One common entry point is **a backlog item at an early `stage:`** (`idea`/`resea
 
 If you can answer all three, capture them in the build plan's Requirements Confidence field and proceed. If you can't answer one in a sentence, one round of clarification will probably get you there — the cheapest close is often a 60-second sketch ("here's what I think you want — confirm?"), not a full discovery session. The build cycle's `Before You Build: Confidence Check` (`methodology/building.md`) is the same pattern at the next stage (Principles 6 and 20).
 
+**A structural characteristic flipped.** The six characteristics (human interface, unattended,
+programmatic interface, multiple parties, sensitive data, multi-process/distributed) are the
+product's **ambient norms** — unwritten assumptions the whole design rests on. When one flips
+(single-user becomes multi-user; a local tool starts handling sensitive data), that flip is a
+recorded decision, and it forces two things: **re-derive** the artifacts that characteristic
+triggers (a multi-user flip re-opens auth, data isolation, and audit; a sensitive-data flip
+re-opens the security model), and run an **assumption audit** — walk the assumptions the old
+classification licensed and surface the ones the new reality invalidates. The audit's output is
+**backlog requirements**, not a mental note. Update `classification` in `project-state.yaml` so the
+flip is durable (`/prawduct:methodology norms`, Ambient norms).
+
+**A norm surfaced.** When discovery produces a statement meant to bind future work ("all money is
+integer cents", "every asset is vector"), capture it as a norm at birth — **statement + why +
+retroactivity** — in the governing artifact's `## Direction` section or a `project-preferences.md`
+row, not as loose prose a later build has to re-infer (`/prawduct:methodology norms`).
+
 ## Reconciling an Existing or Docs-First Product
 
 A product may arrive with material already in hand — an existing codebase, or requirements/architecture/vision docs written outside a discovery session. Onboarding leaves `project-state.yaml` template-default; nothing backfills it automatically, so the Critic can't calibrate rigor and the build gates won't engage. When the session briefing's **DISCOVERY NOT CAPTURED** nudge fires (template-default state + product-definition work in the repo), discovery's job is to **reconcile**, not re-interview:
@@ -70,6 +88,8 @@ Risk Calibration sets discovery *depth* for a new product. Within any work — p
 3. **Does correctness depend on timely, post-training-cutoff, or fast-moving data?** If yes, the gap is *volatility*: verify against current evidence — your training is stale by construction.
 
 Questions 2 and 3 are different gaps with different remedies: a knowledge gap wants more reasoning or decomposition; a volatility gap wants research. (A design can be high on both.)
+
+**The gate is cost asymmetry, not curiosity** (Principle 24 — Retrieval Over Generation). When the gap between checking and being wrong is wide — a free read or a two-minute search against an experiment, a deploy, or days of rework — the cheap check is mandatory, not optional. The corrective is not "research everything"; it is noticing when the asymmetry just went wide and retrieving before you commit.
 
 **Re-run this when the domain expands — not just at kickoff.** A mid-work scope expansion resets your knowledge-confidence for the *new* surface. Treat it as its own work and re-ask the three questions — the most common way unresearched complexity enters is a mid-build expansion inheriting the original scope's (misplaced) confidence.
 

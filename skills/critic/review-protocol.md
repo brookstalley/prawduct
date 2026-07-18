@@ -37,6 +37,16 @@ The Critic reviews changes against principles and specifications as a **separate
 
 Your goals, in priority order. (`chunk` mode runs 1-3 only.)
 
+**Normative authority** (`${CLAUDE_SKILL_DIR}/../../docs/norms.md`). Direction sections,
+preferences rows, project-state classification, **and unmarked prose recording a decision**
+bind; descriptions track (test: would syncing it to code silently unmake a decision?).
+Departure, unruled edge-work, normative change (even doc-only), or norm birth without a
+recorded vetoable decision → Goal 3 **BLOCKING** where ratified norms exist; with none,
+**NOTE** naming the capture path. Tell: amending a norm to match your own code.
+Correctness shapes the recommendation, never the need. Judge jurisdiction yourself;
+applicability is recorded, never assumed. Stale registry → NOTE: `/prawduct:doctor`; never a
+downgrade.
+
 ### 1. Nothing Is Broken
 - **Do not run tests.** Run `prawduct-hook test-status`: exit 0 = current; stale/missing → **WARNING** — that exit code is the *only* freshness signal; never infer staleness from a commit/SHA field in the evidence (it carries none). Test failures in evidence → **BLOCKING**. Review test *quality and coverage* through code analysis only.
 - No "pre-existing" exception — every finding is yours regardless of when introduced.
@@ -77,8 +87,8 @@ Your goals, in priority order. (`chunk` mode runs 1-3 only.)
 
 ### 4. Everything Is Coherent
 - Artifacts are consistent with each other and with code.
-- **Bidirectional freshness**: code matches artifacts AND artifacts still describe code (model fields, architecture components). Stale artifact → **WARNING**.
-- **Project preferences**: `project-preferences.md` conventions (language, naming, structure, deps) must be followed → **BLOCKING** if violated.
+- **Bidirectional freshness** (descriptive content only — norms follow Normative authority above): code matches artifacts AND artifacts still describe code (model fields, architecture components). Stale artifact → **WARNING**.
+- **Norms**: `project-preferences.md` rows and Direction statements bind — unrecorded departure → **BLOCKING** via Goal 3; never "fix" divergence by artifact edit.
 - **Infrastructure coherence**: `infrastructure_dependencies` declared but code uses in-memory only → **WARNING**. Mocks must be documented, not silently substituted.
 - **README and top-level docs**: read the project's README and `docs/` when features change. Removed/renamed features or wrong setup → **WARNING**. Actively misleading instructions (wrong commands, deleted config refs) → **BLOCKING**.
 - **Documentation drift**: Comments, type annotations, or API docs that contradict the code they describe → **WARNING**. Same defect when a *product* durable artifact (comment, docstring, long-lived spec) rides its meaning on an ephemeral build id — a chunk number, build-plan, or work-cycle name — which dangles once the plan is deleted (Principle 13) → **WARNING**; build-cycle bookkeeping that records the work (e.g. change-log `chunks=`, backlog `closed-by:`, operator-verification) is exempt.
@@ -96,7 +106,6 @@ Your goals, in priority order. (`chunk` mode runs 1-3 only.)
 ### 6. The System Can Be Understood
 - Error handling is present where failure is possible → **WARNING** if missing.
 - Logging is appropriate for debugging → **WARNING** if absent in new code paths.
-- If an observability strategy exists, implementation follows it → **WARNING** if diverged.
 - Correlation context and sensitive data filtering implemented as specified.
 - New capability with no way to detect failure → **BLOCKING**.
 - Growing collections without lifecycle management → **WARNING**.
@@ -121,7 +130,7 @@ This goal applies proportionally — a 2-line helper doesn't need design review.
 
 ### Learnings Cross-Check and Backlog Reconciliation
 
-**`final`/`cumulative` only.** See `review-cycle.md`: scan findings against `.prawduct/learnings.md` (escalate when a change reintroduces a warned-against pattern), then walk `.prawduct/backlog.md`, emitting **NOTE** findings for items resolved.
+**`final`/`cumulative` only.** See `review-cycle.md`: scan findings against `.prawduct/learnings.md` (escalate when a change reintroduces a warned-against pattern) and against Direction statements of the plan's `governed_by:` artifacts, then walk `.prawduct/backlog.md`, emitting **NOTE** findings for items resolved.
 
 ## Severity Levels
 

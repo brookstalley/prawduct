@@ -50,6 +50,8 @@ Write all generated artifacts to `.prawduct/artifacts/` — the Critic reads fro
 
 Artifact depth scales to risk: a personal utility gets a 1-page brief and minimal data model; a financial platform gets deep specs with edge-case coverage. The framework doesn't skip artifacts for low-risk products — it scales them. If an artifact is genuinely not applicable, note that briefly and move on; don't generate content to fill a template.
 
+The **strategy-class** artifacts (data model, security model, non-functional requirements, operational spec, observability strategy, plus the characteristic-triggered API contract and architecture) are coverage-tracked once discovery records the product's structural characteristics: the framework detects one that was *never created* — the gap reactive review can't see — and nudges via the `strategy-artifact-missing` advisory and the `/prawduct:doctor` coverage check. "Note that briefly and move on" is that record: a one-line `(not relevant — <reason>)` stub in `.prawduct/artifacts/<name>` **is** coverage (the file existing is the whole check; whether the decision holds is the Critic's call). `prawduct-hook coverage-scaffold` drops those stubs in one act. See `methodology/discovery.md` for the characteristic → artifact map.
+
 ## Build Planning
 
 The build plan decomposes artifacts into buildable chunks — coherent units of work with clear deliverables and acceptance criteria.
@@ -87,6 +89,38 @@ An assumption is a decision made on the user's behalf, surfaced for correction �
 **A persisted format is always a lock-in decision, regardless of implementation size.** Lock-in is measured by reversal cost, not LOC — a 30-line ledger writer locks a schema every future consumer depends on. A chunk introducing a persisted format must enumerate, in the plan and before designing fields, the questions the data must answer: its consumers' future queries are its requirements, elicited from those consumers, not inferred from the mechanism (see `methodology/building.md` "Decision Research").
 
 **Enumerate the surfaces when a chunk introduces a project-wide concept.** A new build-plan field, governance flag, or convention cascades across many files — product CLAUDE.md, the Critic and PR protocols, methodology guides, the template, their guarding tests. List the surfaces up front in the chunk description: the count makes the chunk's true size visible (split it if too large for one Critic pass), and several of those surfaces carry token-budget guardrail tests — anticipate the trim rather than discovering it at chunk-close.
+
+### Governing Artifacts
+
+Some artifacts don't just describe the product — they **bind** future work: a `## Direction`
+section in a strategy-class artifact (observability, security, architecture, API contract, NFRs,
+operational spec, data model) or a norm row in `project-preferences.md`. Norms bind; descriptions track
+(`/prawduct:methodology norms`). A plan states which norms govern it and reconciles against them *before* code.
+
+**Declare `governed_by:` in the plan frontmatter**, alongside `depends_on:` — the governing
+artifacts whose Direction norms (and preferences norms) bind this plan's work. Seed the list
+mechanically, then curate: `prawduct-hook jurisdiction --file <plan-or-notes>` (or pipe the plan
+text on stdin) ranks candidate governing artifacts by term overlap with each artifact's
+vocabulary; `--artifacts-only` restricts to the `governed_by:` target set. The command proposes
+candidates — you decide which actually govern.
+
+**Reconcile each governing artifact against its `## Direction` section** and record a one-line
+disposition per norm — `conforms` | `ruling needed` | `exception` | `amendment proposed` |
+`inapplicable because X`. Applicability is recorded, not assumed: "this norm doesn't apply here"
+is itself an interpretation, and it belongs on paper where a reviewer can disagree, not in your
+head. A departure from a norm is never silent — you conform, or you record the decision:
+
+`[DECISION: <what was decided> | <why, engaging the norm's why> | user can veto/override]`
+
+— the decision sibling of the `[ASSUMPTION: …]` form above. Amending a norm to bless your own code
+is the laundering tell (`/prawduct:methodology norms`); the Critic routes an unrecorded departure to a
+**BLOCKING** finding.
+
+**New structural context prompt.** When a chunk introduces a new execution context (a process, a
+scheduler, a worker), a new storage surface, or a new external surface (an API you expose or
+consume), state how each cross-cutting concern (`.prawduct/cross-cutting-concerns.md`) lands there
+— or why it doesn't. A new surface that silently inherits nothing is how observability, auth, and
+error handling go missing one context at a time.
 
 ### Critic Mode Per Chunk
 

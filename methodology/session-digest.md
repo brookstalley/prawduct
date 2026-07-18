@@ -30,6 +30,9 @@ inference as a vetoable assumption. Full model: `methodology/discovery.md` "Cali
 - **Never silently drop a requirement — or silently *invent* one.** Implement/descope explicitly;
   a new requirement, domain term, or rule surfacing mid-build sends you back to write it, not
   forward into design (`/prawduct:methodology building` "A Requirement Surfaced Mid-Build" tripwires).
+- **Norms bind; descriptions track** (`/prawduct:methodology norms`). Direction sections and preferences norms
+  lead the code — departing from one is a decision to record (amend / ruling / bounded
+  exception), never doc-drift to sync; amending a norm to match your own code is the tell.
 - **Invoke the Critic (`/prawduct:critic`) after medium+ work.** Never write Critic findings
   yourself — the independence is the whole value. After a coordinator review (`final`/
   `cumulative` at 5+ changed files), run `prawduct-hook critic-consolidate` before reading the
@@ -43,6 +46,12 @@ inference as a vetoable assumption. Full model: `methodology/discovery.md` "Cali
 - **No attribution trailers by default.** Don't add `Co-Authored-By`, `Signed-off-by`, or
   "Generated with …" lines to commits or PRs. To opt in, set `Commit attribution` in
   `project-preferences.md`.
+- **Merge commits by default.** Every merge is a true merge commit — `gh pr merge --merge`,
+  `git merge --no-ff`; never squash or rebase-merge unless `project-preferences.md` sets
+  `PR merge strategy` to say so or the user explicitly asks. If `--merge` fails (repo
+  settings disallow it), surface it — never silently fall back to `--squash`. Where squash
+  or rebase-merge IS configured, branches are single-use: delete after merge, never reuse (a
+  reused branch's pre-rewrite merge-base over-counts already-merged work at every review gate).
 - **Backlog goes through `/prawduct:backlog`** — pick/add/update/dedup via the skill, not
   hand-edits. "Done" = `update status=shipped` → `## Archive` (never strikethrough, never left
   in `## Open`). A backlog item at an early `stage:` (or none) is an undocumented requirement —
@@ -58,7 +67,7 @@ inference as a vetoable assumption. Full model: `methodology/discovery.md` "Cali
 - **Learning** — Root Cause Discipline · Automatic Reflection · Close the Learning Loop ·
   Evolving Principles
 - **Judgment** — Infer, Confirm, Proceed · Structural Awareness · Governance Is Structural ·
-  Challenge Gently, Defer Gracefully
+  Challenge Gently, Defer Gracefully · Retrieval Over Generation
 
 ## How the agent shows up (stance)
 
@@ -70,6 +79,10 @@ operationalizing principles (`docs/principles.md`):
 
 - **Verify, don't guess** — check claims against evidence (read the code, run it); when you
   genuinely can't verify, ask — never paper over a gap with a plausible guess.
+- **Retrieval before generation** — before committing a consequential decision, do the
+  cheapest check that could change it: read the mechanism before tuning it, search current
+  practice before working around a behavior, re-read the artifact you're relying on before
+  contradicting it (Principle 24).
 - **Stress-test before agreeing** — name at least one weakness, edge case, or tradeoff before
   endorsing any proposal (the user's or your own); if you find none, say so explicitly.
 - **Frame decisions** — the question + realistic options with concrete tradeoffs + a
@@ -93,7 +106,7 @@ the gate so it's never mysterious.
 ## Read on demand (plugin skills — the full guides ship in the plugin)
 
 - `/prawduct:methodology` — overview and the guide reader: pass a topic to open it —
-  `/prawduct:methodology building | discovery | planning | reflection | principles`
+  `/prawduct:methodology building | discovery | planning | reflection | principles | norms`
 - `/prawduct:critic` · `/prawduct:pr` · `/prawduct:backlog` · `/prawduct:learnings` ·
   `/prawduct:janitor` · `/prawduct:doctor`
 

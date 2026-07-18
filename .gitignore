@@ -16,6 +16,9 @@ __pycache__/
 .pytest_cache/
 .DS_Store
 
+# uv lock file — resolved fresh per environment (not committed)
+uv.lock
+
 # Prawduct session files
 .prawduct/.test-evidence.json
 .prawduct/.gates-waived

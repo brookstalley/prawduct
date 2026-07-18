@@ -7,6 +7,144 @@
 
 ## Open
 
+- **[LRN-9K2P]** Modernize ~28 legacy terse learnings.md headings to self-contained "When X, do Y because Z" rule form
+  `effort: S · impact: S · area: memory/learnings · source: critic · added: 2026-07-17 · status: open · stage: ready · related: LRN-7M4D · refs: .prawduct/learnings.md, .prawduct/learnings-detail.md, methodology/reflection.md`
+
+  The 2026-07-17 learnings.md compaction reduced the file to header-only rules (narrative moved to learnings-detail.md). ~1/3 of the headings are legacy terse topic-labels (e.g. "Test subprocesses: HOME=tmp_path leaks Python's pyc cache into the test repo") that state the rule but not the inline *why*. Since the SessionStart briefing now surfaces headings only, their actionable why isn't visible without opening learnings-detail.md — still reachable via `/prawduct:learnings`, so **NOT a regression** (the briefing was headers-only before too).
+
+  Fix: reword the terse headings to carry rule + why in one line, matching the dominant "When X, do Y because Z" format the intro + `methodology/reflection.md` now describe. Surfaced by the Critic design + sustainability reviewers (NOTE, rev-20260717T192532Z). (critic)
+
+- **[COV-4H7N]** Doc-only/state-only PR silently breaks a repo-coupled (non-hermetic) test — check-pr-doc-only AND test-status both assume non-code files can't change test outcomes
+  `effort: M · impact: M · area: governance/gates · source: builder · added: 2026-07-17 · status: open · stage: design · related: COV-2P7F, COV-6T3P, COV-8R2K · refs: lib/coverage.py (cmd_check_pr_doc_only — doc-only fast-path), lib/coverage_algebra.py (is_judgeable_path), bin/prawduct-hook (test-status / cmd_test_evidence), tests/test_norm_probes.py (TestSilentAgainstThisRepo)`
+
+  A doc-only/state-only change can break a live-state-coupled test with **no gate catching it**. Concrete: PR #125 (norm-registry ratification) changed only `.prawduct/*.md` + `project-state.yaml`, so `check-pr-doc-only` reported doc-only (skipped Critic + PR review + suite) AND `test-status` reported "current" (treats `project-state.yaml` as non-judgeable) — but `tests/test_norm_probes.py::TestSilentAgainstThisRepo` reads the **live** `project-state.yaml`, so ratifying the registry silently broke it on develop; only caught on the next unrelated branch's suite run.
+
+  **Root cause:** both the doc-only fast-path and test-status's judgeable-path classifier assume non-code files can't change test outcomes — but repo-coupled (**non-hermetic**) tests read committed state/docs, so a `.prawduct/*` edit CAN flip a test red.
+
+  **Possible fixes** (design pending — pick and reconcile with COV-2P7F): (a) test-status/doc-only should treat `project-state.yaml` (and any file a non-hermetic test reads) as judgeable; (b) doc-only PRs should still run the suite when repo-coupled tests exist; (c) narrow/inventory the non-hermetic tests so the assumption becomes true.
+
+  **Tension to resolve — this is a hard constraint on COV-2P7F.** COV-2P7F pushes the *opposite* direction (treat `.prawduct/**` as governance-only so a metadata edit escapes full gates). This item is the counterexample proving a *blanket* `.prawduct/**` exemption is unsound while non-hermetic tests exist: exempting `project-state.yaml` from the suite is exactly what let #125 break silently. Any COV-2P7F design must account for this — the safe exemption is narrower than "all of `.prawduct/**`", or fix (b)/(c) must land first. Also related: COV-6T3P (the `is_judgeable_path` predicate that classifies these paths) and COV-8R2K (coverage floor on non-code config). Stage: design — the problem/root cause are clear; which of (a)/(b)/(c) and how it reconciles with COV-2P7F is the open decision. Governance-protected (lib/gates, lib/coverage, hooks) → full Critic + PR review. (builder — finding this session)
+
+- **[GOV-8R3F]** Janitor Step-3 Reconcile surfaces candidates flat (single confirm-or-correct block); apply the shipped doctor surface-by-exception taxonomy
+  `effort: M · impact: M · area: governance · source: reflection · added: 2026-07-17 · reviewed: 2026-07-17 · status: open · stage: ready · related: GOV-6N4W, GOV-4X9M, JNT-8E3P · refs: skills/janitor/SKILL.md (Step-3 Reconcile — the residual), skills/doctor/SKILL.md (steps 2-3, shipped clear-to-ratify/needs-a-ruling taxonomy — reuse precedent), docs/norms.md (§ Adoption)`
+
+  The **doctor** Norm Ratification Flow shipped the surface-by-exception fix this cycle (`skills/doctor/SKILL.md` steps 2-3 + `docs/norms.md` § Adoption): a **clear-to-ratify vs. needs-a-ruling** taxonomy, a ban on flat-dumping ~6+ candidates, and an explicit bulk-confirm guard. That fixed the doctor's original failure mode — at scale, a one-block dump of every candidate becomes a wall-of-text the owner skims and rubber-stamps (the "blanket 'looks good' that never engages the forks" failure ratification exists to prevent — Principle 6; the GOV-4X9M "approval on the divergences, not the document" concern).
+
+  **Residual (this item):** the sibling **janitor Step-3 Reconcile** (`skills/janitor/SKILL.md`) still presents its candidates as a flat "single confirm-or-correct block" and carries the identical failure mode — it needs the same treatment.
+
+  Fix-shape: **reuse the shipped doctor taxonomy** — don't design a competing one. Apply the same clear-to-ratify / needs-a-ruling split to the janitor's Reconcile step: foreground only the candidates that need a decision (the doctor taxonomy already encodes which — ambiguous classification, high-stakes/security-relevant, `in-transition`, Type-2 sub-optimal-norm risk), collapse the clearly-safe ones into a bulk **confirm-in-summary** affordance, and honor the ~6-item flat-dump ban. Exception criterion, surfacing shape, and bulk-confirm guard are all already designed and proven in the doctor precedent — this is a port, not a fresh design.
+
+  Guard: surface-by-exception must **never silently ratify** the un-surfaced candidates — the collapsed set still gets an explicit bulk confirm (owner sees the count and can expand), matching the doctor's shipped guard, because auto-binding a norm the owner didn't engage is a norm-birth decision made by default (`docs/norms.md` § No auto-ratification).
+
+  Stage: ready — the fix-shape is proven by the shipped doctor precedent, so there is no open design question; the work is porting the existing clear-to-ratify/needs-a-ruling taxonomy onto the janitor's Step-3 Reconcile. Governance-protected (`skills/`) → full Critic + PR review.
+
+- **[GOV-4X9M]** Backfill-as-discovery: interview-driven strategy-artifact authoring with just-in-time nudges + layered opt-outs
+  `effort: L · impact: L · area: governance · source: user · added: 2026-07-17 · reviewed: 2026-07-17 · status: open · stage: requirements · related: GOV-EXI2, GOV-5K3M`
+
+  **Problem.** Prawduct nudges products to author strategy-class artifacts (the structural-coverage chain), but authoring is a *solo agent task* that (a) tends to codify current practice as if it were intended design, and (b) cannot know the owner's actual intent — intent lives in the owner's head, not the repo. Good outcomes today depend on a human steering the agent manually (observed live while authoring prawduct's own 7 artifacts, 2026-07-17). The Critic currently *rewards* the failure mode: the cumulative review praised the artifacts for being 'accurate to prawduct's actual system' — accuracy-to-current-code is the wrong success metric for a document meant to lead development.
+
+  **Direction — treat backfill as retroactive discovery (an interview), not solo documentation.** Reuse/generalize the existing new-product discovery flow rather than building a second one.
+  - **Elicit the mode, don't presume it:** first fork is 'draft a first pass from what's built, or come at it from first principles?' — plus 'capture current state (maintenance) vs. set direction'. Surface the true depth of what's missing (many owners *want* to know), framed as information+options, not alarm. Depth-gauged like discovery.
+  - **Stance:** backfilled artifacts state *intended design* (the target you'd defend to a skeptic) and flag divergences from current code as explicit owner decisions/backlog items — never silently enshrine a dubious current practice. Promote memory feedback_artifacts_express_intent into methodology (planning.md + one line per template + advisory/scaffold text).
+  - **Critic objective flip:** add a check so a purely-descriptive strategy artifact that rubber-stamps current behavior is a finding; accuracy-to-code alone is insufficient.
+
+  **Primary trigger — just-in-time, stakes-calibrated nudge.** When requested work would benefit from a missing/thin doc ('you asked to add logging but there's no observability-strategy'), propose addressing it first. Detection is LLM judgment (not a mechanical gate), likely built on the work-model tripwire / jurisdiction+coverage machinery (absence of an expected governing artifact for the work area). Calibrate to stakes (security-model before auth = gold; observability before a copy tweak = noise). Applies to doc states 1 (nonexistent) and 2 (stale); state 2 deferred.
+
+  **Layered opt-outs (a way-of-thinking, NOT a formal state machine):**
+  - Decline-once ('later') -> stay state 1, continue; RE-SURFACE relevance-triggered (same work area recurs), not calendar-triggered; judgment backs off on repeated decline. DEFAULT for ambiguity — never auto-write a 'not relevant' stub the owner didn't decide (Principle 6).
+  - Decline-this-doc ('not needed because X') -> author the (not relevant — X) stub = state 3, a recorded decision whose expiry is the app's characteristics; a structural-characteristic flip re-opens it (existing norms.md machinery) — so capture the assumption richly.
+  - Decline-everything ('I just want to code without docs') -> recorded, reversible, SCOPED project-preferences posture (suppresses proactive nudges; on-demand /prawduct:doctor still answers).
+
+  **Secondary (test, don't design): strengthen the advisory + agent behavior** to proactively surface/triage advisories in the agent's first response. Constraint: the agent never gets the first turn, so this can only ride the first response. Genuinely uncertain whether it helps or annoys — empirical, needs anti-annoyance tuning; not designed up front.
+
+  **Out of scope (now):** state-2 stale-doc detection; forcing anything (advisories only advise); a second discovery flow; designing the advisory tuning.
+
+  **Open questions:** detection heuristic + its home (extend work-model tripwire?); re-surfacing judgment mechanics; opt-out granularity; how the interview reuses discovery machinery; whether prawduct's own 7 artifacts get re-derived via the flow once it exists; does first-response proactive surfacing actually work.
+
+  **Doc-state lens (thinking tool):** 1 nonexistent · 2 stale · 3 exists-with-(not relevant)-opt-out · 4 good. Nudge 1 (now) and 2 (later).
+
+  **Provenance:** design conversation 2026-07-17 following the solo authoring of prawduct's 7 strategy-class artifacts (GOV-5K3M). Relates to GOV-EXI2 (reactive systems can't detect missing things), the structural-coverage chain, and memory feedback_artifacts_express_intent / feedback_advisor_first.
+
+  ---
+  ## Design refinements (conversation 2026-07-17, continued)
+
+  **Templates & interview-guidance homing:**
+  - VERIFIED: 6/7 strategy-class templates exist; `templates/architecture.md` is MISSING = GOV-2T6K, now a HARD DEPENDENCY (can't prompt authors to write an architecture spec with no scaffold).
+  - Templates carry GENERATION guidance only, no elicitation guidance — correct. Two kinds of meta: templates = deliverable-meta (stack-agnostic scaffold of what to produce); interview guidance = process-meta (how to elicit). Different homes.
+  - Interview TECHNIQUE is universal -> the shared discovery core (one central home). Interview TARGETING is artifact-specific but THIN -> extend discovery.md's existing '## Surface X' pattern to cover all 7 artifacts (today missing explicit data-model/security/architecture elicitation sections). NOT in templates; NO per-artifact interview files. Optional one-line pointer in each template -> discovery elicitation section (co-location without duplication).
+  - Artifact-specific targeting = the distinctive high-leverage question + where owners under-specify (e.g. data-model: consumers' future queries / persisted-format lock-in; security: threat model, interview MORE directively because owners under-claim; NFR: real target numbers, 'what breaks at 10x?'; api-contract: internal-vs-external consumers; architecture: cross-process failure modes).
+
+  **Divergence-approval = norm birth + retroactivity (reuse docs/norms.md wholesale, don't invent):**
+  - WHAT divergences: material gaps between the OWNER-RATIFIED intended design (the artifact's Direction = proportionate best-practice-for-this-project, pinned in the interview) and current code. Baseline is owner-ratified, which dissolves the 'can't pre-define best practices' problem. Proportionate to stakes; err toward surfacing (miss >> annoy).
+  - REVISIT: yes, via the existing norm lifecycle — new divergences caught by the Critic (departure from Direction = BLOCKING); baseline decay/erosion/stall caught by janitor Norm Health + advisories; evolving best-practice = norm amendment (recorded decision). Feed the lifecycle, don't rebuild it.
+  - 'Accept current divergences + document best practice as goal + backlog to align' = the norms.md MIGRATE retroactivity outcome: intended-design norm born Status:in-transition, divergences -> sized backlog item(s), the item WIRED as the norm's tracking ref so stall-detection prevents 'align later' rotting into 'never'. The three dispositions map to the three retroactivity outcomes: accept-and-align=Migrate / permanently-fine-here=Grandfather / old-and-new-coexist=Contain.
+
+  **Backlog as the responsible-deferral primitive:** every 'not now' in the flow (skip-doc-for-now, accept-divergences, defer-a-question) becomes a one-tap backlog item — agent drafts it, owner just affirms. This is the durable, re-surfacing record that makes 'later' honest. GUARD (from the pressure test): a deferral item must hang off an in-transition norm as its tracking ref, else backlog becomes a graveyard.
+
+  **The interview collapses Layer 1 + Layer 2:** the divergence/retroactivity machinery only has teeth if the intended design is a RATIFIED Direction norm, and ratification needs the owner present. Solo authoring can't ratify -> toothless descriptions (proven live: prawduct's own 7 artifacts, authored solo this session, have no Direction sections and engage none of this machinery). The interview produces Layer 1 + Layer 2 together (owner declares intent = ratification, retroactivity decided same sitting). Allow 'not ready to bind yet' -> descriptive + defer ratification as a backlog item; default toward collapsing.
+
+  **Pressure-test findings (red-teamed for false negatives; priority: miss-a-gap >> annoy — LLM deference gives non-annoyance for free):**
+  1. Extend the just-in-time nudge to LAYER 0 ('you're adding payments but I don't know what this product IS yet') — highest value, since the whole chain is downstream of recorded characteristics. Biggest hole: a user who skips discovery gets zero governance.
+  2. VALIDATE opt-outs against recorded/detected characteristics — a '(not relevant — tiny utility)' security stub on a product with handles_sensitive_data is a detectable CONTRADICTION -> challenge/block, don't accept at face value. Single highest-leverage tightening.
+  3. Bias toward surfacing/insisting; default-when-uncertain = surface not defer; present full stakes, don't soft-pedal.
+  4. Approval on the DIVERGENCES not the document; blanket 'looks good' that never engages the flagged forks is not ratification; Critic objective-flip (descriptive rubber-stamp = finding) applies to interview output.
+  5. Keep mechanical gates (advisory + Critic/PR) as judgment-INDEPENDENT backstops for detection misses; opt-outs suppress proactive nudges ONLY, never the gates.
+  6. Characteristic-DRIFT detection (re-detect from ongoing work; the work-model tripwire on payments/auth/PII terms is a proto-signal) is what makes n/a stubs self-expiring in practice.
+  7. Durable opt-out must be visible/attributed/reversible and repo-scoped-with-care (team: one dev's opt-out shouldn't silently gag the team's gates).
+
+  ---
+  ## Divergence model — Type 1 / Type 2 correction (conversation 2026-07-17, continued)
+
+  **CORRECTION to the divergence model (supersedes the single-divergence framing above):** there are THREE things, not two — (a) best practice = the agent's expert recommendation; (b) the ratified norm = what the owner binds; (c) the code. 'Divergence' splits into two gaps with OPPOSITE handling:
+  - **TYPE 1 — code below norm (b vs c):** documented goal is genuinely best practice, code lags. Approval = ratify the good norm + accept the code must be updated (norm-birth + MIGRATE retroactivity, backlog the alignment). The CODE is wrong. [This is the case the earlier 'divergence-approval = norm birth + retroactivity' section covers.]
+  - **TYPE 2 — norm below best practice (a vs b):** the owner wants to enshrine a sub-optimal practice AS the norm ('never use comments', 'plaintext HTTP credentials'). The NORM is wrong. Approval = the OPPOSITE of accept — clarify/validate/challenge so the owner chooses it eyes-open. This is the 'docs normalize mistakes' fear at the norm layer, where it gets the framework's authority.
+
+  This PUNCTURES the earlier claim that 'owner-ratified intended design IS the definition of best-practice, which dissolves the definition problem' — owner-ratification can enshrine garbage. Expertise (a) is a SEPARATE input from ratification (b); the interview is where they meet and the agent must not let (b) silently drop below (a).
+
+  **Type 2 mechanics (mostly reuse existing machinery):**
+  - Severity gradient: stylistic/defensible ('never use comments') -> challenge gently, defer gracefully (Principle 23, owner owns the product), ratify if insisted; genuine harm, esp. harm to THIRD PARTIES ('plaintext credentials' exposes the app's users) -> challenge hard, refuse to frame as recommended, record starkly.
+  - The required `why` (norms.md) is the Type-2 detector: a norm whose why doesn't survive scrutiny is the trip signal to challenge; a whyless/weak-why bad norm isn't quietly ratified.
+  - Ratify-against-advice is a LABELED decision, never laundered: recorded as 'adopted against recommendation: <agent objection>', never relabeled 'best practice'. The honest label is the point.
+  - Critic's Type-2 role is ANTI-LAUNDERING not veto: it can't override a recorded owner decision (Principle 23) but must verify a sub-optimal norm is honestly labeled as an override, not dressed as recommended practice.
+
+  **Net:** 'approval on divergences' is TWO approvals — Type 1 = 'hold the code to this good bar' (align code); Type 2 = 'confirm you're lowering the bar on purpose' (raise the bar, or record the lowering honestly). Type 2 is where 'docs should be more strident than the code' has the most force.
+
+  ---
+  ## Type 2 handling — no-veto correction (conversation 2026-07-17, continued)
+
+  **CORRECTION to Type 2 handling — the agent has NO VETO over a norm (supersedes 'refuse to frame as recommended' / 'challenge hard, refuse' language above):** Every best practice is a DEFEASIBLE HEURISTIC, and the developer holds context the agent cannot see. Literally every SE best practice is the wrong choice in some rare, legitimate case (e.g. plaintext credentials to an ancient microcontroller on an airgapped bus is correct, not a mistake). So the terminus is ALWAYS ratify — warn, explain, then defer (Principle 23 in full).
+
+  Corrected Type 2 flow:
+  1. Surface the general best practice + its reasoning (stays strident; the warning does NOT get softer).
+  2. ELICIT the why (the part previously under-weighted) — don't pre-judge the norm bad; ask. The why often reveals the 'wrong' practice is right in this context, i.e. it's the context the agent was missing.
+  3. Ratify — ALWAYS. The honesty of the RECORD scales to how the why holds up, not whether the agent agrees:
+     - why resolves the concern -> recorded as a legitimate context-specific decision (NOT 'against advice' — the agent was working from partial context).
+     - no adequate why for a genuinely risky choice -> still ratified (developer owns it), agent's unresolved concern noted honestly on the record.
+
+  The ONLY thing the agent ever declines is to LAUNDER (call something 'best practice' when it isn't, or omit the concern from the record). It never declines to ratify. Honest labeling != refusal.
+
+  This softens the earlier 'harm to third parties raises the bar' -> it raises WARNING INTENSITY and why-elicitation rigor, never the outcome toward refusal (the agent can't reliably assess third-party harm from partial context). Critic anti-laundering role holds but the LABEL REFLECTS THE WHY: a legitimate airgapped decision reads as a decision, not a warning banner; the Critic checks the why EXISTS and the choice is RECORDED, not that it agrees.
+
+  Candidate framework principle worth elevating: 'the agent is advisory on norm content, never a gate; every best practice is defeasible.' Strident warning + graceful deferral + honest record.
+
+  ---
+  **Note (2026-07-17):** the `templates/architecture.md` hard dependency (flagged under "Templates & interview-guidance homing" above) is satisfied — GOV-2T6K shipped 2026-07-17 (`closed-by: architecture-template`). All 7/7 strategy-class authoring templates now exist; this item is no longer blocked on scaffolding.
+
+- **[GOV-4M7K]** coverage-status layer-0 report should share the ambient nudge's product-work gate
+  `effort: S · impact: S · area: governance · source: critic · added: 2026-07-16 · status: open · stage: ready · refs: bin/prawduct-hook (cmd_coverage_status), lib/gitstate.py (_has_product_definition_work), skills/doctor/SKILL.md #11`
+
+  Critic NOTE (structural-coverage cumulative, R-2). cmd_coverage_status in bin/prawduct-hook computes layer-0-active purely from 'not structural_characteristics_recorded', WITHOUT the _has_product_definition_work gate that the ambient layer-0 briefing nudge (also in cmd_clear) applies. Consequence: on a freshly-onboarded empty repo (no code, no docs/) the doctor 'coverage-status' report says layer 0 is active / coverage degraded, while the ambient session-briefing advisory correctly stays SILENT (and doctor Health Check #6 also gates on product work). The doctor report is thus slightly more eager than the nudge it claims to mirror ('reads the SAME expectation table'). Fix: gate the coverage-status layer-0 determination on _has_product_definition_work too, so the report and the ambient nudge agree on a fresh repo. Bounded, cosmetic (a report line, no wrong behavior). refs: bin/prawduct-hook (cmd_coverage_status), lib/gitstate.py (_has_product_definition_work), skills/doctor/SKILL.md #11.
+
+- **[GOV-6N4W]** UserPromptSubmit "norm-shaped prompt" classifier — detect norm-birth phrasing at prompt time and nudge capture
+  `effort: M · impact: M · area: governance · source: builder · added: 2026-07-16 · status: open · stage: idea · related: GOV-7Q4N, WMK-4Q9T, WMK-1P4Q · refs: .prawduct/artifacts/build-plan-norm-lifecycle.md (Out of scope + Chunk 6), docs/norms.md`
+
+  Deferred follow-up filed from the norm-lifecycle build plan (declared out of scope there; Chunk 6 directs this filing). Detect norm-birth phrasing in user prompts at UserPromptSubmit time — "we should always X", "from now on Y", "never Z again" — and nudge capture into the norm registry (Direction section + preferences row) so a norm is born recorded instead of ambient. Deferred for precision risk per the work-model review history: the work-model prompt-term tripwire (WMK-4Q9T) shows prompt-time classifiers misfire on ordinary prose and desensitize the very nudge they power — a norm-shaped classifier must clear that bar before it ships. Idea-stage: needs a design pass on the detection signal (phrase patterns vs. heavier classification), its false-positive posture, and usage evidence from shipped v1 norm capture (advisory probes + janitor Norm Health + doctor ratification) that prompt-time detection adds value over capture-at-reflection. Governance-protected (hooks) → full Critic + PR review. (builder)
+
+- **[JNT-8E3P]** Erosion metrics automation — compute the janitor Norm Health sweep's distance-from-norm measurements instead of hand-deriving them
+  `effort: M · impact: M · area: janitor · source: builder · added: 2026-07-16 · status: open · stage: idea · related: GOV-7Q4N · refs: skills/janitor/SKILL.md (Norm Health theme), docs/norms.md (§ Trajectory), .prawduct/project-state.yaml (norm_health:)`
+
+  Deferred follow-up filed from the norm-lifecycle build plan (Chunk 6 directive). v1's Norm Health sweep measures erosion by hand: the janitor searches for violation sites per norm and manually records the point-in-time measurement (date + per-norm distance, e.g. "3 violation sites, 2 open exceptions") under `norm_health:` in `project-state.yaml` so the next sweep sees the trend. Automate the measurement: violation-site counting and trending computed by code (per-norm search signal → counts → trend deltas against the recorded `norm_health:` history) so the sweep's erosion numbers are derived rather than hand-counted — cheaper sweeps, comparable numbers across runs, and the trajectory failure the theme exists to catch (many individually-defensible exceptions summing to a dead norm) becomes mechanical. Idea-stage: needs a design pass on how a norm declares its machine-checkable violation signal (e.g. a search pattern on its Enforcement row) — most norms carry prose-only constraints, so v1 automation likely scopes to norms that can declare one, with the manual path remaining for the rest. (builder)
+
 - **[GOV-3P8K]** Deterministic tripwire for the ephemeral-ref firewall — grep/hook check that auto-flags ephemeral build identifiers leaking into committed code comments / durable specs
   `effort: M · impact: S · area: gates · source: critic · added: 2026-07-14 · status: open · stage: idea · refs: skills/critic/review-protocol.md (Goal 4 — Coherence, ephemeral-ref check), docs/principles.md (Principle 13 durable-artifact clause), .prawduct/cross-cutting-concerns.md (Durable-artifact self-containment row — "Deterministic grep tripwire deliberately deferred")`
 
@@ -43,9 +181,11 @@
   The forked /prawduct:backlog skill mutates backlog.md non-atomically. Two corroborating incidents in hallucinote: (a) the skill died on an API socket error mid-run and left a PARTIAL file mutation — data corruption, not a clean rollback; (b) a Critic (2026-07-07) found a DUPLICATED paragraph the skill had emitted (non-idempotent write). Impact: a mid-run crash or retry can corrupt or duplicate backlog entries — the very tool meant to be the safe mutation path for the backlog is itself unsafe. Fix-shape: make backlog mutations transactional and idempotent — parse the file to a model, transform by item id, assert no duplicate ids / no dropped items, then write atomically (temp file + rename). Governance-protected (skill) → full Critic + PR review. (critic)
 
 - **[PR-7T2K]** PR gates validate local HEAD, not the pushed origin/<branch> that squash-merge uses — post-push commits silently dropped
-  `effort: M · impact: M · area: pr · source: user · added: 2026-07-09 · status: open · stage: ready · related: PR-2H8N`
+  `effort: M · impact: M · area: pr · source: user · added: 2026-07-09 · status: open · stage: ready · related: PR-2H8N · reviewed: 2026-07-17`
 
   The PR gates (change-log entry, cumulative-critic, evidence) validate the LOCAL commits, but `gh pr merge --squash` squashes what's on origin/<branch>. A commit made after the last push — very often the change-log entry the gate itself just forced the builder to add — never reaches origin, so the squash-merge silently drops it and the merged result is missing content the gates confirmed present. Reported by hallucinote (~June). Fix-shape: /prawduct:pr (or a PR gate) should assert `git rev-parse origin/<branch>` == local HEAD (branch fully pushed) before allowing merge, and fail loud with "unpushed commits — push before merging" otherwise. Governance-protected → full Critic + PR review.
+
+  Reviewed 2026-07-17 (ambient-merge-commit-default Critic C-B3): remains valid — the unpushed-commit hazard survives the squash→merge-commit flip, since a merge commit still merges what's on origin/<branch>, so post-push local commits are still silently dropped.
 
 - **[COV-4M2J]** Coverage floor is Python-only — `bin/test-reference-verify` symbol-grep can't reference non-Python (JS/TS/Go/…) changed files; bring-your-own-verifier via `--merge-into` is the only escape
   `effort: L · impact: M · area: coverage · source: builder · added: 2026-06-26 · status: open · stage: requirements · related: COV-3R9K, COV-8R2K, TST-2H9P · refs: bin/test-reference-verify (symbol-grep floor), lib/coverage.py (changed-files derivation), bin/prawduct-hook (verify-coverage, test-evidence record F4a overlay), skills/critic/review-cycle.md (Goal 1 F4b)`
@@ -114,7 +254,7 @@
   The chunk-header regex only matches the template's "### Chunk 01: [Name]" form; plans using "## Chunk 01 — title" (h2, em-dash) exit 1 "chunk not found" even though the chunk exists, so reviewers learn to hand-wave the exit — and a real missing-deliverable BLOCKING can then hide behind the dismissed exit (false-negative habituation). Distinct from the verify-chunk-refs ref-TOKEN-extraction family (BLD-2R9X glob, BLD-8F2Q path::symbol, BLD-4K7P <>/URL tokens, BLD-5V8F symbol/backlog-ref) — this is the chunk-HEADER detection regex (which chunks exist at all). Fix-shape: loosen header regex to ^#{2,3}\s+Chunk\s+(\w+)\s*[:—–-]; and/or distinguish "cannot parse" from "ref missing" in the exit contract. Same cmd_verify_chunk_refs surface as BLD-4K7P — could ride in one pass. Governance-protected → full Critic + PR review.
 
 - **[WMK-4Q9T]** Work-model term tripwire flags ordinary English words and file-path fragments as ungoverned terms — desensitizes the one tripwire meant to catch real undocumented requirements
-  `effort: S · impact: M · area: work-model · source: user · added: 2026-06-22 · status: open · stage: design · related: WMK-7D3R, WMK-1P4Q, GOV-7T2M, GOV-4C7X · refs: UserPromptSubmit hook (work-model term extraction), lib/work_model_index.py, incoming-bugs/archive/work-model-term-tripwire-flags-ordinary-prose-words.md · reviewed: 2026-07-12`
+  `effort: S · impact: M · area: work-model · source: user · added: 2026-06-22 · status: open · stage: design · related: WMK-7D3R, WMK-1P4Q, GOV-7T2M, GOV-4C7X · refs: UserPromptSubmit hook (work-model term extraction), lib/work_model_index.py, incoming-bugs/archive/work-model-term-tripwire-flags-ordinary-prose-words.md · reviewed: 2026-07-16`
 
   The prompt-term extractor treats common adjectives/adverbs/verbs and singularized file-path fragments (e.g. "incoming-bug" from incoming-bugs/) as candidate domain terms, firing the "terms not found in any governing artifact" tripwire on most natural-language prompts. Noise PERSISTS as of 2026-06-22 — it fired on THIS very session's prompt ("urgent, wrap-up, awaiting, model-id, fold, single-owner, ceiling, cross-linked…"). Pure noise today, but desensitizes tripwire #1 (requirements-precede-code). WMK-7D3R is the staleness/rebuild sibling and explicitly says probe PRECISION was "separate, covered by the review-fixes plan Chunk 2" — verify whether that precision pass shipped before sizing; the 2026-06-11 Scriob repros + this session's recurrence show the noise is live regardless (so file NEW; if review-fixes Chunk 2 shipped a partial fix, this is the incomplete-fix follow-up). Fix-shape: stoplist/POS-filter to nouns; don't tokenize path-like strings; scope firing to build-intent prompts or recurring terms.
 
@@ -139,6 +279,10 @@
   (cf. CRT-5M9J). Subsumed by the governance kernel redesign program GOV-4C7X, which carries
   the deletion; this item stays open until the deletion actually ships, then archive it
   `closed-by:` the shipping kernel-redesign plan scope.
+
+  **Re-checked 2026-07-16** (Critic C-B3, norm-lifecycle Chunk 2): still accurate and unresolved.
+  Not implicated in the norm-lifecycle work — the jurisdiction subcommand bypasses the cached
+  index, so it is unaffected by this item's noise classes.
 
 - **[CRT-6W2N]** Governance gates + Critic/PR skills have no supported git-worktree workflow — the learned "run Critic/PR from the primary session" workaround breaks across working copies, forcing every worktree work cycle off-protocol
   `effort: L · impact: M · area: worktree · source: user · added: 2026-06-22 · status: open · stage: requirements · related: STH-4K7N, CRT-8D2W, CRT-2K9F, REL-7P3X · refs: lib/gates.py, bin/prawduct-hook (infer-critic-mode, check-cumulative-critic, test-evidence), skills/critic, skills/pr, Stop hook, incoming-bugs/archive/governance-gates-and-critic-pr-skills-dont-compose-with-git-worktrees.md · reviewed: 2026-06-22`
@@ -192,7 +336,7 @@
   report from Hallucinote/puzzles)
 
 - **[REL-3M7K]** Release-prep must add the root CHANGELOG.md headline and gate on a green suite before tagging
-  `effort: S · impact: M · area: governance/release · source: builder · added: 2026-06-21 · status: open · stage: ready · related: REL-9F2T · refs: CHANGELOG.md, hooks/banner.py (parse_changelog), skills/pr/SKILL.md, .prawduct/release-notes.md`
+  `effort: S · impact: L · area: governance/release · source: builder · added: 2026-06-21 · status: open · stage: ready · related: REL-9F2T · refs: CHANGELOG.md, hooks/banner.py (parse_changelog), skills/pr/SKILL.md, .prawduct/release-notes.md · reviewed: 2026-07-14`
 
   Root cause found 2026-06-21 during the hook-cli-robustness baseline check: v2.1.6 was tagged +
   version-bumped (81b28fe) but its consumer-facing root CHANGELOG.md headline was never added — the
@@ -209,6 +353,16 @@
   Fix-shape: wire the CHANGELOG.md headline into the /prawduct:pr release-promotion / release-prep
   flow (or generate it from the release= change-log tag like release-notes.md is), and make
   release-prep refuse to bump/tag on a non-green suite. (builder)
+
+  Recurrence log:
+  - v3.0.4 (2026-07-14): recurred (3rd+ occurrence). release-prep(v3.0.4) (3ebf914) again bumped the
+    version + regenerated .prawduct/release-notes.md/change-log.md but omitted the consumer-facing root
+    CHANGELOG.md headline; it had to be backfilled out-of-band in bc23ef5 ("fix(changelog): backfill the
+    missing v3.0.4 headline (release-prep miss)"). Identical failure mode to the v2.1.6 root-cause find
+    above — the headline remains a forgettable hand step because the fix is still unbuilt. Recurrence at
+    this cadence is why impact was raised M→L on 2026-07-14: the cost of not fixing (releases shipping
+    with a missing/late headline, and the CHANGELOG-current-version test flapping) now clearly exceeds
+    the small effort of wiring the headline into release-prep. (reflection)
 
 - **[STH-3K7M]** Capture `git branch --show-current` once on the SessionStart (clear) hot path
   `effort: S · impact: S · area: stop-hook · source: builder · added: 2026-06-21 · status: open · stage: ready · related: STH-6Q9D · refs: lib/briefing.py (_get_current_branch and its callers)`
@@ -352,7 +506,7 @@
 
 
 - **[PR-2H8N]** Key the `/pr` release-promotion guard off `resolve-base` instead of hardcoded branch names
-  `effort: S · impact: S · area: pr · source: critic · added: 2026-06-06 · status: open · stage: ready · related: REL-8K3M · reviewed: 2026-06-10`
+  `effort: S · impact: S · area: pr · source: critic · added: 2026-06-06 · status: open · stage: ready · related: REL-8K3M · reviewed: 2026-07-17`
 
   REL-8K3M's release-promotion guard in `skills/pr/SKILL.md` hardcodes `develop`/`main`/`master` to
   recognize a release/integration context. The skill's own merge-flow (step 7) already distinguishes
@@ -362,6 +516,8 @@
   present, and REL-8K3M targets prawduct's own gitflow case. Fix-shape: have the guard compare the
   current branch to `resolve-base`'s output (the integration base) and to the release surface, rather
   than a fixed name list. Filed from the REL-8K3M cumulative Critic NOTE on 2026-06-06. (critic)
+
+  Reviewed 2026-07-17 (ambient-merge-commit-default Critic C-B3): remains valid and unaffected by the squash→merge-commit default flip — the guard-keying gap is independent of merge strategy.
 
 - **[WMK-1P4Q]** Work-model parent-map injection (B2) + optional `vocabulary:` frontmatter convention
   `effort: M · impact: M · area: hooks · source: critic · added: 2026-06-06 · status: open · stage: idea · related: WMK-7D3R · refs: docs/work-model-spec.md, docs/work-model-enforcement.md · reviewed: 2026-06-10`
@@ -450,11 +606,6 @@
 
   Workflow preferences (`Branching: direct`, `PR creation: wait_for_user`, `PR merge: wait_for_user`) are read by `building.md` and `/pr` but have no allowed-vocabulary or shape check. A typo or unknown value would silently default. Candidate: small Critic checklist line ("Workflow values must be one of X / Y / Z") OR a tiny config-presence test. Low priority — current values are stable. (critic, 2026-05-01)
 
-- **[MET-3P7B]** Lift "assign a mechanism per preference" pattern into methodology
-  `effort: M · impact: M · area: methodology · source: critic · added: 2026-05-01 · status: open · stage: research · reviewed: 2026-06-10`
-
-  The Enforcement section added to `project-preferences.md` (and the template, 2026-05-01) encodes a methodology insight: every preference must be assigned to Linter / Test / Critic when it's captured, with a false-confidence guardrail that escalates weak tests to Critic. Currently lives only in the artifact + template. Candidate: weave into `methodology/discovery.md` (when capturing preferences) and `methodology/planning.md` (when designing test specs). Validate the pattern against 2-3 more preferences first before promoting. (critic)
-
 - **[CRT-6T1V]** Critic check: test helpers duplicating production logic
   `effort: M · impact: M · area: critic · source: reflection · added: 2026-04-16 · status: open · stage: design · reviewed: 2026-06-10`
 
@@ -542,7 +693,7 @@
   From the 2026-06-09 framework review (skills agent). (1) The nine investigation themes (~100 lines, ~50% of the skill) read once per janitor run — move theme details to a bundled companion file (the pattern the Critic already uses with review-protocol.md etc.) and keep SKILL.md as dispatcher + process. (2) Clarify that Step 2.5 Backlog Health emits read-only NOTE findings and Step 7 Reconcile is where those findings drive /prawduct:backlog update calls — the linkage is currently implicit. (3) Reframe the 'fresh eyes' line toward pattern-detection + infer-and-confirm, and say what to do when the user cannot confirm a preference divergence (file a backlog item rather than resolving unilaterally). (builder)
 
 - **[WMK-7D3R]** Work-model index never rebuilds on artifact deletion — retired vocabulary lingers
-  `effort: S · impact: S · area: work-model · source: builder · added: 2026-06-09 · status: open · stage: design · related: WMK-1P4Q, GOV-7T2M · refs: bin/prawduct-hook, lib/work_model_index.py · reviewed: 2026-07-02`
+  `effort: S · impact: S · area: work-model · source: builder · added: 2026-06-09 · status: open · stage: design · related: WMK-1P4Q, GOV-7T2M · refs: bin/prawduct-hook, lib/work_model_index.py · reviewed: 2026-07-16`
 
   From the 2026-06-09 framework review. The staleness check (bin/prawduct-hook, build-index path) compares
   remaining artifact mtimes to the index mtime, so deleting an artifact never triggers a rebuild and its
@@ -558,6 +709,10 @@
   same fix-shape: file-set in the staleness fingerprint, or document SessionStart force-rebuild
   as the guarantee). The probe-precision thread this item pointed sideways at continued in
   GOV-7T2M/WMK-4Q9T.
+
+  **Re-checked 2026-07-16** (Critic C-B3, norm-lifecycle Chunk 2): still accurate and unresolved.
+  Not implicated in the norm-lifecycle work — the jurisdiction subcommand bypasses the cached
+  index, so the mtime-only staleness gap doesn't affect it.
 
 - **[CRT-6J4P]** Mode-inference rule 1b chains across work-cycle/bundle boundaries — prior bundle's cumulative vouches for a new plan's first chunk
   `effort: S · impact: S · area: governance/critic · source: reflection · added: 2026-06-10 · status: open · stage: design · related: CRT-8W3F, CRT-4J8W, CRT-7B4M, CRT-2N7V, CRT-8H3R · refs: lib/critic_mode.py (_rule_postfix_fix_fires, _cumulative_anchor), skills/critic/SKILL.md · reviewed: 2026-07-13`
@@ -912,13 +1067,6 @@
   the verdicts on the briefing surface, and key the synthesis advisory's fact read to the
   session's worktree/branch. Governance-protected → full Critic + PR review. (critic)
 
-- **[TST-6F2R]** `test-evidence record` with no declared test_command falls back to sys.executable pytest — venv-isolated projects record a catastrophic false-red
-  `effort: M · impact: M · area: test-evidence · source: user · added: 2026-07-13 · status: open · stage: ready · related: TST-3E8V, TST-6V2N, TST-7M3K · refs: bin/prawduct-hook (cmd_test_evidence run fallback, ~line 1903), incoming-bugs/archive/test-evidence-record-persists-false-red-when-test-command-undeclared.md`
-
-  Upstream bug from discodon (incoming-bugs/test-evidence-record-persists-false-red-when-test-command-undeclared.md, severity medium). When project-state.yaml declares no `test_command`, `test-evidence record` falls back to running `sys.executable -m pytest` — the HOOK's interpreter, not the project's venv. In venv-isolated projects (pipenv/poetry/conda), collection fails wholesale on ModuleNotFoundError and the record persists a catastrophic false-red (discodon: 0 passed / 5074 failed, all collection-level import errors) to `.prawduct/.test-evidence.json`, polluting test-status. Verified in the current tree at bin/prawduct-hook:1903-1907 (the report's ~1787-1792 line refs have drifted).
-
-  Fix direction per the report: fail loud — refuse to record (or exit 2 with a clear "wrong interpreter?" message) when collection-level import failure dominates the run (a suite where ~everything dies at collection is a launch-environment error, not a red suite) — and/or require an explicit `test_command` instead of guessing the interpreter (make the sys.executable fallback opt-in). Same code region as TST-3E8V (launch-failure handling) and the TST-6V2N-born writer; TST-7M3K/TST-4K2P shipped the surrounding record semantics. Governance-protected (test-status gate input) → full Critic + PR review. (user — upstream report from discodon)
-
 - **[GOV-4C7X]** Governance kernel redesign (v3) — SHA-keyed evidence store + coverage-algebra gates + deterministic Critic data plane
   `effort: L · impact: L · area: governance/kernel · source: user · added: 2026-07-12 · status: promoted · stage: design · related: CRT-5D8Q, GOV-7T2M, WMK-4Q9T, MIG-6B0R, CRT-9K7T · refs: .prawduct/artifacts/kernel-redesign-discovery.md, .prawduct/artifacts/kernel-inventory-2026-07-12.md, .prawduct/artifacts/build-plan-kernel-evidence-store.md, .prawduct/artifacts/kernel-v3-evidence-design.md · reviewed: 2026-07-12`
 
@@ -1036,7 +1184,192 @@
 
   Dedup note (2026-07-14): distinct facet from COV-5H3N — that item is the *wrong-default-to-main* case when `base_branch:` is UNSET; this is the *stale-remote* case when `base_branch: develop` IS set and origin/develop trails local. Both live in `_resolve_base_branch`; keep separate, cross-linked. Adjacent to PR-7T2K (local-vs-origin divergence breaking a gate, but on the feature branch's push-state at merge, not the base branch) and umbrella'd by ENV-2W7K (gitflow base detection, Wave 2).
 
+- **[CRT-7H2W]** `/prawduct:critic verify-resolutions` anchors its head to the WORKING tree while the cumulative/PR gate targets the COMMITTED HEAD tree — a dirty tree with judgeable uncommitted files leaves check-cumulative-critic `uncovered` after verify-resolutions reports success
+  `effort: M · impact: M · area: critic · source: user · added: 2026-07-14 · status: open · stage: ready · related: CRT-9K7T, CRT-5D8Q, COV-7K4N, CRT-8H3R · refs: lib/critic_consolidate.py:239-297, lib/gates.py:911-980, lib/coverage_algebra.py, lib/critic_mode.py:452, lib/gitstate.py:161`
+
+  **Upstream defect** reported by the discodon product (their backlog id CRT-T9RX, local-capture fallback; canonical tracker https://github.com/brookstalley/prawduct/issues). Confirmed in prawduct's own source on branch develop, 2026-07-14.
+
+  **Symptom.** After a `cumulative` review, the builder commits a fix and runs `/prawduct:critic verify-resolutions`, which reports success and records resolution facts — but `prawduct-hook check-cumulative-critic` still reports `uncovered` (exit 1). The only (undocumented) remedy is `git stash` the WIP so working==committed, then re-run verify-resolutions. Observed live on PR #1472 (feature/research-latency→develop): cumulative anchored committed tree 9d32e1bc3185; after a post-cumulative commit (with .devcontainer/* + an artifact .md + backlog.md still uncommitted) verify-resolutions anchored working tree 1aefcf85; the gate wanted committed HEAD 89c9a3bf023b → no path composes → uncovered.
+
+  **Root cause (exact sites, verified in code).**
+  - verify-resolutions records `head_tree = capture["tree"]` — the WORKING tree, WIP included — at `lib/critic_consolidate.py:251`.
+  - cumulative records `head_tree = capture["head_tree"]` — the COMMITTED HEAD tree — at `lib/critic_consolidate.py:232` (explicit comment: "the committed state, not the dirty tree"; notes-and-excludes WIP at :234-238).
+  - `check-cumulative-critic` targets `HEAD^{tree}` (committed) at `lib/gates.py:923`, then calls `coverage_algebra.coverage_verdict(facts, merge_base_tree, HEAD^{tree}, ...)` at :928.
+  - So verify-resolutions' review EDGE terminates at the working-tree node, which is not the target the PR gate asks about → composition finds no path → `uncovered`.
+
+  This is the two-target design stated in `lib/coverage_algebra.py:5-8`: the PR gate is Q1 (merge-base tree → HEAD tree) and the Stop-hook Critic gate is Q2 (session baseline tree → WORKING tree, confirmed at `lib/gates.py:604` where `target = capture["tree"]`). verify-resolutions' single head anchor can serve only one of them once the working tree diverges from committed HEAD — today it serves Q2 and breaks Q1.
+
+  **Mechanism refinement — it is NOT "any dirty tree" (this narrows severity and explains the intermittency).** The coverage algebra has a free-edge bridge (`lib/coverage_algebra.py:180-189` and `:301-315`): it probes a free edge from the working-tree node back to committed HEAD, and that edge qualifies IFF the uncommitted delta is entirely non-judgeable. Since `METADATA_PREFIXES = ('.prawduct/', '.claude/settings.json')` (`lib/gitstate.py:161`), uncommitted `.prawduct/*` docs compose SILENTLY via the free edge and the bug never shows. What actually breaks PR #1472 is the `.devcontainer/*` files — plain config, judgeable (`is_judgeable_path` at `coverage_algebra.py:59` returns True: not metadata-prefixed, not a protected .md) — so the free edge fails and the gate goes uncovered. Trigger, precisely: verify-resolutions on a dirty tree that contains uncommitted CODE/CONFIG (judgeable) while closing a COMMITTED delta. Docs-only WIP hides it; a stray config file exposes it.
+
+  **Distinct from the CRT/COV family (cross-link, do not merge).** CRT-8F3K = coordinator writeback never lands. CRT-J4PM = roster/mode-label gate rejection. CRT-K7VF = accepts a FOREIGN-lineage cumulative (base/lineage). CRT-5D8Q = metadata-exemption boundary disagreement (shipped — is_judgeable_path unified it). COV-7K4N = false-uncovered from a stale origin/<base> (base anchor). CRT-8H3R = mode inference latches a sibling-branch anchor (base/lineage). THIS item is a HEAD-anchor mismatch inside a single valid lineage — a different axis than every one of those.
+
+  **Recommended fix — layered pair.**
+  1. STRUCTURAL (the real fix): make verify-resolutions' head anchor intent-aware in `lib/critic_consolidate.py` (the else-branch at :239-290). Branch on whether a COMMITTED delta exists since the prior review's `commit_reviewed` (there is already `_committed_files_since` in `lib/critic_mode.py:452`): (a) committed delta exists → builder committed the fix (PR-gate / post-commit case) → anchor `head_tree = capture["head_tree"]`, `head_commit = dispatch_commit`, note-and-exclude WIP exactly like cumulative at :232-238 → edge `prior_head → committed HEAD` → PR gate composes with no stash dance; (b) no committed delta, dirty subset of prior `files_reviewed` (the fix-in-progress signal mode-inference rule-1 keys on) → keep `head_tree = capture["tree"]` (working) → Stop-hook gate composes, and the PR gate legitimately can't pass until the fix is committed (correct). This resolves the irreducible two-target tension by reading intent from git state instead of forcing one anchor, and it PRESERVES CRT-4J8W's dirty-tree-verify capability (the thing :251 was designed to enable). Sound: the reviewer then reviews `prior_head..committed-HEAD` and vouches for exactly what ships.
+  2. CHEAP DIAGNOSTIC (ship regardless, mirrors COV-7K4N's stale-base hint): extend `check-cumulative-critic`'s `uncovered` remedy text (`lib/gates.py:969-979`) with a dirty-tree branch, and have verify-resolutions emit a WARNING at record time when it anchors to a dirty working tree carrying judgeable WIP ("anchored to working tree X; the cumulative/PR gate targets committed HEAD Y — if you're closing a committed delta, stash or commit the WIP and re-run"). This alone removes the worst part: reported-success-then-silently-uncovered with an undocumented stash remedy.
+
+  **Rejected:** the reporter's "tolerate/normalize the working-tree anchor in composition" — that would wave UNREVIEWED judgeable uncommitted changes through the gate (an unsound integrity hole). Do not.
+
+  **Governance.** Touches governance-protected code (`lib/critic_consolidate.py`, `lib/gates.py`, possibly `lib/coverage_algebra.py`) with existing pinning tests (`tests/test_critic_consolidate.py:340-345` pins the current dirty-tree/no-head_commit verify behavior — will need updating). → feature-branch + full Critic + PR.
+
+  Cross-link note (triage, 2026-07-14): the upstream distinctness IDs above are discodon-side ids. Local mapping — CRT-8F3K → local counterpart **CRT-9K7T** (forked coordinator never writes findings); CRT-J4PM and CRT-K7VF have **no local backlog item** (upstream-only report ids, kept in the prose for the distinctness argument). Confirmed DISTINCT from all local family members (CRT-9K7T, CRT-5D8Q, COV-7K4N, CRT-8H3R) — cross-linked in `related:`, not merged. (user)
+
+- **[GOV-8N4V]** `infer-critic-mode` misses a set `active_build_plan` — fail-safes to `final` and verify-chunk-refs sees "no current chunk" despite a resolvable pointer and a declared chunk mode
+  `effort: S · impact: M · area: governance · source: critic · added: 2026-07-16 · status: open · stage: ready · related: BLD-5J8N, BLD-7W2J · refs: lib/critic_mode.py, bin/prawduct-hook (infer-critic-mode, verify-chunk-refs), .prawduct/artifacts/build-plan-norm-lifecycle.md`
+
+  Observed 2026-07-16 during norm-lifecycle Chunk 2's review on feature/norm-lifecycle: `prawduct-hook infer-critic-mode` reported "no active build plan and no other rule fired — fail-safe to final" and verify-chunk-refs saw "no current chunk", even though project-state.yaml `active_build_plan: artifacts/build-plan-norm-lifecycle.md` was set and the plan's Chunk 2 declares `Critic mode: chunk`. Failed SAFE here (final ⊇ chunk — a broader review than required), but the same current-chunk/plan derivation feeds the stop-hook gate, so the miss is not confined to mode choice. Likely the derivation doesn't resolve the pointer, or expects a different Status-section shape than the plan uses. Overlap check before fixing separately: BLD-5J8N is the chunk-HEADER regex leg of cmd_verify_chunk_refs ("## Chunk NN — Title" h2/em-dash style exits "chunk not found") — if build-plan-norm-lifecycle.md uses that header style, this may be the same parser gap surfacing at the plan/current-chunk derivation layer; verify against both readers before fixing either alone. BLD-7W2J is the single-slot pointer design (different failure: pointer repointed between parallel plans, not a set pointer going unresolved). Governance-protected (lib/critic_mode.py, bin/prawduct-hook) → full Critic + PR review. (critic)
+
+- **[WT-7M4K]** Squash-merged worktree branch leaves a stale merge-base — SessionStart, `infer-critic-mode`/cumulative-Critic, and `pr create` over-count already-merged commits and re-review shipped code
+  `effort: L · impact: M · area: worktree · source: user · added: 2026-07-17 · reviewed: 2026-07-17 · status: open · stage: design · related: CRT-6W2N, PR-7T2K, BRF-6K2D · refs: incoming-bugs/archive/squash-merged-branch-left-stale-gates-review-merged-code-and-pr-would-replay.md, skills/pr/SKILL.md (squash default ~:138; post-merge hygiene; create pre-flight gate), bin/prawduct-hook (infer-critic-mode), skills/critic (cumulative interval), Stop/SessionStart briefing (worktree enumeration)`
+
+  **Update — merge-strategy leg handled (`pr-merge-commit-default`):** the `/pr` default flipped squash→merge-commit. A merge-commit merge keeps the branch's commits reachable from the base, so a reused worktree branch's merge-base stays correct and no gate silently re-reviews already-merged work — this dissolves the primary (default-path) failure mode. **This item stays open, rescoped to the residual:** defense-in-depth for what the default flip doesn't cover — a product that *overrides* back to squash (fix ideas #2/#3 merge-base staleness guards still apply there), and the general "a reused branch is behind the base after *any* merge" hygiene gap (fix ideas #1 detection, #4 post-merge hygiene, #5 docs nudge). Severity drops from medium-high to medium.
+
+  Triaged from upstream bug report (discodon, prawduct v3.0.4, reported 2026-07-17). `/prawduct:pr` merges with the **squash** strategy by default (`skills/pr/SKILL.md:138`). After a squash-merge, a long-lived *worktree's* local feature branch still holds its original *granular* commits: their content is now on `origin/develop` under one squash SHA, but their commit **identities** are not — so the merge-base between the stale branch and `origin/develop` sits *before* the squash. Every prawduct surface that reasons about "what's new on this branch" via merge-base then over-counts already-merged work:
+  - `infer-critic-mode` picks `cumulative` and computes its interval as `merge-base(origin/develop, HEAD)..HEAD`, spending a full 4–10 min review re-reviewing shipped code and raising coherence findings about **already-merged artifacts** (facts about `develop`'s shipped state, not defects in the new work) that bury the real new-work findings.
+  - `/prawduct:pr create` would replay all N already-merged commits onto a develop that already has their squashed equivalent → conflicts or duplicate history.
+  - The `SessionStart` briefing enumerates the worktree/branch but does **not** detect that its content is already present upstream as a squash, so nothing warns operator or agent.
+
+  Observed concretely: worktree `wt-discodon-backlog` on `fix/obs-a9rd-debug-rounds` (already merged as squash #1493) read as **17 commits ahead** — 15 stale pre-squash commits + 2 genuinely-new. Caught only because the human operator *remembered* the prior merge; with no such memory an agent proceeds to `/prawduct:pr`, re-commits already-merged docs, and hits the wall at merge time (expensive) or lands duplicate history. Root cause: squash-merge erases the identity link the gates rely on to bound "new work," and there is **no post-merge step** that prunes/flags the stale branch.
+
+  **Fix menu (ranked by leverage in the report — several ship independently):**
+  1. *(cheapest, highest-signal, effectively `stage: ready` on its own)* SessionStart per-worktree "already-merged?" flag: `gh pr list --state merged --head <branch> -L1` → if a merged PR exists for this head, annotate the worktree "⚠ already merged as #NNNN — rebase onto origin/develop or start a fresh branch." Fallback when `gh` unavailable: empty `git diff origin/develop...HEAD` net-diff + non-empty `git log origin/develop..HEAD` (prefer this over `git cherry` — squash patch-ids don't match the individual commits').
+  2. `infer-critic-mode`/`cumulative` interval: detect a stale merge-base (net diff largely already-upstream, or a merged PR for the head) and refuse to silently review merged code — pick the mode against the rebased interval; at minimum the ahead-count message reads "N ahead, K already merged upstream."
+  3. `/prawduct:pr create` pre-flight staleness gate: verify the branch rebases cleanly onto `origin/<base>` and its net diff isn't already merged; refuse (or offer auto-rebase/reset-onto-develop) when squash-stale — last line of defense before conflict-time.
+  4. Post-merge hygiene (attacks the root): after a squash-merge, `/prawduct:pr` offers to delete the merged local branch / prune its worktree / rename `shipped/<name>`; a `/prawduct:janitor` or `/prawduct:doctor` check lists worktrees whose branches are already merged.
+  5. Docs nudge in the building guide's worktree section: after a branch squash-merges, reset onto `origin/<base>` before building the next increment (the failure mode is reusing a squash-merged branch for the follow-on).
+
+  **Distinctness (cross-linked, not duplicates):** PR-7T2K is the *inverse* squash hazard (gates validate local HEAD but squash merges origin/<branch>, so post-push commits are dropped). CRT-6W2N is the general "no supported worktree workflow" gap (this item is a specific squash-staleness hazard within it). BRF-6K2D is the same missing branch/merge-awareness reasoning in the briefing's "delete the plan" nudge (its mirror: branch *not* merged but nudge says done; here branch *is* merged but gates say not). Governance-protected (`skills/pr`, `bin/prawduct-hook`, Stop/SessionStart hooks) → full Critic + PR review.
+
+  `stage: design` — the problem/requirement is clear (detect a squash-stale worktree branch *before* wasting a cumulative review + PR attempt), but the approach across the five surfaces is an open design choice (which surfaces get the guard, gh-vs-git detection, whether to auto-rebase, where post-merge hygiene lives). Fix #1 is the cheapest ready-to-slice sub-fix. Route to `/prawduct:methodology planning`.
+
+- **[DOC-8L3F]** CLAUDE.md project content exceeds the ~150-line guidance (191 lines) — diet pass needed
+  `effort: S · impact: S · area: docs · source: critic · added: 2026-07-17 · status: open · stage: ready · related: MET-7R4J · refs: CLAUDE.md, methodology/building.md (~150-line guidance, :83), skills/critic/review-protocol.md (CLAUDE.md size warning, :97) · reviewed: 2026-07-17`
+
+  Critic WARNING from the ambient-merge-commit-default review: CLAUDE.md is at 191 lines against the ~150-line guidance ("CLAUDE.md is instructions, not documentation" — methodology/building.md:83; the Critic's review protocol warns above ~150). Needs a diet pass — move architecture/reference content to docs/ or .prawduct/artifacts/, compress redundant instruction. Overlaps MET-7R4J (methodology/CLAUDE.md redundancy and prompt-quality pass) — consider running the diet together with that consolidation; kept separate because MET-7R4J targets cross-file rule interference while this is the CLAUDE.md line-count budget itself. (critic)
+
+  2026-07-17 (retrieval-over-generation Critic C-B3): assessed — that cycle added one necessary roster line to CLAUDE.md (Principle 24; roster completeness beats the diet), leaving the count at ~190-191 lines. The diet pass remains this item's job; MET-7R4J stays the consolidation vehicle. (critic)
+
+- **[TST-8C4V]** Guard test binding the `lib/coverage_probes.py` expectation table to `templates/` scaffold existence
+  `effort: S · impact: S · area: tests · source: critic · added: 2026-07-17 · status: open · stage: ready · related: GOV-2T6K · refs: lib/coverage_probes.py (TRIGGERED_ARTIFACTS / expectation table), templates/`
+
+  From the architecture-template review (the work that closed GOV-2T6K): add a guard test asserting every expected artifact in the `lib/coverage_probes.py` expectation table has a corresponding authoring template under `templates/` — prevents a future expected artifact entering the table with no authoring template (the exact gap GOV-2T6K just closed for `architecture`). Note the coverage-scaffold stub is deliberately template-independent, so the test asserts **authoring-path parity**, not coverage correctness — coverage functions end-to-end with or without a template; what the test protects is the human-facing authoring starting point. (critic)
+
+- **[TST-5N2Q]** mixed JUnit/non-JUnit polyglot cannot combine `test_commands` with `--from-counts`
+  `effort: M · impact: S · area: test-evidence · source: critic · added: 2026-07-17 · status: open · stage: design · related: TST-6F2R, ENV-2W7K, COV-3R9K · refs: bin/prawduct-hook (test-evidence record — test_commands aggregation, --from-counts on-ramp)`
+
+  From the test-evidence-environments review (the work that shipped TST-6F2R's multi-environment `test_commands` list): a product with one environment whose toolchain cannot emit JUnit is excluded from the declared-list form — the aggregated record has no way to accept a counts-only source alongside the JUnit-capable environments. Today's escape is a wrapper script, or repeated `--from-junit` for the JUnit halves plus nothing for the counts half. Design question: should `--from-counts` compose as one more aggregated source (i.e. a counts entry participating in the same multi-environment aggregation) rather than remaining an exclusive whole-record mode? Touches ENV-2W7K's "document --from-counts as the paved non-pytest path" — if composition ships, that documentation should describe the composed form. (critic)
+
+## Promoted
+
 ## Archive
+
+- **[TST-6F2R]** `test-evidence record` with no declared test_command falls back to sys.executable pytest — venv-isolated projects record a catastrophic false-red
+  `effort: M · impact: M · area: test-evidence · source: user · added: 2026-07-13 · status: shipped · stage: ready · closed-by: test-evidence-environments · related: TST-3E8V, TST-6V2N, TST-7M3K · refs: bin/prawduct-hook (cmd_test_evidence run fallback, ~line 1903), incoming-bugs/archive/test-evidence-record-persists-false-red-when-test-command-undeclared.md · reviewed: 2026-07-17`
+
+  Upstream bug from discodon (incoming-bugs/test-evidence-record-persists-false-red-when-test-command-undeclared.md, severity medium). When project-state.yaml declares no `test_command`, `test-evidence record` falls back to running `sys.executable -m pytest` — the HOOK's interpreter, not the project's venv. In venv-isolated projects (pipenv/poetry/conda), collection fails wholesale on ModuleNotFoundError and the record persists a catastrophic false-red (discodon: 0 passed / 5074 failed, all collection-level import errors) to `.prawduct/.test-evidence.json`, polluting test-status. Verified in the current tree at bin/prawduct-hook:1903-1907 (the report's ~1787-1792 line refs have drifted).
+
+  Fix direction per the report: fail loud — refuse to record (or exit 2 with a clear "wrong interpreter?" message) when collection-level import failure dominates the run (a suite where ~everything dies at collection is a launch-environment error, not a red suite) — and/or require an explicit `test_command` instead of guessing the interpreter (make the sys.executable fallback opt-in). Same code region as TST-3E8V (launch-failure handling) and the TST-6V2N-born writer; TST-7M3K/TST-4K2P shipped the surrounding record semantics. Governance-protected (test-status gate input) → full Critic + PR review. (user — upstream report from discodon)
+
+  Promoted 2026-07-17 for the 3.1.0 release line.
+
+  Shipped 2026-07-17 (closed-by: test-evidence-environments): delivered the false-red guard (refuse-to-persist with migration guidance), the fallback deprecation nudge, and the multi-environment `test_commands` list the owner's 3.1.0 scope ruling required (polyglot products: one command per environment, aggregated into one record); prawduct now dogfoods a declared test_command.
+
+- **[MET-4V8Q]** Retrieval-over-generation methodology incorporation — new Judgment principle + building/discovery/digest surfaces
+  `effort: M · impact: M · area: methodology · source: user · added: 2026-07-17 · status: shipped · stage: requirements · closed-by: retrieval-over-generation · refs: docs/principles.md, methodology/building.md, methodology/discovery.md, hooks/digest.py · reviewed: 2026-07-17`
+
+  From the discodon learning artifact (product-learning feedback; the artifact lives in the discodon repo): incorporate retrieval-over-generation into the methodology as a new Judgment principle, carried onto the building, discovery, and session-digest surfaces. Slated for the 3.1.0 release line. Requirements-stage: recover the source learning artifact from discodon and draft the principle text plus the exact surface changes before design/build. (user — from discodon learning artifact)
+
+  Shipped 2026-07-17 (closed-by: retrieval-over-generation). Requirement grounded by the user's directive plus the discodon source artifact; delivered as Principle 24 with building/discovery/digest/onboard surface changes and learnings capture.
+
+- **[GOV-2T6K]** `templates/architecture.md` authoring template is missing — a product triggered into an architecture spec has nothing to start from
+  `effort: S · impact: S · area: governance · source: builder · added: 2026-07-16 · status: shipped · stage: ready · closed-by: architecture-template · refs: templates/, lib/coverage_probes.py (TRIGGERED_ARTIFACTS) · reviewed: 2026-07-17`
+
+  `architecture` is one of the seven strategy-class artifacts (the characteristic-triggered arm fired by `multi_process_distributed`; the sibling triggered artifact `api-contract` ships a template, and every universal strategy-class artifact has one), but `templates/architecture.md` does not exist. So a product that records `multi_process_distributed` and runs `/prawduct:methodology planning` to author its architecture spec has no template to start from — every other strategy-class artifact hands the author a scaffold, this one does not.
+
+  Scope is an additive authoring-template gap, NOT a hole in the shipped coverage mechanism: the `coverage-scaffold` helper drops a neutral, template-independent stub, and a stub satisfies the strategy-artifact-missing probe, so coverage still functions end-to-end. What's missing is the human-facing starting-point document for writing a real architecture spec.
+
+  Fix-shape: add `templates/architecture.md` matching the structure/tone of the other strategy-class templates (`api-contract.md`, `security-model.md`, `data-model.md`, …), including the `(not relevant to this project — <reason>)` stub affordance the coverage mechanism recognizes. Discovered during structural-coverage Chunk 04; also recorded in `.prawduct/cross-cutting-concerns.md` Known Gaps. (builder)
+
+  Promoted 2026-07-17 for the 3.1.0 release line.
+
+  Shipped 2026-07-17 (closed-by: architecture-template): `templates/architecture.md` authored on the closing branch, matching the structure/tone of the other strategy-class templates and including the `(not relevant to this project — <reason>)` stub affordance.
+
+- **[PR-8W3D]** Ambient merge-commit default — carry the `/pr` squash→merge-commit flip onto the ambient guidance surfaces (CLAUDE.md, session digest, pr-skill, templates)
+  `effort: S · impact: M · area: pr · source: user · added: 2026-07-17 · reviewed: 2026-07-17 · status: shipped · stage: ready · closed-by: ambient-merge-commit-default · related: WT-7M4K · refs: CLAUDE.md, hooks/digest.py, skills/pr/SKILL.md, templates/project-preferences.md (PR merge strategy row ~:46)`
+
+  The `pr-merge-commit-default` scope flipped `/prawduct:pr`'s merge default squash→merge-commit (recorded in WT-7M4K's update note: a merge commit keeps the branch's commits reachable from the base, so merge-bases stay correct and gates don't re-review already-merged work). This item is the *ambient* leg: merges performed outside the `/pr` flow — an agent running `git merge` directly, release promotions, product sessions following CLAUDE.md/digest guidance — have no stated merge-strategy default, so an ambient squash/fast-forward can reintroduce the stale-merge-base hazard the `/pr` flip dissolved. Deliver the same merge-commit default on the ambient guidance surfaces: CLAUDE.md conventions, the always-injected session digest (hooks/digest.py), any remaining squash-era language in skills/pr/SKILL.md, and the templates (templates/project-preferences.md:46 already documents the merge-commit default for the `/pr` merge — align the ambient-merge guidance with it). Distinct from WT-7M4K's residual, which is detection/hygiene for branches already squash-stale; this is the default itself on non-/pr surfaces. (user)
+
+- **[WT-8Q3N]** SessionStart briefing enumerates sibling worktrees (branch @ path), misdirecting the agent into working in the WRONG worktree/directory
+  `effort: M · impact: H · area: briefing · source: user · added: 2026-07-17 · reviewed: 2026-07-17 · status: shipped · stage: requirements · closed-by: fix/briefing-worktree-noise · related: CRT-6W2N, STH-4K7N, STH-3R8K, WT-7M4K, GOV-6H4P, STH-7B5N · refs: lib/briefing.py (_detect_worktrees + worktree-awareness block ~499-516)`
+
+  ROOT CAUSE (corrected per owner, 2026-07-17): This is NOT a session-lock problem and NOT two agents contending for the same directory. It is: the SessionStart briefing surfaces NOISE about sibling worktrees, the agent gets confused, and it goes and works in the WRONG directory. Remove the noise and the agent stays in its own worktree.
+
+  Clean, common repro (owner's words):
+  1. user clones repo in D1
+  2. user creates a worktree in D2
+  3. user starts claude in D1 and sets it to work
+  4. user starts another claude in D2 and sets it to work
+  5. D1's claude goes and starts working in D2  <-- the failure
+
+  Observed live 2026-07-17: a fresh session launched in the main checkout (D1, develop) read the briefing's enumerated worktree list, saw uncommitted Chunk 04 work in the prd-owner-feedback worktree (D2), judged it adoptable, EnterWorktree'd into D2, and began verifying/reviewing it — while D2 had its own live session actively doing that same work. No collision LOCK is needed to prevent this; the agent should simply never have been pointed at D2.
+
+  The offending code (lib/briefing.py ~509-516): the worktree-awareness block prints one orientation line ("hook is operating on <branch> at <path>. Other worktrees are NOT visible to gates this session.") and then a `for` loop that enumerates every SIBLING worktree as `- <branch> @ <path>`. That enumeration is the noise: it hands the agent a menu of other directories that contain live work, which reads as "here is more work you could pick up." The block was originally added for a gate-SCOPING reason (avoid the discodon "gate fired on the wrong tree" confusion), but its net effect is to MISDIRECT the agent into the wrong worktree.
+
+  FIX-SHAPE (minimal, and it is genuinely minimal — resist re-expanding this into a lock/heartbeat design; the owner has ruled that out):
+  - Drop the sibling enumeration (the `for w in worktrees` loop appending `- branch @ path`). Do not advertise other worktrees' branches or paths in the briefing.
+  - Keep the POSITIVE orientation the block was meant to give: "You are working in worktree <path> (branch <branch>); gates see only THIS worktree." Optionally add a firm "Other worktrees are separate sessions — do not read or modify them," WITHOUT naming or pathing them (nothing to wander toward).
+  - Sibling worktrees remain discoverable on demand (`git worktree list`) if the user actually asks — always-on enumeration is not needed to preserve that.
+  - Re-verify the original gate-scoping intent is still served by the orientation line alone (it is — the "gates see only this tree" caveat does not require listing the siblings).
+
+  SEPARATE, secondary concern (do NOT bundle into this fix): the evidence store is clone-shared by design (lib/evidence.py store_path -> git_common_dir), so a worktree's own legitimate Critic reviews still land in the main clone's .git/prawduct/evidence.jsonl. That is a by-design sharing decision, tracked on the advisory surface by GOV-6H4P; it is a cleanliness question, not the wrong-directory failure this item is about. Keep it linked, not merged.
+
+  Process lesson (candidate for learnings.md): "uncommitted work visible in a sibling worktree is NOT yours to adopt — a session works only in the worktree it launched in." Left as a lesson note here; capture separately on a branch off develop.
+
+  Filing note: this rewrite supersedes the original (concurrency/collision/heartbeat) framing per the owner's 2026-07-17 correction. Dropped STH-7B5N from related: (it was the session-lock item — no longer the right direction for THIS item).
+
+  Shipped 2026-07-17 (closed-by: fix/briefing-worktree-noise): PRIMARY fix implemented on branch fix/briefing-worktree-noise — lib/briefing.py drops the sibling-worktree enumeration and rewrites the orientation line to scope the agent to THIS worktree only (positive orientation + original gate-scoping intent preserved); tests/test_briefing_functions.py adds a regression guard; a durable learnings.md rule was added. SCOPE: this closes ONLY the misdirecting-enumeration fix. The SECONDARY belt-and-suspenders liveness DETECTION stays open under STH-7B5N, and the clone-shared evidence cleanliness question stays open under GOV-6H4P — both intentionally NOT closed by this item (kept in related:).
+
+- **[GOV-5K3M]** Author prawduct's 7 strategy-class artifacts (close the layer-1 coverage nudge)
+  `effort: M · impact: M · area: governance · source: builder · added: 2026-07-16 · status: shipped · stage: ready · closed-by: structural-coverage · related: GOV-2T6K, GOV-EXI2 · refs: .prawduct/artifacts/, lib/coverage_probes.py (TRIGGERED_ARTIFACTS), .prawduct/cross-cutting-concerns.md · reviewed: 2026-07-17`
+
+  Recording classification.structural for prawduct (structural-coverage Chunk 05 dogfood) advanced the coverage chain to layer 1: prawduct now owes all seven strategy-class artifacts, currently all missing. Author each in .prawduct/artifacts/ as a real spec OR a deliberate '(not relevant — <reason>)' stub (existence satisfies coverage). The set: data-model.md, security-model.md, nonfunctional-requirements.md, operational-spec.md, observability-strategy.md (universal); api-contract.md (triggered by exposes_programmatic_interface — document the bin/prawduct-hook CLI + JSON contracts, versioning/deprecation/error-model decisions); architecture.md (triggered by multi_process_distributed — process topology of the Critic coordinator/reviewer fan-out + shared tree-keyed evidence store). This is the deferred symptom-fix, correctly downstream of the system-fix (the coverage chain itself). NOTE: authoring architecture.md is missing its authoring template — see GOV-2T6K (templates/architecture.md). prawduct-hook coverage-scaffold --apply drops neutral stubs for all seven in one act as a starting point.
+
+  Shipped 2026-07-17 (closed-by: structural-coverage): all seven strategy-class artifacts now exist under `.prawduct/artifacts/` (api-contract.md, architecture.md, data-model.md, nonfunctional-requirements.md, observability-strategy.md, operational-spec.md, security-model.md), closing the layer-1 coverage nudge.
+
+- **[GOV-5D2W]** Advisory `show` reconstructs evidence with an empty probe registry — probe re-run silently no-ops for every probe family
+  `effort: S · impact: S · area: governance · source: critic · added: 2026-07-16 · status: shipped · stage: ready · closed-by: structural-coverage · related: GOV-6H4P · refs: lib/advisory_cmd.py, lib/probe_families.py, bin/prawduct-hook, tests/test_advisory_cmd.py · reviewed: 2026-07-16`
+
+  Probe registration lives only in cmd_clear (bin/prawduct-hook ~line 690), so lib/advisory_cmd.show_advisory's probe re-run reconstructs evidence against an empty probe registry and silently no-ops for every probe family. Pre-existing graceful degradation surfaced by the norm-lifecycle Chunk 3 Critic review (fact rev-20260716T173555Z-10a0f433, NOTE). Fix shape: a shared register-all-probes helper both call sites use. (critic)
+
+  Shipped 2026-07-16 (closed-by: structural-coverage): resolved by structural-coverage Chunk 04 — exactly the item's fix-shape. Created `lib/probe_families.py` with `register_all()` as the shared probe-registration helper, and wired both `bin/prawduct-hook` cmd_clear and `lib/advisory_cmd.show_advisory` to it, so `advisory show` reconstruction now registers the full probe roster before re-running probes (previously it scanned an empty registry and no-op'd for every family). Regression test: `tests/test_advisory_cmd.py::test_show_self_registers_probe_roster_for_reconstruction`.
+
+- **[GOV-EXI2]** `norm-registry-unratified` advisory adoption blind spot — Enforcement-table-lacks-norm-columns disjunct never fires without strategy-class artifacts
+  `effort: M · impact: M · area: governance/advisory · source: user · added: 2026-07-16 · status: shipped · stage: design · closed-by: structural-coverage · related: GOV-7Q4N, GOV-6N4W · refs: lib/norm_probes.py (norm-registry-unratified probe), docs/norms.md (§ Adoption, § Enforcement), .prawduct/.governance-ledger.jsonl (Chunk 3 review R-1) · reviewed: 2026-07-16`
+
+  The `norm-registry-unratified` advisory requires strategy-class artifacts to exist before firing, so a product whose norms live only in project-preferences.md (Enforcement table) + learnings — with no strategy-class artifacts — never gets the ratification nudge. Prawduct itself is in this blind spot: its own norm registry is unratified and the advisory stays silent. The disjunct that would catch it ("Enforcement table lacks norm columns") was deliberately deferred in Chunk 3 (Critic finding R-1) to hit the norm-lifecycle build's "zero advisories against this repo" acceptance criterion.
+
+  Fix-shape: make the "Enforcement-table-lacks-norm-columns" disjunct fire independently of strategy-class artifacts, relying on the one-shot + shared-answer + clears-on-ratify-or-record-none mechanism (already built) to keep the broad nudge tolerable rather than narrowing the trigger.
+
+  Design question to resolve: false-nag posture on mass upgrade — every pre-norm product would fire once on adoption day; confirm the one-shot/shared-state clearing makes that acceptable (it was designed to) vs. the narrowing that traded away the signal.
+
+  Governance-protected (probes/hooks) → full Critic + PR review. (user)
+
+  Shipped 2026-07-16 (closed-by: structural-coverage): resolved by design — the structural-coverage staging chain closes the blind spot upstream rather than by ungating layer 2. Layer 1 (strategy-artifact-missing) now nudges a product with no strategy-class artifacts to author them (a `(not relevant — …)` stub counts and still creates the file); once any strategy artifact exists — even an all-stub set — layer 2 (norm-registry-unratified) fires the ratification nudge as before. So a product whose norms live only in preferences + learnings is reached transitively (layer 1 → files exist → layer 2), and layer 2's artifact-existence gate becomes correct staging instead of a blind spot. The original ungate-arm-(b) fix-shape is deliberately NOT taken (the DECISION line in build-plan-structural-coverage.md Requirements Confidence). Recorded in docs/norms.md § Enforcement (structural-coverage staging table).
+
+- **[GOV-7Q4N]** Norm lifecycle — treat governing-artifact statements as binding norms with a full lifecycle
+  `effort: L · impact: L · area: governance · source: user · added: 2026-07-16 · status: shipped · stage: ready · closed-by: norm-lifecycle · related: MET-3P7B, GOV-3P8K · refs: build-plan-norm-lifecycle.md, docs/norms.md · reviewed: 2026-07-16`
+
+  Treat normative statements in governing artifacts as **binding norms** with a full lifecycle: birth/retroactivity, jurisdiction, rulings, exceptions with expiry, transitions, and erosion/decay health. Origin: discodon incident — async-tool work built a bespoke telemetry system parallel to the declared OTel substrate, and **every governance layer laundered the divergence** (Critic Goal 6, PR review, and doc-freshness each resolved the mismatch by syncing the strategy artifact to the code, i.e. the norm was rewritten to match the violation instead of the violation being flagged). Root cause: prawduct's coherence model is one-directional — artifacts track code — with no concept of normative statements that *bind* code. Design complete: build plan at `.prawduct/artifacts/build-plan-norm-lifecycle.md` (being authored the same session as this filing, 2026-07-16 — confirm the plan file landed before promoting). Adjacent-not-duplicate: MET-3P7B (assign an enforcement mechanism per preference — a norm-enforcement sibling at methodology level), GOV-3P8K (deterministic tripwire for durable-artifact coherence). (user)
+
+  Promoted 2026-07-16: plan-landed caveat confirmed — `.prawduct/artifacts/build-plan-norm-lifecycle.md` exists and `project-state.yaml` `active_build_plan` points to it. In active build on `feature/norm-lifecycle` (Chunk 1 complete).
+
+  Shipped 2026-07-16: all six chunks of `build-plan-norm-lifecycle.md` built on `feature/norm-lifecycle` (Chunks 1–6, `d8d1ef6`…`f78bb73` "time-domain sweeps + adoption path"); closing cumulative Critic review passed with 0 blocking findings. Archived on the branch so it ships in the closing PR. Supersedes the earlier "stays promoted" disposition, which predated Chunks 5–6 landing.
+
+- **[MET-3P7B]** Lift "assign a mechanism per preference" pattern into methodology
+  `effort: M · impact: M · area: methodology · source: critic · added: 2026-05-01 · status: shipped · stage: research · closed-by: norm-lifecycle · related: GOV-7Q4N · refs: docs/norms.md (§ Birth, § Enforcement), templates/project-preferences.md (§ Enforcement) · reviewed: 2026-07-16`
+
+  The Enforcement section added to `project-preferences.md` (and the template, 2026-05-01) encodes a methodology insight: every preference must be assigned to Linter / Test / Critic when it's captured, with a false-confidence guardrail that escalates weak tests to Critic. Currently lives only in the artifact + template. Candidate: weave into `methodology/discovery.md` (when capturing preferences) and `methodology/planning.md` (when designing test specs). Validate the pattern against 2-3 more preferences first before promoting. (critic)
+
+  Closed 2026-07-16 by the norm-lifecycle bundle (GOV-7Q4N), which subsumes the ask at a stronger level than the item's candidates: `docs/norms.md` § Birth makes an Enforcement-table row — mechanism assigned and existing-or-filed, audit home per the Audit-home rule — a requirement of norm *capture* itself; the preferences Enforcement table is designated the product's norm index and gained Audit home/Why columns (template); and `methodology/discovery.md` ("A norm surfaced"), `methodology/planning.md` (Governing Artifacts / `governed_by:` reconciliation), and `methodology/building.md` all route norm capture through `docs/norms.md`. The false-confidence guardrail (weak test → escalate to Critic) remains in the template's Enforcement section — now on the mandatory capture path, its point of use — consistent with norms.md § Deliberate Non-Design keeping per-mechanism guidance in the table. The "validate against 2-3 more preferences" precondition is moot: the pattern was validated by generalizing it to all norms. Residual: none. (This repo's own artifact table predates the new columns; the designed upgrade route is the Chunk 6 adoption path — `norm-registry-unratified` advisory + `/prawduct:doctor` ratification — tracked by that machinery, not this item.)
 
 - **[CRT-2K9F]** PR-gate ledger fallback should select the newest record that covers HEAD — interleaved Critic→PR cycles silently invalidate the earlier branch
   `effort: S · impact: M · area: critic · source: user · added: 2026-06-22 · status: shipped · stage: design · closed-by: kernel-evidence-store · related: CRT-8W3F, CRT-4J8W, CRT-7M2D · refs: lib/gates.py (compute_pr_gate, _pr_gate_record_qualifies, _evaluate_pr_gate_record, _ledger_fallback_record — all deleted in the v3 cutover), .prawduct/.critic-findings.json (no longer read by any gate) · reviewed: 2026-07-13`

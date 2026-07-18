@@ -106,6 +106,13 @@ def show_advisory(product_dir, advisory_id: str) -> dict:
     # A compacted entry has no evidence array (the field was dropped). Re-run
     # the probes and recover the full citation list if the probe still fires.
     if not advisory.get("evidence"):
+        # Register the full probe roster first — this call site is standalone
+        # (no session-start sync ran in this process), so without registration
+        # run_all_probes would scan an empty registry and reconstruct nothing for
+        # every family. probe_families is the shared roster (idempotent register).
+        from . import probe_families  # noqa: PLC0415 — lazy; avoids an import cycle at module load
+
+        probe_families.register_all()
         state = store_mod.load_project_state(product_dir)
         codebase = store_mod.make_codebase(product_dir)
         for cand in store_mod.run_all_probes(state, codebase):

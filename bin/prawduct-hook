@@ -319,6 +319,68 @@ def _read_str_yaml_key(state_path: Path, key: str) -> str | None:
     return None
 
 
+def _read_str_list_yaml_key(state_path: Path, key: str) -> list[str] | None:
+    """Items of a top-level ``key:`` block sequence of strings, or None.
+
+    Parses only the shape the docstrings prescribe (``test_commands:`` — a
+    column-0 ``key:`` line followed by indented ``- item`` lines); flow style
+    (``key: [a, b]``), nested mappings, bare/empty items, wrapped continuation
+    lines, and an empty sequence ALL read as None — any in-block anomaly makes
+    the WHOLE declaration unparseable, never a partial list (callers convert
+    None-but-present to a loud refusal via ``_yaml_top_level_key_present``).
+    Comment stripping matches the scalar sibling (``_read_str_yaml_key``):
+    everything after ``#`` is dropped."""
+    try:
+        content = state_path.read_text(encoding="utf-8")
+    except OSError:
+        return None
+    items: list[str] = []
+    in_block = False
+    for raw in content.splitlines():
+        # Blank and comment-only lines are inert at ANY indent — including
+        # column 0 inside the block, where breaking instead would silently
+        # truncate the list (some environments would never run while the
+        # record claimed full evidence).
+        stripped = raw.split("#", 1)[0].strip()
+        if not stripped:
+            continue
+        if not in_block:
+            if raw[:1] in (" ", "\t"):
+                continue
+            if raw.split("#", 1)[0].rstrip() == f"{key}:":
+                in_block = True
+            continue
+        if raw[:1] not in (" ", "\t"):
+            break  # next top-level key ends the block cleanly
+        if not stripped.startswith("- "):
+            # Nested mapping, bare dash, or a wrapped command's continuation
+            # line: the whole declaration is unparseable — a partial list
+            # would silently skip environments while claiming full evidence.
+            return None
+        value = stripped[2:].strip().strip("\"'")
+        if not value:
+            return None  # an empty item is an authoring error, not skippable
+        items.append(value)
+    return items or None
+
+
+def _yaml_top_level_key_present(state_path: Path, key: str) -> bool:
+    """Whether a column-0 ``key:`` line exists at all — presence, not shape.
+
+    Lets callers distinguish "absent" (a fallback is legitimate) from
+    "declared in a shape the readers don't parse" (refuse loudly — silently
+    degrading past an operator's declaration is the failure mode)."""
+    try:
+        content = state_path.read_text(encoding="utf-8")
+    except OSError:
+        return False
+    return any(
+        raw[:1] not in (" ", "\t")
+        and raw.split("#", 1)[0].rstrip().startswith(f"{key}:")
+        for raw in content.splitlines()
+    )
+
+
 def _resolve_build_plan_path(prawduct_dir: Path) -> Path:
     """Resolve the active build plan via the ``active_build_plan:`` pointer
     (relative to ``.prawduct/``; a repo-relative ``.prawduct/...`` spelling is
@@ -651,29 +713,12 @@ def cmd_clear(project_dir: Path, argv: list[str] | None = None) -> int:
                 "  Do this NOW, before responding to the user."
             )
 
-    # Check whether discovery was ever captured. The canonical discovery outputs
-    # — classification.domain and product_definition.vision — start as template
-    # `null` and get filled when discovery runs. If BOTH are still null but the
-    # repo shows product-definition work (code or docs/), discovery was skipped:
-    # governance can't calibrate rigor and the build gates won't engage. This is
-    # the docs-first / brownfield-onboard gap — a repo can accrue rich docs with
-    # an all-null project-state because the project-preferences CRITICAL above is
-    # gated on code, staying silent through a no-code discovery/architecture phase.
-    if (
-        state_path.is_file()
-        and _gitstate()._discovery_uncaptured(state_path)
-        and _gitstate()._has_product_definition_work(project_dir)
-    ):
-        print(
-            "DISCOVERY NOT CAPTURED: .prawduct/project-state.yaml has no classification or\n"
-            "product definition, but this repo has product work (code and/or docs/). Until\n"
-            "discovery is captured, governance can't calibrate rigor and the build gates\n"
-            "won't engage.\n"
-            "  → Run /prawduct:methodology discovery to capture it. If requirements, architecture, or an\n"
-            "    existing codebase are already here, discovery RECONCILES them — it reads what\n"
-            "    exists and backfills classification, structural characteristics, and product\n"
-            "    definition into project-state.yaml rather than starting over."
-        )
+    # Layer 0 of the structural-coverage chain (discovery not captured) is a probe
+    # — lib/coverage_probes.probe_discovery_not_captured — registered with the
+    # roster below and delivered through the advisory store, so it is dismissible
+    # per-clone (/prawduct:advisory dismiss) rather than an unconditional print.
+    # The staging against layer 1 (exactly one of the two speaks) lives with both
+    # probes in lib/coverage_probes on the shared predicate.
 
     # Advisory PROBES are purely local: they read the consumer's own
     # `.prawduct/` (backlog.md, project-state.yaml), independent of any sync.
@@ -687,14 +732,11 @@ def cmd_clear(project_dir: Path, argv: list[str] | None = None) -> int:
         if lib_root not in sys.path:
             sys.path.insert(0, lib_root)
         from lib.advisory_store import run_sync_advisories  # noqa: PLC0415 — lazy keeps top-level import cheap
-        from lib.backlog_probes import register as _register_backlog_probes  # noqa: PLC0415
-        from lib.upstream_probes import register as _register_upstream_probes  # noqa: PLC0415
-        from lib.api_versioning_probes import register as _register_api_versioning_probe  # noqa: PLC0415
-        from lib.gitignore_probes import register as _register_gitignore_probe  # noqa: PLC0415
-        _register_backlog_probes()  # register the backlog feature's probes before the roster runs
-        _register_upstream_probes()  # + the upstream-bug-reporting receiving-side probe
-        _register_api_versioning_probe()  # + the api-design versioning-undecided migration nudge
-        _register_gitignore_probe()  # + the session-file .gitignore contract-drift nudge
+        from lib.probe_families import register_all as _register_all_probes  # noqa: PLC0415
+        # Register the full probe roster (lib/probe_families is the one place the
+        # family list lives — shared with `advisory show` reconstruction so neither
+        # call site runs the roster against an empty registry).
+        _register_all_probes()
         run_sync_advisories(
             project_dir, sync_version=_plugin_manifest_version() or ""
         )
@@ -1625,14 +1667,19 @@ def cmd_test_evidence(project_dir: Path, argv: list[str]) -> int:
     for a declared-command repo: run the canonical command once (it emits JUnit)
     and ingest its report here, rather than have ``record`` re-run it. Exit status
     then derives from the report's failure count rather than a process.
+    **Repeatable** — pass it once per report: a ``test_commands:`` product runs
+    each declared command once and ingests every report in one ``record``
+    (counts aggregate exactly as the run path aggregates; a missing or
+    unparseable report refuses the whole record — no partial evidence).
 
     ``--from-counts passed=N failed=M skipped=K [duration=S]`` records pass/fail/
     skip counts supplied directly — the language-/runner-agnostic on-ramp for a
     toolchain that cannot emit JUnit XML (embedded HIL, a bespoke harness). Like
     ``--from-junit`` it runs nothing (exit status derives from ``failed``) and
     rejects a second source (``--from-junit`` / extra args). It is also rejected
-    when a ``test_command:`` is declared — that command emits JUnit, so ingest its
-    report with ``--from-junit`` (machine-backed) rather than hand-typed counts.
+    when ``test_command:``/``test_commands:`` is declared — the declared
+    command(s) emit JUnit, so ingest the report(s) with (repeated)
+    ``--from-junit`` (machine-backed) rather than hand-typed counts.
     ``passed`` and ``failed`` are required; ``skipped``/``duration`` default to 0.
 
     ``--no-rerun`` (alias ``--restamp``) reuses the existing record's counts and
@@ -1641,13 +1688,16 @@ def cmd_test_evidence(project_dir: Path, argv: list[str]) -> int:
     ``changes_referenced``, with no suite run and no re-supplied counts. The
     original ``command`` is preserved. Trust posture matches ``--from-junit``: the
     operator asserts the tree's test-relevant content is unchanged since the last
-    real run. Compatible with a declared ``test_command:`` (it introduces no new
-    counts). Requires an existing ``.test-evidence.json``; rejects a second
+    real run. Compatible with declared ``test_command:``/``test_commands:`` (it
+    introduces no new counts). Requires an existing ``.test-evidence.json``; rejects a second
     source. (No tree/content hash verifies the assertion — that mechanism was
     removed pre-v1.4 for chronic false positives and is deliberately not back.)
 
     Exit code mirrors the suite (0 iff every test passed); the evidence file is
-    written either way (a failing run records ``failed > 0``).
+    written either way (a failing run records ``failed > 0``) — with ONE
+    carve-out: an interpreter-fallback run with zero passes and nonzero
+    failures/errors (skips may accompany — the incident that taught this had
+    35) is refused as a launch-environment error (see below).
 
     Gate-soundness ch.2 — two optional ``project-state.yaml`` knobs remove the
     one-repo-shape assumption that forced products (scriob) into wrapper
@@ -1661,9 +1711,27 @@ def cmd_test_evidence(project_dir: Path, argv: list[str]) -> int:
       script for compound invocations. Extra CLI pytest args are rejected when
       the knob is set — the declared command IS the invocation (scriob's "run
       the exact command CI runs" learning, made structural).
+    * ``test_commands:`` — the multi-environment form: a block list of
+      canonical invocations, one per environment (backend, web, mobile, …),
+      each run in order under the same rules as ``test_command:`` (shlex
+      list-form, mandatory ``{junit_xml}``, no extra CLI args) with its own
+      report; counts aggregate across all reports into ONE record, and any
+      launch failure or unparseable report fails the whole record — no
+      partial multi-environment evidence. Mutually exclusive with
+      ``test_command:``. A wrapper script emitting one merged JUnit report
+      remains a fine alternative via ``test_command:``, and the single-run
+      ingest path scales with the list: repeat ``--from-junit`` once per
+      report.
     * ``tests_dirs:`` — whitespace-separated test trees (default ``tests``),
       forwarded to the F4a overlay as repeated ``--tests-dir`` so one verifier
       run covers a monorepo's components.
+
+    With NEITHER command knob declared, the fallback runs ``sys.executable -m
+    pytest`` — the hook's interpreter, which cannot import a venv-isolated
+    product's packages. The fallback therefore nudges toward declaring a
+    command on every run, and REFUSES to persist a run with zero passes and
+    only failures/errors (the wrong-interpreter signature): a
+    launch-environment error is an operator error, not test evidence.
     """
     import tempfile  # noqa: PLC0415 — only this command needs them
     import xml.etree.ElementTree as ET  # noqa: PLC0415
@@ -1671,7 +1739,7 @@ def cmd_test_evidence(project_dir: Path, argv: list[str]) -> int:
     if not argv or argv[0] != "record":
         print(
             "usage: prawduct-hook test-evidence record "
-            "[--from-junit <report>] "
+            "[--from-junit <report>]... "
             "[--from-counts passed=N failed=M skipped=K [duration=S]] "
             "[--no-rerun] [-- <pytest args>]",
             file=sys.stderr,
@@ -1690,8 +1758,8 @@ def cmd_test_evidence(project_dir: Path, argv: list[str]) -> int:
             no_rerun = True
             rest = [t for t in rest if t != _flag]
 
-    from_junit = None
-    if "--from-junit" in rest:
+    from_junits: list[str] = []
+    while "--from-junit" in rest:
         i = rest.index("--from-junit")
         if i + 1 >= len(rest):
             print(
@@ -1699,7 +1767,7 @@ def cmd_test_evidence(project_dir: Path, argv: list[str]) -> int:
                 file=sys.stderr,
             )
             return 2
-        from_junit = rest[i + 1]
+        from_junits.append(rest[i + 1])
         del rest[i : i + 2]
 
     # --from-counts <key=value>... (agnostic on-ramp): a runner that cannot emit
@@ -1722,7 +1790,7 @@ def cmd_test_evidence(project_dir: Path, argv: list[str]) -> int:
     _sources = [
         name
         for name, on in (
-            ("--from-junit", from_junit is not None),
+            ("--from-junit", bool(from_junits)),
             ("--from-counts", from_counts is not None),
             ("--no-rerun/--restamp", no_rerun),
         )
@@ -1745,10 +1813,42 @@ def cmd_test_evidence(project_dir: Path, argv: list[str]) -> int:
     state_path = prawduct_dir / "project-state.yaml"
 
     test_command = _read_str_yaml_key(state_path, "test_command")
+    test_commands = _read_str_list_yaml_key(state_path, "test_commands")
+    if test_commands is None and _yaml_top_level_key_present(state_path, "test_commands"):
+        # Declared-but-unparseable must refuse, never silently degrade: the
+        # deprecated interpreter fallback would run against the operator's
+        # explicit declaration, and a shared-environment product could persist
+        # GREEN partial evidence for an invocation nobody declared.
+        print(
+            "error: test_commands is declared in project-state.yaml but not "
+            "in the supported shape — use a block sequence of plain strings:\n"
+            "  test_commands:\n"
+            "    - pipenv run pytest --junit-xml={junit_xml} -q\n"
+            "    - npm run test:ci -- --junit --outputFile={junit_xml}\n"
+            "(flow style `[a, b]`, nested mappings, and an empty list are not "
+            "parsed; refusing rather than silently running the deprecated "
+            "interpreter fallback).",
+            file=sys.stderr,
+        )
+        return 2
+    if test_command and test_commands:
+        print(
+            "error: project-state.yaml declares BOTH test_command and "
+            "test_commands — declare exactly one (test_command for a single "
+            "canonical invocation; test_commands for a multi-environment "
+            "product's list, one command per environment).",
+            file=sys.stderr,
+        )
+        return 2
+    # The declared path, unified: a multi-environment product lists one command
+    # per environment (each emits its own JUnit; counts aggregate), a
+    # single-environment product declares the scalar. Empty = the interpreter
+    # fallback below, which is deprecated-by-nudge and false-red-guarded.
+    declared_commands = test_commands or ([test_command] if test_command else [])
     tests_dirs_raw = _read_str_yaml_key(state_path, "tests_dirs")
     tests_dirs = tests_dirs_raw.split() if tests_dirs_raw else []
 
-    if from_junit is not None:
+    if from_junits:
         # Ingest mode runs nothing, so extra pytest args are a contradiction.
         # A declared test_command is NOT: the honest single-run path for a
         # declared-command repo is to run that canonical command once (it MUST
@@ -1773,17 +1873,18 @@ def cmd_test_evidence(project_dir: Path, argv: list[str]) -> int:
                 file=sys.stderr,
             )
             return 2
-        if test_command:
-            # A declared test_command MUST emit JUnit ({junit_xml} is required),
+        if declared_commands:
+            # A declared command MUST emit JUnit ({junit_xml} is required),
             # so the runner CAN produce a report. Hand-typed counts are both
             # unnecessary and the weakest posture — no artifact, and they reopen
             # the scoped-subset trap the knob closes. Redirect to --from-junit,
             # which ingests that report without a re-run.
             print(
                 "error: --from-counts cannot be combined with a declared "
-                "test_command — the declared command emits JUnit, so run it "
-                "once and ingest the report with `--from-junit <report>` "
-                "instead (no re-run, machine-backed evidence).",
+                "test_command/test_commands — the declared command(s) emit "
+                "JUnit, so run each once and ingest the report(s) with "
+                "repeated `--from-junit <report>` instead (no re-run, "
+                "machine-backed evidence).",
                 file=sys.stderr,
             )
             return 2
@@ -1805,25 +1906,30 @@ def cmd_test_evidence(project_dir: Path, argv: list[str]) -> int:
     # These constraints govern the RUN path only. When an ingest/restamp on-ramp
     # is active the declared command is never invoked, so its placeholder and
     # extra-args rules don't apply — gate them on whether the suite will run.
-    will_run = from_junit is None and from_counts is None and not no_rerun
-    if test_command and will_run:
+    will_run = not from_junits and from_counts is None and not no_rerun
+    if declared_commands and will_run:
         if extra:
             print(
                 "error: extra pytest args are not allowed when "
-                "project-state.yaml declares test_command — the declared "
-                "command IS the canonical invocation. Edit test_command "
-                "instead.",
+                "project-state.yaml declares test_command/test_commands — the "
+                "declared command IS the canonical invocation. Edit the "
+                "declaration instead.",
                 file=sys.stderr,
             )
             return 2
-        if "{junit_xml}" not in test_command:
-            print(
-                "error: test_command must contain the {junit_xml} placeholder "
-                "(the hook substitutes its JUnit XML report path there, e.g. "
-                "test_command: uv run pytest --junit-xml={junit_xml} -q).",
-                file=sys.stderr,
-            )
-            return 2
+        for command in declared_commands:
+            if "{junit_xml}" not in command:
+                print(
+                    f"error: declared test command {command!r} must contain "
+                    "the {junit_xml} placeholder (the hook substitutes its "
+                    "JUnit XML report path there, e.g. "
+                    "test_command: uv run pytest --junit-xml={junit_xml} -q).",
+                    file=sys.stderr,
+                )
+                return 2
+
+    roots: list = []  # parsed JUnit roots (run or --from-junit); empty for counts/restamp
+    run_returncodes: list[int] = []  # one per executed command; empty when nothing ran
 
     if no_rerun:
         # Restamp: reuse the existing record's counts (no run). The F4a overlay
@@ -1860,7 +1966,6 @@ def cmd_test_evidence(project_dir: Path, argv: list[str]) -> int:
             return 2
         duration = prior.get("duration_seconds", 0)
         prior_command = prior.get("command", "(unknown)")
-        proc = None
     elif from_counts is not None:
         # Agnostic on-ramp (no XML, no subprocess): record the counts as given.
         # The F4a overlay below still recomputes the changed-file half against
@@ -1870,80 +1975,101 @@ def cmd_test_evidence(project_dir: Path, argv: list[str]) -> int:
         failed = from_counts["failed"]
         skipped = from_counts["skipped"]
         duration = from_counts["duration"]
-        proc = None
-    elif from_junit is not None:
-        # Ingest mode: parse the JUnit report the builder already produced. No
-        # temp file, no subprocess, and we must NOT delete the caller's report.
-        junit = Path(from_junit)
-        if not junit.is_file():
-            print(
-                f"error: --from-junit report not found: {from_junit}",
-                file=sys.stderr,
-            )
-            return 2
-        try:
-            root = ET.parse(junit).getroot()
-        except (ET.ParseError, OSError) as exc:
-            print(
-                f"error: could not parse --from-junit report: {exc}",
-                file=sys.stderr,
-            )
-            return 2
-        proc = None  # no run; exit status derives from the parsed failure count
+    elif from_junits:
+        # Ingest mode: parse the JUnit report(s) the builder already produced.
+        # No temp file, no subprocess, and we must NOT delete the caller's
+        # reports. Repeatable — a test_commands product runs each declared
+        # command once and ingests every report here; refusing any missing or
+        # unparseable report keeps the no-partial-evidence rule.
+        for from_junit in from_junits:
+            junit = Path(from_junit)
+            if not junit.is_file():
+                print(
+                    f"error: --from-junit report not found: {from_junit}",
+                    file=sys.stderr,
+                )
+                return 2
+            try:
+                roots.append(ET.parse(junit).getroot())
+            except (ET.ParseError, OSError) as exc:
+                print(
+                    f"error: could not parse --from-junit report "
+                    f"{from_junit}: {exc}",
+                    file=sys.stderr,
+                )
+                return 2
+        # No run; exit status derives from the parsed failure count.
     else:
-        # Run the suite with a JUnit XML report — built into pytest (no plugin)
-        # and parse-robust where the terminal summary line is not (xdist,
-        # warnings, and "no tests ran" all perturb the summary; the XML
-        # attributes do not).
-        fd, junit_name = tempfile.mkstemp(suffix=".xml", prefix="prawduct-junit-")
-        os.close(fd)
-        junit = Path(junit_name)
-        try:
-            if test_command:
-                # shlex list-form, not shell=True (injection surface; banned by
-                # tests/preferences). Wrappers like `uv run pytest …` split fine;
-                # compound invocations (&&, pipes, env vars) belong in a script
-                # the command points at. Split BEFORE substituting so a report
-                # path containing spaces/quotes lands as one intact token.
-                import shlex  # noqa: PLC0415 — only this branch needs it
-                run_argv = [
-                    tok.replace("{junit_xml}", str(junit))
-                    for tok in shlex.split(test_command)
-                ]
+        # Run the suite(s) — one JUnit XML report per command; pytest emits
+        # JUnit natively (no plugin) and the XML attributes are parse-robust
+        # where the terminal summary line is not (xdist, warnings, and "no
+        # tests ran" all perturb the summary). A multi-environment product's
+        # test_commands each write their own report; counts aggregate below.
+        if not declared_commands:
+            print(
+                "note: no test_command/test_commands declared in "
+                "project-state.yaml — falling back to the hook interpreter's "
+                "pytest. This only works when the hook shares the project's "
+                "environment (a venv/pipenv/poetry/conda project's imports "
+                "won't resolve from it); declare the canonical invocation "
+                "(test_command, or test_commands one-per-environment) to make "
+                "the evidence environment-aware.",
+                file=sys.stderr,
+            )
+        # shlex list-form, not shell=True (injection surface; banned by
+        # tests/preferences). Wrappers like `uv run pytest …` split fine;
+        # compound invocations (&&, pipes, env vars) belong in a script the
+        # command points at. Split BEFORE substituting so a report path
+        # containing spaces/quotes lands as one intact token.
+        import shlex  # noqa: PLC0415 — only this branch needs it
+        for command in declared_commands or [None]:
+            fd, junit_name = tempfile.mkstemp(suffix=".xml", prefix="prawduct-junit-")
+            os.close(fd)
+            junit = Path(junit_name)
+            try:
+                if command is not None:
+                    run_argv = [
+                        tok.replace("{junit_xml}", str(junit))
+                        for tok in shlex.split(command)
+                    ]
+                else:
+                    run_argv = [
+                        sys.executable, "-m", "pytest", f"--junit-xml={junit}",
+                        "-q", *extra,
+                    ]
                 try:
                     proc = subprocess.run(run_argv, cwd=str(project_dir))
                 except OSError as exc:
                     # Widened from FileNotFoundError to OSError (TST-3E8V): a
                     # *missing* executable raises FileNotFoundError, but a
                     # *non-executable* target raises PermissionError — both are
-                    # OSError subclasses and both are launch failures that should
-                    # take the clean exit-2 path, not traceback.
+                    # OSError subclasses and both are launch failures that
+                    # should take the clean exit-2 path, not traceback. Any
+                    # command failing to launch fails the WHOLE record — no
+                    # partial multi-environment evidence.
                     print(
-                        f"error: could not launch test_command executable "
-                        f"{run_argv[0]!r} ({exc}) — check the test_command in "
-                        "project-state.yaml.",
+                        f"error: could not launch test command executable "
+                        f"{run_argv[0]!r} ({exc}) — check "
+                        "test_command/test_commands in project-state.yaml.",
                         file=sys.stderr,
                     )
                     return 2
-            else:
-                cmd = [
-                    sys.executable, "-m", "pytest", f"--junit-xml={junit}", "-q",
-                    *extra,
-                ]
-                proc = subprocess.run(cmd, cwd=str(project_dir))
-            try:
-                root = ET.parse(junit).getroot()
-            except (ET.ParseError, OSError) as exc:
-                print(
-                    f"error: could not parse pytest JUnit report: {exc}",
-                    file=sys.stderr,
-                )
-                return 2
-        finally:
-            try:
-                junit.unlink()
-            except OSError:
-                pass
+                run_returncodes.append(proc.returncode)
+                try:
+                    roots.append(ET.parse(junit).getroot())
+                except (ET.ParseError, OSError) as exc:
+                    label = command if command is not None else "pytest fallback"
+                    print(
+                        f"error: could not parse the JUnit report from "
+                        f"{label!r}: {exc}",
+                        file=sys.stderr,
+                    )
+                    return 2
+            finally:
+                try:
+                    junit.unlink()
+                except OSError:
+                    pass
 
     # Aggregate across ALL top-level <testsuite> elements (skipped entirely when
     # counts come from --from-counts or --no-rerun — there is no XML root).
@@ -1953,8 +2079,11 @@ def cmd_test_evidence(project_dir: Path, argv: list[str]) -> int:
         # <testsuites> roots carry many — reading only the first silently
         # undercounted the evidence the freshness and Critic gates trust. Direct
         # children only (not iter()) so Ant-style nested suites aren't
-        # double-counted.
-        suites = [root] if root.tag == "testsuite" else root.findall("testsuite")
+        # double-counted. Multi-environment products contribute one root per
+        # declared command; the sums span all of them.
+        suites = []
+        for root in roots:
+            suites += [root] if root.tag == "testsuite" else root.findall("testsuite")
         if not suites:
             print(
                 "error: the test run produced no <testsuite> (no tests collected?)",
@@ -1968,6 +2097,36 @@ def cmd_test_evidence(project_dir: Path, argv: list[str]) -> int:
         duration = sum(float(s.get("time", "0") or "0") for s in suites)
         passed = total - failures - errors - skipped
         failed = failures + errors
+        # False-red guard (upstream discodon report): an interpreter-fallback
+        # run with ZERO passes and only failures/errors is the signature of a
+        # suite that never launched in the project environment — venv-isolated
+        # imports dying at collection — and persisting it pollutes test-status
+        # with a phantom mass regression. A launch-environment error is an
+        # operator/config error, not test evidence: refuse to record. Scoped
+        # to the fallback — a DECLARED command is the operator's deliberate,
+        # environment-aware invocation, so an all-red result there records
+        # honestly.
+        if will_run and not declared_commands and passed == 0 and failed > 0:
+            print(
+                "error: refusing to record — zero passes and nonzero failures/"
+                "errors from the interpreter-fallback run (skips may "
+                "accompany), the signature of a "
+                "suite that never launched in the project environment (the "
+                "hook's interpreter cannot import a venv/pipenv/poetry/conda "
+                "project's packages). Declare the canonical, environment-aware "
+                "invocation in project-state.yaml and re-run, e.g.\n"
+                "  test_command: pipenv run pytest --junit-xml={junit_xml} -q\n"
+                "or, for a multi-environment product (backend + web + "
+                "mobile), one command per environment:\n"
+                "  test_commands:\n"
+                "    - pipenv run pytest --junit-xml={junit_xml} -q\n"
+                "    - npm run test:ci -- --junit --outputFile={junit_xml}\n"
+                "(A genuinely all-red suite can still be recorded via the "
+                "declared command, or by ingesting its report with "
+                "--from-junit.)",
+                file=sys.stderr,
+            )
+            return 2
 
     # Capture the working-tree SHA this run covers, so a later session with a
     # byte-identical judgeable tree can trust the record without re-running (the
@@ -1994,10 +2153,10 @@ def cmd_test_evidence(project_dir: Path, argv: list[str]) -> int:
             if no_rerun
             else f"--from-counts passed={passed} failed={failed} skipped={skipped}"
             if from_counts is not None
-            else f"--from-junit {from_junit}"
-            if from_junit is not None
-            else test_command
-            if test_command
+            else "--from-junit " + " ".join(from_junits)
+            if from_junits
+            else " ; ".join(declared_commands)
+            if declared_commands
             else " ".join(["python3 -m pytest -q", *extra]).strip()
         ),
         "passed": passed,
@@ -2070,11 +2229,12 @@ def cmd_test_evidence(project_dir: Path, argv: list[str]) -> int:
         f"recorded: {passed} passed, {failed} failed, {skipped} skipped "
         f"in {record['duration_seconds']}s ({record['timestamp']})"
     )
-    # Exit status mirrors the suite when we ran it; in ingest mode there is no
-    # process, so derive it from the parsed failure count.
-    if proc is None:
-        return 0 if failed == 0 else 1
-    return 0 if proc.returncode == 0 else 1
+    # Exit status mirrors the suite when we ran it (every declared command must
+    # exit 0); in ingest mode there is no process, so derive it from the
+    # failure count.
+    if run_returncodes:
+        return 0 if all(rc == 0 for rc in run_returncodes) else 1
+    return 0 if failed == 0 else 1
 
 
 # =============================================================================
@@ -2608,6 +2768,227 @@ def cmd_advisory(project_dir: Path, argv: list[str]) -> int:
     return advisory_cmd.run(project_dir, argv)
 
 
+def _coverage_scaffold_stub(artifact_name: str) -> str:
+    """A neutral placeholder for a missing strategy-class artifact.
+
+    It deliberately does NOT pre-fill ``(not relevant)`` — whether an artifact is
+    relevant is the owner's decision to record, not the tool's to guess. Coverage
+    is satisfied by the file existing (any content), so dropping this stub clears
+    the layer-1 nudge and leaves the owner to fill it: a real spec, or a one-line
+    ``(not relevant — <reason>)`` decision the Critic can then weigh."""
+    title = artifact_name.removesuffix(".md").replace("-", " ").title()
+    return (
+        f"# {title}\n\n"
+        "<!--\n"
+        "Strategy-class artifact expected by structural coverage. Replace this stub\n"
+        "with EITHER a real specification, OR a one-line decision that it is not\n"
+        "relevant to this product, for example:\n\n"
+        "    (Not relevant — <reason>.)\n\n"
+        "Coverage is satisfied by this file existing; the Critic and risk\n"
+        "calibration judge whether the decision holds. See /prawduct:methodology planning.\n"
+        "-->\n\n"
+        "_Unwritten stub — author this artifact, or record why it is not relevant._\n"
+    )
+
+
+def cmd_coverage_status(project_dir: Path, argv: list[str]) -> int:
+    """Report the structural-coverage chain status (the doctor coverage check).
+
+    Reports all three layers of the coverage chain, reading the SAME expectation
+    table the probe fires on (``lib/coverage_probes.missing_expected_artifacts``) —
+    never a transcription, so the doctor check can't drift from the nudge:
+
+      - **Layer 0 (discovery):** are structural characteristics recorded?
+      - **Layer 1 (artifacts):** which expected strategy-class artifacts are missing?
+      - **Layer 2 (norms):** are the product's norms ratified?
+
+    and names the highest-priority active layer as the primary fix. Layers 0 and 1
+    are exact complements (never both), but layer 2's gate is independent, so
+    during partial authoring layers 1 and 2 can both be active (docs/norms.md
+    § Enforcement — proportionality, not a hard one-at-a-time invariant). ``--json``
+    emits the structured status for the doctor skill; default is human-readable.
+
+    Read-only and informational — always exits 0. A broken plugin import or a
+    faulty sub-check degrades to a NOTE / "unknown", never a crash (a health
+    *report* must not fail the operator's shell)."""
+    want_json = "--json" in argv
+    lib_root = _plugin_root()
+    if lib_root not in sys.path:
+        sys.path.insert(0, lib_root)
+    try:
+        from lib import coverage_probes as cp  # noqa: PLC0415 — lazy keeps top-level cheap
+        from lib import advisory_store as store  # noqa: PLC0415
+        from lib import norm_probes  # noqa: PLC0415
+    except ImportError as exc:
+        print(f"NOTE: coverage-status unavailable (plugin lib/ not importable: {exc})", file=sys.stderr)
+        return 0
+
+    state_path = project_dir / ".prawduct" / "project-state.yaml"
+    codebase = store.make_codebase(project_dir)
+    recorded = cp.structural_characteristics_recorded(state_path)
+    missing = cp.missing_expected_artifacts(codebase)  # [(name, characteristic|None)]
+
+    # Layer 2 composes over the norm probe (its own gate is "strategy artifacts
+    # exist AND registry unratified"). The probe is declared non-raising, but a
+    # health report must not crash on a malformed state, so degrade to "unknown"
+    # and NAME the reason on stderr rather than swallow it.
+    norms_unratified: bool | None
+    try:
+        proj_state = store.load_project_state(project_dir)
+        norms_unratified = bool(norm_probes.probe_norm_registry_unratified(proj_state, codebase))
+    except Exception as exc:  # prawduct:allow prawduct/broad-except -- report must not crash; degrade layer 2 to unknown + log
+        print(f"NOTE: coverage-status layer-2 (norm ratification) check skipped: {exc}", file=sys.stderr)
+        norms_unratified = None
+
+    # Which single layer currently owns the nudge (the chain stages).
+    if not recorded:
+        active_layer: int | None = 0
+        fix: str | None = "record structural characteristics: /prawduct:methodology discovery"
+    elif missing:
+        active_layer = 1
+        fix = ("author each missing artifact (/prawduct:methodology planning), or drop stubs "
+               "in one act: prawduct-hook coverage-scaffold --apply")
+    elif norms_unratified:
+        active_layer = 2
+        fix = "ratify the product's norms via /prawduct:doctor"
+    else:
+        active_layer = None
+        fix = None
+
+    if want_json:
+        import json as _json  # noqa: PLC0415
+        print(_json.dumps({
+            "structural_recorded": recorded,
+            "missing_artifacts": [{"artifact": name, "characteristic": char} for name, char in missing],
+            "norms_unratified": norms_unratified,
+            "active_layer": active_layer,
+            "fix": fix,
+        }, indent=2))
+        return 0
+
+    print("Structural coverage (three-layer chain):")
+    print(f"  Layer 0 · discovery         : characteristics {'RECORDED' if recorded else 'NOT RECORDED'}")
+    if missing:
+        print(f"  Layer 1 · strategy artifacts : {len(missing)} expected artifact(s) missing")
+        for name, char in missing:
+            suffix = "" if char is None else f"  (required — {char} recorded)"
+            print(f"       - {name}{suffix}")
+    else:
+        print("  Layer 1 · strategy artifacts : all expected artifacts present")
+    if norms_unratified is None:
+        print("  Layer 2 · norm ratification : unknown (norm check unavailable)")
+    elif norms_unratified:
+        print("  Layer 2 · norm ratification : norms not yet ratified")
+    else:
+        print("  Layer 2 · norm ratification : ratified or not yet applicable")
+    if active_layer is not None:
+        print(f"  Active nudge → Layer {active_layer}: {fix}")
+    elif norms_unratified is None:
+        # Layers 0-1 satisfied, but layer 2 couldn't be checked — don't claim the
+        # whole chain is satisfied (the --json consumer discriminates on the
+        # norms_unratified: null field; the human reader gets this explicit line).
+        print("  Active nudge → none actionable: layers 0-1 satisfied; layer 2 (norms) could not be checked.")
+    else:
+        print("  Active nudge → none: the coverage chain is satisfied.")
+    return 0
+
+
+def cmd_coverage_scaffold(project_dir: Path, argv: list[str]) -> int:
+    """Drop stub files for the expected-but-missing strategy-class artifacts.
+
+    The coverage forcing function nudges a product to author (or explicitly
+    decline) each strategy-class artifact. Resolving several at once should be a
+    30-second confirm-and-fill, not a chore — this drops a neutral stub for each
+    missing expected artifact in one act, which the owner then fills with a real
+    spec or a one-line ``(not relevant — <reason>)`` decision.
+
+    Default is a **DRY RUN**: it lists what it WOULD create and changes nothing.
+    ``--apply`` writes the stubs. Two guarantees keep the owner in control: the
+    framework never silently auto-stubs (``--apply`` is the owner's confirm — that
+    a relevance decision is theirs to make, not the tool's to default), and it
+    never overwrites an existing file (an authored artifact or a prior stub is left
+    untouched). Reads the SAME expectation table as the probe and the status check
+    (``lib/coverage_probes.missing_expected_artifacts``).
+
+    Exit 0 on dry run or successful ``--apply``; exit 1 if the plugin ``lib/`` is
+    not importable (a state-mutating command must not claim success on a broken
+    install — mirrors ``regen-views``)."""
+    apply = "--apply" in argv
+    want_json = "--json" in argv
+    lib_root = _plugin_root()
+    if lib_root not in sys.path:
+        sys.path.insert(0, lib_root)
+    try:
+        from lib import coverage_probes as cp  # noqa: PLC0415 — lazy keeps top-level cheap
+        from lib import advisory_store as store  # noqa: PLC0415
+    except ImportError as exc:
+        print(f"error: coverage-scaffold could not import the plugin lib/ ({exc})", file=sys.stderr)
+        return 1
+
+    state_path = project_dir / ".prawduct" / "project-state.yaml"
+    codebase = store.make_codebase(project_dir)
+    recorded = cp.structural_characteristics_recorded(state_path)
+    missing = cp.missing_expected_artifacts(codebase)  # [(name, characteristic|None)]
+    artifacts_dir = project_dir / ".prawduct" / "artifacts"
+
+    created: list[str] = []
+    skipped_existing: list[str] = []
+    if apply and missing:
+        try:
+            artifacts_dir.mkdir(parents=True, exist_ok=True)
+        except OSError as exc:
+            print(f"error: could not create {artifacts_dir} ({exc})", file=sys.stderr)
+            return 1
+        for name, _char in missing:
+            dest = artifacts_dir / name
+            if dest.exists():  # never overwrite — an authored artifact or prior stub stays
+                skipped_existing.append(name)
+                continue
+            try:
+                _core().atomic_write_text(dest, _coverage_scaffold_stub(name))
+                created.append(name)
+            except OSError as exc:
+                print(f"NOTE: could not write {dest} ({exc})", file=sys.stderr)
+
+    if want_json:
+        import json as _json  # noqa: PLC0415
+        print(_json.dumps({
+            "structural_recorded": recorded,
+            "missing_artifacts": [{"artifact": name, "characteristic": char} for name, char in missing],
+            "applied": apply,
+            "created": created,
+            "skipped_existing": skipped_existing,
+        }, indent=2))
+        return 0
+
+    if not missing:
+        print("No missing expected strategy-class artifacts — coverage is satisfied.")
+        return 0
+
+    def _line(name: str, char: str | None) -> str:
+        return f"       - {name}" + ("" if char is None else f"  (required — {char} recorded)")
+
+    if not recorded:
+        print("Note: structural characteristics are not yet recorded (layer 0). Recording them")
+        print("      first (/prawduct:methodology discovery) may add characteristic-triggered")
+        print("      artifacts to this set.")
+    if apply:
+        print(f"coverage-scaffold — created {len(created)} stub file(s) in .prawduct/artifacts/:")
+        for name, char in missing:
+            if name in created:
+                print(_line(name, char))
+        if skipped_existing:
+            print(f"  skipped {len(skipped_existing)} existing file(s): {', '.join(skipped_existing)}")
+        print("Fill each with a real spec or a '(not relevant — <reason>)' decision, then git add them.")
+    else:
+        print(f"coverage-scaffold (dry run) — would create {len(missing)} stub file(s) in .prawduct/artifacts/:")
+        for name, char in missing:
+            print(_line(name, char))
+        print("Each stub is a neutral placeholder for you to fill (a real spec, or a")
+        print("'(not relevant — <reason>)' decision). Re-run with --apply to create them.")
+    return 0
+
+
 def cmd_resolve_base(project_dir: Path) -> int:
     """Print the resolved diff/merge base for the PR/coverage gates and the
     reviewer/cumulative diff.
@@ -2985,7 +3366,9 @@ _USAGE = (
     "Usage: prawduct-hook "
     "{clear [--session-start|--force]|critic-begin --mode <m>|critic-end|critic-consolidate|"
     "subagent-stop|"
-    "stop|build-index|user-prompt-submit|test-status|validate-evidence|"
+    "stop|build-index|user-prompt-submit|"
+    "jurisdiction [--file <path>|<text...>] [--artifacts-only]|"
+    "test-status|validate-evidence|"
     "test-evidence record [--from-junit <r>|--from-counts passed=N failed=M skipped=K|--no-rerun] [-- pytest args]|"
     "check-cumulative-critic|"
     "verify-chunk-refs [chunk_id]|verify-coverage|"
@@ -2997,6 +3380,7 @@ _USAGE = (
     "infer-critic-mode [args]|"
     "resolve-base|"
     "evidence {status|list [--kind <k>] [-n <count>]}|advisory <subcmd> [args]|"
+    "coverage-status [--json]|coverage-scaffold [--apply] [--json]|"
     "migrate-plugin [--apply] [--json]|init-product <target> --name <name> [--apply] [--json]|"
     "update-gitignore|"
     "audit-learnings [--apply] [--json]|repo-disable [--local] [--apply] [--json]}"
@@ -3132,6 +3516,92 @@ def cmd_user_prompt_submit(project_dir: Path) -> int:
     return 0
 
 
+def cmd_jurisdiction(project_dir: Path, argv: list[str]) -> int:
+    """On-demand authoring aid: given plan/prompt text, list the governing
+    artifacts whose vocabulary the text's salient terms fall under — the
+    INVERSION of the orphan tripwire (orphans = terms NO artifact covers;
+    jurisdiction = which artifacts cover this text's terms). It seeds a plan's
+    ``governed_by:`` field with mechanical candidates for the planner's
+    judgment; it is NEVER a gate, so every path returns 0.
+
+    Input, first match wins: ``--file <path>`` reads the text from a file;
+    otherwise the positional args are joined as the text; otherwise stdin.
+    ``--artifacts-only`` restricts the corpus to ``.prawduct/artifacts/``
+    (the rest of the corpus — CLAUDE.md, docs/, methodology/ — is dropped).
+
+    Output: one line per candidate, ranked (count desc, path asc):
+    ``<path relative to project dir>  (<count>: term1, term2, ...)``. No
+    matches prints nothing. Fail-open — a bad ``--file`` path or any other
+    error prints a NOTE to stderr and still exits 0.
+    """
+    prawduct_dir = get_prawduct_dir(project_dir)
+    if not prawduct_dir.is_dir():
+        return 0  # not a Prawduct-governed repo — stay silent (mirrors build-index)
+
+    # Manual argv parse (no argparse — matches the other subcommands' style).
+    artifacts_only = False
+    file_arg: str | None = None
+    positional: list[str] = []
+    i = 0
+    while i < len(argv):
+        token = argv[i]
+        if token == "--artifacts-only":
+            artifacts_only = True
+        elif token == "--file":
+            i += 1
+            if i < len(argv):
+                file_arg = argv[i]
+        elif token.startswith("--file="):
+            file_arg = token[len("--file=") :]
+        else:
+            positional.append(token)
+        i += 1
+
+    try:
+        wmi = _work_model_load_lib()
+
+        # Resolve the text to place (first match wins): file, then positional,
+        # then stdin. A missing --file raises FileNotFoundError -> NOTE below.
+        if file_arg is not None:
+            text = Path(file_arg).read_text(encoding="utf-8", errors="replace")
+        elif positional:
+            text = " ".join(positional)
+        else:
+            text = sys.stdin.read()
+        if not text.strip():
+            return 0  # nothing to place -> nothing to print
+
+        paths = _work_model_corpus_paths(project_dir, prawduct_dir)
+        if artifacts_only:
+            artifacts_root = prawduct_dir / "artifacts"
+            paths = [p for p in paths if artifacts_root in p.parents]
+
+        # Build (relpath, content) pairs; the pure function ranks and caps.
+        files: list[tuple[str, str]] = []
+        for p in paths:
+            try:
+                content = p.read_text(encoding="utf-8", errors="replace")
+            except OSError:
+                continue  # unreadable corpus file contributes nothing
+            try:
+                rel = str(p.relative_to(project_dir))
+            except ValueError:
+                rel = str(p)  # outside the project dir (unexpected) -> absolute
+            files.append((rel, content))
+
+        for cand in wmi.jurisdiction_candidates(text, files):
+            print(f"{cand['path']}  ({cand['count']}: {', '.join(cand['matched'])})")
+    except (OSError, ValueError) as exc:
+        # Missing/unreadable --file, decode issues, etc. This is an authoring
+        # aid, never a gate — surface the reason, but exit 0.
+        print(f"NOTE: prawduct-hook jurisdiction could not run: {exc}", file=sys.stderr)
+        return 0
+    except Exception as exc:  # prawduct:allow prawduct/broad-except -- authoring aid must never error out; always exit 0
+        print(f"NOTE: prawduct-hook jurisdiction skipped (error): {exc}", file=sys.stderr)
+        return 0
+    return 0
+
+
 def main() -> int:
     if len(sys.argv) < 2:
         print(_USAGE, file=sys.stderr)
@@ -3154,6 +3624,8 @@ def main() -> int:
         return cmd_build_index(project_dir)
     elif command == "user-prompt-submit":
         return cmd_user_prompt_submit(project_dir)
+    elif command == "jurisdiction":
+        return cmd_jurisdiction(project_dir, sys.argv[2:])
     elif command == "stop":
         return cmd_stop(project_dir, _read_stop_stdin())
     elif command == "test-status":
@@ -3202,6 +3674,10 @@ def main() -> int:
         return cmd_bug_inbox(project_dir)
     elif command == "advisory":
         return cmd_advisory(project_dir, sys.argv[2:])
+    elif command == "coverage-status":
+        return cmd_coverage_status(project_dir, sys.argv[2:])
+    elif command == "coverage-scaffold":
+        return cmd_coverage_scaffold(project_dir, sys.argv[2:])
     elif command == "migrate-plugin":
         return cmd_migrate_plugin(project_dir, sys.argv[2:])
     elif command == "init-product":

@@ -59,6 +59,14 @@ class TestBuildingMethodology:
         assert "Uninvestigated decisions" in self.content
         assert "Boundary blindness" in self.content
 
+    def test_retrieval_over_generation_anchors(self):
+        """The cheap-check gate and its Common Trap survive future token-diet
+        trims — Principle 24's operational anchors, pinned so the newest prose
+        isn't the silent casualty of the next compression pass."""
+        assert "The cheap-check gate" in self.content
+        assert "Retrieval Over Generation" in self.content
+        assert "Tuning a mechanism you haven't read" in self.content
+
     def test_references(self):
         """References subagent briefing, boundary patterns, learnings skill."""
         assert ".subagent-briefing.md" in self.content
@@ -83,6 +91,16 @@ class TestBuildingMethodology:
         # unchanged: prefer trimming over bumping, place canonical detail in
         # the file that owns the concept (discovery.md for rigor, review-cycle
         # for per-mode behavior) and keep building.md to condensed pointers.
+        # Norm-lifecycle Chunk 5 (GOV-7Q4N) added the "A Norm Surfaced
+        # Mid-Build" tripwire and PAID FOR IT in place: the ceiling held at 4600
+        # (the plan's "stay green without raising budgets" success line), the
+        # addition offset by compressing the Delegating and Decision-Research
+        # guidance (canonical norm detail lives in docs/norms.md). The
+        # retrieval-over-generation cycle (2026-07-17, MET-4V8Q) added the
+        # cheap-check gate + one Common Trap and PAID FOR THEM the same way:
+        # pointer form (detectors live in docs/principles.md #24) plus an
+        # editorial pass over redundant phrasing. ~4596 now — headroom is a
+        # few words BY DESIGN; the next addition trims or relocates first.
         tokens = estimate_tokens(self.content)
         assert tokens < 4600, f"building.md is ~{tokens} tokens, should be <4600"
 
@@ -106,6 +124,22 @@ class TestOtherMethodology:
         lower = content.lower()
         assert "not a one-time phase" in lower or "isn't a one-time phase" in lower or "continuous" in lower
         assert "/prawduct:learnings" in content
+
+    def test_discovery_operationalizes_coverage_expectation(self):
+        # Recording structural characteristics is tied to the strategy-class
+        # coverage chain — the methodology must not drift from the mechanism.
+        content = read_file("methodology/discovery.md")
+        lower = content.lower()
+        assert "classification.structural" in content
+        assert "coverage" in lower
+        assert "coverage-scaffold" in content  # the one-act stub helper is named
+        assert "not relevant" in lower  # a stub satisfies coverage (the decision)
+
+    def test_planning_cross_references_coverage(self):
+        content = read_file("methodology/planning.md")
+        assert "strategy-artifact-missing" in content  # the ambient detector
+        assert "coverage-scaffold" in content
+        assert "/prawduct:doctor" in content
 
     def test_reflection_learning_lifecycle(self):
         content = read_file("methodology/reflection.md")
@@ -234,18 +268,20 @@ class TestCriticSkill:
         assert "Instruction Clarity" in self.content
 
     def test_token_budget(self):
-        # Ceiling 3450 (was 3350). The prose-diet audit found this file LEAN --
-        # every goal bullet is a specific, severity-mapped check (~3212 est
-        # tokens post-diet). 3350 held until the ephemeral-ref firewall check
-        # was folded into Goal 4's Documentation-drift bullet (2026-07-14,
-        # owner-approved enforcement of Principle 13, ephemeral-ref-firewall):
-        # the file grew ~70 tokens to ~3400 est (words x1.3), past the old 3350.
-        # Ceiling set to 3450 -- ~50 tokens (~1.5%) headroom, still UNDER the
-        # diet's own post-diet +10% formula (~3533), so the diet stays locked.
-        # Posture unchanged: prefer trim over bump; relocate per-mode/record
-        # detail to review-cycle.md before adding here.
+        # Ceiling 3530 (was 3450, was 3350). The prose-diet audit found this
+        # file LEAN -- every goal bullet is a specific, severity-mapped check.
+        # 3450 held until the norm-lifecycle consolidation (2026-07-16,
+        # owner-approved GOV-7Q4N): the Normative-authority block landed in the
+        # Review Goals preamble, PAID FOR partly by deleting Goal 6's
+        # observability-strategy line and merging Goal 4's preferences check
+        # into it (four scattered divergence checks became one rule; canonical
+        # detail lives in docs/norms.md, this file carries only the pointer
+        # form). Net ~3524 est (words x1.3). Ceiling 3530 -- still UNDER the
+        # diet's own post-diet +10% formula (~3533), so the diet stays locked,
+        # with near-zero headroom BY DESIGN: the next addition must trim or
+        # relocate, not bump past the formula.
         tokens = estimate_tokens(self.content)
-        assert tokens < 3450, f"review-protocol.md is ~{tokens} tokens, should be <3450"
+        assert tokens < 3530, f"review-protocol.md is ~{tokens} tokens, should be <3530"
 
 
 # =============================================================================
@@ -356,12 +392,12 @@ class TestMethodologyPBT:
 
 
 # =============================================================================
-# docs/principles.md — the 23 principles (canonical source)
+# docs/principles.md — the 24 principles (canonical source)
 # =============================================================================
 
 
 class TestPrinciplesDoc:
-    """All 23 principles are present, named, and numbered in the canonical source.
+    """All 24 principles are present, named, and numbered in the canonical source.
 
     Before M4 this contract was held by `test_v5_templates.py::TestProductClaudePrinciples`
     against the file-sync `product-claude.md` template *copy*. Chunk 4 deleted that
@@ -394,6 +430,7 @@ class TestPrinciplesDoc:
         (21, "Structural Awareness"),
         (22, "Governance Is Structural"),
         (23, "Challenge Gently, Defer Gracefully"),
+        (24, "Retrieval Over Generation"),
     ]
 
     @pytest.mark.parametrize("num,name", PRINCIPLES, ids=[f"{n}-{name}" for n, name in PRINCIPLES])
@@ -401,14 +438,15 @@ class TestPrinciplesDoc:
         principles = read_file("docs/principles.md")
         assert f"### {num}. {name}" in principles, (
             f"docs/principles.md is missing the `### {num}. {name}` heading — "
-            "the 23 principles are the framework's foundation; a drop or renumber must fail loud."
+            "the 24 principles are the framework's foundation; a drop or renumber must fail loud."
         )
 
-    def test_exactly_23_numbered_principles(self):
-        """No principle is added/removed without updating this contract."""
+    def test_exactly_24_numbered_principles(self):
+        """No principle is added/removed without updating this contract.
+        24 (Retrieval Over Generation) added 2026-07-17 — MET-4V8Q, per Principle 19."""
         import re
         principles = read_file("docs/principles.md")
         headings = re.findall(r"^### (\d+)\. ", principles, re.MULTILINE)
-        assert [int(h) for h in headings] == list(range(1, 24)), (
-            f"expected principle headings 1..23 in order, found {headings}"
+        assert [int(h) for h in headings] == list(range(1, 25)), (
+            f"expected principle headings 1..24 in order, found {headings}"
         )

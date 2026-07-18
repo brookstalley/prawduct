@@ -61,3 +61,11 @@ So tell the user the first thing to do in the product's own session is **`/prawd
 This is the seam the docs-first onboarding path slips through if it's not named: a repo can
 accrue rich requirements/architecture with an empty source-of-truth, and prawduct only
 governs what discovery has captured.
+
+**Products that want minimal documentation** — say so up front: the coverage chain is
+satisfied cheaply and permanently in three steps (record the structural characteristics
+during discovery; `prawduct-hook coverage-scaffold --apply` for the expected strategy
+artifacts, where a one-line "(not relevant — <reason>)" per artifact IS coverage; record
+"none to ratify" through `/prawduct:doctor`'s Ratification Flow). After that the chain is
+silent. Prawduct is opinionated that absence be a recorded decision — not that
+documentation be voluminous.

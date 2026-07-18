@@ -126,6 +126,19 @@ class BacklogItem:
         return value or None
 
     @property
+    def revisit(self) -> str | None:
+        """Exception/stopgap expiry marker (``revisit:``), or ``None``.
+
+        Canonical optional field for norm exceptions and stopgaps
+        (``docs/norms.md`` § Exceptions expire). Two honestly-split forms:
+        ``revisit: YYYY-MM-DD`` is machine-fired — a past date raises the
+        ``revisit-due`` advisory while the item is open (``lib/norm_probes.py``);
+        ``revisit: <event trigger text>`` is walked by the janitor Norm Health
+        sweep, never probe-fired. Returned verbatim; callers parse the date form."""
+        value = self.metadata.get("revisit")
+        return value or None
+
+    @property
     def refs(self) -> list[str]:
         """Governing-artifact references (``refs``), split on commas."""
         return _split_list(self.metadata.get("refs"))

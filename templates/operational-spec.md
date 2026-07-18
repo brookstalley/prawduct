@@ -18,6 +18,17 @@ last_validated: null
 
 # Operational Specification
 
+<!-- OPTIONAL norm home ("Direction"). To record a norm, add a `## Direction` heading here with
+     entries — each: a bold **Statement.**, then `Why:` (required), `Status:` (steady-state |
+     in-transition + its tracking item), and optional `Retroactivity:` / `Rulings:` lines.
+     Normative statements BIND future work — not descriptions of current behavior. Norms bind;
+     descriptions track — see /prawduct:methodology norms for the anatomy, the
+     normative-vs-descriptive test, and the lifecycle rules. Add the heading ONLY with a real
+     entry: a bare `## Direction` heading reads as ratified norms to the advisory probes. A
+     product with no norms to declare leaves this comment as-is — "none to ratify" is recorded
+     owner-confirmed through the doctor's Norm Ratification Flow (/prawduct:doctor), never as a
+     side effect of authoring this artifact. Don't restate the rules here. -->
+
 ## Deployment
 
 <!-- How and where the product is deployed.

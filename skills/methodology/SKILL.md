@@ -1,8 +1,8 @@
 ---
-description: Prawduct governance overview and methodology guides — the map of how this repo is governed, and the reader for each guide. Invoke for first contact or to see what governance applies here; pass a topic (building|discovery|planning|reflection|principles) to open that guide directly — building BEFORE writing any code against a build plan, discovery before scoping requirements, planning before designing artifacts or a build plan, reflection at work boundaries and before /clear.
+description: Prawduct governance overview and methodology guides — the map of how this repo is governed, and the reader for each guide. Invoke for first contact or to see what governance applies here; pass a topic (building|discovery|planning|reflection|principles|norms) to open that guide directly — building BEFORE writing any code against a build plan, discovery before scoping requirements, planning before designing artifacts or a build plan, reflection at work boundaries and before /clear, norms for the norm-lifecycle spec (what binds vs what tracks).
 user-invocable: true
 disable-model-invocation: false
-argument-hint: "(omit for the overview) | building | discovery | planning | reflection | principles"
+argument-hint: "(omit for the overview) | building | discovery | planning | reflection | principles | norms"
 ---
 
 This repo is governed by **Prawduct** — it turns product ideas into well-built software through structured discovery, quality-governed building, and continuous learning. The full methodology ships with the plugin and is read on demand; this skill is the map and the reader.
@@ -13,6 +13,7 @@ This repo is governed by **Prawduct** — it turns product ideas into well-built
 - `planning` → `${CLAUDE_SKILL_DIR}/../../methodology/planning.md` — artifact templates ship at `${CLAUDE_SKILL_DIR}/../../templates/`; generate in dependency order and validate intermediate outputs before building on them.
 - `reflection` → `${CLAUDE_SKILL_DIR}/../../methodology/reflection.md` — reflect at work boundaries, not only session end; close the loop from observation to changed behavior.
 - `principles` → `${CLAUDE_SKILL_DIR}/../../docs/principles.md`
+- `norms` → `${CLAUDE_SKILL_DIR}/../../docs/norms.md` — norms bind; descriptions track. The authority rule, the normative-vs-descriptive test, the lifecycle (birth, rulings, amendments, exceptions, transitions), and the enforcement map. Read when work touches a `## Direction` section, a preferences norm row, or a structural-characteristic flip — every other surface that cites `docs/norms.md` reads it through this topic.
 
 $ARGUMENTS
 
@@ -25,6 +26,6 @@ Every unit of work follows **understand → plan → build → verify → Critic
 - `/prawduct:methodology building` — **before writing any code** against a plan (the #1 thing not to skip)
 - `/prawduct:methodology reflection` — at work boundaries and before `/clear`
 
-The 23 principles (Quality · Product · Process · Learning · Judgment) guide every decision — read the full set with `/prawduct:methodology principles`. How the agent communicates and acts while applying them — advisor first (expert take before compliance), verify don't guess, stress-test before agreeing, frame decisions — is the stance block in the always-injected session digest (`methodology/session-digest.md`). Governance is enforced structurally: the plugin's Stop hook runs the Critic + reflection gates at session end, so a code change against an active build plan with no review or reflection blocks the session.
+The 24 principles (Quality · Product · Process · Learning · Judgment) guide every decision — read the full set with `/prawduct:methodology principles`. How the agent communicates and acts while applying them — advisor first (expert take before compliance), verify don't guess, stress-test before agreeing, frame decisions — is the stance block in the always-injected session digest (`methodology/session-digest.md`). Governance is enforced structurally: the plugin's Stop hook runs the Critic + reflection gates at session end, so a code change against an active build plan with no review or reflection blocks the session.
 
 Quality review runs through `/prawduct:critic` (independent review after medium+ work) and `/prawduct:pr` (release readiness). Look up project rules with `/prawduct:learnings <topic>` and deferred work with `/prawduct:backlog`. Keep the repo healthy with `/prawduct:doctor` (prawduct governance/install conformance) and `/prawduct:janitor` (the product's own codebase craft); their split is `docs/doctor-vs-janitor.md`.

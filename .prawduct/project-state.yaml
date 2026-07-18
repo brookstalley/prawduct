@@ -17,7 +17,7 @@ backlog_format_version: 2
 # Last full backlog grooming (stamped by /prawduct:backlog list/pick/groom).
 # Timestamp, not a count — counts are always re-derived (D14). Resolves the
 # backlog-overdue-grooming advisory.
-backlog_last_groomed_at: 2026-07-12
+backlog_last_groomed_at: 2026-07-17
 
 # Distribution model. `plugin` = this repo is governed by the Prawduct plugin
 # (v2.0.0), not file-sync. Set in Chunk 13 when the repo cut over to dogfood its
@@ -34,6 +34,55 @@ distribution: plugin
 # preferred over the bare `develop` for a stable remote-tracking merge-base.
 base_branch: develop
 
+# The canonical suite invocation (dogfooding the declared-command posture the
+# record on-ramp prescribes — the interpreter fallback is deprecated-by-nudge).
+# Stdlib-only repo: the hook's python3 IS the project environment.
+test_command: python3 -m pytest tests/ --junit-xml={junit_xml} -q
+
+# =============================================================================
+# CLASSIFICATION — structural characteristics (methodology/discovery.md)
+# =============================================================================
+# Reconciled from this codebase, not a discovery interview (discovery.md §
+# Reconciling an Existing Product): prawduct is a mature product, so its six
+# structural characteristics are read off what it already is. Recording them is
+# load-bearing — the strategy-class artifact coverage chain keys off this block
+# (layer 0 clears once >=1 is recorded; each recorded triggering characteristic
+# then owes its artifact). Four present, two absent; the two present *triggering*
+# characteristics make prawduct owe the full seven strategy-class artifacts.
+classification:
+  domain: developer-tool
+  structural:
+    # Present — operators read terminal output: bin/prawduct-hook reports, the
+    # SessionStart briefing, advisory/doctor text, the /prawduct:* skills.
+    has_human_interface:
+      modality: terminal
+      platform: cross-platform
+    # Present — SessionStart/Stop/UserPromptSubmit/SubagentStop hooks fire on
+    # Claude Code lifecycle events, not by human invocation; the pervasive
+    # fail-soft design (a probe never blocks session start) is the "design
+    # against silent failure" this characteristic implies.
+    runs_unattended:
+      trigger: event-driven
+    # Present — prawduct IS a Claude Code plugin plus a bin/prawduct-hook CLI with
+    # --json machine contracts: the harness (external) invokes hooks via
+    # settings.json, skills (internal) call the CLI. Triggers api-contract.md.
+    exposes_programmatic_interface:
+      consumers: both
+    # Absent — one actor class (the product owner) plus the AI runtime; no
+    # privilege tiers, trust boundaries, or data isolation between party types.
+    has_multiple_party_types: null
+    # Absent — persisted data is development-process metadata (state, learnings,
+    # evidence, findings, backlog); no PII/financial/health/credentials under
+    # regulatory obligation. (Universal security-model.md still applies —
+    # plugin-trust / supply-chain is a security concern regardless.)
+    handles_sensitive_data: null
+    # Present — the Critic coordinator fans out parallel critic-reviewer subagents
+    # writing partial findings files, then critic-consolidate merges them; the
+    # evidence store (evidence.jsonl) is shared and tree-keyed across all
+    # worktrees of the clone. Triggers architecture.md.
+    multi_process_distributed:
+      topology: monolith-with-workers
+
 # =============================================================================
 # DEPENDENCY GRAPH
 # =============================================================================
@@ -48,6 +97,31 @@ dependency_graph:
   - decision_id: critic-as-separate-agent
     description: "Critic invoked via Task tool as independent agent, not in main context"
     affects_artifacts: [agents/critic/SKILL.md, .prawduct/critic-review.md]
+
+# =============================================================================
+# DESIGN DECISIONS
+# =============================================================================
+# Recorded decisions for the exposed programmatic interface (the prawduct-hook
+# CLI + hook lifecycle). Detailed in artifacts/api-contract.md; mirrored here per
+# templates/project-state.yaml. The flat top-level `api_versioning_decided`
+# scalar (below, near the opt-in flags) is the advisory-probe resolution signal.
+
+design_decisions:
+  api_versioning_approach:
+    scheme: "plugin semantic versioning (whole-surface; the auto-update cache key) plus independent evidence-store schema versioning for persisted facts"
+    granularity: "whole-surface for the plugin; per-store integer schema version for the evidence store"
+    status: active
+    rationale: "the CLI subcommand surface is internal — consumed only by skills shipped at the same plugin version — so it needs no per-subcommand version; persisted facts outlive a plugin version, so the evidence store carries its own schema version with schema-ahead (forward-incompat) detection"
+    revisit_trigger: "first tool other than prawduct's own skills that is meant to call prawduct-hook — add a documented stability tier and a --version handle before that consumer ships"
+    detailed_in: artifacts/api-contract.md
+    date: 2026-07-17
+  api_error_model_approach:
+    scheme: "exit codes are the contract on a documented scheme (harness hook 0=allow/2=block; CLI gate 0=pass/1=fail; usage error 2; unevaluable advisory gate fails open, unevaluable writer fails closed) plus a stable message-prefix vocabulary (CRITICAL/WARNING/NOTE/BLOCKED)"
+    channels: "stdout is agent-facing (composed into model context); stderr is user/diagnostics; no internal stack trace crosses the boundary"
+    status: active
+    rationale: "exit codes are the stable, allowlist-friendly signal skills bind to; failures are caught, attributed, and turned into an exit code + prefixed note, never raised across the boundary"
+    detailed_in: artifacts/api-contract.md
+    date: 2026-07-17
 
 # =============================================================================
 # OPEN QUESTIONS
@@ -218,229 +292,8 @@ change_log_history:
       templates/boundary-patterns.md.'
     classification: structural
     date: 2026-03-09
-  # --- Observability as first-class concern (2026-03-03) ---
-  - what: 'Elevate observability to first-class cross-cutting concern across entire pipeline'
-    why: 'Observability had "adequate" coverage — a template existed and Check 6 mentioned it,
-      but discovery did not surface it, building did not guide it, and project-state did not
-      capture the approach. Applied the same pattern used for accessibility and error handling:
-      discovery section (Surface Observability Needs with infer-confirm-proceed, scaled to risk),
-      project-state.yaml field (observability_approach), planning universal artifact,
-      observability-strategy.md full rewrite (organized around debugging scenarios and
-      instrumentation layers, with agent-accessible observability as a design concern),
-      building.md implementation and verification guidance, Critic Check 6 strengthening,
-      product-claude.md condensed guidance, cross-cutting registry updated to Full coverage.'
-    blast_radius: 'methodology/discovery.md, methodology/planning.md, methodology/building.md,
-      templates/project-state.yaml, templates/observability-strategy.md, templates/product-claude.md,
-      templates/critic-review.md, agents/critic/SKILL.md, .prawduct/cross-cutting-concerns.md'
-    classification: functional
-    date: 2026-03-03
-  # --- Auto-pull framework git repo during sync (2026-03-03) ---
-  - what: 'Auto-pull framework git repo before syncing templates'
-    why: 'Product repos syncing against a stale framework checkout never benefited from
-      upstream improvements. Added _try_pull_framework() to prawduct-sync.py: auto_pull=true
-      (default) runs git pull --ff-only, auto_pull=false runs git fetch + advisory.
-      Best-effort throughout — failures never block sync. Added --no-pull CLI flag,
-      auto_pull manifest field, and notes printing in product-hook try_sync().
-      245 total tests (16 new: 11 unit + 5 integration, 0 regressions).'
-    blast_radius: 'Modified: tools/prawduct-sync.py (subprocess import, _try_pull_framework,
-      auto_pull in manifest, no_pull param, --no-pull flag), tools/product-hook (print notes),
-      tests/test_prawduct_sync.py (TestTryPullFramework + TestRunSyncPull).'
-    classification: functional
-    date: 2026-03-03
-  # --- Comprehensive lifecycle tests for project-preferences.md (2026-03-03) ---
-  - what: 'End-to-end lifecycle tests for project-preferences.md across init, sync, and hook'
-    why: 'The init/sync/hook preferences feature was shipped but sync failures were invisible
-      (try_sync catches all). Added 42 tests in 4 classes covering 3 real-world scenarios:
-      new project (8), existing project (18 incl. parametrized extension detection), and
-      legacy product updating (13 incl. subprocess chain and ordering verification).
-      Plus 3 cross-cutting consistency tests. 229 total tests (42 new, 0 regressions).'
-    blast_radius: 'New: tests/test_preferences_lifecycle.py. Updated: .prawduct/project-state.yaml.'
-    classification: functional
-    date: 2026-03-03
-  # --- Project preferences template placement and unfilled detection (2026-03-03) ---
-  - what: 'Project preferences template in init, sync, and unfilled detection in hook'
-    why: 'project-preferences.md was never placed by init — hook printed a CRITICAL warning
-      but Claude had to invent the file structure from scratch. Three changes: (1) init now
-      places the template in .prawduct/artifacts/ (step 5, using write_template so idempotent).
-      (2) sync now places it for existing repos via place-once mechanism (not manifest-tracked,
-      just created if missing). (3) hook detects unfilled templates (empty Language field),
-      not just missing files, so the CRITICAL warning fires even after template placement.
-      Also added subagent delegation guidance to building.md and product-claude.md.
-      132 total tests (10 new: 3 init, 3 hook, 2 sync, 2 hook unfilled detection).'
-    blast_radius: 'Modified: tools/prawduct-init.py (step 5 + renumber), tools/product-hook
-      (unfilled detection), tools/prawduct-sync.py (place-once mechanism), tests/test_prawduct_init.py
-      (3 new tests), tests/test_product_hook.py (2 new tests + rename), tests/test_prawduct_sync.py
-      (2 new tests), methodology/building.md (subagent delegation), templates/product-claude.md
-      (subagent delegation).'
-    classification: functional
-    date: 2026-03-03
-  # --- Artifact freshness and build plan detection (2026-02-24) ---
-  - what: 'Artifact freshness checks, build plan detection, learnings size warning'
-    why: 'Review of discodon (40+ build chunks) revealed: (1) Critic gate never fired because
-      build plan was in project-state.yaml not artifacts/build-plan.md — hook now checks both.
-      (2) Artifacts drifted silently from code — added bidirectional freshness check to Critic
-      Coherence check in both SKILL.md and product template. (3) Build cycle step 8 said
-      "update state" but not "update artifacts" — now explicit. (4) learnings.md grew to 42KB
-      without pruning — clear hook now warns when oversized. 172 total tests (5 new).'
-    blast_radius: 'Modified: tools/product-hook (build plan detection + learnings warning),
-      agents/critic/SKILL.md (artifact freshness), templates/critic-review.md (artifact freshness),
-      methodology/building.md (step 8 artifact updates), templates/product-claude.md (step 8 +
-      planning section), methodology/planning.md (build plan location guidance),
-      tests/test_product_hook.py (5 new tests).'
-    classification: functional
-    date: 2026-02-24
-  # --- v4: block-marker sync (2026-02-23) ---
-  - what: 'Block-marker sync for CLAUDE.md'
-    why: 'CLAUDE.md sync was all-or-nothing: user edits anywhere caused the entire file
-      to be skipped. Since users need to add project-specific instructions, edits are
-      common and framework improvements never propagated. Added PRAWDUCT:BEGIN/END markers
-      to wrap framework-managed content. New block_template sync strategy updates only the
-      block between markers, preserving user content above/below. Migration adds markers
-      to existing repos and upgrades manifest strategy. 153 total tests (32 new).'
-    blast_radius: 'Modified: tools/prawduct-sync.py (block utilities + block_template strategy),
-      templates/product-claude.md (markers added), tools/prawduct-init.py (block hash),
-      tools/prawduct-migrate.py (add_block_markers + upgrade_manifest_strategy),
-      tests/test_prawduct_sync.py, tests/test_prawduct_init.py, tests/test_prawduct_migrate.py.'
-    classification: functional
-    date: 2026-02-23
-  # --- v4: sync, banner, cross-platform hook (2026-02-23) ---
-  - what: 'Product repo sync, banner, and cross-platform Python hook'
-    why: 'Product repos were fire-and-forget: framework template improvements never propagated.
-      Added sync manifest (.prawduct/sync-manifest.json) tracking framework-managed files with
-      SHA-256 hashes for user-edit detection. New prawduct-sync.py runs on session start (via
-      product-hook) to update templates, hooks, and settings while preserving user edits.
-      Rewrote product-hook from bash to Python for cross-platform compatibility. Added
-      companyAnnouncements banner to settings template. Updated prawduct-migrate.py with
-      v3→v4 path. 121 total tests (25 sync + 19 hook + 33 init + 44 migrate).'
-    blast_radius: 'New: tools/prawduct-sync.py, tests/test_prawduct_sync.py.
-      Rewritten: tools/product-hook (bash→Python), tests/test_product_hook.py.
-      Modified: templates/product-settings.json, tools/prawduct-init.py, tools/prawduct-migrate.py,
-      tests/test_prawduct_init.py, tests/test_prawduct_migrate.py, .claude/settings.json,
-      CLAUDE.md, .prawduct/project-state.yaml.'
-    classification: functional
-    date: 2026-02-23
-  # --- v1→v3 migration tooling (2026-02-22) ---
-  - what: 'prawduct-migrate.py + v1 detection in prawduct-init.py'
-    why: 'V1 product repos depend on deleted framework scripts (governance-hook,
-      prawduct-statusline). New migration script makes any repo v3-shaped: overwrites
-      bootstrap CLAUDE.md, replaces hooks, copies product-hook, archives v1 directories,
-      cleans up v1 files. prawduct-init.py now detects v1 repos and redirects to migrate.
-      31 new tests for migrate, 3 new tests for v1 detection (76 total).'
-    blast_radius: 'New: tools/prawduct-migrate.py, tests/test_prawduct_migrate.py.
-      Modified: tools/prawduct-init.py, tests/test_prawduct_init.py, .prawduct/project-state.yaml.'
-    classification: functional
-    date: 2026-02-22
-  # --- post-audit follow-ups (2026-02-22) ---
-  - what: 'Pacing sensitivity and error handling strategy'
-    why: 'Pacing: framework said "ask fewest questions" but gave no guidance on detecting
-      fatigue or adapting dynamically. Added pacing section to discovery.md, Common Trap
-      to building.md, and condensed guidance to product-claude.md. Error handling: flagged
-      in cross-cutting concerns registry as lacking discovery coverage. Added Surface Error
-      Handling Approach section to discovery.md (infer-confirm-proceed, scaled to risk),
-      error_handling_approach field to project-state.yaml template, and updated cross-cutting
-      concerns registry.'
-    blast_radius: 'methodology/discovery.md, methodology/building.md, templates/product-claude.md,
-      templates/project-state.yaml, .prawduct/cross-cutting-concerns.md'
-    classification: functional
-    date: 2026-02-22
-  - what: 'Trivial fixes: CLAUDE.md reference, modality-neutral accessibility examples'
-    why: 'Critic findings from meta-reflection audit: CLAUDE.md Reference section missing
-      cross-cutting-concerns.md, three locations used web-specific "semantic HTML" as
-      default accessibility example. Added reference, replaced with platform-neutral language.'
-    blast_radius: 'CLAUDE.md, methodology/discovery.md, templates/product-claude.md'
-    classification: cosmetic
-    date: 2026-02-22
-  # --- meta-reflection implementation (2026-02-22) ---
-  - what: 'Automated tests for framework executable code'
-    why: 'Framework prescribed test discipline (Principle 1) but had zero automated tests
-      for its own code. Added 42 pytest tests covering prawduct-init.py (24 tests for all
-      6 functions + template propagation) and product-hook (18 tests for both commands,
-      both gates, and content validation).'
-    blast_radius: 'New: pyproject.toml, tests/test_prawduct_init.py, tests/test_product_hook.py'
-    classification: functional
-    date: 2026-02-22
-  - what: 'Strengthened Critic gate with content validation'
-    why: 'Critic findings file could be rubber-stamped (empty/missing summary). Added
-      python3-based JSON validation: findings must be an array, summary must be non-empty
-      string. Falls back to mtime-only if python3 unavailable (graceful degradation).'
-    blast_radius: 'tools/product-hook'
-    classification: functional
-    date: 2026-02-22
-  - what: 'Cost awareness and accessibility in discovery'
-    why: 'Framework prescribed cost awareness (Principle 8) and accessibility (Principle 7)
-      but neither was systematically triggered during discovery. Added structurally-triggered
-      sections using infer-confirm-proceed, scaled to risk, capturing to existing
-      project-state.yaml fields.'
-    blast_radius: 'methodology/discovery.md, templates/product-claude.md'
-    classification: functional
-    date: 2026-02-22
-  - what: 'Cross-cutting concerns registry and coverage audit'
-    why: 'Framework could validate what exists but not detect omissions. Added a concern-to-pipeline
-      registry (.prawduct/cross-cutting-concerns.md), completeness check in framework
-      reflection, and registry cross-check in Critic Check 10.'
-    blast_radius: 'New: .prawduct/cross-cutting-concerns.md. Modified: methodology/reflection.md,
-      agents/critic/framework-checks.md'
-    classification: functional
-    date: 2026-02-22
-  # --- v3 (current, 2026-02-22+) ---
-  - what: 'Product verification during building'
-    why: 'Tests verify code behavior but not the product experience. Added two-layer
-      verification (code + product) to the build cycle, verification strategy to build
-      planning, verification evidence check to Critic. Describes the need and connects
-      to structural awareness — does not enumerate product-type-specific strategies.'
-    blast_radius: 'methodology/building.md, methodology/planning.md, templates/build-plan.md,
-      templates/product-claude.md, agents/critic/SKILL.md, templates/critic-review.md'
-    classification: functional
-    date: 2026-02-22
-  - what: 'Prior art awareness during discovery'
-    why: 'Added lightweight, risk-scaled prior art search to discovery methodology. Claude
-      searches for existing solutions after initial problem understanding, weaves findings
-      into conversation as expertise (Principle #6), captures in project-state.yaml
-      under classification.prior_art. No hooks, no gates — informational input only.'
-    blast_radius: 'methodology/discovery.md, templates/project-state.yaml, templates/product-brief.md,
-      templates/product-claude.md, tests/scenarios/quick-todo-app.md'
-    classification: functional
-    date: 2026-02-22
-  - what: 'V3 implementation complete: self-contained product repos with structural gates'
-    why: 'Chunks 2-6 implemented: critic-review.md template, product CLAUDE.md template,
-      product-hook with reflection + Critic gates, prawduct-init.py rewrite for self-contained
-      repos, framework CLAUDE.md refinement. Integration tested: generated repo is standalone,
-      both gates fire correctly, idempotent init, stale findings rejected.'
-    blast_radius: 'New: templates/critic-review.md, templates/product-claude.md, templates/product-settings.json,
-      tools/product-hook. Modified: tools/prawduct-init.py, CLAUDE.md, project-state.yaml.'
-    classification: structural
-    date: 2026-02-22
-  - what: 'V3 cleanup: remove v1/v2 cruft, fix stale references'
-    why: 'Deleted skills/, 4 unused agents, tools/governance/ (3,280 lines), 18 old shell scripts,
-      framework-observations/, eval-history/, 8 stale docs, scripts/. Fixed CLAUDE.md stale references.
-      Cleaned project-state.yaml to reflect v3 architecture.'
-    blast_radius: '~120 files deleted. CLAUDE.md, project-state.yaml, docs/project-structure.md updated.'
-    classification: structural
-    date: 2026-02-22
-  - what: 'V3 discovery: structural gates on principles foundation'
-    why: 'V2 experiment tested in Hum chunk 1 build — Claude never invoked Critic, never read
-      building methodology, self-declared chunk complete with 15 undetected findings. Principles
-      govern how-to-work but not when-to-interrupt. V3: keep principles, add structural gates for
-      2-3 behaviors Claude cannot self-regulate, product repos fully self-contained.'
-    classification: discovery
-    date: 2026-02-22
-  - what: 'V2 architecture: principles-based system replaces process engine'
-    why: 'Replaced 8 hooks + 3,280 lines governance Python with 22 principles in CLAUDE.md,
-      4 methodology guides, learnings.md, and 2 hooks (clear + stop). Critic preserved as
-      independent agent.'
-    classification: structural
-    date: 2026-02-21
-  # --- v1 history (2026-02-10 to 2026-02-21, condensed) ---
-  - what: 'V1 development (condensed): process engine with skills, orchestrator, observation system'
-    why: 'Built and iterated a full governance framework: 6 skills (orchestrator, domain-analyzer,
-      artifact-generator, builder, critic, review-lenses), 8 hooks, observation YAML system,
-      evaluation methodology. Key directional changes: product shapes → concern dimensions →
-      structural characteristics, unified governance, self-hosting with 13 artifacts, Critic
-      moved to subagent, project preferences. Accumulated learnings about governance complexity,
-      principle enforcement, and independent review that informed v2/v3 architecture.'
-    blast_radius: 'All framework files (see working-notes/ for detailed history)'
-    classification: condensed
-    date: 2026-02-21
+  # Older entries (2026-03-03 and earlier — v1/v2/v3 archaeology) trimmed to keep this
+  # file small; they predate change-log.md and live in git history only.
 
 # =============================================================================
 # BUILD STATE
@@ -463,100 +316,11 @@ views_enabled: true
 # `.prawduct/` so the build-plan tooling (regen-views, infer-critic-mode, the
 # stop-hook gate) finds a scope-named plan instead of the conventional
 # artifacts/build-plan.md. Unset → falls back to artifacts/build-plan.md.
-# The v2.0.0, M4 (v2.0.3), and waiver-pragma/2.0-rock-solid (v2.0.4) plans are
-# complete and released; their build-plan files are retained as historical
-# artifacts alongside the prior vN plans.
-
 #
-# v2.0.5 (2026-06-04) shipped FOUR batched scopes together — roi-batch (#58),
-# roi-batch-2 (#59), evidence-deferral (#60), cleanup-batch (#61); all four
-# change-log entries are status=shipped and regen-views flipped each plan's
-# ## Status checkboxes to [x] (run once per scope, the REL-4T8N friction).
-# release-tooling (REL-4T8N + BLD-8F2Q + PR-7Q3M + TST-9K4W) SHIPPED in v2.0.6
-# (2026-06-04, #62); its build-plan file is retained as a historical artifact.
-# rigor-and-stance (owner pivot infra→methodology) SHIPPED in v2.0.7 (2026-06-04,
-# #63); its build-plan file is retained as a historical artifact. The work-model
-# feature (catch undocumented requirements, #71) SHIPPED in v2.0.13 (2026-06-06);
-# its build-plan file is retained as a historical artifact. The hook-decomposition
-# (STH-9V4K, #74–79) and critic-session-guard (CRT-3X9D, #80) both SHIPPED in
-# v2.0.14 (2026-06-08). The backlog rework (v0.3, #81) SHIPPED in v2.0.15
-# (2026-06-08). v2.0.17 (2026-06-08) shipped two fixes — retire-pr-trivial-fast-path
-# (#84) and legacy-backlog-format-probe (#85); regen-views flipped each plan's
-# ## Status checkboxes to [x] via its scope= change-log tag (REL-4T8N). No
-# release-pending plans remained after v2.0.17, so the pointer was cleared;
-# 2026-06-10 repointed it at the in-progress gate-soundness plan (merged to
-# develop as #86 the same day). v2.1.0 (2026-06-10) shipped FOUR batched scopes —
-# gate-soundness (#86), reviewer-model-tiering (rode #86), review-proportionality
-# (#87+#88), review-fixes (#89, the BLD-7W2J parallel side-plan); regen-views
-# flipped all four plans' ## Status checkboxes via their scope= change-log tags
-# (REL-4T8N batched pass) and the pointer is cleared again — no release-pending
-# plans remain. All four build-plan files are retained as historical artifacts.
-# 2026-06-10: repointed at the in-progress do-next plan (CRT-8W3F + STH-5P2W +
-# MET-6W3J, branch feature/do-next); do-next SHIPPED in v2.1.2 (#91, same day),
-# regen-views flipped its ## Status via the scope=do-next tags and the pointer
-# is cleared — no release-pending plans remain. The build-plan file is retained
-# as a historical artifact.
-# 2026-06-10: repointed at the in-progress gate-hardening plan (STH-4F7C +
-# STH-8M3V + CRT-2N7V, branch feature/gate-hardening); gate-hardening SHIPPED
-# in v2.1.3 (#92, same day), regen-views flipped its ## Status via the
-# scope=gate-hardening tags and the pointer is cleared — no release-pending
-# plans remain. The build-plan file is retained as a historical artifact.
-# 2026-06-10: pointed at the in-progress critic-mode-consolidation plan
-# (STH-2K8R + BLD-6Q1N, closes CRT-3D9K; branch feature/critic-mode-consolidation);
-# critic-mode-consolidation SHIPPED in v2.1.4 (#93, same day), regen-views flipped
-# its ## Status via the scope=critic-mode-consolidation tag and the pointer is
-# cleared — no release-pending plans remain. The build-plan file is retained as a
-# historical artifact.
-# 2026-06-12: pointed at the in-progress reviewer-model-fallback plan (harden
-# reviewer dispatch against model withdrawal — Fable temporarily pulled; branch
-# fix/reviewer-model-fallback); reviewer-model-fallback SHIPPED in v2.1.5 (#94),
-# regen-views flipped its ## Status via the scope=reviewer-model-fallback tag and
-# the pointer is cleared — no release-pending plans remain. The build-plan file is
-# retained as a historical artifact.
-# 2026-06-21: pointed at the in-progress backlog-closed-by-handle plan (reconcile
-# the `closed-by:` handle contract — never a bare SHA; BKL-9K4T; branch
-# feature/backlog-closed-by-handle off develop); backlog-closed-by-handle SHIPPED
-# in v2.1.7 (#100), regen-views flipped its ## Status via the
-# scope=backlog-closed-by-handle change-log tag and the pointer is cleared — no
-# release-pending plans remain. The build-plan file is retained as a historical
-# artifact.
-# 2026-06-22: the v2.1.8 release batch is being assembled on develop — test-evidence
-# (#104), the hook-cli-robustness bundle (#105), the hot-path-git-batching refactor
-# (STH-6Q9D, #106), then this worktree-compat fix (STH-4K7N, branch
-# feature/worktree-compat) which the operative pointer above now tracks. Each member's
-# change-log entry carries status=merged once its merge runs stamp-merged; all are
-# release-pending until the develop→main v2.1.8 promotion flips their entries to
-# status=shipped and regen-views flips each plan's ## Status via its scope= tag.
-# 2026-06-24: pointed at the in-progress api-design plan (close the framework's
-# largest uncovered cross-cutting concern — the product's OWN exposed API:
-# versioning, deprecation, error model; branch feature/api-design-versioning off
-# develop). MERGED to develop (PR #108, release-pending); the plan file is RETAINED
-# in artifacts/ and its ## Status regens at the v2.1.8 release via its frontmatter
-# scope: api-design (REL-4T8N resolves scope→plan from the change-log, not this
-# pointer) — so repointing below does not orphan it.
-# 2026-06-24: repointed at the doctor↔janitor boundary plan (GOV-9K2T; branch
-# feature/doctor-janitor-boundary off develop) so the stop-hook Critic gate tracks
-# the active work.
-# 2026-07-02: gate-noise (Wave 1 Plan A of the efficiency-review fix program,
-# GOV-7T2M) — work-model tripwire maintenance-verb split + recursive doc corpus.
-# Single chunk, Type: cumulative-final, feature/gate-noise off develop.
-# 2026-07-02: repointed at changelog-fail-loud (Wave 1 Plan B, VWS-6R4T) — fail-loud
-# tag validation, tolerant chunk IDs, regen-views --check. Single chunk,
-# feature/changelog-fail-loud off develop. gate-noise merged (PR #114,
-# release-pending); its plan is RETAINED and regens via scope=gate-noise.
-# 2026-07-04: v2.3.0 release-prep — prose-diet, changelog-fail-loud, and gate-noise
-# v2.3.1 (2026-07-10): critic-persistence-redesign shipped; entry flipped to
-# status=shipped; the pointer is cleared. No release-pending plans remain. Plan
-# files are RETAINED as historical artifacts and regen via their scope= tags.
-# 2026-07-10: repointed at single-pr-bookkeeping — retire post-merge integration-
-# branch commits (stamp-merged chore commit, trunk shipped flips); bookkeeping
-# rides in the PR. feature/single-pr-bookkeeping off develop, 2 chunks.
-# v2.3.2 (2026-07-10): single-pr-bookkeeping shipped (PR #118); entry flipped to
-# status=shipped; pointer cleared. No release-pending plans remain. Plan files
-# are RETAINED as historical artifacts and regen via their scope= tags.
-# 2026-07-14: cleared at v3.0.0 release — kernel-evidence-store shipped; plan
-# retained under artifacts/ as a historical record (checkboxes derive from the
-# change-log's status=shipped entries).
+# The history of pointer moves lives in .prawduct/change-log.md + git; this
+# field holds only the current in-progress plan (absent/empty -> the gates
+# fall back to artifacts/build-plan.md).
+
 active_build_plan: null
 
 # =============================================================================
@@ -583,6 +347,26 @@ coverage_required: false
 # setting `operator_verification_required: true`.
 
 operator_verification_required: false
+
+# =============================================================================
+# API VERSIONING DECISION (advisory-probe resolution signal)
+# =============================================================================
+# Flat top-level mirror of design_decisions.api_versioning_approach — the
+# api-versioning advisory probe reads only column-0 scalars, so this is its
+# readable resolution signal. Truthy = a decision was recorded → suppress the
+# nudge. See artifacts/api-contract.md for the full decision.
+
+api_versioning_decided: "plugin-semver + evidence-schema-version; CLI internal, external-consumer versioning deferred (revisit: first non-prawduct caller of prawduct-hook)"
+
+# =============================================================================
+# NORM REGISTRY RATIFICATION (advisory-probe resolution signal)
+# =============================================================================
+# Flat top-level scalar the norm-registry-unratified probe reads (column-0
+# scalar). Truthy = the owner ratified the norm registry -> suppress the nudge.
+# The ratified norms live in `## Direction` sections across the strategy
+# artifacts, indexed in artifacts/project-preferences.md section Enforcement.
+
+norm_registry_ratified: "2026-07-17 — 20 Direction norms across the 7 strategy artifacts; preferences Enforcement index carries the norm columns (Audit home / Why)"
 
 # =============================================================================
 # DEPRECATED TERMS
@@ -684,6 +468,9 @@ scope_rollups:
   legacy-backlog-format-probe:
     chunks: ["01"]
     releases: ["v2.0.17"]
+  norm-lifecycle:
+    chunks: ["1", "2", "3", "4", "5", "6"]
+    releases: ["v3.1.0"]
   prose-diet:
     chunks: ["01", "02", "03"]
     releases: ["v2.3.0"]
@@ -726,6 +513,9 @@ scope_rollups:
   stop-gate-defer:
     chunks: ["01"]
     releases: ["v2.2.2"]
+  structural-coverage:
+    chunks: ["01", "02", "03", "04", "05"]
+    releases: ["v3.1.0"]
   telemetry-model-id-normalization:
     chunks: ["01"]
     releases: ["v2.1.8"]

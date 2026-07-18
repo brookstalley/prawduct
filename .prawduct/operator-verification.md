@@ -66,3 +66,31 @@ wrong agent_type). The consolidation core itself is `tests/test_critic_consolida
 - If findings do NOT appear event-driven, the session-end backstop must still block on
   the lingering marker (the floor) — confirm that too, then investigate the matcher
   string (`prawduct:critic-reviewer` vs `critic-reviewer`) against the installed version.
+
+## VRF-003 — Chunk 05 — Coverage chain advances layer 0 → layer 1 in the live briefing
+
+**Status:** pending
+**Added:** 2026-07-16 (structural-coverage Chunk 05)
+**Where to verify:** The next real Claude Code session opened in this repo (a `clear`
+hook run), reading the SessionStart briefing.
+
+**Why a human/live check:** the layer transition is agent-verified below through the
+`coverage-status` doctor report, but the operator-facing surface is the SessionStart
+*briefing advisory* — whether the nudge a human actually sees has advanced from the
+discovery-not-captured line to the strategy-artifact-missing line. That end-to-end
+path (hook → probe roster → briefing text) is exercised only by a live session start.
+
+**Already observed (this session, via the real CLI — not needing a fresh session):**
+- BEFORE recording `classification.structural`, `prawduct-hook coverage-status`
+  reported `Layer 0 · discovery: characteristics NOT RECORDED`, `Active nudge → Layer 0`.
+- AFTER recording prawduct's six reconciled characteristics, the same command reports
+  `Layer 0 · discovery: characteristics RECORDED`, `Layer 1 · strategy artifacts: 7
+  expected artifact(s) missing`, `Active nudge → Layer 1` — the five universal plus
+  `api-contract.md (exposes_programmatic_interface)` and `architecture.md
+  (multi_process_distributed)`. `--json` confirms `active_layer: 1`,
+  `structural_recorded: true`. No strategy-class artifact was authored (fixture stays empty).
+
+**Verify (next session):**
+- The briefing NO LONGER prints the `DISCOVERY NOT CAPTURED` block (layer 0 cleared).
+- The coverage advisory now names the missing strategy-class artifacts (layer 1), and
+  it is a single `info` nudge, not a double-nag with any layer-0 or layer-2 line.
