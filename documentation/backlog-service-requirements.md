@@ -210,6 +210,16 @@ speed. Centralization alone fixes stale *views* (TF1); stale *content* needs TF2
   the taxonomy consistent across repos, and never assume an empty tracker. A repo adopted mid-life
   already has Issues, labels, and milestones — the adapter treats non-prawduct items as
   out-of-scope, not as malformed backlog.
+- **GV7** **Migration-required signal + shared read-path longevity.** While a project keeps a live
+  markdown backlog and has not cut over (`backlog_service_repo` unset), a **warn-priority
+  `backlog-service-migration-required` advisory** fires at session start — so a repo that adopts a
+  plugin version past prawduct's own cutover is *told to migrate*, never silently degraded to a zeroed
+  backlog count and lost grooming nudges. It is **distinct from `legacy-backlog-format`** (which nudges
+  a *pre-structured* file toward the structured format): GV7 nudges a *structured* file onto the
+  service, and retires on the same `backlog_service_repo` switch as the other markdown probes. Its
+  prerequisite is MG3's shared read-path invariant — the plugin's markdown parser (today
+  `lib/backlog/legacy.py`) is **retired only when the whole portfolio has migrated**, not at any one
+  project's cutover; retiring it earlier is exactly the silent degradation GV7 exists to prevent.
 
 ### Migration & exit
 
@@ -219,14 +229,25 @@ speed. Centralization alone fixes stale *views* (TF1); stale *content* needs TF2
 - **MG2** Full-fidelity export to plain files, scriptable, at any time. The backlog is never
   hostage to a vendor or a server; export doubles as backup.
 - **MG3** Per-project adoption: projects migrate independently; file-based and service backlogs
-  coexist across the portfolio during transition (never within one project).
+  coexist across the portfolio during transition (never within one project). Because the adapter
+  ships in the **shared plugin**, portfolio coexistence binds the plugin's **markdown read path**
+  (briefing counts + the markdown-premise advisory probes) to keep working for every un-migrated repo
+  until the *last* project cuts over — no single project's cutover (prawduct's own included) may
+  retire it (GV7).
 - **MG4** Migration supports a **one-time pre-migration scrub** so stale, obsolete, and duplicate
   items are *not* carried into the new store (garbage-in-garbage-out would re-seed the #1
   stale-content pain the project exists to kill — the moment you touch every item is the moment to
   groom). The scrub: (a) grooms live items (close dead-premise / already-shipped, merge duplicates);
-  (b) decides **archive scope** — keep the historical archive as the MG2 export file and migrate
-  only a recent-shipped window rather than minting a closed issue per ancient item (also the lever
-  that keeps the migration inside the write-rate budget, NF3); (c) **disposes, never hard-deletes**
+  (b) decides **archive scope** as an **explicit owner-confirmed choice surfaced at scrub time**, not
+  a silent default — `open` (migrate only the live/open set as issues; the historical archive stays as
+  the MG2 export file, minting no closed issue per ancient item) or `all` (import the full archive as
+  closed issues, the pre-scrub behavior). The importer honors the chosen scope through an
+  `--archive-scope` selector (AG1 — a deterministic lever, not a model inference). `open` also
+  **reduces the total write volume** of a large migration (fewer creates) — but the write-*rate*
+  ceiling is enforced by the Pacer, **not** by this lever; crediting the archive window as the
+  rate-budget keeper is the mis-attribution **BKL-6X5D** was filed to correct (NF3). A quantified *recent-shipped
+  window* between the two poles (migrate the last N months of archive, drop older) is the adopter-scale
+  refinement tracked by **BKL-6X5D** — its window is deliberately not yet quantified; (c) **disposes, never hard-deletes**
   (DM7) — scrubbed items are closed/dropped-with-reason in the file backlog (git preserves them) or
   live in the export; (d) is **model-assisted, human-confirmed** (candidates surfaced via TF2
   stale-verification + Q3 similarity; the owner confirms dispositions; deterministic import then runs

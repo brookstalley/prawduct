@@ -243,6 +243,91 @@ class TestArchiveAndCheckpoint:
         assert len(_alias_issues(fake, "DIS-0001")) == 1  # created despite the stale mark
 
 
+# --- MG4b: the owner-confirmed --archive-scope lever -------------------------
+
+
+class TestArchiveScope:
+    """MG4b — the owner-confirmed ``--archive-scope {all,open}`` lever. ``open``
+    imports only the live/open set as issues; the historical archive stays as the
+    MG2 export file (git history) rather than minting a closed issue per ancient
+    item. ``all`` is the pre-scrub default."""
+
+    _MAIN = "## Open\n\n- **[SCP-0001]** open item\n  `area: core · status: open`\n"
+    _ARCHIVE = (
+        "## Archive\n\n"
+        "- **[SCP-0002]** shipped item\n  `area: core · status: shipped`\n"
+        "- **[SCP-0003]** dropped item\n  `area: core · status: dropped`\n"
+    )
+
+    def test_apply_open_filters_closed_records(self):
+        records, _ = migrate.collect_records(self._MAIN, self._ARCHIVE)
+        kept, skipped = migrate.apply_archive_scope(records, "open")
+        assert skipped == 2  # the two closed archive items dropped
+        assert [r.status for r in kept] == ["open"]
+
+    def test_apply_all_keeps_everything(self):
+        records, _ = migrate.collect_records(self._MAIN, self._ARCHIVE)
+        kept, skipped = migrate.apply_archive_scope(records, "all")
+        assert skipped == 0 and len(kept) == 3
+
+    def test_import_open_scope_skips_archive_items(self, fake):
+        result = migrate.import_backlog(
+            fake, owner=OWNER, repo=REPO, content=self._MAIN,
+            archive_content=self._ARCHIVE, archive_scope="open",
+        )
+        assert result["status"] == "ok"
+        assert len(result["data"]["created"]) == 1  # only the open item
+        assert result["data"]["archive_skipped"] == 2
+        assert any("archive-scope open" in w for w in result["warnings"])
+        assert _alias_issues(fake, "SCP-0001")  # open item created
+        assert _alias_issues(fake, "SCP-0002") == []  # shipped item NOT minted
+        assert _alias_issues(fake, "SCP-0003") == []  # dropped item NOT minted
+
+    def test_import_all_scope_mints_closed_archive_issues(self, fake):
+        # The default preserves the pre-scrub behavior: archive items DO become
+        # closed issues (regression guard on MG4b `all`).
+        result = migrate.import_backlog(
+            fake, owner=OWNER, repo=REPO, content=self._MAIN,
+            archive_content=self._ARCHIVE, archive_scope="all",
+        )
+        assert result["status"] == "ok"
+        assert len(result["data"]["created"]) == 3
+        assert "archive_skipped" not in result["data"]
+        arc = _alias_issues(fake, "SCP-0002")[0]
+        assert (arc.get("state") or "open").lower() == "closed"
+
+    def test_default_scope_is_all(self, fake):
+        # No archive_scope passed → `all` (backward-compatible with every existing
+        # importer caller, incl. the owner's locked dogfood "import as-is" decision).
+        result = migrate.import_backlog(
+            fake, owner=OWNER, repo=REPO, content=self._MAIN, archive_content=self._ARCHIVE
+        )
+        assert len(result["data"]["created"]) == 3
+
+    def test_cli_open_scope(self, fake, tmp_path):
+        (tmp_path / "main.md").write_text(self._MAIN)
+        (tmp_path / "arc.md").write_text(self._ARCHIVE)
+        code = cli.run(
+            str(tmp_path),
+            ["import", "--repo", SCOPE, "--from", str(tmp_path / "main.md"),
+             "--archive", str(tmp_path / "arc.md"), "--archive-scope", "open", "--json"],
+            transport=fake,
+        )
+        assert code == 0
+        assert _alias_issues(fake, "SCP-0001")
+        assert _alias_issues(fake, "SCP-0002") == []
+
+    def test_cli_rejects_bad_scope(self, fake, tmp_path):
+        (tmp_path / "main.md").write_text(self._MAIN)
+        code = cli.run(
+            str(tmp_path),
+            ["import", "--repo", SCOPE, "--from", str(tmp_path / "main.md"),
+             "--archive-scope", "bogus", "--json"],
+            transport=fake,
+        )
+        assert code == 2  # validation error, before any write
+
+
 # --- MIG-3: export serializes the native graph -------------------------------
 
 

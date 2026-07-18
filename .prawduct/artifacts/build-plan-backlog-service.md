@@ -86,10 +86,12 @@ inline-on-private) are genuinely open and gate their layer, not the architecture
 **Resolved decisions (were v1 assumptions; ruled by the owner 2026-07-16):**
 - **Package = `lib/backlog/` from Chunk 01.** `lib/backlog.py` (the markdown-backlog parser) moves to
   `lib/backlog/legacy.py`; its importers (`lib/briefing.py`, `lib/backlog_probes.py`) and their tests
-  repoint to the new path in Chunk 01 so the suite stays green. The markdown-backlog *workflow* is **not
-  maintained** during the build (breaking it is accepted) and is **retired at cutover** (Chunk 06,
-  after the bulk import to GitHub Issues). This makes the Data Model / API contract `lib/backlog/…`
-  paths literally true from day one.
+  repoint to the new path in Chunk 01 so the suite stays green. The markdown-backlog *mutation workflow*
+  is **not maintained** during the build (breaking it is accepted) and is retired when prawduct's own
+  backlog cuts over (Chunk 06); but `legacy.py`'s **read-only `parse_backlog`** stays live afterward as
+  the **shared plugin's markdown read path** (briefing counts + advisory probes for un-migrated portfolio
+  repos), retired only at **portfolio-wide migration** (MG3/GV7) — not at any single repo's cutover. This
+  makes the Data Model / API contract `lib/backlog/…` paths literally true from day one.
 - **CLI home = `prawduct-hook backlog <op>`** — a subcommand group on the existing entry (matching the
   `sys.argv[1]` dispatch → a `lib/backlog/cli.py` runner, the `advisory`/`init-product` pattern), not a
   new `bin/` binary. Rationale: one entry point = one platform-exposure/executable/PATH surface (fewer
@@ -195,9 +197,14 @@ brookstalley/prawduct** (multi-page label walk set-identical; 128 raw / 122 PRs 
 old filtered terminator demonstrably stopped at page 1 with 4 of 128). BKL-5R2K shipped in the
 same chunk (`core.resolve_survivor` → `get` resolves_to + warning + human breadcrumb; `pick`
 excludes open-but-redirected). Critic `final` (0 blocking / 5 warn) + two `verify-resolutions` →
-0/0/0; suite 2300. Remaining before the chunk closes: the owner-driven live migration (scrub
-dispositions + restructure plan + import + cutover key per runbook step 5), and the `legacy.py` +
-`incoming-bugs/` retirement (MG5 lockstep).
+0/0/0; suite 2300. **Owner-feedback pass 2026-07-18** (this session — four PRD/owner-review gaps closed
+offline ahead of the live leg): the `--archive-scope {all,open}` lever (MG4b), `prawduct-hook version`
+(XP2 provenance source), the `issuefmt` Env/version nudge (self-filed provenance), and the
+`backlog-service-migration-required` advisory + the `legacy.py` retirement-gate correction (MG3/GV7).
+Remaining before the chunk closes: the owner-driven live migration (scrub dispositions + restructure plan
++ import + cutover key per runbook step 5), and the `incoming-bugs/` drop-box retirement (MG5 lockstep) —
+**`legacy.py` is NOT retired here** (MG3/GV7: it stays the shared markdown read path until portfolio-wide
+migration).
 
 ## Scaffolding
 
@@ -272,7 +279,7 @@ never ships in the plugin runtime (Principle 10).
 ```
 lib/backlog/                    # the service package (built from Chunk 01)
 ├── __init__.py
-├── legacy.py                   # ← moved from lib/backlog.py (markdown parser; retired at Chunk 06)
+├── legacy.py                   # ← moved from lib/backlog.py (markdown parser; read path survives to portfolio-wide migration — MG3/GV7)
 ├── transport.py                # the only egress: gh-subprocess driver (raw-HTTP fast path → W1)
 ├── core.py                     # deterministic CRUD (G1); return-value envelope; the op implementations
 ├── encode.py                   # prawduct: body block, two-axis status decoder/encoder, soft-enum
@@ -302,10 +309,11 @@ tests/
   hands `core`/`migrate` a concrete cleaned set, never a model call (MIG-5).
 - **Return-value errors; exceptions only at the CLI boundary** (`cli.py` `run()`), per
   `project-preferences` "Error handling" and API §4.
-- **`legacy.py` is inert during the build.** After the Chunk 01 move it is imported only by
+- **`legacy.py` is inert (read-only) during the build.** After the Chunk 01 move it is imported only by
   `briefing.py`/`backlog_probes.py`/`norm_probes.py` (repointed) and its own tests; the
-  markdown-backlog workflow is not extended. Chunk 06 retires it once prawduct reads its live
-  backlog through the adapter.
+  markdown-backlog *mutation* workflow is not extended. Its read-only `parse_backlog` **survives Chunk 06**
+  as the shared markdown read path for un-migrated portfolio repos (MG3/GV7); full retirement waits for
+  portfolio-wide migration, not prawduct's own cutover.
 
 ## Build Chunks — the thin slice
 
@@ -526,12 +534,16 @@ tests/
   backfills, `restructure-preview` renders the aggregate before/after artifact, owner approves the
   batch; originals preserved verbatim in `original_*` block fields + the export backup; non-atomic
   items **flagged, never auto-split**) → `status`/`merge` on the cleaned set → deterministic
-  `import [--restructure <plan>]` (the model is in the *decision*, never the data plane — MIG-5/G1). Then **migrate prawduct's own backlog**
-  (the bulk import), **repoint prawduct's briefing/gates** through the adapter, **retire
-  `lib/backlog/legacy.py`**, and **retire the `incoming-bugs/` drop-box in lockstep with its minimal
-  same-repo replacement** (MG5 — `report-bug` files an `untriaged-upstream`-labeled issue via the adapter;
-  the receiving advisory counts labeled issues; the full XP1 cross-owner plane stays W3). This
-  is the slice's completion and its acceptance test.
+  `import [--restructure <plan>]` (honoring the owner-confirmed **`--archive-scope {all,open}`** lever —
+  MG4b, chosen at scrub time; the model is in the *decision*, never the data plane — MIG-5/G1). Then **migrate prawduct's own backlog**
+  (the bulk import), **repoint prawduct's briefing/gates** through the adapter, and **retire the
+  `incoming-bugs/` drop-box in lockstep with its minimal
+  same-repo replacement** (MG5 — `report-bug` files an `untriaged-upstream`-labeled issue via the adapter,
+  **carrying the required `Found in: prawduct vX.Y.Z` body field sourced from `prawduct-hook version`, not
+  model recall** — XP2 provenance; the receiving advisory counts labeled issues; the full XP1 cross-owner
+  plane stays W3). **`lib/backlog/legacy.py` is NOT retired here** — as the shared plugin's markdown read
+  path it stays live for un-migrated portfolio repos and retires only at portfolio-wide migration (MG3/GV7);
+  prawduct's own cutover just stops *its* briefing from reading it. This is the slice's completion and its acceptance test.
 - **Depends on:** Chunk 04 (governance read-path), Chunk 05 (importer, `merge`, `export`)
 - **Artifacts consumed:** API §2.5 (scrub workflow over `list`/`status`/`merge`/`import`; `export` as
   the pre-migration backup); PRD §8.9 (MG4 scrub, prawduct-first, drop-box retirement + **MG5 minimal
@@ -540,9 +552,12 @@ tests/
 - **Deliverables:** new `tests/spikes/s2_migration.py` (the live dry-run), the scrub workflow (a
   `/prawduct:backlog`-adjacent skill/workflow step + the deterministic `import` of the cleaned set), the
   real migrated prawduct backlog repo, the `briefing.py`/gates repoint to the adapter, removal of
-  `lib/backlog/legacy.py` + the `incoming-bugs/` drop-box, **and its minimal same-repo replacement (MG5):
+  the `incoming-bugs/` drop-box (**`lib/backlog/legacy.py` stays** as the shared markdown read path —
+  MG3/GV7 — retired only at portfolio-wide migration, not here), **and its minimal same-repo replacement (MG5):
   repoint `skills/report-bug` step 3 to file an `untriaged-upstream`-labeled GitHub issue into prawduct's
-  own repo via the adapter's create path (in place of the `incoming-bugs/` file write), and switch the
+  own repo via the adapter's create path (in place of the `incoming-bugs/` file write), **preserving the
+  template's required `Found in: prawduct vX.Y.Z` body field, sourced from `prawduct-hook version`** so the
+  prawduct plugin version rides upstream reports deterministically (XP2 provenance, not model recall); and switch the
   `untriaged-upstream-reports` advisory's count from `incoming-bugs/*.md` to labeled open issues. The
   no-channel fallback (report-bug step 4: local capture + canonical-tracker pointer) is unchanged; the full
   XP1 cross-owner/foreign-identity plane stays W3.**
@@ -560,11 +575,15 @@ tests/
   the two CLI round-trips the slice supports (`file`, `import`+`export` — MCP is W5, not a slice front).
 - **Acceptance criteria:** prawduct's backlog is live on GitHub Issues with every `PFX` ID resolving as
   an alias; the scrub disposed stale/dup items with owner confirmation (no silent drops, nothing
-  hard-deleted); the briefing reads live counts through the adapter; `legacy.py` + `incoming-bugs/` are
-  retired **only after** their replacements are live — the briefing/gates read through the adapter, and
-  `report-bug` files an `untriaged-upstream` issue into prawduct's own repo (verified end-to-end) with the
-  `untriaged-upstream-reports` advisory counting labeled issues; the no-channel fallback still degrades
-  cleanly to local capture.
+  hard-deleted) and applied the **owner-confirmed `--archive-scope` choice** (MG4b); the briefing reads
+  live counts through the adapter; the `incoming-bugs/` drop-box is retired **only after** its replacement
+  is live — the briefing/gates read through the adapter, and `report-bug` files an `untriaged-upstream`
+  issue into prawduct's own repo (verified end-to-end) **carrying `Found in: prawduct vX.Y.Z` from
+  `prawduct-hook version`** — with the `untriaged-upstream-reports` advisory counting labeled issues; the
+  no-channel fallback still degrades cleanly to local capture. **`legacy.py` is NOT retired at this cutover**
+  (MG3/GV7 — it remains the shared markdown read path for un-migrated portfolio repos); a
+  **`backlog-service-migration-required` advisory** fires for any repo whose structured markdown backlog
+  has not cut over, so upgrade-before-migrate is a loud signal, never a silent zeroing.
 - **Pre-sign-off conditions (folded 2026-07-17 — conditional design sign-off).** Verified-in-code
   scenario traces of the CC5/G2/rate seams before the irreversible migration found no design flaw but
   four build-completeness gaps; two are **must-fix before this slice is marked done** (not optional
@@ -585,8 +604,10 @@ tests/
   - **BKL-3K9N (strongly recommended before the live run)** — honor `Retry-After` / bounded backoff on a
     mid-import 429 and continue the same run, so shared-token contention during this chunk's repoint can't
     hard-stop the irreversible import.
-  - **BKL-6X5D (not gating this dogfood)** — archive-window re-attribution/quantification + Pacer
-    900-pts/min modeling; load-bearing for the later adopter migrations, latent at prawduct's ~205 items.
+  - **BKL-6X5D (not gating this dogfood)** — archive-window *quantification* (a recent-shipped N-month
+    window) + Pacer 900-pts/min modeling; load-bearing for the later adopter migrations, latent at
+    prawduct's ~205 items. *(The binary `--archive-scope {all,open}` lever — MG4b — lands in this owner-feedback
+    pass; only the quantified middle window stays deferred here.)*
 - **Type:** cumulative-final
   <!-- Last slice chunk: its review IS the one `/prawduct:critic cumulative` against merge-base…HEAD,
        and the `/prawduct:pr create` gate for the slice PR. Commit first, run cumulative once. -->
@@ -688,7 +709,7 @@ heavy reviews across the slice (01/02/05 `final` + 06 `cumulative`); Chunk 04 wa
 | Actor identity kept as per-item history (**CC4**, P1 — Security §5) | 01/02 (coverage by inheritance: native timeline `history` + attribution off API identity, SEC-3; named here for bookkeeping) |
 | Never-block floor + graceful degradation (AG4/G2) · freshness/visible-age (TF1/G3) | 04 |
 | One-shot resumable importer (MG1) · full-fidelity export (MG2/G5) · minimal `merge` (AU3, for the scrub) | 05 |
-| Pre-migration scrub, prawduct-first, drop-box retirement, coexistence (MG4/MG3) | 06 |
+| Pre-migration scrub (`--archive-scope` lever, MG4b), prawduct-first, drop-box retirement, coexistence + migration-required advisory (MG3/GV7) | 06 |
 | Adopter-reproducible backend shipped in the plugin (GV4/G4) | 01–06 (built in-plugin, `gh` transport) |
 
 *P1/P2 capabilities (cache, full-text/semantic search, dedup-async, **`verify`/TF2 + grooming/TF3**,

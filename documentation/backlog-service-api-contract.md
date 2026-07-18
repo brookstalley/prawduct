@@ -110,9 +110,10 @@ service is recorded as a flat `backlog_service_repo: owner/repo` scalar in
 briefing reads `snapshot.read` (file-only — the never-block "few s" bound is structural: no network
 call exists on the briefing path, and any timeout tuning belongs to the *detached*
 `snapshot.spawn_refresh` child it fires after reading) and surfaces the snapshot's **visible age**;
-the six markdown-premise advisory probes retire on the same switch — the backlog trio
-(`legacy-backlog-format`, `legacy-section-schema`, `backlog-overdue-grooming`) and the norm trio
-that judges item liveness from the same file (`revisit-due`, `dead-why`, `stalled-transition`);
+the seven markdown-premise advisory probes retire on the same switch — the backlog quartet
+(`legacy-backlog-format`, `backlog-service-migration-required`, `legacy-section-schema`,
+`backlog-overdue-grooming`) and the norm trio that judges item liveness from the same file
+(`revisit-due`, `dead-why`, `stalled-transition`);
 a frozen file must not generate nudges, and `external-backlog-detected` keeps its independent
 premise (full retirement table: post-sync-advisory-spec §8.2; shared predicate
 `backlog_probes.post_cutover`). **Unset:** the briefing parses

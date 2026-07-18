@@ -458,6 +458,35 @@ def collect_records(
     return records, collisions
 
 
+# The owner-confirmed archive-scope lever (MG4b), surfaced at scrub time and
+# applied by the deterministic importer — a data-plane lever, never a model call.
+ARCHIVE_SCOPES: tuple[str, ...] = ("all", "open")
+
+
+def apply_archive_scope(
+    records: list[ImportRecord], archive_scope: str
+) -> tuple[list[ImportRecord], int]:
+    """Filter ``records`` per the owner's ``--archive-scope`` choice (MG4b).
+
+    - ``all`` (default): import everything, minting a closed issue per archived /
+      already-shipped item — the pre-scrub behavior.
+    - ``open``: import only the **live/open set**; every record that would be
+      created *already closed* (an item whose target status is not an open status —
+      archive-section items, explicitly ``dropped``/``shipped`` ones, the whole
+      separate ``--archive`` file) is skipped. The skipped items are **not lost**:
+      they stay in the source markdown (git history) and the MG2 export, which is
+      exactly the point — keep the historical archive as the export file rather
+      than minting a closed issue per ancient item, and keep a large migration
+      inside the write-rate budget (NF3).
+
+    Returns ``(kept, skipped_count)``. Pure — no I/O, no model.
+    """
+    if archive_scope == "open":
+        kept = [r for r in records if r.status in encode.OPEN_STATUSES]
+        return kept, len(records) - len(kept)
+    return records, 0
+
+
 def import_backlog(
     transport: Transport,
     *,
@@ -466,18 +495,21 @@ def import_backlog(
     content: str,
     archive_content: str | None = None,
     plan: dict | None = None,
+    archive_scope: str = "all",
     checkpoint: Checkpoint | None = None,
     pacer: Pacer | None = None,
     backoff: RateLimitBackoff | None = None,
 ) -> dict:
     """Import a ``.prawduct/backlog.md`` (+ optional separate archive file) into
     ``owner/repo``'s issues. Parses markdown into records (flagging duplicate-PFX
-    collisions), applies an optional owner-confirmed restructure ``plan`` (MG6 —
-    validated fail-closed *before* anything is written), then runs the
-    deterministic :func:`import_items`. Resumable/idempotent (MG1/CRASH-4); the
-    plan applies at create only — an item already on GitHub is skipped, never
-    rewritten."""
+    collisions), applies the owner-confirmed ``archive_scope`` lever (MG4b — ``all``
+    imports everything, ``open`` skips items that would be created closed), applies
+    an optional owner-confirmed restructure ``plan`` (MG6 — validated fail-closed
+    *before* anything is written), then runs the deterministic :func:`import_items`.
+    Resumable/idempotent (MG1/CRASH-4); the plan applies at create only — an item
+    already on GitHub is skipped, never rewritten."""
     records, collisions = collect_records(content, archive_content)
+    records, archive_skipped = apply_archive_scope(records, archive_scope)
     plan_warnings: list[str] = []
     restructured = 0
     if plan is not None:
@@ -497,9 +529,16 @@ def import_backlog(
         pacer=pacer,
         backoff=backoff,
     )
-    if plan is not None and result.get("status") == "ok":
-        result["data"]["restructured"] = restructured
-        result["warnings"] = plan_warnings + result["warnings"]
+    if result.get("status") == "ok":
+        if plan is not None:
+            result["data"]["restructured"] = restructured
+            result["warnings"] = plan_warnings + result["warnings"]
+        if archive_skipped:
+            result["data"]["archive_skipped"] = archive_skipped
+            result["warnings"] = [
+                f"--archive-scope open: {archive_skipped} closed/archived item(s) not "
+                "imported as issues (they remain in the source markdown + MG2 export)"
+            ] + result["warnings"]
     return result
 
 
