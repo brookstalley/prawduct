@@ -806,6 +806,10 @@ def _emit(result: dict, *, json_mode: bool, usage: bool = False) -> int:
     else:
         err = result.get("error", {})
         print(f"error [{err.get('code')}]: {err.get('message')}", file=sys.stderr)
+        # A resumable error envelope (e.g. import) carries the audit warnings accrued
+        # before the cut; surface them like the ok path so they reach the operator.
+        for warning in result.get("warnings", []):
+            print(f"warning: {warning}", file=sys.stderr)
         if usage:
             print(_HELP, file=sys.stderr)
     return exit_code

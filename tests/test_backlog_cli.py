@@ -105,6 +105,26 @@ class TestOutputDiscipline:
         assert "weird" in err  # warning narration on stderr
         assert "warning" not in out.lower()  # stdout stays clean
 
+    def test_error_envelope_warnings_reach_stderr(self, capsys):
+        # BKL-9V2W: a resumable error envelope (e.g. a mid-run import failure)
+        # carries the audit warnings accrued before the cut. The human error path
+        # must surface them like the ok path — else the carried audit line stays
+        # invisible to the operator running the migration.
+        result = {
+            "status": "error",
+            "error": {
+                "code": "unavailable",
+                "message": "backend failed",
+                "details": {"resumable": True},
+            },
+            "warnings": ["restored missing alias label id:DIS-0001 on octo/repo#4"],
+        }
+        code = cli._emit(result, json_mode=False)
+        err = capsys.readouterr().err
+        assert code != 0
+        assert "error [unavailable]" in err
+        assert "restored missing alias label" in err
+
 
 class TestExitClasses:
     """ERR-1 — each error code maps to a stable non-zero exit class."""
