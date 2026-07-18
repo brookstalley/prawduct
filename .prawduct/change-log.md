@@ -3,6 +3,28 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-07-18: Backlog service — resumable import envelope keeps its audit warnings (backlog-service)
+
+<!-- prawduct: type=bugfix | scope=backlog-service-v1 -->
+<!-- Statusless: bugfix on the importer resume path ahead of the deferred live leg (BKL-6M4T). -->
+
+**BKL-9V2W.** `migrate.import_items`' resumable mid-run error envelope (the
+TransportError path) carried `created`/`skipped`/`collisions` but dropped the
+accrued `warnings[]` — so an alias self-heal audit line emitted by an
+already-completed record was lost, and never re-emitted on resume (the restored
+`id:PFX` label makes the record skip the fast path, so the heal never re-runs).
+The live-migration audit trail must not lose these.
+
+- **Data plane** (`lib/backlog/migrate.py`): the resumable error envelope now
+  carries the accrued `warnings[]` at top level (matching the ok envelope).
+- **CLI** (`lib/backlog/cli.py`): the human-mode *error* path now surfaces
+  `warnings[]` like the ok path — a carried-but-unprinted warning would still be
+  invisible to the operator running the migration.
+- **Contract** (`documentation/backlog-service-api-contract.md` §3): notes that a
+  resumable error also carries top-level `warnings[]`.
+- Regression tests: `test_resumable_error_carries_accrued_self_heal_warnings`
+  (data plane) + `test_error_envelope_warnings_reach_stderr` (CLI emitter).
+
 ## 2026-07-18: Backlog service — owner-feedback gap-fills (backlog-service)
 
 <!-- prawduct: type=feature | scope=backlog-service-v1 -->

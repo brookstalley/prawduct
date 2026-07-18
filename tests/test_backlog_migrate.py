@@ -387,6 +387,27 @@ class TestCheckpointLossRebuild:
 
 # --- CRASH-4: import resumable / idempotent ----------------------------------
 
+# Minimal open-only fixtures for the resumable-envelope warnings regression: a
+# subset (DIS-0001) and its superset (DIS-0001 + DIS-0002). A re-import of the
+# superset self-heals the first (a mutation) and then creates the second (the
+# mutation that fails), so a completed record's warning precedes the cut.
+_ONE_OPEN_ITEM = """# Backlog — mini
+
+## Open
+
+- **[DIS-0001]** Add the harbor map overlay
+  `effort: M · impact: L · area: ui · source: user · added: 2026-05-01 · status: open · stage: ready`
+
+  Players want a top-down harbor map.
+"""
+
+_TWO_OPEN_ITEMS = _ONE_OPEN_ITEM + """
+- **[DIS-0002]** Rate-limit the trade API
+  `effort: S · impact: M · area: backend · source: builder · added: 2026-05-02 · status: open · stage: ready`
+
+  Bursts of trades exceed the upstream cap.
+"""
+
 
 class TestImportResumable:
     def test_crash_mid_import_resumes_without_duplicates(self, fake, tmp_path):
@@ -426,6 +447,30 @@ class TestImportResumable:
         assert second["status"] == "ok"
         dis4 = _alias_issues(fake, "DIS-0004")[0]
         assert (dis4.get("state") or "open").lower() == "closed"  # resume converged
+
+    def test_resumable_error_carries_accrued_self_heal_warnings(self, fake):
+        # Regression (BKL-9V2W): an alias self-heal audit line emitted by an
+        # already-completed record must ride the resumable TransportError envelope.
+        # It cannot be recovered on resume — the restored id:PFX label makes the
+        # record skip the fast label path, so the heal never re-runs — so dropping
+        # it from the error envelope loses the audit line permanently.
+        _seed_labels(fake, _TWO_OPEN_ITEMS)
+        _import(fake, _ONE_OPEN_ITEM)  # DIS-0001 lands on GitHub
+        number = _alias_issues(fake, "DIS-0001")[0]["number"]
+
+        # A human deletes DIS-0001's id:PFX label; the block id_aliases survives.
+        fake.remove_label(OWNER, REPO, number, ids.alias_label("DIS-0001"))
+
+        # Re-import the superset: DIS-0001 self-heals (mutation 1 — restores the
+        # label, emitting the audit line), then DIS-0002's create (mutation 2) hits
+        # the injected failure and returns the resumable envelope.
+        fake.fail_at_mutation(2)
+        result = _import(fake, _TWO_OPEN_ITEMS)
+
+        assert result["status"] == "error"
+        assert result["error"]["details"]["resumable"] is True
+        assert result["error"]["details"]["skipped"]  # DIS-0001 healed before the cut
+        assert any("restored missing alias label" in w for w in result["warnings"])
 
 
 # --- BKL-4W7H: id:PFX alias self-heal (deleted label ↛ permanent duplicate) ---

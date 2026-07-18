@@ -1309,11 +1309,6 @@
 
   From the test-evidence-environments review (the work that shipped TST-6F2R's multi-environment `test_commands` list): a product with one environment whose toolchain cannot emit JUnit is excluded from the declared-list form — the aggregated record has no way to accept a counts-only source alongside the JUnit-capable environments. Today's escape is a wrapper script, or repeated `--from-junit` for the JUnit halves plus nothing for the counts half. Design question: should `--from-counts` compose as one more aggregated source (i.e. a counts entry participating in the same multi-environment aggregation) rather than remaining an exclusive whole-record mode? Touches ENV-2W7K's "document --from-counts as the paved non-pytest path" — if composition ships, that documentation should describe the composed form. (critic)
 
-- **[BKL-9V2W]** migrate.import_items: resumable error envelope (TransportError path) drops accrued warnings[] — alias self-heal audit lines lost and never re-emitted on resume
-  `effort: S · impact: S · area: backlog-service · kind: bug · source: critic · added: 2026-07-18 · status: open · stage: ready · related: BKL-6M4T, BKL-3K9N`
-
-  Cumulative-Critic correctness reviewer NOTE (rev-20260718T144940Z): migrate.import_items' resumable mid-run error envelope (TransportError path) carries created/skipped/collisions but drops the accrued warnings[] — an alias self-heal audit line emitted by an already-completed record is lost, and it is never re-emitted on the re-run because the restored label makes the skip take the fast path. The live-migration audit trail should not lose these. Fix direction: include warnings in the error envelope, or re-emit them on resume. Same lost-audit-warning class as the known minor limitation recorded on BKL-3K9N (429-retry path); this is the TransportError-resume path.
-
 ## Promoted
 
 - **[BKL-5D2C]** Move the backlog out of git to a centralized, agent-friendly issue-tracking service
@@ -1347,6 +1342,13 @@
   Promoted 2026-07-17: Offline code + tests landed 2026-07-17 (commit 8ecd02e, cumulative-Critic 0 blocking). core.resolve_ref wires PFX→canonical alias resolution into get/link; migrate._find_by_key gains a block-id_aliases fallback skip-authority (_AliasIndex) that self-heals a human-deleted id:PFX label so a re-import can't duplicate; reconcile-labels re-derives deleted aliases. In-flight under the Chunk 06 slice (BKL-6M4T) — closes when the slice merges. Follow-ups spun off: BKL-7Q2N (mutator-side PFX resolution), BKL-9J3F (CC5 decoder gaps).
 
 ## Archive
+
+- **[BKL-9V2W]** migrate.import_items: resumable error envelope (TransportError path) drops accrued warnings[] — alias self-heal audit lines lost and never re-emitted on resume
+  `effort: S · impact: S · area: backlog-service · kind: bug · source: critic · added: 2026-07-18 · reviewed: 2026-07-18 · status: shipped · stage: ready · related: BKL-6M4T, BKL-3K9N · closed-by: fix/import-resumable-warnings`
+
+  Cumulative-Critic correctness reviewer NOTE (rev-20260718T144940Z): migrate.import_items' resumable mid-run error envelope (TransportError path) carries created/skipped/collisions but drops the accrued warnings[] — an alias self-heal audit line emitted by an already-completed record is lost, and it is never re-emitted on the re-run because the restored label makes the skip take the fast path. The live-migration audit trail should not lose these. Fix direction: include warnings in the error envelope, or re-emit them on resume. Same lost-audit-warning class as the known minor limitation recorded on BKL-3K9N (429-retry path); this is the TransportError-resume path.
+
+  Shipped 2026-07-18 (closed-by: fix/import-resumable-warnings).
 
 - **[BKL-5R2K]** Wire the merge/transfer redirect-follow (`ids.resolve_redirect` / `migrate.resolve`) into a real get/pick consumer
   `effort: S · impact: S · area: backlog-service · source: critic · added: 2026-07-17 · reviewed: 2026-07-17 · status: shipped · stage: ready · refs: artifacts/build-plan-backlog-service.md · closed-by: Chunk-06`

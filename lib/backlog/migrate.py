@@ -593,6 +593,11 @@ def import_items(
         result["error"]["details"].update(
             {"created": created, "skipped": skipped, "collisions": collisions, "resumable": True}
         )
+        # Carry the audit warnings accrued before the cut (checkpoint notes + per-record
+        # self-heal lines). A self-heal line from an already-completed record can't be
+        # re-emitted on resume — the restored label makes the record skip the fast path,
+        # never re-running the heal — so dropping it here loses it permanently.
+        result["warnings"] = warnings
         return result
     except (OSError, json.JSONDecodeError) as exc:  # ERR-6 — unexpected boundary
         _diag(f"unexpected transport failure on import: {type(exc).__name__}")

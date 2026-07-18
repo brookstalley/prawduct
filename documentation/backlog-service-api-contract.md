@@ -167,7 +167,9 @@ field home.)*
 - **Envelope.** Every JSON response is one envelope: `{"status":"ok","data":…,"warnings":[…]}` or the
   error form (§4). `warnings[]` carries the *advisory-but-not-fatal* signals — unknown soft-enum
   values, a human-UI drift the reconciler self-healed (CC5), a stale cache read's visible age — that
-  must never be an error (DM1).
+  must never be an error (DM1). A **resumable** error (a mid-run `import` cut) also carries top-level
+  `warnings[]`, so a self-heal audit line from an already-completed record is not lost — it can't be
+  re-emitted on resume (the restored alias label makes the record skip the fast path).
 - **Issue standard on `file`** (issue-standard §1/§2/§4; `lib/backlog/issuefmt.py`). `file` emits the
   §1 title shape (prepends the `area:` prefix, idempotently) and **audits** the created issue against
   the §4 thresholds. Findings ride in a **separate** top-level `lint` field —
