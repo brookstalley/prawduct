@@ -63,25 +63,17 @@
 
   Build breakdown (implement against the standard doc): (1) `file` serializer applies title+section contract + assigns kind:; (2) WARN-only linter (thresholds in the standard §4); (3) migration restructure pre-pass folds into Chunk 06 / MG6 (with original_* preservation); (4) ship YAML Issue Forms in .github/ISSUE_TEMPLATE for consumer UI filers; (5) populate kind: (under-used today). Consider splitting into per-deliverable build items when planned. Decomposed 2026-07-17 into build items BKL-2H9W (net-new `file` path), BKL-4C6P (WARN linter), BKL-7F3D (YAML Issue Forms), BKL-8N5K (MG6 migration pre-pass).
 
-- **[BKL-2H9W]** `file` creation path applies the issue-structure standard (title + body sections + kind:)
-  `effort: M · impact: M · area: backlog-service · source: user · added: 2026-07-17 · status: open · stage: ready · related: BKL-3T7X, BKL-6M4T · refs: documentation/backlog-service-issue-standard.md`
-
-  Implement the issue standard (documentation/backlog-service-issue-standard.md §1–2) on the net-new creation path (`file` / cmd_file → create_issue). Emit a <=72-char `area:`-prefixed atomic title and a template-structured body (bug: Problem/Repro/Actual/Expected/Evidence; task: Problem/Change/Acceptance `- [ ]`/Scope-out) honoring the §2 per-section word budgets + progressive disclosure (fences/<details>). Assign a `kind:` label (bug/feature/task/chore/spike) — under-populated today. Items are usually model-authored, so this is the shared title/body composer + authoring guidance; the linter (sibling BKL-4C6P) guards it. No fidelity concern (new content).
-
-- **[BKL-4C6P]** WARN-only issue linter implementing the standard §4 thresholds
-  `effort: M · impact: M · area: backlog-service · source: user · added: 2026-07-17 · status: open · stage: ready · related: BKL-3T7X · refs: documentation/backlog-service-issue-standard.md`
-
-  Build a WARN-only linter for the issue standard §4: title >72 / <15 / placeholder, title joining >=2 claims (non-atomic), missing or empty required section, >~150 visible words, unwrapped evidence >30 lines, no kind:/area:, >~6 labels, acceptance prose without `- [ ]`. NEVER blocks (prawduct never-block posture; this path was never a blocking gate — distinct from the "don't demote blocking→warning" rule). Wired into `file` (warn on create) and reusable as an audit over migrated issues (migration runs it audit-only).
-
 - **[BKL-7F3D]** Ship YAML Issue Forms (.github/ISSUE_TEMPLATE) for consumer UI filers
   `effort: S · impact: M · area: backlog-service · source: user · added: 2026-07-17 · status: open · stage: ready · related: BKL-3T7X · refs: documentation/backlog-service-issue-standard.md`
 
   Ship YAML Issue Forms (one per variant: bug, task/feature) enforcing the standard §2 sections at CREATION for humans filing via the GitHub UI. Required textareas = the hard section list; dropdowns pin kind/area/stage/impact; labels: auto-applies defaults (provision already creates the labels). NOTE: issue Forms only gate UI-created issues — prawduct's own `file` is programmatic (governed by items BKL-2H9W+BKL-4C6P). This is the consumer-facing enforcement home. Markdown templates only as a fallback for repos that won't adopt forms.
 
 - **[BKL-8N5K]** MG6 migration restructure pre-pass — restructure to standard, preserve originals, no auto-split (Chunk 06)
-  `effort: M · impact: M · area: backlog-service · source: user · added: 2026-07-17 · status: open · stage: ready · related: BKL-3T7X, BKL-6M4T · refs: documentation/backlog-service-issue-standard.md`
+  `effort: M · impact: M · area: backlog-service · source: user · added: 2026-07-17 · reviewed: 2026-07-17 · status: open · stage: ready · related: BKL-3T7X, BKL-6M4T · refs: documentation/backlog-service-issue-standard.md`
 
   Implement PRD §8.9/MG6 — the single LLM pre-pass in the MG4 scrub (Chunk 06), BEFORE the deterministic import (no model in the data plane, MIG-5). Per item: propose a <=72 area-title + template body + kind:; PRESERVE the original verbatim (original_title/original_body block fields + the MG2 export); backfill kind: for existing items. NO auto-split — flag non-atomic (multi-claim) items for owner MANUAL split (keeps 1 PFX = 1 issue). Owner reviews the restructured set in AGGREGATE (representative sample + full before/after diff artifact), approves the batch — not per-item HITL. Revises MG1: bodies restructured-to-standard, original preserved (IDs/sections still verbatim). This is a Chunk 06 deliverable (folds into BKL-6M4T's live migration); tracked here as the discrete MG6 build unit.
+
+  Plan-coherence to fold when this is built (surfaced by the issue-standard Critic 2026-07-17, fact rev-20260717T235511Z): build-plan-backlog-service.md has NOT absorbed the issue-standard §5 MG1 revision ('bodies restructured to standard; original preserved verbatim') or this MG6 restructure pre-pass. Reconcile on build: Chunk 05 MIG-1 still says 'verbatim … fidelity'; the Chunk 06 MG4 scrub names no restructure pre-pass; and the SPIKE-S2 settled fact reads 'preserved verbatim'. render_body (lib/backlog/issuefmt.py) is the shared composer to reuse; issuefmt.lint is the audit-only pass to run over restructured items.
 
 - **[SEC-8R3K]** Document the GitHub Actions workflow env-wiring required by the backlog SEC-5 guard (`PRAWDUCT_PR_HEAD_REPO`, `PRAWDUCT_ACTOR_AUTHORIZED`)
   `effort: S · impact: S · area: security · source: critic · added: 2026-07-17 · status: open · stage: ready · refs: artifacts/build-plan-backlog-service.md`
@@ -1292,6 +1284,20 @@
   Promoted 2026-07-17: Offline code + tests landed 2026-07-17 (commit 8ecd02e, cumulative-Critic 0 blocking). core.resolve_ref wires PFX→canonical alias resolution into get/link; migrate._find_by_key gains a block-id_aliases fallback skip-authority (_AliasIndex) that self-heals a human-deleted id:PFX label so a re-import can't duplicate; reconcile-labels re-derives deleted aliases. In-flight under the Chunk 06 slice (BKL-6M4T) — closes when the slice merges. Follow-ups spun off: BKL-7Q2N (mutator-side PFX resolution), BKL-9J3F (CC5 decoder gaps).
 
 ## Archive
+
+- **[BKL-2H9W]** `file` creation path applies the issue-structure standard (title + body sections + kind:)
+  `effort: M · impact: M · area: backlog-service · source: user · added: 2026-07-17 · reviewed: 2026-07-17 · status: shipped · stage: ready · related: BKL-3T7X, BKL-6M4T · refs: documentation/backlog-service-issue-standard.md · closed-by: issue-standard`
+
+  Implement the issue standard (documentation/backlog-service-issue-standard.md §1–2) on the net-new creation path (`file` / cmd_file → create_issue). Emit a <=72-char `area:`-prefixed atomic title and a template-structured body (bug: Problem/Repro/Actual/Expected/Evidence; task: Problem/Change/Acceptance `- [ ]`/Scope-out) honoring the §2 per-section word budgets + progressive disclosure (fences/<details>). Assign a `kind:` label (bug/feature/task/chore/spike) — under-populated today. Items are usually model-authored, so this is the shared title/body composer + authoring guidance; the linter (sibling BKL-4C6P) guards it. No fidelity concern (new content).
+
+  Shipped 2026-07-17 (closed-by: issue-standard): the `file` creation path now applies the issue standard §1/§2 — lib/backlog/issuefmt.py (normalize_title area-prefix + render_body section composer) wired into core.file_item, with a kind:/area: authoring contract. Correction: despite the auto-added promotion note, this was NOT part of build-plan-backlog-service.md (the migration slice) — it was built directly from the design parent documentation/backlog-service-issue-standard.md, hence closed-by: issue-standard. Built, tested (offline fake-transport; suite 2215 passing), Critic-reviewed (0 blocking), and documented (api-contract §3, issue-standard §4) this session on branch feature/backlog-prd-owner-feedback.
+
+- **[BKL-4C6P]** WARN-only issue linter implementing the standard §4 thresholds
+  `effort: M · impact: M · area: backlog-service · source: user · added: 2026-07-17 · reviewed: 2026-07-17 · status: shipped · stage: ready · related: BKL-3T7X · refs: documentation/backlog-service-issue-standard.md · closed-by: issue-standard`
+
+  Build a WARN-only linter for the issue standard §4: title >72 / <15 / placeholder, title joining >=2 claims (non-atomic), missing or empty required section, >~150 visible words, unwrapped evidence >30 lines, no kind:/area:, >~6 labels, acceptance prose without `- [ ]`. NEVER blocks (prawduct never-block posture; this path was never a blocking gate — distinct from the "don't demote blocking→warning" rule). Wired into `file` (warn on create) and reusable as an audit over migrated issues (migration runs it audit-only).
+
+  Shipped 2026-07-17 (closed-by: issue-standard): the WARN-only §4 linter (issuefmt.lint), wired into `file` (findings ride in the envelope's `lint` field, never block) and reusable as a migration audit. Correction: despite the auto-added promotion note, this was NOT part of build-plan-backlog-service.md (the migration slice) — it was built directly from the design parent documentation/backlog-service-issue-standard.md, hence closed-by: issue-standard. Built, tested (offline fake-transport; suite 2215 passing), Critic-reviewed (0 blocking), and documented (api-contract §3, issue-standard §4) this session on branch feature/backlog-prd-owner-feedback.
 
 - **[BKL-7Q2N]** PFX alias read-resolution not wired into the other single-id mutators (status/update/comment/claim/unclaim/merge)
   `effort: S · impact: L · area: backlog-service · source: builder · added: 2026-07-17 · reviewed: 2026-07-17 · status: shipped · stage: design · related: BKL-4W7H · closed-by: Chunk-06`

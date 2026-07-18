@@ -60,6 +60,25 @@ class TestFileCli:
         assert code == 0
         assert json.loads(out)["data"]["title"] == "T"
 
+    def test_lint_findings_go_to_stderr_never_block(self, capsys):
+        # A terse, kind-less item lints — findings print to stderr as `lint: …`,
+        # stdout stays clean, and the exit code is still 0 (WARN-only, never blocks).
+        fake = FakeGitHub()
+        code, out, err = _run(["file", "--repo", REPO, "--title", "fix", "--body", "b"], fake, capsys)
+        assert code == 0
+        assert "lint:" in err
+        assert "no kind:" in err  # a specific §4 finding surfaced
+        assert "lint:" not in out  # stdout carries no lint narration
+
+    def test_lint_findings_ride_inside_json_envelope(self, capsys):
+        fake = FakeGitHub()
+        code, out, err = _run(
+            ["file", "--repo", REPO, "--title", "fix", "--body", "b", "--json"], fake, capsys
+        )
+        payload = json.loads(out)  # stdout is a single JSON document
+        assert payload["status"] == "ok"
+        assert any(f["rule"] == "no-kind" for f in payload["lint"])
+
 
 class TestOutputDiscipline:
     """ERR-2 — warnings ride inside the JSON envelope; human warnings go to stderr."""

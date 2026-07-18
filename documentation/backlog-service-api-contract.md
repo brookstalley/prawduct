@@ -146,6 +146,14 @@ field home.)*
   error form (§4). `warnings[]` carries the *advisory-but-not-fatal* signals — unknown soft-enum
   values, a human-UI drift the reconciler self-healed (CC5), a stale cache read's visible age — that
   must never be an error (DM1).
+- **Issue standard on `file`** (issue-standard §1/§2/§4; `lib/backlog/issuefmt.py`). `file` emits the
+  §1 title shape (prepends the `area:` prefix, idempotently) and **audits** the created issue against
+  the §4 thresholds. Findings ride in a **separate** top-level `lint` field —
+  `"lint":[{"rule","message","severity":"warn"}]` — a distinct category from operational `warnings[]`,
+  and the same structured shape the migration reuses as an audit-only pass. **WARN-only: `lint`
+  findings never affect `status` or the exit code** (the create was never a blocking gate). The body
+  is model/human-authored (the composer `render_body` assembles §2 sections for callers that want it,
+  and the migration pre-pass); the linter guards whatever is authored.
 - **Collections** (`list`,`search`,`batch`) paginate by **cursor** (the Q2 changed-since primitive,
   not offset), with a max page size; `batch` returns a **per-item** result array, never all-or-nothing.
 - **Async/advisory.** `file` returns the new ID **before** dedup runs; candidates arrive on a second,

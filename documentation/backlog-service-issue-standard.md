@@ -52,6 +52,12 @@ The adapter already models the recommended taxonomy: `kind/area/effort/impact/so
 
 ## 4. Enforcement — two homes, one standard
 
+> **Implemented (programmatic home):** `lib/backlog/issuefmt.py` — `normalize_title` (§1),
+> `render_body` (§2 composer, shared with migration), and `lint` (§4, WARN-only). Wired into the
+> `file` path (`core.file_item`): the title is normalized on create and the result is audited, with
+> findings in the envelope's `lint` field (never blocks). The migration pre-pass (MG6) and Issue
+> Forms (§5, consumer-UI home) remain to build.
+
 - **`file` CLI + migration (programmatic):** a standard-aware **serializer** emits the title + section
   contract; a **WARN-only linter** audits. Issue *Forms* do NOT gate programmatic creation.
 - **Consumers filing via the GitHub UI:** ship **YAML Issue Forms** (`.github/ISSUE_TEMPLATE/`, one per

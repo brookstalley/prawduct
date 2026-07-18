@@ -54,6 +54,22 @@ system-of-record** via a deterministic `prawduct-hook backlog` adapter (PRD §16
   turn a re-import into a permanent duplicate; `reconcile-labels` re-derives deleted aliases from the
   block. The live migration (SPIKE-S2, dogfood, briefing/gate repoint, drop-box retirement) stays in
   Chunk 06 (BKL-6M4T).
+- **Chunk 06 must-fixes BKL-7Q2N + BKL-3K9N (2026-07-17):** the remaining single-id mutators
+  (`status`/`update`/`comment`/`claim`/`unclaim`) plus `merge` source/target now resolve a bare
+  `PFX-XXXX` through `core.resolve_ref` with a threaded `default_repo` (closing the MG1
+  "existing IDs stay valid forever" gap `get`/`link` had already closed); and the importer
+  gained secondary-rate-limit backoff (`retry-after`-honoring, bounded, injectable clock) so a
+  long import degrades to pacing instead of failing mid-run.
+- **Issue-structure standard on the `file` path — BKL-2H9W + BKL-4C6P (2026-07-17):** a new
+  deterministic `lib/backlog/issuefmt.py` (no model — INV-1) implementing
+  `documentation/backlog-service-issue-standard.md`: `normalize_title` (§1 `area:`-prefixed
+  atomic title, idempotent), `render_body` (§2 `### Section` composer — reserved for the MG6
+  migration pre-pass, BKL-8N5K), and `lint` (§4 WARN-only, structured findings). Wired into
+  `core.file_item`: title normalized on create, created issue audited, findings ride a dedicated
+  top-level `lint` envelope field (distinct from operational `warnings[]`; never blocks, never
+  touches the exit code — reusable as the migration audit). CLI prints `lint:` findings to
+  stderr; api-contract §3 + standard §4 updated. Built from the design parent (issue-standard
+  doc), not a build-plan chunk.
 
 **Classification:** structural
 

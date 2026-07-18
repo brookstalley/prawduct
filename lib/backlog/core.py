@@ -24,7 +24,7 @@ import sys
 import time
 from datetime import datetime, timezone
 
-from . import encode, ids, provision
+from . import encode, ids, issuefmt, provision
 from .transport import RETRYABLE_DEFAULTS, Transport, TransportError
 
 # The default claim-staleness TTL (CC3/M11). No upstream artifact pins a number,
@@ -106,6 +106,11 @@ def file_item(
     if body is None:
         return error("validation", "body is required (may be empty text, not omitted)")
 
+    # Emit the §1 title shape (`area: summary`) before the create so the issue is
+    # born standard-compliant (issue-standard §1). Idempotent; never fights a
+    # title the author already prefixed.
+    title = issuefmt.normalize_title(title, facets.get("area"))
+
     warnings: list[str] = []
     labels: list[str] = []
     for facet in _FILE_FACETS:
@@ -141,7 +146,13 @@ def file_item(
     item, decode_warnings = encode.decode_item(issue, canonical_id=canonical)
     warnings.extend(decode_warnings)
     item["actor"] = actor
-    return ok(item, warnings)
+    # Audit the created issue against the standard (§4). WARN-only — findings ride
+    # in their own `lint` field (a distinct category from operational `warnings`),
+    # never block, and reuse the shape the migration audit consumes. Lints the
+    # *human* body (no prawduct: block) + the final labels.
+    result = ok(item, warnings)
+    result["lint"] = [f.as_dict() for f in issuefmt.lint(title, body, labels)]
+    return result
 
 
 def _body_with_block(body: str, *, automated: bool = False, worker: str | None = None) -> str:

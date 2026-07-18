@@ -73,6 +73,12 @@ _HELP = (
     "  export   --repo owner/repo --to <dir>   (full-fidelity dump incl. native graph)\n"
     "  merge    <source-id> --into <target-id> [--repo owner/repo]   (fold A→B, redirect-before-close)\n"
     "global: --json  (machine envelope on stdout; default is human)\n"
+    "\n"
+    "issue standard: `file` emits an `area:`-prefixed title and audits the issue\n"
+    "  (WARN-only `lint` findings, never blocks). Author a scannable `area: summary`\n"
+    "  title (<=72) + a sectioned body (bug: Problem/Repro/Actual/Expected/Evidence;\n"
+    "  task: Problem/Proposed change/Acceptance `- [ ]`/Scope-out) and set --kind.\n"
+    "  Full contract: documentation/backlog-service-issue-standard.md\n"
 )
 
 
@@ -678,6 +684,10 @@ def _emit(result: dict, *, json_mode: bool, usage: bool = False) -> int:
         _print_human_ok(result.get("data"))
         for warning in result.get("warnings", []):
             print(f"warning: {warning}", file=sys.stderr)
+        # Standard lint findings (WARN-only, `file`): advisory, never affect the
+        # exit code, and kept distinct from operational warnings.
+        for finding in result.get("lint", []):
+            print(f"lint: {finding.get('message')}", file=sys.stderr)
     else:
         err = result.get("error", {})
         print(f"error [{err.get('code')}]: {err.get('message')}", file=sys.stderr)

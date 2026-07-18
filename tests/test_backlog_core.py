@@ -92,6 +92,56 @@ class TestFileItem:
         assert "the body" in issue["body"]
 
 
+class TestFileStandard:
+    """BKL-2H9W/BKL-4C6P — the `file` path applies the issue-structure standard
+    (title normalization + kind/area) and lints the result (WARN-only)."""
+
+    def test_normalizes_area_prefixed_title(self, fake):
+        result = core.file_item(
+            fake, owner=OWNER, repo=REPO, title="parser drops flags", body="b",
+            facets={"area": "cli"},
+        )
+        assert result["data"]["title"] == "cli: parser drops flags"
+
+    def test_does_not_double_prefix(self, fake):
+        result = core.file_item(
+            fake, owner=OWNER, repo=REPO, title="cli: parser drops flags", body="b",
+            facets={"area": "cli"},
+        )
+        assert result["data"]["title"] == "cli: parser drops flags"
+
+    def test_lint_field_present_and_flags_terse_item(self, fake):
+        # A terse, kind-less item lints (short title, no kind:) — WARN-only, so it
+        # still succeeds, and the findings ride in `lint`, not `warnings`.
+        result = core.file_item(fake, owner=OWNER, repo=REPO, title="X", body="b")
+        assert result["status"] == "ok"
+        rules = {f["rule"] for f in result["lint"]}
+        assert "no-kind" in rules
+        assert "title-too-short" in rules
+        assert result["warnings"] == []  # lint is a distinct channel
+
+    def test_compliant_item_lints_clean(self, fake):
+        from lib.backlog import issuefmt
+
+        body = issuefmt.render_body(
+            "bug",
+            {
+                "Problem": "The importer never reads the id:PFX alias, so re-import duplicates.",
+                "Repro": "Run import twice against the same source file.",
+                "Actual": "Two issues per source item.",
+                "Expected": "The second run skips existing items.",
+                "Evidence": "migrate.py:120",
+            },
+        )
+        result = core.file_item(
+            fake, owner=OWNER, repo=REPO,
+            title="alias read-resolution unwired breaks idempotency", body=body,
+            facets={"kind": "bug", "area": "importer"},
+        )
+        assert result["status"] == "ok"
+        assert result["lint"] == []
+
+
 class TestAttribution:
     """SEC-3 — actor is the API identity, resolved once across a sweep."""
 
