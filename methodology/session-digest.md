@@ -46,6 +46,12 @@ inference as a vetoable assumption. Full model: `methodology/discovery.md` "Cali
 - **No attribution trailers by default.** Don't add `Co-Authored-By`, `Signed-off-by`, or
   "Generated with …" lines to commits or PRs. To opt in, set `Commit attribution` in
   `project-preferences.md`.
+- **Merge commits by default.** Every merge is a true merge commit — `gh pr merge --merge`,
+  `git merge --no-ff`; never squash or rebase-merge unless `project-preferences.md` sets
+  `PR merge strategy` to say so or the user explicitly asks. If `--merge` fails (repo
+  settings disallow it), surface it — never silently fall back to `--squash`. Where squash
+  or rebase-merge IS configured, branches are single-use: delete after merge, never reuse (a
+  reused branch's pre-rewrite merge-base over-counts already-merged work at every review gate).
 - **Backlog goes through `/prawduct:backlog`** — pick/add/update/dedup via the skill, not
   hand-edits. "Done" = `update status=shipped` → `## Archive` (never strikethrough, never left
   in `## Open`). A backlog item at an early `stage:` (or none) is an undocumented requirement —
@@ -96,7 +102,7 @@ the gate so it's never mysterious.
 ## Read on demand (plugin skills — the full guides ship in the plugin)
 
 - `/prawduct:methodology` — overview and the guide reader: pass a topic to open it —
-  `/prawduct:methodology building | discovery | planning | reflection | principles`
+  `/prawduct:methodology building | discovery | planning | reflection | principles | norms`
 - `/prawduct:critic` · `/prawduct:pr` · `/prawduct:backlog` · `/prawduct:learnings` ·
   `/prawduct:janitor` · `/prawduct:doctor`
 

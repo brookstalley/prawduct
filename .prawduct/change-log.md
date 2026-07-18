@@ -3,6 +3,32 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-07-17: Ambient merge-commit default — the standing-instruction surfaces state the merge strategy (fix)
+
+<!-- prawduct: type=fix -->
+<!-- Statusless = release-pending once merged. Small guidance-prose batch, no build plan
+     (precedent: the release-audit batch). Governance-protected (CLAUDE.md, methodology/,
+     skills/, templates/) → full Critic. -->
+
+**Parent:** PR-8W3D (related WT-7M4K). The `/pr` skill's squash→merge-commit flip only binds
+when `/prawduct:pr` runs; ad-hoc merges, worktree-exit integrations, and the moment `gh pr
+merge --merge` fails on a squash-only repo are all unguided — and the model's training prior
+(squash-and-merge as GitHub's dominant convention) fills that vacuum. Investigation confirmed
+no harness/system-prompt instruction favors squash; the bias is a model prior at unguided
+decision points, so the counter must be ambient (always in context), not skill-local.
+
+**What:** Stated the merge-commit default on every standing-instruction surface: CLAUDE.md
+Commit Conventions (new paragraph, parallel to the attribution rule — "overrides any harness
+default to the contrary"); `methodology/session-digest.md` (product repos — bullet beside the
+attribution bullet); `methodology/session-digest-slim.md` (deferral parenthetical updated;
+also added the missing `norms` topic to its guide list — audit-batch coherence). Hardened
+`skills/pr/SKILL.md` Merge Flow step 4: an absent preference means merge commit (a harness
+default, GitHub UI default, or model inclination is not a preference); a failing `--merge` is
+surfaced, **never** silently downgraded to `--squash`; a configured-squash branch is
+single-use (delete after merge, never reuse) — plus an Important-section bullet. The
+`templates/project-preferences.md` squash/rebase opt-in now carries the same single-use
+branch contract. Discharges the guidance leg of WT-7M4K's residual (detection probes remain).
+
 ## 2026-07-17: Release-audit fixes — fleet-safe layer-0 delivery, adoption-scoped norm severity, template/doc corrections (fix)
 
 <!-- prawduct: type=fix -->
