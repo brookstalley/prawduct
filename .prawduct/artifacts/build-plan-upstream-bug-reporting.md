@@ -97,6 +97,14 @@ this plan's prose). Branch carries this scope alongside the small
 wall-clock per the CRT-4J8W single-cumulative gate). `views_enabled: true` —
 checkboxes flip at release via the `scope=upstream-bug-reporting` change-log tag.
 
+**Addendum 2026-07-18 (backlog-service owner-feedback pass).** The report `Found
+in:` version is now **sourced from `prawduct-hook version`** (bare semver from the
+running manifest), not model recall — so the prawduct plugin version rides an
+upstream report deterministically (XP2 provenance). This holds on today's drop-box
+path and carries forward to the backlog-service MG5 repoint (report-bug files an
+`untriaged-upstream` GitHub issue), where the same field is pinned into that plan's
+Chunk 06 acceptance criteria.
+
 ## Chunks
 
 ### Chunk 01: Filing path end to end (thin vertical slice)

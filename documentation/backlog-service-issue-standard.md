@@ -33,7 +33,10 @@ or `<details>` (progressive disclosure). Original imported text is preserved out
 restructuring loses nothing.
 
 **Bug:** Problem (≤25w, what+where) · Repro/input (≤5 lines) · Actual (≤2 lines) · Expected (≤2 lines)
-· Evidence (`file:line`, log/stack in fence/`<details>`, ≤10 visible lines) · *(opt)* Env (1 line).
+· Evidence (`file:line`, log/stack in fence/`<details>`, ≤10 visible lines) · *(recommended)* Env (1 line
+— **the product version it was found in** + any relevant environment, e.g. `prawduct v3.1.0 (plugin)`; a
+self-filed bug that records its version is far cheaper to triage, so a bug with no Env line gets a
+WARN-only lint nudge — never a block).
 
 **Task/Feature:** Problem/motivation (≤25w, why + user-visible outcome) · Proposed change (≤4 bullets)
 · Acceptance (verifiable `- [ ]`, ≤5) · Scope-out (≤2 lines) · *(opt)* Evidence/links.
@@ -69,7 +72,8 @@ The adapter already models the recommended taxonomy: `kind/area/effort/impact/so
 - **Linter (WARN only, never blocks — matches prawduct's never-block posture; this path was never a
   blocking gate):** title > 72 / < 15 / placeholder; title joins ≥2 claims; missing or empty required
   section; > ~150 visible words; unwrapped evidence > 30 lines; no `kind:`/`area:`; > ~6 labels;
-  acceptance prose without `- [ ]`.
+  acceptance prose without `- [ ]`; a `kind:bug` issue with **no Env line** (`bug-missing-env` — the
+  product-version-provenance nudge; recommendation, not a mandate).
 
 ## 5. Migration application (owner decision 2026-07-17 → "restructure, preserve, no split")
 

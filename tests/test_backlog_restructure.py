@@ -390,6 +390,42 @@ class TestCliFront:
         text = out_path.read_text(encoding="utf-8")
         assert "### DIS-0001" in text and "**body after:**" in text
 
+    def test_preview_honors_archive_scope_open(self, tmp_path, capsys):
+        # The preview must apply the same --archive-scope filter the import does, so
+        # the owner reviews exactly what will land (MG4b parity, filter-first).
+        src = self._write(
+            tmp_path, "backlog.md",
+            "## Open\n\n- **[PRV-1]** live item\n  `area: a · status: open`\n\n"
+            "## Archive\n\n- **[PRV-2]** old item\n  `area: a · status: shipped`\n",
+        )
+        plan = self._write(tmp_path, "plan.json", '{"v": 1, "items": {"PRV-1": {"note": "keep"}}}')
+        out_path = tmp_path / "preview.md"
+        code = cli.run(
+            str(tmp_path),
+            ["restructure-preview", "--from", src, "--plan", plan,
+             "--out", str(out_path), "--archive-scope", "open", "--json"],
+            transport=None,
+        )
+        assert code == 0
+        payload = json.loads(capsys.readouterr().out)
+        assert payload["data"]["archive_skipped"] == 1  # the shipped archive item dropped
+        assert payload["data"]["total_source"] == 1  # only the open item remains
+
+    def test_preview_rejects_bad_archive_scope(self, tmp_path, capsys):
+        src = self._write(tmp_path, "backlog.md", DISCODON_MINI)
+        plan = self._write(tmp_path, "plan.json", '{"v": 1, "items": {"DIS-0001": {"note": "x"}}}')
+        out_path = tmp_path / "preview.md"
+        code = cli.run(
+            str(tmp_path),
+            ["restructure-preview", "--from", src, "--plan", plan,
+             "--out", str(out_path), "--archive-scope", "bogus", "--json"],
+            transport=None,
+        )
+        assert code == 2
+        payload = json.loads(capsys.readouterr().out)
+        assert "archive-scope" in payload["error"]["message"]
+        assert not out_path.exists()  # validation fails before any artifact is written
+
     def test_preview_human_line_not_shadowed_by_import(self, tmp_path, capsys):
         src = self._write(tmp_path, "backlog.md", DISCODON_MINI)
         plan = self._write(

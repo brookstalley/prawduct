@@ -6,6 +6,12 @@ The one-time, owner-confirmed cleanup that runs when a project moves its
 they become live issues, so the migrated backlog starts clean instead of
 inheriting years of silt.
 
+The session-start **`backlog-service-migration-required`** advisory (GV7) is what
+nudges an un-migrated repo here: while `.prawduct/backlog.md` holds a structured
+backlog and `backlog_service_repo` is unset, every session flags that migration is
+required — so a repo that upgraded past prawduct's own cutover is told to migrate,
+never silently degraded to a zeroed backlog count.
+
 This is a **workflow over the deterministic ops** (`list` / `status` / `merge` /
 `import`), **not a single command** (API §2.5). Run it interactively with the
 owner.
@@ -88,11 +94,37 @@ byte-for-byte what gets written. Originals are preserved verbatim
 (`original_title`/`original_body` block fields + the MG2 export backup + git
 history of the source file) — a bad rewrite is always recoverable.
 
+**2c. Decide archive scope (MG4b) — an explicit owner choice, never a silent
+default.** Ask the owner how much of the historical archive to mint as GitHub
+issues, and name the tradeoff:
+   - **`open`** — migrate only the live/open set; the historical archive stays as
+     the MG2 export file (step 0), minting **no** closed issue per ancient item.
+     Fewer *total* writes (NF3) and a cleaner live tracker — note the ≈80/min +
+     ≈500/hr *rate* ceiling is the Pacer's job, not this lever's (it reduces write
+     *volume*, not the rate — BKL-6X5D).
+   - **`all`** — import the full archive as closed issues (every disposed/shipped
+     item becomes a closed issue). Complete history *in the tracker*, at one create
+     per ancient item.
+
+   The model surfaces the tradeoff; the owner decides; the deterministic importer
+   applies it via **`--archive-scope {open|all}`** (step 3) — a data-plane lever,
+   never a model inference. Keep the restructure plan (step 2b) scoped to the set
+   you migrate: under `open`, don't author plan entries for archived items you're
+   dropping (the importer refuses fail-closed if the plan names an item outside the
+   chosen scope — a contradiction, caught, never a silent mis-import). A *quantified*
+   recent-shipped window between the poles
+   (migrate the last N months, drop older) is the adopter-scale refinement tracked
+   by **BKL-6X5D**; today the lever is the binary open/all. prawduct's own dogfood
+   is owner-decided as **`all`** (archive imports as-is — see
+   `.prawduct/artifacts/migration-scrub-decisions.md`).
+
 **3. Apply the confirmed plan — deterministically.**
    - **Import** the source into issues (idempotent/resumable, keyed on the
      `id:PFX` alias, so a re-run never duplicates), applying the confirmed
      restructure plan at create:
-     `prawduct-hook backlog import --repo <owner/repo> --from .prawduct/backlog.md [--archive <archive>] [--restructure <plan.json>]`
+     `prawduct-hook backlog import --repo <owner/repo> --from .prawduct/backlog.md [--archive <archive>] [--archive-scope {all|open}] [--restructure <plan.json>]`
+     (`--archive-scope` defaults to `all`; pass `open` for the open-only choice from step 2c —
+     the closed/archived items it skips stay in the source markdown + the MG2 export, never lost)
    - **Fold each duplicate** into its survivor (writes the `superseded_by`
      redirect *before* closing the source, so a crash leaves a resolvable
      open-but-redirected item, never an orphan — AU3/CRASH-2):

@@ -510,7 +510,7 @@ def _run_import(rest: list[str], transport, project_dir):
     from . import restructure  # noqa: PLC0415 — lazy, migration ops only
 
     flags, _positionals, err = _parse_flags(
-        rest, valued={"repo", "from", "archive", "restructure"}
+        rest, valued={"repo", "from", "archive", "restructure", "archive-scope"}
     )
     if err:
         return core.error("validation", err)
@@ -519,6 +519,9 @@ def _run_import(rest: list[str], transport, project_dir):
         return core.error("validation", "import requires --repo owner/repo")
     if "from" not in flags:
         return core.error("validation", "import requires --from <backlog.md path>")
+    archive_scope, err = _archive_scope_flag(flags)
+    if err:
+        return core.error("validation", err)
     owner, repo = parsed
     content, err = _read_source(flags["from"], "--from")
     if err:
@@ -550,6 +553,7 @@ def _run_import(rest: list[str], transport, project_dir):
         content=content,
         archive_content=archive_content,
         plan=plan,
+        archive_scope=archive_scope,
         checkpoint=checkpoint,
     )
 
@@ -563,7 +567,7 @@ def _run_restructure_preview(rest: list[str]):
     from . import migrate, restructure  # noqa: PLC0415 — lazy
 
     flags, _positionals, err = _parse_flags(
-        rest, valued={"from", "archive", "plan", "out"}
+        rest, valued={"from", "archive", "plan", "out", "archive-scope"}
     )
     if err:
         return core.error("validation", err)
@@ -572,6 +576,9 @@ def _run_restructure_preview(rest: list[str]):
             return core.error(
                 "validation", f"restructure-preview requires --{required}"
             )
+    archive_scope, err = _archive_scope_flag(flags)
+    if err:
+        return core.error("validation", err)
     content, err = _read_source(flags["from"], "--from")
     if err:
         return core.error("validation", err)
@@ -587,6 +594,7 @@ def _run_restructure_preview(rest: list[str]):
     if err:
         return core.error("validation", err)
     records, collisions = migrate.collect_records(content, archive_content)
+    records, archive_skipped = migrate.apply_archive_scope(records, archive_scope)
     applied = restructure.apply(records, plan)
     if not applied["ok"]:
         return core.error("validation", applied["error"])
@@ -613,9 +621,19 @@ def _run_restructure_preview(rest: list[str]):
         "non_atomic_flagged": sum(1 for e in entries if e["non_atomic"]),
         "lint_findings": sum(len(e["lint"]) for e in entries),
         "collisions": len(collisions),
-        "total_source": len(records),
+        "archive_skipped": archive_skipped,
+        "total_source": len(records),  # records entering the import (post archive-scope filter)
     }
-    return core.ok(data, applied["warnings"])
+    warnings = applied["warnings"]
+    if archive_skipped:
+        # Surface the dropped count in human mode too (not JSON-only) so an owner
+        # previewing "exactly what imports" sees what --archive-scope excluded — the
+        # excluded items stay in the source markdown + MG2 export, never lost.
+        warnings = [
+            f"--archive-scope open: {archive_skipped} closed/archived item(s) excluded from "
+            "this preview (they remain in the source markdown + MG2 export)"
+        ] + warnings
+    return core.ok(data, warnings)
 
 
 def _run_export(rest: list[str], transport):
@@ -753,6 +771,19 @@ def _int_flag(flags: dict, key: str, default: int) -> tuple[int, str | None]:
         return int(flags[key]), None
     except (TypeError, ValueError):
         return default, f"--{key} must be an integer, got {flags[key]!r}"
+
+
+def _archive_scope_flag(flags: dict) -> tuple[str, str | None]:
+    """Resolve + validate the shared ``--archive-scope`` selector (MG4b), the one
+    lever `import` and `restructure-preview` both accept. Returns ``(scope,
+    error_or_None)``; defaults to ``all``. Single source of the valid set and the
+    error message so the two callers cannot drift."""
+    from . import migrate  # noqa: PLC0415 — lazy, migration ops only
+
+    scope = flags.get("archive-scope", "all")
+    if scope not in migrate.ARCHIVE_SCOPES:
+        return scope, f"--archive-scope must be one of {'|'.join(migrate.ARCHIVE_SCOPES)}"
+    return scope, None
 
 
 def _emit(result: dict, *, json_mode: bool, usage: bool = False) -> int:

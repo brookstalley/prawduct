@@ -66,6 +66,7 @@ _SECTION_ALIASES: dict[str, tuple[str, ...]] = {
     "Scope-out": ("scope-out", "scope out", "out of scope", "non-goals", "non goals"),
     "Actual": ("actual", "actual behavior", "actual behaviour"),
     "Expected": ("expected", "expected behavior", "expected behaviour"),
+    "Env": ("env", "environment", "env/version"),
 }
 
 # §4 thresholds (single source of truth so lint and any doc stay in step).
@@ -271,6 +272,22 @@ def _lint_body(body: str, labels: list[str]) -> list[LintFinding]:
             if acc is not None and acc[1] and "- [ ]" not in acc[2] and "- [x]" not in acc[2].lower():
                 out.append(
                     LintFinding("acceptance-no-checkbox", "Acceptance has prose but no `- [ ]` items")
+                )
+
+        # Env carries the product version (+ environment) on a bug (§2). It is not
+        # a *required* section — but a self-filed bug that records the product
+        # version it was found in is far cheaper to triage, so a bug with no Env
+        # line gets a gentle WARN nudge (never blocks — the advisory posture holds,
+        # §4). Distinct from `missing-section` (which reads as "required"): this is
+        # a recommendation, not a mandate.
+        if kind == "bug":
+            env_accepted = {"env", *(_SECTION_ALIASES.get("Env", ()))}
+            if not any(h[0] in env_accepted for h in present):
+                out.append(
+                    LintFinding(
+                        "bug-missing-env",
+                        "bug has no Env line — record the product version (+ environment)",
+                    )
                 )
 
     visible = _visible_words(body)

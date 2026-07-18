@@ -3,6 +3,43 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-07-18: Backlog service — owner-feedback gap-fills (backlog-service)
+
+<!-- prawduct: type=feature | scope=backlog-service-v1 -->
+<!-- Statusless: four PRD/owner-review gaps closed offline ahead of Chunk 06's deferred
+     live leg; flips no chunk checkbox (06 stays deferred — BKL-6M4T). -->
+
+Four gaps surfaced in owner review of the backlog-service design, closed on
+`feature/backlog-prd-owner-feedback` (all offline, fake-transport-tested; the live
+migration leg stays deferred):
+
+- **MG4b — `--archive-scope {all,open}` lever.** The importer now honors an
+  owner-confirmed archive-scope choice: `all` (default, pre-scrub behavior — every
+  archived item becomes a closed issue) or `open` (migrate only the live/open set;
+  the historical archive stays as the MG2 export, minting no closed issue per
+  ancient item — fewer total writes, NF3; the Pacer, not this lever, enforces the
+  write-*rate* ceiling — BKL-6X5D). Surfaced as an explicit owner question in
+  the migration-scrub runbook (new step 2c); `restructure-preview` honors the same
+  scope so the owner reviews exactly what imports. Quantified recent-window between
+  the poles stays BKL-6X5D (adopter-scale). `lib/backlog/{migrate,cli}.py`.
+- **XP2 — `prawduct-hook version` provenance source.** A new `version` subcommand
+  prints the running plugin's bare semver from the bundled manifest, so upstream
+  bug reports stamp `Found in: prawduct vX.Y.Z` **sourced, not recalled** (a
+  recalled version drifts). `skills/report-bug` now sources it; pinned into the
+  backlog-service Chunk 06 (MG5) and upstream-bug-reporting acceptance criteria.
+- **Issue standard — self-filed bug provenance.** The bug `Env` line is now
+  *recommended* (product version + environment), and a WARN-only `bug-missing-env`
+  lint nudge fires for a `kind:bug` issue with no Env line — never blocks (advisory
+  posture). `lib/backlog/issuefmt.py`, issue-standard §2/§4.
+- **GV7/MG3 — migration-required advisory + `legacy.py` retirement-gate fix.** A new
+  warn-priority `backlog-service-migration-required` advisory fires while a
+  *structured* markdown backlog has live items and `backlog_service_repo` is unset —
+  so a repo that upgraded past prawduct's own cutover is told to migrate, never
+  silently degraded. It partitions cleanly with `legacy-backlog-format` (pre-structured
+  → format nudge; structured → service nudge). The build plan's `legacy.py` retirement
+  is corrected: as the **shared** plugin's markdown read path it retires only at
+  portfolio-wide migration (MG3), not at any one project's cutover. `lib/backlog_probes.py`.
+
 ## 2026-07-17: Backlog service — GitHub Issues as the system-of-record (backlog-service)
 
 <!-- prawduct: type=feature | scope=backlog-service-v1 | chunks=01,02,03,04,05 -->

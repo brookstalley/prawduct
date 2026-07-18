@@ -166,9 +166,47 @@ class TestLintBodySections:
                 "Actual": "Two issues per source item.",
                 "Expected": "The second run skips existing items.",
                 "Evidence": "migrate.py:120",
+                "Env": "prawduct v3.1.0 (plugin)",  # §2: bugs carry the product version
             },
         )
         assert issuefmt.lint(title, body, ["kind:bug", "area:importer"]) == []
+
+    def test_bug_without_env_nudges(self):
+        # A bug that records no product version gets the WARN nudge (§2/§4).
+        body = issuefmt.render_body(
+            "bug",
+            {"Problem": "x", "Repro": "y", "Actual": "z", "Expected": "w", "Evidence": "f.py:1"},
+        )
+        findings = _rules(issuefmt.lint("cli: a specific real bug here", body, ["kind:bug", "area:cli"]))
+        assert "bug-missing-env" in findings
+
+    def test_bug_with_env_no_nudge(self):
+        body = issuefmt.render_body(
+            "bug",
+            {"Problem": "x", "Repro": "y", "Actual": "z", "Expected": "w",
+             "Evidence": "f.py:1", "Env": "prawduct v3.1.0 (plugin)"},
+        )
+        findings = _rules(issuefmt.lint("cli: a specific real bug here", body, ["kind:bug", "area:cli"]))
+        assert "bug-missing-env" not in findings
+
+    def test_env_nudge_is_bug_only(self):
+        # Env is a bug-provenance field; a task without Env is not nudged.
+        body = issuefmt.render_body(
+            "task",
+            {"Problem": "x", "Proposed change": "y", "Acceptance": "- [ ] done", "Scope-out": "z"},
+        )
+        findings = _rules(issuefmt.lint("cli: a specific real task here", body, ["kind:task", "area:cli"]))
+        assert "bug-missing-env" not in findings
+
+    def test_env_nudge_tolerates_environment_spelling(self):
+        # Alias-aware like the rest of the section contract: a bug that spells the
+        # section "Environment" is not falsely nudged.
+        body = (
+            "### Problem\n\nx\n\n### Repro\n\ny\n\n### Actual\n\nz\n\n"
+            "### Expected\n\nw\n\n### Evidence\n\nf.py:1\n\n### Environment\n\nprawduct v3.1.0\n"
+        )
+        findings = _rules(issuefmt.lint("cli: a specific real bug here", body, ["kind:bug", "area:cli"]))
+        assert "bug-missing-env" not in findings
 
 
 class TestLintBodyBudgets:
