@@ -42,6 +42,43 @@ No size constraint on this file — it's the deep reference, consulted via `/lea
 
 Discovered ephemeral-ref-firewall (2026-07-14). Relates to Coherent Artifacts (#13), Clean Deployment (#10), Reasoned Decisions (#4), Living Documentation (#3), and the backlog `closed-by` durable-handle rule.
 
+## A red version/release-hygiene test on a feature branch is often a branch-STALENESS symptom, not a doc defect — check distance from the integration branch before patching the changelog
+
+**Pattern**: backlog-service Chunk 01 close-out (2026-07-17). Resumed a session whose prior turn had
+left a BLOCKING Critic finding: "CHANGELOG.md missing the current version (2.3.3) entry" — the suite
+was red because `test_changelog_has_current_version_entry` saw `VERSION`/`plugin.json` at 2.3.3 but
+`CHANGELOG.md`'s top entry at v2.3.2. The finding read as a one-line doc fix.
+
+**Root cause**: `feature/backlog-prd-owner-feedback` was cut from `develop` at v2.0.1 and never
+reconciled. Measured against `develop` (@ 3.0.4, the integration branch): **45 commits behind, 14
+ahead**. The 14 ahead were almost all *docs* (the PRD drill-down); the Chunk 01 code was uncommitted.
+The branch's `VERSION` had reached 2.3.3 via an ancestor `release-prep(v2.3.3)` commit, but the
+v2.3.3 CHANGELOG headline — and every entry through v3.0.4 — lives on `develop`, because the release
+flow adds the public headline on the integration side. So the branch had the version bump without its
+changelog entry: a pure staleness artifact.
+
+**Why patching would have been wrong** (Root Cause Discipline #16): (a) the v2.3.3 headline already
+exists downstream, so hand-adding it here fabricates divergent history that conflicts at merge; (b) it
+leaves the branch a full major version behind — including v3.0.0's *breaking rewrite of the review
+data plane* (append-only evidence fact store). The prior session's blocking Critic finding was itself
+recorded under the obsolete pre-v3.0.0 single-slot model. Patching the symptom would have shipped
+Chunk 01 reviewed under a governance model it will never merge under.
+
+**Fix**: merge `develop` in. `VERSION`/`CHANGELOG.md`/`plugin.json` all reconciled by auto-merge
+(→ 3.0.4, full changelog history), and the v3.0.0 fact-store data plane came with it. The merge was
+near-clean — one conflict (`active_build_plan`, exactly as the serial-merge-bookkeeping rule
+predicts) — because the branch's own commits were docs and the uncommitted Chunk 01 code auto-merged
+against v3.0.0's `bin/prawduct-hook` gate rewrite. One merge-boundary break surfaced (`norm_probes.py`
+importing the pre-move `.backlog` API — see the sweep-every-reader rule). Re-review under v3.0.0 came
+back 0 blocking.
+
+**Diagnostic before ANY changelog edit on a feature branch**: `git rev-list --count HEAD..<integration>`
+and `git merge-base <integration> HEAD`. If the branch is many releases / a major version behind,
+reconcile (merge the integration branch), don't patch. A Critic reviews the *tree*, not the branch
+*topology*, so it can correctly report the red suite while reading the symptom — the staleness
+diagnosis is the builder's to make. Relates to Root Cause Discipline (#16), Coherent Artifacts (#13),
+Honest Confidence (#5), and the sibling `check-cumulative-critic` stale-base gate diagnostic below.
+
 ## When `check-cumulative-critic` reports `uncovered` on a branch whose code you know was reviewed, suspect a stale base before running a fresh review — the gate anchors to `origin/<base>` by design, so unpushed integration commits drag already-shipped work into the required span
 
 **Pattern**: v3.0.3 release (2026-07-14). Wrapping a +0.0.1 release, `check-cumulative-critic`
@@ -736,6 +773,35 @@ plus 2 monkeypatch fail-toward-stale unit tests; full suite 1727 passed. The env
 (the incidental per-session re-run that catches dep/flake drift with no file footprint) was
 explicitly accepted by the owner as an expensive, undesigned safety net.
 
+## When validating a CLI's JSON output, feed the tool the raw bytes (direct pipe or file) — never `echo "$captured" | jq` under zsh, whose `echo` interprets `\n` and turns valid JSON into a false "malformed output" finding
+
+**Pattern**: During the VRF-004 live smoke (backlog-service Chunk 01, 2026-07-17), driving the CLI
+by hand, I captured `file --json` into a shell variable and ran `echo "$FILE_OUT" | jq`. jq failed
+with "Invalid string: control characters from U+0000 through U+001F must be escaped," the body field
+showing raw newlines around the appended ` ```prawduct / v: 1 ``` ` block. My first read was a real
+serializer defect — the `--json` envelope emitting unescaped newlines — exactly the class VRF-004's
+"`| jq .` never chokes" clause exists to catch. It looked like the highest-value possible outcome of
+the live pass: a real bug the offline L1 suite couldn't see.
+
+**Why it was a false positive**: before reporting it, I re-ran capturing stdout to a file and parsed
+with `python3 … json.loads` — result **OK**, body repr `'…\n\n```prawduct\nv: 1\n```\n'` with the
+newlines properly escaped, and only ONE raw `0x0a` in the whole file (the trailing `print` newline).
+The serializer (`cli.py::_emit` → `json.dumps(result)`) was correct all along. The corruption was
+introduced by **zsh's `echo` builtin**, which interprets backslash escapes by default (unlike POSIX
+sh / bash without `-e`): echoing the JSON string re-expanded every `\n` into a literal newline, and
+jq then correctly rejected the mangled bytes. The `get <id>` "empty ID" error that followed was a
+cascade — `ID=$(echo "$OUT" | jq -r .id)` returned empty because that jq had failed.
+
+**The fix / the discipline**: (1) Consume JSON from the raw bytes — pipe the command *directly*
+(`… --json | jq .`) or redirect to a file and validate that; for a definitive check use a real
+parser on the real bytes (`python3 -c 'import json; json.load(open(p))'`), which no shell can
+corrupt. (2) Do NOT "harden" the producer: the CLI's bytes were valid, standard JSON, and defending
+correct output against a specific shell's `echo` both distorts right behavior and can't actually fix
+a consumer that re-interprets escapes (root-cause discipline — the shell was the fault, not the
+code). (3) Verify before reporting: this nearly became a BLOCKING finding against a correct
+serializer; a strict-parser cross-check on the raw file is the cheap veto. Filed as durable rule +
+a VRF-004 "consuming the `--json` correctly" note so the next operator doesn't trip the same trap.
+Relates to Honest Confidence (#5), Root Cause Discipline (#16), Validate Before Propagating (#15).
 ## When a session finds uncommitted work in a worktree it did NOT launch in, treat it as another session's territory and leave it alone — a session works only in its own worktree, because sibling WIP belongs to a possibly-live session and adopting it collides with that work and writes into the clone-shared governance state
 
 Discovered 2026-07-17: a session launched in the main checkout read the SessionStart briefing's *enumerated* list of sibling worktrees, saw uncommitted feature work in one, judged it adoptable, entered it, and began verifying/reviewing — while that worktree had its own live session doing the same work. Root cause was briefing NOISE, not a locking gap: listing siblings' branches/paths reads as a menu of adoptable work. Fix removed the enumeration so the briefing orients to THIS worktree only ([[backlog]] WT-8Q3N); the durable agent-side rule stands regardless — check a worktree's `.prawduct/.session-start` liveness before touching one you did not launch in, and default to leaving it alone. Relates to Scope Discipline (#12 — do what was asked, where it was asked), Root Cause Discipline (#16 — the fix was upstream noise, not a downstream lock), Structural Awareness (#21).

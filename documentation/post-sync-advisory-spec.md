@@ -361,6 +361,15 @@ These are the probes the two features expect this infrastructure to support. The
 
 See `documentation/backlog-system-requirements.md` §8.2 for resolution conditions and threshold rationale.
 
+**Post-cutover retirement (2026-07-18):** once a product records `backlog_service_repo:
+owner/repo` in `project-state.yaml` (the backlog-service migration cutover — backlog-service API
+§2.4), every probe whose premise is "the markdown file IS the live backlog" returns no candidates:
+the three markdown probes above (`legacy-backlog-format`, `legacy-section-schema`,
+`backlog-overdue-grooming`) and the norm-probe trio that judges item liveness from the same file
+(`revisit-due`, `dead-why`, `stalled-transition`). `external-backlog-detected` keeps firing — its
+premise (stray TODO.md files) is independent of where the real backlog lives. The shared predicate
+is `backlog_probes.post_cutover`.
+
 ---
 
 ## 9. Stop-hook integration

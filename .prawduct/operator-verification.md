@@ -94,3 +94,114 @@ path (hook → probe roster → briefing text) is exercised only by a live sessi
 - The briefing NO LONGER prints the `DISCOVERY NOT CAPTURED` block (layer 0 cleared).
 - The coverage advisory now names the missing strategy-class artifacts (layer 1), and
   it is a single `info` nudge, not a double-nag with any layer-0 or layer-2 line.
+
+## VRF-004 — Chunk 01 (backlog-service) — CLI file/get round-trip + JSON envelope
+
+**Status:** verified (2026-07-17, throwaway repo `brookstalley/prawduct-backlog-smoke`)
+**Added:** 2026-07-16 (backlog-service Chunk 01 — walking skeleton; renumbered from VRF-003
+on the 2026-07-17 develop merge — the id collided with structural-coverage's VRF-003 above)
+**Result:** L5 live smoke passed through `cli.run`; the hand round-trip confirmed every
+eyeball item — canonical `owner/repo#N` id, `stage:ready` label, `v: 1` body block,
+title/stage round-trip, `status`→`open`, valid `--json` (jq on the raw stdout), SEC-1 clean
+(no token / `proxy-injected` / `x-oauth` in std{out,err}), GV6 (namespaced labels created,
+GitHub-default + a fixture `keep-me` label untouched). SPIKE facts confirmed: issue numbers
+`1..4` monotonic/never-reused (M6); `If-None-Match` conditional GET returns `304 Not
+Modified` (ETag/304). Raw issue shape captured for the fake (CONTRACT-1): keys incl.
+`number`, `node_id` (`I_kwDO…`), `state`, `labels[].name`, timestamps.
+**Where to verify:** a throwaway GitHub repo with `gh` authenticated (`repo` scope). Run the
+gated L5 smoke, or drive the CLI by hand:
+
+    BACKLOG_LIVE_REPO=you/throwaway python -m pytest tests/test_backlog_smoke_live.py -q
+    # or:
+    prawduct-hook backlog provision --repo you/throwaway
+    prawduct-hook backlog file --repo you/throwaway --title smoke --body hi --stage ready --json
+    prawduct-hook backlog get <printed-id> --json
+
+**Consuming the `--json` correctly (avoid a false "malformed output"):** pipe the command's
+stdout *directly* to jq (`… --json | jq .`) or redirect to a file. Do **not** capture into a
+shell variable and `echo "$out" | jq` under **zsh** — zsh's `echo` builtin interprets `\n`
+escapes, re-introducing raw newlines that make valid JSON look malformed. The `--json` bytes
+are correct (`json.dumps`, cli.py `_emit`); the corruption is consumer-side.
+
+**Why a human check (absorbs the Done-when step-0 `verify-api`/CONTRACT-1 obligation):** the
+L1 suite proves the logic against the in-process fake, but the fake's *behavior*
+(read-your-writes on create, real label-create semantics, `node_id`/number assignment, the
+exact JSON shapes) is confirmed only against live GitHub — Test Specs §2.1: behavioral
+fidelity is the L4/L5 spikes' job, not the shape-diff. This live pass is where the real
+response shapes get captured to seed/confirm the fake (CONTRACT-1), and where SPIKE-S1's
+core-gating facts are confirmed: issue numbers are never reused (M6), ETag/304 conditional
+GET works. Run 2026-07-17 — see **Result** above.
+
+**Verify (human eyeballs) — all confirmed 2026-07-17:**
+- `file` returns a canonical `owner/repo#N` id immediately; the issue exists with the
+  `stage:ready` label and a `prawduct` body block (`v: 1`).
+- `get <id>` round-trips title/stage; `status` decodes to `open` (no status label).
+- `--json` output is pure JSON on stdout (`| jq .` never chokes); **no token or the
+  `proxy-injected` literal appears anywhere** in stdout/stderr (SEC-1).
+- `provision` creates the namespaced `stage:`/`status:` labels and leaves any pre-existing
+  non-prawduct labels untouched (GV6).
+
+## VRF-005 — Chunk 02 (backlog-service) — live two-axis status transition + label-remove encoding
+
+**Status:** pending
+**Added:** 2026-07-17 (backlog-service Chunk 02 — state-machine keystone)
+**Where to verify:** a throwaway GitHub repo with `gh` authenticated (`repo` scope). Run the
+gated L5 status smoke, or drive the CLI by hand:
+
+    BACKLOG_LIVE_REPO=you/throwaway python -m pytest tests/test_backlog_smoke_live.py -q
+    # or:
+    prawduct-hook backlog status you/throwaway#<n> --to in-progress --json
+    prawduct-hook backlog status you/throwaway#<n> --to shipped --json
+
+**Why a human/live check (fake-unconfirmable):** the L1 suite proves the crash-safe write order
+(`set-status`, CRASH-1) and the CAS/mass-assignment guards against the in-process fake, but three
+behaviors are confirmed only against real GitHub —
+1. **label-remove path encoding:** `GhTransport.remove_label` URL-encodes the label name
+   (`quote(name, safe="")`), so `status:in-progress` → `status%3Ain-progress` in the DELETE path;
+   real `gh api`'s handling of the encoded colon is not exercisable by the fake.
+2. **reopen clears `state_reason`:** the transition `shipped → in-progress` PATCHes `state: open`
+   and expects GitHub to clear `state_reason` (the decoder relies on it).
+3. **`add_labels` is additive / never a zero-label window** on real GitHub during an open sub-state
+   transition (`submitted → in-progress`).
+
+**Verify (human eyeballs):**
+- `status --to in-progress` on an open item: the issue gains `status:in-progress` and (if it had
+  one) loses the prior open sub-state label; the decoded `status` is `in-progress`.
+- `status --to shipped`: the issue is **closed** with `state_reason: completed`, **no** `status:`
+  label remains, decoded `status` is `shipped`; a re-run is a clean no-op (exit 0, unchanged).
+- `--json` stays pure JSON; **no token / `proxy-injected` literal** appears anywhere (SEC-1).
+
+## VRF-006 — Chunk 06 (backlog-service) — prawduct-first migration: scrub dispositions + migrated repo + live briefing
+
+**Status:** pending (deferred — the live migration itself is not yet run)
+**Added:** 2026-07-17 (backlog-service Chunk 06, offline deliverables landed; live
+migration/repoint/retirement deferred to an owner-run session after design sign-off)
+**Where to verify:** A real owner-driven session, after design sign-off, running the
+migration-scrub runbook (`skills/backlog/migration-scrub.md`) against a chosen target
+repo — first SPIKE-S2 (`tests/spikes/s2_migration.py`) on a throwaway copy, then the
+real prawduct backlog.
+
+**Why a human check:** the scrub's disposition decisions and the fidelity of the
+migrated backlog are, by design, owner-confirmed (MG4/MIG-5) — no automated test can
+sign off on *which* items are stale/duplicate or that the migrated bodies read
+correctly. Chunk 06's acceptance is the dogfood itself.
+
+**Verify (owner eyeballs):**
+- The **scrub disposition list** — every stale/dup disposition is one the owner
+  confirmed; no item was dropped silently and nothing was hard-deleted (dropped items
+  are *closed*, duplicates *merged+redirected*, bodies preserved).
+- A **spot-check of migrated bodies/IDs** — a handful of items read verbatim on
+  GitHub Issues and every hand-minted `PFX` resolves as an `id:PFX` alias.
+- The **live briefing counts** — session start reads the backlog count through the
+  adapter (not `legacy.py`), with a visible age, and never hangs when GitHub is slow.
+- `legacy.py` and the `incoming-bugs/` drop-box are retired only *after* the above.
+
+**Drop-box retirement — verify the lockstep replacement (BKL-0QR1, resolved 2026-07-17 → option c):**
+`incoming-bugs/` is retired **only together with** its minimal same-repo replacement (PRD §8.9/MG5),
+never before it. Before/at the retirement, eyeball that the replacement is live:
+- `/prawduct:report-bug`, on the reachable-channel path, files an `untriaged-upstream`-labeled
+  **GitHub issue** into prawduct's own (public) repo via the adapter — no `incoming-bugs/` file write.
+- The `untriaged-upstream-reports` advisory counts those **labeled open issues**, not `incoming-bugs/*.md`.
+- The **no-channel fallback** still degrades cleanly to local capture + the canonical-tracker pointer.
+- Only *then* are `legacy.py` and `incoming-bugs/` retired. The full XP1 cross-owner/foreign-identity
+  plane stays **W3** — it is deliberately *not* in this slice.

@@ -3,6 +3,121 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-07-17: Backlog service — GitHub Issues as the system-of-record (backlog-service)
+
+<!-- prawduct: type=feature | scope=backlog-service-v1 | chunks=01,02,03,04,05 -->
+<!-- Statusless on feature/backlog-prd-owner-feedback = release-pending once merged.
+     Large subsystem; plan at .prawduct/artifacts/build-plan-backlog-service.md, one
+     commit per chunk, per-chunk Critic. Chunk 06's OFFLINE deliverables ride in this
+     entry (must-fixes, restructure pre-pass, transport blockers) but 06 is deliberately
+     NOT tagged: its live-migration leg is deferred (owner hold, BKL-6M4T), so the 06
+     Status checkbox must not flip at release. -->
+
+**Parent:** BKL-5D2C — replace the markdown backlog (slow, merge-conflict-prone, git-coupled;
+the deepest measured pain being stale/untrusted item state) with **GitHub Issues as the
+system-of-record** via a deterministic `prawduct-hook backlog` adapter (PRD §16 item 6).
+
+**What (chunks built so far):**
+- **Chunk 01 — walking skeleton:** the `lib/backlog/` package (transport seam + in-process
+  fake, `file`/`get`, minimal `provision`), the `bin/prawduct-hook backlog` dispatch, and the
+  markdown parser moved to `legacy.py` (all readers repointed). Live round-trip verified (VRF-004).
+- **Chunk 02 — two-axis status state machine (CC1/M5 keystone):** crash-safe idempotent
+  `set-status` (state-authority-first, add-before-remove, self-healing reconciliation), `update`
+  (optimistic CAS → `conflict`, SEC-2 mass-assignment guard, block-preserving body edits), and
+  `comment`. Live status path queued as VRF-005.
+- **Chunk 03 — query & ready-work (GV1/DM3/CC3):** the read side in a new `lib/backlog/query.py`
+  (`list` structured filters/sort/paginate online off the REST list endpoint; `pick` list-then-fan-out
+  — assignee/claim-TTL + native-blocker predicates, cross-repo blockers judged from a live read,
+  ranked + *why*; `counts` derived on read), plus `claim`/`unclaim` (atomic take-and-verify in one
+  PATCH — crash-safe, TTL-reap so `pick` can't starve) and `link`/`unlink` (native dependencies +
+  sub-issues + a block-list `related`) in `core.py`. PROV-2 (non-prawduct issues ignored) and the
+  observed 404-after-create replication window (bounded settle-retry) handled. Live `list`/`pick`
+  round-trip queued as an L5 smoke.
+- **Chunk 04 — governance surface (GV2/GV6/SEC-5/SEC-6):** `refresh-counts` (the `briefing_counts`
+  degenerate cache — a schema-versioned JSON snapshot at `<git-common-dir>/prawduct/`, atomic write,
+  visible age, network-independent) in a new `lib/backlog/snapshot.py`; `reconcile-labels` (GV6
+  coexistence reconcile — create-missing, foreign labels untouched, idempotent); the never-block floor
+  (a backend-down `unavailable` never hangs/corrupts); and the unattended-context guards (SEC-5
+  Actions write-withhold, SEC-6 `automated`/`worker` marking) in a new pure `lib/backlog/context.py`.
+  The D6 detached-refresh warm rides `transport.spawn_detached` (egress discipline). L5 smokes queued.
+- **Chunk 05 — importer + alias machinery + minimal `merge` + `export` (MG1/MG2/DM4/AU3):** a new
+  `lib/backlog/migrate.py` — `import` (idempotent/resumable, keyed on the permanent `id:PFX` alias
+  written atomically in the create; a durable checkpoint accelerator; no rollback, M6), the alias
+  machinery (`ids.py`: `PFX-XXXX` → `id:PFX` label + `id_aliases` block + redirect-follow), a minimal
+  `merge` (fold A→B, **redirect-before-close** so a crash leaves the source open-but-redirected —
+  CRASH-2; nothing hard-deleted), `export` (full-fidelity JSON dump incl. the native graph — deps,
+  sub-issues, timeline, assignees), and a write-`Pacer` (content-budget 80/min+500/hr, injectable
+  clock). Transport/fake gained `list_sub_issues`/`list_timeline`; the export on-disk layout is pinned
+  in Data Model §8. Fixture-proven (MIG-1…4, CRASH-2/CRASH-4); the live SPIKE-S2 + real migration stay
+  in Chunk 06. `import`+`export`+`merge` L5 smokes + the Done-when-0 live blocker check queued.
+- **Chunk 06 pre-sign-off must-fix BKL-4W7H (offline part, 2026-07-17):** closed the `id:PFX`-alias
+  self-healing gap. `core.resolve_ref` wires PFX→canonical alias resolution into `get`/`link` (against
+  `--repo`); `migrate._find_by_key` gains a block-`id_aliases` fallback skip-authority (`_AliasIndex`,
+  one lazy scan per drifted run) that self-heals the missing label so a human-deleted `id:PFX` can't
+  turn a re-import into a permanent duplicate; `reconcile-labels` re-derives deleted aliases from the
+  block. The live migration (SPIKE-S2, dogfood, briefing/gate repoint, drop-box retirement) stays in
+  Chunk 06 (BKL-6M4T).
+- **Chunk 06 must-fixes BKL-7Q2N + BKL-3K9N (2026-07-17):** the remaining single-id mutators
+  (`status`/`update`/`comment`/`claim`/`unclaim`) plus `merge` source/target now resolve a bare
+  `PFX-XXXX` through `core.resolve_ref` with a threaded `default_repo` (closing the MG1
+  "existing IDs stay valid forever" gap `get`/`link` had already closed); and the importer
+  gained secondary-rate-limit backoff (`retry-after`-honoring, bounded, injectable clock) so a
+  long import degrades to pacing instead of failing mid-run.
+- **Issue-structure standard on the `file` path — BKL-2H9W + BKL-4C6P (2026-07-17):** a new
+  deterministic `lib/backlog/issuefmt.py` (no model — INV-1) implementing
+  `documentation/backlog-service-issue-standard.md`: `normalize_title` (§1 `area:`-prefixed
+  atomic title, idempotent), `render_body` (§2 `### Section` composer — reserved for the MG6
+  migration pre-pass, BKL-8N5K), and `lint` (§4 WARN-only, structured findings). Wired into
+  `core.file_item`: title normalized on create, created issue audited, findings ride a dedicated
+  top-level `lint` envelope field (distinct from operational `warnings[]`; never blocks, never
+  touches the exit code — reusable as the migration audit). CLI prints `lint:` findings to
+  stderr; api-contract §3 + standard §4 updated. Built from the design parent (issue-standard
+  doc), not a build-plan chunk.
+- **MG6 restructure pre-pass — BKL-8N5K (2026-07-17, Chunk 06 deliverable):** a new deterministic
+  `lib/backlog/restructure.py` (INV-1) implementing issue-standard §5 "restructure, preserve, no
+  split": fail-closed plan validation (a typo'd PFX or unknown key refuses the whole run before
+  the data plane), application through the shared `issuefmt` composer (`normalize_title` +
+  `render_body`, so a migrated body and a net-new one are layout-identical), verbatim `original_title`/
+  `original_body` preservation as block fields (new `encode.format_text`/`parse_text` — JSON-string
+  single-line encoding, fence-safe, recoverable byte-exact; Data Model §2), `kind:` backfill,
+  non-atomic **flagging** (never auto-split — 1 PFX = 1 issue), and a WARN-only `issuefmt.lint`
+  audit. CLI: `import --restructure <plan.json>` (plan applies **at create only** — skip-if-exists
+  means an existing issue is never rewritten; the plan digest keys the checkpoint) + the offline
+  `restructure-preview` op rendering the aggregate before/after owner-review artifact **from the
+  same apply path the import consumes**. Build-plan MG1/MG6 reconciliation folded (Chunk 05 MIG-1
+  note, Chunk 06 scrub flow, SPIKE-S2 settled-fact annotation); scrub runbook gains step 2b.
+- **Chunk 06 must-fix BKL-8P2R — briefing/gate repoint, the safe way (2026-07-18):** the session
+  briefing's backlog rollup is now **cutover-aware** on a new flat `backlog_service_repo:
+  owner/repo` scalar in `project-state.yaml` (written by the migration session; API §2.4). Set:
+  `briefing._backlog_pending_line` reads `snapshot.read` (file-only) with the **visible snapshot
+  age**, then fires the **detached** `snapshot.spawn_refresh` warm — the never-block "few s"
+  bound is **structural** (no synchronous network call exists on the briefing path; a stalled
+  backend cannot reach it), which is how the item's timeout-scoping requirement is satisfied.
+  Unset: the markdown parse is unchanged (MG3 coexistence). The three markdown-premise advisory
+  probes retire on the same switch (`legacy-backlog-format`, `legacy-section-schema`,
+  `backlog-overdue-grooming`); `external-backlog-detected` survives. The G2 never-block test
+  injects a child whose `wait` **raises** (fire-and-forget pinned, not just fast-error) plus a
+  wall-clock bound.
+- **Pre-migration transport blockers BKL-2V6N + BKL-5T3J + redirect-follow BKL-5R2K
+  (2026-07-18, from the holistic Fable review):** (1) `gh --paginate` emits each page as a
+  SEPARATE JSON document, so `list_labels`/`list_timeline`/`list_sub_issues` hard-failed past one
+  page — fatal mid-import once the repo crossed ~30 labels (216 aliases incoming), and every
+  resume re-failed. Replaced with `transport._api_paged` (explicit `per_page`/`page` loop,
+  raw-short-page terminator, bounded, injectable `per_page` for live spikes). (2) `list_issues`
+  dropped PRs client-side, so every `len(batch) < per_page` terminator saw a filtered count and
+  stopped scans early in PR-bearing repos — silently truncating `export` (the MG2 backup),
+  `counts`, and the alias self-heal (a permanent-duplicate risk). The transport now returns raw
+  pages; PRs leave the pipeline at `encode.is_prawduct_issue` (also rejects a mislabeled PR) with
+  explicit `pull_request` guards on the label-keyed lookups (`_find_by_key`,
+  `_numbers_for_alias`, `iter_alias_issues`). **Both live-verified read-only against the real
+  target** (`brookstalley/prawduct`: 9 labels walked at per_page=3 set-identical; 128 raw
+  entries / 122 PRs over 2 pages walked fully; the old filtered terminator demonstrably stopped
+  at page 1 with 4 of 128). (3) BKL-5R2K: `get` now follows the `superseded_by` chain
+  (`core.resolve_survivor`, shared with `migrate.resolve`) — the merged-away item is returned
+  with `resolves_to` + a warning, human mode prints the survivor breadcrumb, and `pick` excludes
+  an open-but-redirected item (the CRASH-2 window). Fake gains `seed_pull_requests`.
+
+**Classification:** structural
 ## 2026-07-17: Test evidence meets real environments — false-red guard, fallback deprecation, multi-environment test_commands (fix)
 
 <!-- prawduct: type=fix | release=v3.1.0 | status=shipped -->
