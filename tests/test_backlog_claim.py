@@ -142,7 +142,12 @@ class TestClaim:
         import json
 
         item = _file(fake, title="contended")
-        core.claim(fake, id_raw=item, now=NOW, sleeper=NOSLEEP)
+        # Both claims go through the CLI so holder and challenger share one clock
+        # domain — a fixed-NOW first claim expires against the CLI's real clock
+        # once wall time passes NOW + TTL, turning the conflict into a legal reap.
+        code = cli.run(None, ["claim", item, "--json"], transport=fake)
+        capsys.readouterr()
+        assert code == 0
         _as_actor(fake, "agent-b")
         code = cli.run(None, ["claim", item, "--json"], transport=fake)
         env = json.loads(capsys.readouterr().out)
