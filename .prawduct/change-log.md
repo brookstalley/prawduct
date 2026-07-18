@@ -3,6 +3,61 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-07-17: Test evidence meets real environments — false-red guard, fallback deprecation, multi-environment test_commands (fix)
+
+<!-- prawduct: type=fix -->
+<!-- Statusless = release-pending once merged. Code + tests, no build plan (promoted
+     TST-6F2R; precedent: the v3.0.2 declared-command-onramps fix). Governance-protected
+     (bin/, test-status gate input) → full Critic. -->
+
+**Parent:** TST-6F2R (upstream discodon report): with no `test_command` declared,
+`test-evidence record` fell back to `sys.executable -m pytest` — the HOOK's interpreter — so a
+venv-isolated product's suite died wholesale at collection and the hook persisted a
+catastrophic false-red (discodon: 0 passed / 5074 failed) that polluted `test-status` and read
+as a mass regression. Owner scope ruling (3.1.0): fix now, with first-class migration guidance
+off the fallback, and make the declared path work reliably for multi-platform products (the
+game shipping iOS + Android; the app with SQL + Python + React/Vite) — one product, several
+test environments, one evidence record.
+
+**What:**
+- **False-red guard** (the report's load-bearing ask): an interpreter-fallback run with ZERO
+  passes and only failures/errors — the wrong-interpreter signature — is **refused** (exit 2,
+  nothing persisted) with migration guidance naming both declaration forms. Scoped to the
+  fallback: a declared command is the operator's deliberate environment-aware invocation, so
+  an all-red result there records honestly. The one carve-out from "a failing run is recorded,
+  not dropped" — that contract's test now uses a mixed run (a pass proves the environment
+  launched) and names the carve-out.
+- **Fallback deprecated-by-nudge:** every fallback run prints a stderr note explaining the
+  interpreter hazard and pointing at `test_command`/`test_commands`.
+- **`test_commands:` — the multi-environment form** (`bin/prawduct-hook`, new
+  `_read_str_list_yaml_key` block-sequence reader, stdlib-only): a list of canonical
+  invocations, one per environment, each run under the existing declared-command rules (shlex
+  list-form, mandatory `{junit_xml}`, no extra args) with its own JUnit report; counts
+  aggregate across all reports into ONE record (the existing multi-`<testsuite>` summation,
+  now spanning roots); any launch failure or unparseable report fails the whole record — no
+  partial evidence. Mutually exclusive with `test_command:` (both declared = error); the
+  ingest on-ramps (`--from-junit`, `--no-rerun`, `--from-counts` rejection) treat the list
+  exactly as they treat the scalar. Exit status requires every command to exit 0.
+- **Dogfooding:** prawduct's own `project-state.yaml` now declares
+  `test_command: python3 -m pytest tests/ --junit-xml={junit_xml} -q` — the repo no longer
+  rides the deprecated fallback it just guarded.
+- **Critic fix round** (all warnings resolved in-branch): a declared-but-unparseable
+  `test_commands` (flow style, nested mapping, empty) now REFUSES loudly instead of silently
+  degrading to the fallback (new `_yaml_top_level_key_present` presence probe — the silent
+  path could persist GREEN partial-environment evidence); full-line comments inside the block
+  sequence no longer truncate the list; `--from-junit` is now **repeatable** so the ingest
+  on-ramp scales with the list (one flag per report, aggregated, no-partial-evidence rules
+  preserved); the record's `command` field joins with ` ; ` (no implied short-circuit); guard
+  wording matches its condition (skips may accompany — the source incident had 35).
+- Coverage: 12 new cases (`TestDeclaredCommandEnvironments`) — refusal persists nothing,
+  fallback nudge, polyglot aggregation, honest red recording, both-keys error, per-command
+  placeholder validation, launch-failure and unparseable-report no-partial-record, flow-style
+  refusal, comment-tolerant lists, repeated `--from-junit` aggregation, `--from-counts`
+  redirect. `methodology/building.md` Verify bullet, the record docstring, and
+  `templates/project-state.yaml`'s TEST EXECUTION legend name the new knob; the
+  cross-cutting-concerns coverage row updated. Follow-up filed: mixed JUnit/non-JUnit
+  polyglots (`--from-counts` composition).
+
 ## 2026-07-17: Retrieval over generation — Principle 24 lands across the guidance surfaces (feature)
 
 <!-- prawduct: type=feature -->
