@@ -222,6 +222,49 @@ class FakeGitHub(Transport):
         state.issues[number] = issue
         return dict(issue)
 
+    def seed_pull_requests(
+        self,
+        owner: str,
+        repo: str,
+        count: int,
+        *,
+        state: str = "closed",
+        labels: list[str] | None = None,
+    ) -> list[int]:
+        """Seed ``count`` pull requests into the issues list — GitHub's REST
+        issues endpoint interleaves PRs (marked by a ``pull_request`` key), and
+        the transport returns them raw (BKL-5T3J), so tests must be able to
+        model a PR-bearing repo. Numbers come from the same counter as issues
+        (real repos share one sequence). ``labels`` lets a test model the
+        mislabeled-PR case (a prawduct-namespaced label on a PR)."""
+        repo_state = self._repo(owner, repo)
+        for name in labels or []:
+            repo_state.labels.setdefault(name, {"name": name, "color": "ededed"})
+        numbers: list[int] = []
+        for _ in range(count):
+            number = repo_state.next_number
+            repo_state.next_number += 1
+            repo_state.issues[number] = {
+                "number": number,
+                "node_id": f"PR_{owner}_{repo}_{number}",
+                "title": f"PR #{number}",
+                "body": "",
+                "state": state,
+                "state_reason": None,
+                "labels": [dict(repo_state.labels[n]) for n in (labels or [])],
+                "assignee": None,
+                "assignees": [],
+                "user": {"login": self.user["login"], "id": self.user["id"]},
+                "pull_request": {
+                    "url": f"https://api.github.com/repos/{owner}/{repo}/pulls/{number}"
+                },
+                "html_url": f"https://github.com/{owner}/{repo}/pull/{number}",
+                "created_at": "2026-01-01T00:00:00Z",
+                "updated_at": "2026-01-01T00:00:00Z",
+            }
+            numbers.append(number)
+        return numbers
+
     def get_issue(self, owner: str, repo: str, number: int) -> dict:
         self._maybe_unreachable()
         self.calls.append(("get_issue", owner, repo, number))

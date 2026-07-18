@@ -230,7 +230,43 @@ def get_item(
         return error("unavailable", "the backend request failed unexpectedly")
 
     item, warnings = encode.decode_item(issue, canonical_id=nid.canonical)
+    superseded = item.get("superseded_by")
+    if superseded:
+        # A merged-away source: follow the redirect chain so the caller learns
+        # the survivor (BKL-5R2K — MG1's "old refs resolve forever" includes
+        # resolving THROUGH a merge). The item itself is still returned — the
+        # redirect is surfaced, not silently substituted; an unresolvable chain
+        # degrades to no enrichment, never a failed get (ERR-6 posture).
+        try:
+            survivor = resolve_survivor(transport, nid.canonical, owner=nid.owner)
+        except (TransportError, OSError, json.JSONDecodeError) as exc:  # ERR-6
+            log_diag(f"redirect-follow failed on get: {type(exc).__name__}")
+            survivor = None
+        if survivor and survivor != nid.canonical:
+            item["resolves_to"] = survivor
+            warnings.append(
+                f"{nid.canonical} was merged away — superseded by {survivor}"
+            )
     return ok(item, warnings)
+
+
+def resolve_survivor(transport: Transport, canonical: str, *, owner: str) -> str:
+    """Follow a merged-away source to its survivor: read each hop's block
+    ``superseded_by`` and chase it via :func:`ids.resolve_redirect` (bounded,
+    cycle-safe — fail-open at the last resolvable node). The transport wiring
+    for the pure redirect-follow (CRASH-2)."""
+
+    def fetch(canon: str) -> str | None:
+        nid = ids.normalize_id(canon, default_owner=owner)
+        if not nid.ok:
+            return None
+        try:
+            issue = transport.get_issue(nid.owner, nid.repo, nid.number)
+        except TransportError:
+            return None
+        return encode.parse_block(issue.get("body")).superseded_by()
+
+    return ids.resolve_redirect(canonical, fetch=fetch)
 
 
 def _get_issue_settling(
@@ -332,7 +368,13 @@ def _numbers_for_alias(
     issues = transport.list_issues(
         owner, repo, state="all", labels=[ids.alias_label(pfx)], per_page=100, page=1
     )
-    return [issue["number"] for issue in issues if issue.get("number") is not None]
+    # A labeled PR must never resolve as the aliased item (BKL-5T3J — the raw
+    # issues list interleaves PRs).
+    return [
+        issue["number"]
+        for issue in issues
+        if issue.get("number") is not None and not encode.is_pull_request(issue)
+    ]
 
 
 # --- status (set-status: the crash-safe two-axis transition) -----------------
@@ -846,6 +888,8 @@ def iter_alias_issues(transport: Transport, owner: str, repo: str):
     while True:
         batch = transport.list_issues(owner, repo, state="all", per_page=100, page=page)
         for issue in batch:
+            if encode.is_pull_request(issue):
+                continue  # PRs interleave the raw issues list (BKL-5T3J)
             number = issue.get("number")
             if number is None:
                 continue

@@ -70,10 +70,16 @@ def list_items(
 
     The returned ``count`` is the number of in-scope items **on this page** (a
     ``status`` refinement can make it smaller than ``per_page`` even when more
-    pages exist) — it is not a total, so drive pagination by requesting the next
-    ``page`` until an *empty* page, not until ``count < per_page``.
+    pages exist) — it is not a total. Drive pagination by ``has_more``: derived
+    from the **raw** page length, so a page whose raw entries are entirely
+    pull requests / out-of-scope issues (items ``[]`` but ``has_more`` true)
+    does not falsely end the walk (BKL-5T3J — "page until an empty page" was
+    trippable by an all-PR page in a PR-bearing repo).
     """
     filters = filters or {}
+    # GitHub silently clamps per_page to 100; clamp locally too so `has_more`
+    # (raw-length == per_page) stays honest for an out-of-range request.
+    per_page = max(1, min(per_page, 100))
     state = filters.get("state", "open")
     labels: list[str] = [f"{f}:{filters[f]}" for f in _LABEL_FACETS if f in filters]
 
@@ -110,7 +116,12 @@ def list_items(
     if status_filter is not None:
         # Refine: a `closed` list can hold both shipped and dropped.
         items = [it for it in items if it["status"] == status_filter]
-    return ok({"items": items, "count": len(items)}, warnings)
+    # has_more reads the RAW page length — the caller's pagination signal must
+    # never derive from the filtered view (BKL-5T3J).
+    return ok(
+        {"items": items, "count": len(items), "has_more": len(issues) == per_page},
+        warnings,
+    )
 
 
 # --- pick (ready-work) -------------------------------------------------------
@@ -154,6 +165,12 @@ def pick(
         canonical = f"{owner}/{repo}#{number}"
         item, decode_warnings = encode.decode_item(issue, canonical_id=canonical)
         warnings.extend(decode_warnings)
+
+        if item.get("superseded_by"):
+            # Open-but-redirected: the CRASH-2 window between a merge's redirect
+            # write and its close. The item is merged-away — never ready work
+            # (BKL-5R2K); the merge re-run converges it to closed.
+            continue
 
         eligibility = _claim_eligibility(item, now, claim_ttl_seconds)
         if eligibility is None:

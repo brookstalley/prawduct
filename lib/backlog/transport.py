@@ -106,6 +106,12 @@ class TransportError(Exception):
         self.details = details or {}
 
 
+# The page-loop backstop for _api_paged (labels/timeline/sub-issues): 100 pages
+# × 100/page = 10k entries — far above any real dataset, so the bound only stops
+# a pathological endpoint from spinning forever.
+_PAGED_MAX_PAGES = 100
+
+
 # --- Non-interactive environment (INV-2, Security §1a) -----------------------
 
 
@@ -290,9 +296,13 @@ class GhTransport(Transport):
         """List issues off the REST list endpoint — the ready-work query's engine
         (Q1-structured, strongly consistent in practice). ``labels`` is an AND
         filter; ``assignee`` accepts a login, ``"none"`` (unassigned), or ``"*"``
-        (any). The REST issues list also returns pull requests — those carry a
-        ``pull_request`` key and are dropped here (a list mechanic, not a backlog
-        concern; PROV-2's non-prawduct filtering is the query layer's job)."""
+        (any). The REST issues list also returns pull requests — they are
+        returned RAW (a ``pull_request`` key marks them) so pagination
+        terminators can read the true page length (BKL-5T3J: dropping them here
+        made every ``len(batch) < per_page`` check see a filtered count and stop
+        scans early in PR-bearing repos). Filtering is the decode layer's job —
+        ``encode.is_prawduct_issue`` rejects PRs (PROV-2), and label-keyed
+        lookups guard ``pull_request`` explicitly."""
         from urllib.parse import urlencode  # noqa: PLC0415 — only list builds a query string
 
         params: list[tuple[str, str]] = [("state", state)]
@@ -310,11 +320,7 @@ class GhTransport(Transport):
         result = self._api(["api", path])
         if not isinstance(result, list):
             return []
-        return [
-            issue
-            for issue in result
-            if isinstance(issue, dict) and "pull_request" not in issue
-        ]
+        return [issue for issue in result if isinstance(issue, dict)]
 
     # -- relationships (native dependencies + sub-issues) ------------------
     #
@@ -454,11 +460,9 @@ class GhTransport(Transport):
         """The child issues under ``number`` (native sub-issues) — for ``export``'s
         graph dump. Ref-based so it is cross-repo capable. Shape recorded by the
         Chunk-05 ``verify-api`` step; the L1 suite exercises it through the fake."""
-        result = self._api(
-            ["api", f"repos/{owner}/{repo}/issues/{number}/sub_issues", "--paginate"]
-        )
+        result = self._api_paged(f"repos/{owner}/{repo}/issues/{number}/sub_issues")
         out: list[dict] = []
-        for child in result if isinstance(result, list) else []:
+        for child in result:
             repo_info = child.get("repository") or {}
             c_owner = (repo_info.get("owner") or {}).get("login") or owner
             c_repo = repo_info.get("name") or repo
@@ -475,11 +479,9 @@ class GhTransport(Transport):
         reduced to the non-secret fields the dump keeps. Shape recorded by the
         Chunk-05 ``verify-api`` step; behavior (event *ordering*) is an L5-owed
         re-check CONTRACT-1 cannot see (Test Specs §6)."""
-        result = self._api(
-            ["api", f"repos/{owner}/{repo}/issues/{number}/timeline", "--paginate"]
-        )
+        result = self._api_paged(f"repos/{owner}/{repo}/issues/{number}/timeline")
         out: list[dict] = []
-        for event in result if isinstance(result, list) else []:
+        for event in result:
             if not isinstance(event, dict):
                 continue
             out.append(
@@ -492,10 +494,7 @@ class GhTransport(Transport):
         return out
 
     def list_labels(self, owner: str, repo: str) -> list[dict]:
-        result = self._api(
-            ["api", f"repos/{owner}/{repo}/labels", "--paginate"]
-        )
-        return result if isinstance(result, list) else []
+        return self._api_paged(f"repos/{owner}/{repo}/labels")
 
     def create_label(
         self, owner: str, repo: str, *, name: str, color: str, description: str
@@ -586,6 +585,29 @@ class GhTransport(Transport):
         )
 
     # -- subprocess plumbing ----------------------------------------------
+
+    def _api_paged(self, path: str, *, per_page: int = 100) -> list:
+        """Fetch every page of a REST **list** endpoint with an explicit page loop.
+
+        NOT ``gh --paginate``: that flag emits each page as a **separate JSON
+        document**, so a single ``json.loads`` over the concatenation fails the
+        moment a result exceeds one page (BKL-2V6N — fatal for ``list_labels``
+        once a migrated repo carries hundreds of ``id:PFX`` aliases). The loop
+        terminates on a short **raw** page (never a filtered view — BKL-5T3J),
+        bounded by ``_PAGED_MAX_PAGES`` so a pathological endpoint cannot spin
+        forever. ``per_page`` is injectable so a live spike can force multi-page
+        behavior against a small real dataset."""
+        sep = "&" if "?" in path else "?"
+        collected: list = []
+        page = 1
+        while page <= _PAGED_MAX_PAGES:
+            result = self._api(["api", f"{path}{sep}per_page={per_page}&page={page}"])
+            batch = result if isinstance(result, list) else []
+            collected.extend(batch)
+            if len(batch) < per_page:
+                return collected
+            page += 1
+        return collected
 
     def _api(self, args: list[str], *, input_json: str | None = None):
         """Run ``gh <args>`` and parse JSON stdout, or raise ``TransportError``."""

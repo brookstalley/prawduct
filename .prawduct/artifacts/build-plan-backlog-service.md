@@ -186,11 +186,17 @@ markdown behavior unchanged. All six markdown-premise advisory probes (backlog t
 retire on the same switch; `encode.OPEN_STATUSES` derived from the status SoT; runbook step 5
 "Cut over" is the switch's writer. Critic `final` (0 blocking / 5 warn) + `verify-resolutions` →
 clean; suite 2276. **The live-session "repoint" leg now reduces to writing the one cutover key**
-(the code is prebuilt behind the switch). Remaining before the chunk closes: the two
-pre-migration transport blockers from the 2026-07-18 holistic review (**BKL-2V6N** gh `--paginate`
-multi-document JSON; **BKL-5T3J** client-side PR filtering breaking pagination terminators — both
-must be fixed + live-verified read-only against the real repo), the owner-driven live migration
-(scrub dispositions + restructure plan + import + cutover key), and the `legacy.py` +
+(the code is prebuilt behind the switch). **Both pre-migration transport blockers from the 2026-07-18 holistic review shipped 2026-07-18**:
+BKL-2V6N (`_api_paged` explicit page loop replaces `gh --paginate` in labels/timeline/sub-issues)
+and BKL-5T3J (raw pages from `list_issues`; terminators read raw length; PRs leave at
+`encode.is_pull_request`/`is_prawduct_issue` + explicit guards on label-keyed lookups; `list`
+gains raw-derived `has_more`, per_page clamped) — **both live-verified read-only against
+brookstalley/prawduct** (multi-page label walk set-identical; 128 raw / 122 PRs walked fully; the
+old filtered terminator demonstrably stopped at page 1 with 4 of 128). BKL-5R2K shipped in the
+same chunk (`core.resolve_survivor` → `get` resolves_to + warning + human breadcrumb; `pick`
+excludes open-but-redirected). Critic `final` (0 blocking / 5 warn) + two `verify-resolutions` →
+0/0/0; suite 2300. Remaining before the chunk closes: the owner-driven live migration (scrub
+dispositions + restructure plan + import + cutover key per runbook step 5), and the `legacy.py` +
 `incoming-bugs/` retirement (MG5 lockstep).
 
 ## Scaffolding

@@ -394,6 +394,14 @@ def label_names(issue: dict) -> list[str]:
     return out
 
 
+def is_pull_request(issue: dict) -> bool:
+    """Whether a raw issues-list entry is a pull request (the ``pull_request``
+    key GitHub stamps on interleaved PRs). The one greppable home for the
+    predicate — decode filtering and the label-keyed lookups all route here
+    (BKL-5T3J)."""
+    return "pull_request" in issue
+
+
 def is_prawduct_issue(issue: dict) -> bool:
     """Whether a GitHub issue is an in-scope prawduct backlog item (PROV-2/GV6).
 
@@ -403,7 +411,14 @@ def is_prawduct_issue(issue: dict) -> bool:
     ignore it (not malformed, just not ours). The SEC-7 anonymous-quarantine case
     (an unlabeled non-collaborator filing surfaced to triage rather than ignored)
     is a separate governance path and is **not** decided here.
+
+    A **pull request** is never an item, even when someone has stuck a
+    prawduct-namespaced label on it — the REST issues list interleaves PRs
+    (returned raw by the transport so pagination terminators stay honest,
+    BKL-5T3J), and this predicate is where they leave the pipeline.
     """
+    if is_pull_request(issue):
+        return False
     labels = label_names(issue)
     if any(name.startswith(prefix) for name in labels for prefix in NAMESPACED_LABEL_PREFIXES):
         return True

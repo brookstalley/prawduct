@@ -95,6 +95,24 @@ system-of-record** via a deterministic `prawduct-hook backlog` adapter (PRD §16
   `backlog-overdue-grooming`); `external-backlog-detected` survives. The G2 never-block test
   injects a child whose `wait` **raises** (fire-and-forget pinned, not just fast-error) plus a
   wall-clock bound.
+- **Pre-migration transport blockers BKL-2V6N + BKL-5T3J + redirect-follow BKL-5R2K
+  (2026-07-18, from the holistic Fable review):** (1) `gh --paginate` emits each page as a
+  SEPARATE JSON document, so `list_labels`/`list_timeline`/`list_sub_issues` hard-failed past one
+  page — fatal mid-import once the repo crossed ~30 labels (216 aliases incoming), and every
+  resume re-failed. Replaced with `transport._api_paged` (explicit `per_page`/`page` loop,
+  raw-short-page terminator, bounded, injectable `per_page` for live spikes). (2) `list_issues`
+  dropped PRs client-side, so every `len(batch) < per_page` terminator saw a filtered count and
+  stopped scans early in PR-bearing repos — silently truncating `export` (the MG2 backup),
+  `counts`, and the alias self-heal (a permanent-duplicate risk). The transport now returns raw
+  pages; PRs leave the pipeline at `encode.is_prawduct_issue` (also rejects a mislabeled PR) with
+  explicit `pull_request` guards on the label-keyed lookups (`_find_by_key`,
+  `_numbers_for_alias`, `iter_alias_issues`). **Both live-verified read-only against the real
+  target** (`brookstalley/prawduct`: 9 labels walked at per_page=3 set-identical; 128 raw
+  entries / 122 PRs over 2 pages walked fully; the old filtered terminator demonstrably stopped
+  at page 1 with 4 of 128). (3) BKL-5R2K: `get` now follows the `superseded_by` chain
+  (`core.resolve_survivor`, shared with `migrate.resolve`) — the merged-away item is returned
+  with `resolves_to` + a warning, human mode prints the survivor breadcrumb, and `pick` excludes
+  an open-but-redirected item (the CRASH-2 window). Fake gains `seed_pull_requests`.
 
 **Classification:** structural
 

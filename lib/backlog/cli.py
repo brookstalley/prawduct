@@ -859,6 +859,13 @@ def _print_human_ok(data) -> None:
         if data.get("assignee"):
             bits.append(f"assignee={data['assignee']}")
         print("  " + "  ".join(bits))
+        if data.get("superseded_by"):
+            # A merged-away item: the human reader needs the breadcrumb to the
+            # survivor, not just "closed as dropped" (BKL-5R2K).
+            line = f"  superseded_by → {data['superseded_by']}"
+            if data.get("resolves_to"):
+                line += f"  (survivor: {data['resolves_to']})"
+            print(line)
     elif "created" in data:
         # provision / reconcile-labels.
         line = (

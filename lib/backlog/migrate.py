@@ -668,6 +668,9 @@ def _find_by_key(transport: Transport, owner: str, repo: str, key_label: str) ->
     issues = transport.list_issues(
         owner, repo, state="all", labels=[key_label], per_page=100, page=1
     )
+    # Labels can sit on PRs too; a labeled PR must never count as the item
+    # (BKL-5T3J — the raw list interleaves them).
+    issues = [issue for issue in issues if not encode.is_pull_request(issue)]
     return [issue["number"] for issue in issues if issue.get("number") is not None]
 
 
@@ -918,21 +921,11 @@ def merge(
 
 
 def resolve(transport: Transport, canonical: str, *, owner: str, repo: str) -> str:
-    """Follow a merged-away source to its survivor: read the block ``superseded_by``
-    and chase it via :func:`ids.resolve_redirect`. The transport wiring for the pure
-    redirect-follow (a ref to a merged source resolves to the target — CRASH-2)."""
-
-    def fetch(canon: str) -> str | None:
-        nid = ids.normalize_id(canon, default_owner=owner)
-        if not nid.ok:
-            return None
-        try:
-            issue = transport.get_issue(nid.owner, nid.repo, nid.number)
-        except TransportError:
-            return None
-        return encode.parse_block(issue.get("body")).superseded_by()
-
-    return ids.resolve_redirect(canonical, fetch=fetch)
+    """Follow a merged-away source to its survivor (CRASH-2). Delegates to
+    :func:`core.resolve_survivor` — the single transport wiring of the pure
+    redirect-follow, shared with ``get``'s consumer (BKL-5R2K)."""
+    del repo  # kept in the public signature for existing callers; follow needs only owner
+    return core.resolve_survivor(transport, canonical, owner=owner)
 
 
 # --- shared helpers ----------------------------------------------------------
