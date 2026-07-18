@@ -279,6 +279,18 @@ coverage_required: false
 #   literal `#` anywhere in the command truncates it — wrap such invocations
 #   in a script too.
 #
+# test_commands:
+#   - pipenv run pytest --junit-xml={junit_xml} -q
+#   - npm run test:ci -- --junit --outputFile={junit_xml}
+#   The multi-environment form (backend + web + mobile): one canonical
+#   invocation per environment, each run under the same rules as
+#   `test_command:` (shlex-split, mandatory `{junit_xml}`, `#` truncates);
+#   counts aggregate across all reports into ONE evidence record, and any
+#   launch failure or unparseable report fails the whole record. Declare it
+#   ONLY as this block-sequence-of-strings shape (flow style `[a, b]` and
+#   nested mappings are refused, not silently ignored). Mutually exclusive
+#   with `test_command:`. Ingest path: repeat `--from-junit` once per report.
+#
 # tests_dirs: engine/tests server/tests
 #   Whitespace-separated test trees for the coverage verifier (default:
 #   `tests`). One verifier run unions discovery across all of them.

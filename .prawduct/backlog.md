@@ -1253,10 +1253,17 @@
 
   From the architecture-template review (the work that closed GOV-2T6K): add a guard test asserting every expected artifact in the `lib/coverage_probes.py` expectation table has a corresponding authoring template under `templates/` — prevents a future expected artifact entering the table with no authoring template (the exact gap GOV-2T6K just closed for `architecture`). Note the coverage-scaffold stub is deliberately template-independent, so the test asserts **authoring-path parity**, not coverage correctness — coverage functions end-to-end with or without a template; what the test protects is the human-facing authoring starting point. (critic)
 
+- **[TST-5N2Q]** mixed JUnit/non-JUnit polyglot cannot combine `test_commands` with `--from-counts`
+  `effort: M · impact: S · area: test-evidence · source: critic · added: 2026-07-17 · status: open · stage: design · related: TST-6F2R, ENV-2W7K, COV-3R9K · refs: bin/prawduct-hook (test-evidence record — test_commands aggregation, --from-counts on-ramp)`
+
+  From the test-evidence-environments review (the work that shipped TST-6F2R's multi-environment `test_commands` list): a product with one environment whose toolchain cannot emit JUnit is excluded from the declared-list form — the aggregated record has no way to accept a counts-only source alongside the JUnit-capable environments. Today's escape is a wrapper script, or repeated `--from-junit` for the JUnit halves plus nothing for the counts half. Design question: should `--from-counts` compose as one more aggregated source (i.e. a counts entry participating in the same multi-environment aggregation) rather than remaining an exclusive whole-record mode? Touches ENV-2W7K's "document --from-counts as the paved non-pytest path" — if composition ships, that documentation should describe the composed form. (critic)
+
 ## Promoted
 
+## Archive
+
 - **[TST-6F2R]** `test-evidence record` with no declared test_command falls back to sys.executable pytest — venv-isolated projects record a catastrophic false-red
-  `effort: M · impact: M · area: test-evidence · source: user · added: 2026-07-13 · status: promoted · stage: ready · related: TST-3E8V, TST-6V2N, TST-7M3K · refs: bin/prawduct-hook (cmd_test_evidence run fallback, ~line 1903), incoming-bugs/archive/test-evidence-record-persists-false-red-when-test-command-undeclared.md · reviewed: 2026-07-17`
+  `effort: M · impact: M · area: test-evidence · source: user · added: 2026-07-13 · status: shipped · stage: ready · closed-by: test-evidence-environments · related: TST-3E8V, TST-6V2N, TST-7M3K · refs: bin/prawduct-hook (cmd_test_evidence run fallback, ~line 1903), incoming-bugs/archive/test-evidence-record-persists-false-red-when-test-command-undeclared.md · reviewed: 2026-07-17`
 
   Upstream bug from discodon (incoming-bugs/test-evidence-record-persists-false-red-when-test-command-undeclared.md, severity medium). When project-state.yaml declares no `test_command`, `test-evidence record` falls back to running `sys.executable -m pytest` — the HOOK's interpreter, not the project's venv. In venv-isolated projects (pipenv/poetry/conda), collection fails wholesale on ModuleNotFoundError and the record persists a catastrophic false-red (discodon: 0 passed / 5074 failed, all collection-level import errors) to `.prawduct/.test-evidence.json`, polluting test-status. Verified in the current tree at bin/prawduct-hook:1903-1907 (the report's ~1787-1792 line refs have drifted).
 
@@ -1264,7 +1271,7 @@
 
   Promoted 2026-07-17 for the 3.1.0 release line.
 
-## Archive
+  Shipped 2026-07-17 (closed-by: test-evidence-environments): delivered the false-red guard (refuse-to-persist with migration guidance), the fallback deprecation nudge, and the multi-environment `test_commands` list the owner's 3.1.0 scope ruling required (polyglot products: one command per environment, aggregated into one record); prawduct now dogfoods a declared test_command.
 
 - **[MET-4V8Q]** Retrieval-over-generation methodology incorporation — new Judgment principle + building/discovery/digest surfaces
   `effort: M · impact: M · area: methodology · source: user · added: 2026-07-17 · status: shipped · stage: requirements · closed-by: retrieval-over-generation · refs: docs/principles.md, methodology/building.md, methodology/discovery.md, hooks/digest.py · reviewed: 2026-07-17`

@@ -34,6 +34,11 @@ distribution: plugin
 # preferred over the bare `develop` for a stable remote-tracking merge-base.
 base_branch: develop
 
+# The canonical suite invocation (dogfooding the declared-command posture the
+# record on-ramp prescribes — the interpreter fallback is deprecated-by-nudge).
+# Stdlib-only repo: the hook's python3 IS the project environment.
+test_command: python3 -m pytest tests/ --junit-xml={junit_xml} -q
+
 # =============================================================================
 # CLASSIFICATION — structural characteristics (methodology/discovery.md)
 # =============================================================================
