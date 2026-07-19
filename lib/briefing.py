@@ -217,17 +217,11 @@ def _get_product_name(prawduct_dir: Path) -> str:
 
 
 def _get_current_branch(project_dir: Path) -> str:
-    """Get current git branch name. Returns 'main' on failure."""
-    try:
-        result = subprocess.run(
-            ["git", "branch", "--show-current"],
-            capture_output=True, text=True, cwd=str(project_dir), timeout=10,
-        )
-        if result.returncode == 0 and result.stdout.strip():
-            return result.stdout.strip()
-    except Exception:  # prawduct:allow prawduct/broad-except -- branch detection is best-effort
-        pass
-    return "main"
+    """Get current git branch name. Returns 'main' on failure/detached — a
+    display default for the briefing. Contrast ``gitstate.current_branch``,
+    which returns None so a caller that must not be MISLED about which tree it
+    resolved to (the Critic's visibility print) can tell (PDT-WT9K)."""
+    return gitstate.current_branch(project_dir) or "main"
 
 
 def _parse_wip(prawduct_dir: Path, branch: str | None = None) -> dict[str, str]:
