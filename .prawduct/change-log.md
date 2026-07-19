@@ -3,6 +3,35 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-07-19: /prawduct:backlog skill repointed onto the GitHub-Issues adapter (backlog-skill-repoint)
+
+<!-- prawduct: type=feature | scope=backlog-skill-repoint | chunks=01,02 -->
+<!-- Statusless on feature/backlog-skill-repoint = release-pending once develop→main ships. -->
+
+**BKL-3W6K.** The GH-Issues migration built the `prawduct-hook backlog` adapter and repointed the
+briefing + advisory probes, but the everyday `/prawduct:backlog` **skill** stayed markdown-native (no
+`Bash` in `allowed-tools`) — so post-cutover `pick`/`add`/`list`/`update` would drive the *frozen*
+markdown, not the Issues that are now system-of-record. This repoints it.
+
+- **Dual-mode dispatch** (`skills/backlog/SKILL.md`): a top-level "Backend routing" gate reads
+  `backlog_service_repo` from `project-state.yaml` — unset → the existing markdown path
+  (byte-unchanged for pre-cutover consumers); set → the new `adapter-mode.md` runbook. Adds a scoped
+  `Bash(prawduct-hook backlog *)` grant.
+- **Adapter runbook** (new `skills/backlog/adapter-mode.md`): maps each subcommand onto an adapter op
+  (add→`file`, list→`list`, pick→`pick`, update→`status`/`update` with the `promoted`→`in-progress`
+  status-vocabulary bridge, claim/link, summary→`counts`, get→`get`), and owns the envelope/exit
+  discipline — binds to exit codes + the `--json` envelope (surfacing `warnings[]` on **both** the ok
+  and error envelopes), and **fails loud** on auth/unavailable (never a silent fall-back to the
+  frozen markdown).
+- **Deferred (owner-decided — ships after W2):** `find`/`dedup` need the W2 search op → a clear
+  "lands in W2" NOTE, no degraded search; `migrate`/`scrub`/archive-split → a
+  not-applicable-post-cutover NOTE.
+- Cumulative Critic 0 blocking / 0 warning / 7 note (actionable notes resolved). Adapter loop
+  pre-verified live against a throwaway repo (reads/writes/`promoted`→`in-progress` bridge/exit-3/
+  exit-4); VRF-007 remains pending the sibling-*session* confirm. Markdown path unchanged when
+  `backlog_service_repo` is unset. Phase 0 of the migration program; Phases 1 (sibling dogfood) and 2
+  (prawduct self-cutover) follow.
+
 ## 2026-07-18: Stop hook surfaces the silent worktree `.prawduct/` redirect (stop-worktree-redirect-note)
 
 <!-- prawduct: type=feature | scope=stop-worktree-redirect-note -->
