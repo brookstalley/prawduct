@@ -53,11 +53,13 @@ non-interactive) are owned and stable, and the adapter surface was read directly
 
 - [ ] Chunk 01: Dual-mode dispatch scaffold + read ops (summary/list/get)
 - [ ] Chunk 02: Write ops + deferred find/dedup + cutover-aware edge messaging
-Context: Chunks 01-02 built + verified (full suite green 2396; write-op flags + the status
-vocabulary bridge promoted→in-progress confirmed against `encode.py`). Chunk 01 (dual-mode scaffold +
-read ops) chunk-Critic clean (1 note resolved). Chunk 02 (write ops + deferred find/dedup + edge
-messaging) added to `adapter-mode.md`; VRF-007 queued for Phase 1. Next: `/prawduct:critic cumulative`
-(the PR gate), then Phase 1 sibling dogfood.
+Context: **Phase 0 COMPLETE, PR-ready.** Chunks 01-02 built + verified (suite green 2396; write-op
+flags + the `promoted→in-progress` status bridge confirmed against `encode.py`). Cumulative Critic
+(3 reviewers, coordinator): 0 blocking / 0 warning / 7 note — the two actionable notes (summary menu
+advertised moot ops; grooming stamp on failed calls) resolved on `adapter-mode.md`, `verify-resolutions`
+clean (R-2/R-3 fixed). Branch `feature/backlog-skill-repoint` (5 commits). BKL-3W6K stays open pending
+Phase 1; VRF-007 queued. Next: **Phase 1 sibling dogfood** (needs a target repo + `backlog_service_repo`
++ `gh`) — the behavioral proof; then Phase 2 (prawduct self-cutover).
 
 ## Scaffolding
 
