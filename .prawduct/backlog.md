@@ -1839,6 +1839,19 @@
   Confirm reproduction before sizing the fix. Kept separate from TST-4P8H per the distinctness
   argument above (state leakage vs. subprocess/timeout contention); cross-linked, not merged.
 
+- **[BRF-7Q4M]** SessionStart banner has no provenance marker — an operator can't tell whether the local `--plugin-dir` checkout or the marketplace copy is loaded
+  `effort: S · impact: M · area: governance/plugin-runtime · kind: feature · source: user · added: 2026-07-19 · status: open · stage: ready · refs: hooks/banner.py (identity line), tests/test_plugin_version_banner.py`
+
+  **PROBLEM** (observed 2026-07-19, live): the banner prints only `═══ Prawduct v3.1.0 (plugin) ═══`. `develop` and `main` BOTH read 3.1.0 — VERSION/plugin.json only bump at release-prep, and develop carries ~380 unreleased commits under the last released label — so the version string cannot discriminate. An operator testing unreleased work in a sibling repo via `claude <target> --plugin-dir ../prawduct` has no way to tell whether the local develop checkout loaded or the marketplace copy of main did. Sharpened by a real precedence hazard: a target repo that commits `enabledPlugins: {"prawduct@prawduct": true}` (what `init-product` scaffolds) force-enables the marketplace plugin, and per Claude Code's documented precedence `--plugin-dir` cannot override a settings-managed force-enable — so the dev load may silently lose with no visible signal.
+
+  **SUCCESS**: the identity banner carries provenance when, and only when, the plugin is loaded from a local checkout — e.g. `═══ Prawduct v3.1.0 (plugin · develop@24e4210) ═══`, with a dirty marker when the checkout has uncommitted tracked changes. Managed/marketplace installs keep the current banner byte-for-byte. The presence of the provenance segment is itself the discriminator: if you see it, `--plugin-dir` won.
+
+  **DESIGN CONSTRAINT discovered by measurement (do not skip this)**: the git calls cost ~66ms (rev-parse) + ~77ms (dirty check) = ~143ms, and marketplace installs DO contain a `.git` dir (`~/.claude/plugins/marketplaces/prawduct/.git`, currently on main) — so naive git-detection would bill every real user ~143ms on the SessionStart hot path for a dev-only diagnostic. The free discriminator is a pure path comparison: a managed install lives under `~/.claude/plugins/` (honor `CLAUDE_CONFIG_DIR` when set); a `--plugin-dir` checkout does not. Gate all git work behind that check so managed installs pay zero.
+
+  **Scope**: `hooks/banner.py` identity line + tests. **OUT of scope**: bumping VERSION/plugin.json (that is release-prep and would redden `test_version_mirrors_VERSION_file`, `test_version_is_semver`, `test_changelog_has_current_version_entry`), changing the release process, changing marketplace precedence behavior.
+
+  Filed as the parent requirement for work being built immediately in this session; to be marked shipped on the branch that lands it. (user)
+
 ## Promoted
 
 - **[BKL-5D2C]** Move the backlog out of git to a centralized, agent-friendly issue-tracking service

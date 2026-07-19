@@ -3,6 +3,49 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-07-19: SessionStart banner names which plugin code is loaded (BRF-7Q4M)
+
+<!-- prawduct: type=feature -->
+<!-- Statusless = release-pending once develop→main ships. No scope= tag: a
+     single-surface feature with no build plan, so there is no ## Status to regenerate. -->
+
+The identity banner printed only `═══ Prawduct v3.1.0 (plugin) ═══`. Because `VERSION` and
+`plugin.json` move only at release-prep, an integration branch carrying unreleased work reports the
+same version as the release it was cut from — `develop` and `main` both read 3.1.0 while develop
+carried ~380 unreleased commits. An operator testing that work in another repo via
+`claude <target> --plugin-dir ../prawduct` had no signal telling them whether the local checkout or
+the marketplace copy actually loaded. The hazard is real, not theoretical: `init-product` scaffolds
+`enabledPlugins: {"prawduct@prawduct": true}`, and a settings-managed force-enable is documented to
+win over `--plugin-dir`.
+
+The identity line now carries a load-provenance segment — `(plugin · develop@24e4210+dirty)` — when
+the plugin root is a working tree, and stays byte-identical for a managed install. Its presence is
+itself the discriminator: a managed install can never print it, so seeing it proves the local
+checkout won.
+
+Two design points worth keeping:
+
+- **The gate is a path comparison, not a `.git` probe.** A marketplace install is itself a git clone
+  (`~/.claude/plugins/marketplaces/<name>/.git`), so "has a `.git`" does not distinguish the two.
+  Provenance is computed only when the plugin root falls outside the managed plugin directory
+  (`CLAUDE_CONFIG_DIR`-aware), which is also what keeps the git subprocess off the SessionStart hot
+  path for every ordinary user — measured at ~65 ms, paid only by local-checkout loads.
+- **One `status --porcelain=v2 --branch --untracked-files=no` call** yields ref, oid and
+  tracked-file dirtiness together (~36 ms) versus ~105 ms for separate `rev-parse`/`diff` calls, and
+  `--untracked-files=no` is what makes untracked scratch files correctly not count as dirty.
+
+Fails open throughout: a managed install, a non-git root, an unborn branch, or any git failure
+degrades to the plain banner rather than breaking session start. Detached HEAD renders as
+`detached@<sha>`.
+
+Files:
+- `hooks/banner.py`: `managed_plugin_home`, `is_managed_install`, `_git`, `checkout_provenance`;
+  identity line composes the suffix.
+- `tests/test_plugin_version_banner.py`: `TestManagedInstallDetection`, `TestCheckoutProvenance`,
+  `TestBannerIdentityLine` (11 cases, real git fixtures) — including a managed-install-with-`.git`
+  case that pins the path gate against regression to a `.git` probe, and a byte-for-byte assertion
+  that the managed-install banner is unchanged. Full suite 2435 passed.
+
 ## 2026-07-19: verify-chunk-refs stops flagging `path:line` citations and same-chunk `new` re-references
 
 <!-- prawduct: type=fix -->

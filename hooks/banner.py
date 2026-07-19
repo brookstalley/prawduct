@@ -6,7 +6,9 @@ net* for always-latest distribution (design §5/§5a): because the plugin
 auto-updates, every version move must be made VISIBLE, never silent. On each
 session start the banner:
 
-  1. prints the one-line identity banner (``═══ Prawduct vY (plugin) ═══``);
+  1. prints the one-line identity banner (``═══ Prawduct vY (plugin) ═══``),
+     carrying a load-provenance segment (``(plugin · develop@a1b2c3d)``) when the
+     plugin was loaded from a local working tree rather than a managed install;
   2. compares the plugin's ``plugin.json`` version against a per-repo last-seen
      marker (``.prawduct/.prawduct-version``);
   3. on a CHANGE, prints ``vX → vY`` plus the changelog highlights for the bump
@@ -29,6 +31,16 @@ the frozen 1.x runtime and push a gratuitous ``.gitignore`` diff into pure
 file-sync repos that never create the marker.) The changelog + gate registry
 live inside the plugin, out of every consumer's tree.
 
+Load provenance: ``VERSION``/``plugin.json`` only move at release-prep, so an
+integration branch carrying unreleased work reports the same version as the
+release it was cut from — the version string cannot tell an operator *which*
+plugin code is loaded. The identity line therefore names the ref and short sha
+when the plugin root is a working tree, and stays byte-identical for a managed
+install. The distinction is a pure path comparison against the managed plugin
+directory, NOT a ``.git`` probe: a marketplace install is itself a clone. That
+gate is also what keeps the two git subprocesses off the hot path for every
+ordinary user (see :func:`is_managed_install`).
+
 Marker discipline: the delta/marker logic runs ONLY when ``CLAUDE_PROJECT_DIR``
 is explicitly set (always true for a real hook invocation). Without it the
 banner prints identity only and writes nothing — so running the script with no
@@ -39,10 +51,18 @@ from __future__ import annotations
 import json
 import os
 import re
+import subprocess
 import sys
 from pathlib import Path
 
 _SEMVER_HEADER = re.compile(r"^##\s+v(\d+\.\d+\.\d+)\b")
+
+# Bound the provenance git call. It runs only for a local checkout (never for a
+# managed install), but a wedged git must not hold up session start.
+_GIT_TIMEOUT_SECONDS = 5
+# Commit abbreviation for the provenance segment. Fixed rather than git's
+# adaptive `--short` so the rendered banner is reproducible across repo sizes.
+_SHA_CHARS = 7
 
 
 def plugin_root() -> Path:
@@ -67,6 +87,86 @@ def project_dir() -> Path | None:
     """
     env_proj = os.environ.get("CLAUDE_PROJECT_DIR")
     return Path(env_proj) if env_proj else None
+
+
+def managed_plugin_home() -> Path:
+    """Claude Code's managed plugin directory (``~/.claude/plugins``).
+
+    Honors ``CLAUDE_CONFIG_DIR`` so an alternate config home resolves correctly.
+    """
+    cfg = os.environ.get("CLAUDE_CONFIG_DIR")
+    base = Path(cfg) if cfg else Path.home() / ".claude"
+    return base / "plugins"
+
+
+def is_managed_install(root: Path) -> bool:
+    """True when ``root`` sits under the managed plugin directory.
+
+    This is the gate that keeps provenance a *local-development* affordance. It
+    is a pure path comparison — deliberately no git, no filesystem probing of the
+    root's contents — because a marketplace install is itself a git clone
+    (``~/.claude/plugins/marketplaces/<name>/.git``), so "has a .git dir" does
+    NOT distinguish the two. Checking the path instead means a managed install
+    never pays for the subprocesses in :func:`checkout_provenance`.
+
+    Unresolvable paths answer False, which routes callers into the git probe;
+    that probe is itself fail-open, so the worst case is a missing suffix.
+    """
+    try:
+        return root.resolve().is_relative_to(managed_plugin_home().resolve())
+    except (OSError, RuntimeError, ValueError):
+        return False
+
+
+def _git(root: Path, *args: str) -> subprocess.CompletedProcess | None:
+    """Run a read-only git command in ``root``. None on any failure to launch."""
+    try:
+        return subprocess.run(
+            ["git", "-C", str(root), *args],
+            capture_output=True,
+            text=True,
+            timeout=_GIT_TIMEOUT_SECONDS,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+
+
+def checkout_provenance(root: Path) -> str:
+    """``ref@sha`` (plus ``+dirty``) for a plugin loaded from a local checkout.
+
+    Returns ``""`` for a managed install, a non-git directory, or any git
+    failure — so the identity banner degrades to its plain form rather than
+    breaking. The empty string is meaningful to the reader: a provenance segment
+    appears only when the plugin was loaded from a working tree (``--plugin-dir``
+    or equivalent), which makes its presence a reliable signal of *which* copy of
+    the plugin won when a managed install is also enabled.
+
+    Dirtiness is measured over tracked files only (``diff --quiet HEAD``):
+    untracked scratch files are normal during local development and do not change
+    what the plugin executes.
+    """
+    if is_managed_install(root):
+        return ""
+    # One porcelain-v2 call yields ref, oid and tracked-file dirtiness together —
+    # cheaper than separate rev-parse/diff calls, and `--untracked-files=no` is
+    # what makes untracked scratch files not count as dirty.
+    status = _git(root, "status", "--porcelain=v2", "--branch", "--untracked-files=no")
+    if status is None or status.returncode != 0:
+        return ""
+    ref = sha = ""
+    dirty = False
+    for line in status.stdout.splitlines():
+        if line.startswith("# branch.head "):
+            ref = line[len("# branch.head "):].strip()
+        elif line.startswith("# branch.oid "):
+            sha = line[len("# branch.oid "):].strip()
+        elif line and not line.startswith("#"):
+            dirty = True  # any entry line is a tracked add/modify/delete/rename
+    if not ref or not sha or sha == "(initial)":  # unborn branch has no commit to name
+        return ""
+    if ref == "(detached)":  # name the state rather than echoing git's parentheses
+        ref = "detached"
+    return f"{ref}@{sha[:_SHA_CHARS]}{'+dirty' if dirty else ''}"
 
 
 def read_version(root: Path) -> str:
@@ -195,7 +295,9 @@ def main() -> int:
         print(f"NOTE: Prawduct banner could not read plugin version: {exc}", file=sys.stderr)
         return 0
 
-    print(f"═══ Prawduct v{version} (plugin) ═══")
+    provenance = checkout_provenance(root)
+    suffix = f" · {provenance}" if provenance else ""
+    print(f"═══ Prawduct v{version} (plugin{suffix}) ═══")
 
     # Version-delta + marker: only with explicit project context, only when the
     # repo has a .prawduct/ to record into. Fully best-effort.

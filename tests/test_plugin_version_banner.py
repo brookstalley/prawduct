@@ -267,3 +267,127 @@ class TestGateAttributionHelpers:
 
     def test_manifest_version_matches_file(self, hook_mod):
         assert hook_mod._plugin_manifest_version() == PLUGIN_VERSION
+
+
+# =============================================================================
+# Load provenance — which plugin code is actually loaded
+# =============================================================================
+
+
+def _git_repo(path: Path, *, branch: str = "testbranch") -> Path:
+    """A real git checkout with one commit, on a named branch."""
+    path.mkdir(parents=True, exist_ok=True)
+    run = lambda *a: subprocess.run(["git", "-C", str(path), *a], capture_output=True, check=True)
+    run("init", "-q")
+    run("config", "user.email", "t@example.com")
+    run("config", "user.name", "T")
+    run("checkout", "-q", "-b", branch)
+    (path / "tracked.txt").write_text("one\n")
+    run("add", "tracked.txt")
+    run("commit", "-q", "-m", "init")
+    return path
+
+
+def _plugin_tree(root: Path, version: str = "9.9.9") -> Path:
+    """Minimal plugin layout so read_version() succeeds."""
+    manifest_dir = root / ".claude-plugin"
+    manifest_dir.mkdir(parents=True, exist_ok=True)
+    (manifest_dir / "plugin.json").write_text(json.dumps({"version": version}))
+    return root
+
+
+class TestManagedInstallDetection:
+    def test_root_under_managed_dir_is_managed(self, banner, tmp_path, monkeypatch):
+        cfg = tmp_path / "cfgdir"
+        monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(cfg))
+        root = cfg / "plugins" / "marketplaces" / "prawduct"
+        root.mkdir(parents=True)
+        assert banner.is_managed_install(root) is True
+
+    def test_root_outside_managed_dir_is_not_managed(self, banner, tmp_path, monkeypatch):
+        monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(tmp_path / "cfgdir"))
+        root = tmp_path / "source" / "prawduct"
+        root.mkdir(parents=True)
+        assert banner.is_managed_install(root) is False
+
+    def test_missing_root_is_not_managed(self, banner, tmp_path, monkeypatch):
+        monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(tmp_path / "cfgdir"))
+        assert banner.is_managed_install(tmp_path / "does" / "not" / "exist") is False
+
+
+class TestCheckoutProvenance:
+    def test_managed_install_reports_nothing(self, banner, tmp_path, monkeypatch):
+        """A marketplace install has a .git dir too — the path gate must win so
+        real users pay no subprocess cost and see an unchanged banner."""
+        cfg = tmp_path / "cfgdir"
+        monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(cfg))
+        root = _git_repo(cfg / "plugins" / "marketplaces" / "prawduct")
+        assert (root / ".git").is_dir()          # the naive discriminator WOULD fire
+        assert banner.checkout_provenance(root) == ""
+
+    def test_local_checkout_reports_ref_and_sha(self, banner, tmp_path, monkeypatch):
+        monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(tmp_path / "cfgdir"))
+        root = _git_repo(tmp_path / "src" / "prawduct", branch="develop")
+        prov = banner.checkout_provenance(root)
+        sha = subprocess.run(
+            ["git", "-C", str(root), "rev-parse", "HEAD"],
+            capture_output=True, text=True,
+        ).stdout.strip()
+        assert prov == f"develop@{sha[:banner._SHA_CHARS]}"
+
+    def test_dirty_checkout_is_marked(self, banner, tmp_path, monkeypatch):
+        monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(tmp_path / "cfgdir"))
+        root = _git_repo(tmp_path / "src" / "prawduct", branch="develop")
+        (root / "tracked.txt").write_text("modified\n")
+        assert banner.checkout_provenance(root).endswith("+dirty")
+
+    def test_untracked_file_alone_is_not_dirty(self, banner, tmp_path, monkeypatch):
+        """Untracked files are noise during local dev; only tracked edits change
+        what the plugin actually executes."""
+        monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(tmp_path / "cfgdir"))
+        root = _git_repo(tmp_path / "src" / "prawduct", branch="develop")
+        (root / "scratch.txt").write_text("noise\n")
+        assert not banner.checkout_provenance(root).endswith("+dirty")
+
+    def test_non_git_checkout_reports_nothing(self, banner, tmp_path, monkeypatch):
+        monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(tmp_path / "cfgdir"))
+        root = tmp_path / "src" / "plain"
+        root.mkdir(parents=True)
+        assert banner.checkout_provenance(root) == ""
+
+    def test_detached_head_is_labelled(self, banner, tmp_path, monkeypatch):
+        monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(tmp_path / "cfgdir"))
+        root = _git_repo(tmp_path / "src" / "prawduct")
+        sha = subprocess.run(
+            ["git", "-C", str(root), "rev-parse", "HEAD"], capture_output=True, text=True
+        ).stdout.strip()
+        subprocess.run(["git", "-C", str(root), "checkout", "-q", sha], capture_output=True, check=True)
+        assert banner.checkout_provenance(root).startswith("detached@")
+
+
+class TestBannerIdentityLine:
+    def test_managed_install_line_is_unchanged(self, tmp_path, monkeypatch):
+        """Byte-for-byte the pre-provenance banner — real users see no change."""
+        cfg = tmp_path / "cfgdir"
+        root = _plugin_tree(_git_repo(cfg / "plugins" / "marketplaces" / "prawduct"))
+        env = dict(os.environ)
+        env["CLAUDE_CONFIG_DIR"] = str(cfg)
+        env["CLAUDE_PLUGIN_ROOT"] = str(root)
+        env.pop("CLAUDE_PROJECT_DIR", None)
+        out = subprocess.run(
+            [sys.executable, str(BANNER)], capture_output=True, text=True, env=env, timeout=20
+        ).stdout
+        assert out.splitlines()[0] == "═══ Prawduct v9.9.9 (plugin) ═══"
+
+    def test_local_checkout_line_carries_provenance(self, tmp_path):
+        root = _plugin_tree(_git_repo(tmp_path / "src" / "prawduct", branch="develop"))
+        env = dict(os.environ)
+        env["CLAUDE_CONFIG_DIR"] = str(tmp_path / "cfgdir")
+        env["CLAUDE_PLUGIN_ROOT"] = str(root)
+        env.pop("CLAUDE_PROJECT_DIR", None)
+        out = subprocess.run(
+            [sys.executable, str(BANNER)], capture_output=True, text=True, env=env, timeout=20
+        ).stdout
+        first = out.splitlines()[0]
+        assert first.startswith("═══ Prawduct v9.9.9 (plugin · develop@")
+        assert first.endswith(") ═══")
