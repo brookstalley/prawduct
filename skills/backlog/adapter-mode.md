@@ -121,9 +121,11 @@ and say full dedup is W2.
 Route by what changed:
 - **status** (`status=X`) → `status <id> --to <mapped>` (bridge table above). Idempotent (re-run =
   no-op); a close records `closed_by` natively.
-- **field** (title/body/stage/kind/area/effort/impact/source) → first `get <id>` to read its
-  `updated_at`, then `update <id> [--flag …] --if-updated-at <ts>` (optimistic concurrency — exit
-  **4 (conflict)** means someone else changed it: re-`get` and retry).
+- **field** (title/body/stage/kind/area/effort/impact/source) → `update <id> [--flag …]` (last write
+  wins — correct for the interactive single-actor case). The item envelope does **not** surface an
+  `updated_at`, so the optional `--if-updated-at <ts>` optimistic-concurrency guard (exit **4
+  conflict** on a stale timestamp) is only usable when a caller already holds that timestamp from
+  elsewhere; the skill's normal path omits it.
 - **claim** (`accepted-by=@x` / clear) → `claim <id> [--claim-ttl S]` / `unclaim <id>`.
 - **link edge** (`related:`/blocks/blocked-by/parent/child) → `link <id> --edge <e> --to <target>` /
   `unlink …`.
