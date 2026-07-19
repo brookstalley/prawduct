@@ -7,6 +7,89 @@
 
 ## Open
 
+- **[STH-7W9K]** Skill/subagent forks silently write `.prawduct/` state to the launch dir instead of a mid-session-entered worktree (cross-worktree pollution)
+  `effort: M · impact: L · area: worktree · source: user · added: 2026-07-16 · reviewed: 2026-07-19 · status: open · stage: requirements · related: CRT-6W2N, STH-4K7N, STH-3R8K, CRT-3X9D · refs: bin/prawduct-hook (get_project_dir), lib/gitstate.py (resolve_project_dir), skills (fork skills that mutate .prawduct/ — backlog/advisory/operator-verification), methodology/building.md (mid-cycle worktree-entry edge), .prawduct/learnings.md (companion rule — "A `/prawduct:*` skill fork writes `.prawduct/` state to the LAUNCH dir …")`
+
+  Recurring pain in both dogfooding and adopter projects. When a session ENTERS a git worktree mid-session (harness `EnterWorktree`, not launched there), a `/prawduct:*` skill invoked as a fork resolves the project dir to the LAUNCH directory (`CLAUDE_PROJECT_DIR`), not the session's active worktree — and silently writes `.prawduct/` state to the wrong working copy. Observed 2026-07-16: while building in a worktree, `/prawduct:backlog add` filed the new item into the PRIMARY checkout's `.prawduct/backlog.md` (a *different* active worktree, mid-build on another branch), reporting success. Main-loop `prawduct-hook` calls from the same session resolved CORRECTLY to the worktree (STH-4K7N's cwd-based `resolve_project_dir` works because the Bash tool's cwd is the worktree); the FORK did not — its cwd/`CLAUDE_PROJECT_DIR` is pinned to the launch dir, so it never reaches the worktree branch of the resolver.
+
+  Impact: (a) state lands on the wrong branch and misses the intended PR; (b) CROSS-WORKTREE POLLUTION — the write dirties another active worktree's WIP, corrupting that branch's diff / Critic / PR; (c) SILENT — the skill reports success against the wrong path, no error; (d) hits adopters who mandate worktrees, not just this repo. Distinct from CRT-6W2N (its reconciliation assumes a session run *entirely* inside one worktree — this is the mid-session-ENTRY + FORK gap) and STH-4K7N (which fixed the main-loop resolver via cwd, but forks don't inherit the worktree cwd).
+
+  Adopter corroboration (discodon, 2026-07-15 — SCH-2QW9 dedup note): same class, independently hit in a product repo. Item `ENT-T8QN` was filed into the `engine-drift-identity` worktree's `backlog.md` (branch `fix/engine-drift-event-metadata`) and diverged from `main` as a near-duplicate of the canonical `SCH-2QW9`; reconciliation required manually REVERTING that worktree's `backlog.md` ("so main solely owns the backlog") and hand-merging its material into the main-branch item — the same revert+relocate workaround the dogfooding evidence above describes. This generalizes the root cause beyond the fork-resolution bug: `.prawduct/backlog.md` is a per-working-copy file, so ANY worktree activity (a fork mis-targeting it, or a session legitimately filing into a worktree that then diverges from main) produces split/misplaced backlog state that only manual reconciliation resolves. Implication: the fix needs a coherent worktree-backlog OWNERSHIP story (e.g. main solely owns the backlog with a defined port/merge path, or a backlog store that isn't a per-working-copy flat file), not just the fork-resolution guard. This ownership question is the same tension the backlog-service (GitHub Issues backend) is being built to resolve — a single server-side backlog store sidesteps per-worktree divergence entirely; capture that as a motivating data point for the service.
+
+  Fix-shape (menu, needs a design pass — which leg prawduct owns vs. the harness): (1) skill forks that mutate `.prawduct/` must be told the session's active worktree — thread an explicit project dir (env or `--project-dir`) from the main agent into the skill's `prawduct-hook` calls rather than re-resolving from a pinned launch dir; (2) a write-time GUARD — a `.prawduct/`-mutating hook command detects when its resolved project dir belongs to a different worktree than the session's active one and refuses/warns loudly instead of writing silently (generalizes the critic-session-guard invariant CRT-3X9D: a fork must not mutate a different worktree's state); (3) harness-side, `EnterWorktree` should update the project dir for subsequently-spawned forks (likely upstream Claude Code, noted not-purely-a-prawduct-bug, cf. CRT-6W2N's gitflow base-ref note); (4) document the safe pattern prominently — LAUNCH (or `/clear`) the session in the worktree so the project dir is the worktree from the start (building.md notes this edge for SessionStart markers but not the fork WRITE-pollution consequence). Governance-protected (hooks/skills/state resolution) → full Critic + PR review. (user report — surfaced during backlog-service worktree dogfooding)
+
+  **Salvage note (2026-07-19).** This item was itself stranded by the very defect it describes: it was filed on branch `worktree-backlog-service-plan`, whose worktree was later removed, so it never reached this checkout. Re-filed here verbatim with its original id. Filing it also RESOLVES A DANGLING REFERENCE: `.prawduct/learnings.md` already carries the companion durable rule ("A `/prawduct:*` skill fork writes `.prawduct/` state to the LAUNCH dir, not a worktree the session ENTERED mid-session…") and closes with "Full detail + fix-shape in [[backlog]] STH-7W9K" — a pointer that had no target in this repo until now. Verified 2026-07-19 against `.prawduct/learnings.md`.
+
+- **[VWS-2W6H]** regen-views plan-discovery mis-classifies scope-tagged design artifacts as build plans
+  `effort: S · impact: M · area: views · kind: bug · source: builder · added: 2026-07-16 · reviewed: 2026-07-19 · status: open · stage: ready · related: REL-3B7Q · refs: lib/views.py:532 (build_scope_to_plan_map), lib/views.py:588 (diagnose_scope_plan_coverage), lib/views.py:658 (validate_chunk_roster), lib/views.py:1023 (_plan_status_results), bin/prawduct-hook:2508-2520 (cmd_regen_views fatal-diagnostics block)`
+
+  ROOT DEFECT (unchanged and live): `build_scope_to_plan_map`, `diagnose_scope_plan_coverage`, and `validate_chunk_roster` in lib/views.py all glob `artifacts/*.md` and treat ANY file whose frontmatter declares a `scope:` as a build plan. There is no `artifact: build-plan` filter. Design artifacts (data-model, api-contract, security-model, api-notes) legitimately carry `scope:` for traceability — as the backlog-service Chunk 01 artifacts do — and are therefore indistinguishable from plans to plan-discovery. Fix: filter plan-discovery to files whose frontmatter declares `artifact: build-plan`.
+
+  BEHAVIOR AS OF 2026-07-19 (re-verified in code; the original filing described only the first mode, and a later triage note wrongly claimed the loud error had been replaced by a silent pick — BOTH modes are live, on different inputs):
+
+  1. LOUD (design artifact declares the SAME scope as its build plan — the originally-observed case). `diagnose_scope_plan_coverage` (lib/views.py:588) scans the glob unconditionally and emits `duplicate scope=… also declares it (keeping …); one plan is malformed.` `cmd_regen_views` (bin/prawduct-hook:2508-2520) treats that diagnostic as FATAL — prints `ERROR:`, `return 2`, "no views written" — so the whole regen aborts and Status derivation is disabled for the branch. This is still exactly what happens; the original item text remains accurate for this input.
+
+  2. SILENT (design artifact's scope is NOT duplicated by a real plan — e.g. the actual build plan has no frontmatter `scope:`, or is retired/absent). `build_scope_to_plan_map` (lib/views.py:532) now dedupes by "first by sorted filename wins", silently, so a design artifact can also outrank the real plan by name alone (`api-contract-backlog-service.md` sorts before `build-plan-backlog-service.md`). With no duplicate to trip the fatal diagnostic, the map silently binds the scope to a NON-plan file and three things go wrong quietly: `diagnose_scope_plan_coverage`'s "unreleased scope with no plan file" check is FALSELY SATISFIED (the design artifact stands in for the missing plan); `validate_chunk_roster` (lib/views.py:658) reads that file's `## Status` section, finds an empty roster, and emits misdirected "these IDs will never flip a checkbox" errors naming the wrong file; and `_plan_status_results` (lib/views.py:1050) selects the design artifact as a plan to regenerate. Both modes have the same one-line fix (the `artifact: build-plan` filter). (builder — backlog-service Chunk 02; re-verified 2026-07-19)
+
+- **[BLD-6T4R]** `verify-chunk-refs` forward-ref (`new`) exclusion is line-local, not chunk-scoped — a file declared `new` on a chunk's Deliverables line flags as missing when re-referenced elsewhere in the same chunk
+  `effort: S · impact: M · area: build-plan · source: critic · added: 2026-07-16 · reviewed: 2026-07-19 · status: open · stage: ready · related: BLD-3M7K, BLD-4K7P, BLD-5J8N, BLD-4V7Q · refs: lib/buildplan_refs.py (_BUILD_PLAN_NEW_QUALIFIER_RE, offset-keyed exclusion :349-360, _looks_like_file_path)`
+
+  A file declared with the `new` qualifier on a chunk's Deliverables line (`new \`path\``) is still
+  flagged as a missing ref when the same path is re-referenced WITHOUT the prefix elsewhere in the
+  same chunk section (e.g. a Done-when step). The exclusion keys on the token's start offset — only
+  the exact `new \`path\`` occurrence is exempt — so it is line-local, not chunk-scoped. Observed
+  2026-07-16 during the backlog-service plan review (Critic NOTE on
+  `.prawduct/artifacts/build-plan-backlog-service.md` ~line 167: `api-notes-github-issues.md`
+  declared `new` on Deliverables, re-referenced in a Done-when step). Distinct variant within the
+  verify-chunk-refs false-positive family: BLD-3M7K is token CLASSIFICATION (git-ref/branch-like
+  prose tokens misread as paths); this is the forward-ref exclusion's SCOPE. Fix direction: once a
+  path is declared `new` anywhere in a chunk section, exempt all same-chunk re-references of that
+  path. Low urgency — verify-chunk-refs is not wired into any gate. (critic)
+
+  Variant log (2026-07-16, backlog-service final-mode Critic review): `verify-chunk-refs` exit 1
+  on `.prawduct/artifacts/build-plan-backlog-service.md` line 144 — backticked ID-grammar prose
+  tokens (`owner/repo#number`, `repo/number`) parsed as plan-referenced file paths and flagged
+  missing. Strictly this is the token-CLASSIFICATION facet (BLD-3M7K's `_looks_like_file_path`
+  over-match, same family as branch-like slash tokens), logged here as this session's
+  verify-chunk-refs FP record. Same fix-the-classification rule applies: never demote the check
+  to a warning — fix what it classifies as a path (ID-grammar tokens with `#`, and slash tokens
+  that are format grammar rather than repo paths, should be excluded from the path heuristic).
+
+  Re-verified 2026-07-19: still live as written. `lib/buildplan_refs.py:346-360` recomputes
+  `excluded_spans` per LINE inside the section loop and exempts a token only via
+  `any(start == match.start(1) for start, _ in excluded_spans)` — an exact start-offset match
+  against spans from that same line. Nothing carries the `new` declaration across lines within
+  the chunk. Salvaged from branch `worktree-backlog-service-plan` (worktree removed before merge).
+
+- **[ENV-7C4K]** `prawduct-hook` on PATH resolves to the installed plugin cache (stale version) inside framework-repo worktrees — Critic `critic-begin` silently wrote no kernel-v3 manifest until re-dispatched with repo-local `bin/prawduct-hook`
+  `effort: S · impact: M · area: environments · source: reflection · added: 2026-07-16 · status: open · stage: ready · reviewed: 2026-07-19 · related: ENV-2W7K, CRT-6W2N · refs: bin/prawduct-hook, skills/critic/SKILL.md (critic-begin dispatch + SubagentStop critic-consolidate), CLAUDE.md (Critic data-plane commands)`
+
+  Observed 2026-07-16 during the backlog-service Chunk 01 Critic run in a framework-repo
+  worktree: bare `prawduct-hook` on PATH resolved to the *installed plugin cache* binary (2.3.3)
+  while the worktree carries the repo-local `bin/prawduct-hook` (3.0.4 lineage). The Critic
+  coordinator's `critic-begin` ran the stale binary and silently wrote no kernel-v3 dispatch
+  manifest — no error, no manifest, wrong-version semantics — until the coordinator was
+  re-dispatched with `bin/prawduct-hook` explicitly. Dogfooding-specific hazard: product repos
+  legitimately run the plugin-cache binary; the skew bites only in the framework repo, where the
+  checkout is a newer lineage than the installed plugin. Fix-shape (either or both): (a) skills/
+  docs invoked inside the framework repo prefer the repo-local binary — resolve
+  `bin/prawduct-hook` at the repo root ahead of PATH; (b) fail loudly on version skew — the
+  invoked binary compares its self-reported version against the repo's expected lineage and
+  refuses to proceed silently. A silent no-op in the review data plane is the worst failure mode
+  here; loud beats clever. (reflection)
+
+  **Recurrence — second data-plane path (observed 2026-07-16, backlog-service Chunk 01
+  final review).** The same stale-binary no-op bites a *second* Critic data-plane write,
+  not just `critic-begin`: the `SubagentStop`-triggered `critic-consolidate` ALSO silently
+  no-ops. Bare `prawduct-hook` on the *hook's* PATH resolves to the stale 2.3.3 plugin
+  cache, so the SubagentStop consolidate runs the wrong-version binary and leaves the
+  review un-persisted — until a manual repo-local `./bin/prawduct-hook critic-consolidate`
+  lands the fact. Consequence for the fix: it must cover BOTH data-plane writes —
+  `critic-begin` (manifest write) AND the SubagentStop `critic-consolidate` — any fix
+  touching only `critic-begin` is incomplete. This makes fix-shape (a) (repo-local binary
+  resolution) or (b) (loud version-skew failure) need to apply on the hook invocation path
+  too, not just skill/doc invocations. (reflection)
+
 - **[CRT-3T6V]** verify-chunk-refs `cannot-verify:` vs `missing-ref:` exit-message differentiation + critic-begin bare-repo sibling-worktree guard lack direct pytest coverage
   `effort: S · impact: S · area: critic · kind: test-gap · source: critic · added: 2026-07-18 · status: open · stage: ready · related: BLD-5J8N, CRT-6W2N · refs: bin/prawduct-hook (cmd_verify_chunk_refs, cmd_critic_begin)`
 
@@ -40,7 +123,7 @@
   **Progress (2026-07-18, owner-feedback pass):** the binary `--archive-scope {all,open}` lever now SHIPS (MG4b — `lib/backlog/{cli,migrate}.py`, honored by import + restructure-preview + the scrub runbook step 2c), and the **requirements** attribution is corrected (Pacer = ceiling via pace-across-time; the window = write-*volume*/throughput lever, not the rate ceiling), matched in migration-scrub.md + change-log. STILL OPEN: the same re-attribution in **PRD §8.9** + the §8.9↔§9 circular reference; the window **quantification** (N-months / a throughput formula); and **part (b)** — the Pacer metering total REST points (5/write, 1/read) against 900/min for the create+close archive stretch. Stays adopter-scale, not gating the dogfood.
 
 - **[BKL-6M4T]** Complete backlog-service Chunk 06 live migration (deferred)
-  `effort: L · impact: M · area: backlog-service · source: builder · added: 2026-07-17 · reviewed: 2026-07-18 · status: open · stage: ready · related: BKL-5R2K · refs: artifacts/build-plan-backlog-service.md, VRF-006`
+  `effort: L · impact: M · area: backlog-service · source: builder · added: 2026-07-17 · reviewed: 2026-07-19 · status: open · stage: ready · related: BKL-5R2K, DOC-4K9M · refs: artifacts/build-plan-backlog-service.md, VRF-006`
 
   Offline deliverables (scrub runbook, MIG-5 test, SPIKE-S2 script) landed 2026-07-17; the live, owner-in-the-loop remainder is deferred to a post-sign-off session: run SPIKE-S2 on a throwaway repo, run the real prawduct-first migration (scrub → import), repoint briefing/gates to the adapter, retire `lib/backlog/legacy.py` + the `incoming-bugs/` drop-box, then the single cumulative-critic that gates the slice PR. Blocked on design sign-off + a chosen target repo.
 
@@ -922,7 +1005,7 @@
   explicit user accept-the-tradeoff decision. (user)
 
 - **[BLD-3M7K]** `verify-chunk-refs` over-matches git-ref tokens (origin/-prefixed and branch-like slash tokens) in build-plan prose, producing false missing-ref positives
-  `effort: S · impact: S · area: critic · source: critic · added: 2026-06-21 · status: open · stage: idea · related: BLD-4K7P, BLD-2R9X, BLD-8F2Q · refs: lib/buildplan_refs.py (_looks_like_file_path)`
+  `effort: S · impact: S · area: critic · source: critic · added: 2026-06-21 · reviewed: 2026-07-19 · status: open · stage: idea · related: BLD-4K7P, BLD-2R9X, BLD-8F2Q, BLD-6T4R · refs: lib/buildplan_refs.py (_looks_like_file_path)`
 
   Follow-up to BLD-4K7P. Surfaced 2026-06-21 by the hook-cli-robustness cumulative Critic: the
   plan's own prose backticked `origin/develop` and `origin/` while describing the REL-7P3X fix;
@@ -1298,6 +1381,19 @@
   Promoted 2026-07-17: Offline code + tests landed 2026-07-17 (commit 8ecd02e, cumulative-Critic 0 blocking). core.resolve_ref wires PFX→canonical alias resolution into get/link; migrate._find_by_key gains a block-id_aliases fallback skip-authority (_AliasIndex) that self-heals a human-deleted id:PFX label so a re-import can't duplicate; reconcile-labels re-derives deleted aliases. In-flight under the Chunk 06 slice (BKL-6M4T) — closes when the slice merges. Follow-ups spun off: BKL-7Q2N (mutator-side PFX resolution), BKL-9J3F (CC5 decoder gaps).
 
 ## Archive
+
+- **[DOC-4K9M]** VRF-007's operator checklist asks the operator to verify a step the skill cannot do (`--if-updated-at` round-trip), contradicting its own pre-verification note
+  `effort: S · impact: M · area: operator-verification · source: critic · added: 2026-07-19 · reviewed: 2026-07-19 · status: shipped · stage: ready · related: BKL-3W6K, BKL-6M4T · refs: .prawduct/operator-verification.md (VRF-007, Verify step 3 :245-247 vs Pre-verified note :225-230), skills/backlog/adapter-mode.md (update <id> section), .prawduct/artifacts/build-plan-backlog-skill-repoint.md · closed-by: worktree-salvage`
+
+  **Shipped 2026-07-19 (worktree-salvage)** — fixed in place rather than deferred, owner-approved. `.prawduct/operator-verification.md` VRF-007 "Verify" step 3 was reworded to drop the unimplementable `--if-updated-at` round-trip and instead verify a **normal-path** field round-trip: a title/stage/area edit made via `update` is reflected by a following `get`/`list`. A parenthetical was added recording that the `--if-updated-at` guard is deliberately NOT exercised, because the `get` envelope exposes no `updated_at`. This was chosen over the alternative fix-shape ("keep the clause but annotate it") so the checklist contains no unreachable instructions and a future reader cannot silently re-add the step. The checklist and the "Pre-verified (adapter loop, 2026-07-19)" note now state the same thing.
+
+  **Caveat — the reworded step is itself UNVERIFIED.** The rewording resolves the doc contradiction; it does not prove the normal-path round-trip actually works. That remains unproven until the Phase 1 sibling-session dogfood (**BKL-6M4T**) actually executes VRF-007. If the round-trip fails there, that is a product defect to raise fresh — not a regression of this item.
+
+  Doc-coherence defect, re-raised twice by the Critic. Inherited from the merged backlog-skill-repoint work (BKL-3W6K) — **not** introduced by the branch on which it was found.
+
+  The contradiction is internal to one document. `.prawduct/operator-verification.md` VRF-007 step 3 of the "Verify" checklist still read "a field change round-trips via `--if-updated-at`", but the **same** entry's "Pre-verified (adapter loop, 2026-07-19)" paragraph ~15 lines above records that this exact step was DROPPED as unimplementable: "the `get` envelope does not expose `updated_at`, so the update guidance dropped the unimplementable get-then-`--if-updated-at` step." `skills/backlog/adapter-mode.md` (the `update <id>` section) agrees — the `--if-updated-at` optimistic-concurrency guard "is only usable when a caller already holds that timestamp from elsewhere; the skill's normal path omits it." Consequence (now removed): an operator draining VRF-007 during Phase 1 (the sibling-repo dogfood) was blocked on a step that cannot be performed through the skill, with no in-document signal that the block was a doc bug rather than a product defect.
+
+  Drains with, or before, VRF-007 itself (Phase 1 of the migration program, execution tracked by BKL-6M4T). (critic)
 
 - **[BKL-3W6K]** /prawduct:backlog skill is markdown-only — repoint it onto the GitHub-Issues adapter when backlog_service_repo is set
   `effort: M · impact: M · area: backlog-service · source: user · added: 2026-07-19 · reviewed: 2026-07-19 · status: shipped · stage: ready · related: BKL-6M4T, BKL-8P2R, BKL-5D2C · refs: .prawduct/artifacts/build-plan-backlog-skill-repoint.md · closed-by: backlog-skill-repoint`

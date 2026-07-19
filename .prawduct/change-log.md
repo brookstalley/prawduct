@@ -3,6 +3,54 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-07-19: Salvage stranded work from the removed backlog-service worktree branch (worktree-salvage)
+
+<!-- prawduct: type=fix -->
+<!-- Statusless = release-pending once develop→main ships. No scope= tag: this is a
+     plan-less fix branch, and a statusless scope must resolve to a build-plan file
+     whose ## Status can be regenerated (lib/views.py). -->
+
+
+Two linked worktrees were retired (`prawduct-wt-backlog-prd`, a clean duplicate `develop` checkout;
+`.claude/worktrees/backlog-service-plan`). The latter's branch carried ~2,900 lines of backlog-service
+implementation **superseded** by the `lib/backlog/` package that shipped on develop (Chunks 01-06) —
+plus a handful of changes that existed nowhere else. Those are salvaged here; the superseded layout
+(`lib/backlog_service.py`, `lib/backlog_github.py`, `bin/prawduct-backlog`, their tests, and the v1
+design artifacts) is deliberately dropped.
+
+- **Digest single-copy checks filter relative to root** (`tests/test_plugin_methodology_digest.py`):
+  `.git`/`.claude` were filtered on ABSOLUTE path components, so a checkout that itself lives under a
+  `.claude/worktrees/` session worktree had its *canonical* digest excluded along with the strays,
+  breaking the single-source assertion. Now filtered on components relative to `root`.
+- **Worktree fork-write pollution rule** (`.prawduct/learnings.md`): a `/prawduct:*` skill fork writes
+  `.prawduct/` state to the LAUNCH dir, not a worktree the session ENTERED mid-session — so a
+  state-mutating skill silently dirties a different active worktree's WIP and reports success.
+- **Four backlog items** an ID-set diff proved existed only on the removed branch: `ENV-7C4K`
+  (bare `prawduct-hook` resolves to the stale plugin cache, silently no-opping BOTH Critic
+  data-plane writes — `critic-begin` and the SubagentStop `critic-consolidate`), `STH-7W9K` (the
+  fork-write gap above; filing it resolves the learnings rule's dangling pointer), `VWS-2W6H`
+  (plan discovery has no `artifact: build-plan` filter), `BLD-6T4R` (the `new` forward-ref exclusion
+  is line-local, not chunk-scoped). `VWS-2W6H`/`BLD-6T4R` were re-verified live in code before filing.
+
+Three defects the Critic surfaced during this salvage were inherited from already-merged work rather
+than introduced here, and were fixed in place (owner-approved) rather than deferred:
+
+- **Shadowed dead `current_branch`** (`lib/gitstate.py`): a second definition sat above the
+  pre-existing one, and Python's later-binding made it unreachable — every caller *and* the three
+  tests added alongside it ran the older `symbolic-ref` probe. Both returned the branch name or
+  `None` on detached HEAD, so deleting the dead copy is a runtime no-op (suite unchanged at 2396
+  passed). The entry below claiming a "new" probe is corrected in place.
+- **`regen-views` failing closed** (`.prawduct/change-log.md`): two statusless entries carried a
+  `scope=` tag resolving to no build-plan file. Since `regen-views` writes **no** views on any
+  error, that blocked `## Status` regeneration for every release-pending plan at the develop→main
+  release. Both tags dropped; `regen-views --check` now passes.
+- **VRF-007 asked for an impossible step** (`.prawduct/operator-verification.md`, `DOC-4K9M`): Verify
+  step 3 told the operator to round-trip a field change via `--if-updated-at`, which the skill cannot
+  do — the `get` envelope exposes no `updated_at` — while the document's own pre-verification note
+  already recorded the step as dropped. Step 3 now verifies a normal-path round-trip (a title/stage/
+  area edit reflected by a following `get`/`list`) and records the omission so it cannot be silently
+  re-added. The reworded step is itself **unverified** until Phase 1 (`BKL-6M4T`) executes VRF-007.
+
 ## 2026-07-19: /prawduct:backlog skill repointed onto the GitHub-Issues adapter (backlog-skill-repoint)
 
 <!-- prawduct: type=feature | scope=backlog-skill-repoint | chunks=01,02 -->
@@ -34,8 +82,11 @@ markdown, not the Issues that are now system-of-record. This repoints it.
 
 ## 2026-07-18: Stop hook surfaces the silent worktree `.prawduct/` redirect (stop-worktree-redirect-note)
 
-<!-- prawduct: type=feature | scope=stop-worktree-redirect-note -->
-<!-- Statusless: observability feature on develop, ahead of the batched develop→main release. -->
+<!-- prawduct: type=feature -->
+<!-- Statusless: observability feature on develop, ahead of the batched develop→main release.
+     No scope= tag (dropped 2026-07-19): a statusless scope must resolve to a build-plan file
+     whose ## Status can be regenerated, and this shipped as a plan-less branch — the tag made
+     regen-views fail closed, and it writes NO views on any error. -->
 
 **STH-3R8K.** `get_project_dir()` follows a session into a git worktree, resolving
 `.prawduct/` state to the worktree toplevel rather than `CLAUDE_PROJECT_DIR`
@@ -50,9 +101,13 @@ invisibly. The Stop path now makes it observable.
   read THIS worktree` — exactly when the resolved dir differs from the env pin.
   Emitted before gate logic; informational only, never a blocker. Silent on the
   single-checkout / launched-in-worktree path (no redirect, no noise).
-- **Probe** (`lib/gitstate.py`): new reusable `current_branch(cwd)` (read-only
-  `git rev-parse --abbrev-ref HEAD`, fail-open — `None` on detached HEAD /
-  non-repo) supplies the branch label.
+- **Probe** (`lib/gitstate.py`): the existing reusable `current_branch(project_dir)`
+  (read-only `git symbolic-ref --quiet --short HEAD`, fail-open — `None` on
+  detached HEAD / non-repo) supplies the branch label. (Corrected 2026-07-19: this
+  entry originally claimed a *new* helper. A second definition was in fact added
+  above the existing one, where Python's later-binding made it dead code — every
+  caller and all the tests below ran the pre-existing `symbolic-ref` probe. The
+  dead duplicate is now deleted; behavior was and remains that of the live one.)
 - **Scope call**: the SessionStart digest/banner surface (named in the item's
   refs) was deliberately scoped out — SessionStart runs in the launch dir and
   cannot observe a mid-cycle worktree move, and would duplicate BRF-6K2D. The

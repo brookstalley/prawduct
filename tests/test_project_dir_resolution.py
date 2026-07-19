@@ -225,8 +225,8 @@ def test_current_branch_none_outside_repo(tmp_path, gitstate):
 
 
 def test_current_branch_none_on_detached_head(tmp_path, gitstate):
-    """A detached HEAD reports the literal 'HEAD' from --abbrev-ref; that is not
-    a branch name, so it maps to None."""
+    """A detached HEAD has no symbolic ref, so `git symbolic-ref --quiet` exits
+    non-zero and the probe returns None rather than a misleading value."""
     primary = tmp_path / "primary"
     _init_repo(primary)
     head = _git(primary, "rev-parse", "HEAD").stdout.strip()

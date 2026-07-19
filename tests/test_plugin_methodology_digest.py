@@ -43,13 +43,15 @@ def _canonical_digest_copies(root: Path = ROOT) -> list[Path]:
     workflow checkouts (`.claude/worktrees/wf_*/`) that carry a full duplicate
     methodology tree. Those copies are a nested checkout, not a rogue
     non-canonical source, so they must not fail the single-source assertion
-    (TST-9K4W). Filtered on the path COMPONENT, not a prefix, so it matches at
-    any depth and never trips on an unrelated file literally named `.claude`.
+    (TST-9K4W). Filtered on path components RELATIVE to `root` — the checkout
+    itself may live under a `.claude/worktrees/` session worktree, and an
+    absolute-parts filter would exclude the canonical copy along with the strays.
     """
     return sorted(
         p
         for p in root.rglob("session-digest.md")
-        if ".git" not in p.parts and ".claude" not in p.parts
+        if ".git" not in p.relative_to(root).parts
+        and ".claude" not in p.relative_to(root).parts
     )
 
 
@@ -99,7 +101,8 @@ class TestDigestSource:
         copies = sorted(
             p
             for p in ROOT.rglob("session-digest-slim.md")
-            if ".git" not in p.parts and ".claude" not in p.parts
+            if ".git" not in p.relative_to(ROOT).parts
+            and ".claude" not in p.relative_to(ROOT).parts
         )
         assert copies == [SLIM_DIGEST_SRC], f"expected one canonical slim digest, found {copies}"
 
