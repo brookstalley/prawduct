@@ -57,9 +57,11 @@ Context: **Phase 0 COMPLETE, PR-ready.** Chunks 01-02 built + verified (suite gr
 flags + the `promoted→in-progress` status bridge confirmed against `encode.py`). Cumulative Critic
 (3 reviewers, coordinator): 0 blocking / 0 warning / 7 note — the two actionable notes (summary menu
 advertised moot ops; grooming stamp on failed calls) resolved on `adapter-mode.md`, `verify-resolutions`
-clean (R-2/R-3 fixed). Branch `feature/backlog-skill-repoint` (5 commits). BKL-3W6K stays open pending
-Phase 1; VRF-007 queued. Next: **Phase 1 sibling dogfood** (needs a target repo + `backlog_service_repo`
-+ `gh`) — the behavioral proof; then Phase 2 (prawduct self-cutover).
+clean (R-2/R-3 fixed). Branch `feature/backlog-skill-repoint` (7 commits). BKL-3W6K stays open pending Phase 1; VRF-007
+queued. **Phase 1 adapter pre-verification PASSED** (2026-07-19, dogfood on `prawduct-backlog-smoke`:
+reads/writes/`promoted`→`in-progress` bridge/exit-3/exit-4 all live) — caught + fixed one doc bug
+(`get` doesn't expose `updated_at`). Remaining: the owner's sibling-*session* confirm via
+`--plugin-dir` (drains VRF-007), then `/prawduct:pr`. Next after that: Phase 2 (prawduct self-cutover).
 
 ## Scaffolding
 

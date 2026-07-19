@@ -222,6 +222,14 @@ never before it. Before/at the retirement, eyeball that the replacement is live:
 
 **Status:** pending
 **Added:** 2026-07-19 (backlog-skill-repoint Chunk 02 — read + write ops via the adapter)
+**Pre-verified (adapter loop, 2026-07-19):** the adapter substrate the skill drives is confirmed live
+against the private throwaway `brookstalley/prawduct-backlog-smoke` — reads (`counts`/`list`/`list
+--filter`/`get`/`pick`), writes (`file`/`status`/`claim`/`link`/`update`/`status --to dropped`), the
+`promoted`→`in-progress` bridge (a `status:in-progress` label was applied live), not-found (exit 3),
+and stale-timestamp conflict (exit 4). One doc bug caught + fixed: the `get` envelope does not expose
+`updated_at`, so the update guidance dropped the unimplementable get-then-`--if-updated-at` step.
+**Remaining for the drain:** the model actually executing `adapter-mode.md` in a real sibling
+*session* via `--plugin-dir` — the prose-routing confirm a headless adapter loop can't cover.
 **Where to verify:** A sibling product repo pointed at this checkout via `--plugin-dir=../prawduct`,
 with `backlog_service_repo: owner/repo` set in its `.prawduct/project-state.yaml` and `gh`
 authenticated. This is **Phase 1** of the migration program (the owner-scoped dogfood) — it exercises
