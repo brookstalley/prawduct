@@ -205,6 +205,10 @@ def _parse_build_plan_status(prawduct_dir: Path) -> dict[str, str]:
 
 _BUILD_PLAN_PATH_RE = re.compile(r"`([^`\s]+)`")
 _BUILD_PLAN_NEW_QUALIFIER_RE = re.compile(r"\bnew\s+`([^`\s]+)`")
+# A trailing `:<line>`, `:<line>:<col>`, or `:<line>-<line>` on a backticked
+# token is a code-location citation (`lib/critic_mode.py:452`, `lib/foo.py:5-8`,
+# the editor-style `lib/foo.py:12:34`), not part of the filename.
+_BUILD_PLAN_LINE_SUFFIX_RE = re.compile(r":\d+(?::\d+)?(?:-\d+)?$")
 # Per-chunk Type declaration (v1.4 F6 — proportional Critic via chunk type).
 # Matches `- **Type:** <token>` or `**Type:** <token>` as a list item; trailing
 # parenthetical prose is allowed and ignored.
@@ -263,6 +267,27 @@ def _looks_like_file_path(token: str) -> bool:
     return True
 
 
+def _ref_path_part(token: str) -> str:
+    """Reduce a backticked ref token to the file path that gets existence-checked.
+
+    Two suffix forms name a location *inside* a file rather than a different
+    file, so both are stripped before the check:
+
+    - ``path::symbol`` (e.g. ``lib/views.py::is_views_enabled``) — verified by
+      its file half; symbol verification stays deferred.
+    - ``path:line`` / ``path:line-range`` (e.g. ``lib/critic_mode.py:452``,
+      ``lib/foo.py:5-8``) — a code-location citation. Without this the whole
+      ``path:line`` string is existence-checked literally and a present file
+      reports as a missing ref.
+
+    Order matters: the ``::`` split runs first, so a symbol that happens to end
+    in digits (``lib/foo.py::rule42``) is discarded with the rest of the symbol
+    half rather than being mistaken for a line number.
+    """
+    path_part = token.split("::", 1)[0]
+    return _BUILD_PLAN_LINE_SUFFIX_RE.sub("", path_part)
+
+
 def _chunk_section_lines(
     content: str, chunk_id: str
 ) -> tuple[bool, list[tuple[int, str]]]:
@@ -317,14 +342,15 @@ def _parse_build_plan_chunk_refs(prawduct_dir: Path, chunk_id: str) -> dict:
     parsing stops at the next sibling chunk heading or a non-chunk ``## `` heading
     — sibling chunks' refs are NOT returned. Fenced code blocks (```...```)
     are skipped because project-structure diagrams aren't load-bearing prose.
-    Paths preceded by the word ``new`` on the same line are skipped as
-    intra-chunk forward references (files the chunk creates rather than
-    modifies).
+    A path declared with the ``new`` qualifier anywhere in the chunk is skipped
+    for the whole section — it's a file the chunk creates rather than modifies,
+    and re-naming it in a later Done-when step doesn't make it exist yet.
 
     Returns ``{"file_paths": [{"line_num": int, "ref": str}, ...],
-    "error": str | None}``. For a ``path::symbol`` token the stored ``ref`` is
-    the pre-``::`` path only (existence-checked), and the symbol is ignored —
-    symbol and backlog-ID verification remain deferred (BLD-5V8F).
+    "error": str | None}``. The stored ``ref`` is the path half of the token as
+    reduced by ``_ref_path_part`` — any ``::symbol`` or ``:line`` suffix is
+    dropped, so a missing-ref message names the file rather than the citation.
+    Symbol and backlog-ID verification remain deferred.
     """
     result: dict = {"file_paths": [], "error": None}
     plan_path = resolve_build_plan_path(prawduct_dir)
@@ -342,24 +368,26 @@ def _parse_build_plan_chunk_refs(prawduct_dir: Path, chunk_id: str) -> dict:
         result["error"] = f"chunk {chunk_id!r} not found in build-plan"
         return result
 
+    # A path the chunk declares with the `new ` qualifier is a forward reference
+    # for the WHOLE chunk section, not just the occurrence carrying the word.
+    # Chunks routinely declare `new `path`` on Deliverables and then name the
+    # same path again in a Done-when step; keying the exemption to that one
+    # occurrence made every re-reference a false missing-ref. Collected over all
+    # section lines first, and normalized the same way as the tokens below so a
+    # `new `path`` declaration also exempts a later `path:42` citation of it.
+    forward_refs: set[str] = {
+        _ref_path_part(m.group(1))
+        for _, section_line in section_lines
+        for m in _BUILD_PLAN_NEW_QUALIFIER_RE.finditer(section_line)
+    }
+
     seen: set[tuple[str, int]] = set()
     for line_num, line in section_lines:
-        # Collect spans preceded by "new " — these get filtered out.
-        excluded_spans: list[tuple[int, int]] = [
-            m.span(1) for m in _BUILD_PLAN_NEW_QUALIFIER_RE.finditer(line)
-        ]
         for match in _BUILD_PLAN_PATH_RE.finditer(line):
-            token = match.group(1)
-            # A `path::symbol` token (e.g. `lib/views.py::is_views_enabled`) is
-            # verified by its FILE path only — existence-check the pre-`::` part,
-            # not the whole token, so a valid file isn't reported missing
-            # (BLD-8F2Q). The symbol half stays deferred (BLD-5V8F).
-            path_part = token.split("::", 1)[0]
+            path_part = _ref_path_part(match.group(1))
             if not _looks_like_file_path(path_part):
                 continue
-            # The `new ` forward-ref exclusion keys on the token START offset,
-            # which a trailing `::symbol` does not move, so it still composes.
-            if any(start == match.start(1) for start, _ in excluded_spans):
+            if path_part in forward_refs:
                 continue
             key = (path_part, line_num)
             if key in seen:

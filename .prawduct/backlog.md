@@ -31,35 +31,175 @@
 
   2. SILENT (design artifact's scope is NOT duplicated by a real plan — e.g. the actual build plan has no frontmatter `scope:`, or is retired/absent). `build_scope_to_plan_map` (lib/views.py:532) now dedupes by "first by sorted filename wins", silently, so a design artifact can also outrank the real plan by name alone (`api-contract-backlog-service.md` sorts before `build-plan-backlog-service.md`). With no duplicate to trip the fatal diagnostic, the map silently binds the scope to a NON-plan file and three things go wrong quietly: `diagnose_scope_plan_coverage`'s "unreleased scope with no plan file" check is FALSELY SATISFIED (the design artifact stands in for the missing plan); `validate_chunk_roster` (lib/views.py:658) reads that file's `## Status` section, finds an empty roster, and emits misdirected "these IDs will never flip a checkbox" errors naming the wrong file; and `_plan_status_results` (lib/views.py:1050) selects the design artifact as a plan to regenerate. Both modes have the same one-line fix (the `artifact: build-plan` filter). (builder — backlog-service Chunk 02; re-verified 2026-07-19)
 
-- **[BLD-6T4R]** `verify-chunk-refs` forward-ref (`new`) exclusion is line-local, not chunk-scoped — a file declared `new` on a chunk's Deliverables line flags as missing when re-referenced elsewhere in the same chunk
-  `effort: S · impact: M · area: build-plan · source: critic · added: 2026-07-16 · reviewed: 2026-07-19 · status: open · stage: ready · related: BLD-3M7K, BLD-4K7P, BLD-5J8N, BLD-4V7Q · refs: lib/buildplan_refs.py (_BUILD_PLAN_NEW_QUALIFIER_RE, offset-keyed exclusion :349-360, _looks_like_file_path)`
+- **[BLD-9H2M]** `verify-chunk-refs` never detects a SOFT-WRAPPED `new` qualifier — the regex is applied per line, so `… new\n  \`path\`` is not exempted and the created file reports as a missing ref
+  `effort: S · impact: M · area: build-plan · kind: bug · source: builder · added: 2026-07-19 · reviewed: 2026-07-19 · status: open · stage: ready · related: BLD-8R3T, BLD-5N7C, BLD-6T4R, BLD-4V7Q, BLD-3M7K, BLD-4K7P, BLD-2R9X, BLD-8F2Q, BLD-5J8N, BLD-4Q8W · refs: lib/buildplan_refs.py (_BUILD_PLAN_NEW_QUALIFIER_RE, the forward_refs comprehension in _parse_build_plan_chunk_refs), .prawduct/artifacts/build-plan-backlog-service.md (chunk 01 Deliverables), skills/critic/review-protocol.md (Build-plan ref drift goal), .prawduct/cross-cutting-concerns.md`
 
-  A file declared with the `new` qualifier on a chunk's Deliverables line (`new \`path\``) is still
-  flagged as a missing ref when the same path is re-referenced WITHOUT the prefix elsewhere in the
-  same chunk section (e.g. a Done-when step). The exclusion keys on the token's start offset — only
-  the exact `new \`path\`` occurrence is exempt — so it is line-local, not chunk-scoped. Observed
-  2026-07-16 during the backlog-service plan review (Critic NOTE on
-  `.prawduct/artifacts/build-plan-backlog-service.md` ~line 167: `api-notes-github-issues.md`
-  declared `new` on Deliverables, re-referenced in a Done-when step). Distinct variant within the
-  verify-chunk-refs false-positive family: BLD-3M7K is token CLASSIFICATION (git-ref/branch-like
-  prose tokens misread as paths); this is the forward-ref exclusion's SCOPE. Fix direction: once a
-  path is declared `new` anywhere in a chunk section, exempt all same-chunk re-references of that
-  path. Low urgency — verify-chunk-refs is not wired into any gate. (critic)
+  Third variant in the `verify-chunk-refs` false-positive family, surfaced during the
+  `verify-chunk-refs-token-fixes` corpus check (2026-07-19) and deliberately filed rather than
+  fixed — out of scope for both BLD-4V7Q and BLD-6T4R, which shipped in that same change.
 
-  Variant log (2026-07-16, backlog-service final-mode Critic review): `verify-chunk-refs` exit 1
-  on `.prawduct/artifacts/build-plan-backlog-service.md` line 144 — backticked ID-grammar prose
-  tokens (`owner/repo#number`, `repo/number`) parsed as plan-referenced file paths and flagged
-  missing. Strictly this is the token-CLASSIFICATION facet (BLD-3M7K's `_looks_like_file_path`
-  over-match, same family as branch-like slash tokens), logged here as this session's
-  verify-chunk-refs FP record. Same fix-the-classification rule applies: never demote the check
-  to a warning — fix what it classifies as a path (ID-grammar tokens with `#`, and slash tokens
-  that are format grammar rather than repo paths, should be excluded from the path heuristic).
+  `_BUILD_PLAN_NEW_QUALIFIER_RE` (`\bnew\s+\`([^\`\s]+)\``) has an `\s+` that *could* span a
+  newline, but it is matched against ONE LINE AT A TIME — the `forward_refs` comprehension in
+  `_parse_build_plan_chunk_refs` iterates `section_lines` and calls `.finditer(section_line)`. So a
+  declaration that soft-wraps between the word `new` and its backticked path is never collected
+  into the forward-ref set at all. BLD-6T4R widened the exemption's REACH (line-local → chunk-scoped
+  per path); this is the separate problem that the declaration is never RECOGNIZED, so widening the
+  reach cannot help — nothing gets into the set to widen. (A fourth variant, **BLD-8R3T**, concerns
+  that same widened exemption in the opposite direction: it never expires when the chunk closes.)
 
-  Re-verified 2026-07-19: still live as written. `lib/buildplan_refs.py:346-360` recomputes
-  `excluded_spans` per LINE inside the section loop and exempts a token only via
-  `any(start == match.start(1) for start, _ in excluded_spans)` — an exact start-offset match
-  against spans from that same line. Nothing carries the `new` declaration across lines within
-  the chunk. Salvaged from branch `worktree-backlog-service-plan` (worktree removed before merge).
+  Live instance: `.prawduct/artifacts/build-plan-backlog-service.md` chunk 01 Deliverables wraps
+  twice — line 345 ends in `new` with `` `lib/backlog/encode.py` `` opening line 346, which itself
+  ends in `new` with `` `lib/backlog/provision.py` `` opening line 347. Both are files the chunk
+  CREATES, and both are existence-checked and reported `missing-ref` whenever they aren't yet on
+  disk. Same false-negative-habituation risk as the rest of the family: a checker that cries wolf on
+  correctly-authored plans trains reviewers to dismiss it — and this checker IS a gate, so that
+  habituation has teeth (see the urgency note below).
+
+  Fix-shape: collect the `new` qualifier over the JOINED chunk-section text (or with an explicit
+  next-line lookahead) instead of per line, then feed the results through `_ref_path_part` exactly
+  as the current comprehension does — the exemption set is already chunk-scoped and per-path, so
+  only the collection pass changes. Guard the widening: `\s+` across a newline must not let a
+  sentence that merely ENDS in the word "new" capture the first backticked token of the next line
+  (constrain to a single newline plus indent, or require the match to stay inside one list item).
+  **Urgency correction (2026-07-19).** This item's first draft inherited BLD-6T4R's "low urgency —
+  `verify-chunk-refs` is not wired into any gate" line. That claim is **stale and wrong**, verified
+  against the tree today: `skills/critic/review-protocol.md:71` makes it a Critic goal — "run
+  `prawduct-hook verify-chunk-refs` — both `missing-ref:` (deliverable absent) and `cannot-verify:`
+  (gate couldn't run) exits are **BLOCKING**" — and `.prawduct/cross-cutting-concerns.md:36` records
+  it as the Goal-2 build-plan-ref-drift gate. `skills/critic/SKILL.md` allow-lists the command so the
+  Critic fork can run it. It is not wired into a *hook* directly, but a BLOCKING Critic goal IS a
+  gate with teeth: the stop hook refuses session end while blocking findings are unresolved, so a
+  false `missing-ref:` on a correctly-authored plan blocks the chunk AND the session until someone
+  dismisses it — which is precisely the false-negative habituation this whole family is about. Urgency accordingly is **not** low; the live instance
+  below fires on an in-flight plan. (Note `.prawduct/cross-cutting-concerns.md:36` also claimed
+  `building.md: builder runs verify-chunk-refs before marking chunk done`, but `methodology/` carries
+  no such instruction — a separate doc-drift, since corrected in that cell. Whether building.md
+  *should* carry the step is now tracked as **BLD-4Q8W**, not by this item.)
+  (builder — verify-chunk-refs-token-fixes)
+
+- **[BLD-8R3T]** `verify-chunk-refs`' chunk-scoped `new` exemption never expires — it is unconditional on chunk completion, so a SHIPPED chunk's declared-new deliverable is never existence-checked
+  `effort: S · impact: M · area: build-plan · kind: bug · source: critic · added: 2026-07-19 · reviewed: 2026-07-19 · status: open · stage: ready · related: BLD-5N7C, BLD-9H2M, BLD-6T4R, BLD-4V7Q · refs: lib/buildplan_refs.py (the forward_refs set in _parse_build_plan_chunk_refs, _BUILD_PLAN_NEW_QUALIFIER_RE, _ref_path_part), .prawduct/change-log.md (2026-07-19 "verify-chunk-refs stops flagging path:line citations…"), skills/critic/review-protocol.md (Build-plan ref drift goal)`
+
+  Contract gap in BLD-6T4R's shipped fix, surfaced by the Critic on that change's change-log draft
+  and deliberately filed rather than folded in. The `new` qualifier means *"this chunk will CREATE
+  this file"* — a forward reference, correctly exempt from the existence check **while the chunk is
+  being built**. The shipped exemption is per-path and per-chunk but **unconditional with respect to
+  chunk completion**: once a chunk is `[x]` in the plan's `## Status`, the promise has come due, and a
+  declared-new deliverable that is still absent from disk is a REAL signal — the chunk shipped
+  without its deliverable, or the plan text has drifted off a rename. The exemption silences that
+  signal permanently.
+
+  Concrete cost, already paid: the corpus verification for BLD-6T4R found exactly two such refs
+  (`lib/backlog.py` and `methodology/agent-stance.md`, both in `[x]` chunks, neither on disk). They
+  were TRUE positives, caught only incidentally because those chunks happened to re-reference the
+  path — the very re-reference BLD-6T4R's fix suppresses. Post-fix, nothing surfaces them. Filed
+  separately as **BLD-5N7C**; this item is the systemic leg, that one the two instances.
+
+  Fix-shape: gate the forward-ref exemption on the chunk still being OPEN. `lib/buildplan_refs.py`
+  already parses the plan's `## Status` checkbox roster (`lib/views.py` `CHUNK_LINE_RE` and the
+  chunk-item primitives), so the checked/unchecked state of the chunk under verification is
+  reachable — apply the `forward_refs` set only when the chunk is unchecked, and existence-check
+  `new`-declared paths normally once it is checked. Watch two edges before building: (a) checkboxes
+  are a DERIVED view that stays `[ ]` on a feature branch until release (see the backlog-rework
+  plan's own Status comment and CRT-7B4M), so "unchecked" is not reliably "in flight" mid-branch —
+  fail toward the exemption there rather than manufacturing false positives on the branch that is
+  legitimately creating the file; (b) BLD-9H2M must land first or alongside, since a soft-wrapped
+  `new` never enters the set at all, and re-arming the check on closed chunks would turn that
+  false-negative into a false POSITIVE on correctly-authored plans. Governance-protected
+  (`lib/buildplan_refs.py` feeds a BLOCKING Critic goal) → full Critic + PR review.
+
+  **Trigger surface is wider than "declared deliverable" (2026-07-19, critic R-4 on
+  `verify-chunk-refs-token-fixes`).** The framing above says the exemption covers a chunk's *declared*
+  deliverable. The code is looser: `_BUILD_PLAN_NEW_QUALIFIER_RE` (`lib/buildplan_refs.py:207`,
+  `` \bnew\s+`([^`\s]+)` ``) matches the word `new` before ANY backticked path anywhere in the chunk
+  section, adjectival prose included — "the new `lib/foo.py` guard", "a new `path` helper" — not just
+  "creates a new X" declarations. Under the retired line-local rule an incidental adjective cost one
+  occurrence; chunk-scoped AND never-expiring, it can silence every reference to a genuinely-drifted
+  path for the life of the plan. Scanning every `.prawduct/artifacts/*build-plan*.md` for
+  `` (a|the|to|into|and) new `<path>` `` found only two hits, both genuine creation declarations
+  (`lib/backlog/migrate.py`, `skills/migrate/`) — so this is a widened trigger surface, not a live
+  defect today. Fold it into the fix rather than gating on chunk state alone: constrain the qualifier's
+  SHAPE at the same time (e.g. require the match to sit inside a Deliverables list item), so the
+  re-armed check keys off declarations instead of any prose use of the word.
+
+  **Sibling NOTE disposition — three-level `path:line:col:extra` (same review, critic R-5).**
+  Considered and left unfiled by design; the record lives in **BLD-4V7Q**'s archive note, which owns
+  `_BUILD_PLAN_LINE_SUFFIX_RE`. Summary: the suffix regex is `$`-anchored over at most two
+  numeric groups, so `lib/foo.py:1:2:3` still half-strips to `lib/foo.py:1`; no corpus instance exists
+  and no citation convention here uses three levels, so it stays a near-miss rather than an open item.
+  Noted here only because the two findings arrived together — this item does not carry that work.
+  (critic — verify-chunk-refs-token-fixes)
+
+- **[BLD-5N7C]** Two stale shipped-deliverable paths in closed chunks — `lib/backlog.py` and `methodology/agent-stance.md` are declared `new` in `[x]` chunks but no longer exist
+  `effort: S · impact: S · area: build-plan · kind: task · source: critic · added: 2026-07-19 · reviewed: 2026-07-19 · status: open · stage: ready · related: BLD-8R3T, BLD-6T4R · refs: .prawduct/artifacts/build-plan-backlog-rework.md (Chunk 01 Deliverables, and the Status/Context lines naming lib/backlog.py), .prawduct/artifacts/build-plan-rigor-and-stance.md (Chunk 02, ~:98/:112/:114/:117), .prawduct/change-log.md (2026-07-19 verify-chunk-refs entry)`
+
+  The two concrete instances of **BLD-8R3T**'s systemic gap. Both were flagged `missing-ref` by
+  `verify-chunk-refs` before BLD-6T4R shipped and are silenced by its chunk-scoped exemption now.
+  They are **TRUE positives, not false ones** — the checker was right; the plan text is stale.
+  (The change-log entry's first draft had this backwards and was corrected by the Critic; the
+  archived BLD-6T4R note has been corrected to match.)
+
+  1. `lib/backlog.py` — declared `new` in `build-plan-backlog-rework.md` Chunk 01 ("Parser
+     substrate"), chunk `[x]`. The file WAS built and shipped there; it was later restructured into
+     the `lib/backlog/` package by backlog-service Chunk 01 (`51f529d`, the commit that deletes it).
+     The plan still names the flat module in its Deliverables, its `## Status` checkbox line, its
+     Context paragraph, and Chunks 02/03/04's references.
+  2. `methodology/agent-stance.md` — declared `new` in `build-plan-rigor-and-stance.md` Chunk 02,
+     chunk `[x]`. Also genuinely written and shipped (`66e2fb0`, released `a930f98`/v2.0.7), then
+     FOLDED into the digest + methodology guides by prose-diet Chunk 03 (`b4d569e`, released
+     `10012cf`/v2.3.0). The plan still cross-references it from Deliverables
+     and from the `docs/principles.md` / `skills/methodology/SKILL.md` / presence-test steps.
+
+     *(Retracted 2026-07-19 — this bullet previously warned that "the change-log entry says 'no
+     agent-stance doc was written' … it was written and later folded." No change-log entry has ever
+     said that: the phrase appears nowhere in `.prawduct/change-log.md`, and `git log -S` over that
+     file's whole history returns no commit that added or removed it. The 2026-07-19 entry in fact
+     states the opposite and correct thing — both paths were "genuinely built, then restructured
+     away," the stance doc "folded into the digest by prose-diet Chunk 03." The warning was aimed at
+     a draft that the Critic had already corrected before it landed, so it sent a reader to fix text
+     that was already right. Dropped rather than kept-with-a-note because a pointer at nonexistent
+     text is pure misdirection; the shipped-and-later-folded fact it was defending is stated plainly
+     above.)*
+
+  So neither is a delivery failure — both are shipped plans whose deliverable paths were later
+  renamed or folded, leaving the historical plan pointing at files that no longer exist. Fix-shape
+  (decide which, don't do both): annotate each stale path in place with its successor — e.g.
+  `lib/backlog.py` *(later restructured into `lib/backlog/`; see backlog-service Chunk 01)* — which
+  keeps the plan honest as a historical record AND clears the check; or, if the project prefers
+  shipped plans to be immutable history, close this by making BLD-8R3T's gate skip closed chunks
+  entirely, in which case this item is a doc-accuracy nicety rather than a checker concern. Prefer
+  the annotation: a reader following a shipped plan to a dead path has no signal today. Ordering:
+  worth landing BEFORE BLD-8R3T re-arms the check, so re-arming does not immediately fire on two
+  known-stale paths. Docs-only, no code. (critic — verify-chunk-refs-token-fixes)
+
+- **[BLD-4Q8W]** Should `methodology/building.md` instruct builders to run `verify-chunk-refs` before marking a chunk done? — the concerns registry claimed that step; `methodology/` never carried it
+  `effort: S · impact: M · area: build-plan · kind: question · source: builder · added: 2026-07-19 · status: open · stage: requirements · related: BLD-9H2M, BLD-8R3T, BLD-6T4R · refs: .prawduct/cross-cutting-concerns.md:36 (Build-plan ref drift row, builder-stage cell), methodology/building.md (chunk "Done when" / verify steps), skills/critic/review-protocol.md:71 (the BLOCKING Critic goal), bin/prawduct-hook (verify-chunk-refs)`
+
+  Surfaced while correcting BLD-9H2M's urgency note (2026-07-19). `.prawduct/cross-cutting-concerns.md:36`
+  claimed, in the builder-stage cell of the Build-plan ref drift row, that
+  `building.md: builder runs verify-chunk-refs before marking chunk done`. That was **never true** —
+  `methodology/` mentions `verify-chunk-refs` nowhere; the gate is Critic-run only. The registry cell
+  has since been corrected to record the absence, and it names this item as the open question. So the
+  *drift* is fixed; what remains is the **decision** the drift papered over.
+
+  The question: is a builder-stage run the right coverage, or is Critic-only correct by design?
+  Arguments each way, both real —
+  - **For adding it.** The Critic exit is BLOCKING, so a `missing-ref:` found at review time bounces a
+    chunk that was already declared done, and the stop hook then holds the session until it is
+    resolved. Catching it at the builder's own "Done when" step is cheaper and shortens the loop —
+    the same shift-left rationale the registry's other builder-stage cells carry.
+  - **Against.** It duplicates a check the Critic already runs unconditionally, adds a step to every
+    chunk for a defect class that is rare per chunk, and cuts against Independent Review (Principle 14)
+    — a builder self-certifying the check the reviewer exists to run. Note also that this whole family
+    (BLD-9H2M, BLD-8R3T, BLD-2R9X, BLD-3M7K, BLD-4K7P, …) is a standing stream of FALSE positives;
+    putting a cry-wolf checker in the builder's hands is a habituation risk in the place where
+    habituation is least recoverable.
+
+  Not directly buildable — `stage: requirements` because the deliverable is a decision plus (if yes) a
+  one-paragraph methodology edit and a registry-cell update, not code. Settle it before BLD-9H2M /
+  BLD-8R3T change the checker's false-positive profile, since that profile is the main argument
+  against. Whatever is decided, `.prawduct/cross-cutting-concerns.md:36` must end up matching reality
+  — it is the cell that lied for the life of the row. (builder — verify-chunk-refs-token-fixes)
 
 - **[ENV-7C4K]** `prawduct-hook` on PATH resolves to the installed plugin cache (stale version) inside framework-repo worktrees — Critic `critic-begin` silently wrote no kernel-v3 manifest until re-dispatched with repo-local `bin/prawduct-hook`
   `effort: S · impact: M · area: environments · source: reflection · added: 2026-07-16 · status: open · stage: ready · reviewed: 2026-07-19 · related: ENV-2W7K, CRT-6W2N · refs: bin/prawduct-hook, skills/critic/SKILL.md (critic-begin dispatch + SubagentStop critic-consolidate), CLAUDE.md (Critic data-plane commands)`
@@ -94,11 +234,6 @@
   `effort: S · impact: S · area: critic · kind: test-gap · source: critic · added: 2026-07-18 · status: open · stage: ready · related: BLD-5J8N, CRT-6W2N · refs: bin/prawduct-hook (cmd_verify_chunk_refs, cmd_critic_begin)`
 
   Two behaviors were manually CLI-verified during discodon-upstream-defects but have no regression test. (1) `cmd_verify_chunk_refs` differentiates its `cannot-verify:` exit message from its `missing-ref:` exit message — the distinction is untested, so a regression that collapsed the two would pass CI. (2) `cmd_critic_begin`'s bare-repo sibling-worktree `.get('branch', '?')` guard (the fallback when a sibling worktree has no branch, e.g. a detached/bare checkout) has no test exercising the missing-branch path. Both surfaces are in `bin/prawduct-hook`; add pytest coverage pinning each. Related: BLD-5J8N (chunk-HEADER parser family in cmd_verify_chunk_refs), CRT-6W2N / its Chunk 04 PDT-WT9K (the critic-begin worktree-guard work). Filed from /critic.
-
-- **[BLD-4V7Q]** verify-chunk-refs flags a false missing-ref on a backticked code-location token carrying a `:line` / `:line-range` suffix (`path:line`)
-  `effort: S · impact: S · area: critic · kind: bug · source: critic · added: 2026-07-18 · status: open · stage: ready · related: BLD-8F2Q, BLD-5J8N, BLD-3M7K, BLD-4K7P · refs: lib/buildplan_refs.py (_parse_build_plan_chunk_refs, _looks_like_file_path)`
-
-  `_parse_build_plan_chunk_refs` strips a `::symbol` suffix (the BLD-8F2Q carveout) but NOT a single `:line` / `:line-range` suffix, so a backticked code-location citation like `lib/critic_mode.py:452` or `lib/foo.py:5-8` is existence-checked literally as the whole `path:line` token and reported `missing-ref`. Same false-negative-habituation class BLD-5J8N just fixed at the chunk-HEADER layer, but here in the ref-TOKEN family (siblings: BLD-2R9X glob, BLD-8F2Q path::symbol, BLD-4K7P inline-code/URL, BLD-3M7K git-ref). Fix-shape: strip a trailing `:<digits>` or `:<digits>-<digits>` from a backticked path token before the existence check, mirroring the `::symbol` carveout, in `_parse_build_plan_chunk_refs` / `_looks_like_file_path`. Filed from /critic.
 
 - **[VWS-2F9K]** regen-views `CHUNK_LINE_RE` + the `chunks=`→Status-line match still require the colon `Status` form after BLD-5J8N broadened the em-dash form elsewhere — checkboxes silently fail to flip at merge
   `effort: S · impact: M · area: views · kind: bug · source: builder · added: 2026-07-18 · status: open · stage: ready · related: BLD-5J8N, GOV-8N4V · refs: lib/views.py (CHUNK_LINE_RE, collect_shipped_chunks), .prawduct/learnings-detail.md (colon-form learning)`
@@ -1381,6 +1516,91 @@
   Promoted 2026-07-17: Offline code + tests landed 2026-07-17 (commit 8ecd02e, cumulative-Critic 0 blocking). core.resolve_ref wires PFX→canonical alias resolution into get/link; migrate._find_by_key gains a block-id_aliases fallback skip-authority (_AliasIndex) that self-heals a human-deleted id:PFX label so a re-import can't duplicate; reconcile-labels re-derives deleted aliases. In-flight under the Chunk 06 slice (BKL-6M4T) — closes when the slice merges. Follow-ups spun off: BKL-7Q2N (mutator-side PFX resolution), BKL-9J3F (CC5 decoder gaps).
 
 ## Archive
+
+- **[BLD-4V7Q]** verify-chunk-refs flags a false missing-ref on a backticked code-location token carrying a `:line` / `:line-range` suffix (`path:line`)
+  `effort: S · impact: S · area: critic · kind: bug · source: critic · added: 2026-07-18 · reviewed: 2026-07-19 · status: shipped · stage: ready · related: BLD-8F2Q, BLD-5J8N, BLD-3M7K, BLD-4K7P, BLD-6T4R, BLD-9H2M · refs: lib/buildplan_refs.py (_ref_path_part, _BUILD_PLAN_LINE_SUFFIX_RE, _parse_build_plan_chunk_refs), tests/test_build_plan_resolution.py · closed-by: verify-chunk-refs-token-fixes`
+
+  **Shipped 2026-07-19 (verify-chunk-refs-token-fixes)** — fixed in `lib/buildplan_refs.py` alongside its sibling `BLD-6T4R`; both variants live in `_parse_build_plan_chunk_refs`'s token loop. A new helper `_ref_path_part` reduces a backticked ref token to the path that gets existence-checked, dropping BOTH suffix forms: `::symbol` (the pre-existing BLD-8F2Q carveout, now routed through the same helper) and `:line` / `:line-range` via `_BUILD_PLAN_LINE_SUFFIX_RE` (`:\d+(?::\d+)?(?:-\d+)?$`). Order is load-bearing and documented: the `::` split runs FIRST so a digit-tailed symbol (`lib/foo.py::rule42`) is discarded with the symbol half rather than mistaken for a line number. The stored `ref` is now the reduced path, so a genuine missing-ref message names the file rather than the citation. 12 regression tests added; suite 2408 passed / 6 skipped. Verified against the real plan corpus (every chunk of every `.prawduct/artifacts/*build-plan*.md` parsed under pre- and post-fix parsers), not fixtures alone.
+
+  **Record correction (2026-07-19).** Two details above were wrong as first written and are fixed in
+  place; both were verified against the tree and the ship commit `9865132`, not re-derived from memory.
+  (a) The regex was quoted as `:\d+(?:-\d+)?$`, dropping the `(?::\d+)?` alternative — so the note
+  understated the fix, which also covers the editor-style `path:line:col` form (`lib/foo.py:12:34`).
+  The pattern shipped with that alternative from the start; only the note was short. (b) The counts
+  read "11 regression tests added; suite 2407 passed / 6 skipped." The commit adds **12** test
+  functions to `tests/test_build_plan_resolution.py` (7 for this item's suffix handling, 5 for its
+  sibling `BLD-6T4R`'s exemption reach) and the suite stands at **2408 passed / 6 skipped** — which is
+  what the 2026-07-19 change-log entry recorded and what `pytest` reports on `develop` today. This
+  archive note was the outlier, not the change-log.
+
+  **Disposition — three-level `path:line:col:extra` half-strip (2026-07-19, critic R-5 on
+  `verify-chunk-refs-token-fixes`; NOTE severity, "backlog or ignore").** Considered and deliberately
+  left; recorded here rather than filed, so the dismissal is visible instead of silent.
+  `_BUILD_PLAN_LINE_SUFFIX_RE` is `$`-anchored and consumes at most two numeric groups, so a
+  three-level token like `lib/foo.py:1:2:3` reduces to `lib/foo.py:1` — still a false missing-ref, and
+  reported under a half-stripped name that reads like a real path (the same shape as the two-level case
+  this item fixed, one level deeper). Left because: no instance exists anywhere in the
+  `.prawduct/artifacts/*build-plan*.md` corpus, and no citation convention used in this repo (grep,
+  editor `path:line:col`, `path:line-range`, `path::symbol`) produces three numeric levels — so it is a
+  near-miss, not a live defect, and widening the regex would add surface without a demonstrated payer.
+  If one ever appears, the cheapest close is substituting to a fixed point (loop the `re.sub`, or make
+  the pattern `(?::\d+)+(?:-\d+)?$`) plus one case alongside `test_line_and_column_suffix_stripped`.
+  Cross-referenced from BLD-8R3T, which carries the companion NOTE from the same review.
+
+  `_parse_build_plan_chunk_refs` strips a `::symbol` suffix (the BLD-8F2Q carveout) but NOT a single `:line` / `:line-range` suffix, so a backticked code-location citation like `lib/critic_mode.py:452` or `lib/foo.py:5-8` is existence-checked literally as the whole `path:line` token and reported `missing-ref`. Same false-negative-habituation class BLD-5J8N just fixed at the chunk-HEADER layer, but here in the ref-TOKEN family (siblings: BLD-2R9X glob, BLD-8F2Q path::symbol, BLD-4K7P inline-code/URL, BLD-3M7K git-ref). Fix-shape: strip a trailing `:<digits>` or `:<digits>-<digits>` from a backticked path token before the existence check, mirroring the `::symbol` carveout, in `_parse_build_plan_chunk_refs` / `_looks_like_file_path`. Filed from /critic.
+
+- **[BLD-6T4R]** `verify-chunk-refs` forward-ref (`new`) exclusion is line-local, not chunk-scoped — a file declared `new` on a chunk's Deliverables line flags as missing when re-referenced elsewhere in the same chunk
+  `effort: S · impact: M · area: build-plan · source: critic · added: 2026-07-16 · reviewed: 2026-07-19 · status: shipped · stage: ready · related: BLD-8R3T, BLD-5N7C, BLD-3M7K, BLD-4K7P, BLD-5J8N, BLD-4V7Q, BLD-9H2M · refs: lib/buildplan_refs.py (_parse_build_plan_chunk_refs forward_refs set, _BUILD_PLAN_NEW_QUALIFIER_RE, _ref_path_part), tests/test_build_plan_resolution.py · closed-by: verify-chunk-refs-token-fixes`
+
+  **Shipped 2026-07-19 (verify-chunk-refs-token-fixes)** — the offset-keyed per-line `excluded_spans` exclusion is gone. `_parse_build_plan_chunk_refs` now collects every `new \`path\`` qualifier across ALL lines of the chunk section into a per-path `forward_refs` set BEFORE the token loop, normalized through the same `_ref_path_part` helper as the tokens — so a `new` declaration on a Deliverables line also exempts a later `path:42` citation of that same path (the two fixes compose). The exemption stays per-path and per-chunk: one `new` declaration does not silence other missing refs in the section and does not leak into sibling chunks. Corpus verification (all `.prawduct/artifacts/*build-plan*.md`) showed five plans change. A THIRD variant found during that corpus check was filed rather than fixed: **BLD-9H2M** (soft-wrapped `new` qualifier undetected — the regex is per-line).
+
+  **Correction (2026-07-19) — two dropped refs were TRUE positives, not false ones.** The sentence
+  above originally read that two of the dropped refs "were live false positives on `new`-declared
+  paths absent from disk — `lib/backlog.py` in `build-plan-backlog-rework` and
+  `methodology/agent-stance.md` in `build-plan-rigor-and-stance`." That is backwards, and the same
+  error was caught by the Critic in the change-log entry's first draft. Both paths sit in chunks
+  marked `[x]` shipped and **neither file exists**, so `verify-chunk-refs` was reporting real drift;
+  it surfaced them only incidentally, because those chunks happened to re-reference the path — the
+  exact re-reference this item's fix suppresses. The fix is still correct for its own scope (a
+  forward reference inside a chunk being BUILT must not flag), but it is unconditional with respect
+  to chunk completion, so a shipped chunk's declared-new deliverable is now never existence-checked.
+  That contract gap is filed as **BLD-8R3T**; the two stale plan paths as **BLD-5N7C**. Accepted
+  knowingly at ship time — recorded in the 2026-07-19 change-log entry, not discovered later.
+
+  **Urgency correction (2026-07-19).** The original filing's closing "Low urgency — verify-chunk-refs
+  is not wired into any gate" (preserved verbatim below as filed) is **stale and wrong**, and it
+  propagated into BLD-9H2M before being caught. `skills/critic/review-protocol.md:71` makes it a
+  Critic goal with both `missing-ref:` and `cannot-verify:` exits **BLOCKING**, and
+  `.prawduct/cross-cutting-concerns.md:36` records it as the Goal-2 build-plan-ref-drift gate. Not
+  hook-enforced, but a BLOCKING Critic goal is a gate. Do not re-derive urgency from that line.
+
+  A file declared with the `new` qualifier on a chunk's Deliverables line (`new \`path\``) is still
+  flagged as a missing ref when the same path is re-referenced WITHOUT the prefix elsewhere in the
+  same chunk section (e.g. a Done-when step). The exclusion keys on the token's start offset — only
+  the exact `new \`path\`` occurrence is exempt — so it is line-local, not chunk-scoped. Observed
+  2026-07-16 during the backlog-service plan review (Critic NOTE on
+  `.prawduct/artifacts/build-plan-backlog-service.md` ~line 167: `api-notes-github-issues.md`
+  declared `new` on Deliverables, re-referenced in a Done-when step). Distinct variant within the
+  verify-chunk-refs false-positive family: BLD-3M7K is token CLASSIFICATION (git-ref/branch-like
+  prose tokens misread as paths); this is the forward-ref exclusion's SCOPE. Fix direction: once a
+  path is declared `new` anywhere in a chunk section, exempt all same-chunk re-references of that
+  path. Low urgency — verify-chunk-refs is not wired into any gate. (critic)
+
+  Variant log (2026-07-16, backlog-service final-mode Critic review): `verify-chunk-refs` exit 1
+  on `.prawduct/artifacts/build-plan-backlog-service.md` line 144 — backticked ID-grammar prose
+  tokens (`owner/repo#number`, `repo/number`) parsed as plan-referenced file paths and flagged
+  missing. Strictly this is the token-CLASSIFICATION facet (BLD-3M7K's `_looks_like_file_path`
+  over-match, same family as branch-like slash tokens), logged here as this session's
+  verify-chunk-refs FP record. **This facet is NOT closed by this item's fix** — it remains open
+  under BLD-3M7K. Same fix-the-classification rule applies: never demote the check
+  to a warning — fix what it classifies as a path (ID-grammar tokens with `#`, and slash tokens
+  that are format grammar rather than repo paths, should be excluded from the path heuristic).
+
+  Re-verified 2026-07-19: still live as written. `lib/buildplan_refs.py:346-360` recomputes
+  `excluded_spans` per LINE inside the section loop and exempts a token only via
+  `any(start == match.start(1) for start, _ in excluded_spans)` — an exact start-offset match
+  against spans from that same line. Nothing carries the `new` declaration across lines within
+  the chunk. Salvaged from branch `worktree-backlog-service-plan` (worktree removed before merge).
 
 - **[DOC-4K9M]** VRF-007's operator checklist asks the operator to verify a step the skill cannot do (`--if-updated-at` round-trip), contradicting its own pre-verification note
   `effort: S · impact: M · area: operator-verification · source: critic · added: 2026-07-19 · reviewed: 2026-07-19 · status: shipped · stage: ready · related: BKL-3W6K, BKL-6M4T · refs: .prawduct/operator-verification.md (VRF-007, Verify step 3 :245-247 vs Pre-verified note :225-230), skills/backlog/adapter-mode.md (update <id> section), .prawduct/artifacts/build-plan-backlog-skill-repoint.md · closed-by: worktree-salvage`
