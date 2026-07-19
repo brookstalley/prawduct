@@ -52,6 +52,12 @@ A **third** false-positive variant surfaced during the corpus check and is filed
 declaration is never detected at all — visible in `build-plan-backlog-service.md` Chunk 01.
 Out of scope for both items fixed here.
 
+Reviewing this branch also turned up a false claim in `.prawduct/cross-cutting-concerns.md`: the
+Build-plan ref drift row asserted "building.md: builder runs `verify-chunk-refs` before marking
+chunk done," but `methodology/` never mentions the command — the gate is Critic-run only. The row is
+descriptive, so it now records the absence; whether building.md *should* carry that step is
+`BLD-4Q8W`, filed at `stage: requirements` because the answer is a decision, not code.
+
 ## 2026-07-19: Salvage stranded work from the removed backlog-service worktree branch (worktree-salvage)
 
 <!-- prawduct: type=fix -->
