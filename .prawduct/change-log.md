@@ -5,8 +5,11 @@
 
 ## 2026-07-19: Salvage stranded work from the removed backlog-service worktree branch (worktree-salvage)
 
-<!-- prawduct: type=fix | scope=worktree-salvage -->
-<!-- Statusless on fix/worktree-salvage = release-pending once develop→main ships. -->
+<!-- prawduct: type=fix -->
+<!-- Statusless = release-pending once develop→main ships. No scope= tag: this is a
+     plan-less fix branch, and a statusless scope must resolve to a build-plan file
+     whose ## Status can be regenerated (lib/views.py). -->
+
 
 Two linked worktrees were retired (`prawduct-wt-backlog-prd`, a clean duplicate `develop` checkout;
 `.claude/worktrees/backlog-service-plan`). The latter's branch carried ~2,900 lines of backlog-service
