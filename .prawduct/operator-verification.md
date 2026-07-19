@@ -10,8 +10,20 @@
 
 ## VRF-001 — Chunk 01 — Worktree resolution against the live harness
 
-**Status:** pending
+**Status:** verified
 **Added:** 2026-06-20 (worktree-compat Chunk 01, STH-4K7N)
+**Verified:** 2026-07-18 — by accumulated dogfood, not a single scripted run. This session
+runs in a **linked worktree** (`git rev-parse --show-toplevel` = `…/prawduct-wt-backlog-prd`,
+common-dir = the primary's `…/prawduct/.git`, shared). `prawduct-hook evidence status`
+resolves the shared store to `<common-dir>/prawduct/evidence.jsonl` (102 resolution +
+104 review facts) — worktree-aware resolution live in the running harness. The live-harness
+assumption (a hook *process* runs with the worktree as its cwd, so gate state resolves to the
+worktree with no false block) is confirmed by prior in-place governed close-outs from this
+worktree: STH-3R8K's session ran `/prawduct:critic final` (clean) and closed its Stop gates
+here, committing 1637c4a in place; and the worktree-compat plan (STH-4K7N) itself ran
+`/prawduct:critic cumulative` over `merge-base…HEAD` and `/prawduct:pr create` from a worktree.
+Closes the HIGH open assumption in `artifacts/build-plan-worktree-compat.md` and the reconciled
+CRT-6W2N (shipped 2026-07-18).
 **Where to verify:** A real Claude Code session in a prawduct-governed repo — enter
 a git worktree on a feature branch (`EnterWorktree`, or `git worktree add … <branch>`
 + a Bash `cd`), do a small code change, then run the governed close-out.

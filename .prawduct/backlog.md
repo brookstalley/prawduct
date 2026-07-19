@@ -345,25 +345,6 @@
   Not implicated in the norm-lifecycle work — the jurisdiction subcommand bypasses the cached
   index, so it is unaffected by this item's noise classes.
 
-- **[CRT-6W2N]** Governance gates + Critic/PR skills have no supported git-worktree workflow — the learned "run Critic/PR from the primary session" workaround breaks across working copies, forcing every worktree work cycle off-protocol
-  `effort: L · impact: M · area: worktree · source: user · added: 2026-06-22 · status: open · stage: requirements · related: STH-4K7N, CRT-8D2W, CRT-2K9F, REL-7P3X · refs: lib/gates.py, bin/prawduct-hook (infer-critic-mode, check-cumulative-critic, test-evidence), skills/critic, skills/pr, Stop hook, incoming-bugs/archive/governance-gates-and-critic-pr-skills-dont-compose-with-git-worktrees.md · reviewed: 2026-06-22`
-
-  Host repos increasingly MANDATE worktrees for WIP (stable primary checkout served live as a --plugin-dir MCP source), but prawduct has no documented worktree story, so sessions abandon the formal machinery (review via an independent Agent, PR/merge via raw gh), silently skipping the cumulative-Critic record the framework otherwise requires. IMPORTANT reconciliation (verified 2026-06-22 in this framework repo): state-file resolution is NOT actually ambiguous — get_project_dir() deterministically uses the session's CLAUDE_PROJECT_DIR, so a session run ENTIRELY inside one worktree reads/writes that worktree's .prawduct/ consistently and the gates ARE satisfiable in place (empirically confirmed: check-cumulative-critic resolved the worktree's own .critic-findings.json; gitignored runtime files isolate per-worktree). The real gap is therefore (a) NO documented supported worktree workflow, so host repos invented the "run Critic/PR from the PRIMARY session against worktree WIP" rule — and THAT genuinely breaks because the primary's .prawduct/ is a different working copy than the worktree's; and (b) the harness EnterWorktree defaults new worktrees off origin/<default-branch>=main (wrong on gitflow — belongs upstream with the harness, noted not-a-prawduct-bug). Fix-shape (remediation menu): (1) document/own a supported worktree workflow in the methodology — drive the full cycle (code→critic→pr→reflection) from inside the worktree (this WORKS today); (2) worktree-capable critic/pr skills that detect the worktree and review merge-base(base)..HEAD writing the normal record; (3) at minimum, methodology guidance so repos stop reinventing the workaround as private memory. Distinct from CRT-8D2W (inverse: run the Critic in ITS OWN worktree for session-isolation) and CRT-2K9F (worktrees SIDESTEP the single-slot clobber). Adjacent to the gitflow base-resolution item (base resolution vs gate/skill composition). Governance-protected → full Critic + PR review.
-
-  Dedup/reconcile 2026-06-22 (vs STH-4K7N, shipped v2.1.8 / scope=worktree-compat): the
-  CODE-RESOLUTION leg this item leans on ("a session run entirely inside one worktree reads/writes
-  that worktree's .prawduct/ consistently") is now HARDENED, not merely assumed — STH-4K7N shipped
-  `lib.gitstate.resolve_project_dir` so `get_project_dir` follows the session into its worktree
-  (`git rev-parse --show-toplevel` of cwd, preferred over the `CLAUDE_PROJECT_DIR` pin only when cwd
-  is a same-repo worktree, failing open on git error). That closes the narrow `.prawduct/`-resolution
-  defect (STH-4K7N's "Full fix approved"). It does NOT close THIS item: CRT-6W2N's remaining,
-  genuinely-open want is the DOCUMENTATION/METHODOLOGY leg — a documented, supported worktree
-  workflow (fix-shape 1 & 3) plus optional worktree-capable critic/pr skills (fix-shape 2) — so host
-  repos stop reinventing the "run from the primary session" workaround as private memory. Kept OPEN
-  at stage:requirements, scoped now to that doc/methodology + skill leg; `related: STH-4K7N` records
-  the shipped code dependency it builds on. NOT archived (not a true duplicate — STH-4K7N was the
-  code fix, this is the workflow/docs).
-
 - **[BKL-8T3W]** Backlog-accuracy structural enforcement — surface cross-session "shipped-but-not-removed" Open items (and stale-by-age) so a ready item isn't rebuilt
   `effort: M · impact: M · area: governance/backlog-tooling · source: user · added: 2026-06-21 · status: open · stage: requirements · related: BLD-4K7P · refs: incoming-bugs/archive/backlog-accuracy-stale-check-hook-plus-closed-but-not-removed-critic-goal.md, skills/critic/review-cycle.md, skills/pr/review-protocol.md, lib/backlog_probes.py`
 
@@ -959,7 +940,7 @@
   cumulative and PR protocols pressure-testing scope and end-to-end reachability. (user)
 
 - **[ENV-2W7K]** Wave 2: environments plan — worktree story, gitflow base detection, non-Python coverage floor goes silent, document --from-counts as the paved non-pytest path
-  `effort: L · impact: L · area: environments · source: user · added: 2026-07-02 · status: open · stage: design · related: CRT-6W2N, STH-4K7N, CRT-8D2W, COV-5H3N, COV-4M2J, TST-2H9P · refs: .prawduct/artifacts/framework-efficiency-review-2026-07-02.md (Wave 2, Underspecified #1)`
+  `effort: L · impact: L · area: environments · source: user · added: 2026-07-02 · reviewed: 2026-07-18 · status: open · stage: design · related: CRT-6W2N, STH-4K7N, CRT-8D2W, COV-5H3N, COV-4M2J, TST-2H9P · refs: .prawduct/artifacts/framework-efficiency-review-2026-07-02.md (Wave 2, Underspecified #1)`
 
   P1. The framework assumes repo-root Python, single checkout, main-based — violated by engine/
   subdirs (scriob), .NET/Swift (cordyceps/trenchant), worktrees (incoming bug 2026-06-20:
@@ -970,6 +951,8 @@
   path. Owner's rule: the worktree piece needs a short design note FIRST, confirmed with the
   owner, before building. Umbrella over CRT-6W2N/STH-4K7N/COV-5H3N — dedup/`closes:` when
   planned. (user)
+
+  Reconcile 2026-07-18 (worktree leg DELIVERED, item stays OPEN): the worktree-story piece of this umbrella is now shipped and is tracked by the now-shipped CRT-6W2N — a documented/owned worktree workflow (STH-4K7N Chunk 02, PR #107) plus the observable stop-path redirect signal (STH-3R8K) and SessionStart worktree-awareness (BRF-6K2D). A future picker should NOT re-plan the worktree piece. ENV-2W7K's remaining OPEN scope therefore narrows to its three other legs: (1) gitflow base detection that doesn't require knowing `base_branch:` exists; (2) the non-Python coverage floor going SILENT (not noisy) for languages it can't see; and (3) documenting `--from-counts` as the paved non-pytest path. The umbrella line above still holds for STH-4K7N/COV-5H3N; only the CRT-6W2N (worktree) leg is closed.
 
 - **[LRN-7M4D]** Wave 2: memory convergence — learnings + learnings-detail durable, .session-reflected ephemeral, retire per-repo reflections.md accumulation (design note first)
   `effort: M · impact: M · area: memory/learnings · source: user · added: 2026-07-02 · status: open · stage: design · related: MET-6W3J · refs: .prawduct/artifacts/framework-efficiency-review-2026-07-02.md (Wave 2, Underspecified #5)`
@@ -1332,6 +1315,27 @@
   Promoted 2026-07-17: Offline code + tests landed 2026-07-17 (commit 8ecd02e, cumulative-Critic 0 blocking). core.resolve_ref wires PFX→canonical alias resolution into get/link; migrate._find_by_key gains a block-id_aliases fallback skip-authority (_AliasIndex) that self-heals a human-deleted id:PFX label so a re-import can't duplicate; reconcile-labels re-derives deleted aliases. In-flight under the Chunk 06 slice (BKL-6M4T) — closes when the slice merges. Follow-ups spun off: BKL-7Q2N (mutator-side PFX resolution), BKL-9J3F (CC5 decoder gaps).
 
 ## Archive
+
+- **[CRT-6W2N]** Governance gates + Critic/PR skills have no supported git-worktree workflow — the learned "run Critic/PR from the primary session" workaround breaks across working copies, forcing every worktree work cycle off-protocol
+  `effort: L · impact: M · area: worktree · source: user · added: 2026-06-22 · status: shipped · stage: requirements · related: STH-4K7N, CRT-8D2W, CRT-2K9F, REL-7P3X · refs: lib/gates.py, bin/prawduct-hook (infer-critic-mode, check-cumulative-critic, test-evidence), skills/critic, skills/pr, Stop hook, incoming-bugs/archive/governance-gates-and-critic-pr-skills-dont-compose-with-git-worktrees.md · reviewed: 2026-07-18 · closed-by: feature/worktree-compat (STH-4K7N Chunk 02, PR #107) + STH-3R8K + BRF-6K2D`
+
+  Host repos increasingly MANDATE worktrees for WIP (stable primary checkout served live as a --plugin-dir MCP source), but prawduct has no documented worktree story, so sessions abandon the formal machinery (review via an independent Agent, PR/merge via raw gh), silently skipping the cumulative-Critic record the framework otherwise requires. IMPORTANT reconciliation (verified 2026-06-22 in this framework repo): state-file resolution is NOT actually ambiguous — get_project_dir() deterministically uses the session's CLAUDE_PROJECT_DIR, so a session run ENTIRELY inside one worktree reads/writes that worktree's .prawduct/ consistently and the gates ARE satisfiable in place (empirically confirmed: check-cumulative-critic resolved the worktree's own .critic-findings.json; gitignored runtime files isolate per-worktree). The real gap is therefore (a) NO documented supported worktree workflow, so host repos invented the "run Critic/PR from the PRIMARY session against worktree WIP" rule — and THAT genuinely breaks because the primary's .prawduct/ is a different working copy than the worktree's; and (b) the harness EnterWorktree defaults new worktrees off origin/<default-branch>=main (wrong on gitflow — belongs upstream with the harness, noted not-a-prawduct-bug). Fix-shape (remediation menu): (1) document/own a supported worktree workflow in the methodology — drive the full cycle (code→critic→pr→reflection) from inside the worktree (this WORKS today); (2) worktree-capable critic/pr skills that detect the worktree and review merge-base(base)..HEAD writing the normal record; (3) at minimum, methodology guidance so repos stop reinventing the workaround as private memory. Distinct from CRT-8D2W (inverse: run the Critic in ITS OWN worktree for session-isolation) and CRT-2K9F (worktrees SIDESTEP the single-slot clobber). Adjacent to the gitflow base-resolution item (base resolution vs gate/skill composition). Governance-protected → full Critic + PR review.
+
+  Dedup/reconcile 2026-06-22 (vs STH-4K7N, shipped v2.1.8 / scope=worktree-compat): the
+  CODE-RESOLUTION leg this item leans on ("a session run entirely inside one worktree reads/writes
+  that worktree's .prawduct/ consistently") is now HARDENED, not merely assumed — STH-4K7N shipped
+  `lib.gitstate.resolve_project_dir` so `get_project_dir` follows the session into its worktree
+  (`git rev-parse --show-toplevel` of cwd, preferred over the `CLAUDE_PROJECT_DIR` pin only when cwd
+  is a same-repo worktree, failing open on git error). That closes the narrow `.prawduct/`-resolution
+  defect (STH-4K7N's "Full fix approved"). It does NOT close THIS item: CRT-6W2N's remaining,
+  genuinely-open want is the DOCUMENTATION/METHODOLOGY leg — a documented, supported worktree
+  workflow (fix-shape 1 & 3) plus optional worktree-capable critic/pr skills (fix-shape 2) — so host
+  repos stop reinventing the "run from the primary session" workaround as private memory. Kept OPEN
+  at stage:requirements, scoped now to that doc/methodology + skill leg; `related: STH-4K7N` records
+  the shipped code dependency it builds on. NOT archived (not a true duplicate — STH-4K7N was the
+  code fix, this is the workflow/docs).
+
+  Shipped 2026-07-18 (reconcile-as-shipped; closed-by: feature/worktree-compat (STH-4K7N Chunk 02, PR #107) + STH-3R8K + BRF-6K2D). All three of CRT-6W2N's own fix-shapes are delivered. Fix-shapes 1 & 3 (documented/owned worktree workflow in the methodology + guidance so repos stop reinventing the "review in primary, merge with raw gh" workaround) shipped as STH-4K7N Chunk 02 in PR #107 (commit 796719d, merged 2026-06-22): the "Working in a git worktree" subsection at methodology/building.md:15 plus the worktree notes in skills/critic/SKILL.md:32 and skills/pr/SKILL.md:15. Fix-shape 2 (worktree-capable critic/pr skills reviewing in place, merge-base(base)..HEAD, writing the normal record) is delivered by STH-4K7N Chunk 01's resolve_project_dir resolver plus the already-relative skills — empirically confirmed because the worktree-compat build plan itself ran /prawduct:critic cumulative over merge-base...HEAD FROM a worktree and unblocked /prawduct:pr create, and dogfooded again THIS session (a linked worktree on develop, common-dir shared with primary; last session STH-3R8K ran its full governed close-out — Critic final clean + commit 1637c4a — in place here). Reinforced by STH-3R8K (observable stop-path signal for the silent worktree redirect) and BRF-6K2D (SessionStart worktree-awareness, live in this session's briefing). ROOT CAUSE of the false-open: the 2026-06-22 reconciliation split PR #107 into "code shipped / docs open," missing that Chunk 02 of that same PR shipped the docs — the shipped-but-not-removed drift BKL-8T3W targets. VRF-001 (operator-verification.md) marked verified via this session's dogfood.
 
 - **[STH-3R8K]** Surface a one-line signal when `get_project_dir` redirects `.prawduct/` resolution to a worktree toplevel
   `effort: S · impact: S · area: stop-hook · source: critic · added: 2026-06-20 · reviewed: 2026-07-18 · status: shipped · stage: ready · related: STH-4K7N · closed-by: stop-worktree-redirect-note · refs: bin/prawduct-hook, hooks/digest.py, hooks/banner.py`
