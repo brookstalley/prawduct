@@ -76,29 +76,6 @@ def git_common_dir(cwd: Path) -> Path | None:
         return None
 
 
-def current_branch(cwd: Path) -> str | None:
-    """Current branch name at ``cwd`` (``git rev-parse --abbrev-ref HEAD``), or
-    ``None`` on a detached HEAD / not-a-repo / any git failure.
-
-    A detached HEAD reports the literal ``"HEAD"`` — not a branch name — so it
-    maps to ``None`` too. Never raises: same fail-open convention as the other
-    probes here, so a caller can treat the name as best-effort."""
-    try:
-        result = subprocess.run(
-            ["git", "rev-parse", "--abbrev-ref", "HEAD"],
-            capture_output=True,
-            text=True,
-            cwd=str(cwd),
-            timeout=10,
-        )
-        if result.returncode != 0:
-            return None
-        branch = result.stdout.strip()
-        return branch if branch and branch != "HEAD" else None
-    except Exception:  # prawduct:allow prawduct/broad-except -- git failure must not crash hook
-        return None
-
-
 def resolve_project_dir(env_project_dir: str | None, cwd: Path) -> Path:
     """Resolve the project root to the session's *active git worktree*.
 

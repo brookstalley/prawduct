@@ -123,7 +123,7 @@
   **Progress (2026-07-18, owner-feedback pass):** the binary `--archive-scope {all,open}` lever now SHIPS (MG4b — `lib/backlog/{cli,migrate}.py`, honored by import + restructure-preview + the scrub runbook step 2c), and the **requirements** attribution is corrected (Pacer = ceiling via pace-across-time; the window = write-*volume*/throughput lever, not the rate ceiling), matched in migration-scrub.md + change-log. STILL OPEN: the same re-attribution in **PRD §8.9** + the §8.9↔§9 circular reference; the window **quantification** (N-months / a throughput formula); and **part (b)** — the Pacer metering total REST points (5/write, 1/read) against 900/min for the create+close archive stretch. Stays adopter-scale, not gating the dogfood.
 
 - **[BKL-6M4T]** Complete backlog-service Chunk 06 live migration (deferred)
-  `effort: L · impact: M · area: backlog-service · source: builder · added: 2026-07-17 · reviewed: 2026-07-18 · status: open · stage: ready · related: BKL-5R2K · refs: artifacts/build-plan-backlog-service.md, VRF-006`
+  `effort: L · impact: M · area: backlog-service · source: builder · added: 2026-07-17 · reviewed: 2026-07-19 · status: open · stage: ready · related: BKL-5R2K, DOC-4K9M · refs: artifacts/build-plan-backlog-service.md, VRF-006`
 
   Offline deliverables (scrub runbook, MIG-5 test, SPIKE-S2 script) landed 2026-07-17; the live, owner-in-the-loop remainder is deferred to a post-sign-off session: run SPIKE-S2 on a throwaway repo, run the real prawduct-first migration (scrub → import), repoint briefing/gates to the adapter, retire `lib/backlog/legacy.py` + the `incoming-bugs/` drop-box, then the single cumulative-critic that gates the slice PR. Blocked on design sign-off + a chosen target repo.
 
@@ -1347,6 +1347,17 @@
   `effort: M · impact: S · area: test-evidence · source: critic · added: 2026-07-17 · status: open · stage: design · related: TST-6F2R, ENV-2W7K, COV-3R9K · refs: bin/prawduct-hook (test-evidence record — test_commands aggregation, --from-counts on-ramp)`
 
   From the test-evidence-environments review (the work that shipped TST-6F2R's multi-environment `test_commands` list): a product with one environment whose toolchain cannot emit JUnit is excluded from the declared-list form — the aggregated record has no way to accept a counts-only source alongside the JUnit-capable environments. Today's escape is a wrapper script, or repeated `--from-junit` for the JUnit halves plus nothing for the counts half. Design question: should `--from-counts` compose as one more aggregated source (i.e. a counts entry participating in the same multi-environment aggregation) rather than remaining an exclusive whole-record mode? Touches ENV-2W7K's "document --from-counts as the paved non-pytest path" — if composition ships, that documentation should describe the composed form. (critic)
+
+- **[DOC-4K9M]** VRF-007's operator checklist asks the operator to verify a step the skill cannot do (`--if-updated-at` round-trip), contradicting its own pre-verification note
+  `effort: S · impact: M · area: operator-verification · source: critic · added: 2026-07-19 · reviewed: 2026-07-19 · status: open · stage: ready · related: BKL-3W6K, BKL-6M4T · refs: .prawduct/operator-verification.md (VRF-007, Verify step 3 :245-247 vs Pre-verified note :225-230), skills/backlog/adapter-mode.md (update <id> section), .prawduct/artifacts/build-plan-backlog-skill-repoint.md`
+
+  Doc-coherence defect, re-raised twice by the Critic. Inherited from the merged backlog-skill-repoint work (BKL-3W6K) — **not** introduced by the current branch, hence tracked rather than fixed in place.
+
+  The contradiction is internal to one document. `.prawduct/operator-verification.md` VRF-007 step 3 of the "Verify" checklist still reads "a field change round-trips via `--if-updated-at`", but the **same** entry's "Pre-verified (adapter loop, 2026-07-19)" paragraph ~15 lines above records that this exact step was DROPPED as unimplementable: "the `get` envelope does not expose `updated_at`, so the update guidance dropped the unimplementable get-then-`--if-updated-at` step." `skills/backlog/adapter-mode.md` (the `update <id>` section) agrees — the `--if-updated-at` optimistic-concurrency guard "is only usable when a caller already holds that timestamp from elsewhere; the skill's normal path omits it." Consequence: an operator draining VRF-007 during Phase 1 (the sibling-repo dogfood) is blocked on a step that cannot be performed through the skill, with no in-document signal that the block is a doc bug rather than a product defect.
+
+  Fix-shape (cheap, but a product call — do not apply silently): reword step 3 to verify the field round-trip through the skill's **normal** path — e.g. a title/stage/area change via `update` is reflected by a subsequent `get`/`list` — and drop the `--if-updated-at` clause, since the concurrency guard is out of the skill's reach by design. Alternative: keep the clause but annotate it "not exercised — guard is caller-supplied only," so the omission is deliberate and visible rather than a trap. Either way the pre-verification note and the checklist must state the same thing.
+
+  Drains with, or before, VRF-007 itself (Phase 1 of the migration program, execution tracked by BKL-6M4T). (critic)
 
 ## Promoted
 

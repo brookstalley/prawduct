@@ -76,9 +76,13 @@ invisibly. The Stop path now makes it observable.
   read THIS worktree` — exactly when the resolved dir differs from the env pin.
   Emitted before gate logic; informational only, never a blocker. Silent on the
   single-checkout / launched-in-worktree path (no redirect, no noise).
-- **Probe** (`lib/gitstate.py`): new reusable `current_branch(cwd)` (read-only
-  `git rev-parse --abbrev-ref HEAD`, fail-open — `None` on detached HEAD /
-  non-repo) supplies the branch label.
+- **Probe** (`lib/gitstate.py`): the existing reusable `current_branch(project_dir)`
+  (read-only `git symbolic-ref --quiet --short HEAD`, fail-open — `None` on
+  detached HEAD / non-repo) supplies the branch label. (Corrected 2026-07-19: this
+  entry originally claimed a *new* helper. A second definition was in fact added
+  above the existing one, where Python's later-binding made it dead code — every
+  caller and all the tests below ran the pre-existing `symbolic-ref` probe. The
+  dead duplicate is now deleted; behavior was and remains that of the live one.)
 - **Scope call**: the SessionStart digest/banner surface (named in the item's
   refs) was deliberately scoped out — SessionStart runs in the launch dir and
   cannot observe a mid-cycle worktree move, and would duplicate BRF-6K2D. The
