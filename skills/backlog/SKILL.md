@@ -4,10 +4,19 @@ argument-hint: "[pick|add|find|list|update|migrate] ... (e.g. `pick stop-hook st
 user-invocable: true
 disable-model-invocation: false
 context: fork
-allowed-tools: Read, Edit, Write, Grep, Glob
+allowed-tools: Read, Edit, Write, Grep, Glob, Bash(prawduct-hook backlog *), Bash(python3 bin/prawduct-hook backlog *)
 ---
 
-You manage `.prawduct/backlog.md` — the product's structured backlog. You run in a forked context, so the full backlog never pollutes the main session. Read the file, do the operation, write it back, and return a concise result. **Never** delete items (archive instead) and **never** weaken existing content.
+You manage the product's **structured backlog**. You run in a forked context, so the full backlog never pollutes the main session. The backlog has two backends — a markdown file, or GitHub Issues once the product has cut over — so **decide the backend first** (next section), then do the operation and return a concise result. **Never** delete items (archive instead) and **never** weaken existing content.
+
+## Backend routing — decide this first
+
+Read the top-level `backlog_service_repo` scalar from `.prawduct/project-state.yaml`:
+
+- **Unset → markdown backend (pre-cutover).** `.prawduct/backlog.md` is the system of record. Everything in *this* file applies as written: Read the file, do the operation, write it back.
+- **Set to `owner/repo` → GitHub Issues backend (post-cutover).** The markdown file is frozen history; the live backlog is GitHub Issues, reached through the `prawduct-hook backlog` adapter. **Follow `adapter-mode.md`** (this skill directory) for every operation — it maps each subcommand onto an adapter op and owns the envelope / exit-code / error discipline. Do **not** read or write `.prawduct/backlog.md` for live state in this mode — it is stale by construction, and showing it as live is the failure this routing prevents.
+
+Resolve the backend once per invocation, then stay on that path; the two never mix.
 
 **Archive discipline.** "Done" has exactly one representation: `update status=shipped` (or `dropped`), which **moves the item to `## Archive`**. Never mark done by **strikethrough** (`~~…~~`) and never leave a shipped item inline in `## Open`/`## Promoted` — a struck item still costs context tokens every session and muddies the derived counts, while archiving preserves it for search. `migrate` includes a one-shot cleanup that converts existing struck/done-marked Open items into proper archived items.
 
