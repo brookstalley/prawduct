@@ -8,10 +8,18 @@ integration (feature/probe_version stamping).
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 
 import pytest
 
-from lib.advisory_store import Codebase, ProjectState, clear_registry, make_codebase, run_all_probes
+from lib.advisory_store import (
+    Codebase,
+    ProjectState,
+    clear_registry,
+    load_project_state,
+    make_codebase,
+    run_all_probes,
+)
 from lib import backlog_probes as bp
 
 
@@ -213,14 +221,79 @@ class TestMigrationRequiredProbe:
         assert nudge[0].feature == "backlog" and nudge[0].probe_version == bp.PROBE_VERSION
 
 
+class TestChecksDormantProbe:
+    def test_fires_post_cutover(self, tmp_path):
+        out = bp.probe_checks_dormant(
+            ProjectState({"backlog_service_repo": "acme/widgets"}), _cb(tmp_path)
+        )
+        assert len(out) == 1
+        assert out[0].type == "backlog-checks-dormant"
+        assert out[0].priority == "info"
+        # The evidence names every dormant reader: someone dismissing this advisory
+        # is choosing to run without those checks and has to be told which.
+        for reader in ("Backlog Reconciliation", "R-1/R-2", "Backlog Health", "revisit-due"):
+            assert reader in out[0].evidence[0]
+
+    def test_silent_pre_cutover(self, tmp_path):
+        assert bp.probe_checks_dormant(ProjectState({}), _cb(tmp_path)) == []
+
+    def test_silent_on_empty_service_repo(self, tmp_path):
+        # An empty scalar is not a cutover (post_cutover is truthiness-based), so a
+        # half-written key must not read as "migrated, checks dormant".
+        assert bp.probe_checks_dormant(
+            ProjectState({"backlog_service_repo": ""}), _cb(tmp_path)
+        ) == []
+
+    def test_fires_independently_of_the_markdown_file(self, tmp_path):
+        # Dormancy is a property of the backend, not of what backlog.md holds. A
+        # cut-over repo whose frozen file still parses as full of open items must
+        # still fire — that file is precisely what the dormant readers misread.
+        _write_backlog(tmp_path, _structured_backlog(3))
+        out = bp.probe_checks_dormant(
+            ProjectState({"backlog_service_repo": "acme/widgets"}), _cb(tmp_path)
+        )
+        assert len(out) == 1
+
+    def test_partitions_with_migration_required(self, tmp_path):
+        # GV7 ("you have not migrated") and GV8 ("you have, and these checks are
+        # dormant") are mirrors across the cutover line: exactly one describes any
+        # given repo, never both and never neither.
+        _write_backlog(tmp_path, _structured_backlog(3))
+        pre, post = ProjectState({}), ProjectState({"backlog_service_repo": "acme/widgets"})
+        assert bp.probe_migration_required(pre, _cb(tmp_path))
+        assert bp.probe_checks_dormant(pre, _cb(tmp_path)) == []
+        assert bp.probe_checks_dormant(post, _cb(tmp_path))
+        assert bp.probe_migration_required(post, _cb(tmp_path)) == []
+
+    def test_surfaced_through_registered_roster(self, tmp_path):
+        bp.register()
+        cands = run_all_probes(
+            ProjectState({"backlog_service_repo": "acme/widgets"}), make_codebase(tmp_path)
+        )
+        fired = [c for c in cands if c.type == "backlog-checks-dormant"]
+        assert fired
+        assert fired[0].feature == "backlog" and fired[0].probe_version == bp.PROBE_VERSION
+
+    def test_zero_fire_against_this_repo(self):
+        # Repo-coupled tripwire (deliberately NOT hermetic). This repo is genuinely
+        # out of the target state — it has not cut over — so the probe is silent for
+        # the right reason. If prawduct itself cuts over while these readers are
+        # still dormant, this trips; that is the intended signal to restore them
+        # (GV8/W1), never a reason to narrow the trigger.
+        repo_root = Path(__file__).resolve().parents[1]
+        state = load_project_state(repo_root)
+        assert bp.probe_checks_dormant(state, Codebase(root=repo_root)) == []
+
+
 class TestRegistration:
-    def test_register_adds_five_probes(self):
+    def test_register_adds_six_probes(self):
         from lib import advisory_store
         bp.register()
         keys = set(advisory_store._REGISTRY)
         assert keys == {
             "backlog:legacy-backlog-format",
             "backlog:backlog-service-migration-required",
+            "backlog:backlog-checks-dormant",
             "backlog:external-backlog-detected",
             "backlog:legacy-section-schema",
             "backlog:backlog-overdue-grooming",

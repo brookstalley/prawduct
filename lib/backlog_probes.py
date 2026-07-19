@@ -1,6 +1,6 @@
 """Post-sync advisory probes for the backlog feature (requirements §8.2).
 
-Five probes registered against the shared advisory infrastructure
+Six probes registered against the shared advisory infrastructure
 (:mod:`lib.advisory_store`). Each is a pure ``ProbeFn(state, codebase)`` that
 reads the consumer's own ``.prawduct/`` and returns at most one
 :class:`~lib.advisory_store.AdvisoryCandidate`. They never write — resolution is
@@ -15,9 +15,12 @@ re-ported here. ``backlog-service-migration-required`` is its structured-format
 sibling (GV7): once a backlog *is* structured, this one nudges it onward onto the
 GitHub Issues service, so a repo that upgraded past prawduct's own cutover is told
 to migrate rather than silently losing its briefing count when the shared markdown
-read path eventually retires (MG3). The other three (``external-backlog-detected``,
-``legacy-section-schema``, ``backlog-overdue-grooming``) were the v0.2-deferred
-roster.
+read path eventually retires (MG3). ``backlog-checks-dormant`` is GV7's mirror on
+the far side of cutover: where GV7 says "you have not migrated yet", it says "you
+have migrated, and these checks have no Issues-backend path yet" — so the dormancy
+is stated rather than read as a clean bill of health (GV8). The other three
+(``external-backlog-detected``, ``legacy-section-schema``,
+``backlog-overdue-grooming``) were the v0.2-deferred roster.
 
 Registration is wired at the runtime composition root (``bin/prawduct-hook``
 ``cmd_clear``), not at ``advisory_store`` import time, so the infrastructure stays
@@ -281,12 +284,61 @@ def probe_migration_required(state: ProjectState, codebase: Codebase):
     ]
 
 
+def probe_checks_dormant(state: ProjectState, codebase: Codebase):
+    """Fire post-cutover, naming every backlog check that has no Issues-backend path.
+
+    The GV8 interim signal. ``/prawduct:backlog`` routes on ``backlog_service_repo``,
+    but the *other* backlog readers do not: the Critic's Backlog Reconciliation and
+    C-B1--C-B4, the PR reviewer's R-1/R-2, and the janitor's Backlog Health block all
+    read ``.prawduct/backlog.md`` — which is frozen history once a project cuts over.
+    Alongside them, three norm-lifecycle probes (``revisit-due``, ``dead-why``,
+    ``stalled-transition``) guard on cutover and return nothing at all.
+
+    Both failure shapes are *silent*: a reader that reports confident findings from
+    frozen markdown, and a probe that returns ``[]``, are indistinguishable from a
+    clean bill of health. That silence is what GV8 exists to prevent — a norm
+    exception that stops expiring visibly is a silent norm departure. Until the
+    read-through cache lands (W1) and these readers are restored against it, the
+    dormancy itself is the thing to say out loud.
+
+    One consolidated advisory rather than one per dormant check: five nags per
+    session for a single known, time-boxed cause trains dismissal, and dismissal is
+    what makes the *next* real signal invisible. ``info`` priority — this reports an
+    accepted interim state with a known resolution, not a risk the reader must act
+    on; it is dismissible like any advisory.
+    """
+    if not post_cutover(state):
+        return []
+    return [
+        AdvisoryCandidate(
+            type="backlog-checks-dormant",
+            evidence=(
+                "backlog readers outside /prawduct:backlog have no Issues-backend "
+                "path yet: Critic Backlog Reconciliation + C-B1-C-B4, PR reviewer "
+                "R-1/R-2, janitor Backlog Health, and the revisit-due / dead-why / "
+                "stalled-transition norm-lifecycle probes",
+            ),
+            trigger_summary=(
+                "this project is on the GitHub Issues backend, where 7 backlog "
+                "checks are dormant — they report nothing rather than reading the "
+                "frozen markdown backlog as if it were live"
+            ),
+            recommended_action=(
+                "no action — the checks are restored against the backlog "
+                "read-through cache (GV8/W1); dismiss this to stop the reminder"
+            ),
+            priority="info",
+        )
+    ]
+
+
 def register() -> None:
-    """Register the five backlog probes. Idempotent (register_probe overwrites)."""
+    """Register the six backlog probes. Idempotent (register_probe overwrites)."""
     register_probe(FEATURE, "legacy-backlog-format", PROBE_VERSION, probe_legacy_backlog_format)
     register_probe(
         FEATURE, "backlog-service-migration-required", PROBE_VERSION, probe_migration_required
     )
+    register_probe(FEATURE, "backlog-checks-dormant", PROBE_VERSION, probe_checks_dormant)
     register_probe(FEATURE, "external-backlog-detected", PROBE_VERSION, probe_external_backlog)
     register_probe(FEATURE, "legacy-section-schema", PROBE_VERSION, probe_legacy_section_schema)
     register_probe(FEATURE, "backlog-overdue-grooming", PROBE_VERSION, probe_overdue_grooming)
