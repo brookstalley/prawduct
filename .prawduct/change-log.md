@@ -38,13 +38,25 @@ Fails open throughout: a managed install, a non-git root, an unborn branch, or a
 degrades to the plain banner rather than breaking session start. Detached HEAD renders as
 `detached@<sha>`.
 
+Two asymmetries make the degradation honest rather than merely quiet. A probe that was *expected*
+to produce a segment and could not (git missing, unrunnable, or past the 5s timeout) reports the
+cause on stderr — absence of a segment otherwise reads as "a managed install won", which is the
+mis-diagnosis the feature exists to prevent; the genuinely-nothing-to-report paths stay silent,
+because for them empty is the truth. And an unresolvable plugin path is treated as *managed*, not
+as a checkout: the opposite choice would route a real managed install into the git probe, which
+succeeds (marketplace installs are clones) and would render a segment — making presence stop being
+proof.
+
 Files:
 - `hooks/banner.py`: `managed_plugin_home`, `is_managed_install`, `_git`, `checkout_provenance`;
   identity line composes the suffix.
+- `skills/ping/SKILL.md`: echo the banner's parenthesised part verbatim — normalising the segment
+  away would answer the very question a ping is asked.
 - `tests/test_plugin_version_banner.py`: `TestManagedInstallDetection`, `TestCheckoutProvenance`,
-  `TestBannerIdentityLine` (11 cases, real git fixtures) — including a managed-install-with-`.git`
-  case that pins the path gate against regression to a `.git` probe, and a byte-for-byte assertion
-  that the managed-install banner is unchanged. Full suite 2435 passed.
+  `TestBannerIdentityLine` (15 cases, real git fixtures) — including a managed-install-with-`.git`
+  case that pins the path gate against regression to a `.git` probe, a byte-for-byte assertion that
+  the managed-install banner is unchanged, and negative cases pinning that the quiet paths stay
+  quiet while the expected-but-failed path names its cause. Full suite 2438 passed.
 
 ## 2026-07-19: verify-chunk-refs stops flagging `path:line` citations and same-chunk `new` re-references
 

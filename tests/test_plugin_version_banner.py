@@ -304,6 +304,15 @@ class TestManagedInstallDetection:
         root.mkdir(parents=True)
         assert banner.is_managed_install(root) is True
 
+    def test_unresolvable_path_is_treated_as_managed(self, banner, tmp_path, monkeypatch):
+        """Fail toward "managed": answering False would send a genuine managed
+        install into the git probe, which succeeds (marketplace installs are
+        clones) and would render a segment — inverting presence-is-proof."""
+        def boom():
+            raise RuntimeError("no home directory")
+        monkeypatch.setattr(banner, "managed_plugin_home", boom)
+        assert banner.is_managed_install(tmp_path) is True
+
     def test_root_outside_managed_dir_is_not_managed(self, banner, tmp_path, monkeypatch):
         monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(tmp_path / "cfgdir"))
         root = tmp_path / "source" / "prawduct"
@@ -369,9 +378,13 @@ class TestCheckoutProvenance:
         probe that could not run must not degrade into that same silence."""
         monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(tmp_path / "cfgdir"))
         root = _git_repo(tmp_path / "src" / "prawduct")
-        monkeypatch.setattr(banner, "_git", lambda *a, **k: None)
+        boom = subprocess.TimeoutExpired(cmd="git", timeout=5)
+        monkeypatch.setattr(banner, "_git", lambda *a, **k: boom)
         assert banner.checkout_provenance(root) == ""
-        assert "could not read plugin load provenance" in capsys.readouterr().err
+        err = capsys.readouterr().err
+        assert "could not read plugin load provenance" in err
+        # the cause must be named: "unavailable" and "timed out" want different fixes
+        assert "TimeoutExpired" in err
 
     def test_plain_directory_stays_quiet(self, banner, tmp_path, monkeypatch, capsys):
         """The genuinely-nothing-to-report path emits no noise."""

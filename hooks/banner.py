@@ -109,17 +109,27 @@ def is_managed_install(root: Path) -> bool:
     NOT distinguish the two. Checking the path instead means a managed install
     never pays for the subprocess in :func:`checkout_provenance`.
 
-    Unresolvable paths answer False, which routes callers into the git probe;
-    that probe is itself fail-open, so the worst case is a missing suffix.
+    An unresolvable path answers **True** (treat as managed). Answering False
+    would route a genuine managed install into the git probe, which then
+    *succeeds* — marketplace installs are clones — and renders a segment, so the
+    operator would read presence as proof the local checkout won. Failing toward
+    "managed" costs at most a missing segment on a local checkout while keeping
+    presence-is-proof unconditional, which is the property the feature sells.
     """
     try:
         return root.resolve().is_relative_to(managed_plugin_home().resolve())
     except (OSError, RuntimeError, ValueError):
-        return False
+        return True
 
 
-def _git(root: Path, *args: str) -> subprocess.CompletedProcess | None:
-    """Run a read-only git command in ``root``. None on any failure to launch."""
+def _git(root: Path, *args: str) -> subprocess.CompletedProcess | Exception:
+    """Run a read-only git command in ``root``.
+
+    Returns the raised exception rather than a bare ``None`` so a caller
+    reporting the failure can name its cause — git missing, git unrunnable, and
+    a timeout are three different things to an operator trying to explain a
+    banner.
+    """
     try:
         return subprocess.run(
             ["git", "-C", str(root), *args],
@@ -127,8 +137,8 @@ def _git(root: Path, *args: str) -> subprocess.CompletedProcess | None:
             text=True,
             timeout=_GIT_TIMEOUT_SECONDS,
         )
-    except (OSError, subprocess.SubprocessError):
-        return None
+    except (OSError, subprocess.SubprocessError) as exc:
+        return exc
 
 
 def checkout_provenance(root: Path) -> str:
@@ -158,11 +168,12 @@ def checkout_provenance(root: Path) -> str:
     # cheaper than separate rev-parse/diff calls, and `--untracked-files=no` is
     # what makes untracked scratch files not count as dirty.
     status = _git(root, "status", "--porcelain=v2", "--branch", "--untracked-files=no")
-    if status is None:
+    if isinstance(status, Exception):
         # git absent, unrunnable, or past the timeout. Distinct from "not a repo":
-        # here a segment WAS expected, so say why none appears.
+        # here a segment WAS expected, so say why none appears — and name the
+        # actual cause, since "unavailable" and "timed out" call for different fixes.
         print(
-            "NOTE: Prawduct could not read plugin load provenance (git unavailable); "
+            f"NOTE: Prawduct could not read plugin load provenance: {status!r}; "
             "the banner cannot show which checkout is loaded.",
             file=sys.stderr,
         )
