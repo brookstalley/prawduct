@@ -53,12 +53,11 @@ non-interactive) are owned and stable, and the adapter surface was read directly
 
 - [ ] Chunk 01: Dual-mode dispatch scaffold + read ops (summary/list/get)
 - [ ] Chunk 02: Write ops + deferred find/dedup + cutover-aware edge messaging
-Context: Chunk 01 (dual-mode scaffold + read ops) built + Critic-clean (chunk mode: 0 blocking /
-0 warning / 1 note, resolved — the optional `queued` envelope is qualified as unbuilt→`unavailable`).
-Backend routing centralized in one `SKILL.md` gate; new `adapter-mode.md` carries the shared
-envelope/exit protocol + read ops (summary→counts, list→list, get→get). Verified: frontmatter valid,
-adapter flags/exit-class shapes match (repo-local), full suite green (2396). Next: Chunk 02 (write
-ops + deferred find/dedup + cutover-aware edge messaging).
+Context: Chunks 01-02 built + verified (full suite green 2396; write-op flags + the status
+vocabulary bridge promoted→in-progress confirmed against `encode.py`). Chunk 01 (dual-mode scaffold +
+read ops) chunk-Critic clean (1 note resolved). Chunk 02 (write ops + deferred find/dedup + edge
+messaging) added to `adapter-mode.md`; VRF-007 queued for Phase 1. Next: `/prawduct:critic cumulative`
+(the PR gate), then Phase 1 sibling dogfood.
 
 ## Scaffolding
 

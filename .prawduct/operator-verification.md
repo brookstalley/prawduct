@@ -217,3 +217,30 @@ never before it. Before/at the retirement, eyeball that the replacement is live:
 - The **no-channel fallback** still degrades cleanly to local capture + the canonical-tracker pointer.
 - Only *then* are `legacy.py` and `incoming-bugs/` retired. The full XP1 cross-owner/foreign-identity
   plane stays **W3** — it is deliberately *not* in this slice.
+
+## VRF-007 — Chunk 02 (backlog-skill-repoint) — /prawduct:backlog drives Issues end-to-end through the skill
+
+**Status:** pending
+**Added:** 2026-07-19 (backlog-skill-repoint Chunk 02 — read + write ops via the adapter)
+**Where to verify:** A sibling product repo pointed at this checkout via `--plugin-dir=../prawduct`,
+with `backlog_service_repo: owner/repo` set in its `.prawduct/project-state.yaml` and `gh`
+authenticated. This is **Phase 1** of the migration program (the owner-scoped dogfood) — it exercises
+the repointed skill against real Issues without touching prawduct's own backlog.
+
+**Why a human check:** skills are prose the model executes — there are no unit tests for skill
+behavior, and `--json`-shape checks never exercise the human output. Only a real run confirms
+legibility, the dual-mode routing, and that nothing silently reads the frozen markdown.
+
+**Verify (drive the real loop through the skill, eyeball the human output):**
+1. `/prawduct:backlog` (no args) → the adapter `counts` rollup + menu (not the frozen markdown file).
+2. `add` → files a real GitHub issue (issue-standard title; any `lint` WARN surfaced); `list` shows it.
+3. `update <id> status=promoted` → maps to **`in-progress`**; a field change round-trips via
+   `--if-updated-at`; `claim` and `link` work; `pick` returns adapter ranked ready-work with the
+   build-plan-overlap + stage framing intact.
+4. `find`/`dedup` → the **W2-deferred NOTE** (not a fabricated search); `migrate`/archive-split → the
+   not-applicable NOTE.
+5. **Fail-loud:** break `gh` auth (or point at an unreachable repo) → a clear NOTE, and **never** a
+   silent fall-back to the frozen markdown.
+6. **Markdown path unchanged:** with `backlog_service_repo` unset, the skill behaves exactly as before.
+
+Drains when Phase 1 runs.

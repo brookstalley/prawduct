@@ -85,6 +85,73 @@ claim). Keep the render lean — a handful of rows, most-relevant first.
 When you need one item's full detail (a direct "show me PFX-XXXX", or before an `update`):
 `prawduct-hook backlog get <id> --repo <r> --json` → render the item's fields + body from `data`.
 
+## Write operations
+
+Same envelope + exit discipline as reads. Render by the **operation you invoked** (you know which
+one you ran) — never sniff the envelope for "which key is present," which is how a shared-key result
+type shadows another. Two write-specific notes: a write can return exit **5 (auth)** when withheld
+under an untrusted CI trigger (SEC-5) — surface it plainly, don't retry-loop; and mutations follow
+the adapter's own `--apply`/dry-run and crash-safety contracts (you never invent a mutation path).
+
+### Status vocabulary bridge
+The markdown skill's statuses are **not** the adapter's. Map before calling `status --to`:
+
+| skill (markdown) | adapter `--to` |
+|------------------|----------------|
+| `open`           | `open` |
+| `promoted` (in an active build plan) | **`in-progress`** |
+| `shipped`        | `shipped` |
+| `dropped`        | `dropped` |
+
+The adapter also has **`submitted`** — a triage/intake state (e.g. an upstream-filed item awaiting
+triage) with no markdown equivalent; know it exists. There are **no `## Open`/`## Promoted`/`## Archive`
+sections** post-cutover: open/closed state + `status:` labels carry lifecycle placement.
+
+### add
+`prawduct-hook backlog file --repo <r> --title T --body B [--stage S] [--kind K] [--area A]
+[--effort E] [--impact I] [--source SRC]`. Author an issue-standard title (`area: summary`, ≤72,
+atomic) + a sectioned body; set `--kind`. The result may carry `lint[]` (WARN-only issue-standard
+hints — surface, never blocks). **Dedup-on-create is degraded** until W2 (no full-text search): do a
+coarse check with `list --area=<area> --json` and eyeball recent titles for overlap before filing,
+and say full dedup is W2.
+
+### update `<id>`
+Route by what changed:
+- **status** (`status=X`) → `status <id> --to <mapped>` (bridge table above). Idempotent (re-run =
+  no-op); a close records `closed_by` natively.
+- **field** (title/body/stage/kind/area/effort/impact/source) → first `get <id>` to read its
+  `updated_at`, then `update <id> [--flag …] --if-updated-at <ts>` (optimistic concurrency — exit
+  **4 (conflict)** means someone else changed it: re-`get` and retry).
+- **claim** (`accepted-by=@x` / clear) → `claim <id> [--claim-ttl S]` / `unclaim <id>`.
+- **link edge** (`related:`/blocks/blocked-by/parent/child) → `link <id> --edge <e> --to <target>` /
+  `unlink …`.
+- **a free note** → `comment <id> --body B`.
+
+### pick
+`prawduct-hook backlog pick --repo <r> [--limit N] [--claim] [--claim-ttl S]` → the adapter returns
+ranked ready-work (impact/effort fan-out, blocker-aware, excludes claimed). Render 1–3 candidates + a
+one-line *why*. Keep the skill's framing on top: **build-plan overlap** (read `active_build_plan`,
+surface overlapping candidates first) and **stage-aware routing** (don't present an early-stage item
+as buildable). `--claim` soft-claims the top pick.
+
+## Deferred operations — search-dependent (land in W2)
+
+No adapter search op exists yet (cache-served `search` is W2), so these degrade — do **not**
+fabricate a search:
+- **find `<query>`** → a `NOTE:` — *"full-text search lands in W2; meanwhile filter with `list
+  --area=`/`--status=`/`--stage=`/`--kind=`, or use GitHub's issue search in the browser."*
+- **dedup** → the duplicate-scan needs search (W2) → same `NOTE:`. `merge <source-id> --into
+  <target-id>` still works when you already know both ids (folds A→B, redirect-before-close).
+
+## Operations that don't apply post-cutover
+
+The live backlog is Issues, so these markdown-file operations are moot — return a brief `NOTE:`:
+- **migrate** (legacy → structured *markdown*) — nothing to migrate; the one-time markdown→Issues
+  cutover is `scrub`, already run.
+- **import `<path>`** (external file → backlog) — to bring external items in now, create issues:
+  `import --from <backlog.md>` for a markdown backlog, or `file` per item for arbitrary sources.
+- **archive split (Q2)** — Issues has no archive-file size limit; closed issues are the archive. N/A.
+
 ## Grooming timestamp
 `list` (and `pick`) still stamp `backlog_last_groomed_at: <today>` in `project-state.yaml` on
 invocation, regardless of backend — the fact that resolves the `backlog-overdue-grooming` advisory.
