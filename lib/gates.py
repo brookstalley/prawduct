@@ -969,7 +969,31 @@ def check_cumulative_critic(project_dir: Path) -> int:
     print(
         f"uncovered: no composed review evidence spans "
         f"{base_tree[:12]}..{head_tree[:12]} at HEAD "
-        f"({verdict.get('reason', 'no path')}). "
+        f"({verdict.get('reason', 'no path')}).",
+        file=sys.stderr,
+    )
+    # COV-7K4N: a stale remote base (origin/<b> behind an ancestor-of-HEAD local
+    # <b>) drags already-reviewed work into the required span and reads as
+    # uncovered — the cheap, correct remedy is `git push origin <b>`, not a full
+    # re-review. Surface it BEFORE the generic remedy so the wrong action isn't
+    # the first thing the reader reaches for.
+    stale = coverage.diagnose_stale_remote_base(project_dir, resolved["base_branch"])
+    if stale is not None and stale["ancestor_of_head"]:
+        plural = "" if stale["commits_ahead"] == 1 else "s"
+        prep = (
+            f" (including an unpushed {stale['release_prep_subject']!r})"
+            if stale["release_prep_subject"]
+            else ""
+        )
+        print(
+            f"NOTE: {stale['remote']} is {stale['commits_ahead']} commit{plural} behind "
+            f"local {stale['local']}, which is an ancestor of HEAD{prep} — the base may "
+            f"just be stale, not the code unreviewed. Try `git push origin {stale['local']}` "
+            f"and re-check BEFORE a full review; the gate then re-anchors the merge-base to "
+            f"{stale['local']}'s tree.",
+            file=sys.stderr,
+        )
+    print(
         "Run /prawduct:critic cumulative — it reviews the whole span and records "
         "the fact composition needs. If a pre-commit review was followed by a "
         "selective commit (only part of the reviewed state committed), the "

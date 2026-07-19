@@ -129,7 +129,16 @@ free edge was the docs-only tail the CRT-7M2D allowance excuses. Zero fresh revi
 
 **Systematic follow-through**: filed COV-7K4N (a stale-base hint on the uncovered path so the gate
 diagnoses this itself + an unpromoted-release-prep session-start advisory for the root cause;
-deferred spike on preferring the nearer of local/remote base). Frequency is low — needs gitflow
+deferred spike on preferring the nearer of local/remote base).
+
+**Now tool-supported** (COV-7K4N shipped as `stale-remote-base-diagnostics`, merged 2026-07-19):
+the manual diagnostic order above is automated. `check-cumulative-critic`'s `uncovered` stderr
+appends the `git push origin <b>` hint when the base is `origin/<b>` sitting behind an
+ancestor-of-HEAD local `<b>` (`coverage.diagnose_stale_remote_base`), and a session-start advisory
+(`lib/stale_base_probes.py`, type `unpromoted-release-prep`) nudges before the gate is hit when
+local `<b>` carries an unpushed `release-prep(...)`, self-resolving on push. The base-resolution
+re-architecture that would eliminate the false-`uncovered` at its root stays deferred as
+COV-9B4T. Frequency is low — needs gitflow
 (`base_branch: develop`) AND a feature built on an unpushed local-`develop` advance; trunk repos
 (base = `main`) essentially never hit it since `main` never sits locally-ahead. The gap that
 warrants the fix is the *misleading remedy* when it does fire, not the frequency. Relates to Root
@@ -899,3 +908,25 @@ novel design vocabulary with zero citations; revising the same decision 2-3× wi
 recalling fast-moving facts instead of looking them up. The prawduct "terms not found in any
 governing artifact" nudge is one of these detectors mechanized — treat it as a confabulation
 alarm, not noise.
+
+## When a docstring makes an absolute robustness claim (never raises / always returns / idempotent), make it literally true and test the claimed-safe path — an absolute claim beside a call that *can* violate it is a coherence gap reviewers reliably flag
+
+**Pattern**: COV-7K4N build (2026-07-14). `diagnose_stale_remote_base`'s docstring said "Never
+raises; any git failure returns None," but its local-branch guard called `_git_ref_exists` — a bare
+`subprocess.run(..., timeout=30)` that can raise `TimeoutExpired`/`OSError`.
+
+**Why it mattered despite near-zero exposure.** Real-world reachability was effectively nil (the
+same helper runs earlier in the same invocation via `_resolve_base_branch`), yet the builder's
+self-scrub AND every reviewer who touched it independently converged on the gap — three-way
+agreement on a "practically-nil but real" contract violation.
+
+**The move**: when review converges like that, the right response is not "reviewers agree it's fine
+as a NOTE" but to make the claim TRUE. Route the guard through the never-raising helper
+(`evidence.run_git`, which converts subprocess failures to a nonzero rc) and add a test that
+exercises the claimed-safe degradation branch (a non-git dir → `None`, no exception). Cost was one
+`verify-resolutions` delta pass.
+
+Absolute claims are cheap to write and expensive to leave slightly false: they read as guarantees
+callers lean on — here both the gate's already-failing path and the broad-except-wrapped probe.
+Relates to Honest Confidence (#5), Tests Are Contracts (#1), and the `evidence.run_git` no-raise
+contract.
