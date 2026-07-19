@@ -7,6 +7,35 @@
 
 ## Open
 
+- **[ENV-7C4K]** `prawduct-hook` on PATH resolves to the installed plugin cache (stale version) inside framework-repo worktrees — Critic `critic-begin` silently wrote no kernel-v3 manifest until re-dispatched with repo-local `bin/prawduct-hook`
+  `effort: S · impact: M · area: environments · source: reflection · added: 2026-07-16 · status: open · stage: ready · reviewed: 2026-07-19 · related: ENV-2W7K, CRT-6W2N · refs: bin/prawduct-hook, skills/critic/SKILL.md (critic-begin dispatch + SubagentStop critic-consolidate), CLAUDE.md (Critic data-plane commands)`
+
+  Observed 2026-07-16 during the backlog-service Chunk 01 Critic run in a framework-repo
+  worktree: bare `prawduct-hook` on PATH resolved to the *installed plugin cache* binary (2.3.3)
+  while the worktree carries the repo-local `bin/prawduct-hook` (3.0.4 lineage). The Critic
+  coordinator's `critic-begin` ran the stale binary and silently wrote no kernel-v3 dispatch
+  manifest — no error, no manifest, wrong-version semantics — until the coordinator was
+  re-dispatched with `bin/prawduct-hook` explicitly. Dogfooding-specific hazard: product repos
+  legitimately run the plugin-cache binary; the skew bites only in the framework repo, where the
+  checkout is a newer lineage than the installed plugin. Fix-shape (either or both): (a) skills/
+  docs invoked inside the framework repo prefer the repo-local binary — resolve
+  `bin/prawduct-hook` at the repo root ahead of PATH; (b) fail loudly on version skew — the
+  invoked binary compares its self-reported version against the repo's expected lineage and
+  refuses to proceed silently. A silent no-op in the review data plane is the worst failure mode
+  here; loud beats clever. (reflection)
+
+  **Recurrence — second data-plane path (observed 2026-07-16, backlog-service Chunk 01
+  final review).** The same stale-binary no-op bites a *second* Critic data-plane write,
+  not just `critic-begin`: the `SubagentStop`-triggered `critic-consolidate` ALSO silently
+  no-ops. Bare `prawduct-hook` on the *hook's* PATH resolves to the stale 2.3.3 plugin
+  cache, so the SubagentStop consolidate runs the wrong-version binary and leaves the
+  review un-persisted — until a manual repo-local `./bin/prawduct-hook critic-consolidate`
+  lands the fact. Consequence for the fix: it must cover BOTH data-plane writes —
+  `critic-begin` (manifest write) AND the SubagentStop `critic-consolidate` — any fix
+  touching only `critic-begin` is incomplete. This makes fix-shape (a) (repo-local binary
+  resolution) or (b) (loud version-skew failure) need to apply on the hook invocation path
+  too, not just skill/doc invocations. (reflection)
+
 - **[CRT-3T6V]** verify-chunk-refs `cannot-verify:` vs `missing-ref:` exit-message differentiation + critic-begin bare-repo sibling-worktree guard lack direct pytest coverage
   `effort: S · impact: S · area: critic · kind: test-gap · source: critic · added: 2026-07-18 · status: open · stage: ready · related: BLD-5J8N, CRT-6W2N · refs: bin/prawduct-hook (cmd_verify_chunk_refs, cmd_critic_begin)`
 
