@@ -38,8 +38,8 @@ plugin code is loaded. The identity line therefore names the ref and short sha
 when the plugin root is a working tree, and stays byte-identical for a managed
 install. The distinction is a pure path comparison against the managed plugin
 directory, NOT a ``.git`` probe: a marketplace install is itself a clone. That
-gate is also what keeps the two git subprocesses off the hot path for every
-ordinary user (see :func:`is_managed_install`).
+gate is also what keeps the git subprocess off the hot path for every ordinary
+user (see :func:`is_managed_install`).
 
 Marker discipline: the delta/marker logic runs ONLY when ``CLAUDE_PROJECT_DIR``
 is explicitly set (always true for a real hook invocation). Without it the
@@ -107,7 +107,7 @@ def is_managed_install(root: Path) -> bool:
     root's contents — because a marketplace install is itself a git clone
     (``~/.claude/plugins/marketplaces/<name>/.git``), so "has a .git dir" does
     NOT distinguish the two. Checking the path instead means a managed install
-    never pays for the subprocesses in :func:`checkout_provenance`.
+    never pays for the subprocess in :func:`checkout_provenance`.
 
     Unresolvable paths answer False, which routes callers into the git probe;
     that probe is itself fail-open, so the worst case is a missing suffix.
@@ -141,9 +141,16 @@ def checkout_provenance(root: Path) -> str:
     or equivalent), which makes its presence a reliable signal of *which* copy of
     the plugin won when a managed install is also enabled.
 
-    Dirtiness is measured over tracked files only (``diff --quiet HEAD``):
+    Dirtiness is measured over tracked files only (``--untracked-files=no``):
     untracked scratch files are normal during local development and do not change
     what the plugin executes.
+
+    Absence of a segment is *load-bearing information* — the operator reads it as
+    "a managed install won" — so a probe that was supposed to produce one and
+    could not says so on stderr rather than degrading into that same silence
+    ("advice fails soft ... swallowed with attribution", ``architecture.md``
+    Failure Model). The genuinely-nothing-to-report paths (managed install, plain
+    directory) stay quiet, because for them the empty result is the truth.
     """
     if is_managed_install(root):
         return ""
@@ -151,8 +158,17 @@ def checkout_provenance(root: Path) -> str:
     # cheaper than separate rev-parse/diff calls, and `--untracked-files=no` is
     # what makes untracked scratch files not count as dirty.
     status = _git(root, "status", "--porcelain=v2", "--branch", "--untracked-files=no")
-    if status is None or status.returncode != 0:
+    if status is None:
+        # git absent, unrunnable, or past the timeout. Distinct from "not a repo":
+        # here a segment WAS expected, so say why none appears.
+        print(
+            "NOTE: Prawduct could not read plugin load provenance (git unavailable); "
+            "the banner cannot show which checkout is loaded.",
+            file=sys.stderr,
+        )
         return ""
+    if status.returncode != 0:
+        return ""  # not a git repo — a plain directory has no provenance to report
     ref = sha = ""
     dirty = False
     for line in status.stdout.splitlines():

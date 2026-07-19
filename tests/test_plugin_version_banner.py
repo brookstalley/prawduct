@@ -355,6 +355,32 @@ class TestCheckoutProvenance:
         root.mkdir(parents=True)
         assert banner.checkout_provenance(root) == ""
 
+    def test_unborn_branch_reports_nothing(self, banner, tmp_path, monkeypatch):
+        """A freshly `git init`-ed tree has a branch but no commit — porcelain-v2
+        reports `branch.oid (initial)`, which is not a sha to name."""
+        monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(tmp_path / "cfgdir"))
+        root = tmp_path / "src" / "fresh"
+        root.mkdir(parents=True)
+        subprocess.run(["git", "-C", str(root), "init", "-q"], capture_output=True, check=True)
+        assert banner.checkout_provenance(root) == ""
+
+    def test_git_unavailable_reports_nothing_but_says_so(self, banner, tmp_path, monkeypatch, capsys):
+        """Absence of a segment normally reads as "a managed install won", so a
+        probe that could not run must not degrade into that same silence."""
+        monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(tmp_path / "cfgdir"))
+        root = _git_repo(tmp_path / "src" / "prawduct")
+        monkeypatch.setattr(banner, "_git", lambda *a, **k: None)
+        assert banner.checkout_provenance(root) == ""
+        assert "could not read plugin load provenance" in capsys.readouterr().err
+
+    def test_plain_directory_stays_quiet(self, banner, tmp_path, monkeypatch, capsys):
+        """The genuinely-nothing-to-report path emits no noise."""
+        monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(tmp_path / "cfgdir"))
+        root = tmp_path / "src" / "plain2"
+        root.mkdir(parents=True)
+        assert banner.checkout_provenance(root) == ""
+        assert capsys.readouterr().err == ""
+
     def test_detached_head_is_labelled(self, banner, tmp_path, monkeypatch):
         monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(tmp_path / "cfgdir"))
         root = _git_repo(tmp_path / "src" / "prawduct")

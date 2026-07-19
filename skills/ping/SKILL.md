@@ -17,3 +17,9 @@ prawduct plugin: pong
 
 If the session-start banner showed a version (e.g. `Prawduct v1.8.1 (plugin)`),
 add a second line echoing that version. Otherwise omit the second line.
+
+Echo the banner's parenthesised part **verbatim**, including any load-provenance
+segment (`Prawduct v3.1.0 (plugin · develop@a1b2c3d+dirty)`). That segment names
+which checkout is actually loaded, which is the whole reason someone pings — a
+managed install never prints one, so dropping or normalising it would answer the
+question wrongly.
