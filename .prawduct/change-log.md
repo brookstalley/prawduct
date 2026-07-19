@@ -32,6 +32,25 @@ design artifacts) is deliberately dropped.
   (plan discovery has no `artifact: build-plan` filter), `BLD-6T4R` (the `new` forward-ref exclusion
   is line-local, not chunk-scoped). `VWS-2W6H`/`BLD-6T4R` were re-verified live in code before filing.
 
+Three defects the Critic surfaced during this salvage were inherited from already-merged work rather
+than introduced here, and were fixed in place (owner-approved) rather than deferred:
+
+- **Shadowed dead `current_branch`** (`lib/gitstate.py`): a second definition sat above the
+  pre-existing one, and Python's later-binding made it unreachable — every caller *and* the three
+  tests added alongside it ran the older `symbolic-ref` probe. Both returned the branch name or
+  `None` on detached HEAD, so deleting the dead copy is a runtime no-op (suite unchanged at 2396
+  passed). The entry below claiming a "new" probe is corrected in place.
+- **`regen-views` failing closed** (`.prawduct/change-log.md`): two statusless entries carried a
+  `scope=` tag resolving to no build-plan file. Since `regen-views` writes **no** views on any
+  error, that blocked `## Status` regeneration for every release-pending plan at the develop→main
+  release. Both tags dropped; `regen-views --check` now passes.
+- **VRF-007 asked for an impossible step** (`.prawduct/operator-verification.md`, `DOC-4K9M`): Verify
+  step 3 told the operator to round-trip a field change via `--if-updated-at`, which the skill cannot
+  do — the `get` envelope exposes no `updated_at` — while the document's own pre-verification note
+  already recorded the step as dropped. Step 3 now verifies a normal-path round-trip (a title/stage/
+  area edit reflected by a following `get`/`list`) and records the omission so it cannot be silently
+  re-added. The reworded step is itself **unverified** until Phase 1 (`BKL-6M4T`) executes VRF-007.
+
 ## 2026-07-19: /prawduct:backlog skill repointed onto the GitHub-Issues adapter (backlog-skill-repoint)
 
 <!-- prawduct: type=feature | scope=backlog-skill-repoint | chunks=01,02 -->

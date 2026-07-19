@@ -1005,7 +1005,7 @@
   explicit user accept-the-tradeoff decision. (user)
 
 - **[BLD-3M7K]** `verify-chunk-refs` over-matches git-ref tokens (origin/-prefixed and branch-like slash tokens) in build-plan prose, producing false missing-ref positives
-  `effort: S · impact: S · area: critic · source: critic · added: 2026-06-21 · status: open · stage: idea · related: BLD-4K7P, BLD-2R9X, BLD-8F2Q · refs: lib/buildplan_refs.py (_looks_like_file_path)`
+  `effort: S · impact: S · area: critic · source: critic · added: 2026-06-21 · reviewed: 2026-07-19 · status: open · stage: idea · related: BLD-4K7P, BLD-2R9X, BLD-8F2Q, BLD-6T4R · refs: lib/buildplan_refs.py (_looks_like_file_path)`
 
   Follow-up to BLD-4K7P. Surfaced 2026-06-21 by the hook-cli-robustness cumulative Critic: the
   plan's own prose backticked `origin/develop` and `origin/` while describing the REL-7P3X fix;
