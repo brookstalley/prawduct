@@ -7,6 +7,21 @@
 
 ## Open
 
+- **[CRT-2Q6D]** Dangling docstring reference — `lib/critic_mode.py:261` still cites `_verify_resolutions_gate_check`, deleted in the kernel-v3 cutover
+  `effort: S · impact: S · area: critic · source: critic · added: 2026-07-19 · status: open · stage: ready · related: CRT-8H3R, CRT-5D8Q · refs: lib/critic_mode.py:261`
+
+  Found during the 2026-07-19 stale-branch salvage sweep (verified against develop, not inferred). The docstring at `lib/critic_mode.py:261` names `_verify_resolutions_gate_check` as its mirror; that function was DELETED in the kernel-v3 cutover and is asserted-absent by a stays-deleted pin (`tests/test_cumulative_gate.py:419-431`). Pure documentation drift — no behavior depends on it — but it points a reader at machinery that no longer exists, in the exact function (rule 1) that CRT-8H3R will edit. Fix-shape: repoint the docstring at the surviving mechanism (composed tree-keyed coverage via `lib/coverage_algebra.coverage_verdict`, or `critic_consolidate._prior_review_fact`), or drop the mirror clause. Cheapest to land as a rider on CRT-8H3R rather than standalone. (critic — salvage sweep)
+
+- **[PR-4V2N]** `skills/pr/SKILL.md:47` self-contradicts on which steps a doc-only PR skips — Step 1c is both skipped and reached
+  `effort: S · impact: M · area: pr · source: critic · added: 2026-07-19 · status: open · stage: ready · related: COV-2P7F, PR-7T2K · refs: skills/pr/SKILL.md:47 (doc-only exit-0 branch), skills/pr/SKILL.md:59 (Step 1c change-log STOP), lib/coverage.py:272`
+
+  Found during the 2026-07-19 stale-branch salvage sweep. On a `check-pr-doc-only` exit 0, `skills/pr/SKILL.md:47` tells the agent to "Skip Steps 2, 2b, 3, and 4" — a list that does NOT include Step 1c — and then to "jump straight to Step 5", which DOES skip 1c. The two halves of one sentence disagree, so whether a doc-only PR actually runs the change-log entry gate depends on which half the model happens to follow. Behavioral, not cosmetic: Step 1c is a STOP, and it is exactly the gate COV-2P7F shows is broken for `.prawduct/`-only branches — so this ambiguity decides whether that defect is even reachable, and makes the failure non-deterministic across runs. Fix-shape: state one rule (either "skip 2, 2b, 3, 4 and run 1c" or "jump to Step 5"), and make the skip-list and the jump target agree. Resolve alongside the COV-2P7F one-liner — together they make doc-only PR behavior deterministic. Governance-protected (skills/pr) → full Critic + PR review. (critic — salvage sweep)
+
+- **[STH-2N6J]** VERIFY INTENT: `session_changes_all_non_judgeable` returns False for a metadata-ONLY session, so the reflection-gate label loses its doc-only carveout
+  `effort: S · impact: S · area: stop-hook · source: critic · added: 2026-07-19 · status: open · stage: research · related: COV-6T3P, COV-2P7F · refs: lib/gates.py:514-533 (session_changes_all_non_judgeable, the `if not non_metadata: return False` early exit), bin/prawduct-hook:1135 (reflection-gate label)`
+
+  **Flagged during the 2026-07-19 salvage sweep, NOT asserted as a defect — the point of this item is to determine intent before anyone "fixes" it.** `gates.session_changes_all_non_judgeable` (`lib/gates.py:514-533`) returns False when EVERY session-changed file is metadata, via the `if not non_metadata: return False` early exit. Read literally that is inverted: a session that changed only metadata is the *most* doc-only session possible, yet it does not get the doc-only carveout. The Critic gate itself is unaffected (`session_review_verdict` composes free edges independently), but the reflection-gate label at `bin/prawduct-hook:1135` inherits the result. The early exit may well be deliberate — "no non-metadata files at all" can reasonably mean "nothing to reason about, don't claim a carveout" — which is why this is `stage: research`: read the function's history and its callers, decide whether the early exit is intentional, and then either document the intent in the docstring (likely outcome) or file the behavior change. Do not change behavior before answering that. (critic — salvage sweep)
+
 - **[STH-7W9K]** Skill/subagent forks silently write `.prawduct/` state to the launch dir instead of a mid-session-entered worktree (cross-worktree pollution)
   `effort: M · impact: L · area: worktree · source: user · added: 2026-07-16 · reviewed: 2026-07-19 · status: open · stage: requirements · related: CRT-6W2N, STH-4K7N, STH-3R8K, CRT-3X9D · refs: bin/prawduct-hook (get_project_dir), lib/gitstate.py (resolve_project_dir), skills (fork skills that mutate .prawduct/ — backlog/advisory/operator-verification), methodology/building.md (mid-cycle worktree-entry edge), .prawduct/learnings.md (companion rule — "A `/prawduct:*` skill fork writes `.prawduct/` state to the LAUNCH dir …")`
 
@@ -450,8 +465,8 @@
 
   Idea-stage: needs a design pass on the detection signal and its false-positive posture before it is buildable. Governance-protected (gates / skills/critic) → full Critic + PR review. (critic)
 
-- **[COV-2P7F]** Unify the "`.prawduct/**` is governance-metadata, not code" predicate across ALL PR fast-paths (not just `.md`)
-  `effort: M · impact: M · area: coverage · source: user · added: 2026-07-09 · reviewed: 2026-07-14 · status: open · stage: design · related: CRT-5D8Q, COV-5H3N, COV-8R2K, PR-5K8D · refs: lib/gates.py (_record_covers_head, _compute_verify_resolutions_scope), lib/coverage.py (cmd_check_pr_doc_only), bin/prawduct-hook, incoming-bugs/archive/2026-06-13-governance-metadata-fix-triggers-full-code-pr-gates.md`
+- **[COV-2P7F]** NARROWED: route the change-log entry gate through `judgeable_files` — the last `.endswith(".md")` classifier in the gate surface (was: unify the governance-metadata predicate across ALL PR fast-paths)
+  `effort: S · impact: M · area: coverage · source: user · added: 2026-07-09 · reviewed: 2026-07-19 · status: open · stage: ready · related: CRT-5D8Q, COV-5H3N, COV-8R2K, PR-5K8D, COV-4H7N, REL-6C3W · refs: lib/coverage.py:272 (check_change_log_entry non_md filter), lib/coverage_algebra.py (judgeable_files / is_judgeable_path), bin/prawduct-hook:3796-3797 (dispatch), skills/pr/SKILL.md:59 (Step 1c STOP), tests/test_change_log_entry_gate.py, incoming-bugs/archive/2026-06-13-governance-metadata-fix-triggers-full-code-pr-gates.md`
 
   Triaged from incoming bug incoming-bugs/archive/2026-06-13-governance-metadata-fix-triggers-full-code-pr-gates.md (hallucinote, prawduct v2.1.4). "Docs" is defined as `.md`-only across the fast-paths, but governance STATE lives in `.prawduct/*.yaml` too — so editing the governance metadata that DRIVES the gates is treated as editing the product the gates protect. A `.prawduct/`-only maintenance branch (e.g. a one-line active_build_plan pointer fix in project-state.yaml + some `.prawduct/*.md`) fails check-pr-doc-only (not-doc-only on any non-.md file), re-stales the cumulative critic (the "docs changed since review" allowance is .md-only), requires a change-log entry, and forces a full test re-run + a second Critic pass — all disproportionate to a metadata edit.
 
@@ -459,10 +474,102 @@
 
   Cross-reference (2026-07-14): the tree-validated test-evidence freshness work (v3.0.3, `lib/gates.py` `_test_evidence_tree_valid`) is now a NEW consumer of the canonical `is_judgeable_path` / `coverage_algebra.judgeable_files` predicate. It does NOT advance this item's scope — the PR doc-only fast-paths and the cumulative-critic "changed since" allowance are untouched — but it widens the blast radius of any change to that predicate: the freshness gate now also classifies paths through it. Any change made under this item to `is_judgeable_path`/`judgeable_files` must account for the freshness gate as a downstream consumer.
 
+  **SCOPE NARROWED 2026-07-19 (salvage annotation) — VERDICT: PARTIAL, most of the umbrella is
+  already done.** Verified against develop's current code with live gate execution, captured before
+  the stale branch `feature/gate-exemption-boundary` was deleted (work preserved at tag
+  `archive/gate-exemption-boundary`; the relevant commit for THIS item is `955bc2a` on
+  `archive/gate-friction-batch`). Sub-requirements (1a) and (1b) of the umbrella above are **FIXED
+  by kernel-v3** — treat the paragraphs above as history, not as remaining scope:
+  - (1a) `check-pr-doc-only` routes through `coverage_algebra.judgeable_files`
+    (`lib/coverage.py:216`). Empirically: a branch changing only `.prawduct/backlog.md` +
+    `.prawduct/project-state.yaml` → `doc-only: 2 file(s) in main...HEAD, none judgeable`, rc=0.
+  - (1b) the cumulative-critic staleness concept is gone entirely; a wholly-non-judgeable interval
+    is a free edge (`lib/coverage_algebra.py:180-189`). Empirically, on a `.prawduct/`-only branch
+    with ZERO review facts: `satisfied: (0 review fact(s) + 1 free edge(s))`, rc=0. Adding one
+    `.py` flips it to `uncovered`, rc=1 — so the exemption does not over-exempt.
+
+  **STILL BROKEN — the change-log entry gate, and that is now this item's whole scope.**
+  `lib/coverage.py:272`: `non_md = [f for f in files if not f.endswith(".md")]` — the only
+  remaining behavioral `.endswith(".md")` classifier in the gate surface. Reproduced on develop: a
+  `.prawduct/`-only branch → rc=1, `no-entry: branch changes code
+  (.prawduct/project-state.yaml) but .prawduct/change-log.md is untouched`. **The two gates now
+  openly contradict each other on the same diff** — doc-only says "none judgeable", change-log says
+  "branch changes code". The wiring is live: `bin/prawduct-hook:3796-3797` dispatches it;
+  `skills/pr/SKILL.md:59` Step 1c makes it a STOP.
+
+  **FOLD IN — the inverse gap (newly found 2026-07-19, not in the item's original text).** A branch
+  changing only `skills/pr/SKILL.md` → `check-pr-doc-only` rc=1 (`not-doc-only: review-needing
+  files: skills/pr/SKILL.md`) but `check-change-log-entry` rc=0 (`doc-only: all 1 changed file(s)
+  are .md — no entry required`). Behavioral skill-prose changes can therefore merge with NO
+  change-log entry — a REL-6C3W-class hole that the change-log gate exists to close. The same
+  one-line fix closes this direction too, which is why it belongs here rather than in a new item.
+
+  **Residual work is ONE LINE, not a port of `955bc2a`.** Change `lib/coverage.py:272` to use
+  `coverage_algebra.judgeable_files(files)`. Do NOT port the branch's helpers (`is_doc_or_metadata`,
+  `is_nonbehavioral_path`) — they are semantically identical to develop's `is_judgeable_path`
+  negated (verified across `.prawduct/*.yaml|md`, `.claude/settings.json`, `skills/*.md`,
+  `methodology/*.md`, `CLAUDE.md`, `docs/*.md`, `lib/*.py`), so porting them would re-introduce the
+  duplicate predicate CRT-5D8Q was created to kill. The branch's other three call sites are already
+  fixed or deleted on develop.
+
+  *Test pointers.* develop's `tests/test_change_log_entry_gate.py` has NO `.prawduct/`-only case and
+  NO `skills/*.md` case — the gap is untested in both directions; `955bc2a` adds both. Existing
+  predicate pins that already hold and must keep holding: `tests/test_coverage_algebra.py:69-90`,
+  `tests/test_cumulative_gate.py:250`, `tests/test_session_critic_gate.py:186`.
+
+  *Constraint carried forward.* COV-4H7N's tension note (a blanket `.prawduct/**` exemption is
+  unsound while non-hermetic tests exist) applied to the umbrella's (1a)/(1b) legs, which have
+  already shipped; it does not constrain this one-liner (the change-log gate does not decide whether
+  the suite runs). Resolve that tension against COV-4H7N's own scope, not here. Stage advanced
+  design→ready: the fix, its blast radius, and its tests are all determined. Resolve alongside
+  PR-4V2N (the `skills/pr/SKILL.md:47` step-skip ambiguity that decides whether a `.prawduct/`-only
+  PR even reaches this gate).
+
 - **[BRF-6K2D]** Session-briefing "delete the plan" nudge isn't merge-aware — fires on develop while the plan's feature branch is unmerged
-  `effort: S · impact: M · area: briefing · source: reflection · added: 2026-07-09 · status: open · stage: ready · related: STH-3K7M, STH-3R8K, DOC-5T8N`
+  `effort: S · impact: M · area: briefing · source: reflection · added: 2026-07-09 · reviewed: 2026-07-19 · status: open · stage: ready · related: STH-3K7M, STH-3R8K, DOC-5T8N, WT-7M4K, COV-7K4N · refs: lib/briefing.py (staleness_scan, _get_other_branch_wip, _get_current_branch), lib/coverage.py (_resolve_base_branch), skills/pr/SKILL.md:142 (the live workaround)`
 
   The session-briefing / stale-plan nudge recommends deleting build-plan.md when all its chunks are checked complete. But build-plan.md is gitignored/session-local and persists across branch switches, so the nudge can fire while the session is on `develop` even though the plan's feature branch is still unmerged with no PR open. Following it would orphan live, unshipped work. Reported by discodon (2026-06-11, pre-2.3.0). Fix-shape: make the staleness check branch/merge-aware — before recommending deletion, confirm the plan's feature-branch commits are actually reachable from the integration branch (or its PR merged), e.g. `git merge-base --is-ancestor <plan-branch-tip> <base>`; otherwise say "plan complete but branch not yet merged — keep until merged" rather than "delete". Source: discodon reflection sweep 2026-07-09.
+
+  **Salvage annotation (2026-07-19) — VERDICT: STILL-PRESENT; the branch fix still applies
+  near-mechanically.** Captured before the stale branch `feature/gate-friction-batch` was deleted;
+  its work is preserved at tag `archive/gate-friction-batch` (restore with
+  `git branch feature/gate-friction-batch archive/gate-friction-batch`), relevant commit `d7a632f`.
+  `lib/briefing.py:146-170` is the stale-plan scan; both nudges fire unconditionally on plan state
+  alone — `:154-159` ("has all chunks complete — if work is done, delete the plan") and `:160-168`
+  (the no-Status fallback). Nothing between `:151` and `:168` consults branch, base, or merge
+  state. `git grep "delete the plan"` hits only `lib/briefing.py:158` and `:167`. No
+  `_plan_work_possibly_unmerged` or equivalent exists; `lib/briefing.py:40` imports only
+  `buildplan_refs, gates, gitstate` — `coverage` (which owns `_resolve_base_branch`) is not
+  imported. The defect is currently documented as a LIVE WORKAROUND rather than fixed:
+  `skills/pr/SKILL.md:142` — "A non-blocking 'consider deleting idle plan' advisory may surface …
+  ignore it until the release ships." Treated as unshipped as recently as 2026-07-19
+  (`.prawduct/change-log.md:167-168`).
+
+  *Salvageable fix-shape.* Add
+  `lib/briefing.py::_plan_work_possibly_unmerged(project_dir, prawduct_dir) -> (bool, reason)` with
+  two independent sufficient signals: (1) foreign-branch WIP — `_get_other_branch_wip` non-empty (a
+  session-local plan surviving a switch onto the base branch, the exact repro); (2) feature branch
+  ahead of base — resolve base via `coverage._resolve_base_branch`, and if `current_branch != base`
+  run `git merge-base --is-ancestor HEAD <base>`, where rc 1 means unmerged. Fail toward
+  `(False, "")` on every uncertainty, so the change only ADDS a keep-recommendation on positive
+  evidence and never silently suppresses a legitimate delete nudge. In `staleness_scan`, branch
+  both findings: when unmerged, emit "… has all chunks complete but <reason> — keep the plan until
+  it merges (deleting now would orphan unshipped work)". All inside the existing best-effort
+  try/except.
+
+  *Still applies? Yes.* Every dependency survives with the same shape: `_get_other_branch_wip`
+  (`lib/briefing.py:431`), `_get_current_branch` (`:219`), `_parse_wip` (used at `:163`),
+  `coverage._resolve_base_branch` (`lib/coverage.py:56`), target try/except (`:150`, `:169`).
+  Adding `coverage` to briefing's imports is safe — nothing under `lib/` imports `briefing`, so no
+  cycle. Two carry-over caveats: (a) the branch's import line imported `backlog`, which develop has
+  restructured to `from .backlog import legacy as backlog` (`:41`) — **don't clobber it**;
+  (b) `_resolve_base_branch` prefers `origin/<b>` and can be stale (see COV-7K4N) — for this nudge
+  the stale case errs toward "keep", the safe direction, but leave a comment saying so.
+
+  *Test pointers (on the archive tag).* New `tests/test_briefing_merge_aware_plan.py` (105 lines,
+  real git fixtures) — `test_on_base_branch_merged_says_delete`,
+  `test_feature_branch_unmerged_says_keep`, `test_foreign_branch_wip_says_keep`. Develop's `tests/`
+  has only `test_briefing_extraction.py` and `test_briefing_functions.py`.
 
 - **[STH-4B7Q]** check-operator-verification gate reportedly throws ModuleNotFoundError (needs repro)
   `effort: S · impact: M · area: stop-hook · source: user · added: 2026-07-09 · status: open · stage: idea · related: STH-2J9F, STH-8M3V`
@@ -475,11 +582,52 @@
   The forked /prawduct:backlog skill mutates backlog.md non-atomically. Two corroborating incidents in hallucinote: (a) the skill died on an API socket error mid-run and left a PARTIAL file mutation — data corruption, not a clean rollback; (b) a Critic (2026-07-07) found a DUPLICATED paragraph the skill had emitted (non-idempotent write). Impact: a mid-run crash or retry can corrupt or duplicate backlog entries — the very tool meant to be the safe mutation path for the backlog is itself unsafe. Fix-shape: make backlog mutations transactional and idempotent — parse the file to a model, transform by item id, assert no duplicate ids / no dropped items, then write atomically (temp file + rename). Governance-protected (skill) → full Critic + PR review. (critic)
 
 - **[PR-7T2K]** PR gates validate local HEAD, not the pushed origin/<branch> that squash-merge uses — post-push commits silently dropped
-  `effort: M · impact: M · area: pr · source: user · added: 2026-07-09 · status: open · stage: ready · related: PR-2H8N · reviewed: 2026-07-17`
+  `effort: M · impact: M · area: pr · source: user · added: 2026-07-09 · status: open · stage: ready · related: PR-2H8N, WT-7M4K, COV-7K4N · reviewed: 2026-07-19 · refs: lib/gates.py (no check_branch_pushed exists), skills/pr/SKILL.md (Merge Flow), lib/gitstate.py (current_branch, _git_head_sha)`
 
   The PR gates (change-log entry, cumulative-critic, evidence) validate the LOCAL commits, but `gh pr merge --squash` squashes what's on origin/<branch>. A commit made after the last push — very often the change-log entry the gate itself just forced the builder to add — never reaches origin, so the squash-merge silently drops it and the merged result is missing content the gates confirmed present. Reported by hallucinote (~June). Fix-shape: /prawduct:pr (or a PR gate) should assert `git rev-parse origin/<branch>` == local HEAD (branch fully pushed) before allowing merge, and fail loud with "unpushed commits — push before merging" otherwise. Governance-protected → full Critic + PR review.
 
   Reviewed 2026-07-17 (ambient-merge-commit-default Critic C-B3): remains valid — the unpushed-commit hazard survives the squash→merge-commit flip, since a merge commit still merges what's on origin/<branch>, so post-push local commits are still silently dropped.
+
+  **Salvage annotation (2026-07-19) — VERDICT: STILL-PRESENT.** Captured before the stale branch
+  `feature/gate-friction-batch` was deleted; its work is preserved at tag
+  `archive/gate-friction-batch` (restore with `git branch feature/gate-friction-batch
+  archive/gate-friction-batch`), relevant commit `4c8cfe9`. `check-branch-pushed` **does not exist
+  as a subcommand at all** — tree-wide `git grep "branch.pushed|branch_pushed"` returns zero hits
+  across `bin/`, `lib/`, `skills/`, `tests/`. The usage strings (`bin/prawduct-hook:3511`, `:3517`)
+  and the dispatch table (`:3775`) carry no such gate; `lib/gates.py:874` exposes only
+  `check_cumulative_critic` as a public `check_*`. Merge Flow has no push assertion:
+  `skills/pr/SKILL.md:131-143` — step 1 `gh pr checks`, step 2 conflicts, step 3 evidence file
+  exists, **step 4 (`:138`) merges directly**. Nothing compares local HEAD to `origin/<branch>`; no
+  ahead/behind probe and no `gh pr view`/`headRefOid` check anywhere in the PR path. The one
+  adjacent surface is entry ROUTING, not a gate: `skills/pr/SKILL.md:29` routes "new local commits
+  not pushed" to Update, but that table is evaluated once at invocation (`:18-27`) — a commit
+  created AFTER routing (exactly the change-log/bookkeeping commit Create-flow Step 1d (`:70-72`)
+  forces) is never re-checked before the merge.
+
+  *Salvageable fix-shape.* Add `lib/gates.py::check_branch_pushed(project_dir)` — read the current
+  branch, require `git rev-parse HEAD` == `git rev-parse --verify origin/<branch>^{commit}`. Exit 0
+  with `pushed:`; otherwise exit 1 with a DIRECTION-AWARE stderr reason derived from
+  `git rev-list --count origin/<b>..HEAD` and `HEAD..origin/<b>`: `diverged` /
+  `local-behind-remote` / `unpushed-commits`, plus `branch-not-pushed`, `detached-head`,
+  `git-unavailable`/`git-failed`. Fail CLOSED on every uncertainty — a merge that silently drops
+  commits is worse than a false block. Wire `cmd_check_branch_pushed` + usage + dispatch in
+  `bin/prawduct-hook`, and add it to `skills/pr/SKILL.md` Merge Flow as a hard step BEFORE the
+  merge: "on non-zero, `git push` and re-run — do not proceed."
+
+  *Port caveats (three, all mechanical).* (1) develop's `lib/gates.py` does NOT import
+  `subprocess` (imports at `:40-45` are `json, sys, Path` + `buildplan_refs, coverage,
+  coverage_algebra, evidence, gitstate`) — add the import, or home the body in `lib/gitstate.py` /
+  `lib/coverage.py` which already shell out. (2) Prefer the existing helpers
+  `gitstate.current_branch()` (`lib/gitstate.py:137`) and `gitstate._git_head_sha()` (`:406`) over
+  raw calls. (3) All the branch's stderr text and SKILL wording say "squash-merges
+  `origin/<branch>`" — reword for the merge-commit default (`skills/pr/SKILL.md:138`); the hazard
+  statement itself is unchanged. Merge-Flow numbering also differs (develop's flow is 1-7); insert
+  before develop's current step 4.
+
+  *Test pointers (on the archive tag).* New `tests/test_check_branch_pushed.py` (135 lines, real
+  bare-origin remote fixture) — `test_fully_pushed_passes`, `test_unpushed_commit_fails`,
+  `test_local_behind_remote_fails`, `test_diverged_fails`, `test_branch_never_pushed_fails`,
+  `test_detached_head_fails`. Does not exist on develop.
 
 - **[COV-4M2J]** Coverage floor is Python-only — `bin/test-reference-verify` symbol-grep can't reference non-Python (JS/TS/Go/…) changed files; bring-your-own-verifier via `--merge-into` is the only escape
   `effort: L · impact: M · area: coverage · source: builder · added: 2026-06-26 · status: open · stage: requirements · related: COV-3R9K, COV-8R2K, TST-2H9P · refs: bin/test-reference-verify (symbol-grep floor), lib/coverage.py (changed-files derivation), bin/prawduct-hook (verify-coverage, test-evidence record F4a overlay), skills/critic/review-cycle.md (Goal 1 F4b)`
@@ -533,14 +681,123 @@
   shipped-in-PR), on top of the review-scope inflation.
 
 - **[COV-8R2K]** verify-coverage records BLOCKING missing-coverage for non-executable files — prose .md docs AND non-code config (YAML) — forcing waivers or token reference-tests on otherwise-clean chunks
-  `effort: M · impact: M · area: coverage · source: user · added: 2026-06-22 · status: open · stage: design · related: TST-4K2P · refs: bin/prawduct-hook (verify-coverage), lib/coverage.py, skills/critic/review-cycle.md (Goal 1 rule F4b), incoming-bugs/archive/verify-coverage-records-blocking-missing-coverage-for-prose-docs.md, incoming-bugs/archive/check-pr-trivial-passes-feature-clusters-that-only-touch-existing-files.md`
+  `effort: M · impact: M · area: coverage · source: user · added: 2026-06-22 · reviewed: 2026-07-19 · status: open · stage: design · related: TST-4K2P, COV-4M2J, CRT-5D8Q · refs: bin/prawduct-hook (verify-coverage), lib/coverage.py, lib/coverage_algebra.py (is_judgeable_path), skills/critic/review-protocol.md (Goal 1 rule F4b), incoming-bugs/archive/verify-coverage-records-blocking-missing-coverage-for-prose-docs.md, incoming-bugs/archive/check-pr-trivial-passes-feature-clusters-that-only-touch-existing-files.md`
 
   The symbol-grep coverage floor is applied to non-executable files the same as code. Two corroborating reports: (a) a chunk whose deliverables legitimately include a prose .md always produces an unsoftenable BLOCKING missing-coverage (Goal 1 F4b: "a missing-coverage line is recorded BLOCKING per file, never softened"), even though prose can't be executed; (b) a branch editing a YAML/config file with no test symbols (e.g. .prawduct/project-state.yaml) is flagged missing-coverage and verify-coverage exits 1 on an otherwise-clean branch (the "config-file-accounting gap" products already note in their own learnings). A doc-ONLY-chunk skip already exists; this is the MIXED-chunk and non-code-config version. Fix-shape: make the floor file-type/language-aware — exempt (or downgrade to NOTE) files under a docs-path policy (configurable allowlist, e.g. **/README.md, docs/**, *.md) and non-code config, or scope the floor to runner-executable languages only. Governance-protected → full Critic + PR review.
 
+  **Salvage annotation (2026-07-19) — VERDICT: STILL-PRESENT, confirmed by executing develop's own
+  suite.** Captured before the stale branch `feature/gate-fidelity` was deleted; its work is
+  preserved at tag `archive/gate-fidelity` (restore with `git branch feature/gate-fidelity
+  archive/gate-fidelity`), relevant commit `ae697a6`. `lib/gates.py:1067-1074` (inside
+  `gates.verify_coverage`, `lib/gates.py:986`) — the bucket split is byte-identical to the branch's pre-image (`skipped` = files
+  in `changes_unjudged` or absent from disk; `missing` = everything else not in
+  `changes_referenced`). **No file-type test anywhere in the path.** kernel-v3 rewrote the
+  *review-coverage* gates — a different mechanism — and did not touch this one. Executed
+  confirmation: `tests/test_verify_coverage_gate.py:186-206`
+  (`TestLegacyEvidenceCompat.test_evidence_without_unjudged_field_keeps_old_behavior`) writes
+  `NOTES.md` and asserts rc==1 with `missing-coverage: NOTES.md`; ran on develop → 6 passed. A
+  prose `.md` provably still produces a BLOCKING missing-coverage today. The protocol half is also
+  unfixed: `skills/critic/review-protocol.md:65` still says missing-coverage lines are "BLOCKING
+  per missing file … must not be softened."
+
+  *Reachability (why it looks dormant but isn't).* `bin/test-reference-verify:239-242` routes
+  non-Python files into `changes_unjudged`, which the gate skips — so a freshly-run STOCK verifier
+  masks the symptom. The defect is reachable whenever `changes_unjudged` doesn't align with the
+  gate's recomputed `changed` set: stale evidence (tests run, then a doc/YAML edited before
+  `verify-coverage`), product-authored evidence, legacy evidence lacking the field, or a
+  `coverage_level: executed` verifier. `lib/coverage.py:150-176` recomputes `changed` at gate time
+  independently of when the evidence was written — that's the misalignment window. Dormant in THIS
+  repo (`coverage_required: false`, `.prawduct/project-state.yaml:338`); live for any product that
+  opts in.
+
+  *Salvageable fix-shape.* Add `is_non_executable_path(path, *, exempt_globs=())` to
+  `lib/coverage.py` — True when the suffix is in `{.md,.yaml,.yml,.json,.toml,.ini,.cfg,.txt}` or
+  the repo-relative path fnmatches an exempt glob — plus `coverage_exempt_globs(project_dir)`
+  reading an optional `coverage_exempt_paths:` list from project-state.yaml (escape hatch for paths
+  whose extension looks executable but isn't). In `verify_coverage`, compute a third bucket
+  `nonexec` from the would-be-missing files, subtract it from `missing`, and print
+  `note: N non-executable file(s) … reported, not gated`. `unjudged`/deleted keep precedence; the
+  `ok:` count subtracts `nonexec` too; an uncovered `.py` still BLOCKS. Also soften
+  `skills/critic/review-protocol.md` Goal-1 F4b to informational for non-executable files. **Also
+  needed:** the branch promoted `_read_list_yaml_key` from `lib/risk.py` to `lib/core.py` as
+  `read_list_yaml_key` — still private on develop at `lib/risk.py:66`.
+
+  **DESIGN NOTE — do not port blindly.** The branch invented its extension set independently of
+  `coverage_algebra.is_judgeable_path` (`lib/coverage_algebra.py:59-72`), which kernel-v3
+  established as THE one judgeability predicate. Re-landing a SECOND file-classification set is
+  exactly the divergence CRT-5D8Q was created to kill. Express the exemption in terms of, or
+  alongside, `is_judgeable_path` rather than as a fresh suffix frozenset. This is the load-bearing
+  constraint on the fix-shape above.
+
+  *Test pointers (on the archive tag).* `TestNonExecutableFilesAreExempt`
+  (`test_md_only_change_passes_as_note`, `test_yaml_only_change_passes`,
+  `test_mixed_change_only_executable_blocks` — the true-positive guard,
+  `test_override_glob_exempts_extra_path`); `TestNonExecutableClassifier`
+  (`test_known_non_executable_extensions`, `test_executable_paths_are_not_exempt_by_default`,
+  `test_override_glob_exempts_matching_path`, `test_exempt_globs_reads_block_list`); plus the
+  re-anchored legacy-compat test (`NOTES.md` → `src/legacy.py`).
+
 - **[STH-6T9W]** Stop critic-review gate counts untracked operator-authored non-code files as chunk-diff scope — no Critic mode can satisfy it, forcing a waiver on a clean, fully-reviewed tree
-  `effort: M · impact: M · area: stop-hook · source: user · added: 2026-06-22 · status: open · stage: design · related: STH-3W7F, STH-7K2A · refs: lib/gates.py (critic-review gate, verify-resolutions scope check; validate_critic_findings files_reviewed), incoming-bugs/archive/stop-gate-counts-untracked-operator-notes-as-chunk-diff.md`
+  `effort: M · impact: S · area: stop-hook · source: user · added: 2026-06-22 · reviewed: 2026-07-19 · status: open · stage: design · related: STH-3W7F, STH-7K2A, COV-8R2K, CRT-5D8Q · refs: lib/coverage_algebra.py (is_judgeable_path), lib/evidence.py (capture_tree), lib/critic_mode.py (mode-inference subset check), lib/gates.py (session_review_verdict), incoming-bugs/archive/stop-gate-counts-untracked-operator-notes-as-chunk-diff.md`
 
   An untracked operator-dropped non-code file (e.g. a note placed in incoming-bugs/) is counted into the chunk-diff scope, growing it beyond what the verify-resolutions findings cover; the suggested remedy (re-run /critic chunk) can't produce a schema-valid empty-scope record (validate_critic_findings requires non-empty files_reviewed), so a waiver becomes the only exit — on a session whose code was already fully reviewed and merged. Trains waiver-reaching: when the framework's cleanest sessions end in waivers, waivers stop signaling anything. Distinct root cause from STH-3W7F (background work) and STH-7K2A (loop-counter). Fix-shape: exclude untracked non-code files outside source/test/governance roots from the chunk-diff scope; and/or allow a schema-valid scope:empty findings record. Governance-protected → full Critic + PR review.
+
+  **Salvage annotation (2026-07-19) — VERDICT: PARTIAL. The reported HARM is eliminated; a much
+  milder root cause survives.** Captured before the stale branch `feature/gate-fidelity` was
+  deleted; its work is preserved at tag `archive/gate-fidelity` (restore with
+  `git branch feature/gate-fidelity archive/gate-fidelity`), relevant commit `e6e9434`.
+  Impact downgraded M→S accordingly.
+
+  *What the kernel-v3 rewrite removed.* Both scope sites named above are DELETED and pinned as such
+  (`tests/test_cumulative_gate.py:411-431`, `:433-435`). The gate is now composed coverage
+  (`lib/gates.py:555-632` → `lib/coverage_algebra.py:197-266`, invoked from
+  `bin/prawduct-hook:1393-1400`) — no scope-subset check, nothing the operator can fail. **The
+  waiver-wedge is gone:** `lib/critic_consolidate.py:350-351` sets
+  `files_reviewed = list(files_changed)`, so CODE derives the reviewed set from the manifest's
+  diff and the model never authors it; a noise-only interval yields non-empty `files_changed`, so
+  `validate_critic_findings`'s non-empty requirement (`lib/gates.py:408-410`) can no longer block.
+  **The exact reported repro no longer fires at all:** the report was a `.md` dropped into
+  `incoming-bugs/`, and `is_judgeable_path` returns False for non-protected `.md`
+  (`lib/coverage_algebra.py:70-71`), so that interval is a free edge.
+
+  *What survives (the milder root cause).* `is_judgeable_path` (`lib/coverage_algebra.py:68-72`)
+  classifies ANY non-metadata non-`.md` path as judgeable, with no tracked/untracked distinction
+  (verified by execution: `note.txt` → True, `scratch.json` → True, `tmp/data.yaml` → True). And
+  `evidence.capture_tree` (`lib/evidence.py:367-405`) runs `git add -A` in a temp index, so
+  untracked non-ignored files ARE inside the target tree. Dropping a `note.txt` therefore changes
+  the tree SHA → the interval contains a judgeable file → not a free edge →
+  `session_review_verdict` returns `uncovered` → the stop hook blocks
+  (`bin/prawduct-hook:1413`+). The operator must dispatch a real Critic review whose entire subject
+  is a stray note. Secondary: untracked noise inflates `delta`, and `_scope_widened`
+  (`lib/critic_consolidate.py:100`) can push a legitimate verify-resolutions pass into a forced
+  full re-review. Tertiary: `lib/critic_mode.py:254-263` still does a diff⊆scope subset check over
+  `_get_uncommitted_code_files` (`:419-449`, includes untracked, filters only metadata) — mode
+  inference only, not a gate, so a stray note silently downgrades the recommended mode.
+
+  *Branch fix-shape (recorded for reference — DOES NOT still apply).* Three helpers in
+  `lib/gates.py`: `_untracked_files` (`git ls-files --others --exclude-standard`, empty set on any
+  git failure = fail closed); `_tracked_work_roots` (top-level dirs holding ≥1 tracked file,
+  derived from `git ls-files` rather than hardcoded, so it adapts to any product layout); and
+  `_is_untracked_noncode_noise(rel_path, work_roots)` (False if the first segment is a work root;
+  else True when the suffix is not in `gitstate._PRODUCT_CODE_SUFFIXES`). Deliberately narrow —
+  tracked files, code files anywhere, and non-code files UNDER a work root all stay in scope.
+  **Why it can't be ported:** both call sites it patched no longer exist, and
+  `_PRODUCT_CODE_SUFFIXES` is a SECOND judgeability opinion — precisely what kernel-v3
+  consolidated away (see CRT-5D8Q). Only the branch's TEST corpus transfers cheaply.
+
+  *Landing options today (pick one during design).* (a) Teach `is_judgeable_path` about
+  untracked-non-code-outside-work-roots — but it is deliberately a pure path function with no git
+  access, so the untracked fact must be INJECTED by the caller. (b) Exclude such files at
+  `evidence.capture_tree` so they never enter the tree SHA — cleanest, but it changes what a review
+  fact attests. (c) **WONTFIX** — a legitimate outcome now that the harm is "run one extra review"
+  rather than "waiver or nothing"; the original waiver-training argument no longer applies.
+
+  *Test pointers (on the archive tag).*
+  `tests/test_cumulative_gate.py::test_scope_excludes_untracked_noncode_noise`;
+  `tests/test_session_critic_gate.py::test_untracked_noncode_note_does_not_inflate_scope`,
+  `::test_untracked_code_file_still_counts`,
+  `::test_untracked_noncode_under_work_root_still_counts` (the over-exclusion guard), and
+  `TestUntrackedNoncodeNoisePredicate`.
 
 - **[WMK-4Q9T]** Work-model term tripwire flags ordinary English words and file-path fragments as ungoverned terms — desensitizes the one tripwire meant to catch real undocumented requirements
   `effort: S · impact: M · area: work-model · source: user · added: 2026-06-22 · status: open · stage: design · related: WMK-7D3R, WMK-1P4Q, GOV-7T2M, GOV-4C7X · refs: UserPromptSubmit hook (work-model term extraction), lib/work_model_index.py, incoming-bugs/archive/work-model-term-tripwire-flags-ordinary-prose-words.md · reviewed: 2026-07-16`
@@ -975,7 +1232,7 @@
   index, so the mtime-only staleness gap doesn't affect it.
 
 - **[CRT-6J4P]** Mode-inference rule 1b chains across work-cycle/bundle boundaries — prior bundle's cumulative vouches for a new plan's first chunk
-  `effort: S · impact: S · area: governance/critic · source: reflection · added: 2026-06-10 · status: open · stage: design · related: CRT-8W3F, CRT-4J8W, CRT-7B4M, CRT-2N7V, CRT-8H3R · refs: lib/critic_mode.py (_rule_postfix_fix_fires, _cumulative_anchor), skills/critic/SKILL.md · reviewed: 2026-07-13`
+  `effort: S · impact: S · area: governance/critic · source: reflection · added: 2026-06-10 · status: open · stage: design · related: CRT-8W3F, CRT-4J8W, CRT-7B4M, CRT-2N7V, CRT-8H3R · refs: lib/critic_mode.py (_rule_postfix_fix_fires, _cumulative_anchor), skills/critic/SKILL.md · reviewed: 2026-07-19`
 
   Observed 2026-06-10: on a brand-new branch/plan (feature/do-next, first chunk), inference picked
   verify-resolutions extending the PREVIOUS released bundle's cumulative (3c4b627,
@@ -994,8 +1251,34 @@
   rule 1b to the current branch/merge-base or active plan scope — same ancestor-guard family as
   CRT-8H3R; consider fixing both in one pass.
 
+  **Salvage annotation (2026-07-19) — VERDICT: STILL-PRESENT, and the deleted branch never
+  actually covered this item.** ⚠️ **Correction to the record.** Commit `af8350f` on
+  `feature/gate-fidelity` (preserved at tag `archive/gate-fidelity`) has a message claiming it
+  addresses "vouching across bundle boundaries (CRT-6J4P)". **It does not.** The filed observation
+  above is a *same-lineage* cross-bundle chain: on a brand-new branch/plan, inference extended the
+  previously RELEASED bundle's cumulative. Once that bundle merged to develop and the new branch
+  was cut, its `commit_reviewed` IS an ancestor of HEAD, so `git merge-base --is-ancestor` returns
+  0 and rule 1b still fires. The branch's ancestor guard closes only the sibling-BRANCH sub-case,
+  which is CRT-8H3R's territory, not this one. Do not treat this item as "fixed on a branch
+  somewhere" — and do not treat the CRT-8H3R fix as closing it.
+
+  *Evidence the defect is live on develop.* `lib/critic_mode.py:285-337` gates rule 1b on exactly
+  four things — clean tree (`:304`), slot record mode is cumulative (`:313`), anchor resolves
+  (`:317`), and a non-`.md` file in the committed delta (`:329`) under
+  `len(delta) > 2*len(prior)+5` (`:331`). No branch bound, no merge-base bound, no active-plan
+  bound. `_resolve_base_branch` IS imported (`lib/critic_mode.py:75`) but used only by rule 2
+  (`:352`) and `_committed_chunk_ids` (`:540`) — never by rule 1b. That is precisely the absence
+  this item's fix-shape names. `critic_consolidate.fact_to_cache_record` (`:684-728`) overwrites
+  the single slot unconditionally, so a previous bundle's cumulative survives a `git switch` and a
+  new plan.
+
+  *Residual work is NEW DESIGN, not a port.* Nothing on the archive tag implements it and no
+  branch test covers the filed case. Two candidate shapes: require the anchor to be at or after
+  `merge-base(_resolve_base_branch(project_dir), HEAD)`; or require the record's `files_reviewed`
+  to intersect the active build plan's scope. Stays `stage: design`.
+
 - **[CRT-8H3R]** Mode inference can latch a verify-resolutions dispatch onto a sibling branch's anchor after a branch switch — require anchors to be ancestors of HEAD
-  `effort: S · impact: S · area: critic · source: critic · added: 2026-06-21 · status: open · stage: ready · related: CRT-6J4P · refs: lib/critic_mode.py (infer_mode rules 1/1b, _commit_resolves, _cumulative_anchor), lib/critic_consolidate.py (_prior_review_fact) · reviewed: 2026-07-13`
+  `effort: S · impact: S · area: critic · source: critic · added: 2026-06-21 · status: open · stage: ready · related: CRT-6J4P · refs: lib/critic_mode.py (infer_mode rules 1/1b, _commit_resolves, _cumulative_anchor), lib/critic_consolidate.py (_prior_review_fact) · reviewed: 2026-07-19`
 
   If SessionStart recorded branch A but the work is on a divergent branch B, mode-inference can chain
   verify-resolutions to A's anchor SHAs; compute-verify-resolutions-scope only demotes when an anchor
@@ -1033,6 +1316,42 @@
   `_prior_review_fact`; non-ancestor → demote to chunk/final. Consequence is now
   proportionality/noise, not gate soundness — impact downgraded M→S accordingly. Sibling fix:
   CRT-6J4P (bound rule 1b to branch/plan scope) — consider one pass for both.
+
+  **Salvage annotation (2026-07-19) — VERDICT: STILL-PRESENT (dispatch side only).** Captured
+  before the stale branch `feature/gate-fidelity` was deleted; its work is preserved at tag
+  `archive/gate-fidelity` (restore with `git branch feature/gate-fidelity
+  archive/gate-fidelity`), relevant commit `af8350f`. Verified against develop's current code, not
+  inferred. The soundness half is confirmed gone (`lib/gates.py:928-930` composes tree-keyed
+  edges; a sibling edge cannot complete the BFS in `coverage_algebra._find_path`;
+  `.critic-findings.json` is never read by a gate — pinned at
+  `tests/test_cumulative_gate.py:412-417`). The dispatch/noise half is intact and unguarded:
+  `lib/critic_mode.py:251` (rule 1) and `:317` (rule 1b) accept the anchor on `_commit_resolves`
+  alone; `_commit_resolves` (`:466-475`) is just `git rev-parse --verify <sha>^{commit}`, which
+  succeeds for ANY object in the shared store including a sibling tip; `_committed_files_since`
+  (`:452-463`) then takes the two-way diff `<sha>..HEAD` spanning the divergence (the
+  phantom-finding surface, reused at `lib/critic_consolidate.py:266-269`). Zero occurrences of
+  `is-ancestor`/`is_ancestor` anywhere under `lib/` or `bin/`.
+
+  *Salvageable fix-shape (re-implementable without the branch).* Add
+  `_commit_is_ancestor(project_dir, sha)` = `git merge-base --is-ancestor <sha> HEAD`, True only
+  on exit 0 (fail closed — exit 1 AND any other failure demote). Call it immediately after each
+  `_commit_resolves` check; a non-ancestor anchor returns False/"" so inference falls through to
+  cumulative/final. Insert points on develop: `lib/critic_mode.py:252` and `:318`. **Port caveat:**
+  the branch also patched `gates._compute_verify_resolutions_scope`, which was DELETED in the v3
+  cutover and is asserted-absent by a stays-deleted pin (`tests/test_cumulative_gate.py:419-431`) —
+  porting it would break the pin. Redirect that half to `critic_consolidate._prior_review_fact`
+  (`lib/critic_consolidate.py:137`) or the verify arm of `begin_review` (`:239-250`), checking the
+  fact body's `head_commit`/`dispatch_commit` for ancestry and returning the existing
+  `{"status": "error", "reason": ...}` shape.
+
+  *Test pointers.* `tests/test_critic_mode_inference.py::TestRule1VerifyResolutions::test_does_not_fire_when_anchor_is_non_ancestor`
+  and `::TestRule1bPostfixChain::test_does_not_fire_when_anchor_is_non_ancestor` port cleanly, with
+  develop renames: class `TestRule1bPostfixChain` → `TestRule1bPostCumulativeFix`
+  (`tests/test_critic_mode_inference.py:353`), function `_rule_postfix_chain_fires` →
+  `_rule_postfix_fix_fires`. Both assert `_commit_resolves(...) is True` AND
+  `_commit_is_ancestor(...) is False` before asserting the demote — i.e. they prove the OLD guard
+  would have passed, so the new guard is load-bearing. **Keep that pattern.** The branch's two
+  `tests/test_cumulative_gate.py` tests are dead code against develop.
 
 - **[CRT-9L2F]** Post-release live verification: explicit /prawduct:critic mode argument honored end-to-end (follow-up to CRT-2N7V, gate-hardening ch.03)
   `effort: S · impact: M · area: governance/critic · source: builder · added: 2026-06-10 · status: open · stage: ready · related: CRT-2N7V, CRT-3M8Q · refs: skills/critic/SKILL.md, lib/critic_mode.py`
@@ -1180,7 +1499,9 @@
   owner, before building. Umbrella over CRT-6W2N/STH-4K7N/COV-5H3N — dedup/`closes:` when
   planned. (user)
 
-  Reconcile 2026-07-18 (worktree leg DELIVERED, item stays OPEN): the worktree-story piece of this umbrella is now shipped and is tracked by the now-shipped CRT-6W2N — a documented/owned worktree workflow (STH-4K7N Chunk 02, PR #107) plus the observable stop-path redirect signal (STH-3R8K) and SessionStart worktree-awareness (BRF-6K2D). A future picker should NOT re-plan the worktree piece. ENV-2W7K's remaining OPEN scope therefore narrows to its three other legs: (1) gitflow base detection that doesn't require knowing `base_branch:` exists; (2) the non-Python coverage floor going SILENT (not noisy) for languages it can't see; and (3) documenting `--from-counts` as the paved non-pytest path. The umbrella line above still holds for STH-4K7N/COV-5H3N; only the CRT-6W2N (worktree) leg is closed.
+  Reconcile 2026-07-18 (worktree leg DELIVERED, item stays OPEN): the worktree-story piece of this umbrella is now shipped and is tracked by the now-shipped CRT-6W2N — a documented/owned worktree workflow (STH-4K7N Chunk 02, PR #107) plus the observable stop-path redirect signal (STH-3R8K) and SessionStart worktree-awareness (worktree enumeration/orientation in the briefing, `lib/briefing.py:379-428`, `:495-509`). A future picker should NOT re-plan the worktree piece.
+
+  **Attribution correction 2026-07-19 (salvage sweep N1).** The reconcile line above originally credited the SessionStart worktree-awareness leg to **BRF-6K2D** — that is wrong and is now corrected in place. What actually landed is the briefing's worktree enumeration/orientation (`lib/briefing.py:379-428`, `:495-509`), which is unrelated to BRF-6K2D. BRF-6K2D is the merge-awareness of the "delete the plan" nudge (`lib/briefing.py:146-170`), and its own surface is verified UNTOUCHED on develop — it remains fully OPEN. The same mis-credit appears in CRT-6W2N's archived entry (its `closed-by:` and body); left as archived history there, corrected here, and flagged in CRT-6W2N's body so a reader of either lands on the truth. ENV-2W7K's remaining OPEN scope therefore narrows to its three other legs: (1) gitflow base detection that doesn't require knowing `base_branch:` exists; (2) the non-Python coverage floor going SILENT (not noisy) for languages it can't see; and (3) documenting `--from-counts` as the paved non-pytest path. The umbrella line above still holds for STH-4K7N/COV-5H3N; only the CRT-6W2N (worktree) leg is closed.
 
 - **[LRN-7M4D]** Wave 2: memory convergence — learnings + learnings-detail durable, .session-reflected ephemeral, retire per-repo reflections.md accumulation (design note first)
   `effort: M · impact: M · area: memory/learnings · source: user · added: 2026-07-02 · status: open · stage: design · related: MET-6W3J · refs: .prawduct/artifacts/framework-efficiency-review-2026-07-02.md (Wave 2, Underspecified #5)`
@@ -1739,6 +2060,8 @@
   code fix, this is the workflow/docs).
 
   Shipped 2026-07-18 (reconcile-as-shipped; closed-by: feature/worktree-compat (STH-4K7N Chunk 02, PR #107) + STH-3R8K + BRF-6K2D). All three of CRT-6W2N's own fix-shapes are delivered. Fix-shapes 1 & 3 (documented/owned worktree workflow in the methodology + guidance so repos stop reinventing the "review in primary, merge with raw gh" workaround) shipped as STH-4K7N Chunk 02 in PR #107 (commit 796719d, merged 2026-06-22): the "Working in a git worktree" subsection at methodology/building.md:15 plus the worktree notes in skills/critic/SKILL.md:32 and skills/pr/SKILL.md:15. Fix-shape 2 (worktree-capable critic/pr skills reviewing in place, merge-base(base)..HEAD, writing the normal record) is delivered by STH-4K7N Chunk 01's resolve_project_dir resolver plus the already-relative skills — empirically confirmed because the worktree-compat build plan itself ran /prawduct:critic cumulative over merge-base...HEAD FROM a worktree and unblocked /prawduct:pr create, and dogfooded again THIS session (a linked worktree on develop, common-dir shared with primary; last session STH-3R8K ran its full governed close-out — Critic final clean + commit 1637c4a — in place here). Reinforced by STH-3R8K (observable stop-path signal for the silent worktree redirect) and BRF-6K2D (SessionStart worktree-awareness, live in this session's briefing). ROOT CAUSE of the false-open: the 2026-06-22 reconciliation split PR #107 into "code shipped / docs open," missing that Chunk 02 of that same PR shipped the docs — the shipped-but-not-removed drift BKL-8T3W targets. VRF-001 (operator-verification.md) marked verified via this session's dogfood.
+
+  **Attribution correction 2026-07-19 (salvage sweep N1) — archived entry, corrected not rewritten.** Every reference to **BRF-6K2D** above (in `closed-by:` and in "Reinforced by … BRF-6K2D (SessionStart worktree-awareness)") is a MIS-CREDIT. What actually landed is the briefing's worktree enumeration/orientation (`lib/briefing.py:379-428`, `:495-509`); BRF-6K2D is the merge-awareness of the "delete the plan" nudge (`lib/briefing.py:146-170`), whose surface is verified UNTOUCHED on develop. BRF-6K2D remains OPEN and did not contribute to closing CRT-6W2N. The historical text is left intact above; read it through this correction.
 
   Merge reconciliation 2026-07-19 (develop integration): the discodon-upstream-defects branch (PR #132, merged to origin/develop in parallel with this session) shipped PDT-WT9K as its Chunk 04 and, unaware of this reconciliation, left CRT-6W2N OPEN with a partial-progress note asserting "the broader [documented worktree] gap remains OPEN." That assertion is superseded here: PDT-WT9K (critic-begin now surfaces the resolved worktree/branch/base, lists sibling worktrees, and refuses when the shell's git repo differs from the resolved review tree — commits eb83a68/85c1654) is ADDITIONAL delivery of fix-shape 2 (worktree-capable critic skills), not evidence the docs leg is missing; the docs leg (fix-shapes 1 & 3) was already verified shipped in STH-4K7N Chunk 02 above. Net: CRT-6W2N stays archived-as-shipped, now closed-by also PDT-WT9K.
 
