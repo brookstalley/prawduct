@@ -53,8 +53,12 @@ non-interactive) are owned and stable, and the adapter surface was read directly
 
 - [ ] Chunk 01: Dual-mode dispatch scaffold + read ops (summary/list/get)
 - [ ] Chunk 02: Write ops + deferred find/dedup + cutover-aware edge messaging
-Context: Plan authored 2026-07-19 on `feature/backlog-skill-repoint` (Phase 0 of the GH-Issues
-migration program; tracks BKL-3W6K). Nothing built yet. Next: Chunk 01.
+Context: Chunk 01 (dual-mode scaffold + read ops) built + Critic-clean (chunk mode: 0 blocking /
+0 warning / 1 note, resolved — the optional `queued` envelope is qualified as unbuilt→`unavailable`).
+Backend routing centralized in one `SKILL.md` gate; new `adapter-mode.md` carries the shared
+envelope/exit protocol + read ops (summary→counts, list→list, get→get). Verified: frontmatter valid,
+adapter flags/exit-class shapes match (repo-local), full suite green (2396). Next: Chunk 02 (write
+ops + deferred find/dedup + cutover-aware edge messaging).
 
 ## Scaffolding
 
@@ -84,7 +88,7 @@ appends the VRF entry.
 
 ```
 skills/backlog/
-├── SKILL.md          # frontmatter (+ Bash) + a top-level "Backend routing" section; per-op sections gain a one-line adapter branch
+├── SKILL.md          # frontmatter (+ Bash) + a top-level "Backend routing" gate; per-op markdown sections stay byte-unchanged (routing centralized in one gate, not per-op branches — cleaner/DRY)
 ├── adapter-mode.md   # NEW — the adapter-path runbook: repo resolution, command map, envelope/exit handling, deferred find/dedup
 └── migration-scrub.md # unchanged (the existing one-shot migration runbook)
 ```
