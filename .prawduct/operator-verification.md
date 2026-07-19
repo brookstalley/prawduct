@@ -242,9 +242,11 @@ legibility, the dual-mode routing, and that nothing silently reads the frozen ma
 **Verify (drive the real loop through the skill, eyeball the human output):**
 1. `/prawduct:backlog` (no args) → the adapter `counts` rollup + menu (not the frozen markdown file).
 2. `add` → files a real GitHub issue (issue-standard title; any `lint` WARN surfaced); `list` shows it.
-3. `update <id> status=promoted` → maps to **`in-progress`**; a field change round-trips via
-   `--if-updated-at`; `claim` and `link` work; `pick` returns adapter ranked ready-work with the
-   build-plan-overlap + stage framing intact.
+3. `update <id> status=promoted` → maps to **`in-progress`**; a field change (title/stage/area)
+   round-trips — the edit is reflected by a following `get`/`list`; `claim` and `link` work; `pick`
+   returns adapter ranked ready-work with the build-plan-overlap + stage framing intact.
+   (The `--if-updated-at` guard is deliberately **not** exercised: the `get` envelope exposes no
+   `updated_at`, so the skill's normal path omits it — see the Pre-verified note above.)
 4. `find`/`dedup` → the **W2-deferred NOTE** (not a fabricated search); `migrate`/archive-split → the
    not-applicable NOTE.
 5. **Fail-loud:** break `gh` auth (or point at an unreachable repo) → a clear NOTE, and **never** a

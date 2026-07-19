@@ -1348,17 +1348,6 @@
 
   From the test-evidence-environments review (the work that shipped TST-6F2R's multi-environment `test_commands` list): a product with one environment whose toolchain cannot emit JUnit is excluded from the declared-list form — the aggregated record has no way to accept a counts-only source alongside the JUnit-capable environments. Today's escape is a wrapper script, or repeated `--from-junit` for the JUnit halves plus nothing for the counts half. Design question: should `--from-counts` compose as one more aggregated source (i.e. a counts entry participating in the same multi-environment aggregation) rather than remaining an exclusive whole-record mode? Touches ENV-2W7K's "document --from-counts as the paved non-pytest path" — if composition ships, that documentation should describe the composed form. (critic)
 
-- **[DOC-4K9M]** VRF-007's operator checklist asks the operator to verify a step the skill cannot do (`--if-updated-at` round-trip), contradicting its own pre-verification note
-  `effort: S · impact: M · area: operator-verification · source: critic · added: 2026-07-19 · reviewed: 2026-07-19 · status: open · stage: ready · related: BKL-3W6K, BKL-6M4T · refs: .prawduct/operator-verification.md (VRF-007, Verify step 3 :245-247 vs Pre-verified note :225-230), skills/backlog/adapter-mode.md (update <id> section), .prawduct/artifacts/build-plan-backlog-skill-repoint.md`
-
-  Doc-coherence defect, re-raised twice by the Critic. Inherited from the merged backlog-skill-repoint work (BKL-3W6K) — **not** introduced by the current branch, hence tracked rather than fixed in place.
-
-  The contradiction is internal to one document. `.prawduct/operator-verification.md` VRF-007 step 3 of the "Verify" checklist still reads "a field change round-trips via `--if-updated-at`", but the **same** entry's "Pre-verified (adapter loop, 2026-07-19)" paragraph ~15 lines above records that this exact step was DROPPED as unimplementable: "the `get` envelope does not expose `updated_at`, so the update guidance dropped the unimplementable get-then-`--if-updated-at` step." `skills/backlog/adapter-mode.md` (the `update <id>` section) agrees — the `--if-updated-at` optimistic-concurrency guard "is only usable when a caller already holds that timestamp from elsewhere; the skill's normal path omits it." Consequence: an operator draining VRF-007 during Phase 1 (the sibling-repo dogfood) is blocked on a step that cannot be performed through the skill, with no in-document signal that the block is a doc bug rather than a product defect.
-
-  Fix-shape (cheap, but a product call — do not apply silently): reword step 3 to verify the field round-trip through the skill's **normal** path — e.g. a title/stage/area change via `update` is reflected by a subsequent `get`/`list` — and drop the `--if-updated-at` clause, since the concurrency guard is out of the skill's reach by design. Alternative: keep the clause but annotate it "not exercised — guard is caller-supplied only," so the omission is deliberate and visible rather than a trap. Either way the pre-verification note and the checklist must state the same thing.
-
-  Drains with, or before, VRF-007 itself (Phase 1 of the migration program, execution tracked by BKL-6M4T). (critic)
-
 ## Promoted
 
 - **[BKL-5D2C]** Move the backlog out of git to a centralized, agent-friendly issue-tracking service
@@ -1392,6 +1381,19 @@
   Promoted 2026-07-17: Offline code + tests landed 2026-07-17 (commit 8ecd02e, cumulative-Critic 0 blocking). core.resolve_ref wires PFX→canonical alias resolution into get/link; migrate._find_by_key gains a block-id_aliases fallback skip-authority (_AliasIndex) that self-heals a human-deleted id:PFX label so a re-import can't duplicate; reconcile-labels re-derives deleted aliases. In-flight under the Chunk 06 slice (BKL-6M4T) — closes when the slice merges. Follow-ups spun off: BKL-7Q2N (mutator-side PFX resolution), BKL-9J3F (CC5 decoder gaps).
 
 ## Archive
+
+- **[DOC-4K9M]** VRF-007's operator checklist asks the operator to verify a step the skill cannot do (`--if-updated-at` round-trip), contradicting its own pre-verification note
+  `effort: S · impact: M · area: operator-verification · source: critic · added: 2026-07-19 · reviewed: 2026-07-19 · status: shipped · stage: ready · related: BKL-3W6K, BKL-6M4T · refs: .prawduct/operator-verification.md (VRF-007, Verify step 3 :245-247 vs Pre-verified note :225-230), skills/backlog/adapter-mode.md (update <id> section), .prawduct/artifacts/build-plan-backlog-skill-repoint.md · closed-by: worktree-salvage`
+
+  **Shipped 2026-07-19 (worktree-salvage)** — fixed in place rather than deferred, owner-approved. `.prawduct/operator-verification.md` VRF-007 "Verify" step 3 was reworded to drop the unimplementable `--if-updated-at` round-trip and instead verify a **normal-path** field round-trip: a title/stage/area edit made via `update` is reflected by a following `get`/`list`. A parenthetical was added recording that the `--if-updated-at` guard is deliberately NOT exercised, because the `get` envelope exposes no `updated_at`. This was chosen over the alternative fix-shape ("keep the clause but annotate it") so the checklist contains no unreachable instructions and a future reader cannot silently re-add the step. The checklist and the "Pre-verified (adapter loop, 2026-07-19)" note now state the same thing.
+
+  **Caveat — the reworded step is itself UNVERIFIED.** The rewording resolves the doc contradiction; it does not prove the normal-path round-trip actually works. That remains unproven until the Phase 1 sibling-session dogfood (**BKL-6M4T**) actually executes VRF-007. If the round-trip fails there, that is a product defect to raise fresh — not a regression of this item.
+
+  Doc-coherence defect, re-raised twice by the Critic. Inherited from the merged backlog-skill-repoint work (BKL-3W6K) — **not** introduced by the branch on which it was found.
+
+  The contradiction is internal to one document. `.prawduct/operator-verification.md` VRF-007 step 3 of the "Verify" checklist still read "a field change round-trips via `--if-updated-at`", but the **same** entry's "Pre-verified (adapter loop, 2026-07-19)" paragraph ~15 lines above records that this exact step was DROPPED as unimplementable: "the `get` envelope does not expose `updated_at`, so the update guidance dropped the unimplementable get-then-`--if-updated-at` step." `skills/backlog/adapter-mode.md` (the `update <id>` section) agrees — the `--if-updated-at` optimistic-concurrency guard "is only usable when a caller already holds that timestamp from elsewhere; the skill's normal path omits it." Consequence (now removed): an operator draining VRF-007 during Phase 1 (the sibling-repo dogfood) was blocked on a step that cannot be performed through the skill, with no in-document signal that the block was a doc bug rather than a product defect.
+
+  Drains with, or before, VRF-007 itself (Phase 1 of the migration program, execution tracked by BKL-6M4T). (critic)
 
 - **[BKL-3W6K]** /prawduct:backlog skill is markdown-only — repoint it onto the GitHub-Issues adapter when backlog_service_repo is set
   `effort: M · impact: M · area: backlog-service · source: user · added: 2026-07-19 · reviewed: 2026-07-19 · status: shipped · stage: ready · related: BKL-6M4T, BKL-8P2R, BKL-5D2C · refs: .prawduct/artifacts/build-plan-backlog-skill-repoint.md · closed-by: backlog-skill-repoint`

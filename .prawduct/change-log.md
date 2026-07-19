@@ -63,8 +63,11 @@ markdown, not the Issues that are now system-of-record. This repoints it.
 
 ## 2026-07-18: Stop hook surfaces the silent worktree `.prawduct/` redirect (stop-worktree-redirect-note)
 
-<!-- prawduct: type=feature | scope=stop-worktree-redirect-note -->
-<!-- Statusless: observability feature on develop, ahead of the batched develop→main release. -->
+<!-- prawduct: type=feature -->
+<!-- Statusless: observability feature on develop, ahead of the batched develop→main release.
+     No scope= tag (dropped 2026-07-19): a statusless scope must resolve to a build-plan file
+     whose ## Status can be regenerated, and this shipped as a plan-less branch — the tag made
+     regen-views fail closed, and it writes NO views on any error. -->
 
 **STH-3R8K.** `get_project_dir()` follows a session into a git worktree, resolving
 `.prawduct/` state to the worktree toplevel rather than `CLAUDE_PROJECT_DIR`
