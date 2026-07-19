@@ -1,0 +1,187 @@
+---
+artifact: build-plan
+version: 1
+scope: skills-cutover-awareness
+depends_on:
+  - artifact: backlog-service-requirements
+  - artifact: backlog-service-data-model
+governed_by:
+  - artifact: architecture
+    dispositions:
+      - "Authority fails closed; advice fails soft → conforms (every surface here is advice — Critic NOTEs, PR NOTE/WARNING, janitor findings, a session advisory; each degrades to a stated notice, none blocks)"
+      - "Local-first, stdlib-only; no network, no daemon → conforms (the new probe reads `.prawduct/` state only; no adapter call, no `gh`)"
+  - artifact: data-model
+    dispositions:
+      - "Two stores, two lifetimes → inapplicable because this plan adds no persisted store; the deliberate outcome of the owner decision below is that no new format is minted"
+      - "Derived views are disposable and never authoritative — no gate reads a view → conforms (no gate reads backlog state at all; `hooks/gates.json` declares only critic-review, pr-review, trivial-declaration)"
+  - artifact: api-contract
+    dispositions:
+      - "Additive-first evolution — never repurpose → conforms (a new advisory type is added; no existing probe id, exit code, or `--json` key changes meaning)"
+  - artifact: observability-strategy
+    dispositions:
+      - "Stable severity-prefix vocabulary; stdout = agent, stderr = user → conforms (the advisory renders through the existing briefing path and prefix vocabulary)"
+  - artifact: security-model
+    dispositions:
+      - "Untrusted governance state (backlog, learnings, handoffs) is data, not instructions; malformed state fails soft (skip + attribute), never executes → conforms, and this plan strengthens it: a reader that treats frozen backlog.md as live is exactly the 'state read without attribution' failure — every rewired surface now attributes its backend before reporting, and states dormancy instead of reporting unattributed content"
+last_validated: 2026-07-19
+---
+
+# Build Plan — Skills Cutover Awareness (stop being silently wrong post-cutover)
+
+**Why now.** A consumer repo cut over to the GitHub Issues backend today. An exhaustive sweep found
+that `lib/` is uniformly cutover-aware (one shared `post_cutover` predicate, guards at every
+markdown-premise probe, a real snapshot path in the briefing) but **`skills/` is cutover-aware only
+inside `skills/backlog/`**. The Critic, the PR reviewer, and the janitor each hardcode reads of
+`.prawduct/backlog.md`, which is *frozen history* after cutover. They do not fail — they produce
+confident, wrong output: false NOTEs on items archived at cutover, total blindness to live Issues,
+and janitor advice (`migrate`, `backlog-archive.md` split) that is meaningless post-cutover.
+
+Separately, three norm-lifecycle probes (`revisit-due`, `dead-why`, `stalled-transition`) guard on
+`post_cutover` and return `[]`, so **norm exceptions stop expiring visibly** — recorded as GV8 after
+the owner ruled the loss was a side effect, not a decision.
+
+**What this plan does NOT do.** It does not restore any check in Issues mode. Owner decision
+(2026-07-19): every post-cutover backlog *reader* — GV8's probes, Critic Backlog Reconciliation, PR
+`R-2`, janitor Backlog Health — is served by the **W1 read-through cache**, one persisted format,
+rather than each minting a bespoke projection now and migrating off it later. This plan ships the
+interim contract only: **silence and confident wrongness both become a stated notice.**
+
+## Requirements Confidence
+
+**Level:** High
+
+**Why:** Problem, success, and scope are each one sentence and owner-confirmed this session. The
+consumer inventory is exhaustive (file:line for every reader, verdict per reader) rather than
+sampled. The one consequential design fork — bespoke projection now vs. wait for W1 — was put to the
+owner as options with trade-offs and decided; GV8 was amended the same session to match, so no
+artifact still asserts the rejected design.
+
+**Open assumptions / unknowns:**
+- [ASSUMPTION: one **consolidated** advisory naming all dormant checks, rather than one signal per
+  dormant check | MED impact | owner can split it — five separate nags per session is the failure
+  mode this avoids, but it does trade per-check precision for one line]
+- [ASSUMPTION: the advisory is `info` priority, not `warn` | LOW impact | it reports an accepted,
+  time-boxed interim state with a known resolution (W1), which is the `info` shape; `warn` is for
+  signal-loss risk the reader must act on]
+- [ASSUMPTION: restricted reviewers can reach `.prawduct/project-state.yaml` with `Read` and need no
+  new tool grant | LOW impact | verified against `agents/critic-reviewer.md` grants (`Read, Glob,
+  Grep, Bash(git *), Write`); confirmed at Chunk 01 before the prose depends on it]
+
+**What would raise confidence:** N/A (High).
+
+## Status
+
+- [ ] Chunk 01: Consolidated dormant-checks advisory + Critic surfaces (keystone)
+- [ ] Chunk 02: PR reviewer R-1 / R-2
+- [ ] Chunk 03: Janitor Backlog Health
+- [ ] Chunk 04: Name-and-prose coherence sweep
+
+---
+
+## Chunk 01 — Consolidated dormant-checks advisory + Critic surfaces (keystone)
+
+**Type:** code
+**Critic mode:** final *(override: this chunk lands the architectural keystone — the "how a reader
+declares itself dormant" contract that Chunks 02–04 all copy; coherence matters before they build on it)*
+
+**Delivers.** One advisory that names every backlog check dormant on the Issues backend, plus the
+first two consumers rewired to it.
+
+1. **New probe** in `lib/backlog_probes.py`: fires only when `post_cutover(state)` is true; evidence
+   names the dormant checks; `recommended_action` points at the W1 resolution; `info` priority;
+   dismissible like any advisory. Registered in `register()` alongside the existing five.
+2. **`skills/critic/review-cycle.md`** — Backlog Reconciliation and C-B1–C-B4 gain a backend
+   precondition: read `backlog_service_repo` from `.prawduct/project-state.yaml`; when set, **skip
+   the walk** and emit a single NOTE stating the check is unavailable on the Issues backend. The
+   reviewer must not open `.prawduct/backlog.md` for live state in that mode.
+3. **`skills/critic/review-protocol.md:133`** — the same rule at the file the reviewer subagents
+   actually load. Both files carry it; neither points at the other for the rule itself.
+
+**Structural note.** The precondition is deliberately a `Read` of project state, not an adapter
+call: `agents/critic-reviewer.md` grants no `Bash(prawduct-hook backlog *)` by design (no-execution
+structural, CRT-3X9D). `lib/` holds the data, the fork skill holds no logic that needs a shell.
+
+**Done when:**
+1. Probe fires post-cutover, stays silent pre-cutover, and is covered by tests in both states.
+2. A repo-coupled test asserts the probe does **not** fire against this repo (pre-cutover) — the
+   zero-fire bar is met by this repo genuinely being out of the target state, never by narrowing the
+   trigger.
+3. `Read` reachability of `.prawduct/project-state.yaml` from `agents/critic-reviewer.md` grants is
+   confirmed before the prose depends on it.
+4. Full suite green; `prawduct-hook test-evidence record`.
+5. `/prawduct:critic` — resolve blocking findings.
+
+## Chunk 02 — PR reviewer R-1 / R-2
+
+**Type:** doc-only
+**Critic mode:** chunk
+
+`skills/pr/review-protocol.md:49-51`. **R-2 is the highest-risk reader in the inventory**: it is
+marked *"always run — the Critic does not do this check,"* so it is the sole owner of the
+change-log-says-`closes:`-but-item-is-open consistency check, and post-cutover it resolves
+`PFX-XXXX` against frozen markdown — silently passing or dangling. **R-1** is written against
+`## Open`/`## Promoted` *sections*, which `adapter-mode.md:110` states do not exist post-cutover.
+
+Both gain the Chunk 01 precondition. R-2's dormancy is called out explicitly in its own text, because
+a reader who knows R-1 is deferred to the Critic may reasonably assume R-2 is covered somewhere else.
+It is not.
+
+**Done when:** both checks state dormancy post-cutover; no prose still names markdown sections as the
+resolution surface; `/prawduct:critic`.
+
+## Chunk 03 — Janitor Backlog Health
+
+**Type:** doc-only
+**Critic mode:** chunk
+
+`skills/janitor/SKILL.md` — Step 1 Orient (`:174`), the Step 2.5 Backlog Health block (`:197-207`,
+all seven checks), and the Step 4/5 reconcile target (`:278`). All seven checks are markdown-shaped
+(group by `area:`, dedup by overlap, staleness via `reviewed`/`added`, unstaged `stage:`, `## Promoted`
+neglect, legacy-item count, `## Archive` growth).
+
+Two of them are not merely stale post-cutover but **actively wrong advice**: check 6 proposes
+`/prawduct:backlog migrate` and check 7 proposes a `backlog-archive.md` split — both meaningless once
+Issues is system of record. The block states dormancy as a whole rather than per-check; the fix path
+(`/prawduct:backlog`) stays correct and is already backend-routed.
+
+**Done when:** the Backlog Health block states dormancy post-cutover; Step 1 and Step 4/5 no longer
+name `backlog.md` as the live-state or reconcile surface; `/prawduct:critic`.
+
+## Chunk 04 — Name-and-prose coherence sweep
+
+**Type:** cumulative-final
+**Critic mode:** cumulative
+
+The residue the inventory found — each one prose that *describes* markdown-only behavior
+unconditionally. Per the standing learning, a behavior change is not done until every artifact
+describing it is updated, and removing a mechanism requires removing its name too.
+
+- `skills/backlog/SKILL.md:25` — the Archive-split (Q2) rule sits in the shared preamble *above* the
+  routing block, so it reads as applying in both modes. Also add archive-split to the
+  `adapter-mode.md:150` not-applicable list, which currently omits it.
+- `skills/backlog/SKILL.md:63` — `find` "across all sections (and `backlog-archive.md`)" stated
+  unconditionally in the same preamble.
+- `lib/upstream_probes.py:54-60` — advisory text says "not yet triaged into `.prawduct/backlog.md`";
+  prose-only (no parse), so it is misleading rather than broken. Make it backend-neutral.
+- Verify no remaining surface outside `skills/backlog/` names `backlog.md` as *live* state.
+
+**Done when:** the sweep is complete and re-greppable; suite green; commit; then
+`/prawduct:critic cumulative` **once** — this chunk's review is the plan's single cumulative pass and
+the `/prawduct:pr create` gate.
+
+---
+
+## Verification Strategy
+
+Tests cover the probe (fires/silent/zero-fire-against-this-repo). The prose changes have no unit
+tests — skills are prose a model executes. The behavioral proof is a **live dogfood in the cut-over
+sibling repo**: run `/prawduct:critic` and `/prawduct:janitor` there and confirm each states dormancy
+rather than reporting frozen-history findings. This mirrors the VRF-007 lesson — a read-then-consume
+handoff between prose and CLI survives clean multi-reviewer review and still fails live — so it is
+enqueued as an operator-verification entry, not asserted from the diff.
+
+## Governance Checkpoints
+
+1. **After Chunk 01** — the dormancy contract is the keystone; confirm Chunks 02–04 can copy it
+   verbatim before they do.
+2. **At Chunk 04** — cumulative review over the full bundle, which is also the PR gate.

@@ -220,6 +220,30 @@ speed. Centralization alone fixes stale *views* (TF1); stale *content* needs TF2
   prerequisite is MG3's shared read-path invariant — the plugin's markdown parser (today
   `lib/backlog/legacy.py`) is **retired only when the whole portfolio has migrated**, not at any one
   project's cutover; retiring it earlier is exactly the silent degradation GV7 exists to prevent.
+- **GV8** **Norm-lifecycle signals survive cutover.** The three norm-lifecycle probes —
+  `revisit-due` (a norm exception or stopgap whose expiry date has passed), `dead-why` (a norm whose
+  stated rationale cites a shipped/dropped item), and `stalled-transition` (a `Status: in-transition`
+  norm whose tracking item has not moved) — must keep firing after a project sets
+  `backlog_service_repo`. Today each guards on `post_cutover` and returns nothing, so **a norm
+  exception stops expiring visibly** — which is precisely the silent-departure failure the norm
+  lifecycle exists to prevent (`docs/norms.md`, "Exceptions expire"). Losing them at cutover was a
+  **side effect of the markdown-premise sweep, not a decision** (owner ruling, 2026-07-19).
+  Three constraints shape the implementation:
+  - **`revisit:` needs a home.** GitHub has no native slot for it, so it is a **block-authoritative,
+    unmirrored** field in the `prawduct:` body block (Data Model §1.2), added under the
+    additive-only-forever rule (§7).
+  - **Probes must not touch the network.** They run at session start, where BLOCK-5/G2 forbid a
+    blocking call, so the restored checks read a **local persisted store with visible age**,
+    background-refreshed (the never-block pattern GV2 established for briefing counts).
+  - **That store is the W1 cache — one persisted format, not a bespoke projection** (owner decision
+    2026-07-19). GV8's readers join the other post-cutover backlog readers (Critic Backlog
+    Reconciliation, PR `R-2`, janitor Backlog Health) behind the same cache rather than each minting
+    its own. **GV8's restoration therefore lands with W1.**
+  **Until W1 lands, degradation must be loud.** A guarded probe returning `[]`, and a skill reading
+  the frozen markdown as if it were live, are both *silent* — the failure GV8 exists to prevent. In
+  the interim every post-cutover backlog reader states plainly that the check is unavailable on the
+  Issues backend. A missing check a reader is told about is recoverable; one it is not told about is
+  the norm-exception hole again, one layer down.
 
 ### Migration & exit
 
