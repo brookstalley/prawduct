@@ -1419,7 +1419,7 @@
   Desired: a first-class sentinel (e.g. `chunks=none` / `plan=none`) that the release validator recognizes and skips scope→plan resolution for, so proportional planless work can carry its own scope and release-notes line without a fabricated build plan. Distinct from the sibling no-plan fail-closed cases already shipped (VWS-7N3K: regen aborts when NO plan resolves at all; VWS-6R4T: fail-loud roster validation of every change-log tag) — this is about a legitimate *per-scope* planless entry that the roster/coverage validator must accept as intentionally planless rather than reject.
 
 - **[COV-7K4N]** check-cumulative-critic false-`uncovered` with a misleading remedy when origin/<base> is stale (feature built on unpushed local integration commits)
-  `effort: S · impact: M · area: coverage · source: reflection · added: 2026-07-14 · status: open · stage: design · related: COV-5H3N, ENV-2W7K, PR-2H8N, PR-7T2K · refs: lib/coverage.py (_resolve_base_branch prefers origin/<b> for a "stable remote-tracking merge-base"), lib/gates.py (check_cumulative_critic uncovered path), docs/release-process.md`
+  `effort: S · impact: M · area: coverage · source: reflection · added: 2026-07-14 · reviewed: 2026-07-19 · status: open · stage: design · related: COV-5H3N, ENV-2W7K, PR-2H8N, PR-7T2K, COV-9B4T · refs: lib/coverage.py (_resolve_base_branch prefers origin/<b> for a "stable remote-tracking merge-base"), lib/gates.py (check_cumulative_critic uncovered path), docs/release-process.md`
 
   When `base_branch: develop` is set, `_resolve_base_branch` resolves the base to `origin/develop` by design. If local develop is ahead of origin/develop (release-prep or a merge committed locally but not pushed) and a feature is built on top of that ahead-state, check-cumulative-critic anchors merge-base to the STALE origin/develop and demands one composed review path spanning the whole unshipped range — dragging already-reviewed, already-shipped work into the required span — so it reports `uncovered` even though every commit in the span has a clean Critic fact (blocking=0). The stderr remedy ("run /prawduct:critic cumulative") is then both WRONG and expensive (~4-10 min; it re-reviews the whole promotion delta for zero added signal). Observed live during the v3.0.3 release: origin/develop sat at v3.0.1 while local develop carried an unpushed, never-promoted release-prep(v3.0.2) — a "phantom release." The actual fix was `git push origin develop` to reconcile the base, after which the gate re-composed and passed (2 review facts + 1 free edge). Root cause upstream: a release-prep(vX) that stops before promotion+push leaves develop, the version files, and origin/develop out of sync across sessions.
 
@@ -1429,6 +1429,20 @@
   (3) [deferred spike] Reconsider base resolution to prefer the nearer of local/remote integration branch when local is ahead AND an ancestor of HEAD — would eliminate the false-uncovered but trades against the deliberate "stable remote-tracking merge-base" design and is load-bearing across every gate (PR, doc-only, cumulative). Governance-protected (lib/gates.py, lib/coverage.py) → full Critic + PR review.
 
   Dedup note (2026-07-14): distinct facet from COV-5H3N — that item is the *wrong-default-to-main* case when `base_branch:` is UNSET; this is the *stale-remote* case when `base_branch: develop` IS set and origin/develop trails local. Both live in `_resolve_base_branch`; keep separate, cross-linked. Adjacent to PR-7T2K (local-vs-origin divergence breaking a gate, but on the feature branch's push-state at merge, not the base branch) and umbrella'd by ENV-2W7K (gitflow base detection, Wave 2).
+
+  **Reserved split-id — COV-9B4T (salvage triage, 2026-07-19).** On the unmerged branch
+  `fix/cov-7k4n-stale-base-advisory` (f11c9ca), fix-shapes #1 and #2 shipped, THIS item was
+  archived `status: shipped · closed-by: stale-remote-base-diagnostics`, and fix-shape #3 was split
+  out as a standalone open item **[COV-9B4T]** ("Reconsider cumulative/PR base resolution to prefer
+  the nearer of local/remote integration branch when local is ahead AND an ancestor of HEAD",
+  `effort: M · impact: M · area: coverage · stage: design`). None of that branch is on develop —
+  verified: no `stale-remote-base` commits in `git log develop`, and no local-vs-origin "behind
+  local" hint in `lib/gates.py`. So on develop fix-shape #3 is still THIS item's #3, and filing
+  COV-9B4T as a second open item here would be a pure duplicate (and would collide on merge).
+  The id is therefore RESERVED, not filed: when #1/#2 close, split #3 out under **COV-9B4T** —
+  reuse that id rather than minting a new one, so the branch copy and develop converge instead of
+  forking. If `fix/cov-7k4n-stale-base-advisory` merges first it brings both the archived form of
+  this item and the open COV-9B4T; take the branch's version and drop this note.
 
 - **[GOV-8N4V]** `infer-critic-mode` misses a set `active_build_plan` — fail-safes to `final` and verify-chunk-refs sees "no current chunk" despite a resolvable pointer and a declared chunk mode
   `effort: S · impact: M · area: governance · source: critic · added: 2026-07-16 · status: open · stage: ready · related: BLD-5J8N, BLD-7W2J · refs: lib/critic_mode.py, bin/prawduct-hook (infer-critic-mode, verify-chunk-refs), .prawduct/artifacts/build-plan-norm-lifecycle.md · reviewed: 2026-07-18`
@@ -1483,6 +1497,48 @@
 
   From the test-evidence-environments review (the work that shipped TST-6F2R's multi-environment `test_commands` list): a product with one environment whose toolchain cannot emit JUnit is excluded from the declared-list form — the aggregated record has no way to accept a counts-only source alongside the JUnit-capable environments. Today's escape is a wrapper script, or repeated `--from-junit` for the JUnit halves plus nothing for the counts half. Design question: should `--from-counts` compose as one more aggregated source (i.e. a counts entry participating in the same multi-environment aggregation) rather than remaining an exclusive whole-record mode? Touches ENV-2W7K's "document --from-counts as the paved non-pytest path" — if composition ships, that documentation should describe the composed form. (critic)
 
+- **[SCN-7K4B]** Session-continuity machinery is chunk-granular only — multi-plan programs have no home in project-state/handoff/briefing, so "what's next" collapses to a flat backlog count when a chunk closes
+  `effort: M · impact: M · area: session-continuity · source: reflection · added: 2026-07-02 · reviewed: 2026-07-19 · status: open · stage: design · related: STN-4W7R, MET-3Q8V, MET-8J5R, DOC-3V7T · refs: .prawduct/artifacts/framework-efficiency-review-2026-07-02.md, .prawduct/project-state.yaml (active_build_plan), lib/briefing.py, methodology/building.md (chunk close-out)`
+
+  Multi-plan programs (e.g. the efficiency-review 3-wave fix program) have no home in
+  project-state/handoff/briefing — continuity machinery is chunk-granular only, so when a chunk
+  closes "what's next" collapses to a flat backlog count. Observed 2026-07-02: agent proposed
+  generic next steps despite Wave 1 Plan C (MET-3Q8V, P0, stage:ready) being the planned next
+  item; parent artifact framework-efficiency-review-2026-07-02.md says "future sessions read it
+  first" but nothing routes sessions to it. Same class as STN-4W7R's thesis: context that depends
+  on the agent remembering decays; context attached to checkpoints survives.
+
+  Fix-shape sketch: an `active_program` pointer (parent artifact + ordered plan roster) in
+  project-state.yaml; briefing surfaces "Program: X — next: item" when the active build plan is
+  complete; handoff template gains a Program-context line; chunk close-out gains an
+  update-program-pointer step.
+
+  Overlap notes (kept separate, cross-linked): MET-8J5R defines when a plan IS a program
+  (planning guidance); DOC-3V7T gives the parent artifact a home and has `pick` surface it. This
+  item is the third leg — the routing/state machinery that carries the program across sessions.
+  Related: STN-4W7R, MET-3Q8V. (reflection)
+
+  Salvage note (2026-07-19): recovered verbatim from `feature/gate-exemption-boundary` (cc285bb),
+  where it was filed 2026-07-02 and never reached develop's backlog — an orphaned item, not a
+  re-file. Still-open verified on develop: a search for `active_program` across `lib/` and
+  `project-state.yaml` returns nothing, so none of the fix-shape has landed. If that branch later
+  merges it carries the SAME id — resolve the conflict, don't create a second item.
+
+- **[TST-6H2Q]** `test_pr_reviewer.py::TestStopPrReviewGate` stop-gate "blocks" tests flake under xdist cross-FILE pollution
+  `effort: M · impact: M · area: test-isolation · source: builder · added: 2026-07-09 · reviewed: 2026-07-19 · status: open · stage: ready · related: TST-4P8H`
+
+  Two tests — `test_stop_with_pr_no_evidence_blocks` and `test_stop_with_pr_and_evidence_missing_findings_blocks` — fail intermittently in the full parallel suite (`python3 -m pytest -q`; config uses `-n` + `--dist loadfile`) but PASS deterministically in isolation and when `test_pr_reviewer.py` runs as a whole file (31 passed). So it is cross-FILE pollution: some earlier test on the same xdist worker leaks global state that makes the stop-gate's "blocks" assertions fail (the gate stops blocking). Suspected culprit class: a test that writes to / operates on the REAL repo-root `.prawduct/` instead of a `tmp_path` (note `test_project_dir_resolution.py::test_get_project_dir_self_check_this_checkout` chdirs to ROOT), leaking a `.gates-waived`/findings/project_dir state that redirects the gate. Pre-existing on develop (reproduced on a tree that is develop + only a backlog.md edit); nondeterministic.
+
+  Fix-shape: find the polluting test (bisect files paired with `test_pr_reviewer` under one worker), make it operate on `tmp_path` / restore global state, add isolation. NOTE: surfaced during gate-friction-batch baseline; NOT introduced by that work. Distinct from TST-4P8H (which is subprocess resource/timeout contention on the same test family) — this is state leakage, a different root cause.
+
+  Salvage note (2026-07-19): recovered verbatim from `feature/gate-friction-batch` (aec6d3e), where
+  it was filed 2026-07-09 and never reached develop's backlog. Structural preconditions re-verified
+  on develop — both named tests still exist (`tests/test_pr_reviewer.py:99`, `:223`) and the
+  suspected root-chdir test still exists (`tests/test_project_dir_resolution.py:193`) — but the
+  FLAKE itself was NOT re-reproduced during salvage (that needs repeated full-suite `-n` runs).
+  Confirm reproduction before sizing the fix. Kept separate from TST-4P8H per the distinctness
+  argument above (state leakage vs. subprocess/timeout contention); cross-linked, not merged.
+
 ## Promoted
 
 - **[BKL-5D2C]** Move the backlog out of git to a centralized, agent-friendly issue-tracking service
@@ -1516,6 +1572,49 @@
   Promoted 2026-07-17: Offline code + tests landed 2026-07-17 (commit 8ecd02e, cumulative-Critic 0 blocking). core.resolve_ref wires PFX→canonical alias resolution into get/link; migrate._find_by_key gains a block-id_aliases fallback skip-authority (_AliasIndex) that self-heals a human-deleted id:PFX label so a re-import can't duplicate; reconcile-labels re-derives deleted aliases. In-flight under the Chunk 06 slice (BKL-6M4T) — closes when the slice merges. Follow-ups spun off: BKL-7Q2N (mutator-side PFX resolution), BKL-9J3F (CC5 decoder gaps).
 
 ## Archive
+
+- **[DOC-8N4F]** Change-log template's `status=` vocabulary contradicts views.py flip semantics — scaffolded header misleads gitflow repos about when Status checkboxes flip
+  `effort: S · impact: M · area: change-log/templates · source: report-bug · added: 2026-07-02 · reviewed: 2026-07-19 · status: shipped · stage: ready · closed-by: single-pr-bookkeeping · related: REL-4Q9V, DOC-5T8N, VWS-6R4T · refs: templates/change-log.md, lib/views.py (VALID_STATUS_VALUES, ChangeLogEntry.shipped_chunks, stamp_merged), incoming-bugs/archive/change-log-template-says-merged-flips-status-checkboxes-but-views-py-only-flips-shipped.md`
+
+  Upstream bug report from scriob (arch-refactor build, prawduct v2.2.3). Reported symptom: their
+  scaffolded change-log header claims "Both `merged` and `shipped` flip the build-plan `## Status`
+  checkboxes", while `lib/views.py` deliberately flips only `status=shipped` — so in a gitflow repo
+  where develop runs far ahead of main, every merged-but-unreleased chunk reads `- [ ]` and the
+  surrounding guidance (commit messages, plan Context lines, a Critic WARN) told the builder the
+  box should already be checked.
+
+  Triage verification (2026-07-02, framework tree + 2.2.3 plugin cache): the CURRENT
+  `templates/change-log.md` does NOT contain the quoted "Both merged and shipped" text — it says
+  checkboxes flip from `status=shipped` (correct). The reporter's header is a product-side stale
+  scaffold/hand-evolved variant. But the template has a REAL vocabulary bug of its own: it lists
+  `status - shipped | in-progress | deferred` while `VALID_STATUS_VALUES` is `{shipped, merged}` —
+  it omits the recognized intermediate `merged` entirely and documents two values that are invalid,
+  which post-VWS-6R4T (changelog-fail-loud) now error loudly for any product following the
+  template's own guidance. Same defect class as reported (template contradicts views.py semantics),
+  different wrong text.
+
+  Fix-shape: align `templates/change-log.md` line ~30 to the real vocabulary — document
+  `shipped | merged` (statusless = feature-branch), state explicitly that only `shipped` flips a
+  checkbox and `merged` is the release-pending intermediate that does NOT flip, per the views.py
+  docstring. Interaction with REL-4Q9V: if the vocabulary shrink ships (drop `merged` +
+  stamp-merged), the template update lands as part of that cascade instead — coordinate rather
+  than double-fix. The report's usability suggestion (surface merged-pending in the Status view,
+  e.g. a `(merged)` annotation, so plans can distinguish "not built" from "merged, awaiting
+  release") is feature-shaped — route it into REL-4Q9V's design rather than this doc fix.
+  Downstream note: scriob's own scaffolded header needs its product-side correction regardless
+  (scaffolded files don't re-sync). (report-bug)
+
+  **Salvaged already-shipped (2026-07-19).** Recovered from the unmerged branch
+  `feature/gate-exemption-boundary` (cc285bb), where it was filed 2026-07-02 as `status: open` and
+  never reached develop's backlog. Re-verified on develop before filing: the fix-shape above LANDED
+  independently in `single-pr-bookkeeping` (de2d6bd, PR #118, released v2.3.2) —
+  `templates/change-log.md` now documents `status - shipped | merged (legacy)`, states that a
+  statusless tagged entry is the release-pending state, and that any other value is a fatal
+  regen-views error; `VALID_STATUS_VALUES` in `lib/views.py:197` is `{shipped, merged}`, matching.
+  The invalid `in-progress | deferred` vocabulary is gone. Filed directly to Archive rather than as
+  an open item — salvaging it as open would have re-opened finished work. The item's two deferred
+  hand-offs remain live elsewhere and are NOT closed by this: the vocabulary shrink is REL-4Q9V
+  (still open), and the reporter's product-side scaffold correction is scriob's, not ours.
 
 - **[BLD-4V7Q]** verify-chunk-refs flags a false missing-ref on a backticked code-location token carrying a `:line` / `:line-range` suffix (`path:line`)
   `effort: S · impact: S · area: critic · kind: bug · source: critic · added: 2026-07-18 · reviewed: 2026-07-19 · status: shipped · stage: ready · related: BLD-8F2Q, BLD-5J8N, BLD-3M7K, BLD-4K7P, BLD-6T4R, BLD-9H2M · refs: lib/buildplan_refs.py (_ref_path_part, _BUILD_PLAN_LINE_SUFFIX_RE, _parse_build_plan_chunk_refs), tests/test_build_plan_resolution.py · closed-by: verify-chunk-refs-token-fixes`
