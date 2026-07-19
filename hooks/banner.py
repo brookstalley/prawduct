@@ -135,7 +135,12 @@ def _git(root: Path, *args: str) -> subprocess.CompletedProcess | Exception:
             ["git", "-C", str(root), *args],
             capture_output=True,
             text=True,
-            errors="replace",  # a non-UTF-8 ref name must not raise out of a banner
+            # A non-UTF-8 ref name must not cost us the segment. This is the
+            # primary guard; the ValueError below is the backstop. Removing this
+            # does not crash — decoding raises, the backstop catches it, and the
+            # caller reports an attributed failure — but the provenance is lost
+            # where it could have rendered with replacement characters.
+            errors="replace",
             timeout=_GIT_TIMEOUT_SECONDS,
         )
     except (OSError, ValueError, subprocess.SubprocessError) as exc:

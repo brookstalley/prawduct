@@ -930,3 +930,55 @@ Absolute claims are cheap to write and expensive to leave slightly false: they r
 callers lean on — here both the gate's already-failing path and the broad-except-wrapped probe.
 Relates to Honest Confidence (#5), Tests Are Contracts (#1), and the `evidence.run_git` no-raise
 contract.
+
+## When a commit claims to close a backlog item, verify the claim against the item's FILED CASE before crediting it — a fix aimed at the item's title routinely lands the ADJACENT sub-case, passing every guard while the filed reproduction still reproduces, so merging closes a still-broken item as shipped
+
+`feature/gate-fidelity` commit `af8350f` (preserved at tag `archive/gate-fidelity`) claimed it
+addressed "vouching across bundle boundaries (CRT-6J4P)". It did not. CRT-6J4P's filed case is a
+*same-lineage* cross-bundle chain: the previously released bundle merged to develop, the new branch
+was cut from it, so the anchor's `commit_reviewed` **is** an ancestor of HEAD — `git merge-base
+--is-ancestor` returns 0 and rule 1b fires anyway. The branch's ancestor guard closes only the
+sibling-BRANCH sub-case, which is CRT-8H3R's territory. Both items live in the same fix family and
+cross-reference each other, which is exactly what makes the mis-credit plausible. Diagnostic: before
+crediting a fix, re-read the item's filed reproduction and ask whether the guard as written *fires*
+on it — a shared area, a shared `refs:` line, and a confident commit message are not evidence.
+Mirror of [[When reconciling a backlog item a PR *partly* shipped, read ALL that PR's build-plan
+chunks before declaring any leg still open]] — that rule stops a shipped leg being reopened; this one
+stops a broken item being closed. Discovered git-state audit (2026-07-19). Relates to Complete
+Delivery (#2), Honest Confidence (#5), Validate Before Propagating (#15).
+
+## Merge instructions written BEFORE the merge — a subagent's advice, or a note you wrote yourself — are verified against the merge's actual hunk shape, never applied literally: whoever reasons from the BRANCH cannot see a convention the DESTINATION adopted after the branch was cut
+
+Two instances, one session. (a) A merge agent advised taking the branch's `learnings.md` body
+verbatim — but develop had since compacted that rule to heading-only with the narrative moved to
+`learnings-detail.md`, so following the advice would have silently reversed the compaction. (b) A
+reserved-split-id note *I wrote myself* said "take the branch's version and drop this note" — correct
+when written, but the branch had since moved `## Archive` upward, so applying it literally would have
+archived 10 open backlog items. The common cause is temporal, not competence: any instruction
+authored against the branch is blind to what the destination adopted afterward, and a self-authored
+note carries no warning label. Discipline: at merge time, read the actual hunk boundaries the conflict
+presents before honoring any pre-written resolution, including your own. Sharpens [[When a fresh-eyes
+review's advice about a CONVENTION conflicts with a durable learning + the process doc, the documented
+convention wins]] — there the convention was documented and findable; here it exists only in the
+destination's tree. Discovered fix/cov-7k4n-stale-base-advisory merge (2026-07-19). Relates to
+[[A subagent's reported COUNT or LIST is a lead, not ground truth]] and [[When building from a
+review/audit artifact, verify each cited gap and fix-instruction against HEAD before planning]].
+
+## When a feature's value rests on an invariant ("presence of X proves Y"), audit the DEGRADATION paths first — that is where the invariant actually lives: a helper that swallows failure into "" or False makes absence ambiguous and can render the signal's exact inverse, so pick each fallback's direction from what the invariant needs, not from what is locally safe
+
+The feature's whole claim was "the presence of this segment proves a checkout install." Two
+Critic rounds inverted that claim twice, both in degradation paths, never in the carefully-designed
+happy path. First: `checkout_provenance` returned `""` silently when git failed, making absence
+ambiguous — a real checkout with a broken git read looked identical to a managed install, so absence
+was read as "managed install won." Second: `is_managed_install` failed open to `False`, so on an
+unresolvable path a genuine managed install renders a **spurious** checkout segment — the exact false
+claim the feature exists to prevent. Rule: when a feature's value is an invariant of the form
+"X present ⇒ Y", enumerate every path that can produce or suppress X under failure and check whether
+the invariant survives each; a locally reasonable default (`""`, `False`, "assume not") is the wrong
+default when it makes the signal ambiguous or inverted. Kin to [[When the success path threads
+advisory/audit data through a result envelope, add it to EVERY error-return path too]] (both: the
+interesting behavior is on the path you didn't design), and to [[When a docstring makes an absolute
+robustness claim (never raises / always returns / idempotent), make it literally true and test the
+claimed-safe path]]. Discovered BRF-7Q4M banner load provenance (2026-07-19). Relates to Honest
+Confidence (#5), Root Cause Discipline (#16), Independent Review (#14) — self-review reliably
+re-walks the happy path.
