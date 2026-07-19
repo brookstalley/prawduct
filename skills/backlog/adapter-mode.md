@@ -68,10 +68,12 @@ note; it never silently substitutes stale data.)
 
 ### summary (no args)
 `prawduct-hook backlog counts --repo <r> --json` → render the section rollup from `data` (open /
-in-progress / … per the two-axis status) plus the action menu (`pick`, `add`, `find`, `list`,
-`update`, `dedup`, `import`, `scrub`). Counts are **derived by the adapter** — never persist one
-yourself. Richer breakdowns (top `area:` tags, a stale-item count) come from `list`; run it if
-asked rather than approximating from `counts`.
+in-progress / … per the two-axis status) plus the action menu. Post-cutover the **live** actions are
+`pick`, `add`, `list`, `update` (and `merge` when both ids are known); present `find`/`dedup` as
+**W2-deferred** rather than ready, and omit `migrate`/`scrub` (the one-time markdown→Issues cutover is
+already done). Counts are **derived by the adapter** — never persist one yourself. Richer breakdowns
+(top `area:` tags, a stale-item count) come from `list`; run it if asked rather than approximating
+from `counts`.
 
 ### list [filters]
 `prawduct-hook backlog list --repo <r> --json [--status S] [--stage S] [--kind K] [--area A]
@@ -153,6 +155,8 @@ The live backlog is Issues, so these markdown-file operations are moot — retur
 - **archive split (Q2)** — Issues has no archive-file size limit; closed issues are the archive. N/A.
 
 ## Grooming timestamp
-`list` (and `pick`) still stamp `backlog_last_groomed_at: <today>` in `project-state.yaml` on
-invocation, regardless of backend — the fact that resolves the `backlog-overdue-grooming` advisory.
-It is a *timestamp*, never a persisted count (counts are always re-derived).
+`list` (and `pick`) still stamp `backlog_last_groomed_at: <today>` in `project-state.yaml` — the fact
+that resolves the `backlog-overdue-grooming` advisory. Stamp it **only on a successful (exit-0)**
+call: in adapter mode a `list`/`pick` can fail (exit 5/6), and stamping on a failed call would
+falsely resolve the advisory. It is a *timestamp*, never a persisted count (counts are always
+re-derived).
