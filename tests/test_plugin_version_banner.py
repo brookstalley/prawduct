@@ -324,7 +324,49 @@ class TestManagedInstallDetection:
         assert banner.is_managed_install(tmp_path / "does" / "not" / "exist") is False
 
 
+class TestGitRunner:
+    """`_git`'s contract is depended on by checkout_provenance's type test, so
+    pin it directly rather than only through a stub that presumes it."""
+
+    def test_returns_completed_process_on_success(self, banner, tmp_path):
+        root = _git_repo(tmp_path / "src" / "ok")
+        result = banner._git(root, "rev-parse", "HEAD")
+        assert isinstance(result, subprocess.CompletedProcess)
+        assert result.returncode == 0
+
+    def test_returns_the_exception_on_launch_failure(self, banner, tmp_path, monkeypatch):
+        def boom(*a, **k):
+            raise FileNotFoundError("git")
+        monkeypatch.setattr(banner.subprocess, "run", boom)
+        result = banner._git(tmp_path, "status")
+        assert isinstance(result, FileNotFoundError)
+
+    def test_returns_the_exception_on_timeout(self, banner, tmp_path, monkeypatch):
+        def boom(*a, **k):
+            raise subprocess.TimeoutExpired(cmd="git", timeout=5)
+        monkeypatch.setattr(banner.subprocess, "run", boom)
+        assert isinstance(banner._git(tmp_path, "status"), subprocess.TimeoutExpired)
+
+    def test_decode_error_does_not_escape(self, banner, tmp_path, monkeypatch):
+        """`text=True` can raise UnicodeDecodeError (a ValueError, not an
+        OSError/SubprocessError) on a non-UTF-8 ref name."""
+        def boom(*a, **k):
+            raise UnicodeDecodeError("utf-8", b"\xff", 0, 1, "invalid start byte")
+        monkeypatch.setattr(banner.subprocess, "run", boom)
+        assert isinstance(banner._git(tmp_path, "status"), UnicodeDecodeError)
+
+
 class TestCheckoutProvenance:
+    def test_unexpected_git_return_is_guarded_not_raised(self, banner, tmp_path, monkeypatch, capsys):
+        """A `_git` regressing to None must take the guarded path, not explode on
+        `.returncode` — main() calls this outside its try blocks."""
+        monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(tmp_path / "cfgdir"))
+        root = _git_repo(tmp_path / "src" / "prawduct")
+        monkeypatch.setattr(banner, "_git", lambda *a, **k: None)
+        assert banner.checkout_provenance(root) == ""
+        assert "could not read plugin load provenance" in capsys.readouterr().err
+
+
     def test_managed_install_reports_nothing(self, banner, tmp_path, monkeypatch):
         """A marketplace install has a .git dir too — the path gate must win so
         real users pay no subprocess cost and see an unchanged banner."""

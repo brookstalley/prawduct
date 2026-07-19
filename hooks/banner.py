@@ -135,9 +135,10 @@ def _git(root: Path, *args: str) -> subprocess.CompletedProcess | Exception:
             ["git", "-C", str(root), *args],
             capture_output=True,
             text=True,
+            errors="replace",  # a non-UTF-8 ref name must not raise out of a banner
             timeout=_GIT_TIMEOUT_SECONDS,
         )
-    except (OSError, subprocess.SubprocessError) as exc:
+    except (OSError, ValueError, subprocess.SubprocessError) as exc:
         return exc
 
 
@@ -168,10 +169,14 @@ def checkout_provenance(root: Path) -> str:
     # cheaper than separate rev-parse/diff calls, and `--untracked-files=no` is
     # what makes untracked scratch files not count as dirty.
     status = _git(root, "status", "--porcelain=v2", "--branch", "--untracked-files=no")
-    if isinstance(status, Exception):
-        # git absent, unrunnable, or past the timeout. Distinct from "not a repo":
-        # here a segment WAS expected, so say why none appears — and name the
-        # actual cause, since "unavailable" and "timed out" call for different fixes.
+    if not isinstance(status, subprocess.CompletedProcess):
+        # git absent, unrunnable, or past the timeout. Tested against the POSITIVE
+        # type rather than `isinstance(status, Exception)` so that anything else a
+        # future `_git` might hand back — `None`, most likely — takes this guarded
+        # path instead of an AttributeError on `.returncode`. `main()` calls this
+        # outside its try blocks, so an escape here breaks session start.
+        # Distinct from "not a repo": here a segment WAS expected, so say why none
+        # appears, naming the cause — "unavailable" and "timed out" want different fixes.
         print(
             f"NOTE: Prawduct could not read plugin load provenance: {status!r}; "
             "the banner cannot show which checkout is loaded.",

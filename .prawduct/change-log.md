@@ -52,11 +52,13 @@ Files:
   identity line composes the suffix.
 - `skills/ping/SKILL.md`: echo the banner's parenthesised part verbatim — normalising the segment
   away would answer the very question a ping is asked.
-- `tests/test_plugin_version_banner.py`: `TestManagedInstallDetection`, `TestCheckoutProvenance`,
-  `TestBannerIdentityLine` (15 cases, real git fixtures) — including a managed-install-with-`.git`
-  case that pins the path gate against regression to a `.git` probe, a byte-for-byte assertion that
-  the managed-install banner is unchanged, and negative cases pinning that the quiet paths stay
-  quiet while the expected-but-failed path names its cause. Full suite 2438 passed.
+- `tests/test_plugin_version_banner.py`: `TestManagedInstallDetection`, `TestGitRunner`,
+  `TestCheckoutProvenance`, `TestBannerIdentityLine` (20 cases, real git fixtures) — including a
+  managed-install-with-`.git` case that pins the path gate against regression to a `.git` probe, a
+  byte-for-byte assertion that the managed-install banner is unchanged, negative cases pinning that
+  the quiet paths stay quiet while the expected-but-failed path names its cause, and a guard that an
+  unexpected `_git` return takes the reported path rather than raising out of the hook. Full suite
+  2444 passed.
 
 ## 2026-07-19: verify-chunk-refs stops flagging `path:line` citations and same-chunk `new` re-references
 
