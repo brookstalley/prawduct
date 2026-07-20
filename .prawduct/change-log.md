@@ -36,6 +36,15 @@ the old wording before being trusted. This class of defect (a plausible, reassur
 invisible in review precisely because it reads well, so it gets a mechanical check rather than
 another resolution to be careful.
 
+**A second operator-facing correction, found the same way.** Once the docs stopped over-promising,
+the obvious next sentence — "so re-run with `--archive-scope all` to backfill" — turned out to carry
+its own unstated cost. It is true that the re-run creates no duplicates (the skip authority is the
+`id:PFX` alias written in the create). It is *not* a free top-up: the skip path still reconciles the
+status axis, so a backfill drives every already-migrated item back to its **markdown** status,
+reopening anything closed on the service since cutover. The runbook now states both halves and tells
+the operator to treat a backfill on a live repo as a migration in its own right; a test pins the
+reopen so the claim can't quietly stop being true.
+
 **Left alone, deliberately:** the *restructure* rollback claims ("recoverable via the MG2 export
 backup") are true — `original_title`/`original_body` are written into the issue block, so the
 post-import export does carry them. Same words, different mechanism; checked rather than assumed.

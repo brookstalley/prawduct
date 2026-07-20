@@ -606,7 +606,11 @@ tests/
   - **BKL-3K9N (strongly recommended before the live run)** — honor `Retry-After` / bounded backoff on a
     mid-import 429 and continue the same run, so shared-token contention during this chunk's repoint can't
     hard-stop the irreversible import.
-  - **BKL-6X5D part (b) — GATING this dogfood.** *(The binary `--archive-scope {all,open}` lever —
+  - **BKL-6X5D part (b) — a v3.2.0 release blocker (ratified); gating *this chunk* only if decision 6
+    is signed off.** Keep the two apart: A1 (decision 5, owner-confirmed) makes part (b) block the
+    **release**; whether it must also precede *this chunk's* bulk import is decision 6, which is
+    builder-proposed and **awaiting owner sign-off**. If the owner declines, part (b) still blocks
+    v3.2.0 but stops gating this chunk. *(The binary `--archive-scope {all,open}` lever —
     MG4b — landed in the owner-feedback pass; the quantified middle window (a recent-shipped N-month
     window) stays deferred.)* **Re-scoped 2026-07-20**, then **escalated the same day when owner
     decision A1 chose `--archive-scope all`** for this migration
@@ -632,7 +636,7 @@ tests/
 - **Done when:**
   0. **SPIKE-S2** — run the live dry-run on a throwaway copy of prawduct's repo; record the settled
      facts (fan-out constant, node_id-across-transfer) back into NFR §4 / this plan
-  1. Acceptance criteria **and the must-fix pre-sign-off conditions (BKL-4W7H, BKL-8P2R, BKL-6X5D part (b))** met and tests pass
+  1. Acceptance criteria **and the must-fix pre-sign-off conditions (BKL-4W7H, BKL-8P2R — plus BKL-6X5D part (b) *if decision 6 is signed off*; it blocks the v3.2.0 release regardless)** met and tests pass
   2. Committed, then `/prawduct:critic cumulative` run and blocking findings resolved
   3. Chunk marked `[x]` in Status; the slice branch is PR-ready (`/prawduct:pr create`)
 - **SPIKE-S2 settled facts (2026-07-17 live dry-run — ~209 items into a throwaway repo, repos disposable):**
