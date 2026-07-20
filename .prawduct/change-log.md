@@ -3,6 +3,35 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-07-20: Janitor Backlog Health states dormancy; the overlap read is repointed (skills-cutover-awareness Chunk 03)
+
+<!-- prawduct: type=feature scope=skills-cutover-awareness chunks=03 -->
+
+The janitor's three backlog touchpoints, split by what each actually does with the data — the
+discriminator this chunk had to sharpen before it could be built:
+
+- **Step 2.5 Backlog Health — dormant.** All seven checks are section-shaped (group by `area:`, dedup
+  by overlap, staleness, unstaged `stage:`, `## Promoted` neglect, legacy-item count, `## Archive`
+  growth). Two were worse than stale: check 6 proposed `/prawduct:backlog migrate` and check 7 an
+  archive split, both meaningless once Issues is system of record — advice a reader could act on to
+  no effect. The block now emits one "unavailable" line rather than being omitted; an absent section
+  reads as a clean bill of health, which is the failure being replaced.
+- **Step 1 Orient and Step 7 Close — repointed.** Both go through `/prawduct:backlog list` /
+  `/prawduct:backlog`, which route to whichever backend is live.
+
+**The rule that decides which treatment a reader gets** — Chunk 02's "dormancy is for readers with no
+live path" under-determined this chunk, because `list` *can* approximate two of the seven checks. The
+sharper test: **repoint a reader that consumes the item view as-is; declare dormant a reader that
+derives a verdict from it.** Rebuilding a health check on a list call is the bespoke per-reader
+projection the owner decision rejected, and an approximation labelled as a health check is the
+confident-wrong-answer failure in a new costume.
+
+Two defects the review surfaced, filed rather than folded in: **JNT-4R2M** (janitor instructs
+`prawduct-hook review-stats` with no matching `allowed-tools` grant — invisible in this checkout
+because `Bash(python3 *)` reaches the hook by the self-hosted path) and **BLD-7K3Q**
+(`verify-chunk-refs` derives the current chunk from the first unchecked `## Status` box, so on a
+`views_enabled` branch it grades Chunk 01 all branch long and reports `ok` for files it never read).
+
 ## 2026-07-20: The PR path stops resolving `closes:` against frozen markdown (skills-cutover-awareness Chunk 02)
 
 <!-- prawduct: type=feature scope=skills-cutover-awareness chunks=02 -->

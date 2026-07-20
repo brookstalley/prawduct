@@ -183,6 +183,15 @@ Two of them are not merely stale post-cutover but **actively wrong advice**: che
 Issues is system of record. The block states dormancy as a whole rather than per-check; the fix path
 (`/prawduct:backlog`) stays correct and is already backend-routed.
 
+**Sharpened at build — the repoint-vs-dormant discriminator.** Chunk 02's rule ("dormancy is for
+readers with **no live path**") under-determined this chunk: `/prawduct:backlog list` *can*
+approximate two of the seven Health checks (area clusters, stale items), so "has a live path" alone
+would have argued for restoring them — the bespoke per-reader projection the owner decision rejected.
+The sharper test, found by treating Step 1 and Step 2.5 as the same question and getting different
+answers: **repoint a reader that consumes the item view as-is; declare dormant a reader that derives
+a verdict from it.** Step 1's overlap read consumes; the Health checks judge. Recorded here rather
+than only in the janitor leaf, because Chunks 02–04 all turn on it.
+
 **Done when:** the Backlog Health block states dormancy post-cutover; Step 1 (Orient) and Step 7
 (Close) no longer name `backlog.md` as the live-state or reconcile surface; `/prawduct:critic`.
 
@@ -196,8 +205,10 @@ unconditionally. Per the standing learning, a behavior change is not done until 
 describing it is updated, and removing a mechanism requires removing its name too.
 
 - `skills/backlog/SKILL.md:25` — the Archive-split (Q2) rule sits in the shared preamble *above* the
-  routing block, so it reads as applying in both modes. Also add archive-split to the
-  `adapter-mode.md:150` not-applicable list, which currently omits it.
+  routing block, so it reads as applying in both modes. *(The plan also asked to add archive-split to
+  `adapter-mode.md`'s not-applicable list "which currently omits it" — **struck**, verified done at
+  Chunk 03 review: `f8c5dce` added it on the prior plan and it reads at `adapter-mode.md:157`. The
+  `skills/backlog/SKILL.md:25` half is still live.)*
 - `skills/backlog/SKILL.md:63` — `find` "across all sections (and `backlog-archive.md`)" stated
   unconditionally in the same preamble.
 - `lib/upstream_probes.py:54-60` — advisory text says "not yet triaged into `.prawduct/backlog.md`";
@@ -210,6 +221,12 @@ describing it is updated, and removing a mechanism requires removing its name to
   product's briefing. A reviewer finding may legitimately carry a trace pointer an advisory should
   not, but the two conventions currently contradict with nothing deciding between them. Rule one way,
   apply it to every copy of the NOTE, and pin the copies together so they cannot drift apart.
+- **Adjudicate: may a reader open `.prawduct/backlog.md` directly pre-cutover?** (Chunk 03 Critic.)
+  The repoint rule now has two divergent copies: `skills/pr/SKILL.md:79` says **never** read the file
+  directly, `skills/janitor/SKILL.md:176` explicitly permits it on the markdown backend. Both are
+  defensible — the janitor wants full bodies, the PR path wants a filtered view — but nothing owns
+  the rule, so the next reader copies whichever it happens to open. Rule once, apply to both, and
+  fold into the same pin as the bullet above: the two copies-drift risks are one job.
 
 **Done when:** the sweep is complete and re-greppable; suite green; commit; then
 `/prawduct:critic cumulative` **once** — this chunk's review is the plan's single cumulative pass and

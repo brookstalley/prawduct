@@ -7,6 +7,28 @@
 
 ## Open
 
+- **[JNT-4R2M]** `skills/janitor/SKILL.md` instructs `prawduct-hook review-stats` but its `allowed-tools` carries no `prawduct-hook` grant — the call is unrunnable in a plugin-governed product repo
+  `effort: S · impact: M · area: janitor · kind: bug · source: critic · added: 2026-07-19 · reviewed: 2026-07-19 · status: open · stage: ready · related: ONB-3F9P, JNT-5K3W · refs: skills/janitor/SKILL.md:5 (allowed-tools), skills/janitor/SKILL.md:182 (the review-stats instruction), skills/backlog/SKILL.md:7 (the dual-form grant precedent), docs/governance-telemetry.md`
+
+  Surfaced by the Chunk 03 Critic review of `skills-cutover-awareness`. `skills/janitor/SKILL.md:182` instructs *"Run `prawduct-hook review-stats` for the project's review cost / actionable-finding history"*, but the frontmatter at `skills/janitor/SKILL.md:5` grants only `Bash(git *), Bash(npm *), Bash(python3 *), Read, Write, Edit, Glob, Grep, Agent` — no `prawduct-hook` grant of any form.
+
+  **Scope the claim precisely** (per the Chunk 03 `verify-resolutions` note). The bare `prawduct-hook review-stats` form is unrunnable **in a plugin-governed product repo**, where the hook is only reachable as `prawduct-hook`. It is *not* unrunnable in this self-hosted checkout: janitor holds `Bash(python3 *)`, so `python3 bin/prawduct-hook review-stats` is already permitted here. **That is exactly why the gap stayed invisible while dogfooding** — every janitor run in this repo could reach the hook by the self-hosted path, so nothing ever failed locally to expose the missing grant.
+
+  Verified as an outlier, not a design position: **every** sibling skill that instructs a hook call carries the matching scoped grant — advisory (`advisory*`), backlog (`backlog *`), critic (nine subcommand grants), doctor (five), migrate (`migrate-plugin*`), onboard (`init-product *`), pr (seven), repo-disable (`repo-disable *`). The only other grant-less skills (learnings, methodology, ping, report-bug) instruct **no** hook calls at all. Janitor is the sole skill that instructs one without the grant.
+
+  Fix-shape: grant **both invocation forms** on the `allowed-tools` line — `Bash(prawduct-hook review-stats*)` **and** `Bash(python3 bin/prawduct-hook review-stats*)` — scoped to the subcommands the janitor actually instructs (audit the file for any others before landing). `skills/backlog/SKILL.md:7` is the house precedent and grants both forms (`Bash(prawduct-hook backlog *)`, `Bash(python3 bin/prawduct-hook backlog *)`) precisely to cover the installed-plugin and self-hosted invocations; mirror that. **Landing only the bare form recreates half the gap** — it fixes the product repo and leaves the self-hosted path ungranted. Same class as the `skills/doctor/SKILL.md` grant gap tracked under **ONB-3F9P** and the earlier BKL-3W6K finding that the backlog skill lacked Bash entirely; if ONB-3F9P is worked first, fold this in with it. Governance-protected (`skills/`) → full Critic + PR review. (critic — skills-cutover-awareness)
+
+- **[BLD-7K3Q]** `verify-chunk-refs` grades the WRONG chunk on a `views_enabled` branch — it reads the first *unchecked* Status item, but checkboxes only flip at release
+  `effort: M · impact: M · area: build-plan · kind: bug · source: critic · added: 2026-07-19 · status: open · stage: ready · related: BLD-8R3T, BLD-9H2M, VWS-2F9K, CRT-3T6V · refs: lib/buildplan_refs.py:188 (_parse_build_plan_status — "Current chunk = first unchecked item"), lib/buildplan_refs.py:606 (_current_chunk_id_from_status), lib/critic_mode.py:151-158 + :520 (_git_aware_progress — the git-derived path, CRT-7B4M), lib/views.py:1237 (is_views_enabled)`
+
+  Surfaced by the Chunk 03 Critic review of `skills-cutover-awareness`. `verify-chunk-refs` resolves "which chunk is current" from the build-plan `## Status` checkboxes: `lib/buildplan_refs.py:188` takes the first `- [ ]` item, and `:606` `_current_chunk_id_from_status` extracts its id. On a `views_enabled` repo the Status checkboxes are a **derived view** that only flips at release, so on a feature branch *every* chunk stays unchecked and Chunk 01 remains "current" for the entire branch.
+
+  Consequence: chunks 02..N are never ref-verified while the gate reports success. It fails **silently and green** — the worst shape for a gate whose whole job is catching drift.
+
+  Observed live on this branch: `verify-chunk-refs` returned `ok: chunk 01` while `infer-critic-mode` correctly resolved Chunk 03.
+
+  Fix-shape: `lib/critic_mode.py` already solved exactly this (CRT-7B4M) — `_git_aware_progress` (`:520`) derives `(complete, current_chunk_id)` from commits against the base when `views_enabled` is set, falling back to `buildplan_refs._current_chunk_id_from_status` otherwise (`:151-158`). Give `buildplan_refs` the same git-derived path so the two agree on "current chunk" by construction. Note the current import direction — `critic_mode` imports `buildplan_refs`, not the reverse — so the shared derivation needs a home that doesn't create a cycle (extract into `buildplan_refs` and have `critic_mode` call it, per the STH-2K8R canonical-homes note in `lib/critic_mode.py:62`). Sibling non-broadening drift lives in **VWS-2F9K**. Governance-protected (gate logic) → full Critic + PR review. (critic — skills-cutover-awareness)
+
 - **[TST-6K3D]** Build-plan chunk-heading test replica has drifted from the production matcher — the guard rejects headings production parses fine
   `effort: S · impact: M · area: tests · kind: bug · source: critic · added: 2026-07-19 · status: open · stage: ready · related: BLD-7P3K, BLD-5J8N, VWS-2F9K, CRT-3T6V · refs: tests/test_build_plan_resolution.py:264 (_parseable_body_chunk_ids), lib/buildplan_refs.py:82 (_CHUNK_HEADING_RE, _CHUNK_ID_SEP)`
 

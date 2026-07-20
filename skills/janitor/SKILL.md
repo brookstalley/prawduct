@@ -171,7 +171,9 @@ Theme shorthand for scope: `vcs`, `structure`, `code`, `docs`, `templates`, `tes
 
 ### Step 1: Orient
 
-Understand the project before investigating. Read `project-state.yaml` to learn the domain, structural characteristics, language, and current state. Scan the directory structure. Identify the build system and test infrastructure. Read `.prawduct/backlog.md` if it exists — backlog items may overlap with maintenance findings.
+Understand the project before investigating. Read `project-state.yaml` to learn the domain, structural characteristics, language, and current state. Scan the directory structure. Identify the build system and test infrastructure.
+
+**Backlog context — through the skill, not the file.** Open items may overlap with maintenance findings, so get them via `/prawduct:backlog list`, which routes to whichever backend is live and therefore works on both sides of a cutover. Read `.prawduct/backlog.md` directly **only** when the top-level `backlog_service_repo` scalar (in the `project-state.yaml` you just read) is unset: once it is set, that file is frozen history and reading it hands you items closed at cutover as if they were open. What does *not* survive the cutover is Step 2.5's **Backlog Health** analysis — those checks are section-shaped, `list` cannot supply them, and that step states its own dormancy.
 
 Also read `project-preferences.md` (if present in `.prawduct/artifacts/`) to understand the project's declared conventions — language idioms, code style, testing approach, architecture patterns, and workflow preferences. These preferences are the project's stated standards, but they may not reflect current practice. Note them for comparison during the survey.
 
@@ -194,7 +196,9 @@ Work through each investigation theme (or the scoped subset), adapting your inqu
 
 ### Step 2.5: Backlog Triage
 
-Survey `.prawduct/backlog.md` and emit a **Backlog Health** block in the findings report (all counts derived on read — never persist them). Surface, don't fix:
+**Check the backend first.** Read the top-level `backlog_service_repo` scalar from `project-state.yaml` — Step 1 only needs it on the branch where you read the markdown file directly, so a `list`-using reader may not have looked. When it is **set**, every check below is dormant: all seven are markdown-shaped — they walk sections, count metadata bars, and measure `## Archive` growth — and `.prawduct/backlog.md` is frozen history once a project cuts over, so running them would report confidently on items archived at cutover while seeing no live Issue. Two are worse than stale: check 6 proposes `/prawduct:backlog migrate` and check 7 an archive split, both **meaningless** once Issues is system of record — advice a reader could act on to no effect. **Skip all seven** and emit the Backlog Health block as a single line: "Backlog Health unavailable — this project is on the GitHub Issues backend and these checks have no Issues-mode path yet (GV8; restored with the read-through cache)." Say it rather than omitting the block: an absent section reads as a clean bill of health, which is the failure this replaces. Skip all seven **including the two `list` could approximate** (area clusters, stale items): rebuilding a health check on top of a list call is the bespoke per-reader projection every dormant reader is waiting for the read-through cache to avoid, and an approximation labelled as a health check is the confident-wrong-answer failure in a new costume. Step 1's overlap read is different in kind — it consumes `list` as the item view it already is, without deriving a verdict from it.
+
+When it is **unset** (the markdown backend), survey `.prawduct/backlog.md` and emit a **Backlog Health** block in the findings report (all counts derived on read — never persist them). Surface, don't fix:
 
 1. **Group by area** — for each `area:` with several items, list them so clusters are visible.
 2. **Dedup candidates** — title/body overlap within an area → suggest a `/prawduct:backlog dedup` merge (operator confirms; never auto-merge).
@@ -275,7 +279,7 @@ Review the build cycle in this project's CLAUDE.md before writing any code. Foll
 After all approved work is complete:
 - Summarize what was changed, what was deferred, and why
 - If template drift advisories were addressed, record in `.prawduct/change-log.md` which artifacts were brought up to the current plugin templates. Plugin templates are read-only and there is no per-product hash store to write back — Template Currency is a live comparison against `${CLAUDE_PLUGIN_ROOT}/templates/`, so updating the product artifact is itself the resolution.
-- Reconcile `.prawduct/backlog.md` via `/prawduct:backlog` (per the Step 2.5 Backlog Health findings): `update status=shipped` items maintenance resolved (moves to Archive — never delete, never strikethrough), `add` items discovered, and action the stale/dedup/stage findings. Status is always an explicit `/prawduct:backlog update` call, never inferred (D4).
+- Reconcile the backlog via `/prawduct:backlog` — which routes to whichever backend is live, so this step runs on both: `update status=shipped` items maintenance resolved (on the markdown backend that moves them to Archive — never delete, never strikethrough), and `add` items discovered. Status is always an explicit `/prawduct:backlog update` call, never inferred (D4). The stale/dedup/stage findings come from Step 2.5, so there are none to action when that block reported dormancy — closing the loop on findings that were never produced is not a gap.
 - Capture learnings in `.prawduct/learnings.md` if the maintenance surfaced patterns worth remembering
 - Reflect: did the maintenance reveal systemic issues that suggest process changes, new tooling, or methodology updates?
 
