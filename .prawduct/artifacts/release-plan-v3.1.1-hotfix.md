@@ -9,6 +9,26 @@ last_validated: 2026-07-20
 
 # Release Plan — v3.1.1 Hotfix
 
+## Execution status — read this first
+
+**Not started. Next action: release mechanics step 1** (merge
+`fix/archive-scope-preservation-claim` → `develop` via `/prawduct:pr`).
+
+Update this block as each step lands — it is the only cross-session record of *where execution
+stands*, and the steps are stateful — later steps consume names earlier steps produce, so a step
+done out of order has nothing to bind to.
+
+Two orientation notes for a session picking this up cold:
+
+- **The session briefing will misdirect you.** `project-state.yaml` still carries
+  `active_build_plan: artifacts/build-plan-skills-cutover-awareness.md`, so the briefing announces
+  `Work: Skills Cutover Awareness` and resumes that plan's first unchecked chunk. That pointer is
+  *correct* state — that plan is unfinished work moving to `feature/backlog-service` — but it is
+  **not** the active work. This release plan is.
+- **Nothing is pushed yet.** `origin/develop` still points at the pre-merge commit and does not
+  move until the promotion step; that, plus the reflog, is the safety net. `feature/backlog-service`
+  becomes the durable holder of the migration work at the branch-creation step.
+
 **Owner decision (2026-07-20):** ship the release-pending fixes now carrying **zero
 backlog-service surface**, by **isolating the migration work off `develop`**. Current `develop` is
 snapshotted as `feature/backlog-service`; `develop`'s *tree* is then set to the v3.1.1 candidate,
