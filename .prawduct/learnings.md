@@ -264,3 +264,18 @@ Retiring a stale worktree branch, the natural triage is per commit: read each on
 ## A rationale you reached for to defend a decision you'd already made is the one to verify BEFORE writing it into a durable spec — the reach itself is the tell
 
 Justifying "the janitor gets no post-cutover backlog context," I wrote into `skills/janitor/SKILL.md` that its `allowed-tools` grants no `Bash(prawduct-hook *)`, so "the janitor surveys, it does not query services." The frontmatter fact was true and the inference was unsound: Step 1 of the same file already instructs `prawduct-hook review-stats`, and every sibling skill instructing a hook call carries the matching grant — janitor is the sole exception, i.e. an oversight. The decision was actually made on other grounds (the owner's W1 read-through-cache ruling); the grant story was recruited afterward to make it look principled, and it laundered a bug into a recorded architectural position where a later builder could cite it. So: when you notice yourself supplying a *second* reason for a decision already settled, treat that reason as unverified — read the mechanism it rests on (Principle 24), and if it turns out to be a defect, file the defect and rest the prose on the premise that actually decided it. This is the requirement-invention tripwire (#6) in inverted form: not a requirement invented forward into code, but a rationale invented backward into a spec. Discovered skills-cutover-awareness Chunk 03 (2026-07-20, Critic warning). Relates to [[A decision reversed mid-chunk leaves stale rationale in prose you just wrote]] and Reasoned Decisions (#4).
+
+## A status surface that reports the ABSENCE of expected output must say whether absence is the normal in-flight state — a bare zero invites the reader to invent a death story and take recovery action against healthy work
+
+Confirmed 2026-07-20 ("critic reviewers died with fork", cross-repo): background critic reviewers
+run 5-15 min after the dispatching fork returns; a parent session consolidating at ~2.5 min got
+`0/3 partials present`, inferred "the fork ended and took them with it" (transcript-verified false
+— all three were alive and completed), and re-dispatched a duplicate roster, doubling review cost.
+Same binary had run the identical shape clean the day before — the trap is probabilistic model
+inference over ambiguous silence, so the fix belongs at the decision point: the message now renders
+dispatch age plus a wait/abandon verdict (8b6eef6, CRT-3F7M fix (b)). Generalizes to any
+empty-state report an agent acts on (empty queue, no results yet, 0 workers reporting): pair the
+count with the timing fact that discriminates in-flight from dead, and name the sanctioned recovery
+path so the reader doesn't improvise one. Relates to Honest Confidence (#5), and note the failure
+phrase itself ("died with fork") began as one model's hallucinated diagnosis and propagated as
+observed fact — including into CRT-3F7M's title.
