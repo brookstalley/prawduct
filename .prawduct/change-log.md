@@ -21,8 +21,11 @@ that was never produced.
 The truth is narrower but real: skipped items stay in the **git-tracked source markdown**, which is
 step 0's pre-migration backup. What no surface said is the part that actually decides the choice —
 post-cutover, `skills/backlog/SKILL.md` treats that file as frozen history and stops reading it, so
-the skipped set is **git history, not searchable backlog**: outside `find`/`list`, and outside
-add-time dedup. Corrected at the parent requirements first (PRD MG4 + requirements §MG4b), then the
+the skipped set is **git history, not live backlog**: outside post-cutover `list`, and outside
+add-time dedup, so a duplicate of a previously-dropped item can be re-filed with no signal. (Stated
+as `list` rather than `find` — full-text `find` is W2-deferred for *every* post-cutover item, so it
+is not what archive scope costs. An earlier draft of this entry said `find`/`list`, which was the
+same overstatement in the opposite direction.) Corrected at the parent requirements first (PRD MG4 + requirements §MG4b), then the
 downstream surfaces, then the shipped change-log entry that recorded it — **ten claim sites across
 seven files**, a figure derived by enumerating the diff rather than counted by eye, because three
 earlier drafts of this very entry stated it three different ways.

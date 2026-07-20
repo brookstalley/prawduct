@@ -35,7 +35,7 @@ is that one discovery spike gates the end of the chain while everything else run
 | 6 | MG4 scrub workflow (C2) | — | ☐ |
 | 7 | `BKL-4W7H` — PFX read-resolution + alias idempotency (C3) | — | ☐ in flight (`promoted`) |
 | 8 | `BKL-6X5D` part (b) — Pacer meters REST points (C7) | — | ☐ **blocker** (A1 = `all` promoted it; no longer conditional) |
-| 9 | The real prawduct migration (C4) | ~~1~~ (met), 5, 6, 7, **8** | ☐ |
+| 9 | The real prawduct migration (C4) | ~~1~~ (met), 5, 6, 7, **8*** | ☐ *(\*8-before-9 is decision 6 — **builder-proposed, owner sign-off owed**; drop it and 8 runs beside 9)* |
 | 10 | Briefing/gates repoint through the adapter (C5) | 9 | ☐ |
 | 11 | **MG5** — drop-box retirement + `report-bug` upstream filing (C6) | **4**, 10 | ☐ |
 | 12 | VRF-006 — the migration is its own acceptance evidence | 9 | ☐ |
@@ -57,8 +57,8 @@ flag's default, so `open` for the dogfood would have shipped the default unexerc
 migration prawduct runs itself. A secondary find during the decision — `open`'s documented
 preservation story was false at **ten claim sites across seven files**, naming the MG2 export, which
 dumps the migrated repo post-import — is fixed on `fix/archive-scope-preservation-claim`; the residual product gap
-(`open` puts the skipped archive outside `find`/`list` post-cutover) is **`BKL-4Z7M`**, adopter-facing
-and not release-gating now that prawduct takes `all`.
+(`open` puts the skipped archive outside post-cutover `list` and add-time dedup) is **`BKL-4Z7M`**,
+adopter-facing and not release-gating now that prawduct takes `all`.
 
 ## Why the consent policy is on the critical path, not beside it
 
@@ -140,7 +140,7 @@ Prerequisite state verified 2026-07-20: `BKL-8P2R` **shipped**, `BKL-8N5K` (MG6 
 | C1 | SPIKE-S2 live dry-run on a throwaway repo (step 0) | ~~A1~~ (met — run it with `--archive-scope all`) |
 | C2 | MG4 scrub workflow — model-surfaced candidates → owner-confirmed dispositions | — |
 | C3 | `BKL-4W7H` (PFX read-resolution + alias idempotency) — must-fix-before-done | — |
-| C4 | The real prawduct migration (bulk import) | ~~A1~~ (met), C1, C2, C3, **C7** |
+| C4 | The real prawduct migration (bulk import) | ~~A1~~ (met), C1, C2, C3, **C7*** *(\*decision 6 — sign-off owed)* |
 | C5 | Briefing/gates repoint through the adapter | C4 |
 | C6 | **MG5** — drop-box retirement + `report-bug` files upstream, carrying `Found in: prawduct vX.Y.Z` from `prawduct-hook version` (provenance, not model recall) | **B1**, C5 |
 | C7 | `BKL-6X5D` part (b) — Pacer meters REST points for the create+close stretch | — (in scope: A1 = `all`) |
@@ -186,15 +186,16 @@ Everything else parallelizes around it.
 1. **Done — A1 + A2 both decided 2026-07-20** (`all`; v3.2.0); **E1 done** — PR #134 merged (`43dda9c`),
    its predicted change-log conflict resolved as additive bookkeeping. Still now, in parallel: D1 (three live verifications
    against samsung — unblocked today, and they de-risk C4 by exercising the adapter end-to-end
-   before a real migration depends on it). E1 (merge #134).
+   before a real migration depends on it).
 2. **Start immediately, longest pole:** B1 discovery spike. B1b first — if the evidence/PII answer is
    hard, everything downstream slips and it is better to know in week one.
 3. **Parallel to B1:** C1, C2, C3 — none depend on the consent policy. C1's dry-run also settles the
    real pacing constants the NFR §9 S2 obligation now demands (measured with `--archive-scope all`,
    volume lever disabled, so the run proves pacing rather than a small input).
-4. **After B1 lands:** C4 → C5 → C6, in order. C7 is in scope (A1 = `all`) and does not wait on B1 —
-   land it before C4, so the real migration's archive leg runs fully metered rather than proving the
-   gap on prawduct's own repo.
+4. **After B1 lands:** C4 → C5 → C6, in order. C7 is in scope (A1 = `all`) and does not wait on B1.
+   *Proposed (decision 6, **owner sign-off owed**):* land C7 before C4, so the real migration's
+   archive leg runs fully metered rather than proving the gap on prawduct's own repo. If the owner
+   declines, C7 runs beside C4 instead and nothing else in this order changes.
 5. **Then:** E2–E5, then D3 post-promotion.
 
 **Sequencing rule worth stating once:** do **not** retire the drop-box before MG5's replacement is

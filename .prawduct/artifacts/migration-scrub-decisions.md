@@ -5,6 +5,10 @@ Owner checkpoint held at the end of the 2026-07-18 session (BKL-8N5K shipped, Cr
 **confirmed** and carries forward to the owner-run migration session (BKL-6M4T), which should
 execute against these decisions without re-asking, re-confirming only if the source has drifted.
 
+**Exception — decision 6 is NOT owner-confirmed.** It is builder-proposed and marked sign-off owed.
+The "execute without re-asking" rule above covers decisions 1–5 only; 6 must be put to the owner
+before it is acted on.
+
 ## Decisions
 
 1. **Live run: HELD** (2026-07-18). Target when it runs: `brookstalley/prawduct` (public — the
@@ -34,7 +38,7 @@ execute against these decisions without re-asking, re-confirming only if the sou
      which dumps the migrated repo post-import and cannot hold what the lever excluded). Corrected
      on this branch. The true cost of `open` — skipped items are git history, not searchable
      backlog, because the skill stops reading the source file after cutover — is a real loss of
-     ~143 items of precedent and dedup surface.
+     the whole archive as precedent and dedup surface (144 items at `964d03b`; re-derive at use).
    - Owner framing for the release: *"We can't ship a partial product."*
 
    **Consequence, accepted at decision time:** `all` makes **`BKL-6X5D` part (b)** (pace the

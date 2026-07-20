@@ -482,9 +482,16 @@ def apply_archive_scope(
       They are, however, **outside the migrated tracker**, and that is the
       tradeoff an operator is owed before choosing ``open``: once the product
       cuts over (``backlog_service_repo`` set), the backlog skill treats the
-      source markdown as frozen history and does not read it, so skipped items
-      stop being reachable from ``find``/``list``. They survive as git history,
-      not as searchable backlog.
+      source markdown as frozen history and does not read it, so ``list`` and
+      add-time dedup silently omit the skipped set. (Say ``list``, not
+      ``find`` — post-cutover full-text ``find`` is W2-deferred for *every*
+      item, so it is not what archive scope costs you.)
+
+      Backfilling later is possible — a re-run under ``all`` is alias-keyed and
+      creates no duplicates — but it is **not side-effect free**: the skip path
+      still calls :func:`_reconcile_status`, so every already-migrated item is
+      driven back to its *markdown* status, reopening anything closed on the
+      service since cutover. Do not advertise the re-run as a clean undo.
 
       Do **not** describe the skipped set as living in the MG2 export:
       :func:`export_backlog` dumps the *migrated repo*, so it runs after the
@@ -558,8 +565,9 @@ def import_backlog(
             result["warnings"] = [
                 f"--archive-scope open: {archive_skipped} closed/archived item(s) not "
                 "imported as issues (they remain in the git-tracked source markdown, "
-                "not in the migrated tracker — post-cutover they are outside find/list; "
-                "re-run with --archive-scope all to backfill them, no duplicates)"
+                "not in the migrated tracker — post-cutover they are outside list and "
+                "add-time dedup; backfilling is possible but re-syncs every item's "
+                "status from the markdown, so see the migration-scrub runbook step 2c)"
             ] + result["warnings"]
     return result
 
