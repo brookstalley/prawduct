@@ -108,11 +108,17 @@ def post_cutover(state: ProjectState) -> bool:
     set at migration cutover). Every probe whose premise is "the markdown file
     IS the live backlog" retires on this switch — post-cutover the file is
     frozen history and any nudge derived from it would be stale by construction.
-    Shared across probe families (this module's three markdown probes AND the
-    ``norm_probes`` trio that reads item liveness from the same file — one
+    Shared across probe families (this module's **four** markdown probes —
+    ``legacy-backlog-format``, ``backlog-service-migration-required``,
+    ``legacy-section-schema``, ``backlog-overdue-grooming`` — AND the
+    ``norm_probes`` trio that reads item liveness from the same file: one
     predicate, not per-module copies). ``external-backlog-detected`` keeps
     firing: stray TODO.md files are a problem regardless of where the real
-    backlog lives."""
+    backlog lives.
+
+    Note the partition: those seven consumers *retire* on this switch, while
+    :func:`probe_checks_dormant` is the one consumer that **fires** on it — it
+    exists to say out loud what the others' silence would otherwise hide."""
     return bool(state.get("backlog_service_repo"))
 
 
@@ -284,6 +290,31 @@ def probe_migration_required(state: ProjectState, codebase: Codebase):
     ]
 
 
+#: The dormant readers this advisory enumerates, each paired with the surface that
+#: owns it. **One source for the list and the count** — the two used to be an
+#: independently-maintained string and a hardcoded "7", so a reader going dormant
+#: (or coming back) could leave the advisory confidently naming a stale set. That
+#: is the same silent-under-report this whole advisory exists to prevent, one layer
+#: down. ``tests/test_cutover_prose_coherence.py`` pins every surface that emits a
+#: dormancy NOTE to an entry here, so adding a reader without listing it fails.
+#:
+#: Named in plain language, not by internal check label: the operator reading this
+#: in a downstream briefing has no register to resolve ``C-B1`` or ``R-2`` against
+#: (``observability-strategy.md`` § Direction).
+#: Each entry pairs the surfaces that state the dormancy with the check's
+#: operator-facing name (a tuple, because a check may be stated on more than one
+#: surface).
+DORMANT_CHECKS = (
+    (("skills/critic/review-cycle.md",), "the Critic's backlog reconciliation walk"),
+    (("skills/critic/review-cycle.md",), "its four backlog hygiene checks"),
+    (("skills/pr/review-protocol.md",), "the PR reviewer's two backlog consistency checks"),
+    (("skills/janitor/SKILL.md",), "the janitor's Backlog Health block"),
+    (("lib/norm_probes.py",), "norm-exception revisit-date expiry"),
+    (("lib/norm_probes.py",), "dead-why detection"),
+    (("lib/norm_probes.py",), "stalled-transition detection"),
+)
+
+
 def probe_checks_dormant(state: ProjectState, codebase: Codebase):
     """Fire post-cutover, naming every backlog check that has no Issues-backend path.
 
@@ -301,11 +332,11 @@ def probe_checks_dormant(state: ProjectState, codebase: Codebase):
     read-through cache lands (W1) and these readers are restored against it, the
     dormancy itself is the thing to say out loud.
 
-    One consolidated advisory rather than one per dormant check: **seven** nags per
-    session for a single known, time-boxed cause trains dismissal, and dismissal is
-    what makes the *next* real signal invisible. Seven is the count the evidence
-    string enumerates — Backlog Reconciliation, C-B1--C-B4 as one group, R-1/R-2 as
-    one group, Backlog Health, and the three norm-lifecycle probes individually.
+    One consolidated advisory rather than one per dormant check: one nag per dormant
+    reader, for a single known and time-boxed cause, trains dismissal — and dismissal
+    is what makes the *next* real signal invisible. Both the enumeration and the count
+    derive from :data:`DORMANT_CHECKS`; neither is written out by hand, because a
+    hand-maintained list drifts from the readers it claims to describe.
     ``info`` priority — this reports an accepted interim state with a known
     resolution, not a risk the reader must act on; it is dismissible like any
     advisory.
@@ -317,14 +348,12 @@ def probe_checks_dormant(state: ProjectState, codebase: Codebase):
             type="backlog-checks-dormant",
             evidence=(
                 "backlog readers outside /prawduct:backlog have no Issues-backend "
-                "path yet: Critic Backlog Reconciliation + C-B1-C-B4, PR reviewer "
-                "R-1/R-2, janitor Backlog Health, and the revisit-due / dead-why / "
-                "stalled-transition norm-lifecycle probes",
+                "path yet: " + ", ".join(name for _, name in DORMANT_CHECKS),
             ),
             trigger_summary=(
-                "this project is on the GitHub Issues backend, where 7 backlog "
-                "checks are dormant — they report nothing rather than reading the "
-                "frozen markdown backlog as if it were live"
+                f"this project is on the GitHub Issues backend, where {len(DORMANT_CHECKS)} "
+                "backlog checks are dormant — they report nothing rather than reading "
+                "the frozen markdown backlog as if it were live"
             ),
             recommended_action=(
                 "no action needed — these checks return when the backlog "

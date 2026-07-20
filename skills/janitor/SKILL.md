@@ -2,7 +2,7 @@
 description: Periodic codebase maintenance — systematic health check across VCS hygiene, code quality, documentation fitness, test coverage, dependencies, controllability, and more
 argument-hint: "[staleness=Nd] [scope=theme,...] [survey-only]"
 user-invocable: true
-allowed-tools: Bash(git *), Bash(npm *), Bash(python3 *), Read, Write, Edit, Glob, Grep, Agent
+allowed-tools: Bash(git *), Bash(npm *), Bash(python3 *), Bash(prawduct-hook backlog *), Bash(python3 bin/prawduct-hook backlog *), Read, Write, Edit, Glob, Grep, Agent
 ---
 
 You are performing periodic codebase maintenance — a systematic health check that surfaces what day-to-day development overlooks. This is not a feature task. Your goal is to find what has drifted, accumulated, or been missed, then fix it through the standard Prawduct build cycle.
@@ -196,7 +196,14 @@ Work through each investigation theme (or the scoped subset), adapting your inqu
 
 ### Step 2.5: Backlog Triage
 
-**Check the backend first.** Read the top-level `backlog_service_repo` scalar from `project-state.yaml` — Step 1 only needs it on the branch where you read the markdown file directly, so a `list`-using reader may not have looked. When it is **set**, every check below is dormant: all seven are markdown-shaped — they walk sections, count metadata bars, and measure `## Archive` growth — and `.prawduct/backlog.md` is frozen history once a project cuts over, so running them would report confidently on items archived at cutover while seeing no live Issue. Two are worse than stale: check 6 proposes `/prawduct:backlog migrate` and check 7 an archive split, both **meaningless** once Issues is system of record — advice a reader could act on to no effect. **Skip all seven** and emit the Backlog Health block as a single line: "Backlog Health unavailable — this project is on the GitHub Issues backend and these checks have no Issues-mode path yet; they return when the backlog read-through cache lands." Say it rather than omitting the block: an absent section reads as a clean bill of health, which is the failure this replaces. Skip all seven **including the two `list` could approximate** (area clusters, stale items): rebuilding a health check on top of a list call is the bespoke per-reader projection every dormant reader is waiting for the read-through cache to avoid, and an approximation labelled as a health check is the confident-wrong-answer failure in a new costume. Step 1's overlap read is different in kind — it consumes `list` as the item view it already is, without deriving a verdict from it.
+**Check the backend first.** Read the top-level `backlog_service_repo` scalar from `project-state.yaml`. (Step 1 only needs it on the branch where you read the markdown file directly, so a `list`-using reader may not have looked.)
+
+When it is **set**, do exactly two things:
+
+1. **Skip all seven checks** below — including the two `list` could approximate (area clusters, stale items).
+2. **Emit the Backlog Health block as a single line:** "Backlog Health unavailable — this project is on the GitHub Issues backend and these checks have no Issues-mode path yet; they return when the backlog read-through cache lands."
+
+*Why.* All seven are markdown-shaped — they walk sections, count metadata bars, and measure `## Archive` growth — and `.prawduct/backlog.md` is frozen history once a project cuts over, so running them would report confidently on items archived at cutover while seeing no live Issue. Two are worse than stale: check 6 proposes `/prawduct:backlog migrate` and check 7 an archive split, both **meaningless** once Issues is system of record — advice a reader could act on to no effect. Emit the line rather than omitting the block, because an absent section reads as a clean bill of health. And skip even the approximable two: rebuilding a health check on top of a list call is the bespoke per-reader projection every dormant reader is waiting for the read-through cache to avoid, and an approximation labelled as a health check is the confident-wrong-answer failure in a new costume. Step 1's overlap read is different in kind — it consumes `list` as the item view it already is, without deriving a verdict from it.
 
 When it is **unset** (the markdown backend), survey `.prawduct/backlog.md` and emit a **Backlog Health** block in the findings report (all counts derived on read — never persist them). Surface, don't fix:
 

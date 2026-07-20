@@ -88,18 +88,100 @@ class TestDormancyNoteCopiesAgree:
                 f"comments, tests, and build plans — not in text an operator reads."
             )
 
-    def test_reviewer_loaded_protocol_states_the_gate_inline(self):
-        """`skills/critic/review-protocol.md` is the file the Critic's reviewer
-        subagents actually load — `review-cycle.md` may never be opened. It
-        carries the gate itself rather than deferring to the other file for it."""
-        flat = " ".join(_read("skills/critic/review-protocol.md").split())
-        assert "backlog_service_repo" in flat
-        assert "unavailable" in flat
+    def test_the_reviewer_that_runs_the_walk_is_routed_to_the_gate(self):
+        """`skills/critic/review-protocol.md` carries a one-line summary of the
+        gate and points at `review-cycle.md` for the walk itself. That is sound
+        *only* because `agents/critic-reviewer.md` sends the one reviewer who
+        runs Backlog Reconciliation — the sustainability reviewer — to
+        `review-cycle.md` explicitly. Break that routing and the gate sits behind
+        a cross-reference nobody follows, so the routing is what gets pinned.
 
-    def test_note_says_what_restores_the_checks(self):
+        (A cumulative Critic finding argued for restating the full rule in
+        `review-protocol.md`. Declined on the evidence above, and because that
+        file's token budget is deliberately at near-zero headroom — paying ~175
+        tokens of reviewer context for a rule its reader is already routed to
+        would trade a real cost for a hypothetical one.)
+        """
+        agent = " ".join(_read("agents/critic-reviewer.md").split())
+        assert "Backlog Reconciliation" in agent
+        assert "review-cycle.md" in agent, (
+            "the sustainability reviewer is no longer routed to `review-cycle.md`, "
+            "where the backend gate for Backlog Reconciliation lives."
+        )
+        protocol = " ".join(_read("skills/critic/review-protocol.md").split())
+        assert "read `backlog_service_repo` first" in protocol, (
+            "review-protocol.md dropped its summary of the gate, so a reviewer "
+            "reading only this file gets no signal that the walk is conditional."
+        )
+
+    def test_every_note_surface_is_in_the_advisory_enumeration(self):
+        """The advisory's stated value is that anyone dismissing it knows what
+        they are choosing to run without. That rests on an enumeration which,
+        being hand-maintained, can silently fall behind the readers it names —
+        under-reporting, which is this bundle's own failure class one layer down.
+
+        So: a surface that emits a dormancy NOTE must appear in
+        `DORMANT_CHECKS`, and the advisory's count must derive from it rather
+        than being written out.
+        """
+        from lib import backlog_probes as bp
+
+        enumerated = {rel for surfaces, _ in bp.DORMANT_CHECKS for rel in surfaces}
+        missing = sorted(set(NOTE_SURFACES) - enumerated)
+        assert not missing, (
+            f"These surfaces state dormancy but are absent from the advisory's "
+            f"enumeration: {missing}. Add them to `DORMANT_CHECKS` in "
+            f"`lib/backlog_probes.py` — the advisory is the operator's only list of "
+            f"what a cut-over repo is running without."
+        )
+
+    def test_advisory_count_and_evidence_derive_from_one_list(self):
+        from lib import backlog_probes as bp
+        from lib.advisory_store import Codebase, ProjectState
+
+        candidate = bp.probe_checks_dormant(
+            ProjectState({"backlog_service_repo": "acme/widgets"}),
+            Codebase(root=REPO_ROOT),
+        )[0]
+        assert (
+            f"{len(bp.DORMANT_CHECKS)} backlog checks are dormant" in candidate.trigger_summary
+        )
+        for _, name in bp.DORMANT_CHECKS:
+            assert name in candidate.evidence[0], (
+                f"{name!r} is enumerated but never reaches the operator's evidence line."
+            )
+
+    def test_advisory_enumeration_names_no_internal_check_label(self):
+        """`observability-strategy.md` § Direction, applied to the string this
+        bundle itself wrote: the evidence line named `C-B1-C-B4` and `R-1`/`R-2`,
+        which an operator downstream cannot resolve any better than `GV8`."""
+        from lib import backlog_probes as bp
+        from lib.advisory_store import Codebase, ProjectState
+
+        candidate = bp.probe_checks_dormant(
+            ProjectState({"backlog_service_repo": "acme/widgets"}),
+            Codebase(root=REPO_ROOT),
+        )[0]
+        emitted = (
+            candidate.evidence[0] + candidate.trigger_summary + candidate.recommended_action
+        )
+        for label in ("C-B1", "C-B4", "R-1", "R-2", *FORBIDDEN_IDS):
+            assert label not in emitted, (
+                f"the dormancy advisory emits the internal label {label!r}"
+            )
+
+    def test_note_states_the_resolution_not_just_the_dormancy(self):
         """Dropping the id must not drop the resolution: an operator told a check
-        is dormant with no stated end-state reads it as permanent breakage."""
-        assert "read-through cache" in NOTE_TAIL
+        is dormant with no stated end-state reads it as permanent breakage.
+
+        Asserted against the files, not against this module's own constant — an
+        assertion about `NOTE_TAIL` cannot fail for any production edit.
+        """
+        for rel in NOTE_SURFACES:
+            flat = " ".join(_read(rel).split())
+            assert "they return when the backlog read-through cache lands" in flat, (
+                f"{rel}'s dormancy NOTE states the gap without its end-state."
+            )
 
 
 class TestDirectReadRuleIsOneRule:
@@ -133,16 +215,28 @@ class TestDirectReadRuleIsOneRule:
         assert "Writes never bypass this skill" in flat
         assert "blanket" in flat and "rejected" in flat
 
+    # Absolute prohibitions on reading the file. Matched on shape rather than on
+    # one exact byte sequence: the original wording was "never read
+    # `.prawduct/backlog.md` directly", and any reword ("must not open …",
+    # "do not read … directly") reinstates the rejected rule just as effectively.
+    BAN_SHAPE = re.compile(
+        r"(never|don't|do not|must not|no reader may)\s+(read|open|touch)[^.]{0,60}"
+        r"backlog\.md[^.]{0,40}\bdirectly",
+        re.IGNORECASE,
+    )
+
     def test_no_reader_bans_direct_reads_outright(self):
         """The pre-adjudication wording. `skills/pr/SKILL.md` said "never read
         ... directly" while the janitor explicitly permitted it pre-cutover;
-        whichever a new reader copied became the rule. Neither absolute form may
-        come back without re-opening the norm."""
+        whichever a new reader copied became the rule. No absolute form may come
+        back without re-opening the norm — including a reworded one."""
         for rel in self.GATED_READERS + ("skills/backlog/SKILL.md",):
             flat = " ".join(_read(rel).split())
-            assert "never read `.prawduct/backlog.md` directly" not in flat, (
+            match = self.BAN_SHAPE.search(flat)
+            assert match is None, (
                 f"{rel} restates the blanket ban that `data-model.md` § Direction "
-                f"rejected — the rule is a backend gate."
+                f"rejected — the rule is a backend gate. Offending text: "
+                f"{match.group(0)!r}"
             )
 
 
@@ -156,38 +250,67 @@ class TestNoUngatedBacklogFileReaders:
     than needing a sharper adjective.
     """
 
+    # Every prose tree the plugin ships that a model executes or is briefed from.
+    # `methodology/` is here because the first version of this sweep scanned only
+    # `skills/`, and the miss it let through was `session-digest.md` — injected
+    # into every session of every product, cut-over ones included. A sweep that
+    # cannot reach the highest-traffic surface in the framework is not the
+    # "re-greppable" guarantee the plan claimed.
+    PROSE_ROOTS = ("skills", "methodology", "agents", "templates", "docs")
+
     # path -> why it names the file without being a live-state reader
     NON_READER_ALLOWLIST = {
         "skills/doctor/SKILL.md": "core-state presence check — the file exists on both backends",
         "skills/onboard/SKILL.md": "scaffolding inventory for a new product",
         "skills/migrate/SKILL.md": "list of product-owned state carried across the migration",
+        "templates/backlog.md": "*is* the markdown backlog, scaffolded into a new product",
+        "docs/project-structure.md": "directory-layout diagram — names the file, instructs no read",
     }
 
-    def _skill_files_naming_backlog_md(self):
-        for path in sorted((REPO_ROOT / "skills").rglob("*.md")):
-            rel = path.relative_to(REPO_ROOT).as_posix()
-            if rel.startswith("skills/backlog/"):
-                continue  # the owner: routing and the rule live here by definition
-            if "backlog.md" in path.read_text():
-                yield rel, path.read_text()
+    def _prose_files_naming_backlog_md(self):
+        for root in self.PROSE_ROOTS:
+            for path in sorted((REPO_ROOT / root).rglob("*.md")):
+                rel = path.relative_to(REPO_ROOT).as_posix()
+                if rel.startswith("skills/backlog/"):
+                    continue  # the owner: routing and the rule live here by definition
+                content = path.read_text()
+                if "backlog.md" in content:
+                    yield rel, content
 
-    def test_every_skill_naming_the_file_knows_about_the_gate(self):
+    def test_every_prose_surface_naming_the_file_knows_about_the_gate(self):
         offenders = []
-        for rel, content in self._skill_files_naming_backlog_md():
+        for rel, content in self._prose_files_naming_backlog_md():
             if rel in self.NON_READER_ALLOWLIST:
                 continue
             if "backlog_service_repo" not in content:
                 offenders.append(rel)
         assert not offenders, (
-            "These skill surfaces name `.prawduct/backlog.md` but never mention "
+            "These prose surfaces name `.prawduct/backlog.md` but never mention "
             f"`backlog_service_repo`: {offenders}. Either gate the read on the "
             "scalar, or add the file to NON_READER_ALLOWLIST with the reason it is "
             "not a live-state reader."
         )
 
+    def test_injected_digests_scope_markdown_only_backlog_semantics(self):
+        """The digests are injected into every session including cut-over ones,
+        so an unconditional `## Archive`/`## Open` sentence there is the same
+        defect as the one fixed in `skills/backlog/SKILL.md` — at the framework's
+        highest-traffic surface. They name no `backlog.md` path, so the sweep
+        above cannot see them; this is their pin."""
+        for rel in ("methodology/session-digest.md", "methodology/session-digest-slim.md"):
+            flat = " ".join(_read(rel).split())
+            if "## Archive" not in flat:
+                continue
+            idx = flat.index("## Archive")
+            window = flat[max(0, idx - 200) : idx + 200]
+            assert "markdown backend" in window or "Issues backend" in window, (
+                f"{rel} states the `## Archive` workflow without naming which backend "
+                f"it applies to; post-cutover that section does not exist."
+            )
+
     def test_allowlist_has_no_dead_entries(self):
         """A stale allowlist entry is a hole that reads as coverage."""
-        naming = {rel for rel, _ in self._skill_files_naming_backlog_md()}
+        naming = {rel for rel, _ in self._prose_files_naming_backlog_md()}
         dead = sorted(set(self.NON_READER_ALLOWLIST) - naming)
         assert not dead, (
             f"NON_READER_ALLOWLIST entries no longer name backlog.md: {dead}. Drop them."
@@ -200,16 +323,21 @@ class TestNoUngatedBacklogFileReaders:
         # Modules that construct the path but are not live-state readers.
         scaffolding = {
             "lib/init_product.py",  # writes the template at onboarding
-            "lib/migrate_plugin.py",  # carries product state across migration
         }
-        path_expr = re.compile(r'"backlog\.md"')
+        # Both quote styles: the single-quoted spelling is just as valid Python
+        # and a double-quote-only pattern would let the next reader through.
+        path_expr = re.compile(r"""['"]backlog\.md['"]""")
         offenders = []
+        seen_scaffolding = set()
         for path in sorted((REPO_ROOT / "lib").rglob("*.py")):
             rel = path.relative_to(REPO_ROOT).as_posix()
-            if rel.startswith("lib/backlog/") or rel in scaffolding:
+            if rel.startswith("lib/backlog/"):
                 continue
             content = path.read_text()
             if not path_expr.search(content):
+                continue
+            if rel in scaffolding:
+                seen_scaffolding.add(rel)
                 continue
             if "post_cutover" not in content and "backlog_service_repo" not in content:
                 offenders.append(rel)
@@ -217,6 +345,10 @@ class TestNoUngatedBacklogFileReaders:
             f"These lib modules path to the markdown backlog with no cutover guard: "
             f"{offenders}."
         )
+        # A scaffolding exemption for a module that no longer paths to the file is
+        # a hole that reads as coverage — the same failure this whole file guards.
+        dead = sorted(scaffolding - seen_scaffolding)
+        assert not dead, f"scaffolding exemptions no longer path to backlog.md: {dead}"
 
 
 class TestBackendScopedProseInTheBacklogSkill:

@@ -5,7 +5,7 @@
 
 ## 2026-07-20: Two contradicting conventions adjudicated into norms; the cutover sweep becomes re-greppable (skills-cutover-awareness Chunk 04)
 
-<!-- prawduct: type=feature scope=skills-cutover-awareness chunks=04 -->
+<!-- prawduct: type=feature | scope=skills-cutover-awareness | chunks=04 -->
 
 The residue the inventory found, plus the two conventions Chunks 02–03 left contradicting with
 nothing deciding between them. Both are now `## Direction` norms with owners, because "nothing owns
@@ -40,11 +40,33 @@ inline (Chunk 01's contract: a reader loading one file gets the whole rule).
   `lib/` module pathing to the file must carry a cutover guard. The original sweep called itself
   exhaustive and had missed `skills/pr/SKILL.md`; this is what catches the next miss.
 
+**From the cumulative review** (0 blocking, 9 warnings — all resolved). Three were defects this
+chunk's own charter should have caught: the always-injected `session-digest.md` states the
+`## Archive` workflow unconditionally and the new sweep couldn't see it (the sweep now spans
+`methodology/`, `agents/`, `templates/`, `docs/` — scanning only `skills/` was how the
+highest-traffic surface in the framework got missed); `.prawduct/cross-cutting-concerns.md` still
+claimed the norm-lifecycle probes as live coverage over a hole this bundle documents; and all four
+`skills-cutover-awareness` change-log tag lines were space-delimited where `lib/views.py` splits on
+`|`, so `scope=`/`chunks=` never parsed and the release would have silently lost the feature's
+attribution. Also: the janitor and PR skills instruct `/prawduct:backlog list` but granted no
+`backlog` subcommand, so post-cutover both stated routes were closed — the grants are added. The
+dormancy enumeration now derives from one `DORMANT_CHECKS` list rather than a hand-maintained string
+plus a hardcoded "7", and `docs/norms.md`'s migrate arm gains the completed-at-birth case that the
+`data-model.md` norm legitimately takes.
+
+**One finding declined, with reason.** The review asked that `skills/critic/review-protocol.md`
+restate the dormancy rule in full rather than summarizing it, on the premise that a reviewer subagent
+may never open `review-cycle.md`. `agents/critic-reviewer.md:30` routes the one reviewer that runs
+Backlog Reconciliation — sustainability — to `review-cycle.md` explicitly, so the gate is not behind
+an unfollowed reference; and `review-protocol.md` sits at deliberately near-zero token headroom, so
+the restatement would have cost ~175 tokens of reviewer context on every review to fix a hypothetical.
+The routing is what's load-bearing, so the routing is now what's pinned.
+
 **Classification:** governance
 
 ## 2026-07-20: Janitor Backlog Health states dormancy; the overlap read is repointed (skills-cutover-awareness Chunk 03)
 
-<!-- prawduct: type=feature scope=skills-cutover-awareness chunks=03 -->
+<!-- prawduct: type=feature | scope=skills-cutover-awareness | chunks=03 -->
 
 The janitor's three backlog touchpoints, split by what each actually does with the data — the
 discriminator this chunk had to sharpen before it could be built:
@@ -73,7 +95,7 @@ because `Bash(python3 *)` reaches the hook by the self-hosted path) and **BLD-7K
 
 ## 2026-07-20: The PR path stops resolving `closes:` against frozen markdown (skills-cutover-awareness Chunk 02)
 
-<!-- prawduct: type=feature scope=skills-cutover-awareness chunks=02 -->
+<!-- prawduct: type=feature | scope=skills-cutover-awareness | chunks=02 -->
 
 Chunk 01's dormancy contract, copied to the three backlog readers in the PR path. **R-2 is the
 highest-risk reader in the whole inventory**: it is the sole owner of the
@@ -99,7 +121,7 @@ precondition pinned alongside it.
 
 ## 2026-07-19: Backlog-check dormancy is stated, not silently wrong (skills-cutover-awareness Chunk 01)
 
-<!-- prawduct: type=feature scope=skills-cutover-awareness chunks=01 -->
+<!-- prawduct: type=feature | scope=skills-cutover-awareness | chunks=01 -->
 
 `/prawduct:backlog` routes on `backlog_service_repo`; the other backlog readers do not. The Critic's
 Backlog Reconciliation and C-B1–C-B4 read `.prawduct/backlog.md`, which is frozen history once a

@@ -231,7 +231,15 @@ class TestChecksDormantProbe:
         assert out[0].priority == "info"
         # The evidence names every dormant reader: someone dismissing this advisory
         # is choosing to run without those checks and has to be told which.
-        for reader in ("Backlog Reconciliation", "R-1/R-2", "Backlog Health", "revisit-due"):
+        #
+        # Derived from `DORMANT_CHECKS` rather than a hand-written vocabulary. The
+        # old form listed the internal check labels ("Backlog Reconciliation",
+        # "R-1/R-2", "revisit-due"); those were replaced with plain-language names
+        # when `observability-strategy.md` § Direction ruled that emitted text names
+        # no internal id — an operator downstream cannot resolve "R-2". The contract
+        # the assertion enforces is unchanged: every dormant reader is named.
+        assert len(bp.DORMANT_CHECKS) >= 4
+        for _, reader in bp.DORMANT_CHECKS:
             assert reader in out[0].evidence[0]
 
     def test_silent_pre_cutover(self, tmp_path):

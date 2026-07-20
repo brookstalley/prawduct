@@ -13,9 +13,10 @@ restate; product repos receive the full digest (`methodology/session-digest.md`)
 - **Catch specific exceptions.** Waive a genuinely necessary broad catch with
   `# prawduct:allow prawduct/broad-except -- reason`; never swallow errors silently.
   (`prawduct:allow <scope>/<rule-id> -- reason` is the general pragma — `docs/waivers.md`.)
-- **Backlog goes through `/prawduct:backlog`** — pick/add/update/dedup via the skill, not
-  hand-edits. "Done" = `update status=shipped` → `## Archive` (never strikethrough). An
-  early-`stage:` item is an undocumented requirement — `pick` routes it to discovery.
+- **Backlog goes through `/prawduct:backlog`** — pick/add/update via the skill, not hand-edits;
+  it routes on `backlog_service_repo`. "Done" = `update status=shipped` (markdown backend: moves
+  to `## Archive`, never strikethrough; Issues backend: closes the issue). An early-`stage:`
+  item is an undocumented requirement — `pick` routes it to discovery.
 - **Feature-branch medium+ work.** Don't create PRs unless asked — then use `/prawduct:pr`.
 - **Norms bind; descriptions track** (`/prawduct:methodology norms`) — departures from Direction/preferences
   norms are recorded decisions (amend / ruling / exception), never doc-sync.

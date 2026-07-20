@@ -8,21 +8,25 @@
 ## Open
 
 - **[OBS-7M4D]** Purge prawduct-internal ids from operator-emitted text (hook stdout/stderr, CLI usage, advisory evidence)
-  `effort: S · impact: M · area: observability · source: builder · added: 2026-07-19 · status: open · stage: ready · related: GOV-3P8K · refs: .prawduct/artifacts/observability-strategy.md (§ Direction — the norm), docs/norms.md (§ Exceptions expire / in-transition), bin/prawduct-hook:590, lib/backlog/cli.py:71,73,634, lib/backlog/migrate.py:540, lib/critic_consolidate.py:500, lib/backlog_probes.py:320`
+  `effort: S · impact: M · area: observability · source: builder · added: 2026-07-19 · reviewed: 2026-07-19 · status: open · stage: ready · related: GOV-3P8K · refs: .prawduct/artifacts/observability-strategy.md (§ Direction — the norm), docs/norms.md (§ Exceptions expire / in-transition), bin/prawduct-hook:590, lib/backlog/cli.py:71,73,634, lib/backlog/migrate.py:540, lib/critic_consolidate.py:500`
 
   Tracking item for the `## Direction` norm born in `observability-strategy.md` (skills-cutover-awareness Chunk 04): *text emitted into a governed product names no prawduct-internal identifier*. The norm is born `Status: in-transition` because a sweep at birth found sites beyond the changeset's scope.
 
   Fixed at birth (in scope for that chunk):
   - the three dormancy NOTE copies (`skills/critic/review-cycle.md`, `skills/pr/review-protocol.md`, `skills/janitor/SKILL.md`) — dropped `GV8`
   - `skills/backlog/adapter-mode.md` find NOTE — dropped `W2`
+  - `lib/backlog_probes.py` (`probe_checks_dormant` advisory evidence) — dropped the check labels `C-B1`-`C-B4` and `R-1`/`R-2`; the enumeration now derives from a `DORMANT_CHECKS` list of plain-language names
 
-  Remaining inventory (this item):
+  **Inventory corrected after the Chunk 04 cumulative Critic (finding R-10).** `lib/backlog_probes.py` is **no longer in this item's scope**. Its evidence string was written by the *same changeset that birthed the norm*, so the norm's own interim rule — *"emitted text a changeset writes or edits complies"* — already required fixing it; deferring it here would have made the birthing changeset the norm's first exception. It was fixed at birth (see the list above).
+
+  **Ruling on the debatable case** (previously flagged in this item as unresolved): internal check labels **do** count as internal ids for this norm, because an operator downstream can resolve `R-2` no better than `GV8`.
+
+  Remaining inventory — **six sites**, not seven:
   - `bin/prawduct-hook:590` — `clear` refusal message names `CRT-3X9D`
   - `lib/backlog/cli.py:71` — usage line names `GV6`
   - `lib/backlog/cli.py:73` — usage line names `MG6`
   - `lib/backlog/cli.py:634` and `lib/backlog/migrate.py:540` — restructure-preview message names `MG2` (same string, two copies)
   - `lib/critic_consolidate.py:500` — validation error names `R7`
-  - `lib/backlog_probes.py:320` — advisory evidence names `C-B1`-`C-B4` (debatable: these are check labels a reader sees in Critic output, not requirement ids — rule on it rather than assuming)
 
   Each fix is replacing the id with the plain-language reason it stood for; the id stays in the adjacent comment/docstring, which the norm permits. The sweep heuristic (id-shaped tokens inside string literals) is not exhaustive — prefixes are open-ended — so closing this item means running the sweep AND recording that ongoing enforcement is the Critic's judgment, not a regex.
 
