@@ -613,10 +613,14 @@ tests/
     satisfied in build but not exercised end-to-end; (2) **the never-block test is not the shape the
     criterion asked for.** The criterion wanted real slowness injected (a stalling transport);
     `tests/test_briefing_functions.py::test_never_blocks_even_with_a_hanging_backend` instead pins
-    fire-and-forget *structurally* — a recorder whose `wait` raises if touched, plus an elapsed bound
-    — which proves the briefing never waits on the child, not that a genuinely slow backend stays
-    under budget. Weaker in a specific way, and the backlog's shipped note for this item records the
-    same gap.
+    fire-and-forget *structurally* — a recorder whose `wait` raises if touched, plus an elapsed bound.
+    For the path **as written** that is the *stronger* guarantee, not a weaker one, and the backlog's
+    shipped note says so: the transport is unreachable on the briefing path at all
+    (`snapshot.read` is a local JSON read; the only backend reach is detached), so a slow backend
+    structurally cannot cost the briefing anything. What the stalling-transport test would add is a
+    **regression guard** — it would fail if a future edit reintroduced a synchronous `counts()`,
+    where the structural test would keep passing. That is the residual: not a weaker proof of today's
+    code, an absent guard against tomorrow's.
   - **BKL-3K9N (strongly recommended before the live run) — ✅ landed 2026-07-17**
     (`status: shipped · closed-by: Chunk-06`; matches this file's header at the top). Honors
     `Retry-After` / bounded backoff on a mid-import 429 and continues the same run, so shared-token
