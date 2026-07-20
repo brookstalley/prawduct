@@ -7,6 +7,19 @@
 
 ## Open
 
+- **[CRT-3F7M]** Critic coordinator dispatches reviewer subagents from a skill fork; they die with the fork, leaving a valid manifest and zero partials — the review hangs silently forever
+  `effort: M · impact: L · area: critic · source: critic · added: 2026-07-20 · status: open · stage: research · related: CRT-4V8P, ENV-7C4K, CRT-7Q2T, CRT-5N3F, STH-7W9K · refs: skills/critic/SKILL.md:57 (coordinator dispatch — "dispatch the three critic-reviewer subagents … and STOP"), skills/critic/review-protocol.md (Coordinator Pattern), lib/critic_consolidate.py (partial/manifest contract), bin/prawduct-hook (critic-begin, critic-consolidate, critic-end, clear)`
+
+  Observed 2026-07-20 on branch `fix/archive-scope-preservation-claim`. `/prawduct:critic` (`context: fork`) ran `critic-begin`, wrote a **valid** `.prawduct/.critic-partials/manifest.json`, reported "three reviewers dispatched", and returned. No reviewer subagent ever wrote a partial: `prawduct-hook critic-consolidate` reported `no-op: review incomplete — waiting on correctness, design, sustainability (0/3 partials present)` indefinitely, and `TaskList` showed no running tasks — so the subagents did not survive the fork's return. The critic-active marker stays set meanwhile, which also blocks the session-mutating `prawduct-hook clear`.
+
+  **Recovery that worked:** re-dispatch the same three roster roles as subagents from the MAIN agent (which persists) against the *existing* manifest, each writing its own `<role>.json`. Consolidation then merged normally and produced a correct review (2 blocking, 8 warning, 13 note — all findings real). So the data plane is sound; only the dispatch lifetime is broken.
+
+  **Why this matters more than the wasted time:** the failure is **silent** and is indistinguishable from a slow review. A cumulative review legitimately takes 4–10 minutes, so an agent that waits patiently is doing the right thing and will still wait forever. Worst case, a builder gives up waiting and proceeds unreviewed — the governance gate is bypassed by a timeout, not by a decision.
+
+  **Candidate fixes (none chosen):** (a) dispatch the roster from the persisting main agent rather than from the fork — note this cuts against `skills/critic/SKILL.md:57`'s explicit "once the reviewers are dispatched you are done; there is no resume-to-aggregate"; (b) have `critic-begin` record a dispatch deadline so `critic-consolidate` can report "reviewers never reported" instead of "waiting" — turns a silent hang into a loud failure without changing the dispatch model; (c) have the coordinator await its subagents before returning.
+
+  **Needs verification** that this is reproducible rather than incidental to this session — hence `stage: research`. Same silent-failure family as ENV-7C4K (stale `prawduct-hook` on PATH → `critic-begin` silently wrote no manifest; here the manifest is fine and the *reviewers* are missing). Related to CRT-4V8P (mode inference returned `chunk` for a clean tree in the same invocation). Governance-protected (Critic dispatch path) → full Critic + PR review. (critic)
+
 - **[CRT-4V8P]** `infer-critic-mode` returns `chunk` for a clean working tree — rule 4 fires on an unrelated active build plan and produces an empty-diff refusal
   `effort: S · impact: M · area: critic · source: critic · added: 2026-07-20 · status: open · stage: ready · related: GOV-8N4V, CRT-6J4P, CRT-8H3R, WT-7M4K · refs: lib/critic_mode.py:197-210 (rule 4), lib/critic_mode.py:111 (infer_mode), bin/prawduct-hook (infer-critic-mode, critic-begin), skills/critic/SKILL.md`
 
