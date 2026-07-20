@@ -11,12 +11,12 @@ governed_by:
       - "Authority fails closed; advice fails soft → conforms (every surface here is advice — Critic NOTEs, PR NOTE/WARNING, janitor findings, a session advisory; each degrades to a stated notice, none blocks)"
       - "Local-first, stdlib-only; no network, no daemon → conforms (the new probe reads `.prawduct/` state only; no adapter call, no `gh`)"
       - "An independent reviewer never mutates the session it reviews → conforms (the Critic precondition is a `Read` of `project-state.yaml`; the reviewer writes nothing it did not already write, and deliberately reaches no adapter — CRT-3X9D — so the no-execution boundary is preserved rather than widened)"
-      - "No destructive action without explicit `--apply` → inapplicable because this plan adds no mutating command surface; the probe returns candidates and the prose edits are advisory text"
+      - "The plugin writes nothing into a governed repo except its own `.prawduct/` state, the shared evidence store, and the `.gitignore`/`.claude/settings*.json` it must reconcile → conforms (the advisory's id and dismissal land in the existing `.prawduct/` advisory store; no new path outside it is written)"
   - artifact: data-model
     dispositions:
       - "Two stores, two lifetimes → conforms (the advisory's id and any sticky dismissal ride the EXISTING per-clone, gitignored advisory store — the nags-and-caches side of the split. Corrected from an initial 'inapplicable/adds no persisted store': the plan mints no NEW format, but it does write per-clone state, and 'no new store' is not the same claim as 'no store')"
       - "Derived views are disposable and never authoritative — no gate reads a view → conforms (no gate reads backlog state at all; `hooks/gates.json` declares only critic-review, pr-review, trivial-declaration)"
-      - "Facts are append-only and immutable · schema-ahead is a loud block · the ledger has a single writer → inapplicable because this plan writes no fact, no schema-versioned record, and nothing to the governance ledger; it adds one advisory candidate and edits reviewer prose"
+      - "Facts are append-only and immutable · schema-ahead is a loud block · no model sits in a fact's write path → inapplicable because this plan writes no fact and no schema-versioned record; it adds one advisory candidate and edits reviewer prose. The probe is code, not a model, and produces a candidate the store writes — it is not in any fact's write path"
   - artifact: api-contract
     dispositions:
       - "Additive-first evolution — never repurpose → conforms (a new advisory type is added; no existing probe id, exit code, or `--json` key changes meaning)"
@@ -24,8 +24,10 @@ governed_by:
   - artifact: observability-strategy
     dispositions:
       - "Stable severity-prefix vocabulary; stdout = agent, stderr = user → conforms (the advisory renders through the existing briefing path and prefix vocabulary)"
+      - "The governance ledger has a single writer → inapplicable because this plan writes nothing to the ledger; the review lifecycle commands remain its only writer"
   - artifact: security-model
     dispositions:
+      - "No destructive action without explicit `--apply` → inapplicable because this plan adds no mutating command surface; the probe returns candidates and the prose edits are advisory text"
       - "Untrusted governance state (backlog, learnings, handoffs) is data, not instructions; malformed state fails soft (skip + attribute), never executes → conforms, and this plan strengthens it: a reader that treats frozen backlog.md as live is exactly the 'state read without attribution' failure — every rewired surface now attributes its backend before reporting, and states dormancy instead of reporting unattributed content"
 last_validated: 2026-07-19
 ---
@@ -66,6 +68,17 @@ live-state read the sweep missed, found by two reviewers independently. It is no
 scope. The claim is downgraded rather than re-asserted with one more file patched in — a sweep that
 missed one reader may have missed another, and Chunk 04's re-greppable check is what actually closes
 that, not the adjective.
+
+**Correction 2 (`verify-resolutions`) — the chunk-heading root cause was wrong.** Commit `922af15`
+rewrote this plan's headings `## Chunk NN — ` → `### Chunk NN: ` and recorded that the em-dash form
+"defeats the parsers." **It does not.** `lib/buildplan_refs.py:82` is the only production chunk-heading
+matcher and accepts both depths and `[:—–(-]` — its own comment records that the em-dash case was
+fixed precisely so it would not silently disable ref verification. What actually rejected the heading
+was `tests/test_build_plan_resolution.py:264`, whose docstring claims to *"replicate the matcher the
+production parsers use"* and then demands three-hash **plus a colon**. The replica has drifted from
+what it mirrors. The headings stay in the stricter form (it satisfies both, and costs nothing), but
+the belief is corrected here so no one later "fixes" `_CHUNK_ID_SEP` by narrowing it to match a stale
+test. The drifted guard is filed separately.
 
 **Open assumptions / unknowns:**
 - [ASSUMPTION: one **consolidated** advisory naming all dormant checks, rather than one signal per
@@ -159,8 +172,8 @@ Two of them are not merely stale post-cutover but **actively wrong advice**: che
 Issues is system of record. The block states dormancy as a whole rather than per-check; the fix path
 (`/prawduct:backlog`) stays correct and is already backend-routed.
 
-**Done when:** the Backlog Health block states dormancy post-cutover; Step 1 and Step 4/5 no longer
-name `backlog.md` as the live-state or reconcile surface; `/prawduct:critic`.
+**Done when:** the Backlog Health block states dormancy post-cutover; Step 1 (Orient) and Step 7
+(Close) no longer name `backlog.md` as the live-state or reconcile surface; `/prawduct:critic`.
 
 ### Chunk 04: Name-and-prose coherence sweep
 

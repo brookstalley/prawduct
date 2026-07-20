@@ -7,6 +7,26 @@
 
 ## Open
 
+- **[TST-6K3D]** Build-plan chunk-heading test replica has drifted from the production matcher — the guard rejects headings production parses fine
+  `effort: S · impact: M · area: tests · kind: bug · source: critic · added: 2026-07-19 · status: open · stage: ready · related: BLD-7P3K, BLD-5J8N, VWS-2F9K, CRT-3T6V · refs: tests/test_build_plan_resolution.py:264 (_parseable_body_chunk_ids), lib/buildplan_refs.py:82 (_CHUNK_HEADING_RE, _CHUNK_ID_SEP)`
+
+  Found by the Chunk 01 `verify-resolutions` pass on `feature/skills-cutover-awareness`. The guard test `_parseable_body_chunk_ids` (`tests/test_build_plan_resolution.py:264`) documents itself as replicating "the matcher the production parsers use" and requires **three-hash + a colon** (`### Chunk N:`). The only production matcher — `lib/buildplan_refs.py:82` `_CHUNK_HEADING_RE = re.compile(r"^#{2,3}\s+Chunk\s+(\w+)" + _CHUNK_ID_SEP)` with `_CHUNK_ID_SEP = r"\s*(?:[:—–(-]|$)"` — accepts **both `##` and `###`** and **any of `: — – ( -`** or end-of-line (broadened by BLD-5J8N for the `## Chunk N (ID) — Name` research-plan form).
+
+  Consequence: a plan heading production parses fine is rejected by the guard, and the docstring's claim is **false** — the test is a stale second implementation of a contract it no longer mirrors, which is exactly the drift class BLD-7P3K created it to prevent.
+
+  **Decide deliberately which contract is authoritative.** If the stricter `### Chunk NN:` convention is intended as the *authored* standard (a style guard, not a parser replica), say so in the docstring and stop calling it a replica. If not, widen the test to match production. **Do NOT narrow `_CHUNK_ID_SEP` to match the stale test** — that would re-break the em-dash form BLD-5J8N deliberately enabled. Sibling drift of the same broadening lives in VWS-2F9K (`lib/views.py CHUNK_LINE_RE` never widened). (critic)
+
+- **[BKL-4H8P]** Adapter error envelope says `retryable: true` but supplies no retry budget — a forked skill burned 23 attempts over 5+ minutes on GitHub 503s
+  `effort: S · impact: M · area: backlog · kind: bug · source: user · added: 2026-07-19 · status: open · stage: ready · related: BKL-9T3K, BKL-2D8N, BKL-3W6K, BKL-3K9N, BKL-6M4T · refs: skills/backlog/adapter-mode.md (§"Reading the result — envelope + exit code", the exit-class table + error discipline), lib/backlog/transport.py (classification, no retry loop), lib/backlog/migrate.py (bounded importer backoff), lib/backlog/core.py:296 (post-create settle retry), documentation/backlog-service-requirements.md (G2)`
+
+  Observed live in the samsung-frame-art-loader Phase 1 dogfood (2026-07-19), not hypothesized. Against a run of GitHub **503s**, a forked `/prawduct:backlog` model retried **23 times over 5+ minutes** before giving up. The envelope told it the error was retryable and nothing told it when to stop.
+
+  **The adapter itself is well-behaved** — `transport.py` classifies the failure and returns **immediately**, with no retry loop for single ops (the only retry logic in `lib/backlog` is `migrate.py`'s bounded importer backoff and the narrow post-create settle retry at `core.py:296`), and measured op latency was **1.55–1.77s**. The defect is in the **prose contract**: `adapter-mode.md` documents `retryable` in the error envelope with **no max attempts, no wall-clock deadline, and no give-up-and-report rule**, so the model supplied its own unbounded loop.
+
+  Fix: state an explicit **retry budget** in `skills/backlog/adapter-mode.md` alongside the exit-class table — e.g. at most N attempts and/or a T-second ceiling on `retryable: true`, with exponential spacing, then **stop and report the failure to the user** (never silently keep trying). Cheap, doc-only, governance-protected (`skills/`) → full Critic + PR review.
+
+  This is effectively a **G2 violation at the seam**: G2 says a backend failure must never hang and must degrade cleanly. The adapter honors G2; the adapter + prose + model *system* did not — the never-block guarantee is only as strong as the weakest layer that reads it. Same doc-gap-not-code-defect class as BKL-9T3K (`prawduct:` block ownership) and BKL-2D8N (`--help`), all from the same dogfood. (user — samsung-frame-art-loader Phase 1 dogfood)
+
 - **[BKL-4R7V]** Citation surfaces must recognize `owner/repo#number`, not just `[PFX-XXXX]` — post-cutover item references are invisible to every reader
   `effort: M · impact: M · area: backlog · source: user · added: 2026-07-19 · status: open · stage: ready · related: BLD-5V8F, BLD-3M7K, BKL-5D2C, BKL-6M4T · refs: documentation/backlog-service-requirements.md (GV9 — parent requirement; GV8 for the resolve half), lib/norm_probes.py:144 (_BACKLOG_ID_RE), lib/buildplan_refs.py (_parse_build_plan_chunk_refs — the deferred backlog-ref verification), skills/critic/review-protocol.md (Backlog check C-B4), skills/pr/review-protocol.md (R-2), .prawduct/change-log.md + backlog metadata (closes: / closed-by:)`
 
