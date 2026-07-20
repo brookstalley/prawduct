@@ -604,14 +604,22 @@ tests/
   - **BKL-3K9N (strongly recommended before the live run)** — honor `Retry-After` / bounded backoff on a
     mid-import 429 and continue the same run, so shared-token contention during this chunk's repoint can't
     hard-stop the irreversible import.
-  - **BKL-6X5D (not gating this dogfood)** — archive-window *quantification* (a recent-shipped N-month
-    window) + Pacer 900-pts/min modeling; latent at prawduct's ~205 items. *(The binary
-    `--archive-scope {all,open}` lever — MG4b — lands in this owner-feedback pass; only the quantified
-    middle window stays deferred here.)* **Re-scoped 2026-07-20:** the Pacer 900-pts/min leg (part b) is
-    **gating for any `--archive-scope all` migration at discodon's size** (383 open + 124 archive = 507
-    paced creates **plus 124 unpaced closes**), not merely adopter-scale — it stays deferred only for
-    `open`-scope runs, which is what this dogfood is. Part (a) — the re-attribution and the §8.9↔§9
-    circularity — closed 2026-07-20.
+  - **BKL-6X5D part (b) — GATING this dogfood.** *(The binary `--archive-scope {all,open}` lever —
+    MG4b — landed in the owner-feedback pass; the quantified middle window (a recent-shipped N-month
+    window) stays deferred.)* **Re-scoped 2026-07-20**, then **escalated the same day when owner
+    decision A1 chose `--archive-scope all`** for this migration
+    (`artifacts/migration-scrub-decisions.md` decision 5): under `all` every archived item costs a
+    **paced create plus an unpaced close** — `Pacer.before_create` is the only paced call, and
+    `_reconcile_status` → `core.set_status` takes no pacer — so this run *is* the half-metered
+    create-then-close stretch part (b) exists to close. It must land **before** the bulk import, not
+    after, or the irreversible migration becomes part (b)'s own proof case. Part (a) — the
+    re-attribution and the §8.9↔§9 circularity — closed 2026-07-20.
+
+    *No count carries this gate.* An earlier revision justified it with discodon item counts; that
+    evidence was withdrawn 2026-07-20 as too unstable to be load-bearing (four checkouts disagreed,
+    and the canonical one moved between two reads) — see the BKL-6X5D backlog note. The gate stands
+    on the structural ratio: one paced write and one unpaced write per archived item, whatever the
+    volume.
 - **Type:** cumulative-final
   <!-- Last slice chunk: its review IS the one `/prawduct:critic cumulative` against merge-base…HEAD,
        and the `/prawduct:pr create` gate for the slice PR. Commit first, run cumulative once. -->

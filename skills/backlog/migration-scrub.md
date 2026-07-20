@@ -113,8 +113,9 @@ issues, and name the tradeoff:
      symmetrically:** an archived item is **two** writes, not one — a create, then a
      status reconcile to closed (the create path has no initial-state field). Only
      the create is paced (`Pacer.before_create` is the sole paced call), so a large
-     `all` run is a half-metered create-then-close stretch — the gap **BKL-6X5D part
-     (b)** exists to close.
+     `all` run spends its close writes outside the meter. Size the run with that in
+     mind; if the archive is large, prefer running it when a rate-limit trip would be
+     cheap to absorb.
 
    The model surfaces the tradeoff; the owner decides; the deterministic importer
    applies it via **`--archive-scope {open|all}`** (step 3) — a data-plane lever,
@@ -124,10 +125,13 @@ issues, and name the tradeoff:
    chosen scope — a contradiction, caught, never a silent mis-import). A *quantified*
    recent-shipped window between the poles
    (migrate the last N months, drop older) is the adopter-scale refinement tracked
-   by **BKL-6X5D**; today the lever is the binary open/all. prawduct's own dogfood
-   is owner-decided as **`all`** — decision A1, taken 2026-07-20 and recorded in
-   `.prawduct/artifacts/migration-scrub-decisions.md`, which also carries its
-   consequence (part (b) becomes a release blocker for v3.2.0).
+   by **BKL-6X5D**; today the lever is the binary open/all.
+
+   **Neither choice is a one-way door**, and say so when the owner hesitates: import
+   is idempotent and alias-keyed, so a repo migrated with `open` can be re-run later
+   with `--archive-scope all` to mint the archive it skipped — the already-migrated
+   items are skipped, not duplicated. `open` defers the archive; it does not discard
+   it.
 
 **3. Apply the confirmed plan — deterministically.**
    - **Import** the source into issues (idempotent/resumable, keyed on the

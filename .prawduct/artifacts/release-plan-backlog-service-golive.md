@@ -31,7 +31,7 @@ is that one discovery spike gates the end of the chain while everything else run
 | 2 | Merge PR #134 (`skills-cutover-awareness`) — change-log conflict expected | — | ☐ |
 | 3 | VRF-005 · VRF-007 · VRF-008 drained against `samsung-frame-art-loader` | — | ☐ unblocked today |
 | 4 | **`BKL-9XQ2` discovery spike** — consent (1a/1b), evidence+PII, label taxonomy | — | ☐ **critical path** |
-| 5 | SPIKE-S2 live dry-run on a throwaway repo (C1) | 1 | ☐ |
+| 5 | SPIKE-S2 live dry-run on a throwaway repo (C1) | ~~1~~ (met) | ☐ run it with `--archive-scope all` |
 | 6 | MG4 scrub workflow (C2) | — | ☐ |
 | 7 | `BKL-4W7H` — PFX read-resolution + alias idempotency (C3) | — | ☐ in flight (`promoted`) |
 | 8 | `BKL-6X5D` part (b) — Pacer meters REST points (C7) | — | ☐ **blocker** (A1 = `all` promoted it; no longer conditional) |
@@ -49,13 +49,14 @@ Nothing above is optional-by-default: item 8 **was** conditional on A1 and is no
 is deliberately *after* the tag. Everything else lands before v3.2.0 ships.
 
 **A1 resolved 2026-07-20 — `all`** (recorded with rationale in
-`artifacts/migration-scrub-decisions.md` decision 5). Two things this settles beyond item 8:
-items 5 and 9 are unblocked, and the SPIKE-S2 dry-run measures the path prawduct actually takes.
+`artifacts/migration-scrub-decisions.md` decision 5). What it settles beyond item 8: **item 5 is now
+unblocked** and measures the path prawduct actually takes. Item 9 is *not* unblocked — clearing A1
+satisfied only one of its blockers and **added** item 8, so it now waits on 5, 6, 7 and 8.
 The deciding argument was not archive completeness but **default-path coverage**: `all` is the
 flag's default, so `open` for the dogfood would have shipped the default unexercised by the only
 migration prawduct runs itself. A secondary find during the decision — `open`'s documented
-preservation story was false on nine surfaces, naming the MG2 export, which dumps the migrated
-repo post-import — is fixed on `fix/archive-scope-preservation-claim`; the residual product gap
+preservation story was false at **ten claim sites across seven files**, naming the MG2 export, which
+dumps the migrated repo post-import — is fixed on `fix/archive-scope-preservation-claim`; the residual product gap
 (`open` puts the skipped archive outside `find`/`list` post-cutover) is **`BKL-4Z7M`**, adopter-facing
 and not release-gating now that prawduct takes `all`.
 
@@ -78,8 +79,8 @@ Reinforcing this, verified in code 2026-07-20: the capability already exists and
 
 ## Sizing (snapshot, not a fact)
 
-prawduct's own backlog at `964d03b` on `develop`, re-derived 2026-07-20: **108 open · 2 promoted ·
-143 archive**, no separate archive file, across **29 distinct PFX prefixes** (`ADR ADV BKL BLD BRF COV
+prawduct's own backlog at `964d03b` on `develop`: **108 open · 2 promoted · 144 archive**, no
+separate archive file, across **29 distinct PFX prefixes** (`ADR ADV BKL BLD BRF COV
 CRT DOC ENV GOV JAN JNT LRN MET MIG PR PRR REL SCN SEC STH STN SYN TEL TPL TST VWS WMK WT`).
 
 **Treat every count here as a dated snapshot, never as a constant.** On 2026-07-20 four discodon
@@ -88,9 +89,15 @@ minutes apart — a live instance of the stale-views pain this project exists to
 re-derived at the moment it is used, or it is not used. The 29 prefixes are the more durable datum:
 they are the multi-prefix absorption stress the dogfood was chosen to provide.
 
-*(The archive figure above was **144** when this plan was written hours earlier and is 143 on
-re-derivation — the section's own rule demonstrating itself on the same day. Note the count rose by
-one afterward when `BKL-4Z7M` was filed, which is exactly why no downstream item is sized off it.)*
+*(A worked example of getting this wrong, left in deliberately. On 2026-07-20 this line was
+"corrected" from 144 to **143** and a parenthetical was added explaining the delta as same-day drift.
+Both halves were false, and two independent reviewers caught it: `## Archive` is byte-identical
+between `f8b38f7` and `964d03b`, so nothing drifted — the re-derivation used an id pattern
+(`PFX-XXXX`) narrower than the data, silently dropping `MIG-M4-REMOVE`, the one archive item whose id
+has three segments. The lesson is not "recount more carefully": **a re-derived number that disagrees
+with a recorded one is evidence the new derivation is wrong, and calls for reconciling the two, never
+for narrating the gap.** Writing the drift story was the actual failure; the arithmetic was
+downstream of it.)*
 
 ## Blockers
 

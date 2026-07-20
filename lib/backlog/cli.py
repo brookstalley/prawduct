@@ -635,7 +635,8 @@ def _run_restructure_preview(rest: list[str]):
         warnings = [
             f"--archive-scope open: {archive_skipped} closed/archived item(s) excluded from "
             "this preview (they remain in the git-tracked source markdown, not in the "
-            "migrated tracker — post-cutover they are outside find/list)"
+            "migrated tracker — post-cutover they are outside find/list; re-run with "
+            "--archive-scope all to backfill them, no duplicates)"
         ] + warnings
     return core.ok(data, warnings)
 

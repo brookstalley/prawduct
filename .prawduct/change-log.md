@@ -23,7 +23,9 @@ step 0's pre-migration backup. What no surface said is the part that actually de
 post-cutover, `skills/backlog/SKILL.md` treats that file as frozen history and stops reading it, so
 the skipped set is **git history, not searchable backlog**: outside `find`/`list`, and outside
 add-time dedup. Corrected at the parent requirements first (PRD MG4 + requirements §MG4b), then the
-five downstream surfaces, then the shipped change-log entry that recorded it.
+downstream surfaces, then the shipped change-log entry that recorded it — **ten claim sites across
+seven files**, a figure derived by enumerating the diff rather than counted by eye, because three
+earlier drafts of this very entry stated it three different ways.
 
 **Guarded, not just fixed.** The `open` warning string now has a test asserting the sentence is
 *true* — it must not credit "export" and must name the source markdown — verified to fail against
@@ -494,8 +496,8 @@ migration leg stays deferred):
   the historical archive stays in the git-tracked source markdown, minting no closed
   issue per ancient item — fewer total writes, NF3; the Pacer, not this lever, enforces
   the write-*rate* ceiling — BKL-6X5D). *(Corrected 2026-07-20: as shipped, this entry
-  and eight other surfaces said the skipped archive "stays as the MG2 export." It cannot
-  — `export` dumps the migrated repo post-import. Fixed in the entry below.)* Surfaced as an explicit owner question in
+  was one of ten claim sites saying the skipped archive "stays as the MG2 export." It cannot —
+  `export` dumps the migrated repo post-import. Fixed in the entry above.)* Surfaced as an explicit owner question in
   the migration-scrub runbook (new step 2c); `restructure-preview` honors the same
   scope so the owner reviews exactly what imports. Quantified recent-window between
   the poles stays BKL-6X5D (adopter-scale). `lib/backlog/{migrate,cli}.py`.

@@ -1,4 +1,4 @@
-# Migration scrub — owner decisions (recorded 2026-07-18)
+# Migration scrub — owner decisions (recorded 2026-07-18; decisions 5–6 added 2026-07-20)
 
 Owner checkpoint held at the end of the 2026-07-18 session (BKL-8N5K shipped, Critic clean).
 **The live migration itself is HELD** — owner decision, not a blocker. Everything below is
@@ -30,7 +30,7 @@ execute against these decisions without re-asking, re-confirming only if the sou
    **Rationale (verified in code, not recalled):**
    - `all` is the flag's **default** (`cli.py` `_archive_scope_flag`). Choosing `open` for the
      dogfood would ship the default path unexercised by the one migration prawduct runs itself.
-   - `open`'s preservation story was mis-stated across seven surfaces (it named the MG2 export,
+   - `open`'s preservation story was mis-stated at ten claim sites across seven files (it named the MG2 export,
      which dumps the migrated repo post-import and cannot hold what the lever excluded). Corrected
      on this branch. The true cost of `open` — skipped items are git history, not searchable
      backlog, because the skill stops reading the source file after cutover — is a real loss of
@@ -42,6 +42,24 @@ execute against these decisions without re-asking, re-confirming only if the sou
    conditional. An archived item costs a paced create plus an **unpaced** close
    (`_reconcile_status` → `core.set_status`, no pacer), so the archive leg of the real migration
    is exactly the half-metered stretch part (b) describes.
+6. **Part (b) lands *before* the bulk import, not beside it** (2026-07-20 — **builder-proposed,
+   owner sign-off owed**; flagged by Critic review as a plan decision that does not follow
+   mechanically from A1 and so must not ride in on its authority).
+
+   A1 makes part (b) a release blocker; it does **not** by itself dictate the order. C4's blockers
+   went from `A1, C1, C2, C3` to `C1, C2, C3, C7`, which is a separate call. The alternative,
+   stated plainly so it is vetoable: **run the migration first with the close leg unpaced**, and
+   land part (b) afterwards — cheaper to sequence, and the run would probably survive, since today
+   the close leg is throttled only incidentally by subprocess latency.
+
+   Recommendation: **land part (b) first.** The bulk import is irreversible (GitHub never reuses
+   issue numbers, so there is no rollback — only re-run into the same repo), which makes it the one
+   run that should not double as part (b)'s proof case. A secondary-rate-limit trip mid-import is
+   recoverable but costly, and the SPIKE-S2 dry-run (C1) cannot substitute: it measures a throwaway
+   repo, not prawduct's 144-item archive leg.
+
+   Owner may overrule; if so, C4's blocked-by drops C7 and the release plan's burn-down step 4
+   reverts to running them in parallel.
 
 ## Approved dispositions (owner-confirmed 2026-07-18)
 

@@ -313,6 +313,32 @@ class TestArchiveScope:
         arc = _alias_issues(fake, "SCP-0002")[0]
         assert (arc.get("state") or "open").lower() == "closed"
 
+    def test_open_then_all_backfills_the_archive_without_duplicating(self, fake):
+        """`open` defers the archive, it does not discard it — the migration runbook
+        tells owners the choice is not a one-way door, so the reversal is guarded.
+
+        Re-running a repo migrated with `open` under `all` must mint exactly the
+        items the first run skipped and leave the already-migrated ones alone: the
+        skip authority is the `id:PFX` alias written atomically in the create, so
+        the second pass finds-or-creates rather than re-creating."""
+        first = migrate.import_backlog(
+            fake, owner=OWNER, repo=REPO, content=self._MAIN,
+            archive_content=self._ARCHIVE, archive_scope="open",
+        )
+        assert len(first["data"]["created"]) == 1
+
+        second = migrate.import_backlog(
+            fake, owner=OWNER, repo=REPO, content=self._MAIN,
+            archive_content=self._ARCHIVE, archive_scope="all",
+        )
+        assert second["status"] == "ok"
+        # The two archive items get minted now; the open item is skipped, not remade.
+        assert len(second["data"]["created"]) == 2
+        assert len(second["data"]["skipped"]) == 1
+        for pfx in ("SCP-0001", "SCP-0002", "SCP-0003"):
+            assert len(_alias_issues(fake, pfx)) == 1, f"{pfx} duplicated across runs"
+        assert (_alias_issues(fake, "SCP-0002")[0].get("state") or "open").lower() == "closed"
+
     def test_default_scope_is_all(self, fake):
         # No archive_scope passed → `all` (backward-compatible with every existing
         # importer caller, incl. the owner's locked dogfood "import as-is" decision).

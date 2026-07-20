@@ -558,7 +558,8 @@ def import_backlog(
             result["warnings"] = [
                 f"--archive-scope open: {archive_skipped} closed/archived item(s) not "
                 "imported as issues (they remain in the git-tracked source markdown, "
-                "not in the migrated tracker — post-cutover they are outside find/list)"
+                "not in the migrated tracker — post-cutover they are outside find/list; "
+                "re-run with --archive-scope all to backfill them, no duplicates)"
             ] + result["warnings"]
     return result
 
