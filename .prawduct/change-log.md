@@ -159,6 +159,125 @@ Two things the review process caught that are worth keeping. `review-protocol.md
 redundant — `test_project_preferences_blocking` proved it load-bearing, and the tokens came from
 compressing Goal 7's close instead. And repointing the stale `active_build_plan` immediately failed a
 chunk-heading guard, which turned out to be a drifted *test* rather than a plan defect (TST-6K3D).
+## 2026-07-20: `--archive-scope` becomes discoverable, and stops being credited with the rate ceiling (BKL-6X5D part a)
+
+<!-- prawduct: type=fix -->
+<!-- Statusless = release-pending once develop→main ships. No scope= tag: a
+     two-surface fix with no build plan, so there is no ## Status to regenerate. -->
+
+Found while sizing a real migration of hallucinote's backlog (~87 open items) — both defects
+changed the advice being given about that migration, which is how they surfaced.
+
+**The flag was honored but never advertised.** `--archive-scope {all,open}` is parsed and applied by
+both `import` and `restructure-preview`, and neither listed it in `--help`. Both usage lines now
+carry it.
+
+**Scoped honestly** (Critic note): MG4's "explicit owner-confirmed choice surfaced at scrub time" was
+*not* defeated — `skills/backlog/migration-scrub.md` steps 2c/3 already name the flag, its tradeoff,
+and the corrected Pacer attribution, so an operator following the runbook always saw the choice. The
+real gap is narrower: CLI discoverability for anyone arriving outside the runbook — reading `--help`
+to see what `import` accepts, which is exactly how this was found. Worth fixing, not worth
+dramatizing.
+
+The guard is a **parity test, not a string assertion**: it reads which handlers resolve the selector
+(`ast` over `lib/backlog/cli.py`), maps them through the `op ==` dispatch chain, and asserts each
+resulting op's help line names the flag.
+
+That mapping only reads the single-literal `op == "x"` shape, and `cli.py` already dispatches two ops
+as `op in ("get","show")` / `op in ("link","unlink")` — so a future honoring op added in that shape
+would have been silently dropped from the reviewed set while the suite stayed green. A second
+**orphan check** closes it: every handler that honors the flag must appear in the mapped set, else
+the test fails and demands the derivation be extended rather than degrading quietly. Both tests were
+verified to fail against a deliberately broken tree — a parity test that passes before and after
+would have been worthless.
+
+**The docstring taught the mis-attribution BKL-6X5D exists to correct.** `apply_archive_scope` said
+`open` keeps "a large migration inside the write-rate budget (NF3)." It does not: the **Pacer** holds
+the ceiling by pacing creates across time whatever the volume, and the archive lever reduces total
+write *volume*. The requirements were corrected on 2026-07-18; **six** further surfaces still carried
+the old framing — and being the nearest source to the code, the docstring is what a reader reaches
+for first. All six are corrected here.
+
+**Six surfaces, found across four rounds — and the process record is the point, because three of
+those rounds ended in a closure claim that was wrong.**
+
+| round | found by | surfaces |
+|---|---|---|
+| 1 | me | `apply_archive_scope` docstring, PRD §8.9 |
+| 2 | Critic (chunk) | PRD §9/NF3 |
+| 3 | Critic (verify-resolutions) | NFR §3.3 `:146`, PRD §11/S3 `:249` |
+| 4 | Critic (verify-resolutions) | NFR §9 `:287` |
+
+Round 1 ended with me writing that leaving a sibling copy would be the "patch the flagged line, not
+the class" failure — while leaving PRD §9 in the same file, at the exact anchor the rewritten §8.9
+sends readers to. Round 2 ended with "correct in every surface"; round 3 found two more, one of them
+in a file that same round had just added to the item's `refs:`. Round 3 ended by publishing a
+falsifying grep in the backlog note *with the instruction to run it before claiming coverage* — and
+then claiming coverage without running it. Round 4 is that grep, finally executed, returning
+`nfr.md:287`.
+
+`:287` was the most load-bearing of the six: it is the **S2 proof obligation**, so "migration burst
+fits after scrub" would have aimed the dry-run at post-scrub volume instead of at the Pacer. It now
+states the obligation as proving the Pacer holds the burst — measured with the volume lever
+*disabled* (`--archive-scope all`), since a small input proves nothing about pacing — and adds the
+create-then-close 900 pts/min question (part b) as a second thing S2 must answer.
+
+**No exhaustiveness claim is made here.** Six is the count swept, not proof there is no seventh. The
+falsifying query lives in BKL-6X5D's note for whoever next wants to assert coverage:
+`grep -rn 'scrub' documentation/*.md | grep -i '500\|rate\|budget\|fit\|trim'` — the remaining hits
+read correctly as of this commit. The honest lesson, recorded rather than tidied away: stating the
+discipline does not execute it — **three** consecutive rounds of self-certification (1, 2 and 3) were
+each closed by an external reviewer instead. Round 4 is the exception that shows the shape of the
+fix: it made no closure claim, and the thing that produced it was running a query rather than
+resolving to be careful.
+
+*Counting note, since this entry is about miscounts:* the review of round 4 caught this very sentence
+claiming **four**. Round 4 was the one round that did *not* self-certify, so "four" overstated the
+lesson by including its own counterexample. Corrected. Note also that this entry and BKL-6X5D's note
+partition the same work differently — the entry counts six surfaces *this changeset touched* (the
+docstring plus five doc sections, excluding the requirements text corrected on 2026-07-18); the
+backlog note counts six *documentation* surfaces (including requirements, with the docstring listed
+separately as the code surface). Both totals reconcile at seven, and both enumerate their members in
+place, so either can be checked rather than trusted.
+
+Fixing §9 also dissolves the **§8.9↔§9 circular reference** BKL-6X5D tracked separately: §8.9 now
+credits the Pacer and cites §9, and §9 credits the Pacer and cites NFR §3, so neither defers to the
+other for the ceiling. NFR §3's row additionally now names the **unmetered create-then-close
+stretch** (part b) instead of implying the scrub makes the burst safe.
+
+The docstring also
+records the volume reason the Pacer genuinely does not cover: archived items cost *two* writes each
+(create-then-close), because the create path has no initial-state field.
+
+PRD §8.9 additionally described the lever as "migrate only a recent-shipped window," which is the
+*unbuilt* refinement — the shipped lever is the binary `{all,open}` (MG4b), and the window remains
+BKL-6X5D's deferred quantification work. Corrected so the PRD stops describing an unbuilt design as
+current.
+
+**Still open in BKL-6X5D:** the window **quantification** (N-months / a throughput formula), and
+part **(b)** — metering total REST points (5/write, 1/read) against 900/min for the create+close
+archive stretch. Part (a) closes entirely here: both the re-attribution *and* the §8.9↔§9
+circularity.
+
+**Part (b) is no longer adopter-scale-only.** It is filed as "not gating the dogfood," which held
+while the dogfood was small. The escalation rests on a **structural** property, not a headcount:
+under `--archive-scope all` each archived item costs a create *and* a close, and
+`pacer.before_create()` is annotated "the only paced call" — so the archive stretch runs
+create-then-close with **half of it unmetered**, which is precisely the >900 pts/min window part (b)
+describes. Its only mitigation today is *incidental* `gh`-subprocess latency, explicitly "not
+designed-in" and forfeited by the raw-HTTP fast-path (D2/W1). Under `--archive-scope open` there is
+no archive stretch at all and the gap stays theoretical. Re-scoped accordingly: **gating for any
+`all`-scope migration at portfolio scale**, still deferred for `open`.
+
+*An earlier draft of this paragraph justified the escalation with "383 open + 124 archive = 507
+creates, past the 500/hr cap" — a 1.4% margin resting on a number I had not verified was stable. The
+PR reviewer challenged it against the 317 figure the documents this changeset edits still carry.
+Checking, discodon's four checkouts report **384 / 389 / 349 / 319** open, and the canonical one read
+383 then 384 twenty minutes apart. The count is not a fact; it is a live instance of the
+stale-views-across-checkouts pain (#2) this whole project exists to kill, and it cannot carry a
+gating decision. The argument above needs no count — only that the unmetered stretch exists —
+which is true at 317 and at 389. Recorded rather than silently re-numbered, because the failure was
+using an unverified figure as load-bearing evidence, not picking the wrong one.*
 
 ## 2026-07-19: SessionStart banner names which plugin code is loaded (BRF-7Q4M)
 
