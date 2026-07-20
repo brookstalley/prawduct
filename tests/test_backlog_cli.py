@@ -7,8 +7,10 @@ through the runner, and INV-2 (non-interactive — never reads stdin).
 
 from __future__ import annotations
 
+import ast
 import io
 import json
+import re
 import sys
 from pathlib import Path
 
@@ -310,3 +312,78 @@ class TestCommentCli:
         item_id = _file(fake, capsys)
         code, out, err = _run(["comment", item_id, "--json"], fake, capsys)
         assert code == 2
+
+
+class TestHelpAdvertisesHonoredFlags:
+    """Every op that *honors* ``--archive-scope`` must also *advertise* it (MG4b).
+
+    MG4 makes archive scope "an explicit owner-confirmed choice surfaced at scrub
+    time, not a silent default." A flag the parser accepts but ``--help`` never
+    names is silent by construction: the operator cannot choose what they cannot
+    see. Both ops shipped honoring the flag while neither listed it.
+
+    Derived, not hardcoded — the honoring set is read off the source (which
+    handlers resolve the selector) and mapped through the dispatch chain, so a
+    third op that starts honoring it inherits the assertion instead of quietly
+    reopening the gap.
+    """
+
+    @staticmethod
+    def _honoring_handlers_and_dispatch() -> tuple[set[str], dict[str, str], set[str]]:
+        src = (_REPO_ROOT / "lib" / "backlog" / "cli.py").read_text(encoding="utf-8")
+        tree = ast.parse(src)
+        honoring = {
+            node.name
+            for node in ast.walk(tree)
+            if isinstance(node, ast.FunctionDef)
+            and any(
+                isinstance(inner, ast.Call)
+                and getattr(inner.func, "id", None) == "_archive_scope_flag"
+                for inner in ast.walk(node)
+            )
+        }
+        # Ops mapped by the single-literal dispatch shape this derivation understands.
+        mapped = dict(re.findall(r'op == "([\w-]+)":\s*\n\s*result = (_run_\w+)\(', src))
+        # EVERY dispatched handler, whatever the match shape (`op in ("a","b")` included).
+        dispatched = set(re.findall(r"result = (_run_\w+)\(", src))
+        return honoring, mapped, dispatched
+
+    def test_no_honoring_handler_escapes_the_derivation(self):
+        """The orphan check: a handler that honors the flag but is dispatched in a
+        shape the op-mapping regex cannot read would be silently dropped from the
+        reviewed set, leaving the suite green while covering fewer ops.
+
+        `cli.py` already dispatches two ops as `op in ("get","show")` /
+        `op in ("link","unlink")`, so this is a live shape, not a hypothetical.
+        Fail loudly and demand the derivation be extended rather than degrade.
+        """
+        honoring, mapped, dispatched = self._honoring_handlers_and_dispatch()
+        unreachable = (honoring & dispatched) - set(mapped.values())
+        assert not unreachable, (
+            f"{sorted(unreachable)} honor --archive-scope but are dispatched in a "
+            "shape `_ops_honoring_archive_scope` cannot map to an op name; extend "
+            "the derivation or these ops go unchecked"
+        )
+
+    @classmethod
+    def _ops_honoring_archive_scope(cls) -> set[str]:
+        # Delegates rather than re-deriving: a second copy would drift from the
+        # one the orphan check reads, so widening the derivation to fix a real
+        # gap could fail the orphan check against the un-widened twin.
+        honoring, mapped, _dispatched = cls._honoring_handlers_and_dispatch()
+        return {op for op, handler in mapped.items() if handler in honoring}
+
+    def test_the_honoring_set_is_non_empty(self):
+        # Guards the derivation itself: if the introspection silently matched
+        # nothing, every assertion below would vacuously pass.
+        assert self._ops_honoring_archive_scope() >= {"import", "restructure-preview"}
+
+    def test_every_honoring_op_advertises_the_flag(self):
+        help_lines = cli._HELP.splitlines()
+        for op in sorted(self._ops_honoring_archive_scope()):
+            line = next((ln for ln in help_lines if ln.startswith(f"  {op} ")), None)
+            assert line is not None, f"{op} honors --archive-scope but has no help entry"
+            assert "--archive-scope" in line, (
+                f"`{op}` accepts --archive-scope but does not advertise it; an "
+                "owner cannot make an explicit choice they cannot discover (MG4b)"
+            )

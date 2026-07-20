@@ -3,6 +3,90 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-07-20: `--archive-scope` becomes discoverable, and stops being credited with the rate ceiling (BKL-6X5D part a)
+
+<!-- prawduct: type=fix -->
+<!-- Statusless = release-pending once develop→main ships. No scope= tag: a
+     two-surface fix with no build plan, so there is no ## Status to regenerate. -->
+
+Found while sizing a real migration of hallucinote's backlog (~87 open items) — both defects
+changed the advice being given about that migration, which is how they surfaced.
+
+**The flag was honored but never advertised.** `--archive-scope {all,open}` is parsed and applied by
+both `import` and `restructure-preview`, and neither listed it in `--help`. Both usage lines now
+carry it.
+
+**Scoped honestly** (Critic note): MG4's "explicit owner-confirmed choice surfaced at scrub time" was
+*not* defeated — `skills/backlog/migration-scrub.md` steps 2c/3 already name the flag, its tradeoff,
+and the corrected Pacer attribution, so an operator following the runbook always saw the choice. The
+real gap is narrower: CLI discoverability for anyone arriving outside the runbook — reading `--help`
+to see what `import` accepts, which is exactly how this was found. Worth fixing, not worth
+dramatizing.
+
+The guard is a **parity test, not a string assertion**: it reads which handlers resolve the selector
+(`ast` over `lib/backlog/cli.py`), maps them through the `op ==` dispatch chain, and asserts each
+resulting op's help line names the flag.
+
+That mapping only reads the single-literal `op == "x"` shape, and `cli.py` already dispatches two ops
+as `op in ("get","show")` / `op in ("link","unlink")` — so a future honoring op added in that shape
+would have been silently dropped from the reviewed set while the suite stayed green. A second
+**orphan check** closes it: every handler that honors the flag must appear in the mapped set, else
+the test fails and demands the derivation be extended rather than degrading quietly. Both tests were
+verified to fail against a deliberately broken tree — a parity test that passes before and after
+would have been worthless.
+
+**The docstring taught the mis-attribution BKL-6X5D exists to correct.** `apply_archive_scope` said
+`open` keeps "a large migration inside the write-rate budget (NF3)." It does not: the **Pacer** holds
+the ceiling by pacing creates across time whatever the volume, and the archive lever reduces total
+write *volume*. The requirements were corrected on 2026-07-18, but five other surfaces still carried
+the old framing — and being the nearest source to the code, the docstring is what a reader reaches
+for first. All now re-attribute explicitly and say not to reintroduce it.
+
+**Five surfaces in this changeset, found in three rounds — the process record is the point.** (The
+sixth, the requirements text itself, was corrected in the 2026-07-18 owner-feedback pass; BKL-6X5D's
+note counts all six across all rounds, this entry counts only what this changeset touched.) Round 1
+fixed the
+docstring and PRD §8.9. The Critic then found **PRD §9**, in the same file, at the exact anchor the
+rewritten §8.9 sends readers to — which I had left *while writing* that leaving a sibling copy would
+be the "patch the flagged line, not the class" failure. Round 2 fixed §9 and declared the
+re-attribution correct "in every surface." The Critic then found **NFR §3's migration row**
+(`backlog-service-nfr.md:146`, "the MG4 scrub trims the archive so it fits") and a softer **PRD
+§11/S3** — the first of which is in a file this same changeset had just added to the item's `refs:`.
+
+Three rounds, each closed with an exhaustiveness claim, each falsified by a grep taking seconds.
+That is the failure mode this changeset's own new learning describes, recurring twice more while the
+learning was being written. Recorded rather than tidied away: the honest lesson is that stating the
+discipline does not execute it.
+
+Fixing §9 also dissolves the **§8.9↔§9 circular reference** BKL-6X5D tracked separately: §8.9 now
+credits the Pacer and cites §9, and §9 credits the Pacer and cites NFR §3, so neither defers to the
+other for the ceiling. NFR §3's row additionally now names the **unmetered create-then-close
+stretch** (part b) instead of implying the scrub makes the burst safe.
+
+The docstring also
+records the volume reason the Pacer genuinely does not cover: archived items cost *two* writes each
+(create-then-close), because the create path has no initial-state field.
+
+PRD §8.9 additionally described the lever as "migrate only a recent-shipped window," which is the
+*unbuilt* refinement — the shipped lever is the binary `{all,open}` (MG4b), and the window remains
+BKL-6X5D's deferred quantification work. Corrected so the PRD stops describing an unbuilt design as
+current.
+
+**Still open in BKL-6X5D:** the window **quantification** (N-months / a throughput formula), and
+part **(b)** — metering total REST points (5/write, 1/read) against 900/min for the create+close
+archive stretch. Part (a) closes entirely here: both the re-attribution *and* the §8.9↔§9
+circularity.
+
+**Part (b) is no longer adopter-scale-only.** It is filed as "not gating the dogfood," which held
+while the dogfood was small. Sizing discodon changed that: 383 open + 124 archive items under
+`--archive-scope all` is 507 paced creates (~61 min, past the hourly cap) **plus 124 unpaced
+closes** — `pacer.before_create()` is annotated "the only paced call," so the archive stretch runs
+create-then-close with only half of it metered, which is precisely the >900 pts/min window part (b)
+describes. Its current mitigation is *incidental* `gh`-subprocess latency, explicitly "not
+designed-in." Under `--archive-scope open` there is no archive stretch and the gap stays theoretical.
+Re-scoped accordingly: **gating for any `all`-scope migration at discodon's size**, still deferred
+for `open`.
+
 ## 2026-07-19: SessionStart banner names which plugin code is loaded (BRF-7Q4M)
 
 <!-- prawduct: type=feature -->

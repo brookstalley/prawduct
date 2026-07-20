@@ -605,9 +605,13 @@ tests/
     mid-import 429 and continue the same run, so shared-token contention during this chunk's repoint can't
     hard-stop the irreversible import.
   - **BKL-6X5D (not gating this dogfood)** — archive-window *quantification* (a recent-shipped N-month
-    window) + Pacer 900-pts/min modeling; load-bearing for the later adopter migrations, latent at
-    prawduct's ~205 items. *(The binary `--archive-scope {all,open}` lever — MG4b — lands in this owner-feedback
-    pass; only the quantified middle window stays deferred here.)*
+    window) + Pacer 900-pts/min modeling; latent at prawduct's ~205 items. *(The binary
+    `--archive-scope {all,open}` lever — MG4b — lands in this owner-feedback pass; only the quantified
+    middle window stays deferred here.)* **Re-scoped 2026-07-20:** the Pacer 900-pts/min leg (part b) is
+    **gating for any `--archive-scope all` migration at discodon's size** (383 open + 124 archive = 507
+    paced creates **plus 124 unpaced closes**), not merely adopter-scale — it stays deferred only for
+    `open`-scope runs, which is what this dogfood is. Part (a) — the re-attribution and the §8.9↔§9
+    circularity — closed 2026-07-20.
 - **Type:** cumulative-final
   <!-- Last slice chunk: its review IS the one `/prawduct:critic cumulative` against merge-base…HEAD,
        and the `/prawduct:pr create` gate for the slice PR. Commit first, run cumulative once. -->
