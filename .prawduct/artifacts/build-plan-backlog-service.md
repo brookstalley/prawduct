@@ -603,11 +603,14 @@ tests/
     reimport + reconcile-restore + get/link-by-PFX tested. Coherence follow-up filed for PFX resolution
     in the remaining single-id mutators (`status`/`update`/`comment`/`claim`/`unclaim`) and the CC5
     decoder gaps. (Related: BKL-5R2K redirect-follow consumer — deliberately NOT folded in here.)
-  - **BKL-8P2R (must-fix)** — the "briefing reads live counts through the adapter" criterion must be wired
+  - **BKL-8P2R (must-fix) — ✅ code landed 2026-07-18** (`status: shipped · closed-by: Chunk-06`).
+    *Residual, not code:* the live repoint against the migrated repo still happens at runbook step 5,
+    so this is satisfied in build but not yet exercised end-to-end. The criterion, as built: wired
     the safe way: call `snapshot.read` + detached `spawn_refresh`, **never** a synchronous `counts()`
     (which paginates at the 30 s transport default vs NFR §6's "few s"); surface the snapshot age; add a
     never-block test that injects real slowness (a stalling transport), not just an instant error.
-  - **BKL-3K9N (strongly recommended before the live run)** — honor `Retry-After` / bounded backoff on a
+  - **BKL-3K9N (strongly recommended before the live run) — ✅ landed 2026-07-17**
+    (`status: shipped · closed-by: Chunk-06`; matches this file's header at the top). Honors
     mid-import 429 and continue the same run, so shared-token contention during this chunk's repoint can't
     hard-stop the irreversible import.
   - **BKL-6X5D part (b) — a v3.2.0 release blocker (ratified); gating *this chunk* only if decision 6
