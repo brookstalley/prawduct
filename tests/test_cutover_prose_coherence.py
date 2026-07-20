@@ -258,12 +258,20 @@ class TestDirectReadRuleIsOneRule:
         Dropping the `directly` anchor widened the match to include a *correct*
         statement of the norm — "do not read `.prawduct/backlog.md` once
         `backlog_service_repo` is set" is the rule, not a violation of it. So a
-        match is only an offence when its neighbourhood doesn't name the scalar:
-        the ban is absolute exactly when nothing qualifies it.
+        match is only an offence when nothing qualifies it.
+
+        The qualifier must sit in the **same sentence**, not merely nearby. A
+        paragraph-sized window would exempt an absolute ban written alongside the
+        gate that contradicts it — which is the exact self-contradictory shape
+        `skills/pr/SKILL.md` carried before `ef34dfc`, and that paragraph is the
+        only place in the file naming `backlog.md`. A window would therefore have
+        switched the guard off at the one site that motivated it.
         """
         for match in cls.BAN_SHAPE.finditer(flat):
-            window = flat[max(0, match.start() - 120) : match.end() + 160]
-            if "backlog_service_repo" in window:
+            start = flat.rfind(". ", 0, match.start()) + 1  # 0 when not found
+            end = flat.find(". ", match.end())
+            sentence = flat[start : (end + 1) if end != -1 else len(flat)]
+            if "backlog_service_repo" in sentence:
                 continue
             return match.group(0)
         return None
