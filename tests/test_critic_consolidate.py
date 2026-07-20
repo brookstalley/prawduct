@@ -594,8 +594,11 @@ class TestIncompleteNoopLiveness:
         # The round-trip below proves the MINTER agrees with the parser. It does
         # not prove begin_review still uses the minter — a future edit could
         # inline a format string again and reopen the drift hole with the
-        # round-trip test still green. Asserted structurally, which also catches
-        # a second minting site the round-trip could never see.
+        # round-trip test still green. Asserted structurally instead.
+        #
+        # Scope, stated exactly: this catches a second site copied in the SAME
+        # literal shape. An f-string minting site would pass both assertions —
+        # the guard narrows the hole, it does not close it.
         src = (ROOT / "lib" / "critic_consolidate.py").read_text()
         assert src.count('"rev-{}-{}"') == 1, "more than one site formats a review id"
         assert "review_id = mint_review_id()" in src
