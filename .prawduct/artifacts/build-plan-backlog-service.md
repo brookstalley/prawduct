@@ -604,15 +604,23 @@ tests/
     in the remaining single-id mutators (`status`/`update`/`comment`/`claim`/`unclaim`) and the CC5
     decoder gaps. (Related: BKL-5R2K redirect-follow consumer — deliberately NOT folded in here.)
   - **BKL-8P2R (must-fix) — ✅ code landed 2026-07-18** (`status: shipped · closed-by: Chunk-06`).
-    *Residual, not code:* the live repoint against the migrated repo still happens at runbook step 5,
-    so this is satisfied in build but not yet exercised end-to-end. The criterion, as built: wired
-    the safe way: call `snapshot.read` + detached `spawn_refresh`, **never** a synchronous `counts()`
-    (which paginates at the 30 s transport default vs NFR §6's "few s"); surface the snapshot age; add a
-    never-block test that injects real slowness (a stalling transport), not just an instant error.
+    **As built** (three of four clauses): the briefing calls `snapshot.read` + detached
+    `spawn_refresh`, **never** a synchronous `counts()` (which paginates at the 30 s transport default
+    vs NFR §6's "few s"), and surfaces the snapshot age.
+
+    *Two residuals, both open — do not read this bullet as full coverage before the live run:*
+    (1) the live repoint against the migrated repo happens at runbook step 5, so the wiring is
+    satisfied in build but not exercised end-to-end; (2) **the never-block test is not the shape the
+    criterion asked for.** The criterion wanted real slowness injected (a stalling transport);
+    `tests/test_briefing_functions.py::test_never_blocks_even_with_a_hanging_backend` instead pins
+    fire-and-forget *structurally* — a recorder whose `wait` raises if touched, plus an elapsed bound
+    — which proves the briefing never waits on the child, not that a genuinely slow backend stays
+    under budget. Weaker in a specific way, and the backlog's shipped note for this item records the
+    same gap.
   - **BKL-3K9N (strongly recommended before the live run) — ✅ landed 2026-07-17**
     (`status: shipped · closed-by: Chunk-06`; matches this file's header at the top). Honors
-    mid-import 429 and continue the same run, so shared-token contention during this chunk's repoint can't
-    hard-stop the irreversible import.
+    `Retry-After` / bounded backoff on a mid-import 429 and continues the same run, so shared-token
+    contention during this chunk's repoint can't hard-stop the irreversible import.
   - **BKL-6X5D part (b) — a v3.2.0 release blocker (ratified); gating *this chunk* only if decision 6
     is signed off.** Keep the two apart: A1 (decision 5, owner-confirmed) makes part (b) block the
     **release**; whether it must also precede *this chunk's* bulk import is decision 6, which is
