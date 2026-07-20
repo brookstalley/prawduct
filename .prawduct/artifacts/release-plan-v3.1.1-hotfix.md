@@ -14,9 +14,10 @@ last_validated: 2026-07-20
 
 ## Why a hotfix rather than promoting `develop`
 
-`develop` is release-pending on 16 change-log entries, 10 of them backlog-service migration work.
-Promoting its tree would put a complete, self-triggering path to an unproven data migration into
-every consumer:
+`develop` plus this branch are release-pending on **17** change-log entries (re-derived 2026-07-20
+by counting `## ` headings above the first `release=v3.1.0` tag — 18 matches, less the boundary
+entry's own heading). **10 are backlog-service migration work; 7 are independent.** Promoting the
+tree would put a complete, self-triggering path to an unproven data migration into every consumer:
 
 1. `backlog-service-migration-required` (new since v3.1.0, `warn`, fires for **every** repo with a
    structured markdown backlog and no `backlog_service_repo`) recommends `/prawduct:backlog scrub`.
@@ -40,7 +41,10 @@ all `pending`; VRF-006 states it outright. Only VRF-004 (the walking skeleton) i
 
 ## What ships
 
-The six change-log entries independent of the migration:
+All **seven** change-log entries independent of the migration. (An earlier draft of this table
+listed six and silently omitted `worktree-salvage` — caught by re-deriving the count rather than
+carrying the one in prose. Enumerate, don't sample: that is the REL-2N8K failure, and it is the
+same class as the claim defects this branch spent the day correcting.)
 
 | entry | what it fixes for a consumer |
 |---|---|
@@ -50,6 +54,7 @@ The six change-log entries independent of the migration:
 | wait-side cache-warm directive | a waiting session stays audible instead of idling its prompt cache into expiry (`CRT-8Q6R`) |
 | SessionStart banner provenance | the banner names which plugin code is actually loaded (`BRF-7Q4M`) |
 | Stop-hook worktree redirect note | names the tree the gates actually evaluated (`STH-3R8K`) |
+| worktree-salvage | `regen-views` no longer fails closed on a bad `scope=` tag; digest single-copy test works under `.claude/worktrees/`; dead `current_branch` removed (runtime no-op). Internal polish, but independent and already merged — shipping it keeps the release the *whole* independent set rather than a judgment call about which fixes "count" |
 
 ## Construction — allowlist, not subtraction
 
@@ -98,8 +103,9 @@ fails open — anything forgotten ships.
 1. Branch `release/v3.1.1` from `v3.1.0`; construct the tree per the allowlist.
 2. Bump `VERSION` **and** `.claude-plugin/plugin.json` to `3.1.1` — this is the release trigger;
    without it `autoUpdate` keeps the cached copy and the release does not ship.
-3. Change-log: the six entries flip to `status=shipped` + `release=v3.1.1`. **The other ten stay
-   release-pending on `develop` and must not be flipped.**
+3. Change-log: the **seven** independent entries flip to `status=shipped` + `release=v3.1.1`. **The
+   other ten — every one of them migration work — stay release-pending and must not be flipped.**
+   Enumerate all seven against the table above; do not sample (REL-2N8K shipped 8 of 10 that way).
 4. `regen-views --check` → `regen-views`.
 5. Promote to `main` (tree snapshot, per the existing release lineage), tag `v3.1.1`, push.
 6. Confirm the version-delta banner on the next session.

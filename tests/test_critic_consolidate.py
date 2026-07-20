@@ -517,7 +517,7 @@ class TestIncompleteNoopLiveness:
         ts = datetime.now(timezone.utc) - timedelta(minutes=minutes_ago)
         return f"rev-{ts.strftime('%Y%m%dT%H%M%SZ')}-deadbeef"
 
-    def test_age_parses_real_begin_id(self):
+    def test_age_parses_synthetic_begin_shaped_id(self):
         age = cc.dispatch_age_minutes(self._fresh_id(3))
         assert age is not None
         assert 2.5 < age < 4.0
@@ -590,7 +590,17 @@ class TestIncompleteNoopLiveness:
             assert f"every {cc._CACHE_WARM_INTERVAL_MINUTES} minutes" in msg
             assert "idling silently" in msg
 
-    def test_begin_review_id_is_parseable_by_dispatch_age(self):
+    def test_begin_review_routes_through_the_single_minter(self):
+        # The round-trip below proves the MINTER agrees with the parser. It does
+        # not prove begin_review still uses the minter — a future edit could
+        # inline a format string again and reopen the drift hole with the
+        # round-trip test still green. Asserted structurally, which also catches
+        # a second minting site the round-trip could never see.
+        src = (ROOT / "lib" / "critic_consolidate.py").read_text()
+        assert src.count('"rev-{}-{}"') == 1, "more than one site formats a review id"
+        assert "review_id = mint_review_id()" in src
+
+    def test_minted_review_id_round_trips_through_dispatch_age(self):
         # The producer/consumer contract, exercised end-to-end rather than
         # against a hand-built id: begin_review mints the id, dispatch_age_minutes
         # parses it. If the format drifts, parsing returns None, the
