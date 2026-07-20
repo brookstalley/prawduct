@@ -270,8 +270,13 @@ class TestDirectReadRuleIsOneRule:
         The qualifier must sit in the **same sentence**, not merely nearby: a
         paragraph-sized window exempts an absolute ban written two sentences away
         from an unrelated mention of the scalar, which is a real shape and not a
-        gated one. Sentence scope is strictly narrower than the window it
-        replaced and states the same rule the failure message does.
+        gated one. Sentence scope is a *different* scope, not a monotonically
+        tighter one — the window was bounded (±120/160 chars) while a sentence is
+        unbounded at both ends, so a long sentence exempts where the window would
+        not, and a match with no preceding ". " takes the whole file prefix as
+        its sentence. It is chosen because it states the same rule the failure
+        message does and matches how a reader reasons about qualification, not
+        because it is uniformly stricter.
 
         It is *not* what covers the historical `skills/pr/SKILL.md` wording —
         there the ban and the scalar shared one sentence, so this exempts it just
@@ -307,6 +312,14 @@ class TestDirectReadRuleIsOneRule:
         (
             "Do not read `.prawduct/backlog.md` once `backlog_service_repo` is set.",
             False,
+        ),
+        # Backward half of the sentence arithmetic: the match is NOT in the first
+        # sentence, so `rfind(". ")` takes its found-path rather than the -1
+        # sentinel. Every other case sits in sentence one and leaves it unrun.
+        (
+            "`backlog_service_repo` selects the backend. "
+            "Never read `.prawduct/backlog.md` directly.",
+            True,
         ),
         # Prohibitions that aren't about this file at all.
         ("Never open a PR without running the reviewer.", False),
