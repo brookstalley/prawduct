@@ -9,14 +9,44 @@ depends_on:
 last_validated: 2026-07-20
 ---
 
-# Release Plan — Backlog Service Go-Live
+# Release Plan — v3.2.0, Backlog Service Go-Live
 
-**Owner decision (2026-07-20):** wide release. *"We can't ship a partial product. And if prawduct's
-own backlog migrates to gh issues, we have to bring in all that implies."*
+**Owner decisions (2026-07-20):** wide release — *"We can't ship a partial product. And if prawduct's
+own backlog migrates to gh issues, we have to bring in all that implies."* Version: **v3.2.0**
+(A2 decided).
 
 This plan enumerates what blocks that release and the order to clear it. It is a **release plan**,
 not a build plan — Chunk 06's build spec already lives in `build-plan-backlog-service.md` and is not
 restated here.
+
+## Ship list — what must land before v3.2.0
+
+The checkable form. Detail and rationale for each line are in the sections below; this list is the
+thing to iterate on and check off. **Blocked-by is the load-bearing column** — the plan's whole shape
+is that one discovery spike gates the end of the chain while everything else runs beside it.
+
+| # | must land | blocked by | state |
+|---|---|---|---|
+| 1 | `--archive-scope` decision for prawduct's own migration (A1) | — | ☐ **owner, do first** |
+| 2 | Merge PR #134 (`skills-cutover-awareness`) — change-log conflict expected | — | ☐ |
+| 3 | VRF-005 · VRF-007 · VRF-008 drained against `samsung-frame-art-loader` | — | ☐ unblocked today |
+| 4 | **`BKL-9XQ2` discovery spike** — consent (1a/1b), evidence+PII, label taxonomy | — | ☐ **critical path** |
+| 5 | SPIKE-S2 live dry-run on a throwaway repo (C1) | 1 | ☐ |
+| 6 | MG4 scrub workflow (C2) | — | ☐ |
+| 7 | `BKL-4W7H` — PFX read-resolution + alias idempotency (C3) | — | ☐ in flight (`promoted`) |
+| 8 | `BKL-6X5D` part (b) — Pacer meters REST points (C7) | 1 | ☐ **only if A1 = `all`** |
+| 9 | The real prawduct migration (C4) | 1, 5, 6, 7 | ☐ |
+| 10 | Briefing/gates repoint through the adapter (C5) | 9 | ☐ |
+| 11 | **MG5** — drop-box retirement + `report-bug` upstream filing (C6) | **4**, 10 | ☐ |
+| 12 | VRF-006 — the migration is its own acceptance evidence | 9 | ☐ |
+| 13 | Version bump `VERSION` + `plugin.json` → 3.2.0 | 1–12 | ☐ release trigger |
+| 14 | Change-log: flip **every** unreleased entry `status=shipped` + `release=v3.2.0` | 13 | ☐ enumerate, don't sample |
+| 15 | `regen-views --check` → `regen-views` | 14 | ☐ fail-closed pre-flight |
+| 16 | Tag `v3.2.0`, push, confirm the version-delta banner | 15 | ☐ |
+| 17 | VRF-002 · VRF-003 | promotion | ☐ **post-release by construction** |
+
+Nothing above is optional-by-default: item 8 is conditional on a decision, and item 17 is
+deliberately *after* the tag. Everything else lands before v3.2.0 ships.
 
 ## Why the consent policy is on the critical path, not beside it
 
@@ -54,7 +84,7 @@ they are the multi-prefix absorption stress the dogfood was chosen to provide.
 | id | decision | why it gates |
 |---|---|---|
 | **A1** | `--archive-scope` for prawduct's own migration: `all` or `open` | **Determines whether `BKL-6X5D` part (b) is a release blocker.** `open` ≈ 110 creates, no archive stretch, part (b) stays deferred. `all` ≈ 254 creates **plus 144 unpaced closes** — that is exactly the half-unmetered create-then-close stretch part (b) describes, so choosing `all` promotes B-tier work into this release. MG4b requires this be an explicit owner choice at scrub time regardless. |
-| **A2** | Release version | The bump *is* the release trigger (`VERSION` + `plugin.json`). Backlog service going live is a subsystem landing; weigh against the standing "version conservatively" preference. |
+| **A2** | ~~Release version~~ — **decided 2026-07-20: v3.2.0** | The bump *is* the release trigger (`VERSION` + `plugin.json`). A minor bump for a subsystem going live, consistent with the standing "version conservatively" preference. |
 | **A3** | `BKL-9XQ2` policy shape | Follows the B1 spike; listed here so it is not mistaken for a build task. |
 
 ### B — Discovery: `BKL-9XQ2` (the long pole)
