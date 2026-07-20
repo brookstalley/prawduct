@@ -586,10 +586,14 @@ tests/
   has not cut over, so upgrade-before-migrate is a loud signal, never a silent zeroing.
 - **Pre-sign-off conditions (folded 2026-07-17 — conditional design sign-off).** Verified-in-code
   scenario traces of the CC5/G2/rate seams before the irreversible migration found no design flaw but
-  four build-completeness gaps; **three** are **must-fix before this slice is marked done** (not optional
-  follow-ups), because they sit inside the acceptance criteria above. *(Two at sign-off; `BKL-6X5D`
-  part (b) joined them 2026-07-20 when owner decision A1 chose `--archive-scope all`, making the
-  unpaced close leg live for this migration rather than hypothetical.)*
+  four build-completeness gaps; **two** are **must-fix before this slice is marked done** (not optional
+  follow-ups), because they sit inside the acceptance criteria above. *(A third — `BKL-6X5D` part (b) —
+  became a ratified **v3.2.0 release** blocker on 2026-07-20 when owner decision A1 chose
+  `--archive-scope all`, making the unpaced close leg live for this migration rather than hypothetical.
+  Whether it must also precede **this slice** is decision 6, builder-proposed and **sign-off owed**; if
+  signed off the count here is three, and if declined it stays two while the release gate holds
+  regardless. The count is deliberately the un-ratified figure — a number that has to move on a
+  decision is that decision asserted in numeric form.)*
   - **BKL-4W7H (must-fix) — ✅ offline code + tests landed 2026-07-17.** The "every `PFX` ID resolving
     as an alias" read-path gap is closed: `core.resolve_ref` wires PFX→canonical alias resolution into
     `get` and `link` (against `--repo`); `migrate._find_by_key` gains a block `id_aliases` fallback
