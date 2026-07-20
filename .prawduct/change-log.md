@@ -104,14 +104,24 @@ archive stretch. Part (a) closes entirely here: both the re-attribution *and* th
 circularity.
 
 **Part (b) is no longer adopter-scale-only.** It is filed as "not gating the dogfood," which held
-while the dogfood was small. Sizing discodon changed that: 383 open + 124 archive items under
-`--archive-scope all` is 507 paced creates (~61 min, past the hourly cap) **plus 124 unpaced
-closes** — `pacer.before_create()` is annotated "the only paced call," so the archive stretch runs
-create-then-close with only half of it metered, which is precisely the >900 pts/min window part (b)
-describes. Its current mitigation is *incidental* `gh`-subprocess latency, explicitly "not
-designed-in." Under `--archive-scope open` there is no archive stretch and the gap stays theoretical.
-Re-scoped accordingly: **gating for any `all`-scope migration at discodon's size**, still deferred
-for `open`.
+while the dogfood was small. The escalation rests on a **structural** property, not a headcount:
+under `--archive-scope all` each archived item costs a create *and* a close, and
+`pacer.before_create()` is annotated "the only paced call" — so the archive stretch runs
+create-then-close with **half of it unmetered**, which is precisely the >900 pts/min window part (b)
+describes. Its only mitigation today is *incidental* `gh`-subprocess latency, explicitly "not
+designed-in" and forfeited by the raw-HTTP fast-path (D2/W1). Under `--archive-scope open` there is
+no archive stretch at all and the gap stays theoretical. Re-scoped accordingly: **gating for any
+`all`-scope migration at portfolio scale**, still deferred for `open`.
+
+*An earlier draft of this paragraph justified the escalation with "383 open + 124 archive = 507
+creates, past the 500/hr cap" — a 1.4% margin resting on a number I had not verified was stable. The
+PR reviewer challenged it against the 317 figure the documents this changeset edits still carry.
+Checking, discodon's four checkouts report **384 / 389 / 349 / 319** open, and the canonical one read
+383 then 384 twenty minutes apart. The count is not a fact; it is a live instance of the
+stale-views-across-checkouts pain (#2) this whole project exists to kill, and it cannot carry a
+gating decision. The argument above needs no count — only that the unmetered stretch exists —
+which is true at 317 and at 389. Recorded rather than silently re-numbered, because the failure was
+using an unverified figure as load-bearing evidence, not picking the wrong one.*
 
 ## 2026-07-19: SessionStart banner names which plugin code is loaded (BRF-7Q4M)
 
