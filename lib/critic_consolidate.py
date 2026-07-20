@@ -101,8 +101,17 @@ COORDINATOR_FILE_THRESHOLD = 5
 # therefore states the dispatch age and whether silence is still the normal
 # in-flight state; past this grace window it flips to advising critic-end +
 # re-dispatch, since indefinite waiting on genuinely dead reviewers is the
-# opposite failure. Window sized to the review-cycle guidance (final/
-# cumulative typically 4-10 minutes) plus slack for queueing.
+# opposite failure.
+#
+# Sizing, stated honestly: the guide's nominal range is 4-10 minutes, but the
+# 2026-07-20 incident measured reviewers running 5-15. So 15 is the observed
+# CEILING with no slack above it, not the "nominal plus slack" it may look
+# like — a run at the top of the observed range can tip past the window and be
+# advised to abandon while alive. That bias is deliberate: the cost of a late
+# abandon-and-re-dispatch is one duplicate review, while the cost of waiting
+# past a genuine death is a session that never finishes. Widen it if real runs
+# start landing past 15, and prefer widening over telling the caller to wait
+# forever.
 _INFLIGHT_GRACE_MINUTES = 15
 
 # A session waiting on in-flight reviewers issues no model requests, so its
@@ -126,6 +135,22 @@ _CACHE_WARM_DIRECTIVE = (
 )
 
 _REVIEW_ID_TS = re.compile(r"^rev-(\d{8}T\d{6}Z)-")
+
+
+def mint_review_id() -> str:
+    """The review id, minted in ONE place so the liveness verdict can read the
+    dispatch time back out of it.
+
+    The embedded stamp is not decoration: :func:`dispatch_age_minutes` parses it
+    to decide whether missing partials mean "still in flight" or "reviewers
+    died". A format change here that :data:`_REVIEW_ID_TS` cannot parse does not
+    fail loudly — age silently becomes ``None``, the past-grace branch stops
+    being reachable, and the no-op advises waiting forever on dead reviewers.
+    Producer and consumer therefore stay adjacent, with a round-trip test.
+    """
+    return "rev-{}-{}".format(
+        datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ"), uuid.uuid4().hex[:8]
+    )
 
 _RESOLUTION_DISPOSITIONS = frozenset({"fixed", "waived"})
 
@@ -386,9 +411,7 @@ def begin_review(
         files_reviewed = list(files_changed)
 
     roster, roster_chosen_by = _derive_roster(mode_token, files_changed)
-    review_id = "rev-{}-{}".format(
-        datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ"), uuid.uuid4().hex[:8]
-    )
+    review_id = mint_review_id()
 
     manifest = {
         "id": review_id,

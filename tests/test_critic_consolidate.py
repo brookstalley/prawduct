@@ -590,6 +590,29 @@ class TestIncompleteNoopLiveness:
             assert f"every {cc._CACHE_WARM_INTERVAL_MINUTES} minutes" in msg
             assert "idling silently" in msg
 
+    def test_begin_review_id_is_parseable_by_dispatch_age(self):
+        # The producer/consumer contract, exercised end-to-end rather than
+        # against a hand-built id: begin_review mints the id, dispatch_age_minutes
+        # parses it. If the format drifts, parsing returns None, the
+        # past-grace branch becomes UNREACHABLE, and the no-op tells a session to
+        # wait forever on dead reviewers — the exact failure this message exists
+        # to prevent, and one no hand-written fixture can catch.
+        rid = cc.mint_review_id()
+        assert cc._REVIEW_ID_TS.match(rid), f"minted id {rid!r} is unparseable"
+        age = cc.dispatch_age_minutes(rid)
+        assert age is not None and age < 1.0
+
+    def test_review_cycle_prose_matches_the_code_cadence(self):
+        # The cadence is interpolated into the CLI message but written as a bare
+        # literal in the skill prose. CRT-8Q6R expects that number to change, so
+        # bind them: a bump that updates only the constant would leave the
+        # operator-facing guide quietly contradicting the tool.
+        prose = (ROOT / "skills" / "critic" / "review-cycle.md").read_text()
+        assert f"every {cc._CACHE_WARM_INTERVAL_MINUTES} minutes" in prose, (
+            "review-cycle.md's cadence no longer matches "
+            f"_CACHE_WARM_INTERVAL_MINUTES ({cc._CACHE_WARM_INTERVAL_MINUTES})"
+        )
+
     def test_stale_dispatch_omits_the_readout_directive(self):
         # Past the grace window the advice is to STOP waiting (critic-end +
         # re-dispatch). Telling the caller to keep narrating there would warm

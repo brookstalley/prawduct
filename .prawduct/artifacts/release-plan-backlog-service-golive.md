@@ -44,9 +44,25 @@ is that one discovery spike gates the end of the chain while everything else run
 | 15 | `regen-views --check` → `regen-views` | 14 | ☐ fail-closed pre-flight |
 | 16 | Tag `v3.2.0`, push, confirm the version-delta banner | 15 | ☐ |
 | 17 | VRF-002 · VRF-003 | promotion | ☐ **post-release by construction** |
+| 18 | `BKL-2Q7F` — the scrub runbook never selects/creates/provisions the target repo | — | ☐ **blocker** |
+| 19 | `BKL-8V3D` — `adapter-mode.md:96` promises an `--apply`/dry-run contract that does not exist | — | ☐ **blocker** |
+| 20 | `BKL-5N9W` — narrow the wildcard `Bash(prawduct-hook backlog *)` grant to the ops the skill drives | — | ☐ **blocker** |
+| 21 | `BKL-6J2X` — hold the migration-required advisory until the path is proven | 18, 19, 20 | ☐ **blocker** |
 
 Nothing above is optional-by-default: item 8 **was** conditional on A1 and is now firm, and item 17
 is deliberately *after* the tag. Everything else lands before v3.2.0 ships.
+
+**Items 18–21 were found on 2026-07-20 while scoping the v3.1.1 hotfix** (`release-plan-v3.1.1-hotfix.md`),
+and they are why that release ships from `v3.1.0`'s tree rather than from `develop`. Together they
+form one chain, which is the reason they gate rather than merely annoy: the `warn` advisory fires for
+**every** un-migrated repo and routes to `/prawduct:backlog scrub`; `skills/backlog/SKILL.md` is
+`disable-model-invocation: false` with a wildcard adapter grant; the runbook it reaches never binds
+`--repo`; and the one safety property the instructions cite — a dry-run — **does not exist in
+`lib/backlog/`**. An agent can walk that path unprompted and write 100–250 real issues into a real
+repo, believing a dry-run guarded it. `BKL-8V3D` is the same defect class as the `--archive-scope
+open` backup claim (prose asserting a safety property the code does not implement); a guard test
+pinning instruction-surface flag claims to flags the CLI actually parses would close the class rather
+than the instance.
 
 **A1 resolved 2026-07-20 — `all`** (recorded with rationale in
 `artifacts/migration-scrub-decisions.md` decision 5). What it settles beyond item 8: **item 5 is now

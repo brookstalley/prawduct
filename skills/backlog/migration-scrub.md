@@ -106,13 +106,24 @@ issues, and name the tradeoff:
      which dumps the migrated repo and therefore never contains what this lever
      excluded. So those items are preserved as **git history, not as live backlog**:
      after cutover the skill treats the source file as frozen history and stops
-     reading it, so post-cutover **`list` and add-time dedup silently omit them** —
-     a duplicate of a previously-dropped item can be re-filed with no signal. (State
-     it as `list`, not `find`: full-text `find` is W2-deferred for *every* item
-     post-cutover, so it is not what this lever costs.)
+     reading it, so the skipped set is **outside the tracker entirely** — no adapter
+     op, at any flag, can reach it. What is *not* `open`-specific: archived items are
+     absent from a default `list` and from add-time dedup under **either** scope (see
+     `all` below), so a duplicate of a previously-dropped item can be re-filed with no
+     signal either way. The lever decides whether the record is *recoverable through
+     the tracker*, not whether dedup sees it. (State it as `list`, not `find`:
+     full-text `find` is W2-deferred for *every* item post-cutover, so it is not what
+     this lever costs.)
    - **`all`** — import the full archive as closed issues (every disposed/shipped
-     item becomes a closed issue). Complete history *in the tracker*, so post-cutover
-     `list` and dedup see the whole archive. **Its cost, stated
+     item becomes a closed issue). Complete history *in the tracker* — but
+     **reachable, not visible by default**: `list` defaults to `state=open`
+     (`lib/backlog/query.py`), and so does the dedup-on-create check `adapter-mode.md`
+     documents (`list --area=<area> --json`, no state filter). Seeing the archive takes
+     an explicit `--state closed` or `--state all`. So the differential against `open`
+     is **reachability, not default visibility**: `all` puts the archive one flag away
+     inside the tracker; `open` leaves it outside the tracker entirely, in frozen
+     markdown no adapter op reads. Neither scope makes archived items show up in a
+     default `list` or block a duplicate at add time. **Its cost, stated
      symmetrically:** an archived item is **two** writes, not one — a create, then a
      status reconcile to closed (the create path has no initial-state field). Only
      the create is paced (`Pacer.before_create` is the sole paced call), so a large
