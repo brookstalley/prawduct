@@ -28,7 +28,7 @@ is that one discovery spike gates the end of the chain while everything else run
 | # | must land | blocked by | state |
 |---|---|---|---|
 | 1 | `--archive-scope` decision for prawduct's own migration (A1) | — | ☑ **decided 2026-07-20: `all`** |
-| 2 | Merge PR #134 (`skills-cutover-awareness`) — change-log conflict expected | — | ☐ |
+| 2 | Merge PR #134 (`skills-cutover-awareness`) — change-log conflict expected | — | ☑ **merged 2026-07-20** (`43dda9c`) |
 | 3 | VRF-005 · VRF-007 · VRF-008 drained against `samsung-frame-art-loader` | — | ☐ unblocked today |
 | 4 | **`BKL-9XQ2` discovery spike** — consent (1a/1b), evidence+PII, label taxonomy | — | ☐ **critical path** |
 | 5 | SPIKE-S2 live dry-run on a throwaway repo (C1) | ~~1~~ (met) | ☐ run it with `--archive-scope all` |
@@ -158,7 +158,11 @@ un-migrated portfolio repos (MG3/GV7).
 
 ### E — Release mechanics
 
-1. Merge **PR #134** (`skills-cutover-awareness`) — expect a change-log conflict with the merged #135.
+1. ~~Merge **PR #134**~~ — **done 2026-07-20** (`43dda9c`). The predicted conflict landed in both
+   `change-log.md` and `backlog.md`, and was purely additive in each (both sides prepended entries at
+   the head; neither modified the other's). Resolved by keeping both sides and verifying the result
+   was the exact set union — the check worth repeating on the next such merge, since "kept both" is
+   itself a coverage claim.
 2. Bump `VERSION` + `.claude-plugin/plugin.json` (A2).
 3. Flip **every** unreleased change-log entry to `status=shipped` + add `release=vX.Y.Z`. v2.0.14
    shipped 8 of 10 entries by skipping this (`REL-2N8K`) — enumerate, don't sample.
@@ -179,7 +183,8 @@ un-migrated portfolio repos (MG3/GV7).
 The critical path is **B1 → C6 → release**, and B1b is the only genuinely unknown-duration item.
 Everything else parallelizes around it.
 
-1. **Done — A1 + A2 both decided 2026-07-20** (`all`; v3.2.0). Still now, in parallel: D1 (three live verifications
+1. **Done — A1 + A2 both decided 2026-07-20** (`all`; v3.2.0); **E1 done** — PR #134 merged (`43dda9c`),
+   its predicted change-log conflict resolved as additive bookkeeping. Still now, in parallel: D1 (three live verifications
    against samsung — unblocked today, and they de-risk C4 by exercising the adapter end-to-end
    before a real migration depends on it). E1 (merge #134).
 2. **Start immediately, longest pole:** B1 discovery spike. B1b first — if the evidence/PII answer is

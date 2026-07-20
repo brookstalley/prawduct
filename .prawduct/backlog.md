@@ -2051,13 +2051,23 @@
   Confirm reproduction before sizing the fix. Kept separate from TST-4P8H per the distinctness
   argument above (state leakage vs. subprocess/timeout contention); cross-linked, not merged.
 
-- **[BKL-4Z7M]** Under `--archive-scope open`, a migrated repo's skipped archive stays out of find/list until someone re-runs
-  `effort: M · impact: M · area: backlog-service · source: user · added: 2026-07-20 · status: open · stage: design · related: BKL-6X5D, BKL-3W6K, BKL-6M4T · refs: skills/backlog/SKILL.md:17 (frozen-history routing), skills/backlog/migration-scrub.md (step 2c decision + step 3 tradeoff note), lib/backlog/migrate.py:466 (apply_archive_scope), .prawduct/artifacts/migration-scrub-decisions.md:20 (A1 — prawduct chose `all`), documentation/backlog-service-prd.md:218 · reviewed: 2026-07-20`
+- **[BKL-4Z7M]** Under `--archive-scope open`, a migrated repo's skipped archive stays out of post-cutover `list` and add-time dedup until someone re-runs
+  `effort: M · impact: M · area: backlog-service · source: user · added: 2026-07-20 · status: open · stage: design · related: BKL-6X5D, BKL-3W6K, BKL-6M4T · refs: skills/backlog/SKILL.md:17 (frozen-history routing), skills/backlog/SKILL.md:81 (`find` W2-deferred post-cutover), skills/backlog/adapter-mode.md:145 (adapter's `find` NOTE → `list` filters), skills/backlog/migration-scrub.md (step 2c decision + step 3 tradeoff note), lib/backlog/migrate.py:466 (apply_archive_scope), .prawduct/artifacts/migration-scrub-decisions.md:20 (A1 — prawduct chose `all`), documentation/backlog-service-prd.md:218 · reviewed: 2026-07-20`
 
   After cutover (`backlog_service_repo` set), `skills/backlog/SKILL.md` treats `.prawduct/backlog.md`
   as frozen history and forbids reading it for live state. Items excluded by `--archive-scope open`
-  are therefore not on the service — they are outside `find`/`list`, so precedent lookup and add-time
-  dedup silently omit the whole archive.
+  are therefore not on the service at all. The archive-scope-specific cost lands on the operations
+  that **do** work post-cutover: `list` (with `--area=`/`--status=`/`--stage=`/`--kind=` filters)
+  silently omits the un-backfilled archive, and add-time dedup — which scans the live backlog —
+  misses it too. So a duplicate of a previously-*dropped* item can be re-filed with no signal that
+  the project already considered and rejected it.
+
+  **Not a `find` claim.** PR #134 established that post-cutover full-text `find` is W2-deferred for
+  *every* item, archived or not — the adapter returns a `NOTE:` pointing at `list` filters
+  (`skills/backlog/adapter-mode.md:145`, `skills/backlog/SKILL.md:81`). Archive scope is not what
+  puts items outside `find`; `find` simply does not work on the Issues backend yet. The two gaps are
+  **additive, not overlapping**: when W2 search lands it will search the live backlog, which still
+  won't contain the skipped archive — so W2 **inherits** this gap rather than fixing it.
 
   **This is recoverable, not data loss (verified 2026-07-20).** `open` *defers* the archive rather
   than discarding it: a repo migrated with `--archive-scope open` can be re-run later with
@@ -2068,9 +2078,9 @@
   `tests/test_backlog_migrate.py::TestArchiveScope::test_open_then_all_backfills_the_archive_without_duplicating`.
   So the severity here is **discoverability/latency**, not permanence.
 
-  The item is still real: post-cutover `find`/`list` silently omit the archive until someone re-runs,
-  and **nothing surfaces that state to the user** — a repo can sit indefinitely with an
-  un-backfilled archive and no signal that a one-command backfill is available.
+  The item is still real: post-cutover `list` and add-time dedup silently omit the archive until
+  someone re-runs, and **nothing surfaces that state to the user** — a repo can sit indefinitely
+  with an un-backfilled archive and no signal that a one-command backfill is available.
 
   prawduct itself is unaffected (A1 decided `all` on 2026-07-20), so this is **adopter-facing**.
   Discovered 2026-07-20 while correcting ten claim sites across seven files that wrongly claimed
