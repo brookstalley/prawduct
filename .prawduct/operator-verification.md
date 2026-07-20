@@ -290,6 +290,25 @@ handoff survives clean multi-reviewer review and still fails live.
 7. **Pre-cutover PR path unchanged:** with `backlog_service_repo` unset, R-1/R-2 run as before —
    confirm R-2 still flags a deliberately-planted `closes:` for an item left `status: open`.
 
-Drains when a cut-over repo runs a `final`/`cumulative` review **and** a `/prawduct:pr create` on
-this plugin build. The Critic run alone does not drain it: it never dispatches the PR reviewer, so
-steps 6-7 would stay unexercised while the entry read as verified.
+8. **The janitor (Chunk 03).** `/prawduct:janitor` in the same cut-over repo → the findings report
+   contains the Backlog Health block as a single "unavailable" line — **present, not omitted**. An
+   omitted section is the failure this replaces: it reads as a clean bill of health. Confirm none of
+   the seven checks ran, in particular that no finding proposes `/prawduct:backlog migrate` or an
+   archive split (checks 6 and 7 — advice an operator could act on to no effect post-cutover), and
+   that Step 1's overlap context came from `/prawduct:backlog list` rather than the frozen file.
+9. **Pre-cutover janitor unchanged:** with `backlog_service_repo` unset, all seven Backlog Health
+   checks run and report as before.
+10. **The emitted NOTEs name no internal id (Chunk 04).** Across steps 2, 6, and 8, confirm each
+    "unavailable" NOTE ends with the plain-language resolution ("they return when the backlog
+    read-through cache lands") and cites no `GV8`/`W1`-style identifier — the operator reading it has
+    no register to resolve one against.
+11. **The backlog skill's markdown-only rules stay quiet (Chunk 04).** `/prawduct:backlog find <q>`
+    → the deferred-search NOTE, naming no internal milestone id; and no surface proposes an archive
+    split. Confirm the skill never opened `.prawduct/backlog.md` for live state.
+
+Drains when a cut-over repo runs a `final`/`cumulative` review **and** a `/prawduct:pr create` **and**
+a `/prawduct:janitor` on this plugin build. Each of the three dispatches a different reader and none
+substitutes for another: a Critic run never dispatches the PR reviewer (steps 6-7), and neither one
+runs the janitor (steps 8-9) — draining on a subset would leave the unexercised readers reading as
+verified. This is the plan's Verification Strategy stated as a drain condition rather than as prose
+alongside one.

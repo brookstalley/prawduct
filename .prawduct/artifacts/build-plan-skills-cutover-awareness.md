@@ -228,6 +228,31 @@ describing it is updated, and removing a mechanism requires removing its name to
   the rule, so the next reader copies whichever it happens to open. Rule once, apply to both, and
   fold into the same pin as the bullet above: the two copies-drift risks are one job.
 
+**Rulings, recorded (build).** Both adjudications became `## Direction` norms rather than a decision
+buried in a leaf file — "nothing owns the rule" was the defect in each case, and only a norm with an
+enforcement row has an owner.
+
+1. **Internal ids → `observability-strategy.md`: emitted text names none.** Ruled for the test's
+   reasoning (an operator downstream cannot resolve `GV8`), against the reviewer-finding side. The
+   NOTE now ends "they return when the backlog read-through cache lands" — the id replaced by what it
+   stood for, so dropping it costs no information. Born `Status: in-transition` tracking **OBS-7M4D**:
+   the birth sweep found seven further emitted sites outside this changeset, and a norm that claims a
+   clean inventory it does not have is worse than one that names its debt. The sweep heuristic
+   (id-shaped tokens in string literals) is not exhaustive — prefixes are open-ended — so the durable
+   enforcement is recorded as the Critic's judgment, not a regex.
+2. **Direct reads → `data-model.md`: gated on `backlog_service_repo`, not banned.** A blanket ban was
+   the tidier rule and was rejected: it would retire the janitor's full-body overlap read with no live
+   replacement, which is the bespoke per-reader projection the owner decision already rejected. The
+   risk being guarded is reading *frozen* history as live, and that risk exists only on one side of
+   the gate — so the gate is the rule. `skills/pr/SKILL.md`'s absolute wording was the copy that
+   diverged and is corrected; both readers now state the gate inline per Chunk 01's contract.
+
+**Also fixed, unplanned — the drain condition didn't cover the janitor.** The Verification Strategy
+below requires all three live runs, but VRF-008 drained on a Critic run plus `/prawduct:pr create`
+only, and Chunk 03 never added a janitor step. That is the Chunk 02 finding recurring one chunk
+later: *the artifact was verified, the loop that drains it was not.* VRF-008 gains steps 8-11 and a
+three-way drain condition.
+
 **Done when:** the sweep is complete and re-greppable; suite green; commit; then
 `/prawduct:critic cumulative` **once** — this chunk's review is the plan's single cumulative pass and
 the `/prawduct:pr create` gate.

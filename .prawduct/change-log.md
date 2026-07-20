@@ -3,6 +3,45 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-07-20: Two contradicting conventions adjudicated into norms; the cutover sweep becomes re-greppable (skills-cutover-awareness Chunk 04)
+
+<!-- prawduct: type=feature scope=skills-cutover-awareness chunks=04 -->
+
+The residue the inventory found, plus the two conventions Chunks 02–03 left contradicting with
+nothing deciding between them. Both are now `## Direction` norms with owners, because "nothing owns
+the rule" is why the next reader copies whichever file it happens to open.
+
+**No prawduct-internal ids in operator-emitted text** (`observability-strategy.md`). The dormancy
+NOTE all three readers copy ended "(GV8; restored with the read-through cache)" while a test asserted
+those same ids must *not* appear in the advisory's `recommended_action` — the same audience, the same
+unresolvable pointer, opposite rules. Ruled for the test's reasoning and applied it everywhere: the
+NOTE now ends "they return when the backlog read-through cache lands," which is what the id stood
+for. The sweep at birth found four in-scope sites (the three NOTE copies plus `adapter-mode.md`'s
+emitted `find` NOTE) and **seven more outside this changeset**, so the norm is born
+`Status: in-transition` tracking **OBS-7M4D** rather than claiming a clean inventory. The heuristic
+(id-shaped tokens in string literals) is not exhaustive — prefixes are open-ended — so the durable
+enforcement is the reviewer's judgment, recorded as such.
+
+**`backlog_service_repo` selects the authoritative store; direct reads are gated, not banned**
+(`data-model.md`). `skills/pr/SKILL.md` said *never* read the file directly; `skills/janitor/SKILL.md`
+explicitly permitted it pre-cutover. A blanket ban was considered and rejected — it would retire the
+janitor's full-body overlap read with no live replacement, which is the bespoke per-reader projection
+the read-through cache exists to avoid. The PR copy is corrected to the gate; both readers state it
+inline (Chunk 01's contract: a reader loading one file gets the whole rule).
+
+- `skills/backlog/SKILL.md` — owns the direct-read rule, including the rejected alternative;
+  Archive split (Q2) and `find` are scoped to the markdown backend rather than reading as
+  unconditional from the shared preamble.
+- `lib/upstream_probes.py` — the triage advisory names *the backlog*, not `.prawduct/backlog.md`,
+  so it stops misdescribing the destination the moment a report-receiving repo cuts over.
+- `tests/test_cutover_prose_coherence.py` (new) — pins the three NOTE copies to one invariant tail,
+  pins the gate in every reader, and makes the sweep **re-greppable**: a skill naming `backlog.md`
+  must either mention `backlog_service_repo` or sit on an allowlist with a stated reason, and a
+  `lib/` module pathing to the file must carry a cutover guard. The original sweep called itself
+  exhaustive and had missed `skills/pr/SKILL.md`; this is what catches the next miss.
+
+**Classification:** governance
+
 ## 2026-07-20: Janitor Backlog Health states dormancy; the overlap read is repointed (skills-cutover-awareness Chunk 03)
 
 <!-- prawduct: type=feature scope=skills-cutover-awareness chunks=03 -->

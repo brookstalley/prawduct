@@ -121,7 +121,7 @@ Scan your findings against active learnings. If a change reintroduces a pattern 
 `.prawduct/project-state.yaml`. If it is **set**, this project's live backlog is GitHub Issues and
 `.prawduct/backlog.md` is frozen history — **skip this walk and all of C-B1–C-B4**, and emit one
 NOTE: "Backlog reconciliation unavailable — this project is on the GitHub Issues backend and these
-checks have no Issues-mode path yet (GV8; restored with the read-through cache)." Do **not** open
+checks have no Issues-mode path yet; they return when the backlog read-through cache lands." Do **not** open
 `.prawduct/backlog.md` for live state in that mode: every item archived at cutover still parses as
 open, so the walk would emit confident findings about items closed months ago while missing every
 live Issue. A stated gap is recoverable; a confident wrong answer is not.

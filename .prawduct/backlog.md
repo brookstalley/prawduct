@@ -7,6 +7,25 @@
 
 ## Open
 
+- **[OBS-7M4D]** Purge prawduct-internal ids from operator-emitted text (hook stdout/stderr, CLI usage, advisory evidence)
+  `effort: S · impact: M · area: observability · source: builder · added: 2026-07-19 · status: open · stage: ready · related: GOV-3P8K · refs: .prawduct/artifacts/observability-strategy.md (§ Direction — the norm), docs/norms.md (§ Exceptions expire / in-transition), bin/prawduct-hook:590, lib/backlog/cli.py:71,73,634, lib/backlog/migrate.py:540, lib/critic_consolidate.py:500, lib/backlog_probes.py:320`
+
+  Tracking item for the `## Direction` norm born in `observability-strategy.md` (skills-cutover-awareness Chunk 04): *text emitted into a governed product names no prawduct-internal identifier*. The norm is born `Status: in-transition` because a sweep at birth found sites beyond the changeset's scope.
+
+  Fixed at birth (in scope for that chunk):
+  - the three dormancy NOTE copies (`skills/critic/review-cycle.md`, `skills/pr/review-protocol.md`, `skills/janitor/SKILL.md`) — dropped `GV8`
+  - `skills/backlog/adapter-mode.md` find NOTE — dropped `W2`
+
+  Remaining inventory (this item):
+  - `bin/prawduct-hook:590` — `clear` refusal message names `CRT-3X9D`
+  - `lib/backlog/cli.py:71` — usage line names `GV6`
+  - `lib/backlog/cli.py:73` — usage line names `MG6`
+  - `lib/backlog/cli.py:634` and `lib/backlog/migrate.py:540` — restructure-preview message names `MG2` (same string, two copies)
+  - `lib/critic_consolidate.py:500` — validation error names `R7`
+  - `lib/backlog_probes.py:320` — advisory evidence names `C-B1`-`C-B4` (debatable: these are check labels a reader sees in Critic output, not requirement ids — rule on it rather than assuming)
+
+  Each fix is replacing the id with the plain-language reason it stood for; the id stays in the adjacent comment/docstring, which the norm permits. The sweep heuristic (id-shaped tokens inside string literals) is not exhaustive — prefixes are open-ended — so closing this item means running the sweep AND recording that ongoing enforcement is the Critic's judgment, not a regex.
+
 - **[JNT-4R2M]** `skills/janitor/SKILL.md` instructs `prawduct-hook review-stats` but its `allowed-tools` carries no `prawduct-hook` grant — the call is unrunnable in a plugin-governed product repo
   `effort: S · impact: M · area: janitor · kind: bug · source: critic · added: 2026-07-19 · reviewed: 2026-07-19 · status: open · stage: ready · related: ONB-3F9P, JNT-5K3W · refs: skills/janitor/SKILL.md:5 (allowed-tools), skills/janitor/SKILL.md:182 (the review-stats instruction), skills/backlog/SKILL.md:7 (the dual-form grant precedent), docs/governance-telemetry.md`
 

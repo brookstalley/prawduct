@@ -649,10 +649,18 @@ class TestPrReviewerScoping:
         `/prawduct:backlog list` has an adapter path on both backends, so the
         step still works post-cutover. Pinned because `skills/pr/SKILL.md` is
         the one PR-path reader the original cutover sweep missed entirely.
+
+        The step originally banned direct reads of `.prawduct/backlog.md`
+        outright, which contradicted `skills/janitor/SKILL.md` permitting one
+        pre-cutover. `data-model.md` § Direction adjudicated it: the rule is a
+        backend gate, not a ban, so this step asserts the gate — and separately
+        that `list` is sufficient *here*, which is why the step uses it.
         """
         content = self.skill
         assert "audit the backlog for items this branch resolves" in content
-        assert "never read `.prawduct/backlog.md` directly" in content
+        assert "no reason to open `.prawduct/backlog.md` directly here" in content
+        assert "check `backlog_service_repo` first" in content
+        assert "only** when that scalar is unset" in content
 
     def test_critic_cross_checks_named_as_owner(self):
         """B (CRT-5T8N): review-cycle.md names final/cumulative as the OWNER of

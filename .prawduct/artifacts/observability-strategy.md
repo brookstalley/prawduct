@@ -43,6 +43,10 @@ done its job.
 - **The governance ledger has a single writer (the `ledger-append` helper); agents never hand-author it.**
   Why: the derived metrics `review-stats` reports are only trustworthy if the event stream has one disciplined writer — a hand-authored ledger line is an unvalidated fact in the observability path.
   Status: steady-state.
+- **Text emitted into a governed product names no prawduct-internal identifier.** Advisory fields, reviewer findings, and hook stdout/stderr carry the plain-language reason; requirement, chunk, and backlog ids stay on the non-emitted side — comments, docstrings, tests, build plans, learnings, and the instruction prose a skill reads but never speaks.
+  Why: an operator in a downstream product cannot resolve `GV8` or `MG6` — the id displaces the sentence that would have made the message actionable and reads as a reference to a defect tracker they have no access to. The trace still exists for prawduct developers one line away, so nothing is lost by moving it there.
+  Status: in-transition — tracking item **OBS-7M4D** (seven emitted sites in `bin/prawduct-hook`, `lib/backlog/`, `lib/critic_consolidate.py`, `lib/backlog_probes.py` still carry ids). Interim rule: emitted text a changeset **writes or edits** complies; untouched sites wait for OBS-7M4D.
+  Retroactivity: migrate — swept at birth with an id-shaped-token heuristic over string literals and skill prose. Four sites were in the birthing changeset and were fixed there (the three dormancy NOTE copies, `skills/backlog/adapter-mode.md`'s `find` NOTE); the remaining seven are sized into OBS-7M4D. The heuristic is **not** exhaustive — id prefixes are open-ended — so the durable enforcement is the reviewer's judgment, not a regex.
 
 ## Architecture
 

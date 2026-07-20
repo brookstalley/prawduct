@@ -142,7 +142,7 @@ as buildable). `--claim` soft-claims the top pick.
 
 No adapter search op exists yet (cache-served `search` is W2), so these degrade — do **not**
 fabricate a search:
-- **find `<query>`** → a `NOTE:` — *"full-text search lands in W2; meanwhile filter with `list
+- **find `<query>`** → a `NOTE:` — *"full-text search is not available on the Issues backend yet; meanwhile filter with `list
   --area=`/`--status=`/`--stage=`/`--kind=`, or use GitHub's issue search in the browser."*
 - **dedup** → the duplicate-scan needs search (W2) → same `NOTE:`. `merge <source-id> --into
   <target-id>` still works when you already know both ids (folds A→B, redirect-before-close).
