@@ -22,8 +22,9 @@ the first `release=v3.1.0` tag gives 17 — and silently drops
 `2026-07-14: Stale remote-base diagnostics`, which sits *below* the boundary and is genuinely
 unreleased (`lib/stale_base_probes.py` is absent at `v3.1.0`). Position is not the field: an entry
 lands wherever it merged, not above the last release. Counting by *field* instead (no `release=`
-tag) over-corrects to 57, sweeping in pre-2026-05 entries that shipped before the tag convention
-existed. **Neither count is trustworthy on its own.** The sound test is per-candidate and cheap:
+tag) over-corrects to 57, sweeping in entries that shipped before the tag convention existed —
+mostly 2026-05 (25), plus 2026-04 (10) and 2026-03 (4), so "old" here means pre-convention, not
+pre-May. **Neither count is trustworthy on its own.** The sound test is per-candidate and cheap:
 an entry is release-pending iff it carries no `release=` tag **and** its code is absent from the
 `v3.1.0` tree. Run that test; do not carry either number forward as a constant.
 
@@ -39,8 +40,9 @@ every consumer:
 2. `skills/backlog/SKILL.md` sets `disable-model-invocation: false` — a model may route there
    unprompted.
 3. Its `scrub` section points at `migration-scrub.md`, which **never establishes the target repo** —
-   `--repo <owner/repo>` appears as a placeholder in six steps and `provision` (which installs the
-   label taxonomy) appears in no skill file at all.
+   `--repo <owner/repo>` appears as an unbound placeholder in six commands across four steps
+   (`export` 0, `list` 1, `import`/`merge`/`status` 3, `counts` 4) and `provision` (which installs
+   the label taxonomy) appears in no skill file at all.
 4. `allowed-tools` grants `Bash(prawduct-hook backlog *)` — a wildcard, and this skill's first-ever
    Bash grant. `--repo` is shape-validated only, with no owner constraint.
 5. `adapter-mode.md:96` tells the model it is protected by "the adapter's own `--apply`/dry-run and

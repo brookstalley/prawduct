@@ -52,6 +52,36 @@ The claim-shape is the tripwire, not the topic: "this test now catches the class
 
 **Instance 8 (2026-07-20) sharpens this into something mechanically detectable — the check can be *performed* and still be worthless.** Correcting a false claim across the repo, I ran the grep, counted the hits, and told the user "seven surfaces." The pipeline ended in `| head -20`, so real hits had been truncated away; a wider re-run found more and I said "nine." The enumerated truth was **ten claim sites across seven files** — so the first number was wrong, and so was the correction, which is the part worth keeping: *this entry originally asserted "It was nine," and a Critic pass caught the durable learning about miscounting carrying a wrong count.* A number read off a truncated search is not a count — it is a check-shaped artifact that reads as diligence in the transcript, and is therefore *more* convincing than an unchecked guess would have been. The tell is now syntactic rather than introspective: **if the pipeline that establishes completeness contains `head`, `tail`, `-m`, or any other cap, its output must not be stated as a total.** Re-run it uncapped, with the pattern widened to the claim's actual shape, before writing the number. Corollary from the same session, pointing the other way: before mass-correcting a sentence, check the *siblings* that share its wording — four "recoverable via the MG2 export backup" claims about `restructure` were **true** (the block carries `original_title`/`original_body`, so the post-import export does hold them) while the identically-worded `--archive-scope` ones were false, so a sweep-and-replace would have converted four correct statements into wrong ones. Relates to Honest Confidence (#5), Validate Before Propagating (#15), Retrieval Over Generation (#24), and [[When building from a review/audit artifact, verify each cited gap and fix-instruction against HEAD before planning]].
 
+**Sharpening (2026-07-20, `fix/archive-scope-preservation-claim`, across a run of verify-resolutions
+rounds — count deliberately omitted; corollary (c) says why):
+the error lives in the QUANTIFIER, and that makes it detectable before writing.** Across one branch
+the same shape recurred with the narrow fact correctly verified every time and the written claim
+scoped wider than the check: "there is **no** follow-up commit on **any** of them" (true for two of
+three files — the third had one), "the other ten, **every** one of them migration work" (one was
+not — `stale-remote-base-diagnostics`; the sentence survives verbatim in the hotfix plan and is
+now *true*, because the set it quantifies over was re-derived, which is the point: quantified
+sentences go stale when the set moves under them, not when the words change), "six `--repo`
+placeholders in six **steps**" (six commands across four steps), "**also**
+catches a second minting site" (only one copied in the same literal shape; an f-string passes).
+Each was written inside the correction of the previous one. So the operative rule is not "check
+harder" — it is **verify at the quantifier**: when a sentence contains *no / every / all / only /
+none / also*, the check must enumerate the quantified set, and a per-file claim needs a per-file
+loop, not a combined query that returns one answer. Three corollaries. (a) A number derived
+positionally is not derived from the field: counting change-log entries *above* a release boundary
+structurally cannot see an unreleased entry below it, and one was there — REL-2N8K reproducing
+inside the plan citing REL-2N8K. (b) **An untouched sentence inside an edited paragraph reads as
+freshly vouched-for.** Editing a paragraph re-publishes all of it; re-verify the sentences you did
+not change, because a reviewer — and a later reader — cannot tell which ones you actually looked at.
+(c) **Some quantified sets contain the sentence that counts them, and those counts cannot be
+written truthfully.** This entry first opened "five verify-resolutions rounds," then "twelve —
+eleven reachable, one orphaned," and a re-enumeration minutes later returned thirteen reachable
+plus the orphan, because the review answering the sentence had itself consolidated in between and a
+widened predicate swept in a round the first query's `head_commit` filter had missed. Neither
+number was carelessly derived; both were stale on arrival. The tell is self-reference: **when the
+act of writing the claim changes the set the claim quantifies over, no enumeration converges** —
+say "a run of" and describe the shape, or pin the set to a closed predicate ("the rounds preceding
+this one") that writing cannot move. Counting harder is the wrong response; the set is the problem.
+
 ## When building from a review/audit artifact, verify each cited gap and fix-instruction against HEAD before planning — the artifact's file-state claims aged the moment it was written
 
 ## When a backlog item's `refs:` names several surfaces, treat them as candidates and let the mechanism pick the surface — implement only where the condition can actually manifest (and grep for existing coverage first), because mechanically touching every listed ref adds dead or duplicative surfaces the item never needed. STH-3R8K listed SessionStart `digest.py`/`banner.py` alongside the Stop hook, but SessionStart runs in the launch dir *before* any mid-cycle worktree move, so it provably cannot observe the redirect — the Stop path was the only load-bearing surface, and a SessionStart line would have duplicated BRF-6K2D. Descope the dead surfaces explicitly in the item note (Principle 2 — a deliberate scope call, not a silent drop). Relates to Scope Discipline (#12) and [[When building from a review/audit artifact, verify each cited gap and fix-instruction against HEAD before planning]].
