@@ -49,7 +49,13 @@ The residual product gap — `open` genuinely does strand the archive outside th
 filed as **`BKL-4Z7M`**, adopter-facing and not release-gating now that prawduct takes `all`.
 
 `documentation/backlog-service-{prd,requirements}.md`, `lib/backlog/{migrate,cli}.py`,
-`skills/backlog/migration-scrub.md`, `tests/test_backlog_migrate.py`.
+`skills/backlog/migration-scrub.md`, `tests/test_backlog_migrate.py`,
+`tests/test_backlog_invariants.py`, `.prawduct/artifacts/build-plan-backlog-service.md`.
+
+*(The guard has two halves: `test_backlog_migrate.py` asserts the value actually emitted at runtime,
+and `test_backlog_invariants.py::TestArchiveScopeWarningTruthfulness` scans every such literal in
+`lib/backlog/`, so a third emission site cannot inherit the old wording while a per-site test stays
+green. The second half is the one that caught the `cli.py` site the first half missed.)*
 
 ## 2026-07-20: `--archive-scope` becomes discoverable, and stops being credited with the rate ceiling (BKL-6X5D part a)
 
