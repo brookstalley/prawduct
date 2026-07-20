@@ -115,8 +115,9 @@ the seven markdown-premise advisory probes retire on the same switch — the bac
 `backlog-overdue-grooming`) and the norm trio that judges item liveness from the same file
 (`revisit-due`, `dead-why`, `stalled-transition`);
 a frozen file must not generate nudges, and `external-backlog-detected` keeps its independent
-premise (full retirement table: post-sync-advisory-spec §8.2; shared predicate
-`backlog_probes.post_cutover`). **Unset:** the briefing parses
+premise. Retirement is not silence — `backlog-checks-dormant` starts firing at the same switch,
+naming every backlog check left without an Issues-backend path (full retirement table:
+post-sync-advisory-spec §8.2; shared predicate `backlog_probes.post_cutover`). **Unset:** the briefing parses
 `.prawduct/backlog.md` exactly as pre-service (coexistence — MG3).
 
 ### 2.5 Migration, exit & provisioning

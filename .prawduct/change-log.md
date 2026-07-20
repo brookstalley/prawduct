@@ -3,6 +3,162 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-07-20: Two contradicting conventions adjudicated into norms; the cutover sweep becomes re-greppable (skills-cutover-awareness Chunk 04)
+
+<!-- prawduct: type=feature | scope=skills-cutover-awareness | chunks=04 -->
+
+The residue the inventory found, plus the two conventions Chunks 02–03 left contradicting with
+nothing deciding between them. Both are now `## Direction` norms with owners, because "nothing owns
+the rule" is why the next reader copies whichever file it happens to open.
+
+**No prawduct-internal ids in operator-emitted text** (`observability-strategy.md`). The dormancy
+NOTE all three readers copy ended "(GV8; restored with the read-through cache)" while a test asserted
+those same ids must *not* appear in the advisory's `recommended_action` — the same audience, the same
+unresolvable pointer, opposite rules. Ruled for the test's reasoning and applied it everywhere: the
+NOTE now ends "they return when the backlog read-through cache lands," which is what the id stood
+for. The sweep at birth found five in-scope sites (the three NOTE copies, `adapter-mode.md`'s emitted
+`find` NOTE, and `probe_checks_dormant`'s advisory evidence — moved in-scope by cumulative finding
+R-10, since the changeset that wrote it is the changeset that birthed the norm) and **six more
+outside this changeset**, so the norm is born
+`Status: in-transition` tracking **OBS-7M4D** rather than claiming a clean inventory. The heuristic
+(id-shaped tokens in string literals) is not exhaustive — prefixes are open-ended — so the durable
+enforcement is the reviewer's judgment, recorded as such.
+
+**`backlog_service_repo` selects the authoritative store; direct reads are gated, not banned**
+(`data-model.md`). `skills/pr/SKILL.md` said *never* read the file directly; `skills/janitor/SKILL.md`
+explicitly permitted it pre-cutover. A blanket ban was considered and rejected — it would retire the
+janitor's full-body overlap read with no live replacement, which is the bespoke per-reader projection
+the read-through cache exists to avoid. The PR copy is corrected to the gate; both readers state it
+inline (Chunk 01's contract: a reader loading one file gets the whole rule).
+
+- `skills/backlog/SKILL.md` — owns the direct-read rule, including the rejected alternative;
+  Archive split (Q2) and `find` are scoped to the markdown backend rather than reading as
+  unconditional from the shared preamble.
+- `lib/upstream_probes.py` — the triage advisory names *the backlog*, not `.prawduct/backlog.md`,
+  so it stops misdescribing the destination the moment a report-receiving repo cuts over.
+- `tests/test_cutover_prose_coherence.py` (new) — pins the three NOTE copies to one invariant tail,
+  pins the gate in every reader, and makes the sweep **re-greppable**: a skill naming `backlog.md`
+  must either mention `backlog_service_repo` or sit on an allowlist with a stated reason, and a
+  `lib/` module pathing to the file must carry a cutover guard. The original sweep called itself
+  exhaustive and had missed `skills/pr/SKILL.md`; this is what catches the next miss.
+
+**From the cumulative review** (0 blocking, 9 warnings — all resolved). Three were defects this
+chunk's own charter should have caught: the always-injected `session-digest.md` states the
+`## Archive` workflow unconditionally — and, per the follow-up review, *no* root list would have
+found it, because the digests never name `backlog.md` at all; they are pinned by their own test, and
+the sweep's widening to `methodology/`/`agents/`/`templates/`/`docs/` is future coverage rather than
+the fix (recording that honestly rather than taking the tidier story);
+`.prawduct/cross-cutting-concerns.md` still
+claimed the norm-lifecycle probes as live coverage over a hole this bundle documents; and all four
+`skills-cutover-awareness` change-log tag lines were space-delimited where `lib/views.py` splits on
+`|`, so `scope=`/`chunks=` never parsed and the release would have silently lost the feature's
+attribution. Also: the janitor and PR skills instruct `/prawduct:backlog list` but granted no
+`backlog` subcommand, so post-cutover both stated routes were closed — the grants are added. The
+dormancy enumeration now derives from one `DORMANT_CHECKS` list rather than a hand-maintained string
+plus a hardcoded "7", and `docs/norms.md`'s migrate arm gains the completed-at-birth case that the
+`data-model.md` norm legitimately takes.
+
+**One finding declined, with reason.** The review asked that `skills/critic/review-protocol.md`
+restate the dormancy rule in full rather than summarizing it, on the premise that a reviewer subagent
+may never open `review-cycle.md`. `agents/critic-reviewer.md:30` routes the one reviewer that runs
+Backlog Reconciliation — sustainability — to `review-cycle.md` explicitly, so the gate is not behind
+an unfollowed reference; and `review-protocol.md` sits at deliberately near-zero token headroom, so
+the restatement would have cost ~175 tokens of reviewer context on every review to fix a hypothetical.
+The routing is what's load-bearing, so the routing is now what's pinned.
+
+**Classification:** governance
+
+## 2026-07-20: Janitor Backlog Health states dormancy; the overlap read is repointed (skills-cutover-awareness Chunk 03)
+
+<!-- prawduct: type=feature | scope=skills-cutover-awareness | chunks=03 -->
+
+The janitor's three backlog touchpoints, split by what each actually does with the data — the
+discriminator this chunk had to sharpen before it could be built:
+
+- **Step 2.5 Backlog Health — dormant.** All seven checks are section-shaped (group by `area:`, dedup
+  by overlap, staleness, unstaged `stage:`, `## Promoted` neglect, legacy-item count, `## Archive`
+  growth). Two were worse than stale: check 6 proposed `/prawduct:backlog migrate` and check 7 an
+  archive split, both meaningless once Issues is system of record — advice a reader could act on to
+  no effect. The block now emits one "unavailable" line rather than being omitted; an absent section
+  reads as a clean bill of health, which is the failure being replaced.
+- **Step 1 Orient and Step 7 Close — repointed.** Both go through `/prawduct:backlog list` /
+  `/prawduct:backlog`, which route to whichever backend is live.
+
+**The rule that decides which treatment a reader gets** — Chunk 02's "dormancy is for readers with no
+live path" under-determined this chunk, because `list` *can* approximate two of the seven checks. The
+sharper test: **repoint a reader that consumes the item view as-is; declare dormant a reader that
+derives a verdict from it.** Rebuilding a health check on a list call is the bespoke per-reader
+projection the owner decision rejected, and an approximation labelled as a health check is the
+confident-wrong-answer failure in a new costume.
+
+Two defects the review surfaced, filed rather than folded in: **JNT-4R2M** (janitor instructs
+`prawduct-hook review-stats` with no matching `allowed-tools` grant — invisible in this checkout
+because `Bash(python3 *)` reaches the hook by the self-hosted path) and **BLD-7K3Q**
+(`verify-chunk-refs` derives the current chunk from the first unchecked `## Status` box, so on a
+`views_enabled` branch it grades Chunk 01 all branch long and reports `ok` for files it never read).
+
+## 2026-07-20: The PR path stops resolving `closes:` against frozen markdown (skills-cutover-awareness Chunk 02)
+
+<!-- prawduct: type=feature | scope=skills-cutover-awareness | chunks=02 -->
+
+Chunk 01's dormancy contract, copied to the three backlog readers in the PR path. **R-2 is the
+highest-risk reader in the whole inventory**: it is the sole owner of the
+change-log-says-`closes:`-but-item-is-open consistency check — no Critic layer runs it — so
+post-cutover it resolved every `closes:` against frozen history and either passed or dangled with
+equal confidence. R-1 was written against `## Open`/`## Promoted` sections that do not exist on the
+Issues backend at all.
+
+- `skills/pr/review-protocol.md` — R-1/R-2 gain the same backend precondition the Critic carries:
+  read `backlog_service_repo` (already read at step 1), and when set, skip both and emit one
+  "unavailable" NOTE. R-1's markdown-section wording is now backend-neutral.
+- `skills/pr/SKILL.md` — the prep-while-Critic-runs step is **repointed, not declared dormant**:
+  `/prawduct:backlog list` has an adapter path on both backends, so retiring the step would have
+  been a loss. Dormancy is for readers with no live path, not for every surface naming the file.
+- VRF-008 gains a `/prawduct:pr create` step and no longer drains on a Critic run alone — a Critic
+  run never dispatches the PR reviewer, so it left R-1/R-2 unexercised while reading as coverage.
+
+The chunk was planned `doc-only` and re-typed to `code`: `test_pr_reviewer.py` asserted `"always
+run" in content`, which kept passing on a substring of prose that now says "always run **on this
+backend**" — the opposite of what the test's docstring claimed. A test that keeps passing while its
+stated contract inverts is worse than one that fails, so the assertion was scoped and the new
+precondition pinned alongside it.
+
+## 2026-07-19: Backlog-check dormancy is stated, not silently wrong (skills-cutover-awareness Chunk 01)
+
+<!-- prawduct: type=feature | scope=skills-cutover-awareness | chunks=01 -->
+
+`/prawduct:backlog` routes on `backlog_service_repo`; the other backlog readers do not. The Critic's
+Backlog Reconciliation and C-B1–C-B4 read `.prawduct/backlog.md`, which is frozen history once a
+project cuts over — so every item archived at cutover still parses as open and every live Issue is
+invisible. Three norm-lifecycle probes have the mirror failure: they guard on cutover and return
+nothing. Both shapes are indistinguishable from a clean bill of health, and the norm-probe half means
+norm exceptions stop expiring visibly. Recorded as **GV8** after the owner ruled the loss a side
+effect rather than a decision.
+
+This chunk ships the interim contract only — restoring the checks in Issues mode waits on the W1
+read-through cache, one persisted format, per the owner decision not to mint a bespoke projection now
+and migrate off it later.
+
+- New `backlog-checks-dormant` probe (`info`, dismissible) fires post-cutover and names all seven
+  dormant checks, so anyone dismissing it knows what they are choosing to run without.
+- Critic `review-cycle.md` / `review-protocol.md` gain a backend precondition: when
+  `backlog_service_repo` is set, skip the walk and emit one "unavailable" NOTE. The check is a `Read`
+  of project state, not an adapter call — `critic-reviewer` grants no Bash by design (CRT-3X9D).
+
+**Also landed here: GV9, a new requirement** (`documentation/backlog-service-requirements.md` § GV9).
+Writing GV8's interim contract exposed the layer below it — after cutover the canonical id is
+`owner/repo#number`, but every surface that *cites* an item (`_BACKLOG_ID_RE`, Critic C-B4, PR `R-2`,
+`closes:`/`closed-by:` tags, the deferred build-plan ref check) recognizes only `PFX-XXXX`, so a
+post-cutover reference is not mis-read, it is **not seen** — GV8's silent-degradation shape one layer
+down. Recognition is additive and can ship early; *resolving* a reference to a live status is a
+backlog read and lands with W1 under GV8. No code here implements it; the requirement is recorded so
+the gap stops being invisible. Tracked for build as **BKL-4R7V**.
+
+Two things the review process caught that are worth keeping. `review-protocol.md` sat exactly at its
+3529-token ceiling, and the first attempt to pay for the addition deleted Goal 4's norms line as
+redundant — `test_project_preferences_blocking` proved it load-bearing, and the tokens came from
+compressing Goal 7's close instead. And repointing the stale `active_build_plan` immediately failed a
+chunk-heading guard, which turned out to be a drifted *test* rather than a plan defect (TST-6K3D).
 ## 2026-07-20: `--archive-scope` becomes discoverable, and stops being credited with the rate ceiling (BKL-6X5D part a)
 
 <!-- prawduct: type=fix -->

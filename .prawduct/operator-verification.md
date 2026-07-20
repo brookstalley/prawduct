@@ -254,3 +254,61 @@ legibility, the dual-mode routing, and that nothing silently reads the frozen ma
 6. **Markdown path unchanged:** with `backlog_service_repo` unset, the skill behaves exactly as before.
 
 Drains when Phase 1 runs.
+
+## VRF-008 — Chunk 01 (skills-cutover-awareness) — dormancy is stated, not silently wrong
+
+**Status:** pending
+**Added:** 2026-07-19 (skills-cutover-awareness Chunk 01 — GV8 interim contract)
+
+**Why a human check:** the deliverable is a *stated absence*. Tests pin that the probe fires and that
+its operator-facing strings don't contradict each other, but no test can confirm that a reviewer
+reading `review-cycle.md` actually skips the walk and says so — skills are prose a model executes.
+The failure this chunk exists to kill (confident findings drawn from frozen markdown) is only
+observable in a real run against a cut-over repo. This is the VRF-007 lesson applied: a prose→CLI
+handoff survives clean multi-reviewer review and still fails live.
+
+**Where to verify:** the cut-over sibling product repo, pointed at this checkout via
+`--plugin-dir=../prawduct`, with `backlog_service_repo` set.
+
+**Verify:**
+1. Session start → the `backlog-checks-dormant` advisory appears once, `info` priority, naming the
+   dormant checks. It must read as an accepted interim state, not as an error.
+2. `/prawduct:critic final` (or `cumulative`) → Backlog Reconciliation emits the single
+   "unavailable" NOTE and **no** per-item findings. Confirm no finding cites an item that was
+   archived at cutover — that is the exact false positive this replaces.
+3. Confirm the reviewer did **not** open `.prawduct/backlog.md` for live state.
+4. Dismiss the advisory → it stays dismissed on the next session, and the Critic NOTE still appears
+   (dismissal silences the reminder, never the review-time statement).
+5. **Pre-cutover unchanged:** in a repo with `backlog_service_repo` unset, no advisory and the
+   backlog walk runs exactly as before.
+6. **The PR path (Chunk 02) — R-2 specifically.** `/prawduct:pr create` in the same cut-over repo →
+   the PR reviewer emits the single "unavailable" NOTE in place of R-1/R-2 and cites no `PFX-XXXX`
+   from the frozen file. R-2 needs its own live check rather than riding step 2's: it is the sole
+   owner of the `closes:`-vs-open consistency check (no Critic layer runs it), so a reviewer that
+   silently keeps resolving `closes:` against frozen markdown looks *identical* to one that correctly
+   found nothing — the failure mode is invisible in the output, which is why only a live run shows it.
+7. **Pre-cutover PR path unchanged:** with `backlog_service_repo` unset, R-1/R-2 run as before —
+   confirm R-2 still flags a deliberately-planted `closes:` for an item left `status: open`.
+
+8. **The janitor (Chunk 03).** `/prawduct:janitor` in the same cut-over repo → the findings report
+   contains the Backlog Health block as a single "unavailable" line — **present, not omitted**. An
+   omitted section is the failure this replaces: it reads as a clean bill of health. Confirm none of
+   the seven checks ran, in particular that no finding proposes `/prawduct:backlog migrate` or an
+   archive split (checks 6 and 7 — advice an operator could act on to no effect post-cutover), and
+   that Step 1's overlap context came from `/prawduct:backlog list` rather than the frozen file.
+9. **Pre-cutover janitor unchanged:** with `backlog_service_repo` unset, all seven Backlog Health
+   checks run and report as before.
+10. **The emitted NOTEs name no internal id (Chunk 04).** Across steps 2, 6, and 8, confirm each
+    "unavailable" NOTE ends with the plain-language resolution ("they return when the backlog
+    read-through cache lands") and cites no `GV8`/`W1`-style identifier — the operator reading it has
+    no register to resolve one against.
+11. **The backlog skill's markdown-only rules stay quiet (Chunk 04).** `/prawduct:backlog find <q>`
+    → the deferred-search NOTE, naming no internal milestone id; and no surface proposes an archive
+    split. Confirm the skill never opened `.prawduct/backlog.md` for live state.
+
+Drains when a cut-over repo runs a `final`/`cumulative` review **and** a `/prawduct:pr create` **and**
+a `/prawduct:janitor` on this plugin build. Each of the three dispatches a different reader and none
+substitutes for another: a Critic run never dispatches the PR reviewer (steps 6-7), and neither one
+runs the janitor (steps 8-9) — draining on a subset would leave the unexercised readers reading as
+verified. This is the plan's Verification Strategy stated as a drain condition rather than as prose
+alongside one.
