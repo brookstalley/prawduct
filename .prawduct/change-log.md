@@ -42,9 +42,11 @@ inline (Chunk 01's contract: a reader loading one file gets the whole rule).
 
 **From the cumulative review** (0 blocking, 9 warnings — all resolved). Three were defects this
 chunk's own charter should have caught: the always-injected `session-digest.md` states the
-`## Archive` workflow unconditionally and the new sweep couldn't see it (the sweep now spans
-`methodology/`, `agents/`, `templates/`, `docs/` — scanning only `skills/` was how the
-highest-traffic surface in the framework got missed); `.prawduct/cross-cutting-concerns.md` still
+`## Archive` workflow unconditionally — and, per the follow-up review, *no* root list would have
+found it, because the digests never name `backlog.md` at all; they are pinned by their own test, and
+the sweep's widening to `methodology/`/`agents/`/`templates/`/`docs/` is future coverage rather than
+the fix (recording that honestly rather than taking the tidier story);
+`.prawduct/cross-cutting-concerns.md` still
 claimed the norm-lifecycle probes as live coverage over a hole this bundle documents; and all four
 `skills-cutover-awareness` change-log tag lines were space-delimited where `lib/views.py` splits on
 `|`, so `scope=`/`chunks=` never parsed and the release would have silently lost the feature's

@@ -135,6 +135,26 @@ class TestDormancyNoteCopiesAgree:
             f"what a cut-over repo is running without."
         )
 
+    def test_no_surface_emits_the_note_without_being_declared(self):
+        """The coupling above runs off `NOTE_SURFACES`, a hand-maintained
+        constant — so a *fourth* production surface emitting the NOTE would
+        satisfy every test here while never reaching the advisory's enumeration.
+        This closes the other direction: any prose file carrying the tail must be
+        declared, which forces the enumeration check to see it."""
+        undeclared = []
+        for root in TestNoUngatedBacklogFileReaders.PROSE_ROOTS:
+            for path in sorted((REPO_ROOT / root).rglob("*.md")):
+                rel = path.relative_to(REPO_ROOT).as_posix()
+                if rel in NOTE_SURFACES:
+                    continue
+                if NOTE_TAIL in " ".join(path.read_text().split()):
+                    undeclared.append(rel)
+        assert not undeclared, (
+            f"These surfaces emit the dormancy NOTE but are not in NOTE_SURFACES: "
+            f"{undeclared}. Declare them, and add them to `DORMANT_CHECKS` — an "
+            f"undeclared surface is a check the advisory never tells anyone is dark."
+        )
+
     def test_advisory_count_and_evidence_derive_from_one_list(self):
         from lib import backlog_probes as bp
         from lib.advisory_store import Codebase, ProjectState
@@ -215,13 +235,19 @@ class TestDirectReadRuleIsOneRule:
         assert "Writes never bypass this skill" in flat
         assert "blanket" in flat and "rejected" in flat
 
-    # Absolute prohibitions on reading the file. Matched on shape rather than on
-    # one exact byte sequence: the original wording was "never read
-    # `.prawduct/backlog.md` directly", and any reword ("must not open …",
-    # "do not read … directly") reinstates the rejected rule just as effectively.
+    # The exact wording `skills/pr/SKILL.md` carried until `ef34dfc`. Kept as a
+    # literal alongside the shape match below, because a shape match is the thing
+    # that quietly stops covering its own motivating case.
+    LITERAL_BAN = "never read `.prawduct/backlog.md` directly"
+
+    # Absolute prohibitions on reading the file, matched on shape so a reword
+    # ("must not open …", "do not read … directly") cannot reinstate the rejected
+    # rule silently. The gap classes must admit `.` — the path itself contains
+    # two, so an earlier `[^.]` version could not match LITERAL_BAN at all.
+    # `directly` is optional: "never open `.prawduct/backlog.md`" is the same ban.
     BAN_SHAPE = re.compile(
-        r"(never|don't|do not|must not|no reader may)\s+(read|open|touch)[^.]{0,60}"
-        r"backlog\.md[^.]{0,40}\bdirectly",
+        r"(never|don't|do not|must not|no reader may)\s+(read|open|touch)"
+        r"[^;!?]{0,60}?backlog\.md",
         re.IGNORECASE,
     )
 
@@ -232,6 +258,9 @@ class TestDirectReadRuleIsOneRule:
         back without re-opening the norm — including a reworded one."""
         for rel in self.GATED_READERS + ("skills/backlog/SKILL.md",):
             flat = " ".join(_read(rel).split())
+            assert self.LITERAL_BAN not in flat, (
+                f"{rel} carries the exact pre-adjudication wording again."
+            )
             match = self.BAN_SHAPE.search(flat)
             assert match is None, (
                 f"{rel} restates the blanket ban that `data-model.md` § Direction "
@@ -251,11 +280,16 @@ class TestNoUngatedBacklogFileReaders:
     """
 
     # Every prose tree the plugin ships that a model executes or is briefed from.
-    # `methodology/` is here because the first version of this sweep scanned only
-    # `skills/`, and the miss it let through was `session-digest.md` — injected
-    # into every session of every product, cut-over ones included. A sweep that
-    # cannot reach the highest-traffic surface in the framework is not the
-    # "re-greppable" guarantee the plan claimed.
+    #
+    # Widened from `skills/`-only for future coverage, NOT as the fix for the
+    # `session-digest.md` miss — that would be a tidier story than the truth. The
+    # digests never name `backlog.md` at all, so no root list reaches them; they
+    # describe `## Archive`/`## Open` semantics without naming the file, and
+    # `test_injected_digests_scope_markdown_only_backlog_semantics` is what
+    # actually pins them. Today these four extra roots gate zero readers (their
+    # only two hits are allowlisted below). They earn their place the first time
+    # a reader outside `skills/` names the file — which is a real shape, just not
+    # the one that got missed.
     PROSE_ROOTS = ("skills", "methodology", "agents", "templates", "docs")
 
     # path -> why it names the file without being a live-state reader

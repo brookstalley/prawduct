@@ -359,7 +359,7 @@ These are the probes the two features expect this infrastructure to support. The
 | `external-backlog-detected` | A `TODO.md`, `BACKLOG.md`, `ROADMAP.md`, or `IDEAS.md` detected at repo root or `.github/` | `/backlog import <path>` |
 | `legacy-section-schema` | `## Active — next up` / `## Queue` headings present in `.prawduct/backlog.md` (older section schema) | `/backlog migrate --sections` |
 | `backlog-overdue-grooming` | No `/backlog` command run in >90 days AND backlog has >20 open items | `/backlog list` |
-| `backlog-checks-dormant` | `backlog_service_repo` **is set** — the post-cutover mirror of GV7 (GV8): names the seven backlog checks with no Issues-mode path yet (Critic Backlog Reconciliation, C-B1–C-B4, PR `R-1`/`R-2`, janitor Backlog Health, and the `revisit-due`/`dead-why`/`stalled-transition` trio). `info` priority, dismissible | none — the checks return with the backlog read-through cache |
+| `backlog-checks-dormant` | `backlog_service_repo` **is set** — the post-cutover mirror of GV7 (GV8): names every backlog check with no Issues-mode path yet. The roster and the count both derive from `lib/backlog_probes.DORMANT_CHECKS` — **do not restate either here**; a second hand-maintained copy is how the advisory ends up confidently naming a stale set. `info` priority, dismissible | none — the checks return with the backlog read-through cache |
 
 See `documentation/backlog-system-requirements.md` §8.2 for resolution conditions and threshold rationale.
 
