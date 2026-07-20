@@ -251,6 +251,23 @@ class TestDirectReadRuleIsOneRule:
         re.IGNORECASE,
     )
 
+    @classmethod
+    def _unqualified_ban(cls, flat: str) -> str | None:
+        """First ban-shaped phrase that is NOT scoped to the backend gate.
+
+        Dropping the `directly` anchor widened the match to include a *correct*
+        statement of the norm — "do not read `.prawduct/backlog.md` once
+        `backlog_service_repo` is set" is the rule, not a violation of it. So a
+        match is only an offence when its neighbourhood doesn't name the scalar:
+        the ban is absolute exactly when nothing qualifies it.
+        """
+        for match in cls.BAN_SHAPE.finditer(flat):
+            window = flat[max(0, match.start() - 120) : match.end() + 160]
+            if "backlog_service_repo" in window:
+                continue
+            return match.group(0)
+        return None
+
     def test_no_reader_bans_direct_reads_outright(self):
         """The pre-adjudication wording. `skills/pr/SKILL.md` said "never read
         ... directly" while the janitor explicitly permitted it pre-cutover;
@@ -261,11 +278,12 @@ class TestDirectReadRuleIsOneRule:
             assert self.LITERAL_BAN not in flat, (
                 f"{rel} carries the exact pre-adjudication wording again."
             )
-            match = self.BAN_SHAPE.search(flat)
+            match = self._unqualified_ban(flat)
             assert match is None, (
                 f"{rel} restates the blanket ban that `data-model.md` § Direction "
-                f"rejected — the rule is a backend gate. Offending text: "
-                f"{match.group(0)!r}"
+                f"rejected — the rule is a backend gate. If this text IS gated, say "
+                f"so within the sentence (name `backlog_service_repo`) and it will "
+                f"pass. Offending text: {match!r}"
             )
 
 
