@@ -348,6 +348,32 @@ class TestArchiveScope:
             assert len(_alias_issues(fake, pfx)) == 1, f"{pfx} duplicated across runs"
         assert (_alias_issues(fake, "SCP-0002")[0].get("state") or "open").lower() == "closed"
 
+    def test_backfill_re_syncs_status_from_the_markdown(self, fake):
+        """The backfill re-run is not a free top-up, and the runbook says so — this
+        pins the behavior that claim rests on.
+
+        The skip branch reconciles the status axis (it is what makes a
+        created-but-crashed-before-close item converge on resume, CRASH-4). The
+        side effect on a *backfill*: an item closed on the service after cutover is
+        driven back to its markdown status, i.e. reopened. If someone later scopes
+        `_reconcile_status` to fresh creates, this test fails and the runbook
+        paragraph must change with it — which is the point of pinning it."""
+        migrate.import_backlog(
+            fake, owner=OWNER, repo=REPO, content=self._MAIN,
+            archive_content=self._ARCHIVE, archive_scope="open",
+        )
+        number = _alias_issues(fake, "SCP-0001")[0]["number"]
+        # Someone closes the item on the service after cutover.
+        core.set_status(fake, id_raw=f"{SCOPE}#{number}", target="shipped")
+        assert (fake.get_issue(OWNER, REPO, number).get("state") or "").lower() == "closed"
+
+        migrate.import_backlog(
+            fake, owner=OWNER, repo=REPO, content=self._MAIN,
+            archive_content=self._ARCHIVE, archive_scope="all",
+        )
+        # Reopened — the markdown still says `open`, and the skip path re-syncs it.
+        assert (fake.get_issue(OWNER, REPO, number).get("state") or "open").lower() == "open"
+
     def test_default_scope_is_all(self, fake):
         # No archive_scope passed → `all` (backward-compatible with every existing
         # importer caller, incl. the owner's locked dogfood "import as-is" decision).

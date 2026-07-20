@@ -533,8 +533,14 @@ def import_backlog(
     imports everything, ``open`` skips items that would be created closed), applies
     an optional owner-confirmed restructure ``plan`` (MG6 — validated fail-closed
     *before* anything is written), then runs the deterministic :func:`import_items`.
-    Resumable/idempotent (MG1/CRASH-4); the plan applies at create only — an item
-    already on GitHub is skipped, never rewritten."""
+    Resumable/idempotent (MG1/CRASH-4). The plan applies at create only, so an item
+    already on GitHub never has its **title or body** rewritten — but "skipped" is
+    not "untouched": the skip branch still reconciles the **status** axis
+    (:func:`_reconcile_status`), which is what makes a created-but-crashed-before-close
+    item converge on resume (CRASH-4). The consequence beyond resume: a re-run drives
+    every already-migrated item back to its *markdown* status, so re-importing to
+    backfill an ``open``-scoped migration will reopen anything closed on the service
+    since cutover."""
     records, collisions = collect_records(content, archive_content)
     records, archive_skipped = apply_archive_scope(records, archive_scope)
     plan_warnings: list[str] = []

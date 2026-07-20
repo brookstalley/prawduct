@@ -613,7 +613,8 @@ tests/
     (`artifacts/migration-scrub-decisions.md` decision 5): under `all` every archived item costs a
     **paced create plus an unpaced close** — `Pacer.before_create` is the only paced call, and
     `_reconcile_status` → `core.set_status` takes no pacer — so this run *is* the half-metered
-    create-then-close stretch part (b) exists to close. It must land **before** the bulk import, not
+    create-then-close stretch part (b) exists to close. *Proposed* — decision 6, **owner sign-off
+    owed**, not settled: it should land **before** the bulk import, not
     after, or the irreversible migration becomes part (b)'s own proof case. Part (a) — the
     re-attribution and the §8.9↔§9 circularity — closed 2026-07-20.
 

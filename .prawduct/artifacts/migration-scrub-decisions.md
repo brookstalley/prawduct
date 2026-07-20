@@ -36,7 +36,7 @@ before it is acted on.
      dogfood would ship the default path unexercised by the one migration prawduct runs itself.
    - `open`'s preservation story was mis-stated at ten claim sites across seven files (it named the MG2 export,
      which dumps the migrated repo post-import and cannot hold what the lever excluded). Corrected
-     on this branch. The true cost of `open` — skipped items are git history, not searchable
+     on this branch. The true cost of `open` — skipped items are git history, not live
      backlog, because the skill stops reading the source file after cutover — is a real loss of
      the whole archive as precedent and dedup surface (144 items at `964d03b`; re-derive at use).
    - Owner framing for the release: *"We can't ship a partial product."*
