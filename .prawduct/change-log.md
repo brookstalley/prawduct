@@ -3,6 +3,34 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-07-19: Backlog-check dormancy is stated, not silently wrong (skills-cutover-awareness Chunk 01)
+
+<!-- prawduct: type=feature scope=skills-cutover-awareness chunks=01 -->
+
+`/prawduct:backlog` routes on `backlog_service_repo`; the other backlog readers do not. The Critic's
+Backlog Reconciliation and C-B1–C-B4 read `.prawduct/backlog.md`, which is frozen history once a
+project cuts over — so every item archived at cutover still parses as open and every live Issue is
+invisible. Three norm-lifecycle probes have the mirror failure: they guard on cutover and return
+nothing. Both shapes are indistinguishable from a clean bill of health, and the norm-probe half means
+norm exceptions stop expiring visibly. Recorded as **GV8** after the owner ruled the loss a side
+effect rather than a decision.
+
+This chunk ships the interim contract only — restoring the checks in Issues mode waits on the W1
+read-through cache, one persisted format, per the owner decision not to mint a bespoke projection now
+and migrate off it later.
+
+- New `backlog-checks-dormant` probe (`info`, dismissible) fires post-cutover and names all seven
+  dormant checks, so anyone dismissing it knows what they are choosing to run without.
+- Critic `review-cycle.md` / `review-protocol.md` gain a backend precondition: when
+  `backlog_service_repo` is set, skip the walk and emit one "unavailable" NOTE. The check is a `Read`
+  of project state, not an adapter call — `critic-reviewer` grants no Bash by design (CRT-3X9D).
+
+Two things the review process caught that are worth keeping. `review-protocol.md` sat exactly at its
+3529-token ceiling, and the first attempt to pay for the addition deleted Goal 4's norms line as
+redundant — `test_project_preferences_blocking` proved it load-bearing, and the tokens came from
+compressing Goal 7's close instead. And repointing the stale `active_build_plan` immediately failed a
+chunk-heading guard, which turned out to be a drifted *test* rather than a plan defect (TST-6K3D).
+
 ## 2026-07-19: SessionStart banner names which plugin code is loaded (BRF-7Q4M)
 
 <!-- prawduct: type=feature -->
