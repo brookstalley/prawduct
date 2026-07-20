@@ -586,8 +586,10 @@ tests/
   has not cut over, so upgrade-before-migrate is a loud signal, never a silent zeroing.
 - **Pre-sign-off conditions (folded 2026-07-17 — conditional design sign-off).** Verified-in-code
   scenario traces of the CC5/G2/rate seams before the irreversible migration found no design flaw but
-  four build-completeness gaps; two are **must-fix before this slice is marked done** (not optional
-  follow-ups), because they sit inside the acceptance criteria above:
+  four build-completeness gaps; **three** are **must-fix before this slice is marked done** (not optional
+  follow-ups), because they sit inside the acceptance criteria above. *(Two at sign-off; `BKL-6X5D`
+  part (b) joined them 2026-07-20 when owner decision A1 chose `--archive-scope all`, making the
+  unpaced close leg live for this migration rather than hypothetical.)*
   - **BKL-4W7H (must-fix) — ✅ offline code + tests landed 2026-07-17.** The "every `PFX` ID resolving
     as an alias" read-path gap is closed: `core.resolve_ref` wires PFX→canonical alias resolution into
     `get` and `link` (against `--repo`); `migrate._find_by_key` gains a block `id_aliases` fallback
@@ -629,7 +631,7 @@ tests/
 - **Done when:**
   0. **SPIKE-S2** — run the live dry-run on a throwaway copy of prawduct's repo; record the settled
      facts (fan-out constant, node_id-across-transfer) back into NFR §4 / this plan
-  1. Acceptance criteria **and the must-fix pre-sign-off conditions (BKL-4W7H, BKL-8P2R)** met and tests pass
+  1. Acceptance criteria **and the must-fix pre-sign-off conditions (BKL-4W7H, BKL-8P2R, BKL-6X5D part (b))** met and tests pass
   2. Committed, then `/prawduct:critic cumulative` run and blocking findings resolved
   3. Chunk marked `[x]` in Status; the slice branch is PR-ready (`/prawduct:pr create`)
 - **SPIKE-S2 settled facts (2026-07-17 live dry-run — ~209 items into a throwaway repo, repos disposable):**

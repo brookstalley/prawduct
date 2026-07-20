@@ -267,7 +267,16 @@ class TestArchiveScope:
         and runs after the import, so it can never hold what the lever excluded.
         An operator who believed it would choose ``open`` expecting a restorable
         archive artifact that does not exist. Guarded here rather than left to
-        review because a false safety claim reads as reassuring in every diff."""
+        review because a false safety claim reads as reassuring in every diff.
+
+        This is the *behavioral* half — it asserts the value actually emitted at
+        runtime. The source-level companion,
+        ``test_backlog_invariants.TestArchiveScopeWarningTruthfulness``, scans every
+        such literal in the package and so covers emission sites this test does not
+        reach; keep both. As there, the bare ``export`` ban is deliberately blunt and
+        bans a word where the defect is a false credit: if some export artifact ever
+        genuinely holds the skipped set, retarget this assertion to the new mechanism
+        and re-verify it — never delete it to green a red suite."""
         skip_warning = next(w for w in warnings if "archive-scope open" in w)
         assert "export" not in skip_warning.lower(), (
             "the --archive-scope open warning credits the MG2 export with preserving "
