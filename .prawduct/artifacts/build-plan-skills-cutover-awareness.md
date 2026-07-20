@@ -137,7 +137,10 @@ structural, CRT-3X9D). `lib/` holds the data, the fork skill holds no logic that
 
 ### Chunk 02: PR reviewer R-1 / R-2
 
-**Type:** doc-only
+**Type:** code *(re-typed at build from `doc-only`: `tests/test_pr_reviewer.py` asserted "R-2 stays
+unconditional", which GV8 makes false. The assertion still passed on a substring of the new prose —
+a test that keeps passing while its stated contract inverts is worse than a failing one, so it was
+rewritten to scope "always" to the markdown backend and to pin the new precondition.)*
 **Critic mode:** chunk
 
 `skills/pr/review-protocol.md:49-51`. **R-2 is the highest-risk reader in the inventory**: it is
@@ -154,8 +157,16 @@ It is not.
 resolves", in the prep-while-Critic-runs step). Missed by the original sweep and added here after the
 Chunk 01 Critic; it is a third live-state read in the PR path, distinct from R-1 and R-2.
 
-**Done when:** all three PR-path readers state dormancy post-cutover; no prose still names markdown
-sections as the resolution surface; `/prawduct:critic`.
+**Deviation, recorded (build):** this third reader is **repointed, not declared dormant.** R-1/R-2
+are reviewer checks that parse backlog structure, so post-cutover they have nothing to parse; the
+SKILL.md step is a *builder* action, and `/prawduct:backlog list` is already backend-routed
+(`skills/backlog/adapter-mode.md:78` maps it onto `prawduct-hook backlog list`). Declaring dormancy
+there would retire a step that still works. The dormancy contract applies to readers with no live
+path — not to every surface that happens to name the file.
+
+**Done when:** no PR-path reader treats `.prawduct/backlog.md` as live state — R-1/R-2 state dormancy
+post-cutover, the SKILL.md prep step routes through the backend-routed skill; no prose still names
+markdown sections as the resolution surface; `/prawduct:critic`.
 
 ### Chunk 03: Janitor Backlog Health
 
@@ -192,6 +203,13 @@ describing it is updated, and removing a mechanism requires removing its name to
 - `lib/upstream_probes.py:54-60` — advisory text says "not yet triaged into `.prawduct/backlog.md`";
   prose-only (no parse), so it is misleading rather than broken. Make it backend-neutral.
 - Verify no remaining surface outside `skills/backlog/` names `backlog.md` as *live* state.
+- **Adjudicate: do internal ids belong in the dormancy NOTE?** (Chunk 02 Critic.) The NOTE that
+  Chunks 01–03 all copy ends "(GV8; restored with the read-through cache)", while
+  `tests/test_backlog_probes.py:288` asserts `GV8`/`W1` must **not** appear in the advisory's
+  `recommended_action` — reasoning that prawduct's internal ids mean nothing in a downstream
+  product's briefing. A reviewer finding may legitimately carry a trace pointer an advisory should
+  not, but the two conventions currently contradict with nothing deciding between them. Rule one way,
+  apply it to every copy of the NOTE, and pin the copies together so they cannot drift apart.
 
 **Done when:** the sweep is complete and re-greppable; suite green; commit; then
 `/prawduct:critic cumulative` **once** — this chunk's review is the plan's single cumulative pass and
@@ -203,8 +221,10 @@ the `/prawduct:pr create` gate.
 
 Tests cover the probe (fires/silent/zero-fire-against-this-repo). The prose changes have no unit
 tests — skills are prose a model executes. The behavioral proof is a **live dogfood in the cut-over
-sibling repo**: run `/prawduct:critic` and `/prawduct:janitor` there and confirm each states dormancy
-rather than reporting frozen-history findings. This mirrors the VRF-007 lesson — a read-then-consume
+sibling repo**: run `/prawduct:critic`, `/prawduct:pr create`, and `/prawduct:janitor` there and
+confirm each states dormancy rather than reporting frozen-history findings. All three are needed —
+a Critic run never dispatches the PR reviewer, so it leaves R-1/R-2 (Chunk 02) unexercised while
+looking like coverage. This mirrors the VRF-007 lesson — a read-then-consume
 handoff between prose and CLI survives clean multi-reviewer review and still fails live — so it is
 enqueued as an operator-verification entry, not asserted from the diff.
 

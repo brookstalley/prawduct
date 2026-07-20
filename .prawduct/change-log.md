@@ -3,6 +3,32 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-07-20: The PR path stops resolving `closes:` against frozen markdown (skills-cutover-awareness Chunk 02)
+
+<!-- prawduct: type=feature scope=skills-cutover-awareness chunks=02 -->
+
+Chunk 01's dormancy contract, copied to the three backlog readers in the PR path. **R-2 is the
+highest-risk reader in the whole inventory**: it is the sole owner of the
+change-log-says-`closes:`-but-item-is-open consistency check — no Critic layer runs it — so
+post-cutover it resolved every `closes:` against frozen history and either passed or dangled with
+equal confidence. R-1 was written against `## Open`/`## Promoted` sections that do not exist on the
+Issues backend at all.
+
+- `skills/pr/review-protocol.md` — R-1/R-2 gain the same backend precondition the Critic carries:
+  read `backlog_service_repo` (already read at step 1), and when set, skip both and emit one
+  "unavailable" NOTE. R-1's markdown-section wording is now backend-neutral.
+- `skills/pr/SKILL.md` — the prep-while-Critic-runs step is **repointed, not declared dormant**:
+  `/prawduct:backlog list` has an adapter path on both backends, so retiring the step would have
+  been a loss. Dormancy is for readers with no live path, not for every surface naming the file.
+- VRF-008 gains a `/prawduct:pr create` step and no longer drains on a Critic run alone — a Critic
+  run never dispatches the PR reviewer, so it left R-1/R-2 unexercised while reading as coverage.
+
+The chunk was planned `doc-only` and re-typed to `code`: `test_pr_reviewer.py` asserted `"always
+run" in content`, which kept passing on a substring of prose that now says "always run **on this
+backend**" — the opposite of what the test's docstring claimed. A test that keeps passing while its
+stated contract inverts is worse than one that fails, so the assertion was scoped and the new
+precondition pinned alongside it.
+
 ## 2026-07-19: Backlog-check dormancy is stated, not silently wrong (skills-cutover-awareness Chunk 01)
 
 <!-- prawduct: type=feature scope=skills-cutover-awareness chunks=01 -->

@@ -281,5 +281,15 @@ handoff survives clean multi-reviewer review and still fails live.
    (dismissal silences the reminder, never the review-time statement).
 5. **Pre-cutover unchanged:** in a repo with `backlog_service_repo` unset, no advisory and the
    backlog walk runs exactly as before.
+6. **The PR path (Chunk 02) — R-2 specifically.** `/prawduct:pr create` in the same cut-over repo →
+   the PR reviewer emits the single "unavailable" NOTE in place of R-1/R-2 and cites no `PFX-XXXX`
+   from the frozen file. R-2 needs its own live check rather than riding step 2's: it is the sole
+   owner of the `closes:`-vs-open consistency check (no Critic layer runs it), so a reviewer that
+   silently keeps resolving `closes:` against frozen markdown looks *identical* to one that correctly
+   found nothing — the failure mode is invisible in the output, which is why only a live run shows it.
+7. **Pre-cutover PR path unchanged:** with `backlog_service_repo` unset, R-1/R-2 run as before —
+   confirm R-2 still flags a deliberately-planted `closes:` for an item left `status: open`.
 
-Drains when a cut-over repo runs a `final`/`cumulative` review on this plugin build.
+Drains when a cut-over repo runs a `final`/`cumulative` review **and** a `/prawduct:pr create` on
+this plugin build. The Critic run alone does not drain it: it never dispatches the PR reviewer, so
+steps 6-7 would stay unexercised while the entry read as verified.

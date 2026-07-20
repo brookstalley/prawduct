@@ -613,11 +613,46 @@ class TestPrReviewerScoping:
     def test_learnings_and_backlog_not_rescanned(self):
         """The cumulative Critic owns the Learnings Cross-Check and Backlog
         Reconciliation walk; the PR reviewer must not repeat them. R-2 (data
-        inconsistency) always runs because the Critic doesn't do it."""
+        inconsistency) runs on every markdown-backend review because the Critic
+        doesn't do it.
+
+        "Always" is scoped to the markdown backend as of GV8: on the GitHub
+        Issues backend both R-1 and R-2 have nothing live to read, so they state
+        dormancy instead (see the backend-precondition test below). The scoping
+        is asserted here rather than left implicit because "always run" would
+        otherwise keep passing on a substring while meaning the opposite.
+        """
         content = self.protocol
         assert "Critic owns this scan" in content
         assert "owns this walk" in content
-        assert "always run" in content               # R-2 stays unconditional
+        assert "always run on this backend" in content
+
+    def test_backlog_reconciliation_checks_the_backend_first(self):
+        """GV8: post-cutover, `.prawduct/backlog.md` is frozen history, so R-1/R-2
+        must skip and say so rather than reporting confidently from it.
+
+        The precondition is a Read of `backlog_service_repo` in project-state —
+        the same contract `skills/critic/review-cycle.md` carries for Backlog
+        Reconciliation, restated here because a reviewer loads one file or the
+        other, never both.
+        """
+        content = self.protocol
+        assert "backlog_service_repo" in content
+        assert "skip both R-1 and R-2" in content
+        assert "frozen history" in content
+
+    def test_skill_prep_step_reads_the_backlog_through_the_skill(self):
+        """The prep-while-Critic-runs step audits the backlog via the
+        backend-routed skill, not by reading `.prawduct/backlog.md` directly.
+
+        Unlike R-1/R-2 this reader is repointed rather than declared dormant —
+        `/prawduct:backlog list` has an adapter path on both backends, so the
+        step still works post-cutover. Pinned because `skills/pr/SKILL.md` is
+        the one PR-path reader the original cutover sweep missed entirely.
+        """
+        content = self.skill
+        assert "audit the backlog for items this branch resolves" in content
+        assert "never read `.prawduct/backlog.md` directly" in content
 
     def test_critic_cross_checks_named_as_owner(self):
         """B (CRT-5T8N): review-cycle.md names final/cumulative as the OWNER of
