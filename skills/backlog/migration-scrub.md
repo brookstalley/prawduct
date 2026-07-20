@@ -175,7 +175,12 @@ This single key (API §2.4) repoints the session briefing to the GV2 snapshot
 synchronous network call) and retires every markdown-premise advisory probe
 (the backlog trio `legacy-backlog-format` / `legacy-section-schema` /
 `backlog-overdue-grooming` AND the norm trio `revisit-due` / `dead-why` /
-`stalled-transition` — the frozen file must not generate nudges). **Do not set
+`stalled-transition` — the frozen file must not generate nudges). Retirement is
+not silence: one probe starts firing at the same switch —
+`backlog-checks-dormant`, an `info` advisory naming every backlog check that has
+no Issues-backend path yet, so the operator running this scrub learns what goes
+dark rather than discovering it as an unexplained absence (full retirement
+table: post-sync-advisory-spec §8.2). **Do not set
 it before the import has been verified** (step 4) — once set, the briefing
 stops counting the markdown file. From here the markdown backlog is frozen
 history; `legacy.py` + `incoming-bugs/` retirement follows in lockstep with

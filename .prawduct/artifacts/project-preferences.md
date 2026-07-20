@@ -93,6 +93,8 @@ Pointer rows into the `## Direction` sections of the strategy artifacts. The sta
 | Derived views never authoritative | `data-model.md` | Critic | janitor | keep mutable state out of the authority path |
 | Newer-schema fact surfaced, never dropped | `data-model.md` | `evidence status` exit 2 | advisory | forward-incompatibility must be visible |
 | Two stores, two lifetimes (committed answers vs. gitignored nags) | `data-model.md` | Critic + gitignore contract (doctor) | janitor | share decisions without leaking local state |
+| `backlog_service_repo` selects the authoritative backlog store; the frozen markdown file is never read as live | `data-model.md` | Test (`tests/test_cutover_prose_coherence.py`) + Critic | janitor | a frozen store answers as confidently as a live one |
+| No prawduct-internal ids in operator-emitted text | `observability-strategy.md` | Critic *(no exhaustive mechanical hook — id prefixes are open-ended)* + Test for the dormancy NOTE copies | janitor | an id a downstream operator cannot resolve displaces the actionable reason |
 | Reviewer never mutates its session (at the mutation site) | `architecture.md` | `clear` refusal while review active | janitor | independence enforced where mutation happens |
 | Authority fails closed; advice fails soft | `architecture.md` | Critic | janitor | gates strict so governance means something; probes gentle so it's bearable |
 | Local-first: no network/daemon, stdlib-only runtime | `architecture.md` | Critic | janitor | survive "just want to code"; shrink supply-chain surface |
