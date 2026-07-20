@@ -361,8 +361,8 @@ class TestHelpAdvertisesHonoredFlags:
         unreachable = (honoring & dispatched) - set(mapped.values())
         assert not unreachable, (
             f"{sorted(unreachable)} honor --archive-scope but are dispatched in a "
-            "shape `_ops_honoring_archive_scope` cannot map to an op name; extend "
-            "the derivation or these ops go unchecked"
+            "shape `_honoring_handlers_and_dispatch` cannot map to an op name; "
+            "extend that helper's `mapped` regex or these ops go unchecked"
         )
 
     @classmethod

@@ -38,25 +38,40 @@ would have been worthless.
 **The docstring taught the mis-attribution BKL-6X5D exists to correct.** `apply_archive_scope` said
 `open` keeps "a large migration inside the write-rate budget (NF3)." It does not: the **Pacer** holds
 the ceiling by pacing creates across time whatever the volume, and the archive lever reduces total
-write *volume*. The requirements were corrected on 2026-07-18, but five other surfaces still carried
+write *volume*. The requirements were corrected on 2026-07-18; **six** further surfaces still carried
 the old framing — and being the nearest source to the code, the docstring is what a reader reaches
-for first. All now re-attribute explicitly and say not to reintroduce it.
+for first. All six are corrected here.
 
-**Five surfaces in this changeset, found in three rounds — the process record is the point.** (The
-sixth, the requirements text itself, was corrected in the 2026-07-18 owner-feedback pass; BKL-6X5D's
-note counts all six across all rounds, this entry counts only what this changeset touched.) Round 1
-fixed the
-docstring and PRD §8.9. The Critic then found **PRD §9**, in the same file, at the exact anchor the
-rewritten §8.9 sends readers to — which I had left *while writing* that leaving a sibling copy would
-be the "patch the flagged line, not the class" failure. Round 2 fixed §9 and declared the
-re-attribution correct "in every surface." The Critic then found **NFR §3's migration row**
-(`backlog-service-nfr.md:146`, "the MG4 scrub trims the archive so it fits") and a softer **PRD
-§11/S3** — the first of which is in a file this same changeset had just added to the item's `refs:`.
+**Six surfaces, found across four rounds — and the process record is the point, because three of
+those rounds ended in a closure claim that was wrong.**
 
-Three rounds, each closed with an exhaustiveness claim, each falsified by a grep taking seconds.
-That is the failure mode this changeset's own new learning describes, recurring twice more while the
-learning was being written. Recorded rather than tidied away: the honest lesson is that stating the
-discipline does not execute it.
+| round | found by | surfaces |
+|---|---|---|
+| 1 | me | `apply_archive_scope` docstring, PRD §8.9 |
+| 2 | Critic (chunk) | PRD §9/NF3 |
+| 3 | Critic (verify-resolutions) | NFR §3.3 `:146`, PRD §11/S3 `:249` |
+| 4 | Critic (verify-resolutions) | NFR §9 `:287` |
+
+Round 1 ended with me writing that leaving a sibling copy would be the "patch the flagged line, not
+the class" failure — while leaving PRD §9 in the same file, at the exact anchor the rewritten §8.9
+sends readers to. Round 2 ended with "correct in every surface"; round 3 found two more, one of them
+in a file that same round had just added to the item's `refs:`. Round 3 ended by publishing a
+falsifying grep in the backlog note *with the instruction to run it before claiming coverage* — and
+then claiming coverage without running it. Round 4 is that grep, finally executed, returning
+`nfr.md:287`.
+
+`:287` was the most load-bearing of the six: it is the **S2 proof obligation**, so "migration burst
+fits after scrub" would have aimed the dry-run at post-scrub volume instead of at the Pacer. It now
+states the obligation as proving the Pacer holds the burst — measured with the volume lever
+*disabled* (`--archive-scope all`), since a small input proves nothing about pacing — and adds the
+create-then-close 900 pts/min question (part b) as a second thing S2 must answer.
+
+**No exhaustiveness claim is made here.** Six is the count swept, not proof there is no seventh. The
+falsifying query lives in BKL-6X5D's note for whoever next wants to assert coverage:
+`grep -rn 'scrub' documentation/*.md | grep -i '500\|rate\|budget\|fit\|trim'` — the remaining hits
+read correctly as of this commit. The honest lesson, recorded rather than tidied away: stating the
+discipline does not execute it, and four consecutive rounds of self-certification were each closed
+by an external reviewer instead.
 
 Fixing §9 also dissolves the **§8.9↔§9 circular reference** BKL-6X5D tracked separately: §8.9 now
 credits the Pacer and cites §9, and §9 credits the Pacer and cites NFR §3, so neither defers to the

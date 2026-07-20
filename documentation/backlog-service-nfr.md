@@ -284,7 +284,7 @@ Consolidates *who proves what* — so no NFR is a bare assertion:
 
 | Target | Owner | When |
 |---|---|---|
-| Content 500/hr + 900 pts/min pacing constants; migration burst fits after scrub; ready-work fan-out cost; **batched-vs-N+1 fan-out** (pins the `pick` floor) | **S2** (migration dry-run — the slice's proving increment) | before widening the slice |
+| Content 500/hr + 900 pts/min pacing constants; **the Pacer holds the burst inside the content cap** (measure with the scrub's volume reduction *disabled* — i.e. `--archive-scope all` — so the run proves pacing, not a small input); whether the **create-then-close archive stretch breaches 900 pts/min** (only creates are paced — BKL-6X5D part b); ready-work fan-out cost; **batched-vs-N+1 fan-out** (pins the `pick` floor) | **S2** (migration dry-run — the slice's proving increment) | before widening the slice |
 | Core reads/sec sustainable; grooming core-bound; cold-sweep batch/backoff constants; **per-op granularity** (which limit each call decrements — the §3.2 inference) | **S3** (rate limits under load) + `verify-api` | when the read-heavy layer is built |
 | CRUD p95 < 2 s; online read < 1.5 s; warm read < 500 ms; `pick` fan-out latency | **build-time latency probe** | at build, before "done" |
 | Zero-model-tokens on CRUD; one-non-interactive-call; never-hang timeout T; crash-safe recovery; never-silently-stale; + every **design-guaranteed** row in §2/§5/§6/§8 | **Test Specs** (§16(5)) | the next drill-down consumes these as test cases |
