@@ -476,8 +476,16 @@ def apply_archive_scope(
       separate ``--archive`` file) is skipped. The skipped items are **not lost**:
       they stay in the source markdown (git history) and the MG2 export, which is
       exactly the point — keep the historical archive as the export file rather
-      than minting a closed issue per ancient item, and keep a large migration
-      inside the write-rate budget (NF3).
+      than minting a closed issue per ancient item.
+
+    This lever reduces total write **volume**; it does not enforce the write
+    **rate**. The rate ceiling is held by :class:`Pacer`, which paces creates
+    across time to stay under the caps whatever the volume — so ``all`` is not
+    rate-unsafe, merely slower and noisier. Crediting the archive lever as the
+    rate-budget keeper is a known mis-attribution (NF3); do not reintroduce it
+    here. Volume still matters for a second reason the Pacer does not cover:
+    archived items cost *two* writes each (create-then-close), because the create
+    path has no initial-state field.
 
     Returns ``(kept, skipped_count)``. Pure — no I/O, no model.
     """

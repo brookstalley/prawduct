@@ -143,7 +143,7 @@ wrong axis.
 
 | Workload | Dominant cost | Binding budget | Fits the floor? |
 |---|---|---|---|
-| **Migration import** — discodon (317 open + a 1,754-line archive) | issue creation | **content 500/hr** | **only if paced across time** — 317 creates alone is ~40 min at the cap; +archive can exceed 500/hr in one burst. The **MG4 scrub trims the archive** so it fits; the import is **resumable/idempotent** so a pause-and-resume is safe (S2 proves it). |
+| **Migration import** — discodon (317 open + a 1,754-line archive) | issue creation | **content 500/hr** | **only if paced across time** — 317 creates alone is ~40 min at the cap; +archive can exceed 500/hr in one burst. The **Pacer** is what keeps it compliant (it paces creates across the clock whatever the volume, §3); the **MG4 scrub** reduces write *volume*, which shortens the run but is not the ceiling lever. The import is **resumable/idempotent** so a pause-and-resume is safe (S2 proves it). *Unmetered stretch:* only creates are paced, so an `--archive-scope all` run's create-then-close archive items can exceed the 900 pts/min REST ceiling (BKL-6X5D part b). |
 | **Grooming sweep** (relabel/close/merge N) | reads to find candidates | core 5k/hr | writes fit trivially; a large **cacheless** read-fan-out can approach 5k/hr → **cache-gated cheapness (M7)** |
 | **48-agent read sweep** (TF3 mass grooming) | reads | core 5k/hr **per identity** | **NOT a floor guarantee** — cacheless, 48 agents share one user-token 5k/hr and can exhaust it; **warm-cache reads bypass GitHub entirely** → this workload is *why the cache exists*. The cacheless slice is rate-safe **only for low-fan-out use** (§4/§9, honest scope). |
 | **Steady state** (~200 writes/day personal portfolio) | mixed | all caps | fits with wide margin — ~200/day ≈ 8/hr avg, far under 500/hr content; write bursts stay under 900 pts/min |
@@ -284,7 +284,7 @@ Consolidates *who proves what* — so no NFR is a bare assertion:
 
 | Target | Owner | When |
 |---|---|---|
-| Content 500/hr + 900 pts/min pacing constants; migration burst fits after scrub; ready-work fan-out cost; **batched-vs-N+1 fan-out** (pins the `pick` floor) | **S2** (migration dry-run — the slice's proving increment) | before widening the slice |
+| Content 500/hr + 900 pts/min pacing constants; **the Pacer holds the burst inside the content cap** (measure with the scrub's volume reduction *disabled* — i.e. `--archive-scope all` — so the run proves pacing, not a small input); whether the **create-then-close archive stretch breaches 900 pts/min** (only creates are paced — BKL-6X5D part b); ready-work fan-out cost; **batched-vs-N+1 fan-out** (pins the `pick` floor) | **S2** (migration dry-run — the slice's proving increment) | before widening the slice |
 | Core reads/sec sustainable; grooming core-bound; cold-sweep batch/backoff constants; **per-op granularity** (which limit each call decrements — the §3.2 inference) | **S3** (rate limits under load) + `verify-api` | when the read-heavy layer is built |
 | CRUD p95 < 2 s; online read < 1.5 s; warm read < 500 ms; `pick` fan-out latency | **build-time latency probe** | at build, before "done" |
 | Zero-model-tokens on CRUD; one-non-interactive-call; never-hang timeout T; crash-safe recovery; never-silently-stale; + every **design-guaranteed** row in §2/§5/§6/§8 | **Test Specs** (§16(5)) | the next drill-down consumes these as test cases |
