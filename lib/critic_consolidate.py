@@ -59,6 +59,7 @@ staleness" defect class this plan deletes.
 from __future__ import annotations
 
 import json
+import re
 import sys
 import uuid
 from datetime import datetime, timezone
@@ -91,6 +92,20 @@ _VERBOSE_VERIFY_RESOLUTIONS = MODE_TOKEN_TO_VERBOSE["verify-resolutions"]
 SINGLE_PASS_ROSTER = ("reviewer",)
 COORDINATOR_ROSTER = ("correctness", "design", "sustainability")
 COORDINATOR_FILE_THRESHOLD = 5
+
+# Background reviewers run for minutes after the dispatching fork returns, so
+# an early consolidate correctly finds zero partials — a silence the parent
+# session can misread as "the reviewers died with the fork" and re-dispatch a
+# duplicate roster (observed 2026-07-20: both rosters ran, doubling review
+# cost, while the first trio was alive the whole time). The incomplete no-op
+# therefore states the dispatch age and whether silence is still the normal
+# in-flight state; past this grace window it flips to advising critic-end +
+# re-dispatch, since indefinite waiting on genuinely dead reviewers is the
+# opposite failure. Window sized to the review-cycle guidance (final/
+# cumulative typically 4-10 minutes) plus slack for queueing.
+_INFLIGHT_GRACE_MINUTES = 15
+
+_REVIEW_ID_TS = re.compile(r"^rev-(\d{8}T\d{6}Z)-")
 
 _RESOLUTION_DISPOSITIONS = frozenset({"fixed", "waived"})
 
@@ -745,6 +760,65 @@ def _known_findings_index(store: dict) -> set[tuple[str, str]]:
     return known
 
 
+def dispatch_age_minutes(review_id: str, *, now: datetime | None = None) -> float | None:
+    """Minutes since the dispatch timestamp a ``begin_review`` id embeds
+    (``rev-%Y%m%dT%H%M%SZ-<hex>``), or ``None`` when the id carries none
+    (hand-written manifests). Clock skew can put the stamp in the future;
+    clamp to 0 rather than report a negative age."""
+    match = _REVIEW_ID_TS.match(review_id)
+    if not match:
+        return None
+    try:
+        dispatched = datetime.strptime(match.group(1), "%Y%m%dT%H%M%SZ").replace(
+            tzinfo=timezone.utc
+        )
+    except ValueError:
+        return None
+    now = now or datetime.now(timezone.utc)
+    return max(0.0, (now - dispatched).total_seconds() / 60.0)
+
+
+def _incomplete_noop_message(missing: list[str], present: int, total: int,
+                             review_id: str) -> str:
+    """The incomplete no-op with a liveness verdict, not just a partial count.
+    Zero partials shortly after dispatch is the NORMAL background-reviewer
+    state — say so explicitly, or the caller infers reviewer death from
+    silence and double-dispatches."""
+    age = dispatch_age_minutes(review_id)
+    counts = f"{present}/{total} partials present"
+    if age is not None:
+        counts += f"; dispatched {age:.1f} min ago"
+    line = f"no-op: review incomplete — waiting on {', '.join(missing)} ({counts})."
+    if age is not None and age > _INFLIGHT_GRACE_MINUTES:
+        line += (
+            f" That is past the in-flight grace window (~{_INFLIGHT_GRACE_MINUTES} min)"
+            " — the reviewers may have died. Abandon this review with"
+            " `prawduct-hook critic-end`, then re-dispatch."
+        )
+    elif total == 1:
+        # Single-pass roster: the reviewer IS the dispatching fork and
+        # consolidates itself — a SubagentStop trigger will never land it, so
+        # the coordinator-roster story would be false here.
+        line += (
+            " The single-pass reviewer (the dispatching fork itself) writes its"
+            " partial and consolidates when it finishes — reviews typically take"
+            " 4-10 minutes; missing partials are the normal in-flight state, NOT"
+            " evidence the reviewer died. Re-run this command later; if the fork"
+            " already returned without consolidating, abandon with"
+            " `prawduct-hook critic-end`, then re-dispatch."
+        )
+    else:
+        line += (
+            " Reviewers run in the BACKGROUND after the dispatching fork returns"
+            " and typically take 4-10 minutes; missing partials are the normal"
+            " in-flight state, NOT evidence the reviewers died. Do not"
+            " re-dispatch — wait for the SubagentStop trigger to consolidate"
+            " (or re-run this command later). A genuine re-dispatch requires"
+            " `prawduct-hook critic-end` first."
+        )
+    return line
+
+
 def consolidate(project_dir: Path) -> int:
     """Merge complete reviewer partials into evidence facts + the derived
     cache. Idempotent.
@@ -752,7 +826,9 @@ def consolidate(project_dir: Path) -> int:
     Exit codes:
       - ``0`` + ``no-op:`` — nothing to do (no manifest, or roster incomplete —
         the message names the missing roles). The common in-flight case as
-        reviewers finish one by one.
+        reviewers finish one by one; the incomplete message also states the
+        dispatch age and whether silence is still normal (wait) or past the
+        grace window (critic-end + re-dispatch).
       - ``0`` + ``consolidated:`` — review fact appended (or already present),
         resolution facts appended, cache regenerated, ledger anchored, marker
         cleared, partials removed.
@@ -829,10 +905,7 @@ def consolidate(project_dir: Path) -> int:
         partials.append(data)
 
     if missing:
-        print(
-            f"no-op: review incomplete — waiting on {', '.join(missing)} "
-            f"({len(partials)}/{len(roster)} partials present)."
-        )
+        print(_incomplete_noop_message(missing, len(partials), len(roster), review_id))
         return 0
 
     # Resolutions may only arrive from a verify-resolutions dispatch — they

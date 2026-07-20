@@ -3,6 +3,31 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-07-20: `critic-consolidate`'s incomplete no-op carries a liveness verdict, not just a count
+
+<!-- prawduct: type=fix -->
+
+Root cause of today's cross-repo "critic reviewers died with fork" double dispatches
+(observed in hallucinote, transcript-verified): background reviewers run for 5–15 minutes
+after the dispatching fork returns, and a parent session that runs `critic-consolidate`
+inside that window got only `0/3 partials present` — a bare count it misread as reviewer
+death, so it re-dispatched a duplicate roster while the first one was alive, doubling
+review cost. No harness regression: the same shape ran clean the day before on the same
+Claude Code version; the trap is probabilistic model inference over an ambiguous silence.
+
+The fix puts the correction at the decision point. The incomplete no-op now parses the
+dispatch timestamp already embedded in the review id and renders a verdict with the count:
+inside a 15-minute grace window (review-cycle's 4–10 min typical plus slack) it states the
+silence is the normal in-flight state, NOT evidence of death — with the mechanism told
+roster-accurately: coordinator rosters are told to wait for the `SubagentStop` trigger,
+single-pass rosters that the fork itself consolidates when it finishes (no trigger will
+ever land it) — naming `critic-end` as the only sanctioned re-dispatch path; past the
+window it flips to advising `critic-end` + re-dispatch, because waiting forever on
+genuinely dead reviewers is the opposite failure. Ids without a parseable timestamp
+(hand-written manifests) get the wait-side guidance with no age claim. Regression tests
+pin all three message variants, the age parse (including future-stamp clamp and malformed
+stamps), and the end-to-end early-check no-op through the real hook.
+
 ## 2026-07-20: `--archive-scope open` stops promising a backup that cannot exist; A1 decided `all`
 
 <!-- prawduct: type=fix -->
