@@ -235,9 +235,16 @@ class TestDirectReadRuleIsOneRule:
         assert "Writes never bypass this skill" in flat
         assert "blanket" in flat and "rejected" in flat
 
-    # The exact wording `skills/pr/SKILL.md` carried until `ef34dfc`. Kept as a
-    # literal alongside the shape match below, because a shape match is the thing
-    # that quietly stops covering its own motivating case.
+    # The exact wording `skills/pr/SKILL.md` carried from `ef34dfc` (which
+    # introduced it — its predecessor had an *ungated direct read*, not a ban)
+    # until `2a0b1cf` replaced it with the gate.
+    #
+    # This literal is load-bearing, not belt-and-braces: in that historical text
+    # the ban and `backlog_service_repo` sit in ONE sentence ("never read
+    # `.prawduct/backlog.md` directly, which is frozen history once
+    # `backlog_service_repo` is set"), so the shape match below exempts it. The
+    # literal has no exemption, and is therefore the only thing covering the
+    # precise wording that motivated this test.
     LITERAL_BAN = "never read `.prawduct/backlog.md` directly"
 
     # Absolute prohibitions on reading the file, matched on shape so a reword
@@ -260,12 +267,18 @@ class TestDirectReadRuleIsOneRule:
         `backlog_service_repo` is set" is the rule, not a violation of it. So a
         match is only an offence when nothing qualifies it.
 
-        The qualifier must sit in the **same sentence**, not merely nearby. A
-        paragraph-sized window would exempt an absolute ban written alongside the
-        gate that contradicts it — which is the exact self-contradictory shape
-        `skills/pr/SKILL.md` carried before `ef34dfc`, and that paragraph is the
-        only place in the file naming `backlog.md`. A window would therefore have
-        switched the guard off at the one site that motivated it.
+        The qualifier must sit in the **same sentence**, not merely nearby: a
+        paragraph-sized window exempts an absolute ban written two sentences away
+        from an unrelated mention of the scalar, which is a real shape and not a
+        gated one. Sentence scope is strictly narrower than the window it
+        replaced and states the same rule the failure message does.
+
+        It is *not* what covers the historical `skills/pr/SKILL.md` wording —
+        there the ban and the scalar shared one sentence, so this exempts it just
+        as a window did. :data:`LITERAL_BAN` covers that one, unexempted. The
+        division of labour is deliberate: the literal pins the wording we know
+        was wrong, the shape match catches rewordings, and its exemption keeps
+        the shape match from flagging a correct statement of the norm.
         """
         for match in cls.BAN_SHAPE.finditer(flat):
             start = flat.rfind(". ", 0, match.start()) + 1  # 0 when not found
@@ -275,6 +288,35 @@ class TestDirectReadRuleIsOneRule:
                 continue
             return match.group(0)
         return None
+
+    # (text, expected-to-be-flagged) — synthetic, because `BAN_SHAPE` matches
+    # nothing in the three production files today. Without these the sentence
+    # scoping ships with its loop body never executed, and a green suite would
+    # say nothing about whether the guard works at all.
+    BAN_CASES = (
+        ("Never read `.prawduct/backlog.md` directly, ever.", True),
+        ("You must not open `.prawduct/backlog.md`.", True),
+        ("Do not read the backlog.md file directly.", True),
+        # The distinguishing case: qualifier two sentences away is NOT a gate.
+        (
+            "Never read `.prawduct/backlog.md` directly. Separately, "
+            "`backlog_service_repo` selects the backend.",
+            True,
+        ),
+        # A correct statement of the norm — qualified in its own sentence.
+        (
+            "Do not read `.prawduct/backlog.md` once `backlog_service_repo` is set.",
+            False,
+        ),
+        # Prohibitions that aren't about this file at all.
+        ("Never open a PR without running the reviewer.", False),
+        ("Do not touch a claim you didn't set.", False),
+    )
+
+    @pytest.mark.parametrize(("text", "flagged"), BAN_CASES)
+    def test_ban_detection_distinguishes_gated_from_absolute(self, text, flagged):
+        found = self._unqualified_ban(text)
+        assert bool(found) is flagged, f"{text!r} → {found!r}"
 
     def test_no_reader_bans_direct_reads_outright(self):
         """The pre-adjudication wording. `skills/pr/SKILL.md` said "never read
