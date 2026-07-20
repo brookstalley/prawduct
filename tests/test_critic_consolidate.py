@@ -571,6 +571,33 @@ class TestIncompleteNoopLiveness:
         assert "0/3 partials present" in msg
         assert "dispatched" not in msg
         assert "NOT evidence the reviewers died" in msg
+        # No age claim, but it is still a wait — the readout directive applies.
+        assert cc._CACHE_WARM_DIRECTIVE in msg
+
+    def test_wait_side_directs_a_periodic_readout(self):
+        # An idle waiting session issues no requests, so its prompt cache
+        # expires and the next turn replays the whole prefix. Both wait-side
+        # variants must carry the readout directive, and it must name a cadence
+        # strictly under the 5-minute cache it is sized against.
+        assert cc._CACHE_WARM_INTERVAL_MINUTES < 5
+        for missing, present, total in (
+            (["correctness", "design"], 1, 3),  # coordinator roster
+            (["reviewer"], 0, 1),               # single-pass roster
+        ):
+            msg = cc._incomplete_noop_message(
+                missing, present, total, self._fresh_id(2))
+            assert cc._CACHE_WARM_DIRECTIVE in msg
+            assert f"every {cc._CACHE_WARM_INTERVAL_MINUTES} minutes" in msg
+            assert "idling silently" in msg
+
+    def test_stale_dispatch_omits_the_readout_directive(self):
+        # Past the grace window the advice is to STOP waiting (critic-end +
+        # re-dispatch). Telling the caller to keep narrating there would warm
+        # the cache for a state it should be leaving.
+        msg = cc._incomplete_noop_message(
+            ["sustainability"], 2, 3, self._fresh_id(45))
+        assert "may have died" in msg
+        assert cc._CACHE_WARM_DIRECTIVE not in msg
 
 
 # ---------------------------------------------------------------------------

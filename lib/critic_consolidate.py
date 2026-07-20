@@ -105,6 +105,26 @@ COORDINATOR_FILE_THRESHOLD = 5
 # cumulative typically 4-10 minutes) plus slack for queueing.
 _INFLIGHT_GRACE_MINUTES = 15
 
+# A session waiting on in-flight reviewers issues no model requests, so its
+# prompt cache ages out and the next turn re-reads the entire prefix — the
+# token replay adopters hit when a long review finally lands. A brief readout
+# on this cadence keeps the prefix warm by making a request against it.
+#
+# Deliberate stopgap, and the interval is the weak part: it assumes the
+# 5-minute prompt cache every current adopter runs on, which nothing here can
+# observe (longer-lived caches exist, and on those this cadence buys nothing).
+# Sized just under 5 so a slow turn still lands inside the window.
+_CACHE_WARM_INTERVAL_MINUTES = 4
+
+#: Appended to the wait-side variants only. Past the grace window the advice is
+#: to stop waiting, so warming the cache there would prolong the wrong state.
+_CACHE_WARM_DIRECTIVE = (
+    " While waiting, print a one-line progress note (what you are waiting on,"
+    f" elapsed time) at least every {_CACHE_WARM_INTERVAL_MINUTES} minutes"
+    " rather than idling silently — an idle session lets its prompt cache"
+    " expire and re-reads its whole context when the partials land."
+)
+
 _REVIEW_ID_TS = re.compile(r"^rev-(\d{8}T\d{6}Z)-")
 
 _RESOLUTION_DISPOSITIONS = frozenset({"fixed", "waived"})
@@ -783,7 +803,9 @@ def _incomplete_noop_message(missing: list[str], present: int, total: int,
     """The incomplete no-op with a liveness verdict, not just a partial count.
     Zero partials shortly after dispatch is the NORMAL background-reviewer
     state — say so explicitly, or the caller infers reviewer death from
-    silence and double-dispatches."""
+    silence and double-dispatches. The wait-side variants also direct a
+    periodic progress readout, so a session that correctly decides to wait
+    does not idle its prompt cache into expiry while doing so."""
     age = dispatch_age_minutes(review_id)
     counts = f"{present}/{total} partials present"
     if age is not None:
@@ -807,6 +829,7 @@ def _incomplete_noop_message(missing: list[str], present: int, total: int,
             " already returned without consolidating, abandon with"
             " `prawduct-hook critic-end`, then re-dispatch."
         )
+        line += _CACHE_WARM_DIRECTIVE
     else:
         line += (
             " Reviewers run in the BACKGROUND after the dispatching fork returns"
@@ -816,6 +839,7 @@ def _incomplete_noop_message(missing: list[str], present: int, total: int,
             " (or re-run this command later). A genuine re-dispatch requires"
             " `prawduct-hook critic-end` first."
         )
+        line += _CACHE_WARM_DIRECTIVE
     return line
 
 

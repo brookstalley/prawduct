@@ -8,7 +8,7 @@
 ## Open
 
 - **[CRT-3F7M]** Critic coordinator dispatches reviewer subagents from a skill fork; they die with the fork, leaving a valid manifest and zero partials — the review hangs silently forever
-  `effort: M · impact: L · area: critic · source: critic · added: 2026-07-20 · reviewed: 2026-07-20 · status: open · stage: research · related: CRT-4V8P, ENV-7C4K, CRT-7Q2T, CRT-5N3F, STH-7W9K · refs: skills/critic/SKILL.md:57 (coordinator dispatch — "dispatch the three critic-reviewer subagents … and STOP"), skills/critic/review-protocol.md (Coordinator Pattern), lib/critic_consolidate.py (partial/manifest contract), bin/prawduct-hook (critic-begin, critic-consolidate, critic-end, clear)`
+  `effort: M · impact: L · area: critic · source: critic · added: 2026-07-20 · reviewed: 2026-07-20 · status: open · stage: research · related: CRT-4V8P, ENV-7C4K, CRT-7Q2T, CRT-5N3F, STH-7W9K, CRT-8Q6R · refs: skills/critic/SKILL.md:57 (coordinator dispatch — "dispatch the three critic-reviewer subagents … and STOP"), skills/critic/review-protocol.md (Coordinator Pattern), lib/critic_consolidate.py (partial/manifest contract), bin/prawduct-hook (critic-begin, critic-consolidate, critic-end, clear)`
 
   Observed 2026-07-20 on branch `fix/archive-scope-preservation-claim`. `/prawduct:critic` (`context: fork`) ran `critic-begin`, wrote a **valid** `.prawduct/.critic-partials/manifest.json`, reported "three reviewers dispatched", and returned. No reviewer subagent ever wrote a partial: `prawduct-hook critic-consolidate` reported `no-op: review incomplete — waiting on correctness, design, sustainability (0/3 partials present)` indefinitely, and `TaskList` showed no running tasks — so the subagents did not survive the fork's return. The critic-active marker stays set meanwhile, which also blocks the session-mutating `prawduct-hook clear`.
 
@@ -24,6 +24,24 @@
   - **Candidate fix (b) landed:** `critic-consolidate`'s incomplete no-op now parses the dispatch timestamp from the review id and renders a **liveness verdict** — inside a 15-minute grace window it says wait; past it, it says `critic-end` + re-dispatch — with roster-accurate wording for single-pass vs coordinator reviews. The hang is no longer silent; the underlying dispatch-lifetime question stays open.
   - **New evidence (2026-07-20 hallucinote transcripts):** at least one "reviewers died with the fork" report was a **misdiagnosis** — the reviewers survived the fork's end, ran 7–9 minutes, and completed; the parent session inferred death from 0/3 partials at ~2.5 minutes and double-dispatched. The title's death claim is therefore unconfirmed for that instance; fix (b)'s 15-minute grace window exists precisely to prevent this premature-death inference.
   - **Remaining (why this stays open at `stage: research`):** root-cause whether reviewer subagents can *genuinely* die with the fork (dispatch-lifetime semantics), and reproduce the originally filed hang.
+
+- **[CRT-8Q6R]** Critic wait-side cache-warm directive hardcodes a 4-minute readout interval against an *assumed* 5-minute prompt-cache TTL — a stopgap that is wasteful on 1-hour-TTL sessions and silently wrong if the default changes
+  `effort: S · impact: M · area: critic · source: user · added: 2026-07-20 · status: open · stage: research · related: CRT-3F7M · revisit: v3.2.0 release · refs: lib/critic_consolidate.py:781-816 (_incomplete_noop_message), lib/critic_consolidate.py:763 (dispatch_age_minutes), lib/critic_consolidate.py:96-105 (_INFLIGHT_GRACE_MINUTES rationale), skills/critic/SKILL.md, .prawduct/artifacts/project-preferences.md`
+
+  **Requirement (the durable part, which outlives the stopgap):** a session waiting on in-flight background critic reviewers must not idle *silently*. An idle session issues no requests; its prompt cache expires; the next turn re-reads the whole prefix. Observed as token replay on early-adopter and owner sessions, 2026-07-20.
+
+  **Stopgap as shipped (v3.1.1):** prose in the incomplete-consolidate no-op message telling the waiting session to take a cheap readout roughly every 4 minutes, sized to stay inside an assumed 5-minute prompt-cache TTL.
+
+  **Why it is a stopgap, not a fix.** The cache TTL is **not observable from inside a hook**. Anthropic offers both 5-minute and 1-hour prompt-cache TTLs, so a hardcoded 4-minute interval is (a) wasteful on a 1-hour-TTL session — it burns readouts to defend a cache that was never at risk — and (b) silently wrong if the effective default changes, with no signal at the call site. The number is a guess dressed as a constant.
+
+  **Candidate fixes at revisit (v3.2.0):**
+  - make the interval a `project-preferences.md` knob (explicit, per-product, no inference);
+  - derive it from something observable rather than assuming a TTL;
+  - **drop it entirely** if the harness already handles cache retention for idle sessions — check this first, since it would retire the directive rather than tune it.
+
+  **Honest confidence — verify before acting.** At filing time the described cache-warm directive is **not present in this tree**: `_incomplete_noop_message` (`lib/critic_consolidate.py:781-816`) carries the CRT-3F7M liveness verdict and the 4–10 minute review-duration prose, but no readout-interval directive; `plugin.json` reads `3.1.0`, and no commit on any branch mentions a cache-warm interval. So the v3.1.1 provenance above is **as reported by the filer, unverified in-repo** — confirm where the directive actually landed before revisiting, and if it was never shipped, this item becomes "don't ship the hardcoded interval" rather than "replace it."
+
+  Sits on the same wait-side surface as **CRT-3F7M** (the incomplete-consolidate no-op) but is a distinct concern: CRT-3F7M is about *inferring reviewer death from silence*; this is about *what the waiting session should do with the silence*. Do not merge — one is a liveness verdict, the other a cache-retention directive. (user)
 
 - **[CRT-4V8P]** `infer-critic-mode` returns `chunk` for a clean working tree — rule 4 fires on an unrelated active build plan and produces an empty-diff refusal
   `effort: S · impact: M · area: critic · source: critic · added: 2026-07-20 · status: open · stage: ready · related: GOV-8N4V, CRT-6J4P, CRT-8H3R, WT-7M4K · refs: lib/critic_mode.py:197-210 (rule 4), lib/critic_mode.py:111 (infer_mode), bin/prawduct-hook (infer-critic-mode, critic-begin), skills/critic/SKILL.md`

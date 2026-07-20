@@ -3,6 +3,40 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-07-20: a session waiting on reviewers is told to stay audible, not just to stop re-dispatching
+
+<!-- prawduct: type=fix -->
+
+The liveness verdict landed earlier today told a waiting session *not to re-dispatch*. It did not
+tell it what to do instead, and the honest answer had been "nothing" — so sessions went quiet for
+the 5–15 minutes reviewers run. A session that emits nothing issues no model requests, its prompt
+cache expires, and the next turn re-reads the entire prefix. That is the token replay early
+adopters (and the owner) reported: the cost did not come from the review, it came from the silence
+around it.
+
+Three surfaces now say the same thing, because the guidance only works if it reaches the model at
+the moment it decides to wait:
+
+- `_incomplete_noop_message` appends a readout directive to its **wait-side** variants only. Past
+  the grace window the advice is to *stop* waiting (`critic-end` + re-dispatch), and warming the
+  cache there would prolong the state the caller should be leaving — pinned by a test asserting the
+  directive is absent from the stale-dispatch message.
+- `methodology/building.md` qualifies "don't check on it", which was the phrase most able to be
+  read as "go idle": it means don't poll for partials, not go silent.
+- `skills/critic/review-cycle.md` ties it to the prep-work guidance already there — the prep *is*
+  what keeps the wait cheap; the cadence is the floor for when prep runs out.
+
+**Stated as an assumption, not a fact.** Four minutes is sized against the 5-minute prompt cache
+every current adopter runs on. Nothing in a hook can observe which cache a session actually has,
+and longer-lived caches exist — on those this cadence buys nothing and costs a request every four
+minutes. This ships as a deliberate stopgap for a live cost problem; `CRT-8Q6R` carries the revisit
+(make the interval a preference, derive it, or drop it if the harness retains the cache itself).
+
+Budget note: `building.md` sits under a 4600-token ceiling that exists to lock in the prose diet,
+so the addition was paid for in place rather than by raising the ceiling — the cadence detail lives
+in `review-cycle.md`, and the "Test corruption" trap was dropped as a verbatim restatement of
+"Tests never weaken."
+
 ## 2026-07-20: `critic-consolidate`'s incomplete no-op carries a liveness verdict, not just a count
 
 <!-- prawduct: type=fix -->
