@@ -70,8 +70,19 @@ create-then-close 900 pts/min question (part b) as a second thing S2 must answer
 falsifying query lives in BKL-6X5D's note for whoever next wants to assert coverage:
 `grep -rn 'scrub' documentation/*.md | grep -i '500\|rate\|budget\|fit\|trim'` — the remaining hits
 read correctly as of this commit. The honest lesson, recorded rather than tidied away: stating the
-discipline does not execute it, and four consecutive rounds of self-certification were each closed
-by an external reviewer instead.
+discipline does not execute it — **three** consecutive rounds of self-certification (1, 2 and 3) were
+each closed by an external reviewer instead. Round 4 is the exception that shows the shape of the
+fix: it made no closure claim, and the thing that produced it was running a query rather than
+resolving to be careful.
+
+*Counting note, since this entry is about miscounts:* the review of round 4 caught this very sentence
+claiming **four**. Round 4 was the one round that did *not* self-certify, so "four" overstated the
+lesson by including its own counterexample. Corrected. Note also that this entry and BKL-6X5D's note
+partition the same work differently — the entry counts six surfaces *this changeset touched* (the
+docstring plus five doc sections, excluding the requirements text corrected on 2026-07-18); the
+backlog note counts six *documentation* surfaces (including requirements, with the docstring listed
+separately as the code surface). Both totals reconcile at seven, and both enumerate their members in
+place, so either can be checked rather than trusted.
 
 Fixing §9 also dissolves the **§8.9↔§9 circular reference** BKL-6X5D tracked separately: §8.9 now
 credits the Pacer and cites §9, and §9 credits the Pacer and cites NFR §3, so neither defers to the
