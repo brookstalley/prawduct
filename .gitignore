@@ -40,3 +40,6 @@ incoming-bugs/
 
 # Prawduct session files
 .prawduct/.critic-partials/
+
+# Runbook research raw captures (large; distilled state is in CHECKPOINT.md)
+.prawduct/research/**/raw/
