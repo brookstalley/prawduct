@@ -254,3 +254,32 @@ legibility, the dual-mode routing, and that nothing silently reads the frozen ma
 6. **Markdown path unchanged:** with `backlog_service_repo` unset, the skill behaves exactly as before.
 
 Drains when Phase 1 runs.
+
+## VRF-008 — Chunk 01 (skills-cutover-awareness) — dormancy is stated, not silently wrong
+
+**Status:** pending
+**Added:** 2026-07-19 (skills-cutover-awareness Chunk 01 — GV8 interim contract)
+
+**Why a human check:** the deliverable is a *stated absence*. Tests pin that the probe fires and that
+its operator-facing strings don't contradict each other, but no test can confirm that a reviewer
+reading `review-cycle.md` actually skips the walk and says so — skills are prose a model executes.
+The failure this chunk exists to kill (confident findings drawn from frozen markdown) is only
+observable in a real run against a cut-over repo. This is the VRF-007 lesson applied: a prose→CLI
+handoff survives clean multi-reviewer review and still fails live.
+
+**Where to verify:** the cut-over sibling product repo, pointed at this checkout via
+`--plugin-dir=../prawduct`, with `backlog_service_repo` set.
+
+**Verify:**
+1. Session start → the `backlog-checks-dormant` advisory appears once, `info` priority, naming the
+   dormant checks. It must read as an accepted interim state, not as an error.
+2. `/prawduct:critic final` (or `cumulative`) → Backlog Reconciliation emits the single
+   "unavailable" NOTE and **no** per-item findings. Confirm no finding cites an item that was
+   archived at cutover — that is the exact false positive this replaces.
+3. Confirm the reviewer did **not** open `.prawduct/backlog.md` for live state.
+4. Dismiss the advisory → it stays dismissed on the next session, and the Critic NOTE still appears
+   (dismissal silences the reminder, never the review-time statement).
+5. **Pre-cutover unchanged:** in a repo with `backlog_service_repo` unset, no advisory and the
+   backlog walk runs exactly as before.
+
+Drains when a cut-over repo runs a `final`/`cumulative` review on this plugin build.

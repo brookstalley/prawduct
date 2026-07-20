@@ -10,13 +10,17 @@ governed_by:
     dispositions:
       - "Authority fails closed; advice fails soft → conforms (every surface here is advice — Critic NOTEs, PR NOTE/WARNING, janitor findings, a session advisory; each degrades to a stated notice, none blocks)"
       - "Local-first, stdlib-only; no network, no daemon → conforms (the new probe reads `.prawduct/` state only; no adapter call, no `gh`)"
+      - "An independent reviewer never mutates the session it reviews → conforms (the Critic precondition is a `Read` of `project-state.yaml`; the reviewer writes nothing it did not already write, and deliberately reaches no adapter — CRT-3X9D — so the no-execution boundary is preserved rather than widened)"
+      - "No destructive action without explicit `--apply` → inapplicable because this plan adds no mutating command surface; the probe returns candidates and the prose edits are advisory text"
   - artifact: data-model
     dispositions:
-      - "Two stores, two lifetimes → inapplicable because this plan adds no persisted store; the deliberate outcome of the owner decision below is that no new format is minted"
+      - "Two stores, two lifetimes → conforms (the advisory's id and any sticky dismissal ride the EXISTING per-clone, gitignored advisory store — the nags-and-caches side of the split. Corrected from an initial 'inapplicable/adds no persisted store': the plan mints no NEW format, but it does write per-clone state, and 'no new store' is not the same claim as 'no store')"
       - "Derived views are disposable and never authoritative — no gate reads a view → conforms (no gate reads backlog state at all; `hooks/gates.json` declares only critic-review, pr-review, trivial-declaration)"
+      - "Facts are append-only and immutable · schema-ahead is a loud block · the ledger has a single writer → inapplicable because this plan writes no fact, no schema-versioned record, and nothing to the governance ledger; it adds one advisory candidate and edits reviewer prose"
   - artifact: api-contract
     dispositions:
       - "Additive-first evolution — never repurpose → conforms (a new advisory type is added; no existing probe id, exit code, or `--json` key changes meaning)"
+      - "Exit codes are the contract · persisted data that outlives a plugin version is independently schema-versioned → inapplicable because this plan adds no CLI surface and no persisted format; the advisory rides the existing store's schema and lifecycle unchanged"
   - artifact: observability-strategy
     dispositions:
       - "Stable severity-prefix vocabulary; stdout = agent, stderr = user → conforms (the advisory renders through the existing briefing path and prefix vocabulary)"
@@ -28,7 +32,7 @@ last_validated: 2026-07-19
 
 # Build Plan — Skills Cutover Awareness (stop being silently wrong post-cutover)
 
-**Why now.** A consumer repo cut over to the GitHub Issues backend today. An exhaustive sweep found
+**Why now.** A consumer repo cut over to the GitHub Issues backend today. A sweep found
 that `lib/` is uniformly cutover-aware (one shared `post_cutover` predicate, guards at every
 markdown-premise probe, a real snapshot path in the briefing) but **`skills/` is cutover-aware only
 inside `skills/backlog/`**. The Critic, the PR reviewer, and the janitor each hardcode reads of
@@ -51,14 +55,21 @@ interim contract only: **silence and confident wrongness both become a stated no
 **Level:** High
 
 **Why:** Problem, success, and scope are each one sentence and owner-confirmed this session. The
-consumer inventory is exhaustive (file:line for every reader, verdict per reader) rather than
-sampled. The one consequential design fork — bespoke projection now vs. wait for W1 — was put to the
-owner as options with trade-offs and decided; GV8 was amended the same session to match, so no
-artifact still asserts the rejected design.
+consumer inventory is broad (file:line and a verdict per reader) rather than sampled. The one
+consequential design fork — bespoke projection now vs. wait for W1 — was put to the owner as options
+with trade-offs and decided; GV8 was amended the same session to match, so no artifact still asserts
+the rejected design.
+
+**Correction (Chunk 01 Critic).** This section originally called the inventory *exhaustive*. It was
+not: `skills/pr/SKILL.md:79` ("audit `.prawduct/backlog.md` for items this branch resolves") is a
+live-state read the sweep missed, found by two reviewers independently. It is now in Chunk 02's
+scope. The claim is downgraded rather than re-asserted with one more file patched in — a sweep that
+missed one reader may have missed another, and Chunk 04's re-greppable check is what actually closes
+that, not the adjective.
 
 **Open assumptions / unknowns:**
 - [ASSUMPTION: one **consolidated** advisory naming all dormant checks, rather than one signal per
-  dormant check | MED impact | owner can split it — five separate nags per session is the failure
+  dormant check | MED impact | owner can split it — seven separate nags per session is the failure
   mode this avoids, but it does trade per-check precision for one line]
 - [ASSUMPTION: the advisory is `info` priority, not `warn` | LOW impact | it reports an accepted,
   time-boxed interim state with a known resolution (W1), which is the `info` shape; `warn` is for
@@ -78,7 +89,7 @@ artifact still asserts the rejected design.
 
 ---
 
-## Chunk 01 — Consolidated dormant-checks advisory + Critic surfaces (keystone)
+### Chunk 01: Consolidated dormant-checks advisory + Critic surfaces (keystone)
 
 **Type:** code
 **Critic mode:** final *(override: this chunk lands the architectural keystone — the "how a reader
@@ -111,7 +122,7 @@ structural, CRT-3X9D). `lib/` holds the data, the fork skill holds no logic that
 4. Full suite green; `prawduct-hook test-evidence record`.
 5. `/prawduct:critic` — resolve blocking findings.
 
-## Chunk 02 — PR reviewer R-1 / R-2
+### Chunk 02: PR reviewer R-1 / R-2
 
 **Type:** doc-only
 **Critic mode:** chunk
@@ -126,16 +137,20 @@ Both gain the Chunk 01 precondition. R-2's dormancy is called out explicitly in 
 a reader who knows R-1 is deferred to the Critic may reasonably assume R-2 is covered somewhere else.
 It is not.
 
-**Done when:** both checks state dormancy post-cutover; no prose still names markdown sections as the
-resolution surface; `/prawduct:critic`.
+**Also in scope — `skills/pr/SKILL.md:79`** ("audit `.prawduct/backlog.md` for items this branch
+resolves", in the prep-while-Critic-runs step). Missed by the original sweep and added here after the
+Chunk 01 Critic; it is a third live-state read in the PR path, distinct from R-1 and R-2.
 
-## Chunk 03 — Janitor Backlog Health
+**Done when:** all three PR-path readers state dormancy post-cutover; no prose still names markdown
+sections as the resolution surface; `/prawduct:critic`.
+
+### Chunk 03: Janitor Backlog Health
 
 **Type:** doc-only
 **Critic mode:** chunk
 
 `skills/janitor/SKILL.md` — Step 1 Orient (`:174`), the Step 2.5 Backlog Health block (`:197-207`,
-all seven checks), and the Step 4/5 reconcile target (`:278`). All seven checks are markdown-shaped
+all seven checks), and the Step 7 (Close) reconcile target (`:278`). All seven checks are markdown-shaped
 (group by `area:`, dedup by overlap, staleness via `reviewed`/`added`, unstaged `stage:`, `## Promoted`
 neglect, legacy-item count, `## Archive` growth).
 
@@ -147,7 +162,7 @@ Issues is system of record. The block states dormancy as a whole rather than per
 **Done when:** the Backlog Health block states dormancy post-cutover; Step 1 and Step 4/5 no longer
 name `backlog.md` as the live-state or reconcile surface; `/prawduct:critic`.
 
-## Chunk 04 — Name-and-prose coherence sweep
+### Chunk 04: Name-and-prose coherence sweep
 
 **Type:** cumulative-final
 **Critic mode:** cumulative

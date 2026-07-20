@@ -274,6 +274,21 @@ class TestChecksDormantProbe:
         assert fired
         assert fired[0].feature == "backlog" and fired[0].probe_version == bp.PROBE_VERSION
 
+    def test_operator_facing_action_is_consistent_and_id_free(self, tmp_path):
+        # The advisory's two operator-facing strings must not contradict each other:
+        # trigger_summary says the checks ARE dormant, so the action must not read as
+        # though they already work. It also lands in a downstream product's briefing,
+        # where prawduct's internal requirement ids mean nothing.
+        out = bp.probe_checks_dormant(
+            ProjectState({"backlog_service_repo": "acme/widgets"}), _cb(tmp_path)
+        )
+        action = out[0].recommended_action
+        assert "dormant" in out[0].trigger_summary
+        assert "are restored" not in action
+        for internal_id in ("GV8", "W1"):
+            assert internal_id not in action
+        assert "dismiss" in action.lower()
+
     def test_zero_fire_against_this_repo(self):
         # Repo-coupled tripwire (deliberately NOT hermetic). This repo is genuinely
         # out of the target state — it has not cut over — so the probe is silent for
@@ -282,7 +297,11 @@ class TestChecksDormantProbe:
         # (GV8/W1), never a reason to narrow the trigger.
         repo_root = Path(__file__).resolve().parents[1]
         state = load_project_state(repo_root)
-        assert bp.probe_checks_dormant(state, Codebase(root=repo_root)) == []
+        assert bp.probe_checks_dormant(state, Codebase(root=repo_root)) == [], (
+            "prawduct itself has now cut over while these checks are still dormant. "
+            "The remediation is to restore them against the backlog read-through "
+            "cache (GV8), not to narrow or delete this tripwire."
+        )
 
 
 class TestRegistration:

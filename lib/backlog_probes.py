@@ -301,11 +301,14 @@ def probe_checks_dormant(state: ProjectState, codebase: Codebase):
     read-through cache lands (W1) and these readers are restored against it, the
     dormancy itself is the thing to say out loud.
 
-    One consolidated advisory rather than one per dormant check: five nags per
+    One consolidated advisory rather than one per dormant check: **seven** nags per
     session for a single known, time-boxed cause trains dismissal, and dismissal is
-    what makes the *next* real signal invisible. ``info`` priority — this reports an
-    accepted interim state with a known resolution, not a risk the reader must act
-    on; it is dismissible like any advisory.
+    what makes the *next* real signal invisible. Seven is the count the evidence
+    string enumerates — Backlog Reconciliation, C-B1--C-B4 as one group, R-1/R-2 as
+    one group, Backlog Health, and the three norm-lifecycle probes individually.
+    ``info`` priority — this reports an accepted interim state with a known
+    resolution, not a risk the reader must act on; it is dismissible like any
+    advisory.
     """
     if not post_cutover(state):
         return []
@@ -324,8 +327,8 @@ def probe_checks_dormant(state: ProjectState, codebase: Codebase):
                 "frozen markdown backlog as if it were live"
             ),
             recommended_action=(
-                "no action — the checks are restored against the backlog "
-                "read-through cache (GV8/W1); dismiss this to stop the reminder"
+                "no action needed — these checks return when the backlog "
+                "read-through cache lands; dismiss this advisory to stop the reminder"
             ),
             priority="info",
         )

@@ -7,6 +7,65 @@
 
 ## Open
 
+- **[BKL-4R7V]** Citation surfaces must recognize `owner/repo#number`, not just `[PFX-XXXX]` — post-cutover item references are invisible to every reader
+  `effort: M · impact: M · area: backlog · source: user · added: 2026-07-19 · status: open · stage: ready · related: BLD-5V8F, BLD-3M7K, BKL-5D2C, BKL-6M4T · refs: documentation/backlog-service-requirements.md (GV9 — parent requirement; GV8 for the resolve half), lib/norm_probes.py:144 (_BACKLOG_ID_RE), lib/buildplan_refs.py (_parse_build_plan_chunk_refs — the deferred backlog-ref verification), skills/critic/review-protocol.md (Backlog check C-B4), skills/pr/review-protocol.md (R-2), .prawduct/change-log.md + backlog metadata (closes: / closed-by:)`
+
+  Surfaced by the samsung-frame-art-loader Phase 1 dogfood (2026-07-19). Parent requirement is **GV9** in `documentation/backlog-service-requirements.md` — "item references survive the identifier change." After cutover the canonical id is `owner/repo#number`, but every citation-consuming surface in prawduct still recognizes only the markdown-era `[PFX-XXXX]` spelling, so a post-cutover reference is not mis-read — it is **not seen at all**, the same silent degradation GV7/GV8 exist to prevent.
+
+  Concrete break (verified in source, not inferred): `lib/norm_probes.py:144` `_BACKLOG_ID_RE = re.compile(r"\b[A-Z]{2,4}-[A-Z0-9]{4}\b")` is PFX-only. The same PFX-only assumption sits behind the **Critic backlog check C-B4**, the **PR reviewer R-2** check, the `closes:` / `closed-by:` fields in both `.prawduct/change-log.md` entries and backlog item metadata bars, and the deferred **backlog-id verification** half of `lib/buildplan_refs.py` (tracked by BLD-5V8F, whose deferral note — "this project's backlog has no formal IDs" — is now doubly obsolete).
+
+  **Recognition is additive: never narrow the PFX matching.** Both spellings must be accepted indefinitely — archived markdown items keep their PFX ids, `id:PFX` alias labels persist on migrated issues, and pre-cutover documents are not rewritten. This is a widening of every id regex/parser, not a replacement.
+
+  Sequencing: **parsing/recognition can ship earlier** (pure syntax — widen the regexes, thread both spellings through the citation surfaces). **Resolving `#N` to a live status** is a backlog *read* and therefore lands with the W1 cache under GV8, alongside the other post-cutover readers. Split accordingly rather than blocking the cheap half on the expensive one.
+
+  Dedup note: distinct from **BLD-3M7K**, which wants `owner/repo#number` tokens *excluded* from `verify-chunk-refs`' file-path heuristic. The two are complementary and should land coherently — BLD-3M7K stops the token being misread as a path; this item makes it read as a backlog id. (user — samsung-frame-art-loader Phase 1 dogfood)
+
+- **[BKL-7H2M]** The issue standard contradicts itself on the body budget — §2 says ~120 visible words, §4 and the linter say 150, and §2's own per-section budgets already sum past both
+  `effort: S · impact: M · area: backlog · source: user · added: 2026-07-19 · status: open · stage: ready · related: BKL-3T7X, BKL-4C6P, BKL-8N5K, BKL-6M4T · refs: documentation/backlog-service-issue-standard.md (§2 body templates + per-section budgets, §4 linter thresholds), lib/backlog/issuefmt.py:75 (BODY_MAX_WORDS = 150), lib/backlog/issuefmt.py:294 (body-too-long finding)`
+
+  Surfaced by the samsung-frame-art-loader Phase 1 dogfood (2026-07-19). `documentation/backlog-service-issue-standard.md` states two different body budgets: **§2 says ~120 visible words**, while **§4 and the implementation agree on 150** (`lib/backlog/issuefmt.py:75` `BODY_MAX_WORDS = 150`, emitted at :294 as the `body-too-long` finding). Worse, §2's own **per-section** budgets sum to roughly **143–155 words before any Evidence section at all** — so an author who follows §2's section-by-section guidance exactly can produce a fully conforming task issue that still trips `body-too-long`. The standard is unsatisfiable at its own stated limits.
+
+  Fix: reconcile to **one number**, propagated to all three homes (§2 prose, §2 per-section budgets, §4 threshold) with `issuefmt.BODY_MAX_WORDS` as the single implementation constant. Decide deliberately whether the per-section budgets shrink to fit the total or the total rises to accommodate them + Evidence.
+
+  **Timing is the impact multiplier:** resolve this *before* the MG6 migration restructure pre-pass (BKL-8N5K) rewrites bodies at scale. Restructuring ~200 items against a self-contradictory budget bakes the contradiction into every migrated issue and makes the linter noisy from day one on an irreversible run. (user — samsung-frame-art-loader Phase 1 dogfood)
+
+- **[BKL-9T3K]** `adapter-mode.md` must explicitly forbid the skill authoring a `prawduct:` block — the block is adapter-owned
+  `effort: S · impact: M · area: backlog · source: user · added: 2026-07-19 · status: open · stage: ready · related: BKL-3W6K, DOC-4K9M, BKL-6M4T · refs: skills/backlog/adapter-mode.md, lib/backlog/encode.py (the prawduct: block writer/parser)`
+
+  Observed live during the samsung-frame-art-loader Phase 1 dogfood (2026-07-19), not hypothesized. Filing an item through the post-cutover adapter path, the **skill hand-wrote a `prawduct:` block into the issue body**. The adapter then appended **its own** block, detected the duplicate, and **warned + discarded** the skill-authored one; the skill self-corrected with a follow-up `update`. Outcome was benign this time, but the round-trip is pure waste and the failure mode is only benign because the adapter happens to warn — a future body-composition path that merges rather than discards would silently produce a corrupt or ambiguous block.
+
+  Root cause is a documentation gap, not a code defect: `skills/backlog/adapter-mode.md` never states the ownership boundary, so the skill inferred it should compose the full body including the machine block. **The `prawduct:` block is adapter-owned** — the skill supplies title, prose body, and facets as adapter arguments; the adapter alone serializes the block.
+
+  Fix: add an explicit prohibition to `adapter-mode.md` (near the body/`file` guidance) — "never author, edit, or reproduce a `prawduct:` block; pass facets as adapter arguments and let the adapter serialize it." Governance-protected (`skills/`) → full Critic + PR review. (user — samsung-frame-art-loader Phase 1 dogfood)
+
+- **[BKL-2D8N]** `prawduct-hook backlog <subcommand> --help` exits 2 "unknown flag" instead of printing usage
+  `effort: S · impact: S · area: backlog · source: user · added: 2026-07-19 · status: open · stage: ready · related: BKL-3W6K, BKL-6M4T · refs: lib/backlog/cli.py (per-subcommand argument parsing), skills/backlog/adapter-mode.md`
+
+  Surfaced by the samsung-frame-art-loader Phase 1 dogfood (2026-07-19). Every `prawduct-hook backlog` subcommand **rejects `--help`** with exit **2, "unknown flag"** rather than printing its usage. Small but real friction: `--help` is the universal discovery affordance, and an agent (or operator) probing an adapter op's flag set gets an error that reads like a malformed invocation instead of documentation. It also means the *only* source of truth for a subcommand's flags is `adapter-mode.md` plus the source — exactly the coupling that drifts.
+
+  Fix: accept `--help` on each subcommand and print usage (flags, envelope shape, exit classes) at exit 0. Cheap, self-documenting, and it makes the adapter surface discoverable without opening `lib/backlog/cli.py`. (user — samsung-frame-art-loader Phase 1 dogfood)
+
+- **[JNT-5K3W]** Janitor should SURFACE orphaned `prawduct`-namespace labels with zero issues — never auto-delete them
+  `effort: S · impact: S · area: janitor · source: user · added: 2026-07-19 · status: open · stage: ready · related: JNT-7T1W, BKL-6M4T · refs: skills/janitor/SKILL.md (Backlog Health step), lib/backlog/provision.py:61,145 (PROV-1 — create-only, existing labels never modified), documentation/backlog-service-requirements.md (GV6 — label taxonomy provisioning + coexistence)`
+
+  Surfaced by the samsung-frame-art-loader Phase 1 dogfood (2026-07-19). `prawduct-hook backlog update --area …` (and the other facet mutators) **provision** namespaced labels on demand but **never garbage-collect** them. Over time a repo accumulates `area:*` / `kind:*` / `stage:*` labels with **zero issues** — typos, renamed areas, abandoned facet values — cluttering the label picker and the GitHub UI for humans filing by hand.
+
+  **This must SURFACE for human deletion, never auto-delete.** `lib/backlog/provision.py` is deliberately **create-only (PROV-1: existing labels are never modified)** precisely so the taxonomy **coexists** with labels that humans and other tools own (GV6). An automatic GC would violate that coexistence guarantee the first time it met a zero-issue label some other workflow owns — and label deletion is not recoverable through the adapter.
+
+  Fix-shape: a janitor Backlog Health sub-check that lists `prawduct`-namespace labels (only the namespaces prawduct provisions — never a bare label) whose issue count is zero, framed as *"candidates for deletion — delete in the GitHub UI if you agree."* Read-only; no adapter write path. (user — samsung-frame-art-loader Phase 1 dogfood)
+
+- **[ONB-3F9P]** `/prawduct:onboard` and `/prawduct:doctor` never provision the backlog surface or the label taxonomy — GV5/GV6 have no implementation
+  `effort: M · impact: M · area: onboard · source: user · added: 2026-07-19 · status: open · stage: ready · related: DOC-7H2K, BKL-1V8J, JNT-5K3W, BKL-6M4T · refs: documentation/backlog-service-requirements.md (GV5 zero-cost provisioning, GV6 label-taxonomy provisioning + coexistence), skills/onboard/SKILL.md:6 (allowed-tools — only Bash(prawduct-hook init-product *)), skills/doctor/SKILL.md:6 (allowed-tools — no Bash(prawduct-hook backlog *) grant), lib/backlog/provision.py (reconcile-labels)`
+
+  Surfaced by the samsung-frame-art-loader Phase 1 dogfood (2026-07-19). **GV5** ("zero-cost provisioning: `/prawduct:onboard` — and `doctor` — provisions a project's backlog surface") and **GV6** ("adoption provisions and reconciles the label taxonomy and coexists with a repo's existing labels") are written requirements with **no implementation on either skill**:
+
+  - `skills/onboard/SKILL.md` has **no `backlog_service_repo` step and no label-provisioning step**, and `prawduct-hook init-product` has **no flag** to set the backlog repo or seed the taxonomy. A newly onboarded repo therefore has no backlog surface decision recorded and no labels.
+  - `skills/doctor/SKILL.md` carries `allowed-tools` with **no `Bash(prawduct-hook backlog *)` grant** (verified at `skills/doctor/SKILL.md:6`), so it is **structurally incapable** of running `reconcile-labels` — the exact repair GV6 assigns to it. Same class of gap as BKL-3W6K's finding that the backlog skill lacked Bash entirely.
+
+  **This is a missing explicit taxonomy step, not a broken backlog.** The adapter **self-creates labels on write**, so a cutover repo does eventually acquire its taxonomy — lazily, in whatever order items happen to be filed, with no up-front provisioning and no reconcile path when a human deletes a base label. The requirement is for provisioning to be an *explicit, verifiable adoption step*, not an emergent side effect of the first write.
+
+  Fix-shape: (1) an `init-product` flag (or onboard prompt) recording `backlog_service_repo` when a product adopts the Issues backend; (2) an onboard step invoking the adapter's label provisioning; (3) add `Bash(prawduct-hook backlog *)` to the doctor `allowed-tools` and a doctor step running `reconcile-labels` as a repair. Pairs naturally with JNT-5K3W (the janitor's orphan-label surfacing) — provision on adoption, reconcile in doctor, surface orphans in janitor. Governance-protected (`skills/`) → full Critic + PR review. (user — samsung-frame-art-loader Phase 1 dogfood)
+
 - **[CRT-2Q6D]** Dangling docstring reference — `lib/critic_mode.py:261` still cites `_verify_resolutions_gate_check`, deleted in the kernel-v3 cutover
   `effort: S · impact: S · area: critic · source: critic · added: 2026-07-19 · status: open · stage: ready · related: CRT-8H3R, CRT-5D8Q · refs: lib/critic_mode.py:261`
 

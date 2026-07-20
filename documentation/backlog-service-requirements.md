@@ -244,6 +244,27 @@ speed. Centralization alone fixes stale *views* (TF1); stale *content* needs TF2
   the interim every post-cutover backlog reader states plainly that the check is unavailable on the
   Issues backend. A missing check a reader is told about is recoverable; one it is not told about is
   the norm-exception hole again, one layer down.
+- **GV9** **Item references survive the identifier change.** After cutover the canonical id is
+  `owner/repo#number` and **no new `PFX-XXXX` is ever minted** (Data Model §5;
+  `lib/backlog/ids.py`) — the `id:PFX` alias exists so *migrated* items' old refs resolve forever,
+  not as a continuing scheme. Every surface that **cites** an item must therefore recognize *both*
+  forms: the PFX alias for migrated items, and `owner/repo#number` / `repo#number` for everything
+  filed after cutover. Today several recognize only the first — e.g. `lib/norm_probes.py`'s
+  `_BACKLOG_ID_RE` (`\b[A-Z]{2,4}-[A-Z0-9]{4}\b`), the Critic's C-B4 dangling-id check, PR review
+  `R-2`'s `closes: PFX-XXXX` reconciliation, `closes:`/`closed-by:` in backlog metadata and
+  change-log tags, and the deferred build-plan backlog-id verification
+  (`lib/buildplan_refs.py`). A citation surface that recognizes only PFX does not error on a
+  post-cutover reference — it **fails to see it**, which is the same silent degradation GV7 and GV8
+  exist to prevent, one layer down: a dangling-id check that cannot parse the id reports a clean
+  pass.
+  - **Recognition is additive** (API contract: additive-first evolution). PFX matching is never
+    narrowed or replaced; the native form is accepted *alongside* it, because both remain valid
+    forever in any repo that migrated.
+  - **Recognizing is not resolving.** Parsing a reference is local and cheap; answering "is
+    `owner/repo#123` still open?" is a backlog read and therefore lands with the W1 cache under GV8.
+    The parse-side work can ship well before the resolve-side, and should — a surface that can *see*
+    a post-cutover reference but must say "status unavailable" is strictly better than one that
+    silently treats it as absent.
 
 ### Migration & exit
 
