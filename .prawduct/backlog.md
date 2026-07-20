@@ -1902,6 +1902,25 @@
   Confirm reproduction before sizing the fix. Kept separate from TST-4P8H per the distinctness
   argument above (state leakage vs. subprocess/timeout contention); cross-linked, not merged.
 
+- **[BKL-4Z7M]** Under `--archive-scope open`, a migrated repo's skipped archive becomes unreachable from find/list
+  `effort: M · impact: M · area: backlog-service · source: user · added: 2026-07-20 · status: open · stage: design · related: BKL-6X5D, BKL-3W6K, BKL-6M4T · refs: skills/backlog/SKILL.md:17 (frozen-history routing), skills/backlog/migration-scrub.md (step 2c decision + step 3 tradeoff note), lib/backlog/migrate.py:466 (apply_archive_scope), .prawduct/artifacts/migration-scrub-decisions.md:20 (A1 — prawduct chose `all`), documentation/backlog-service-prd.md:218`
+
+  After cutover (`backlog_service_repo` set), `skills/backlog/SKILL.md` treats `.prawduct/backlog.md`
+  as frozen history and forbids reading it for live state. Items excluded by `--archive-scope open`
+  are therefore preserved only as git history — they are outside `find`/`list`, so precedent lookup
+  and add-time dedup silently lose the whole archive.
+
+  prawduct itself is unaffected (A1 decided `all` on 2026-07-20), so this is **adopter-facing**.
+  Discovered 2026-07-20 while correcting nine surfaces that wrongly claimed the skipped set lives in
+  the MG2 export (the export dumps the migrated repo *post-import*, so by construction it never
+  contains what the import excluded). The docs are now truthful about the consequence; this item is
+  the product gap behind them.
+
+  Possible shapes, none chosen: export the source markdown to a durable artifact at step 0; teach
+  `find` an explicit opt-in archive-history read; or accept and document. Related to BKL-6X5D (the
+  quantified recent-shipped window between the `open`/`all` poles — same lever, different
+  consequence: that item is the rate/volume budget, this one is post-cutover reachability).
+
 ## Promoted
 
 - **[BKL-5D2C]** Move the backlog out of git to a centralized, agent-friendly issue-tracking service

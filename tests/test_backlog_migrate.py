@@ -248,8 +248,8 @@ class TestArchiveAndCheckpoint:
 
 class TestArchiveScope:
     """MG4b — the owner-confirmed ``--archive-scope {all,open}`` lever. ``open``
-    imports only the live/open set as issues; the historical archive stays as the
-    MG2 export file (git history) rather than minting a closed issue per ancient
+    imports only the live/open set as issues; the historical archive stays in the
+    git-tracked source markdown rather than minting a closed issue per ancient
     item. ``all`` is the pre-scrub default."""
 
     _MAIN = "## Open\n\n- **[SCP-0001]** open item\n  `area: core · status: open`\n"
@@ -258,6 +258,22 @@ class TestArchiveScope:
         "- **[SCP-0002]** shipped item\n  `area: core · status: shipped`\n"
         "- **[SCP-0003]** dropped item\n  `area: core · status: dropped`\n"
     )
+
+    @staticmethod
+    def _assert_preservation_claim_is_true(warnings):
+        """The ``open`` warning tells an operator where the skipped items went, and
+        that sentence has to be **true**. It once said they remain in "the MG2
+        export" — impossible, since ``export_backlog`` dumps the *migrated repo*
+        and runs after the import, so it can never hold what the lever excluded.
+        An operator who believed it would choose ``open`` expecting a restorable
+        archive artifact that does not exist. Guarded here rather than left to
+        review because a false safety claim reads as reassuring in every diff."""
+        skip_warning = next(w for w in warnings if "archive-scope open" in w)
+        assert "export" not in skip_warning.lower(), (
+            "the --archive-scope open warning credits the MG2 export with preserving "
+            f"skipped items; the export dumps the migrated repo: {skip_warning!r}"
+        )
+        assert "source markdown" in skip_warning
 
     def test_apply_open_filters_closed_records(self):
         records, _ = migrate.collect_records(self._MAIN, self._ARCHIVE)
@@ -279,6 +295,7 @@ class TestArchiveScope:
         assert len(result["data"]["created"]) == 1  # only the open item
         assert result["data"]["archive_skipped"] == 2
         assert any("archive-scope open" in w for w in result["warnings"])
+        self._assert_preservation_claim_is_true(result["warnings"])
         assert _alias_issues(fake, "SCP-0001")  # open item created
         assert _alias_issues(fake, "SCP-0002") == []  # shipped item NOT minted
         assert _alias_issues(fake, "SCP-0003") == []  # dropped item NOT minted

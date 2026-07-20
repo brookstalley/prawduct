@@ -3,6 +3,52 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-07-20: `--archive-scope open` stops promising a backup that cannot exist; A1 decided `all`
+
+<!-- prawduct: type=fix -->
+<!-- Statusless = release-pending once develop→main ships. No scope= tag: a
+     doc/claim correction plus one decision record; no build plan, no ## Status. -->
+
+Two things, one root. Deciding prawduct's own `--archive-scope` (release-plan **A1**) meant reading
+what the lever actually does — and the documented case for `open` turned out to be false.
+
+**The false claim.** Every surface describing `open` said the skipped archive "stays as the MG2
+export file." It cannot. `export_backlog` dumps the **migrated repo**, and the runbook's step 0 puts
+it *after* the first import — so by construction the export never contains what `--archive-scope
+open` excluded. An operator choosing `open` on that basis would expect a restorable archive artifact
+that was never produced.
+
+The truth is narrower but real: skipped items stay in the **git-tracked source markdown**, which is
+step 0's pre-migration backup. What no surface said is the part that actually decides the choice —
+post-cutover, `skills/backlog/SKILL.md` treats that file as frozen history and stops reading it, so
+the skipped set is **git history, not searchable backlog**: outside `find`/`list`, and outside
+add-time dedup. Corrected at the parent requirements first (PRD MG4 + requirements §MG4b), then the
+five downstream surfaces, then the shipped change-log entry that recorded it.
+
+**Guarded, not just fixed.** The `open` warning string now has a test asserting the sentence is
+*true* — it must not credit "export" and must name the source markdown — verified to fail against
+the old wording before being trusted. This class of defect (a plausible, reassuring safety claim) is
+invisible in review precisely because it reads well, so it gets a mechanical check rather than
+another resolution to be careful.
+
+**Left alone, deliberately:** the *restructure* rollback claims ("recoverable via the MG2 export
+backup") are true — `original_title`/`original_body` are written into the issue block, so the
+post-import export does carry them. Same words, different mechanism; checked rather than assumed.
+
+**A1: `all`** (`artifacts/migration-scrub-decisions.md` decision 5). The deciding argument was
+default-path coverage, not archive completeness: `all` is the flag's default, so choosing `open` for
+the dogfood would ship the default path unexercised by the one migration prawduct runs itself. This
+promotes **`BKL-6X5D` part (b)** from conditional to a firm v3.2.0 blocker — an archived item costs a
+paced create plus an **unpaced** close, so the archive leg is the half-metered stretch part (b)
+exists to close. The runbook had back-attributed an `all` decision to a file written 16 hours before
+the flag existed; that citation now points at the real decision.
+
+The residual product gap — `open` genuinely does strand the archive outside the live tracker — is
+filed as **`BKL-4Z7M`**, adopter-facing and not release-gating now that prawduct takes `all`.
+
+`documentation/backlog-service-{prd,requirements}.md`, `lib/backlog/{migrate,cli}.py`,
+`skills/backlog/migration-scrub.md`, `tests/test_backlog_migrate.py`.
+
 ## 2026-07-20: `--archive-scope` becomes discoverable, and stops being credited with the rate ceiling (BKL-6X5D part a)
 
 <!-- prawduct: type=fix -->
@@ -445,9 +491,11 @@ migration leg stays deferred):
 - **MG4b — `--archive-scope {all,open}` lever.** The importer now honors an
   owner-confirmed archive-scope choice: `all` (default, pre-scrub behavior — every
   archived item becomes a closed issue) or `open` (migrate only the live/open set;
-  the historical archive stays as the MG2 export, minting no closed issue per
-  ancient item — fewer total writes, NF3; the Pacer, not this lever, enforces the
-  write-*rate* ceiling — BKL-6X5D). Surfaced as an explicit owner question in
+  the historical archive stays in the git-tracked source markdown, minting no closed
+  issue per ancient item — fewer total writes, NF3; the Pacer, not this lever, enforces
+  the write-*rate* ceiling — BKL-6X5D). *(Corrected 2026-07-20: as shipped, this entry
+  and eight other surfaces said the skipped archive "stays as the MG2 export." It cannot
+  — `export` dumps the migrated repo post-import. Fixed in the entry below.)* Surfaced as an explicit owner question in
   the migration-scrub runbook (new step 2c); `restructure-preview` honors the same
   scope so the owner reviews exactly what imports. Quantified recent-window between
   the poles stays BKL-6X5D (adopter-scale). `lib/backlog/{migrate,cli}.py`.

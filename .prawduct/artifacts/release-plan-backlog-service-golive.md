@@ -27,15 +27,15 @@ is that one discovery spike gates the end of the chain while everything else run
 
 | # | must land | blocked by | state |
 |---|---|---|---|
-| 1 | `--archive-scope` decision for prawduct's own migration (A1) | — | ☐ **owner, do first** |
+| 1 | `--archive-scope` decision for prawduct's own migration (A1) | — | ☑ **decided 2026-07-20: `all`** |
 | 2 | Merge PR #134 (`skills-cutover-awareness`) — change-log conflict expected | — | ☐ |
 | 3 | VRF-005 · VRF-007 · VRF-008 drained against `samsung-frame-art-loader` | — | ☐ unblocked today |
 | 4 | **`BKL-9XQ2` discovery spike** — consent (1a/1b), evidence+PII, label taxonomy | — | ☐ **critical path** |
 | 5 | SPIKE-S2 live dry-run on a throwaway repo (C1) | 1 | ☐ |
 | 6 | MG4 scrub workflow (C2) | — | ☐ |
 | 7 | `BKL-4W7H` — PFX read-resolution + alias idempotency (C3) | — | ☐ in flight (`promoted`) |
-| 8 | `BKL-6X5D` part (b) — Pacer meters REST points (C7) | 1 | ☐ **only if A1 = `all`** |
-| 9 | The real prawduct migration (C4) | 1, 5, 6, 7 | ☐ |
+| 8 | `BKL-6X5D` part (b) — Pacer meters REST points (C7) | — | ☐ **blocker** (A1 = `all` promoted it; no longer conditional) |
+| 9 | The real prawduct migration (C4) | ~~1~~ (met), 5, 6, 7, **8** | ☐ |
 | 10 | Briefing/gates repoint through the adapter (C5) | 9 | ☐ |
 | 11 | **MG5** — drop-box retirement + `report-bug` upstream filing (C6) | **4**, 10 | ☐ |
 | 12 | VRF-006 — the migration is its own acceptance evidence | 9 | ☐ |
@@ -45,8 +45,19 @@ is that one discovery spike gates the end of the chain while everything else run
 | 16 | Tag `v3.2.0`, push, confirm the version-delta banner | 15 | ☐ |
 | 17 | VRF-002 · VRF-003 | promotion | ☐ **post-release by construction** |
 
-Nothing above is optional-by-default: item 8 is conditional on a decision, and item 17 is
-deliberately *after* the tag. Everything else lands before v3.2.0 ships.
+Nothing above is optional-by-default: item 8 **was** conditional on A1 and is now firm, and item 17
+is deliberately *after* the tag. Everything else lands before v3.2.0 ships.
+
+**A1 resolved 2026-07-20 — `all`** (recorded with rationale in
+`artifacts/migration-scrub-decisions.md` decision 5). Two things this settles beyond item 8:
+items 5 and 9 are unblocked, and the SPIKE-S2 dry-run measures the path prawduct actually takes.
+The deciding argument was not archive completeness but **default-path coverage**: `all` is the
+flag's default, so `open` for the dogfood would have shipped the default unexercised by the only
+migration prawduct runs itself. A secondary find during the decision — `open`'s documented
+preservation story was false on nine surfaces, naming the MG2 export, which dumps the migrated
+repo post-import — is fixed on `fix/archive-scope-preservation-claim`; the residual product gap
+(`open` puts the skipped archive outside `find`/`list` post-cutover) is **`BKL-4Z7M`**, adopter-facing
+and not release-gating now that prawduct takes `all`.
 
 ## Why the consent policy is on the critical path, not beside it
 
@@ -67,8 +78,8 @@ Reinforcing this, verified in code 2026-07-20: the capability already exists and
 
 ## Sizing (snapshot, not a fact)
 
-prawduct's own backlog at `f8b38f7` on `develop`, 2026-07-20T14:54Z: **108 open · 2 promoted · 144
-archive**, no separate archive file, across **29 distinct PFX prefixes** (`ADR ADV BKL BLD BRF COV
+prawduct's own backlog at `964d03b` on `develop`, re-derived 2026-07-20: **108 open · 2 promoted ·
+143 archive**, no separate archive file, across **29 distinct PFX prefixes** (`ADR ADV BKL BLD BRF COV
 CRT DOC ENV GOV JAN JNT LRN MET MIG PR PRR REL SCN SEC STH STN SYN TEL TPL TST VWS WMK WT`).
 
 **Treat every count here as a dated snapshot, never as a constant.** On 2026-07-20 four discodon
@@ -77,13 +88,17 @@ minutes apart — a live instance of the stale-views pain this project exists to
 re-derived at the moment it is used, or it is not used. The 29 prefixes are the more durable datum:
 they are the multi-prefix absorption stress the dogfood was chosen to provide.
 
+*(The archive figure above was **144** when this plan was written hours earlier and is 143 on
+re-derivation — the section's own rule demonstrating itself on the same day. Note the count rose by
+one afterward when `BKL-4Z7M` was filed, which is exactly why no downstream item is sized off it.)*
+
 ## Blockers
 
 ### A — Owner decisions (cheap, unblock everything downstream, do first)
 
 | id | decision | why it gates |
 |---|---|---|
-| **A1** | `--archive-scope` for prawduct's own migration: `all` or `open` | **Determines whether `BKL-6X5D` part (b) is a release blocker.** `open` ≈ 110 creates, no archive stretch, part (b) stays deferred. `all` ≈ 254 creates **plus 144 unpaced closes** — that is exactly the half-unmetered create-then-close stretch part (b) describes, so choosing `all` promotes B-tier work into this release. MG4b requires this be an explicit owner choice at scrub time regardless. |
+| **A1** | ~~`--archive-scope` for prawduct's own migration~~ — **decided 2026-07-20: `all`** | Resolved. It determined whether `BKL-6X5D` part (b) is a release blocker; `all` **promotes it in** (item 8). The archive leg is one paced create plus one **unpaced** close per item, the half-metered stretch part (b) exists to close. Rationale and the code that backs it: `artifacts/migration-scrub-decisions.md` decision 5. |
 | **A2** | ~~Release version~~ — **decided 2026-07-20: v3.2.0** | The bump *is* the release trigger (`VERSION` + `plugin.json`). A minor bump for a subsystem going live, consistent with the standing "version conservatively" preference. |
 | **A3** | `BKL-9XQ2` policy shape | Follows the B1 spike; listed here so it is not mistaken for a build task. |
 
@@ -115,13 +130,13 @@ Prerequisite state verified 2026-07-20: `BKL-8P2R` **shipped**, `BKL-8N5K` (MG6 
 
 | id | work | blocked by |
 |---|---|---|
-| C1 | SPIKE-S2 live dry-run on a throwaway repo (step 0) | A1 |
+| C1 | SPIKE-S2 live dry-run on a throwaway repo (step 0) | ~~A1~~ (met — run it with `--archive-scope all`) |
 | C2 | MG4 scrub workflow — model-surfaced candidates → owner-confirmed dispositions | — |
 | C3 | `BKL-4W7H` (PFX read-resolution + alias idempotency) — must-fix-before-done | — |
-| C4 | The real prawduct migration (bulk import) | A1, C1, C2, C3 |
+| C4 | The real prawduct migration (bulk import) | ~~A1~~ (met), C1, C2, C3, **C7** |
 | C5 | Briefing/gates repoint through the adapter | C4 |
 | C6 | **MG5** — drop-box retirement + `report-bug` files upstream, carrying `Found in: prawduct vX.Y.Z` from `prawduct-hook version` (provenance, not model recall) | **B1**, C5 |
-| C7 | `BKL-6X5D` part (b) — Pacer meters REST points for the create+close stretch | **only if A1 = `all`** |
+| C7 | `BKL-6X5D` part (b) — Pacer meters REST points for the create+close stretch | — (in scope: A1 = `all`) |
 
 `lib/backlog/legacy.py` is **not** retired here — it stays as the shared markdown read path for
 un-migrated portfolio repos (MG3/GV7).
@@ -150,14 +165,14 @@ un-migrated portfolio repos (MG3/GV7).
 - The full XP1 cross-owner / foreign-identity / private-target plane stays **W3**. MG5 ships only the
   fixed-target public-repo subset. Do not let B1's discovery pull W3 forward.
 - `BKL-6X5D` window *quantification* stays deferred (adopter-scale); only part (b) is in scope, and
-  only under A1 = `all`.
+  now firmly in scope because A1 landed on `all`.
 
 ## Burn-down order
 
 The critical path is **B1 → C6 → release**, and B1b is the only genuinely unknown-duration item.
 Everything else parallelizes around it.
 
-1. **Now, in parallel with everything:** A1 + A2 (owner, minutes). D1 (three live verifications
+1. **Done — A1 + A2 both decided 2026-07-20** (`all`; v3.2.0). Still now, in parallel: D1 (three live verifications
    against samsung — unblocked today, and they de-risk C4 by exercising the adapter end-to-end
    before a real migration depends on it). E1 (merge #134).
 2. **Start immediately, longest pole:** B1 discovery spike. B1b first — if the evidence/PII answer is
@@ -165,7 +180,9 @@ Everything else parallelizes around it.
 3. **Parallel to B1:** C1, C2, C3 — none depend on the consent policy. C1's dry-run also settles the
    real pacing constants the NFR §9 S2 obligation now demands (measured with `--archive-scope all`,
    volume lever disabled, so the run proves pacing rather than a small input).
-4. **After B1 lands:** C4 → C5 → C6, in order. C7 only if A1 = `all`.
+4. **After B1 lands:** C4 → C5 → C6, in order. C7 is in scope (A1 = `all`) and does not wait on B1 —
+   land it before C4, so the real migration's archive leg runs fully metered rather than proving the
+   gap on prawduct's own repo.
 5. **Then:** E2–E5, then D3 post-promotion.
 
 **Sequencing rule worth stating once:** do **not** retire the drop-box before MG5's replacement is

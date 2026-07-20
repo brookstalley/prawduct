@@ -474,9 +474,21 @@ def apply_archive_scope(
       created *already closed* (an item whose target status is not an open status —
       archive-section items, explicitly ``dropped``/``shipped`` ones, the whole
       separate ``--archive`` file) is skipped. The skipped items are **not lost**:
-      they stay in the source markdown (git history) and the MG2 export, which is
-      exactly the point — keep the historical archive as the export file rather
-      than minting a closed issue per ancient item.
+      they stay in the **git-tracked source markdown**, which is the migration
+      runbook's pre-migration backup — that is the whole point, keeping the
+      historical archive in the source file rather than minting a closed issue
+      per ancient item.
+
+      They are, however, **outside the migrated tracker**, and that is the
+      tradeoff an operator is owed before choosing ``open``: once the product
+      cuts over (``backlog_service_repo`` set), the backlog skill treats the
+      source markdown as frozen history and does not read it, so skipped items
+      stop being reachable from ``find``/``list``. They survive as git history,
+      not as searchable backlog.
+
+      Do **not** describe the skipped set as living in the MG2 export:
+      :func:`export_backlog` dumps the *migrated repo*, so it runs after the
+      import and by construction cannot contain what this filter excluded.
 
     This lever reduces total write **volume**; it does not enforce the write
     **rate**. The rate ceiling is held by :class:`Pacer`, which paces creates
@@ -545,7 +557,8 @@ def import_backlog(
             result["data"]["archive_skipped"] = archive_skipped
             result["warnings"] = [
                 f"--archive-scope open: {archive_skipped} closed/archived item(s) not "
-                "imported as issues (they remain in the source markdown + MG2 export)"
+                "imported as issues (they remain in the git-tracked source markdown, "
+                "not in the migrated tracker — post-cutover they are outside find/list)"
             ] + result["warnings"]
     return result
 

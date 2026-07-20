@@ -97,14 +97,24 @@ history of the source file) — a bad rewrite is always recoverable.
 **2c. Decide archive scope (MG4b) — an explicit owner choice, never a silent
 default.** Ask the owner how much of the historical archive to mint as GitHub
 issues, and name the tradeoff:
-   - **`open`** — migrate only the live/open set; the historical archive stays as
-     the MG2 export file (step 0), minting **no** closed issue per ancient item.
-     Fewer *total* writes (NF3) and a cleaner live tracker — note the ≈80/min +
-     ≈500/hr *rate* ceiling is the Pacer's job, not this lever's (it reduces write
-     *volume*, not the rate — BKL-6X5D).
+   - **`open`** — migrate only the live/open set, minting **no** closed issue per
+     ancient item. Fewer *total* writes (NF3) and a cleaner live tracker — note the
+     ≈80/min + ≈500/hr *rate* ceiling is the Pacer's job, not this lever's (it
+     reduces write *volume*, not the rate — BKL-6X5D). **State the cost plainly
+     before the owner chooses:** the skipped archive stays in the **git-tracked
+     source markdown** (step 0's pre-migration backup) — *not* in the MG2 export,
+     which dumps the migrated repo and therefore never contains what this lever
+     excluded. So those items are preserved as **git history, not as searchable
+     backlog**: after cutover the skill treats the source file as frozen history
+     and stops reading it, putting the skipped set outside `find`/`list`.
    - **`all`** — import the full archive as closed issues (every disposed/shipped
-     item becomes a closed issue). Complete history *in the tracker*, at one create
-     per ancient item.
+     item becomes a closed issue). Complete history *in the tracker*, and the whole
+     archive stays reachable from `find`/`list` after cutover. **Its cost, stated
+     symmetrically:** an archived item is **two** writes, not one — a create, then a
+     status reconcile to closed (the create path has no initial-state field). Only
+     the create is paced (`Pacer.before_create` is the sole paced call), so a large
+     `all` run is a half-metered create-then-close stretch — the gap **BKL-6X5D part
+     (b)** exists to close.
 
    The model surfaces the tradeoff; the owner decides; the deterministic importer
    applies it via **`--archive-scope {open|all}`** (step 3) — a data-plane lever,
@@ -115,8 +125,9 @@ issues, and name the tradeoff:
    recent-shipped window between the poles
    (migrate the last N months, drop older) is the adopter-scale refinement tracked
    by **BKL-6X5D**; today the lever is the binary open/all. prawduct's own dogfood
-   is owner-decided as **`all`** (archive imports as-is — see
-   `.prawduct/artifacts/migration-scrub-decisions.md`).
+   is owner-decided as **`all`** — decision A1, taken 2026-07-20 and recorded in
+   `.prawduct/artifacts/migration-scrub-decisions.md`, which also carries its
+   consequence (part (b) becomes a release blocker for v3.2.0).
 
 **3. Apply the confirmed plan — deterministically.**
    - **Import** the source into issues (idempotent/resumable, keyed on the
@@ -124,7 +135,8 @@ issues, and name the tradeoff:
      restructure plan at create:
      `prawduct-hook backlog import --repo <owner/repo> --from .prawduct/backlog.md [--archive <archive>] [--archive-scope {all|open}] [--restructure <plan.json>]`
      (`--archive-scope` defaults to `all`; pass `open` for the open-only choice from step 2c —
-     the closed/archived items it skips stay in the source markdown + the MG2 export, never lost)
+     the closed/archived items it skips stay in the git-tracked source markdown — never lost, but
+     outside the migrated tracker and so outside `find`/`list` after cutover; see step 2c)
    - **Fold each duplicate** into its survivor (writes the `superseded_by`
      redirect *before* closing the source, so a crash leaves a resolvable
      open-but-redirected item, never an orphan — AU3/CRASH-2):

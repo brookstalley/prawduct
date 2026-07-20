@@ -17,6 +17,31 @@ execute against these decisions without re-asking, re-confirming only if the sou
    hard-deleted).
 4. **MIG-M4-REMOVE: import as-is** (content-digest idempotency key, no alias; `get` won't
    resolve it — accepted for shipped history).
+5. **`--archive-scope`: `all`** (owner, **2026-07-20** — release-plan decision A1). The full
+   archive imports as closed issues.
+
+   *Why this is dated 07-20 and not 07-18:* the lever did not exist on 07-18. This artifact was
+   written at `03cbcf7` (07-17 22:24) and last touched at `7b6a5a6` (07-17 22:59); `--archive-scope`
+   shipped at `7cbdf08` (07-18 14:27), sixteen hours later. Decision 2's phrase "the 121 archive
+   items import verbatim" is about **restructure** scope — whether migrated items get rewritten —
+   and was never an archive-scope choice. `skills/backlog/migration-scrub.md` had back-attributed
+   an `all` decision to this file; that citation now points here, where the decision genuinely is.
+
+   **Rationale (verified in code, not recalled):**
+   - `all` is the flag's **default** (`cli.py` `_archive_scope_flag`). Choosing `open` for the
+     dogfood would ship the default path unexercised by the one migration prawduct runs itself.
+   - `open`'s preservation story was mis-stated across seven surfaces (it named the MG2 export,
+     which dumps the migrated repo post-import and cannot hold what the lever excluded). Corrected
+     on this branch. The true cost of `open` — skipped items are git history, not searchable
+     backlog, because the skill stops reading the source file after cutover — is a real loss of
+     ~143 items of precedent and dedup surface.
+   - Owner framing for the release: *"We can't ship a partial product."*
+
+   **Consequence, accepted at decision time:** `all` makes **`BKL-6X5D` part (b)** (pace the
+   status/close writes) a **v3.2.0 release blocker** — item 8 on the ship list, previously
+   conditional. An archived item costs a paced create plus an **unpaced** close
+   (`_reconcile_status` → `core.set_status`, no pacer), so the archive leg of the real migration
+   is exactly the half-metered stretch part (b) describes.
 
 ## Approved dispositions (owner-confirmed 2026-07-18)
 
