@@ -16,8 +16,10 @@ NOTE all three readers copy ended "(GV8; restored with the read-through cache)" 
 those same ids must *not* appear in the advisory's `recommended_action` — the same audience, the same
 unresolvable pointer, opposite rules. Ruled for the test's reasoning and applied it everywhere: the
 NOTE now ends "they return when the backlog read-through cache lands," which is what the id stood
-for. The sweep at birth found four in-scope sites (the three NOTE copies plus `adapter-mode.md`'s
-emitted `find` NOTE) and **seven more outside this changeset**, so the norm is born
+for. The sweep at birth found five in-scope sites (the three NOTE copies, `adapter-mode.md`'s emitted
+`find` NOTE, and `probe_checks_dormant`'s advisory evidence — moved in-scope by cumulative finding
+R-10, since the changeset that wrote it is the changeset that birthed the norm) and **six more
+outside this changeset**, so the norm is born
 `Status: in-transition` tracking **OBS-7M4D** rather than claiming a clean inventory. The heuristic
 (id-shaped tokens in string literals) is not exhaustive — prefixes are open-ended — so the durable
 enforcement is the reviewer's judgment, recorded as such.
@@ -142,6 +144,15 @@ and migrate off it later.
 - Critic `review-cycle.md` / `review-protocol.md` gain a backend precondition: when
   `backlog_service_repo` is set, skip the walk and emit one "unavailable" NOTE. The check is a `Read`
   of project state, not an adapter call — `critic-reviewer` grants no Bash by design (CRT-3X9D).
+
+**Also landed here: GV9, a new requirement** (`documentation/backlog-service-requirements.md` § GV9).
+Writing GV8's interim contract exposed the layer below it — after cutover the canonical id is
+`owner/repo#number`, but every surface that *cites* an item (`_BACKLOG_ID_RE`, Critic C-B4, PR `R-2`,
+`closes:`/`closed-by:` tags, the deferred build-plan ref check) recognizes only `PFX-XXXX`, so a
+post-cutover reference is not mis-read, it is **not seen** — GV8's silent-degradation shape one layer
+down. Recognition is additive and can ship early; *resolving* a reference to a live status is a
+backlog read and lands with W1 under GV8. No code here implements it; the requirement is recorded so
+the gap stops being invisible. Tracked for build as **BKL-4R7V**.
 
 Two things the review process caught that are worth keeping. `review-protocol.md` sat exactly at its
 3529-token ceiling, and the first attempt to pay for the addition deleted Goal 4's norms line as
