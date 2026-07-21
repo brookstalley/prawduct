@@ -3,6 +3,50 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-07-21: the plugin stopped shipping prawduct's own backlog, learnings, and requirements to every consumer
+
+<!-- prawduct: type=fix | release=v3.1.1 | status=shipped -->
+
+`marketplace.json` declared `"source": "./"`, so the **entire repository** was the distributed
+plugin. Every product using prawduct had prawduct's own backlog (580 KB), change-log (520 KB),
+learnings, every build plan and release plan, the full test suite, and internal requirements docs
+sitting in its plugin cache — **~4.9 MB of another product's requirements and documentation**, in a
+directory that skills legitimately instruct a model to read. Not secret; actively confusing. A broad
+glob under `${CLAUDE_PLUGIN_ROOT}` in a consuming repo returned prawduct's open backlog items as
+though they were that project's own. Confidently wrong context is the exact failure this framework
+exists to prevent, so it was a live quality defect for users rather than untidiness.
+
+**There is no exclusion mechanism.** Verified against the official plugin documentation and the
+marketplace schema, not inferred: no `exclude` or `files` field, no `.claudeignore`, no npm-style
+ignore semantics. Installing copies the source directory wholesale. `.gitignore` cannot help —
+it governs what git tracks, and `source: "./"` collapsed "tracked" and "distributed" into one
+question.
+
+The only lever is the source path, so the plugin root is now **`plugin/`** — a curated root of
+relative symlinks to the eight component directories plus `plugin.json`, `VERSION`, `CHANGELOG.md`,
+`LICENSE` and `README.md`. The installer dereferences them into real content.
+
+**Measured by real install, not asserted.** Installing into an isolated `CLAUDE_CONFIG_DIR` from a
+fresh clone — what a git-sourced consumer actually gets — yields **120 files / 1.8 MB**, down from
+203 files / ~6.7 MB. Every required component present; `.prawduct/`, `tests/`, `documentation/`,
+`CLAUDE.md`, `pyproject.toml`, `.claude/` and `marketplace.json` all absent; zero dead symlinks.
+
+Two things only testing would have found. `VERSION` **must** ship — `lib/core.py:36` and
+`lib/evidence.py:85` read it at runtime relative to the plugin root, so a "just ship the code
+directories" curation would have broken evidence writes for everyone. And a **local-path** install
+copies untracked working-tree files: 132 `.pyc` files (3.1 MB) landed in the cache, including
+`lib/backlog/__pycache__` — compiled bytecode of the very modules v3.1.1 deliberately withholds.
+Git-sourced installs are clean because those files are untracked, but every check run before this
+one queried *git* and was blind to it.
+
+`tests/test_plugin_packaging.py` (new) pins the boundary in both directions — required-present and
+forbidden-absent — because both failures are silent: a leak ships someone else's documentation, an
+omission breaks governance for every consumer at once with no recall. It asserts its own absence
+from the shipped set, and was mutation-tested against three regressions (source reverted to `./`,
+`VERSION` dropped, `.prawduct` leaked) with each caught by its matching assertion.
+
+Closes **GOV-4H7T**.
+
 ## 2026-07-21: runbook authoring — the framework pointed at runbooks in three places and never said how to write one
 
 <!-- prawduct: type=feature | release=v3.1.1 | status=shipped -->

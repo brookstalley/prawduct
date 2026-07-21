@@ -7,6 +7,10 @@
 
 ## v3.1.1
 
+### 2026-07-21: the plugin stopped shipping prawduct's own backlog, learnings, and requirements to every consumer
+
+**Entry:** 2026-07-21: the plugin stopped shipping prawduct's own backlog, learnings, and requirements to every consumer
+
 ### 2026-07-21: runbook authoring — the framework pointed at runbooks in three places and never said how to write one
 
 **Entry:** 2026-07-21: runbook authoring — the framework pointed at runbooks in three places and never said how to write one
