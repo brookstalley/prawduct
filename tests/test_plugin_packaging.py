@@ -80,6 +80,15 @@ def _tracked(pathspec: str) -> list[str]:
     return [p for p in out.split("\0") if p]
 
 
+def _ancestors(rel: str) -> set[str]:
+    """Every directory prefix of a shipped path — a reference to a shipped *directory* is valid."""
+    parts, out, cur = rel.split("/")[:-1], set(), ""
+    for part in parts:
+        cur = f"{cur}/{part}" if cur else part
+        out.add(cur)
+    return out
+
+
 def _shipped_paths() -> set[str]:
     """Tracked paths under ``plugin/``, keyed by their path *inside* the plugin.
 
@@ -174,9 +183,9 @@ NOT_DISTRIBUTED_DIRS = {".claude", ".claude-plugin", ".prawduct", "documentation
 
 
 def test_every_top_level_directory_is_shipped_or_explicitly_excluded(shipped: set[str]):
-    """Every tracked top-level dir must be either symlinked into ``plugin/`` or explicitly excluded.
+    """Every tracked top-level dir must be either placed under ``plugin/`` or explicitly excluded.
 
-    Adding a new component directory (say ``commands/``) without symlinking it works locally via
+    Adding a new component directory (say ``commands/``) without moving it under ``plugin/`` works locally via
     ``--plugin-dir`` on the repo root and is simply absent for everyone else.
 
     Phrased as a partition rather than a hardcoded list of the eight dirs that already ship: an
@@ -206,7 +215,13 @@ def test_no_shipped_file_points_at_an_unshipped_plugin_root_path():
     import re
 
     pattern = re.compile(r"\$\{CLAUDE_PLUGIN_ROOT\}/([A-Za-z0-9_.@/-]+)")
-    shipped_tops = {p.name for p in PLUGIN_ROOT.iterdir()} | {".claude-plugin"}
+    # Compare against exact tracked paths, not just top-level names. A first-segment check passes
+    # `${CLAUDE_PLUGIN_ROOT}/docs/work-model.md` because `docs` ships -- yet that file moved to
+    # documentation/ in 003599e, i.e. the exact defect this bundle fixed by hand. And it must read
+    # the TRACKED set, not the working tree: an untracked leftover directory would otherwise vouch
+    # for itself. (Critic verify-resolutions, 2026-07-21.)
+    shipped_exact = _shipped_paths()
+    shipped_dirs = {d for p in shipped_exact for d in _ancestors(p)}
     # Scan the SHIPPED files -- everything tracked under plugin/. An earlier version iterated
     # `_tracked(".")` and skipped anything whose top-level dir was in NOT_DISTRIBUTED_DIRS; once
     # the files moved into plugin/ (which is in that set) it scanned the exact COMPLEMENT of the
@@ -221,7 +236,8 @@ def test_no_shipped_file_points_at_an_unshipped_plugin_root_path():
         except (UnicodeDecodeError, OSError):
             continue
         for ref in pattern.findall(text):
-            if ref.split("/", 1)[0] not in shipped_tops:
+            ref = ref.rstrip(".,;:)`").rstrip("/")  # trailing-slash dir refs are legitimate
+            if ref not in shipped_exact and ref not in shipped_dirs:
                 offenders.append(f"{rel} -> ${{CLAUDE_PLUGIN_ROOT}}/{ref}")
     assert not offenders, (
         "shipped files reference plugin-root paths that are not distributed:\n  "

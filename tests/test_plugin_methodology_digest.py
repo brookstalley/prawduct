@@ -468,3 +468,50 @@ class TestDigestCarriesBacklogDiscipline:
         assert "stage" in digest and "discovery" in digest, (
             "digest must state early-stage items route to discovery, not code"
         )
+
+
+class TestIsFrameworkRepoCandidates:
+    """`is_framework_repo` decides slim-vs-full digest, and the move broke it once already.
+
+    It originally keyed on `.claude-plugin/plugin.json` at the repo root. v3.1.1 relocated that
+    manifest into `plugin/`, so the framework repo silently began classifying as a product repo and
+    receiving the full digest -- no error, no test failure, just the wrong variant. It now checks
+    three locations, but only the first is reachable in this repo, so the other two were shipping
+    unexercised. These fixtures cover each independently. (Critic, 2026-07-21.)
+    """
+
+    @staticmethod
+    def _digest_mod():
+        import importlib.util
+        spec = importlib.util.spec_from_file_location("prawduct_digest_hook", DIGEST_HOOK)
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        return mod
+
+    def _write(self, root: Path, rel: str) -> None:
+        target = root / rel
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(json.dumps({"name": "prawduct"}), encoding="utf-8")
+
+    @pytest.mark.parametrize("rel", [
+        ".claude-plugin/marketplace.json",          # current layout (v3.1.1+)
+        "plugin/.claude-plugin/plugin.json",        # relocated plugin manifest
+        ".claude-plugin/plugin.json",               # pre-v3.1.1, kept for older checkouts
+    ])
+    def test_each_candidate_location_classifies_as_framework(self, tmp_path, rel):
+        self._write(tmp_path, rel)
+        assert self._digest_mod().is_framework_repo(tmp_path), (
+            f"{rel} must identify the framework repo -- a miss here silently swaps the digest variant"
+        )
+
+    def test_a_product_repo_is_not_the_framework(self, tmp_path):
+        (tmp_path / ".prawduct").mkdir()
+        assert not self._digest_mod().is_framework_repo(tmp_path)
+
+    def test_a_foreign_manifest_is_not_the_framework(self, tmp_path):
+        self._write(tmp_path, ".claude-plugin/marketplace.json")
+        (tmp_path / ".claude-plugin" / "marketplace.json").write_text(
+            json.dumps({"name": "someone-else"}), encoding="utf-8")
+        assert not self._digest_mod().is_framework_repo(tmp_path), (
+            "fail-safe: an unrelated plugin manifest must not classify as prawduct"
+        )
