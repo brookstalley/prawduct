@@ -5,7 +5,7 @@
 
 ## 2026-07-21: the backlog service came back, laid out under plugin/ — and took the local-first norm with it
 
-<!-- prawduct: type=feature | scope=backlog-service-relayout | status=open -->
+<!-- prawduct: type=feature -->
 
 The v3.1.1 candidate tree was built by an allowlist prune (`fcb4e5f`, 113 insertions /
 16,942 deletions). Two things then happened independently: `feature/backlog-service` reverted that

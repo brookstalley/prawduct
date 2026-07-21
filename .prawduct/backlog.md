@@ -7,8 +7,21 @@
 
 ## Open
 
+- **[BLD-6P8T]** Nothing verifies that intra-repo path references RESOLVE — the packaging test pins where files may LIVE and is blind to references pointing at paths that no longer exist
+  `effort: M · impact: L · area: governance · kind: feature · source: reflection · added: 2026-07-21 · reviewed: 2026-07-21 · status: open · stage: ready · related: DOC-2R7M, GOV-4H7T, GOV-3P8K, JNT-4R2M, GOV-6J3P, ONB-3F9P, BKL-8V3D · refs: tests/test_plugin_packaging.py:182 (`NOT_DISTRIBUTED_DIRS` — the location-only guard this complements), .prawduct/learnings.md:216 ("Relocating a source file: sweep every READER of the old path" — recurrence 3 at :220 names this item), plugin/skills/backlog/SKILL.md (an `allowed-tools:` grant that broke), f62cae1 (the five-skill fix), DOC-2R7M (the durable-artifact half of the same sweep)`
+
+  **Structural enforcement earned by a third recurrence, filed from reflection.** Nothing in the suite verifies that intra-repo path references *resolve*. `tests/test_plugin_packaging.py` pins where files may **live** (`NOT_DISTRIBUTED_DIRS`) and is blind to references pointing at paths that no longer exist. The `plugin/` relocation therefore shipped `bin/prawduct-hook` in five skills' instruction prose **and** in their `allowed-tools:` permission grants; the full suite was green throughout, because no test executes skill front-matter. The Critic caught it as BLOCKING.
+
+  This is the **third occurrence** of the confirmed learning at `.prawduct/learnings.md:216` ("Relocating a source file: sweep every READER of the old path"), which per `methodology/reflection.md` Learning Lifecycle promotes it from a rule to structural enforcement.
+
+  **Proposed shape, to be confirmed at design.** A test that extracts repo-relative path-shaped tokens from the surfaces that fail silently — `allowed-tools:` grants in `plugin/skills/**/*.md` front-matter, fenced/inline commands in skill and methodology prose, and `.prawduct/artifacts/**.md` — and asserts each resolves against the tree, with a **named-exception allowlist** for intentionally-absent paths: a path a skill tells the USER to create; product-side paths like `.prawduct/backlog.md` that exist only in a consuming repo; and illustrative examples. The allowlist must be small and reasoned or the test becomes ceremony.
+
+  **Named risk:** a naive implementation will drown in false positives from prose that mentions paths illustratively. Scoping the extraction to **command position and front-matter** is what makes it high-signal — `docs/norms.md` Deliberate Non-Design warns that a probe which misfires trains its reader to ignore the one real catch.
+
+  Sibling: **DOC-2R7M** is the durable-artifact half of the same sweep (the stale references this test would have caught in `.prawduct/artifacts/**`). (reflection)
+
 - **[DOC-2R7M]** Post-relayout stale references in durable PLANNING artifacts — the release plan names `lib/backlog/**` at the pre-relayout path and points v3.2.0 at the wrong branch; the repoint build plan instructs `python3 bin/prawduct-hook`, which no longer exists
-  `effort: S · impact: M · area: docs · kind: bug · source: critic · added: 2026-07-21 · reviewed: 2026-07-21 · status: open · stage: ready · related: DOC-7K4V, DOC-2W9P, BKL-3W6K, BKL-6M4T · refs: .prawduct/artifacts/release-plan-backlog-service-golive.md (lines 26, 38, 84, 117, 187 — the five `lib/backlog/**` mentions; lines 22–39 — the branch guidance), .prawduct/artifacts/build-plan-backlog-skill-repoint.md (lines 46, 86, 118, 136 — `python3 bin/prawduct-hook backlog …`), plugin/bin/prawduct-hook (the post-relocation path)`
+  `effort: S · impact: M · area: docs · kind: bug · source: critic · added: 2026-07-21 · reviewed: 2026-07-21 · status: open · stage: ready · related: DOC-7K4V, DOC-2W9P, BKL-3W6K, BKL-6M4T, BLD-6P8T · refs: .prawduct/artifacts/release-plan-backlog-service-golive.md (lines 26, 38, 84, 117, 187 — the five `lib/backlog/**` mentions; lines 22–39 — the branch guidance), .prawduct/artifacts/build-plan-backlog-skill-repoint.md (lines 46, 86, 118, 136 — `python3 bin/prawduct-hook backlog …`), plugin/bin/prawduct-hook (the post-relocation path)`
 
   Filed by the verify-resolutions pass `rev-20260721T165755Z-c3371605` — finding **R-20**'s durable-prose half.
 
