@@ -5,7 +5,7 @@
 
 ## 2026-07-21: runbook authoring — the framework pointed at runbooks in three places and never said how to write one
 
-<!-- prawduct: type=feature -->
+<!-- prawduct: type=feature | release=v3.1.1 | status=shipped -->
 
 `templates/operational-spec.md` said "High-risk: runbooks, escalation procedures";
 `templates/observability-strategy.md`'s scenarios *are* runbook triggers; and
@@ -50,7 +50,7 @@ CHECKPOINT's synthesis decision 5.
 
 ## 2026-07-20: a session waiting on reviewers is told to stay audible, not just to stop re-dispatching
 
-<!-- prawduct: type=fix -->
+<!-- prawduct: type=fix | release=v3.1.1 | status=shipped -->
 
 The liveness verdict landed earlier today told a waiting session *not to re-dispatch*. It did not
 tell it what to do instead, and the honest answer had been "nothing" — so sessions went quiet for
@@ -84,7 +84,7 @@ in `review-cycle.md`, and the "Test corruption" trap was dropped as a verbatim r
 
 ## 2026-07-20: `critic-consolidate`'s incomplete no-op carries a liveness verdict, not just a count
 
-<!-- prawduct: type=fix -->
+<!-- prawduct: type=fix | release=v3.1.1 | status=shipped -->
 
 Root cause of today's cross-repo "critic reviewers died with fork" double dispatches
 (observed in hallucinote, transcript-verified): background reviewers run for 5–15 minutes
@@ -451,7 +451,7 @@ using an unverified figure as load-bearing evidence, not picking the wrong one.*
 
 ## 2026-07-19: SessionStart banner names which plugin code is loaded (BRF-7Q4M)
 
-<!-- prawduct: type=feature -->
+<!-- prawduct: type=feature | release=v3.1.1 | status=shipped -->
 <!-- Statusless = release-pending once develop→main ships. No scope= tag: a
      single-surface feature with no build plan, so there is no ## Status to regenerate. -->
 
@@ -508,7 +508,7 @@ Files:
 
 ## 2026-07-19: verify-chunk-refs stops flagging `path:line` citations and same-chunk `new` re-references
 
-<!-- prawduct: type=fix -->
+<!-- prawduct: type=fix | release=v3.1.1 | status=shipped -->
 <!-- Statusless = release-pending once develop→main ships. No scope= tag: a plain
      two-item bugfix with no build plan, so there is no ## Status to regenerate. -->
 
@@ -563,7 +563,7 @@ descriptive, so it now records the absence; whether building.md *should* carry t
 
 ## 2026-07-19: Salvage stranded work from the removed backlog-service worktree branch (worktree-salvage)
 
-<!-- prawduct: type=fix -->
+<!-- prawduct: type=fix | release=v3.1.1 | status=shipped -->
 <!-- Statusless = release-pending once develop→main ships. No scope= tag: this is a
      plan-less fix branch, and a statusless scope must resolve to a build-plan file
      whose ## Status can be regenerated (lib/views.py). -->
@@ -640,7 +640,7 @@ markdown, not the Issues that are now system-of-record. This repoints it.
 
 ## 2026-07-18: Stop hook surfaces the silent worktree `.prawduct/` redirect (stop-worktree-redirect-note)
 
-<!-- prawduct: type=feature -->
+<!-- prawduct: type=feature | release=v3.1.1 | status=shipped -->
 <!-- Statusless: observability feature on develop, ahead of the batched develop→main release.
      No scope= tag (dropped 2026-07-19): a statusless scope must resolve to a build-plan file
      whose ## Status can be regenerated, and this shipped as a plan-less branch — the tag made
@@ -676,7 +676,7 @@ invisibly. The Stop path now makes it observable.
 
 ## 2026-07-18: discodon upstream defect fixes (discodon-upstream-defects)
 
-<!-- prawduct: type=bugfix | scope=discodon-upstream-defects | chunks=01,02,03,04 -->
+<!-- prawduct: type=bugfix | scope=discodon-upstream-defects | chunks=01,02,03,04 | release=v3.1.1 | status=shipped -->
 
 **Parent:** four prawduct defects filed upstream by the discodon product (their ids
 CRT-M3F8, PDT-C6R4, CRT-T9RX, PDT-WT9K), re-verified against `develop` (v3.1.0) by direct
@@ -1316,7 +1316,7 @@ Principle 10's construction-equipment metaphor); `methodology/building.md` build
 firewall` → WARNING). A deterministic grep tripwire was deliberately deferred (case-law-first; filed as `[GOV-3P8K]`).
 ## 2026-07-14: Stale remote-base diagnostics for the cumulative-critic gate (stale-remote-base-diagnostics)
 
-<!-- prawduct: type=fix -->
+<!-- prawduct: type=fix | release=v3.1.1 | status=shipped -->
 <!-- Statusless on a feature branch = release-pending once merged. Medium
      framework fix, no build plan: a ~90-line shared git-inspection helper plus a
      reactive gate hint and a proactive session-start advisory across lib/coverage.py,

@@ -321,7 +321,7 @@ views_enabled: true
 # field holds only the current in-progress plan (absent/empty -> the gates
 # fall back to artifacts/build-plan.md).
 
-active_build_plan: artifacts/build-plan-skills-cutover-awareness.md
+active_build_plan: null
 
 # =============================================================================
 # COVERAGE EVIDENCE (opt-in, v1.4+)
@@ -432,6 +432,9 @@ scope_rollups:
   critic-session-guard:
     chunks: ["1"]
     releases: ["v2.0.14"]
+  discodon-upstream-defects:
+    chunks: ["01", "02", "03", "04"]
+    releases: ["v3.1.1"]
   discovery-capture-nudge:
     chunks: ["01", "02"]
     releases: ["v2.0.10"]
