@@ -99,8 +99,15 @@ class TestBuildingMethodology:
         # retrieval-over-generation cycle (2026-07-17, MET-4V8Q) added the
         # cheap-check gate + one Common Trap and PAID FOR THEM the same way:
         # pointer form (detectors live in docs/principles.md #24) plus an
-        # editorial pass over redundant phrasing. ~4596 now — headroom is a
-        # few words BY DESIGN; the next addition trims or relocates first.
+        # editorial pass over redundant phrasing. The wait-side cache-warm
+        # guidance (2026-07-20, CRT-8Q6R) qualified "don't check on it" so it
+        # cannot be read as "go idle", and PAID FOR IT the same way: the full
+        # cadence detail lives in review-cycle.md (the file that owns per-mode
+        # behavior), the Resolve-findings step dropped a why that CLAUDE.md
+        # already carries, and the "Test corruption" trap went — it restated
+        # "Tests never weaken" verbatim, closing sentence included. ~4591 now —
+        # headroom is a few words BY DESIGN; the next addition trims or
+        # relocates first.
         tokens = estimate_tokens(self.content)
         assert tokens < 4600, f"building.md is ~{tokens} tokens, should be <4600"
 

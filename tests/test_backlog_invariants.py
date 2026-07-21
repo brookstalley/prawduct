@@ -85,3 +85,96 @@ class TestEgressDiscipline:
                 assert "subprocess" in roots, "transport.py must own the subprocess egress"
             else:
                 assert not offending, f"{path.name} imports egress module(s) {offending}"
+
+
+class TestArchiveScopeWarningTruthfulness:
+    """Every ``--archive-scope open`` skip notice must tell the operator the truth
+    about where the skipped items went.
+
+    These strings shipped saying the skipped set "remains in the source markdown +
+    MG2 export". The export half is impossible: ``export_backlog`` dumps the
+    *migrated repo* and the migration runbook runs it after the first import, so it
+    can never contain what the import excluded. An operator choosing ``open`` on
+    that basis expects a restorable archive artifact that is never produced.
+
+    Scanned over the package source rather than asserted per call site, because the
+    claim shipped in two places and a third emission would otherwise inherit the
+    old wording while a per-site test stayed green — the derivation-hole shape this
+    repo has been bitten by before. The rule: a literal that markets ``open``'s
+    preservation names the source markdown and never credits an export.
+
+    The export ban is a deliberately blunt substring check, and it bans a *word*
+    where the real defect is a *false credit*. If a future change makes some export
+    artifact genuinely hold the skipped set — the step-0 source-export shape is one
+    open candidate — this test will fail on a sentence that is finally true. That is
+    the intended failure mode: retarget the assertion to the new mechanism (and
+    re-verify it), never delete it to make a red suite green."""
+
+    _MARKER = "archive-scope open"
+
+    @staticmethod
+    def _text_of(node) -> str | None:
+        """The full text of a string expression, following implicit concatenation.
+
+        Adjacent plain literals fold into one ``Constant``, but as soon as one
+        piece interpolates, the whole run becomes a ``JoinedStr`` whose parts must
+        be rejoined — otherwise the marker and the corrective clause land in
+        different fragments and a per-fragment scan reads each as a separate,
+        half-true string. Interpolated values contribute nothing scannable, so
+        they are skipped rather than rendered."""
+        if isinstance(node, ast.Constant):
+            return node.value if isinstance(node.value, str) else None
+        if isinstance(node, ast.JoinedStr):
+            parts = [
+                v.value
+                for v in node.values
+                if isinstance(v, ast.Constant) and isinstance(v.value, str)
+            ]
+            return "".join(parts) if parts else None
+        return None
+
+    def _claim_literals(self) -> list[tuple[str, str]]:
+        """Every whole string expression in the package that markets ``open``.
+
+        An f-string's own fragments are skipped: ``ast.walk`` yields them
+        alongside the ``JoinedStr`` that owns them, and judging a fragment is how
+        a true sentence gets reported as a false one — the marker sits in the
+        first fragment, the corrective clause in a later one."""
+        found: list[tuple[str, str]] = []
+        for path in _MODULES:
+            tree = ast.parse(path.read_text())
+            consumed = {
+                id(part)
+                for node in ast.walk(tree)
+                if isinstance(node, ast.JoinedStr)
+                for part in node.values
+            }
+            for node in ast.walk(tree):
+                if id(node) in consumed:
+                    continue
+                text = self._text_of(node)
+                if text and self._MARKER in text:
+                    found.append((path.name, text))
+        return found
+
+    def test_the_claim_is_emitted_somewhere(self):
+        # Guards the scan itself: if the marker is reworded, this fails loudly
+        # rather than the truthfulness test passing over an empty set.
+        assert self._claim_literals(), (
+            f"no string literal mentions {self._MARKER!r}; if the wording changed, "
+            "retarget this invariant rather than deleting it"
+        )
+
+    def test_no_skip_notice_credits_an_export(self):
+        for name, literal in self._claim_literals():
+            assert "export" not in literal.lower(), (
+                f"{name}: an --archive-scope open notice credits an export with preserving "
+                f"skipped items, but the export dumps the migrated repo: {literal!r}"
+            )
+
+    def test_every_skip_notice_names_the_real_home(self):
+        for name, literal in self._claim_literals():
+            assert "source markdown" in literal, (
+                f"{name}: an --archive-scope open notice does not tell the operator the "
+                f"skipped items remain in the git-tracked source markdown: {literal!r}"
+            )

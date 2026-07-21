@@ -78,7 +78,7 @@ Every consolidated review appends a **fact** to the shared evidence store (`<git
 
 `/prawduct:pr create` calls `prawduct-hook check-cumulative-critic` and refuses to open the PR if the gate fails. The gate composes coverage of merge-base tree → HEAD tree over the store and requires zero unresolved BLOCKING findings on the path. Its stderr names the remedy: `uncovered` → run `/prawduct:critic cumulative` (or `verify-resolutions` for a selective-commit delta); `blocking` → fix, then `/prawduct:critic verify-resolutions` records the resolution facts and the same evidence passes — no full re-review. WARNING and NOTE are advisory at the PR gate — they do not block, matching the PR reviewer's severity contract.
 
-**Prep work before invoking cumulative.** A cumulative review takes ~4-10 minutes. Before invoking it, complete prep that doesn't depend on its findings — `/prawduct:learnings` for next topics, draft the PR description, audit the backlog, capture deferred reflections — so you integrate findings the moment it returns.
+**Prep work before invoking cumulative.** A cumulative review takes ~4-10 minutes. Before invoking it, complete prep that doesn't depend on its findings — `/prawduct:learnings` for next topics, draft the PR description, audit the backlog, capture deferred reflections — so you integrate findings the moment it returns. This prep is also what keeps the wait cheap: a session that idles silently while reviewers run lets its prompt cache expire and re-reads its whole context when they land. If the prep runs out before the review does, emit a one-line progress note at least every 4 minutes rather than going quiet.
 
 ### Verify-resolutions anchoring and demotion
 

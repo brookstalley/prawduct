@@ -28,6 +28,7 @@ from __future__ import annotations
 import json
 import subprocess
 import sys
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import pytest
@@ -501,6 +502,141 @@ class TestMergeFindings:
 
 
 # ---------------------------------------------------------------------------
+# Unit: dispatch age + the incomplete no-op's liveness verdict
+# ---------------------------------------------------------------------------
+
+
+class TestIncompleteNoopLiveness:
+    """The incomplete no-op must carry a liveness verdict, not just a partial
+    count: a parent session that consolidates during the reviewers' background
+    run window sees 0/N partials, and bare silence reads as "the reviewers
+    died with the fork" — triggering a duplicate dispatch while the first
+    roster is still alive (the observed double-review-cost failure)."""
+
+    def _fresh_id(self, minutes_ago: float) -> str:
+        ts = datetime.now(timezone.utc) - timedelta(minutes=minutes_ago)
+        return f"rev-{ts.strftime('%Y%m%dT%H%M%SZ')}-deadbeef"
+
+    def test_age_parses_synthetic_begin_shaped_id(self):
+        age = cc.dispatch_age_minutes(self._fresh_id(3))
+        assert age is not None
+        assert 2.5 < age < 4.0
+
+    def test_age_none_for_non_timestamp_id(self):
+        assert cc.dispatch_age_minutes("rev-test-0001") is None
+
+    def test_age_none_for_invalid_calendar_stamp(self):
+        # Matches the shape regex but is not a real date — parse must not raise.
+        assert cc.dispatch_age_minutes("rev-20261399T996161Z-deadbeef") is None
+
+    def test_future_stamp_clamps_to_zero(self):
+        assert cc.dispatch_age_minutes(self._fresh_id(-30)) == 0.0
+
+    def test_young_dispatch_says_wait_not_dead(self):
+        msg = cc._incomplete_noop_message(
+            ["correctness", "design"], 1, 3, self._fresh_id(2))
+        assert "no-op" in msg
+        assert "correctness, design" in msg
+        assert "1/3 partials present" in msg
+        assert "dispatched 2.0 min ago" in msg
+        assert "NOT evidence the reviewers died" in msg
+        assert "Do not" in msg and "re-dispatch" in msg
+        assert "critic-end" in msg  # the sanctioned escape hatch is named
+        assert "may have died" not in msg
+
+    def test_stale_dispatch_advises_critic_end(self):
+        msg = cc._incomplete_noop_message(
+            ["sustainability"], 2, 3, self._fresh_id(45))
+        assert "no-op" in msg
+        assert "sustainability" in msg
+        assert "may have died" in msg
+        assert "critic-end" in msg
+        assert "NOT evidence" not in msg
+
+    def test_single_pass_young_says_fork_consolidates_itself(self):
+        # Roster ["reviewer"]: the reviewer IS the dispatching fork — no
+        # SubagentStop trigger will ever land it, so the message must not
+        # tell the coordinator-roster story.
+        msg = cc._incomplete_noop_message(["reviewer"], 0, 1, self._fresh_id(2))
+        assert "0/1 partials present" in msg
+        assert "consolidates when it finishes" in msg
+        assert "SubagentStop" not in msg
+        assert "NOT evidence the reviewer died" in msg
+        assert "critic-end" in msg
+
+    def test_unparseable_id_still_carries_wait_guidance(self):
+        # Hand-written manifests (no timestamp in the id) get the wait-side
+        # guidance with no age claim — never a crash, never bare silence.
+        msg = cc._incomplete_noop_message(["design"], 0, 3, "rev-test-0001")
+        assert "0/3 partials present" in msg
+        assert "dispatched" not in msg
+        assert "NOT evidence the reviewers died" in msg
+        # No age claim, but it is still a wait — the readout directive applies.
+        assert cc._CACHE_WARM_DIRECTIVE in msg
+
+    def test_wait_side_directs_a_periodic_readout(self):
+        # An idle waiting session issues no requests, so its prompt cache
+        # expires and the next turn replays the whole prefix. Both wait-side
+        # variants must carry the readout directive, and it must name a cadence
+        # strictly under the 5-minute cache it is sized against.
+        assert cc._CACHE_WARM_INTERVAL_MINUTES < 5
+        for missing, present, total in (
+            (["correctness", "design"], 1, 3),  # coordinator roster
+            (["reviewer"], 0, 1),               # single-pass roster
+        ):
+            msg = cc._incomplete_noop_message(
+                missing, present, total, self._fresh_id(2))
+            assert cc._CACHE_WARM_DIRECTIVE in msg
+            assert f"every {cc._CACHE_WARM_INTERVAL_MINUTES} minutes" in msg
+            assert "idling silently" in msg
+
+    def test_begin_review_routes_through_the_single_minter(self):
+        # The round-trip below proves the MINTER agrees with the parser. It does
+        # not prove begin_review still uses the minter — a future edit could
+        # inline a format string again and reopen the drift hole with the
+        # round-trip test still green. Asserted structurally instead.
+        #
+        # Scope, stated exactly: this catches a second site copied in the SAME
+        # literal shape. An f-string minting site would pass both assertions —
+        # the guard narrows the hole, it does not close it.
+        src = (ROOT / "lib" / "critic_consolidate.py").read_text()
+        assert src.count('"rev-{}-{}"') == 1, "more than one site formats a review id"
+        assert "review_id = mint_review_id()" in src
+
+    def test_minted_review_id_round_trips_through_dispatch_age(self):
+        # The producer/consumer contract, exercised end-to-end rather than
+        # against a hand-built id: begin_review mints the id, dispatch_age_minutes
+        # parses it. If the format drifts, parsing returns None, the
+        # past-grace branch becomes UNREACHABLE, and the no-op tells a session to
+        # wait forever on dead reviewers — the exact failure this message exists
+        # to prevent, and one no hand-written fixture can catch.
+        rid = cc.mint_review_id()
+        assert cc._REVIEW_ID_TS.match(rid), f"minted id {rid!r} is unparseable"
+        age = cc.dispatch_age_minutes(rid)
+        assert age is not None and age < 1.0
+
+    def test_review_cycle_prose_matches_the_code_cadence(self):
+        # The cadence is interpolated into the CLI message but written as a bare
+        # literal in the skill prose. CRT-8Q6R expects that number to change, so
+        # bind them: a bump that updates only the constant would leave the
+        # operator-facing guide quietly contradicting the tool.
+        prose = (ROOT / "skills" / "critic" / "review-cycle.md").read_text()
+        assert f"every {cc._CACHE_WARM_INTERVAL_MINUTES} minutes" in prose, (
+            "review-cycle.md's cadence no longer matches "
+            f"_CACHE_WARM_INTERVAL_MINUTES ({cc._CACHE_WARM_INTERVAL_MINUTES})"
+        )
+
+    def test_stale_dispatch_omits_the_readout_directive(self):
+        # Past the grace window the advice is to STOP waiting (critic-end +
+        # re-dispatch). Telling the caller to keep narrating there would warm
+        # the cache for a state it should be leaving.
+        msg = cc._incomplete_noop_message(
+            ["sustainability"], 2, 3, self._fresh_id(45))
+        assert "may have died" in msg
+        assert cc._CACHE_WARM_DIRECTIVE not in msg
+
+
+# ---------------------------------------------------------------------------
 # Unit: pending_state
 # ---------------------------------------------------------------------------
 
@@ -600,6 +736,27 @@ class TestConsolidateIntegration:
         assert "sustainability" in result.stdout
         # Nothing persisted; marker + partials intact for the straggler to complete.
         assert not (repo / FINDINGS_REL).is_file()
+        assert (repo / MARKER_REL).is_file()
+        assert (repo / PARTIALS_REL / "manifest.json").is_file()
+
+    def test_early_check_noop_carries_liveness_guidance(self, tmp_path):
+        """An early consolidate (0/3 partials, seconds after dispatch) must
+        say the silence is normal — the bare count was being misread as
+        reviewer death, triggering duplicate dispatch."""
+        repo = tmp_path / "r"
+        _init_repo(repo)
+        head = _commit_file(repo, "src/app.py", "x = 1\n", "init")
+        _set_marker(repo)
+        fresh_id = "rev-{}-cafe0001".format(
+            datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ"))
+        _write_manifest(repo, head, id=fresh_id)
+        result = _run_consolidate(repo)
+        assert result.returncode == 0, f"stderr={result.stderr!r}"
+        assert "no-op" in result.stdout
+        assert "0/3 partials present" in result.stdout
+        assert "dispatched 0." in result.stdout  # 0.x min — subprocess slop
+        assert "NOT evidence the reviewers died" in result.stdout
+        # Marker + manifest untouched — the review is still in flight.
         assert (repo / MARKER_REL).is_file()
         assert (repo / PARTIALS_REL / "manifest.json").is_file()
 

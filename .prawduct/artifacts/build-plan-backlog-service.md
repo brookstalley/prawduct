@@ -586,8 +586,14 @@ tests/
   has not cut over, so upgrade-before-migrate is a loud signal, never a silent zeroing.
 - **Pre-sign-off conditions (folded 2026-07-17 — conditional design sign-off).** Verified-in-code
   scenario traces of the CC5/G2/rate seams before the irreversible migration found no design flaw but
-  four build-completeness gaps; two are **must-fix before this slice is marked done** (not optional
-  follow-ups), because they sit inside the acceptance criteria above:
+  four build-completeness gaps; **two** are **must-fix before this slice is marked done** (not optional
+  follow-ups), because they sit inside the acceptance criteria above. *(A third — `BKL-6X5D` part (b) —
+  became a ratified **v3.2.0 release** blocker on 2026-07-20 when owner decision A1 chose
+  `--archive-scope all`, making the unpaced close leg live for this migration rather than hypothetical.
+  Whether it must also precede **this slice** is decision 6, builder-proposed and **sign-off owed**; if
+  signed off the count here is three, and if declined it stays two while the release gate holds
+  regardless. The count is deliberately the un-ratified figure — a number that has to move on a
+  decision is that decision asserted in numeric form.)*
   - **BKL-4W7H (must-fix) — ✅ offline code + tests landed 2026-07-17.** The "every `PFX` ID resolving
     as an alias" read-path gap is closed: `core.resolve_ref` wires PFX→canonical alias resolution into
     `get` and `link` (against `--repo`); `migrate._find_by_key` gains a block `id_aliases` fallback
@@ -597,21 +603,49 @@ tests/
     reimport + reconcile-restore + get/link-by-PFX tested. Coherence follow-up filed for PFX resolution
     in the remaining single-id mutators (`status`/`update`/`comment`/`claim`/`unclaim`) and the CC5
     decoder gaps. (Related: BKL-5R2K redirect-follow consumer — deliberately NOT folded in here.)
-  - **BKL-8P2R (must-fix)** — the "briefing reads live counts through the adapter" criterion must be wired
-    the safe way: call `snapshot.read` + detached `spawn_refresh`, **never** a synchronous `counts()`
-    (which paginates at the 30 s transport default vs NFR §6's "few s"); surface the snapshot age; add a
-    never-block test that injects real slowness (a stalling transport), not just an instant error.
-  - **BKL-3K9N (strongly recommended before the live run)** — honor `Retry-After` / bounded backoff on a
-    mid-import 429 and continue the same run, so shared-token contention during this chunk's repoint can't
-    hard-stop the irreversible import.
-  - **BKL-6X5D (not gating this dogfood)** — archive-window *quantification* (a recent-shipped N-month
-    window) + Pacer 900-pts/min modeling; latent at prawduct's ~205 items. *(The binary
-    `--archive-scope {all,open}` lever — MG4b — lands in this owner-feedback pass; only the quantified
-    middle window stays deferred here.)* **Re-scoped 2026-07-20:** the Pacer 900-pts/min leg (part b) is
-    **gating for any `--archive-scope all` migration at discodon's size** (383 open + 124 archive = 507
-    paced creates **plus 124 unpaced closes**), not merely adopter-scale — it stays deferred only for
-    `open`-scope runs, which is what this dogfood is. Part (a) — the re-attribution and the §8.9↔§9
-    circularity — closed 2026-07-20.
+  - **BKL-8P2R (must-fix) — ✅ code landed 2026-07-18** (`status: shipped · closed-by: Chunk-06`).
+    **As built** (three of four clauses): the briefing calls `snapshot.read` + detached
+    `spawn_refresh`, **never** a synchronous `counts()` (which paginates at the 30 s transport default
+    vs NFR §6's "few s"), and surfaces the snapshot age.
+
+    *Two residuals, both open — do not read this bullet as full coverage before the live run:*
+    (1) the live repoint against the migrated repo happens at runbook step 5, so the wiring is
+    satisfied in build but not exercised end-to-end; (2) **the never-block test is not the shape the
+    criterion asked for.** The criterion wanted real slowness injected (a stalling transport);
+    `tests/test_briefing_functions.py::test_never_blocks_even_with_a_hanging_backend` instead pins
+    fire-and-forget *structurally* — a recorder whose `wait` raises if touched, plus an elapsed bound.
+    For the path **as written** that is the *stronger* guarantee, not a weaker one, and the backlog's
+    shipped note says so: the transport is unreachable on the briefing path at all
+    (`snapshot.read` is a local JSON read; the only backend reach is detached), so a slow backend
+    structurally cannot cost the briefing anything. What the stalling-transport test would add is a
+    **regression guard** — it would fail if a future edit reintroduced a synchronous `counts()`,
+    where the structural test would keep passing. That is the residual: not a weaker proof of today's
+    code, an absent guard against tomorrow's.
+  - **BKL-3K9N (strongly recommended before the live run) — ✅ landed 2026-07-17**
+    (`status: shipped · closed-by: Chunk-06`; matches this file's header at the top). Honors
+    `Retry-After` / bounded backoff on a mid-import 429 and continues the same run, so shared-token
+    contention during this chunk's repoint can't hard-stop the irreversible import.
+  - **BKL-6X5D part (b) — a v3.2.0 release blocker (ratified); gating *this chunk* only if decision 6
+    is signed off.** Keep the two apart: A1 (decision 5, owner-confirmed) makes part (b) block the
+    **release**; whether it must also precede *this chunk's* bulk import is decision 6, which is
+    builder-proposed and **awaiting owner sign-off**. If the owner declines, part (b) still blocks
+    v3.2.0 but stops gating this chunk. *(The binary `--archive-scope {all,open}` lever —
+    MG4b — landed in the owner-feedback pass; the quantified middle window (a recent-shipped N-month
+    window) stays deferred.)* **Re-scoped 2026-07-20**, then **escalated the same day when owner
+    decision A1 chose `--archive-scope all`** for this migration
+    (`artifacts/migration-scrub-decisions.md` decision 5): under `all` every archived item costs a
+    **paced create plus an unpaced close** — `Pacer.before_create` is the only paced call, and
+    `_reconcile_status` → `core.set_status` takes no pacer — so this run *is* the half-metered
+    create-then-close stretch part (b) exists to close. *Proposed* — decision 6, **owner sign-off
+    owed**, not settled: it should land **before** the bulk import, not
+    after, or the irreversible migration becomes part (b)'s own proof case. Part (a) — the
+    re-attribution and the §8.9↔§9 circularity — closed 2026-07-20.
+
+    *No count carries this gate.* An earlier revision justified it with discodon item counts; that
+    evidence was withdrawn 2026-07-20 as too unstable to be load-bearing (four checkouts disagreed,
+    and the canonical one moved between two reads) — see the BKL-6X5D backlog note. The gate stands
+    on the structural ratio: one paced write and one unpaced write per archived item, whatever the
+    volume.
 - **Type:** cumulative-final
   <!-- Last slice chunk: its review IS the one `/prawduct:critic cumulative` against merge-base…HEAD,
        and the `/prawduct:pr create` gate for the slice PR. Commit first, run cumulative once. -->
@@ -621,7 +655,7 @@ tests/
 - **Done when:**
   0. **SPIKE-S2** — run the live dry-run on a throwaway copy of prawduct's repo; record the settled
      facts (fan-out constant, node_id-across-transfer) back into NFR §4 / this plan
-  1. Acceptance criteria **and the must-fix pre-sign-off conditions (BKL-4W7H, BKL-8P2R)** met and tests pass
+  1. Acceptance criteria **and the must-fix pre-sign-off conditions (BKL-4W7H, BKL-8P2R — plus BKL-6X5D part (b) *if decision 6 is signed off*; it blocks the v3.2.0 release regardless)** met and tests pass
   2. Committed, then `/prawduct:critic cumulative` run and blocking findings resolved
   3. Chunk marked `[x]` in Status; the slice branch is PR-ready (`/prawduct:pr create`)
 - **SPIKE-S2 settled facts (2026-07-17 live dry-run — ~209 items into a throwaway repo, repos disposable):**

@@ -284,9 +284,14 @@ speed. Centralization alone fixes stale *views* (TF1); stale *content* needs TF2
   stale-content pain the project exists to kill — the moment you touch every item is the moment to
   groom). The scrub: (a) grooms live items (close dead-premise / already-shipped, merge duplicates);
   (b) decides **archive scope** as an **explicit owner-confirmed choice surfaced at scrub time**, not
-  a silent default — `open` (migrate only the live/open set as issues; the historical archive stays as
-  the MG2 export file, minting no closed issue per ancient item) or `all` (import the full archive as
-  closed issues, the pre-scrub behavior). The importer honors the chosen scope through an
+  a silent default — `open` (migrate only the live/open set as issues; the historical archive stays in
+  the **git-tracked source markdown**, minting no closed issue per ancient item) or `all` (import the
+  full archive as closed issues, the pre-scrub behavior). *(Corrected 2026-07-20: this read "stays as
+  the MG2 export file." The export dumps the **migrated repo** and runs after import, so it can never
+  hold what `open` excluded; the git-tracked source file is the actual preservation mechanism. The
+  consequence the owner must hear at scrub time — skipped items are git history, not searchable
+  backlog, because the skill stops reading the source file after cutover — is stated with the lever
+  in `skills/backlog/migration-scrub.md` step 2c.)* The importer honors the chosen scope through an
   `--archive-scope` selector (AG1 — a deterministic lever, not a model inference). `open` also
   **reduces the total write volume** of a large migration (fewer creates) — but the write-*rate*
   ceiling is enforced by the Pacer, **not** by this lever; crediting the archive window as the

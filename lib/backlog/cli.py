@@ -630,10 +630,13 @@ def _run_restructure_preview(rest: list[str]):
     if archive_skipped:
         # Surface the dropped count in human mode too (not JSON-only) so an owner
         # previewing "exactly what imports" sees what --archive-scope excluded — the
-        # excluded items stay in the source markdown + MG2 export, never lost.
+        # excluded items stay in the git-tracked source markdown, never lost, but
+        # they do not enter the migrated tracker (see migrate.apply_archive_scope).
         warnings = [
             f"--archive-scope open: {archive_skipped} closed/archived item(s) excluded from "
-            "this preview (they remain in the source markdown + MG2 export)"
+            "this preview (they remain in the git-tracked source markdown; this preview "
+            "matches what an import run with the SAME --archive-scope would write — note "
+            "both commands default to all, so a bare import would not match this)"
         ] + warnings
     return core.ok(data, warnings)
 

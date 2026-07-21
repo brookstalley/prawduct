@@ -3,6 +3,131 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-07-20: a session waiting on reviewers is told to stay audible, not just to stop re-dispatching
+
+<!-- prawduct: type=fix -->
+
+The liveness verdict landed earlier today told a waiting session *not to re-dispatch*. It did not
+tell it what to do instead, and the honest answer had been "nothing" — so sessions went quiet for
+the 5–15 minutes reviewers run. A session that emits nothing issues no model requests, its prompt
+cache expires, and the next turn re-reads the entire prefix. That is the token replay early
+adopters (and the owner) reported: the cost did not come from the review, it came from the silence
+around it.
+
+Three surfaces now say the same thing, because the guidance only works if it reaches the model at
+the moment it decides to wait:
+
+- `_incomplete_noop_message` appends a readout directive to its **wait-side** variants only. Past
+  the grace window the advice is to *stop* waiting (`critic-end` + re-dispatch), and warming the
+  cache there would prolong the state the caller should be leaving — pinned by a test asserting the
+  directive is absent from the stale-dispatch message.
+- `methodology/building.md` qualifies "don't check on it", which was the phrase most able to be
+  read as "go idle": it means don't poll for partials, not go silent.
+- `skills/critic/review-cycle.md` ties it to the prep-work guidance already there — the prep *is*
+  what keeps the wait cheap; the cadence is the floor for when prep runs out.
+
+**Stated as an assumption, not a fact.** Four minutes is sized against the 5-minute prompt cache
+every current adopter runs on. Nothing in a hook can observe which cache a session actually has,
+and longer-lived caches exist — on those this cadence buys nothing and costs a request every four
+minutes. This ships as a deliberate stopgap for a live cost problem; `CRT-8Q6R` carries the revisit
+(make the interval a preference, derive it, or drop it if the harness retains the cache itself).
+
+Budget note: `building.md` sits under a 4600-token ceiling that exists to lock in the prose diet,
+so the addition was paid for in place rather than by raising the ceiling — the cadence detail lives
+in `review-cycle.md`, and the "Test corruption" trap was dropped as a verbatim restatement of
+"Tests never weaken."
+
+## 2026-07-20: `critic-consolidate`'s incomplete no-op carries a liveness verdict, not just a count
+
+<!-- prawduct: type=fix -->
+
+Root cause of today's cross-repo "critic reviewers died with fork" double dispatches
+(observed in hallucinote, transcript-verified): background reviewers run for 5–15 minutes
+after the dispatching fork returns, and a parent session that runs `critic-consolidate`
+inside that window got only `0/3 partials present` — a bare count it misread as reviewer
+death, so it re-dispatched a duplicate roster while the first one was alive, doubling
+review cost. No harness regression: the same shape ran clean the day before on the same
+Claude Code version; the trap is probabilistic model inference over an ambiguous silence.
+
+The fix puts the correction at the decision point. The incomplete no-op now parses the
+dispatch timestamp already embedded in the review id and renders a verdict with the count:
+inside a 15-minute grace window (review-cycle's 4–10 min typical plus slack) it states the
+silence is the normal in-flight state, NOT evidence of death — with the mechanism told
+roster-accurately: coordinator rosters are told to wait for the `SubagentStop` trigger,
+single-pass rosters that the fork itself consolidates when it finishes (no trigger will
+ever land it) — naming `critic-end` as the only sanctioned re-dispatch path; past the
+window it flips to advising `critic-end` + re-dispatch, because waiting forever on
+genuinely dead reviewers is the opposite failure. Ids without a parseable timestamp
+(hand-written manifests) get the wait-side guidance with no age claim. Regression tests
+pin all three message variants, the age parse (including future-stamp clamp and malformed
+stamps), and the end-to-end early-check no-op through the real hook.
+
+## 2026-07-20: `--archive-scope open` stops promising a backup that cannot exist; A1 decided `all`
+
+<!-- prawduct: type=fix -->
+<!-- Statusless = release-pending once develop→main ships. No scope= tag: a
+     doc/claim correction plus one decision record; no build plan, no ## Status. -->
+
+Two things, one root. Deciding prawduct's own `--archive-scope` (release-plan **A1**) meant reading
+what the lever actually does — and the documented case for `open` turned out to be false.
+
+**The false claim.** Every surface describing `open` said the skipped archive "stays as the MG2
+export file." It cannot. `export_backlog` dumps the **migrated repo**, and the runbook's step 0 puts
+it *after* the first import — so by construction the export never contains what `--archive-scope
+open` excluded. An operator choosing `open` on that basis would expect a restorable archive artifact
+that was never produced.
+
+The truth is narrower but real: skipped items stay in the **git-tracked source markdown**, which is
+step 0's pre-migration backup. What no surface said is the part that actually decides the choice —
+post-cutover, `skills/backlog/SKILL.md` treats that file as frozen history and stops reading it, so
+the skipped set is **git history, not live backlog**: outside post-cutover `list`, and outside
+add-time dedup, so a duplicate of a previously-dropped item can be re-filed with no signal. (Stated
+as `list` rather than `find` — full-text `find` is W2-deferred for *every* post-cutover item, so it
+is not what archive scope costs. An earlier draft of this entry said `find`/`list`, which was the
+same overstatement in the opposite direction.) Corrected at the parent requirements first (PRD MG4 + requirements §MG4b), then the
+downstream surfaces, then the shipped change-log entry that recorded it — **ten claim sites across
+seven files**, a figure derived by enumerating the diff rather than counted by eye, because three
+earlier drafts of this very entry stated it three different ways.
+
+**Guarded, not just fixed.** The `open` warning string now has a test asserting the sentence is
+*true* — it must not credit "export" and must name the source markdown — verified to fail against
+the old wording before being trusted. This class of defect (a plausible, reassuring safety claim) is
+invisible in review precisely because it reads well, so it gets a mechanical check rather than
+another resolution to be careful.
+
+**A second operator-facing correction, found the same way.** Once the docs stopped over-promising,
+the obvious next sentence — "so re-run with `--archive-scope all` to backfill" — turned out to carry
+its own unstated cost. It is true that the re-run creates no duplicates (the skip authority is the
+`id:PFX` alias written in the create). It is *not* a free top-up: the skip path still reconciles the
+status axis, so a backfill drives every already-migrated item back to its **markdown** status,
+reopening anything closed on the service since cutover. The runbook now states both halves and tells
+the operator to treat a backfill on a live repo as a migration in its own right; a test pins the
+reopen so the claim can't quietly stop being true.
+
+**Left alone, deliberately:** the *restructure* rollback claims ("recoverable via the MG2 export
+backup") are true — `original_title`/`original_body` are written into the issue block, so the
+post-import export does carry them. Same words, different mechanism; checked rather than assumed.
+
+**A1: `all`** (`artifacts/migration-scrub-decisions.md` decision 5). The deciding argument was
+default-path coverage, not archive completeness: `all` is the flag's default, so choosing `open` for
+the dogfood would ship the default path unexercised by the one migration prawduct runs itself. This
+promotes **`BKL-6X5D` part (b)** from conditional to a firm v3.2.0 blocker — an archived item costs a
+paced create plus an **unpaced** close, so the archive leg is the half-metered stretch part (b)
+exists to close. The runbook had back-attributed an `all` decision to a file written 16 hours before
+the flag existed; that citation now points at the real decision.
+
+The residual product gap — `open` genuinely does strand the archive outside the live tracker — is
+filed as **`BKL-4Z7M`**, adopter-facing and not release-gating now that prawduct takes `all`.
+
+`documentation/backlog-service-{prd,requirements}.md`, `lib/backlog/{migrate,cli}.py`,
+`skills/backlog/migration-scrub.md`, `tests/test_backlog_migrate.py`,
+`tests/test_backlog_invariants.py`, `.prawduct/artifacts/build-plan-backlog-service.md`.
+
+*(The guard has two halves: `test_backlog_migrate.py` asserts the value actually emitted at runtime,
+and `test_backlog_invariants.py::TestArchiveScopeWarningTruthfulness` scans every such literal in
+`lib/backlog/`, so a third emission site cannot inherit the old wording while a per-site test stays
+green. The second half is the one that caught the `cli.py` site the first half missed.)*
+
 ## 2026-07-20: Two contradicting conventions adjudicated into norms; the cutover sweep becomes re-greppable (skills-cutover-awareness Chunk 04)
 
 <!-- prawduct: type=feature | scope=skills-cutover-awareness | chunks=04 -->
@@ -601,9 +726,11 @@ migration leg stays deferred):
 - **MG4b — `--archive-scope {all,open}` lever.** The importer now honors an
   owner-confirmed archive-scope choice: `all` (default, pre-scrub behavior — every
   archived item becomes a closed issue) or `open` (migrate only the live/open set;
-  the historical archive stays as the MG2 export, minting no closed issue per
-  ancient item — fewer total writes, NF3; the Pacer, not this lever, enforces the
-  write-*rate* ceiling — BKL-6X5D). Surfaced as an explicit owner question in
+  the historical archive stays in the git-tracked source markdown, minting no closed
+  issue per ancient item — fewer total writes, NF3; the Pacer, not this lever, enforces
+  the write-*rate* ceiling — BKL-6X5D). *(Corrected 2026-07-20: as shipped, this entry
+  was one of ten claim sites saying the skipped archive "stays as the MG2 export." It cannot —
+  `export` dumps the migrated repo post-import. Fixed in the entry above.)* Surfaced as an explicit owner question in
   the migration-scrub runbook (new step 2c); `restructure-preview` honors the same
   scope so the owner reviews exactly what imports. Quantified recent-window between
   the poles stays BKL-6X5D (adopter-scale). `lib/backlog/{migrate,cli}.py`.

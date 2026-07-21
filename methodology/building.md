@@ -97,7 +97,7 @@ Scale to chunk significance. When you can't verify, say so (Principle 5).
 
 **Critic review.** Run `/prawduct:critic` (no args) — the SKILL infers mode from git + build-plan state via `prawduct-hook infer-critic-mode` and records `mode_chosen_by`. Pass an explicit mode (e.g. `/prawduct:critic cumulative`) only to override; report override cases so inference can improve. The Critic runs as a separate agent with restricted tools. See Modes below.
 
-**Resolve findings.** After a **coordinator** review (`final`/`cumulative` at 5+ files), run `prawduct-hook critic-consolidate` before reading `.critic-findings.json` — idempotent when the `SubagentStop` trigger already consolidated; it guarantees you never read the *previous* review's file (single-pass reviews consolidate themselves). Fix blocking findings before proceeding — `/prawduct:critic verify-resolutions` records the resolution facts that unblock the gates. Address warnings. Document disagreements with rationale.
+**Resolve findings.** After a **coordinator** review (`final`/`cumulative` at 5+ files), run `prawduct-hook critic-consolidate` before reading `.critic-findings.json` — idempotent when the `SubagentStop` trigger already consolidated (single-pass reviews consolidate themselves). Fix blocking findings before proceeding — `/prawduct:critic verify-resolutions` records the resolution facts that unblock the gates. Address warnings; document disagreements with rationale.
 
 **Reflect — now, not at session end.** Append to `.prawduct/.session-reflected`: what the chunk delivered, what the Critic caught, what surprised you. A paragraph is enough. Add a rule to `learnings.md` only if this cycle produced one. Chunk-boundary reflection makes `/clear` instant later.
 
@@ -196,7 +196,7 @@ Every consolidated review appends a **fact** to a store shared by all worktrees 
 
 If the mode is missing, unrecognized, or inference cannot make a confident call, run `final` (canonical rule and per-mode table: `skills/critic/review-cycle.md`).
 
-**The Critic takes time.** A `chunk` review takes 1-2 minutes, `final`/`cumulative` 4-10; don't check on it. While it reviews, deep-scrub your own changes — self-review often pre-resolves findings.
+**The Critic takes time.** A `chunk` review takes 1-2 minutes, `final`/`cumulative` 4-10; don't poll for partials — but don't go silent either, or your prompt cache expires and the next turn replays your whole context. Deep-scrub your own changes while it runs — self-review often pre-resolves findings.
 
 **Never write Critic findings yourself.** If the agent is slow, wait. Writing `.critic-findings.json` "based on" expected output is governance fraud. If the agent fails, tell the user and re-invoke.
 
@@ -220,8 +220,6 @@ Catch specific exceptions. Broad catches (`except Exception`, empty `catch {}`) 
 `prawduct:allow <scope>/<rule-id> -- reason` is the general waiver mechanism (`docs/waivers.md`). The canary skips waived lines; the Critic verifies each is legitimate — "reviewed and intentional," not "exempt." Broad catches that swallow errors without logging are always findings — no waiver can justify silencing errors.
 
 ## Common Traps
-
-**Test corruption**: Weakening tests to make them pass. Fix the code, never the test.
 
 **Silent requirement dropping**: Implementing 9 of 10 requirements and hoping nobody notices.
 

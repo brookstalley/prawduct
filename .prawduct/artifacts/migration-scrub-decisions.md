@@ -1,9 +1,13 @@
-# Migration scrub — owner decisions (recorded 2026-07-18)
+# Migration scrub — owner decisions (recorded 2026-07-18; decisions 5–6 added 2026-07-20)
 
 Owner checkpoint held at the end of the 2026-07-18 session (BKL-8N5K shipped, Critic clean).
 **The live migration itself is HELD** — owner decision, not a blocker. Everything below is
 **confirmed** and carries forward to the owner-run migration session (BKL-6M4T), which should
 execute against these decisions without re-asking, re-confirming only if the source has drifted.
+
+**Exception — decision 6 is NOT owner-confirmed.** It is builder-proposed and marked sign-off owed.
+The "execute without re-asking" rule above covers decisions 1–5 only; 6 must be put to the owner
+before it is acted on.
 
 ## Decisions
 
@@ -17,6 +21,49 @@ execute against these decisions without re-asking, re-confirming only if the sou
    hard-deleted).
 4. **MIG-M4-REMOVE: import as-is** (content-digest idempotency key, no alias; `get` won't
    resolve it — accepted for shipped history).
+5. **`--archive-scope`: `all`** (owner, **2026-07-20** — release-plan decision A1). The full
+   archive imports as closed issues.
+
+   *Why this is dated 07-20 and not 07-18:* the lever did not exist on 07-18. This artifact was
+   written at `03cbcf7` (07-17 22:24) and last touched at `7b6a5a6` (07-17 22:59); `--archive-scope`
+   shipped at `7cbdf08` (07-18 14:27), sixteen hours later. Decision 2's phrase "the 121 archive
+   items import verbatim" is about **restructure** scope — whether migrated items get rewritten —
+   and was never an archive-scope choice. `skills/backlog/migration-scrub.md` had back-attributed
+   an `all` decision to this file; that citation now points here, where the decision genuinely is.
+
+   **Rationale (verified in code, not recalled):**
+   - `all` is the flag's **default** (`cli.py` `_archive_scope_flag`). Choosing `open` for the
+     dogfood would ship the default path unexercised by the one migration prawduct runs itself.
+   - `open`'s preservation story was mis-stated at ten claim sites across seven files (it named the MG2 export,
+     which dumps the migrated repo post-import and cannot hold what the lever excluded). Corrected
+     on this branch. The true cost of `open` — skipped items are git history, not live
+     backlog, because the skill stops reading the source file after cutover — is a real loss of
+     the whole archive as precedent and dedup surface (144 items at `964d03b`; re-derive at use).
+   - Owner framing for the release: *"We can't ship a partial product."*
+
+   **Consequence, accepted at decision time:** `all` makes **`BKL-6X5D` part (b)** (pace the
+   status/close writes) a **v3.2.0 release blocker** — item 8 on the ship list, previously
+   conditional. An archived item costs a paced create plus an **unpaced** close
+   (`_reconcile_status` → `core.set_status`, no pacer), so the archive leg of the real migration
+   is exactly the half-metered stretch part (b) describes.
+6. **Part (b) lands *before* the bulk import, not beside it** (2026-07-20 — **builder-proposed,
+   owner sign-off owed**; flagged by Critic review as a plan decision that does not follow
+   mechanically from A1 and so must not ride in on its authority).
+
+   A1 makes part (b) a release blocker; it does **not** by itself dictate the order. C4's blockers
+   went from `A1, C1, C2, C3` to `C1, C2, C3, C7`, which is a separate call. The alternative,
+   stated plainly so it is vetoable: **run the migration first with the close leg unpaced**, and
+   land part (b) afterwards — cheaper to sequence, and the run would probably survive, since today
+   the close leg is throttled only incidentally by subprocess latency.
+
+   Recommendation: **land part (b) first.** The bulk import is irreversible (GitHub never reuses
+   issue numbers, so there is no rollback — only re-run into the same repo), which makes it the one
+   run that should not double as part (b)'s proof case. A secondary-rate-limit trip mid-import is
+   recoverable but costly, and the SPIKE-S2 dry-run (C1) cannot substitute: it measures a throwaway
+   repo, not prawduct's 144-item archive leg.
+
+   Owner may overrule; if so, C4's blocked-by drops C7 and the release plan's burn-down step 4
+   reverts to running them in parallel.
 
 ## Approved dispositions (owner-confirmed 2026-07-18)
 

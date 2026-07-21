@@ -59,6 +59,7 @@ staleness" defect class this plan deletes.
 from __future__ import annotations
 
 import json
+import re
 import sys
 import uuid
 from datetime import datetime, timezone
@@ -91,6 +92,65 @@ _VERBOSE_VERIFY_RESOLUTIONS = MODE_TOKEN_TO_VERBOSE["verify-resolutions"]
 SINGLE_PASS_ROSTER = ("reviewer",)
 COORDINATOR_ROSTER = ("correctness", "design", "sustainability")
 COORDINATOR_FILE_THRESHOLD = 5
+
+# Background reviewers run for minutes after the dispatching fork returns, so
+# an early consolidate correctly finds zero partials — a silence the parent
+# session can misread as "the reviewers died with the fork" and re-dispatch a
+# duplicate roster (observed 2026-07-20: both rosters ran, doubling review
+# cost, while the first trio was alive the whole time). The incomplete no-op
+# therefore states the dispatch age and whether silence is still the normal
+# in-flight state; past this grace window it flips to advising critic-end +
+# re-dispatch, since indefinite waiting on genuinely dead reviewers is the
+# opposite failure.
+#
+# Sizing, stated honestly: the guide's nominal range is 4-10 minutes, but the
+# 2026-07-20 incident measured reviewers running 5-15. So 15 is the observed
+# CEILING with no slack above it, not the "nominal plus slack" it may look
+# like — a run at the top of the observed range can tip past the window and be
+# advised to abandon while alive. That bias is deliberate: the cost of a late
+# abandon-and-re-dispatch is one duplicate review, while the cost of waiting
+# past a genuine death is a session that never finishes. Widen it if real runs
+# start landing past 15, and prefer widening over telling the caller to wait
+# forever.
+_INFLIGHT_GRACE_MINUTES = 15
+
+# A session waiting on in-flight reviewers issues no model requests, so its
+# prompt cache ages out and the next turn re-reads the entire prefix — the
+# token replay adopters hit when a long review finally lands. A brief readout
+# on this cadence keeps the prefix warm by making a request against it.
+#
+# Deliberate stopgap, and the interval is the weak part: it assumes the
+# 5-minute prompt cache every current adopter runs on, which nothing here can
+# observe (longer-lived caches exist, and on those this cadence buys nothing).
+# Sized just under 5 so a slow turn still lands inside the window.
+_CACHE_WARM_INTERVAL_MINUTES = 4
+
+#: Appended to the wait-side variants only. Past the grace window the advice is
+#: to stop waiting, so warming the cache there would prolong the wrong state.
+_CACHE_WARM_DIRECTIVE = (
+    " While waiting, print a one-line progress note (what you are waiting on,"
+    f" elapsed time) at least every {_CACHE_WARM_INTERVAL_MINUTES} minutes"
+    " rather than idling silently — an idle session lets its prompt cache"
+    " expire and re-reads its whole context when the partials land."
+)
+
+_REVIEW_ID_TS = re.compile(r"^rev-(\d{8}T\d{6}Z)-")
+
+
+def mint_review_id() -> str:
+    """The review id, minted in ONE place so the liveness verdict can read the
+    dispatch time back out of it.
+
+    The embedded stamp is not decoration: :func:`dispatch_age_minutes` parses it
+    to decide whether missing partials mean "still in flight" or "reviewers
+    died". A format change here that :data:`_REVIEW_ID_TS` cannot parse does not
+    fail loudly — age silently becomes ``None``, the past-grace branch stops
+    being reachable, and the no-op advises waiting forever on dead reviewers.
+    Producer and consumer therefore stay adjacent, with a round-trip test.
+    """
+    return "rev-{}-{}".format(
+        datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ"), uuid.uuid4().hex[:8]
+    )
 
 _RESOLUTION_DISPOSITIONS = frozenset({"fixed", "waived"})
 
@@ -351,9 +411,7 @@ def begin_review(
         files_reviewed = list(files_changed)
 
     roster, roster_chosen_by = _derive_roster(mode_token, files_changed)
-    review_id = "rev-{}-{}".format(
-        datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ"), uuid.uuid4().hex[:8]
-    )
+    review_id = mint_review_id()
 
     manifest = {
         "id": review_id,
@@ -745,6 +803,69 @@ def _known_findings_index(store: dict) -> set[tuple[str, str]]:
     return known
 
 
+def dispatch_age_minutes(review_id: str, *, now: datetime | None = None) -> float | None:
+    """Minutes since the dispatch timestamp a ``begin_review`` id embeds
+    (``rev-%Y%m%dT%H%M%SZ-<hex>``), or ``None`` when the id carries none
+    (hand-written manifests). Clock skew can put the stamp in the future;
+    clamp to 0 rather than report a negative age."""
+    match = _REVIEW_ID_TS.match(review_id)
+    if not match:
+        return None
+    try:
+        dispatched = datetime.strptime(match.group(1), "%Y%m%dT%H%M%SZ").replace(
+            tzinfo=timezone.utc
+        )
+    except ValueError:
+        return None
+    now = now or datetime.now(timezone.utc)
+    return max(0.0, (now - dispatched).total_seconds() / 60.0)
+
+
+def _incomplete_noop_message(missing: list[str], present: int, total: int,
+                             review_id: str) -> str:
+    """The incomplete no-op with a liveness verdict, not just a partial count.
+    Zero partials shortly after dispatch is the NORMAL background-reviewer
+    state — say so explicitly, or the caller infers reviewer death from
+    silence and double-dispatches. The wait-side variants also direct a
+    periodic progress readout, so a session that correctly decides to wait
+    does not idle its prompt cache into expiry while doing so."""
+    age = dispatch_age_minutes(review_id)
+    counts = f"{present}/{total} partials present"
+    if age is not None:
+        counts += f"; dispatched {age:.1f} min ago"
+    line = f"no-op: review incomplete — waiting on {', '.join(missing)} ({counts})."
+    if age is not None and age > _INFLIGHT_GRACE_MINUTES:
+        line += (
+            f" That is past the in-flight grace window (~{_INFLIGHT_GRACE_MINUTES} min)"
+            " — the reviewers may have died. Abandon this review with"
+            " `prawduct-hook critic-end`, then re-dispatch."
+        )
+    elif total == 1:
+        # Single-pass roster: the reviewer IS the dispatching fork and
+        # consolidates itself — a SubagentStop trigger will never land it, so
+        # the coordinator-roster story would be false here.
+        line += (
+            " The single-pass reviewer (the dispatching fork itself) writes its"
+            " partial and consolidates when it finishes — reviews typically take"
+            " 4-10 minutes; missing partials are the normal in-flight state, NOT"
+            " evidence the reviewer died. Re-run this command later; if the fork"
+            " already returned without consolidating, abandon with"
+            " `prawduct-hook critic-end`, then re-dispatch."
+        )
+        line += _CACHE_WARM_DIRECTIVE
+    else:
+        line += (
+            " Reviewers run in the BACKGROUND after the dispatching fork returns"
+            " and typically take 4-10 minutes; missing partials are the normal"
+            " in-flight state, NOT evidence the reviewers died. Do not"
+            " re-dispatch — wait for the SubagentStop trigger to consolidate"
+            " (or re-run this command later). A genuine re-dispatch requires"
+            " `prawduct-hook critic-end` first."
+        )
+        line += _CACHE_WARM_DIRECTIVE
+    return line
+
+
 def consolidate(project_dir: Path) -> int:
     """Merge complete reviewer partials into evidence facts + the derived
     cache. Idempotent.
@@ -752,7 +873,9 @@ def consolidate(project_dir: Path) -> int:
     Exit codes:
       - ``0`` + ``no-op:`` — nothing to do (no manifest, or roster incomplete —
         the message names the missing roles). The common in-flight case as
-        reviewers finish one by one.
+        reviewers finish one by one; the incomplete message also states the
+        dispatch age and whether silence is still normal (wait) or past the
+        grace window (critic-end + re-dispatch).
       - ``0`` + ``consolidated:`` — review fact appended (or already present),
         resolution facts appended, cache regenerated, ledger anchored, marker
         cleared, partials removed.
@@ -829,10 +952,7 @@ def consolidate(project_dir: Path) -> int:
         partials.append(data)
 
     if missing:
-        print(
-            f"no-op: review incomplete — waiting on {', '.join(missing)} "
-            f"({len(partials)}/{len(roster)} partials present)."
-        )
+        print(_incomplete_noop_message(missing, len(partials), len(roster), review_id))
         return 0
 
     # Resolutions may only arrive from a verify-resolutions dispatch — they

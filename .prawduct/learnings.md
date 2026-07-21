@@ -42,9 +42,45 @@ When a feature branch fails a release-hygiene test (e.g. `test_changelog_has_cur
 
 ## When a governance checkpoint verifies a required side-effect happened, put it OUTSIDE the control flow that produces the side-effect — a check inside the fallible flow can't catch that flow's own skip
 
+## Correcting a false claim is authoring a new claim — verify the replacement and the artifacts it cites, because the fixing mood generates claims faster than the checking reflex fires
+
+Fixing a false safety claim across ten sites, the same changeset introduced two fresh ones: an `all`-scope bullet promising the archive "stays reachable from `find`/`list`" (post-cutover `find` is W2-deferred for *every* item — established by the PR merged an hour earlier, precisely because it was adjacent), and "re-run with `--archive-scope all` to backfill, no duplicates" (true about duplicates, silent that the skip path reconciles status, so a backfill reopens anything closed on the service since cutover). Then the *correction* of one of those overclaims swung into a different wrong claim — asserting a backlog note "records the same gap" when it concluded the opposite — taking three commits to land accurate. **Two rules.** (1) A replacement sentence gets the same falsification query the original needed; being in the middle of a correction is the *highest*-risk moment for this class, not a safe one. (2) When successive edits to one passage alternate direction (overclaim → overcorrect → …), stop editing and go read the sources — the oscillation is the tell that you are reasoning from the passage instead of from what it describes, and a reviewer calling a further pass "churn, not improvement" is usually right. Discovered 2026-07-20 on `fix/archive-scope-preservation-claim` (cumulative + 5 verify-resolutions rounds, 15→0). Relates to [[Before writing any sentence of the shape "X now covers/catches/handles Y" or "there is no Y", run the one query that would falsify it]] and Validate Before Propagating (#15).
+
 ## Before writing any sentence of the shape "X now covers/catches/handles Y" or "there is no Y", run the one query that would falsify it — a coverage claim is the highest-frequency error class here and is almost always checkable in under a minute, so treat the SENTENCE as the trigger, not your confidence in it
 
-The claim-shape is the tripwire, not the topic: "this test now catches the class", "every reader is repointed", "there is nothing local to run this against", "the inventory is exhaustive". Six instances across 2026-07-19/20 — twice stating a repo/state didn't exist that did (one loop over sibling `project-state.yaml` files falsified it), twice describing a regex/test as covering a class it demonstrably could not (`[^.]` excluding the dots in `.prawduct/backlog.md`; an `op == "x"` derivation blind to `op in ("a","b")`), once repeating a docstring's rationale that the requirements had already corrected two days earlier, and once writing "fixing one and not the other would be the patch-the-flagged-line failure" while leaving the sibling copy in the same file. Being careful demonstrably does not work at this frequency; the check does. Fix-shape: (a) for a set/coverage claim, re-derive the set with the precise query right before writing it; (b) for an absence claim ("no X exists"), run the enumeration rather than reasoning from what you happened to see; (c) for a rationale read off a comment or docstring, verify the requirement it cites still says that — the nearest source is not the authoritative one; (d) for "I am avoiding anti-pattern P", actually run P's detector, because naming P is not running it. Relates to Honest Confidence (#5), Validate Before Propagating (#15), Retrieval Over Generation (#24), and [[When building from a review/audit artifact, verify each cited gap and fix-instruction against HEAD before planning]].
+The claim-shape is the tripwire, not the topic: "this test now catches the class", "every reader is repointed", "there is nothing local to run this against", "the inventory is exhaustive". Six instances across 2026-07-19/20 — twice stating a repo/state didn't exist that did (one loop over sibling `project-state.yaml` files falsified it), twice describing a regex/test as covering a class it demonstrably could not (`[^.]` excluding the dots in `.prawduct/backlog.md`; an `op == "x"` derivation blind to `op in ("a","b")`), once repeating a docstring's rationale that the requirements had already corrected two days earlier, and once writing "fixing one and not the other would be the patch-the-flagged-line failure" while leaving the sibling copy in the same file. Being careful demonstrably does not work at this frequency; the check does. Fix-shape: (a) for a set/coverage claim, re-derive the set with the precise query right before writing it; (b) for an absence claim ("no X exists"), run the enumeration rather than reasoning from what you happened to see; (c) for a rationale read off a comment or docstring, verify the requirement it cites still says that — the nearest source is not the authoritative one; (d) for "I am avoiding anti-pattern P", actually run P's detector, because naming P is not running it.
+
+**Instance 8 (2026-07-20) sharpens this into something mechanically detectable — the check can be *performed* and still be worthless.** Correcting a false claim across the repo, I ran the grep, counted the hits, and told the user "seven surfaces." The pipeline ended in `| head -20`, so real hits had been truncated away; a wider re-run found more and I said "nine." The enumerated truth was **ten claim sites across seven files** — so the first number was wrong, and so was the correction, which is the part worth keeping: *this entry originally asserted "It was nine," and a Critic pass caught the durable learning about miscounting carrying a wrong count.* A number read off a truncated search is not a count — it is a check-shaped artifact that reads as diligence in the transcript, and is therefore *more* convincing than an unchecked guess would have been. The tell is now syntactic rather than introspective: **if the pipeline that establishes completeness contains `head`, `tail`, `-m`, or any other cap, its output must not be stated as a total.** Re-run it uncapped, with the pattern widened to the claim's actual shape, before writing the number. Corollary from the same session, pointing the other way: before mass-correcting a sentence, check the *siblings* that share its wording — four "recoverable via the MG2 export backup" claims about `restructure` were **true** (the block carries `original_title`/`original_body`, so the post-import export does hold them) while the identically-worded `--archive-scope` ones were false, so a sweep-and-replace would have converted four correct statements into wrong ones. Relates to Honest Confidence (#5), Validate Before Propagating (#15), Retrieval Over Generation (#24), and [[When building from a review/audit artifact, verify each cited gap and fix-instruction against HEAD before planning]].
+
+**Sharpening (2026-07-20, `fix/archive-scope-preservation-claim`, across a run of verify-resolutions
+rounds — count deliberately omitted; corollary (c) says why):
+the error lives in the QUANTIFIER, and that makes it detectable before writing.** Across one branch
+the same shape recurred with the narrow fact correctly verified every time and the written claim
+scoped wider than the check: "there is **no** follow-up commit on **any** of them" (true for two of
+three files — the third had one), "the other ten, **every** one of them migration work" (one was
+not — `stale-remote-base-diagnostics`; the sentence survives verbatim in the hotfix plan and is
+now *true*, because the set it quantifies over was re-derived, which is the point: quantified
+sentences go stale when the set moves under them, not when the words change), "six `--repo`
+placeholders in six **steps**" (six commands across four steps), "**also**
+catches a second minting site" (only one copied in the same literal shape; an f-string passes).
+Each was written inside the correction of the previous one. So the operative rule is not "check
+harder" — it is **verify at the quantifier**: when a sentence contains *no / every / all / only /
+none / also*, the check must enumerate the quantified set, and a per-file claim needs a per-file
+loop, not a combined query that returns one answer. Three corollaries. (a) A number derived
+positionally is not derived from the field: counting change-log entries *above* a release boundary
+structurally cannot see an unreleased entry below it, and one was there — REL-2N8K reproducing
+inside the plan citing REL-2N8K. (b) **An untouched sentence inside an edited paragraph reads as
+freshly vouched-for.** Editing a paragraph re-publishes all of it; re-verify the sentences you did
+not change, because a reviewer — and a later reader — cannot tell which ones you actually looked at.
+(c) **Some quantified sets contain the sentence that counts them, and those counts cannot be
+written truthfully.** This entry first opened "five verify-resolutions rounds," then "twelve —
+eleven reachable, one orphaned," and a re-enumeration minutes later returned thirteen reachable
+plus the orphan, because the review answering the sentence had itself consolidated in between and a
+widened predicate swept in a round the first query's `head_commit` filter had missed. Neither
+number was carelessly derived; both were stale on arrival. The tell is self-reference: **when the
+act of writing the claim changes the set the claim quantifies over, no enumeration converges** —
+say "a run of" and describe the shape, or pin the set to a closed predicate ("the rounds preceding
+this one") that writing cannot move. Counting harder is the wrong response; the set is the problem.
 
 ## When building from a review/audit artifact, verify each cited gap and fix-instruction against HEAD before planning — the artifact's file-state claims aged the moment it was written
 
@@ -258,3 +294,18 @@ Retiring a stale worktree branch, the natural triage is per commit: read each on
 ## A rationale you reached for to defend a decision you'd already made is the one to verify BEFORE writing it into a durable spec — the reach itself is the tell
 
 Justifying "the janitor gets no post-cutover backlog context," I wrote into `skills/janitor/SKILL.md` that its `allowed-tools` grants no `Bash(prawduct-hook *)`, so "the janitor surveys, it does not query services." The frontmatter fact was true and the inference was unsound: Step 1 of the same file already instructs `prawduct-hook review-stats`, and every sibling skill instructing a hook call carries the matching grant — janitor is the sole exception, i.e. an oversight. The decision was actually made on other grounds (the owner's W1 read-through-cache ruling); the grant story was recruited afterward to make it look principled, and it laundered a bug into a recorded architectural position where a later builder could cite it. So: when you notice yourself supplying a *second* reason for a decision already settled, treat that reason as unverified — read the mechanism it rests on (Principle 24), and if it turns out to be a defect, file the defect and rest the prose on the premise that actually decided it. This is the requirement-invention tripwire (#6) in inverted form: not a requirement invented forward into code, but a rationale invented backward into a spec. Discovered skills-cutover-awareness Chunk 03 (2026-07-20, Critic warning). Relates to [[A decision reversed mid-chunk leaves stale rationale in prose you just wrote]] and Reasoned Decisions (#4).
+
+## A status surface that reports the ABSENCE of expected output must say whether absence is the normal in-flight state — a bare zero invites the reader to invent a death story and take recovery action against healthy work
+
+Confirmed 2026-07-20 ("critic reviewers died with fork", cross-repo): background critic reviewers
+run 5-15 min after the dispatching fork returns; a parent session consolidating at ~2.5 min got
+`0/3 partials present`, inferred "the fork ended and took them with it" (transcript-verified false
+— all three were alive and completed), and re-dispatched a duplicate roster, doubling review cost.
+Same binary had run the identical shape clean the day before — the trap is probabilistic model
+inference over ambiguous silence, so the fix belongs at the decision point: the message now renders
+dispatch age plus a wait/abandon verdict (8b6eef6, CRT-3F7M fix (b)). Generalizes to any
+empty-state report an agent acts on (empty queue, no results yet, 0 workers reporting): pair the
+count with the timing fact that discriminates in-flight from dead, and name the sanctioned recovery
+path so the reader doesn't improvise one. Relates to Honest Confidence (#5), and note the failure
+phrase itself ("died with fork") began as one model's hallucinated diagnosis and propagated as
+observed fact — including into CRT-3F7M's title.

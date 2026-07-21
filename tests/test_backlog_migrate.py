@@ -248,8 +248,8 @@ class TestArchiveAndCheckpoint:
 
 class TestArchiveScope:
     """MG4b — the owner-confirmed ``--archive-scope {all,open}`` lever. ``open``
-    imports only the live/open set as issues; the historical archive stays as the
-    MG2 export file (git history) rather than minting a closed issue per ancient
+    imports only the live/open set as issues; the historical archive stays in the
+    git-tracked source markdown rather than minting a closed issue per ancient
     item. ``all`` is the pre-scrub default."""
 
     _MAIN = "## Open\n\n- **[SCP-0001]** open item\n  `area: core · status: open`\n"
@@ -258,6 +258,31 @@ class TestArchiveScope:
         "- **[SCP-0002]** shipped item\n  `area: core · status: shipped`\n"
         "- **[SCP-0003]** dropped item\n  `area: core · status: dropped`\n"
     )
+
+    @staticmethod
+    def _assert_preservation_claim_is_true(warnings):
+        """The ``open`` warning tells an operator where the skipped items went, and
+        that sentence has to be **true**. It once said they remain in "the MG2
+        export" — impossible, since ``export_backlog`` dumps the *migrated repo*
+        and runs after the import, so it can never hold what the lever excluded.
+        An operator who believed it would choose ``open`` expecting a restorable
+        archive artifact that does not exist. Guarded here rather than left to
+        review because a false safety claim reads as reassuring in every diff.
+
+        This is the *behavioral* half — it asserts the value actually emitted at
+        runtime. The source-level companion,
+        ``test_backlog_invariants.TestArchiveScopeWarningTruthfulness``, scans every
+        such literal in the package and so covers emission sites this test does not
+        reach; keep both. As there, the bare ``export`` ban is deliberately blunt and
+        bans a word where the defect is a false credit: if some export artifact ever
+        genuinely holds the skipped set, retarget this assertion to the new mechanism
+        and re-verify it — never delete it to green a red suite."""
+        skip_warning = next(w for w in warnings if "archive-scope open" in w)
+        assert "export" not in skip_warning.lower(), (
+            "the --archive-scope open warning credits the MG2 export with preserving "
+            f"skipped items; the export dumps the migrated repo: {skip_warning!r}"
+        )
+        assert "source markdown" in skip_warning
 
     def test_apply_open_filters_closed_records(self):
         records, _ = migrate.collect_records(self._MAIN, self._ARCHIVE)
@@ -279,6 +304,7 @@ class TestArchiveScope:
         assert len(result["data"]["created"]) == 1  # only the open item
         assert result["data"]["archive_skipped"] == 2
         assert any("archive-scope open" in w for w in result["warnings"])
+        self._assert_preservation_claim_is_true(result["warnings"])
         assert _alias_issues(fake, "SCP-0001")  # open item created
         assert _alias_issues(fake, "SCP-0002") == []  # shipped item NOT minted
         assert _alias_issues(fake, "SCP-0003") == []  # dropped item NOT minted
@@ -295,6 +321,58 @@ class TestArchiveScope:
         assert "archive_skipped" not in result["data"]
         arc = _alias_issues(fake, "SCP-0002")[0]
         assert (arc.get("state") or "open").lower() == "closed"
+
+    def test_open_then_all_backfills_the_archive_without_duplicating(self, fake):
+        """`open` defers the archive, it does not discard it — the migration runbook
+        tells owners the choice is not a one-way door, so the reversal is guarded.
+
+        Re-running a repo migrated with `open` under `all` must mint exactly the
+        items the first run skipped and leave the already-migrated ones alone: the
+        skip authority is the `id:PFX` alias written atomically in the create, so
+        the second pass finds-or-creates rather than re-creating."""
+        first = migrate.import_backlog(
+            fake, owner=OWNER, repo=REPO, content=self._MAIN,
+            archive_content=self._ARCHIVE, archive_scope="open",
+        )
+        assert len(first["data"]["created"]) == 1
+
+        second = migrate.import_backlog(
+            fake, owner=OWNER, repo=REPO, content=self._MAIN,
+            archive_content=self._ARCHIVE, archive_scope="all",
+        )
+        assert second["status"] == "ok"
+        # The two archive items get minted now; the open item is skipped, not remade.
+        assert len(second["data"]["created"]) == 2
+        assert len(second["data"]["skipped"]) == 1
+        for pfx in ("SCP-0001", "SCP-0002", "SCP-0003"):
+            assert len(_alias_issues(fake, pfx)) == 1, f"{pfx} duplicated across runs"
+        assert (_alias_issues(fake, "SCP-0002")[0].get("state") or "open").lower() == "closed"
+
+    def test_backfill_re_syncs_status_from_the_markdown(self, fake):
+        """The backfill re-run is not a free top-up, and the runbook says so — this
+        pins the behavior that claim rests on.
+
+        The skip branch reconciles the status axis (it is what makes a
+        created-but-crashed-before-close item converge on resume, CRASH-4). The
+        side effect on a *backfill*: an item closed on the service after cutover is
+        driven back to its markdown status, i.e. reopened. If someone later scopes
+        `_reconcile_status` to fresh creates, this test fails and the runbook
+        paragraph must change with it — which is the point of pinning it."""
+        migrate.import_backlog(
+            fake, owner=OWNER, repo=REPO, content=self._MAIN,
+            archive_content=self._ARCHIVE, archive_scope="open",
+        )
+        number = _alias_issues(fake, "SCP-0001")[0]["number"]
+        # Someone closes the item on the service after cutover.
+        core.set_status(fake, id_raw=f"{SCOPE}#{number}", target="shipped")
+        assert (fake.get_issue(OWNER, REPO, number).get("state") or "").lower() == "closed"
+
+        migrate.import_backlog(
+            fake, owner=OWNER, repo=REPO, content=self._MAIN,
+            archive_content=self._ARCHIVE, archive_scope="all",
+        )
+        # Reopened — the markdown still says `open`, and the skip path re-syncs it.
+        assert (fake.get_issue(OWNER, REPO, number).get("state") or "open").lower() == "open"
 
     def test_default_scope_is_all(self, fake):
         # No archive_scope passed → `all` (backward-compatible with every existing
