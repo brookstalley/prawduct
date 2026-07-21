@@ -2206,6 +2206,15 @@
   lever, different consequence: that item is the rate/volume budget, this one is post-cutover
   reachability).
 
+- **[GOV-9T2K]** Upgrading consumers keep the old version's plugin cache directory, including prawduct's internal state
+  `effort: S · impact: M · area: governance/plugin-runtime · kind: fix · source: user · added: 2026-07-21 · reviewed: 2026-07-21 · status: open · stage: ready · related: GOV-4H7T, ENV-7C4K · refs: .claude-plugin/marketplace.json (`"source": "./plugin"` — the GOV-4H7T fix), .prawduct/change-log.md (v3.1.1 packaging entry, which cites this id), plugin/skills/doctor/SKILL.md (candidate surface for option (c))`
+
+  Plugin caches are version-keyed at `~/.claude/plugins/cache/<marketplace>/<plugin>/<version>/`. Verified 2026-07-21 by installing v3.1.0 into an isolated `CLAUDE_CONFIG_DIR`, advancing the source repo to v3.1.1, and running `claude plugin marketplace update` + `claude plugin update`: the active plugin correctly becomes the clean 3.1.1 tree (109 files, no `.prawduct/`), but the `3.1.0/` directory is **retained on disk** with all 314 files including prawduct's backlog, learnings, change-log, build plans and test suite. `claude plugin prune` does not remove it ("Nothing to prune (no auto-installed plugins at user scope)").
+
+  Consequence: GOV-4H7T's fix is complete for what *loads* but partial for what is *on disk*. A model globbing broadly under `~/.claude/plugins/cache/` in a consuming repo can still reach prawduct's internal state from the stale directory. The condition is pre-existing — v3.1.0 is what put it there — and v3.1.1 stops adding to it rather than cleaning it up, which is why this is filed rather than treated as a v3.1.1 blocker.
+
+  Open questions for whoever picks this up: (a) does Claude Code prune old version directories on any schedule, or is retention indefinite? (b) is there a supported hook or manifest field for post-update cleanup, or is the only remedy documentation telling operators to delete the directory? (c) should the v3.1.1 release note or `/prawduct:doctor` surface the stale-cache condition and offer the delete, since doctor already checks install conformance and is the natural place a consumer would learn about it? Option (c) is probably the cheapest real improvement. (user)
+
 ## Promoted
 
 - **[BKL-5D2C]** Move the backlog out of git to a centralized, agent-friendly issue-tracking service

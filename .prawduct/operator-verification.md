@@ -230,7 +230,7 @@ and stale-timestamp conflict (exit 4). One doc bug caught + fixed: the `get` env
 `updated_at`, so the update guidance dropped the unimplementable get-then-`--if-updated-at` step.
 **Remaining for the drain:** the model actually executing `adapter-mode.md` in a real sibling
 *session* via `--plugin-dir` — the prose-routing confirm a headless adapter loop can't cover.
-**Where to verify:** A sibling product repo pointed at this checkout via `--plugin-dir=../prawduct`,
+**Where to verify:** A sibling product repo pointed at this checkout via `--plugin-dir=../prawduct/plugin`,
 with `backlog_service_repo: owner/repo` set in its `.prawduct/project-state.yaml` and `gh`
 authenticated. This is **Phase 1** of the migration program (the owner-scoped dogfood) — it exercises
 the repointed skill against real Issues without touching prawduct's own backlog.
@@ -268,7 +268,7 @@ observable in a real run against a cut-over repo. This is the VRF-007 lesson app
 handoff survives clean multi-reviewer review and still fails live.
 
 **Where to verify:** the cut-over sibling product repo, pointed at this checkout via
-`--plugin-dir=../prawduct`, with `backlog_service_repo` set.
+`--plugin-dir=../prawduct/plugin`, with `backlog_service_repo` set.
 
 **Verify:**
 1. Session start → the `backlog-checks-dormant` advisory appears once, `info` priority, naming the

@@ -34,7 +34,7 @@ why it nearly shipped. Moving the files for real costs a wide diff (`tests/` imp
 correctness on every platform. Owner's call, and the right one: delay is better than broken.
 
 **Measured by real install, not asserted.** Installing into an isolated `CLAUDE_CONFIG_DIR` from a
-fresh clone — what a git-sourced consumer actually gets — yields **120 files / 1.8 MB**, down from
+fresh clone — what a git-sourced consumer actually gets — yields **109 files / 1.7 MB**, down from
 203 files / ~6.7 MB. Every required component present; `.prawduct/`, `tests/`, `documentation/`,
 `CLAUDE.md`, `pyproject.toml`, `.claude/` and `marketplace.json` all absent; zero symlinks.
 
@@ -61,6 +61,14 @@ holds only the six guides skills actually route models to. `skills/pr/SKILL.md` 
 back to the user's own process.
 
 Net: **203 files / ~6.7 MB → 109 files / 1.7 MB.**
+
+**Upgrade is version-keyed, so existing consumers get a partial win — stated rather than glossed.**
+Tested by installing v3.1.0 into an isolated config, advancing the source repo, and running
+`plugin update`: the active plugin becomes the clean 3.1.1 tree, but the old
+`cache/prawduct/prawduct/3.1.0/` directory is retained on disk with all 314 files including
+prawduct's `.prawduct/`, and `claude plugin prune` does not remove it. So what *loads* is fixed
+immediately; what is *on disk* needs a manual delete. The condition is pre-existing — v3.1.0 put it
+there — and this release stops adding to it rather than cleaning it up. Filed as **GOV-9T2K**.
 
 Closes **GOV-4H7T**.
 

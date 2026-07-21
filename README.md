@@ -150,10 +150,10 @@ It validates the committed install reference, confirms the repo is on the plugin
 
 ```bash
 cd prawduct
-claude --plugin-dir . --add-dir .
+claude --plugin-dir ./plugin --add-dir .
 ```
 
-This repo is governed by its own plugin — it dogfoods itself. The `--add-dir .` (same path) lets methodology-reading skills (`/prawduct:methodology building`, `/prawduct:critic`, `/prawduct:methodology planning`) load their bundled guides from the out-of-tree plugin; a real marketplace install grants that automatically. See [docs/release-process.md](docs/release-process.md) for the gitflow release model and the release checklist.
+This repo is governed by its own plugin — it dogfoods itself. **`--plugin-dir` takes `./plugin`, not `.`** — the plugin root moved into `plugin/` in v3.1.1 so that the repo's own state stops being distributed, and the repo root is no longer a plugin root. `--add-dir .` (the repo) lets methodology-reading skills (`/prawduct:methodology building`, `/prawduct:critic`, `/prawduct:methodology planning`) load their bundled guides from the out-of-tree plugin; a real marketplace install grants that automatically. See [documentation/release-process.md](documentation/release-process.md) for the gitflow release model and the release checklist.
 
 ## Q&A
 
