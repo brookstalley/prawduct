@@ -11,7 +11,31 @@ last_validated: 2026-07-21
 
 ## Execution status — read this first
 
-**Step 1 landed (2026-07-21). Next action: release mechanics step 2** (the tree-set).
+**Steps 1–8 landed (2026-07-21). Next action: release mechanics step 9 — the promotion.**
+Paused there deliberately at owner request: step 9 is the first irreversible, outward-facing action.
+
+| step | state | result |
+|---|---|---|
+| 1 merge to `develop` | ✅ | `M = e5ec3d2` (two merges + the fold-in commit) |
+| 2 tree-set + checkpoint A | ✅ | `T = fcb4e5f`; all six items pass |
+| 3 `feature/backlog-service` | ✅ | `R = 7fc00e1`, **pushed**; tree == `M`, not an ancestor of `develop` |
+| 4 version bump ×3 | ✅ | `VERSION`, `plugin.json`, `pyproject.toml` → `3.1.1` |
+| 5 change-log flip | ✅ | 9 flipped, 10 held |
+| 6 `CHANGELOG.md` | ✅ | `## v3.1.1` headline |
+| 7 `active_build_plan: null` | ✅ | |
+| 8 `regen-views` + checkpoint B | ✅ | `c4fd21a`; delta is exactly the 8 expected files |
+| 9 promote, tag, push | ⏸ | **awaiting owner** |
+| 10 confirm banner | ⏸ | next session after 9 |
+
+**Nothing is published.** `origin/develop` is still `43dda9c` and `origin/main` is still `b08c301`
+(= `v3.1.0`). The only thing pushed is `feature/backlog-service`, which is purely additive. Every
+step above is undone by `git reset --hard 43dda9c` on `develop` plus deleting that branch.
+
+Checkpoint A evidence (2026-07-21): path-set equality **54 = 54** exact; completeness precondition
+**31 take + 65 held = 96**; all five negative-grep strings **0** across `skills/ lib/ bin/ hooks/
+methodology/ documentation/ docs/ templates/`; every partial-take marker at its expected count
+(`cmd_backlog` → 0, `cmd_version` → 2, `prawduct-hook version` dispatches and prints); suite
+**1965 passed / 0 failed**; briefing renders with the migration advisory **resolved**.
 
 Update this block as each step lands — it is the only cross-session record of *where execution
 stands*, and the steps are stateful — later steps consume names earlier steps produce, so a step
