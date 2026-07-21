@@ -28,4 +28,8 @@ Every unit of work follows **understand → plan → build → verify → Critic
 
 The 24 principles (Quality · Product · Process · Learning · Judgment) guide every decision — read the full set with `/prawduct:methodology principles`. How the agent communicates and acts while applying them — advisor first (expert take before compliance), verify don't guess, stress-test before agreeing, frame decisions — is the stance block in the always-injected session digest (`methodology/session-digest.md`). Governance is enforced structurally: the plugin's Stop hook runs the Critic + reflection gates at session end, so a code change against an active build plan with no review or reflection blocks the session.
 
+Operational procedures — runbooks for incident response, deploy/rollback, release, disaster
+recovery, maintenance and field service — are authored with `/prawduct:runbook`, against the
+canonical rules and evidence in `docs/runbook-authoring.md`.
+
 Quality review runs through `/prawduct:critic` (independent review after medium+ work) and `/prawduct:pr` (release readiness). Look up project rules with `/prawduct:learnings <topic>` and deferred work with `/prawduct:backlog`. Keep the repo healthy with `/prawduct:doctor` (prawduct governance/install conformance) and `/prawduct:janitor` (the product's own codebase craft); their split is `docs/doctor-vs-janitor.md`.

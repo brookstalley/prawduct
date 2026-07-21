@@ -2225,6 +2225,17 @@
 
 ## Archive
 
+- **[MET-7B3X]** Runbook authoring capability — guide, template, and `/prawduct:runbook` skill
+  `effort: L · impact: L · area: methodology · kind: feature · source: user · added: 2026-07-20 · reviewed: 2026-07-20 · status: shipped · stage: ready · closed-by: runbook-authoring · refs: docs/runbook-authoring.md, templates/runbook.md, skills/runbook/SKILL.md, skills/methodology/SKILL.md (registration), templates/operational-spec.md, templates/observability-strategy.md, templates/unattended-operation/failure-recovery-spec.md, .prawduct/research/runbook-authoring/CHECKPOINT.md`
+
+  This is the **retroactive parent requirement** for work delivered 2026-07-20 (Principle 6 — never silently *invent* a requirement). The gap was detected and named during the work, in `.prawduct/research/runbook-authoring/CHECKPOINT.md` synthesis decision 5, and is filed here at close-out rather than left implicit.
+
+  **The gap.** Three prawduct artifacts point users at runbooks — `templates/operational-spec.md` ("High-risk: runbooks, escalation procedures"), `templates/observability-strategy.md` (its "What You Get" scenarios are effectively runbook triggers), and `templates/unattended-operation/failure-recovery-spec.md` ("## Recovery Procedures") — but **nothing in the framework said how to write one.** Owner reported that prawduct users frequently need runbooks and that generated quality was "between bad and abysmal."
+
+  **Delivered.** `docs/runbook-authoring.md` (canonical rules + evidence appendix); `templates/runbook.md` (the blank, cross-linked section-by-section into the rules); `skills/runbook/SKILL.md` (`/prawduct:runbook` — survey, new, review, list); and registration from the methodology skill and the three templates above.
+
+  **Note for the record.** Research provenance and resume instructions live in `.prawduct/research/runbook-authoring/CHECKPOINT.md`. Four gap searches — regulated environments, machine-vs-human audiences, irreversible-ops beyond what was recovered, and empirical evidence for runbook field sets — died on a session limit and **remain open**; the guide marks those areas honestly rather than filling them with convention. Worth a follow-on item if anyone wants them closed. (user)
+
 - **[BRF-7Q4M]** SessionStart banner has no provenance marker — an operator can't tell whether the local `--plugin-dir` checkout or the marketplace copy is loaded
   `effort: S · impact: M · area: governance/plugin-runtime · kind: feature · source: user · added: 2026-07-19 · reviewed: 2026-07-19 · status: shipped · stage: ready · closed-by: banner-load-provenance · refs: hooks/banner.py (identity line), tests/test_plugin_version_banner.py`
 

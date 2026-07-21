@@ -60,4 +60,7 @@ last_validated: null
      Proportionate to risk:
      - Low-risk: "Restart it." Seriously — if the blast radius is small,
        simple recovery is the right answer.
-     - High-risk: runbooks, escalation procedures, failover, incident response -->
+     - High-risk: runbooks, escalation procedures, failover, incident response
+
+     Writing the runbooks themselves: `docs/runbook-authoring.md` (rules + evidence),
+     `templates/runbook.md` (the blank), or run `/prawduct:runbook`. -->

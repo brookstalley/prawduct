@@ -44,6 +44,10 @@ last_validated: null
      - Intermittent failures → how do you find the pattern?
      - Is a dependency degrading? → how do you see it before users do?
 
+     Each scenario here is a runbook trigger: "When X happens" is the entry
+     condition, and the runbook is how Y actually gets done. Author them with
+     `/prawduct:runbook` (rules: `docs/runbook-authoring.md`).
+
      This section is the contract: if these scenarios don't work,
      the observability strategy has failed. For low-risk products,
      one scenario ("When it crashes, the error log tells you why") is enough. -->
