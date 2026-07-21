@@ -73,9 +73,8 @@ almost anything. Only: does it move them toward a correct finish. If not, cut it
 
 - Background and architecture the reader does not need to execute the step
 - **Tool education** — what a flag abbreviates, how the underlying system works, why the interface
-  is shaped this way. (What a command will *do to the reader's world* is not education — that stays.
-  "This flag discards unsaved work in place" earns its line; "this flag is the short form of
-  `--long-name`" does not.)
+  is shaped that way. The line between this and a consequence the reader must know is drawn in
+  [invariant 6](#6-say-why-next-to-the-step-but-out-of-its-way).
 - Anything present because it is interesting, or because it explains how things came to be this way
 - Rationale on steps nobody would skip anyway
 - Sections carried over from the template with nothing product-specific in them
