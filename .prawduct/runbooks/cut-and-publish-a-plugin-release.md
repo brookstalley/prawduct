@@ -6,147 +6,150 @@ last_verified: null
 verified_by: null
 ---
 
-# Cut and publish a new Prawduct plugin release (`develop` → `main`)
+# Cut and publish a Prawduct plugin release
 
 ## When to use this
 
-You want to publish the work sitting on `develop` as a new plugin version. Check that there is
-something to publish:
+You're ready to publish what's on `develop` to everyone running the plugin.
+Confirm you're actually in that situation before step 1:
 
 ```
-git fetch && git diff --stat origin/main origin/develop
+git fetch origin
 ```
 
-**Expected:** a list of changed files.
-**If not:** nothing printed means `main` already carries develop's content — there is no release to
-cut. Stop.
+```
+git diff --stat origin/main origin/develop
+```
+
+**Expected:** at least one changed file — that's the unreleased content.
+**If not:** it prints nothing, so `main` and `develop` are already
+content-identical. The last release is out and there's nothing to cut. Stop.
 
 ## When NOT to use this
 
-- **If you are merging a feature branch into `develop`:** → use `/prawduct:pr` instead.
+- **If you're merging a feature branch into `develop`:** → use `/prawduct:pr`.
+- **If you're about to open a `develop` → `main` PR:** → don't. Phase 2 below
+  replaces it. Close any such PR with a note that you promoted directly.
 
 ## Before you start
 
-**Blast radius:** this publishes. Every repo with the plugin installed pins `ref: "main"` and
-re-resolves it at session start, so the new version reaches all of them on their next restart.
-Nothing you do before step 18 is visible to any consumer.
+**Blast radius:** every repo with the plugin installed re-resolves `main` at its
+next session start and picks this version up on its own. There is no recall —
+the only way back is another release.
 
 **Prerequisites** — check every line before step 1:
 
-- [ ] Push access to `github.com/brookstalley/prawduct` — you push `develop`, `main`, and a tag
-- [ ] A clean working tree: `git status --short` prints nothing
-- [ ] The new version decided, written here as `vX.Y.Z` (for example, `v3.2.0`). Patch for a
-      fix-only release; minor for new capability; major for a break in the stable CLI or state
-      surface, or the removal of a deprecated subcommand (`.prawduct/artifacts/api-contract.md`,
-      "Deprecation & Compatibility").
-  > 🚧 **UNVERIFIED** — this repo has no written minor-vs-patch policy; that split is read off
-  > `CHANGELOG.md` precedent · confirm with the owner before choosing.
+- [ ] Push access to `origin` for both `develop` and `main`. The promotion
+      commits straight to `main`; no PR is involved.
+- [ ] You're on `develop` with nothing uncommitted and nothing unpushed:
+      `git status -sb` prints `## develop...origin/develop` and no file lines.
+- [ ] The new version number, decided. The tag is `vX.Y.Z` (for example,
+      `v3.2.0`); the version files carry it without the `v` (`3.2.0`). The
+      convention in `CHANGELOG.md`: a break in gate semantics or state formats
+      is a major bump, a new capability is a minor, everything else is a patch.
+
+      > 🚧 **UNVERIFIED — no written version policy exists in this repo.** That
+      > rule is read off past `CHANGELOG.md` entries. Ask the maintainer if this
+      > release is a judgment call.
 
 ---
 
-## Phase 1 — Prepare the release on `develop`
+## Phase 1 — Release prep on `develop`
 
-1. Switch to `develop` and bring it up to date:
+1. List the tagged change-log entries, newest first:
 
    ```
-   git checkout develop && git pull
+   grep -n "<!-- prawduct:" .prawduct/change-log.md | head -20
+   ```
+
+   **Expected:** numbered tag lines, newest first, at least one carrying
+   `release=v...`.
+
+2. Find the boundary — the topmost line whose tag carries `release=`. That's
+   the previous release; every tag line *above* it ships in this one.
+
+   **Expected:** one line number and a version, like
+   `745:<!-- prawduct: type=fix | release=v3.1.0 | status=shipped -->`.
+
+3. Append ` | release=vX.Y.Z | status=shipped` to every tag line above that
+   boundary, keeping the keys already there and the ` | ` separator:
+
+   ```diff
+   - <!-- prawduct: type=feature | scope=skills-cutover-awareness | chunks=04 -->
+   + <!-- prawduct: type=feature | scope=skills-cutover-awareness | chunks=04 | release=v3.2.0 | status=shipped -->
+   ```
+
+   > *Why: a tag line left statusless ships nothing — no checkbox flip, no
+   > release-notes entry — and nothing downstream complains.*
+
+4. Re-run the enumeration and read down to the boundary:
+
+   ```
+   grep -n "<!-- prawduct:" .prawduct/change-log.md | head -20
+   ```
+
+   **Expected:** every line above the step 2 boundary now carries
+   `| release=vX.Y.Z | status=shipped`.
+
+5. Pre-flight the tags. This writes nothing:
+
+   ```
+   prawduct-hook regen-views --check
+   ```
+
+   **Expected:** `check passed: tags validate against the plan roster; nothing
+   written.`
+   **If not:** it ends with `N validation error(s) — no views written.` and one
+   `ERROR:` line per bad tag → fix those tags in `.prawduct/change-log.md` and
+   re-run this step.
+
+6. Regenerate the derived views:
+
+   ```
+   prawduct-hook regen-views
    ```
 
    **Expected — all of:**
-   - `Switched to branch 'develop'`, or `Already on 'develop'`
-   - `Already up to date.`, or a summary of the files that came down
+   - one `Status (artifacts/<plan>.md): N chunk(s) flipped — shipped [...]`
+     line per release-pending plan
+   - `Release notes: write release-notes.md`
+   - a `Scope rollups: ...` line
 
-2. List the change-log's tagged entries:
+   **If not:** a `Status (...): up to date` line where you expected a flip means
+   that plan's `chunks=` tags matched nothing → back to step 3.
 
-   ```
-   grep -n '<!-- prawduct:' .prawduct/change-log.md
-   ```
+   > *Why: the build-plan checkboxes, release notes and scope rollups are all
+   > derived here — hand-edit them and the next regen reverts you.*
 
-   **Expected:** numbered `<!-- prawduct: … -->` lines. The topmost one carrying `release=` is the
-   previous release.
+7. In `VERSION`, replace `3.1.0` with the new number without the `v` — `3.2.0`
+   for a `v3.2.0` release.
 
-3. In `.prawduct/change-log.md`, add `| release=vX.Y.Z | status=shipped` to every tag line step 2
-   listed *above* that boundary line. Each one, including any already carrying `status=merged`:
+8. In `.claude-plugin/plugin.json`, replace `"version": "3.1.0"` with the same
+   number.
 
-   ```
-   before:  <!-- prawduct: type=feature | scope=skills-cutover-awareness | chunks=04 -->
-   after:   <!-- prawduct: type=feature | scope=skills-cutover-awareness | chunks=04 | release=v3.2.0 | status=shipped -->
-   ```
+   > *Why: that string is the update cache key. A release that forgets it does
+   > not ship, however clean the push.*
 
-   > *Why: separate the fields with `|`. Spaces parse as nothing, and the entry silently drops out
-   > of the release with its chunks unflipped.*
+9. In `pyproject.toml`, replace `version = "3.0.3"` with the same number.
 
-3a. List them again:
+   > *Adjudicated, not derived: the file's own comment asks for this bump;
+   > `docs/release-process.md` step 2 doesn't name it.*
 
-   ```
-   grep -n '<!-- prawduct:' .prawduct/change-log.md
-   ```
+10. In `CHANGELOG.md`, add a `## vX.Y.Z` section directly above `## v3.1.0`,
+    with the consumer-facing headline as the first non-empty line under it.
 
-   **Expected:** every line above the previous release's boundary now carries
-   `| release=vX.Y.Z | status=shipped`.
-   **If not:** any bare line you skipped ships nothing and flips no checkbox → go back to step 3.
+    > *Why: the version-delta banner shows exactly that first line to every repo
+    > crossing this version.*
 
-4. In `VERSION`, put the new version with no `v` prefix. The whole file is that one line —
-   `3.1.0` today, `3.2.0` after.
+11. In `.prawduct/project-state.yaml`, set `active_build_plan:` to `null`.
 
-5. In `.claude-plugin/plugin.json`, set `version` to the same bare string (`3.2.0`).
-
-   > *Why: `version` is the update cache key. A release that leaves it unchanged does not ship —
-   > consumers keep the cached copy.*
-
-6. In `pyproject.toml`, set `version` to that same string. It reads `3.0.3` today — it has drifted,
-   and nothing ships from it.
-
-7. Confirm the two shipping version strings agree:
-
-   ```
-   python3 -m pytest tests/test_plugin_manifest.py -q
-   ```
-
-   **Expected:** a summary line ending `passed`, with no `failed` in it.
-   **If not:** `test_version_mirrors_VERSION_file` failing means `VERSION` and `plugin.json`
-   disagree → redo steps 4 and 5.
-
-8. In `CHANGELOG.md`, add a `## vX.Y.Z` heading above the topmost `## v` heading, and one paragraph
-   under it saying what shipped.
-
-   > *Why: the SessionStart banner shows that first paragraph to every consumer who crosses this
-   > version, so it is the release note they actually read.*
-
-9. Pre-flight the derived views — this validates and writes nothing:
-
-   ```
-   python3 bin/prawduct-hook regen-views --check
-   ```
-
-   **Expected:** `check passed: tags validate against the plan roster; nothing written.`
-   **If not:** `ERROR:` lines naming the offending tag → fix those tags and re-run step 9.
-
-   > *Why repo-local: the bare `prawduct-hook` on PATH is the installed plugin cache, not this
-   > working tree, so it would validate with the released `lib/views.py`. `docs/release-process.md`
-   > writes it bare; this overrides that.*
-
-10. Regenerate them for real:
+12. Commit the prep:
 
     ```
-    python3 bin/prawduct-hook regen-views
+    git commit -am "release: prep vX.Y.Z"
     ```
 
-    **Expected:** one line per view, including a `Status (…): N chunk(s) flipped — shipped [...]`
-    line naming the chunks you tagged in step 3.
-    **If not:** `Status (…): up to date` when you expected a flip means step 3 missed that entry →
-    go back to step 3. Do not hand-edit the checkboxes; the next regen reverts them.
-
-11. In `.prawduct/project-state.yaml`, clear the value after `active_build_plan:`, leaving the key
-    with nothing after the colon.
-
-12. Commit the release prep:
-
-    ```
-    git commit -a -m "release-prep(vX.Y.Z): <one-line summary>"
-    ```
-
-    **Expected:** a `[develop <sha>] release-prep(vX.Y.Z): …` line, then `N files changed`.
+    **Expected:** `[develop <sha>] release: prep v3.2.0`.
 
 13. Push it:
 
@@ -156,29 +159,34 @@ Nothing you do before step 18 is visible to any consumer.
 
     **Expected:** a line ending `develop -> develop`.
 
-    > *Why: step 15 reads `origin/develop`, not your local branch.*
+    > *Why: Phase 2 builds `main` from `origin/develop`. Anything still local
+    > won't be in the release.*
 
 ### Checkpoint
 
-`develop` now carries the entire release and `main` is untouched. If you stop here, you resume at
-step 14 — or amend and re-push `develop` at no cost.
+`origin/develop` now holds the whole release: bumped version, shipped
+change-log tags, regenerated views, cleared plan pointer. Nothing is published
+yet. Everything up to here is undone by an ordinary commit on `develop`, so
+this is a safe place to stop and come back.
 
 ---
 
-## Phase 2 — Promote to `main` and publish
+## Phase 2 — Promote `develop` to `main`
 
-14. Switch to `main` and bring it up to date:
+14. Switch to the release surface and bring it up to date:
 
     ```
     git checkout main && git pull
     ```
 
-    **Expected — all of:**
-    - `Switched to branch 'main'`
-    - `Already up to date.`, or a summary of the files that came down
+    **Expected — both:**
+    - `Switched to branch 'main'` (or `Already on 'main'`)
+    - then `Already up to date.`, or a fast-forward summary
 
-> ⚠️ **Step 15 overwrites your working tree and index on `main` in place** with `develop`'s
-> content. Anything uncommitted there is gone.
+    > *Chained on purpose: if the checkout fails, the pull must not run.*
+
+> ⚠️ **`git read-tree --reset -u` overwrites `main`'s index and working tree in
+> place.** Anything uncommitted on `main` is gone.
 
 15. Set `main`'s tree to `develop`'s:
 
@@ -188,31 +196,43 @@ step 14 — or amend and re-push `develop` at no cost.
 
     **Expected:** no output.
 
-16. Commit the promotion:
+16. Commit it on `main`, using the headline you wrote at step 10:
 
     ```
-    git commit -m "release: vX.Y.Z — <one-line summary>"
+    git commit -m "release: vX.Y.Z — <headline>"
     ```
 
-    **Expected:** a `[main <sha>] release: vX.Y.Z …` line, then `N files changed`.
+    **Expected:** `[main <sha>] release: v3.2.0 — <headline>`.
 
-17. Confirm `main` and `develop` are content-identical:
+17. Confirm `main` is content-identical to `develop`:
 
     ```
     git diff --stat origin/develop HEAD
     ```
 
-    **Expected:** no output at all.
+    **Expected:** no output.
+    **If not:** any output at all means the tree-set didn't take → go to step 15.
 
-> ⚠️ **IRREVERSIBLE — step 18 publishes to every consumer.**
-> **Proceed only if:** step 17 printed nothing.
-> **Abort if:** step 17 printed any file → stop, and see "If this doesn't work".
-> **Cost of aborting:** nothing. The remote `main` is still the previous release; your local commit
-> can be discarded and remade.
-> **Recovery after this point:** forward only. Consumers cache by `version`, so a bad release is
-> corrected by cutting the next one — not by reverting or force-pushing `main`.
+18. Confirm the commit actually carries the bump:
 
-18. Publish:
+    ```
+    git show HEAD:VERSION
+    ```
+
+    **Expected:** the new number, `3.2.0` — not `3.1.0`.
+    **If not:** the bump never reached `develop`. Discard this commit with
+    `git reset --hard origin/main`, fix it at step 7, then come back to step 14.
+
+> ⚠️ **IRREVERSIBLE — step 19 publishes to every installed consumer.**
+> **Proceed only if:** step 17 printed nothing and step 18 printed the new
+> number.
+> **Abort if:** either one disagrees, or you aren't sure → stop. Nothing on
+> `origin/main` has moved yet; aborting costs only the time to redo Phase 2.
+> **Recovery after this point:** none — repos that have already re-resolved
+> `main` keep what they got. Recovery is forward-only: fix on `develop`, bump
+> the version again, and run this runbook again.
+
+19. Publish:
 
     ```
     git push origin main
@@ -220,27 +240,34 @@ step 14 — or amend and re-push `develop` at no cost.
 
     **Expected:** a line ending `main -> main`.
 
-19. Tag the release:
+20. Tag the release and publish the tag:
 
     ```
     git tag vX.Y.Z && git push origin vX.Y.Z
     ```
 
-    **Expected:** `* [new tag]` followed by `vX.Y.Z -> vX.Y.Z`.
+    **Expected:** `* [new tag]  v3.2.0 -> v3.2.0`.
+
+    > *Chained on purpose: if the tag already exists, `git tag` fails and the
+    > push must not run.*
+
+---
 
 ## Done when
 
-- `git diff --stat origin/develop origin/main` prints nothing
-- `git tag --points-at HEAD` prints `vX.Y.Z`
-- `python3 bin/prawduct-hook version` prints the new version, bare (`3.2.0`)
+- After `git fetch origin`, `git diff --stat origin/main origin/develop` prints
+  nothing.
+- `git ls-remote --tags origin` shows a line ending `refs/tags/vX.Y.Z`.
 
 ## If this doesn't work
 
-- **If step 17 lists files:** the tree-set did not reproduce `develop`'s content and this procedure
-  has stopped applying. Do not push. Re-read `docs/release-process.md`, "Step 1 mechanics".
-- **If a cumulative-Critic gate fires during phase 1:** expected and benign — release prep touches
-  non-`.md` files. Do not re-run the Critic and do not write `.gates-waived`
-  (`docs/release-process.md`, "`/prawduct:pr` is not the release vehicle").
-- **If a step doesn't make sense:** stop. That is a defect in this document, not in you.
-- **Escalate:** nobody is on call for this — it is a solo project. Stop and pick it up tomorrow.
-  Before step 18 that costs nothing.
+- **If a step doesn't match what you're seeing:** stop where you are.
+  Everything before step 19 is undoable, so stopping costs nothing but time,
+  and a step that doesn't make sense is a defect in this document, not in you.
+- **Escalate to:** this repo has one maintainer, so escalating means stopping —
+  leave `develop` as it is and come back to it. An unfinished release is
+  invisible to consumers.
+- **Act immediately if:** you pushed `main` and then found something wrong.
+  Consumers pick `main` up at their next session start, so the fix is a new
+  release with a higher version — a revert without a version bump does not
+  ship.
