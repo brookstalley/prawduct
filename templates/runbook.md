@@ -261,10 +261,11 @@ triggers:                  # every signal that should lead a responder here
 
 ## Close-out                 <!-- OPTIONAL — only if this changed state that must be put back -->
 
-<!-- Rules: #every-procedure-needs-a-close-out
-     Mandatory. Executed BEFORE handing the system back. This is the most
-     commonly omitted section in software runbooks and is a hard requirement
-     in OSHA lockout/tagout and S1000D. -->
+<!-- Rules: #close-out-what-the-procedure-introduced
+     Required WHENEVER this procedure left state behind, and executed BEFORE
+     handing the system back. This is the most commonly omitted section in
+     software runbooks and is a hard requirement in OSHA lockout/tagout and
+     S1000D. If the procedure introduced nothing, delete this section. -->
 
 - [ ] Re-enable anything this procedure disabled (alerts, monitors, health checks)
 - [ ] Remove what this procedure introduced (feature flags, scaled capacity,

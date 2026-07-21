@@ -767,7 +767,7 @@ start, and write it down. "We'll figure it out" is not a recovery path.
 step*: one whose incorrect performance causes **irreversible** harm — "an immediate negative
 consequence that cannot be reversed." Apply that test literally to every step and mark the result.
 
-### Every procedure needs a close-out
+### Close out what the procedure introduced
 
 This is the most commonly omitted section in software runbooks, and it is mandatory in the mature
 standards ○. OSHA requires an explicit sequence *before* equipment returns to service: inspect the
@@ -776,11 +776,14 @@ are clear. Military technical-manual and S1000D standards go further — the S10
 makes preliminary requirements and **close-out requirements structurally required elements**, so a
 procedure is *invalid* without them.
 
-> **Rule.** End every runbook with a close-out block executed before the system is handed back:
+> **Rule.** *Where a procedure leaves state behind*, end it with a close-out block executed before
+> the system is handed back:
 > remove or account for everything the procedure introduced (debug builds, feature flags flipped,
 > scaled-up capacity, maintenance mode, temporary credentials, silenced alerts), confirm the system
 > is in its intended steady state, and confirm the incident channel knows it is over. A silenced
-> alert nobody un-silenced is the classic residue — and the next incident goes unnoticed.
+> alert nobody un-silenced is the classic residue — and the next incident goes unnoticed. A
+> procedure that leaves nothing behind needs no close-out; that is a judgment you record, not an
+> omission you drift into.
 
 ---
 
