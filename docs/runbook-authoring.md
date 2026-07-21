@@ -450,6 +450,14 @@ technically needed only later, and therefore drifts to the end, and therefore ge
 > backup that recovery will depend on, and the capture of current state needed for rollback. Order
 > by consequence first, convenience second.
 
+**Read your failure branches backwards to find misplaced preconditions.** If any step's *If not*
+amounts to *"the irreversible thing you already did was done under the wrong conditions"*, that
+step's check is in the wrong place — move it ahead of the point of no return. This is easy to miss
+because a precondition tends to get written where its *command* naturally sits rather than where
+its *consequence* falls, and the draft reads fine forwards: each step is correct, and only the
+ordering is fatal. A check that can reveal the procedure should never have run must run before the
+procedure cannot be stopped.
+
 ### 3. State the abort criteria before the point of no return ◆
 
 The procedure must tell the reader, *before* an irreversible step, what would mean "stop". A
@@ -659,7 +667,10 @@ signal.
   A checkbox the reader cannot satisfy without judgment they do not have is a gap wearing a
   tick-box, and it sits *before* step 1, where they have the least help.
 - **Expected duration** — *if* "is it stuck?" is a real question here.
-- **Blast radius** — *if* the reader must judge whether it is safe to start.
+- **Blast radius** — *if* the reader must judge whether it is safe to start. **Tier 3 states it
+  before step 1 regardless**, even where the reader has no choice in the matter: the stakes are
+  what calibrate how carefully someone reads, and a reader who learns at step 17 that this reaches
+  everyone irrevocably learned it too late to have read the first sixteen differently.
 - **Ownership and last-verified date** — *if* anyone other than the author will ever run it. When it
   was last **executed or rehearsed**, never when the file was last edited.
 
@@ -720,6 +731,11 @@ them, and not a claim that anyone is legally bound by them.
   bar; being unmistakable at a glance is. Bind it at first use and then use it consistently, so
   the reader never meets the same placeholder twice with two different explanations.
 - Never abbreviate a destructive command for readability.
+- **A repeated edit needs its instance list and one worked example.** "Do this to every entry above
+  line 745" is not executable: the reader cannot see how many there are, cannot tell when they are
+  finished, and has no model of what a finished one looks like. Give them a command that enumerates
+  the instances, and show one before-and-after. Sweeps are where the tired reader silently stops
+  early, and a half-finished sweep usually looks exactly like a finished one.
 - **An instruction to edit a file is held to the same standard as a command.** "Bump the version"
   is not something a reader can execute. Name the file, the field, and what it becomes: "In
   `VERSION`, replace `3.1.0` with `3.1.1`." If the edit can be expressed as a command, give the
@@ -1274,7 +1290,9 @@ R6. Read it as someone with 30 seconds and a page alert. Can they start acting i
 
 **Structure**
 19. One action per step — did you leave any "and then"?
-20. Are critical and irreversible steps early rather than buried?
+20. Are critical and irreversible steps early rather than buried? Read every *If not* branch that
+    sits **after** the point of no return: if any of them means "what you already did was done
+    under the wrong conditions", that check belongs before it.
 21. Under ~20 steps, or split into phases with checkpoints?
 22. Does the header let a reader confirm in seconds that they are in the right document — including
     when *not* to use it?
