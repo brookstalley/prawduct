@@ -10,11 +10,13 @@ from pathlib import Path
 
 import pytest
 
-ROOT = Path(__file__).resolve().parent.parent
+ROOT = Path(__file__).resolve().parent.parent / "plugin"
+REPO_ROOT = Path(__file__).resolve().parent.parent
 
 
 def read_file(rel_path: str) -> str:
-    return (ROOT / rel_path).read_text()
+    base = REPO_ROOT if rel_path.startswith(".prawduct/") else ROOT
+    return (base / rel_path).read_text()
 
 
 def estimate_tokens(text: str) -> int:

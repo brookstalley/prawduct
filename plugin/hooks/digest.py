@@ -96,19 +96,40 @@ def in_prawduct_repo() -> bool:
 def is_framework_repo(proj: Path) -> bool:
     """True when the governed repo IS the prawduct framework itself.
 
-    Marker: ``.claude-plugin/plugin.json`` at the repo root with
-    ``"name": "prawduct"`` — the plugin manifest only the framework repo carries
-    (product repos install the plugin from the marketplace cache; their repo
-    roots have no ``.claude-plugin/``). Fail-safe: any read or parse anomaly
-    classifies as NOT the framework — the full digest is the safe default,
-    never a crash and never a silently slimmed product session.
+    Marker: a ``.claude-plugin`` manifest naming ``prawduct`` — only the framework
+    repo carries one (product repos install the plugin from the marketplace cache;
+    their repo roots have no ``.claude-plugin/``).
+
+    Three candidate locations are checked, because the framework repo's own layout
+    has moved and a stale checkout must still classify correctly:
+
+    * ``.claude-plugin/marketplace.json`` — the repo root, current layout (v3.1.1+).
+      The plugin manifest moved into ``plugin/`` when distribution was curated
+      (GOV-4H7T); the *marketplace* manifest stayed at the root and is now the
+      most reliable root-level marker.
+    * ``plugin/.claude-plugin/plugin.json`` — the relocated plugin manifest.
+    * ``.claude-plugin/plugin.json`` — the pre-v3.1.1 location, kept so an older
+      checkout of this repo is still recognised.
+
+    Fail-safe: any read or parse anomaly classifies as NOT the framework — the full
+    digest is the safe default, never a crash and never a silently slimmed product
+    session. This matters concretely: when the plugin manifest moved, this check
+    silently began classifying the framework repo as a product repo, which swapped
+    the digest variant with no error anywhere.
     """
-    manifest = proj / ".claude-plugin" / "plugin.json"
-    try:
-        data = json.loads(manifest.read_text(encoding="utf-8"))
-    except (OSError, ValueError):
-        return False
-    return isinstance(data, dict) and data.get("name") == "prawduct"
+    candidates = (
+        proj / ".claude-plugin" / "marketplace.json",
+        proj / "plugin" / ".claude-plugin" / "plugin.json",
+        proj / ".claude-plugin" / "plugin.json",
+    )
+    for manifest in candidates:
+        try:
+            data = json.loads(manifest.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            continue
+        if isinstance(data, dict) and data.get("name") == "prawduct":
+            return True
+    return False
 
 
 def main() -> int:

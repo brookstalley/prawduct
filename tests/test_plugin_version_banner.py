@@ -26,7 +26,7 @@ from pathlib import Path
 
 import pytest
 
-ROOT = Path(__file__).resolve().parent.parent
+ROOT = Path(__file__).resolve().parent.parent / "plugin"
 BANNER = ROOT / "hooks" / "banner.py"
 GATES_JSON = ROOT / "hooks" / "gates.json"
 CHANGELOG = ROOT / "CHANGELOG.md"

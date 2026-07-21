@@ -14,7 +14,7 @@ import importlib.util
 import json
 from pathlib import Path
 
-_ROOT = Path(__file__).resolve().parent.parent
+_ROOT = Path(__file__).resolve().parent.parent / "plugin"
 
 # Load the extensionless plugin-runtime hook via SourceFileLoader (the script has
 # a shebang, no .py extension). The module name is not "__main__", so its CLI

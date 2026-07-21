@@ -13,7 +13,7 @@ from pathlib import Path
 
 import pytest
 
-REPO_ROOT = Path(__file__).resolve().parent.parent
+REPO_ROOT = Path(__file__).resolve().parent.parent / "plugin"
 HOOK_PATH = REPO_ROOT / "bin" / "prawduct-hook"
 FRAMEWORK_DIR = REPO_ROOT
 
@@ -642,5 +642,5 @@ class TestDiscoverability:
 
     def test_framework_claude_mentions_pr(self):
         """Framework CLAUDE.md should mention /pr."""
-        content = (FRAMEWORK_DIR / "CLAUDE.md").read_text()
+        content = (FRAMEWORK_DIR.parent / "CLAUDE.md").read_text()
         assert "/pr" in content

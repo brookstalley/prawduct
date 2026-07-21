@@ -36,7 +36,7 @@ import pytest
 # inserted the repo root first (under parallel file distribution a worker may run
 # only lib-importing files that all assume it, and none inserts it). Mirrors the
 # idiom in tests/test_advisory_store.py / test_advisory_cmd.py.
-_REPO_ROOT = Path(__file__).resolve().parent.parent
+_REPO_ROOT = Path(__file__).resolve().parent.parent / "plugin"
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 

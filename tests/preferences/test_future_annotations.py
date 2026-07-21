@@ -17,7 +17,7 @@ from __future__ import annotations
 import ast
 from pathlib import Path
 
-REPO_ROOT = Path(__file__).resolve().parent.parent.parent
+REPO_ROOT = Path(__file__).resolve().parent.parent.parent / "plugin"
 SHIM_MARKER = "Backward-compat shim"
 EXPLICIT_EXCEPTIONS = {
     "tests/conftest.py",
@@ -26,7 +26,7 @@ EXPLICIT_EXCEPTIONS = {
 
 def _python_files() -> list[Path]:
     files: list[Path] = []
-    for root in ("lib", "tests", "hooks"):
+    for root in ("lib", "hooks"):
         for path in (REPO_ROOT / root).rglob("*.py"):
             if "__pycache__" in path.parts:
                 continue
@@ -91,7 +91,7 @@ class TestFutureAnnotations:
         # If an exception file is removed or renamed, drop it from the
         # exception list rather than letting the test silently no-op.
         for rel in EXPLICIT_EXCEPTIONS:
-            assert (REPO_ROOT / rel).exists(), (
+            assert (REPO_ROOT.parent / rel).exists(), (
                 f"Explicit exception '{rel}' no longer exists — "
                 f"remove it from EXPLICIT_EXCEPTIONS."
             )

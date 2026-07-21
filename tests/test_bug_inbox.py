@@ -18,7 +18,7 @@ import pytest
 
 from lib.bug_inbox import ENV_VAR, resolve_inbox
 
-_ROOT = Path(__file__).resolve().parent.parent
+_ROOT = Path(__file__).resolve().parent.parent / "plugin"
 
 # Load the extensionless plugin-runtime hook the same way test_build_plan_resolution
 # does (SourceFileLoader — the script has a shebang, no .py extension). The module

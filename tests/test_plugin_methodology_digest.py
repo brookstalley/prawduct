@@ -22,7 +22,8 @@ from pathlib import Path
 
 import pytest
 
-ROOT = Path(__file__).resolve().parent.parent
+ROOT = Path(__file__).resolve().parent.parent / "plugin"
+REPO_ROOT = Path(__file__).resolve().parent.parent
 HOOKS_JSON = ROOT / "hooks" / "hooks.json"
 DIGEST_HOOK = ROOT / "hooks" / "digest.py"
 DIGEST_SRC = ROOT / "methodology" / "session-digest.md"
@@ -71,7 +72,7 @@ def _run_digest(
     """
     env = {k: v for k, v in os.environ.items() if k != "CLAUDE_PLUGIN_ROOT"}
     env["PYTHONDONTWRITEBYTECODE"] = "1"
-    env["CLAUDE_PROJECT_DIR"] = str(project_dir if project_dir is not None else ROOT)
+    env["CLAUDE_PROJECT_DIR"] = str(project_dir if project_dir is not None else REPO_ROOT)
     if plugin_root is not None:
         env["CLAUDE_PLUGIN_ROOT"] = str(plugin_root)
     return subprocess.run(

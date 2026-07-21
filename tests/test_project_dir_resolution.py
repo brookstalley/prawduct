@@ -20,7 +20,8 @@ from pathlib import Path
 
 import pytest
 
-ROOT = Path(__file__).resolve().parent.parent
+ROOT = Path(__file__).resolve().parent.parent / "plugin"
+REPO_ROOT = Path(__file__).resolve().parent.parent
 
 
 # ---------------------------------------------------------------------------
@@ -195,11 +196,11 @@ def test_get_project_dir_self_check_this_checkout(monkeypatch):
     runtime must resolve to this checkout (a wrong signal silently disables the
     live Stop gate, with no test failure to warn — so assert it explicitly)."""
     hook = _load_hook()
-    monkeypatch.chdir(ROOT)
-    monkeypatch.setenv("CLAUDE_PROJECT_DIR", str(ROOT))
-    assert hook.get_project_dir() == ROOT
+    monkeypatch.chdir(REPO_ROOT)
+    monkeypatch.setenv("CLAUDE_PROJECT_DIR", str(REPO_ROOT))
+    assert hook.get_project_dir() == REPO_ROOT
     monkeypatch.delenv("CLAUDE_PROJECT_DIR", raising=False)
-    assert hook.get_project_dir() == ROOT
+    assert hook.get_project_dir() == REPO_ROOT
 
 
 # ---------------------------------------------------------------------------

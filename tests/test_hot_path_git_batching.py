@@ -25,7 +25,7 @@ import pytest
 
 from lib import gates, gitstate
 
-_ROOT = Path(__file__).resolve().parent.parent
+_ROOT = Path(__file__).resolve().parent.parent / "plugin"
 
 
 def _load_hook():

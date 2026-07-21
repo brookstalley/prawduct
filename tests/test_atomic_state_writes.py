@@ -35,7 +35,7 @@ import pytest
 
 from lib import advisory_store, briefing, core, critic_marker, operator_verification
 
-ROOT = Path(__file__).resolve().parent.parent
+ROOT = Path(__file__).resolve().parent.parent / "plugin"
 HOOK = ROOT / "bin" / "prawduct-hook"
 
 

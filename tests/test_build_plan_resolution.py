@@ -17,7 +17,7 @@ import subprocess
 import pytest
 from pathlib import Path
 
-_ROOT = Path(__file__).resolve().parent.parent
+_ROOT = Path(__file__).resolve().parent.parent / "plugin"
 
 # lib resolver — the plugin's lib/core
 import sys

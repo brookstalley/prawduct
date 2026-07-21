@@ -28,7 +28,7 @@ from pathlib import Path
 
 import pytest
 
-ROOT = Path(__file__).resolve().parent.parent
+ROOT = Path(__file__).resolve().parent.parent / "plugin"
 HOOK = ROOT / "bin" / "prawduct-hook"
 
 # TestCollapseBlankRuns imports the engine DIRECTLY (in-process), unlike the rest
@@ -396,7 +396,7 @@ def test_anchor_is_version_free(repo: Path):
     # migrated CLAUDE.md would originate from the framework-authored anchor.
     run_migrate(repo, "--apply")
     text = (repo / "CLAUDE.md").read_text()
-    current_version = (Path(__file__).resolve().parents[1] / "VERSION").read_text().strip()
+    current_version = (Path(__file__).resolve().parents[1] / "plugin" / "VERSION").read_text().strip()
     assert current_version not in text, "the current framework version must not be baked in"
     assert re.search(r"\bv?\d+\.\d+", text) is None, "anchor must not embed a version number"
 

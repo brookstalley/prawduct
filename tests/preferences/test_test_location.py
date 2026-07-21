@@ -17,7 +17,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-REPO_ROOT = Path(__file__).resolve().parent.parent.parent
+REPO_ROOT = Path(__file__).resolve().parent.parent.parent / "plugin"
 TESTS_DIR = REPO_ROOT / "tests"
 EXCLUDED_DIRS = frozenset(
     {".git", ".claude", "__pycache__", "node_modules", ".venv", "venv", ".pytest_cache"}

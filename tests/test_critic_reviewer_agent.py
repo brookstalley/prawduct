@@ -19,7 +19,7 @@ import fnmatch
 import re
 from pathlib import Path
 
-REPO_ROOT = Path(__file__).resolve().parents[1]
+REPO_ROOT = Path(__file__).resolve().parents[1] / "plugin"
 AGENT_DEF = REPO_ROOT / "agents" / "critic-reviewer.md"
 REVIEW_PROTOCOL = REPO_ROOT / "skills" / "critic" / "review-protocol.md"
 SKILL = REPO_ROOT / "skills" / "critic" / "SKILL.md"

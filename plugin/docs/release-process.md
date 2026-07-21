@@ -48,13 +48,19 @@ not ship.** Always bump `version` (and the `VERSION` file it mirrors) as part of
 >   be trusted headlessly, so a consumer's first `claude` open (without `--plugin-dir`) prompts to
 >   trust the prawduct marketplace, then installs. Expected Claude Code security behavior.
 >
-> **Install-correctness finding — the marketplace entry's plugin `source` must be `"./"`, not a
-> `{ "source": "github", … }` object.** For prawduct's single-repo plugin+marketplace, the `github`
-> source form makes Claude Code **re-clone the repo over SSH** (`git@github.com:…`) to fetch the
-> plugin — which fails with "Permission denied (publickey)" on any machine without SSH keys (i.e.
-> most HTTPS/`gh`-auth users), *even for a public repo*. A relative `"source": "./"` reuses the
-> marketplace's own (HTTPS) checkout — one clone, no SSH dependency — and inherits the marketplace's
-> pinned `ref`. `marketplace.json` therefore uses `"./"`.
+> **Install-correctness finding — the marketplace entry's plugin `source` must be a *relative path*,
+> not a `{ "source": "github", … }` object.** For prawduct's single-repo plugin+marketplace, the
+> `github` source form makes Claude Code **re-clone the repo over SSH** (`git@github.com:…`) to fetch
+> the plugin — which fails with "Permission denied (publickey)" on any machine without SSH keys (i.e.
+> most HTTPS/`gh`-auth users), *even for a public repo*. A relative source reuses the marketplace's
+> own (HTTPS) checkout — one clone, no SSH dependency — and inherits the marketplace's pinned `ref`.
+>
+> **The relative path is `"./plugin"`, not `"./"` (v3.1.1).** `"./"` distributed the entire
+> repository, putting prawduct's own backlog, learnings, build plans, tests and internal
+> requirements into every consumer's plugin cache. `plugin/` is a curated root of relative symlinks
+> holding only what consumers run; the installer dereferences them into real content. The SSH
+> argument above is unaffected — both are relative paths. `tests/test_plugin_packaging.py` pins the
+> boundary; see **GOV-4H7T** for why there is no exclusion mechanism to use instead.
 
 ## Release checklist (`develop` → `main`)
 

@@ -1603,8 +1603,11 @@ systematic treatment of machine-vs-human documentation audiences, and any empiri
 particular runbook *field set* improves outcomes — that last one appears to be convention
 everywhere, including here.
 
-Raw research, verdicts, provenance, and resume instructions:
-`${CLAUDE_PLUGIN_ROOT}/.prawduct/research/runbook-authoring/CHECKPOINT.md`.
+Raw research, verdicts, provenance, and resume instructions live in the prawduct repository at
+`.prawduct/research/runbook-authoring/CHECKPOINT.md` —
+[on GitHub](https://github.com/brookstalley/prawduct/blob/main/.prawduct/research/runbook-authoring/CHECKPOINT.md).
+It is **not** part of the installed plugin: `.prawduct/` is prawduct's own development state and is
+excluded from what ships, so do not look for it under `${CLAUDE_PLUGIN_ROOT}`.
 
 ### Refuted — do not reintroduce ✗
 

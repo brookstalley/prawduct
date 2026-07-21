@@ -39,7 +39,6 @@ REQUIRED = [
     ".claude-plugin/plugin.json",  # identity + the auto-update cache key
     "VERSION",                     # read at runtime by lib/core.py and lib/evidence.py
     "CHANGELOG.md",                # the version-delta banner reads this, not .prawduct/change-log.md
-    "LICENSE",
     "bin/prawduct-hook",
     "hooks/hooks.json",
     "hooks/gates.json",
@@ -84,14 +83,20 @@ def _shipped_paths() -> set[str]:
     """
     shipped: set[str] = set()
     for entry in sorted(PLUGIN_ROOT.rglob("*")):
+        rel_in_plugin = entry.relative_to(PLUGIN_ROOT).as_posix()
         if entry.is_symlink():
             target = entry.resolve()
-            rel_in_plugin = entry.relative_to(PLUGIN_ROOT).as_posix()
             if target.is_dir():
                 base = target.relative_to(REPO).as_posix()
                 for t in _tracked(base):
                     shipped.add(f"{rel_in_plugin}/{t[len(base) + 1:]}")
             elif target.is_file():
+                shipped.add(rel_in_plugin)
+        elif entry.is_file():
+            # A REAL tracked file committed under plugin/ ships too. Missing this made both the
+            # required-present and forbidden-absent directions blind to anything not symlinked --
+            # and plugin/.claude-plugin/ is already a real directory, so the gap was live.
+            if _tracked(entry.relative_to(REPO).as_posix()):
                 shipped.add(rel_in_plugin)
     return shipped
 
@@ -174,17 +179,59 @@ def test_no_bytecode_in_tracked_package(shipped: set[str]):
     assert not bytecode, f"compiled bytecode in the distributed plugin: {bytecode[:5]}"
 
 
-def test_every_plugin_component_directory_is_reachable(shipped: set[str]):
-    """The component dirs Claude Code loads must all be present under the curated root.
+# Top-level tracked directories that are deliberately NOT distributed. Anything tracked at the
+# repo root that is neither shipped nor listed here fails the reachability test below — so a new
+# component directory cannot be added without an explicit decision either way.
+NOT_DISTRIBUTED_DIRS = {".claude", ".claude-plugin", ".prawduct", "documentation", "plugin", "tests"}
 
-    Adding a new top-level component directory (say ``commands/``) without symlinking it into
-    ``plugin/`` is the likeliest future regression: it works locally via ``--plugin-dir`` on the
-    repo root and is simply absent for everyone else.
+
+def test_every_top_level_directory_is_shipped_or_explicitly_excluded(shipped: set[str]):
+    """Every tracked top-level dir must be either symlinked into ``plugin/`` or explicitly excluded.
+
+    Adding a new component directory (say ``commands/``) without symlinking it works locally via
+    ``--plugin-dir`` on the repo root and is simply absent for everyone else.
+
+    Phrased as a partition rather than a hardcoded list of the eight dirs that already ship: an
+    earlier version iterated only those eight, so it could not fail for the very scenario its
+    docstring described. (Critic, 2026-07-21.)
     """
-    for component in ("skills", "hooks", "lib", "bin", "methodology", "templates", "docs", "agents"):
-        if not (REPO / component).is_dir():
+    top_level = {p.split("/", 1)[0] for p in _tracked(".") if "/" in p}
+    for d in sorted(top_level):
+        if d in NOT_DISTRIBUTED_DIRS:
             continue
-        assert any(p.startswith(f"{component}/") for p in shipped), (
-            f"{component}/ exists in the repo but nothing under it ships — "
-            f"symlink it into plugin/ or it is invisible to consumers"
+        assert any(p.startswith(f"{d}/") for p in shipped), (
+            f"{d}/ is tracked at the repo root but nothing under it ships. Either symlink it into "
+            f"plugin/, or add it to NOT_DISTRIBUTED_DIRS to record that the exclusion is deliberate."
         )
+
+
+def test_no_shipped_file_points_at_an_unshipped_plugin_root_path():
+    """A shipped doc must not send a model to ``${CLAUDE_PLUGIN_ROOT}/<path>`` that does not ship.
+
+    This is the generalised form of a real defect: ``docs/runbook-authoring.md`` — which
+    ``skills/runbook/SKILL.md`` instructs models to read — pointed at
+    ``${CLAUDE_PLUGIN_ROOT}/.prawduct/research/.../CHECKPOINT.md``. Under the old ``source: "./"``
+    that resolved; curating the root broke it, and nothing caught it because the path is
+    git-tracked and the reference is prose. The failure is a model told to read a file that is not
+    there — the exact confidently-wrong state the packaging change exists to prevent.
+    """
+    import re
+
+    pattern = re.compile(r"\$\{CLAUDE_PLUGIN_ROOT\}/([A-Za-z0-9_.@/-]+)")
+    shipped_tops = {p.name for p in PLUGIN_ROOT.iterdir()} | {".claude-plugin"}
+    offenders: list[str] = []
+    for rel in _tracked("."):
+        top = rel.split("/", 1)[0]
+        if top in NOT_DISTRIBUTED_DIRS:
+            continue
+        try:
+            text = (REPO / rel).read_text(encoding="utf-8")
+        except (UnicodeDecodeError, OSError):
+            continue
+        for ref in pattern.findall(text):
+            if ref.split("/", 1)[0] not in shipped_tops:
+                offenders.append(f"{rel} -> ${{CLAUDE_PLUGIN_ROOT}}/{ref}")
+    assert not offenders, (
+        "shipped files reference plugin-root paths that are not distributed:\n  "
+        + "\n  ".join(sorted(offenders))
+    )

@@ -35,7 +35,7 @@ from lib.buildplan_refs import (
     _iter_status_section_lines,
 )
 
-LIB_DIR = Path(__file__).resolve().parent.parent / "lib"
+LIB_DIR = Path(__file__).resolve().parent.parent / "plugin" / "lib"
 
 
 # ---------------------------------------------------------------------------
