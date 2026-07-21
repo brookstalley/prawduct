@@ -474,6 +474,16 @@ only the ordering fatal.
 > reader now meets a bare error message with nothing to tell them what it means or that they are
 > already past the point where it mattered.
 
+Two classes get missed almost every time, because they feel like facts about the *situation* rather
+than conditions of the *step*:
+
+- **Has this already been done?** Doing it twice is a different failure from doing it wrong, and it
+  usually fails quietly — the second run looks like the first until something downstream disagrees.
+- **Am I acting on the intended target?** The right operation against the wrong host, table, device,
+  account, or identifier is the shape behind several of the incidents above.
+
+Both are cheap to check and cost the entire procedure when skipped.
+
 ### 3. State the abort criteria before the point of no return ◆
 
 The procedure must tell the reader, *before* an irreversible step, what would mean "stop". A
@@ -660,6 +670,12 @@ fields and excellent steps beats one with twelve fields and vague ones.
   the full rule.
 - **When to use this** — the trigger/entry condition, phrased so a reader can match it against what
   they are seeing. Include the alert name or error signature verbatim if there is one.
+  **Make it checkable, not merely descriptive.** *"The queue is backed up and you want it drained"*
+  restates the reader's intention back at them and confirms nothing; if a command can show them
+  they are in this situation, that command belongs here, before step 1. Two different jobs are
+  being done — *am I in the right document* (the title does that) and *should I proceed, given what
+  is actually true right now* — and only the second protects a reader who is mistaken about their
+  own situation.
 - **Steps** — numbered, one action each.
 - **Done when** — the observable end state. Not "the procedure is complete" but the value that
   proves it.
@@ -823,6 +839,11 @@ generalizes to everything the unfamiliar reader needs.
   [Texas City](#the-procedure-itself-is-a-documented-cause-of-major-outages) row records as fatal.
 
 **Warnings**
+- **A sentence describing destruction *is* a warning, and takes warning formatting.** "This
+  overwrites your working copy in place" set as ordinary prose inside a step is invisible to anyone
+  skimming, and skimming is what confident readers do. If losing track of the sentence would cost
+  the reader work or data, give it the visual weight of a warning rather than letting it read as
+  commentary. The test is the consequence, not the author's tone.
 - A warning immediately precedes the step it governs — never at the top of the document, never after.
 - It must be readable without scrolling past the step ◆ (the print-era rule is "without a page turn";
   the web equivalent is "not collapsed, not behind a fold, not in a sibling tab").
@@ -1168,6 +1189,11 @@ Derive from, in order of preference:
    > Makefile, or deployment manifests. Confirm the exact command with the service owner and
    > replace this line before this runbook is relied upon.
 ```
+
+**When two sources in the repo disagree and you pick one, say so in the step.** A reader cannot tell
+a derived step from an adjudicated one, and the next author will either re-litigate your call or
+quietly reverse it. One clause naming the conflict and which way you read it is enough. This is not
+a gap marker — nothing is missing; a judgment was made, and it should be visible as a judgment.
 
 A gap marker obeys the same economy as everything else. Name **what is unverified**, **what the
 reader does about it right now**, and **who can close it** — and stop. Not the evidence that it is
