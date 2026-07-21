@@ -3,7 +3,7 @@ description: PR lifecycle management — create, update, merge, or check status 
 argument-hint: "[create|update|merge|status]"
 user-invocable: true
 disable-model-invocation: false
-allowed-tools: Bash(gh *), Bash(git *), Bash(prawduct-hook test-status), Bash(prawduct-hook check-cumulative-critic), Bash(prawduct-hook check-operator-verification), Bash(prawduct-hook accept-operator-verification *), Bash(prawduct-hook verify-operator-verification *), Bash(prawduct-hook check-pr-doc-only), Bash(prawduct-hook resolve-base), Bash(prawduct-hook ledger-append *), Read, Write, Agent
+allowed-tools: Bash(gh *), Bash(git *), Bash(prawduct-hook test-status), Bash(prawduct-hook check-cumulative-critic), Bash(prawduct-hook check-operator-verification), Bash(prawduct-hook accept-operator-verification *), Bash(prawduct-hook verify-operator-verification *), Bash(prawduct-hook check-pr-doc-only), Bash(prawduct-hook resolve-base), Bash(prawduct-hook ledger-append *), Bash(prawduct-hook backlog *), Bash(python3 bin/prawduct-hook backlog *), Read, Write, Agent
 ---
 
 You are managing the PR lifecycle for this project. Detect the current state and take the appropriate action.
@@ -76,7 +76,7 @@ Land all of this **before** Step 2's cumulative review (the same sequencing rule
 
 **Sequencing (run the full review ONCE):** land every non-`.md` fix — code, evidence, pointers, configs — BEFORE the one cumulative run, then commit verbatim (the reviewed tree becomes the commit's tree, so the fact vouches for HEAD). For any fix AFTER the cumulative (its own findings included): **fix, then `/prawduct:critic verify-resolutions`** — its fact extends coverage over the delta at delta-review cost (1-2 min), and committing the verified state verbatim keeps HEAD covered. Never re-run a full cumulative for in-scope fixes; re-run it only when the verify pass itself refuses (widened delta, lost anchor). A rebase or amend rewrites the tree — coverage gaps there always need a fresh review.
 
-While `/prawduct:critic cumulative` runs (~4-10 min), do prep that doesn't depend on findings: `/prawduct:learnings` for next-chunk topics, draft the PR description in your head, audit `.prawduct/backlog.md` for items this branch resolves, capture deferred chunk-boundary reflections. Reorganizes wait time; doesn't shorten it.
+While `/prawduct:critic cumulative` runs (~4-10 min), do prep that doesn't depend on findings: `/prawduct:learnings` for next-chunk topics, draft the PR description in your head, audit the backlog for items this branch resolves via `/prawduct:backlog list` — it routes to whichever backend is live, and `list` carries everything this audit needs, so there is no reason to open `.prawduct/backlog.md` directly here. If you ever do reach for the file (anywhere, not just this step), check `backlog_service_repo` first and read it **only** when that scalar is unset: once it is set the file is frozen history, and every item archived at cutover still parses as open. Then capture deferred chunk-boundary reflections. Reorganizes wait time; doesn't shorten it.
 
 ### Step 2b: Operator-verification gate — MANDATORY when `$ARGUMENTS` doesn't include `--accept-pending-verification`
 **Run `prawduct-hook check-operator-verification`.** Exit 0 means the gate is satisfied (either the queue requirement is off, or every entry is verified/accepted). Exit 1 means there are pending entries in `.prawduct/operator-verification.md` — stderr names the first ID and suggests next steps.
