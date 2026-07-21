@@ -21,8 +21,8 @@ specific to a model doing the writing. Before you call it done, run the
 
 | Mark | Meaning |
 |---|---|
-| ✓ | Adversarially verified against the primary source during this research |
-| ○ | Sourced and quoted, but the verification pass had not adjudicated it when this was written — see [Evidence](#evidence-what-is-known-vs-what-is-merely-repeated) |
+| ✓ | Verified against the primary source by independent adversarial review — three refuters, majority required to kill |
+| ○ | Sourced and quoted from a primary document by a single researcher, but not put through adversarial challenge. Directionally trustworthy; do not lean on its exact wording or figures |
 | ◆ | Reasoned design guidance. No study supports it; it follows from the evidenced findings |
 
 The [Evidence appendix](#evidence-what-is-known-vs-what-is-merely-repeated) also carries a list of
@@ -49,6 +49,28 @@ confident tone, and they fail in one of four ways:
 
 Each of these destroys trust in the whole document, not just the step. A reader who finds one
 wrong command stops believing the other forty.
+
+### The procedure itself is a documented cause of major outages
+
+This is not hypothetical. In each case below the operator did what the document said, or the
+document's own design created the opening ○:
+
+| Incident | The procedural defect |
+|---|---|
+| **AWS S3, us-east-1, Feb 2017** | An authorized operator followed an *established playbook*. The playbook exposed a free-text capacity-removal argument with no bound — a typo removed far more capacity than intended. |
+| **GitLab.com, Jan 2017** | The runbook did not document that the recovery tool blocks *silently with no output*. An engineer read normal behaviour as a hung process and intervened. Backup procedures were separately found non-functional. |
+| **Cloudflare, Jul 2019** | The written SOP was listed among the causes: it *permitted* a non-emergency rule change to go straight to global production, bypassing the staged rollout. The procedure was followed correctly and was still the cause. |
+| **Atlassian, Apr 2022** | The peer-review step for a deletion script inspected the *endpoint* but not the *class of identifiers* passed to it. 883 sites were deleted; recovery took weeks. |
+| **Knight Capital, Aug 2012** | The SEC's order makes procedural absence a regulatory finding: no written deployment procedure required a second technician to confirm the code had reached *all* servers. One server was missed. |
+| **Deepwater Horizon, Apr 2010** | The negative-pressure test — the one test that would have revealed the failed cement job — had no standard written procedure and no interpretation criteria. Two crews read the same reading differently. |
+| **Texas City refinery, Mar 2005** | The written startup procedure lacked instructions the board operator needed and had no defined way to suspend and resume across a shift handover. 15 people died. |
+| **Swissair 111, Sep 1998** | Official TSB findings name checklist design as a risk factor: the applicable smoke-of-unknown-origin checklist could take 20–30 minutes to complete — longer than the aircraft had. |
+
+Read the pattern. Almost none of these are "the operator ignored the runbook." They are: an unbounded
+operand, an undocumented silent behaviour, a review step that checked the wrong property, a rollout
+scope the procedure permitted, a missing verification of completeness, absent acceptance criteria,
+no suspend/resume path, and a procedure too slow for its own emergency. **Every one of them is an
+authoring defect**, and every one is preventable by a rule in this guide.
 
 ---
 
@@ -93,6 +115,42 @@ needed and absent.
 Do not write a runbook for a task that is already fully automated and reliably self-healing. Write
 one for what happens when that automation fails.
 
+### How the runbook gets found
+
+A procedure nobody can locate under pressure has failed, however well written. Aviation treats
+selecting the right checklist as its own design problem, and its rules transfer cleanly ○:
+
+**Name it by the symptom, not by the cause.** Regulators direct that emergency procedures be
+organized and indexed by the *observable triggering condition* — the thing the operator actually
+perceives — explicitly **not** by the subsystem that is probably at fault. The responder has a
+symptom, not a diagnosis, at the moment of lookup. So: "Checkout latency above SLO", not "Redis
+connection pool tuning".
+
+**Make the title match the alert text exactly.** The dominant commercial-aviation standard is that
+the procedure's title matches the alert wording word-for-word, precisely so the operator can confirm
+they opened the right document ○. Identity of string *is* the confirmation mechanism. If your pager
+says `KafkaConsumerLagHigh`, the runbook is titled `KafkaConsumerLagHigh`.
+
+**Index under every symptom that can surface it.** Where one failure presents through several
+indications, the guidance is to make the procedure reachable from *every* one of them — deliberate
+duplicate index entries pointing at one document ○. Optimize the index for the responder's entry
+vocabulary, not the author's taxonomy.
+
+**Write runbooks for un-alerted symptoms too.** When a failure produces no matching named alert, the
+responder must diagnose *before* they can select a procedure — and NASA found procedures are usually
+not titled by symptom, leaving exactly this gap ○. Cover "requests timing out, nothing firing" as a
+first-class entry point.
+
+**Make the link exist by construction.** Google's stated practice is a 1:1 alert-to-playbook-entry
+relationship created at alert-creation time ○. Better still, the most widely deployed Prometheus
+alert library *mechanically derives* each alert's `runbook_url` from the alert name via a
+pattern ○ — so the link cannot be forgotten, and a missing runbook shows up as a visible 404 rather
+than a silently absent link.
+
+> **Rule.** Title = alert name. Index by symptom, redundantly. Put the link inside the notification
+> the responder actually receives, as a resolvable address — not in a wiki they must go searching
+> for. Treat "has a linked runbook" as part of the definition of done for creating an alert.
+
 ---
 
 ## The reader you are writing for
@@ -114,8 +172,25 @@ is controlled; do not overstate it.
 
 **Surprise costs place-keeping specifically** ✓. Startle and surprise are documented to leave an
 operator unable to recall the current procedure or to **lose track of where they were in a
-checklist**. This is a direct argument for numbered steps, one action per step, and a document that
-makes "where am I" answerable at a glance.
+checklist**.
+
+**And interruptions are far more destructive than their length suggests** ○. In controlled work on
+procedural error, interruptions averaging just **4.4 seconds tripled sequence-error rates** on the
+steps that followed. The cost shows up as *resumption lag*, roughly doubling normal step-to-step
+time, and it grows with both the duration and the cognitive demand of the interruption. External
+cues reduce that lag — but only if the reader has 6–8 seconds to encode one *before* being pulled
+away, which in practice they usually do not get. Sleep deprivation attacks place-keeping
+specifically, not merely via general sleepiness.
+
+This is the single most actionable piece of reader-model evidence, and it produces a hard rule:
+
+> **The reader's place must be recoverable from the page, never from memory.** Stable step numbers
+> that never renumber, one action per step, short named blocks with an explicit state-checkpoint at
+> each boundary, and a document a reader can re-enter mid-procedure and orient in seconds.
+
+An on-call responder is interrupted constantly — by pages, by questions in the incident channel, by
+someone asking for a status update. A forty-step unbroken wall of text is not a neutral formatting
+choice; it is a document that loses its reader at the first interruption and gives them no way back.
 
 **The reader deviates more than you think, and usually on purpose.** Users self-report deviating
 from written procedures at roughly 1.5× the rate the procedure's own authors estimate, and where
@@ -247,18 +322,31 @@ that the *whole* procedure is complete. Add an explicit final "done when" so tha
 
 ### 5. One step, one action
 
-A step that chains a second action ("restart the service **and then** clear the cache") creates three
-documented problems ○: the embedded action gets overlooked, per-step check-off no longer proves the
-work happened, and the chaining word gets confused with conditional logic.
+A step that chains a second action ("restart the service **and then** clear the cache") creates
+documented problems ○: the embedded action gets overlooked and goes unperformed, per-step check-off
+no longer proves the work happened, and the chaining word gets confused with conditional logic.
+
+(NRC human-factors guidance on emergency operating procedures states this rule explicitly — the
+logic word `THEN` "should not be used at the end of an action to instruct the operator to perform
+another action within the same step, because it runs actions together." Verification found the same
+passage attributed to more than one document in the NUREG series and disagreed on whether two or
+three consequences are named, so treat the *rule* as well-founded and do not cite a specific
+document or count for it without checking.)
 
 > **Rule.** One imperative action per step. If you wrote "and then", split it. Sequential UI
 > navigation is the only routine exception (`Settings > Advanced > Reset`).
 
 ### 6. Say why, next to the step but out of its way
 
-A controlled experiment found that adding a one-line rationale to each critical step raised
-adherence from 44% to 68%, **with no measurable time cost**, and shifted deviations away from
-"my own method is better" ○.
+A controlled experiment found that adding a short `PURPOSE` statement to critical steps raised
+**one of two adherence measures** — following the correct steps in the correct order — from 44% to
+68%, **with no measurable time cost**, and shifted the dominant reason for deviation away from "my
+own method is easier or better" (43% → 10%) toward ordinary slips ✓.
+
+Read that precisely: the other adherence measures the study tracked (adherence to timed waits,
+duration within bounds) did **not** improve, and the participants were 60 students on a simulated
+rig, not industrial operators. Rationale buys you *sequence compliance* and defuses the
+"I know better" deviation — it does not make people wait when they are impatient.
 
 This is in direct tension with invariant 4 — rationale is more words, and length is a defect. The
 resolution is typographic, not editorial ◆:
@@ -299,11 +387,64 @@ an established IC — it does not bind for routine work.
 
 ---
 
+## Choosing the execution form
+
+Whether the reader *performs then verifies*, or *reads then performs*, is a structural safety
+property rather than a formatting preference ✓.
+
+- **Do-confirm** — the operator configures the system from competence, then runs a short list to
+  verify it. This preserves what the aviation literature calls *configuration redundancy*: two
+  independent shots at the same state.
+- **Read-do** — the document leads the operator step by step. This gives you exactly one shot, and
+  the original analysis is blunt that with this form "a mistake can easily pass unnoticed once the
+  sequence is interrupted."
+
+A step-by-step script executed cold is therefore the **weaker** form, not the safer one. It feels
+safer because it is more explicit, which is why teams reach for it by default.
+
+**The selection rule** ○:
+
+- **Do-confirm** for *routine, frequently executed* work. Note the deliberate design: the checklist
+  is a **subset** of the full flow — only the critical, failure-prone items — not a transcription of
+  everything. Write the full flow once for training; keep the operational list short.
+- **Read-do** when the exact ordering *is* the value, when steps are irreversible, or when the
+  procedure is rare or high-stress and the operator cannot be assumed to hold it in memory.
+
+That maps to software directly. A weekly deploy your team knows cold deserves a short verification
+checklist, not a thirty-step script nobody reads. A once-a-year restore from backup deserves the
+full read-do script, because nobody has it in memory and the ordering matters.
+
+### Memory items — steps taken before the document is open
+
+Some actions must happen before anyone opens a runbook. Aviation doctrine is strict about these ○:
+they should be **avoided where possible**; where unavoidable they are capped at **fewer than three**
+and are **forbidden from containing conditional or decision logic**. The operative criterion is
+**time-criticality, not importance** — an action qualifies only when there is insufficient time to
+reference the document at all. Being critical is not enough.
+
+Two honest caveats. NASA states plainly that the criteria for *which* items should be memorized are
+**not scientifically established** ○ — aviation has no principled answer either, so do not claim one.
+And counting understates the cost: across 239 memory items coded from eleven quick-reference
+handbooks, most were challenge-response items, and embedded conditionals and waits are memorized
+burden too ○.
+
+> **Rule.** Fewer than three, no branches inside them, each justified individually by "would the
+> delay of opening the document itself cause irreversible loss?" — and drilled, because an
+> undrilled memory item is a wish.
+
+---
+
 ## Anatomy
 
 Header fields first, so the reader can decide in seconds whether they are in the right document.
-Field sets by tier — the metadata set is industry convention rather than measured ○, so apply it
-proportionately rather than ceremonially.
+
+A calibration note. AWS publishes a runbook template carrying seven header fields — ID, description
+and desired outcome, tools used, special permissions, author, last updated, escalation contact ✓ —
+and it is a useful starting shape. But AWS offers it as an *example*, and states its actual minimum
+far lower: "at a minimum, they should consist of a step-by-step text document" ✓. No evidence
+establishes that any particular field set improves outcomes. Treat the list below as a well-reasoned
+default to apply proportionately, not as a checklist to satisfy ceremonially — a runbook with three
+fields and excellent steps beats one with twelve fields and vague ones.
 
 **Always:**
 
@@ -314,8 +455,13 @@ proportionately rather than ceremonially.
 - **When NOT to use this** — the neighbouring procedures this gets confused with, and where to go
   instead. Selecting the wrong procedure is a real failure mode; aviation treats checklist selection
   under ambiguity as its own design problem.
-- **Prerequisites** — access, credentials, tools, physical items, and VPN/network position. Written
-  as a checkable list, because discovering a missing credential at step 8 costs the whole procedure.
+- **Prerequisites** — access, credentials, tools (with versions), physical items and consumables,
+  required authorization level, and network position. Written as a checkable list, because
+  discovering a missing credential at step 8 costs the whole procedure. Military technical-manual
+  standards mandate exactly this as an `INITIAL SETUP` block on *every* work package ○ — tools,
+  materials and replacement parts, personnel and skill level, referenced documents, and required
+  starting conditions — and the S1000D schema makes it structurally non-optional. Adopt the habit
+  even where you skip the ceremony.
 - **Expected duration** — so the reader can tell "slow" from "stuck".
 - **Blast radius** — what is affected while this runs, and whether users see it.
 - **Steps** — numbered, phased, one action each.
@@ -335,9 +481,16 @@ matters, it belongs in *When to use this*.
 
 ## Writing rules
 
-Step-level craft. The strongest codified rules come from nuclear emergency operating procedure
-standards ○, which are the most mature written-procedure standards in existence, and they agree with
-the software documentation style guides on the essentials.
+Step-level craft. The most thoroughly codified rules come from US nuclear emergency-operating-
+procedure guidance ✓ — the most mature body of written-procedure design in existence — and they
+agree with modern software documentation style guides on the essentials.
+
+One honesty note about that pedigree, because it is easy to overstate and this guide was corrected
+on exactly this point: NUREG-0899 is **guidance, not regulation**. It presents its rules "in terms
+of goals, intent and importance, rather than as specific requirements," and its foreword states
+that "compliance will not be required" ✓. Read the rules below as very well-considered
+recommendations from a domain with catastrophic consequences — which is a strong reason to adopt
+them, and not a claim that anyone is legally bound by them.
 
 **Voice and grammar**
 - Imperative mood, verb first: "Restart the worker", not "The worker should be restarted" or "You
@@ -363,9 +516,23 @@ the software documentation style guides on the essentials.
 
 **Structure**
 - Numbered steps for anything order-dependent. Bullets only for genuinely unordered sets.
+- **Step numbers are stable identifiers.** Never renumber on edit — insert `7a` rather than shifting
+  every number below. A reader who was interrupted at "step 12" and returns to a renumbered document
+  has lost their place, which is precisely the failure the interruption evidence warns about.
 - Tables for parameter/value lookups, never for sequential logic.
 - A diagram only if it shows topology or state transitions that prose cannot; the procedure must
   remain executable without it.
+
+**Legibility** (WCAG gives testable minimums ○ — note these are Level AAA, i.e. good practice rather
+than baseline conformance, which is exactly the right bar for an emergency document)
+- Lines no wider than **80 characters**.
+- **Ragged right, never justified** — justification creates irregular word spacing that promotes
+  line-skipping.
+- Line height at least **1.5×** the font size, with clear separation between blocks.
+- Do not place a step's action and its expected result in separate places the reader must mentally
+  join; keep them adjacent. (Cognitive-load theory calls this the split-attention effect, though
+  that evidence base concerns *learning* rather than execution under stress ○ — treat it as
+  reasoning, not proof.)
 
 ---
 
@@ -378,13 +545,17 @@ The mature conventions come from nuclear procedure standards and aviation quick-
 `IF <condition>, THEN <action>`. The reader must be able to skip an inapplicable branch without
 reading the action at all — reading an action you should not take is itself a documented error mode.
 
-**Cap the logic.** Nuclear procedure standards limit conditions joined by AND to four before
-requiring a list format, and forbid mixing AND with OR in a single step because the result is
-genuinely ambiguous ○. Adopt both limits.
+**Cap the logic.** Nuclear procedure guidance says `AND` "should not be used to join more than four
+conditions" — beyond four, use a list format — and says `AND` and `OR` should not be combined in the
+same step, because the resulting logic is genuinely ambiguous ✓. Adopt both limits.
 
-**Make the branch visible in the layout.** Aviation QRH design uses three mechanisms together ○: an
-explicit condition marker, lateral indentation grouping every step belonging to that condition, and
-whitespace separating conditional groups. In Markdown:
+**Make the branch visible in the layout.** Aviation quick-reference-handbook design names three
+mechanisms as "the main ingredients" of an error-resistant layout ✓: an explicit condition-marker
+symbol, lateral indentation grouping every action belonging to that conditional group, and adequate
+spacing between phases and between conditional groups. The stated purpose is to prevent two specific
+error modes — *omission of an action*, and *performance of an undue, irrelevant, or inadvertent
+action*. That second one is the reason condition-first ordering matters: a reader must be able to
+discard a branch before reading its actions. In Markdown:
 
 ```markdown
 5. Check replication lag: `<command>`
@@ -398,10 +569,16 @@ whitespace separating conditional groups. In Markdown:
    - 5d. Go to step 11 (Extended recovery).
 ```
 
-**Confirm the branch before taking it.** Aviation requires explicit two-person agreement that a
-condition holds before any conditional step executes ○. The software analogue for Tier 3: state the
-observed value that put you on this branch before acting on it — writing it into the incident channel
-is enough. Branch selection deserves the same verification rigour as step execution.
+**Confirm the branch before taking it.** In QRH practice, agreement of *both pilots* on the `If…`
+conditions is required before any conditional step is performed ✓ — note that this is agreement on
+*evaluating* the condition, which includes agreeing that a branch does **not** apply. (The related
+practice of verifying each action's result before proceeding is stated in the same source as a
+recommended reinforcement, not a requirement — do not cite it as mandated.)
+
+The software analogue for Tier 3: state the observed value that put you on this branch before acting
+on it — writing it into the incident channel is enough. Branch selection deserves the same
+verification rigour as step execution, because choosing the wrong branch produces exactly the
+"inadvertent action" error the layout rules exist to prevent.
 
 **Irreversible steps** get the treatment in [invariant 3](#3-state-the-abort-criteria-before-the-point-of-no-return-),
 and they change the shape of the whole procedure. Where a cloud runbook can lean on "try it and roll
@@ -415,6 +592,44 @@ back", these cannot:
 For these, the pre-flight verification *is* the procedure. Budget most of the document to
 establishing that conditions are right, and treat the irreversible action itself as one short,
 heavily-guarded step.
+
+The industries that live with irreversibility have converged on four rules worth stealing ○:
+
+**Give the precondition check its own numbered step.** OSHA's lockout/tagout rule does not fold
+verification into the isolation step — it mandates a *separate, named verification* immediately
+before hazardous work begins. Applied here: `7. Verify the backup is restorable` is its own step
+with its own observable evidence, never a clause inside `8. Drop the table`.
+
+**Split verify from commit.** NIST's platform-firmware guidance requires that an update to critical
+data "shall be validated … prior to committing" — validation is a *distinct phase*, and the thing
+validated is the payload itself (signature, checksum, format, bounds, correct target device), not
+merely the operator's intent. Any irreversible operation should be two steps: check the artifact,
+then commit it.
+
+**Name the recovery path before the first irreversible step.** RFC 9019 requires that IoT devices
+"must not fail when a disruption, such as a power failure or network interruption, occurs during the
+update process", and enumerates exactly two recovery shapes: fall back to a known-good artifact
+already present on the target, or re-obtain the artifact. Decide which one you have *before* you
+start, and write it down. "We'll figure it out" is not a recovery path.
+
+**Classify each step explicitly.** The US DOE handbook gives a usable definition of a *critical
+step*: one whose incorrect performance causes **irreversible** harm — "an immediate negative
+consequence that cannot be reversed." Apply that test literally to every step and mark the result.
+
+### Every procedure needs a close-out
+
+This is the most commonly omitted section in software runbooks, and it is mandatory in the mature
+standards ○. OSHA requires an explicit sequence *before* equipment returns to service: inspect the
+work area for leftover artifacts, confirm the system is reassembled and intact, confirm all people
+are clear. Military technical-manual and S1000D standards go further — the S1000D procedural schema
+makes preliminary requirements and **close-out requirements structurally required elements**, so a
+procedure is *invalid* without them.
+
+> **Rule.** End every runbook with a close-out block executed before the system is handed back:
+> remove or account for everything the procedure introduced (debug builds, feature flags flipped,
+> scaled-up capacity, maintenance mode, temporary credentials, silenced alerts), confirm the system
+> is in its intended steady state, and confirm the incident channel knows it is over. A silenced
+> alert nobody un-silenced is the classic residue — and the next incident goes unnoticed.
 
 ---
 
@@ -456,20 +671,55 @@ correlated with the tendency to violate ✓.
 **Rehearsal is the completion criterion, not authorship.** Both major software authorities pair the
 document with exercise rather than treating the document as sufficient ✓, and the practice of
 feeding exercise findings back into the text is explicit. AWS names "you document your procedures,
-but you never exercise them" as the first anti-pattern of its game-day guidance ○.
+but you never exercise them" as an anti-pattern of its game-day best practice ✓.
 
-The single cheapest, highest-yield check ○:
+The single cheapest, highest-yield check — and AWS states it plainly ✓:
 
-> **Have someone who did not write it execute it, and fix everything they stumble on.** Nuclear
-> procedure standards go further — desk review is explicitly insufficient; correspondence between
-> procedure and reality requires a physical walk-through, and confidence that it works requires
-> simulation ○.
+> **"Once your runbook is documented, validate it by having someone else on your team run it."**
+> Give it to a teammate, watch, and fix everything they stumble on.
+
+Nuclear procedure guidance goes further, holding that no single validation method suffices ✓:
+desk review cannot establish that the procedure matches the actual plant — that referenced
+controls, equipment, and indications exist, carry the same designations and units, and behave as
+written — which requires a physical walk-through; and confidence that the procedure *works* requires
+simulation. The software translation is direct: reading a runbook proves nothing. Executing it
+against the real system, or a realistic copy, is the only validation that counts.
 
 And the sharpest evidence in this whole area is a caution about mistaking the artifact for the
-practice: when the WHO surgical checklist was rolled out across 101 hospitals and measured at
-population scale, the mortality and complication benefits seen in the original study **did not
-appear** ○. What was measured was the *date a checklist came into force* — not whether it was used
-well. Having a correct document is not the intervention. Using it is.
+practice. When surgical safety checklists were adopted across **101 Ontario hospitals** and measured
+at population scale — 109,341 procedures before adoption against 106,370 after — the mortality
+benefit seen in the original pilot study **did not appear**: 0.71% versus 0.65% (OR 0.91, 95% CI
+0.80–1.03, P=0.13), and complications were flat at 3.86% versus 3.82% (P=0.29) ✓. The complication
+endpoint is common enough that the study had ample power to detect a real effect.
+
+What that study measured was the *date a checklist came into force* — not whether it was used, or
+used well. This is the most important negative result in the procedure literature, and the lesson
+transfers exactly: **having a correct document is not the intervention.**
+
+The follow-up work explains the gap and turns it into authoring rules ○:
+
+- A causal analysis of a stepped-wedge trial isolates **implementation quality, not content**, as
+  the thing that moves outcomes — benefit appears only when *all* parts are actually performed.
+  Partial execution is not partial benefit.
+- Pooled adherence is far below what the positive trials achieved: **73% compliance but only 51%
+  completeness.** The procedure was invoked three times in four, and fully performed only half the
+  time. That gap is the portion of your claimed coverage that is nominal.
+- **62% of 300 studies covering 7.3 million operations record only *that* it was done**, never how.
+  A completion record is not evidence of execution quality.
+- Ethnographic work states the mechanism plainly: the benefit comes from the *behaviour the
+  checklist calls for*, not from marking its items. In the system that produced the null result,
+  practitioners describe the checklist being marked complete when only partly performed.
+
+Two rules follow, and they are sharper than the usual "keep docs fresh" advice:
+
+> **Write steps so they cannot be satisfied by attestation.** A step that can be discharged by
+> recording it *will* be discharged that way. Name the action and the actor, not a state to be
+> attested — which is the same rule as [invariant 1](#1-a-verification-step-reports-an-observed-value-not-an-acknowledgment),
+> arriving from a completely different direction.
+
+> **Never let completion status double as a compliance metric.** The moment "runbook followed" is
+> used for accountability, it stops being a measurement and becomes a reporting obligation, and it
+> will be reported. Keep the audit signal separate from the compliance signal.
 
 **Practical cadence.** Link the runbook from the alert or dashboard that triggers it. Re-verify on a
 schedule proportional to tier, and *always* after a change to the system it touches. Record when it
@@ -492,12 +742,22 @@ in a characteristic, measurable way that human-written ones do not.
 
 **This is the highest-leverage rule in this guide.**
 
-Models emit references to packages that do not exist at rates of roughly 4.6–6.1% even in the 2026
-frontier cohort ○. Worse for the obvious mitigation: 127 package names were invented *identically by
-all five models tested* ○ — so agreement between models is not evidence of existence. Verification
-must go to the authoritative system, never to a second opinion. Independently, when an agent
-generates operational commands on the fly rather than executing a stored template, the dominant
-failure modes are instruction drift, dropped conditions, and syntax errors ○.
+Models still emit install and import references to packages that **do not exist**. A 2026
+replication across five frontier models measured overall rates of **4.62% to 6.10%** ✓ — improved
+over earlier cohorts, but nowhere near zero. And 127 package names were hallucinated by *all five
+models tested* ✓, so cross-model agreement leaks: it is a weaker filter than it looks, not a
+sound existence check. (Be precise about what that second figure does and does not show — the
+all-five overlap is a small fraction of any one model's hallucinated set, so consensus filtering
+would still catch most of them. It is evidence that consensus is unsound as a *guarantee*, not
+evidence that it is useless.)
+
+The same defect appears in operational commands specifically: when an agent generates a command on
+the fly instead of invoking a stored exact template, the dominant failure modes are **instruction
+drift** (rewriting the template it was given), **structural omissions** (silently dropping
+sub-conditions), and **syntax errors** ✓.
+
+The conclusion both lines support: verification must terminate at the authoritative system — the
+registry, the repository, the running service — and never at a second model's agreement.
 
 > **Rule.** Every command, path, flag, service name, environment name, and metric name in a runbook
 > must be **derived from the repository or the running system**, not produced from knowledge of how
@@ -552,6 +812,46 @@ stated expected values, unambiguous commands. Where the two genuinely diverge �
 markup, embedded machine directives — **the human wins.** The runbook's purpose is the 3 a.m.
 reader.
 
+### The measured failure modes, in one place
+
+Pin identifiers literally rather than trusting recall — the evidence for why is unusually direct ○:
+
+| Failure mode | What was measured |
+|---|---|
+| Invented package names | Across 2.23M package references from 16 models, 19.7% hallucinated; **43% of hallucinated names recurred across runs** — these are repeatable, not random noise, which is what makes them exploitable |
+| Rare/internal APIs | On a low-frequency API benchmark, GPT-4o produced only **38.58%** valid invocations; supplying documentation raised it to 47.94% |
+| Outdated syntax | Across 270 real API updates, only **42.55%** of generated examples were executable *even with the correct current spec in context* — memorized older syntax leaks through anyway |
+| Underspecification | On 2,208 DevOps prompt variants, agents violated action boundaries in **55.8–67.8%** of runs when instructions were underspecified but benign |
+
+That last row is the one to internalize: **ambiguity in a procedure does not produce a question from
+an agent — it produces an invented answer.** Naming the target of every state-changing step
+unambiguously (which host, which namespace, which cluster, which table) is therefore among the
+highest-value things you can do while authoring.
+
+The third row is the one that humbles the obvious fix: writing the correct current syntax into the
+procedure is *necessary but demonstrably not sufficient*. Which is the argument for deriving from
+the repo and for rehearsal, not for trying harder to remember.
+
+### Gate steps by reversibility, not by difficulty
+
+The convergent guidance from agent-safety work is to couple the review mechanism to
+**reversibility** ○: actions reviewed only after the fact should be the reversible ones; irreversible
+actions require authorization *before* they run. Anthropic's own agent harness implements this as a
+default-deny architecture — read-only by default, explicit approval for anything state-changing, and
+unmatched commands failing closed to manual approval rather than proceeding on a guess.
+
+NIST's generative-AI profile names **confabulation** as a distinct risk requiring monitoring in
+consequential decision-making, and warns that outputs may include confabulated logic or citations
+that appear sound ○. The operational consequence: treat any rationale an agent produces during
+execution as unverified. Go/no-go thresholds and the abort path must be **written before execution**,
+not judged at runtime by the thing executing.
+
+> **Rule.** Split every procedure into an **observe** phase (read-only: inspect, query, measure) and
+> an **act** phase (state-changing), and require the observe phase to complete first. Mark each act
+> step reversible or irreversible. Reversible steps may run and be logged for after-the-fact review;
+> irreversible steps stop and require explicit human authorization. Anything unrecognized fails
+> closed to a human.
+
 ### Know the ceiling on autonomous execution
 
 On the current SRE incident-diagnosis benchmark, no frontier model reaches 50% accuracy, and longer
@@ -593,22 +893,38 @@ to note.
 
 **Safety**
 7. Is every irreversible step marked, preceded by its abort criteria, and stated to be
-   irreversible?
+   irreversible? Does each have its own separate, numbered precondition-verification step?
 8. Does each warning sit immediately before its step, and contain no actions?
 9. Does the reader know, at every branch, how to tell which branch they are on?
 10. Is there an exit for "reality does not match this document"?
+11. Is the recovery path named *before* the first irreversible step, and is it one you actually
+    have?
+12. Is there a close-out block that removes what the procedure introduced — flags, silenced alerts,
+    temporary capacity, maintenance mode?
+
+**Findability**
+13. Is the title the alert name, character-for-character?
+14. Is it indexed under every symptom that could surface it, including the un-alerted ones?
+15. Does the notification the responder receives carry a resolvable link to it?
+
+**Interruption survival**
+16. Can a reader who is pulled away for ten seconds find their place from the page alone?
+17. Are step numbers stable across edits?
+18. Are there checkpoints often enough that no unbroken run of steps is long?
 
 **Structure**
-11. One action per step — did you leave any "and then"?
-12. Are critical and irreversible steps early rather than buried?
-13. Under ~20 steps, or split into phases with checkpoints?
-14. Does the header let a reader confirm in seconds that they are in the right document — including
+19. One action per step — did you leave any "and then"?
+20. Are critical and irreversible steps early rather than buried?
+21. Under ~20 steps, or split into phases with checkpoints?
+22. Does the header let a reader confirm in seconds that they are in the right document — including
     when *not* to use it?
 
 **Honesty**
-15. Is every number derived rather than plausible?
-16. Is every uncertain step visibly marked as uncertain?
-17. Does the ownership/last-verified metadata reflect execution rather than editing?
+23. Is every number derived rather than plausible?
+24. Is every uncertain step visibly marked as uncertain?
+25. Does the ownership/last-verified metadata reflect execution rather than editing?
+26. Can any step be satisfied by *recording* it rather than *doing* something observable? If so,
+    rewrite it — that step will be discharged on paper.
 
 **The final test.** Read your runbook as someone woken at 3 a.m. who did not build this system. At
 every step, ask: *do I know exactly what to type, and exactly how I will know it worked?* If the
@@ -649,16 +965,58 @@ Cite these as practice, never as measurement:
 - **PagerDuty's "an untested alert is equivalent to not having an alert at all"** is aphorism, not
   finding ✓ — and it is about alerts; extending it to runbooks is inference.
 
-### Pending verification ○
+### Verified in a second, targeted pass ✓
 
-Sourced and quoted, but not yet adversarially adjudicated when this was written: NUREG-0899 writing
-and branching rules · aviation QRH layout and branch-confirmation conventions · Google developer
-style guide procedure rules · AWS Well-Architected runbook metadata, peer execution, and progressive
-automation · Cao, Chan & Elkamel (*Safety* 2019, 5(2):19) rationale experiment · Urbach et al.
-(*NEJM* 2014) null replication · Microsoft StepFly defect taxonomy and dual-compatibility
-requirement · Nissist TTM figure · package-hallucination rates · ITBench-AA ceiling.
+A dedicated verification pass re-checked 19 further claims against their primary sources, three
+independent refuters each. **Confirmed:** aviation QRH branch typography · AWS peer-execution
+validation and the game-day anti-pattern · Urbach et al. (*NEJM* 2014;370:1029–1038) null
+replication · the Microsoft StepFly defect taxonomy, dual-compatibility requirement, and on-the-fly
+generation failure modes · the troubleshooting-guide time-to-mitigate figure · the ITBench-AA
+diagnosis ceiling.
 
-Raw research, provenance, and resume instructions:
+**Eleven were killed, and every kill improved this document.** The pattern was almost never
+fabrication — it was *hedge-hardening*, the exact failure this guide warns about:
+
+| What was claimed | What the source says |
+|---|---|
+| NUREG-0899 "mandates" writing rules | Non-binding guidance; "compliance will not be required" |
+| Google "requires" one action per step | "**In general**, use one step for each action" — with a stated exception |
+| AWS "prescribes a minimum field set" | An *example* template; AWS's stated minimum is "a step-by-step text document" |
+| QRH "requires" per-action result verification | A recommended reinforcement — "such as" — not a requirement |
+| Rationale "raised adherence" | Raised **one of two** adherence measures; timed-wait adherence did not improve |
+| 127 shared names "falsify model consensus" | The source argues attack surface, and notes the overlap is a small fraction of each model's hallucinations |
+
+Two of those corrections were live defects in an earlier draft of this very guide. That is the
+argument for the whole approach: the claims were plausible, well-sourced, directionally right, and
+wrong in their strength.
+
+### Sourced but not adversarially challenged ○
+
+A further investigation covering eight lines — public postmortems, domain variation, aviation
+selection rules and memory items, checklist implementation evidence, interruption and place-keeping
+research, alert-to-procedure linkage, irreversible-operation standards, and agent-execution
+safety — completed its research but was cut off before its adversarial challenge phase ran. Its
+findings are quoted from primary documents (OSHA 29 CFR 1910.147, MIL-STD-40051-2A, S1000D Issue 5.0,
+NIST SP 800-193, RFC 9019, DOE-HDBK-1028-2009, FAA AC 120-71B, NASA/TM-2014-218382, WCAG 2.2,
+official postmortems from AWS/GitLab/Cloudflare/Atlassian, the SEC order on Knight Capital, TSB
+A98H0003, the CSB Texas City report, and the Deepwater Horizon commission report), and every one is
+marked ○ here.
+
+Treat those as directionally sound and specifically unconfirmed. Given that the verification pass
+corrected roughly half of what it examined — almost entirely by softening overstated modality — the
+prudent reading is that these findings are *real but probably stated a little too strongly*. Before
+quoting any of them as a mandate, check the source.
+
+One further caveat disclosed by the researchers themselves: that investigation ran with its web
+search budget exhausted, so it worked from primary documents it could reach directly and could not
+run discovery searches. Absence of a finding there is not evidence of absence.
+
+Genuinely unaddressed: regulated-environment procedure requirements (FDA/GxP, ISO 13485), a
+systematic treatment of machine-vs-human documentation audiences, and any empirical evidence that a
+particular runbook *field set* improves outcomes — that last one appears to be convention
+everywhere, including here.
+
+Raw research, verdicts, provenance, and resume instructions:
 `.prawduct/research/runbook-authoring/CHECKPOINT.md`.
 
 ### Refuted — do not reintroduce ✗
@@ -677,6 +1035,10 @@ will regenerate them from memory. **Do not use them.**
 - Dekker's "enforcement pressure is counterproductive."
 - Startle halting action for a measurable 100 ms–10 s window.
 - Visual short-term memory capacity falling with arousal.
+- That cross-model agreement has been *shown* useless for detecting hallucinated dependencies. The
+  study says the opposite in one respect — the all-five overlap is a small fraction of each model's
+  hallucinated set. Consensus is an unsound guarantee, not a worthless filter.
+- That NUREG-0899 or Google's style guide *require* anything. Both are explicitly non-binding.
 
 **Modality drift was the most common failure** across all of them: "should where possible" hardening
 into "must", "can improve" into "improves", "diminishes" into "monotonically", correlation into
