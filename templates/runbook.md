@@ -203,6 +203,14 @@ triggers:                  # every signal that should lead a responder here
        - NEVER HEDGE. "You may want to", "usually", "if appropriate" — each
          one is a missing branch (write the IF), a missing number (derive it),
          or an unmarked gap (mark it 🚧 UNVERIFIED). Never a fourth thing.
+       - A STEP DOES NOT HAVE TO BE A COMMAND. Identifying a boundary,
+         reading a value off earlier output, deciding which case you are in —
+         if the reader must DO it, it gets a number. Leave it out and the
+         thinking gets smuggled into an Expected: line or grows a clause on
+         the next action ("take the topmost line that has X — that's the
+         boundary — and then..."), which is why those become unreadable.
+       - A RATIONALE LINE CONTAINS NO INSTRUCTION, same as a warning. If it
+         changes what they type, it belongs in the action.
        - HELPFULNESS AT THE WRONG MOMENT reads as noise. Three habits:
          · A fact goes where it is USED, not where it first becomes true. A
            detail that matters at step 12 belongs at step 12 — put it up top

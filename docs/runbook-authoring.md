@@ -548,6 +548,15 @@ document or count for it without checking.)
 > **Rule.** One imperative action per step. If you wrote "and then", split it. Sequential UI
 > navigation is the only routine exception (`Settings > Advanced > Reset`).
 
+**A step does not have to be a command.** Identifying something, reading a value off earlier output,
+deciding which case you are in — if the reader must *do* it, it gets a number. Authors leave these
+out because they look like thinking rather than work, and the thinking then gets smuggled into the
+nearest available slot: an `Expected:` line that starts describing how to interpret the output, or
+an action sentence that grows a clause like *"take the topmost line that carries X — that's the
+boundary — and then…"*. Both are unreadable for the same reason, and both are fixed the same way.
+Give the identification its own step, with its own expectation, and the step that follows is a plain
+instruction again.
+
 **A chain in your source is not a step boundary.** Deriving faithfully means the command *text* is
 derived; the *step structure* is yours to author. A reference document showing two commands joined
 on one line is showing you one line of *that document* — it was written for a reader who already
@@ -584,6 +593,11 @@ rule to a reviewer and does nothing for the person executing it at 3 a.m. Cut pr
 numbers, ticket references, and "we added this because". **Test:** if the reader would do the step
 identically without the sentence, the sentence is not rationale, it is a footnote you owe some other
 document. Nobody executing a procedure is a curious passer-by.
+
+**A rationale line contains no instruction** — the same rule warnings follow, for the same reason.
+*"Why: separate the fields with a pipe; spaces parse as nothing"* buries a thing the reader must do
+inside the one line the guide has told them they may skip. If it changes what they type, it belongs
+in the action.
 
 The line runs between **consequence** and **education**, and it runs through the middle of sentences
 about the same command. *"This discards any unsaved work in place"* is consequence — it may send the
@@ -1449,7 +1463,10 @@ R6. Read it as someone with 30 seconds and a page alert. Can they start acting i
 18. Are there checkpoints often enough that no unbroken run of steps is long?
 
 **Structure**
-19. One action per step — did you leave any "and then"?
+19. One action per step — did you leave any "and then"? And is every thing the reader must *do* a
+    numbered step, including the ones that are pure judgment — identifying a boundary, reading a
+    value off earlier output, deciding which case applies? Those get smuggled into `Expected:`
+    lines and action clauses when they have nowhere else to live.
 20. Are critical and irreversible steps early rather than buried? Work backwards from the point of
     no return and list every condition that would make it *wrong*: is each verified in its own
     earlier step? A late failure branch means a missing early check — deleting the branch is not
