@@ -309,52 +309,35 @@ than a silently absent link.
 
 ## The reader you are writing for
 
-Design for a specific, degraded reader. The honest evidence:
+Design for a specific, degraded reader. Four findings, and what each one changes:
 
-**Fatigue is the strongest quantitative anchor** ✓. Performance declines about 0.74% per hour
-between the 10th and 26th hour of wakefulness; at **17 hours awake, performance impairment matches
-0.05% blood alcohol**, and at 24 hours it matches roughly 0.10% BAC (Dawson & Reid, *Nature* 388:235,
-1997; independently replicated by Williamson & Feyer, *OEM*, 2000). Your on-call reader at 3 a.m. is,
-functionally, impaired. Write for that person.
+**Your 3 a.m. reader is functionally impaired** ✓. At 17 hours awake, performance impairment matches
+0.05% blood alcohol; at 24 hours, roughly 0.10% (Dawson & Reid, *Nature* 388:235, 1997; replicated by
+Williamson & Feyer, *OEM*, 2000). Write for that person, not for yourself.
 
-**Stress impairs working memory, but less than folklore claims** ✓. Meta-analytically the effect is
-small (g+ = -0.197) and concentrated where cognitive load is already high (g+ = -0.303 under high
-load; effectively absent otherwise). The operational reading is not "the reader becomes stupid" — it
-is **that the damage is load-dependent, so the load your document imposes is the variable you
-control.** Notably, that high-load moderation weakens to marginal significance once study precision
-is controlled; do not overstate it.
+**Stress hurts less than folklore claims, and the damage is load-dependent** ✓ (Shields et al., 2016).
+The reader does not become stupid — but the load *your document* imposes is the variable you
+control, which is the whole argument for cutting.
 
-**Surprise costs place-keeping specifically** ✓. Startle and surprise are documented to leave an
-operator unable to recall the current procedure or to **lose track of where they were in a
-checklist**.
-
-**And interruptions are far more destructive than their length suggests** ○. In controlled work on
-procedural error, interruptions averaging just **4.4 seconds tripled sequence-error rates** on the
-steps that followed. The cost shows up as *resumption lag*, roughly doubling normal step-to-step
-time, and it grows with both the duration and the cognitive demand of the interruption. External
-cues reduce that lag — but only if the reader has 6–8 seconds to encode one *before* being pulled
-away, which in practice they usually do not get. Sleep deprivation attacks place-keeping
-specifically, not merely via general sleepiness.
-
-This is the single most actionable piece of reader-model evidence, and it produces a hard rule:
+**Surprise and interruption destroy place-keeping specifically** ✓○. Startled operators lose track of
+where they were in a procedure, and interruptions of a few seconds measurably wreck the steps that
+follow. This is the most actionable finding here, and it produces a hard rule:
 
 > **The reader's place must be recoverable from the page, never from memory.** Stable step numbers
 > that never renumber, one action per step, short named blocks with an explicit state-checkpoint at
 > each boundary, and a document a reader can re-enter mid-procedure and orient in seconds.
 
-An on-call responder is interrupted constantly — by pages, by questions in the incident channel, by
-someone asking for a status update. A forty-step unbroken wall of text is not a neutral formatting
-choice; it is a document that loses its reader at the first interruption and gives them no way back.
+An on-call responder is interrupted constantly. A forty-step unbroken wall of text is not a neutral
+formatting choice; it loses its reader at the first interruption and gives them no way back.
 
-**The reader deviates more than you think, and usually on purpose.** Users self-report deviating
-from written procedures at roughly 1.5× the rate the procedure's own authors estimate, and where
-authors attribute this to carelessness, users report *intentional* deviation — most often because
-the document is wrong ✓ (small single-industry study; treat the direction as informative and the
-magnitude as indicative).
+**They deviate more than you think, and usually on purpose** ✓. Users report deviating at roughly
+1.5× the rate authors estimate, and where authors assume carelessness, users report *intentional*
+deviation — most often because the document is wrong. (Small single-industry study: direction
+informative, magnitude indicative.)
 
-The synthesis: **you are not writing for the person who wrote the system. You are writing for
-someone who is tired, interrupted, possibly wrong about what is happening, and who will abandon
-your document the moment it stops matching reality.**
+The synthesis: **you are not writing for the person who built the system. You are writing for
+someone tired, interrupted, possibly wrong about what is happening, and ready to abandon your
+document the moment it stops matching reality.**
 
 ---
 
