@@ -531,6 +531,14 @@ resolution is typographic, not editorial ◆:
 > distinct line (blockquote, italic, or a `Why:` prefix). The eye executing the procedure skips it;
 > the eye that is confused finds it. Do not bury rationale *inside* the action sentence.
 
+**Rationale earns its place by changing what the reader does now.** *"This value is the update cache
+key, so skipping it ships nothing"* is rationale: it tells someone tempted to skip the step why not.
+*"This was missed in two earlier releases and backfilled out of band"* is history — it justifies the
+rule to a reviewer and does nothing for the person executing it at 3 a.m. Cut provenance, incident
+numbers, ticket references, and "we added this because". **Test:** if the reader would do the step
+identically without the sentence, the sentence is not rationale, it is a footnote you owe some other
+document. Nobody executing a procedure is a curious passer-by.
+
 ```markdown
 3. In `plugin.json`, replace `version` `3.1.0` with `3.2.0`.
    *Why: `version` is the update cache key — a release that forgets this does not ship.*
@@ -809,6 +817,11 @@ generalizes to everything the unfamiliar reader needs.
 - Tables for parameter/value lookups, never for sequential logic.
 - A diagram only if it shows topology or state transitions that prose cannot; the procedure must
   remain executable without it.
+- **The page must be navigable without being read.** Someone returning after an interruption — or
+  skimming on purpose, which confident readers do — has to locate their step number, tell at a
+  glance what they type from what they read, and catch every warning, all before reading a word.
+  Commands in blocks, step numbers where the eye lands, warnings carrying visual weight, no
+  unbroken prose. **Anything that is only correct when read in full will be read in part.**
 
 **Legibility** (WCAG gives testable minimums ○ — note these are Level AAA, i.e. good practice rather
 than baseline conformance, which is exactly the right bar for an emergency document)
@@ -1305,18 +1318,27 @@ R6. Read it as someone with 30 seconds and a page alert. Can they start acting i
 26. Can any step be satisfied by *recording* it rather than *doing* something observable? If so,
     rewrite it — that step will be discharged on paper.
 
-**The final test — two readers, not one.**
+**The final test — four postures, one document.**
 
-*The crisis reader*: woken at 3 a.m., did not build this system, one thing has already gone wrong.
-At every step: *do I know exactly what to type, and exactly how I will know it worked?* Any "no" is
-an unfinished step.
+Read your draft once as each. They fail it in different directions, and one that survives all four
+is finished. None of them is curious: every one is trying to get work done.
 
-*The Tuesday reader*: doing this routinely, competent, in a hurry. For them: *is this faster than
-figuring it out myself?* If your runbook is slower to use than the work it describes, they will stop
-using it — and then it will rot, and then it will not be there for the crisis reader either.
+*Paged at 3 a.m., not the usual owner, unfamiliar tooling, no attention left.* Can they tell where
+to start, and see at a glance what to type versus what to read? A wall of prose is unread text.
 
-A document that serves only the first is bloated. One that serves only the second is unsafe.
-Concision is what serves both.
+*Twenty years on this system, runs it twice a week.* Can they go straight to the commands without
+wading? If the document is slower than working from memory they will abandon it — then it rots, and
+then it is not there for the 3 a.m. reader either.
+
+*Confident, skimming, barely paying attention.* They **will** skip; assume it. Is everything that
+must not be skipped impossible to skip — carrying visual weight, sitting in the path, never in a
+parenthetical or a trailing clause?
+
+*New, anxious, wants to do this well.* They will not admit confusion, and they will do more than you
+asked in order to be safe. Have you told them where to stop, that stopping is allowed, and what not
+to do?
+
+Serve only the first two and you get a document that is either safe and slow or fast and dangerous.
 
 ---
 
