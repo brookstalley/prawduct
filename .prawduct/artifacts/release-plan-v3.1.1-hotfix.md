@@ -4,15 +4,14 @@ version: 1
 scope: v3-1-1-hotfix
 depends_on:
   - artifact: release-plan-backlog-service-golive
-last_validated: 2026-07-20
+last_validated: 2026-07-21
 ---
 
 # Release Plan — v3.1.1 Hotfix
 
 ## Execution status — read this first
 
-**Not started. Next action: release mechanics step 1** (merge
-`fix/archive-scope-preservation-claim` → `develop` via `/prawduct:pr`).
+**Step 1 landed (2026-07-21). Next action: release mechanics step 2** (the tree-set).
 
 Update this block as each step lands — it is the only cross-session record of *where execution
 stands*, and the steps are stateful — later steps consume names earlier steps produce, so a step
@@ -24,7 +23,8 @@ Two orientation notes for a session picking this up cold:
   `active_build_plan: artifacts/build-plan-skills-cutover-awareness.md`, so the briefing announces
   `Work: Skills Cutover Awareness` and resumes that plan's first unchecked chunk. That pointer is
   *correct* state — that plan is unfinished work moving to `feature/backlog-service` — but it is
-  **not** the active work. This release plan is.
+  **not** the active work. This release plan is. (Release mechanics now clears it to `null` at
+  release-prep, so this note expires with the release.)
 - **Nothing is pushed yet.** `origin/develop` still points at the pre-merge commit and does not
   move until the promotion step; that, plus the reflog, is the safety net. `feature/backlog-service`
   becomes the durable holder of the migration work at the branch-creation step.
@@ -34,6 +34,26 @@ backlog-service surface**, by **isolating the migration work off `develop`**. Cu
 snapshotted as `feature/backlog-service`; `develop`'s *tree* is then set to the v3.1.1 candidate,
 and v3.1.1 ships as an ordinary `develop` → `main` promotion. The v3.2.0 go-live plan is unchanged
 and still owns the migration.
+
+**Amendment — owner decision (2026-07-21): fold in the runbook feature.** `feature/runbook-authoring`
+(docs, skill, template, and the four registration edits) ships in v3.1.1 rather than waiting. This
+changes the plan's *premise*, not its construction: the release is no longer "fixes only," it is
+"everything independent of the migration," and the runbook work qualifies on exactly the test the
+What-ships table already applies. Consequences, each carried into the sections below rather than
+left here: **+10 changed paths** (96 non-`.prawduct`, not 86), **a ninth shipping change-log entry**,
+**a fourth partial-take file**, and **two new grep scopes** (`docs/`, `templates/`).
+
+**The version stays v3.1.1, and that is a departure worth naming.** A new user-invocable skill is a
+minor bump by the convention `CHANGELOG.md` records. The owner chose the patch number anyway
+(2026-07-21) to leave `v3.2.0` bound to the backlog-service go-live, whose plan cites it in ~15
+places. Recorded as a deliberate exception, not an oversight — the go-live plan's A2 decision is
+unchanged.
+
+**Also folded in: two release-prep steps this plan was missing**, found by *deriving*
+`.prawduct/runbooks/cut-and-publish-a-plugin-release.md` from the guide this release ships.
+`pyproject.toml` carries a version — stale at `3.0.3` across v3.0.4, v3.0.5 and v3.1.0 — and
+`project-state.yaml`'s `active_build_plan` wants clearing at release. Neither appears in
+`docs/release-process.md`; that source-level gap is REL-3M7K's neighborhood and stays open.
 
 **Two alternatives were rejected.** A bespoke `release/v3.1.1` branch beside an untouched `develop`
 works, but leaves `develop` unreleasable — so **every hotfix until v3.2.0 repeats the
@@ -51,8 +71,13 @@ The five v3.2.0 blockers below mean that merge is not imminent.
 
 ## Why `develop` cannot ship as-is
 
-`develop` plus this branch are release-pending on **18** change-log entries. **10 are
-backlog-service migration work; 8 are independent.**
+`develop` plus this branch are release-pending on **19** change-log entries. **10 are
+backlog-service migration work; 9 are independent.**
+
+(Was 18/10/8 before the runbook fold-in. The runbook entry did not exist when this was first
+counted — the feature shipped its code with **no change-log entry at all**, carried as an
+unresolved Critic warning (R-2) across two sessions. That is REL-2N8K inverted: not an entry that
+never flips, but code with no entry to flip. Authored 2026-07-21 before the count was re-derived.)
 
 **How that number is derived, and why the obvious method is wrong.** Counting `## ` headings above
 the first `release=v3.1.0` tag gives 17 — and silently drops
@@ -95,9 +120,10 @@ all `pending`; VRF-006 states it outright. Only VRF-004 (the walking skeleton) i
 
 ## What ships
 
-All **eight** change-log entries independent of the migration. (Two drafts of this table were
-short: the first omitted `worktree-salvage`, the second `stale-remote-base-diagnostics`. Both were
-caught by re-deriving rather than by re-reading. Enumerate, don't sample.)
+All **nine** change-log entries independent of the migration. (Three drafts of this table were
+short: the first omitted `worktree-salvage`, the second `stale-remote-base-diagnostics`, and the
+third predated the runbook entry's existence. All three were caught by re-deriving rather than by
+re-reading. Enumerate, don't sample.)
 
 | entry | what it fixes for a consumer |
 |---|---|
@@ -109,6 +135,7 @@ caught by re-deriving rather than by re-reading. Enumerate, don't sample.)
 | Stop-hook worktree redirect note | names the tree the gates actually evaluated (`STH-3R8K`) |
 | worktree-salvage | `regen-views` no longer fails closed on a bad `scope=` tag; digest single-copy test works under `.claude/worktrees/`; dead `current_branch` removed (runtime no-op). Internal polish, but independent and already merged — shipping it keeps the release the *whole* independent set rather than a judgment call about which fixes "count" |
 | stale-remote-base diagnostics (2026-07-14) | the cumulative-critic gate explains a stale `origin/<base>` instead of failing opaquely, plus the stale-base / unpromoted-release-prep advisory nudges. **Sits below the v3.1.0 boundary in the change-log and was missed by the first two drafts** — its code is absent at v3.1.0, so it is genuinely unreleased and its entry must flip |
+| runbook authoring (2026-07-21, **folded in**) | `/prawduct:runbook`, `docs/runbook-authoring.md`, `templates/runbook.md`, and registration from the methodology skill and the three templates that already pointed at runbooks with nothing behind the pointer (MET-7B3X). The only *new capability* in the release — everything else is a fix. Its entry was authored at fold-in; the code had shipped to `develop` with none |
 
 ## Construction — allowlist, verified as an exact diff
 
@@ -119,13 +146,25 @@ ships the entry's change-log row without its code. The branch is mixed — its `
 `skills/backlog/migration-scrub.md` work lands on `develop` too, and is then held back by this
 allowlist like the rest of the migration surface.
 
+**The branch was cut back before merging, and the reason generalizes.** By 2026-07-21 it had grown
+six runbook commits on top of `dc517a9` — the commit every count in this section was measured
+against. Those six were superseded by `feature/runbook-authoring`, which carries the same work
+rebased plus 25 further refinements. Merging both would have duplicated and conflicted, and worse,
+pushed unclassified paths through a construction whose entire safety argument is set equality
+against an exhaustive list. So the branch was reset to `dc517a9` (backup ref
+`backup/fix-archive-scope-with-runbook`) and the runbook work came in through its own branch, where
+it is classified. **A release measured against one commit must be built from that commit** — a
+branch that moves under a verified take-list silently invalidates it.
+
 Build the candidate as **`v3.1.0`'s tree plus allowlisted paths from `develop`**, then set
 `develop`'s tree to it. Allowlist rather than subtraction for one reason — it **fails closed**:
 anything forgotten is *absent* rather than *shipped*. (Measured **post-merge**, i.e. against the
-tree `develop` will have at `M`: 104 files differ from `v3.1.0`, split 86 outside `.prawduct/` and
-18 within. Neither direction is meaningfully less typing; safety is the whole argument. An earlier
-draft quoted 101/84/17 — the same query run against *pre-merge* `origin/develop`, which is the
-wrong base once merging first became a prerequisite.)
+tree `develop` will have at `M`: **119** files differ from `v3.1.0`, split **96** outside
+`.prawduct/` and **23** within. Neither direction is meaningfully less typing; safety is the whole
+argument. Two earlier figures are superseded and neither should be carried forward: 101/84/17 was
+the query run against *pre-merge* `origin/develop`, wrong once merging first became a prerequisite;
+104/86/18 was correct for the fix-branch merge alone, before the runbook fold-in added 10
+non-`.prawduct` and 5 `.prawduct` paths.)
 
 **The construction is verified by set equality over paths, not spot-checked.** After the tree-set
 and before release-prep, `git diff --name-only v3.1.0 develop | sort` **must equal the fully
@@ -134,13 +173,15 @@ directional-agnostic: it catches a migration file that survived and a needed fil
 arrived, which no negative grep can do alone.
 
 **Two limits of that check, stated so they are covered elsewhere rather than assumed away.**
-(a) It compares *paths*, so for the **three** partial-take files — `skills/critic/review-cycle.md`,
-`bin/prawduct-hook`, `skills/critic/review-protocol.md`; `lib/probe_families.py` is a **whole-file**
+(a) It compares *paths*, so for the **four** partial-take files — `skills/critic/review-cycle.md`,
+`bin/prawduct-hook`, `skills/critic/review-protocol.md`, `skills/runbook/SKILL.md`;
+`lib/probe_families.py` is a **whole-file**
 take — it cannot see *which* hunks landed. Their content is verified by the positive assertions in
 checkpoint A item 2, not by the negative grep, which catches leaks but is blind to omissions.
 (b) `CHANGELOG.md` is **identical** between
 `v3.1.0` and `develop`, so it is not a take-list entry at all; it changes only at release-prep and
-is verified at checkpoint B.
+is verified at checkpoint B. **`pyproject.toml` is the same shape** — identical at `v3.1.0` and
+`develop` (both `3.0.3`), so it is not a take-list entry either and is bumped at release-prep.
 
 **Whole-file, safe to take from `develop`:**
 `hooks/banner.py` · `lib/gitstate.py` · `lib/coverage.py` · `lib/gates.py` · `lib/buildplan_refs.py` ·
@@ -150,14 +191,36 @@ is verified at checkpoint B.
 `test_build_plan_resolution` · `test_critic_consolidate` · `test_stale_base_probes` ·
 `test_v5_methodology`).
 
+**The runbook fold-in — 10 paths, 8 taken and 2 held.** Whole-file takes:
+`docs/runbook-authoring.md` · `templates/runbook.md` · `skills/methodology/SKILL.md` ·
+`templates/observability-strategy.md` · `templates/operational-spec.md` ·
+`templates/unattended-operation/failure-recovery-spec.md` · `.gitignore`. Each of the four
+registration edits was diffed against `v3.1.0` and carries **only** a runbook pointer — no
+migration surface. `.gitignore`'s whole delta is the `.prawduct/research/**/raw/` rule the taken
+research files need, so it is a take, not a release-prep edit.
+
+`skills/runbook/SKILL.md` is a **partial take** — see the hunk-level list below.
+
+**Held: `.claude/workflows/runbook-claim-verify-4.js` and `.claude/workflows/runbook-depth-2-claims.js`.**
+Owner decision 2026-07-21, on Principle 10 (dev tooling never reaches production). These are
+research scaffolding for the runbook work, and the plugin's `marketplace.json` declares
+`"source": "./"` — **whatever is in the tree lands in every consumer's plugin cache.** Nothing
+loads them, so they are inert rather than dangerous, which is exactly why they are easy to ship by
+accident. The accepted cost is stated once: the tree-set *removes them from `develop`*, and they
+survive only on `feature/backlog-service` and `feature/runbook-authoring` until deliberately
+restored. The durable fix is a packaging boundary so repo-local tooling stops shipping at all —
+filed, not fixed here.
+
 **`.prawduct/**` — take whole from `develop`, and it is load-bearing.** Do **not** transcribe its
 member paths into this document. Expand the glob **from `M`**, the pre-tree-set merge commit
 (`git diff --name-only v3.1.0 M -- .prawduct/`) — never from `develop`, which *is* the tree under
-test by the time the check runs (see checkpoint A item 1). It is 18 paths post-merge, and **this
+test by the time the check runs (see checkpoint A item 1). It is **23** paths post-merge (18 before
+the runbook fold-in added the four `research/runbook-authoring/` files and
+`runbooks/cut-and-publish-a-plugin-release.md`), and **this
 plan file is one of them**, so a transcribed list goes stale on the edit that transcribes it. An earlier draft
 left it unaddressed, which breaks the release two ways. (a) The change-log flip in release mechanics
-flips eight entries; if the tree carried `v3.1.0`'s `.prawduct/change-log.md`, **none of the
-eighteen entries exist there to flip.** (b) `regen-views` validation is fail-closed on an
+flips nine entries; if the tree carried `v3.1.0`'s `.prawduct/change-log.md`, **none of the
+nineteen entries exist there to flip.** (b) `regen-views` validation is fail-closed on an
 unreleased `scope=` that resolves to no plan file — **eight of the ten** held entries are
 scope-tagged (`skills-cutover-awareness` ×4, `backlog-service-v1` ×3, `backlog-skill-repoint` ×1;
 the two `--archive-scope` entries carry no `scope=`), so those build plans must be present or the
@@ -175,6 +238,15 @@ still ships, but the closing "confirm the banner" confirms a version move with a
 step reference in a document that renumbers is the line-number defect BKL-2Q7F records.) The durable form of
 this gap is **REL-3M7K** (open): `docs/release-process.md` never mentions `CHANGELOG.md`, so every
 release re-derives it. This plan patches the instance; REL-3M7K stays open for the process fix.
+
+**`pyproject.toml` needs the same bump, and it has been missed three times.** It carries
+`version = "3.0.3"` — stale across v3.0.4, v3.0.5 and v3.1.0. Identical at `v3.1.0` and `develop`,
+so like `CHANGELOG.md` it is a release-prep edit, not a take-list entry. `docs/release-process.md`
+does not name it either. **This was found by *deriving* the release runbook from the guide this
+release ships** — not by reading the process doc, which has been read many times and does not
+contain the fact. That is the strongest available evidence for the capability being folded in, and
+it is why the runbook's own `🚧 UNVERIFIED` marker over the version-bump convention is honest
+rather than lazy: no written version policy exists in this repo.
 
 `hooks/gates.json` is **unchanged** since `v3.1.0` (verified), so the banner announces no
 newly-active gate in this range and the file needs no handling either way.
@@ -203,6 +275,24 @@ newly-active gate in this range and the file needs no handling either way.
 - `skills/critic/review-protocol.md` — take the `cannot-verify:` hunk (the doc half of the
   `verify-chunk-refs` shipping row); **drop** the backlog-reconciliation hunk, which introduces
   `backlog_service_repo` into a `skills/` file the negative grep asserts is clean.
+- `skills/runbook/SKILL.md` — **new at the fold-in, and the negative grep is what found it.** The
+  file is otherwise a whole-file take, but its `allowed-tools` frontmatter grants
+  `Bash(prawduct-hook backlog *)` **and** `Bash(python3 bin/prawduct-hook backlog *)`. Take the file
+  with both grants **removed**; every other token on the line stays.
+
+  **Why it is wrong in this tree specifically.** The grants are correct on `develop`, where
+  `/prawduct:backlog` is the Issues adapter and the `backlog` subcommand exists. In the tree this
+  plan builds they are wrong twice over: the `bin/prawduct-hook` partial take **deletes the
+  `backlog` subcommand**, so the grant names a route the binary denies; and the held
+  `skills/backlog/SKILL.md` at `v3.1.0` grants no Bash at all, so the skill's one actual use —
+  "File it with `/prawduct:backlog add`" at line 214 — is a slash-command invocation that needs no
+  Bash grant from *this* file in the first place. Shipping them would also reintroduce the
+  wildcard-Bash-grant shape that is one of the five v3.2.0 blockers this release exists to withhold.
+
+  This is the `cmd_version` self-contradiction argument (below) arriving from the opposite
+  direction: there, a dropped hunk would have made `_USAGE` advertise a subcommand the dispatcher
+  denies; here, a taken line makes a *skill* advertise a subcommand the binary denies. Both are
+  trees that contradict themselves, and neither is visible to the path-set check.
 
 **`lib/probe_families.py` — take from `develop`, and the reason matters.** An earlier draft held it,
 which would have shipped `lib/stale_base_probes.py` as **dead code**: `probe_families.register_all`
@@ -231,7 +321,10 @@ the diff against the take-list, so for an unlisted file both sides derive from t
 and the check passes in both directions. Silent defaults are invisible to the invariant. One of
 the ten turned out to be **shipping code**, which is exactly the cost of leaving them implicit:
 
-Final split after classification: **23 taken, 63 held, 86 total.**
+Final split after classification: **23 taken, 63 held, 86 total** — and after the 2026-07-21
+runbook fold-in added 10 more paths (8 taken, 2 held), **31 taken, 65 held, 96 total.** The 96 is
+the number checkpoint A's completeness precondition asserts against; 86 is retained above only
+because the ten-file classification below was reasoned against it.
 
 | file | disposition | why |
 |---|---|---|
@@ -246,9 +339,11 @@ Final split after classification: **23 taken, 63 held, 86 total.**
 | `tests/test_plugin_methodology_digest.py` | **take** | **not** "pairs with the held session digests" — that rationale was wrong. Its whole delta is `fix(tests): digest single-copy checks filter .claude/.git relative to root`, which **is** the second bullet of the `worktree-salvage` What-ships row ("digest single-copy test works under `.claude/worktrees/`"). Holding it flips that row to shipped without its code — REL-2N8K. Safe to take beside held digests: the filter change is digest-content-agnostic |
 | `tests/test_pr_reviewer.py` | hold | pairs with held `skills/pr/**` |
 
-That makes the partial-take set **three** files, not two: `skills/critic/review-cycle.md`,
+That made the partial-take set **three** files, not two: `skills/critic/review-cycle.md`,
 `bin/prawduct-hook`, and `skills/critic/review-protocol.md`. (`lib/probe_families.py` remains a
-whole-file take.)
+whole-file take.) The runbook fold-in added a **fourth** — `skills/runbook/SKILL.md`, for the two
+`Bash(... backlog *)` grants — so the partial-take set is now four files, and checkpoint A item 2
+owes a positive assertion for each.
 
 ## Verification
 
@@ -261,20 +356,21 @@ whole-file take.)
    **Expanding from `develop` at check time is self-referential and passes unconditionally.**
    Checkpoint A runs *after* the tree-set, so `develop` **is** `T` — the tree under test. Both
    sides of the comparison become the same command against the same tree, matching in both
-   directions for exactly the 18 paths the plan argues hardest about (a missing `change-log.md`
-   means none of the eighteen entries exist to flip; a missing scope-tagged build plan aborts
-   `regen-views` fail-closed). Pinning to `M` is what makes it a check.
+   directions for exactly the 23 `.prawduct/` paths the plan argues hardest about (a missing
+   `change-log.md` means none of the nineteen entries exist to flip; a missing scope-tagged build
+   plan aborts `regen-views` fail-closed). Pinning to `M` is what makes it a check.
 
    Set equality is what makes an omission as visible as a leak. It compares **paths only**;
-   `CHANGELOG.md` is correctly absent because it is identical at `v3.1.0` and changes only at
-   release-prep.
+   `CHANGELOG.md` and `pyproject.toml` are correctly absent because both are identical at `v3.1.0`
+   and change only at release-prep.
 
    **Completeness precondition — run this first, or item 1 grades itself.** Assert
-   `take ∪ held == git diff --name-only v3.1.0 M -- . ':(exclude).prawduct/'` (86 paths). An
+   `take ∪ held == git diff --name-only v3.1.0 M -- . ':(exclude).prawduct/'` (**96** paths post
+   fold-in; was 86). An
    unlisted file defaults to held and is therefore *absent from both sides* of item 1, so item 1
    cannot see it — that is how ten files went unclassified. This precondition is the only check
    that fails on an omission from the lists themselves.
-2. **Positive assertions for the three partial-take files.** The path-set check cannot see *which*
+2. **Positive assertions for the four partial-take files.** The path-set check cannot see *which*
    hunks landed, and the negative grep below catches only leaks — so without this, an omission is
    invisible: dropping the cache-warm hunk from `review-cycle.md` passes the path check, passes the
    grep, and still flips that row to shipped. REL-2N8K exactly.
@@ -307,20 +403,34 @@ whole-file take.)
      3 at `develop`.)
    - `skills/critic/review-protocol.md` — present → `cannot-verify:`; absent →
      `backlog_service_repo`.
+   - `skills/runbook/SKILL.md` — present → `runbook-authoring.md` (the guide pointer, i.e. the file
+     arrived at all) and `user-invocable: true`; absent → `backlog` (zero occurrences on the
+     `allowed-tools` line). Assert the *line*, not the file: `/prawduct:backlog add` at line 214 is
+     legitimate prose that must survive, so a whole-file `backlog` count is the wrong marker and
+     would fail on correct content. Grep the frontmatter line specifically.
 
    **Why the negative marker is `cmd_backlog` and not `_USAGE`.** `backlog` is absent from
    `_USAGE` at **both** ends — `cmd_backlog` is defined and dispatched without ever being listed —
    so "assert `backlog` omitted from `_USAGE`" would pass unconditionally, checking nothing. The
    symbol that actually moves is the one to assert on.
 3. **Negative grep, scoped to the executable and instructional surface** — `skills/`, `lib/`,
-   `bin/`, `hooks/`, `methodology/`, `documentation/`: zero occurrences of `migration-scrub`,
+   `bin/`, `hooks/`, `methodology/`, `documentation/`, and (added at the runbook fold-in, because
+   the fold-in puts take-list files there) `docs/`, `templates/`: zero occurrences of `migration-scrub`,
    `adapter-mode`, `backlog_service_repo`, `prawduct-hook backlog`, and
    `backlog-service-migration-required`. **`.prawduct/` is excluded by design** — its backlog items
    and artifacts legitimately discuss all five strings (BKL-2Q7F names `migration-scrub.md` in its
    title), so an unscoped grep fails on correct content. The scoping is the point: what makes the
    migration reachable is a *skill a model can route into*, not a record describing one.
+
+   **Widening the scope to `docs/` and `templates/` is what caught the `skills/runbook/SKILL.md`
+   grant** — though note it would have been caught by the original `skills/` scope too, since that
+   is where the file lives. The genuine lesson is narrower and worth keeping: *adding take-list
+   files in a directory the grep does not cover silently shrinks the check.* The grep scope is a
+   function of the take-list, not a constant.
 4. Assert `skills/backlog/` holds exactly one file; assert `skills/backlog/SKILL.md` grants no Bash
-   tool.
+   tool. **Assert the same of `skills/runbook/SKILL.md`'s `backlog` grants** (item 2's marker) —
+   the two are the same invariant: in this tree, no skill may grant a `prawduct-hook backlog`
+   route, because the tree has no such subcommand.
 5. Full suite green. **No taken test may import any held module** — not just `lib.backlog`:
    `lib.backlog_probes`, `lib.briefing`, `lib.norm_probes` and the held fixtures/fakes all count.
    (The narrower `lib.backlog` wording missed `test_cutover_prose_coherence.py`, which imports
@@ -329,8 +439,10 @@ whole-file take.)
 6. A session opens against the tree and the briefing renders with no migration advisory.
 
 **Checkpoint B — after release-prep.** The delta from checkpoint A is exactly `VERSION`,
-`.claude-plugin/plugin.json`, `CHANGELOG.md`, `.prawduct/change-log.md`, and the files
-`regen-views` regenerates. Anything else in that delta is unintended.
+`.claude-plugin/plugin.json`, `pyproject.toml`, `CHANGELOG.md`, `.prawduct/change-log.md`,
+`.prawduct/project-state.yaml`, and the files `regen-views` regenerates. Anything else in that
+delta is unintended. (`pyproject.toml` and `project-state.yaml` were absent from this list until
+2026-07-21 — both were found by deriving the release runbook, not by reading the process doc.)
 
 ## Release mechanics
 
@@ -350,18 +462,26 @@ whole-file take.)
    on top of `R`. (Snapshotting at `M` also predates step 1's merge in the earlier draft, so it
    would have missed `fix/archive-scope-preservation-claim`'s own migration work.)
 4. Bump `VERSION` **and** `.claude-plugin/plugin.json` to `3.1.1` — this is the release trigger;
-   without it `autoUpdate` keeps the cached copy and the release does not ship.
-5. Change-log: the **eight** independent entries flip to `status=shipped` + `release=v3.1.1`. **The
+   without it `autoUpdate` keeps the cached copy and the release does not ship. Bump
+   `pyproject.toml` to the same number: it is at `3.0.3`, three releases stale, and
+   `docs/release-process.md` does not name it.
+5. Change-log: the **nine** independent entries flip to `status=shipped` + `release=v3.1.1`. **The
    other ten — every one of them migration work — stay release-pending and must not be flipped.**
-   Enumerate all eight against the table above; do not sample (REL-2N8K shipped 8 of 10 that way).
-   **One of the eight sits *below* the `release=v3.1.0` boundary**, so a positional sweep will miss
-   it — walk the table, not the file order.
+   Enumerate all nine against the table above; do not sample (REL-2N8K shipped 8 of 10 that way).
+   **One of the nine sits *below* the `release=v3.1.0` boundary**, so a positional sweep will miss
+   it — walk the table, not the file order. The release runbook's Phase 1 steps 2–3 prescribe
+   exactly that positional sweep; for this release they are **wrong**, and the runbook carries the
+   defect. Do not follow them here.
 6. Add the `## v3.1.1` headline to `CHANGELOG.md` (one paragraph, consumer-facing).
-7. `regen-views --check` → `regen-views`. Verify checkpoint B.
-8. Promote `develop` → `main` by tree-set per `docs/release-process.md` step 1 mechanics; the
+7. Set `.prawduct/project-state.yaml`'s `active_build_plan` to `null` — it points at
+   `build-plan-skills-cutover-awareness.md`, whose remaining work is leaving on
+   `feature/backlog-service`, so a shipped tree carrying that pointer misdirects every session that
+   opens against it.
+8. `regen-views --check` → `regen-views`. Verify checkpoint B.
+9. Promote `develop` → `main` by tree-set per `docs/release-process.md` step 1 mechanics; the
    `git diff --stat origin/develop HEAD` content-identical invariant must be empty. Tag `v3.1.1`,
    push.
-9. Confirm the version-delta banner on the next session.
+10. Confirm the version-delta banner on the next session.
 
 ## Carried forward, not resolved
 
@@ -375,3 +495,24 @@ whole-file take.)
   fictional `--apply`/dry-run contract, `provision` absent from every skill, the wildcard Bash grant,
   and the advisory pointing at all of it — are **v3.2.0 blockers** and belong on that plan's ship
   list. They are not fixed here; they are excluded from shipping.
+
+Added at the 2026-07-21 runbook fold-in:
+
+- **The plugin ships `"source": "./"`, so the repo *is* the distribution.** Two
+  `.claude/workflows/*.js` research scripts are held out of this release by hand. Hand-holding does
+  not scale and does not survive the next contributor: there is no packaging boundary, so every
+  repo-local file is shipped-by-default and the only defence is someone noticing. Filed as durable
+  work, not fixed here. Note the tree-set *deletes* the two files from `develop` — they survive on
+  `feature/backlog-service` and `feature/runbook-authoring`.
+- **`docs/release-process.md` is missing three things** the last two releases needed:
+  `CHANGELOG.md` (REL-3M7K, open), `pyproject.toml`, and clearing `active_build_plan`. Each was
+  rediscovered rather than read. This plan patches all three for v3.1.1 only.
+- **The release runbook prescribes a positional change-log sweep** (Phase 1 steps 2–3), which is
+  the exact method this plan's own derivation section proves wrong — it drops entries that merged
+  below the last release boundary. The runbook is otherwise sound and was used for this release;
+  that step needs correcting before anyone follows it unsupervised. It is also
+  `last_verified: null`, which is honest, and this release is the run that could set it.
+- **`skills/runbook/SKILL.md` grants `Bash(prawduct-hook backlog *)` on `develop` too.** Held out of
+  v3.1.1 as a partial take. On `develop` the grant resolves, so it is not a defect there — but the
+  skill's only backlog use is a `/prawduct:backlog add` slash-command invocation, which needs no
+  Bash grant from this file. Worth removing at source rather than re-patching every release.

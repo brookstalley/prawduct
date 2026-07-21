@@ -3,6 +3,51 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-07-21: runbook authoring — the framework pointed at runbooks in three places and never said how to write one
+
+<!-- prawduct: type=feature -->
+
+`templates/operational-spec.md` said "High-risk: runbooks, escalation procedures";
+`templates/observability-strategy.md`'s scenarios *are* runbook triggers; and
+`templates/unattended-operation/failure-recovery-spec.md` has a "## Recovery Procedures" heading.
+All three sent an author somewhere the framework had nothing to say. The owner reported that
+prawduct users need runbooks often and that generated quality ran "between bad and abysmal" — a
+capability gap, not a prompting problem.
+
+Ships `docs/runbook-authoring.md` (the canonical rules plus the evidence behind them),
+`templates/runbook.md` (the blank, cross-linked section-by-section into those rules), and
+`skills/runbook/SKILL.md` — `/prawduct:runbook` with `survey | new | review | list`. The three
+templates above now point at it, as does `skills/methodology/SKILL.md`, so the capability is
+reachable from where the need surfaces rather than only by name.
+
+**The guide was validated by use, not by reading.** An analytic audit argued the template should be
+inverted — minimal default, optional sections in a library — on the theory that a form-shaped
+template pulls authors into filling it in. Two subagents then authored real runbooks from the
+*unmodified* material and both deleted the inapplicable sections correctly and for the right
+reasons, one reporting the guide "stopped me from writing a bloated runbook, which is what I would
+otherwise have produced." The recommendation was refuted by the artifact it was about, and the
+trials surfaced findings reading had not: that ~150 of 1,277 lines carried all the binding
+instruction, and that a documented procedure contradicted itself in a way only a deriving reader
+would hit. The durable rule is in `learnings.md`.
+
+**Its first real artifact found two release-process defects.** `.prawduct/runbooks/cut-and-publish-a-plugin-release.md`
+was derived cold against the finished guide, and deriving it exposed what
+`docs/release-process.md` never says: `pyproject.toml` carries a version too — stale at `3.0.3`
+across v3.0.4, v3.0.5 and v3.1.0 — and `CHANGELOG.md` (the file the version-delta banner actually
+reads) is named nowhere in the process doc. The second is **REL-3M7K**, already open; the first is
+new. Both are patched for this release and neither is fixed at the source, which stays open work.
+
+**Stated gaps, not filled with convention.** Four research gap-searches — regulated environments,
+machine-vs-human audiences, irreversible operations beyond what was recovered, and empirical
+evidence for runbook field sets — died on a session limit and remain open. The guide marks those
+areas as unverified rather than covering them with plausible convention; the runbook it produced
+carries a `🚧 UNVERIFIED` marker over the version-bump rule for the same reason. Provenance and
+resume instructions are in `.prawduct/research/runbook-authoring/CHECKPOINT.md`.
+
+Retroactive parent requirement: **MET-7B3X**, filed at close-out rather than left implicit
+(Principle 6 — never silently *invent* a requirement). The gap was named during the work, in the
+CHECKPOINT's synthesis decision 5.
+
 ## 2026-07-20: a session waiting on reviewers is told to stay audible, not just to stop re-dispatching
 
 <!-- prawduct: type=fix -->
