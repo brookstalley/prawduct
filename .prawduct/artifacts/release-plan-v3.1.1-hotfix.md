@@ -282,9 +282,14 @@ release re-derives it. This plan patches the instance; REL-3M7K stays open for t
 so like `CHANGELOG.md` it is a release-prep edit, not a take-list entry. `docs/release-process.md`
 does not name it either. **This was found by *deriving* the release runbook from the guide this
 release ships** — not by reading the process doc, which has been read many times and does not
-contain the fact. That is the strongest available evidence for the capability being folded in, and
-it is why the runbook's own `🚧 UNVERIFIED` marker over the version-bump convention is honest
-rather than lazy: no written version policy exists in this repo.
+contain the fact. That is the strongest available evidence for the capability being folded in.
+
+(An earlier draft of this paragraph closed by praising the runbook's `🚧 UNVERIFIED` marker over the
+version-bump convention as "honest rather than lazy: no written version policy exists in this repo."
+**That closing claim was false** — `operational-spec.md` `## Direction` has carried a ratified
+versioning norm since 2026-07-17 — and it survived 220 lines below this document's own correction of
+the same error. Removed 2026-07-21. The marker was honest about the *major/minor tiers*, which
+genuinely are unratified practice; it was wrong about the conservative-bump rule, which binds.)
 
 `hooks/gates.json` is **unchanged** since `v3.1.0` (verified), so the banner announces no
 newly-active gate in this range and the file needs no handling either way.

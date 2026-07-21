@@ -104,7 +104,9 @@ probe or malformed state file never takes down a session.
 - **Context weight is a cost.** Oversized governance state (backlog, learnings, project-state)
   inflates the context every session and every review must carry — which is why the compaction
   thresholds above are a cost control, not just tidiness.
-- **Versioning practice (intended):** releases are versioned **conservatively** — small features are
-  patch bumps rather than minor-per-feature — to keep the version number meaningful. *(This is an
-  intended practice reflected in the release history; it is not yet codified as a written rule in
-  the repo. Codifying it is a candidate norm — see the ratification note in the change record.)*
+- **Versioning is conservative:** releases are versioned **conservatively** — small features are
+  patch bumps rather than minor-per-feature — to keep the version number meaningful. **Ratified
+  2026-07-17**; the binding form is `operational-spec.md` `## Direction`, and this line is
+  descriptive and tracks it. *(Corrected 2026-07-21 — it had still read "not yet codified as a
+  written rule … a candidate norm," which was false for four days and is one of the two sites that
+  let v3.1.1 infer a version convention instead of reading the norm.)*

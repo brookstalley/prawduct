@@ -58,9 +58,21 @@ Prawduct is a **Claude Code plugin**, and it *is* its own single-plugin, git-bac
   resolves the branch HEAD, not the latest tag) but are kept for human navigation.
 - `/prawduct:pr` handles feature→`develop` PRs; it is **not** the release vehicle — the
   develop→main promotion is a separate, deliberate step.
-- **Versioning is conservative** (intended practice): small features are patch bumps, so the
-  version stays meaningful rather than inflating minor-per-feature. *(Practice reflected in release
-  history; a ratification candidate, not yet a written rule.)*
+- **Versioning is conservative:** small features are patch bumps, so the version stays meaningful
+  rather than inflating minor-per-feature. **Ratified 2026-07-17 — see `## Direction` above, which
+  is the binding form; this line is descriptive and tracks it.** *(Corrected 2026-07-21: this line
+  had continued to read "a ratification candidate, not yet a written rule" for four days after the
+  norm was ratified forty lines above it. That contradiction is not cosmetic — it is what licensed
+  v3.1.1's release plan to infer a version convention from sampled `CHANGELOG.md` entries and
+  record a compliant patch bump as a "departure," and what let the shipped release runbook assert
+  that no written version policy exists. A stale description of a ratified norm is a norm that does
+  not bind.)*
+- **Major and minor tiers are practice, not ratified.** Observed: a break in gate semantics or
+  persisted state formats has been a major bump; a substantial new capability or a subsystem going
+  live has been a minor (v3.1.0 — structural coverage + norm lifecycle; v3.2.0 — planned for the
+  backlog-service go-live). This is read off release history, **not** a written rule, and is
+  deliberately left unratified — only the conservative-bump norm above binds. Do not present these
+  two tiers as ratified.
 
 ## Backup & Recovery
 

@@ -46,16 +46,25 @@ the only way back is another release.
 - [ ] The new version number, decided. The tag is `vX.Y.Z` (for example,
       `v3.2.0`); the version files carry it without the `v` (`3.2.0`).
 
-      **The rule is a ratified norm** — `.prawduct/artifacts/operational-spec.md`
-      `## Direction` (2026-07-17), pointer row in `project-preferences.md`:
-      *versioning is conservative — a small feature is a patch bump, not a
-      minor-per-feature.* A break in gate semantics or state formats is a major
-      bump. Everything else, including a small new capability, is a patch.
+      **Ratified norm** — `.prawduct/artifacts/operational-spec.md` `## Direction`
+      (2026-07-17), pointer row in `project-preferences.md`:
 
-      It is a **judgment norm**: there is no mechanical size test, so "small" is
-      your call. A departure in either direction — a minor bump for a small
-      change, or a patch for a large one — is a recorded decision, not a reflex.
-      Record it in the release plan or the change-log entry.
+      > Versioning is conservative: a small feature is a patch bump, not a
+      > minor-per-feature.
+
+      That is the whole binding rule. It is a **judgment norm** — no mechanical
+      size test, so "small" is your call. A departure in either direction is a
+      recorded decision, not a reflex: record it in the release plan or the
+      change-log entry.
+
+      > 🚧 **The major and minor tiers are NOT ratified — they are read off
+      > release history.** Observed practice: a break in gate semantics or
+      > persisted state formats has been a major; a substantial new capability or
+      > a subsystem going live has been a minor (v3.1.0; v3.2.0 is planned for the
+      > backlog-service go-live). Treat these as precedent, not rule, and ask the
+      > maintainer when the call is close. **Do not read the ratified norm as
+      > meaning "everything that is not a major is a patch"** — that would erase
+      > the minor tier and misnumber the next subsystem release.
 
 ---
 
