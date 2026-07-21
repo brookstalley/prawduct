@@ -232,22 +232,32 @@ No `tools/product-hook`, no `tools/lib/`, no committed `.claude/skills/*`, no `s
 
 ## Framework Layout
 
-Prawduct *is* the plugin (and its own git-backed marketplace):
+This repo hosts the plugin and its own git-backed marketplace. **Only `plugin/` is distributed** —
+a curated root of symlinks the installer dereferences, so the framework's own state and tests never
+reach a consumer's plugin cache (v3.1.1; the source was previously `"./"`, i.e. the whole repo).
 
 ```
 prawduct/
-├── .claude-plugin/
-│   ├── plugin.json             # name: prawduct, version (mirrors VERSION)
-│   └── marketplace.json        # single-plugin marketplace entry (plugin source "./", consumers pin ref: main)
-├── hooks/hooks.json            # SessionStart (banner + briefing + guidance digest), Stop (Critic + reflection gates)
-├── skills/                     # framework skills → /prawduct:* (onboard, doctor, critic, pr, migrate, building, …)
-├── bin/prawduct-hook           # runtime governance (Python; reads/writes only ${CLAUDE_PROJECT_DIR}/.prawduct/)
-├── lib/                        # governance + scaffolding/migration modules (init_product, migrate_plugin, …)
-├── methodology/ docs/ templates/  # bundled; read by skills/hooks via ${CLAUDE_PLUGIN_ROOT}
-├── tests/                      # framework tests (pytest) and evaluation scenarios
-├── VERSION
-└── .prawduct/                  # the framework's own state — it dogfoods its own plugin
+├── .claude-plugin/marketplace.json   # marketplace entry (plugin source "./plugin"; consumers pin ref: main)
+├── plugin/                     # ⇦ THE DISTRIBUTED PLUGIN — symlinks to everything below that ships
+│   └── .claude-plugin/plugin.json    # name: prawduct, version (mirrors VERSION)
+│
+├── hooks/hooks.json            # ships. SessionStart (banner + briefing + digest), Stop (Critic + reflection gates)
+├── skills/                     # ships. framework skills → /prawduct:* (onboard, doctor, critic, pr, runbook, …)
+├── bin/prawduct-hook           # ships. runtime governance (Python; reads/writes only ${CLAUDE_PROJECT_DIR}/.prawduct/)
+├── lib/                        # ships. governance + scaffolding/migration modules (init_product, migrate_plugin, …)
+├── methodology/ docs/ templates/ agents/   # ship; read by skills/hooks via ${CLAUDE_PLUGIN_ROOT}
+├── VERSION                     # ships — read at runtime by lib/core.py and lib/evidence.py
+│
+├── tests/                      # NOT distributed. framework tests (pytest) + evaluation scenarios
+├── documentation/              # NOT distributed. the framework's own requirements and specs
+└── .prawduct/                  # NOT distributed. the framework's own state — it dogfoods its own plugin
 ```
+
+`tests/test_plugin_packaging.py` pins that boundary in both directions: a required component going
+missing breaks governance for every consumer at once, and a leak puts another product's
+documentation in their cache. Neither failure is visible locally, because `--plugin-dir` resolves
+against the repo root.
 
 ## Architecture
 
