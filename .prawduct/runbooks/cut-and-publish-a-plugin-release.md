@@ -44,13 +44,18 @@ the only way back is another release.
 - [ ] You're on `develop` with nothing uncommitted and nothing unpushed:
       `git status -sb` prints `## develop...origin/develop` and no file lines.
 - [ ] The new version number, decided. The tag is `vX.Y.Z` (for example,
-      `v3.2.0`); the version files carry it without the `v` (`3.2.0`). The
-      convention in `CHANGELOG.md`: a break in gate semantics or state formats
-      is a major bump, a new capability is a minor, everything else is a patch.
+      `v3.2.0`); the version files carry it without the `v` (`3.2.0`).
 
-      > 🚧 **UNVERIFIED — no written version policy exists in this repo.** That
-      > rule is read off past `CHANGELOG.md` entries. Ask the maintainer if this
-      > release is a judgment call.
+      **The rule is a ratified norm** — `.prawduct/artifacts/operational-spec.md`
+      `## Direction` (2026-07-17), pointer row in `project-preferences.md`:
+      *versioning is conservative — a small feature is a patch bump, not a
+      minor-per-feature.* A break in gate semantics or state formats is a major
+      bump. Everything else, including a small new capability, is a patch.
+
+      It is a **judgment norm**: there is no mechanical size test, so "small" is
+      your call. A departure in either direction — a minor bump for a small
+      change, or a patch for a large one — is a recorded decision, not a reflex.
+      Record it in the release plan or the change-log entry.
 
 ---
 
@@ -66,13 +71,26 @@ the only way back is another release.
    `release=v...`.
 
 2. Find the boundary — the topmost line whose tag carries `release=`. That's
-   the previous release; every tag line *above* it ships in this one.
+   the previous release.
 
    **Expected:** one line number and a version, like
    `745:<!-- prawduct: type=fix | release=v3.1.0 | status=shipped -->`.
 
-3. Append ` | release=vX.Y.Z | status=shipped` to every tag line above that
-   boundary, keeping the keys already there and the ` | ` separator:
+   > ⚠️ **The boundary narrows the search. It does NOT define the set — do not
+   > flip "everything above it" (REL-7D4X).** An entry lands where it merged,
+   > not above the last release, so a genuinely unreleased entry can sit
+   > *below* the boundary and a positional sweep drops it silently. This
+   > happened at v3.1.1: `2026-07-14: Stale remote-base diagnostics` sits below
+   > and had to be flipped.
+   >
+   > **The sound test is per candidate:** an entry is release-pending iff it
+   > carries no `release=` tag **and** its code is absent from the previous
+   > release's tree (`git show <prev-tag>:<path>`). Walk every untagged entry
+   > and apply it. Entries predating the tag convention (roughly pre-2026-06)
+   > are untagged but shipped — the code test is what separates them.
+
+3. Append ` | release=vX.Y.Z | status=shipped` to every tag line that passed the
+   step-2 test, keeping the keys already there and the ` | ` separator:
 
    ```diff
    - <!-- prawduct: type=feature | scope=skills-cutover-awareness | chunks=04 -->

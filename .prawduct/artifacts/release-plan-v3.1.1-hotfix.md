@@ -67,11 +67,25 @@ What-ships table already applies. Consequences, each carried into the sections b
 left here: **+10 changed paths** (96 non-`.prawduct`, not 86), **a ninth shipping change-log entry**,
 **a fourth partial-take file**, and **two new grep scopes** (`docs/`, `templates/`).
 
-**The version stays v3.1.1, and that is a departure worth naming.** A new user-invocable skill is a
-minor bump by the convention `CHANGELOG.md` records. The owner chose the patch number anyway
-(2026-07-21) to leave `v3.2.0` bound to the backlog-service go-live, whose plan cites it in ~15
-places. Recorded as a deliberate exception, not an oversight — the go-live plan's A2 decision is
-unchanged.
+**The version stays v3.1.1, and that is the norm, not a departure.** An earlier draft of this
+paragraph called it "a departure worth naming" on the grounds that a new user-invocable skill is a
+minor bump "by the convention `CHANGELOG.md` records." **That was wrong, and the error is
+instructive.** The convention was inferred from reading past `CHANGELOG.md` entries; the actual rule
+is a **ratified norm** in `operational-spec.md` `## Direction` (2026-07-17), with a pointer row in
+`project-preferences.md`:
+
+> **Versioning is conservative: a small feature is a patch bump, not a minor-per-feature.**
+> A departure (a minor bump for a small change, or the reverse) is a recorded decision, not a reflex.
+> Status: steady-state. Judgment norm — no mechanical size test.
+
+So v3.1.1 is the *compliant* number for one small skill, and nothing here needs recording as an
+exception. Keeping `v3.2.0` bound to the go-live is a happy consequence, not the justification.
+
+This is Principle 24 (Retrieval Over Generation) failing in its most ordinary form: a plausible
+convention was *generated* from sampled evidence when one grep of the governing artifact would have
+returned the binding rule. It cost an unnecessary owner decision — the owner was asked to choose
+between "semver-correct minor" and "conservative patch" when the norm already prescribed the patch.
+Surfaced by the Critic (sustainability, BLOCKING) before the release shipped.
 
 **Also folded in: two release-prep steps this plan was missing**, found by *deriving*
 `.prawduct/runbooks/cut-and-publish-a-plugin-release.md` from the guide this release ships.
