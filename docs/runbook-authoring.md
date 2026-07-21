@@ -9,13 +9,21 @@ you may be the one who executes it, but the runbook's reason for existing is tha
 tired person who did not build this system has to make it work. Every rule below descends from
 that reader.
 
-**How to use this guide.** Read the [Invariants](#the-invariants) before authoring — they are the
-rules that hold regardless of technology. Then apply [Proportionality](#proportionality) to decide
-how much procedure this task warrants, [Anatomy](#anatomy) for what goes in it,
-[Writing rules](#writing-rules) for the step-level craft, and the
-[Authoring protocol](#authoring-protocol-when-a-model-writes-the-runbook) for the parts that are
-specific to a model doing the writing. Before you call it done, run the
-[rejection criteria](#self-review-rejection-criteria) against your own output.
+**How to use this guide.** Read the [Invariants](#the-invariants) first — they hold regardless of
+technology. Then work in this order:
+
+1. [Proportionality](#proportionality) — how much procedure this task actually warrants
+2. [Choosing the execution form](#choosing-the-execution-form) — read-do or do-confirm
+3. [Anatomy](#anatomy) — what goes in it
+4. [Writing rules](#writing-rules) and [Branching](#branching-and-steps-that-cannot-be-undone) — the
+   step-level craft, and what changes when a step cannot be undone
+5. [How the runbook gets found](#how-the-runbook-gets-found) — naming, indexing, alert linkage
+6. [Authoring protocol](#authoring-protocol-when-a-model-writes-the-runbook) — the parts specific to
+   a model doing the writing, above all *derive commands, never generate them*
+
+Before you call it done, run the [rejection criteria](#self-review--rejection-criteria) against your
+own output. If you are short on time, the two rules that recover most of the value are: **every
+verification step names an observed value**, and **every command is derived from the repository**.
 
 **Evidence markers.** This guide distinguishes what is known from what is merely repeated:
 

@@ -11,8 +11,17 @@ routine maintenance, on-call diagnostics. EXCLUDES onboarding docs, architecture
 local dev setup. Deliverable this pass = **the `docs/` guide only** (no template, no skill —
 those are a proposed follow-on).
 
-**Status:** research passes 1 & 2 COMPLETE (results below). Passes 3 & 4 were in flight at
-checkpoint time. Artifact not yet written.
+**Status: COMPLETE.** All four research passes landed or were salvaged. Artifact written and
+committed at `docs/runbook-authoring.md`.
+
+- Pass 3 (verification): 57/61 agents; 8 claims confirmed, 11 killed. Verdicts in
+  `pass3-verdicts-final.txt`. Two kills were live defects in the committed guide (the
+  package-hallucination consensus claim and the rationale-experiment scope) — both corrected.
+- Pass 4: died before returning, but **all 8 investigations were recovered from its journal** —
+  see `pass4-salvage-8-investigations.txt`. Its adversarial *challenge* phase did not run, so those
+  findings are marked ○ in the artifact.
+- Still open: the 4 gap searches (irreversible ops, regulated, machine-vs-human, anatomy evidence)
+  died on the session limit. Scripts are saved and resumable if ever wanted.
 
 ---
 
@@ -366,14 +375,19 @@ analogical extrapolation and the artifact must say so rather than implying measu
 
 ---
 
-## NEXT STEPS
+## OUTCOME
 
-1. Collect passes 3 & 4 (resume via the run IDs above if the notifications were lost).
-2. Promote verified pass-3 claims out of the PROVISIONAL section; discard whatever was killed.
-3. Write `docs/` artifact. Planned shape:
-   what a runbook is → the reader model → the invariants → anatomy → writing rules →
-   branching & irreversible steps → domain adaptation → maintenance/exercise →
-   LLM authoring protocol (derivation, verification, dual compatibility) →
-   self-review rejection criteria → evidence appendix (evidenced vs doctrine vs refuted).
-4. File the backlog parent item.
-5. Critic review + reflection (governance).
+`docs/runbook-authoring.md` — committed. Sections: what a runbook is · which to write first · how it
+gets found · the reader model · proportionality tiers · 8 invariants · execution form and memory
+items · anatomy · writing rules · branching and irreversible steps · domain adaptation · maintenance
+and rehearsal · authoring protocol for a model · 26-point self-review · evidence appendix.
+
+## IF RESUMING
+
+The four dead gap searches are the only real remainder, and the artifact is honest about the gap.
+Resume with:
+`Workflow({scriptPath: ".prawduct/research/runbook-authoring/raw/runbook-claim-verify-wf_5f51f52d-5a5.js", resumeFromRunId: "wf_5f51f52d-5a5"})`
+— completed agents replay from cache, so only the 4 failed gap agents re-run.
+
+A natural follow-on, deliberately out of scope this pass: `templates/runbook.md` and a
+`/prawduct:runbook` skill that applies this guide to a specific repo.
