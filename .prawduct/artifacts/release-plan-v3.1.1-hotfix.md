@@ -24,8 +24,30 @@ Paused there deliberately at owner request: step 9 is the first irreversible, ou
 | 6 `CHANGELOG.md` | ✅ | `## v3.1.1` headline |
 | 7 `active_build_plan: null` | ✅ | |
 | 8 `regen-views` + checkpoint B | ✅ | `c4fd21a`; delta is exactly the 8 expected files |
+| 8b **packaging boundary** (GOV-4H7T) | ✅ | added after the Critic pass — see below |
 | 9 promote, tag, push | ⏸ | **awaiting owner** |
 | 10 confirm banner | ⏸ | next session after 9 |
+
+**Step 8b — scope added mid-release, deliberately.** The Critic's Principle 10 finding (two `.js`
+files held by hand while 256 KB of raw research shipped) led to the owner stating a requirement this
+plan had not carried: *prawduct's internal requirements and documentation must not land in consumer
+plugin caches — not secret, but confusing to models working on consuming projects.* The owner
+explicitly rejected deferring it as pre-existing: **"our whole ethos is to fix what you find, and
+this may have a material impact on prawduct's performance for users."** Recorded because it changed
+the release's scope after construction was verified, which is exactly the kind of decision that
+looks arbitrary six weeks later.
+
+The fix is `plugin/`, a curated plugin root of relative symlinks, with `marketplace.json` pointing
+at it. Verified by **real install into an isolated `CLAUDE_CONFIG_DIR` from a fresh clone** — 120
+files / 1.8 MB, down from 203 files / ~6.7 MB — not by reading the docs. Two findings only the
+install produced: `VERSION` must ship (read at runtime by `lib/core.py:36` and `lib/evidence.py:85`,
+so a code-directories-only curation would have broken evidence writes for everyone), and a
+local-path install copies untracked working-tree files, putting 132 `.pyc` files into the cache
+including `lib/backlog/__pycache__` — compiled bytecode of the modules this release withholds. Every
+check run before that one queried *git* and was structurally blind to it.
+
+`tests/test_plugin_packaging.py` pins the boundary and is mutation-tested against three regressions.
+Ten change-log entries now ship rather than nine.
 
 **Nothing is published.** `origin/develop` is still `43dda9c` and `origin/main` is still `b08c301`
 (= `v3.1.0`). The only thing pushed is `feature/backlog-service`, which is purely additive. Every
