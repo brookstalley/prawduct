@@ -277,11 +277,11 @@ Three layers:
 
 3. **Structural enforcement** — Python hooks that enforce what principles alone can't guarantee: session briefing with staleness detection on start, independent Critic review and reflection gates on stop, compliance canary checks for common governance failures. Zero external dependencies.
 
-See [`docs/principles.md`](docs/principles.md) for the full principles with rationale and review perspectives.
+See [`docs/principles.md`](plugin/docs/principles.md) for the full principles with rationale and review perspectives.
 
 ## Recent Changes
 
-Full release notes are in [CHANGELOG.md](CHANGELOG.md). Two major releases define the current architecture:
+Full release notes are in [CHANGELOG.md](plugin/CHANGELOG.md). Two major releases define the current architecture:
 
 ### 3.0 — Review evidence as a composable fact store
 - Review results are **append-only facts** in a store shared by every worktree of a clone — not single-slot, per-worktree files judged by modification time and a mode label
@@ -296,9 +296,9 @@ Full release notes are in [CHANGELOG.md](CHANGELOG.md). Two major releases defin
 - **Version-delta banner** (shows what changed + newly-active gates on update); marketplace `autoUpdate` for always-latest
 - **`/prawduct:migrate`** — one-command, reversible v1 file-sync → plugin cutover (see [MIGRATION](documentation/MIGRATION.md))
 - Plugin-native onboarding/scaffolding via `/prawduct:onboard` (health-check/repair stays `/prawduct:doctor`)
-- Gitflow release model (see [docs/release-process.md](docs/release-process.md))
+- Gitflow release model (see [docs/release-process.md](documentation/release-process.md))
 
-Between these two, the **2.1–2.3** line hardened the framework without changing its shape: reviews became proportional, observable (a governance ledger + `review-stats`), and resilient (a persistence redesign so a coordinator review can't be silently lost); the backlog grew lifecycle stages and multi-agent claims; API design joined the cross-cutting concerns; and dozens of gate-soundness and session hot-path fixes landed. See the [CHANGELOG](CHANGELOG.md) for the full stream.
+Between these two, the **2.1–2.3** line hardened the framework without changing its shape: reviews became proportional, observable (a governance ledger + `review-stats`), and resilient (a persistence redesign so a coordinator review can't be silently lost); the backlog grew lifecycle stages and multi-agent claims; API design joined the cross-cutting concerns; and dozens of gate-soundness and session hot-path fixes landed. See the [CHANGELOG](plugin/CHANGELOG.md) for the full stream.
 
 ## License
 

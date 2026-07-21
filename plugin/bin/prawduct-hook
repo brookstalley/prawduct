@@ -3499,7 +3499,8 @@ _USAGE = (
 
 
 # --- Work model: undocumented-requirement catch (build plan: work-model) -----
-# The external enforcement surface for the work model (docs/work-model.md). A
+# The external enforcement surface for the work model (documentation/work-model.md,
+# prawduct-internal -- not shipped with the plugin). A
 # UserPromptSubmit hook surfaces, pre-turn, salient terms a user introduces that
 # NO governing artifact covers — the signal a new requirement may be entering
 # undocumented. The catch logic is the pure lib/work_model_index.py (Chunk 1);

@@ -57,7 +57,7 @@ not ship.** Always bump `version` in `plugin/.claude-plugin/plugin.json` (and `p
 >
 > **The relative path is `"./plugin"`, not `"./"` (v3.1.1).** `"./"` distributed the entire
 > repository, putting prawduct's own backlog, learnings, build plans, tests and internal
-> requirements into every consumer's plugin cache. `plugin/` is a curated root of relative symlinks
+> requirements into every consumer's plugin cache. `plugin/` is a curated root holding the distributed files directly (real files, never symlinks -- a symlink farm installs inert on a core.symlinks=false checkout)
 > holding only what consumers run; the installer dereferences them into real content. The SSH
 > argument above is unaffected — both are relative paths. `tests/test_plugin_packaging.py` pins the
 > boundary; see **GOV-4H7T** for why there is no exclusion mechanism to use instead.

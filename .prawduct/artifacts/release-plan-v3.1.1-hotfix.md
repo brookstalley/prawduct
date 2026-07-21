@@ -37,9 +37,13 @@ this may have a material impact on prawduct's performance for users."** Recorded
 the release's scope after construction was verified, which is exactly the kind of decision that
 looks arbitrary six weeks later.
 
-The fix is `plugin/`, a curated plugin root of relative symlinks, with `marketplace.json` pointing
-at it. Verified by **real install into an isolated `CLAUDE_CONFIG_DIR` from a fresh clone** — 120
-files / 1.8 MB, down from 203 files / ~6.7 MB — not by reading the docs. Two findings only the
+The fix is `plugin/`, a curated plugin root holding the distributed files as **real files**, with
+`marketplace.json` pointing at it. A relative-symlink farm was built first and rejected on evidence:
+with `core.symlinks=false` (the Git-for-Windows default) every entry checks out as a few-byte text
+stub and the plugin installs inert. Moving the files for real costs a wide diff and buys
+correctness on every platform. Verified by **real install into an isolated `CLAUDE_CONFIG_DIR` from a fresh clone** — **109
+files / 1.7 MB**, down from 203 files / ~6.7 MB — not by reading the docs. (An intermediate
+measurement of 120 / 1.8 MB predates the `docs/` curation and should not be quoted.) Two findings only the
 install produced: `VERSION` must ship (read at runtime by `lib/core.py:36` and `lib/evidence.py:85`,
 so a code-directories-only curation would have broken evidence writes for everyone), and a
 local-path install copies untracked working-tree files, putting 132 `.pyc` files into the cache

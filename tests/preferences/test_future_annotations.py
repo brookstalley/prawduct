@@ -26,8 +26,8 @@ EXPLICIT_EXCEPTIONS = {
 
 def _python_files() -> list[Path]:
     files: list[Path] = []
-    for root in ("lib", "hooks"):
-        for path in (REPO_ROOT / root).rglob("*.py"):
+    for root, base in (("lib", REPO_ROOT), ("hooks", REPO_ROOT), ("tests", REPO_ROOT.parent)):
+        for path in (base / root).rglob("*.py"):
             if "__pycache__" in path.parts:
                 continue
             if path.name == "__init__.py":
@@ -70,7 +70,7 @@ class TestFutureAnnotations:
     def test_every_implementation_file_imports_future_annotations(self):
         violations: list[str] = []
         for path in _python_files():
-            rel = path.relative_to(REPO_ROOT).as_posix()
+            rel = path.relative_to(REPO_ROOT.parent).as_posix()  # repo-relative: files span plugin/ and tests/
             if rel in EXPLICIT_EXCEPTIONS:
                 continue
             tree = ast.parse(path.read_text(), filename=str(path))

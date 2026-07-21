@@ -188,7 +188,7 @@ def test_every_top_level_directory_is_shipped_or_explicitly_excluded(shipped: se
         if d in NOT_DISTRIBUTED_DIRS:
             continue
         assert any(p.startswith(f"{d}/") for p in shipped), (
-            f"{d}/ is tracked at the repo root but nothing under it ships. Either symlink it into "
+            f"{d}/ is tracked at the repo root but nothing under it ships. Either move it under "
             f"plugin/, or add it to NOT_DISTRIBUTED_DIRS to record that the exclusion is deliberate."
         )
 
@@ -207,11 +207,15 @@ def test_no_shipped_file_points_at_an_unshipped_plugin_root_path():
 
     pattern = re.compile(r"\$\{CLAUDE_PLUGIN_ROOT\}/([A-Za-z0-9_.@/-]+)")
     shipped_tops = {p.name for p in PLUGIN_ROOT.iterdir()} | {".claude-plugin"}
+    # Scan the SHIPPED files -- everything tracked under plugin/. An earlier version iterated
+    # `_tracked(".")` and skipped anything whose top-level dir was in NOT_DISTRIBUTED_DIRS; once
+    # the files moved into plugin/ (which is in that set) it scanned the exact COMPLEMENT of the
+    # shipped set -- five repo-root files, none of which ship -- so it could no longer catch the
+    # defect its own docstring describes. (Critic, 2026-07-21.)
+    scanned = _tracked("plugin")
+    assert len(scanned) > 50, f"expected to scan the shipped tree, got {len(scanned)} files"
     offenders: list[str] = []
-    for rel in _tracked("."):
-        top = rel.split("/", 1)[0]
-        if top in NOT_DISTRIBUTED_DIRS:
-            continue
+    for rel in scanned:
         try:
             text = (REPO / rel).read_text(encoding="utf-8")
         except (UnicodeDecodeError, OSError):

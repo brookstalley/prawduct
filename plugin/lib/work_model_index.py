@@ -1,7 +1,7 @@
 """Work model — vocabulary index + orphan-term detection (pure logic).
 
-The "catch" behind the work model's external enforcement (``docs/work-model.md``
-§3b; ``docs/work-model-delta.md``): a deterministic check that surfaces, pre-turn,
+The "catch" behind the work model's external enforcement (``documentation/work-model.md``
+§3b; ``documentation/work-model-delta.md`` -- prawduct-internal, not distributed): a deterministic check that surfaces, pre-turn,
 any salient term in a user's message that NO governing artifact covers — the
 signal that a new requirement may be entering undocumented (tripwire #1).
 
@@ -11,7 +11,7 @@ builds on these functions. Keeping the logic here makes the keystone question �
 *does the deterministic diff actually catch a real new-concept prompt?* —
 unit-testable in isolation, before any live-hook risk.
 
-Honest scope (independent review, ``docs/work-model-review.md``): this is an
+Honest scope (independent review, ``documentation/work-model-review.md`` -- prawduct-internal): this is an
 *unfamiliar-token* tripwire. It reliably surfaces content-word terms absent from
 the artifacts; it is weaker on new concepts phrased entirely in very common
 words. The stoplist below is genuine English function words ONLY — deliberately

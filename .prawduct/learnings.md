@@ -108,7 +108,7 @@ A claim-conflict test stamped the holder's claim via `core.claim(now=NOW)` (fixe
 
 ## When you disable a mechanism at its wiring point but keep its implementation, reconcile the retained code's self-descriptions in the same change — or its prose reads as false
 
-## When verifying a framework-repo `lib/`/`bin/` change by running the hook, invoke the repo-local `python3 bin/prawduct-hook` — the bare `prawduct-hook` on PATH is the installed plugin cache, not your working tree
+## When verifying a framework-repo `lib/`/`bin/` change by running the hook, invoke the repo-local `python3 plugin/bin/prawduct-hook` — the bare `prawduct-hook` on PATH is the installed plugin cache, not your working tree
 
 ## After a clean cumulative (0 blocking/0 warning), NOTEs are advisory — don't chase cosmetic ones; fixing them reopens the coverage gate on judgeable governance files and forces a no-value review pass
 
