@@ -719,10 +719,9 @@ signal.
   situation and discard in a second: `**If <what you are seeing or doing>:** → <where to go>`.
   This is the same condition-first rule as [branching](#branching-and-steps-that-cannot-be-undone),
   and it applies here for the same reason — a reader must be able to reject an entry before
-  reading its explanation. **Do not explain the other procedure, and never narrate a documentation
-  defect.** "Doc A's step 1 contradicts doc A's section 4, and section 4 wins" is a paragraph the
-  reader must parse to extract one instruction. Name what they would observe, say where to go, and
-  put the diagnosis somewhere it belongs — a comment, an issue, or a fix to the other document.
+  reading its explanation. **Do not explain the other procedure** — name what the reader would
+  observe and where to go, and keep the diagnosis out of it entirely
+  ([Helpfulness at the wrong moment](#writing-rules)).
 - **Prerequisites** — access, credentials, tools (with versions), physical items and consumables,
   required authorization level, and network position. Written as a checkable list, because
   discovering a missing credential at step 8 costs the whole procedure. Military technical-manual
@@ -799,6 +798,10 @@ them, and not a claim that anyone is legally bound by them.
   `2.3.4` has stopped executing and started decoding. Being *technically* resolvable is not the
   bar; being unmistakable at a glance is. Bind it at first use and then use it consistently, so
   the reader never meets the same placeholder twice with two different explanations.
+- **Where one value appears in two forms, show both filled in — never ask for the subtraction.**
+  "`vX.Y.Z`, which the files carry without the `v`" makes the reader derive the second form from
+  the first and hold the difference. Write both: `vX.Y.Z` for the tag (`v3.2.0`), `X.Y.Z` in the
+  files (`3.2.0`) — and say it where the second form is first typed, not in the opening.
 - Never abbreviate a destructive command for readability.
 - **A repeated edit needs its instance list and one worked example.** "Do this to every entry above
   line 745" is not executable: the reader cannot see how many there are, cannot tell when they are
@@ -860,6 +863,26 @@ generalizes to everything the unfamiliar reader needs.
   a recovery path; the reversible majority — where a first-timer actually gets stuck — gets one
   line at the phase boundary. That line is also the suspend-and-resume cue whose absence the
   [Texas City](#the-procedure-itself-is-a-documented-cause-of-major-outages) row records as fatal.
+
+**Helpfulness at the wrong moment**
+
+Three habits look like care and read as noise. Each is an author adding something true.
+
+- **Deliver each fact where it is used, not where it first becomes true.** A distinction that
+  matters at step 12 belongs at step 12. Put it in the opening and the reader carries it for eleven
+  steps — precisely the working-memory load [the reader model](#the-reader-you-are-writing-for)
+  says you cannot spend. It also forces a forward reference: naming *"the three files you'll edit"*
+  before the reader knows what they are teaches nothing and reads like something they missed.
+- **Never explain your document's relationship to another document.** *"This follows that doc's
+  mechanics section rather than the numbering above it"* is you defending a derivation to a
+  reviewer. Your reader is executing, not auditing: they cannot see the other document, cannot
+  resolve "above it", and would gain nothing if they could. Point at a source for depth; never
+  argue with one.
+- **The action line is the action.** The definition of a term, the edge case, the exception, the
+  thing not to disturb — each goes below it or becomes its own step. An action sentence that needs
+  a subordinate clause to be correct is hiding a second thing inside it, and one carrying a lookup,
+  a definition, an action, a scope qualifier, an edge case *and* a prohibition is six things,
+  however grammatical it reads.
 
 **Warnings**
 - **A sentence describing destruction *is* a warning, and takes warning formatting.** "This
@@ -1375,6 +1398,9 @@ R6. Read it as someone with 30 seconds and a page alert. Can they start acting i
 2. Can a reader who has never seen this system execute every step without asking a question — *and*
    can a reader who does this monthly skip everything that newcomer needed? If the second one has
    to wade, you wrote a tutorial.
+2a. Is every fact placed where it is used? Look for anything introduced early and not needed until
+    much later, any forward reference to something not yet named, any value the reader must derive
+    from another, and any sentence explaining this document's relationship to a different one.
 3. Is every placeholder resolvable from information the runbook itself provides, *and shown filled
    in with a real example where it first appears*? `vX.Y.Z` without a `v3.1.1` next to it fails.
 

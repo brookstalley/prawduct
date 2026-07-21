@@ -203,6 +203,18 @@ triggers:                  # every signal that should lead a responder here
        - NEVER HEDGE. "You may want to", "usually", "if appropriate" — each
          one is a missing branch (write the IF), a missing number (derive it),
          or an unmarked gap (mark it 🚧 UNVERIFIED). Never a fourth thing.
+       - HELPFULNESS AT THE WRONG MOMENT reads as noise. Three habits:
+         · A fact goes where it is USED, not where it first becomes true. A
+           detail that matters at step 12 belongs at step 12 — put it up top
+           and the reader carries it for eleven steps, and you have written a
+           forward reference to something they haven't met yet.
+         · NEVER explain this document's relationship to another document.
+           "This follows that doc's mechanics, not the checklist above it" is
+           you defending a derivation to a reviewer. They are executing.
+         · THE ACTION LINE IS THE ACTION. Definitions, edge cases, exceptions
+           and "leave X alone" go below it or become their own step. One
+           sentence carrying a lookup + a definition + an action + a scope
+           qualifier + an edge case is five things, however grammatical.
        - BOTH READERS, ONE PAGE. The substitute covering for someone sick and
          the person who runs this monthly read the same lines. Anything the
          newcomer needs goes on ONE adjacent line the expert skips — never a
