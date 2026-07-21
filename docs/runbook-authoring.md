@@ -460,13 +460,19 @@ technically needed only later, and therefore drifts to the end, and therefore ge
 > backup that recovery will depend on, and the capture of current state needed for rollback. Order
 > by consequence first, convenience second.
 
-**Read your failure branches backwards to find misplaced preconditions.** If any step's *If not*
-amounts to *"the irreversible thing you already did was done under the wrong conditions"*, that
-step's check is in the wrong place — move it ahead of the point of no return. This is easy to miss
-because a precondition tends to get written where its *command* naturally sits rather than where
-its *consequence* falls, and the draft reads fine forwards: each step is correct, and only the
-ordering is fatal. A check that can reveal the procedure should never have run must run before the
-procedure cannot be stopped.
+**Every condition that would make the irreversible step *wrong* is verified before it, in its own
+step.** Work backwards from the point of no return and list what must be true for it to be
+*correct* — not merely what must be true to run it. Each of those gets its own earlier check.
+
+This is easy to miss because a precondition tends to get written where its *command* naturally sits
+rather than where its *consequence* falls, and the draft reads fine forwards: every step correct,
+only the ordering fatal.
+
+> **Deleting a late failure branch is not the fix.** If you find an *If not* that amounts to *"what
+> you already did was done under the wrong conditions"*, you have found a **missing early check**,
+> not a surplus branch. Removing it moves the hazard from late to invisible, which is worse — the
+> reader now meets a bare error message with nothing to tell them what it means or that they are
+> already past the point where it mattered.
 
 ### 3. State the abort criteria before the point of no return ◆
 
@@ -1163,6 +1169,13 @@ Derive from, in order of preference:
    > replace this line before this runbook is relied upon.
 ```
 
+A gap marker obeys the same economy as everything else. Name **what is unverified**, **what the
+reader does about it right now**, and **who can close it** — and stop. Not the evidence that it is
+a gap: which files you searched, which past change failed to touch it, how you concluded it was
+stale. A marker reciting how you established the gap has become a research note sitting in the
+middle of a procedure, and it lands on someone deciding whether it is safe to continue. Three lines
+is generous.
+
 A visible gap is a working runbook with a hole. A plausible invented command is a broken runbook
 that looks finished — and it is the more expensive of the two by a wide margin. Prawduct's Principle
 5 (Honest Confidence) is not a style preference here; it is the difference between a document that
@@ -1319,9 +1332,10 @@ R6. Read it as someone with 30 seconds and a page alert. Can they start acting i
 
 **Structure**
 19. One action per step — did you leave any "and then"?
-20. Are critical and irreversible steps early rather than buried? Read every *If not* branch that
-    sits **after** the point of no return: if any of them means "what you already did was done
-    under the wrong conditions", that check belongs before it.
+20. Are critical and irreversible steps early rather than buried? Work backwards from the point of
+    no return and list every condition that would make it *wrong*: is each verified in its own
+    earlier step? A late failure branch means a missing early check — deleting the branch is not
+    the fix.
 21. Under ~20 steps, or split into phases with checkpoints?
 22. Does the header let a reader confirm in seconds that they are in the right document — including
     when *not* to use it?
