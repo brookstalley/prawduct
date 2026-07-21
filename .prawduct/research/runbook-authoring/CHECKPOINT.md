@@ -15,10 +15,10 @@ those are a proposed follow-on).
 committed at `docs/runbook-authoring.md`.
 
 - Pass 3 (verification): 57/61 agents; 8 claims confirmed, 11 killed. Verdicts in
-  `pass3-verdicts-final.txt`. Two kills were live defects in the committed guide (the
+  `raw/pass3-verdicts-final.txt` (gitignored; local only). Two kills were live defects in the committed guide (the
   package-hallucination consensus claim and the rationale-experiment scope) — both corrected.
 - Pass 4: died before returning, but **all 8 investigations were recovered from its journal** —
-  see `pass4-salvage-8-investigations.txt`. Its adversarial *challenge* phase did not run, so those
+  see `raw/pass4-salvage-8-investigations.txt` (gitignored; local only). Its adversarial *challenge* phase did not run, so those
   findings are marked ○ in the artifact.
 - Still open: the 4 gap searches (irreversible ops, regulated, machine-vs-human, anatomy evidence)
   died on the session limit. Scripts are saved and resumable if ever wanted.

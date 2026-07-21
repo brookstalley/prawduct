@@ -452,7 +452,7 @@ using an unverified figure as load-bearing evidence, not picking the wrong one.*
 ## 2026-07-19: SessionStart banner names which plugin code is loaded (BRF-7Q4M)
 
 <!-- prawduct: type=feature | release=v3.1.1 | status=shipped -->
-<!-- Statusless = release-pending once develop→main ships. No scope= tag: a
+<!-- Shipped in v3.1.1 (2026-07-21). No scope= tag: a
      single-surface feature with no build plan, so there is no ## Status to regenerate. -->
 
 The identity banner printed only `═══ Prawduct v3.1.0 (plugin) ═══`. Because `VERSION` and
@@ -509,7 +509,7 @@ Files:
 ## 2026-07-19: verify-chunk-refs stops flagging `path:line` citations and same-chunk `new` re-references
 
 <!-- prawduct: type=fix | release=v3.1.1 | status=shipped -->
-<!-- Statusless = release-pending once develop→main ships. No scope= tag: a plain
+<!-- Shipped in v3.1.1 (2026-07-21). No scope= tag: a plain
      two-item bugfix with no build plan, so there is no ## Status to regenerate. -->
 
 Two `verify-chunk-refs` false-positive variants in `lib/buildplan_refs.py`, closing `BLD-4V7Q` and
@@ -564,7 +564,7 @@ descriptive, so it now records the absence; whether building.md *should* carry t
 ## 2026-07-19: Salvage stranded work from the removed backlog-service worktree branch (worktree-salvage)
 
 <!-- prawduct: type=fix | release=v3.1.1 | status=shipped -->
-<!-- Statusless = release-pending once develop→main ships. No scope= tag: this is a
+<!-- Shipped in v3.1.1 (2026-07-21). No scope= tag: this is a
      plan-less fix branch, and a statusless scope must resolve to a build-plan file
      whose ## Status can be regenerated (lib/views.py). -->
 
@@ -641,7 +641,7 @@ markdown, not the Issues that are now system-of-record. This repoints it.
 ## 2026-07-18: Stop hook surfaces the silent worktree `.prawduct/` redirect (stop-worktree-redirect-note)
 
 <!-- prawduct: type=feature | release=v3.1.1 | status=shipped -->
-<!-- Statusless: observability feature on develop, ahead of the batched develop→main release.
+<!-- Shipped in v3.1.1 (2026-07-21); was statusless on develop ahead of the batched release.
      No scope= tag (dropped 2026-07-19): a statusless scope must resolve to a build-plan file
      whose ## Status can be regenerated, and this shipped as a plan-less branch — the tag made
      regen-views fail closed, and it writes NO views on any error. -->
@@ -1317,7 +1317,7 @@ firewall` → WARNING). A deterministic grep tripwire was deliberately deferred 
 ## 2026-07-14: Stale remote-base diagnostics for the cumulative-critic gate (stale-remote-base-diagnostics)
 
 <!-- prawduct: type=fix | release=v3.1.1 | status=shipped -->
-<!-- Statusless on a feature branch = release-pending once merged. Medium
+<!-- Shipped in v3.1.1 (2026-07-21). Medium
      framework fix, no build plan: a ~90-line shared git-inspection helper plus a
      reactive gate hint and a proactive session-start advisory across lib/coverage.py,
      lib/gates.py, a new lib/stale_base_probes.py, and bin/prawduct-hook; the backlog

@@ -43,3 +43,8 @@ incoming-bugs/
 
 # Runbook research raw captures (large; distilled state is in CHECKPOINT.md)
 .prawduct/research/**/raw/
+
+# Repo-local agent scratch — never part of the distributed plugin (Principle 10).
+# The plugin's marketplace source is "./", so anything tracked here reaches every
+# consumer's plugin cache. See GOV-4H7T for the real packaging boundary.
+.claude/workflows/
