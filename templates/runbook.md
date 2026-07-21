@@ -90,8 +90,15 @@
      Real production runbooks run ~5-15 steps. If yours is longer, split it.
 
      BEFORE YOU FINISH: do one pass whose only purpose is deletion. For every
-     line ask "would a tired responder at 3am be worse off without this?"
-     If not, cut it. A step you deleted cannot be misread.
+     line ask the governing question: "does this raise the odds that this
+     reader finishes the task correctly?" Not is it true, not is it
+     interesting, not would they miss it. If not, cut it. A step you deleted
+     cannot be misread.
+
+     The line runs between CONSEQUENCE and EDUCATION:
+       ✓ "this discards any unsaved work in place"   → may make them save first
+       ✗ "this option is the short form of the long one" → they type the same
+     Being about the command you just gave them does not earn a line.
 
      It must work for BOTH audiences: someone doing this routinely on a
      Tuesday, and someone doing it for the first time at 3am during an

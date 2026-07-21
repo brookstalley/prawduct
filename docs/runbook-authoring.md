@@ -63,10 +63,20 @@ point — not this document's length.
 
 ### The subtraction pass
 
-After drafting, before reviewing, do one pass whose **only** purpose is removal. For each line ask:
-*would a tired responder at 3 a.m. be worse off without this?* If not, cut it. Specifically cut:
+After drafting, before reviewing, do one pass whose **only** purpose is removal. For each line ask
+the one question that governs everything in this guide:
+
+> **Does this raise the odds that this reader finishes the task correctly?**
+
+Not *is it true*. Not *is it interesting*. Not *would they miss it* — that one is rationalizable for
+almost anything. Only: does it move them toward a correct finish. If not, cut it. Specifically cut:
 
 - Background and architecture the reader does not need to execute the step
+- **Tool education** — what a flag abbreviates, how the underlying system works, why the interface
+  is shaped this way. (What a command will *do to the reader's world* is not education — that stays.
+  "This flag discards unsaved work in place" earns its line; "this flag is the short form of
+  `--long-name`" does not.)
+- Anything present because it is interesting, or because it explains how things came to be this way
 - Rationale on steps nobody would skip anyway
 - Sections carried over from the template with nothing product-specific in them
 - Warnings about things that cannot happen in this procedure
@@ -538,6 +548,12 @@ rule to a reviewer and does nothing for the person executing it at 3 a.m. Cut pr
 numbers, ticket references, and "we added this because". **Test:** if the reader would do the step
 identically without the sentence, the sentence is not rationale, it is a footnote you owe some other
 document. Nobody executing a procedure is a curious passer-by.
+
+The line runs between **consequence** and **education**, and it runs through the middle of sentences
+about the same command. *"This discards any unsaved work in place"* is consequence — it may send the
+reader to save first, so it changes the run. *"This option is the short form of the longer one"* is
+education — the reader types the same characters either way. Keep the first, cut the second, and
+notice that being *about the command you just gave them* does not by itself earn a line.
 
 ```markdown
 3. In `plugin.json`, replace `version` `3.1.0` with `3.2.0`.
