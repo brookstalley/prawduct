@@ -401,14 +401,16 @@ cluster to be *missing action descriptions and **unquantifiable conditions*** �
 > only satisfy it by running something the step never told them to run, it is also broken.
 
 **The `Expected:` line describes what the reader will see. Nothing else.** That one contract
-settles four questions that otherwise get answered wrong, and getting them wrong is what turns a
+settles six questions that otherwise get answered wrong, and getting them wrong is what turns a
 clean-looking runbook into one that cannot actually be followed:
 
-- **It never contains a command.** If confirming the result needs a *different* command, that
-  command is its own numbered step. `Expected: git status -sb shows no [behind]` is a second action
-  wearing a label — it collides head-on with [invariant 5](#5-one-step-one-action), and the reader
-  has to invent the typing you left out. Either fold the check into the step's own command, or give
-  it a step number of its own.
+- **It never contains a command, and never an instruction.** If confirming the result needs a
+  *different* command, that command is its own numbered step. `Expected: git status -sb shows no
+  [behind]` is a second action wearing a label — it collides head-on with
+  [invariant 5](#5-one-step-one-action), and the reader has to invent the typing you left out.
+  The same goes for telling them what to *do* with the output: *"…and every line above the first
+  tagged one belongs in this release"* is reading work, and reading work is a step. The line
+  describes; it never directs.
 - **It comes after the command, never before.** It describes that command's output. A reader who
   meets the expectation first has to carry it in memory while hunting for the thing that produces
   it — which is exactly the working-memory load you are trying not to impose.
@@ -421,18 +423,36 @@ clean-looking runbook into one that cannot actually be followed:
   can reject does need one, because the rejection is precisely what the reader must be told to look
   for. Manufacturing an expectation on an unfailable step produces a tautology that costs a read
   and proves nothing.
+- **More than one thing to check is a list, not a sentence.** The reader is comparing their screen
+  against yours item by item, which is checking, not reading. Two observations run together in
+  prose get half-checked. Break them out and let each be ticked off.
+- **Say whether *all* of them must hold or *any* of them will do.** `Already up to date.` **or** a
+  fast-forward summary is a very different instruction from status `ok` **and** replicas matching,
+  and prose blurs the two. This is the same discipline the guide already applies to
+  [branch conditions](#branching-and-steps-that-cannot-be-undone) — never mix `AND` with `OR` in
+  one statement, and past about four conditions use a list — arriving at expectations for the same
+  reason: combined logic read under pressure is where people substitute the reading they expected
+  for the one in front of them.
+- **Quote the distinctive fragment, not a transcript.** Enough for the reader to match, never
+  enough that they have to read. A wall of expected output is skipped exactly like any other wall
+  of text, and a reader who cannot tell which part of it matters will settle for "looks about
+  right" — which is the unmeasurable condition this whole invariant exists to prevent.
 
 ```diff
 - 4. Verify the service is healthy.
 - 5. Confirm the migration completed successfully.
 
 + 4. Run: `<health-check command>`
-+    Expected: status is `ok` AND `ready_replicas` equals `desired_replicas`.
-+    If `ready_replicas` is lower after 2 minutes, go to step 9 (Rollback).
++    Expected — all of:
++    - status is `ok`
++    - `ready_replicas` equals `desired_replicas`
++    If not: still lower after 2 minutes → step 9 (Rollback).
 
 + 5. Run: `<migration status command>`
-+    Expected: the last row's state is `complete` and `error_count` is 0.
-+    Any other state — stop and escalate. Do not re-run the migration.
++    Expected — all of:
++    - the last row's state is `complete`
++    - `error_count` is 0
++    If not: any other state → stop and escalate. Do not re-run the migration.
 ```
 
 This rule makes verification steps measurable; it does not make every step a verification step —
@@ -1350,7 +1370,9 @@ R6. Read it as someone with 30 seconds and a page alert. Can they start acting i
 4. Does every `Expected:` line describe **what this step's own command prints** — not a value the
    reader could only see by running something you never told them to run, and not an invisible
    exit status? Does it sit *after* that command? Walk each one literally: type only what the
-   step says, and ask whether the expectation appears on screen.
+   step says, and ask whether the expectation appears on screen. Then: does it *describe* rather
+   than direct? Where it names two or more observations, are they a list saying **all** or **any**
+   rather than a run-on? Is it the distinctive fragment rather than a transcript?
 4a. Conversely, does any step carry an `Expected:` line that just restates the action you were
     told to take, on a step that cannot fail without you noticing? Delete those.
 5. Search your draft for "verify", "check", "confirm", "ensure", "make sure", "looks good",

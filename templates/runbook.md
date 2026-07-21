@@ -237,8 +237,23 @@ triggers:                  # every signal that should lead a responder here
    <exact command, derived from this repo — never invented>
    ```
 
-   **Expected:** <what THAT command prints when it worked>
+   **Expected:** <the distinctive fragment THAT command prints — not a transcript>
    **If not:** <step number to go to, or escalate>
+
+<!-- MORE THAN ONE THING TO CHECK IS A LIST, and say all-vs-any. Two
+     observations run together in prose get half-checked:
+
+       **Expected** — all of:
+       - <first observation>
+       - <second observation>
+
+       **Expected** — any of:
+       - `Already up to date.`
+       - a fast-forward summary
+
+     Expected DESCRIBES; it never directs. "...and every line above the first
+     tagged one belongs in this release" is reading work, and reading work is
+     a step. -->
 
 <!-- ONE failure mode stays inline, as above. TWO OR MORE become a keyed list —
      the reader arrives holding a symptom and scans for it, so prose fails them:
