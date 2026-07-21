@@ -128,9 +128,22 @@ triggers:                  # every signal that should lead a responder here
 
 ## When NOT to use this   <!-- OPTIONAL — only if a neighbouring procedure could be confused with this -->
 
-<!-- The neighbouring procedures this is confused with, and where to go
+<!-- Rules: #anatomy — the condition-first entry form.
+     The neighbouring procedures this is confused with, and where to go
      instead. Selecting the wrong procedure is a real failure mode; this
-     section is the defence. -->
+     section is the defence.
+
+     ONE LINE PER ENTRY, CONDITION FIRST, so the reader can match it against
+     their own situation and discard it in a second:
+
+       - **If you are <what you are seeing or doing>:** → <where to go>
+
+     Do NOT explain the other procedure, and never narrate a documentation
+     defect here. A paragraph the reader must parse to extract one instruction
+     has already failed. Put the diagnosis in a comment or an issue.
+       ✗ Doc A step 1 says merge first; its section 4 forbids that and section
+         4 is correct, so this runbook follows section 4.
+       ✓ **If you are merging a feature branch:** → use /prawduct:pr instead. -->
 
 ## Before you start          <!-- OPTIONAL — keep only the lines that matter -->
 
@@ -173,6 +186,13 @@ triggers:                  # every signal that should lead a responder here
          return to the same step 12.
        - Rationale goes on its own adjacent line, never inside the action
          sentence — the executing eye skips it, the confused eye finds it.
+       - Show every placeholder FILLED IN once, where it first appears:
+         `<region>` (for example, `us-west-2`), `vX.Y.Z` (for example,
+         `v3.1.1`). A reader who has to work out that `X.Y.Z` means `2.3.4`
+         has stopped executing and started decoding.
+       - Write like a colleague talking the reader through it, not like a
+         standards body. Say "you". Contractions are fine. A document that
+         reads like a regulation gets skimmed like one.
        - `**Pass:**` / `**If not:**` is the verification form EVERYWHERE. Inside
          a conditional it attaches to the branch's own sub-step (`3b.`), but the
          labels never change. Do not invent a second syntax. -->
@@ -188,9 +208,12 @@ triggers:                  # every signal that should lead a responder here
 
    > *Why: <one line — only where a reader might reasonably skip or improvise.>*
 
-2. <Imperative action.>
+2. <An action that is its own evidence — writing a value, editing a file.>
 
-   **Pass:** <observed value>
+<!-- Step 2 deliberately has NO Pass line. When the action is "write X into
+     Y", "Pass: X is in Y" is discharged by having typed it and proves
+     nothing. Verify it downstream where something consumes it, or omit the
+     Pass line. Not every step is a verification step. -->
 
 <!-- VERIFICATION IS THE RULE THIS TEMPLATE EXISTS TO ENFORCE.
      Rules: #1-a-verification-step-reports-an-observed-value-not-an-acknowledgment

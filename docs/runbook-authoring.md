@@ -401,6 +401,15 @@ cluster to be *missing action descriptions and **unquantifiable conditions*** �
 +    Any other state — stop and escalate. Do not re-run the migration.
 ```
 
+**The mirror image: a step whose action is its own evidence takes no Pass line.** When the action
+is *write this value into that file*, "Pass: the value is in the file" verifies nothing — it is
+discharged by having typed it, which is precisely the attestable step
+[criterion 26](#self-review--rejection-criteria) rejects. Either verify it downstream where
+something actually consumes it (`regen-views --check` exits 0; the build reads the new value), or
+write no Pass line at all. This rule tells you to make verification steps measurable; it does not
+tell you to make every step a verification step. Manufacturing a Pass line on an authoring action
+is how a runbook fills up with tautologies that cost a read and prove nothing.
+
 This applies identically to a device (`the status LED is solid green, not blinking`), a frontend
 (`the response header includes the new build hash`), and a data pipeline (`row count in the target
 table equals the source count for the partition`).
@@ -609,6 +618,15 @@ signal.
 - **When NOT to use this** — *if* a neighbouring procedure could plausibly be confused with this one.
   Selecting the wrong procedure is a real failure mode; aviation treats checklist selection under
   ambiguity as its own design problem.
+
+  Write each entry **condition first**, as one line the reader can match against their own
+  situation and discard in a second: `**If <what you are seeing or doing>:** → <where to go>`.
+  This is the same condition-first rule as [branching](#branching-and-steps-that-cannot-be-undone),
+  and it applies here for the same reason — a reader must be able to reject an entry before
+  reading its explanation. **Do not explain the other procedure, and never narrate a documentation
+  defect.** "Doc A's step 1 contradicts doc A's section 4, and section 4 wins" is a paragraph the
+  reader must parse to extract one instruction. Name what they would observe, say where to go, and
+  put the diagnosis somewhere it belongs — a comment, an issue, or a fix to the other document.
 - **Prerequisites** — access, credentials, tools (with versions), physical items and consumables,
   required authorization level, and network position. Written as a checkable list, because
   discovering a missing credential at step 8 costs the whole procedure. Military technical-manual
@@ -646,6 +664,12 @@ them, and not a claim that anyone is legally bound by them.
 - Imperative mood, verb first: "Restart the worker", not "The worker should be restarted" or "You
   can restart the worker."
 - State *where* before *what*: "In the admin console, click Revoke" — the reader orients, then acts.
+- **Sound like a colleague, not a standards body.** Address the reader as "you", use plain words,
+  let contractions fall where they naturally do. Precision and warmth are not in tension: "you'll
+  see two rows here — that's expected" is both. This matters because register sets expectation —
+  a document written like a regulation gets read like one, which is to say skimmed. The sources
+  behind these rules are institutionally formal because they are legal instruments; yours is not.
+  Do not import their register along with their rules.
 - Short sentences, ordinary word order, concrete nouns.
 - Ban vague adverbs of degree and frequency — "frequently", "slowly", "as needed", "shortly". Give a
   number or a condition.
@@ -654,6 +678,11 @@ them, and not a claim that anyone is legally bound by them.
 - Exact commands in code blocks, copy-pasteable, one command per block.
 - Placeholders in a single obvious convention (`<region>`), with a note on where the value comes
   from. A placeholder the reader cannot resolve is a dead step.
+- **Show every placeholder filled in, once, where it first appears** — `<region>` (for example,
+  `us-west-2`); `vX.Y.Z` (for example, `v3.1.1`). A reader who has to infer that `X.Y.Z` means
+  `2.3.4` has stopped executing and started decoding. Being *technically* resolvable is not the
+  bar; being unmistakable at a glance is. Bind it at first use and then use it consistently, so
+  the reader never meets the same placeholder twice with two different explanations.
 - Never abbreviate a destructive command for readability.
 - Show the *expected output*, not just the command, whenever the output is the verification.
 
@@ -1095,16 +1124,21 @@ R3. Is there any section present that has nothing product-specific in it? Delete
 R4. Did you *decide* each optional section against its include-test, rather than keeping it because
     you could fill it in? Whole sections not applying to a whole product is normal.
 R5. Would a responder doing this routinely on a Tuesday find it *fast* to use, not just correct?
+    Read a paragraph aloud: does it sound like a colleague talking them through it, or like a
+    regulation? If nothing in it addresses the reader as "you", you have written the wrong document.
 R6. Read it as someone with 30 seconds and a page alert. Can they start acting immediately?
 
 **Executability**
 1. Is every command derived from the repo or the running system — not generated? Can you name the
    file each came from?
 2. Can a reader who has never seen this system execute every step without asking a question?
-3. Is every placeholder resolvable from information the runbook itself provides?
+3. Is every placeholder resolvable from information the runbook itself provides, *and shown filled
+   in with a real example where it first appears*? `vX.Y.Z` without a `v3.1.1` next to it fails.
 
 **Verification**
-4. Does every verification step name a specific observed value that means "pass"?
+4. Does every verification step name a specific observed value that means "pass" — and, conversely,
+   does any step carry a Pass line that just restates the action you were told to take? Delete
+   those; a step whose action is its own evidence takes no Pass line.
 5. Search your draft for "verify", "check", "confirm", "ensure", "make sure", "looks good",
    "healthy", "working", "successful". Each hit is a suspected unmeasurable condition. Fix or
    justify every one.
