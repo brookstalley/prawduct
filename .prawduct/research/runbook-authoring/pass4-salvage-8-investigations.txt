@@ -1,0 +1,217 @@
+================================================================================
+nothingFound: Could NOT source (web search budget for this session was exhausted at 200/200 WebSearch calls before I started, so I could only fetch URLs I already knew; no discovery searches were possible):
+
+1. APP
+ * HIGH | MOBILE — A shipped mobile binary cannot be recalled. Halting a Google Play staged rollout only stops *new* users from receiving the version; every user who already got it stays on it. Halt is therefore a blast-radius freeze, not a
+   SRC: Google Play Console Help, "Release app updates with staged rollouts" — https://support.google.com/googleplay/a
+   RULE: A runbook must state, for its own platform, whether the STOP action removes the bad change from users already on it, or only prevents further exposure. If it only prevents further exposure, the runbook must carry a second, separat
+ * HIGH | MOBILE — Apple's phased release is a fixed 7-day schedule the developer does not set, pausable for a cumulative 30 days, and it never gates manual downloads: any user can pull the new version at any time regardless of the phase pe
+   SRC: Apple, App Store Connect Help, "Release a version update in phases" — https://developer.apple.com/help/app-sto
+   RULE: Where a rollout control is enforced by a third party, the runbook must record the exact schedule, the pause budget, and the leak paths the control does NOT cover — and the incident procedure must assume some users are already on t
+ * HIGH | MOBILE — Forcing users off a bad version requires a mechanism that was compiled into the *previous* shipped binary. Google's in-app update API distinguishes flexible (usable during download) from immediate (fullscreen, blocks cont
+   SRC: Android Developers, "Support in-app updates" — https://developer.android.com/guide/playcore/in-app-updates (fe
+   RULE: If the recovery action depends on client-side code, the runbook must name the client version in which that capability first shipped, because clients older than that version are unreachable by the procedure. Capability-to-fix must 
+ * HIGH | DATA PIPELINES — Re-run safety is an authoring property of the task, not a property of the scheduler. Airflow's official guidance mandates deterministic, idempotent tasks and gives concrete prohibitions: no bare INSERT (use UPSERT
+   SRC: Apache Airflow docs, "Best Practices" — https://airflow.apache.org/docs/apache-airflow/stable/best-practices.h
+   RULE: Any runbook step that may be executed more than once (retry, resume, backfill, partial re-run) must state its re-run semantics explicitly — safe to repeat, or safe only after a named cleanup step. 'Re-run the job' is an unsafe ins
+ * HIGH | DATA PIPELINES — Correctness is time-dependent in a way that server rollback is not: the watermark is an estimate, not a guarantee, and records arriving after it are classified as late. Recovery procedures must therefore reason ab
+   SRC: Apache Beam documentation, "Basics of the Beam model" — https://beam.apache.org/documentation/basics/ (fetched
+   RULE: When a system's output depends on completeness-over-time, the runbook must record the time boundary of the damage (which windows/partitions/intervals are affected), not just the wall-clock start and end of the incident — and must 
+ * HIGH | FRONTEND — Purging the CDN does not reach the client. AWS's own guidance is to prefer versioned filenames over invalidation precisely because a viewer may keep serving the stale file from a local or corporate-proxy cache after the
+   SRC: Amazon CloudFront Developer Guide, "Invalidate files to remove content" — https://docs.aws.amazon.com/AmazonCl
+   RULE: A runbook must distinguish caches you can purge from caches you cannot, and must not declare the fix propagated on the strength of a purge you control. Where client-held copies exist, add an explicit step that changes the identity
+ * HIGH | FRONTEND — A web deploy does not necessarily reach an open session: an updated service worker waits, and by default only activates once every tab controlled by the old one is closed. The obvious workaround (skipWaiting) is documen
+   SRC: Chrome for Developers / Workbox, "The service worker lifecycle" — https://developer.chrome.com/docs/workbox/se
+   RULE: Where clients hold executing code, the runbook must define what 'deployed' means for an already-open session, and must name the event that actually transfers control (reload, tab close, restart). Verification must sample a client 
+ * HIGH | DISTRIBUTED BACKEND (the contrast case) — Server-side is the domain where exposure is directly dialable and the arithmetic of blast radius is explicit; Google defines canarying as partial and time-limited, and shows the exposure c
+   SRC: Google SRE Workbook, Chapter 16, "Canarying Releases" — https://sre.google/workbook/canarying-releases/ (fetch
+   RULE: INVARIANT ACROSS ALL FOUR DOMAINS — every operational procedure, regardless of technology, must state five things: (1) the exposure control and its arithmetic (what fraction of users/records the change can damage before you stop);
+================================================================================
+nothingFound: Hard constraint hit: this session's WebSearch budget (200/200) was exhausted on the first two search calls, so I could not do the broad varied-phrasing sweep the method asked for. Everything above was
+ * HIGH | AWS's Feb 28, 2017 S3 us-east-1 outage began with an authorized operator following an *established playbook* — the playbook was present and sanctioned; the defect was that it exposed a free-text capacity-removal argument with no b
+   SRC: Amazon Web Services, "Summary of the Amazon S3 Service Disruption in the Northern Virginia (US-EAST-1) Region"
+   RULE: A runbook step that can destroy capacity or data must not rely on the operator typing the right operand. Bound the blast radius in the tool the step invokes (rate limit, minimum-remaining floor, refusal below a safety threshold) s
+ * HIGH | GitLab.com's Jan 31, 2017 database loss turned on two runbook defects: (a) the engineering runbook did not document that the recovery tool blocks *silently* with no output, so an engineer read normal behavior as a hung process and
+   SRC: GitLab, "Postmortem of database outage of January 31" (published Feb 10, 2017) — https://about.gitlab.com/blog
+   RULE: For every step that invokes a tool, the runbook must state the expected observable signal — including 'this step produces no output and may appear hung for N minutes' — so silence is not misread as failure. And a recovery procedur
+ * HIGH | Atlassian's April 5, 2022 multi-week outage (883 sites deleted) had two independent procedural defects. The peer-review procedure for the deletion script inspected the *endpoint* but not the *class of the identifiers* passed to it
+   SRC: Atlassian, "Post-Incident Review of the April 2022 Atlassian outage" — https://www.atlassian.com/engineering/p
+   RULE: A review step in a runbook must name what it verifies about the *operands*, not only the operation — e.g. 'confirm each ID resolves to an object of the expected type and scope before running.' And a rehearsal step whose environmen
+ * HIGH | In Cloudflare's July 2, 2019 global outage, the written Standard Operating Procedure was itself listed among the causes: the SOP *permitted* a non-emergency WAF rule change to go straight to global production, bypassing the staged
+   SRC: Cloudflare, John Graham-Cumming, "Details of the Cloudflare outage on July 2, 2019" — https://blog.cloudflare.
+   RULE: A correctly followed procedure can still be the cause — audit the procedure's own rollout scope and rollback latency, not just compliance with it. Concretely: (1) a routine change and an emergency change need separate, explicitly 
+ * HIGH | The TSB's official findings for Swissair Flight 111 (Sep 2, 1998) name checklist design as a risk factor twice: the applicable Smoke/Fumes of Unknown Origin checklist could take 20 to 30 minutes to complete — long enough for the h
+   SRC: Transportation Safety Board of Canada, Aviation Investigation Report A98H0003, §3.2 "Findings as to risk" — ht
+   RULE: Order emergency-procedure steps by urgency and irreversibility, not by diagnostic tidiness: the action that buys time or preserves options goes first, before the isolation/diagnosis sequence. And time-budget the procedure against 
+ * HIGH | The CSB found that BP's written ISOM raffinate startup procedure for the March 23, 2005 Texas City explosion (15 killed) was deficient in specific, enumerable ways: it lacked instructions the board operator needed, it had not been
+   SRC: U.S. Chemical Safety and Hazard Investigation Board, Investigation Report No. 2005-04-I-TX, "Refinery Explosio
+   RULE: Three rules. (1) A multi-step procedure must specify how to suspend and resume it, including handoff to a different operator — the abandoned-midway state is a real state and needs its own steps. (2) Every acceptance word in a step
+ * HIGH | The National Commission on the Deepwater Horizon blowout (April 20, 2010) found that the negative-pressure test — the test that would have revealed the failed cement job — had no standard written procedure or interpretation criter
+   SRC: National Commission on the BP Deepwater Horizon Oil Spill and Offshore Drilling, "Deep Water: The Gulf Oil Dis
+   RULE: Any verification step in a runbook must ship with its acceptance criteria written into the step — what reading counts as pass, what counts as fail — and with a named escalation path for readings that satisfy neither. A step that s
+ * HIGH | The SEC's settled order against Knight Capital (Aug 1, 2012; $460M loss in ~45 minutes) makes procedural absence a regulatory finding: no written deployment procedure requiring a second technician to check that the code reached al
+   SRC: U.S. Securities and Exchange Commission, In the Matter of Knight Capital Americas LLC, Admin. Proc. File No. 3
+   RULE: Two rules. (1) A deployment runbook must include an explicit post-step that enumerates the targets and confirms each one received the change — 'deployed' is not the same as 'deployed everywhere', and the check must be performed by
+================================================================================
+nothingFound: Constraint to disclose: this session's WebSearch budget (200/200) was already exhausted before I started, so I could not run keyword discovery. I worked around it with direct curl of known primary-sou
+ * HIGH | FAA doctrine states memory items should be avoided where possible, and when unavoidable are capped at fewer than three items and forbidden from containing conditional/decision logic. This is the only exact numeric limit I found in
+   SRC: FAA Advisory Circular 120-71B, 'Standard Operating Procedures and Pilot Monitoring Duties for Flight Deck Crew
+   RULE: Steps a human must execute from memory (before opening the runbook) are a last resort: keep them under three, mark them explicitly as memory steps, drill them, and never put a branch/conditional inside them. Any 'if X then Y' belo
+ * HIGH | For normal procedures the FAA describes a do-confirm structure as the working default: the operator performs a memorized 'flow' to configure the system, and the checklist that follows is deliberately a SUBSET of the flow — the mos
+   SRC: FAA AC 120-71B, paragraphs 5.1.2 and 5.1.4 — https://www.faa.gov/documentLibrary/media/Advisory_Circular/AC_12
+   RULE: For routine, frequently-executed work, do not write a step-by-step script for the whole task. Write the full flow once for training, then make the operational checklist a short verification list containing only the critical, failu
+ * HIGH | FAA doctrine directs that abnormal/emergency procedures be organized and indexed by the observable triggering condition (the symptom the operator actually perceives), explicitly NOT by the subsystem that is probably at fault.
+   SRC: FAA AC 120-71B, paragraph 4.2.1 — https://www.faa.gov/documentLibrary/media/Advisory_Circular/AC_120-71B.pdf
+   RULE: Index incident runbooks by the symptom the on-call person sees ("queue depth climbing", "5xx spike"), not by the component you believe is broken. The responder has the symptom, not the diagnosis, at the moment of lookup.
+ * HIGH | The canonical NASA analysis names the two methods and identifies the property that actually distinguishes them: challenge-response ('challenge-verification-response') is a BACKUP over a configuration already achieved from memory, 
+   SRC: Degani, A. & Wiener, E. L., 'Human Factors of Flight-Deck Checklists: The Normal Checklist', NASA Contractor R
+   RULE: Choose the format by what error it catches. Do-confirm gives you two independent shots at the same state (act from expertise, then verify) — use it where the operator is competent and the risk is omission. Read-do gives you exactl
+ * HIGH | The closest thing I found to an explicit selection rule is Degani & Wiener's observation of practice plus its rationale: non-normal/failure procedures are performed as read-do 'action lists', and the reason given is that these pro
+   SRC: Degani, A. & Wiener, E. L., 'On the Design of Flight-Deck Procedures', NASA (NTRS 19940029437), §7.2.3 'Sequen
+   RULE: Selection rule: if the procedure's value IS the exact ordering, if steps are irreversible, or if it is rare/high-stress and the operator cannot be assumed to hold it in memory — write it read-do (read the step, then do it). If the
+ * HIGH | NASA's authoritative review states plainly that the criteria for deciding which items must be memory items are NOT scientifically established — the field has no definitive answer — while noting the industry direction of travel is 
+   SRC: Burian, B. K., Barshi, I. & Dismukes, K., 'The Challenge of Aviation Emergency and Abnormal Situations', NASA/
+   RULE: Do not claim a principled basis for which steps are memorized versus read — aviation does not have one either. Default to minimizing memorized steps and justify each one individually by time-criticality, and treat 'how short shoul
+ * HIGH | The operative criterion for a memory item is time-criticality, not importance: an action becomes a memory item only when the situation leaves insufficient time to reference the printed checklist. FAA Order 8900.1's definition of a
+   SRC: Burian, B. K., 'Factors Affecting the Use of Emergency and Abnormal Checklists: Implications for Current and N
+   RULE: Promote a step to 'do this from memory before opening the runbook' on one test only: would the delay of opening the runbook itself cause irreversible loss? Criticality alone is not sufficient — a critical step you have time to rea
+ * HIGH | Counting memory items understates their cost, because in practice they are not all simple actions. Of 239 memory items coded across eleven QRHs, 79% (n=190) were challenge-response action items and 8% (n=20) sentence-form action i
+   SRC: Burian, B. K., NASA/TM-2014-218382, §3.2.2 Findings, pp. 27-29 — https://ntrs.nasa.gov/api/citations/201900026
+   RULE: When you budget memorized steps, count the conditionals, waits, and warnings as memorized steps too — not just the actions. A 'three memory items' procedure that also requires recalling a branch condition and a 30-second wait is r
+================================================================================
+nothingFound: Could not source, despite direct attempts:
+
+1. **Bosk CL, Dixon-Woods M, Goeschel CA, Pronovost PJ. "Reality check for checklists." Lancet 2009;374(9688):444-445 (DOI 10.1016/S0140-6736(09)61440-9, PM
+ * HIGH | The original WHO checklist trial found large mortality and complication reductions — this is the result everyone cites as proof that the written procedure works.
+   SRC: Haynes AB et al. "A surgical safety checklist to reduce morbidity and mortality in a global population." N Eng
+   RULE: A written procedure CAN produce measurable benefit — but note the source's own hedge: the association is with *implementation*, not with the document existing. Cite the intervention as 'introducing and running the procedure', neve
+ * HIGH | When the same checklist was mandated across a whole health system, the benefit vanished entirely — the content was identical, the outcome was null.
+   SRC: Urbach DR, Govindarajan A, Saskin R, Wilton AS, Baxter NN. "Introduction of surgical safety checklists in Onta
+   RULE: Mandating that a correct procedure be adopted, and recording that it was adopted, is not evidence that the benefit transferred. Rollout compliance and outcome improvement are separate measurements; never report the first as if it 
+ * HIGH | A causal analysis of a stepped-wedge trial isolates implementation quality — not checklist content — as the thing that moves outcomes. Benefit appears only when all three parts are actually performed.
+   SRC: Haugen AS, Wæhle HV, Almeland SK, Harthug S, Sevdalis N, Eide GE, Nortvedt MW, Smith I, Søfteland E. "Causal A
+   RULE: Define a runbook's unit of benefit as the whole sequence executed, not the individual steps. Partial execution is not partial benefit — instrument and report full-sequence fidelity as the primary adherence metric, and expect the b
+ * HIGH | Across the pooled trial literature, the size of the checklist's effect correlates with adherence to the care embedded in it — and even the positive meta-analytic conclusion is explicitly hedged.
+   SRC: Bergs J, Hellings J, Cleemput I, Zurel Ö, De Troyer V, Van Hiel M, Demeere JL, Claeys D, Vandijck D. "Systemat
+   RULE: When claiming a procedure produces a benefit, pair the outcome metric with an adherence metric and report the correlation between them. An outcome claim with no adherence data attached is unfalsifiable and should be hedged as such
+ * HIGH | The literature systematically fails to record HOW the procedure was executed — 62% of 300 studies covering 7.3 million operations say only that it was done.
+   SRC: Armstrong BA, Dutescu IA, Nemoy L, Bhavsar E, Carter DN, Ng KD, Boet S, Trbovich P, Palter V. "Effect of the s
+   RULE: A completion record ('step done', 'checklist filed', 'gate passed') is not evidence of execution quality. If a procedure's benefit depends on how it is performed, the artifact must capture the manner of performance — who participa
+ * HIGH | An ethnographic study states the mechanism directly: the risk reduction comes from the behaviour the checklist calls for, not from marking its items.
+   SRC: Wæhle HV, Haugen AS, Wiig S, Søfteland E, Sevdalis N, Harthug S. "How does the WHO Surgical Safety Checklist f
+   RULE: Write procedures so each step names the action and the actor, not a state to be attested. A step that can be satisfied by recording it — rather than by doing something observable — will be satisfied that way. Also: a procedure bol
+ * HIGH | In the Ontario system that produced the null result, practitioners describe the checklist being marked complete when only partly performed, and performed without engagement.
+   SRC: Gagliardi AR, Straus SE, Shojania KG, Urbach DR. "Multiple Interacting Factors Influence Adherence, and Outcom
+   RULE: If a procedure's completion status is used for management accountability, its completion status stops being a measurement and becomes a reporting obligation. Separate the audit signal from the compliance signal, and define 'comple
+ * HIGH | Globally, pooled adherence is far below the level the positive trials achieved: 73% compliance but only 51% completeness.
+   SRC: Habtie TE, Feleke SF, Terefe AB, Adisu MA. "Beyond compliance: examining the completeness and determinants of 
+   RULE: Track two distinct adherence numbers: was the procedure invoked (compliance) and was every step within it performed (completeness). The gap between them — here 73% vs 51% — is the portion of your claimed coverage that is nominal o
+================================================================================
+nothingFound: Honest gaps and caveats.
+
+(1) SEARCH CONSTRAINT: this session's WebSearch budget was exhausted before I began, so discovery ran through the arXiv API (export.arxiv.org/api/query) as a search proxy plu
+ * HIGH | A Microsoft empirical study of 92 real-world troubleshooting guides (TSGs) from 9 teams found most are not directly automatable, and quantified the defect taxonomy: clarity/precision defects — dominated by 'Missing Description of 
+   SRC: Q. Ouyang et al., 'StepFly: Agentic Troubleshooting Guide Automation for Incident Diagnosis', arXiv:2510.10074
+   RULE: Every procedure step must carry four things or it is not agent-executable: (1) an explicit statement of the action to perform, (2) a machine-checkable condition — a threshold, comparison, or exact string, never 'if latency looks h
+ * HIGH | OpenAI's agent-governance white paper couples the review mechanism to reversibility: actions that are only reviewed after the fact should be more reversible than actions that require pre-approval. It also warns that approval gates
+   SRC: Shavit, Agarwal, Brundage, Adler, O'Keefe, Campbell, Lee, Mishkin, Eloundou, Hickey, Slama, Ahmad, McMillan, B
+   RULE: Classify each procedure step by reversibility, not by perceived difficulty, and let that classification pick the gate: reversible steps run and are logged for after-the-fact review; irreversible steps stop and require explicit aut
+ * HIGH | Anthropic's shipped agent harness implements the same principle as a default-deny permission architecture: read-only by default, explicit approval for anything that can modify the system, and unmatched commands fail closed to manu
+   SRC: Anthropic, 'Security' — Claude Code documentation. Fetched https://code.claude.com/docs/en/security (redirecte
+   RULE: Split every procedure into an observe phase (read-only: inspect, query, measure) and an act phase (state-changing), and make the observe phase complete before any act step. Write the procedure so the default for an unrecognized or
+ * HIGH | NIST's Generative AI Profile names 'confabulation' as a distinct risk, flags it as especially important to monitor in consequential decision-making, warns that GAI outputs may include confabulated logic or citations that appear to
+   SRC: NIST AI 600-1, 'Artificial Intelligence Risk Management Framework: Generative Artificial Intelligence Profile'
+   RULE: A procedure must carry explicit go/no-go thresholds at each decision point and an explicit abort/disengage path, both written before execution rather than judged at runtime. Treat any rationale the agent produces as unverified: a 
+ * HIGH | Across 2.23 million package references generated by 16 LLMs, 19.7% were hallucinated (at least 5.2% for commercial models, 21.7% for open-source), and the hallucinations are highly repeatable — 43% of hallucinated packages recurre
+   SRC: J. Spracklen, R. Wijewickrama, A.H.M.N. Sanka, A. Maiti, B. Viswanath, M. Jadliwala, 'We Have a Package for Yo
+   RULE: Never let a procedure require the executor to supply an identifier from memory — package names, image tags, service names, endpoints, config keys. Pin every identifier literally in the procedure text, or name the registry/command 
+ * MEDIUM | Code LLMs invoke rarely-seen APIs incorrectly at high rates: on the CloudAPIBench benchmark GPT-4o produced only 38.58% valid low-frequency API invocations. Supplying documentation helps for rare APIs (to 47.94%) but indiscriminat
+   SRC: S. Kolluru et al. (AWS AI Labs), 'On Mitigating Code LLM Hallucinations with API Documentation', arXiv:2407.09
+   RULE: Frequency of an interface in public code predicts whether an agent will get it right. For any step touching a rare, internal, proprietary, or recently-added interface, inline the exact invocation — full command, exact flag spellin
+ * MEDIUM | Providing correct, up-to-date API specifications in context does not eliminate outdated-syntax failures. Across 270 real-world API updates from eight Python libraries and 11 models, only 42.55% of generated examples were executabl
+   SRC: 'When LLMs Lag Behind: Knowledge Conflicts from Evolving APIs in Code Generation', arXiv:2604.09515v1, 10 Apr 
+   RULE: Writing the correct current syntax into the procedure is necessary but demonstrably not sufficient — memorized older syntax still leaks through roughly a third of the time even when the correct spec is present. So a procedure must
+ * LOW | Benchmarked on 2,208 prompt variants across 69 DevOps task families, underspecified-but-benign instructions caused coding agents (Claude Code, Codex, OpenCode) to act on guesses rather than stop: 55.8-67.8% of runs violated at lea
+   SRC: 'Coding Agents Are Guessing: Measuring Action-Boundary Violations in Underspecified DevOps Instructions' (Unde
+   RULE: Ambiguity in a procedure does not produce a question from the agent — it produces an invented answer. So the highest-value authoring act is naming the target of every state-changing step unambiguously (which host, which namespace,
+================================================================================
+nothingFound: Significant gaps, stated honestly:
+
+1. WEB SEARCH WAS UNAVAILABLE. This session's WebSearch budget (200/200) was already exhausted before I began, so I could not run the multi-query fan-out the method
+ * HIGH | Interruptions as short as ~3-4 seconds measurably destroy place-keeping in a sequential procedure. In a controlled study (N reported in paper; JEP:General), interruptions averaging 4.4 s tripled sequence-error rates on post-interr
+   SRC: Altmann EM, Trafton JG, Hambrick DZ. "Momentary interruptions can derail the train of thought." Journal of Exp
+   RULE: Design the document so that the reader's place is recoverable from the PAGE, never from memory. Every step must carry a persistent, unambiguous, externally visible position marker (stable step numbers that never renumber, a checka
+ * HIGH | The cost of an interruption is directly measurable as "resumption lag," and it roughly doubles normal step-to-step time. External cues visible immediately BEFORE the interruption reduce that lag — but only if the reader gets 6-8 s
+   SRC: Altmann EM, Trafton JG. "Task Interruption: Resumption Lag and the Role of Cues." Proceedings of the Annual Me
+   RULE: Put the resumption cue in the document, permanently, rather than relying on the reader to construct one in the moment — because the moment is usually too short (under ~6 s) for cue encoding to work. Concretely: give every step a s
+ * HIGH | Resumption cost scales with both the DURATION and the COGNITIVE DEMAND of the interruption, up to at least 1 minute, and rehearsal of the suspended goal mitigates the decay. This is the mechanism (memory-for-goals) behind place-lo
+   SRC: Monk CA, Trafton JG, Boehm-Davis DA. "The effect of interruption duration and demand on resuming suspended goa
+   RULE: Build rehearsal into the document rather than hoping the reader does it. Bound each procedure into short, self-contained blocks with an explicit "state now" checkpoint at each block boundary — a restatement the reader re-reads on 
+ * HIGH | Fatigue attacks place-keeping SPECIFICALLY and directly — not merely via general sleepiness — and the researchers' own stated recommendation is operational, not just theoretical: sleep-deprived people should not run interruption-p
+   SRC: (a) Stepan ME, Fenn KM, Altmann EM. "Effects of sleep deprivation on procedural errors." J Exp Psychol Gen. 20
+   RULE: Two rules. (1) Keep any single unbroken procedural block SHORT, because error rates from memory failure rise with time-on-task under fatigue — put a hard stopping/handoff point every few steps rather than one 40-step wall. (2) Des
+ * HIGH | Aviation human-factors research recommends ordering procedure steps so the most critical ones are executed BEFORE an interruption is likely to arrive, and explicitly ranks this above the otherwise-preferred logical/spatial orderin
+   SRC: Degani A, Wiener EL. "Human Factors of Flight-Deck Checklists: The Normal Checklist." NASA Contractor Report 1
+   RULE: Order steps by interruption-survival, not just by logic: put the irreversible/highest-consequence steps as early as the dependencies allow, so a reader who is pulled away has already banked them. Split any long procedure into name
+ * HIGH | The single most common step-level ambiguity found in real operational checklists is a response that merely acknowledges the step ("set", "check", "completed") rather than stating the observed value. The authors argue the response 
+   SRC: Degani A, Wiener EL. "Human Factors of Flight-Deck Checklists: The Normal Checklist." NASA CR-177549, May 1990
+   RULE: Write every verification step so that satisfying it requires REPORTING AN OBSERVED VALUE, not asserting completion. Bad: "Verify the service is healthy." Good: "Record the value of <health field>; it must read <expected>." This is
+ * HIGH | A standards body (W3C) specifies exact, testable typographic minimums for readable blocks of text — including a hard line-length ceiling of 80 characters — but note the conformance split: the line-length/leading/justification rule
+   SRC: W3C. Web Content Accessibility Guidelines (WCAG) 2.2, SC 1.4.8 Visual Presentation (Level AAA), SC 1.4.12 Text
+   RULE: Hard limits for a runbook: lines no wider than 80 characters; no justified text (ragged right only — justification creates irregular word-spacing rivers that promote line-skipping); line-height at least 1.5x font size; paragraph/s
+ * MEDIUM | Cognitive load theory holds that requiring a reader to mentally integrate two spatially separated information sources imposes extraneous load (split-attention), and that adding information which is not essential also imposes extra
+   SRC: Castro-Alonso JC, de Koning BB, Fiorella L, Paas F. "Five Strategies for Optimizing Instructional Materials: I
+   RULE: Two rules, but flagged as INFERRED TRANSFER — this evidence base is about LEARNING outcomes, not about executing a procedure under stress; I found no primary study demonstrating these effects for procedural execution. (1) Anti-spl
+================================================================================
+nothingFound: METHOD CAVEAT: this session's WebSearch budget (200/200) was already exhausted before I started, and DuckDuckGo/Mojeek/Bing were CAPTCHA- or 403-blocked to both WebFetch and curl. All sourcing was don
+ * HIGH | For non-normal/emergency work, the regulator directs that procedures be indexed and organized by the OBSERVABLE TRIGGERING CONDITION, not by the subsystem the responder would have to have already diagnosed. Normal (planned) proced
+   SRC: FAA Advisory Circular 120-71B, "Standard Operating Procedures and Pilot Monitoring Duties for Flight Deck Crew
+   RULE: Name and file a runbook by the symptom the responder can actually observe at the moment of entry ("disk filling on the payments DB", "checkout latency above SLO"), not by the component or root cause they would need to have already
+ * HIGH | A procedure must itself carry enough information for the user to CONFIRM it is the right procedure before executing any step. Self-verification at entry is a stated design requirement, alongside accessibility.
+   SRC: FAA Advisory Circular 120-71B (2017), §5.1 General [Developing Checklists]. https://www.faa.gov/documentLibrar
+   RULE: Every runbook opens with an explicit entry/trigger block stating the conditions under which this procedure applies — placed before step 1 and readable in isolation — so the responder can confirm or reject the procedure before acti
+ * HIGH | When one failure can present through several different indications, the regulator directs that the procedure be reachable from EVERY one of those indications in the index — not filed once under a single canonical name.
+   SRC: FAA Advisory Circular 120-71B (2017), §4.2.6 Indices. https://www.faa.gov/documentLibrary/media/Advisory_Circu
+   RULE: Index each runbook under every symptom, alert name, error string, and metric that can surface it — deliberate duplicate entries pointing at one procedure. Optimize the index for the responder's entry vocabulary (what they are star
+ * HIGH | The dominant industry standard in commercial aviation is that the procedure's TITLE matches the alert text word-for-word, precisely so the operator can confirm they opened the right procedure. NASA's tabletop analysis found this h
+   SRC: Burian, B. K., "Factors Affecting the Use of Emergency and Abnormal Checklists: Implications for Current and N
+   RULE: The runbook title must be the alert name, character-for-character. Identity of string is the confirmation mechanism: the responder verifies "right procedure" by matching what the pager said against what the document is called. Nev
+ * HIGH | Where a failure produces NO matching named alert, operators are forced to diagnose before they can select a procedure — and in practice the procedure is usually not titled by the symptom. NASA found that for uncommanded yaw or rol
+   SRC: Burian, NASA/TM-2014-218382 (2014), Findings §"Diagnosis and Determining the Appropriate Checklist"; denominat
+   RULE: Write runbooks for un-alerted symptoms too, titled by the symptom as experienced ("requests timing out, no alert firing"), and cross-link them from every alert-named runbook whose condition could actually be that symptom in disgui
+ * HIGH | Google SRE's stated practice is a 1:1 alert-to-playbook-entry relationship, created at alert-creation time and reviewed with the same rigor as code. The claimed benefits are reduced stress, reduced MTTR, and reduced human error — 
+   SRC: Google, The Site Reliability Workbook, Chapter 8, "On-Call" (sections "Practical Implementation"/"Maintaining 
+   RULE: Make "has a linked runbook entry" a merge-blocking condition on creating or changing any alert. The runbook and the alert are one change, authored and reviewed together; an alert without a procedure is an incomplete change. Note t
+ * HIGH | The most widely deployed Prometheus alert library does not rely on authors remembering to add a link: it MECHANICALLY derives every alert's runbook URL from the alert's own name via a configurable pattern, applied to every rule th
+   SRC: kubernetes-mixin, lib/add-runbook-links.libsonnet (Apache-2.0). https://raw.githubusercontent.com/kubernetes-m
+   RULE: Make the runbook's address a pure function of the alert's identifier, so the link exists by construction and a missing runbook becomes a visible 404 rather than a silently absent link. Corollary: the runbook's anchor/slug is part 
+ * MEDIUM | PagerDuty's published incident-response guidance treats an alert with neither remediation steps nor a runbook link as worthless, and its worked example shows the link inline in the alert body with the URL spelled out.
+   SRC: PagerDuty Incident Response Documentation, "Alerting Principles" § Alert Content (open-source, github.com/page
+   RULE: The link must travel INSIDE the notification the responder actually receives, as a resolvable address — not live only in a wiki the responder must go searching for. Where one alert can require more than one procedure, name and lin
+================================================================================
+nothingFound: Significant sourcing gaps — with one methodological caveat up front: this session's WebSearch budget (200/200) was already exhausted before my first query, and every search-engine substitute I tried (
+ * HIGH | OSHA's lockout/tagout rule mandates a *separate, named verification step* immediately before the hazardous work begins — verifying the precondition is not folded into the isolation step, it is its own regulatory requirement placed
+   SRC: 29 CFR 1910.147(d)(6), "The control of hazardous energy (lockout/tagout)" — Verification of isolation. Fetched
+   RULE: Before any irreversible step, the runbook must contain a discrete, separately-numbered VERIFY step that states the exact observable evidence the precondition holds (a command and its expected output, a reading, a serial-console ba
+ * HIGH | OSHA mandates an explicit close-out sequence *before* the system is returned to service: inspect the work area for leftover artifacts, confirm the equipment is reassembled and operationally intact, confirm all people are clear, an
+   SRC: 29 CFR 1910.147(e)(1) and (e)(2)(i)–(ii), "Release from lockout or tagout." Fetched via https://www.ecfr.gov/a
+   RULE: Every procedure ends with a mandatory close-out block, executed before the system is handed back: (1) remove/account for everything the procedure introduced (temporary debug builds, test fixtures, jumpers, bypass flags, scaffoldin
+ * HIGH | MIL-STD-40051-2A mandates that *every* work package carry an INITIAL SETUP block enumerating test equipment, tools and special tools, materials/parts (including expendables, mandatory replacement parts and Critical Safety Items), 
+   SRC: MIL-STD-40051-2A, 21 July 2010, "Preparation of Digital Technical Information for Page-Based Technical Manuals
+   RULE: Every runbook opens with a mandatory, structured prerequisites block covering: tools/binaries (with versions), consumables and replacement parts, required personnel and skill/authorization level, referenced documents, required sta
+ * HIGH | MIL-STD-40051-2A fixes the *position* of hazard information relative to the thing it protects: a warning/caution attached to a step shall precede that step (whereas one attached to a whole task or procedure follows the title). It 
+   SRC: MIL-STD-40051-2A, 21 July 2010, clause 4.8.7.4 "Display of warnings, cautions, and notes" (items a, b; see als
+   RULE: A hazard notice attaches to the smallest unit it governs and is rendered immediately *before* that unit — never after it, never only in a preamble the reader has already scrolled past. Scope-wide hazards go under the section title
+ * HIGH | The S1000D procedural schema makes preliminary requirements and close-out requirements structurally unskippable: a <procedure> element's content model requires <preliminaryRqmts> and <closeRqmts> (neither carries minOccurs="0"), a
+   SRC: S1000D Issue 5.0 official XML Schema, proced.xsd (procedure data module), definitions of procedureElemType, pr
+   RULE: Enforce runbook completeness in the schema/linter, not in review culture: a runbook is structurally invalid unless it declares preconditions, tooling, consumables, spare/replacement parts, safety constraints, and a close-out secti
+ * HIGH | US DOE's human-performance handbook gives an operational definition a runbook can key off: a "critical step" is one whose incorrect performance causes irreversible harm — "an immediate negative consequence that cannot be reversed 
+   SRC: DOE-HDBK-1028-2009, June 2009, "Human Performance Improvement Handbook, Volume 2: Human Performance Tools for 
+   RULE: Classify and visibly mark every step as reversible or critical (irreversible), using a stated test: "if done wrong, can the initiating action be reversed to restore the original condition?" For each critical step the runbook must 
+ * HIGH | NIST's platform firmware guidelines impose two requirements a cloud runbook typically has no analogue for: (1) an update to critical data "shall be validated … prior to committing" — validation is required as a distinct phase befo
+   SRC: NIST Special Publication 800-193, "Platform Firmware Resiliency Guidelines", Andrew Regenscheid, May 2018 — §4
+   RULE: Split every irreversible operation into a verify phase and a commit phase, and make the runbook's verify phase check the *payload itself* (signature, checksum, format, bounds, target-device match) before the commit command is type
+ * HIGH | RFC 9019 states that IoT devices "must not fail when a disruption, such as a power failure or network interruption, occurs during the update process", and — usefully for procedure authors — enumerates that there are exactly two re
+   SRC: RFC 9019, "A Firmware Update Architecture for Internet of Things", B. Moran, H. Tschofenig, D. Brown, M. Meria
+   RULE: A runbook for an irreversible operation must name its recovery path before the first irreversible step, and the path must be one of exactly two kinds: fall back to a known-good artifact already present on the target, or re-obtain 
+investigations recovered: 8
