@@ -384,9 +384,32 @@ easily without any sound verification." The prescribed form states the actual va
 Independently, the Microsoft study of 92 production troubleshooting guides found the top defect
 cluster to be *missing action descriptions and **unquantifiable conditions*** ✓.
 
-> **Rule.** Every verification step must name (a) what to run or look at, and (b) the specific
-> observed value that means it worked. If the reader can satisfy the step without looking at anything,
-> the step is broken.
+> **Rule.** A verification step names the specific observed value that means it worked — and that
+> value must be visible in the output of the command the step has *already* told the reader to run.
+> If the reader can satisfy the step without looking at anything, the step is broken. If they can
+> only satisfy it by running something the step never told them to run, it is also broken.
+
+**The `Expected:` line describes what the reader will see. Nothing else.** That one contract
+settles four questions that otherwise get answered wrong, and getting them wrong is what turns a
+clean-looking runbook into one that cannot actually be followed:
+
+- **It never contains a command.** If confirming the result needs a *different* command, that
+  command is its own numbered step. `Expected: git status -sb shows no [behind]` is a second action
+  wearing a label — it collides head-on with [invariant 5](#5-one-step-one-action), and the reader
+  has to invent the typing you left out. Either fold the check into the step's own command, or give
+  it a step number of its own.
+- **It comes after the command, never before.** It describes that command's output. A reader who
+  meets the expectation first has to carry it in memory while hunting for the thing that produces
+  it — which is exactly the working-memory load you are trying not to impose.
+- **It names something the terminal actually prints.** `Expected: exit 0` fails: a shell displays
+  no exit status. Name the visible output instead, or make the invisible thing visible in the
+  command itself (`… && echo OK`).
+- **It is omitted when the step cannot fail without the reader noticing.** The test is *silent
+  failure*, not authorship. Typing a value into a file needs no expectation — you can see you did
+  it, and it cannot quietly not happen. Running a command that a hook, a lock, or an empty index
+  can reject does need one, because the rejection is precisely what the reader must be told to look
+  for. Manufacturing an expectation on an unfailable step produces a tautology that costs a read
+  and proves nothing.
 
 ```diff
 - 4. Verify the service is healthy.
@@ -401,14 +424,9 @@ cluster to be *missing action descriptions and **unquantifiable conditions*** �
 +    Any other state — stop and escalate. Do not re-run the migration.
 ```
 
-**The mirror image: a step whose action is its own evidence takes no Expected line.** When the action
-is *write this value into that file*, "Expected: the value is in the file" verifies nothing — it is
-discharged by having typed it, which is precisely the attestable step
-[criterion 26](#self-review--rejection-criteria) rejects. Either verify it downstream where
-something actually consumes it (`regen-views --check` exits 0; the build reads the new value), or
-write no Expected line at all. This rule tells you to make verification steps measurable; it does not
-tell you to make every step a verification step. Manufacturing a Expected line on an authoring action
-is how a runbook fills up with tautologies that cost a read and prove nothing.
+This rule makes verification steps measurable; it does not make every step a verification step —
+see the fourth bullet above, and [criterion 26](#self-review--rejection-criteria), which rejects any
+step dischargeable by recording it rather than doing something observable.
 
 This applies identically to a device (`the status LED is solid green, not blinking`), a frontend
 (`the response header includes the new build hash`), and a data pipeline (`row count in the target
@@ -684,6 +702,11 @@ them, and not a claim that anyone is legally bound by them.
   bar; being unmistakable at a glance is. Bind it at first use and then use it consistently, so
   the reader never meets the same placeholder twice with two different explanations.
 - Never abbreviate a destructive command for readability.
+- **An instruction to edit a file is held to the same standard as a command.** "Bump the version"
+  is not something a reader can execute. Name the file, the field, and what it becomes: "In
+  `VERSION`, replace `3.1.0` with `3.1.1`." If the edit can be expressed as a command, give the
+  command instead — a reader who has to decide *how* to make your change is improvising inside a
+  procedure.
 - Show the *expected output*, not just the command, whenever the output is the verification.
 - **Label it `Expected:`, and label the failure branch `If not:`.** Use those two words and no
   synonyms — not `OK:`, `Success:`, `Result:`, and above all not `Pass:`. A label sits where the
@@ -1142,9 +1165,12 @@ R6. Read it as someone with 30 seconds and a page alert. Can they start acting i
    in with a real example where it first appears*? `vX.Y.Z` without a `v3.1.1` next to it fails.
 
 **Verification**
-4. Does every verification step name a specific observed value that means it worked — and, conversely,
-   does any step carry a Expected line that just restates the action you were told to take? Delete
-   those; a step whose action is its own evidence takes no Expected line.
+4. Does every `Expected:` line describe **what this step's own command prints** — not a value the
+   reader could only see by running something you never told them to run, and not an invisible
+   exit status? Does it sit *after* that command? Walk each one literally: type only what the
+   step says, and ask whether the expectation appears on screen.
+4a. Conversely, does any step carry an `Expected:` line that just restates the action you were
+    told to take, on a step that cannot fail without you noticing? Delete those.
 5. Search your draft for "verify", "check", "confirm", "ensure", "make sure", "looks good",
    "healthy", "working", "successful". Each hit is a suspected unmeasurable condition. Fix or
    justify every one.

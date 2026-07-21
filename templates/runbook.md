@@ -195,7 +195,25 @@ triggers:                  # every signal that should lead a responder here
          reads like a regulation gets skimmed like one.
        - `**Expected:**` / `**If not:**` is the verification form EVERYWHERE. Inside
          a conditional it attaches to the branch's own sub-step (`3b.`), but the
-         labels never change. Do not invent a second syntax. -->
+         labels never change. Do not invent a second syntax.
+       - `**Expected:**` describes WHAT THIS STEP'S OWN COMMAND PRINTS, and it
+         goes AFTER that command. If confirming the result needs a DIFFERENT
+         command, that command is its own numbered step. Never smuggle a
+         command into an Expected line — the reader is left to invent the
+         typing you left out, and you have hidden a second action inside a
+         step that claims to have one:
+           ✗ 1. Switch to develop: `git checkout develop`
+                **Expected:** `git status -sb` shows no `[behind]`
+           ✓ 1. Switch to develop: `git checkout develop`
+             2. Confirm you are current: `git status -sb`
+                **Expected:** `## develop...origin/develop`, with no `[behind]`
+       - Never write `Expected: exit 0` — a shell prints no exit status, so the
+         reader cannot see it. Name output that appears on screen, or make it
+         appear (`<command> && echo OK`).
+       - OMIT `**Expected:**` only when the step CANNOT FAIL WITHOUT THE READER
+         NOTICING. Typing a value into a file: omit it. Running a command that
+         a hook, a lock, or an empty index can reject: keep it — the rejection
+         is exactly what they must be told to look for. -->
 
 1. <Imperative action.>
 
@@ -203,17 +221,27 @@ triggers:                  # every signal that should lead a responder here
    <exact command, derived from this repo — never invented>
    ```
 
-   **Expected:** <the specific observed value that means success>
+   **Expected:** <what THAT command prints when it worked>
    **If not:** <step number to go to, or escalate>
 
    > *Why: <one line — only where a reader might reasonably skip or improvise.>*
 
-2. <An action that is its own evidence — writing a value, editing a file.>
+2. <An edit, named precisely: the file, the field, and what it becomes.
+   "In `VERSION`, replace `3.1.0` with `3.1.1`" — not "bump the version".>
 
-<!-- Step 2 deliberately has NO Expected line. When the action is "write X into
-     Y", "Expected: X is in Y" is discharged by having typed it and proves
-     nothing. Verify it downstream where something consumes it, or omit the
-     Expected line. Not every step is a verification step. -->
+3. <A check that needs its own command gets its own step.>
+
+   ```
+   <the checking command>
+   ```
+
+   **Expected:** <what it prints>
+
+<!-- Step 2 deliberately has NO Expected line: you can see you typed it, and it
+     cannot quietly not happen. Step 3 exists because its check needs a command
+     of its own — that command belongs in a step, never inside step 1's
+     Expected line. Not every step is a verification step, and no verification
+     step hides an action. -->
 
 <!-- VERIFICATION IS THE RULE THIS TEMPLATE EXISTS TO ENFORCE.
      Rules: #1-a-verification-step-reports-an-observed-value-not-an-acknowledgment
