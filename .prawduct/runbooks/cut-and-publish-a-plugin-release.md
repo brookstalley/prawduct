@@ -148,10 +148,10 @@ the only way back is another release.
    > *Why: the build-plan checkboxes, release notes and scope rollups are all
    > derived here — hand-edit them and the next regen reverts you.*
 
-7. In `VERSION`, replace `3.1.0` with the new number without the `v` — `3.2.0`
+7. In `plugin/VERSION`, replace the old number with the new one, without the `v` — `3.2.0`
    for a `v3.2.0` release.
 
-8. In `.claude-plugin/plugin.json`, replace `"version": "3.1.0"` with the same
+8. In `plugin/.claude-plugin/plugin.json`, replace `"version"` with the same
    number.
 
    > *Why: that string is the update cache key. A release that forgets it does
@@ -160,9 +160,9 @@ the only way back is another release.
 9. In `pyproject.toml`, replace `version = "3.0.3"` with the same number.
 
    > *Adjudicated, not derived: the file's own comment asks for this bump;
-   > `docs/release-process.md` step 2 doesn't name it.*
+   > `documentation/release-process.md` step 2 didn't name it until v3.1.1.*
 
-10. In `CHANGELOG.md`, add a `## vX.Y.Z` section directly above `## v3.1.0`,
+10. In `plugin/CHANGELOG.md`, add a `## vX.Y.Z` section directly above the previous release,
     with the consumer-facing headline as the first non-empty line under it.
 
     > *Why: the version-delta banner shows exactly that first line to every repo
@@ -243,7 +243,7 @@ this is a safe place to stop and come back.
 18. Confirm the commit actually carries the bump:
 
     ```
-    git show HEAD:VERSION
+    git show HEAD:plugin/VERSION
     ```
 
     **Expected:** the new number, `3.2.0` — not `3.1.0`.

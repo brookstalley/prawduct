@@ -45,6 +45,5 @@ incoming-bugs/
 .prawduct/research/**/raw/
 
 # Repo-local agent scratch — never part of the distributed plugin (Principle 10).
-# The plugin's marketplace source is "./", so anything tracked here reaches every
-# consumer's plugin cache. See GOV-4H7T for the real packaging boundary.
+# Kept out of plugin/ so it is not distributed; this rule also stops it being committed at all.
 .claude/workflows/

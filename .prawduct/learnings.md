@@ -136,7 +136,9 @@ A claim-conflict test stamped the holder's claim via `core.claim(now=NOW)` (fixe
 
 ## A new framework-wide DEFAULT must land in the session digest — place-once preferences and the thin anchor don't reach migrated repos
 
-## Single-repo plugin+marketplace: the marketplace entry's plugin `source` must be `"./"`, not `{source:github,ref}`
+## Single-repo plugin+marketplace: the marketplace entry's plugin `source` must be a RELATIVE PATH, not `{source:github,ref}` — and that path is a curated subdirectory, not the repo root
+
+A `{source:github,…}` object makes Claude Code re-clone over SSH to fetch the plugin, which fails with "Permission denied (publickey)" on any machine without SSH keys, even for a public repo. A relative path reuses the marketplace's own HTTPS checkout. **Corrected 2026-07-21:** this entry previously read `must be "./"` with no body, so the heading was the whole rule — and a reader applying it would revert the v3.1.1 packaging fix. `"./"` distributes the entire repository, putting prawduct's own backlog, learnings and internal docs into every consumer's plugin cache (GOV-4H7T). The path is `"./plugin"`, a curated root holding only what consumers run. Both halves matter and neither implies the other: relative-not-github is about the clone transport, subdirectory-not-root is about the distributed surface. Pinned by `tests/test_plugin_packaging.py`.
 
 ## Release-bound work merged feature→develop under gitflow: KEEP the build plan — it's a live release artifact, not spent
 

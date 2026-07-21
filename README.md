@@ -233,26 +233,34 @@ No `tools/product-hook`, no `tools/lib/`, no committed `.claude/skills/*`, no `s
 ## Framework Layout
 
 This repo hosts the plugin and its own git-backed marketplace. **Only `plugin/` is distributed** —
-a curated root of symlinks the installer dereferences, so the framework's own state and tests never
-reach a consumer's plugin cache (v3.1.1; the source was previously `"./"`, i.e. the whole repo).
+everything beside it is prawduct's own development state and never reaches a consumer's plugin cache
+(v3.1.1; the source was previously `"./"`, i.e. the whole repo, ~6.7 MB of it).
 
 ```
 prawduct/
 ├── .claude-plugin/marketplace.json   # marketplace entry (plugin source "./plugin"; consumers pin ref: main)
-├── plugin/                     # ⇦ THE DISTRIBUTED PLUGIN — symlinks to everything below that ships
-│   └── .claude-plugin/plugin.json    # name: prawduct, version (mirrors VERSION)
 │
-├── hooks/hooks.json            # ships. SessionStart (banner + briefing + digest), Stop (Critic + reflection gates)
-├── skills/                     # ships. framework skills → /prawduct:* (onboard, doctor, critic, pr, runbook, …)
-├── bin/prawduct-hook           # ships. runtime governance (Python; reads/writes only ${CLAUDE_PROJECT_DIR}/.prawduct/)
-├── lib/                        # ships. governance + scaffolding/migration modules (init_product, migrate_plugin, …)
-├── methodology/ docs/ templates/ agents/   # ship; read by skills/hooks via ${CLAUDE_PLUGIN_ROOT}
-├── VERSION                     # ships — read at runtime by lib/core.py and lib/evidence.py
+├── plugin/                     # ⇦ THE DISTRIBUTED PLUGIN — this directory, and nothing else, is what installs
+│   ├── .claude-plugin/plugin.json    # name: prawduct, version (mirrors VERSION)
+│   ├── hooks/hooks.json        # SessionStart (banner + briefing + digest), Stop (Critic + reflection gates)
+│   ├── skills/                 # framework skills → /prawduct:* (onboard, doctor, critic, pr, runbook, …)
+│   ├── bin/prawduct-hook       # runtime governance (Python; reads/writes only ${CLAUDE_PROJECT_DIR}/.prawduct/)
+│   ├── lib/                    # governance + scaffolding/migration modules (init_product, migrate_plugin, …)
+│   ├── methodology/ templates/ agents/   # read by skills/hooks via ${CLAUDE_PLUGIN_ROOT}
+│   ├── docs/                   # only the guides skills route to (principles, norms, waivers, runbook-authoring, …)
+│   ├── VERSION                 # read at runtime by lib/core.py and lib/evidence.py
+│   └── CHANGELOG.md            # the version-delta banner reads this one
 │
 ├── tests/                      # NOT distributed. framework tests (pytest) + evaluation scenarios
-├── documentation/              # NOT distributed. the framework's own requirements and specs
-└── .prawduct/                  # NOT distributed. the framework's own state — it dogfoods its own plugin
+├── documentation/              # NOT distributed. prawduct's own requirements, specs, and release process
+├── .prawduct/                  # NOT distributed. the framework's own state — it dogfoods its own plugin
+├── CLAUDE.md                   # NOT distributed. prawduct's own operating instructions
+└── README.md  LICENSE  pyproject.toml
 ```
+
+Real files, not symlinks — deliberately. A symlink farm was tried first (much smaller diff) and is
+broken on any checkout without symlink support: with `core.symlinks=false`, the Git-for-Windows
+default, every entry becomes a few-byte text stub and the plugin installs inert.
 
 `tests/test_plugin_packaging.py` pins that boundary in both directions: a required component going
 missing breaks governance for every consumer at once, and a leak puts another product's

@@ -22,7 +22,7 @@ Claude Code resolves a plugin's version from `plugin.json` `version` first. With
 `autoUpdate: true`, the consumer re-resolves `main` at session start, but **`version` is the
 update cache key**: if you promote a commit to `main` without bumping `version`, `autoUpdate`
 sees the same string and keeps the cached copy — **a release that forgets the version bump does
-not ship.** Always bump `version` (and the `VERSION` file it mirrors) as part of the release.
+not ship.** Always bump `version` in `plugin/.claude-plugin/plugin.json` (and `plugin/VERSION`, which it mirrors, plus `pyproject.toml`) as part of the release.
 
 > **Spike results (Chunk 2, empirically confirmed 2026-06-02 on a throwaway public plugin+marketplace repo).**
 > The model holds — no fallback needed:
@@ -67,7 +67,7 @@ not ship.** Always bump `version` (and the `VERSION` file it mirrors) as part of
 When `develop` is ready to release as `vX.Y.Z`:
 
 1. **Merge `develop` → `main`.**
-2. **Bump the version** in `.claude-plugin/plugin.json` `version` **and** the `VERSION` file
+2. **Bump the version** in `plugin/.claude-plugin/plugin.json` `version` **and** `plugin/VERSION` **and** `pyproject.toml`
    (they mirror each other). This is the release trigger — without it, nothing ships.
 3. **Flip the change-log entries** for the shipped work to `status=shipped` — **every
    unreleased entry, statusless OR legacy `status=merged`**. Entries arrive at release-prep
@@ -187,7 +187,7 @@ check-cumulative-critic` by hand against the release-prep commit — a non-zero 
 benign**, not a gate to satisfy:
 
 - **Why it fires:** release-prep necessarily touches non-`.md` files (the `version` strings in
-  `.claude-plugin/plugin.json` + `VERSION`, and the `regen-views`-regenerated `scope_rollups` in
+  `plugin/.claude-plugin/plugin.json` + `plugin/VERSION` + `pyproject.toml`, and the `regen-views`-regenerated `scope_rollups` in
   `project-state.yaml`). The CRT-7M2D coverage gate only excuses a doc-only (`.md`) delta since the
   recorded review, so these version/derived-view edits read as "code changed since review" → exit 1.
 - **Why it's benign:** the operative pre-release reviews already happened — each feature had a clean

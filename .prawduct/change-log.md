@@ -22,14 +22,21 @@ ignore semantics. Installing copies the source directory wholesale. `.gitignore`
 it governs what git tracks, and `source: "./"` collapsed "tracked" and "distributed" into one
 question.
 
-The only lever is the source path, so the plugin root is now **`plugin/`** — a curated root of
-relative symlinks to the eight component directories plus `plugin.json`, `VERSION`, `CHANGELOG.md`,
-`LICENSE` and `README.md`. The installer dereferences them into real content.
+The only lever is the source path, so the plugin root is now **`plugin/`** — a real directory
+holding the eight component directories plus `plugin.json`, `VERSION` and `CHANGELOG.md`.
+
+**A symlink farm was tried first and rejected on evidence.** It was a far smaller diff and it
+installed correctly here — but a checkout with `core.symlinks=false`, the Git-for-Windows default,
+materialises every entry as a 6-14 byte text stub, so the plugin installs *inert*: no skills, no
+hooks, no lib. Not degraded — nothing. A macOS install test cannot observe that, which is precisely
+why it nearly shipped. Moving the files for real costs a wide diff (`tests/` imports `lib`, so
+`conftest.py` now puts `plugin/` on `sys.path` instead of 39 files doing it themselves) and buys
+correctness on every platform. Owner's call, and the right one: delay is better than broken.
 
 **Measured by real install, not asserted.** Installing into an isolated `CLAUDE_CONFIG_DIR` from a
 fresh clone — what a git-sourced consumer actually gets — yields **120 files / 1.8 MB**, down from
 203 files / ~6.7 MB. Every required component present; `.prawduct/`, `tests/`, `documentation/`,
-`CLAUDE.md`, `pyproject.toml`, `.claude/` and `marketplace.json` all absent; zero dead symlinks.
+`CLAUDE.md`, `pyproject.toml`, `.claude/` and `marketplace.json` all absent; zero symlinks.
 
 Two things only testing would have found. `VERSION` **must** ship — `lib/core.py:36` and
 `lib/evidence.py:85` read it at runtime relative to the plugin root, so a "just ship the code
@@ -44,6 +51,16 @@ forbidden-absent — because both failures are silent: a leak ships someone else
 omission breaks governance for every consumer at once with no recall. It asserts its own absence
 from the shipped set, and was mutation-tested against three regressions (source reverted to `./`,
 `VERSION` dropped, `.prawduct` leaked) with each caught by its matching assertion.
+
+`docs/` was curated by audience in the same pass. It shipped wholesale and was mixed: nine files —
+prawduct's own `release-process.md`, `project-structure.md`, and seven `work-model-*.md` including
+one whose header reads *"SUPERSEDED — v1 apparatus, preserved as history of the exploration"* — moved
+to `documentation/`, which stays in git and on GitHub but is not distributed. `plugin/docs/` now
+holds only the six guides skills actually route models to. `skills/pr/SKILL.md` had four pointers at
+`docs/release-process.md`, sending consumers to prawduct's own release procedure; the guard now hands
+back to the user's own process.
+
+Net: **203 files / ~6.7 MB → 109 files / 1.7 MB.**
 
 Closes **GOV-4H7T**.
 
