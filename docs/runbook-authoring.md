@@ -112,24 +112,32 @@ Not this alert, or a different instance? → see the index; do not continue.
 ## Steps
 1. Check what is consuming space:
    `sudo du -xh /var/lib/postgresql --max-depth=2 | sort -rh | head -20`
-   **Expected:** you can name the largest directory.
+   **Expected:** a size-ordered list; the largest directory is the first line.
 
 2. If `pg_wal/` is the largest, check for a stuck replication slot:
    `psql -c "select slot_name, active, restart_lsn from pg_replication_slots;"`
    **IF a slot shows `active = f`:** that slot is pinning WAL → go to step 3.
-   **IF all slots are active, or none exist:** → go to step 5.
+   **IF all slots are active, or none exist:** → go to step 6.
 
-3. ⚠️ **IRREVERSIBLE — dropping a slot loses its replica's position.**
-   Proceed only if the replica is confirmed gone or being rebuilt (ask #db-oncall).
-   Abort if anyone is unsure → go to step 5.
+3. Ask #db-oncall whether the replica behind that slot is gone or being rebuilt.
+   **Expected:** an explicit yes from whoever owns it.
+   **If not:** → step 6. Do not proceed on silence.
+
+> ⚠️ **IRREVERSIBLE — step 4 drops the slot and loses its replica's position.**
+> **Proceed only if:** step 3 got an explicit yes.
+> **Abort if:** anyone is unsure → step 6. Aborting costs nothing.
+
+4. Drop the slot:
    `psql -c "select pg_drop_replication_slot('<slot_name>');"`
 
-4. Confirm space is returning:
+5. Confirm space is returning:
    `df -h /var/lib/postgresql`
-   **Expected:** used% is falling, and below 85% within 10 minutes.
-   **If not falling after 10 minutes:** → step 5.
+   **Expected — both:**
+   - used% is lower than in step 1
+   - used% is below 85% within 10 minutes
+   **If not:** → step 6.
 
-5. Escalate to #db-oncall with the output of step 1.
+6. Escalate to #db-oncall with the output of step 1.
    Wake the DBA on-call if used% is above 95% — the database stops writing at 100%.
 
 ## Done when
@@ -140,10 +148,10 @@ Not this alert, or a different instance? → see the index; do not continue.
 - Escalate to: #db-oncall, immediately if above 95%.
 ```
 
-Count what it does: names the trigger verbatim, gives a confirmable entry condition and an exit,
-five steps, every one with an observed value, one branch written condition-first, one irreversible
-step marked with its abort criterion before it, an observable done-state, and a wake-someone-up
-threshold stated explicitly.
+Count what it does: names the trigger verbatim, gives a confirmable entry condition and an exit, six
+steps, every one with an observed value, one branch written condition-first, one irreversible step
+whose precondition is its own numbered step and whose abort criterion sits immediately before it,
+an observable done-state, and a wake-someone-up threshold stated explicitly.
 
 Now count what it *omits*: no architecture background, no explanation of what WAL is, no blast-radius
 table, no prerequisites block, no close-out (it changes no state that needs putting back), no
@@ -965,9 +973,11 @@ discard a branch before reading its actions. In Markdown:
 ```markdown
 5. Check replication lag: `<command>`
 
+   **Expected:** a lag figure in seconds.
+
    **IF lag is under 30s:**
    - 5a. Resume writes: `<command>`
-   - 5b. Confirm: `write_errors` is 0 in `<command>` output.
+   - 5b. Re-run `<command>`. **Expected:** `write_errors` is 0.
 
    **IF lag is 30s or more:**
    - 5c. Do NOT resume writes.
@@ -1068,33 +1078,41 @@ endpoint. It does not. The rule is identical everywhere; only the instrument cha
 ```markdown
 BACKEND   ✗ Verify the service recovered.
           ✓ Run: <health command>
-            Expected: `ready_replicas` equals `desired_replicas`, and error rate is
-            below <threshold from the alert definition> for 2 consecutive minutes.
+            Expected — all of:
+            - `ready_replicas` equals `desired_replicas`
+            - error rate below <threshold from the alert>, 2 minutes running
 
 FRONTEND  ✗ Confirm the fix is live.
           ✓ Load <URL> in a private window with cache disabled.
-            Expected: the `<build-hash meta tag / asset filename>` matches the hash
-            printed by the deploy step. A matching hash on YOUR machine does not
-            mean users have it — see step N for the client-cache check.
+            Expected: `<build-hash meta tag>` matches the hash step N printed.
+            If not: → step N.
+            > Why: a matching hash on YOUR machine says nothing about users
+            > still holding a cached bundle. Step N is the check that does.
 
 EMBEDDED  ✗ Check the device is healthy after flashing.
           ✓ Observe the status LED for 30 seconds after reboot.
-            Expected: solid green. Blinking amber = boot loop → recovery (step N).
-            No light after 30s = do NOT re-flash; the device is in <state>,
-            power-cycle once and re-observe. Second failure → RMA, do not retry.
+            Expected: solid green.
+            If not:
+            `blinking amber`  - boot loop  →  **step N (recovery)**
+            `dark after 30s`  - do NOT re-flash  →  **power-cycle once and
+                                re-observe; a second failure is an RMA**
+            - anything else → escalate; this procedure has stopped applying
 
 DATA      ✗ Make sure the backfill worked.
           ✓ Run: <reconciliation query> for the affected partition range.
-            Expected: target row count equals source row count AND null count in
-            <key column> is 0. Record both numbers in the incident channel —
-            a partition that is merely NON-EMPTY is not a verified partition.
+            Expected — all of:
+            - target row count equals source row count
+            - null count in <key column> is 0
+            > Why: a partition that is merely non-empty is not a verified
+            > partition, and the row count alone will not tell you.
 
 MOBILE    ✗ Verify the rollout is safe to continue.
           ✓ In <console>, read crash-free-sessions for the new version only,
             at a minimum of <N> sessions.
-            Expected: at or above <baseline from the previous release>. Below it:
-            halt the rollout (step N) — and note that halting does NOT remove
-            the build from users who already have it.
+            Expected: at or above <baseline from the previous release>.
+            If not: → step N (halt the rollout).
+            > Why: halting stops new installs. It does not remove the build
+            > from anyone who already has it, so speed matters here.
 ```
 
 Each right-hand example does the same four things: names the instrument, names the observed value,
@@ -1246,9 +1264,8 @@ Derive from, in order of preference:
 
 ```markdown
 6. Restart the ingest worker.
-   > 🚧 **UNVERIFIED — command not found in repo.** No restart target exists in CI config,
-   > Makefile, or deployment manifests. Confirm the exact command with the service owner and
-   > replace this line before this runbook is relied upon.
+   > 🚧 **UNVERIFIED — the restart command is not in this repo.** Get it from the service owner
+   > before you rely on this step.
 ```
 
 **When two sources in the repo disagree and you pick one, say so in the step.** A reader cannot tell

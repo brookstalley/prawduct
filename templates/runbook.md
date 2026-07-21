@@ -322,6 +322,8 @@ triggers:                  # every signal that should lead a responder here
 
 3. Check <what>: `<command>`
 
+   **Expected:** <what it prints — the value you branch on>
+
    **IF <condition A>:**
    - 3a. <action>
    - 3b. **Expected:** <observed value>
