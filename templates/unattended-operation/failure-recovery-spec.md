@@ -52,6 +52,10 @@ last_validated: null
 
 ## Recovery Procedures
 
+<!-- Anything beyond a one-liner belongs in its own runbook, not inline here:
+     `/prawduct:runbook` to author one, `templates/runbook.md` for the blank,
+     `docs/runbook-authoring.md` for the rules and the evidence behind them.
+     Link to them from here rather than duplicating steps. -->
 <!-- For the operator (likely the developer themselves for a side project): -->
 <!-- - How to diagnose a failure (what to check first) -->
 <!-- - How to manually re-run after fixing the issue -->

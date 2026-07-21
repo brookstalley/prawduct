@@ -386,7 +386,9 @@ and rehearsal · authoring protocol for a model · 26-point self-review · evide
 
 The four dead gap searches are the only real remainder, and the artifact is honest about the gap.
 Resume with:
-`Workflow({scriptPath: ".prawduct/research/runbook-authoring/raw/runbook-claim-verify-wf_5f51f52d-5a5.js", resumeFromRunId: "wf_5f51f52d-5a5"})`
+`Workflow({name: "runbook-claim-verify", resumeFromRunId: "wf_5f51f52d-5a5"})`
+(the script is committed at `.claude/workflows/runbook-claim-verify-4.js`; the `raw/` copies are
+gitignored and exist only on the machine that ran the research)
 — completed agents replay from cache, so only the 4 failed gap agents re-run.
 
 A natural follow-on, deliberately out of scope this pass: `templates/runbook.md` and a

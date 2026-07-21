@@ -9,8 +9,9 @@ you may be the one who executes it, but the runbook's reason for existing is tha
 tired person who did not build this system has to make it work. Every rule below descends from
 that reader.
 
-**How to use this guide.** Read the [Invariants](#the-invariants) first — they hold regardless of
-technology. Then work in this order:
+**How to use this guide.** Read [Read this before you use any of the rest](#read-this-before-you-use-any-of-the-rest)
+first — it is short, and it is the difference between a runbook people use and one they don't. Then
+the [Invariants](#the-invariants), which hold regardless of technology. Then work in this order:
 
 1. [Proportionality](#proportionality) — how much procedure this task actually warrants
 2. [Choosing the execution form](#choosing-the-execution-form) — read-do or do-confirm
@@ -18,12 +19,123 @@ technology. Then work in this order:
 4. [Writing rules](#writing-rules) and [Branching](#branching-and-steps-that-cannot-be-undone) — the
    step-level craft, and what changes when a step cannot be undone
 5. [How the runbook gets found](#how-the-runbook-gets-found) — naming, indexing, alert linkage
-6. [Authoring protocol](#authoring-protocol-when-a-model-writes-the-runbook) — the parts specific to
+6. [Authoring protocol](#authoring-protocol--when-a-model-writes-the-runbook) — the parts specific to
    a model doing the writing, above all *derive commands, never generate them*
 
 Before you call it done, run the [rejection criteria](#self-review--rejection-criteria) against your
 own output. If you are short on time, the two rules that recover most of the value are: **every
 verification step names an observed value**, and **every command is derived from the repository**.
+
+---
+
+## Read this before you use any of the rest
+
+**This guide is a diagnostic set, not a checklist to satisfy.** It is long because it catalogues the
+many ways procedures fail. The runbooks it produces must be **short**.
+
+If you apply everything here to every procedure, you will produce a thorough, complete, exhaustively
+cross-referenced document that **no tired human will read** — and you will have failed, while
+appearing to succeed. That failure mode is not a hypothetical risk of over-application. It is the
+single most strongly evidenced finding in the entire literature below:
+
+> As a list grows, the probability of overlooking any given item rises, and length itself drives
+> operators to skip the procedure or execute it poorly ✓. Observed crews facing a long checklist
+> degraded it into a hurried read-through, destroying the very redundancy it existed to provide.
+
+A runbook padded with sections that do not apply is not "comprehensive." It is **diluted** — every
+unnecessary line lowers the odds that a necessary one is read.
+
+### The budgets
+
+Treat these as limits, not targets. Exceeding one is a defect that needs a reason, not a badge.
+
+| | Budget |
+|---|---|
+| Steps in one runbook | **≤ 20.** More than that, split it and give each part its own entry condition |
+| Steps in one phase | **5–15** |
+| Words per step | Aim under 25 for the action line. The command can be long; the sentence cannot |
+| Rationale lines | Only where a reader might reasonably skip or improvise the step. Not on every step |
+| Sections | Only those that apply. **Deleting an inapplicable section is correct**, not lazy |
+
+Real production runbooks average roughly 3,000 tokens and 5–15 steps ✓. That is your reference
+point — not this document's length.
+
+### The subtraction pass
+
+After drafting, before reviewing, do one pass whose **only** purpose is removal. For each line ask:
+*would a tired responder at 3 a.m. be worse off without this?* If not, cut it. Specifically cut:
+
+- Background and architecture the reader does not need to execute the step
+- Rationale on steps nobody would skip anyway
+- Sections carried over from the template with nothing product-specific in them
+- Warnings about things that cannot happen in this procedure
+- Any restatement of something already said once
+
+**A step you deleted cannot be misread.** When in doubt between a shorter runbook with excellent
+verification steps and a longer one that covers more ground, choose the shorter one every time.
+
+### What is actually non-negotiable
+
+Everything else in this guide is conditional. These are not:
+
+1. Every verification step names an **observed value** — not "check that it worked".
+2. Every command is **derived from the repository**, or visibly marked unverified.
+3. Every irreversible step is **marked**, with its abort criterion before it.
+4. The reader is told **where to go when it fails** or stops applying.
+
+A four-step runbook that does those things is a good runbook. Ship it.
+
+### What good and short actually looks like
+
+This is a complete runbook. Not an excerpt — the whole document. It satisfies all four
+non-negotiables and would pass the self-review, and it is under a page.
+
+```markdown
+# DiskSpaceLow — payments-db
+
+## When to use this
+Pager fired `DiskSpaceLow` with `instance=payments-db`. Confirm before acting:
+`df -h /var/lib/postgresql` reports ≥85% used.
+Not this alert, or a different instance? → see the index; do not continue.
+
+## Steps
+1. Check what is consuming space:
+   `sudo du -xh /var/lib/postgresql --max-depth=2 | sort -rh | head -20`
+   **Pass:** you can name the largest directory.
+
+2. If `pg_wal/` is the largest, check for a stuck replication slot:
+   `psql -c "select slot_name, active, restart_lsn from pg_replication_slots;"`
+   **IF a slot shows `active = f`:** that slot is pinning WAL → go to step 3.
+   **IF all slots are active, or none exist:** → go to step 5.
+
+3. ⚠️ **IRREVERSIBLE — dropping a slot loses its replica's position.**
+   Proceed only if the replica is confirmed gone or being rebuilt (ask #db-oncall).
+   Abort if anyone is unsure → go to step 5.
+   `psql -c "select pg_drop_replication_slot('<slot_name>');"`
+
+4. Confirm space is returning:
+   `df -h /var/lib/postgresql`
+   **Pass:** used% is falling, and below 85% within 10 minutes.
+   **If not falling after 10 minutes:** → step 5.
+
+5. Escalate to #db-oncall with the output of step 1.
+   Wake the DBA on-call if used% is above 95% — the database stops writing at 100%.
+
+## If this doesn't work
+- Disk filling with no obvious consumer → this procedure does not apply; page #infra.
+- Escalate to: #db-oncall, immediately if above 95%.
+```
+
+Count what it does: names the trigger verbatim, gives a confirmable entry condition and an exit,
+five steps, every one with an observed value, one branch written condition-first, one irreversible
+step marked with its abort criterion before it, and a wake-someone-up threshold stated explicitly.
+
+Now count what it *omits*: no architecture background, no explanation of what WAL is, no blast-radius
+table, no prerequisites block, no close-out (it changes no state that needs putting back), no
+duration estimate, no rationale on steps nobody would skip. Every one of those omissions is
+**correct**. Adding them would make the document longer, more complete-looking, and worse.
+
+---
 
 **Evidence markers.** This guide distinguishes what is known from what is merely repeated:
 
@@ -33,7 +145,7 @@ verification step names an observed value**, and **every command is derived from
 | ○ | Sourced and quoted from a primary document by a single researcher, but not put through adversarial challenge. Directionally trustworthy; do not lean on its exact wording or figures |
 | ◆ | Reasoned design guidance. No study supports it; it follows from the evidenced findings |
 
-The [Evidence appendix](#evidence-what-is-known-vs-what-is-merely-repeated) also carries a list of
+The [Evidence appendix](#evidence--what-is-known-vs-what-is-merely-repeated) also carries a list of
 **refuted** claims — plausible, widely-repeated, and false. Read it. They are exactly what a model
 regenerates from memory.
 
@@ -46,7 +158,7 @@ confident tone, and they fail in one of four ways:
 
 1. **The unmeasurable condition.** "Verify the service is healthy." The reader cannot tell whether
    this passed. In the largest study of real production runbooks, this defect class was the single
-   most common ○ — more common than a step being outright wrong.
+   most common ✓ — more common than a step being outright wrong.
 2. **The invented command.** A step that could not have worked, because the flag, package, or
    endpoint does not exist. This is the characteristic failure of a machine-written procedure, and
    it is measurable ○.
@@ -74,11 +186,17 @@ document's own design created the opening ○:
 | **Texas City refinery, Mar 2005** | The written startup procedure lacked instructions the board operator needed and had no defined way to suspend and resume across a shift handover. 15 people died. |
 | **Swissair 111, Sep 1998** | Official TSB findings name checklist design as a risk factor: the applicable smoke-of-unknown-origin checklist could take 20–30 minutes to complete — longer than the aircraft had. |
 
-Read the pattern. Almost none of these are "the operator ignored the runbook." They are: an unbounded
+Read the pattern. These are not mostly "the operator ignored the runbook." They are: an unbounded
 operand, an undocumented silent behaviour, a review step that checked the wrong property, a rollout
-scope the procedure permitted, a missing verification of completeness, absent acceptance criteria,
-no suspend/resume path, and a procedure too slow for its own emergency. **Every one of them is an
-authoring defect**, and every one is preventable by a rule in this guide.
+scope the procedure permitted, a missing verification that a change reached every target, absent
+acceptance criteria, no suspend/resume path, and a procedure too slow for its own emergency. Most
+are authoring defects, and most map onto a rule in this guide.
+
+Be precise about the ones that do not. Knight Capital's defect — no procedure required confirming
+the deploy had reached *all* targets — has no dedicated rule below; the closest is "Done when" naming
+an observable end state, which does not by itself force per-target enumeration. Treat that as a gap
+in this guide rather than evidence for it, and when your procedure fans out across targets, verify
+the fan-out explicitly.
 
 ---
 
@@ -155,9 +273,15 @@ alert library *mechanically derives* each alert's `runbook_url` from the alert n
 pattern ○ — so the link cannot be forgotten, and a missing runbook shows up as a visible 404 rather
 than a silently absent link.
 
-> **Rule.** Title = alert name. Index by symptom, redundantly. Put the link inside the notification
-> the responder actually receives, as a resolvable address — not in a wiki they must go searching
-> for. Treat "has a linked runbook" as part of the definition of done for creating an alert.
+> **Rule.** Title by the responder's entry point. **If a named signal triggers this procedure** —
+> an alert, an error code, a device fault code, a store-review rejection reason — the title is that
+> identifier, character-for-character, because string identity is how the responder confirms they
+> opened the right document. **If there is no such signal**, title by the symptom as experienced
+> ("checkout failing for some users, nothing firing"). Either way the title names *what the
+> responder observes*, never the component you believe is at fault — and if your alert names are
+> themselves component-shaped, fix the alert names too. Then index redundantly under every symptom
+> that could surface it, and put a resolvable link inside the notification the responder actually
+> receives — not in a wiki they must go searching for.
 
 ---
 
@@ -254,7 +378,7 @@ easily without any sound verification." The prescribed form states the actual va
 30.10`, not `Altimeters — checked`. The FAA reaffirmed this 26 years later.
 
 Independently, the Microsoft study of 92 production troubleshooting guides found the top defect
-cluster to be *missing action descriptions and **unquantifiable conditions*** ○.
+cluster to be *missing action descriptions and **unquantifiable conditions*** ✓.
 
 > **Rule.** Every verification step must name (a) what to run or look at, and (b) the specific
 > observed value that means "pass". If the reader can satisfy the step without looking at anything,
@@ -281,8 +405,10 @@ table equals the source count for the partition`).
 
 Aviation doctrine places the most critical items as close to the *beginning* of a procedure as
 possible, because the probability of completing an item without interruption falls as the procedure
-runs on ✓. This guideline is explicitly ranked *above* sequencing by system topology or by external
-dependency — a rare case of a standard adjudicating its own conflicting rules.
+runs on ✓. The source explicitly ranks this above sequencing by system topology or by external dependency —
+"in most cases where this occurs, this guideline should take precedence" — a rare case of a standard
+adjudicating its own conflicting rules. Note it is guidance, and the authors say their guidelines
+"are not specifications".
 
 The source defines "critical" as *accident-causing if omitted*. For software, read that as: the
 step whose omission silently corrupts the outcome. The classic shape is a pre-flight check that is
@@ -312,8 +438,10 @@ that is not the moment to expect them to derive a stopping rule.
 
 ### 4. Length is a defect; decompose into phases
 
-As a list grows, the probability of overlooking any given item rises, and long procedures push
-operators either to skip the document or to execute it poorly ✓. Field observation found crews
+As a list grows, "there **may be** a higher probability of overlooking any given item", and length
+"carries the risk" that operators skip the document or execute it poorly ✓ — the hedges are the
+sources' own. No experiment manipulated procedure length; the support is a human-reliability
+handbook's estimate, operator self-report, and field observation. Field observation found crews
 degrading a long checklist into a hurried read-through, sacrificing the very redundancy the
 checklist existed to provide.
 
@@ -456,8 +584,10 @@ fields and excellent steps beats one with twelve fields and vague ones.
 
 **Always:**
 
-- **Title** — states the *situation*, not the mechanism: "Database connection pool exhausted", not
-  "Pool tuning". The reader arrives with a symptom.
+- **Title** — names what the responder observes, not the mechanism you suspect: "Database
+  connection pool exhausted", not "Pool tuning". Where a named signal triggers the procedure, the
+  title is that signal verbatim — see [How the runbook gets found](#how-the-runbook-gets-found) for
+  the full rule.
 - **When to use this** — the trigger/entry condition, phrased so a reader can match it against what
   they are seeing. Include the alert name or error signature verbatim if there is one.
 - **When NOT to use this** — the neighbouring procedures this gets confused with, and where to go
@@ -519,7 +649,7 @@ them, and not a claim that anyone is legally bound by them.
 - A warning immediately precedes the step it governs — never at the top of the document, never after.
 - It must be readable without scrolling past the step ◆ (the print-era rule is "without a page turn";
   the web equivalent is "not collapsed, not behind a fold, not in a sibling tab").
-- A warning contains hazard information only, **never an action** ○. If the reader must do something,
+- A warning contains hazard information only, **never an action** ✓. If the reader must do something,
   that is a step.
 
 **Structure**
@@ -554,8 +684,9 @@ The mature conventions come from nuclear procedure standards and aviation quick-
 reading the action at all — reading an action you should not take is itself a documented error mode.
 
 **Cap the logic.** Nuclear procedure guidance says `AND` "should not be used to join more than four
-conditions" — beyond four, use a list format — and says `AND` and `OR` should not be combined in the
-same step, because the resulting logic is genuinely ambiguous ✓. Adopt both limits.
+conditions" — beyond four, use a list format — and says the use of `AND` and `OR` together within
+the same step "should be avoided", because such combined logic statements "can be confusing and
+ambiguous" ✓. Adopt both limits.
 
 **Make the branch visible in the layout.** Aviation quick-reference-handbook design names three
 mechanisms as "the main ingredients" of an error-resistant layout ✓: an explicit condition-marker
@@ -659,6 +790,53 @@ Fill this table for the product before writing.
 value; irreversible actions need pre-flight checks and stated abort criteria; a procedure that
 cannot be executed by someone other than its author is not finished.
 
+### The same invariant, in five substrates
+
+[Invariant 1](#1-a-verification-step-reports-an-observed-value-not-an-acknowledgment) is the one
+most often written badly, and it is easy to assume it only makes sense for a service with a metrics
+endpoint. It does not. The rule is identical everywhere; only the instrument changes.
+
+```markdown
+BACKEND   ✗ Verify the service recovered.
+          ✓ Run: <health command>
+            Pass: `ready_replicas` equals `desired_replicas`, and error rate is
+            below <threshold from the alert definition> for 2 consecutive minutes.
+
+FRONTEND  ✗ Confirm the fix is live.
+          ✓ Load <URL> in a private window with cache disabled.
+            Pass: the `<build-hash meta tag / asset filename>` matches the hash
+            printed by the deploy step. A matching hash on YOUR machine does not
+            mean users have it — see step N for the client-cache check.
+
+EMBEDDED  ✗ Check the device is healthy after flashing.
+          ✓ Observe the status LED for 30 seconds after reboot.
+            Pass: solid green. Blinking amber = boot loop → recovery (step N).
+            No light after 30s = do NOT re-flash; the device is in <state>,
+            power-cycle once and re-observe. Second failure → RMA, do not retry.
+
+DATA      ✗ Make sure the backfill worked.
+          ✓ Run: <reconciliation query> for the affected partition range.
+            Pass: target row count equals source row count AND null count in
+            <key column> is 0. Record both numbers in the incident channel —
+            a partition that is merely NON-EMPTY is not a verified partition.
+
+MOBILE    ✗ Verify the rollout is safe to continue.
+          ✓ In <console>, read crash-free-sessions for the new version only,
+            at a minimum of <N> sessions.
+            Pass: at or above <baseline from the previous release>. Below it:
+            halt the rollout (step N) — and note that halting does NOT remove
+            the build from users who already have it.
+```
+
+Each right-hand example does the same four things: names the instrument, names the observed value,
+names what "pass" is, and says where to go on failure. That is the whole rule, and it is
+technology-independent.
+
+Note what the embedded and mobile cases add that the backend case does not need: an explicit
+"do **not** retry" branch, because the retry is what bricks the device or burns the release. When
+your product's failure mode is irreversible, the failure branch carries more weight than the success
+path — which is the reverse of the cloud habit.
+
 ---
 
 ## Maintenance — a runbook is only as good as its last rehearsal
@@ -677,7 +855,9 @@ correlated with the tendency to violate ✓.
 > **When someone skips your runbook, the first hypothesis is that your runbook is wrong.**
 
 **Rehearsal is the completion criterion, not authorship.** Both major software authorities pair the
-document with exercise rather than treating the document as sufficient ✓, and the practice of
+document with exercise — Google's phrasing is that it relies on playbooks "in addition to" its
+Wheel of Misfortune drills, which establishes that both are used rather than that either alone is
+inadequate ✓ — and the practice of
 feeding exercise findings back into the text is explicit. AWS names "you document your procedures,
 but you never exercise them" as an anti-pattern of its game-day best practice ✓.
 
@@ -686,11 +866,12 @@ The single cheapest, highest-yield check — and AWS states it plainly ✓:
 > **"Once your runbook is documented, validate it by having someone else on your team run it."**
 > Give it to a teammate, watch, and fix everything they stumble on.
 
-Nuclear procedure guidance goes further, holding that no single validation method suffices ✓:
-desk review cannot establish that the procedure matches the actual plant — that referenced
-controls, equipment, and indications exist, carry the same designations and units, and behave as
-written — which requires a physical walk-through; and confidence that the procedure *works* requires
-simulation. The software translation is direct: reading a runbook proves nothing. Executing it
+Nuclear procedure guidance goes further, holding that no single validation method suffices — "some
+combination of these or other methods should be used" ✓. It singles out one objective as method-bound:
+establishing that the procedure matches the actual plant — that referenced controls, equipment, and
+indications exist, carry the same designations and units, and behave as written — *can only* be done
+by physical walk-through, not by desk review. For confidence that the procedure actually works it
+recommends an approach including simulation ("should", not "shall"). The software translation is direct: reading a runbook proves nothing. Executing it
 against the real system, or a realistic copy, is the only validation that counts.
 
 And the sharpest evidence in this whole area is a caution about mistaking the artifact for the
@@ -813,7 +994,7 @@ condition qualitatively and mark it for an owner to pin down.
 When Microsoft researchers built agent execution over real runbooks, they explicitly **rejected**
 converting them into a machine-oriented DSL, requiring that procedures "remain accessible and
 comprehensible to human SREs, not exclusively optimized for automated agents", on the grounds that
-machine-only formats create barriers for humans and complicate maintenance ○.
+machine-only formats create barriers for humans and complicate maintenance ✓.
 
 Structure that helps you also helps the tired human: explicit conditions, one action per step,
 stated expected values, unambiguous commands. Where the two genuinely diverge — verbose schema
@@ -864,7 +1045,7 @@ not judged at runtime by the thing executing.
 
 On the current SRE incident-diagnosis benchmark, no frontier model reaches 50% accuracy, and longer
 agent trajectories correlate with *worse* results, because over-investigating agents surface
-co-occurring symptoms as false root causes ○. That benchmark measures diagnosis only — it contains
+co-occurring symptoms as false root causes ✓. That benchmark measures diagnosis only — it contains
 no remediation — so it is not evidence that agents can safely *execute* operational steps.
 
 > **Rule.** Write runbooks assuming a human authorizes consequential and irreversible steps. Mark
@@ -883,8 +1064,12 @@ that fails.
 
 ## Self-review — rejection criteria
 
-Run this against your own draft before calling it done. Any "no" is a defect to fix, not a caveat
-to note.
+Run this against your own draft before calling it done.
+
+Scope it by tier. Criteria 1–12 and 23–26 apply to **every** runbook including Tier 1. Criteria
+13–18 (findability, interruption survival) apply from Tier 2 up. Within the tier that applies, a
+"no" is a defect to fix, not a caveat to note — proportionality decides *which* criteria bind, never
+how well you satisfy the ones that do.
 
 **Executability**
 1. Is every command derived from the repo or the running system — not generated? Can you name the
@@ -910,10 +1095,12 @@ to note.
 12. Is there a close-out block that removes what the procedure introduced — flags, silenced alerts,
     temporary capacity, maintenance mode?
 
-**Findability**
-13. Is the title the alert name, character-for-character?
+**Findability** (Tier 2+)
+13. Does the title match the responder's entry point — the triggering signal verbatim if one exists,
+    otherwise the symptom as experienced?
 14. Is it indexed under every symptom that could surface it, including the un-alerted ones?
-15. Does the notification the responder receives carry a resolvable link to it?
+15. If a signal triggers it, does that notification carry a resolvable link to this document? (If
+    nothing triggers it, say where a responder is expected to find it instead.)
 
 **Interruption survival**
 16. Can a reader who is pulled away for ten seconds find their place from the page alone?
@@ -927,6 +1114,13 @@ to note.
 22. Does the header let a reader confirm in seconds that they are in the right document — including
     when *not* to use it?
 
+**Restraint** — run these before the rest; they delete work rather than adding it
+19a. Is it **20 steps or fewer**? If not, split it.
+19b. Did you do the **subtraction pass** — one read whose only purpose was deletion?
+19c. Is there any section present that has nothing product-specific in it? Delete it.
+19d. Would a responder doing this routinely on a Tuesday find it *fast* to use, not just correct?
+19e. Read it as someone with 30 seconds and a page alert. Can they start acting immediately?
+
 **Honesty**
 23. Is every number derived rather than plausible?
 24. Is every uncertain step visibly marked as uncertain?
@@ -934,9 +1128,18 @@ to note.
 26. Can any step be satisfied by *recording* it rather than *doing* something observable? If so,
     rewrite it — that step will be discharged on paper.
 
-**The final test.** Read your runbook as someone woken at 3 a.m. who did not build this system. At
-every step, ask: *do I know exactly what to type, and exactly how I will know it worked?* If the
-answer is ever no, that step is not finished.
+**The final test — two readers, not one.**
+
+*The crisis reader*: woken at 3 a.m., did not build this system, one thing has already gone wrong.
+At every step: *do I know exactly what to type, and exactly how I will know it worked?* Any "no" is
+an unfinished step.
+
+*The Tuesday reader*: doing this routinely, competent, in a hurry. For them: *is this faster than
+figuring it out myself?* If your runbook is slower to use than the work it describes, they will stop
+using it — and then it will rot, and then it will not be there for the crisis reader either.
+
+A document that serves only the first is bloated. One that serves only the second is unsafe.
+Concision is what serves both.
 
 ---
 
