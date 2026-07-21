@@ -193,6 +193,15 @@ triggers:                  # every signal that should lead a responder here
        - Write like a colleague talking the reader through it, not like a
          standards body. Say "you". Contractions are fine. A document that
          reads like a regulation gets skimmed like one.
+       - NEVER HEDGE. "You may want to", "usually", "if appropriate" — each
+         one is a missing branch (write the IF), a missing number (derive it),
+         or an unmarked gap (mark it 🚧 UNVERIFIED). Never a fourth thing.
+       - BOTH READERS, ONE PAGE. The substitute covering for someone sick and
+         the person who runs this monthly read the same lines. Anything the
+         newcomer needs goes on ONE adjacent line the expert skips — never a
+         preamble or a glossary. If it needs more than a line, you picked the
+         wrong word in the action; change the word. "Set `main`'s tree to
+         `develop`'s" beats "tree-set" and needs no explaining.
        - `**Expected:**` / `**If not:**` is the verification form EVERYWHERE. Inside
          a conditional it attaches to the branch's own sub-step (`3b.`), but the
          labels never change. Do not invent a second syntax.

@@ -52,6 +52,7 @@ Treat these as limits, not targets. Exceeding one is a defect that needs a reaso
 | | Budget |
 |---|---|
 | Steps in one runbook | **≤ 20.** More than that, split it and give each part its own entry condition |
+| | *Note the real tension: one-action-per-step, a separate numbered precondition before each irreversible step, and a step for every checking command are each mandatory and together push a two-phase procedure to about 20. Landing near the ceiling is expected, not sloppy. Split when you pass it; do not merge actions to squeeze under it.* |
 | Steps in one phase | **5–15** |
 | Words per step | Aim under 25 for the action line. The command can be long; the sentence cannot |
 | Rationale lines | Only where a reader might reasonably skip or improvise the step. Not on every step |
@@ -523,7 +524,7 @@ resolution is typographic, not editorial ◆:
 > the eye that is confused finds it. Do not bury rationale *inside* the action sentence.
 
 ```markdown
-3. Bump `version` in `plugin.json` and the `VERSION` file.
+3. In `plugin.json`, replace `version` `3.1.0` with `3.2.0`.
    *Why: `version` is the update cache key — a release that forgets this does not ship.*
 ```
 
@@ -652,6 +653,11 @@ signal.
   materials and replacement parts, personnel and skill level, referenced documents, and required
   starting conditions — and the S1000D schema makes it structurally non-optional. Adopt the habit
   even where you skip the ceremony.
+
+  **A prerequisite that is a *decision* carries the rule for making it.** "The version number,
+  decided" is not something a newcomer can tick — "a small feature is a patch bump, not a minor" is.
+  A checkbox the reader cannot satisfy without judgment they do not have is a gap wearing a
+  tick-box, and it sits *before* step 1, where they have the least help.
 - **Expected duration** — *if* "is it stuck?" is a real question here.
 - **Blast radius** — *if* the reader must judge whether it is safe to start.
 - **Ownership and last-verified date** — *if* anyone other than the author will ever run it. When it
@@ -691,6 +697,18 @@ them, and not a claim that anyone is legally bound by them.
 - Short sentences, ordinary word order, concrete nouns.
 - Ban vague adverbs of degree and frequency — "frequently", "slowly", "as needed", "shortly". Give a
   number or a condition.
+- **Never hedge an instruction.** "You may want to", "it might be worth", "this usually works",
+  "if appropriate" — a hedge announces that you were unsure and hands the decision to the reader at
+  the moment they are least equipped to make it. Every hedge is one of three things wearing a
+  disguise, and each has a real fix: a **missing branch** (write the `IF`), a **missing number**
+  (derive it), or an **unmarked gap** (mark it `🚧 UNVERIFIED` and name who can close it). Hedging
+  is what authors reach for *instead of* the gap marker, and it is strictly worse — it reads like
+  guidance while carrying none, so the reader cannot even tell they are on their own.
+
+  Note the deliberate asymmetry with the
+  [evidence appendix](#evidence--what-is-known-vs-what-is-merely-repeated), which insists you
+  preserve every hedge you find. That governs **claims about research**; this governs
+  **instructions to a reader**. Hedge what you know. Never hedge what to do.
 
 **Commands and values**
 - Exact commands in code blocks, copy-pasteable, one command per block.
@@ -715,12 +733,57 @@ them, and not a claim that anyone is legally bound by them.
   context. `Expected:` cannot be read as a command, and it is the word this guide already uses in
   prose for the same idea. One term, one meaning, across every runbook in the product.
 
+**Both readers, one page**
+
+The hardest constraint here: you cannot assume the reader knows what they are doing, and you cannot
+assume they do not. The person covering for a colleague on sick leave and the person who runs this
+monthly open the same document.
+
+A pre-flight checklist is run by a pilot on their first day and on their ten-thousandth, and it is
+the same checklist. That is the target, and aviation hits it two ways this guide already documents
+separately: the [challenge–response form](#1-a-verification-step-reports-an-observed-value-not-an-acknowledgment)
+is telegraphic (`Altimeters — 30.10`), and the checklist is deliberately a
+[*subset*](#choosing-the-execution-form) of the full procedure rather than a transcription of it —
+the full flow is written once, for training, and lives somewhere else.
+
+So the resolution is not "explain more for the newcomer." It is that **a runbook is not where
+anyone learns the system.** When you feel pressure to teach, that is usually a different document
+asking to exist, and a link to it costs one line instead of a page.
+
+Keep one disanalogy in view: a first-day pilot has been through ground school, and the person
+covering for a sick colleague has had nothing. Where that gap is real, the answer is still one line
+and a link — and sometimes the honest answer is that they should not be doing this alone, which is
+what the escalation exit is for.
+
+Do not write for the middle, and do not write more. Use **channel separation** — the thing
+[invariant 6](#6-say-why-next-to-the-step-but-out-of-its-way) already found for rationale, which
+generalizes to everything the unfamiliar reader needs.
+
+> **Rule.** Whatever the newcomer needs beyond the action sits on an adjacent line the expert's eye
+> skips. One line. Never a preamble, a glossary, or a paragraph. If it takes more than a line, you
+> picked the wrong word in the action itself — fix that instead.
+
+- **Change the word before you explain it.** "Set `main`'s tree to `develop`'s" costs no more than
+  "tree-set" and needs no gloss. A term you explain is usually a term you could have avoided, and
+  the explanation is length you chose.
+- **An unfamiliar command gets one clause on what it does to the reader's world** — "this
+  overwrites your working tree" — not a tutorial. Familiar commands get nothing.
+- **Give confusion its own exit, not just failure.** One line: *if a step doesn't make sense, stop
+  and ask — that's a defect in this document, not in you.* A reader who is lost with no sanctioned
+  way to stop will guess instead.
+- **Name what undoes the reversible part, once, at the checkpoint.** Irreversible steps already get
+  a recovery path; the reversible majority — where a first-timer actually gets stuck — gets one
+  line at the phase boundary. That line is also the suspend-and-resume cue whose absence the
+  [Texas City](#the-procedure-itself-is-a-documented-cause-of-major-outages) row records as fatal.
+
 **Warnings**
 - A warning immediately precedes the step it governs — never at the top of the document, never after.
 - It must be readable without scrolling past the step ◆ (the print-era rule is "without a page turn";
   the web equivalent is "not collapsed, not behind a fold, not in a sibling tab").
-- A warning contains hazard information only, **never an action** ✓. If the reader must do something,
-  that is a step.
+- A warning contains hazard information only, **never an action** ✓ — meaning no work is performed
+  from inside a warning. Naming the abort condition and where to go instead *is* hazard
+  information, so an irreversible block's `Abort if: … → step N` belongs there; a command the
+  reader types does not. If the reader must run something, that is a step.
 
 **Structure**
 - Numbered steps for anything order-dependent. Bullets only for genuinely unordered sets.
@@ -1025,6 +1088,11 @@ registry, the repository, the running service — and never at a second model's 
 > must be **derived from the repository or the running system**, not produced from knowledge of how
 > such things usually look.
 
+This binds read-only commands too. A helper you compose to make a step checkable — an `awk`
+one-liner over a state file, a `jq` filter — is generated tooling however harmless it looks, and
+it is where invention hides most easily, because nothing appears to be at stake. It is also
+unreadable to the substitute you are writing for. Prefer a command the repo already ships.
+
 Derive from, in order of preference:
 
 1. **CI/CD configuration** — the deploy, migrate, and rollback jobs. This is the most reliable
@@ -1160,7 +1228,9 @@ R6. Read it as someone with 30 seconds and a page alert. Can they start acting i
 **Executability**
 1. Is every command derived from the repo or the running system — not generated? Can you name the
    file each came from?
-2. Can a reader who has never seen this system execute every step without asking a question?
+2. Can a reader who has never seen this system execute every step without asking a question — *and*
+   can a reader who does this monthly skip everything that newcomer needed? If the second one has
+   to wade, you wrote a tutorial.
 3. Is every placeholder resolvable from information the runbook itself provides, *and shown filled
    in with a real example where it first appears*? `vX.Y.Z` without a `v3.1.1` next to it fails.
 
@@ -1173,7 +1243,9 @@ R6. Read it as someone with 30 seconds and a page alert. Can they start acting i
     told to take, on a step that cannot fail without you noticing? Delete those.
 5. Search your draft for "verify", "check", "confirm", "ensure", "make sure", "looks good",
    "healthy", "working", "successful". Each hit is a suspected unmeasurable condition. Fix or
-   justify every one.
+   justify every one. Then search for "may", "might", "should probably", "usually", "typically",
+   "if needed", "as appropriate" — each of those is a missing branch, a missing number, or an
+   unmarked gap. Resolve it into whichever it is.
 6. Does "Done when" state an observable end state rather than "the procedure is complete"?
 
 **Safety**
