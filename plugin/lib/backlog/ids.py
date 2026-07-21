@@ -130,6 +130,15 @@ def normalize_id(raw: str, *, default_owner: str | None = None) -> NormalizedId:
 
 
 def _valid_segment(segment: str) -> bool:
+    # `_SEGMENT` admits `.` and `..` because dots are legal *inside* an owner or
+    # repo name (`my.repo`). A segment that is nothing but dots is not a name —
+    # it is a path traversal, and these segments are interpolated straight into
+    # `repos/{owner}/{repo}/...` at the transport. The reachable source is
+    # attacker-writable: a `superseded_by` block field carries an id parsed from
+    # issue-body text, so `../../` here would redirect a `gh api` call to an
+    # unrelated endpoint.
+    if not segment.strip("."):
+        return False
     return bool(re.fullmatch(_SEGMENT, segment))
 
 

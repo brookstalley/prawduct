@@ -705,6 +705,24 @@ class TestBacklogPendingLine:
         assert line is not None
         assert elapsed < 2.0  # NFR §6 "few s" — structural, not timeout-dependent
 
+    def test_post_cutover_warm_that_never_starts_does_not_claim_warming(self, tmp_path):
+        # Regression: the warm's bool return was discarded, so a warm that could
+        # not launch still printed "counts warming" — indistinguishable from one
+        # genuinely in flight, every session, forever, with the child's stderr on
+        # DEVNULL. Degrade visibly (G3) means saying which of the two it is.
+        _init_git_repo(tmp_path)
+        prawduct = _prawduct(tmp_path)
+        self._state(prawduct, "octo/backlog")  # no snapshot written — warm path
+
+        def _spawn_refuses(argv, **kwargs):
+            raise OSError("cannot exec")  # spawn_detached swallows this → False
+
+        line = briefing._backlog_pending_line(prawduct, tmp_path, popen=_spawn_refuses)
+        assert line is not None
+        assert "warming" not in line
+        assert "counts unavailable for octo/backlog" in line
+        assert "refresh-counts --repo octo/backlog" in line  # the manual path
+
     def test_humanize_age_buckets(self):
         assert briefing._humanize_age(5) == "just now"
         assert briefing._humanize_age(240) == "4m old"

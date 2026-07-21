@@ -4,7 +4,7 @@ argument-hint: "[pick|add|find|list|update|migrate] ... (e.g. `pick stop-hook st
 user-invocable: true
 disable-model-invocation: false
 context: fork
-allowed-tools: Read, Edit, Write, Grep, Glob, Bash(prawduct-hook backlog *), Bash(python3 bin/prawduct-hook backlog *)
+allowed-tools: Read, Edit, Write, Grep, Glob, Bash(prawduct-hook backlog *), Bash(python3 plugin/bin/prawduct-hook backlog *)
 ---
 
 You manage the product's **structured backlog**. You run in a forked context, so the full backlog never pollutes the main session. The backlog has two backends — a markdown file, or GitHub Issues once the product has cut over — so **decide the backend first** (next section), then do the operation and return a concise result. **Never** delete items (archive instead) and **never** weaken existing content.
@@ -78,7 +78,7 @@ File a new item. Accepts flags (`--title=`, `--body=`/`--body-file=`, `--area=`,
 3. Return the new ID and a one-line confirmation.
 
 ### find <query>
-*(Markdown backend. Post-cutover, full-text search is W2-deferred — `adapter-mode.md` returns a NOTE and points at `list` filters.)* Plaintext + tag search across title, metadata, and body of **all** sections (and `backlog-archive.md` if it exists). Return matching `[ID] title — one-line summary`, most-relevant first. Keep it tight (a handful of results).
+*(Markdown backend. Post-cutover, full-text search is unavailable — `adapter-mode.md` returns a NOTE and points at `list` filters.)* Plaintext + tag search across title, metadata, and body of **all** sections (and `backlog-archive.md` if it exists). Return matching `[ID] title — one-line summary`, most-relevant first. Keep it tight (a handful of results).
 
 ### list [--filter=...]
 Tabular view: `ID · title · effort · impact · area · status`. **Default filter: `status=open` AND `added` within 90 days** (so a 200-item backlog doesn't dump). `--all` overrides; filter on any metadata field (`--area=`, `--status=`, `--effort=`, etc.). Sort by status then recency. **Claimed items** (non-empty `accepted-by:`) are excluded by default; show them with `--include-claimed`, and when shown, display the claim holder in the row.

@@ -16,7 +16,7 @@ prawduct-hook backlog <op> --repo <owner/repo> --json [op flags]
 - `<owner/repo>` is the value of `backlog_service_repo` — resolve it once, pass it as `--repo`.
 - Always pass `--json`: the JSON envelope becomes the **sole stdout content**, so you parse stdout
   directly; diagnostics and progress go to stderr.
-- Developing prawduct itself (repo-local, uncommitted `bin/`)? Use `python3 bin/prawduct-hook backlog …`
+- Developing prawduct itself (repo-local, uncommitted `plugin/bin/`)? Use `python3 plugin/bin/prawduct-hook backlog …`
   rather than the on-PATH `prawduct-hook` — identical contract, just the local build.
 - The adapter is **non-interactive** — it never prompts. Any confirm-before-write step is yours to
   run in conversation *before* the call; never expect the adapter to ask.
@@ -70,7 +70,7 @@ note; it never silently substitutes stale data.)
 `prawduct-hook backlog counts --repo <r> --json` → render the section rollup from `data` (open /
 in-progress / … per the two-axis status) plus the action menu. Post-cutover the **live** actions are
 `pick`, `add`, `list`, `update` (and `merge` when both ids are known); present `find`/`dedup` as
-**W2-deferred** rather than ready, and omit `migrate`/`scrub` (the one-time markdown→Issues cutover is
+**not available on this backend yet** rather than ready, and omit `migrate`/`scrub` (the one-time markdown→Issues cutover is
 already done). Counts are **derived by the adapter** — never persist one yourself. Richer breakdowns
 (top `area:` tags, a stale-item count) come from `list`; run it if asked rather than approximating
 from `counts`.
@@ -113,9 +113,9 @@ sections** post-cutover: open/closed state + `status:` labels carry lifecycle pl
 `prawduct-hook backlog file --repo <r> --title T --body B [--stage S] [--kind K] [--area A]
 [--effort E] [--impact I] [--source SRC]`. Author an issue-standard title (`area: summary`, ≤72,
 atomic) + a sectioned body; set `--kind`. The result may carry `lint[]` (WARN-only issue-standard
-hints — surface, never blocks). **Dedup-on-create is degraded** until W2 (no full-text search): do a
+hints — surface, never blocks). **Dedup-on-create is degraded** while the backend has no full-text search: do a
 coarse check with `list --area=<area> --json` and eyeball recent titles for overlap before filing,
-and say full dedup is W2.
+and say full dedup is not available on this backend yet.
 
 ### update `<id>`
 Route by what changed:
@@ -138,13 +138,13 @@ one-line *why*. Keep the skill's framing on top: **build-plan overlap** (read `a
 surface overlapping candidates first) and **stage-aware routing** (don't present an early-stage item
 as buildable). `--claim` soft-claims the top pick.
 
-## Deferred operations — search-dependent (land in W2)
+## Deferred operations — search-dependent (land when backend search does)
 
-No adapter search op exists yet (cache-served `search` is W2), so these degrade — do **not**
+No adapter search op exists yet (cache-served `search` is not built yet), so these degrade — do **not**
 fabricate a search:
 - **find `<query>`** → a `NOTE:` — *"full-text search is not available on the Issues backend yet; meanwhile filter with `list
   --area=`/`--status=`/`--stage=`/`--kind=`, or use GitHub's issue search in the browser."*
-- **dedup** → the duplicate-scan needs search (W2) → same `NOTE:`. `merge <source-id> --into
+- **dedup** → the duplicate-scan needs search → same `NOTE:`. `merge <source-id> --into
   <target-id>` still works when you already know both ids (folds A→B, redirect-before-close).
 
 ## Operations that don't apply post-cutover

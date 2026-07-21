@@ -7,6 +7,179 @@
 
 ## Open
 
+- **[BKL-7Q4M]** Safe upstream filing — a private consuming repo must be able to file a prawduct bug into prawduct's PUBLIC repo without leaking its own content; the missing design is CONTENT MINIMIZATION, not auth
+  `effort: L · impact: L · area: backlog-service · kind: feature · source: user · added: 2026-07-21 · reviewed: 2026-07-21 · status: open · stage: requirements · related: BKL-9XQ2, BKL-0QR1, BKL-2Q7F, BKL-8V3D, BKL-5N9W, BKL-6M4T, ONB-3F9P, MET-6T4K · refs: .prawduct/artifacts/security-model.md (§ Direction — the norm this item tracks), tests/preferences/test_no_upstream_content_egress.py (the interim enforcement mechanism), documentation/backlog-service-security-model.md (§1 auth by target owner, §4 cross-owner cache scoping, §5 XP2 untrusted-until-triaged, §6 PV3/PV4 abuse prevention), .prawduct/artifacts/build-plan-backlog-service.md:687 (W3 roadmap row — `file-upstream`, XP1/XP2 public/foreign identity plane), plugin/skills/report-bug/SKILL.md, plugin/lib/backlog/transport.py:34-58 (`scrub_secrets` — the existing denylist redaction precedent)`
+
+  **RELEASE BLOCKER for 3.2.0 — stated by the owner 2026-07-21.**
+
+  **This is the tracking item for a live norm exception.** `.prawduct/artifacts/security-model.md` § Direction carries the norm *"A governed product's content never leaves that product's own repository and owner. The backlog adapter reaches exactly the repo named in `backlog_service_repo`; the upstream bug channel is filesystem-local. Any cross-owner or public-plane filing surface is an owner decision, never an increment."* That norm moves from `Status: steady-state` to **`Status: in-transition`** and cites **BKL-7Q4M** literally as its tracking item. The capability described here is *blocked by that norm today* and is unbuilt; the norm's interim enforcement — `tests/preferences/test_no_upstream_content_egress.py`, which fails if a `file-upstream` surface appears anywhere in the plugin or if prawduct's own tracker reaches the backlog adapter — stays live until this item's requirements are settled and a design deliberately supersedes it.
+
+  **`stage: requirements` is deliberate and load-bearing. Do NOT route this into implementation via `pick`.** This is a security design before it is code (Principle 6). Advancing the stage — writing the requirement, settling the open questions below — *is* the next work; see `/prawduct:methodology discovery`.
+
+  **The design surface that already exists — reconcile with it, do not re-invent it.** `documentation/backlog-service-security-model.md` already covers the public-submission plane: **§1** (auth by target owner), **§5** (XP2 — arriving reports are *untrusted until triaged*, enforced by GitHub's non-collaborator permissions), **§6** (PV3/PV4 abuse prevention), **§4** (cross-owner cache scoping). `.prawduct/artifacts/build-plan-backlog-service.md:687` sizes the capability as roadmap wave **W3** (`file-upstream`, XP1/XP2 public/foreign identity plane). Any requirements pass starts by reading those, not by drafting a parallel model.
+
+  **What that existing design does NOT appear to cover — and what the owner's concern is actually about — is CONTENT MINIMIZATION rather than auth.** The written surface answers *who may file where* and *how much to trust what arrives*. The owner's question is the orthogonal one: **exactly which fields cross the boundary**, how repo paths / code excerpts / learnings prose / product names get redacted or omitted, and whether the owner **sees and approves the verbatim outbound payload** before it is sent. Auth being correct does not make the payload minimal.
+
+  **Open questions to settle in requirements:**
+  1. **Minimum field set** — what is the smallest set of fields a *useful* upstream report needs? (A report the maintainer cannot act on is not a win for having leaked less.)
+  2. **Redaction strategy** — **allowlist** the fields that may cross vs. **denylist** patterns that may not. Note the existing precedent is a *denylist*: `scrub_secrets` (`plugin/lib/backlog/transport.py:34-58`) is a regex denylist backstop for credentials in `gh` output. Whether that shape generalizes to *repo content* (where the sensitive material is arbitrary prose and paths, not a token with a recognizable form) is precisely the open question — an allowlist is the structurally safer default and should have to be argued *out of*, not *into*.
+  3. **Owner preview-and-consent** — is preview-and-consent **mandatory per report**? Is the shape a dry-run/`--apply` pair, consistent with the standing norm *"No destructive action without an explicit `--apply` step"*? (Cross-check BKL-8V3D: `adapter-mode.md` already *claims* an `--apply`/dry-run contract that `lib/backlog/` does not implement — do not design against a contract that does not exist yet.)
+  4. **Filer identity** — anonymous vs. authenticated. Interacts with BKL-9XQ2's refinement: the adapter **inherits the session's GitHub auth** (PRD O5), so an authenticated filing is attributed to the user personally, permanently, in someone else's public project. Anonymity trades that away for the abuse surface §6/PV3 exists to handle (PV3 is itself gated on MET-6T4K).
+  5. **Relation to the filesystem-local `incoming-bugs/` drop-box** — the safe path that *works today* whenever a local prawduct checkout is reachable. What does this capability replace, what does it complement, and what remains the fallback when no checkout is reachable? MG5 ties drop-box retirement to a live upstream path (BKL-0QR1), so this question is a sequencing dependency, not a footnote.
+
+  **Relationship to BKL-9XQ2 — deliberately separate, cross-linked, not merged.** BKL-9XQ2 (`stage: research`) is the broad "upstream filing is critically underspecified" item: consent-at-install (1a), consent-at-file (1b), agency/attribution, the adapter-vs-prose binding site, label taxonomy. **This item is narrower and downstream of it:** it is specifically the *content-minimization / outbound-payload* leg, and it is the item the § Direction norm cites. If a requirements pass ends up folding the two, do it explicitly via `dedup` — do not let either quietly absorb the other, because the norm's citation must keep resolving. (user — owner, 3.2.0 release blocker)
+
+- **[BKL-3N8Q]** Relationship/timeline foreign-API shapes are fake-verified only — `list_blocked_by` fails silently, so `pick` reports a blocked item as ready with a confident "no open blockers"
+  `effort: M · impact: L · area: backlog-service · kind: bug · source: critic · added: 2026-07-21 · reviewed: 2026-07-21 · status: open · stage: ready · related: BKL-9J3F, BKL-2K8V, BKL-6M4T, BKL-4H8P, BKL-6X5D · refs: lib/backlog/transport.py:166/217/222 (protocol) and :334/459/476 (the `gh` implementations of `list_blocked_by` / `list_sub_issues` / `list_timeline`), lib/backlog/query.py:180 (`blockers = transport.list_blocked_by(...)`), lib/backlog/query.py:368-369 (the "no open blockers" readiness string), tests/fakes/fake_github.py:52-59 (`blocked_by` / `sub_issues` / `timeline` — the only shapes these three are checked against), .prawduct/artifacts/build-plan-backlog-service.md (the unrun `verify-api` step / L5 smoke set), .prawduct/project-state.yaml `design_decisions.infrastructure_dependencies.integration_test_strategy` (cites THIS id), documentation/backlog-service-api-contract.md`
+
+  **Stable id — do not renumber.** `.prawduct/project-state.yaml` records this item by id inside
+  `design_decisions.infrastructure_dependencies.integration_test_strategy` ("tracked as BKL-3N8Q").
+  A dedup merge or migrate that changes the id dangles that reference; if this item is ever
+  superseded, update the design decision in the same commit.
+
+  Filed by the backlog-service relayout Critic review (rev-20260721T161120Z-c06da7f6).
+
+  Three foreign-API surfaces — `list_blocked_by`, `list_sub_issues`, `list_timeline` in
+  `lib/backlog/transport.py` — are exercised **only** against `tests/fakes/fake_github.py`. The
+  offline suite therefore proves the adapter agrees with *our model of* GitHub's relationship and
+  timeline payloads, not with GitHub. The build plan's `verify-api` step (the one that would check
+  the real shapes) has not been run; it is queued in the L5 smoke set and deferred by owner decision
+  to an owner-run session. So the fake is currently the *only* oracle for all three.
+
+  **The `blocked_by` leg is the dangerous one because it fails silently.** `query.pick` reads
+  blockers via `transport.list_blocked_by` (`query.py:180`) and, finding none, emits a readiness
+  verdict that literally asserts `"no open blockers"` (`query.py:368-369`). A shape mismatch — a
+  renamed field, a moved nesting level, a paginated envelope the parser doesn't unwrap — yields
+  `[]`, which is indistinguishable from *genuinely unblocked*. The failure mode is not an error the
+  operator sees; it is `pick` confidently handing the agent a **blocked** item and stating, as fact,
+  that nothing blocks it. That is the one output class where a silent empty is worse than a raise:
+  the framework's own requirements-precede-code routing runs off it.
+
+  `list_sub_issues` and `list_timeline` share the fake-only exposure but degrade visibly (a missing
+  child or a thin audit trail), so they rank below the blocker path.
+
+  Fix-shape (not yet designed): (a) run `verify-api` against a live repo and pin the observed shapes;
+  (b) make the three decoders **distinguish "no rows" from "did not understand the payload"** —
+  an unrecognized envelope must raise or return an explicit unknown, never `[]`; (c) have `pick`
+  refuse to assert "no open blockers" on an unknown-blocker result, degrading to an
+  unknown-blocker-state readiness string instead. (b) is the load-bearing half: it converts a silent
+  wrong answer into a loud one, and it is worth doing even before the live verification lands.
+
+- **[BKL-4C9P]** `migration-scrub.md` step 5 says cutover retires a "backlog trio" — it is a quartet, and the omitted probe is the one that sent the operator to that runbook
+  `effort: S · impact: M · area: backlog-service · kind: bug · source: critic · added: 2026-07-21 · reviewed: 2026-07-21 · status: open · stage: ready · related: BKL-6J2X, BKL-2Q7F, BKL-8V3D, BKL-8W2M, BKL-6M4T · refs: skills/backlog/migration-scrub.md:203-204 (step 5 — "the backlog trio `legacy-backlog-format` / `legacy-section-schema` / `backlog-overdue-grooming`"), lib/backlog_probes.py:240 (`probe_migration_required`) and :262 (its `post_cutover(state)` early return), lib/backlog_probes.py:367-376 (`register` — six probes), documentation/post-sync-advisory-spec.md:366-375 ("the four markdown probes above", naming `backlog-service-migration-required`), documentation/backlog-service-api-contract.md:113-118 (§2.4 — "the seven markdown-premise advisory probes retire on the same switch — the backlog quartet")`
+
+  Filed by the backlog-service relayout Critic review (rev-20260721T161120Z-c06da7f6).
+
+  `skills/backlog/migration-scrub.md:203-204` tells the operator that setting `backlog_service_repo`
+  retires "the backlog **trio** `legacy-backlog-format` / `legacy-section-schema` /
+  `backlog-overdue-grooming` AND the norm trio". Both governing specs say otherwise, and they agree
+  with each other and with the code:
+
+  - `documentation/backlog-service-api-contract.md:113` (§2.4) — "the **seven** markdown-premise
+    advisory probes retire on the same switch — the backlog **quartet** (`legacy-backlog-format`,
+    `backlog-service-migration-required`, `legacy-section-schema`, `backlog-overdue-grooming`)".
+  - `documentation/post-sync-advisory-spec.md:366-375` (§8.2) — "the **four** markdown probes above",
+    naming `backlog-service-migration-required` among them.
+  - `lib/backlog_probes.py:262` — `probe_migration_required` early-returns on
+    `post_cutover(state)`, i.e. it is in fact guarded by the same switch.
+
+  So the runbook is the only surface with the wrong count, and the probe it drops is
+  `backlog-service-migration-required` — **the advisory whose `recommended_action` is what routed the
+  operator into this runbook in the first place** (`migration-scrub.md:9-14` states that coupling
+  from the other side). An operator reading step 5 is left unable to answer the obvious question
+  "does the nudge that sent me here stop after I finish?" — and the natural wrong inference is that
+  it keeps firing forever, which invites a second, unnecessary scrub run.
+
+  Fix: correct step 5 to "backlog quartet", name the fourth probe explicitly, and state that the
+  migration-required advisory is self-clearing at cutover. Doc-only; no code change. Worth a
+  coherence check on any other prose surface that counts these probes while the fix is in hand.
+
+- **[GOV-5R8T]** Concerns-registry row "Backend declaration before a governance read" cites Discovery and Builder coverage that no methodology file has ever carried
+  `effort: S · impact: M · area: governance · kind: bug · source: critic · added: 2026-07-21 · reviewed: 2026-07-21 · status: open · stage: ready · related: BLD-4Q8W, GOV-4H7T, BKL-3W6K · refs: .prawduct/cross-cutting-concerns.md:42 (the "Backend declaration before a governance read" row — the Discovery cell and the Builder cell), methodology/discovery.md (no such text), methodology/building.md (no such text; `git log -S` finds no commit that ever added it), skills/critic/review-protocol.md (Goal 1/4 — the row's claimed Critic coverage), documentation/backlog-service-api-contract.md §2.4 (`backlog_service_repo`), .prawduct/artifacts/build-plan-backlog-service.md`
+
+  Filed by the backlog-service relayout Critic review (rev-20260721T161120Z-c06da7f6).
+
+  `.prawduct/cross-cutting-concerns.md:42` claims pipeline coverage for this concern at two stages:
+  a **Discovery** cell ("which store is system of record is a structural fact recorded in
+  `project-state.yaml` (`backlog_service_repo`), not inferred per reader", attributed to
+  `discovery.md`) and a **Builder** cell ("a reader declares the backend it read before it reports;
+  **repoint** a reader that consumes the item view as-is, declare **dormant** one that derives a
+  verdict from it", attributed to `building.md`). Neither file contains that text, and
+  `git log -S` over the phrasing finds **no commit that ever added it** — this is not drift from a
+  deleted rule, it is coverage that was recorded without ever being written.
+
+  Why it matters more than a stale cell: the registry is the artifact a reviewer consults to decide
+  whether a concern is *already handled upstream*. A row asserting Discovery + Builder coverage
+  reads as "two stages catch this before it reaches me", so the one stage that genuinely could
+  catch it (Critic judgment) is the only real coverage while the matrix reports three. The row's own
+  ⚠️ note already flags that every *enforcement* surface it names is absent from `main` at v3.1.1;
+  the methodology cells are a separate and older defect, since those surfaces at least exist on the
+  feature branch.
+
+  **Recurrence, not a one-off.** BLD-4Q8W is the identical failure on row :36 (the Build-plan
+  ref-drift row claimed `building.md` instructs builders to run `verify-chunk-refs`; `methodology/`
+  mentions it nowhere). Two rows, same mechanism: a registry cell asserting methodology coverage
+  that was never authored. Fix-shape should therefore be two-part — (a) correct the row (either write
+  the methodology rules or record the absence, matching how :36 was resolved), and (b) sweep the
+  remaining rows for methodology-attributed cells whose text does not exist in the cited file, since
+  a hand-maintained matrix has no mechanism that would have caught either instance.
+
+- **[BKL-8W2M]** No declared terminal-markdown state — `backlog-service-migration-required` warns forever in products that will never host on GitHub
+  `effort: M · impact: M · area: backlog-service · kind: feature · source: critic · added: 2026-07-21 · reviewed: 2026-07-21 · status: open · stage: requirements · related: BKL-6J2X, BKL-4C9P, BKL-3W6K, BKL-2Q7F · refs: lib/backlog_probes.py:240-262 (`probe_migration_required` — resolution is `post_cutover` only), lib/backlog_probes.py:370-372 (unconditional registration), lib/backlog_probes.py:106 (`post_cutover` — the single shared resolution predicate), skills/backlog/migration-scrub.md (the `recommended_action` target — requires `gh` and a GitHub owner/repo), documentation/backlog-service-requirements.md (GV7), documentation/post-sync-advisory-spec.md §8.2 (probe resolution conditions)`
+
+  Filed by the backlog-service relayout Critic review (rev-20260721T161120Z-c06da7f6).
+
+  `probe_migration_required` registers unconditionally (`backlog_probes.py:370-372`) and its **only**
+  resolution condition is `post_cutover(state)` — i.e. `backlog_service_repo` being set. There is no
+  third state. A product that is deliberately staying on the markdown backlog forever — no GitHub
+  remote, self-hosted git, an air-gapped or non-GitHub forge, or simply a small product whose owner
+  does not want an Issues tracker — has **no way to resolve the advisory**, because the only exit is
+  migrating to the thing it will never adopt. It gets a `warn`-priority nudge at every session start,
+  in perpetuity, recommending `/prawduct:backlog scrub`, a runbook that requires `gh` and a GitHub
+  `owner/repo` it does not have.
+
+  This is distinct from BKL-6J2X, which holds the same advisory out of v3.2.0 because the migration
+  path is *unproven*. That is a release-timing hold on a path that will eventually be right for those
+  repos. **This** item is the permanent case: repos for which the path will never be right, and for
+  which "hold the advisory" is not a fix because the advisory returns the moment the hold lifts. Both
+  need answering; only one is release-gating.
+
+  `stage: requirements` is deliberate — the fix is a **product decision** before it is code. The open
+  questions: is terminal-markdown a first-class supported state or an unsupported edge? If
+  first-class, how is it declared (an explicit `backlog_backend: markdown` scalar, a
+  `backlog_service_repo: none` sentinel, a dismissal that survives, or inference from the absence of
+  a GitHub remote)? Does declaring it also silence the rest of the migration-shaped surface, or only
+  this probe? And does the same declaration mean anything to `backlog-checks-dormant`, which exists
+  precisely to name checks with no Issues-backend path? Note that plain advisory *dismissal* is
+  probably not the answer — a permanent architectural fact deserves a recorded, shared, committed
+  state, not a per-user dismissal that every fresh clone re-nags about.
+
+- **[DOC-7K4V]** `artifacts/api-contract.md` never describes the `prawduct-hook backlog` surface, though the build plan declares it an Exposed API
+  `effort: S · impact: M · area: docs · kind: debt · source: critic · added: 2026-07-21 · reviewed: 2026-07-21 · status: open · stage: ready · related: CRT-4Q7K, TPL-8H3M, BKL-9XQ2, BKL-2D8N · refs: .prawduct/artifacts/api-contract.md (zero mentions of `backlog` — the gap), .prawduct/artifacts/build-plan-backlog-service.md (the `**Exposed API:**` declaration), lib/backlog/cli.py:33 (the op set), skills/backlog/adapter-mode.md (the error-envelope + exit-class contract the model reads instead), documentation/backlog-service-api-contract.md (the feature-local contract that exists but is not the product's api-contract artifact)`
+
+  Filed by the backlog-service relayout Critic review (rev-20260721T161120Z-c06da7f6).
+
+  The backlog-service build plan declares `prawduct-hook backlog` an **Exposed API** — the marker
+  whose whole purpose is to route the chunk through the versioning / error-model review. The
+  product's own API contract artifact, `.prawduct/artifacts/api-contract.md`, does not mention the
+  surface at all: not the op set, not the envelope, not the exit classes, not the compatibility
+  promise.
+
+  The surface is not *undocumented* — `documentation/backlog-service-api-contract.md` and
+  `skills/backlog/adapter-mode.md` both describe it in detail. The defect is that the artifact a
+  reader is told is the product's API source of truth omits an API the product exposes, so the two
+  disagree by omission and there is no pointer between them. A consumer (or a future Critic run)
+  reading `api-contract.md` to answer "what does prawduct expose, and under what compatibility
+  promise?" gets a confidently incomplete answer.
+
+  Cheapest sufficient fix is probably not a full re-authoring: add a section to `api-contract.md`
+  covering the `prawduct-hook backlog` surface at the level the artifact uses for its other entries,
+  with the versioning/error-model statements stated there and the operational detail **referenced**
+  into `documentation/backlog-service-api-contract.md` rather than duplicated (duplication here is a
+  second drift source, cf. BKL-2D8N). Worth checking in the same pass whether any *other*
+  `**Exposed API:**` declaration in a shipped chunk is likewise missing from the artifact — the gap
+  suggests nothing links the declaration to the artifact.
+
 - **[CRT-6R3W]** Critic should sweep by the RULE that generates a pattern, not by the instances it happened to see — instance-enumeration still misses sites the rule catches
   `effort: M · impact: L · area: critic · kind: feature · source: user · added: 2026-07-21 · reviewed: 2026-07-21 · status: open · stage: research · related: CRT-4X2N, TST-9M4X, CRT-8Q6R, CRT-5M9J · refs: skills/critic/review-protocol.md (finding content / Output Format), skills/critic/SKILL.md, .prawduct/learnings.md ("verify at the quantifier" — CRT-8Q6R Correction 4)`
 
@@ -320,7 +493,7 @@
 
   Fix-shape: (1) an `init-product` flag (or onboard prompt) recording `backlog_service_repo` when a product adopts the Issues backend; (2) an onboard step invoking the adapter's label provisioning; (3) add `Bash(prawduct-hook backlog *)` to the doctor `allowed-tools` and a doctor step running `reconcile-labels` as a repair. Pairs naturally with JNT-5K3W (the janitor's orphan-label surfacing) — provision on adoption, reconcile in doctor, surface orphans in janitor. Governance-protected (`skills/`) → full Critic + PR review. (user — samsung-frame-art-loader Phase 1 dogfood)
 - **[BKL-9XQ2]** Consuming repos filing issues against prawduct is critically underspecified — needs discovery before any consumer files upstream
-  `effort: L · impact: L · area: backlog-service · source: user · added: 2026-07-20 · reviewed: 2026-07-20 · status: open · stage: research · related: BKL-0QR1, BKL-3T7X, BKL-7F3D, MET-6T4K, BKL-2Q7F, BKL-8V3D, BKL-5N9W, BKL-6J2X · refs: documentation/backlog-service-security-model.md#6-abuse-prevention--public-submission-pv3pv4, documentation/backlog-service-api-contract.md, artifacts/build-plan-backlog-service.md (Chunk 06 / MG5; W3 roadmap row — XP1/XP2), skills/report-bug/SKILL.md, artifacts/project-preferences.md, lib/backlog/cli.py:181-191 (file --repo), lib/backlog/ids.py:136-151 (parse_repo — shape-only), skills/backlog/SKILL.md:7 (allowed-tools wildcard), documentation/backlog-service-prd.md:258 (O5 — adapter inherits the session's GitHub auth), documentation/backlog-service-prd.md:217 (MG1 — GitHub has no ordinary issue-delete and never reuses numbers), skills/onboard/SKILL.md (consent-at-install surface)`
+  `effort: L · impact: L · area: backlog-service · source: user · added: 2026-07-20 · reviewed: 2026-07-21 · status: open · stage: research · related: BKL-7Q4M (the content-minimization leg — the § Direction norm's tracking item), BKL-0QR1, BKL-3T7X, BKL-7F3D, MET-6T4K, BKL-2Q7F, BKL-8V3D, BKL-5N9W, BKL-6J2X · refs: documentation/backlog-service-security-model.md#6-abuse-prevention--public-submission-pv3pv4, documentation/backlog-service-api-contract.md, artifacts/build-plan-backlog-service.md (Chunk 06 / MG5; W3 roadmap row — XP1/XP2), skills/report-bug/SKILL.md, artifacts/project-preferences.md, lib/backlog/cli.py:181-191 (file --repo), lib/backlog/ids.py:136-151 (parse_repo — shape-only), skills/backlog/SKILL.md:7 (allowed-tools wildcard), documentation/backlog-service-prd.md:258 (O5 — adapter inherits the session's GitHub auth), documentation/backlog-service-prd.md:217 (MG1 — GitHub has no ordinary issue-delete and never reuses numbers), skills/onboard/SKILL.md (consent-at-install surface)`
 
   **CAPTURE ONLY — DO NOT SOLVE NOW.** Owner flagged this 2026-07-20 as critically important to prawduct's future and explicitly asked that it be recorded, not designed, in this session. `stage: research` is deliberate: the questions below are open policy questions, not build tasks. Do not let this item flow into implementation — advancing the stage (writing the requirement, doing the spike) IS the next work (Principle 6; `/prawduct:methodology discovery`).
 

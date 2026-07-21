@@ -122,6 +122,18 @@ design_decisions:
     rationale: "exit codes are the stable, allowlist-friendly signal skills bind to; failures are caught, attributed, and turned into an exit code + prefixed note, never raised across the boundary"
     detailed_in: artifacts/api-contract.md
     date: 2026-07-17
+  infrastructure_dependencies:
+    services:
+      - name: "GitHub Issues REST API"
+        client: "the `gh` CLI, driven as a subprocess (list-form args, never a shell)"
+        scope: "opt-in per product — reached only when `backlog_service_repo` is set; unset means the markdown backend and zero network calls"
+        credential: "`gh` owns it (`~/.config/gh`); the adapter never reads, stores, or forwards a token, and redacts token-shaped patterns from all surfaced output (SEC-1)"
+        egress_boundary: "lib/backlog/transport.py is the sole egress site; subprocess use is confined there by design"
+    mock_boundary: "tests/fakes/fake_github.py implements the transport seam for the offline suite"
+    integration_test_strategy: "offline suite runs entirely against the fake; live `gh` coverage is the L5 smoke set queued in build-plan-backlog-service.md, deferred by owner decision to an owner-run session. The relationship/timeline shapes (`list_blocked_by`, `list_sub_issues`, `list_timeline`) are fake-verified only until those run — tracked as BKL-3N8Q."
+    status: active
+    rationale: "declared at the backlog-service cutover alongside the architecture.md local-first amendment; recording it re-enables the Critic's infrastructure-coherence and real-dependency checks, which sit dormant while the field is null"
+    date: 2026-07-21
 
 # =============================================================================
 # OPEN QUESTIONS

@@ -696,6 +696,9 @@ def _backlog_pending_line(
 
         path = snapshot.snapshot_path(project_dir)
         snap = snapshot.read(path, scope, now=now) if path else None
+        # Read the snapshot first, then warm — the warm's outcome decides what the
+        # no-snapshot line may honestly claim, so its result is never discarded.
+        warmed = _spawn_snapshot_warm(project_dir, scope, popen=popen)
         line = None
         if snap and isinstance(snap.get("counts"), dict):
             by_status = snap["counts"].get("by_status") or {}
@@ -707,11 +710,20 @@ def _backlog_pending_line(
                     f"Backlog: {pending} pending on {scope} "
                     f"(snapshot {age}; /prawduct:backlog to triage)"
                 )
-        else:
+        elif warmed:
             # Degrade visibly, never silently (G3): the count is not available
             # yet, and the warm just fired — the next session start has it.
             line = f"Backlog: counts warming for {scope} (/prawduct:backlog to triage)"
-        _spawn_snapshot_warm(project_dir, scope, popen=popen)
+        else:
+            # The warm never started, so "warming" would be a standing falsehood —
+            # a session that says it forever is indistinguishable from one in
+            # flight, and the child's stderr goes to DEVNULL. Name the real state
+            # and hand back the manual path.
+            line = (
+                f"Backlog: counts unavailable for {scope} — background refresh "
+                f"could not start; run `prawduct-hook backlog refresh-counts "
+                f"--repo {scope}` (/prawduct:backlog to triage)"
+            )
         return line
 
     backlog_path = prawduct_dir / "backlog.md"

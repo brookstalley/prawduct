@@ -550,6 +550,35 @@ class TestImportResumable:
         assert result["error"]["details"]["skipped"]  # DIS-0001 healed before the cut
         assert any("restored missing alias label" in w for w in result["warnings"])
 
+    def test_unexpected_boundary_failure_carries_the_same_resumable_envelope(
+        self, fake, monkeypatch
+    ):
+        # Regression: the `except (OSError, json.JSONDecodeError)` sibling of the
+        # TransportError cut returned a bare error, dropping created/skipped/
+        # resumable AND the accrued warnings — contradicting import_items' own
+        # docstring one screen above it. An unexpected boundary failure is no less
+        # resumable, and a self-heal audit line no less unrecoverable, than a
+        # transport one; same setup as the test above, different exception class.
+        _seed_labels(fake, _TWO_OPEN_ITEMS)
+        _import(fake, _ONE_OPEN_ITEM)  # DIS-0001 lands on GitHub
+        number = _alias_issues(fake, "DIS-0001")[0]["number"]
+        fake.remove_label(OWNER, REPO, number, ids.alias_label("DIS-0001"))
+
+        def _socket_dies(*args, **kwargs):
+            raise OSError("connection reset mid-import")
+
+        # DIS-0001 self-heals first (a label restore, emitting the audit line),
+        # then DIS-0002's create hits the unexpected boundary failure.
+        monkeypatch.setattr(fake, "create_issue", _socket_dies)
+        result = _import(fake, _TWO_OPEN_ITEMS)
+
+        assert result["status"] == "error"
+        assert result["error"]["code"] == "unavailable"
+        details = result["error"]["details"]
+        assert details["resumable"] is True
+        assert details["skipped"]  # DIS-0001 healed before the cut
+        assert any("restored missing alias label" in w for w in result["warnings"])
+
 
 # --- BKL-4W7H: id:PFX alias self-heal (deleted label ↛ permanent duplicate) ---
 

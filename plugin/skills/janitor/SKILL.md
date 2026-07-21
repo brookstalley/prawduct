@@ -2,7 +2,7 @@
 description: Periodic codebase maintenance — systematic health check across VCS hygiene, code quality, documentation fitness, test coverage, dependencies, controllability, and more
 argument-hint: "[staleness=Nd] [scope=theme,...] [survey-only]"
 user-invocable: true
-allowed-tools: Bash(git *), Bash(npm *), Bash(python3 *), Bash(prawduct-hook backlog *), Bash(python3 bin/prawduct-hook backlog *), Read, Write, Edit, Glob, Grep, Agent
+allowed-tools: Bash(git *), Bash(npm *), Bash(python3 *), Bash(prawduct-hook backlog *), Bash(python3 plugin/bin/prawduct-hook backlog *), Read, Write, Edit, Glob, Grep, Agent
 ---
 
 You are performing periodic codebase maintenance — a systematic health check that surfaces what day-to-day development overlooks. This is not a feature task. Your goal is to find what has drifted, accumulated, or been missed, then fix it through the standard Prawduct build cycle.

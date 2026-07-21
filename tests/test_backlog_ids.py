@@ -99,6 +99,29 @@ class TestRejections:
         assert result.error == "validation"
 
 
+class TestDotOnlySegmentsAreTraversal:
+    """A segment of nothing but dots is not a name — it is a path traversal.
+
+    Dots are legal *inside* an owner or repo (`my.repo`), so the segment pattern
+    admits them; `.` and `..` slipped through with them. These segments are
+    interpolated straight into `repos/{owner}/{repo}/…` at the transport, and the
+    reachable source is attacker-writable — a `superseded_by` block field carries
+    an id parsed from issue-body text, chased by `core.resolve_survivor`.
+    """
+
+    @pytest.mark.parametrize("spelling", ["../..#1", "octo/..#1", "../repo#1", "./repo#1"])
+    def test_dot_only_segment_rejected(self, spelling):
+        result = ids.normalize_id(spelling, default_owner="octo")
+        assert not result.ok
+        assert result.error == "validation"
+
+    def test_dots_inside_a_name_still_normalize(self):
+        # The guard must not cost the legitimate case it shares a pattern with.
+        result = ids.normalize_id("octo/my.repo#7", default_owner="octo")
+        assert result.ok
+        assert result.canonical == "octo/my.repo#7"
+
+
 class TestParseRepo:
     def test_valid_owner_repo(self):
         assert ids.parse_repo("octo/repo") == ("octo", "repo")

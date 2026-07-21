@@ -637,7 +637,24 @@ def import_items(
         return result
     except (OSError, json.JSONDecodeError) as exc:  # ERR-6 — unexpected boundary
         _diag(f"unexpected transport failure on import: {type(exc).__name__}")
-        return core.error("unavailable", "the import backend request failed unexpectedly")
+        # Same contract as the TransportError cut above, for the same reasons: an
+        # unexpected boundary failure is no less resumable, and the accrued audit
+        # warnings are no less unrecoverable — a self-heal line from an already-
+        # completed record never re-emits on resume, so dropping it here loses it
+        # permanently. Returning a bare error also contradicted this function's
+        # own docstring, which promises the resumable envelope.
+        result = core.error(
+            "unavailable",
+            "the import backend request failed unexpectedly",
+            details={
+                "created": created,
+                "skipped": skipped,
+                "collisions": collisions,
+                "resumable": True,
+            },
+        )
+        result["warnings"] = warnings
+        return result
 
     for collision in collisions:
         warnings.append(f"alias collision skipped: {collision}")

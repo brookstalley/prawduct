@@ -3,7 +3,7 @@ description: Author, review, or inventory operational runbooks — pre-written p
 argument-hint: "[new <situation> | review <path> | list | survey] (omit to survey and propose)"
 user-invocable: true
 disable-model-invocation: false
-allowed-tools: Read, Write, Edit, Glob, Grep, Bash(git log *), Bash(git ls-files *), Bash(git show *), Bash(ls *), Bash(cat *), Bash(find *), Bash(prawduct-hook backlog *), Bash(python3 bin/prawduct-hook backlog *), Agent
+allowed-tools: Read, Write, Edit, Glob, Grep, Bash(git log *), Bash(git ls-files *), Bash(git show *), Bash(ls *), Bash(cat *), Bash(find *), Bash(prawduct-hook backlog *), Bash(python3 plugin/bin/prawduct-hook backlog *), Agent
 ---
 
 You author operational runbooks for this product. A runbook is a **pre-written procedure for an
