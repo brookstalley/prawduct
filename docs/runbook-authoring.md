@@ -4,6 +4,18 @@ This is the canonical guide for producing runbooks in a Prawduct product. It is 
 read by an agent that is about to author or review one, for a product in any language, on any
 substrate — web frontend, backend service, embedded device, data pipeline, mobile app, CLI.
 
+**The other two pieces, and when you want them instead of this file:**
+
+| | what it is | reach for it when |
+|---|---|---|
+| **`/prawduct:runbook`** | the skill — `survey` proposes what your product is missing, `new` authors one, `review` checks an existing one, `list` inventories them | you want the work done rather than the rules. It reads this guide first, so you are not skipping anything by starting there |
+| **`${CLAUDE_PLUGIN_ROOT}/templates/runbook.md`** | the blank, with each section cross-referenced back into the rules here | you are writing one by hand, or you want to see the shape before reading 1,600 lines |
+| **this guide** | the rules, the reasoning, and the evidence appendix separating what is verified from what is convention | you are deciding a judgment call, reviewing someone else's runbook, or the template's inline note is not enough |
+
+Runbooks live in your product's `.prawduct/runbooks/`. The three prawduct templates that ask for
+operational procedures — `operational-spec.md`, `observability-strategy.md`, and
+`unattended-operation/failure-recovery-spec.md` — all point here.
+
 **The artifact you produce is for a human.** You may be the one who writes it, and increasingly
 you may be the one who executes it, but the runbook's reason for existing is that at 3 a.m. a
 tired person who did not build this system has to make it work. Every rule below descends from
