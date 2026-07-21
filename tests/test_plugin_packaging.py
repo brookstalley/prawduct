@@ -11,10 +11,15 @@ That is not a tidiness problem. A model working in a *consuming* repo reads
 another product's requirements as though they were relevant. Confidently wrong context is the
 failure mode this whole framework exists to prevent.
 
-The fix is ``plugin/``: a curated plugin root of relative symlinks, which the installer dereferences
-into real content. These tests pin that boundary in both directions, because the failure is silent
-either way — a leak ships someone else's documentation, and an omission breaks governance for every
-consumer at once with no recall.
+The fix is ``plugin/``: a curated plugin root holding the distributed surface as **real files**.
+An earlier attempt used relative symlinks (much smaller diff) and was verified broken: with
+``core.symlinks=false`` — the Git-for-Windows default — every entry checks out as a 6-14 byte text
+stub and the plugin installs inert. A macOS install test cannot observe that, which is exactly why
+``test_curated_root_holds_real_files_not_symlinks`` exists.
+
+These tests pin the boundary in both directions, because the failure is silent either way — a leak
+ships someone else's documentation, and an omission breaks governance for every consumer at once
+with no recall.
 
 Deliberately asserted against **git-tracked** state rather than the working tree: a git-sourced
 install (what consumers get) sees only tracked files. A *local-path* install additionally copies
@@ -76,29 +81,12 @@ def _tracked(pathspec: str) -> list[str]:
 
 
 def _shipped_paths() -> set[str]:
-    """Repo-relative tracked paths that land in the cache, keyed by their path *inside* the plugin.
+    """Tracked paths under ``plugin/``, keyed by their path *inside* the plugin.
 
-    Mirrors what the installer does: walk the curated root, follow each symlink to its target,
-    and take the git-tracked files under it.
+    This is the whole model now that ``plugin/`` holds real files: the installer copies the source
+    directory, and a git-sourced install sees exactly the tracked set.
     """
-    shipped: set[str] = set()
-    for entry in sorted(PLUGIN_ROOT.rglob("*")):
-        rel_in_plugin = entry.relative_to(PLUGIN_ROOT).as_posix()
-        if entry.is_symlink():
-            target = entry.resolve()
-            if target.is_dir():
-                base = target.relative_to(REPO).as_posix()
-                for t in _tracked(base):
-                    shipped.add(f"{rel_in_plugin}/{t[len(base) + 1:]}")
-            elif target.is_file():
-                shipped.add(rel_in_plugin)
-        elif entry.is_file():
-            # A REAL tracked file committed under plugin/ ships too. Missing this made both the
-            # required-present and forbidden-absent directions blind to anything not symlinked --
-            # and plugin/.claude-plugin/ is already a real directory, so the gap was live.
-            if _tracked(entry.relative_to(REPO).as_posix()):
-                shipped.add(rel_in_plugin)
-    return shipped
+    return {p[len("plugin/"):] for p in _tracked("plugin")}
 
 
 @pytest.fixture(scope="module")
@@ -146,24 +134,24 @@ def test_this_test_file_does_not_ship(shipped: set[str]):
     )
 
 
-def test_no_dead_symlinks_in_the_curated_root():
-    """A dead link installs as nothing. The plugin loads, the component is silently absent."""
-    dead = [
-        p.relative_to(REPO).as_posix()
-        for p in PLUGIN_ROOT.rglob("*")
-        if p.is_symlink() and not p.exists()
-    ]
-    assert not dead, f"dead symlinks in the curated plugin root: {dead}"
+def test_curated_root_holds_real_files_not_symlinks():
+    """No symlinks under ``plugin/`` — they do not survive a no-symlink checkout.
 
-
-def test_curated_root_uses_relative_symlinks():
-    """Absolute symlinks resolve to the author's machine and break on every other clone."""
-    absolute = [
+    This is a regression guard for a real, verified failure. The first version of the curated root
+    was a symlink farm; cloned with ``core.symlinks=false`` (the Git-for-Windows default) every
+    entry became a 6-14 byte text file containing its target path, so the installed plugin was
+    inert: no skills, no hooks, no lib. Nothing on macOS or Linux reproduces it, and the failure
+    reaches every affected consumer simultaneously with no recall.
+    """
+    links = sorted(
         f"{p.relative_to(REPO).as_posix()} -> {p.readlink()}"
         for p in PLUGIN_ROOT.rglob("*")
-        if p.is_symlink() and p.readlink().is_absolute()
-    ]
-    assert not absolute, f"absolute symlinks in the curated plugin root: {absolute}"
+        if p.is_symlink()
+    )
+    assert not links, (
+        "symlinks under plugin/ do not survive a core.symlinks=false checkout and would ship the "
+        f"plugin as text stubs: {links}"
+    )
 
 
 def test_no_bytecode_in_tracked_package(shipped: set[str]):
