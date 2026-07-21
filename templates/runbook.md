@@ -42,7 +42,7 @@
          ## When to use this
          <the entry condition, matchable against what the responder sees>
          ## Steps
-         1. <action>  →  Pass: <observed value>  →  If not: <where to go>
+         1. <action>  →  Expected: <observed value>  →  If not: <where to go>
          ## Done when
          <the observable end state — the value that proves it, not "complete">
          ## If this doesn't work
@@ -193,7 +193,7 @@ triggers:                  # every signal that should lead a responder here
        - Write like a colleague talking the reader through it, not like a
          standards body. Say "you". Contractions are fine. A document that
          reads like a regulation gets skimmed like one.
-       - `**Pass:**` / `**If not:**` is the verification form EVERYWHERE. Inside
+       - `**Expected:**` / `**If not:**` is the verification form EVERYWHERE. Inside
          a conditional it attaches to the branch's own sub-step (`3b.`), but the
          labels never change. Do not invent a second syntax. -->
 
@@ -203,17 +203,17 @@ triggers:                  # every signal that should lead a responder here
    <exact command, derived from this repo — never invented>
    ```
 
-   **Pass:** <the specific observed value that means success>
+   **Expected:** <the specific observed value that means success>
    **If not:** <step number to go to, or escalate>
 
    > *Why: <one line — only where a reader might reasonably skip or improvise.>*
 
 2. <An action that is its own evidence — writing a value, editing a file.>
 
-<!-- Step 2 deliberately has NO Pass line. When the action is "write X into
-     Y", "Pass: X is in Y" is discharged by having typed it and proves
+<!-- Step 2 deliberately has NO Expected line. When the action is "write X into
+     Y", "Expected: X is in Y" is discharged by having typed it and proves
      nothing. Verify it downstream where something consumes it, or omit the
-     Pass line. Not every step is a verification step. -->
+     Expected line. Not every step is a verification step. -->
 
 <!-- VERIFICATION IS THE RULE THIS TEMPLATE EXISTS TO ENFORCE.
      Rules: #1-a-verification-step-reports-an-observed-value-not-an-acknowledgment
@@ -221,10 +221,10 @@ triggers:                  # every signal that should lead a responder here
      #the-same-invariant-in-five-substrates
      A step the reader can satisfy without looking at anything is broken.
        ✗ "Verify the service is healthy."
-       ✓ "Run `<cmd>`. Pass: `ready_replicas` equals `desired_replicas`."
+       ✓ "Run `<cmd>`. Expected: `ready_replicas` equals `desired_replicas`."
      This holds in every substrate — an LED colour, a build hash, a row count,
      a crash-free-sessions percentage. Name the instrument, the observed
-     value, what passes, and where to go on failure. -->
+     value, what counts as success, and where to go on failure. -->
 
 ### Checkpoint              <!-- OPTIONAL — only where you genuinely have phases -->
 
@@ -246,7 +246,7 @@ triggers:                  # every signal that should lead a responder here
 
    **IF <condition A>:**
    - 3a. <action>
-   - 3b. **Pass:** <observed value>
+   - 3b. **Expected:** <observed value>
 
    **IF <condition B>:**
    - 3c. Do NOT <the thing that seems natural but is wrong here>.
@@ -268,7 +268,7 @@ triggers:                  # every signal that should lead a responder here
 
 4. Verify <the artifact / precondition itself>: `<command>`
 
-   **Pass:** <checksum, signature, count, target identity — the payload, not your intent>
+   **Expected:** <checksum, signature, count, target identity — the payload, not your intent>
 
 5. <The irreversible action.>
 

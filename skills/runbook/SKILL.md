@@ -41,7 +41,7 @@ the whole literature: length itself drives people to skip a procedure or execute
 ## When to use this
 <entry condition, matchable against what the responder sees>
 ## Steps
-1. <action> → Pass: <observed value> → If not: <where to go>
+1. <action> → Expected: <observed value> → If not: <where to go>
 ## Done when
 <the observable end state>
 ## If this doesn't work
@@ -152,7 +152,7 @@ Then write to the product's runbook directory (create `.prawduct/runbooks/` if n
 existing convention if one does). Name the file after the trigger.
 
 Non-negotiables while drafting:
-- Every verification step names the instrument, the observed value, what passes, and where to go on
+- Every verification step names the instrument, the observed value, what counts as success, and where to go on
   failure. **Never** "verify X is healthy."
 - One action per step. Stable step numbers — insert `3a`, never renumber.
 - Critical, irreversible, and state-capturing steps early.

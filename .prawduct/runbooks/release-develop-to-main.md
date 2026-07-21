@@ -64,7 +64,7 @@ once you push to `main` with a bumped version, they'll pick it up at their next 
    git checkout develop && git pull
    ```
 
-   **Pass:** `git status -sb` shows `## develop...origin/develop` with no `[behind]`.
+   **Expected:** `git status -sb` shows `## develop...origin/develop` with no `[behind]`.
 
 2. Run the tests:
 
@@ -72,7 +72,7 @@ once you push to `main` with a bumped version, they'll pick it up at their next 
    python3 -m pytest tests/ -q
    ```
 
-   **Pass:** exit status 0, no failures.
+   **Expected:** exit status 0, no failures.
    **If not:** stop. Don't release a red suite.
 
    > *Why: the release checklist doesn't ask for this, and there's no CI to catch it for you.
@@ -80,7 +80,7 @@ once you push to `main` with a bumped version, they'll pick it up at their next 
 
 3. Bump the version in **both** `.claude-plugin/plugin.json` (the `version` field) and `VERSION`.
 
-   **Pass:** they agree, and both show the new version:
+   **Expected:** they agree, and both show the new version:
 
    ```sh
    grep '"version"' .claude-plugin/plugin.json; cat VERSION
@@ -104,7 +104,7 @@ once you push to `main` with a bumped version, they'll pick it up at their next 
    <!-- prawduct: chunks=01,02,… | release=vX.Y.Z | status=shipped | scope=<plan-scope> -->
    ```
 
-   **Pass:** nothing tagged above the previous `release=` line is still statusless or
+   **Expected:** nothing tagged above the previous `release=` line is still statusless or
    `status=merged`.
 
    > *Why: entries arrive statusless on purpose, so "statusless" is what release-pending looks
@@ -120,7 +120,7 @@ once you push to `main` with a bumped version, they'll pick it up at their next 
    python3 bin/prawduct-hook regen-views --check
    ```
 
-   **Pass:** exit 0, and no `ERROR` lines in the output.
+   **Expected:** exit 0, and no `ERROR` lines in the output.
    **If not:** fix whatever tag the ERROR line names, then run it again. Don't continue past an
    exit 2 — it's telling you a tag won't resolve.
 
@@ -130,8 +130,8 @@ once you push to `main` with a bumped version, they'll pick it up at their next 
    python3 bin/prawduct-hook regen-views
    ```
 
-   **Pass:** the shipped scopes' build plans report `updated`, and their `## Status` boxes now show
-   `[x]`. Don't hand-edit a checkbox — the next regen will just revert it.
+   **Expected:** the shipped scopes' build plans report `updated`, and their `## Status` boxes now
+   show `[x]`. Don't hand-edit a checkbox — the next regen will just revert it.
 
 8. Set `active_build_plan` to `null` in `.prawduct/project-state.yaml`.
 
@@ -143,7 +143,7 @@ once you push to `main` with a bumped version, they'll pick it up at their next 
     git add -A && git commit -m "release: prep vX.Y.Z" && git push origin develop
     ```
 
-    **Pass:** `git status -sb` shows no `[ahead]`.
+    **Expected:** `git status -sb` shows no `[ahead]`.
 
 ### Checkpoint
 
@@ -167,7 +167,7 @@ everything so far is undoable with an ordinary commit.
     git checkout main && git pull
     ```
 
-    **Pass:** `git status -sb` shows `## main...origin/main` with no `[behind]`.
+    **Expected:** `git status -sb` shows `## main...origin/main` with no `[behind]`.
 
 12. Point `main`'s tree at `develop`'s:
 
@@ -175,8 +175,8 @@ everything so far is undoable with an ordinary commit.
     git read-tree --reset -u origin/develop
     ```
 
-    **Pass:** `git status --porcelain` lists staged changes. If it's empty, `main` already matches
-    `develop` — stop and work out whether this release is already out.
+    **Expected:** `git status --porcelain` lists staged changes. If it's empty, `main` already
+    matches `develop` — stop and work out whether this release is already out.
 
 13. Commit the release on `main`:
 
@@ -190,9 +190,9 @@ everything so far is undoable with an ordinary commit.
     git diff --stat origin/develop HEAD
     ```
 
-    **Pass:** the output is **completely empty**. That's the invariant the whole branch model rests
-    on, and it's your last chance to catch a bad promotion before anyone sees it.
-    **If not empty:** stop and go to *If this doesn't work*. Nothing has shipped.
+    **Expected:** the output is **completely empty**. That's the invariant the whole branch model
+    rests on, and it's your last chance to catch a bad promotion before anyone sees it.
+    **If not:** stop and go to *If this doesn't work*. Nothing has shipped.
 
 > ⚠️ **IRREVERSIBLE — step 15 publishes to every consuming repo.**
 > **Go ahead only if:** step 14 printed nothing at all, and step 6 exited 0.
@@ -208,7 +208,7 @@ everything so far is undoable with an ordinary commit.
     git push origin main
     ```
 
-    **Pass:** the push reports `main -> main` with your new commit.
+    **Expected:** the push reports `main -> main` with your new commit.
 
 16. Tag it:
 
@@ -216,7 +216,7 @@ everything so far is undoable with an ordinary commit.
     git tag vX.Y.Z && git push origin vX.Y.Z
     ```
 
-    **Pass:** `git ls-remote --tags origin vX.Y.Z` comes back with a ref.
+    **Expected:** `git ls-remote --tags origin vX.Y.Z` comes back with a ref.
 
     > *Why: tags don't drive consumer updates — the marketplace resolves the branch HEAD — so
     > skipping this fails silently and you won't notice. `v3.0.2` has a changelog entry and no tag.*

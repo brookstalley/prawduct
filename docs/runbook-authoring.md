@@ -101,7 +101,7 @@ Not this alert, or a different instance? → see the index; do not continue.
 ## Steps
 1. Check what is consuming space:
    `sudo du -xh /var/lib/postgresql --max-depth=2 | sort -rh | head -20`
-   **Pass:** you can name the largest directory.
+   **Expected:** you can name the largest directory.
 
 2. If `pg_wal/` is the largest, check for a stuck replication slot:
    `psql -c "select slot_name, active, restart_lsn from pg_replication_slots;"`
@@ -115,7 +115,7 @@ Not this alert, or a different instance? → see the index; do not continue.
 
 4. Confirm space is returning:
    `df -h /var/lib/postgresql`
-   **Pass:** used% is falling, and below 85% within 10 minutes.
+   **Expected:** used% is falling, and below 85% within 10 minutes.
    **If not falling after 10 minutes:** → step 5.
 
 5. Escalate to #db-oncall with the output of step 1.
@@ -385,7 +385,7 @@ Independently, the Microsoft study of 92 production troubleshooting guides found
 cluster to be *missing action descriptions and **unquantifiable conditions*** ✓.
 
 > **Rule.** Every verification step must name (a) what to run or look at, and (b) the specific
-> observed value that means "pass". If the reader can satisfy the step without looking at anything,
+> observed value that means it worked. If the reader can satisfy the step without looking at anything,
 > the step is broken.
 
 ```diff
@@ -393,21 +393,21 @@ cluster to be *missing action descriptions and **unquantifiable conditions*** �
 - 5. Confirm the migration completed successfully.
 
 + 4. Run: `<health-check command>`
-+    Pass: status is `ok` AND `ready_replicas` equals `desired_replicas`.
++    Expected: status is `ok` AND `ready_replicas` equals `desired_replicas`.
 +    If `ready_replicas` is lower after 2 minutes, go to step 9 (Rollback).
 
 + 5. Run: `<migration status command>`
-+    Pass: the last row's state is `complete` and `error_count` is 0.
++    Expected: the last row's state is `complete` and `error_count` is 0.
 +    Any other state — stop and escalate. Do not re-run the migration.
 ```
 
-**The mirror image: a step whose action is its own evidence takes no Pass line.** When the action
-is *write this value into that file*, "Pass: the value is in the file" verifies nothing — it is
+**The mirror image: a step whose action is its own evidence takes no Expected line.** When the action
+is *write this value into that file*, "Expected: the value is in the file" verifies nothing — it is
 discharged by having typed it, which is precisely the attestable step
 [criterion 26](#self-review--rejection-criteria) rejects. Either verify it downstream where
 something actually consumes it (`regen-views --check` exits 0; the build reads the new value), or
-write no Pass line at all. This rule tells you to make verification steps measurable; it does not
-tell you to make every step a verification step. Manufacturing a Pass line on an authoring action
+write no Expected line at all. This rule tells you to make verification steps measurable; it does not
+tell you to make every step a verification step. Manufacturing a Expected line on an authoring action
 is how a runbook fills up with tautologies that cost a read and prove nothing.
 
 This applies identically to a device (`the status LED is solid green, not blinking`), a frontend
@@ -685,6 +685,12 @@ them, and not a claim that anyone is legally bound by them.
   the reader never meets the same placeholder twice with two different explanations.
 - Never abbreviate a destructive command for readability.
 - Show the *expected output*, not just the command, whenever the output is the verification.
+- **Label it `Expected:`, and label the failure branch `If not:`.** Use those two words and no
+  synonyms — not `OK:`, `Success:`, `Result:`, and above all not `Pass:`. A label sits where the
+  reader's eye expects an instruction, so it must not be readable as one, and `Pass:` is: the first
+  reading is the verb ("pass *what*?"), and the reader only recovers the intended sense from
+  context. `Expected:` cannot be read as a command, and it is the word this guide already uses in
+  prose for the same idea. One term, one meaning, across every runbook in the product.
 
 **Warnings**
 - A warning immediately precedes the step it governs — never at the top of the document, never after.
@@ -843,37 +849,37 @@ endpoint. It does not. The rule is identical everywhere; only the instrument cha
 ```markdown
 BACKEND   ✗ Verify the service recovered.
           ✓ Run: <health command>
-            Pass: `ready_replicas` equals `desired_replicas`, and error rate is
+            Expected: `ready_replicas` equals `desired_replicas`, and error rate is
             below <threshold from the alert definition> for 2 consecutive minutes.
 
 FRONTEND  ✗ Confirm the fix is live.
           ✓ Load <URL> in a private window with cache disabled.
-            Pass: the `<build-hash meta tag / asset filename>` matches the hash
+            Expected: the `<build-hash meta tag / asset filename>` matches the hash
             printed by the deploy step. A matching hash on YOUR machine does not
             mean users have it — see step N for the client-cache check.
 
 EMBEDDED  ✗ Check the device is healthy after flashing.
           ✓ Observe the status LED for 30 seconds after reboot.
-            Pass: solid green. Blinking amber = boot loop → recovery (step N).
+            Expected: solid green. Blinking amber = boot loop → recovery (step N).
             No light after 30s = do NOT re-flash; the device is in <state>,
             power-cycle once and re-observe. Second failure → RMA, do not retry.
 
 DATA      ✗ Make sure the backfill worked.
           ✓ Run: <reconciliation query> for the affected partition range.
-            Pass: target row count equals source row count AND null count in
+            Expected: target row count equals source row count AND null count in
             <key column> is 0. Record both numbers in the incident channel —
             a partition that is merely NON-EMPTY is not a verified partition.
 
 MOBILE    ✗ Verify the rollout is safe to continue.
           ✓ In <console>, read crash-free-sessions for the new version only,
             at a minimum of <N> sessions.
-            Pass: at or above <baseline from the previous release>. Below it:
+            Expected: at or above <baseline from the previous release>. Below it:
             halt the rollout (step N) — and note that halting does NOT remove
             the build from users who already have it.
 ```
 
 Each right-hand example does the same four things: names the instrument, names the observed value,
-names what "pass" is, and says where to go on failure. That is the whole rule, and it is
+names what counts as success, and says where to go on failure. That is the whole rule, and it is
 technology-independent.
 
 Note what the embedded and mobile cases add that the backend case does not need: an explicit
@@ -1136,9 +1142,9 @@ R6. Read it as someone with 30 seconds and a page alert. Can they start acting i
    in with a real example where it first appears*? `vX.Y.Z` without a `v3.1.1` next to it fails.
 
 **Verification**
-4. Does every verification step name a specific observed value that means "pass" — and, conversely,
-   does any step carry a Pass line that just restates the action you were told to take? Delete
-   those; a step whose action is its own evidence takes no Pass line.
+4. Does every verification step name a specific observed value that means it worked — and, conversely,
+   does any step carry a Expected line that just restates the action you were told to take? Delete
+   those; a step whose action is its own evidence takes no Expected line.
 5. Search your draft for "verify", "check", "confirm", "ensure", "make sure", "looks good",
    "healthy", "working", "successful". Each hit is a suspected unmeasurable condition. Fix or
    justify every one.
