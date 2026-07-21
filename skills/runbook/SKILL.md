@@ -3,7 +3,7 @@ description: Author, review, or inventory operational runbooks — pre-written p
 argument-hint: "[new <situation> | review <path> | list | survey] (omit to survey and propose)"
 user-invocable: true
 disable-model-invocation: false
-allowed-tools: Read, Write, Edit, Glob, Grep, Bash(git log *), Bash(git ls-files *), Bash(git show *), Bash(ls *), Bash(cat *), Bash(find *), Agent
+allowed-tools: Read, Write, Edit, Glob, Grep, Bash(git log *), Bash(git ls-files *), Bash(git show *), Bash(ls *), Bash(cat *), Bash(find *), Bash(prawduct-hook backlog *), Bash(python3 bin/prawduct-hook backlog *), Agent
 ---
 
 You author operational runbooks for this product. A runbook is a **pre-written procedure for an
@@ -18,8 +18,9 @@ If asked for a "runbook" for local dev setup, write a setup guide and say that i
 
 **Read `${CLAUDE_PLUGIN_ROOT}/docs/runbook-authoring.md` before authoring or reviewing.** It is the
 canonical guide — the invariants, the anatomy, the writing rules, branching, irreversible steps,
-domain adaptation, and a 26-point self-review. It also carries an evidence appendix distinguishing
-what is verified from what is convention, and a list of refuted claims you must not reintroduce.
+domain adaptation, and a self-review of six restraint checks plus 26 criteria. It also carries an
+evidence appendix distinguishing what is verified from what is convention, and a list of refuted
+claims you must not reintroduce.
 
 Do not work from memory. This skill is the workflow; that document is the standard.
 
@@ -41,6 +42,8 @@ the whole literature: length itself drives people to skip a procedure or execute
 <entry condition, matchable against what the responder sees>
 ## Steps
 1. <action> → Pass: <observed value> → If not: <where to go>
+## Done when
+<the observable end state>
 ## If this doesn't work
 <escalation, and the exit for "this isn't my situation">
 ```
@@ -143,7 +146,7 @@ deployment has no blast radius or close-out; a frontend-only product has no phys
 a solo project has no authorization and no escalate-to-role (say what "escalate" actually means
 there — it may be "stop and look tomorrow"); a product with no alerting has no trigger signal, so
 title by symptom and say where the responder will find the document. **Do not manufacture
-applicability.** A runbook that legitimately uses four sections is not under-documented.
+applicability.** A runbook that legitimately uses five sections is not under-documented.
 
 Then write to the product's runbook directory (create `.prawduct/runbooks/` if none exists; follow
 existing convention if one does). Name the file after the trigger.
@@ -156,12 +159,13 @@ Non-negotiables while drafting:
 - Every irreversible step: its own preceding numbered precondition-verification step, an abort
   criterion, and a named recovery path.
 - Rationale on its own adjacent line, not inside the action sentence.
-- A close-out block that removes what the procedure introduced — especially silenced alerts.
+- Where the procedure introduced state that must be put back, a close-out block that removes it —
+  especially silenced alerts. Where it introduced none, no close-out.
 - Under ~20 steps, or split into phases with checkpoints.
 
 **Step 5 — Subtract, then self-review.** First the deletion pass: remove every line a tired
 responder would not miss, and every section with nothing product-specific in it. Then run the
-guide's rejection criteria — start with the **Restraint** block (19a–19e), because those delete work
+guide's rejection criteria — start with the **Restraint** block (R1–R6), because those delete work
 rather than adding it. The two highest-yield checks: every verification step names an observed
 value, and every command traces to a file you can name. Fix, don't annotate.
 
@@ -177,7 +181,7 @@ until someone other than its author executes it.** Offer to enqueue that in
 
 Review an existing runbook. Do not rewrite it silently.
 
-Run the 26 criteria. Then check the things only repo access can check:
+Run the restraint checks, then the 26 criteria. Then check the things only repo access can check:
 - Does every command still exist? Grep each against the repo. Flag any that reference a deleted
   script, renamed service, or removed flag.
 - Do thresholds still match the alert definitions they came from?

@@ -121,6 +121,9 @@ Not this alert, or a different instance? → see the index; do not continue.
 5. Escalate to #db-oncall with the output of step 1.
    Wake the DBA on-call if used% is above 95% — the database stops writing at 100%.
 
+## Done when
+`df -h /var/lib/postgresql` reports under 85% used, and `DiskSpaceLow` has cleared.
+
 ## If this doesn't work
 - Disk filling with no obvious consumer → this procedure does not apply; page #infra.
 - Escalate to: #db-oncall, immediately if above 95%.
@@ -128,7 +131,8 @@ Not this alert, or a different instance? → see the index; do not continue.
 
 Count what it does: names the trigger verbatim, gives a confirmable entry condition and an exit,
 five steps, every one with an observed value, one branch written condition-first, one irreversible
-step marked with its abort criterion before it, and a wake-someone-up threshold stated explicitly.
+step marked with its abort criterion before it, an observable done-state, and a wake-someone-up
+threshold stated explicitly.
 
 Now count what it *omits*: no architecture background, no explanation of what WAL is, no blast-radius
 table, no prerequisites block, no close-out (it changes no state that needs putting back), no
@@ -1072,12 +1076,23 @@ that fails.
 
 ## Self-review — rejection criteria
 
-Run this against your own draft before calling it done.
+Run this against your own draft before calling it done: six restraint checks, then 26 criteria.
 
-Scope it by tier. Criteria 1–12 and 23–26 apply to **every** runbook including Tier 1. Criteria
-13–18 (findability, interruption survival) apply from Tier 2 up. Within the tier that applies, a
-"no" is a defect to fix, not a caveat to note — proportionality decides *which* criteria bind, never
-how well you satisfy the ones that do.
+Scope it by tier. The restraint checks and criteria 1–12, 19–22 and 23–26 apply to **every** runbook
+including Tier 1. Criteria 13–18 (findability, interruption survival) apply from Tier 2 up. Within
+the tier that applies, a "no" is a defect to fix, not a caveat to note — proportionality decides
+*which* criteria bind, never how well you satisfy the ones that do.
+
+**Restraint** — run these first; they delete work rather than adding it
+
+R1. Is it **20 steps or fewer**? If not, split it.
+R2. Did you do the **subtraction pass** — one read whose only purpose was deletion?
+R3. Is there any section present that has nothing product-specific in it? Delete it — including
+    any left as "N/A" or "None". An empty section still costs a read to discover it is empty.
+R4. Did you *decide* each optional section against its include-test, rather than keeping it because
+    you could fill it in? Whole sections not applying to a whole product is normal.
+R5. Would a responder doing this routinely on a Tuesday find it *fast* to use, not just correct?
+R6. Read it as someone with 30 seconds and a page alert. Can they start acting immediately?
 
 **Executability**
 1. Is every command derived from the repo or the running system — not generated? Can you name the
@@ -1100,8 +1115,9 @@ how well you satisfy the ones that do.
 10. Is there an exit for "reality does not match this document"?
 11. Is the recovery path named *before* the first irreversible step, and is it one you actually
     have?
-12. Is there a close-out block that removes what the procedure introduced — flags, silenced alerts,
-    temporary capacity, maintenance mode?
+12. *If* the procedure introduced state that must be put back — flags, silenced alerts, temporary
+    capacity, maintenance mode — is there a close-out block that removes it? A procedure that
+    changes no such state needs none, and the worked example above is one.
 
 **Findability** (Tier 2+)
 13. Does the title match the responder's entry point — the triggering signal verbatim if one exists,
@@ -1122,20 +1138,11 @@ how well you satisfy the ones that do.
 22. Does the header let a reader confirm in seconds that they are in the right document — including
     when *not* to use it?
 
-**Restraint** — run these before the rest; they delete work rather than adding it
-19a. Is it **20 steps or fewer**? If not, split it.
-19b. Did you do the **subtraction pass** — one read whose only purpose was deletion?
-19c. Is there any section present that has nothing product-specific in it? Delete it — including
-     any left as "N/A" or "None". An empty section still costs a read to discover it is empty.
-19f. Did you *decide* each optional section against its include-test, rather than keeping it because
-     you could fill it in? Whole sections not applying to a whole product is normal.
-19d. Would a responder doing this routinely on a Tuesday find it *fast* to use, not just correct?
-19e. Read it as someone with 30 seconds and a page alert. Can they start acting immediately?
-
 **Honesty**
 23. Is every number derived rather than plausible?
 24. Is every uncertain step visibly marked as uncertain?
-25. Does the ownership/last-verified metadata reflect execution rather than editing?
+25. Does the ownership/last-verified metadata reflect execution rather than editing? A runbook that
+    has never been executed correctly carries `null` — the defect is a date that records an edit.
 26. Can any step be satisfied by *recording* it rather than *doing* something observable? If so,
     rewrite it — that step will be discharged on paper.
 
@@ -1239,7 +1246,7 @@ particular runbook *field set* improves outcomes — that last one appears to be
 everywhere, including here.
 
 Raw research, verdicts, provenance, and resume instructions:
-`.prawduct/research/runbook-authoring/CHECKPOINT.md`.
+`${CLAUDE_PLUGIN_ROOT}/.prawduct/research/runbook-authoring/CHECKPOINT.md`.
 
 ### Refuted — do not reintroduce ✗
 

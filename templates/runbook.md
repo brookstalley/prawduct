@@ -20,7 +20,7 @@
        Branching + one-way ... #branching-and-steps-that-cannot-be-undone
        Finding it at 3am ..... #how-the-runbook-gets-found
        Per-substrate examples  #the-same-invariant-in-five-substrates
-       Self-review (26 pts) .. #self-review--rejection-criteria
+       Self-review ........... #self-review--rejection-criteria
        What's evidence vs not  #evidence--what-is-known-vs-what-is-merely-repeated
 
      Generate with /prawduct:runbook, which derives every command from this
@@ -35,7 +35,7 @@
      nothing product-specific in it does not add rigor — it dilutes the
      steps that matter.
 
-     The minimal runbook is FOUR THINGS, and for most procedures it is the
+     The minimal runbook is FIVE THINGS, and for most procedures it is the
      whole document:
 
          # <trigger>
@@ -43,6 +43,8 @@
          <the entry condition, matchable against what the responder sees>
          ## Steps
          1. <action>  →  Pass: <observed value>  →  If not: <where to go>
+         ## Done when
+         <the observable end state — the value that proves it, not "complete">
          ## If this doesn't work
          <escalation, and the exit for "this isn't my situation">
 
@@ -77,7 +79,7 @@
        - A product with no alerting has no trigger signal; title by symptom
          and say where the responder is expected to find the document.
        - A reversible-everything system needs no irreversible block at all.
-     A product whose runbooks legitimately use four sections is not
+     A product whose runbooks legitimately use five sections is not
      under-documented. Do not manufacture applicability.
 
      The FRONTMATTER is subject to the same test — drop `triggers:` if nothing
@@ -124,7 +126,7 @@ triggers:                  # every signal that should lead a responder here
      A responder must be able to confirm or reject this procedure BEFORE
      step 1. -->
 
-## When NOT to use this
+## When NOT to use this   <!-- OPTIONAL — only if a neighbouring procedure could be confused with this -->
 
 <!-- The neighbouring procedures this is confused with, and where to go
      instead. Selecting the wrong procedure is a real failure mode; this
@@ -170,7 +172,10 @@ triggers:                  # every signal that should lead a responder here
          `3a` instead. A reader interrupted at "step 12" must be able to
          return to the same step 12.
        - Rationale goes on its own adjacent line, never inside the action
-         sentence — the executing eye skips it, the confused eye finds it. -->
+         sentence — the executing eye skips it, the confused eye finds it.
+       - `**Pass:**` / `**If not:**` is the verification form EVERYWHERE. Inside
+         a conditional it attaches to the branch's own sub-step (`3b.`), but the
+         labels never change. Do not invent a second syntax. -->
 
 1. <Imperative action.>
 
@@ -198,7 +203,7 @@ triggers:                  # every signal that should lead a responder here
      a crash-free-sessions percentage. Name the instrument, the observed
      value, what passes, and where to go on failure. -->
 
-### Checkpoint
+### Checkpoint              <!-- OPTIONAL — only where you genuinely have phases -->
 
 <!-- State what must be true before Phase 2. This is the resumption cue for a
      reader who was interrupted — interruptions of a few seconds measurably
@@ -284,7 +289,7 @@ triggers:                  # every signal that should lead a responder here
 
 ---
 
-## Maintenance               <!-- Tier 2+ -->
+## Maintenance               <!-- OPTIONAL — only if anyone other than the author will run this -->
 
 <!-- Rules: #maintenance--a-runbook-is-only-as-good-as-its-last-rehearsal -->
 
