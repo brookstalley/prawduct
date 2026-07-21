@@ -67,7 +67,14 @@ Tested by installing v3.1.0 into an isolated config, advancing the source repo, 
 `plugin update`: the active plugin becomes the clean 3.1.1 tree, but the old
 `cache/prawduct/prawduct/3.1.0/` directory is retained on disk with all 314 files including
 prawduct's `.prawduct/`, and `claude plugin prune` does not remove it. So what *loads* is fixed
-immediately; what is *on disk* needs a manual delete. The condition is pre-existing — v3.1.0 put it
+immediately; what is *on disk* needs a manual delete.
+
+**Scale corrected after a live check on the maintainer's machine** — the first draft of the consumer note
+said `~/.claude/plugins/cache/prawduct/`, singular. Caches are per *config directory*, and a machine running
+several Claude Code profiles carries an independent set in each: four profiles held **16 version directories,
+~90 MB**, with the `3.1.0` copies each carrying `.prawduct/`, `tests/` and `documentation/` — the exact
+contamination this release removes. The shipped note now says `~/.claude*/plugins/cache/prawduct/` and gives
+the `du` command. Found by an agent testing the release in a consuming repo, not by reasoning about it. The condition is pre-existing — v3.1.0 put it
 there — and this release stops adding to it rather than cleaning it up. Filed as **GOV-9T2K**.
 
 Closes **GOV-4H7T**.
