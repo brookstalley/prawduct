@@ -893,6 +893,34 @@ conditions" — beyond four, use a list format — and says the use of `AND` and
 the same step "should be avoided", because such combined logic statements "can be confusing and
 ambiguous" ✓. Adopt both limits.
 
+**More than one failure mode is a lookup, not a sentence.** A single failure stays inline —
+`**If not:** <what to do>`. Two or more become a keyed list, because the reader arrives holding a
+symptom and *scans* for it. Run them together as prose and you have handed someone a paragraph to
+parse at the exact moment they are least able to:
+
+```markdown
+   **Expected:** <what success prints>
+
+   **If not:**
+
+   `<the exact string they are looking at>`
+   - <what it means, one line — omit when it is obvious>
+   - **<what to do>**
+
+   `<the next exact string>`
+   - <what it means>
+   - **<what to do>**
+
+   - Anything else → <where to go>
+```
+
+Three things make it work. The **key is the observable** — the literal error text, code, or symptom
+on their screen, set apart so the eye finds it without reading; never a description of the failure
+in your words. The **action is the visually heaviest element**, because it is what they came for.
+And the **catch-all is mandatory**: a reader whose failure is not on your list has been abandoned
+mid-procedure unless you tell them where to go, which is
+[invariant 7](#7-tell-the-reader-when-the-procedure-has-stopped-applying) arriving one step down.
+
 **Make the branch visible in the layout.** Aviation quick-reference-handbook design names three
 mechanisms as "the main ingredients" of an error-resistant layout ✓: an explicit condition-marker
 symbol, lateral indentation grouping every action belonging to that conditional group, and adequate
@@ -1336,7 +1364,10 @@ R6. Read it as someone with 30 seconds and a page alert. Can they start acting i
 7. Is every irreversible step marked, preceded by its abort criteria, and stated to be
    irreversible? Does each have its own separate, numbered precondition-verification step?
 8. Does each warning sit immediately before its step, and contain no actions?
-9. Does the reader know, at every branch, how to tell which branch they are on?
+9. Does the reader know, at every branch, how to tell which branch they are on? Where a step has
+    two or more failure modes, are they a keyed list rather than a run-on sentence — keyed on the
+    exact text the reader sees, action in the heaviest type, and a catch-all for the failure you
+    did not anticipate?
 10. Is there an exit for "reality does not match this document"?
 11. Is the recovery path named *before* the first irreversible step, and is it one you actually
     have?

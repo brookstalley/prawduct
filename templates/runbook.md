@@ -240,6 +240,25 @@ triggers:                  # every signal that should lead a responder here
    **Expected:** <what THAT command prints when it worked>
    **If not:** <step number to go to, or escalate>
 
+<!-- ONE failure mode stays inline, as above. TWO OR MORE become a keyed list —
+     the reader arrives holding a symptom and scans for it, so prose fails them:
+
+       **If not:**
+
+       `<the exact string they are looking at>`
+       - <what it means — omit if obvious>
+       - **<what to do>**
+
+       `<the next exact string>`
+       - <what it means>
+       - **<what to do>**
+
+       - Anything else → <where to go>
+
+     Key on the literal text on their screen, never your description of it.
+     Put the action in the heaviest type. The catch-all is MANDATORY — a
+     reader whose failure isn't listed is stranded without it. -->
+
    > *Why: <one line — only where a reader might reasonably skip or improvise.>*
 
 2. <An edit, named precisely: the file, the field, and what it becomes.
