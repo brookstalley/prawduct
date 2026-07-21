@@ -558,6 +558,16 @@ document or count for it without checking.)
 > **Rule.** One imperative action per step. If you wrote "and then", split it. Sequential UI
 > navigation is the only routine exception (`Settings > Advanced > Reset`).
 
+**A chain in your source is not a step boundary.** Deriving faithfully means the command *text* is
+derived; the *step structure* is yours to author. A reference document showing two commands joined
+on one line is showing you one line of *that document* — it was written for a reader who already
+knows the system, and copying its shape into a procedure hides the failure your reader needed to
+see between the two halves. Split them, and let each carry its own expectation.
+
+Keep a chain only when the second command must not run if the first fails *and* the reader has
+nothing to check in between — and when you keep one, say so, because a reader who sees two commands
+and one expectation will otherwise assume you forgot something.
+
 ### 6. Say why, next to the step but out of its way
 
 A controlled experiment found that adding a short `PURPOSE` statement to critical steps raised
@@ -698,7 +708,10 @@ fields and excellent steps beats one with twelve fields and vague ones.
   own situation.
 - **Steps** — numbered, one action each.
 - **Done when** — the observable end state. Not "the procedure is complete" but the value that
-  proves it.
+  proves it. **Checked at the end, never recalled from the middle.** A line reading *"step 17
+  printed nothing"* is a memory, not an observation: it says something was true earlier, the world
+  may have moved since, and a reader who was interrupted has no memory to consult in any case.
+  Each item names what they can see *right now*, which usually means naming the command again.
 - **If this doesn't work** — the escalation path *and* the exit for "reality does not match this
   document". On a solo project "escalate" may mean "stop and look at it tomorrow" — say so.
 
@@ -1380,7 +1393,8 @@ R6. Read it as someone with 30 seconds and a page alert. Can they start acting i
    justify every one. Then search for "may", "might", "should probably", "usually", "typically",
    "if needed", "as appropriate" — each of those is a missing branch, a missing number, or an
    unmarked gap. Resolve it into whichever it is.
-6. Does "Done when" state an observable end state rather than "the procedure is complete"?
+6. Does "Done when" state an observable end state rather than "the procedure is complete" — and is
+   every item checkable *right now*, rather than a recollection of what an earlier step printed?
 
 **Safety**
 7. Is every irreversible step marked, preceded by its abort criteria, and stated to be
