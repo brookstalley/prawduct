@@ -150,10 +150,10 @@ It validates the committed install reference, confirms the repo is on the plugin
 
 ```bash
 cd prawduct
-claude --plugin-dir . --add-dir .
+claude --plugin-dir ./plugin --add-dir .
 ```
 
-This repo is governed by its own plugin — it dogfoods itself. The `--add-dir .` (same path) lets methodology-reading skills (`/prawduct:methodology building`, `/prawduct:critic`, `/prawduct:methodology planning`) load their bundled guides from the out-of-tree plugin; a real marketplace install grants that automatically. See [docs/release-process.md](docs/release-process.md) for the gitflow release model and the release checklist.
+This repo is governed by its own plugin — it dogfoods itself. **`--plugin-dir` takes `./plugin`, not `.`** — the plugin root moved into `plugin/` in v3.1.1 so that the repo's own state stops being distributed, and the repo root is no longer a plugin root. `--add-dir .` (the repo) lets methodology-reading skills (`/prawduct:methodology building`, `/prawduct:critic`, `/prawduct:methodology planning`) load their bundled guides from the out-of-tree plugin; a real marketplace install grants that automatically. See [documentation/release-process.md](documentation/release-process.md) for the gitflow release model and the release checklist.
 
 ## Q&A
 
@@ -232,22 +232,40 @@ No `tools/product-hook`, no `tools/lib/`, no committed `.claude/skills/*`, no `s
 
 ## Framework Layout
 
-Prawduct *is* the plugin (and its own git-backed marketplace):
+This repo hosts the plugin and its own git-backed marketplace. **Only `plugin/` is distributed** —
+everything beside it is prawduct's own development state and never reaches a consumer's plugin cache
+(v3.1.1; the source was previously `"./"`, i.e. the whole repo, ~6.7 MB of it).
 
 ```
 prawduct/
-├── .claude-plugin/
-│   ├── plugin.json             # name: prawduct, version (mirrors VERSION)
-│   └── marketplace.json        # single-plugin marketplace entry (plugin source "./", consumers pin ref: main)
-├── hooks/hooks.json            # SessionStart (banner + briefing + guidance digest), Stop (Critic + reflection gates)
-├── skills/                     # framework skills → /prawduct:* (onboard, doctor, critic, pr, migrate, building, …)
-├── bin/prawduct-hook           # runtime governance (Python; reads/writes only ${CLAUDE_PROJECT_DIR}/.prawduct/)
-├── lib/                        # governance + scaffolding/migration modules (init_product, migrate_plugin, …)
-├── methodology/ docs/ templates/  # bundled; read by skills/hooks via ${CLAUDE_PLUGIN_ROOT}
-├── tests/                      # framework tests (pytest) and evaluation scenarios
-├── VERSION
-└── .prawduct/                  # the framework's own state — it dogfoods its own plugin
+├── .claude-plugin/marketplace.json   # marketplace entry (plugin source "./plugin"; consumers pin ref: main)
+│
+├── plugin/                     # ⇦ THE DISTRIBUTED PLUGIN — this directory, and nothing else, is what installs
+│   ├── .claude-plugin/plugin.json    # name: prawduct, version (mirrors VERSION)
+│   ├── hooks/hooks.json        # SessionStart (banner + briefing + digest), Stop (Critic + reflection gates)
+│   ├── skills/                 # framework skills → /prawduct:* (onboard, doctor, critic, pr, runbook, …)
+│   ├── bin/prawduct-hook       # runtime governance (Python; reads/writes only ${CLAUDE_PROJECT_DIR}/.prawduct/)
+│   ├── lib/                    # governance + scaffolding/migration modules (init_product, migrate_plugin, …)
+│   ├── methodology/ templates/ agents/   # read by skills/hooks via ${CLAUDE_PLUGIN_ROOT}
+│   ├── docs/                   # only the guides skills route to (principles, norms, waivers, runbook-authoring, …)
+│   ├── VERSION                 # read at runtime by lib/core.py and lib/evidence.py
+│   └── CHANGELOG.md            # the version-delta banner reads this one
+│
+├── tests/                      # NOT distributed. framework tests (pytest) + evaluation scenarios
+├── documentation/              # NOT distributed. prawduct's own requirements, specs, and release process
+├── .prawduct/                  # NOT distributed. the framework's own state — it dogfoods its own plugin
+├── CLAUDE.md                   # NOT distributed. prawduct's own operating instructions
+└── README.md  LICENSE  pyproject.toml
 ```
+
+Real files, not symlinks — deliberately. A symlink farm was tried first (much smaller diff) and is
+broken on any checkout without symlink support: with `core.symlinks=false`, the Git-for-Windows
+default, every entry becomes a few-byte text stub and the plugin installs inert.
+
+`tests/test_plugin_packaging.py` pins that boundary in both directions: a required component going
+missing breaks governance for every consumer at once, and a leak puts another product's
+documentation in their cache. Neither failure is visible locally, because `--plugin-dir` resolves
+against the repo root.
 
 ## Architecture
 
@@ -259,11 +277,11 @@ Three layers:
 
 3. **Structural enforcement** — Python hooks that enforce what principles alone can't guarantee: session briefing with staleness detection on start, independent Critic review and reflection gates on stop, compliance canary checks for common governance failures. Zero external dependencies.
 
-See [`docs/principles.md`](docs/principles.md) for the full principles with rationale and review perspectives.
+See [`docs/principles.md`](plugin/docs/principles.md) for the full principles with rationale and review perspectives.
 
 ## Recent Changes
 
-Full release notes are in [CHANGELOG.md](CHANGELOG.md). Two major releases define the current architecture:
+Full release notes are in [CHANGELOG.md](plugin/CHANGELOG.md). Two major releases define the current architecture:
 
 ### 3.0 — Review evidence as a composable fact store
 - Review results are **append-only facts** in a store shared by every worktree of a clone — not single-slot, per-worktree files judged by modification time and a mode label
@@ -278,9 +296,9 @@ Full release notes are in [CHANGELOG.md](CHANGELOG.md). Two major releases defin
 - **Version-delta banner** (shows what changed + newly-active gates on update); marketplace `autoUpdate` for always-latest
 - **`/prawduct:migrate`** — one-command, reversible v1 file-sync → plugin cutover (see [MIGRATION](documentation/MIGRATION.md))
 - Plugin-native onboarding/scaffolding via `/prawduct:onboard` (health-check/repair stays `/prawduct:doctor`)
-- Gitflow release model (see [docs/release-process.md](docs/release-process.md))
+- Gitflow release model (see [docs/release-process.md](documentation/release-process.md))
 
-Between these two, the **2.1–2.3** line hardened the framework without changing its shape: reviews became proportional, observable (a governance ledger + `review-stats`), and resilient (a persistence redesign so a coordinator review can't be silently lost); the backlog grew lifecycle stages and multi-agent claims; API design joined the cross-cutting concerns; and dozens of gate-soundness and session hot-path fixes landed. See the [CHANGELOG](CHANGELOG.md) for the full stream.
+Between these two, the **2.1–2.3** line hardened the framework without changing its shape: reviews became proportional, observable (a governance ledger + `review-stats`), and resilient (a persistence redesign so a coordinator review can't be silently lost); the backlog grew lifecycle stages and multi-agent claims; API design joined the cross-cutting concerns; and dozens of gate-soundness and session hot-path fixes landed. See the [CHANGELOG](plugin/CHANGELOG.md) for the full stream.
 
 ## License
 

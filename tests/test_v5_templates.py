@@ -25,7 +25,7 @@ from pathlib import Path
 import pytest
 import yaml
 
-FRAMEWORK_DIR = Path(__file__).resolve().parent.parent
+FRAMEWORK_DIR = Path(__file__).resolve().parent.parent / "plugin"
 TEMPLATES_DIR = FRAMEWORK_DIR / "templates"
 
 

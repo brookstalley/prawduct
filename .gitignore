@@ -40,3 +40,10 @@ incoming-bugs/
 
 # Prawduct session files
 .prawduct/.critic-partials/
+
+# Runbook research raw captures (large; distilled state is in CHECKPOINT.md)
+.prawduct/research/**/raw/
+
+# Repo-local agent scratch — never part of the distributed plugin (Principle 10).
+# Kept out of plugin/ so it is not distributed; this rule also stops it being committed at all.
+.claude/workflows/

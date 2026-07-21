@@ -25,7 +25,7 @@ from pathlib import Path
 
 import pytest
 
-REPO_ROOT = Path(__file__).resolve().parent.parent.parent
+REPO_ROOT = Path(__file__).resolve().parent.parent.parent / "plugin"
 
 # Each file must contain BOTH short tokens (`chunk` and `final` as identifiers)
 # AND the named section that defines them. The section name varies: the Critic

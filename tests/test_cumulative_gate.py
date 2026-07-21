@@ -33,7 +33,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parent.parent
+ROOT = Path(__file__).resolve().parent.parent / "plugin"
 
 sys.path.insert(0, str(ROOT))
 from lib import evidence, gates  # noqa: E402
@@ -78,6 +78,41 @@ def _branch_repo(tmp_path: Path) -> Path:
     _git(repo, "init", "-q", "-b", "main")
     _commit(repo, "code.py", "x = 1\n", "c1")
     _git(repo, "checkout", "-q", "-b", "feature")
+    _commit(repo, "feature.py", "y = 2\n", "f1")
+    return repo
+
+
+def _stale_origin_repo(
+    tmp_path: Path, *, push_after_prep: bool = False, feature_on_local: bool = True
+) -> Path:
+    """A repo whose ``origin/main`` trails local ``main`` — the COV-7K4N shape.
+
+    ``origin/main`` == c1; local ``main`` then gains an unpushed ``release-prep``
+    commit; a feature branch is cut on top of local ``main`` (or, when
+    ``feature_on_local`` is False, on ``origin/main`` so local ``main`` is NOT
+    an ancestor of HEAD — the diverged case where pushing wouldn't help). With
+    ``base_branch`` unset the gate resolves the base to ``origin/main``, so
+    merge-base anchors to the stale c1 and the whole unshipped range reads as
+    the required span."""
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init", "-q", "-b", "main")
+    _commit(repo, "code.py", "x = 1\n", "c1")
+    origin = tmp_path / "origin.git"
+    subprocess.run(
+        ["git", "init", "--bare", "-q", str(origin)],
+        check=True,
+        capture_output=True,
+        text=True,
+        timeout=15,
+    )
+    _git(repo, "remote", "add", "origin", str(origin))
+    _git(repo, "push", "-q", "origin", "main")  # origin/main == c1
+    _commit(repo, "VERSION", "1.0.1\n", "release-prep(v1.0.1): bump version")
+    if push_after_prep:
+        _git(repo, "push", "-q", "origin", "main")  # remote caught up → not stale
+    start = "main" if feature_on_local else "origin/main"
+    _git(repo, "checkout", "-q", "-b", "feature", start)
     _commit(repo, "feature.py", "y = 2\n", "f1")
     return repo
 
@@ -200,6 +235,26 @@ class TestComposedCoveragePasses:
         rc, _out, err = _run_gate(repo, capsys)
         assert rc == 0, err
 
+    def test_verify_resolutions_at_committed_head_composes_over_fix_commit(self, tmp_path, capsys):
+        # CRT-7H2W: a post-cumulative fix COMMIT is judgeable, so the cumulative
+        # fact alone does not cover it (cf. test_unreviewed_judgeable_commit_...
+        # _blocks). A verify-resolutions fact anchored at the COMMITTED HEAD tree
+        # — what begin_review now records when a committed delta exists since the
+        # prior review — bridges reviewed-tree -> committed HEAD, so the gate
+        # composes. Anchored at a dirty WORKING tree it would not; that is the
+        # point of the intent-aware head anchor.
+        repo = _branch_repo(tmp_path)
+        reviewed = _tree(repo)  # T_c — the cumulative-reviewed feature tip
+        _fact(repo, _tree(repo, "main"), reviewed, ["feature.py"])
+        _commit(repo, "feature.py", "y = 3  # fixed\n", "fix blocker")
+        fixed = _tree(repo)  # T_c2 — committed HEAD after the fix commit
+        _fact(
+            repo, reviewed, fixed, ["feature.py"],
+            mode="verify-resolutions (delta review, prior findings only)",
+        )
+        rc, _out, err = _run_gate(repo, capsys)
+        assert rc == 0, err
+
 
 # ---------------------------------------------------------------------------
 # Still blocks — one regression per deleted v2 acceptance path
@@ -290,6 +345,48 @@ class TestStillBlocks:
         rc, _out, err = _run_gate(repo, capsys)
         assert rc == 1
         assert "uncovered" in err
+
+
+# ---------------------------------------------------------------------------
+# Stale remote base — the uncovered path names the cheap remedy (COV-7K4N)
+# ---------------------------------------------------------------------------
+
+
+class TestStaleBaseHint:
+    """The false-``uncovered`` case where ``origin/<b>`` trails an ancestor-of-HEAD
+    local ``<b>``: the gate must surface ``git push origin <b>`` (cheap, correct)
+    BEFORE the generic full-review remedy, and must NOT surface it when pushing
+    wouldn't move the merge-base."""
+
+    def test_hint_when_origin_behind_ancestor_local(self, tmp_path, capsys):
+        repo = _stale_origin_repo(tmp_path)
+        rc, _out, err = _run_gate(repo, capsys)
+        assert rc == 1
+        assert "uncovered" in err
+        assert "behind local main" in err
+        assert "git push origin main" in err
+        assert "release-prep(v1.0.1" in err  # the phantom-release signal is named
+        assert "/prawduct:critic cumulative" in err  # generic remedy still offered
+
+    def test_no_hint_when_remote_current(self, tmp_path, capsys):
+        # Local main pushed → origin is up to date; the feature is still
+        # uncovered (no facts), but there is nothing stale to push.
+        repo = _stale_origin_repo(tmp_path, push_after_prep=True)
+        rc, _out, err = _run_gate(repo, capsys)
+        assert rc == 1
+        assert "uncovered" in err
+        assert "git push origin" not in err
+        assert "/prawduct:critic cumulative" in err
+
+    def test_no_hint_when_local_diverged_from_head(self, tmp_path, capsys):
+        # Local main is ahead of origin but NOT an ancestor of HEAD (feature cut
+        # from origin/main) — pushing wouldn't advance the merge-base, so the
+        # ancestor guard suppresses the hint.
+        repo = _stale_origin_repo(tmp_path, feature_on_local=False)
+        rc, _out, err = _run_gate(repo, capsys)
+        assert rc == 1
+        assert "uncovered" in err
+        assert "behind local" not in err
 
 
 # ---------------------------------------------------------------------------

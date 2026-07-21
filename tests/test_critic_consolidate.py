@@ -28,11 +28,12 @@ from __future__ import annotations
 import json
 import subprocess
 import sys
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import pytest
 
-ROOT = Path(__file__).resolve().parent.parent
+ROOT = Path(__file__).resolve().parent.parent / "plugin"
 HOOK = ROOT / "bin" / "prawduct-hook"
 sys.path.insert(0, str(ROOT))
 from lib import critic_consolidate as cc  # noqa: E402
@@ -219,14 +220,50 @@ class TestValidatePartial:
         ok, reason = cc.validate_partial(p)
         assert ok, reason
 
-    def test_finding_files_with_empty_string_rejected(self):
+    def test_finding_files_with_blank_element_normalized_not_rejected(self):
+        # A blank/non-string element in ``files`` is optional attribution — it
+        # must be normalized away downstream, NOT fail-close the whole
+        # consolidation. (This previously rejected; that rejection WAS the
+        # defect — one reviewer's ``files:[""]`` on a file-less META-finding
+        # bricked every review.)
         p = _partial("correctness", "abc", findings=[
             {"name": "x", "goal": "g", "severity": "warning",
              "recommendation": "y", "files": ["a.py", ""]}
         ])
         ok, reason = cc.validate_partial(p)
-        assert not ok
-        assert "files" in reason
+        assert ok, reason
+
+    def test_finding_files_all_blank_accepted(self):
+        # ``files: [""]`` — the exact live trigger — must consolidate, not abort.
+        p = _partial("correctness", "abc", findings=[
+            {"name": "Learnings cross-check", "goal": "g", "severity": "note",
+             "recommendation": "y", "files": [""]}
+        ])
+        ok, reason = cc.validate_partial(p)
+        assert ok, reason
+
+    def test_finding_files_nonstring_element_accepted(self):
+        # A list holding a non-string element is tolerated at validation (it is
+        # dropped in merge_findings), consistent with the blank-element rule —
+        # only a non-*list* ``files`` value is a hard schema error.
+        p = _partial("correctness", "abc", findings=[
+            {"name": "x", "goal": "g", "severity": "warning",
+             "recommendation": "y", "files": [5, "a.py"]}
+        ])
+        ok, reason = cc.validate_partial(p)
+        assert ok, reason
+
+    def test_finding_files_not_a_list_rejected(self):
+        # A non-list ``files`` is still a hard schema error (a bare string is a
+        # common mis-emission) — only malformed *elements* are tolerated.
+        for bad in ("a.py", 5, {"a.py": 1}):
+            p = _partial("correctness", "abc", findings=[
+                {"name": "x", "goal": "g", "severity": "warning",
+                 "recommendation": "y", "files": bad}
+            ])
+            ok, reason = cc.validate_partial(p)
+            assert not ok, f"{bad!r} should be rejected"
+            assert "files" in reason
 
     @pytest.mark.parametrize("mutate,frag", [
         (lambda p: p.pop("role"), "role"),
@@ -308,6 +345,17 @@ class TestValidateManifest:
         ok, reason = cc.validate_manifest(_manifest_dict(mode="final"))
         assert not ok
         assert "mode" in reason
+
+    def test_worktree_branch_nullable_accepted(self):
+        # PDT-WT9K visibility fields: both null (detached HEAD → branch None) and
+        # populated are valid; an absent key (older manifest) is fine too.
+        assert cc.validate_manifest(_manifest_dict(worktree=None, branch=None))[0]
+        assert cc.validate_manifest(_manifest_dict(worktree="/r", branch="main"))[0]
+
+    def test_non_string_worktree_rejected(self):
+        ok, reason = cc.validate_manifest(_manifest_dict(worktree=5))
+        assert not ok
+        assert "worktree" in reason
 
     @pytest.mark.parametrize("field", [
         "id", "mode_chosen_by", "roster", "roster_chosen_by",
@@ -391,6 +439,24 @@ class TestMergeFindings:
         }]
         assert "files" not in merged[0]
 
+    def test_blank_and_nonstring_files_elements_dropped(self):
+        # Both blank strings AND genuinely non-string elements normalize out,
+        # mirroring ``[]`` — only real path strings survive.
+        merged = cc.merge_findings([_partial("correctness", "a", findings=[
+            {"name": "Meta note", "goal": "Nothing Is Missing",
+             "severity": "note", "recommendation": "n",
+             "files": ["", 5, None, "  ", "a.py"]}
+        ])])
+        assert merged[0]["files"] == ["a.py"]
+
+    def test_all_blank_files_normalized_out_of_record(self):
+        # ``files: [""]`` collapses to no ``files`` key, like ``[]``.
+        merged = cc.merge_findings([_partial("correctness", "a", findings=[
+            {"name": "Meta note", "goal": "Nothing Is Missing",
+             "severity": "note", "recommendation": "n", "files": [""]}
+        ])])
+        assert "files" not in merged[0]
+
     def test_dedup_keeps_highest_severity(self):
         # Same (goal, name, files) reported by two reviewers at differing severity.
         f_warn = {"name": "Dup", "goal": "G", "severity": "warning", "recommendation": "r"}
@@ -433,6 +499,141 @@ class TestMergeFindings:
         assert record["model"] == "opus"  # from the partial, not the manifest
         assert body["counts"] == {"blocking": 1, "warning": 0, "note": 0}
         assert body["roster"] == [{"role": "correctness", "model": "opus"}]
+
+
+# ---------------------------------------------------------------------------
+# Unit: dispatch age + the incomplete no-op's liveness verdict
+# ---------------------------------------------------------------------------
+
+
+class TestIncompleteNoopLiveness:
+    """The incomplete no-op must carry a liveness verdict, not just a partial
+    count: a parent session that consolidates during the reviewers' background
+    run window sees 0/N partials, and bare silence reads as "the reviewers
+    died with the fork" — triggering a duplicate dispatch while the first
+    roster is still alive (the observed double-review-cost failure)."""
+
+    def _fresh_id(self, minutes_ago: float) -> str:
+        ts = datetime.now(timezone.utc) - timedelta(minutes=minutes_ago)
+        return f"rev-{ts.strftime('%Y%m%dT%H%M%SZ')}-deadbeef"
+
+    def test_age_parses_synthetic_begin_shaped_id(self):
+        age = cc.dispatch_age_minutes(self._fresh_id(3))
+        assert age is not None
+        assert 2.5 < age < 4.0
+
+    def test_age_none_for_non_timestamp_id(self):
+        assert cc.dispatch_age_minutes("rev-test-0001") is None
+
+    def test_age_none_for_invalid_calendar_stamp(self):
+        # Matches the shape regex but is not a real date — parse must not raise.
+        assert cc.dispatch_age_minutes("rev-20261399T996161Z-deadbeef") is None
+
+    def test_future_stamp_clamps_to_zero(self):
+        assert cc.dispatch_age_minutes(self._fresh_id(-30)) == 0.0
+
+    def test_young_dispatch_says_wait_not_dead(self):
+        msg = cc._incomplete_noop_message(
+            ["correctness", "design"], 1, 3, self._fresh_id(2))
+        assert "no-op" in msg
+        assert "correctness, design" in msg
+        assert "1/3 partials present" in msg
+        assert "dispatched 2.0 min ago" in msg
+        assert "NOT evidence the reviewers died" in msg
+        assert "Do not" in msg and "re-dispatch" in msg
+        assert "critic-end" in msg  # the sanctioned escape hatch is named
+        assert "may have died" not in msg
+
+    def test_stale_dispatch_advises_critic_end(self):
+        msg = cc._incomplete_noop_message(
+            ["sustainability"], 2, 3, self._fresh_id(45))
+        assert "no-op" in msg
+        assert "sustainability" in msg
+        assert "may have died" in msg
+        assert "critic-end" in msg
+        assert "NOT evidence" not in msg
+
+    def test_single_pass_young_says_fork_consolidates_itself(self):
+        # Roster ["reviewer"]: the reviewer IS the dispatching fork — no
+        # SubagentStop trigger will ever land it, so the message must not
+        # tell the coordinator-roster story.
+        msg = cc._incomplete_noop_message(["reviewer"], 0, 1, self._fresh_id(2))
+        assert "0/1 partials present" in msg
+        assert "consolidates when it finishes" in msg
+        assert "SubagentStop" not in msg
+        assert "NOT evidence the reviewer died" in msg
+        assert "critic-end" in msg
+
+    def test_unparseable_id_still_carries_wait_guidance(self):
+        # Hand-written manifests (no timestamp in the id) get the wait-side
+        # guidance with no age claim — never a crash, never bare silence.
+        msg = cc._incomplete_noop_message(["design"], 0, 3, "rev-test-0001")
+        assert "0/3 partials present" in msg
+        assert "dispatched" not in msg
+        assert "NOT evidence the reviewers died" in msg
+        # No age claim, but it is still a wait — the readout directive applies.
+        assert cc._CACHE_WARM_DIRECTIVE in msg
+
+    def test_wait_side_directs_a_periodic_readout(self):
+        # An idle waiting session issues no requests, so its prompt cache
+        # expires and the next turn replays the whole prefix. Both wait-side
+        # variants must carry the readout directive, and it must name a cadence
+        # strictly under the 5-minute cache it is sized against.
+        assert cc._CACHE_WARM_INTERVAL_MINUTES < 5
+        for missing, present, total in (
+            (["correctness", "design"], 1, 3),  # coordinator roster
+            (["reviewer"], 0, 1),               # single-pass roster
+        ):
+            msg = cc._incomplete_noop_message(
+                missing, present, total, self._fresh_id(2))
+            assert cc._CACHE_WARM_DIRECTIVE in msg
+            assert f"every {cc._CACHE_WARM_INTERVAL_MINUTES} minutes" in msg
+            assert "idling silently" in msg
+
+    def test_begin_review_routes_through_the_single_minter(self):
+        # The round-trip below proves the MINTER agrees with the parser. It does
+        # not prove begin_review still uses the minter — a future edit could
+        # inline a format string again and reopen the drift hole with the
+        # round-trip test still green. Asserted structurally instead.
+        #
+        # Scope, stated exactly: this catches a second site copied in the SAME
+        # literal shape. An f-string minting site would pass both assertions —
+        # the guard narrows the hole, it does not close it.
+        src = (ROOT / "lib" / "critic_consolidate.py").read_text()
+        assert src.count('"rev-{}-{}"') == 1, "more than one site formats a review id"
+        assert "review_id = mint_review_id()" in src
+
+    def test_minted_review_id_round_trips_through_dispatch_age(self):
+        # The producer/consumer contract, exercised end-to-end rather than
+        # against a hand-built id: begin_review mints the id, dispatch_age_minutes
+        # parses it. If the format drifts, parsing returns None, the
+        # past-grace branch becomes UNREACHABLE, and the no-op tells a session to
+        # wait forever on dead reviewers — the exact failure this message exists
+        # to prevent, and one no hand-written fixture can catch.
+        rid = cc.mint_review_id()
+        assert cc._REVIEW_ID_TS.match(rid), f"minted id {rid!r} is unparseable"
+        age = cc.dispatch_age_minutes(rid)
+        assert age is not None and age < 1.0
+
+    def test_review_cycle_prose_matches_the_code_cadence(self):
+        # The cadence is interpolated into the CLI message but written as a bare
+        # literal in the skill prose. CRT-8Q6R expects that number to change, so
+        # bind them: a bump that updates only the constant would leave the
+        # operator-facing guide quietly contradicting the tool.
+        prose = (ROOT / "skills" / "critic" / "review-cycle.md").read_text()
+        assert f"every {cc._CACHE_WARM_INTERVAL_MINUTES} minutes" in prose, (
+            "review-cycle.md's cadence no longer matches "
+            f"_CACHE_WARM_INTERVAL_MINUTES ({cc._CACHE_WARM_INTERVAL_MINUTES})"
+        )
+
+    def test_stale_dispatch_omits_the_readout_directive(self):
+        # Past the grace window the advice is to STOP waiting (critic-end +
+        # re-dispatch). Telling the caller to keep narrating there would warm
+        # the cache for a state it should be leaving.
+        msg = cc._incomplete_noop_message(
+            ["sustainability"], 2, 3, self._fresh_id(45))
+        assert "may have died" in msg
+        assert cc._CACHE_WARM_DIRECTIVE not in msg
 
 
 # ---------------------------------------------------------------------------
@@ -535,6 +736,27 @@ class TestConsolidateIntegration:
         assert "sustainability" in result.stdout
         # Nothing persisted; marker + partials intact for the straggler to complete.
         assert not (repo / FINDINGS_REL).is_file()
+        assert (repo / MARKER_REL).is_file()
+        assert (repo / PARTIALS_REL / "manifest.json").is_file()
+
+    def test_early_check_noop_carries_liveness_guidance(self, tmp_path):
+        """An early consolidate (0/3 partials, seconds after dispatch) must
+        say the silence is normal — the bare count was being misread as
+        reviewer death, triggering duplicate dispatch."""
+        repo = tmp_path / "r"
+        _init_repo(repo)
+        head = _commit_file(repo, "src/app.py", "x = 1\n", "init")
+        _set_marker(repo)
+        fresh_id = "rev-{}-cafe0001".format(
+            datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ"))
+        _write_manifest(repo, head, id=fresh_id)
+        result = _run_consolidate(repo)
+        assert result.returncode == 0, f"stderr={result.stderr!r}"
+        assert "no-op" in result.stdout
+        assert "0/3 partials present" in result.stdout
+        assert "dispatched 0." in result.stdout  # 0.x min — subprocess slop
+        assert "NOT evidence the reviewers died" in result.stdout
+        # Marker + manifest untouched — the review is still in flight.
         assert (repo / MARKER_REL).is_file()
         assert (repo / PARTIALS_REL / "manifest.json").is_file()
 
@@ -932,6 +1154,55 @@ class TestVerifyResolutionsDispatch:
         assert result.returncode == 1
         assert "no prior review" in result.stderr
 
+    def _seed_commit_then_fix_with_dirty_wip(self, repo: Path) -> tuple[str, str]:
+        """Prior review at the initial commit; the fix is COMMITTED (a real
+        committed delta since the prior review), then a judgeable uncommitted
+        file dirties the tree. Returns (fix commit sha, prior id)."""
+        head = _commit_file(repo, "src/app.py", "x = 1\n", "init")
+        head_tree = _git(repo, "rev-parse", "HEAD^{tree}").stdout.strip()
+        (repo / ".prawduct").mkdir(exist_ok=True)
+        prior_id = _seed_prior_review_with_blocker(
+            repo, head, head_tree=head_tree, head_commit=head
+        )
+        fix = _commit_file(repo, "src/app.py", "x = 2  # fixed\n", "fix blocker")
+        (repo / "src/extra.py").write_text("y = 3\n")  # judgeable uncommitted WIP
+        return fix, prior_id
+
+    def test_committed_fix_with_dirty_wip_anchors_committed_head(self, tmp_path):
+        # CRT-7H2W: with a committed delta since the prior review, the head
+        # anchors COMMITTED HEAD (the PR-gate target), not the dirty working
+        # tree — so a stray judgeable uncommitted file no longer leaves the PR
+        # gate uncovered after a successful verify-resolutions.
+        repo = tmp_path / "r"
+        _init_repo(repo)
+        fix, prior_id = self._seed_commit_then_fix_with_dirty_wip(repo)
+        result = _run_begin(repo, "--mode", "verify-resolutions")
+        assert result.returncode == 0, f"stderr={result.stderr!r}"
+        manifest = json.loads((repo / PARTIALS_REL / "manifest.json").read_text())
+        committed_tree = _git(repo, "rev-parse", "HEAD^{tree}").stdout.strip()
+        assert manifest["head_commit"] == fix          # committed HEAD, not None
+        assert manifest["head_tree"] == committed_tree  # committed tree, not working
+        prior_fact = next(f for f in _store_facts(repo, "review") if f["id"] == prior_id)
+        assert manifest["base_tree"] == prior_fact["body"]["head_tree"]
+        # The dirty-but-anchored-to-committed-HEAD diagnostic note fires.
+        assert "anchored to committed HEAD" in result.stderr
+
+    def test_uncommitted_fix_keeps_working_tree_anchor(self, tmp_path):
+        # Case (b): no committed delta — the fix is still in the working tree.
+        # The anchor stays the working tree (head_commit None) so the Stop-hook
+        # gate composes and the PR gate legitimately stays pending (CRT-4J8W
+        # dirty-tree verify preserved).
+        repo = tmp_path / "r"
+        _init_repo(repo)
+        head, _prior_id = self._seed_and_fix(repo)  # fix left UNCOMMITTED
+        result = _run_begin(repo, "--mode", "verify-resolutions")
+        assert result.returncode == 0, f"stderr={result.stderr!r}"
+        manifest = json.loads((repo / PARTIALS_REL / "manifest.json").read_text())
+        assert manifest["head_commit"] is None  # dirty tree, no committed delta
+        # The judgeable-WIP "uncovered until you commit" WARNING fires so the
+        # working-tree-vs-committed-HEAD mismatch is surfaced, not silent.
+        assert "vouches for the WORKING tree" in result.stderr
+
     def test_verify_scope_widened_exits_2(self, tmp_path):
         repo = tmp_path / "r"
         _init_repo(repo)
@@ -942,6 +1213,76 @@ class TestVerifyResolutionsDispatch:
         result = _run_begin(repo, "--mode", "verify-resolutions")
         assert result.returncode == 2
         assert "scope-widened" in result.stderr
+
+
+class TestWorktreeVisibility:
+    """PDT-WT9K — the review makes its resolved target VISIBLE, and refuses when
+    the shell's repo differs from the resolved tree (never a silent wrong tree)."""
+
+    def test_manifest_carries_worktree_and_branch(self, tmp_path):
+        repo = tmp_path / "r"
+        _init_repo(repo)  # -b main
+        _commit_file(repo, "src/app.py", "x = 1\n", "init")
+        (repo / ".prawduct").mkdir()
+        (repo / "src/app.py").write_text("x = 2\n")  # a chunk diff
+        result = _run_begin(repo, "--mode", "chunk")
+        assert result.returncode == 0, f"stderr={result.stderr!r}"
+        manifest = json.loads((repo / PARTIALS_REL / "manifest.json").read_text())
+        assert Path(manifest["worktree"]).name == "r"
+        assert manifest["branch"] == "main"
+        # The dispatch print names the tree so a wrong one is obvious.
+        assert "reviewing worktree" in result.stdout
+        assert "branch main" in result.stdout
+
+    def test_refuses_when_cwd_repo_differs_from_resolved(self, tmp_path):
+        # Shell in repo A, but CLAUDE_PROJECT_DIR pinned to a DIFFERENT repo B —
+        # the review would target B while you work in A. Refuse loudly.
+        repo_a = tmp_path / "a"
+        _init_repo(repo_a)
+        _commit_file(repo_a, "a.py", "x = 1\n", "a")
+        repo_b = tmp_path / "b"
+        _init_repo(repo_b)
+        _commit_file(repo_b, "b.py", "y = 1\n", "b")
+        (repo_b / ".prawduct").mkdir()  # onboarded, so we reach the refuse
+        (repo_b / "b.py").write_text("y = 2\n")
+        result = subprocess.run(
+            ["python3", str(HOOK), "critic-begin", "--mode", "chunk"],
+            cwd=str(repo_a), capture_output=True, text=True,
+            env={**_git_env(repo_a), "CLAUDE_PLUGIN_ROOT": str(ROOT),
+                 "CLAUDE_PROJECT_DIR": str(repo_b)}, timeout=30,
+        )
+        assert result.returncode == 1
+        assert "refusing" in result.stderr
+        # And no manifest was written for the wrong tree.
+        assert not (repo_b / PARTIALS_REL / "manifest.json").exists()
+
+    def test_same_worktree_does_not_refuse(self, tmp_path):
+        # The common case: cwd IS the resolved tree — no refuse.
+        repo = tmp_path / "r"
+        _init_repo(repo)
+        _commit_file(repo, "src/app.py", "x = 1\n", "init")
+        (repo / ".prawduct").mkdir()
+        (repo / "src/app.py").write_text("x = 2\n")
+        result = _run_begin(repo, "--mode", "chunk")
+        assert result.returncode == 0, f"stderr={result.stderr!r}"
+        assert "refusing" not in result.stderr
+        assert (repo / PARTIALS_REL / "manifest.json").exists()
+
+    def test_detached_head_records_null_branch(self, tmp_path):
+        # gitstate.current_branch returns None on a detached HEAD (an honest
+        # null, not a misleading guess), so the manifest carries branch: null
+        # and validate_manifest accepts it — the case current_branch exists for.
+        repo = tmp_path / "r"
+        _init_repo(repo)
+        head = _commit_file(repo, "src/app.py", "x = 1\n", "init")
+        (repo / ".prawduct").mkdir()
+        _git(repo, "checkout", "--quiet", head)  # detach HEAD
+        (repo / "src/app.py").write_text("x = 2\n")
+        result = _run_begin(repo, "--mode", "chunk")
+        assert result.returncode == 0, f"stderr={result.stderr!r}"
+        manifest = json.loads((repo / PARTIALS_REL / "manifest.json").read_text())
+        assert manifest["branch"] is None
+        assert "(detached)" in result.stdout
 
 
 # ---------------------------------------------------------------------------

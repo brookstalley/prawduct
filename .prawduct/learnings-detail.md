@@ -6,6 +6,22 @@ No size constraint on this file — it's the deep reference, consulted via `/lea
 
 ---
 
+## When a skill/runbook has the model do a read-then-write CLI dance (read X's field, then write with `--if-<field>`), verify the READ actually SURFACES the field the write consumes — a write flag EXISTING in the CLI is not the same as its input being OBTAINABLE from the paired read, and static prose-vs-code review checks only the former; dogfood the handoff live (or write a read-then-feed test), because that gap survives even a clean multi-reviewer review
+
+**Pattern**: The backlog-skill-repoint runbook (`skills/backlog/adapter-mode.md`) told the skill to `get` an item's `updated_at`, then `update <id> --if-updated-at <ts>` for optimistic concurrency. The cumulative Critic's correctness reviewer verified `--if-updated-at` EXISTS in `cli.py` — true — and passed. But the `get` envelope's decoded item (`encode.decode_item`) does NOT expose `updated_at` (keys: area/status/labels/body/id/…), so the instruction was unimplementable: the skill would pass an empty/`?` timestamp and get a spurious exit-4 conflict every time. All three independent Critic reviewers (correctness / design / sustainability) missed it. The Phase-1 pre-verification dogfood — running the actual read-then-write loop against real GitHub Issues — caught it immediately (the CAS rightly rejected the mismatched timestamp with exit 4).
+
+**Root cause**: "the flag exists" and "the data to feed the flag is obtainable through the same interface" are two separate facts. Static review naturally checks flag existence against the CLI's arg parser; it does not trace whether the paired READ op's output schema actually contains the field. The read's projection (`decode_item`) and the write's flag (`--if-updated-at`) live in different code and were never cross-checked.
+
+**The move**: for any documented A-then-B adapter/CLI dance where B consumes a field from A, DOGFOOD the handoff (run A, feed its output to B against a real backend) or write a read-then-feed test — don't spot-check each op in isolation. Fix here: dropped the get-then-CAS step; `update` is last-write-wins (correct for the single-actor interactive skill), with `--if-updated-at` documented as an optional guard only usable when a caller already holds the timestamp from elsewhere. This is *why* Phase-1 pre-verification earned its place before the PR. Kin to [[When developing requirements to replace a working system]] and the "verify against real instances — mocks are not verification" trap: the incidental part of an interface (a paired read's schema, a menu entry, an error-path envelope field) is load-bearing.
+
+## When reconciling a backlog item a PR *partly* shipped, read ALL that PR's build-plan chunks before declaring any leg still open — a multi-chunk PR routinely lands the docs/methodology/skill leg in a LATER chunk than the code chunk, so crediting only the code chunk falsely marks the item open and sends the next picker to rebuild shipped work (the shipped-but-not-removed drift BKL-8T3W targets); diagnostic before writing requirements: read the delivering plan's `## Build Chunks`, or `git show --stat <merge>` for the doc paths the "open" leg names
+
+**Pattern**: CRT-6W2N ("no supported git-worktree workflow") was reframed on 2026-06-22 after its code leg shipped: the reconciliation credited STH-4K7N's `resolve_project_dir` (the code) but declared the "documentation/methodology leg" *genuinely open*, and kept the item at `stage: requirements`. Asked on 2026-07-18 to open the requirements pass, I ran retrieval first — `git log -S "Working in a git worktree" -- methodology/building.md` and read `build-plan-worktree-compat.md`. STH-4K7N's plan had TWO chunks: Chunk 01 (code) AND **Chunk 02 "Worktree workflow guidance"**, whose description is verbatim CRT-6W2N's fix-shapes 1 & 3 ("document the now-supported worktree workflow so repos stop reinventing the review-in-primary / raw-`gh` workaround"). Both chunks merged in the SAME PR (#107, commit 796719d) on 2026-06-22 — the same day as the reconciliation. The docs leg was never open; I nearly wrote requirements for shipped work. Reconciled CRT-6W2N as shipped instead.
+
+**Root cause**: the 2026-06-22 reconciler bound the item's "shipped" claim to the PR's *scope name* (`worktree-compat`) and its headline artifact (`resolve_project_dir`), not to the PR's chunk list. A multi-chunk PR that pairs a code chunk with a docs/methodology chunk is the COMMON shape — build plans routinely end with a "guidance/docs" chunk — so "code shipped, docs still open" against a single delivering PR is a red flag, not a stable state: the docs almost certainly rode the same merge.
+
+**The move**: when a reconciliation would split one delivering PR into "code shipped / docs (or methodology, or skill) leg still open," enumerate that PR's build-plan `## Build Chunks` (or `git show --stat <merge>` filtered to the doc/methodology paths the "open" leg names) BEFORE crediting only part of it. This is the specific mechanism behind [[When surfacing a batch of model-proposed candidates for owner confirm-or-correct]]'s sibling concern in `backlog` BKL-8T3W (shipped-but-not-removed drift) — a structural check for it should compare an open item's claimed-open leg against the chunk manifest of any PR its `related:`/`closed-by:` names, not just the PR's scope label. Relates to Retrieval Over Generation (#24 — the cheapest check, `git log -S` / reading the plan, is exactly what caught it), Root Cause Discipline (#16), Complete Delivery (#2 — this is its inverse: a leg wrongly recorded as *un*delivered), and the sibling stale-base reconciliation diagnostic ("A red version/release-hygiene test ... is often a branch-STALENESS symptom").
+
 ## When compacting or migrating a file that tooling parses, classify every span by its CONSUMER before moving it — machine-read metadata (a parsed comment, a `sentinel=` tag, a status marker) is not "narrative" and must stay where its reader looks, because a content-loss guard that only proves "prose is preserved elsewhere" is blind to metadata it silently relocates or drops
 
 **Pattern**: Compacting prawduct's own `learnings.md` (2026-07-17, 78KB→13KB), I moved each entry's narrative to `learnings-detail.md` and reduced learnings.md to header-only rules. My migration guard asserted *every learnings.md body is preserved in detail* — and it passed. But three entries carried `<!-- prawduct-learning: … sentinel=… -->` comments that `audit_learnings_cmd.py` parses **from learnings.md** (the `sentinel=` link is how `audit-learnings --apply` retires a learning once its enforcing test passes; `confirmations=`/`created=` are lifecycle data). I treated those comments as narrative: for the 73 header-reduced entries they vanished; for a moved entry they'd have gone to the wrong file. The first Critic pass caught it as a WARNING. Restored all three on the first body line under their headings (where `parse_learning_metadata` reads them) and confirmed the real parser sees all 3 (2 sentinels).
@@ -42,6 +58,43 @@ No size constraint on this file — it's the deep reference, consulted via `/lea
 
 Discovered ephemeral-ref-firewall (2026-07-14). Relates to Coherent Artifacts (#13), Clean Deployment (#10), Reasoned Decisions (#4), Living Documentation (#3), and the backlog `closed-by` durable-handle rule.
 
+## A red version/release-hygiene test on a feature branch is often a branch-STALENESS symptom, not a doc defect — check distance from the integration branch before patching the changelog
+
+**Pattern**: backlog-service Chunk 01 close-out (2026-07-17). Resumed a session whose prior turn had
+left a BLOCKING Critic finding: "CHANGELOG.md missing the current version (2.3.3) entry" — the suite
+was red because `test_changelog_has_current_version_entry` saw `VERSION`/`plugin.json` at 2.3.3 but
+`CHANGELOG.md`'s top entry at v2.3.2. The finding read as a one-line doc fix.
+
+**Root cause**: `feature/backlog-prd-owner-feedback` was cut from `develop` at v2.0.1 and never
+reconciled. Measured against `develop` (@ 3.0.4, the integration branch): **45 commits behind, 14
+ahead**. The 14 ahead were almost all *docs* (the PRD drill-down); the Chunk 01 code was uncommitted.
+The branch's `VERSION` had reached 2.3.3 via an ancestor `release-prep(v2.3.3)` commit, but the
+v2.3.3 CHANGELOG headline — and every entry through v3.0.4 — lives on `develop`, because the release
+flow adds the public headline on the integration side. So the branch had the version bump without its
+changelog entry: a pure staleness artifact.
+
+**Why patching would have been wrong** (Root Cause Discipline #16): (a) the v2.3.3 headline already
+exists downstream, so hand-adding it here fabricates divergent history that conflicts at merge; (b) it
+leaves the branch a full major version behind — including v3.0.0's *breaking rewrite of the review
+data plane* (append-only evidence fact store). The prior session's blocking Critic finding was itself
+recorded under the obsolete pre-v3.0.0 single-slot model. Patching the symptom would have shipped
+Chunk 01 reviewed under a governance model it will never merge under.
+
+**Fix**: merge `develop` in. `VERSION`/`CHANGELOG.md`/`plugin.json` all reconciled by auto-merge
+(→ 3.0.4, full changelog history), and the v3.0.0 fact-store data plane came with it. The merge was
+near-clean — one conflict (`active_build_plan`, exactly as the serial-merge-bookkeeping rule
+predicts) — because the branch's own commits were docs and the uncommitted Chunk 01 code auto-merged
+against v3.0.0's `bin/prawduct-hook` gate rewrite. One merge-boundary break surfaced (`norm_probes.py`
+importing the pre-move `.backlog` API — see the sweep-every-reader rule). Re-review under v3.0.0 came
+back 0 blocking.
+
+**Diagnostic before ANY changelog edit on a feature branch**: `git rev-list --count HEAD..<integration>`
+and `git merge-base <integration> HEAD`. If the branch is many releases / a major version behind,
+reconcile (merge the integration branch), don't patch. A Critic reviews the *tree*, not the branch
+*topology*, so it can correctly report the red suite while reading the symptom — the staleness
+diagnosis is the builder's to make. Relates to Root Cause Discipline (#16), Coherent Artifacts (#13),
+Honest Confidence (#5), and the sibling `check-cumulative-critic` stale-base gate diagnostic below.
+
 ## When `check-cumulative-critic` reports `uncovered` on a branch whose code you know was reviewed, suspect a stale base before running a fresh review — the gate anchors to `origin/<base>` by design, so unpushed integration commits drag already-shipped work into the required span
 
 **Pattern**: v3.0.3 release (2026-07-14). Wrapping a +0.0.1 release, `check-cumulative-critic`
@@ -76,7 +129,16 @@ free edge was the docs-only tail the CRT-7M2D allowance excuses. Zero fresh revi
 
 **Systematic follow-through**: filed COV-7K4N (a stale-base hint on the uncovered path so the gate
 diagnoses this itself + an unpromoted-release-prep session-start advisory for the root cause;
-deferred spike on preferring the nearer of local/remote base). Frequency is low — needs gitflow
+deferred spike on preferring the nearer of local/remote base).
+
+**Now tool-supported** (COV-7K4N shipped as `stale-remote-base-diagnostics`, merged 2026-07-19):
+the manual diagnostic order above is automated. `check-cumulative-critic`'s `uncovered` stderr
+appends the `git push origin <b>` hint when the base is `origin/<b>` sitting behind an
+ancestor-of-HEAD local `<b>` (`coverage.diagnose_stale_remote_base`), and a session-start advisory
+(`lib/stale_base_probes.py`, type `unpromoted-release-prep`) nudges before the gate is hit when
+local `<b>` carries an unpushed `release-prep(...)`, self-resolving on push. The base-resolution
+re-architecture that would eliminate the false-`uncovered` at its root stays deferred as
+COV-9B4T. Frequency is low — needs gitflow
 (`base_branch: develop`) AND a feature built on an unpushed local-`develop` advance; trunk repos
 (base = `main`) essentially never hit it since `main` never sits locally-ahead. The gap that
 warrants the fix is the *misleading remedy* when it does fire, not the frequency. Relates to Root
@@ -199,9 +261,9 @@ prior bundle — surprise, not unsoundness); CRT-8H3R is the actual soundness bu
 
 ---
 
-## When verifying a framework-repo `lib/`/`bin/` change by running the hook, invoke the repo-local `python3 bin/prawduct-hook` — the bare `prawduct-hook` on PATH is the installed plugin cache, not your working tree
+## When verifying a framework-repo `lib/`/`bin/` change by running the hook, invoke the repo-local `python3 plugin/bin/prawduct-hook` — the bare `prawduct-hook` on PATH is the installed plugin cache, not your working tree
 
-Surfaced 2026-06-22 during TEL-4M9X (review-stats model-id normalization). After landing the `_canonical_model` fold in `lib/telemetry.py` and confirming the unit tests passed, I ran `prawduct-hook review-stats` against the real ledger to watch the opus buckets collapse — and they didn't: the output still showed `opus` / `claude-opus-4-8` / `claude-opus-4-8[1m]` as three separate buckets, exactly as before the fix. Momentary "did the change not take?" The root cause: `command -v prawduct-hook` resolved to `~/.claude/plugins/cache/prawduct/prawduct/2.1.7/bin/prawduct-hook` — the installed plugin, pinned to the released v2.1.7 and importing *that release's* `lib/telemetry.py`, which has no `_canonical_model`. Re-running `python3 bin/prawduct-hook review-stats` from the repo root (which imports the working-tree `lib/`) showed the correct collapse — the 14-review cumulative bucket, with `fable` kept distinct. The unit tests never caught a problem because `tests/test_review_stats.py` invokes the hook via `ROOT / "bin" / "prawduct-hook"` — i.e. the repo-local copy — so the suite always exercised the new code. Fix-shape: when behaviorally verifying a framework `lib/`/`bin/` change, invoke the repo-local `python3 bin/prawduct-hook <cmd>`; treat the bare on-PATH command as *released* behavior that lags your edits until the plugin is re-released and re-cached. The diagnostic contradiction to watch for — green tests but unchanged PATH-command output — is itself the signal you're hitting the cached plugin, not your working tree. Relates to Honest Confidence (#5 — don't report a fix as broken on stale evidence), Validate Before Propagating (#15), and Reasoned Decisions (#4).
+Surfaced 2026-06-22 during TEL-4M9X (review-stats model-id normalization). After landing the `_canonical_model` fold in `lib/telemetry.py` and confirming the unit tests passed, I ran `prawduct-hook review-stats` against the real ledger to watch the opus buckets collapse — and they didn't: the output still showed `opus` / `claude-opus-4-8` / `claude-opus-4-8[1m]` as three separate buckets, exactly as before the fix. Momentary "did the change not take?" The root cause: `command -v prawduct-hook` resolved to `~/.claude/plugins/cache/prawduct/prawduct/2.1.7/bin/prawduct-hook` — the installed plugin, pinned to the released v2.1.7 and importing *that release's* `lib/telemetry.py`, which has no `_canonical_model`. Re-running `python3 plugin/bin/prawduct-hook review-stats` from the repo root (which imports the working-tree `lib/`) showed the correct collapse — the 14-review cumulative bucket, with `fable` kept distinct. The unit tests never caught a problem because `tests/test_review_stats.py` invokes the hook via `ROOT / "bin" / "prawduct-hook"` — i.e. the repo-local copy — so the suite always exercised the new code. Fix-shape: when behaviorally verifying a framework `lib/`/`bin/` change, invoke the repo-local `python3 plugin/bin/prawduct-hook <cmd>`; treat the bare on-PATH command as *released* behavior that lags your edits until the plugin is re-released and re-cached. The diagnostic contradiction to watch for — green tests but unchanged PATH-command output — is itself the signal you're hitting the cached plugin, not your working tree. Relates to Honest Confidence (#5 — don't report a fix as broken on stale evidence), Validate Before Propagating (#15), and Reasoned Decisions (#4).
 
 ---
 
@@ -478,9 +540,11 @@ When deprecating or removing a mechanism, grep for the mechanism's **name** in a
 
 When adding a new build-plan field, format the label as `**Title Case:**` (bold, words-with-spaces, colon) — matching `**Type:**`, `**Critic mode:**`, `**Requirements Confidence:**`, `**Acceptance criteria:**`, `**Done when:**`. Snake_case (`foreign_api:`, `coverage_required:`) is the YAML-key namespace in `project-state.yaml`, a different surface. The methodology's prose form must be string-identical to the template's label except for the `**...**` bolding — so the Critic's substring-match finds real plans. Wave 1's F8 conflated the two namespaces (`foreign_api:` in prose, `**Foreign API:**` in template) and the Critic-check substring never matched a real plan. Relates to Coherent Artifacts (#13).
 
-## Build-plan chunk headings must use `### Chunk N:` colon form — em-dash fails the parsers silently
+## Build-plan chunk parsers accept `### Chunk N:` AND `## Chunk N (ID) — Name` (BLD-5J8N) — but `regen-views`/`chunks=` still key on the colon Status form
 
-When writing or editing a build plan, chunk headings AND `## Status` lines must use the colon form (`### Chunk N: Name` / `- [ ] Chunk N: Name`). The chunk-id parsers — `verify-chunk-refs`, `regen-views`'s `CHUNK_LINE_RE`, and `infer-critic-mode`'s chunk-type lookup — all isolate the id via `rest.split(":",1)[0]`, so an em-dash separator (`### Chunk N — Name`) makes the *whole string* the "id", which matches no heading and silently disables Goal-2 ref verification and per-chunk scoping across the ENTIRE plan (chunk-type fail-closes to `code`, so the session still gates — but the ref-verifier and derived views quietly stop working). The v2.0.0 plan shipped with em-dashes; the failure was dismissed as out-of-scope one Critic review before becoming a blocker the next — a deferred finding is not a retired finding. Fix-shape: keep the colon form (leading zeros are tolerated, so `1` and `01` both parse); consider a guard test asserting the active build plan's chunk headings parse, so a format mismatch fails loudly instead of degrading silently. Sibling of "Build-plan fields use `**Title Case:**`" above — build-plan text is a contract with the parsers, and format mismatches fail silent. Discovered v2.0.0 Chunk 1 Critic. Relates to Coherent Artifacts (#13), Escape hatches create silent failures (#22), and Honest Confidence (#5).
+**Superseded 2026-07-18 (BLD-5J8N / PDT-C6R4).** The `verify-chunk-refs` chunk-id/section parsers were historically hardwired to the colon form: they isolated the id via `rest.split(":",1)[0]`, so an em-dash separator (`### Chunk N — Name`) or the research-plan form (`## Chunk N (ID) — Name`) made the *whole string* the "id", matched no heading, and — worse — surfaced as a generic exit-1 "chunk not found" indistinguishable from a real missing deliverable, so reviewers learned to hand-wave the exit (false-negative habituation) and a real dropped-deliverable BLOCKING could hide behind it. Now the shared `lib/buildplan_refs.py` primitives (`_chunk_section_lines`, `_chunk_id_from_item_text`, `_current_chunk_id_from_status`) match both H2/H3 headings with a `:`, `—`, `–`, `-`, or `(` after the id via `_CHUNK_HEADING_RE`/`_CHUNK_ITEM_RE` — the id MUST be followed by a separator/paren/EOL, so a notes sub-heading like `### Chunk 2 build-session decisions` (no separator) is NOT mistaken for a chunk boundary. This fixes `verify-chunk-refs` (Goal-2) AND `infer-critic-mode`'s chunk-type/current-chunk lookup (they share these primitives — the GOV-8N4V facet), and `cmd_verify_chunk_refs` now emits a distinct `cannot-verify:` (gate could not run) message vs `missing-ref:` (a named deliverable is absent), so the two are never conflated. Leading-zero tolerance is preserved (`1` matches `### Chunk 01:`). Guard tests: `tests/test_buildplan_walkers.py::TestH2ChunkHeadingForm`/`::TestChunkIdFromItemText`.
+
+**Still true — the residual colon dependency.** `regen-views`'s `CHUNK_LINE_RE` (in `lib/views.py`) is a SEPARATE parser for the `## Status` checkbox LINES and was NOT broadened here, and the `chunks=`-tag→Status-line match is *literal* (no leading-zero tolerance — `Chunk 1` ≠ `Chunk 01`). So a plan whose Status LINES use the em-dash/colon-less form can pass the gates yet fail to flip its checkboxes at merge. Tracked as follow-up VWS-2F9K — until it lands, keep `## Status` checkbox lines in the `- [ ] Chunk NN: Name` colon form even when the Build-Chunks headings use the H2 research form. Sibling of "Build-plan fields use `**Title Case:**`" — build-plan text is a contract with the parsers. Original silent-failure discovered v2.0.0 Chunk 1 Critic; broadened 2026-07-18. Relates to Coherent Artifacts (#13), Escape hatches create silent failures (#22), and Honest Confidence (#5).
 
 ## Submodule and same-name function in __init__ shadow each other
 
@@ -736,6 +800,35 @@ plus 2 monkeypatch fail-toward-stale unit tests; full suite 1727 passed. The env
 (the incidental per-session re-run that catches dep/flake drift with no file footprint) was
 explicitly accepted by the owner as an expensive, undesigned safety net.
 
+## When validating a CLI's JSON output, feed the tool the raw bytes (direct pipe or file) — never `echo "$captured" | jq` under zsh, whose `echo` interprets `\n` and turns valid JSON into a false "malformed output" finding
+
+**Pattern**: During the VRF-004 live smoke (backlog-service Chunk 01, 2026-07-17), driving the CLI
+by hand, I captured `file --json` into a shell variable and ran `echo "$FILE_OUT" | jq`. jq failed
+with "Invalid string: control characters from U+0000 through U+001F must be escaped," the body field
+showing raw newlines around the appended ` ```prawduct / v: 1 ``` ` block. My first read was a real
+serializer defect — the `--json` envelope emitting unescaped newlines — exactly the class VRF-004's
+"`| jq .` never chokes" clause exists to catch. It looked like the highest-value possible outcome of
+the live pass: a real bug the offline L1 suite couldn't see.
+
+**Why it was a false positive**: before reporting it, I re-ran capturing stdout to a file and parsed
+with `python3 … json.loads` — result **OK**, body repr `'…\n\n```prawduct\nv: 1\n```\n'` with the
+newlines properly escaped, and only ONE raw `0x0a` in the whole file (the trailing `print` newline).
+The serializer (`cli.py::_emit` → `json.dumps(result)`) was correct all along. The corruption was
+introduced by **zsh's `echo` builtin**, which interprets backslash escapes by default (unlike POSIX
+sh / bash without `-e`): echoing the JSON string re-expanded every `\n` into a literal newline, and
+jq then correctly rejected the mangled bytes. The `get <id>` "empty ID" error that followed was a
+cascade — `ID=$(echo "$OUT" | jq -r .id)` returned empty because that jq had failed.
+
+**The fix / the discipline**: (1) Consume JSON from the raw bytes — pipe the command *directly*
+(`… --json | jq .`) or redirect to a file and validate that; for a definitive check use a real
+parser on the real bytes (`python3 -c 'import json; json.load(open(p))'`), which no shell can
+corrupt. (2) Do NOT "harden" the producer: the CLI's bytes were valid, standard JSON, and defending
+correct output against a specific shell's `echo` both distorts right behavior and can't actually fix
+a consumer that re-interprets escapes (root-cause discipline — the shell was the fault, not the
+code). (3) Verify before reporting: this nearly became a BLOCKING finding against a correct
+serializer; a strict-parser cross-check on the raw file is the cheap veto. Filed as durable rule +
+a VRF-004 "consuming the `--json` correctly" note so the next operator doesn't trip the same trap.
+Relates to Honest Confidence (#5), Root Cause Discipline (#16), Validate Before Propagating (#15).
 ## When a session finds uncommitted work in a worktree it did NOT launch in, treat it as another session's territory and leave it alone — a session works only in its own worktree, because sibling WIP belongs to a possibly-live session and adopting it collides with that work and writes into the clone-shared governance state
 
 Discovered 2026-07-17: a session launched in the main checkout read the SessionStart briefing's *enumerated* list of sibling worktrees, saw uncommitted feature work in one, judged it adoptable, entered it, and began verifying/reviewing — while that worktree had its own live session doing the same work. Root cause was briefing NOISE, not a locking gap: listing siblings' branches/paths reads as a menu of adoptable work. Fix removed the enumeration so the briefing orients to THIS worktree only ([[backlog]] WT-8Q3N); the durable agent-side rule stands regardless — check a worktree's `.prawduct/.session-start` liveness before touching one you did not launch in, and default to leaving it alone. Relates to Scope Discipline (#12 — do what was asked, where it was asked), Root Cause Discipline (#16 — the fix was upstream noise, not a downstream lock), Structural Awareness (#21).
@@ -815,3 +908,77 @@ novel design vocabulary with zero citations; revising the same decision 2-3× wi
 recalling fast-moving facts instead of looking them up. The prawduct "terms not found in any
 governing artifact" nudge is one of these detectors mechanized — treat it as a confabulation
 alarm, not noise.
+
+## When a docstring makes an absolute robustness claim (never raises / always returns / idempotent), make it literally true and test the claimed-safe path — an absolute claim beside a call that *can* violate it is a coherence gap reviewers reliably flag
+
+**Pattern**: COV-7K4N build (2026-07-14). `diagnose_stale_remote_base`'s docstring said "Never
+raises; any git failure returns None," but its local-branch guard called `_git_ref_exists` — a bare
+`subprocess.run(..., timeout=30)` that can raise `TimeoutExpired`/`OSError`.
+
+**Why it mattered despite near-zero exposure.** Real-world reachability was effectively nil (the
+same helper runs earlier in the same invocation via `_resolve_base_branch`), yet the builder's
+self-scrub AND every reviewer who touched it independently converged on the gap — three-way
+agreement on a "practically-nil but real" contract violation.
+
+**The move**: when review converges like that, the right response is not "reviewers agree it's fine
+as a NOTE" but to make the claim TRUE. Route the guard through the never-raising helper
+(`evidence.run_git`, which converts subprocess failures to a nonzero rc) and add a test that
+exercises the claimed-safe degradation branch (a non-git dir → `None`, no exception). Cost was one
+`verify-resolutions` delta pass.
+
+Absolute claims are cheap to write and expensive to leave slightly false: they read as guarantees
+callers lean on — here both the gate's already-failing path and the broad-except-wrapped probe.
+Relates to Honest Confidence (#5), Tests Are Contracts (#1), and the `evidence.run_git` no-raise
+contract.
+
+## When a commit claims to close a backlog item, verify the claim against the item's FILED CASE before crediting it — a fix aimed at the item's title routinely lands the ADJACENT sub-case, passing every guard while the filed reproduction still reproduces, so merging closes a still-broken item as shipped
+
+`feature/gate-fidelity` commit `af8350f` (preserved at tag `archive/gate-fidelity`) claimed it
+addressed "vouching across bundle boundaries (CRT-6J4P)". It did not. CRT-6J4P's filed case is a
+*same-lineage* cross-bundle chain: the previously released bundle merged to develop, the new branch
+was cut from it, so the anchor's `commit_reviewed` **is** an ancestor of HEAD — `git merge-base
+--is-ancestor` returns 0 and rule 1b fires anyway. The branch's ancestor guard closes only the
+sibling-BRANCH sub-case, which is CRT-8H3R's territory. Both items live in the same fix family and
+cross-reference each other, which is exactly what makes the mis-credit plausible. Diagnostic: before
+crediting a fix, re-read the item's filed reproduction and ask whether the guard as written *fires*
+on it — a shared area, a shared `refs:` line, and a confident commit message are not evidence.
+Mirror of [[When reconciling a backlog item a PR *partly* shipped, read ALL that PR's build-plan
+chunks before declaring any leg still open]] — that rule stops a shipped leg being reopened; this one
+stops a broken item being closed. Discovered git-state audit (2026-07-19). Relates to Complete
+Delivery (#2), Honest Confidence (#5), Validate Before Propagating (#15).
+
+## Merge instructions written BEFORE the merge — a subagent's advice, or a note you wrote yourself — are verified against the merge's actual hunk shape, never applied literally: whoever reasons from the BRANCH cannot see a convention the DESTINATION adopted after the branch was cut
+
+Two instances, one session. (a) A merge agent advised taking the branch's `learnings.md` body
+verbatim — but develop had since compacted that rule to heading-only with the narrative moved to
+`learnings-detail.md`, so following the advice would have silently reversed the compaction. (b) A
+reserved-split-id note *I wrote myself* said "take the branch's version and drop this note" — correct
+when written, but the branch had since moved `## Archive` upward, so applying it literally would have
+archived 10 open backlog items. The common cause is temporal, not competence: any instruction
+authored against the branch is blind to what the destination adopted afterward, and a self-authored
+note carries no warning label. Discipline: at merge time, read the actual hunk boundaries the conflict
+presents before honoring any pre-written resolution, including your own. Sharpens [[When a fresh-eyes
+review's advice about a CONVENTION conflicts with a durable learning + the process doc, the documented
+convention wins]] — there the convention was documented and findable; here it exists only in the
+destination's tree. Discovered fix/cov-7k4n-stale-base-advisory merge (2026-07-19). Relates to
+[[A subagent's reported COUNT or LIST is a lead, not ground truth]] and [[When building from a
+review/audit artifact, verify each cited gap and fix-instruction against HEAD before planning]].
+
+## When a feature's value rests on an invariant ("presence of X proves Y"), audit the DEGRADATION paths first — that is where the invariant actually lives: a helper that swallows failure into "" or False makes absence ambiguous and can render the signal's exact inverse, so pick each fallback's direction from what the invariant needs, not from what is locally safe
+
+The feature's whole claim was "the presence of this segment proves a checkout install." Two
+Critic rounds inverted that claim twice, both in degradation paths, never in the carefully-designed
+happy path. First: `checkout_provenance` returned `""` silently when git failed, making absence
+ambiguous — a real checkout with a broken git read looked identical to a managed install, so absence
+was read as "managed install won." Second: `is_managed_install` failed open to `False`, so on an
+unresolvable path a genuine managed install renders a **spurious** checkout segment — the exact false
+claim the feature exists to prevent. Rule: when a feature's value is an invariant of the form
+"X present ⇒ Y", enumerate every path that can produce or suppress X under failure and check whether
+the invariant survives each; a locally reasonable default (`""`, `False`, "assume not") is the wrong
+default when it makes the signal ambiguous or inverted. Kin to [[When the success path threads
+advisory/audit data through a result envelope, add it to EVERY error-return path too]] (both: the
+interesting behavior is on the path you didn't design), and to [[When a docstring makes an absolute
+robustness claim (never raises / always returns / idempotent), make it literally true and test the
+claimed-safe path]]. Discovered BRF-7Q4M banner load provenance (2026-07-19). Relates to Honest
+Confidence (#5), Root Cause Discipline (#16), Independent Review (#14) — self-review reliably
+re-walks the happy path.

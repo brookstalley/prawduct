@@ -22,7 +22,8 @@ from pathlib import Path
 
 import pytest
 
-ROOT = Path(__file__).resolve().parent.parent
+ROOT = Path(__file__).resolve().parent.parent / "plugin"
+REPO_ROOT = Path(__file__).resolve().parent.parent
 HOOKS_JSON = ROOT / "hooks" / "hooks.json"
 DIGEST_HOOK = ROOT / "hooks" / "digest.py"
 DIGEST_SRC = ROOT / "methodology" / "session-digest.md"
@@ -43,13 +44,15 @@ def _canonical_digest_copies(root: Path = ROOT) -> list[Path]:
     workflow checkouts (`.claude/worktrees/wf_*/`) that carry a full duplicate
     methodology tree. Those copies are a nested checkout, not a rogue
     non-canonical source, so they must not fail the single-source assertion
-    (TST-9K4W). Filtered on the path COMPONENT, not a prefix, so it matches at
-    any depth and never trips on an unrelated file literally named `.claude`.
+    (TST-9K4W). Filtered on path components RELATIVE to `root` — the checkout
+    itself may live under a `.claude/worktrees/` session worktree, and an
+    absolute-parts filter would exclude the canonical copy along with the strays.
     """
     return sorted(
         p
         for p in root.rglob("session-digest.md")
-        if ".git" not in p.parts and ".claude" not in p.parts
+        if ".git" not in p.relative_to(root).parts
+        and ".claude" not in p.relative_to(root).parts
     )
 
 
@@ -69,7 +72,7 @@ def _run_digest(
     """
     env = {k: v for k, v in os.environ.items() if k != "CLAUDE_PLUGIN_ROOT"}
     env["PYTHONDONTWRITEBYTECODE"] = "1"
-    env["CLAUDE_PROJECT_DIR"] = str(project_dir if project_dir is not None else ROOT)
+    env["CLAUDE_PROJECT_DIR"] = str(project_dir if project_dir is not None else REPO_ROOT)
     if plugin_root is not None:
         env["CLAUDE_PLUGIN_ROOT"] = str(plugin_root)
     return subprocess.run(
@@ -99,7 +102,8 @@ class TestDigestSource:
         copies = sorted(
             p
             for p in ROOT.rglob("session-digest-slim.md")
-            if ".git" not in p.parts and ".claude" not in p.parts
+            if ".git" not in p.relative_to(ROOT).parts
+            and ".claude" not in p.relative_to(ROOT).parts
         )
         assert copies == [SLIM_DIGEST_SRC], f"expected one canonical slim digest, found {copies}"
 
@@ -463,4 +467,51 @@ class TestDigestCarriesBacklogDiscipline:
         assert "strikethrough" in digest, "digest must state the archive (not strikethrough) discipline"
         assert "stage" in digest and "discovery" in digest, (
             "digest must state early-stage items route to discovery, not code"
+        )
+
+
+class TestIsFrameworkRepoCandidates:
+    """`is_framework_repo` decides slim-vs-full digest, and the move broke it once already.
+
+    It originally keyed on `.claude-plugin/plugin.json` at the repo root. v3.1.1 relocated that
+    manifest into `plugin/`, so the framework repo silently began classifying as a product repo and
+    receiving the full digest -- no error, no test failure, just the wrong variant. It now checks
+    three locations, but only the first is reachable in this repo, so the other two were shipping
+    unexercised. These fixtures cover each independently. (Critic, 2026-07-21.)
+    """
+
+    @staticmethod
+    def _digest_mod():
+        import importlib.util
+        spec = importlib.util.spec_from_file_location("prawduct_digest_hook", DIGEST_HOOK)
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        return mod
+
+    def _write(self, root: Path, rel: str) -> None:
+        target = root / rel
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(json.dumps({"name": "prawduct"}), encoding="utf-8")
+
+    @pytest.mark.parametrize("rel", [
+        ".claude-plugin/marketplace.json",          # current layout (v3.1.1+)
+        "plugin/.claude-plugin/plugin.json",        # relocated plugin manifest
+        ".claude-plugin/plugin.json",               # pre-v3.1.1, kept for older checkouts
+    ])
+    def test_each_candidate_location_classifies_as_framework(self, tmp_path, rel):
+        self._write(tmp_path, rel)
+        assert self._digest_mod().is_framework_repo(tmp_path), (
+            f"{rel} must identify the framework repo -- a miss here silently swaps the digest variant"
+        )
+
+    def test_a_product_repo_is_not_the_framework(self, tmp_path):
+        (tmp_path / ".prawduct").mkdir()
+        assert not self._digest_mod().is_framework_repo(tmp_path)
+
+    def test_a_foreign_manifest_is_not_the_framework(self, tmp_path):
+        self._write(tmp_path, ".claude-plugin/marketplace.json")
+        (tmp_path / ".claude-plugin" / "marketplace.json").write_text(
+            json.dumps({"name": "someone-else"}), encoding="utf-8")
+        assert not self._digest_mod().is_framework_repo(tmp_path), (
+            "fail-safe: an unrelated plugin manifest must not classify as prawduct"
         )

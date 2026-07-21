@@ -26,7 +26,7 @@ from pathlib import Path
 
 import pytest
 
-ROOT = Path(__file__).resolve().parent.parent
+ROOT = Path(__file__).resolve().parent.parent / "plugin"
 BANNER = ROOT / "hooks" / "banner.py"
 GATES_JSON = ROOT / "hooks" / "gates.json"
 CHANGELOG = ROOT / "CHANGELOG.md"
@@ -267,3 +267,208 @@ class TestGateAttributionHelpers:
 
     def test_manifest_version_matches_file(self, hook_mod):
         assert hook_mod._plugin_manifest_version() == PLUGIN_VERSION
+
+
+# =============================================================================
+# Load provenance — which plugin code is actually loaded
+# =============================================================================
+
+
+def _git_repo(path: Path, *, branch: str = "testbranch") -> Path:
+    """A real git checkout with one commit, on a named branch."""
+    path.mkdir(parents=True, exist_ok=True)
+    run = lambda *a: subprocess.run(["git", "-C", str(path), *a], capture_output=True, check=True)
+    run("init", "-q")
+    run("config", "user.email", "t@example.com")
+    run("config", "user.name", "T")
+    run("checkout", "-q", "-b", branch)
+    (path / "tracked.txt").write_text("one\n")
+    run("add", "tracked.txt")
+    run("commit", "-q", "-m", "init")
+    return path
+
+
+def _plugin_tree(root: Path, version: str = "9.9.9") -> Path:
+    """Minimal plugin layout so read_version() succeeds."""
+    manifest_dir = root / ".claude-plugin"
+    manifest_dir.mkdir(parents=True, exist_ok=True)
+    (manifest_dir / "plugin.json").write_text(json.dumps({"version": version}))
+    return root
+
+
+class TestManagedInstallDetection:
+    def test_root_under_managed_dir_is_managed(self, banner, tmp_path, monkeypatch):
+        cfg = tmp_path / "cfgdir"
+        monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(cfg))
+        root = cfg / "plugins" / "marketplaces" / "prawduct"
+        root.mkdir(parents=True)
+        assert banner.is_managed_install(root) is True
+
+    def test_unresolvable_path_is_treated_as_managed(self, banner, tmp_path, monkeypatch):
+        """Fail toward "managed": answering False would send a genuine managed
+        install into the git probe, which succeeds (marketplace installs are
+        clones) and would render a segment — inverting presence-is-proof."""
+        def boom():
+            raise RuntimeError("no home directory")
+        monkeypatch.setattr(banner, "managed_plugin_home", boom)
+        assert banner.is_managed_install(tmp_path) is True
+
+    def test_root_outside_managed_dir_is_not_managed(self, banner, tmp_path, monkeypatch):
+        monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(tmp_path / "cfgdir"))
+        root = tmp_path / "source" / "prawduct"
+        root.mkdir(parents=True)
+        assert banner.is_managed_install(root) is False
+
+    def test_missing_root_is_not_managed(self, banner, tmp_path, monkeypatch):
+        monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(tmp_path / "cfgdir"))
+        assert banner.is_managed_install(tmp_path / "does" / "not" / "exist") is False
+
+
+class TestGitRunner:
+    """`_git`'s contract is depended on by checkout_provenance's type test, so
+    pin it directly rather than only through a stub that presumes it."""
+
+    def test_returns_completed_process_on_success(self, banner, tmp_path):
+        root = _git_repo(tmp_path / "src" / "ok")
+        result = banner._git(root, "rev-parse", "HEAD")
+        assert isinstance(result, subprocess.CompletedProcess)
+        assert result.returncode == 0
+
+    def test_returns_the_exception_on_launch_failure(self, banner, tmp_path, monkeypatch):
+        def boom(*a, **k):
+            raise FileNotFoundError("git")
+        monkeypatch.setattr(banner.subprocess, "run", boom)
+        result = banner._git(tmp_path, "status")
+        assert isinstance(result, FileNotFoundError)
+
+    def test_returns_the_exception_on_timeout(self, banner, tmp_path, monkeypatch):
+        def boom(*a, **k):
+            raise subprocess.TimeoutExpired(cmd="git", timeout=5)
+        monkeypatch.setattr(banner.subprocess, "run", boom)
+        assert isinstance(banner._git(tmp_path, "status"), subprocess.TimeoutExpired)
+
+    def test_decode_error_does_not_escape(self, banner, tmp_path, monkeypatch):
+        """`text=True` can raise UnicodeDecodeError (a ValueError, not an
+        OSError/SubprocessError) on a non-UTF-8 ref name."""
+        def boom(*a, **k):
+            raise UnicodeDecodeError("utf-8", b"\xff", 0, 1, "invalid start byte")
+        monkeypatch.setattr(banner.subprocess, "run", boom)
+        assert isinstance(banner._git(tmp_path, "status"), UnicodeDecodeError)
+
+
+class TestCheckoutProvenance:
+    def test_unexpected_git_return_is_guarded_not_raised(self, banner, tmp_path, monkeypatch, capsys):
+        """A `_git` regressing to None must take the guarded path, not explode on
+        `.returncode` — main() calls this outside its try blocks."""
+        monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(tmp_path / "cfgdir"))
+        root = _git_repo(tmp_path / "src" / "prawduct")
+        monkeypatch.setattr(banner, "_git", lambda *a, **k: None)
+        assert banner.checkout_provenance(root) == ""
+        assert "could not read plugin load provenance" in capsys.readouterr().err
+
+
+    def test_managed_install_reports_nothing(self, banner, tmp_path, monkeypatch):
+        """A marketplace install has a .git dir too — the path gate must win so
+        real users pay no subprocess cost and see an unchanged banner."""
+        cfg = tmp_path / "cfgdir"
+        monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(cfg))
+        root = _git_repo(cfg / "plugins" / "marketplaces" / "prawduct")
+        assert (root / ".git").is_dir()          # the naive discriminator WOULD fire
+        assert banner.checkout_provenance(root) == ""
+
+    def test_local_checkout_reports_ref_and_sha(self, banner, tmp_path, monkeypatch):
+        monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(tmp_path / "cfgdir"))
+        root = _git_repo(tmp_path / "src" / "prawduct", branch="develop")
+        prov = banner.checkout_provenance(root)
+        sha = subprocess.run(
+            ["git", "-C", str(root), "rev-parse", "HEAD"],
+            capture_output=True, text=True,
+        ).stdout.strip()
+        assert prov == f"develop@{sha[:banner._SHA_CHARS]}"
+
+    def test_dirty_checkout_is_marked(self, banner, tmp_path, monkeypatch):
+        monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(tmp_path / "cfgdir"))
+        root = _git_repo(tmp_path / "src" / "prawduct", branch="develop")
+        (root / "tracked.txt").write_text("modified\n")
+        assert banner.checkout_provenance(root).endswith("+dirty")
+
+    def test_untracked_file_alone_is_not_dirty(self, banner, tmp_path, monkeypatch):
+        """Untracked files are noise during local dev; only tracked edits change
+        what the plugin actually executes."""
+        monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(tmp_path / "cfgdir"))
+        root = _git_repo(tmp_path / "src" / "prawduct", branch="develop")
+        (root / "scratch.txt").write_text("noise\n")
+        assert not banner.checkout_provenance(root).endswith("+dirty")
+
+    def test_non_git_checkout_reports_nothing(self, banner, tmp_path, monkeypatch):
+        monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(tmp_path / "cfgdir"))
+        root = tmp_path / "src" / "plain"
+        root.mkdir(parents=True)
+        assert banner.checkout_provenance(root) == ""
+
+    def test_unborn_branch_reports_nothing(self, banner, tmp_path, monkeypatch):
+        """A freshly `git init`-ed tree has a branch but no commit — porcelain-v2
+        reports `branch.oid (initial)`, which is not a sha to name."""
+        monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(tmp_path / "cfgdir"))
+        root = tmp_path / "src" / "fresh"
+        root.mkdir(parents=True)
+        subprocess.run(["git", "-C", str(root), "init", "-q"], capture_output=True, check=True)
+        assert banner.checkout_provenance(root) == ""
+
+    def test_git_unavailable_reports_nothing_but_says_so(self, banner, tmp_path, monkeypatch, capsys):
+        """Absence of a segment normally reads as "a managed install won", so a
+        probe that could not run must not degrade into that same silence."""
+        monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(tmp_path / "cfgdir"))
+        root = _git_repo(tmp_path / "src" / "prawduct")
+        boom = subprocess.TimeoutExpired(cmd="git", timeout=5)
+        monkeypatch.setattr(banner, "_git", lambda *a, **k: boom)
+        assert banner.checkout_provenance(root) == ""
+        err = capsys.readouterr().err
+        assert "could not read plugin load provenance" in err
+        # the cause must be named: "unavailable" and "timed out" want different fixes
+        assert "TimeoutExpired" in err
+
+    def test_plain_directory_stays_quiet(self, banner, tmp_path, monkeypatch, capsys):
+        """The genuinely-nothing-to-report path emits no noise."""
+        monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(tmp_path / "cfgdir"))
+        root = tmp_path / "src" / "plain2"
+        root.mkdir(parents=True)
+        assert banner.checkout_provenance(root) == ""
+        assert capsys.readouterr().err == ""
+
+    def test_detached_head_is_labelled(self, banner, tmp_path, monkeypatch):
+        monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(tmp_path / "cfgdir"))
+        root = _git_repo(tmp_path / "src" / "prawduct")
+        sha = subprocess.run(
+            ["git", "-C", str(root), "rev-parse", "HEAD"], capture_output=True, text=True
+        ).stdout.strip()
+        subprocess.run(["git", "-C", str(root), "checkout", "-q", sha], capture_output=True, check=True)
+        assert banner.checkout_provenance(root).startswith("detached@")
+
+
+class TestBannerIdentityLine:
+    def test_managed_install_line_is_unchanged(self, tmp_path, monkeypatch):
+        """Byte-for-byte the pre-provenance banner — real users see no change."""
+        cfg = tmp_path / "cfgdir"
+        root = _plugin_tree(_git_repo(cfg / "plugins" / "marketplaces" / "prawduct"))
+        env = dict(os.environ)
+        env["CLAUDE_CONFIG_DIR"] = str(cfg)
+        env["CLAUDE_PLUGIN_ROOT"] = str(root)
+        env.pop("CLAUDE_PROJECT_DIR", None)
+        out = subprocess.run(
+            [sys.executable, str(BANNER)], capture_output=True, text=True, env=env, timeout=20
+        ).stdout
+        assert out.splitlines()[0] == "═══ Prawduct v9.9.9 (plugin) ═══"
+
+    def test_local_checkout_line_carries_provenance(self, tmp_path):
+        root = _plugin_tree(_git_repo(tmp_path / "src" / "prawduct", branch="develop"))
+        env = dict(os.environ)
+        env["CLAUDE_CONFIG_DIR"] = str(tmp_path / "cfgdir")
+        env["CLAUDE_PLUGIN_ROOT"] = str(root)
+        env.pop("CLAUDE_PROJECT_DIR", None)
+        out = subprocess.run(
+            [sys.executable, str(BANNER)], capture_output=True, text=True, env=env, timeout=20
+        ).stdout
+        first = out.splitlines()[0]
+        assert first.startswith("═══ Prawduct v9.9.9 (plugin · develop@")
+        assert first.endswith(") ═══")

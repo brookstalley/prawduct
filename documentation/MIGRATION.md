@@ -23,7 +23,7 @@ install reference, so everyone who clones the repo gets the plugin automatically
 framework files in the tree.
 
 > **Developing the framework itself?** Skip the install and load your working copy instead:
-> `claude --plugin-dir /path/to/prawduct --add-dir /path/to/prawduct`. The `--add-dir` (same
+> `claude --plugin-dir /path/to/prawduct/plugin --add-dir /path/to/prawduct`. The `--add-dir` (same
 > path) lets methodology-reading skills (`/prawduct:methodology building`, `/prawduct:critic`) load their
 > bundled guides out-of-tree. `--plugin-dir` alone is enough for `/prawduct:migrate`; a real
 > marketplace install needs neither flag.

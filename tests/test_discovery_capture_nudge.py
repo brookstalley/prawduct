@@ -23,7 +23,7 @@ import importlib.machinery
 import importlib.util
 from pathlib import Path
 
-_ROOT = Path(__file__).resolve().parent.parent
+_ROOT = Path(__file__).resolve().parent.parent / "plugin"
 _loader = importlib.machinery.SourceFileLoader(
     "prawduct_hook_discovery", str(_ROOT / "bin" / "prawduct-hook")
 )

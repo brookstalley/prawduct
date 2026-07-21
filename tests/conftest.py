@@ -1,14 +1,27 @@
 """
-Root conftest.py — test parallelization via pytest-xdist.
+Root conftest.py — import path for the relocated plugin, plus test parallelization.
 
 Auto-groups tests by directory so same-directory tests run serially on one
 worker (preserving fixture/state isolation) while different directories
 run in parallel across workers.
 """
 
+import sys
 from pathlib import Path
 
 import pytest
+
+# The plugin lives in plugin/, not at the repo root (v3.1.1, GOV-4H7T): the marketplace copies its
+# source directory wholesale with no exclusion mechanism, so anything beside the plugin ships to
+# every consumer. `from lib import ...` and `from hooks import ...` therefore resolve against
+# plugin/, and this is the one place that is stated.
+#
+# Individual test modules still compute a repo root and sys.path-insert it; that is now a harmless
+# no-op for imports (the repo root holds no `lib/`) and is left alone rather than swept, because
+# those inserts are also how each module finds its own fixtures.
+_PLUGIN_ROOT = Path(__file__).resolve().parent.parent / "plugin"
+if str(_PLUGIN_ROOT) not in sys.path:
+    sys.path.insert(0, str(_PLUGIN_ROOT))
 
 
 def pytest_collection_modifyitems(config, items):

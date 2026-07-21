@@ -21,7 +21,7 @@ import sys
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-_ROOT = Path(__file__).resolve().parent.parent
+_ROOT = Path(__file__).resolve().parent.parent / "plugin"
 if str(_ROOT) not in sys.path:
     sys.path.insert(0, str(_ROOT))
 
@@ -217,7 +217,7 @@ def _real_repo(tmp_path: Path) -> Path:
 def _run_real(command: str, repo: Path, *args: str):
     import subprocess
 
-    root = Path(__file__).resolve().parent.parent
+    root = Path(__file__).resolve().parent.parent / "plugin"
     env = {
         "HOME": str(repo.parent / "_home"),
         "PATH": "/usr/bin:/bin:/usr/local/bin:/opt/homebrew/bin",

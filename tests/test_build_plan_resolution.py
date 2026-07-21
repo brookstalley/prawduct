@@ -17,7 +17,7 @@ import subprocess
 import pytest
 from pathlib import Path
 
-_ROOT = Path(__file__).resolve().parent.parent
+_ROOT = Path(__file__).resolve().parent.parent / "plugin"
 
 # lib resolver — the plugin's lib/core
 import sys
@@ -528,5 +528,162 @@ class TestVerifyChunkRefsNonPathTokens:
         subprocess.run(["git", "init", "-q"], cwd=project, check=True)
         (project / ".gitignore").write_text(".prawduct/.bug-inbox\n")
         refs = _bpr._parse_build_plan_chunk_refs(prawduct, "01")
+        missing = _bpr._verify_chunk_refs(project, refs)
+        assert [m["ref"] for m in missing] == ["lib/does_not_exist.py"]
+
+
+# =============================================================================
+# BLD-4V7Q — a `path:line` citation is existence-checked as the file alone
+# =============================================================================
+
+
+class TestVerifyChunkRefsLineSuffix:
+    """A backticked code-location citation carries a `:line` or `:line-range`
+    suffix (`lib/critic_mode.py:452`, `lib/foo.py:5-8`). The suffix names a
+    location inside the file, so the existence check must run against the path
+    half — checking the literal `path:line` string reports a present file as a
+    missing ref. Sibling of the `path::symbol` carveout above."""
+
+    def test_line_suffix_stripped_before_existence_check(self, tmp_path: Path):
+        project, prawduct = _project_with_chunk(
+            tmp_path, "- the guard at `lib/critic_mode.py:452`\n"
+        )
+        (project / "lib").mkdir()
+        (project / "lib" / "critic_mode.py").write_text("x = 1\n")
+        refs = _bpr._parse_build_plan_chunk_refs(prawduct, "01")
+        assert refs["error"] is None
+        assert [e["ref"] for e in refs["file_paths"]] == ["lib/critic_mode.py"]
+        assert _bpr._verify_chunk_refs(project, refs) == []
+
+    def test_line_range_suffix_stripped(self, tmp_path: Path):
+        project, prawduct = _project_with_chunk(tmp_path, "- see `lib/foo.py:5-8`\n")
+        (project / "lib").mkdir()
+        (project / "lib" / "foo.py").write_text("x = 1\n")
+        refs = _bpr._parse_build_plan_chunk_refs(prawduct, "01")
+        assert [e["ref"] for e in refs["file_paths"]] == ["lib/foo.py"]
+        assert _bpr._verify_chunk_refs(project, refs) == []
+
+    def test_missing_path_with_line_suffix_reports_path_only(self, tmp_path: Path):
+        # The fix must not suppress real drift: a citation of a file that does
+        # not exist is still a missing-ref, named by its path.
+        project, prawduct = _project_with_chunk(tmp_path, "- see `lib/gone.py:12`\n")
+        refs = _bpr._parse_build_plan_chunk_refs(prawduct, "01")
+        missing = _bpr._verify_chunk_refs(project, refs)
+        assert [m["ref"] for m in missing] == ["lib/gone.py"]
+
+    def test_symbol_suffix_ending_in_digits_not_read_as_line(self, tmp_path: Path):
+        # `::` splits first, so a digit-tailed symbol is discarded with the
+        # symbol half rather than mistaken for a line number.
+        project, prawduct = _project_with_chunk(
+            tmp_path, "- see `lib/rules.py::rule42`\n"
+        )
+        (project / "lib").mkdir()
+        (project / "lib" / "rules.py").write_text("x = 1\n")
+        refs = _bpr._parse_build_plan_chunk_refs(prawduct, "01")
+        assert [e["ref"] for e in refs["file_paths"]] == ["lib/rules.py"]
+
+    def test_path_and_line_citation_dedup_on_same_line(self, tmp_path: Path):
+        project, prawduct = _project_with_chunk(
+            tmp_path, "- `lib/views.py` at `lib/views.py:10`\n"
+        )
+        (project / "lib").mkdir()
+        (project / "lib" / "views.py").write_text("x = 1\n")
+        refs = _bpr._parse_build_plan_chunk_refs(prawduct, "01")
+        assert [e["ref"] for e in refs["file_paths"]] == ["lib/views.py"]
+
+    def test_line_and_column_suffix_stripped(self, tmp_path: Path):
+        # Editor-style `path:line:col` — both numeric groups belong to the
+        # citation, so the whole suffix comes off (not just the column).
+        project, prawduct = _project_with_chunk(tmp_path, "- see `lib/foo.py:12:34`\n")
+        (project / "lib").mkdir()
+        (project / "lib" / "foo.py").write_text("x = 1\n")
+        refs = _bpr._parse_build_plan_chunk_refs(prawduct, "01")
+        assert [e["ref"] for e in refs["file_paths"]] == ["lib/foo.py"]
+        assert _bpr._verify_chunk_refs(project, refs) == []
+
+    def test_trailing_colon_without_digits_is_not_stripped(self, tmp_path: Path):
+        # Only a numeric suffix is a line citation; `path:` keeps its shape and
+        # is checked (and reported) literally.
+        project, prawduct = _project_with_chunk(tmp_path, "- see `lib/odd.py:x`\n")
+        refs = _bpr._parse_build_plan_chunk_refs(prawduct, "01")
+        assert [e["ref"] for e in refs["file_paths"]] == ["lib/odd.py:x"]
+
+
+# =============================================================================
+# BLD-6T4R — the `new ` forward-ref exemption is chunk-scoped, not line-local
+# =============================================================================
+
+
+class TestVerifyChunkRefsForwardRefScope:
+    """A path declared `new` on a Deliverables line is a file the chunk creates.
+    Naming it again in a later Done-when step doesn't make it exist yet, so the
+    exemption must cover the whole chunk section — not only the occurrence that
+    carried the qualifier."""
+
+    def test_new_path_rereferenced_later_in_chunk_is_exempt(self, tmp_path: Path):
+        # The filed shape: declared `new` on Deliverables, re-referenced bare in
+        # a Done-when step.
+        project, prawduct = _project_with_chunk(
+            tmp_path,
+            "- Deliverables: new `docs/api-notes.md`\n"
+            "- Done when: `docs/api-notes.md` documents the contract\n",
+        )
+        refs = _bpr._parse_build_plan_chunk_refs(prawduct, "01")
+        assert refs["error"] is None
+        assert refs["file_paths"] == []
+        assert _bpr._verify_chunk_refs(project, refs) == []
+
+    def test_new_declaration_after_the_reference_still_exempts(self, tmp_path: Path):
+        # Order-independent: the whole section is scanned for `new` before any
+        # token is judged, so a declaration below the citation still exempts it.
+        project, prawduct = _project_with_chunk(
+            tmp_path,
+            "- Done when: `docs/api-notes.md` documents the contract\n"
+            "- Deliverables: new `docs/api-notes.md`\n",
+        )
+        refs = _bpr._parse_build_plan_chunk_refs(prawduct, "01")
+        assert refs["file_paths"] == []
+
+    def test_new_declaration_exempts_a_later_line_citation(self, tmp_path: Path):
+        # The two fixes compose: the `new` set is normalized like the tokens, so
+        # a `new `path`` declaration also covers a later `path:line` citation.
+        project, prawduct = _project_with_chunk(
+            tmp_path,
+            "- Deliverables: new `lib/created.py`\n"
+            "- Done when: the guard at `lib/created.py:42` returns early\n",
+        )
+        refs = _bpr._parse_build_plan_chunk_refs(prawduct, "01")
+        assert refs["file_paths"] == []
+
+    def test_exemption_does_not_leak_to_a_sibling_chunk(self, tmp_path: Path):
+        # Scoped to the chunk, not the file: chunk 02's reference to a path that
+        # chunk 01 declares `new` is still existence-checked.
+        project = tmp_path / "proj"
+        prawduct = project / ".prawduct"
+        (prawduct / "artifacts").mkdir(parents=True)
+        (prawduct / "project-state.yaml").write_text("")
+        (prawduct / "artifacts" / "build-plan.md").write_text(
+            "---\nartifact: build-plan\n---\n\n"
+            "## Build Chunks\n\n"
+            "### Chunk 01: creates it\n\n"
+            "- Deliverables: new `lib/created.py`\n\n"
+            "### Chunk 02: uses it\n\n"
+            "- Done when: `lib/created.py` is wired in\n\n"
+            "## Next Section\n"
+        )
+        assert _bpr._parse_build_plan_chunk_refs(prawduct, "01")["file_paths"] == []
+        refs2 = _bpr._parse_build_plan_chunk_refs(prawduct, "02")
+        assert [e["ref"] for e in refs2["file_paths"]] == ["lib/created.py"]
+
+    def test_undeclared_path_in_same_chunk_still_flagged(self, tmp_path: Path):
+        # The exemption is per-path, not per-chunk: one `new` declaration must
+        # not silence every other missing ref in the section.
+        project, prawduct = _project_with_chunk(
+            tmp_path,
+            "- Deliverables: new `docs/api-notes.md`\n"
+            "- Done when: `lib/does_not_exist.py` is updated\n",
+        )
+        refs = _bpr._parse_build_plan_chunk_refs(prawduct, "01")
+        assert [e["ref"] for e in refs["file_paths"]] == ["lib/does_not_exist.py"]
         missing = _bpr._verify_chunk_refs(project, refs)
         assert [m["ref"] for m in missing] == ["lib/does_not_exist.py"]

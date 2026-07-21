@@ -1,7 +1,7 @@
 {
   "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
   "name": "prawduct",
-  "description": "Prawduct — dev-time product-development governance: structured discovery, quality-governed building, independent review, and continuous per-project learning.",
+  "description": "Prawduct \u2014 dev-time product-development governance: structured discovery, quality-governed building, independent review, and continuous per-project learning.",
   "owner": {
     "name": "Brooks Talley",
     "email": "brooks@tangentry.com"
@@ -10,7 +10,7 @@
     {
       "name": "prawduct",
       "description": "Prawduct governance plugin: discovery, quality-governed building, independent Critic/PR review, and continuous learning. Ships immutable read-only code; all mutable state lives in each repo's .prawduct/.",
-      "source": "./"
+      "source": "./plugin"
     }
   ]
 }

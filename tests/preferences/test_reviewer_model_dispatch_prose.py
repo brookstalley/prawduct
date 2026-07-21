@@ -22,7 +22,7 @@ from pathlib import Path
 
 import pytest
 
-REPO_ROOT = Path(__file__).resolve().parent.parent.parent
+REPO_ROOT = Path(__file__).resolve().parent.parent.parent / "plugin"
 
 _CRITIC_SKILL = REPO_ROOT / "skills" / "critic" / "SKILL.md"
 _CRITIC_PROTOCOL = REPO_ROOT / "skills" / "critic" / "review-protocol.md"

@@ -5,6 +5,52 @@
      be overwritten on next regen. See change-log.md for full per-release
      bodies; this file is a digest. -->
 
+## v3.1.1
+
+### 2026-07-21: the plugin stopped shipping prawduct's own backlog, learnings, and requirements to every consumer
+
+**Entry:** 2026-07-21: the plugin stopped shipping prawduct's own backlog, learnings, and requirements to every consumer
+
+### 2026-07-21: runbook authoring — the framework pointed at runbooks in three places and never said how to write one
+
+**Entry:** 2026-07-21: runbook authoring — the framework pointed at runbooks in three places and never said how to write one
+
+### 2026-07-20: a session waiting on reviewers is told to stay audible, not just to stop re-dispatching
+
+**Entry:** 2026-07-20: a session waiting on reviewers is told to stay audible, not just to stop re-dispatching
+
+### 2026-07-20: `critic-consolidate`'s incomplete no-op carries a liveness verdict, not just a count
+
+**Entry:** 2026-07-20: `critic-consolidate`'s incomplete no-op carries a liveness verdict, not just a count
+
+### 2026-07-19: SessionStart banner names which plugin code is loaded (BRF-7Q4M)
+
+**Entry:** 2026-07-19: SessionStart banner names which plugin code is loaded (BRF-7Q4M)
+
+### 2026-07-19: verify-chunk-refs stops flagging `path:line` citations and same-chunk `new` re-references
+
+**Entry:** 2026-07-19: verify-chunk-refs stops flagging `path:line` citations and same-chunk `new` re-references
+
+### 2026-07-19: Salvage stranded work from the removed backlog-service worktree branch (worktree-salvage)
+
+**Entry:** 2026-07-19: Salvage stranded work from the removed backlog-service worktree branch (worktree-salvage)
+
+### 2026-07-18: Stop hook surfaces the silent worktree `.prawduct/` redirect (stop-worktree-redirect-note)
+
+**Entry:** 2026-07-18: Stop hook surfaces the silent worktree `.prawduct/` redirect (stop-worktree-redirect-note)
+
+### discodon-upstream-defects
+
+**Entry:** 2026-07-18: discodon upstream defect fixes (discodon-upstream-defects)
+
+**Chunks shipped:** 01, 02, 03, 04
+
+### 2026-07-14: Stale remote-base diagnostics for the cumulative-critic gate (stale-remote-base-diagnostics)
+
+**Entry:** 2026-07-14: Stale remote-base diagnostics for the cumulative-critic gate (stale-remote-base-diagnostics)
+
+See `.prawduct/change-log.md` for full details.
+
 ## v3.1.0
 
 ### 2026-07-17: Test evidence meets real environments — false-red guard, fallback deprecation, multi-environment test_commands (fix)

@@ -1,0 +1,3811 @@
+#!/usr/bin/env python3
+"""
+prawduct-hook — Session governance, plugin runtime (v2.0.0 distribution).
+
+The plugin-distribution port of ``tools/product-hook`` (build-plan Chunk 5).
+Same governance, two structural gates, NO file-sync:
+1. Reflection: files modified -> reflection must be captured before session end
+2. Critic review: code built against a plan -> independent review must happen
+
+Differences from the legacy ``tools/product-hook`` (the file-sync runtime):
+  * Ships in the plugin's ``bin/`` (auto-added to the Bash PATH); skills invoke
+    it as bare ``prawduct-hook``, hooks via ``${CLAUDE_PLUGIN_ROOT}/bin/``.
+  * Imports the bundled governance ``lib/`` via ``CLAUDE_PLUGIN_ROOT`` (see
+    ``_plugin_root``), not a ``tools/``-relative path.
+  * Does NOT sync. The plugin ships immutable, read-only code; framework updates
+    arrive via marketplace auto-update, not file-sync (design §2, §7). The
+    sync-trigger cluster (``try_sync`` + freshness/version checks) is excluded.
+  * Honors a configured ``base_branch:`` (gitflow ``develop``) for the PR /
+    coverage gates and the reviewer/cumulative base (``_resolve_base_branch`` +
+    the ``resolve-base`` subcommand) — the 2.0.0 gitflow ship-blocker fix.
+
+Governing invariant (design §2): reads/writes ONLY the governed repo's
+``.prawduct/`` — the session's active git worktree, resolved by
+``get_project_dir`` (the worktree toplevel of cwd, or ``${CLAUDE_PROJECT_DIR}``
+when not in a same-repo worktree; STH-4K7N). No mutable state is shared between
+*unrelated* repos through the plugin — the resolver's same-repo
+``--git-common-dir`` guard preserves that.
+
+Usage (wired by ``hooks/hooks.json``):
+  python3 "${CLAUDE_PLUGIN_ROOT}/bin/prawduct-hook" clear   (SessionStart hook)
+  python3 "${CLAUDE_PLUGIN_ROOT}/bin/prawduct-hook" stop    (Stop hook)
+"""
+
+from __future__ import annotations
+
+import json
+import os
+import subprocess
+import sys
+from datetime import datetime, timezone
+from pathlib import Path
+
+
+def get_project_dir() -> Path:
+    """Resolve the project dir to the session's active git worktree.
+
+    Was ``CLAUDE_PROJECT_DIR`` (or cwd). The harness pins ``CLAUDE_PROJECT_DIR``
+    to the launch dir, but a session that moves into a git worktree operates —
+    and writes ``.prawduct/`` state — from the worktree; resolving against the
+    worktree keeps the hooks reading the same state the agent wrote (STH-4K7N).
+    Delegates to the shared resolver so bin and lib agree; the resolver fails
+    open to ``CLAUDE_PROJECT_DIR``/cwd so non-worktree sessions are unchanged.
+
+    Bootstrap-resilient: this runs before command dispatch, so a broken/absent
+    plugin ``lib/`` must not crash here — fall back to the env/cwd behavior and
+    let the command that actually needs ``lib`` surface the import error with its
+    own handling (e.g. ``regen-views``)."""
+    try:
+        gitstate = _gitstate()
+    except ImportError:
+        return Path(os.environ.get("CLAUDE_PROJECT_DIR", ".")).resolve()
+    return gitstate.resolve_project_dir(
+        os.environ.get("CLAUDE_PROJECT_DIR"), Path.cwd()
+    )
+
+
+def get_prawduct_dir(project_dir: Path) -> Path:
+    return project_dir / ".prawduct"
+
+
+def _plugin_root() -> str:
+    """Resolve the plugin root for importing the bundled governance ``lib/``.
+
+    Prefers ``CLAUDE_PLUGIN_ROOT`` (exported by Claude Code into the hook
+    process and the Bash tool env while the plugin is enabled). Falls back to
+    the parent of this script's dir (``bin/`` -> root) so the hook is runnable
+    directly (tests, ``--plugin-dir`` probes) without the env var. Returns a
+    ``str`` for ``sys.path`` insertion; ``from lib import …`` then resolves to
+    ``${root}/lib`` (design §11: plugin Python must seed ``sys.path`` itself).
+    """
+    env_root = os.environ.get("CLAUDE_PLUGIN_ROOT")
+    if env_root:
+        return env_root
+    return str(Path(__file__).resolve().parent.parent)
+
+
+def _gitstate():
+    """Lazy-import the read-only git/state probes (lib/gitstate). Seeds sys.path
+    like the other lib accessors so the hook's top level stays lib-free; after the
+    lib/__init__ slim (ch.1) this loads only gitstate.py (~1ms, isolated)."""
+    lib_root = _plugin_root()
+    if lib_root not in sys.path:
+        sys.path.insert(0, lib_root)
+    from lib import gitstate  # noqa: PLC0415 — lazy keeps top-level cheap + lib-free
+
+    return gitstate
+
+
+def _buildplan_refs():
+    """Lazy-import the build-plan reference parser + trivial-change classifier
+    (lib/buildplan_refs). Same lazy idiom as _gitstate() — seeds sys.path so the
+    hook's top level stays lib-free; after the ch.1 __init__ slim this loads only
+    buildplan_refs.py (+ its light siblings gitstate, core), isolated."""
+    lib_root = _plugin_root()
+    if lib_root not in sys.path:
+        sys.path.insert(0, lib_root)
+    from lib import buildplan_refs  # noqa: PLC0415 — lazy keeps top-level cheap + lib-free
+
+    return buildplan_refs
+
+
+def _compliance():
+    """Lazy-import the session-end compliance canary + its file classifiers
+    (lib/compliance). Same lazy idiom as _gitstate() — seeds sys.path so the
+    hook's top level stays lib-free; after the ch.1 __init__ slim this loads only
+    compliance.py (+ its light sibling gitstate, and lazily waivers), isolated.
+    The cmd_stop caller wraps the canary in a broad catch, so an import failure
+    here degrades to "canary skipped" and never blocks session end."""
+    lib_root = _plugin_root()
+    if lib_root not in sys.path:
+        sys.path.insert(0, lib_root)
+    from lib import compliance  # noqa: PLC0415 — lazy keeps top-level cheap + lib-free
+
+    return compliance
+
+
+def _coverage():
+    """Lazy-import the diff-base resolution + coverage/PR fast-path gates
+    (lib/coverage). Same lazy idiom as _gitstate() — seeds sys.path so the hook's
+    top level stays lib-free; after the ch.1 __init__ slim this loads only
+    coverage.py (+ its light siblings buildplan_refs, core), isolated."""
+    lib_root = _plugin_root()
+    if lib_root not in sys.path:
+        sys.path.insert(0, lib_root)
+    from lib import coverage  # noqa: PLC0415 — lazy keeps top-level cheap + lib-free
+
+    return coverage
+
+
+def _gates():
+    """Lazy-import the session-end gate helpers + evidence/critic validators
+    (lib/gates). Same lazy idiom as _gitstate(). cmd_stop (the inline hot-path
+    gate) and cmd_clear's previous-session check reach the gate decision helpers
+    through here; the thin cmd_* gate-command wrappers delegate to it too. After
+    the ch.1 __init__ slim this loads only gates.py (+ its light siblings
+    gitstate/coverage/buildplan_refs/core), isolated."""
+    lib_root = _plugin_root()
+    if lib_root not in sys.path:
+        sys.path.insert(0, lib_root)
+    from lib import gates  # noqa: PLC0415 — lazy keeps top-level cheap + lib-free
+
+    return gates
+
+
+def _core():
+    """Lazy-import the shared core utilities (lib/core). Same lazy idiom as
+    _gitstate(). cmd_clear reaches `atomic_write_text` through here for the
+    session markers (STH-8M3V) — each call site is wrapped in an OSError
+    guard, so an import or write failure degrades to a stderr NOTE and never
+    blocks session start. After the ch.1 __init__ slim this loads only
+    core.py (stdlib-only), isolated."""
+    lib_root = _plugin_root()
+    if lib_root not in sys.path:
+        sys.path.insert(0, lib_root)
+    from lib import core  # noqa: PLC0415 — lazy keeps top-level cheap + lib-free
+
+    return core
+
+
+def _briefing():
+    """Lazy-import the SessionStart briefing + handoff assembly (lib/briefing).
+    Same lazy idiom as _gitstate(). cmd_clear (the inline hot-path SessionStart
+    entry) reaches the staleness scan, the session/subagent briefing, the handoff,
+    and the previous-session gate check through here; each cmd_clear call site is
+    wrapped in a broad catch, so an import failure degrades to a skipped briefing
+    and never blocks session start (the lib-free hook top level is preserved). After
+    the ch.1 __init__ slim this loads only briefing.py (+ its light siblings
+    gitstate/gates/buildplan_refs/core), isolated."""
+    lib_root = _plugin_root()
+    if lib_root not in sys.path:
+        sys.path.insert(0, lib_root)
+    from lib import briefing  # noqa: PLC0415 — lazy keeps top-level cheap + lib-free
+
+    return briefing
+
+
+def _critic_marker():
+    """Lazy-import the critic-active session-mutation guard (lib/critic_marker).
+    Same lazy idiom as _gitstate()/_briefing(). cmd_clear reads the marker through
+    here (broad-caught, so a lib import failure fails OPEN — clear proceeds — never
+    blocking session start on an incomplete install; a broken lib also means the
+    Critic can't run, so there's no review to protect). critic-begin/critic-end
+    write/remove the marker through here too. Pure stdlib, no heavy siblings."""
+    lib_root = _plugin_root()
+    if lib_root not in sys.path:
+        sys.path.insert(0, lib_root)
+    from lib import critic_marker  # noqa: PLC0415 — lazy keeps top-level cheap + lib-free
+    return critic_marker
+
+
+def _critic_consolidate():
+    """Lazy-import the deterministic Critic-consolidation core (lib/critic_consolidate).
+    Same idiom as _critic_marker(). The Stop-hook backstop reads `pending_state` and
+    calls `consolidate` through here to self-heal an abandoned coordinator review."""
+    lib_root = _plugin_root()
+    if lib_root not in sys.path:
+        sys.path.insert(0, lib_root)
+    from lib import critic_consolidate  # noqa: PLC0415 — lazy keeps top-level cheap
+    return critic_consolidate
+
+
+def _reject_unknown_args(
+    command: str, argv: list[str], allowed_flags: set[str]
+) -> int | None:
+    """Fail-closed arg guard for *flag-only* subcommands (STH-5R2Q).
+
+    Flag-only subcommands take no positionals and detect options with
+    ``"--flag" in argv`` — a pattern that silently ignores any token that
+    isn't a recognized flag. That swallowed a real bug where a test passed
+    ``tmp_path`` positionally to ``audit-learnings`` and the live repo was
+    audited instead of the fixture. Returns exit code 2 (the hook's usage-error
+    convention, matching ``cmd_test_evidence``'s extra-args rejection) after
+    printing the first unrecognized token to stderr, or ``None`` when every
+    token is a recognized flag. Mirrors the inline ``unknown argument``
+    handling in ``lib.ledger`` / ``lib.telemetry`` / ``lib.risk``.
+    """
+    for arg in argv:
+        if arg not in allowed_flags:
+            allowed = ", ".join(sorted(allowed_flags)) or "(none)"
+            print(
+                f"{command}: unknown argument {arg!r} (recognized flags: {allowed})",
+                file=sys.stderr,
+            )
+            return 2
+    return None
+
+
+# --- New-gate attribution (design §5a) -----------------------------------
+# A blocking message names the version + gate that caused it, so a surprise
+# block (e.g. a gate a recent plugin update introduced) is always traceable to
+# the update, never mysterious. The plugin version comes from the bundled
+# plugin.json; the gate's human name comes from the bundled hooks/gates.json.
+# Both reads are best-effort: attribution is a courtesy on top of the block, so
+# a missing/corrupt manifest or registry degrades to a bare gate label, never a
+# crash or a swallowed blocker. The banner (hooks/banner.py) reads the same
+# registry to ANNOUNCE a gate on the bump that introduces it.
+
+
+def _plugin_manifest_version() -> str | None:
+    """The plugin's semver from the bundled manifest, or None if unreadable."""
+    try:
+        manifest = Path(_plugin_root()) / ".claude-plugin" / "plugin.json"
+        data = json.loads(manifest.read_text(encoding="utf-8"))
+        version = data.get("version")
+        return str(version) if version else None
+    except Exception:  # prawduct:allow prawduct/broad-except -- attribution is best-effort; a block must never crash on it
+        return None
+
+
+def _load_gate_registry() -> dict[str, dict]:
+    """Map gate-id -> {name, since, summary} from the bundled registry. Empty
+    on any failure (attribution then falls back to the bare gate id)."""
+    try:
+        path = Path(_plugin_root()) / "hooks" / "gates.json"
+        data = json.loads(path.read_text(encoding="utf-8"))
+        gates = data.get("gates", [])
+        return {g["id"]: g for g in gates if isinstance(g, dict) and g.get("id")}
+    except Exception:  # prawduct:allow prawduct/broad-except -- attribution is best-effort; a block must never crash on it
+        return {}
+
+
+def _gate_attribution(gate_id: str, registry: dict[str, dict], version: str | None) -> str:
+    """A one-line attribution prefix for a blocking message: names the current
+    plugin version and the gate. Flags ``NEW`` when the gate was introduced by
+    the current version (``since`` == current) — the §5a "this block is from
+    your latest update" signal. Degrades gracefully when data is missing."""
+    gate = registry.get(gate_id, {})
+    name = gate.get("name", gate_id)
+    ver_part = f"prawduct v{version} · " if version else "prawduct "
+    new_part = ""
+    since = str(gate.get("since", ""))
+    if version and since and since == version:
+        new_part = f" · NEW this release (v{since})"
+    return f"[{ver_part}gate: {name}{new_part}]"
+
+
+# --- Active build-plan resolution (inline mirror of lib/core.py) ---
+# The hook keeps an inline copy so its top level stays import-light on the
+# session-start hot path. Kept in sync with core.resolve_build_plan_path /
+# core.read_str_yaml_key by a parity test (same discipline as the
+# GITIGNORE_ENTRIES / _SESSION_GITIGNORED_PATHS mirror).
+# prawduct:allow prawduct/duplication -- intentional inline mirror (import-light hot path); pinned by TestProductHookMirrorParity
+_BUILD_PLAN_POINTER_KEY = "active_build_plan"
+_DEFAULT_BUILD_PLAN_REL = "artifacts/build-plan.md"
+
+
+def _read_str_yaml_key(state_path: Path, key: str) -> str | None:
+    """Value of a top-level (column-0) ``key: value`` scalar, or None.
+
+    Inline mirror of ``lib.core.read_str_yaml_key`` (parity-pinned by
+    TestProductHookMirrorParity). An empty value or the YAML null literal
+    (``null`` / ``~``, case-insensitive) reads as None — ``active_build_plan:
+    null`` means "unset" (VWS-7N3K)."""
+    try:
+        content = state_path.read_text(encoding="utf-8")
+    except OSError:
+        return None
+    needle = f"{key}:"
+    for raw in content.splitlines():
+        if raw[:1] in (" ", "\t"):
+            continue
+        line = raw.split("#", 1)[0].rstrip()
+        if not line.startswith(needle):
+            continue
+        value = line.split(":", 1)[1].strip().strip("\"'")
+        if not value or value.lower() in ("null", "~"):
+            return None
+        return value
+    return None
+
+
+def _read_str_list_yaml_key(state_path: Path, key: str) -> list[str] | None:
+    """Items of a top-level ``key:`` block sequence of strings, or None.
+
+    Parses only the shape the docstrings prescribe (``test_commands:`` — a
+    column-0 ``key:`` line followed by indented ``- item`` lines); flow style
+    (``key: [a, b]``), nested mappings, bare/empty items, wrapped continuation
+    lines, and an empty sequence ALL read as None — any in-block anomaly makes
+    the WHOLE declaration unparseable, never a partial list (callers convert
+    None-but-present to a loud refusal via ``_yaml_top_level_key_present``).
+    Comment stripping matches the scalar sibling (``_read_str_yaml_key``):
+    everything after ``#`` is dropped."""
+    try:
+        content = state_path.read_text(encoding="utf-8")
+    except OSError:
+        return None
+    items: list[str] = []
+    in_block = False
+    for raw in content.splitlines():
+        # Blank and comment-only lines are inert at ANY indent — including
+        # column 0 inside the block, where breaking instead would silently
+        # truncate the list (some environments would never run while the
+        # record claimed full evidence).
+        stripped = raw.split("#", 1)[0].strip()
+        if not stripped:
+            continue
+        if not in_block:
+            if raw[:1] in (" ", "\t"):
+                continue
+            if raw.split("#", 1)[0].rstrip() == f"{key}:":
+                in_block = True
+            continue
+        if raw[:1] not in (" ", "\t"):
+            break  # next top-level key ends the block cleanly
+        if not stripped.startswith("- "):
+            # Nested mapping, bare dash, or a wrapped command's continuation
+            # line: the whole declaration is unparseable — a partial list
+            # would silently skip environments while claiming full evidence.
+            return None
+        value = stripped[2:].strip().strip("\"'")
+        if not value:
+            return None  # an empty item is an authoring error, not skippable
+        items.append(value)
+    return items or None
+
+
+def _yaml_top_level_key_present(state_path: Path, key: str) -> bool:
+    """Whether a column-0 ``key:`` line exists at all — presence, not shape.
+
+    Lets callers distinguish "absent" (a fallback is legitimate) from
+    "declared in a shape the readers don't parse" (refuse loudly — silently
+    degrading past an operator's declaration is the failure mode)."""
+    try:
+        content = state_path.read_text(encoding="utf-8")
+    except OSError:
+        return False
+    return any(
+        raw[:1] not in (" ", "\t")
+        and raw.split("#", 1)[0].rstrip().startswith(f"{key}:")
+        for raw in content.splitlines()
+    )
+
+
+def _resolve_build_plan_path(prawduct_dir: Path) -> Path:
+    """Resolve the active build plan via the ``active_build_plan:`` pointer
+    (relative to ``.prawduct/``; a repo-relative ``.prawduct/...`` spelling is
+    accepted by stripping the prefix — STH-5P2W); fall back to
+    ``artifacts/build-plan.md`` when unset, so repos without the pointer are
+    unchanged. May not exist — callers treat a missing plan as no active
+    build plan."""
+    pointer = _read_str_yaml_key(prawduct_dir / "project-state.yaml", _BUILD_PLAN_POINTER_KEY)
+    if pointer and pointer.startswith(".prawduct/"):
+        pointer = pointer[len(".prawduct/"):]
+    if pointer:
+        return prawduct_dir / pointer
+    return prawduct_dir / _DEFAULT_BUILD_PLAN_REL
+
+
+# =============================================================================
+# Git session-file hygiene (read-only git/state probes → lib/gitstate.py)
+# =============================================================================
+# The read-only probes (git_status_output, git_has_*, _has_product_*,
+# _discovery_uncaptured, _read_advisory_store, _get_session_changed_files, …)
+# moved to lib/gitstate.py (STH-9V4K ch.2); the hook calls them via _gitstate().
+
+
+# Canonical list of session files that should be gitignored, never tracked.
+# Parallel to GITIGNORE_ENTRIES in lib/core.py — the hook keeps an inline copy so
+# its top level stays import-light on the session-start hot path. The two lists
+# cover the same session files; lib/core.py's variant additionally carries
+# `__pycache__/` and a trailing slash on `.pr-reviews/` for its `.gitignore`
+# writer, while this list uses bare paths for `git ls-files` untracking. Keep the
+# shared session-file set in sync when adding entries.
+# prawduct:allow prawduct/duplication -- intentional inline mirror (import-light hot path); pinned by TestSessionGitignoreMirror
+_SESSION_GITIGNORED_PATHS = (
+    ".claude/settings.local.json",
+    ".prawduct/.bug-inbox",
+    ".prawduct/.critic-active",
+    ".prawduct/.critic-findings.json",
+    ".prawduct/.critic-partials",
+    ".prawduct/.governance-ledger.jsonl",
+    ".prawduct/.test-evidence.json",
+    ".prawduct/.pr-reviews",
+    ".prawduct/.session-base-tree",
+    ".prawduct/.session-git-baseline",
+    ".prawduct/.session-handoff.md",
+    ".prawduct/.session-reflected",
+    ".prawduct/.session-start",
+    ".prawduct/.subagent-briefing.md",
+    ".prawduct/.gates-waived",
+    ".prawduct/.advisories.json",
+    ".prawduct/.work-model-index.json",
+    ".prawduct/reflections.md",
+    # NOTE: .prawduct/artifacts/build-plan.md is deliberately NOT here —
+    # build plans are tracked artifacts (gate-soundness ch.3); this loop
+    # used to force-untrack them at every session start, reverting any
+    # product that tracked its plan.
+)
+
+
+def _untrack_session_files(project_dir: Path) -> list[str]:
+    """Defensively `git rm --cached` any session files that are currently tracked.
+
+    Some product repos accidentally committed session files (e.g. .session-handoff.md)
+    before they were added to .gitignore. Once tracked, those files cause noisy
+    merge conflicts whenever any session writes new content. This in-process
+    check runs on every session start so the cleanup happens in any product repo,
+    including ones that committed session files before this check existed.
+
+    Returns a list of paths that were untracked (may be empty). Never raises.
+    """
+    untracked: list[str] = []
+    try:
+        check = subprocess.run(
+            ["git", "rev-parse", "--git-dir"],
+            capture_output=True,
+            text=True,
+            cwd=str(project_dir),
+            timeout=10,
+        )
+        if check.returncode != 0:
+            return untracked
+    except Exception:  # prawduct:allow prawduct/broad-except -- git failure must not crash hook
+        return untracked
+
+    # Batch the tracked-file lookup into ONE `git ls-files` over all session
+    # pathspecs (STH-6Q9D). The previous per-path `--error-unmatch` probe loop
+    # issued one subprocess per path — 15 on every SessionStart, the dominant
+    # cost on the hot path. `git ls-files -z -- <paths>` lists only the tracked
+    # subset (untracked/absent pathspecs print nothing, exit 0); `-z` keeps paths
+    # NUL-separated and unquoted so the prefix match below is exact.
+    try:
+        ls = subprocess.run(
+            ["git", "ls-files", "-z", "--", *_SESSION_GITIGNORED_PATHS],
+            capture_output=True,
+            text=True,
+            cwd=str(project_dir),
+            timeout=10,
+        )
+        if ls.returncode != 0:
+            return untracked
+    except Exception:  # prawduct:allow prawduct/broad-except -- git failure must not crash hook
+        return untracked
+
+    # Map listed files back to the declared session pathspecs. Most are exact
+    # paths; `.prawduct/.pr-reviews` is a directory, so `ls-files` expands it to
+    # member files — collapse those to the declared pathspec so the report and
+    # the `rm` target stay the canonical session-path set (matching the old loop).
+    listed = [p for p in ls.stdout.split("\0") if p]
+    matched = [
+        path
+        for path in _SESSION_GITIGNORED_PATHS
+        if any(f == path or f.startswith(path + "/") for f in listed)
+    ]
+    if not matched:
+        return untracked
+
+    # ONE batched `git rm --cached` untracks every matched session path. This
+    # trades the old per-path loop's PARTIAL-success semantics for all-or-nothing:
+    # all matched paths are confirmed-tracked above, so the batch near-always
+    # succeeds atomically; on the rare whole-command failure (e.g. permissions)
+    # nothing is reported as untracked — where the old loop would have reported the
+    # paths it got through. Self-healing: the next session start retries the sweep.
+    # Best-effort cleanup must never block session start.
+    try:
+        rm = subprocess.run(
+            ["git", "rm", "--cached", "--quiet", "-r", "--", *matched],
+            capture_output=True,
+            text=True,
+            cwd=str(project_dir),
+            timeout=10,
+        )
+        if rm.returncode == 0:
+            untracked = list(matched)
+    except Exception:  # prawduct:allow prawduct/broad-except -- batch untrack failure must not block session start
+        return untracked
+
+    return untracked
+
+
+# =============================================================================
+# Session briefing / handoff (SessionStart assembly -> lib/briefing.py)
+# =============================================================================
+# The staleness scan, the structured session briefing, the subagent briefing, the
+# cross-/clear session handoff, and the previous-session governance check moved to
+# lib/briefing.py (STH-9V4K ch.7 -- the final chunk). cmd_clear (the inline
+# hot-path SessionStart entry) reaches them via the lazy _briefing() accessor;
+# each call site is broad-caught, so a briefing import failure degrades to a
+# skipped briefing and never blocks session start (the ch.2-6 precedent --
+# the lib-free hook top level is preserved, no separate degradation shim).
+
+
+# =============================================================================
+# clear command
+# =============================================================================
+
+
+def cmd_clear(project_dir: Path, argv: list[str] | None = None) -> int:
+    """Reset session state and render the session briefing (plugin runtime: no sync).
+
+    Flags (argv): ``--session-start`` marks the genuine SessionStart-hook
+    invocation — it always proceeds and sweeps any critic-active marker.
+    ``--force`` is the operator override for a stale marker. A bare ``clear``
+    (what a reviewer subagent issued in CRT-3X9D) is the guarded path: it refuses
+    while a Critic review is plausibly in progress so an independent reviewer
+    cannot clobber the session it is reviewing.
+    """
+    argv = argv or []
+    rejected = _reject_unknown_args(
+        "clear", argv, {"--session-start", "--force"}
+    )
+    if rejected is not None:
+        return rejected
+    session_start = "--session-start" in argv
+    force = "--force" in argv
+    prawduct_dir = get_prawduct_dir(project_dir)
+
+    # The plugin is user-scoped, so this SessionStart hook fires in every repo the
+    # user opens. A repo that never onboarded has no .prawduct/ — emit nothing and
+    # touch nothing, mirroring cmd_stop (the Stop gate). Skills like
+    # /prawduct:onboard stay available; this only silences the always-on session
+    # briefing and its session-marker side effects in non-Prawduct repos.
+    if not prawduct_dir.is_dir():
+        return 0
+
+    # Critic-active session-mutation guard (CRT-3X9D). cmd_clear is destructive
+    # (it archives/deletes .session-reflected, rewrites .session-start, recaptures
+    # the git baseline). An independent reviewer must never mutate the session it
+    # is reviewing. A genuine new session (--session-start) or an explicit
+    # --force sweeps any marker and proceeds; a bare clear refuses while a review
+    # is plausibly in progress. The check fails OPEN on a lib import error so an
+    # incomplete install never blocks session start (a broken lib also means the
+    # Critic can't run, so there is no review to protect).
+    if session_start or force:
+        try:
+            _critic_marker().clear_marker(prawduct_dir)
+        except Exception:  # prawduct:allow prawduct/broad-except -- marker sweep must never block session start
+            pass
+    else:
+        try:
+            active, age_s = _critic_marker().review_active(prawduct_dir)
+        except Exception:  # prawduct:allow prawduct/broad-except -- guard fails open: never block session start on a lib import error
+            active, age_s = (False, None)
+        if active:
+            age_min = int((age_s or 0) // 60)
+            print(
+                "PRAWDUCT: `clear` refused — a Critic review appears to be in progress "
+                f"(marker .prawduct/.critic-active, started ~{age_min}m ago). Session-mutating "
+                "commands are blocked so an independent reviewer cannot clobber the session it is "
+                "reviewing (CRT-3X9D).\n"
+                "  If the Critic has finished or crashed and this marker is stale, clear it:\n"
+                "    rm .prawduct/.critic-active        # then retry\n"
+                "  or override this one invocation:\n"
+                "    prawduct-hook clear --force\n"
+                "  (The marker also auto-expires after 30 min and is swept at the next real "
+                "session start.)",
+                file=sys.stderr,
+            )
+            return 2
+
+    # Check previous session's governance gates (warn, never block)
+    try:
+        gate_warnings = _briefing()._check_previous_session_gates(project_dir)
+        if gate_warnings:
+            print(
+                f"WARNING: Previous session had unmet governance: {', '.join(gate_warnings)}. "
+                f"Consider addressing before continuing."
+            )
+    except Exception:  # prawduct:allow prawduct/broad-except -- gate check must never block clear
+        pass
+
+    # Defensively untrack any session files that were accidentally committed.
+    # Runs every session-start so the cleanup happens in any product repo,
+    # including ones that committed session files before this check existed.
+    try:
+        untracked = _untrack_session_files(project_dir)
+        if untracked:
+            print(
+                "PRAWDUCT: untracked previously-committed session files (kept locally): "
+                + ", ".join(untracked)
+            )
+    except Exception:  # prawduct:allow prawduct/broad-except -- defensive cleanup must never block clear
+        pass
+
+    # Generate handoff BEFORE archiving/deleting session files
+    try:
+        _briefing().generate_session_handoff(project_dir)
+    except Exception:  # prawduct:allow prawduct/broad-except -- handoff must never block clear
+        pass
+
+    # Preserve previous session's reflection before clearing
+    reflected = prawduct_dir / ".session-reflected"
+    if reflected.is_file():
+        try:
+            content = reflected.read_text().strip()
+            if content:
+                log = prawduct_dir / "reflections.md"
+                separator = "\n\n---\n\n" if log.is_file() and log.read_text().strip() else ""
+                with open(log, "a") as f:
+                    f.write(f"{separator}{content}\n")
+        except (UnicodeDecodeError, OSError):
+            pass  # Corrupted reflection — skip archival, safe to proceed
+
+    # Remove session files. Best-effort per file (STH-8M3V): an OSError here
+    # (permissions, transient FS) must not traceback the SessionStart hook —
+    # a survivor just carries stale state into the new session, which the
+    # NOTE names so the user can remove it by hand.
+    for name in (".session-reflected", ".session-start", ".session-git-baseline", ".session-base-tree", ".gates-waived"):
+        f = prawduct_dir / name
+        try:
+            if f.is_file():
+                f.unlink()
+        except OSError as exc:
+            print(
+                f"NOTE: could not remove {name} ({exc}) — stale session state may carry over",
+                file=sys.stderr,
+            )
+
+    # Create session start timestamp (atomic — STH-8M3V). On failure the
+    # freshness gates fail closed this session (no marker → no fresh
+    # evidence/findings), which the NOTE names; never block session start.
+    stamp = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    try:
+        _core().atomic_write_text(prawduct_dir / ".session-start", stamp)
+    except (OSError, ImportError) as exc:
+        print(
+            f"NOTE: could not write .session-start ({exc}) — freshness gates will fail closed this session",
+            file=sys.stderr,
+        )
+
+    # Agent-facing messages go to stdout (SessionStart hooks show stdout to the model).
+    # stderr is only visible to the user in the terminal, not to the agent.
+
+    # Warn if project-state.yaml is oversized
+    state_path = prawduct_dir / "project-state.yaml"
+    if state_path.is_file():
+        try:
+            size = state_path.stat().st_size
+            if size > 40000:  # ~10K tokens ≈ ~40KB
+                print(
+                    f"NOTE: .prawduct/project-state.yaml is {size // 1024}KB — recommend compacting.\n"
+                    f"  Completed build plan chunks: keep only id, name, status (remove deliverables/acceptance_criteria).\n"
+                    f"  Test history: keep only the current count, remove per-chunk history.\n"
+                    f"  Change log: keep the last ~10 entries, remove older ones (git has the history)."
+                )
+        except Exception:  # prawduct:allow prawduct/broad-except -- size check must not block session start
+            pass
+
+    # Check for missing or unfilled project-preferences.md
+    prefs_path = prawduct_dir / "artifacts" / "project-preferences.md"
+    prefs_missing = not prefs_path.is_file()
+    prefs_unfilled = False
+    if not prefs_missing:
+        try:
+            content = prefs_path.read_text()
+            # Template has empty fields like "- **Language**:\n" — filled has content after colon
+            prefs_unfilled = "- **Language**:\n" in content
+        except Exception:  # prawduct:allow prawduct/broad-except -- prefs check must not block session start
+            pass
+
+    if prefs_missing or prefs_unfilled:
+        # Only warn if there's product source code (not a brand-new project).
+        # _has_product_code excludes framework tooling and .prawduct/ so a
+        # freshly-initialized empty repo doesn't trip this CRITICAL. Preferences
+        # are a code-time concern, so this stays gated on code — the discovery
+        # nudge below covers the no-code-yet (docs-first / brownfield) case.
+        if _gitstate()._has_product_code(project_dir):
+            print(
+                "CRITICAL: You MUST create .prawduct/artifacts/project-preferences.md before doing anything else.\n"
+                "  Infer preferences from the codebase (config files, test patterns, code style, existing conventions)\n"
+                "  and create it with sections: Language & Runtime, Code Style, Testing, Architecture Patterns, Tooling.\n"
+                "  This file is read before writing any code — it tells every session how this project's code should be written.\n"
+                "  Do this NOW, before responding to the user."
+            )
+
+    # Layer 0 of the structural-coverage chain (discovery not captured) is a probe
+    # — lib/coverage_probes.probe_discovery_not_captured — registered with the
+    # roster below and delivered through the advisory store, so it is dismissible
+    # per-clone (/prawduct:advisory dismiss) rather than an unconditional print.
+    # The staging against layer 1 (exactly one of the two speaks) lives with both
+    # probes in lib/coverage_probes on the shared predicate.
+
+    # Advisory PROBES are purely local: they read the consumer's own
+    # `.prawduct/` (backlog.md, project-state.yaml), independent of any sync.
+    # The file-sync runtime evaluated them inside `sync`; the plugin runtime has
+    # no sync, so the roster is run here, before the briefing reads the store, so
+    # any future feature probe refreshes `.advisories.json` at session start.
+    # Local + fail-soft (run_sync_advisories never raises); the broad guard is
+    # belt-and-suspenders so a future feature's faulty probe can't block startup.
+    try:
+        lib_root = _plugin_root()
+        if lib_root not in sys.path:
+            sys.path.insert(0, lib_root)
+        from lib.advisory_store import run_sync_advisories  # noqa: PLC0415 — lazy keeps top-level import cheap
+        from lib.probe_families import register_all as _register_all_probes  # noqa: PLC0415
+        # Register the full probe roster (lib/probe_families is the one place the
+        # family list lives — shared with `advisory show` reconstruction so neither
+        # call site runs the roster against an empty registry).
+        _register_all_probes()
+        run_sync_advisories(
+            project_dir, sync_version=_plugin_manifest_version() or ""
+        )
+    except Exception as exc:  # prawduct:allow prawduct/broad-except -- advisory probes must never block session start
+        print(f"NOTE: advisory probe step skipped: {exc}", file=sys.stderr)
+
+    # Capture git status baseline so session-start state doesn't trigger
+    # spurious stop-hook gates (no sync runs first in the plugin runtime).
+    # Atomic + best-effort (STH-8M3V): a torn/missing baseline makes every
+    # pre-existing dirty file count as session-changed (spurious gates), so
+    # the failure NOTE names that consequence; never block session start.
+    baseline = _gitstate().git_status_output(project_dir)
+    if baseline is not None:
+        try:
+            _core().atomic_write_text(prawduct_dir / ".session-git-baseline", baseline)
+        except (OSError, ImportError) as exc:
+            print(
+                f"NOTE: could not write .session-git-baseline ({exc}) — "
+                "pre-existing dirty files will count as session changes",
+                file=sys.stderr,
+            )
+
+    # Record HEAD's tree at session start (kernel-v3 chunk 04) — the base of
+    # the Stop-hook Critic gate's coverage question (Q2: composed review
+    # coverage must span this tree → the working tree at session end).
+    # HEAD^{tree}, not a working-tree capture: review facts anchor their base
+    # at HEAD's tree (D8), so this is the tree the session's evidence chain
+    # composes from — pre-session dirt rides inside every reviewed diff.
+    # Best-effort: on failure (unborn HEAD, git error) the marker stays
+    # absent and the gate degrades to a HEAD-tree base at session end
+    # (uncommitted-work jurisdiction), which the NOTE names.
+    try:
+        tree_proc = subprocess.run(
+            ["git", "rev-parse", "HEAD^{tree}"],
+            capture_output=True, text=True, cwd=str(project_dir), timeout=10,
+        )
+        if tree_proc.returncode == 0 and tree_proc.stdout.strip():
+            _core().atomic_write_text(
+                prawduct_dir / ".session-base-tree", tree_proc.stdout.strip()
+            )
+        elif baseline is not None:
+            print(
+                "NOTE: could not resolve HEAD^{tree} — the session Critic gate "
+                "will judge uncommitted work only this session",
+                file=sys.stderr,
+            )
+    except (OSError, subprocess.SubprocessError, ImportError) as exc:
+        # Same never-block-session-start posture as the baseline write above.
+        print(
+            f"NOTE: could not write .session-base-tree ({exc}) — the session "
+            "Critic gate will judge uncommitted work only this session",
+            file=sys.stderr,
+        )
+
+    # v5: Staleness scan + session briefing + subagent briefing
+    try:
+        staleness = _briefing().staleness_scan(project_dir)
+        briefing = _briefing().assemble_session_briefing(project_dir, staleness)
+        print(briefing)
+    except Exception as e:  # prawduct:allow prawduct/broad-except -- briefing must never block session start
+        print(f"NOTE: Session briefing failed: {e}", file=sys.stderr)
+
+    try:
+        _briefing().generate_subagent_briefing(project_dir)
+    except Exception as e:  # prawduct:allow prawduct/broad-except -- briefing must never block session start
+        print(f"NOTE: Subagent briefing generation failed: {e}", file=sys.stderr)
+
+    return 0
+
+
+# =============================================================================
+# critic-begin / critic-end commands (CRT-3X9D session-mutation guard)
+# =============================================================================
+
+
+def cmd_critic_begin(project_dir: Path, argv: list[str]) -> int:
+    """Dispatch one Critic review: derive + write the manifest (code, never a
+    model — kernel v3 D8) and set the critic-active marker so session-mutating
+    `clear` refuses to run.
+
+    Usage: critic-begin --mode <chunk|final|cumulative|verify-resolutions>
+           [--chosen-by <rationale>] [--chunk <id>] [--scope <s>] [--tier <t>]
+
+    `--mode` is REQUIRED — a bare invocation means a stale cached skill is
+    driving a newer hook (version skew), and refusing at dispatch with the
+    reload remedy beats running a 4-10 minute review whose manifest the
+    consolidator would reject (C9 tier 3 posture).
+
+    No-op (still exit 0) outside an onboarded repo — no session to protect,
+    no store to dispatch against. Exit 2 = verify-resolutions scope widened
+    past the demotion threshold (the skill falls back to `final`); exit 1 =
+    any other dispatch failure (reason on stderr).
+
+    Also resets `.critic-partials/` before writing the fresh manifest:
+    consolidate removes partials only on success, so a waived or stale-failed
+    review leaves them behind — and a leftover partial at the SAME commit as a
+    fresh dispatch would merge as if the new reviewer had written it.
+    """
+    flags = {
+        "--mode": "mode_token",
+        "--chosen-by": "chosen_by",
+        "--chunk": "chunk",
+        "--scope": "scope",
+        "--tier": "tier",
+    }
+    opts: dict[str, str] = {}
+    i = 0
+    while i < len(argv):
+        arg = argv[i]
+        if arg not in flags:
+            print(f"critic-begin: unknown argument {arg!r}", file=sys.stderr)
+            return 1
+        if i + 1 >= len(argv):
+            print(f"critic-begin: {arg} requires a value", file=sys.stderr)
+            return 1
+        opts[flags[arg]] = argv[i + 1]
+        i += 2
+    if "mode_token" not in opts:
+        print(
+            "critic-begin: --mode is required (this plugin's review dispatch "
+            "is code-written). A bare critic-begin means the running skill "
+            "predates this hook — reload the plugin (/reload-plugins or "
+            "restart the session) before reviewing.",
+            file=sys.stderr,
+        )
+        return 1
+
+    prawduct_dir = get_prawduct_dir(project_dir)
+    if not prawduct_dir.is_dir():
+        print("PRAWDUCT: not an onboarded repo — nothing to review or protect.")
+        return 0
+
+    # PDT-WT9K: never SILENTLY review a tree other than where the work lives. If
+    # the shell's cwd is inside a git repo whose toplevel differs from the tree
+    # this review resolved to, the resolver honored the launch pin over a
+    # different repo/worktree at cwd — refuse rather than review the wrong tree.
+    cwd_top = _gitstate()._git_toplevel(Path.cwd())
+    if cwd_top is not None and cwd_top != project_dir:
+        print(
+            f"critic-begin: refusing — the shell is in {cwd_top} but the review "
+            f"resolved to a different tree {project_dir}. Run /prawduct:critic from "
+            "inside the worktree that holds the work (EnterWorktree), or unset "
+            "CLAUDE_PROJECT_DIR — so the review can't silently target the wrong tree.",
+            file=sys.stderr,
+        )
+        return 1
+
+    consolidate = _critic_consolidate()
+    result = consolidate.begin_review(project_dir, **opts)
+    if result["status"] != "ok":
+        print(f"critic-begin: {result['reason']}", file=sys.stderr)
+        return 2 if result.get("kind") == "scope-widened" else 1
+
+    if result["cleared_leftovers"]:
+        print("PRAWDUCT: cleared leftover .critic-partials from a prior review.")
+    for note in result["notes"]:
+        print(f"PRAWDUCT NOTE: {note}", file=sys.stderr)
+    manifest = result["manifest"]
+    print(
+        f"PRAWDUCT: review {result['id']} dispatched — mode {manifest['mode']!r}, "
+        f"roster {', '.join(result['roster'])} ({manifest['roster_chosen_by']}), "
+        f"{len(manifest['files_changed'])} file(s) changed, "
+        f"tree {manifest['head_tree'][:12]}. Manifest: {result['path']}"
+    )
+    # PDT-WT9K: surface the resolved target so a wrong-tree review is obvious.
+    base_ref = manifest.get("base_commit") or manifest.get("base_tree") or "?"
+    print(
+        f"PRAWDUCT: reviewing worktree {manifest.get('worktree')} "
+        f"branch {manifest.get('branch') or '(detached)'} "
+        f"base {base_ref[:12]} — confirm this is where the work lives."
+    )
+    siblings = [
+        w for w in _briefing()._detect_worktrees(project_dir)
+        if w.get("is_active") != "true"
+    ]
+    if siblings:
+        # ``branch`` is absent on a bare-repo worktree entry (git emits `bare`,
+        # not a branch/detached line) — guard like briefing's own consumer.
+        listed = "; ".join(f"{w.get('path', '?')} [{w.get('branch', '?')}]" for w in siblings)
+        print(
+            f"PRAWDUCT: {len(siblings)} other worktree(s) on this repo: {listed} "
+            "— if the work is in one of them, run /prawduct:critic from there."
+        )
+    if _critic_marker().write_marker(prawduct_dir):
+        print("PRAWDUCT: critic-active marker set (session-mutating clear is guarded).")
+    return 0
+
+
+def cmd_critic_end(project_dir: Path) -> int:
+    """Clear the critic-active marker at the end of a review. Idempotent — exit 0
+    whether or not a marker was present (a crashed review's marker also expires
+    by TTL and is swept at the next session start)."""
+    prawduct_dir = get_prawduct_dir(project_dir)
+    _critic_marker().clear_marker(prawduct_dir)
+    return 0
+
+
+def cmd_critic_consolidate(project_dir: Path) -> int:
+    """Merge complete reviewer partials into evidence facts + the derived cache.
+
+    The deterministic write path of the Critic data plane (kernel v3 D8):
+    reviewers write per-role partials against the code-written dispatch
+    manifest; this command — invoked by the SubagentStop hook as each
+    finishes, by the single-pass reviewing fork as its last step, and by the
+    session-end backstop — appends the review fact (idempotent by dispatch
+    id), appends any resolution facts, and regenerates .critic-findings.json
+    as a derived view carrying its source fact_id. See
+    ``lib/critic_consolidate.py`` for the full contract and exit codes."""
+    lib_root = _plugin_root()
+    if lib_root not in sys.path:
+        sys.path.insert(0, lib_root)
+    from lib import critic_consolidate  # noqa: PLC0415 — lazy keeps top-level cheap
+
+    return critic_consolidate.consolidate(project_dir)
+
+
+def cmd_subagent_stop(project_dir: Path, stop_input: dict | None = None) -> int:
+    """SubagentStop trigger: consolidate Critic partials as each reviewer finishes.
+
+    Registered for the ``critic-reviewer`` agent type. Runs `critic-consolidate`
+    best-effort — it no-ops until every roster role has reported, then merges
+    exactly once, so firing per-reviewer is safe and idempotent. This hook is
+    ADVISORY: it ALWAYS exits 0 and never blocks the subagent. The enforcing gate
+    is the session-end backstop (cmd_stop) — if this trigger somehow never fires
+    (matcher drift, a harness change), the lingering marker still blocks at
+    session end, so consolidation is event-driven-fast but session-end-guaranteed.
+
+    ``stop_input`` is the parsed SubagentStop stdin: ``cwd`` locates the project
+    (the reviewer's cwd is the project root), ``agent_type`` is the dispatched
+    agent name (scoped ``prawduct:critic-reviewer`` for a plugin agent). The
+    matcher already scopes us to critic-reviewer; the ``agent_type`` check is
+    defense-in-depth against matcher-config drift.
+    """
+    stop_input = stop_input or {}
+
+    # Prefer the payload cwd (the subagent ran in the project root); fall back to
+    # the dispatched project_dir. get_prawduct_dir then walks up to find .prawduct.
+    cwd = stop_input.get("cwd")
+    if isinstance(cwd, str) and cwd.strip():
+        candidate = Path(cwd)
+        if candidate.is_dir():
+            project_dir = candidate
+
+    # Defensive agent-type gate: if the payload names an agent that is not a
+    # critic-reviewer, there is nothing for us to consolidate. Accept both the
+    # bare name and the plugin-scoped `prawduct:critic-reviewer` form.
+    agent_type = stop_input.get("agent_type")
+    if (
+        isinstance(agent_type, str)
+        and agent_type.strip()
+        and not agent_type.strip().endswith("critic-reviewer")
+    ):
+        return 0
+
+    lib_root = _plugin_root()
+    if lib_root not in sys.path:
+        sys.path.insert(0, lib_root)
+    try:
+        from lib import critic_consolidate  # noqa: PLC0415 — lazy keeps top-level cheap
+
+        critic_consolidate.consolidate(project_dir)
+    except Exception as exc:  # prawduct:allow prawduct/broad-except -- a SubagentStop hook must never block the subagent; the session-end backstop is the enforcing gate
+        print(f"subagent-stop: consolidation deferred to session end ({exc})", file=sys.stderr)
+    # Always advisory — never propagate consolidate's exit code as a block.
+    return 0
+
+
+# =============================================================================
+# stop command
+# =============================================================================
+
+
+def _read_stop_stdin() -> dict:
+    """Parse the Stop-hook JSON payload Claude Code writes to stdin (session_id,
+    transcript_path, ``background_tasks``, …). Fail-soft above all: an
+    interactive TTY, empty stdin, or malformed JSON yields ``{}`` so the gate
+    degrades to its no-signal behavior (block as before). Never raises — a read
+    error must not crash the session-end gate. Uses the same stdin-read pattern
+    as ``cmd_user_prompt_submit`` but stays SILENT on failure (no stderr note):
+    a routine Stop with no/empty/garbage payload is the common case, and the safe
+    fallback (``{}`` → block exactly as before) is the correct outcome, so there
+    is nothing worth surfacing."""
+    try:
+        # An interactive terminal (a human running the hook by hand) has no
+        # JSON to read and would block on read(); skip it. The harness always
+        # provides a closed pipe, so this guard only affects manual invocation.
+        if sys.stdin is None or sys.stdin.isatty():
+            return {}
+        raw = sys.stdin.read()
+    except Exception:  # prawduct:allow prawduct/broad-except -- a stdin read error must never crash the gate
+        return {}
+    if not raw or not raw.strip():
+        return {}
+    try:
+        data = json.loads(raw)
+    except (json.JSONDecodeError, ValueError):
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
+def _worktree_redirect_note(project_dir: Path) -> str | None:
+    """One-line Stop-path signal when ``.prawduct/`` resolution was REDIRECTED
+    to a git-worktree toplevel that differs from ``CLAUDE_PROJECT_DIR``.
+
+    ``get_project_dir()`` follows the session into a worktree: the harness pins
+    ``CLAUDE_PROJECT_DIR`` to the launch dir, but a session that moved into a
+    worktree writes — and the Stop gates must read — that worktree's state
+    (STH-4K7N). That redirect otherwise fails safe but *silently*; surfacing it
+    makes the tree the gates below evaluate observable, and makes a wrong
+    redirect visible (should the cwd-is-the-worktree assumption ever break)
+    instead of invisibly mis-gating.
+
+    Returns ``None`` — no note, no noise — when the env pin is unset or already
+    equals the resolved dir (the common single-checkout / launched-in-worktree
+    case: no redirect happened). Observational only; never contributes a blocker."""
+    env_raw = os.environ.get("CLAUDE_PROJECT_DIR")
+    if not env_raw:
+        return None
+    try:
+        env_dir = Path(env_raw).resolve()
+    except Exception:  # prawduct:allow prawduct/broad-except -- a malformed env path must not crash the Stop hook
+        return None
+    if env_dir == project_dir:
+        return None
+    branch = _gitstate().current_branch(project_dir)
+    branch_str = f" for branch '{branch}'" if branch else ""
+    return (
+        f"WORKTREE: .prawduct/ state resolved to worktree {project_dir}{branch_str}, "
+        f"not CLAUDE_PROJECT_DIR ({env_dir}) — the Stop gates read THIS worktree (STH-4K7N)."
+    )
+
+
+def cmd_stop(project_dir: Path, stop_input: dict | None = None) -> int:
+    """Check governance gates before session end.
+
+    ``stop_input`` is the parsed Stop-hook stdin payload (the dispatch passes
+    ``_read_stop_stdin()``); ``None`` defaults to ``{}`` so direct callers and
+    tests keep working. Its ``background_tasks`` array (Claude Code v2.1.145+)
+    drives the STH-3W7F deferral: while harness-tracked background work is in
+    flight, the would-be blockers are DEFERRED to the next Stop rather than
+    blocking now (the session can't end anyway — the harness re-wakes it). The
+    deferral is stateless, so it re-arms automatically once the array empties.
+    """
+    prawduct_dir = get_prawduct_dir(project_dir)
+    stop_input = stop_input or {}
+
+    # Skip if no .prawduct directory
+    if not prawduct_dir.is_dir():
+        return 0
+
+    # STH-3R8K: make STH-4K7N's silent worktree redirect observable. When the
+    # session moved into a git worktree, get_project_dir() resolved .prawduct/ to
+    # that worktree's toplevel rather than CLAUDE_PROJECT_DIR — announce it here
+    # so the tree the gates below evaluate is never a mystery (SessionStart ran
+    # in the launch dir and could not see a mid-cycle move). Informational only.
+    _redirect_note = _worktree_redirect_note(project_dir)
+    if _redirect_note:
+        print(_redirect_note, file=sys.stderr)
+
+    blockers: list[str] = []
+    canary_findings: list[str] = []
+
+    # STH-3W7F: is harness-tracked background work still producing the diff?
+    # When so, defer the session-end blockers (return 0 + a note) instead of
+    # blocking — the gate re-arms on the next Stop once the work lands. Computed
+    # once here; used to skip the PR network probe and to convert blockers below.
+    defer_active, in_flight_tasks = _gates().background_tasks_in_flight(stop_input)
+
+    # New-gate attribution (design §5a): load the plugin version + gate registry
+    # once, then prefix every blocker with "[prawduct vX · gate: <name>]" so a
+    # surprise block is traceable to the version (and flagged NEW when a recent
+    # update introduced the gate). Loaded best-effort — `_attributed` degrades to
+    # a bare gate label if the manifest/registry is unreadable.
+    _plugin_ver = _plugin_manifest_version()
+    _gate_registry = _load_gate_registry()
+
+    def _attributed(gate_id: str, body: str) -> str:
+        return f"{_gate_attribution(gate_id, _gate_registry, _plugin_ver)}\n{body}"
+
+    # v5: Compliance canary (informational)
+    try:
+        canary_findings = _compliance().compliance_canary(project_dir)
+    except Exception:  # prawduct:allow prawduct/broad-except -- canary must never block session end
+        pass
+
+    # Check for changes (session-scoped: only new changes since session start).
+    # Capture `git status --porcelain` once and share it across both probes
+    # (STH-6Q9D) instead of each re-spawning git.
+    _gs = _gitstate()
+    status_output = _gs.git_status_output(project_dir)
+    has_changes = _gs.git_has_session_changes(project_dir, status_output)
+    # "Doc-only" = no session-changed file is judgeable (THE predicate,
+    # coverage_algebra.is_judgeable_path via gates — kernel-v3 chunk 04). A
+    # governance-protected .md (skills/, methodology/, templates/, CLAUDE.md)
+    # is judgeable, so it no longer skips the reflection/Critic gates.
+    doc_only = _gates().session_changes_all_non_judgeable(project_dir, status_output) if has_changes else False
+
+    # Load agent-declared gate waivers (auto-cleared at session start).
+    # The convention: a waiver is only NOTED to the user when it actually
+    # suppressed a blocker. Notes for gates that would have been silent anyway
+    # are noise — they make every session look like it bypassed governance.
+    waivers = _gates()._read_gates_waived(prawduct_dir)
+    waiver_notes: list[str] = []
+    KNOWN_WAIVER_KEYS = {"reflection", "critic", "pr"}
+    unknown_waiver_keys = sorted(k for k in waivers if k not in KNOWN_WAIVER_KEYS)
+    if unknown_waiver_keys:
+        # Stderr-only warning so the agent learns about typos. Doesn't affect gate
+        # behavior — unknown keys simply have no effect.
+        print(
+            f"\nNOTE: .gates-waived has unknown keys (no effect): {', '.join(unknown_waiver_keys)}. "
+            f"Valid keys: {', '.join(sorted(KNOWN_WAIVER_KEYS))}.",
+            file=sys.stderr,
+        )
+
+    # Determine if there's an active build plan (used by both gates).
+    # "Active" means incomplete chunks remain — a completed plan (all [x]) does not count.
+    has_build_plan = _gates()._has_active_build_plan_file(prawduct_dir) or _gates()._has_build_plan_in_state(prawduct_dir)
+
+    # Gate 1: Reflection
+    # - With active build plan: BLOCKING (structured work deserves reflection)
+    # - Without build plan: ADVISORY (exploratory/Q&A — reflection optional)
+    # - Doc-only changes: skipped entirely
+    reflected_file = prawduct_dir / ".session-reflected"
+    reflection_sufficient = False
+    if reflected_file.is_file():
+        try:
+            content = reflected_file.read_text().strip()
+            # Require at least ~50 chars to avoid empty/token reflections
+            reflection_sufficient = len(content) >= 50
+        except Exception:  # prawduct:allow prawduct/broad-except -- gate check must not crash session end
+            pass
+
+    # Reflection blocker fires when there are real changes, the reflection is
+    # missing or too short, the changes are not all docs, AND a build plan is
+    # active. (Without a build plan, the gate is advisory — see below.)
+    reflection_would_block = (
+        has_changes and not reflection_sufficient and not doc_only and has_build_plan
+    )
+    if reflection_would_block:
+        if "reflection" in waivers:
+            waiver_notes.append(f"reflection: waived ({waivers['reflection']})")
+        else:
+            blockers.append(_attributed("reflection",
+                "REFLECTION: Files were modified but no session reflection was captured.\n"
+                "  Append your reflection to .prawduct/.session-reflected. This is a narrative of what\n"
+                "  happened: what changed, what surprised you, what the methodology helped or hindered.\n"
+                "  It gets archived to reflections.md automatically on next session start.\n"
+                "\n"
+                "  Going forward, reflect at WORK BOUNDARIES — right after Critic passes, after a bug\n"
+                "  fix, after error recovery — not at session end. Writing reflections when the user is\n"
+                "  waiting on /clear creates friction and hurts quality. Append to .session-reflected\n"
+                "  as you go; the file accumulates across the session. Then /clear is instant.\n"
+                "\n"
+                "  If this session produced a durable lesson (a rule future sessions should follow),\n"
+                "  also add it to .prawduct/learnings.md. Learnings are concise standing rules;\n"
+                "  the session reflection is the story behind them.\n"
+                "\n"
+                "  Escape hatch: if this gate cannot be satisfied this session (rare for reflection —\n"
+                "  it is meant to be cheap), declare a waiver so this gate stops re-firing:\n"
+                "    echo '{\"reflection\": \"reason — be specific\"}' > .prawduct/.gates-waived\n"
+                "  Empty reasons are rejected; the file auto-clears next session. See\n"
+                "  `/prawduct:methodology building` (Gate waivers) for when this is appropriate.\n"
+            ))
+    elif (
+        has_changes
+        and not reflection_sufficient
+        and not doc_only
+        and not has_build_plan
+        and "reflection" not in waivers
+    ):
+        # Advisory: print to stderr but don't block
+        print(
+            "\nNOTE: No session reflection captured. Reflection is not required for exploratory work,\n"
+            "  but if this session produced useful insights, consider writing them to\n"
+            "  .prawduct/.session-reflected (archived automatically on next session start).\n",
+            file=sys.stderr,
+        )
+
+    # Gate 2: Critic review (only when building against a plan)
+    # Skipped for doc-only changes (no code to review). The waiver is only
+    # noted when the gate would have actually blocked (valid findings absent).
+    # `has_changes` already reflects baseline-aware diff via git_has_session_changes,
+    # so no extra "code changes" check is needed beyond `not doc_only`.
+    #
+    # v1.4 F6 — Type: designer-handoff also skips the gate (formalizes the
+    # prior user-memory carveout into a framework rule). Other declared types
+    # (code, doc-only, cleanup, cumulative-final) leave the gate behavior
+    # unchanged — only Critic's *protocol* adjusts inside the agent.
+    designer_handoff_skip = False
+    # v1.5 Chunk 04 — Type: trivial fileset + rationale enforcement. The
+    # checks fire BEFORE the Critic gate and emit BLOCKING for any
+    # violation, but the chunk is still treated as `code` for gate
+    # purposes (so the Critic gate still applies on top). Fail-closed:
+    # over-declaring `trivial` produces a named blocker pointing at the
+    # specific bound violated, never a silent carveout. The trivial
+    # check does NOT honor the doc-only skip — bounds like
+    # "no edits under skills/" matter even when the diff is empirically
+    # all-.md (the skills/ tree itself is pure prose). Doc-only only
+    # carves out the Critic protocol (which has no code to review); the
+    # trivial-declaration contract is independent.
+    trivial_block_reason = ""
+    if has_changes and has_build_plan:
+        current_chunk_id = _buildplan_refs()._current_chunk_id_from_status(prawduct_dir)
+        if current_chunk_id is not None:
+            chunk_type, type_error = _buildplan_refs()._parse_build_plan_chunk_type(prawduct_dir, current_chunk_id)
+            # v1.5.1 Chunk 04(a): surface typo'd Type values. Pre-fix, the
+            # parser's "unknown type: ..." message was discarded so the author
+            # never saw it. Surfacing in waiver_notes makes the typo visible
+            # at session-end and in the next stop-hook briefing without
+            # changing fail-closed semantics (chunk still runs as `code` per
+            # parser default). Restricted to "unknown type:" errors only —
+            # "chunk not found" / "missing build-plan" errors indicate a
+            # structural fixture issue, not actionable user feedback.
+            if type_error and type_error.startswith("unknown type:"):
+                waiver_notes.append(f"chunk-type-parse-error: {type_error}")
+            if chunk_type == "designer-handoff" and not doc_only:
+                designer_handoff_skip = True
+                waiver_notes.append(
+                    f"critic: skipped (Chunk {current_chunk_id} declares Type: designer-handoff — v1.4 F6 carveout)"
+                )
+            elif chunk_type == "trivial":
+                fileset_ok, fileset_reason = _gates()._is_trivial_fileset_eligible(project_dir)
+                if not fileset_ok:
+                    trivial_block_reason = fileset_reason
+                else:
+                    _, rationale_error = _buildplan_refs()._parse_build_plan_chunk_trivial_rationale(
+                        prawduct_dir, current_chunk_id
+                    )
+                    if rationale_error:
+                        trivial_block_reason = rationale_error
+
+    # Gate 2a (Chunk 05, CRT-9K7T follow-up): an ABANDONED coordinator Critic
+    # review — the .critic-active marker is still set because critic-begin ran but
+    # consolidation never landed. With Agent subagents background-by-default, a
+    # coordinator fork dispatches its reviewers and returns before persisting; the
+    # lingering marker is the out-of-fork signal, and it lives OUTSIDE the flow
+    # that fails (so it catches a review that never reached its writeback). The
+    # backstop now CONSOLIDATES-OR-BLOCKS as a pure function of the partials on
+    # disk (Chunk 02's pending_state / consolidate):
+    #   • complete partials → self-heal: run critic-consolidate (deterministic, no
+    #     model re-run). Success clears the marker + appends the review fact, so
+    #     the composition gate below judges the healed evidence like any other
+    #     (kernel-v3 ch.04); a failed consolidation blocks.
+    #   • incomplete partials → block naming the missing reviewer(s) to re-dispatch.
+    #   • marker but no manifest → a single-pass (or never-dispatched) review that
+    #     crashed: block, re-run /prawduct:critic.
+    # Read-only PRESENCE for the marker (marker_present, NOT review_active): the
+    # gate must never sweep the marker it reads. Deferred with the other blockers
+    # while reviewers are still in flight (defer_active) — the deferral is what
+    # separates an in-flight review from an abandoned one, so the self-heal only
+    # runs once the background reviewers have landed.
+    abandoned_critic = False
+    marker_present = False
+    if has_changes and has_build_plan and not doc_only and not designer_handoff_skip:
+        try:
+            marker_present = _critic_marker().marker_present(prawduct_dir)
+        except Exception:  # prawduct:allow prawduct/broad-except -- gate check must not crash session end
+            marker_present = False
+    if marker_present:
+        if "critic" in waivers:
+            waiver_notes.append(
+                f"critic: waived ({waivers['critic']}) — .critic-active marker still present"
+            )
+        elif defer_active:
+            # Reviewers still running (background_tasks non-empty): don't self-heal
+            # or block yet — emit a deferrable blocker so the deferral note fires and
+            # re-arms next Stop once the array empties.
+            abandoned_critic = True
+            blockers.append(_attributed("critic",
+                "CRITIC REVIEW (in flight): reviewers are still running; consolidation\n"
+                "  will run as they finish. (Deferred while background work is in flight.)\n"
+            ))
+        else:
+            _escape = (
+                "\n"
+                "  Escape hatch: if a review genuinely cannot complete this session, clear\n"
+                "  the marker and declare a waiver so this gate stops re-firing every turn:\n"
+                "    rm .prawduct/.critic-active\n"
+                "    rm -rf .prawduct/.critic-partials\n"
+                "    echo '{\"critic\": \"reason — be specific\"}' > .prawduct/.gates-waived\n"
+                "  Empty reasons are rejected; the file auto-clears next session.\n"
+            )
+            try:
+                state, missing = _critic_consolidate().pending_state(prawduct_dir)
+            except Exception:  # prawduct:allow prawduct/broad-except -- gate check must not crash session end
+                state, missing = "unreadable", []
+            if state == "complete":
+                # Self-heal: consolidate deterministically. Success clears the marker
+                # and appends the fact the composition gate then judges; failure
+                # (a malformed partial, a store write error) leaves the marker → block.
+                try:
+                    rc = _critic_consolidate().consolidate(project_dir)
+                except Exception:  # prawduct:allow prawduct/broad-except -- gate check must not crash session end
+                    rc = 1
+                if rc == 0 and not _critic_marker().marker_present(prawduct_dir):
+                    waiver_notes.append(
+                        "critic: self-healed abandoned review — consolidated reviewer "
+                        "partials into findings + ledger anchor; marker cleared."
+                    )
+                else:
+                    abandoned_critic = True
+                    blockers.append(_attributed("critic",
+                        "CRITIC REVIEW (consolidation failed): every reviewer reported, but\n"
+                        "  the partials could not be consolidated — the specific cause is on\n"
+                        "  stderr above (e.g. HEAD moved since dispatch, a malformed partial,\n"
+                        "  or a ledger failure). Fix the cause or re-run the review:\n"
+                        "    /prawduct:critic\n"
+                        + _escape
+                    ))
+            elif state == "incomplete":
+                abandoned_critic = True
+                missing_str = ", ".join(missing) if missing else "one or more reviewers"
+                blockers.append(_attributed("critic",
+                    "CRITIC REVIEW (incomplete): a coordinator review is pending but not\n"
+                    f"  every reviewer reported. Missing partial(s): {missing_str}.\n"
+                    "  Re-dispatch the missing reviewer(s), or re-run the whole review:\n"
+                    "    /prawduct:critic\n"
+                    + _escape
+                ))
+            else:  # "none" (marker, no manifest) or "unreadable"
+                abandoned_critic = True
+                if state == "unreadable":
+                    cause = (
+                        "  a coordinator manifest exists but is unreadable or schema-invalid,\n"
+                        "  so the pending review cannot be consolidated.\n"
+                    )
+                else:
+                    cause = (
+                        "  no coordinator manifest is present, so a single-pass review or a\n"
+                        "  coordinator dispatch crashed before writing.\n"
+                    )
+                blockers.append(_attributed("critic",
+                    "CRITIC REVIEW (not completed): a review set the .critic-active marker\n"
+                    "  but never recorded findings —\n"
+                    + cause +
+                    "  Re-run the review:\n"
+                    "    /prawduct:critic\n"
+                    + _escape
+                ))
+
+    critic_would_block = False
+    # Kernel-v3 chunk 04: the gate's question is COMPOSED COVERAGE (Q2) —
+    # does review evidence in the shared store span this session's base tree
+    # → the current working tree, with zero unresolved blocking findings?
+    # (lib/gates.session_review_verdict → coverage_algebra). No findings-file
+    # mtime, no mode labels, no verify-resolutions scope subsets — a review
+    # recorded pre-commit vouches for the verbatim commit from any worktree
+    # or session, and post-review edits leave a coverage gap whose remedy is
+    # a verify-resolutions pass.
+    critic_verdict: dict = {}
+    # Skip the coverage gate when the abandoned-marker blocker already fired:
+    # both describe one underlying cause (the review never landed), and the
+    # abandoned message is the accurate, actionable one — don't double-block.
+    if (
+        has_changes and has_build_plan and not doc_only
+        and not designer_handoff_skip and not abandoned_critic
+    ):
+        critic_would_block = True
+        try:
+            critic_verdict = _gates().session_review_verdict(project_dir)
+            critic_would_block = critic_verdict.get("status") != "covered"
+        except Exception as exc:  # prawduct:allow prawduct/broad-except -- gate check must not crash session end
+            # Fail closed AND loud (C3): carry the crash into the verdict so
+            # the block message names the internal error instead of
+            # misreporting it as "no review evidence composes". Distinct from
+            # the verdict's own RETURNED "error" status (capture/HEAD
+            # failures), which keeps its legacy rendering — those reasons are
+            # already attributed and remedy-bearing.
+            critic_verdict = {
+                "status": "gate-crash",
+                "reason": f"gate check crashed: {exc!r} — internal error, not a coverage verdict",
+            }
+
+    if critic_would_block:
+        _escape_hatch = (
+            "\n"
+            "  Escape hatch: if Critic legitimately cannot run this session — e.g., the chunk\n"
+            "  is in a designer-handoff phase (mark `Type: designer-handoff` in the build plan\n"
+            "  to skip this gate automatically), or the GO/NO-GO is not yet verifiable because\n"
+            "  it depends on a human authoring step or external system — declare a waiver so\n"
+            "  this gate stops re-firing every turn:\n"
+            "    echo '{\"critic\": \"reason — be specific\"}' > .prawduct/.gates-waived\n"
+            "  Empty reasons are rejected; the file auto-clears next session. See\n"
+            "  `/prawduct:methodology building` (Gate waivers) for when this is appropriate.\n"
+        )
+        verdict_status = critic_verdict.get("status", "")
+        if "critic" in waivers:
+            waiver_notes.append(f"critic: waived ({waivers['critic']})")
+        elif verdict_status == "schema-ahead":
+            blockers.append(_attributed("critic",
+                "CRITIC REVIEW (evidence from a newer plugin): "
+                f"{critic_verdict.get('reason', '')}\n"
+                "  This session cannot judge those facts, so the gate fails closed rather\n"
+                "  than passing on evidence it cannot read.\n"
+                + _escape_hatch
+            ))
+        elif verdict_status == "gate-crash":
+            blockers.append(_attributed("critic",
+                "CRITIC REVIEW (gate error): the coverage check itself failed —\n"
+                f"  {critic_verdict.get('reason', 'unknown internal error')}\n"
+                "  This is NOT a coverage verdict: the gate fails closed rather than\n"
+                "  passing on a check it could not complete. Fix the underlying error\n"
+                "  (or report it via /prawduct:report-bug), then retry.\n"
+                + _escape_hatch
+            ))
+        elif verdict_status == "blocked":
+            unresolved = critic_verdict.get("unresolved", [])
+            lines = "".join(
+                f"    - {e.get('review_id')}/{e.get('fid')}: {e.get('title', '<no title>')}\n"
+                for e in unresolved[:5]
+            )
+            more = f"    (+{len(unresolved) - 5} more)\n" if len(unresolved) > 5 else ""
+            blockers.append(_attributed("critic",
+                "CRITIC REVIEW (unresolved blocking findings): review coverage composes\n"
+                f"  over this session's changes, but carries {len(unresolved)} unresolved BLOCKING finding(s):\n"
+                + lines + more +
+                "  Fix them, then run /prawduct:critic verify-resolutions — it records the\n"
+                "  resolution facts and this same evidence passes (no full re-review).\n"
+                + _escape_hatch
+            ))
+        else:
+            base = (critic_verdict.get("base") or "")[:12]
+            target = (critic_verdict.get("target") or "")[:12]
+            span = f" ({base} → {target})" if base and target else ""
+            detail = critic_verdict.get("reason", "no review evidence composes")
+            blockers.append(_attributed("critic",
+                "CRITIC REVIEW: no composed review coverage spans this session's\n"
+                f"  changes{span}: {detail}\n"
+                "  If you have completed a chunk, run `/prawduct:critic` now. It runs as an\n"
+                "  independent agent and records a review fact the gates compose over.\n"
+                "  If a review already ran and you edited files afterward (fixes, or a\n"
+                "  SELECTIVE commit of only part of the reviewed state), the current tree was\n"
+                "  never reviewed — run /prawduct:critic verify-resolutions to review the\n"
+                "  delta and close the gap. If unreviewed changes were committed mid-session,\n"
+                "  /prawduct:critic cumulative reviews the whole branch span.\n"
+                + _escape_hatch
+            ))
+
+    # v1.5 Chunk 04: Type: trivial enforcement runs alongside the Critic
+    # gate (not in place of it). The chunk is still treated as `code`
+    # for gate purposes; this block adds a separate BLOCKING if either
+    # the file-set bound or rationale presence failed.
+    if trivial_block_reason:
+        blockers.append(_attributed("trivial",
+            f"TYPE: TRIVIAL — declared but {trivial_block_reason}.\n"
+            "  Either fix the violation or change Type to `code`.\n"
+        ))
+
+    # Gate 2.5: Advisory mode gate — fires only when Gate 2 passed (composed
+    # coverage vouches for the current state). The mode is telemetry read from
+    # the latest review FACT in the store (kernel-v3 ch.04 — no gate reads the
+    # findings cache): when all chunks of a multi-chunk plan are complete but
+    # that review ran Goals 1-3 only, end-of-cycle synthesis (Coherence,
+    # Design, Learnings Cross-Check, Backlog Reconciliation) hasn't run.
+    # Advisory NOT blocking — chunk-mode reviews are valid mid-cycle, and the
+    # builder may legitimately defer the final review (e.g., next session).
+    if has_changes and not doc_only and not critic_would_block:
+        mode_satisfied, mode_reason = _gates()._critic_session_satisfies_gate(project_dir)
+        if not mode_satisfied:
+            print("", file=sys.stderr)
+            print(f"NOTE: {mode_reason}", file=sys.stderr)
+
+    # Gate 3: PR review evidence (when a PR exists for the current branch).
+    # Skipped for doc-only changes AND for sessions with no changes at all:
+    # a session that changed nothing incurred no new review obligation, and
+    # the `gh pr list` probe below is a network call (300-800ms typical,
+    # 15s timeout worst case) that used to fire on EVERY turn-end of a pure
+    # Q&A session on a feature branch (review-fixes Chunk 1). Merge-time
+    # enforcement lives in `/prawduct:pr` regardless. The waiver is only
+    # noted when the gate would have actually blocked (real PR exists with
+    # no valid evidence).
+    pr_reviews_dir = prawduct_dir / ".pr-reviews"
+    pr_would_block = False
+    pr_block_branch = ""
+    # STH-3W7F: skip the `gh pr list` network probe entirely while background
+    # work is in flight — the Stop is being deferred regardless, so paying for
+    # the network call (and any PR block it would raise) buys nothing.
+    if has_changes and not doc_only and not defer_active:
+        try:
+            branch_result = subprocess.run(
+                ["git", "branch", "--show-current"],
+                capture_output=True, text=True, cwd=str(project_dir), timeout=10,
+            )
+            current_branch = branch_result.stdout.strip() if branch_result.returncode == 0 else ""
+            if current_branch and current_branch not in ("main", "master", "develop"):
+                # Check if there's a PR for this branch
+                pr_check = subprocess.run(
+                    ["gh", "pr", "list", "--head", current_branch, "--json", "number", "--limit", "1"],
+                    capture_output=True, text=True, cwd=str(project_dir), timeout=15,
+                )
+                has_pr = False
+                if pr_check.returncode == 0 and pr_check.stdout.strip():
+                    try:
+                        prs = json.loads(pr_check.stdout)
+                        has_pr = len(prs) > 0
+                    except json.JSONDecodeError:
+                        pass
+
+                if has_pr:
+                    # Symmetry with `/prawduct:pr create` Step 1b: when the PR diff
+                    # is doc-only (all .md), the cumulative-Critic and PR-reviewer
+                    # gates were legitimately skipped at create-time and no
+                    # evidence file was written. Gate 3 would otherwise block
+                    # session end with a misleading "no review evidence" error for
+                    # a PR that doesn't need one. If a later session adds a non-.md
+                    # commit, the check returns False and the gate fires as
+                    # intended — matching the create-flow contract. (The parallel
+                    # `Type: trivial` fast-path was retired — fileset-eligibility
+                    # was standing in for a per-chunk `Type: trivial` declaration,
+                    # so feature clusters that only touched existing files skipped
+                    # both review gates. A trivial code PR now gets the full
+                    # review like any other code change.)
+                    pr_is_doc_only, _ = _coverage()._pr_diff_is_doc_only(project_dir)
+                    if pr_is_doc_only:
+                        pass  # Doc-only fast-path — no evidence required
+                    else:
+                        # Check for review evidence with content validation
+                        branch_file = current_branch.replace("/", "--") + ".json"
+                        evidence_path = pr_reviews_dir / branch_file
+                        pr_review_valid = False
+                        if evidence_path.is_file():
+                            try:
+                                data = json.loads(evidence_path.read_text())
+                                if isinstance(data.get("findings"), list) and data.get("summary"):
+                                    pr_review_valid = True
+                            except (json.JSONDecodeError, OSError):
+                                pass
+                        if not pr_review_valid:
+                            pr_would_block = True
+                            pr_block_branch = current_branch
+        except Exception:  # prawduct:allow prawduct/broad-except -- gate check must not crash session end
+            pass
+
+    if pr_would_block:
+        if "pr" in waivers:
+            waiver_notes.append(f"pr: waived ({waivers['pr']})")
+        else:
+            blockers.append(_attributed("pr",
+                f"PR REVIEW: PR exists for branch '{pr_block_branch}' but no valid review evidence found.\n"
+                "  Run /prawduct:pr to invoke the PR reviewer before merging.\n"
+                "  The reviewer writes evidence to .prawduct/.pr-reviews/<branch>.json\n"
+                "\n"
+                "  Escape hatch: if PR review cannot run this session (e.g., reviewer agent is\n"
+                "  unavailable and merge is not imminent), declare a waiver so this gate stops\n"
+                "  re-firing every turn:\n"
+                "    echo '{\"pr\": \"reason — be specific\"}' > .prawduct/.gates-waived\n"
+                "  Empty reasons are rejected; the file auto-clears next session. PR review is\n"
+                "  the release-readiness gate — waive only when merge will not happen this\n"
+                "  session. See `/prawduct:methodology building` (Gate waivers).\n"
+            ))
+
+    # Surface any waivers so the agent (and reviewer) can see what was skipped.
+    # Waivers are auto-cleared at next session start so they never carry forward.
+    if waiver_notes:
+        print("", file=sys.stderr)
+        print("GATE WAIVERS (this session, .gates-waived):", file=sys.stderr)
+        for note in waiver_notes:
+            print(f"  {note}", file=sys.stderr)
+
+    # STH-3W7F deferral: harness-tracked background work is still producing the
+    # diff, so the gate(s) below would fire on work that isn't finished and a
+    # session that can't end anyway (the harness re-wakes it when the job lands).
+    # DEFER — not skip: return 0 with a note now; the gate is stateless and
+    # re-arms on the next Stop once `background_tasks` empties, so the Critic /
+    # reflection still fire when the work actually lands. This is the in-flight
+    # classification, not a demotion to an ignorable warning.
+    if blockers and defer_active:
+        print("", file=sys.stderr)
+        print(
+            f"GATES DEFERRED — {len(in_flight_tasks)} background task(s) in flight; "
+            "the diff isn't final and the session can't end yet, so the gate(s) "
+            "below are deferred to the next Stop (NOT skipped — they fire once the "
+            "work lands):",
+            file=sys.stderr,
+        )
+        for task in in_flight_tasks:
+            print(f"  · {task}", file=sys.stderr)
+        for blocker in blockers:
+            # First line of each blocker names the gate — enough to show what's pending.
+            print(f"  deferred: {blocker.splitlines()[0]}", file=sys.stderr)
+        return 0
+
+    # Report blockers or exit clean
+    if blockers:
+        print("", file=sys.stderr)
+        print("BLOCKED — resolve before ending session:", file=sys.stderr)
+        print("", file=sys.stderr)
+        for blocker in blockers:
+            print(blocker, file=sys.stderr)
+        # Include canary findings in stderr so model sees them alongside blockers
+        if canary_findings:
+            print("COMPLIANCE CANARY (address if possible):", file=sys.stderr)
+            for f in canary_findings:
+                print(f"  {f}", file=sys.stderr)
+            print("", file=sys.stderr)
+        return 2
+
+    # No blockers — print canary to stderr (visible in verbose mode only)
+    if canary_findings:
+        print("", file=sys.stderr)
+        print("COMPLIANCE CANARY (informational):", file=sys.stderr)
+        for f in canary_findings:
+            print(f"  {f}", file=sys.stderr)
+
+    return 0
+
+
+# =============================================================================
+# test-status command
+# =============================================================================
+
+
+# =============================================================================
+# validate-evidence command
+# =============================================================================
+
+
+# =============================================================================
+# test-evidence command (TST-6V2N — the WRITER for test-status's reader)
+# =============================================================================
+
+
+def _parse_evidence_counts(tokens: list[str]) -> tuple[dict | None, str]:
+    """Parse ``--from-counts`` ``key=value`` tokens into a counts dict.
+
+    The language-/runner-agnostic on-ramp: the minimum viable test result is
+    pass/fail/skip counts, so a toolchain that cannot emit JUnit XML (embedded
+    HIL, a bespoke harness) records evidence without faking a report. Accepts
+    ``passed=`` / ``failed=`` (required, non-negative ints), ``skipped=``
+    (optional int, default 0), and ``duration=`` (optional non-negative float
+    seconds, default 0.0). Returns ``(counts, "")`` on success or
+    ``(None, reason)`` on any malformed input.
+    """
+    allowed = ("passed", "failed", "skipped", "duration")
+    vals: dict = {}
+    for tok in tokens:
+        if "=" not in tok:
+            return None, (
+                "--from-counts expects key=value tokens "
+                f"(e.g. passed=12 failed=0 skipped=1), got {tok!r}"
+            )
+        key, _, raw = tok.partition("=")
+        key = key.strip()
+        if key not in allowed:
+            return None, (
+                f"--from-counts: unknown key {key!r} "
+                "(allowed: passed, failed, skipped, duration)"
+            )
+        if key in vals:
+            return None, f"--from-counts: duplicate key {key!r}"
+        if key == "duration":
+            try:
+                num = float(raw)
+            except ValueError:
+                return None, f"--from-counts: duration must be a number, got {raw!r}"
+        else:
+            try:
+                num = int(raw)
+            except ValueError:
+                return None, f"--from-counts: {key} must be an integer, got {raw!r}"
+        if num < 0:
+            return None, f"--from-counts: {key} must be >= 0, got {raw!r}"
+        vals[key] = num
+    missing = [k for k in ("passed", "failed") if k not in vals]
+    if missing:
+        return None, (
+            "--from-counts requires at least passed=N and failed=N "
+            f"(missing: {', '.join(missing)})"
+        )
+    vals.setdefault("skipped", 0)
+    vals.setdefault("duration", 0.0)
+    return vals, ""
+
+
+def cmd_test_evidence(project_dir: Path, argv: list[str]) -> int:
+    """Run the suite and WRITE ``.prawduct/.test-evidence.json`` (TST-6V2N).
+
+    The freshness gate (``test-status``) and the cumulative-Critic staleness
+    check READ this file, but nothing in the plugin PRODUCED it — every product
+    repo improvised a hand-written JSON. This subcommand closes the
+    reader-without-a-writer gap: it runs pytest with a JUnit XML report (exact
+    counts, not a parsed summary line), stamps an ISO-8601 UTC ``timestamp``,
+    overlays the F4a coverage half via ``bin/test-reference-verify --merge-into``,
+    and writes the record atomically — so the gate judges output the plugin itself
+    produced, tied to a real run.
+
+    Freshness identity is the ``timestamp`` alone (``test-status`` compares it
+    against ``.session-start``). No ``git_sha`` is stamped: it was dead-read by
+    every runtime consumer and actively misleading — a record-before-commit run
+    stamped the *prior* commit, which review agents eyeballed and wrongly flagged
+    "stale" (TST-4K2P). Content-hash freshness is deliberately NOT reintroduced
+    here; that mechanism was removed pre-v1.4 for chronic false positives.
+
+    Usage: ``prawduct-hook test-evidence record [--from-junit <report>]
+    [--from-counts passed=N failed=M skipped=K [duration=S]] [--no-rerun] [--
+    <extra pytest args>]``
+
+    ``--from-junit <report>`` (TST-7M3K) ingests a JUnit XML the builder already
+    produced instead of re-running the suite — the build cycle ran the suite once;
+    re-running it inside ``record`` paid for it twice per stamp. The report is
+    read as-is (no run), so it cannot be combined with extra pytest args. It CAN
+    be combined with a declared ``test_command:`` — that is the single-run path
+    for a declared-command repo: run the canonical command once (it emits JUnit)
+    and ingest its report here, rather than have ``record`` re-run it. Exit status
+    then derives from the report's failure count rather than a process.
+    **Repeatable** — pass it once per report: a ``test_commands:`` product runs
+    each declared command once and ingests every report in one ``record``
+    (counts aggregate exactly as the run path aggregates; a missing or
+    unparseable report refuses the whole record — no partial evidence).
+
+    ``--from-counts passed=N failed=M skipped=K [duration=S]`` records pass/fail/
+    skip counts supplied directly — the language-/runner-agnostic on-ramp for a
+    toolchain that cannot emit JUnit XML (embedded HIL, a bespoke harness). Like
+    ``--from-junit`` it runs nothing (exit status derives from ``failed``) and
+    rejects a second source (``--from-junit`` / extra args). It is also rejected
+    when ``test_command:``/``test_commands:`` is declared — the declared
+    command(s) emit JUnit, so ingest the report(s) with (repeated)
+    ``--from-junit`` (machine-backed) rather than hand-typed counts.
+    ``passed`` and ``failed`` are required; ``skipped``/``duration`` default to 0.
+
+    ``--no-rerun`` (alias ``--restamp``) reuses the existing record's counts and
+    refreshes only the ``timestamp`` + the F4a coverage half against the current
+    tree — the cheap refresh after a rename / force-add shifted
+    ``changes_referenced``, with no suite run and no re-supplied counts. The
+    original ``command`` is preserved. Trust posture matches ``--from-junit``: the
+    operator asserts the tree's test-relevant content is unchanged since the last
+    real run. Compatible with declared ``test_command:``/``test_commands:`` (it
+    introduces no new counts). Requires an existing ``.test-evidence.json``; rejects a second
+    source. (No tree/content hash verifies the assertion — that mechanism was
+    removed pre-v1.4 for chronic false positives and is deliberately not back.)
+
+    Exit code mirrors the suite (0 iff every test passed); the evidence file is
+    written either way (a failing run records ``failed > 0``) — with ONE
+    carve-out: an interpreter-fallback run with zero passes and nonzero
+    failures/errors (skips may accompany — the incident that taught this had
+    35) is refused as a launch-environment error (see below).
+
+    Gate-soundness ch.2 — two optional ``project-state.yaml`` knobs remove the
+    one-repo-shape assumption that forced products (scriob) into wrapper
+    scripts:
+
+    * ``test_command:`` — the project's canonical suite invocation, run
+      shlex-split from the repo root instead of ``sys.executable -m pytest``
+      (whose interpreter cannot import a uv/venv-managed product package). It
+      MUST contain a ``{junit_xml}`` literal; the hook substitutes its report
+      path there. Shell operators are not supported — point the command at a
+      script for compound invocations. Extra CLI pytest args are rejected when
+      the knob is set — the declared command IS the invocation (scriob's "run
+      the exact command CI runs" learning, made structural).
+    * ``test_commands:`` — the multi-environment form: a block list of
+      canonical invocations, one per environment (backend, web, mobile, …),
+      each run in order under the same rules as ``test_command:`` (shlex
+      list-form, mandatory ``{junit_xml}``, no extra CLI args) with its own
+      report; counts aggregate across all reports into ONE record, and any
+      launch failure or unparseable report fails the whole record — no
+      partial multi-environment evidence. Mutually exclusive with
+      ``test_command:``. A wrapper script emitting one merged JUnit report
+      remains a fine alternative via ``test_command:``, and the single-run
+      ingest path scales with the list: repeat ``--from-junit`` once per
+      report.
+    * ``tests_dirs:`` — whitespace-separated test trees (default ``tests``),
+      forwarded to the F4a overlay as repeated ``--tests-dir`` so one verifier
+      run covers a monorepo's components.
+
+    With NEITHER command knob declared, the fallback runs ``sys.executable -m
+    pytest`` — the hook's interpreter, which cannot import a venv-isolated
+    product's packages. The fallback therefore nudges toward declaring a
+    command on every run, and REFUSES to persist a run with zero passes and
+    only failures/errors (the wrong-interpreter signature): a
+    launch-environment error is an operator error, not test evidence.
+    """
+    import tempfile  # noqa: PLC0415 — only this command needs them
+    import xml.etree.ElementTree as ET  # noqa: PLC0415
+
+    if not argv or argv[0] != "record":
+        print(
+            "usage: prawduct-hook test-evidence record "
+            "[--from-junit <report>]... "
+            "[--from-counts passed=N failed=M skipped=K [duration=S]] "
+            "[--no-rerun] [-- <pytest args>]",
+            file=sys.stderr,
+        )
+        return 2
+    rest = list(argv[1:])
+    # --from-junit <path> (TST-7M3K): ingest a JUnit report the builder already
+    # produced instead of re-running the suite — the gate stops paying for the
+    # suite twice per stamp. Parsed before the `--` separator so both
+    # `record --from-junit r.xml` and `record -- --from-junit r.xml` work.
+    # --no-rerun/--restamp: reuse the existing record's counts (no run, no new
+    # counts supplied) and refresh the timestamp + F4a half against the tree.
+    no_rerun = False
+    for _flag in ("--no-rerun", "--restamp"):
+        if _flag in rest:
+            no_rerun = True
+            rest = [t for t in rest if t != _flag]
+
+    from_junits: list[str] = []
+    while "--from-junit" in rest:
+        i = rest.index("--from-junit")
+        if i + 1 >= len(rest):
+            print(
+                "error: --from-junit requires a path to a JUnit XML report",
+                file=sys.stderr,
+            )
+            return 2
+        from_junits.append(rest[i + 1])
+        del rest[i : i + 2]
+
+    # --from-counts <key=value>... (agnostic on-ramp): a runner that cannot emit
+    # JUnit XML (embedded HIL, a bespoke harness) records pass/fail/skip counts
+    # directly. Consumes the remaining tokens after the flag as key=value pairs.
+    from_counts = None
+    if "--from-counts" in rest:
+        j = rest.index("--from-counts")
+        count_tokens = rest[j + 1 :]
+        del rest[j:]
+        if count_tokens and count_tokens[0] == "--":  # tolerate the `--` separator
+            count_tokens = count_tokens[1:]
+        from_counts, counts_err = _parse_evidence_counts(count_tokens)
+        if from_counts is None:
+            print(f"error: {counts_err}", file=sys.stderr)
+            return 2
+
+    # At most one count source: a real run (default), --from-junit (JUnit XML),
+    # --from-counts (raw counts), or --no-rerun (reuse the existing record).
+    _sources = [
+        name
+        for name, on in (
+            ("--from-junit", bool(from_junits)),
+            ("--from-counts", from_counts is not None),
+            ("--no-rerun/--restamp", no_rerun),
+        )
+        if on
+    ]
+    if len(_sources) > 1:
+        print(
+            "error: " + " and ".join(_sources) + " are mutually exclusive — "
+            "choose one evidence source.",
+            file=sys.stderr,
+        )
+        return 2
+
+    extra = rest
+    if extra and extra[0] == "--":  # tolerate the conventional `--` separator
+        extra = extra[1:]
+
+    prawduct_dir = get_prawduct_dir(project_dir)
+    evidence_path = prawduct_dir / ".test-evidence.json"
+    state_path = prawduct_dir / "project-state.yaml"
+
+    test_command = _read_str_yaml_key(state_path, "test_command")
+    test_commands = _read_str_list_yaml_key(state_path, "test_commands")
+    if test_commands is None and _yaml_top_level_key_present(state_path, "test_commands"):
+        # Declared-but-unparseable must refuse, never silently degrade: the
+        # deprecated interpreter fallback would run against the operator's
+        # explicit declaration, and a shared-environment product could persist
+        # GREEN partial evidence for an invocation nobody declared.
+        print(
+            "error: test_commands is declared in project-state.yaml but not "
+            "in the supported shape — use a block sequence of plain strings:\n"
+            "  test_commands:\n"
+            "    - pipenv run pytest --junit-xml={junit_xml} -q\n"
+            "    - npm run test:ci -- --junit --outputFile={junit_xml}\n"
+            "(flow style `[a, b]`, nested mappings, and an empty list are not "
+            "parsed; refusing rather than silently running the deprecated "
+            "interpreter fallback).",
+            file=sys.stderr,
+        )
+        return 2
+    if test_command and test_commands:
+        print(
+            "error: project-state.yaml declares BOTH test_command and "
+            "test_commands — declare exactly one (test_command for a single "
+            "canonical invocation; test_commands for a multi-environment "
+            "product's list, one command per environment).",
+            file=sys.stderr,
+        )
+        return 2
+    # The declared path, unified: a multi-environment product lists one command
+    # per environment (each emits its own JUnit; counts aggregate), a
+    # single-environment product declares the scalar. Empty = the interpreter
+    # fallback below, which is deprecated-by-nudge and false-red-guarded.
+    declared_commands = test_commands or ([test_command] if test_command else [])
+    tests_dirs_raw = _read_str_yaml_key(state_path, "tests_dirs")
+    tests_dirs = tests_dirs_raw.split() if tests_dirs_raw else []
+
+    if from_junits:
+        # Ingest mode runs nothing, so extra pytest args are a contradiction.
+        # A declared test_command is NOT: the honest single-run path for a
+        # declared-command repo is to run that canonical command once (it MUST
+        # emit JUnit — {junit_xml} is required) and ingest its report here,
+        # rather than pay for the suite a second time inside `record`. Trust
+        # posture matches the other ingest on-ramps — the operator asserts the
+        # report is the declared command's full output, not a scoped subset.
+        if extra:
+            print(
+                "error: extra pytest args are not allowed with --from-junit — "
+                "the report is ingested as-is; nothing is run.",
+                file=sys.stderr,
+            )
+            return 2
+
+    if from_counts is not None:
+        # Counts are recorded as given, so a runner source is a contradiction.
+        if extra:
+            print(
+                "error: extra args are not allowed with --from-counts — the "
+                "counts are recorded as given; nothing is run.",
+                file=sys.stderr,
+            )
+            return 2
+        if declared_commands:
+            # A declared command MUST emit JUnit ({junit_xml} is required),
+            # so the runner CAN produce a report. Hand-typed counts are both
+            # unnecessary and the weakest posture — no artifact, and they reopen
+            # the scoped-subset trap the knob closes. Redirect to --from-junit,
+            # which ingests that report without a re-run.
+            print(
+                "error: --from-counts cannot be combined with a declared "
+                "test_command/test_commands — the declared command(s) emit "
+                "JUnit, so run each once and ingest the report(s) with "
+                "repeated `--from-junit <report>` instead (no re-run, "
+                "machine-backed evidence).",
+                file=sys.stderr,
+            )
+            return 2
+
+    if no_rerun:
+        # Restamp reuses the existing record's counts, so extra pytest args are
+        # a contradiction. A declared test_command is fine: restamp introduces
+        # no new counts (it reuses the prior record — which, on the default run
+        # path, came from the declared command) and only re-derives the F4a
+        # coverage half, so there is no scoped-subset risk.
+        if extra:
+            print(
+                "error: extra args are not allowed with --no-rerun/--restamp — "
+                "it reuses the existing record; nothing is run.",
+                file=sys.stderr,
+            )
+            return 2
+
+    # These constraints govern the RUN path only. When an ingest/restamp on-ramp
+    # is active the declared command is never invoked, so its placeholder and
+    # extra-args rules don't apply — gate them on whether the suite will run.
+    will_run = not from_junits and from_counts is None and not no_rerun
+    if declared_commands and will_run:
+        if extra:
+            print(
+                "error: extra pytest args are not allowed when "
+                "project-state.yaml declares test_command/test_commands — the "
+                "declared command IS the canonical invocation. Edit the "
+                "declaration instead.",
+                file=sys.stderr,
+            )
+            return 2
+        for command in declared_commands:
+            if "{junit_xml}" not in command:
+                print(
+                    f"error: declared test command {command!r} must contain "
+                    "the {junit_xml} placeholder (the hook substitutes its "
+                    "JUnit XML report path there, e.g. "
+                    "test_command: uv run pytest --junit-xml={junit_xml} -q).",
+                    file=sys.stderr,
+                )
+                return 2
+
+    roots: list = []  # parsed JUnit roots (run or --from-junit); empty for counts/restamp
+    run_returncodes: list[int] = []  # one per executed command; empty when nothing ran
+
+    if no_rerun:
+        # Restamp: reuse the existing record's counts (no run). The F4a overlay
+        # below re-derives the changed-file half against the current tree, so a
+        # rename/force-add that shifted changes_referenced is refreshed without
+        # paying for the suite again. Trust posture matches --from-junit: the
+        # operator asserts the tree's test-relevant content is unchanged.
+        if not evidence_path.is_file():
+            print(
+                "error: --no-rerun/--restamp needs an existing "
+                ".prawduct/.test-evidence.json to reuse; none found. Run a full "
+                "record first.",
+                file=sys.stderr,
+            )
+            return 2
+        try:
+            prior = json.loads(evidence_path.read_text())
+        except (json.JSONDecodeError, OSError) as exc:
+            print(
+                f"error: existing evidence is unreadable ({exc}); run a full record.",
+                file=sys.stderr,
+            )
+            return 2
+        try:
+            passed = int(prior["passed"])
+            failed = int(prior["failed"])
+            skipped = int(prior["skipped"])
+        except (KeyError, TypeError, ValueError) as exc:
+            print(
+                f"error: existing evidence is missing valid counts ({exc}); run a "
+                "full record.",
+                file=sys.stderr,
+            )
+            return 2
+        duration = prior.get("duration_seconds", 0)
+        prior_command = prior.get("command", "(unknown)")
+    elif from_counts is not None:
+        # Agnostic on-ramp (no XML, no subprocess): record the counts as given.
+        # The F4a overlay below still recomputes the changed-file half against
+        # the tree, so a Python repo using --from-counts keeps coverage evidence
+        # and a non-Python repo honestly gets an empty referenced set.
+        passed = from_counts["passed"]
+        failed = from_counts["failed"]
+        skipped = from_counts["skipped"]
+        duration = from_counts["duration"]
+    elif from_junits:
+        # Ingest mode: parse the JUnit report(s) the builder already produced.
+        # No temp file, no subprocess, and we must NOT delete the caller's
+        # reports. Repeatable — a test_commands product runs each declared
+        # command once and ingests every report here; refusing any missing or
+        # unparseable report keeps the no-partial-evidence rule.
+        for from_junit in from_junits:
+            junit = Path(from_junit)
+            if not junit.is_file():
+                print(
+                    f"error: --from-junit report not found: {from_junit}",
+                    file=sys.stderr,
+                )
+                return 2
+            try:
+                roots.append(ET.parse(junit).getroot())
+            except (ET.ParseError, OSError) as exc:
+                print(
+                    f"error: could not parse --from-junit report "
+                    f"{from_junit}: {exc}",
+                    file=sys.stderr,
+                )
+                return 2
+        # No run; exit status derives from the parsed failure count.
+    else:
+        # Run the suite(s) — one JUnit XML report per command; pytest emits
+        # JUnit natively (no plugin) and the XML attributes are parse-robust
+        # where the terminal summary line is not (xdist, warnings, and "no
+        # tests ran" all perturb the summary). A multi-environment product's
+        # test_commands each write their own report; counts aggregate below.
+        if not declared_commands:
+            print(
+                "note: no test_command/test_commands declared in "
+                "project-state.yaml — falling back to the hook interpreter's "
+                "pytest. This only works when the hook shares the project's "
+                "environment (a venv/pipenv/poetry/conda project's imports "
+                "won't resolve from it); declare the canonical invocation "
+                "(test_command, or test_commands one-per-environment) to make "
+                "the evidence environment-aware.",
+                file=sys.stderr,
+            )
+        # shlex list-form, not shell=True (injection surface; banned by
+        # tests/preferences). Wrappers like `uv run pytest …` split fine;
+        # compound invocations (&&, pipes, env vars) belong in a script the
+        # command points at. Split BEFORE substituting so a report path
+        # containing spaces/quotes lands as one intact token.
+        import shlex  # noqa: PLC0415 — only this branch needs it
+        for command in declared_commands or [None]:
+            fd, junit_name = tempfile.mkstemp(suffix=".xml", prefix="prawduct-junit-")
+            os.close(fd)
+            junit = Path(junit_name)
+            try:
+                if command is not None:
+                    run_argv = [
+                        tok.replace("{junit_xml}", str(junit))
+                        for tok in shlex.split(command)
+                    ]
+                else:
+                    run_argv = [
+                        sys.executable, "-m", "pytest", f"--junit-xml={junit}",
+                        "-q", *extra,
+                    ]
+                try:
+                    proc = subprocess.run(run_argv, cwd=str(project_dir))
+                except OSError as exc:
+                    # Widened from FileNotFoundError to OSError (TST-3E8V): a
+                    # *missing* executable raises FileNotFoundError, but a
+                    # *non-executable* target raises PermissionError — both are
+                    # OSError subclasses and both are launch failures that
+                    # should take the clean exit-2 path, not traceback. Any
+                    # command failing to launch fails the WHOLE record — no
+                    # partial multi-environment evidence.
+                    print(
+                        f"error: could not launch test command executable "
+                        f"{run_argv[0]!r} ({exc}) — check "
+                        "test_command/test_commands in project-state.yaml.",
+                        file=sys.stderr,
+                    )
+                    return 2
+                run_returncodes.append(proc.returncode)
+                try:
+                    roots.append(ET.parse(junit).getroot())
+                except (ET.ParseError, OSError) as exc:
+                    label = command if command is not None else "pytest fallback"
+                    print(
+                        f"error: could not parse the JUnit report from "
+                        f"{label!r}: {exc}",
+                        file=sys.stderr,
+                    )
+                    return 2
+            finally:
+                try:
+                    junit.unlink()
+                except OSError:
+                    pass
+
+    # Aggregate across ALL top-level <testsuite> elements (skipped entirely when
+    # counts come from --from-counts or --no-rerun — there is no XML root).
+    if from_counts is None and not no_rerun:
+        # pytest emits one <testsuite>, but `test_command` invites arbitrary
+        # runners (jest-junit, go-junit-report, merged CI reports) whose
+        # <testsuites> roots carry many — reading only the first silently
+        # undercounted the evidence the freshness and Critic gates trust. Direct
+        # children only (not iter()) so Ant-style nested suites aren't
+        # double-counted. Multi-environment products contribute one root per
+        # declared command; the sums span all of them.
+        suites = []
+        for root in roots:
+            suites += [root] if root.tag == "testsuite" else root.findall("testsuite")
+        if not suites:
+            print(
+                "error: the test run produced no <testsuite> (no tests collected?)",
+                file=sys.stderr,
+            )
+            return 2
+        total = sum(int(s.get("tests", "0")) for s in suites)
+        failures = sum(int(s.get("failures", "0")) for s in suites)
+        errors = sum(int(s.get("errors", "0")) for s in suites)
+        skipped = sum(int(s.get("skipped", "0")) for s in suites)
+        duration = sum(float(s.get("time", "0") or "0") for s in suites)
+        passed = total - failures - errors - skipped
+        failed = failures + errors
+        # False-red guard (upstream discodon report): an interpreter-fallback
+        # run with ZERO passes and only failures/errors is the signature of a
+        # suite that never launched in the project environment — venv-isolated
+        # imports dying at collection — and persisting it pollutes test-status
+        # with a phantom mass regression. A launch-environment error is an
+        # operator/config error, not test evidence: refuse to record. Scoped
+        # to the fallback — a DECLARED command is the operator's deliberate,
+        # environment-aware invocation, so an all-red result there records
+        # honestly.
+        if will_run and not declared_commands and passed == 0 and failed > 0:
+            print(
+                "error: refusing to record — zero passes and nonzero failures/"
+                "errors from the interpreter-fallback run (skips may "
+                "accompany), the signature of a "
+                "suite that never launched in the project environment (the "
+                "hook's interpreter cannot import a venv/pipenv/poetry/conda "
+                "project's packages). Declare the canonical, environment-aware "
+                "invocation in project-state.yaml and re-run, e.g.\n"
+                "  test_command: pipenv run pytest --junit-xml={junit_xml} -q\n"
+                "or, for a multi-environment product (backend + web + "
+                "mobile), one command per environment:\n"
+                "  test_commands:\n"
+                "    - pipenv run pytest --junit-xml={junit_xml} -q\n"
+                "    - npm run test:ci -- --junit --outputFile={junit_xml}\n"
+                "(A genuinely all-red suite can still be recorded via the "
+                "declared command, or by ingesting its report with "
+                "--from-junit.)",
+                file=sys.stderr,
+            )
+            return 2
+
+    # Capture the working-tree SHA this run covers, so a later session with a
+    # byte-identical judgeable tree can trust the record without re-running (the
+    # additive tree-validity clause; spike-tree-validated-test-evidence.md).
+    # Skipped for --from-counts: hand-typed counts carry no machine tie to the
+    # working tree (an embedded/HIL run may not even test it), so that on-ramp
+    # stays timestamp-only. Best-effort — a capture failure omits the field and
+    # freshness falls back to the timestamp model; the clause is purely additive.
+    evidence_tree = None
+    if from_counts is None:
+        from lib import evidence as _evidence_mod  # noqa: PLC0415 — lazy keeps top-level cheap
+        _cap = _evidence_mod.capture_tree(project_dir)
+        if _cap.get("status") == "ok":
+            evidence_tree = _cap.get("tree")
+
+    # Base record carries the pytest half PLUS schema-valid placeholder F4a
+    # fields, so the file is self-sufficient even if the F4a overlay below is
+    # skipped (verifier absent on a broken install). The overlay fills the real
+    # coverage half.
+    record = {
+        "timestamp": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "command": (
+            prior_command
+            if no_rerun
+            else f"--from-counts passed={passed} failed={failed} skipped={skipped}"
+            if from_counts is not None
+            else "--from-junit " + " ".join(from_junits)
+            if from_junits
+            else " ; ".join(declared_commands)
+            if declared_commands
+            else " ".join(["python3 -m pytest -q", *extra]).strip()
+        ),
+        "passed": passed,
+        "failed": failed,
+        "skipped": skipped,
+        "duration_seconds": round(duration, 2),
+        "verifier": "test-reference-verify (F4a overlay pending)",
+        "coverage_level": "referenced",
+        "tests_executed": [],
+        "changes_referenced": [],
+        "changes_unjudged": [],
+    }
+    if evidence_tree:
+        # Omit (never null) when uncaptured, so a record without the field falls
+        # through to timestamp-only freshness — the clause is additive.
+        record["evidence_tree"] = evidence_tree
+    # Atomic write — the freshness gate must never observe a half-written file.
+    prawduct_dir.mkdir(parents=True, exist_ok=True)
+    tmp = evidence_path.with_name(evidence_path.name + ".tmp")
+    tmp.write_text(json.dumps(record, indent=2, sort_keys=True) + "\n")
+    os.replace(tmp, evidence_path)
+
+    # Overlay the F4a coverage half via the existing verifier (reuse, not
+    # duplicate). Best-effort — the base record above is already schema-valid.
+    base, _ = _coverage()._coverage_resolve_base(project_dir)
+    if base == "HEAD~1":
+        # HEAD~1 is a MOVING ref: committing advances it, so changes_referenced
+        # can shift across a no-op commit. Only fires when no origin/main, main,
+        # or base_branch: resolves — name the knob that stabilizes it.
+        print(
+            "warning: diff base resolved to the moving HEAD~1 fallback (no "
+            "origin/main, main, or base_branch:) — committing advances HEAD~1, so "
+            "changes_referenced can shift across a commit. Set base_branch: in "
+            ".prawduct/project-state.yaml to a stable branch.",
+            file=sys.stderr,
+        )
+    verifier = Path(_plugin_root()) / "bin" / "test-reference-verify"
+    if verifier.is_file():
+        merge_cmd = [
+            sys.executable,
+            str(verifier),
+            "--merge-into",
+            str(evidence_path),
+            "--repo",
+            str(project_dir),
+        ]
+        for tests_dir in tests_dirs:
+            merge_cmd += ["--tests-dir", tests_dir]
+        if base:
+            merge_cmd += ["--base", base]
+        mp = subprocess.run(merge_cmd, check=False, capture_output=True, text=True)
+        if mp.stderr.strip():
+            # Forward the verifier's warnings (e.g. zero test discovery —
+            # TST-2H9P); capture_output would otherwise swallow them.
+            print(mp.stderr.rstrip(), file=sys.stderr)
+        if mp.returncode != 0:
+            print(
+                f"note: F4a coverage overlay did not complete (exit "
+                f"{mp.returncode}); pytest-half evidence written.",
+                file=sys.stderr,
+            )
+    else:
+        print(
+            "note: bin/test-reference-verify not found; F4a coverage half "
+            "omitted (pytest-half evidence written).",
+            file=sys.stderr,
+        )
+
+    print(
+        f"recorded: {passed} passed, {failed} failed, {skipped} skipped "
+        f"in {record['duration_seconds']}s ({record['timestamp']})"
+    )
+    # Exit status mirrors the suite when we ran it (every declared command must
+    # exit 0); in ingest mode there is no process, so derive it from the
+    # failure count.
+    if run_returncodes:
+        return 0 if all(rc == 0 for rc in run_returncodes) else 1
+    return 0 if failed == 0 else 1
+
+
+# =============================================================================
+# check-cumulative-critic command (v1.4 F2 — PR gate)
+# =============================================================================
+
+
+# Build-plan reference parsing + trivial-change classification moved to
+# lib/buildplan_refs.py (STH-9V4K ch.3): the chunk-ref/Type/Trivial-rationale
+# parsers, _looks_like_file_path, _classify_trivial_change, and the
+# _TRIVIAL_PROTECTED_PATHS / _BUILD_PLAN_* constants. Resident callers below
+# (cmd_verify_chunk_refs, the stop gate) reach them via _buildplan_refs().<fn>();
+# lib.gates' _is_trivial_fileset_eligible (ch.6) reaches them as a sibling import.
+# (The PR-boundary _pr_diff_is_trivial consumer was retired — see lib/coverage.py.)
+
+
+# _current_chunk_id_from_status + _verify_chunk_refs moved to
+# lib/buildplan_refs.py (STH-9V4K ch.3); cmd_verify_chunk_refs below delegates
+# via _buildplan_refs().
+
+
+def cmd_verify_chunk_refs(project_dir: Path, chunk_id: str | None) -> int:
+    """Critic Goal-2 helper: verify symbols/paths referenced in the current
+    chunk's build-plan section actually exist on the filesystem.
+
+    Exit 0 = all refs resolved (or nothing to check). Exit 1 = at least one
+    ref is missing, or the gate cannot be evaluated. stderr lists each
+    missing ref so the Critic can quote it in findings.
+
+    With no ``chunk_id``, reads the current chunk from Status (first unchecked
+    ``- [ ]`` item). If Status has no current chunk (all complete or no
+    Status section), exits 0 — there is nothing to verify.
+    """
+    prawduct_dir = get_prawduct_dir(project_dir)
+    if chunk_id is None:
+        chunk_id = os.environ.get("PRAWDUCT_VERIFY_CHUNK_ID")
+    if chunk_id is None:
+        # One canonical current-chunk resolution (shared with the stop hook and
+        # the Critic helper); handles both the "### Chunk NN:" and
+        # "## Chunk N (ID) — Name" Status-item forms.
+        chunk_id = _buildplan_refs()._current_chunk_id_from_status(prawduct_dir)
+        if chunk_id is None:
+            print("ok: no current chunk in Status; nothing to verify")
+            return 0
+
+    refs = _buildplan_refs()._parse_build_plan_chunk_refs(prawduct_dir, chunk_id)
+    if refs["error"]:
+        # The Goal-2 deliverable check could not RUN (plan or chunk section not
+        # located) — a distinct signal from "a named deliverable is missing"
+        # (the missing-ref lines below). Surfacing them differently stops a
+        # can't-parse exit from being dismissed as noise and masking a real
+        # missing-deliverable BLOCKING (the false-negative habituation BLD-5J8N).
+        print(
+            f"cannot-verify: {refs['error']}; Goal-2 deliverable check did not run "
+            "(is the chunk heading a recognized '### Chunk NN:' / '## Chunk N (ID) — Name' form?)",
+            file=sys.stderr,
+        )
+        return 1
+    missing = _buildplan_refs()._verify_chunk_refs(project_dir, refs)
+    if missing:
+        for m in missing:
+            print(
+                f"missing-ref: {m['ref']} (line {m['line_num']}, {m['kind']}): {m['reason']}",
+                file=sys.stderr,
+            )
+        return 1
+    count = len(refs["file_paths"])
+    print(f"ok: chunk {chunk_id} — {count} file ref(s) verified")
+    return 0
+
+
+# v1.4 F4b — coverage-required gate inputs.
+# Inline mirror of lib/core.read_bool_yaml_key: a column-0 key scan with a
+# fail-closed default of False. Inline rather than imported to keep the hook
+# surface flat on the session-start hot path (same discipline as
+# _read_str_yaml_key above); pinned to the lib helper by TestBoolKeyCallSiteParity.
+# prawduct:allow prawduct/duplication -- intentional inline mirror (import-light hot path); pinned by TestBoolKeyCallSiteParity
+def _read_bool_yaml_key(state_path: Path, key: str) -> bool:
+    """True if ``state_path`` has a top-level (column-0) ``key: true`` scalar."""
+    if not state_path.exists():
+        return False
+    try:
+        content = state_path.read_text(encoding="utf-8")
+    except OSError:
+        return False
+    needle = f"{key}:"
+    for raw in content.splitlines():
+        if raw[:1] in (" ", "\t"):
+            continue
+        line = raw.split("#", 1)[0].rstrip()
+        if not line.startswith(needle):
+            continue
+        value = line.split(":", 1)[1].strip().lower()
+        return value == "true"
+    return False
+
+
+# =============================================================================
+# main
+# =============================================================================
+
+
+def cmd_regen_views(project_dir: Path, args: list[str] | None = None) -> int:
+    """Regenerate derived views from the change-log canonical store.
+
+    Three views are produced in one pass when `views_enabled: true`:
+
+      1. Build-plan `## Status` block — checkbox flips from `status=shipped` tags
+      2. Release-notes view — `.prawduct/release-notes.md` from `release=` tags
+      3. Scope-rollup view — `scope_rollups:` block in `project-state.yaml`
+         from `scope=` tags
+
+    No-op when `views_enabled: true` is absent (enabled by default in v1.4;
+    sync auto-enables for existing repos and `false` is the explicit opt-out).
+
+    Validation is fail-CLOSED (VWS-6R4T): every change-log tag is validated
+    against the plan roster BEFORE any view is written, and any ERROR-class
+    finding (unrecognized status=, chunks= ID missing from the plan's Status
+    roster, unreleased scope with no plan file, duplicate scope, conflicting
+    tag lines) aborts the whole regen with exit 2 and nothing written — a
+    partial flip is the silent failure class this command must never produce.
+    Mere tag-line multiplicity (union repair is correct) stays a WARNING.
+
+    `--check` computes + validates but writes NOTHING: the release pre-flight.
+    Exit 0 = tags validate (pending writes are reported, not errors); exit 2 =
+    validation errors.
+
+    Exit codes:
+      0 - success (views disabled, no changes needed, regen applied cleanly,
+          or --check with clean validation)
+      1 - the plugin lib/ could not be imported (incomplete install) — a
+          state-mutating command must not report success on a broken install
+          (mirrors accept/verify-operator-verification's ImportError handling)
+      2 - I/O or schema error (missing change-log or build-plan), or a tag
+          validation error (fail closed: no views written)
+    """
+    check_only = "--check" in (args or [])
+    # Ensure the plugin root is on sys.path so `from lib import views` resolves
+    # both when invoked as a script and when imported via SourceFileLoader in tests.
+    lib_root = _plugin_root()
+    if lib_root not in sys.path:
+        sys.path.insert(0, lib_root)
+    try:
+        from lib import views  # noqa: PLC0415 — lazy import keeps top-level cheap
+    except ImportError:
+        # Honest failure: regen-views mutates state (build-plan checkboxes,
+        # release-notes, scope_rollups), so it must not claim success when its
+        # machinery is absent (an incomplete plugin install). Matches
+        # accept/verify-operator-verification — exit 1, not a silent exit 0.
+        print(
+            "error: regen-views could not import the plugin lib/ from "
+            "${CLAUDE_PLUGIN_ROOT}; Status not auto-regenerated.",
+            file=sys.stderr,
+        )
+        return 1
+
+    prawduct_dir = get_prawduct_dir(project_dir)
+    try:
+        enabled, results = views.plan_regen(prawduct_dir)
+    except FileNotFoundError as e:
+        msg = str(e)
+        if "change-log" in msg:
+            print(f"ERROR: {msg}", file=sys.stderr)
+        elif "build-plan" in msg:
+            print(f"ERROR: {msg}", file=sys.stderr)
+        else:
+            print(f"ERROR: {msg}", file=sys.stderr)
+        return 2
+    except OSError as e:
+        print(f"ERROR reading view inputs: {e}", file=sys.stderr)
+        return 2
+
+    if not enabled:
+        print("Views disabled (set views_enabled: true in project-state.yaml).")
+        return 0
+
+    # Validate BEFORE any write (VWS-6R4T, fail closed). The validators are
+    # pure lib functions; severity policy lives here: a tag that would produce
+    # a wrong or silently-partial view is an ERROR that aborts the regen with
+    # nothing written; a tag whose union repair still yields correct output
+    # (mere multiplicity) is a WARNING. The read is load-bearing now — a
+    # change-log read failure fails the command rather than skipping checks.
+    try:
+        change_log_text = (prawduct_dir / "change-log.md").read_text(encoding="utf-8")
+    except OSError as e:
+        print(f"ERROR reading change-log for validation: {e}", file=sys.stderr)
+        return 2
+    parsed_entries = views.parse_change_log(change_log_text)
+    artifacts_dir = prawduct_dir / "artifacts"
+    errors: list[str] = []
+    # Unrecognized status= (typo) — the entry would silently never flip.
+    errors.extend(views.validate_status_values(parsed_entries))
+    # Conflicting scalar values across tag lines — first-wins may be wrong.
+    errors.extend(views.validate_tag_conflicts(parsed_entries))
+    # Unreleased scope with no plan file + duplicate scope across plan files.
+    errors.extend(views.diagnose_scope_plan_coverage(change_log_text, artifacts_dir))
+    # chunks= IDs that match nothing in their plan's Status roster.
+    errors.extend(views.validate_chunk_roster(change_log_text, artifacts_dir))
+    for warning in views.validate_tag_line_multiplicity(parsed_entries):
+        print(f"WARNING: {warning}", file=sys.stderr)
+    if errors:
+        for err in errors:
+            print(f"ERROR: {err}", file=sys.stderr)
+        print(
+            f"{len(errors)} validation error(s) — no views written. Fix the "
+            f"change-log tags (or plan roster) and re-run.",
+            file=sys.stderr,
+        )
+        return 2
+
+    if check_only:
+        for r in results:
+            print(f"[check] {r.summary}")
+        print("check passed: tags validate against the plan roster; nothing written.")
+        return 0
+
+    try:
+        views.apply_regen(prawduct_dir, results)
+    except OSError as e:
+        print(f"ERROR writing view output: {e}", file=sys.stderr)
+        return 2
+
+    for r in results:
+        print(r.summary)
+    return 0
+
+
+def cmd_check_operator_verification(project_dir: Path) -> int:
+    """Structural gate for `/prawduct:pr create`: refuse open when queue has pending entries.
+
+    Mirrors :func:`cmd_check_cumulative_critic` semantics — exit 0 only
+    when the gate is satisfied, exit 1 with stderr describing the
+    blocker. The gate is only active when ``operator_verification_required:
+    true`` is set in ``project-state.yaml``; otherwise the command is a
+    no-op exit 0.
+    """
+    lib_root = _plugin_root()
+    if lib_root not in sys.path:
+        sys.path.insert(0, lib_root)
+    try:
+        from lib import operator_verification as ov  # noqa: PLC0415 — lazy import
+    except ImportError:
+        # Fail OPEN: this gate cannot evaluate a queue it can't load. If the
+        # bundled lib/ failed to import (an incomplete plugin install),
+        # blocking /prawduct:pr here would be a false positive. Surface a note, allow.
+        print(
+            "NOTE: check-operator-verification could not import the plugin lib/ "
+            "from ${CLAUDE_PLUGIN_ROOT}; gate skipped.",
+            file=sys.stderr,
+        )
+        return 0
+
+    result = ov.run_check_operator_verification(project_dir)
+    if not result["required"]:
+        return 0
+    if result["pending"] == 0:
+        print(result["message"])
+        return 0
+    print(result["message"], file=sys.stderr)
+    return 1
+
+
+def cmd_accept_operator_verification(
+    project_dir: Path, rationale: str | None
+) -> int:
+    """Flip all pending entries to ``accepted`` with the supplied rationale.
+
+    Invoked by ``/prawduct:pr create --accept-pending-verification "rationale"``.
+    Refuses an empty or missing rationale — the work-log capture is the
+    whole point of the override.
+    """
+    lib_root = _plugin_root()
+    if lib_root not in sys.path:
+        sys.path.insert(0, lib_root)
+    try:
+        from lib import operator_verification as ov  # noqa: PLC0415 — lazy import
+    except ImportError:
+        # Honest failure: this command mutates the queue, so it must not claim
+        # success when its machinery is absent (an incomplete plugin install).
+        print(
+            "error: accept-operator-verification could not import the plugin "
+            "lib/ from ${CLAUDE_PLUGIN_ROOT}.",
+            file=sys.stderr,
+        )
+        return 1
+
+    if rationale is None or not rationale.strip():
+        print(
+            "error: accept-operator-verification requires a non-empty "
+            "rationale argument — `/prawduct:pr create --accept-pending-verification "
+            '"rationale"`. The override is recorded in operator-verification.md '
+            "as the work-log entry.",
+            file=sys.stderr,
+        )
+        return 1
+
+    result = ov.run_accept_pending(project_dir, rationale)
+    if "error" in result:
+        print(f"error: {result['error']}", file=sys.stderr)
+        return 1
+
+    for action in result["actions"]:
+        print(action)
+    for note in result["notes"]:
+        print(f"  * {note}")
+    return 0
+
+
+def cmd_verify_operator_verification(
+    project_dir: Path, vrf_id: str | None
+) -> int:
+    """Drain a single pending operator-verification entry to ``verified``.
+
+    The plugin-native replacement for the legacy file-sync ``verify`` path,
+    invoked by ``/prawduct:pr`` (Step 2b) and ``/prawduct:doctor`` (Verify
+    Flow) after the human-verification step is genuinely complete. A migrated
+    consumer has no framework checkout, so the old ``tools/`` setup script is
+    gone — this subcommand operates only on the consumer's own
+    ``.prawduct/operator-verification.md`` via the bundled lib. Like its
+    ``accept`` sibling it mutates the queue, so it fails honestly (exit 1)
+    rather than claiming success when its machinery is absent.
+    """
+    lib_root = _plugin_root()
+    if lib_root not in sys.path:
+        sys.path.insert(0, lib_root)
+    try:
+        from lib import operator_verification as ov  # noqa: PLC0415 — lazy import
+    except ImportError:
+        print(
+            "error: verify-operator-verification could not import the plugin "
+            "lib/ from ${CLAUDE_PLUGIN_ROOT}.",
+            file=sys.stderr,
+        )
+        return 1
+
+    if vrf_id is None or not vrf_id.strip():
+        print(
+            "error: verify-operator-verification requires a VRF id argument — "
+            "`prawduct-hook verify-operator-verification <VRF-NNN>`. Complete "
+            "the entry's human-verification step first; this flips its status "
+            "to verified in operator-verification.md.",
+            file=sys.stderr,
+        )
+        return 1
+
+    result = ov.run_verify_entry(project_dir, vrf_id.strip())
+    if "error" in result:
+        print(f"error: {result['error']}", file=sys.stderr)
+        return 1
+
+    print(f"{result['vrf_id']}: {result['previous_status']} → {result['status']}")
+    for action in result["actions"]:
+        print(action)
+    for note in result["notes"]:
+        print(f"  * {note}")
+    return 0
+
+
+def cmd_check_pr_doc_only(project_dir: Path) -> int:
+    """Doc-only PR fast-path gate for `/prawduct:pr create`. Thin wrapper —
+    the body lives in ``lib.coverage.check_pr_doc_only`` (STH-9V4K ch.5),
+    reached lazily so the hook's top level stays lib-free."""
+    return _coverage().check_pr_doc_only(project_dir)
+
+
+def cmd_check_change_log_entry(project_dir: Path) -> int:
+    """Missing-change-log-entry probe for `/prawduct:pr create` Step 1c
+    (REL-6C3W). Thin wrapper — the body lives in
+    ``lib.coverage.check_change_log_entry``, reached lazily so the hook's top
+    level stays lib-free."""
+    return _coverage().check_change_log_entry(project_dir)
+
+
+def cmd_test_status(project_dir: Path) -> int:
+    """Report whether ``.test-evidence.json`` covers the current tree. Thin
+    wrapper — body lives in ``lib.gates.test_status`` (STH-9V4K ch.6)."""
+    return _gates().test_status(project_dir)
+
+
+def cmd_validate_evidence(project_dir: Path) -> int:
+    """Schema-only check on ``.test-evidence.json``. Thin wrapper — body lives
+    in ``lib.gates.validate_evidence`` (STH-9V4K ch.6)."""
+    return _gates().validate_evidence(project_dir)
+
+
+def cmd_check_cumulative_critic(project_dir: Path) -> int:
+    """Cumulative-Critic gate for `/prawduct:pr create`. Thin wrapper — body
+    lives in ``lib.gates.check_cumulative_critic`` (STH-9V4K ch.6)."""
+    return _gates().check_cumulative_critic(project_dir)
+
+
+def cmd_verify_coverage(project_dir: Path) -> int:
+    """Critic Goal-1 coverage gate. Thin wrapper — body lives in
+    ``lib.gates.verify_coverage`` (STH-9V4K ch.6)."""
+    return _gates().verify_coverage(project_dir)
+
+
+def cmd_ledger_append(project_dir: Path, argv: list[str]) -> int:
+    """Append one governance-ledger event from the latest findings record.
+    Thin wrapper — body lives in ``lib.ledger.ledger_append``
+    (review-proportionality ch.02: the agent never hand-authors JSONL)."""
+    lib_root = _plugin_root()
+    if lib_root not in sys.path:
+        sys.path.insert(0, lib_root)
+    from lib import ledger  # noqa: PLC0415 — lazy keeps top-level cheap + lib-free
+
+    return ledger.ledger_append(project_dir, argv)
+
+
+def cmd_evidence(project_dir: Path, argv: list[str]) -> int:
+    """Inspect the kernel-v3 evidence store (kernel-evidence-store ch.01).
+    Thin wrapper — body lives in ``lib.evidence.evidence_cmd``. Read-only
+    (status/list); the writers are the review lifecycle commands, never the
+    agent by hand."""
+    lib_root = _plugin_root()
+    if lib_root not in sys.path:
+        sys.path.insert(0, lib_root)
+    from lib import evidence  # noqa: PLC0415 — lazy keeps top-level cheap + lib-free
+
+    return evidence.evidence_cmd(project_dir, argv)
+
+
+def cmd_review_stats(project_dir: Path, argv: list[str]) -> int:
+    """Aggregate the governance ledger into review cost / yield numbers.
+    Thin wrapper — body lives in ``lib.telemetry.review_stats``
+    (review-proportionality ch.03: Visible Costs applied to the framework).
+    Telemetry is informational, never a gate — a missing lib degrades to a
+    note + exit 1, mirroring ``cmd_advisory``."""
+    lib_root = _plugin_root()
+    if lib_root not in sys.path:
+        sys.path.insert(0, lib_root)
+    try:
+        from lib import telemetry  # noqa: PLC0415 — lazy keeps top-level cheap + lib-free
+    except ImportError:
+        print(
+            "review-stats unavailable (could not import the plugin lib/ from "
+            "${CLAUDE_PLUGIN_ROOT})",
+            file=sys.stderr,
+        )
+        return 1
+
+    return telemetry.review_stats(project_dir, argv)
+
+
+def cmd_classify_diff_risk(project_dir: Path, argv: list[str]) -> int:
+    """Classify the review scope as ``escalate``/``standard`` against the
+    repo's risk surfaces. Thin wrapper — body lives in
+    ``lib.risk.classify_diff_risk`` (review-proportionality ch.04). The
+    import failure is fail-OPEN to ``standard`` ONLY because an unreadable
+    lib also means no surfaces could be resolved; the in-lib git-failure
+    path stays fail-closed when surfaces are declared."""
+    lib_root = _plugin_root()
+    if lib_root not in sys.path:
+        sys.path.insert(0, lib_root)
+    try:
+        from lib import risk  # noqa: PLC0415 — lazy keeps top-level cheap + lib-free
+    except ImportError:
+        print(
+            "classify-diff-risk unavailable (could not import the plugin lib/ "
+            "from ${CLAUDE_PLUGIN_ROOT}); defaulting to standard.",
+            file=sys.stderr,
+        )
+        print("standard")
+        return 0
+
+    return risk.classify_diff_risk(project_dir, argv)
+
+
+def cmd_infer_critic_mode(project_dir: Path, args: str | None) -> int:
+    """Print ``<mode>|<rationale>`` for the inferred ``/prawduct:critic`` mode.
+
+    Thin wrapper around ``lib.critic_mode.infer_mode`` (v1.5
+    Chunk 03). The subcommand exists so the Critic SKILL can call
+    inference without expanding its ``allowed-tools`` to ``Bash(python3
+    -c *)`` — keeping the structural "no arbitrary code execution"
+    constraint enforceable.
+
+    Precedence (delegated to ``infer_mode``): explicit ``args`` (the
+    per-invocation override) win first, then the active build plan's
+    CURRENT chunk ``**Critic mode:**`` field (the plan-level "successive
+    override", rationale ``plan-override: <mode>`` — CRT-3M8Q), then the
+    four inference rules. This is why a plan-mandated ``final`` is now
+    honored here instead of being silently demoted to the inferred
+    ``chunk``.
+
+    Output format: a single stdout line ``<mode>|<rationale>`` where
+    ``<mode>`` is one of the short tokens (``chunk`` / ``final`` /
+    ``cumulative`` / ``verify-resolutions``) and ``<rationale>`` is the
+    human-readable explanation suitable for both stdout reporting and
+    the ``mode_chosen_by`` field in ``.critic-findings.json``.
+
+    Fail-safe: if the bundled ``lib/`` cannot be imported (an incomplete plugin
+    install), print a clear message and return 1 rather than crashing — mirroring
+    ``cmd_advisory``. The Critic SKILL treats a non-zero exit as inference
+    failure and defaults to ``final`` (fail-safe to thoroughness).
+    """
+    lib_root = _plugin_root()
+    if lib_root not in sys.path:
+        sys.path.insert(0, lib_root)
+    try:
+        from lib import infer_mode  # noqa: PLC0415 — lazy keeps top-level cheap
+    except ImportError:
+        print(
+            "infer-critic-mode unavailable (could not import the plugin lib/ from "
+            "${CLAUDE_PLUGIN_ROOT})",
+            file=sys.stderr,
+        )
+        return 1
+    mode, rationale = infer_mode(project_dir, args)
+    print(f"{mode}|{rationale}")
+    # PDT-WT9K: name the resolved tree on stderr (stdout stays the machine-read
+    # `<mode>|<rationale>` line the skill parses) so a wrong-tree inference is
+    # visible before the review is even dispatched.
+    branch = _gitstate().current_branch(project_dir)
+    print(
+        f"PRAWDUCT: inferring against worktree {project_dir} "
+        f"branch {branch or '(detached)'}.",
+        file=sys.stderr,
+    )
+    return 0
+
+
+def cmd_advisory(project_dir: Path, argv: list[str]) -> int:
+    """Dispatch the ``/prawduct:advisory`` management CLI (spec §6, Chunk 05).
+
+    Thin wrapper around the bundled ``lib.advisory_cmd.run`` — the subcommand
+    exists so the skill's ``allowed-tools`` can be scoped to
+    ``Bash(prawduct-hook advisory*)`` instead of arbitrary code execution,
+    mirroring the ``infer-critic-mode`` pattern. ``argv`` is ``sys.argv[2:]``
+    (everything after ``advisory``).
+
+    Fail-safe: if the bundled lib/ cannot be imported (an incomplete plugin
+    install), print a clear message and return 1 rather than crashing — the
+    advisory CLI is informational, never a gate.
+    """
+    lib_root = _plugin_root()
+    if lib_root not in sys.path:
+        sys.path.insert(0, lib_root)
+    try:
+        from lib import advisory_cmd  # noqa: PLC0415 — lazy keeps top-level cheap
+    except ImportError:
+        print(
+            "advisory CLI unavailable (could not import the plugin lib/ from "
+            "${CLAUDE_PLUGIN_ROOT})",
+            file=sys.stderr,
+        )
+        return 1
+    return advisory_cmd.run(project_dir, argv)
+
+
+def _coverage_scaffold_stub(artifact_name: str) -> str:
+    """A neutral placeholder for a missing strategy-class artifact.
+
+    It deliberately does NOT pre-fill ``(not relevant)`` — whether an artifact is
+    relevant is the owner's decision to record, not the tool's to guess. Coverage
+    is satisfied by the file existing (any content), so dropping this stub clears
+    the layer-1 nudge and leaves the owner to fill it: a real spec, or a one-line
+    ``(not relevant — <reason>)`` decision the Critic can then weigh."""
+    title = artifact_name.removesuffix(".md").replace("-", " ").title()
+    return (
+        f"# {title}\n\n"
+        "<!--\n"
+        "Strategy-class artifact expected by structural coverage. Replace this stub\n"
+        "with EITHER a real specification, OR a one-line decision that it is not\n"
+        "relevant to this product, for example:\n\n"
+        "    (Not relevant — <reason>.)\n\n"
+        "Coverage is satisfied by this file existing; the Critic and risk\n"
+        "calibration judge whether the decision holds. See /prawduct:methodology planning.\n"
+        "-->\n\n"
+        "_Unwritten stub — author this artifact, or record why it is not relevant._\n"
+    )
+
+
+def cmd_coverage_status(project_dir: Path, argv: list[str]) -> int:
+    """Report the structural-coverage chain status (the doctor coverage check).
+
+    Reports all three layers of the coverage chain, reading the SAME expectation
+    table the probe fires on (``lib/coverage_probes.missing_expected_artifacts``) —
+    never a transcription, so the doctor check can't drift from the nudge:
+
+      - **Layer 0 (discovery):** are structural characteristics recorded?
+      - **Layer 1 (artifacts):** which expected strategy-class artifacts are missing?
+      - **Layer 2 (norms):** are the product's norms ratified?
+
+    and names the highest-priority active layer as the primary fix. Layers 0 and 1
+    are exact complements (never both), but layer 2's gate is independent, so
+    during partial authoring layers 1 and 2 can both be active (docs/norms.md
+    § Enforcement — proportionality, not a hard one-at-a-time invariant). ``--json``
+    emits the structured status for the doctor skill; default is human-readable.
+
+    Read-only and informational — always exits 0. A broken plugin import or a
+    faulty sub-check degrades to a NOTE / "unknown", never a crash (a health
+    *report* must not fail the operator's shell)."""
+    want_json = "--json" in argv
+    lib_root = _plugin_root()
+    if lib_root not in sys.path:
+        sys.path.insert(0, lib_root)
+    try:
+        from lib import coverage_probes as cp  # noqa: PLC0415 — lazy keeps top-level cheap
+        from lib import advisory_store as store  # noqa: PLC0415
+        from lib import norm_probes  # noqa: PLC0415
+    except ImportError as exc:
+        print(f"NOTE: coverage-status unavailable (plugin lib/ not importable: {exc})", file=sys.stderr)
+        return 0
+
+    state_path = project_dir / ".prawduct" / "project-state.yaml"
+    codebase = store.make_codebase(project_dir)
+    recorded = cp.structural_characteristics_recorded(state_path)
+    missing = cp.missing_expected_artifacts(codebase)  # [(name, characteristic|None)]
+
+    # Layer 2 composes over the norm probe (its own gate is "strategy artifacts
+    # exist AND registry unratified"). The probe is declared non-raising, but a
+    # health report must not crash on a malformed state, so degrade to "unknown"
+    # and NAME the reason on stderr rather than swallow it.
+    norms_unratified: bool | None
+    try:
+        proj_state = store.load_project_state(project_dir)
+        norms_unratified = bool(norm_probes.probe_norm_registry_unratified(proj_state, codebase))
+    except Exception as exc:  # prawduct:allow prawduct/broad-except -- report must not crash; degrade layer 2 to unknown + log
+        print(f"NOTE: coverage-status layer-2 (norm ratification) check skipped: {exc}", file=sys.stderr)
+        norms_unratified = None
+
+    # Which single layer currently owns the nudge (the chain stages).
+    if not recorded:
+        active_layer: int | None = 0
+        fix: str | None = "record structural characteristics: /prawduct:methodology discovery"
+    elif missing:
+        active_layer = 1
+        fix = ("author each missing artifact (/prawduct:methodology planning), or drop stubs "
+               "in one act: prawduct-hook coverage-scaffold --apply")
+    elif norms_unratified:
+        active_layer = 2
+        fix = "ratify the product's norms via /prawduct:doctor"
+    else:
+        active_layer = None
+        fix = None
+
+    if want_json:
+        import json as _json  # noqa: PLC0415
+        print(_json.dumps({
+            "structural_recorded": recorded,
+            "missing_artifacts": [{"artifact": name, "characteristic": char} for name, char in missing],
+            "norms_unratified": norms_unratified,
+            "active_layer": active_layer,
+            "fix": fix,
+        }, indent=2))
+        return 0
+
+    print("Structural coverage (three-layer chain):")
+    print(f"  Layer 0 · discovery         : characteristics {'RECORDED' if recorded else 'NOT RECORDED'}")
+    if missing:
+        print(f"  Layer 1 · strategy artifacts : {len(missing)} expected artifact(s) missing")
+        for name, char in missing:
+            suffix = "" if char is None else f"  (required — {char} recorded)"
+            print(f"       - {name}{suffix}")
+    else:
+        print("  Layer 1 · strategy artifacts : all expected artifacts present")
+    if norms_unratified is None:
+        print("  Layer 2 · norm ratification : unknown (norm check unavailable)")
+    elif norms_unratified:
+        print("  Layer 2 · norm ratification : norms not yet ratified")
+    else:
+        print("  Layer 2 · norm ratification : ratified or not yet applicable")
+    if active_layer is not None:
+        print(f"  Active nudge → Layer {active_layer}: {fix}")
+    elif norms_unratified is None:
+        # Layers 0-1 satisfied, but layer 2 couldn't be checked — don't claim the
+        # whole chain is satisfied (the --json consumer discriminates on the
+        # norms_unratified: null field; the human reader gets this explicit line).
+        print("  Active nudge → none actionable: layers 0-1 satisfied; layer 2 (norms) could not be checked.")
+    else:
+        print("  Active nudge → none: the coverage chain is satisfied.")
+    return 0
+
+
+def cmd_coverage_scaffold(project_dir: Path, argv: list[str]) -> int:
+    """Drop stub files for the expected-but-missing strategy-class artifacts.
+
+    The coverage forcing function nudges a product to author (or explicitly
+    decline) each strategy-class artifact. Resolving several at once should be a
+    30-second confirm-and-fill, not a chore — this drops a neutral stub for each
+    missing expected artifact in one act, which the owner then fills with a real
+    spec or a one-line ``(not relevant — <reason>)`` decision.
+
+    Default is a **DRY RUN**: it lists what it WOULD create and changes nothing.
+    ``--apply`` writes the stubs. Two guarantees keep the owner in control: the
+    framework never silently auto-stubs (``--apply`` is the owner's confirm — that
+    a relevance decision is theirs to make, not the tool's to default), and it
+    never overwrites an existing file (an authored artifact or a prior stub is left
+    untouched). Reads the SAME expectation table as the probe and the status check
+    (``lib/coverage_probes.missing_expected_artifacts``).
+
+    Exit 0 on dry run or successful ``--apply``; exit 1 if the plugin ``lib/`` is
+    not importable (a state-mutating command must not claim success on a broken
+    install — mirrors ``regen-views``)."""
+    apply = "--apply" in argv
+    want_json = "--json" in argv
+    lib_root = _plugin_root()
+    if lib_root not in sys.path:
+        sys.path.insert(0, lib_root)
+    try:
+        from lib import coverage_probes as cp  # noqa: PLC0415 — lazy keeps top-level cheap
+        from lib import advisory_store as store  # noqa: PLC0415
+    except ImportError as exc:
+        print(f"error: coverage-scaffold could not import the plugin lib/ ({exc})", file=sys.stderr)
+        return 1
+
+    state_path = project_dir / ".prawduct" / "project-state.yaml"
+    codebase = store.make_codebase(project_dir)
+    recorded = cp.structural_characteristics_recorded(state_path)
+    missing = cp.missing_expected_artifacts(codebase)  # [(name, characteristic|None)]
+    artifacts_dir = project_dir / ".prawduct" / "artifacts"
+
+    created: list[str] = []
+    skipped_existing: list[str] = []
+    if apply and missing:
+        try:
+            artifacts_dir.mkdir(parents=True, exist_ok=True)
+        except OSError as exc:
+            print(f"error: could not create {artifacts_dir} ({exc})", file=sys.stderr)
+            return 1
+        for name, _char in missing:
+            dest = artifacts_dir / name
+            if dest.exists():  # never overwrite — an authored artifact or prior stub stays
+                skipped_existing.append(name)
+                continue
+            try:
+                _core().atomic_write_text(dest, _coverage_scaffold_stub(name))
+                created.append(name)
+            except OSError as exc:
+                print(f"NOTE: could not write {dest} ({exc})", file=sys.stderr)
+
+    if want_json:
+        import json as _json  # noqa: PLC0415
+        print(_json.dumps({
+            "structural_recorded": recorded,
+            "missing_artifacts": [{"artifact": name, "characteristic": char} for name, char in missing],
+            "applied": apply,
+            "created": created,
+            "skipped_existing": skipped_existing,
+        }, indent=2))
+        return 0
+
+    if not missing:
+        print("No missing expected strategy-class artifacts — coverage is satisfied.")
+        return 0
+
+    def _line(name: str, char: str | None) -> str:
+        return f"       - {name}" + ("" if char is None else f"  (required — {char} recorded)")
+
+    if not recorded:
+        print("Note: structural characteristics are not yet recorded (layer 0). Recording them")
+        print("      first (/prawduct:methodology discovery) may add characteristic-triggered")
+        print("      artifacts to this set.")
+    if apply:
+        print(f"coverage-scaffold — created {len(created)} stub file(s) in .prawduct/artifacts/:")
+        for name, char in missing:
+            if name in created:
+                print(_line(name, char))
+        if skipped_existing:
+            print(f"  skipped {len(skipped_existing)} existing file(s): {', '.join(skipped_existing)}")
+        print("Fill each with a real spec or a '(not relevant — <reason>)' decision, then git add them.")
+    else:
+        print(f"coverage-scaffold (dry run) — would create {len(missing)} stub file(s) in .prawduct/artifacts/:")
+        for name, char in missing:
+            print(_line(name, char))
+        print("Each stub is a neutral placeholder for you to fill (a real spec, or a")
+        print("'(not relevant — <reason>)' decision). Re-run with --apply to create them.")
+    return 0
+
+
+def cmd_resolve_base(project_dir: Path) -> int:
+    """Print the resolved diff/merge base for the PR/coverage gates and the
+    reviewer/cumulative diff.
+
+    The plugin critic/pr skills call this so the reviewer's
+    ``git merge-base "$(prawduct-hook resolve-base)" HEAD`` honors the same
+    configured ``base_branch:`` (gitflow ``develop``) the gates use — one
+    source of truth, no prose-driven base guessing (build-plan Chunk 5 gitflow
+    fix; resolves the reviewer/cumulative half of the ship-blocker).
+
+    Exit 0: prints the resolved base ref to stdout.
+    Exit 1: prints the reason to stderr (configured base unresolvable, or no
+    fallback candidate present) so callers fail closed to a full review.
+    """
+    base, reason = _coverage()._resolve_base_branch(project_dir)
+    if base is None:
+        print(reason, file=sys.stderr)
+        return 1
+    print(base)
+    return 0
+
+
+def cmd_bug_inbox(project_dir: Path) -> int:
+    """Resolve the upstream bug-report inbox and print it, or exit 1 when none.
+
+    The `/prawduct:report-bug` skill branches on the exit code: 0 = an inbox is
+    configured and reachable (file the report into the printed path); 1 = no
+    inbox (capture the bug in the product's own backlog + point at GitHub
+    issues). Inert by design for plugin-only users — they configure neither
+    ``PRAWDUCT_BUG_INBOX`` nor ``.prawduct/.bug-inbox``, so resolution returns
+    None and this exits 1.
+
+    Fail-soft: a missing/stale/unwritable inbox OR an incomplete plugin install
+    (lib not importable) both resolve to exit 1, never a crash — the channel
+    must stay silent and harmless in a repo that does not use it.
+    """
+    lib_root = _plugin_root()
+    if lib_root not in sys.path:
+        sys.path.insert(0, lib_root)
+    try:
+        from lib import bug_inbox  # noqa: PLC0415 — lazy keeps top-level lib-free
+    except ImportError:
+        return 1
+    inbox = bug_inbox.resolve_inbox(os.environ, project_dir)
+    if inbox is None:
+        return 1
+    print(inbox)
+    return 0
+
+
+def cmd_version() -> int:
+    """Print the running prawduct plugin version (bare semver from the bundled
+    ``.claude-plugin/plugin.json``) and exit 0; exit 1 if the manifest is
+    unreadable.
+
+    The **deterministic version source** consumers stamp into upstream bug reports
+    (the ``Found in: prawduct vX.Y.Z`` field — XP2 provenance / the MG5 report-bug
+    path) instead of *recalling* a version from the model. A recalled version
+    drifts silently as the plugin updates; this one is read from the manifest at
+    call time. Output is one bare line (``3.1.0``, no ``v`` prefix, no decoration)
+    so a skill or script can capture it and format ``prawduct v<version>`` itself.
+    """
+    version = _plugin_manifest_version()
+    if not version:
+        return 1
+    print(version)
+    return 0
+
+
+def cmd_stamp_merged(project_dir: Path) -> int:
+    """Stamp ``status=merged`` onto statusless tagged change-log entries.
+
+    DEPRECATED — no flow runs this anymore (single-pr-bookkeeping). A
+    statusless tagged entry is first-class release-pending state: the entry
+    rides in the feature PR, so its presence on the integration branch
+    already proves the work is merged. The post-merge stamp commit this
+    command fed forced consumers with protected integration branches into a
+    second, bookkeeping-only PR. The command stays callable (stamping is
+    harmless, convergent, and idempotent) and announces its deprecation on
+    stderr; removal is deferred to a future major.
+
+    Branch guard: stamping asserts "this work is integrated," which is only
+    true ON the integration branch — running on a feature branch would lie.
+    The current branch must equal the configured ``base_branch:`` (or ``main``
+    when the knob is unset). Fails closed when the branch cannot be determined.
+
+    Exit codes:
+      0 - stamped (titles printed) or nothing to stamp
+      1 - refused (not on the integration branch / branch undeterminable) or
+          the plugin lib/ could not be imported (state-mutating command must
+          not claim success on a broken install — mirrors regen-views)
+      2 - I/O error (missing/unreadable change-log)
+    """
+    print(
+        "deprecated: stamp-merged is no longer part of any flow — a "
+        "statusless tagged entry IS the release-pending state, and the "
+        "release checklist flips statusless and merged entries alike. "
+        "Stamping remains harmless; the command may be removed in a future "
+        "major version.",
+        file=sys.stderr,
+    )
+    lib_root = _plugin_root()
+    if lib_root not in sys.path:
+        sys.path.insert(0, lib_root)
+    try:
+        from lib import views  # noqa: PLC0415 — lazy import keeps top-level cheap
+        from lib.core import read_str_yaml_key  # noqa: PLC0415
+    except ImportError:
+        print(
+            "error: stamp-merged could not import the plugin lib/ from "
+            "${CLAUDE_PLUGIN_ROOT}; change-log not stamped.",
+            file=sys.stderr,
+        )
+        return 1
+
+    prawduct_dir = get_prawduct_dir(project_dir)
+    configured = read_str_yaml_key(
+        prawduct_dir / "project-state.yaml", "base_branch"
+    )
+    integration_branch = configured or "main"
+    # REL-7P3X: project-state.yaml's own comment calls `origin/develop`
+    # "preferred", but this guard compares against the LOCAL branch name from
+    # `git rev-parse --abbrev-ref HEAD` (a deliberate divergence from
+    # `_resolve_base_branch`, on record in the 2026-06-10 ch.02 Critic
+    # findings). Strip a single leading `origin/` so an origin-prefixed config
+    # normalizes to the local branch instead of refusing permanently.
+    if integration_branch.startswith("origin/"):
+        integration_branch = integration_branch[len("origin/"):]
+    proc = subprocess.run(
+        ["git", "rev-parse", "--abbrev-ref", "HEAD"],
+        cwd=str(project_dir),
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+    current = proc.stdout.strip() if proc.returncode == 0 else ""
+    if not current or current == "HEAD":
+        print(
+            "refusing: current branch could not be determined (detached HEAD "
+            "or not a git repo) — stamp-merged runs on the integration branch.",
+            file=sys.stderr,
+        )
+        return 1
+    if current != integration_branch:
+        print(
+            f"refusing: current branch {current!r} is not the integration "
+            f"base {integration_branch!r} — status=merged asserts the work is "
+            f"integrated; run stamp-merged after the merge, on the base branch.",
+            file=sys.stderr,
+        )
+        return 1
+
+    change_log_path = prawduct_dir / "change-log.md"
+    try:
+        content = change_log_path.read_text(encoding="utf-8")
+    except OSError as e:
+        print(f"ERROR reading change-log: {e}", file=sys.stderr)
+        return 2
+    new_content, stamped = views.stamp_merged(content)
+    if not stamped:
+        print("nothing to stamp: no statusless tagged entries.")
+        return 0
+    try:
+        change_log_path.write_text(new_content, encoding="utf-8")
+    except OSError as e:
+        print(f"ERROR writing change-log: {e}", file=sys.stderr)
+        return 2
+    for title in stamped:
+        print(f"stamped status=merged: {title}")
+    return 0
+
+
+def cmd_migrate_plugin(project_dir: Path, argv: list[str]) -> int:
+    """Dispatch the file-sync → plugin cutover (``/prawduct:migrate``, Chunk 9).
+
+    Thin wrapper around the plugin-native ``lib.migrate_plugin.run`` — the
+    subcommand exists so the skill's ``allowed-tools`` can be scoped to
+    ``Bash(prawduct-hook migrate-plugin*)`` instead of arbitrary code execution,
+    mirroring the ``advisory``/``infer-critic-mode`` pattern. ``argv`` is
+    ``sys.argv[2:]`` (``--apply`` / ``--json``); defaults to a safe dry run.
+
+    Fail-safe: if the bundled lib/ cannot be imported (an incomplete plugin
+    install), print a clear message and return 1 rather than crashing.
+    """
+    lib_root = _plugin_root()
+    if lib_root not in sys.path:
+        sys.path.insert(0, lib_root)
+    try:
+        from lib import migrate_plugin  # noqa: PLC0415 — lazy keeps top-level cheap
+    except ImportError:
+        print(
+            "migrate unavailable (could not import the plugin lib/ from "
+            "${CLAUDE_PLUGIN_ROOT})",
+            file=sys.stderr,
+        )
+        return 1
+    return migrate_plugin.run(project_dir, argv)
+
+
+def cmd_init_product(argv: list[str]) -> int:
+    """Scaffold a new or existing plugin-governed product repo (``/prawduct:onboard``).
+
+    Thin wrapper around the plugin-native ``lib.init_product.run``. Unlike the other
+    subcommands it operates on a TARGET path passed in ``argv`` (the new repo),
+    not the current project dir — onboarding creates a repo elsewhere. ``argv`` is
+    ``sys.argv[2:]`` (``<target> --name "<name>" [--apply] [--json]``); defaults to
+    a safe dry run. The scaffold creates only product-owned state + the install
+    reference (design §3) — never any file-sync machinery.
+
+    Fail-safe: if the bundled lib/ cannot be imported (an incomplete plugin
+    install), print a clear message and return 1 rather than crashing.
+    """
+    lib_root = _plugin_root()
+    if lib_root not in sys.path:
+        sys.path.insert(0, lib_root)
+    try:
+        from lib import init_product  # noqa: PLC0415 — lazy keeps top-level cheap
+    except ImportError:
+        print(
+            "init-product unavailable (could not import the plugin lib/ from "
+            "${CLAUDE_PLUGIN_ROOT})",
+            file=sys.stderr,
+        )
+        return 1
+    return init_product.run(argv)
+
+
+def cmd_update_gitignore(project_dir: Path) -> int:
+    """Reconcile ``.gitignore`` with the framework's session-file contract
+    (``/prawduct:doctor`` repair step — gate-soundness ch.3).
+
+    Adds missing session entries and strips lines that ignore managed files or
+    RETIRED entries (the tracked-by-default build plan). ``init-product``
+    early-exits on an already-scaffolded repo and the session hooks must never
+    edit a tracked file (the no-noise guarantee), so this on-demand command is
+    how an existing repo picks up gitignore-contract changes. Prints each
+    unignored path so the caller can advise ``git add``.
+
+    Fail-safe: if the bundled lib/ cannot be imported (an incomplete plugin
+    install), print a clear message and return 1 rather than crashing.
+    """
+    lib_root = _plugin_root()
+    if lib_root not in sys.path:
+        sys.path.insert(0, lib_root)
+    try:
+        from lib import core as lib_core  # noqa: PLC0415 — lazy keeps top-level cheap
+    except ImportError:
+        print(
+            "update-gitignore unavailable (could not import the plugin lib/ "
+            "from ${CLAUDE_PLUGIN_ROOT})",
+            file=sys.stderr,
+        )
+        return 1
+    result = lib_core.update_gitignore(project_dir)
+    if result.get("unignored"):
+        for path in result["unignored"]:
+            print(f"unignored: {path} — now tracked-by-contract; `git add` it if present")
+    print("updated .gitignore" if result.get("modified") else "no changes needed")
+    return 0
+
+
+def cmd_audit_learnings(project_dir: Path, argv: list[str]) -> int:
+    """Audit the consumer's ``.prawduct/learnings.md`` lifecycle (F9).
+
+    Plugin-native port of the legacy file-sync ``audit-learnings`` path (gone in
+    a migrated consumer — there is no framework checkout). Walks the
+    consumer's OWN ``learnings.md``, classifying entries as promotion /
+    retirement / stale candidates, and with ``--apply`` moves sentinel-passing
+    entries to ``learnings-detail.md``'s historical section. Invoked by
+    ``/prawduct:doctor``'s Audit-Learnings flow (``--json``). ``argv`` is
+    ``sys.argv[2:]`` (``--apply``, ``--json``); read-only by default.
+
+    Fail-safe: if the bundled lib/ cannot be imported (an incomplete plugin
+    install), print a clear message and return 1 rather than crashing.
+    """
+    rejected = _reject_unknown_args("audit-learnings", argv, {"--apply", "--json"})
+    if rejected is not None:
+        return rejected
+    apply = "--apply" in argv
+    as_json = "--json" in argv
+
+    lib_root = _plugin_root()
+    if lib_root not in sys.path:
+        sys.path.insert(0, lib_root)
+    try:
+        from lib import run_audit_learnings  # noqa: PLC0415 — lazy keeps top-level cheap
+    except ImportError:
+        print(
+            "error: audit-learnings could not import the plugin lib/ from "
+            "${CLAUDE_PLUGIN_ROOT}.",
+            file=sys.stderr,
+        )
+        return 1
+
+    result = run_audit_learnings(str(project_dir), apply=apply)
+
+    if as_json:
+        print(json.dumps(result, indent=2))
+        return 1 if "error" in result else 0
+
+    if "error" in result:
+        print(f"error: {result['error']}", file=sys.stderr)
+        return 1
+
+    promotions = result["promotions"]
+    retirements = result["retirements"]
+    stale = result["stale_flags"]
+    errors = result["errors"]
+    print(
+        f"audit-learnings ({'applied' if result['applied'] else 'dry-run'}): "
+        f"{len(promotions)} promotion candidate(s), {len(retirements)} retirement "
+        f"candidate(s), {len(stale)} stale flag(s), {len(errors)} error(s)."
+    )
+    for p in promotions:
+        print(f"  promote: {p['title']} (confirmations={p['confirmations']})")
+    for r in retirements:
+        state = "retired" if r.get("applied") else ("ready" if r.get("passed") else "blocked")
+        print(f"  retire[{state}]: {r['title']} (sentinel={r['sentinel']})")
+    for s in stale:
+        print(f"  stale: {s['title']} ({s['age_days']}d, confirmations={s['confirmations']})")
+    for e in errors:
+        print(f"  error: {e['title']}: {e['error']}")
+    return 0
+
+
+def cmd_repo_disable(project_dir: Path, argv: list[str]) -> int:
+    """Disable the Prawduct plugin for the current repo (``/prawduct:repo-disable``).
+
+    Writes ``"enabledPlugins": {"prawduct@prawduct": false}`` into
+    ``.claude/settings.json`` (committed; default) or ``.claude/settings.local.json``
+    (``--local``; auto-gitignored), preserving every other setting. Dry-run by
+    default; ``--apply`` writes; ``--json`` emits the structured plan/result.
+
+    There is no enable counterpart: a disabled plugin's own skills do not load, so
+    re-enabling is a documented manual edit (set the value to ``true`` or delete the
+    key). Fail-safe: if the bundled lib/ cannot be imported, print a clear message
+    and return 1 rather than crashing.
+    """
+    rejected = _reject_unknown_args(
+        "repo-disable", argv, {"--local", "--apply", "--json"}
+    )
+    if rejected is not None:
+        return rejected
+    local = "--local" in argv
+    apply = "--apply" in argv
+    as_json = "--json" in argv
+
+    lib_root = _plugin_root()
+    if lib_root not in sys.path:
+        sys.path.insert(0, lib_root)
+    try:
+        from lib.repo_toggle import set_repo_disabled  # noqa: PLC0415 — lazy keeps top-level cheap
+    except ImportError:
+        print(
+            "error: repo-disable could not import the plugin lib/ from "
+            "${CLAUDE_PLUGIN_ROOT}.",
+            file=sys.stderr,
+        )
+        return 1
+
+    result = set_repo_disabled(project_dir, local=local, apply=apply)
+
+    if as_json:
+        print(json.dumps(result, indent=2))
+        return 1 if "error" in result else 0
+
+    if "error" in result:
+        print(f"error: {result['error']}", file=sys.stderr)
+        return 1
+
+    target = result["target"]
+    if result["already_disabled"]:
+        print(f"Prawduct is already disabled for this repo in {target} — nothing to do.")
+        return 0
+
+    if not apply:
+        print(
+            f'DRY RUN: would set "enabledPlugins": {{"prawduct@prawduct": false}} in '
+            f"{target} (all other settings preserved). Re-run with --apply to write it."
+        )
+        return 0
+
+    print(
+        f'Disabled Prawduct for this repo: wrote "prawduct@prawduct": false to {target}.\n'
+        "  • Takes effect after you run /reload-plugins (this session) or restart Claude Code\n"
+        "    — until then Prawduct stays active.\n"
+        "  • Once disabled, the /prawduct:* commands won't load here. To RE-ENABLE later, edit\n"
+        f'    {target}: set "prawduct@prawduct": true (or remove the line), then /reload-plugins.'
+    )
+    return 0
+
+
+_USAGE = (
+    "Usage: prawduct-hook "
+    "{clear [--session-start|--force]|critic-begin --mode <m>|critic-end|critic-consolidate|"
+    "subagent-stop|"
+    "stop|build-index|user-prompt-submit|"
+    "jurisdiction [--file <path>|<text...>] [--artifacts-only]|"
+    "test-status|validate-evidence|"
+    "test-evidence record [--from-junit <r>|--from-counts passed=N failed=M skipped=K|--no-rerun] [-- pytest args]|"
+    "check-cumulative-critic|"
+    "verify-chunk-refs [chunk_id]|verify-coverage|"
+    "ledger-append --event <kind> [--scope <s>] [--chunk <id>] [--model <id>]|"
+    "review-stats [--json]|classify-diff-risk [<base>]|"
+    "check-operator-verification|accept-operator-verification <rationale>|"
+    "verify-operator-verification <vrf-id>|"
+    "check-pr-doc-only|check-change-log-entry|regen-views [--check]|stamp-merged|"
+    "infer-critic-mode [args]|"
+    "resolve-base|version|"
+    "evidence {status|list [--kind <k>] [-n <count>]}|advisory <subcmd> [args]|"
+    "coverage-status [--json]|coverage-scaffold [--apply] [--json]|"
+    "migrate-plugin [--apply] [--json]|init-product <target> --name <name> [--apply] [--json]|"
+    "update-gitignore|"
+    "audit-learnings [--apply] [--json]|repo-disable [--local] [--apply] [--json]}"
+)
+
+
+# --- Work model: undocumented-requirement catch (build plan: work-model) -----
+# The external enforcement surface for the work model (documentation/work-model.md,
+# prawduct-internal -- not shipped with the plugin). A
+# UserPromptSubmit hook surfaces, pre-turn, salient terms a user introduces that
+# NO governing artifact covers — the signal a new requirement may be entering
+# undocumented. The catch logic is the pure lib/work_model_index.py (Chunk 1);
+# these are the thin runtime wrappers (Chunk 2). Per the plugin invariant, the
+# derived index is per-repo state in ``.prawduct/.work-model-index.json`` (NOT
+# plugin-bundled state), rebuilt from the repo's governing corpus (artifacts,
+# CLAUDE.md, docs/, methodology/ — review-fixes Chunk 2). Both
+# commands gate on ``.prawduct/`` (the user-scoped plugin fires in every repo)
+# and are fail-soft — a hook error must never break session start or, above all,
+# prompt submission.
+
+_WORK_MODEL_INDEX_RELPATH = ".work-model-index.json"
+
+
+def _work_model_load_lib():
+    """Import the pure catch logic, seeding sys.path like the other lib readers."""
+    lib_root = _plugin_root()
+    if lib_root not in sys.path:
+        sys.path.insert(0, lib_root)
+    from lib import work_model_index  # noqa: PLC0415 — lazy import keeps top-level cheap
+
+    return work_model_index
+
+
+def _work_model_corpus_paths(project_dir: Path, prawduct_dir: Path) -> list[Path]:
+    """The governing corpus the vocabulary index is built from: every markdown
+    artifact under ``.prawduct/artifacts/``, plus the repo's CLAUDE.md and all
+    ``docs/`` / ``methodology/`` markdown, recursively (gate-noise: product
+    repos keep governing vocabulary in doc subdirectories, and the earlier
+    top-level-only globs made those words read as orphans). Widening is safe in
+    one direction only — extra corpus vocabulary can only suppress the nudge,
+    never fire it. Missing directories simply contribute nothing — product
+    repos rarely have all of them."""
+    paths = sorted((prawduct_dir / "artifacts").glob("*.md"))
+    claude_md = project_dir / "CLAUDE.md"
+    if claude_md.is_file():
+        paths.append(claude_md)
+    for sub in ("docs", "methodology"):
+        paths.extend(sorted((project_dir / sub).rglob("*.md")))
+    return paths
+
+
+def _work_model_corpus_texts(project_dir: Path, prawduct_dir: Path) -> list[str]:
+    texts: list[str] = []
+    for path in _work_model_corpus_paths(project_dir, prawduct_dir):
+        try:
+            texts.append(path.read_text(encoding="utf-8", errors="replace"))
+        except OSError:
+            continue
+    return texts
+
+
+def _work_model_ensure_index(
+    project_dir: Path, prawduct_dir: Path, wmi, *, force: bool = False
+) -> dict:
+    """Return the vocabulary index, rebuilding from the corpus when missing,
+    stale (a corpus file is newer than the index), corrupt, or ``force``."""
+    index_path = prawduct_dir / _WORK_MODEL_INDEX_RELPATH
+    corpus = _work_model_corpus_paths(project_dir, prawduct_dir)
+
+    if not force and index_path.exists():
+        idx_mtime = index_path.stat().st_mtime
+        if all(p.stat().st_mtime <= idx_mtime for p in corpus):
+            try:
+                return json.loads(index_path.read_text(encoding="utf-8"))
+            except (OSError, ValueError):
+                pass  # corrupt -> rebuild below
+
+    index = wmi.build_index(_work_model_corpus_texts(project_dir, prawduct_dir))
+    try:
+        index_path.write_text(json.dumps(index), encoding="utf-8")
+    except OSError:
+        pass  # best-effort write; detection still works from the in-memory index
+    return index
+
+
+def cmd_build_index(project_dir: Path) -> int:
+    """Rebuild the work-model vocabulary index from the repo's governing
+    corpus (wired on SessionStart to warm the index). Best-effort: a build
+    failure must never break session start."""
+    prawduct_dir = get_prawduct_dir(project_dir)
+    if not prawduct_dir.is_dir():
+        return 0  # not a Prawduct-governed repo — stay silent (mirrors digest.py)
+    try:
+        wmi = _work_model_load_lib()
+        _work_model_ensure_index(project_dir, prawduct_dir, wmi, force=True)
+    except Exception as exc:  # prawduct:allow prawduct/broad-except -- index build is best-effort; must never break session start
+        print(f"NOTE: Prawduct could not build the work-model index: {exc}", file=sys.stderr)
+        return 0
+    return 0
+
+
+def cmd_user_prompt_submit(project_dir: Path) -> int:
+    """UserPromptSubmit hook: inject a pre-turn nudge naming salient terms in the
+    user's prompt that no governing artifact covers (tripwire #1). Silent when
+    clean. Fail-soft above all else — a hook error must NEVER block the user's
+    prompt, so every path returns 0 and nothing is printed on error."""
+    prawduct_dir = get_prawduct_dir(project_dir)
+    if not prawduct_dir.is_dir():
+        return 0  # not a Prawduct-governed repo — stay silent
+    try:
+        raw = sys.stdin.read()
+        prompt = json.loads(raw).get("prompt", "") if raw.strip() else ""
+        if not prompt.strip():
+            return 0
+        wmi = _work_model_load_lib()
+        index = _work_model_ensure_index(project_dir, prawduct_dir, wmi)
+        nudge = wmi.nudge_for(prompt, index)
+        if nudge:
+            print(
+                json.dumps(
+                    {
+                        "hookSpecificOutput": {
+                            "hookEventName": "UserPromptSubmit",
+                            "additionalContext": nudge,
+                        }
+                    }
+                )
+            )
+    except Exception as exc:  # prawduct:allow prawduct/broad-except -- a hook error must never block prompt submission
+        # Log to stderr only — stdout is the additionalContext channel and must
+        # stay clean; the user's prompt proceeds regardless.
+        print(f"NOTE: Prawduct work-model nudge skipped (hook error): {exc}", file=sys.stderr)
+        return 0
+    return 0
+
+
+def cmd_jurisdiction(project_dir: Path, argv: list[str]) -> int:
+    """On-demand authoring aid: given plan/prompt text, list the governing
+    artifacts whose vocabulary the text's salient terms fall under — the
+    INVERSION of the orphan tripwire (orphans = terms NO artifact covers;
+    jurisdiction = which artifacts cover this text's terms). It seeds a plan's
+    ``governed_by:`` field with mechanical candidates for the planner's
+    judgment; it is NEVER a gate, so every path returns 0.
+
+    Input, first match wins: ``--file <path>`` reads the text from a file;
+    otherwise the positional args are joined as the text; otherwise stdin.
+    ``--artifacts-only`` restricts the corpus to ``.prawduct/artifacts/``
+    (the rest of the corpus — CLAUDE.md, docs/, methodology/ — is dropped).
+
+    Output: one line per candidate, ranked (count desc, path asc):
+    ``<path relative to project dir>  (<count>: term1, term2, ...)``. No
+    matches prints nothing. Fail-open — a bad ``--file`` path or any other
+    error prints a NOTE to stderr and still exits 0.
+    """
+    prawduct_dir = get_prawduct_dir(project_dir)
+    if not prawduct_dir.is_dir():
+        return 0  # not a Prawduct-governed repo — stay silent (mirrors build-index)
+
+    # Manual argv parse (no argparse — matches the other subcommands' style).
+    artifacts_only = False
+    file_arg: str | None = None
+    positional: list[str] = []
+    i = 0
+    while i < len(argv):
+        token = argv[i]
+        if token == "--artifacts-only":
+            artifacts_only = True
+        elif token == "--file":
+            i += 1
+            if i < len(argv):
+                file_arg = argv[i]
+        elif token.startswith("--file="):
+            file_arg = token[len("--file=") :]
+        else:
+            positional.append(token)
+        i += 1
+
+    try:
+        wmi = _work_model_load_lib()
+
+        # Resolve the text to place (first match wins): file, then positional,
+        # then stdin. A missing --file raises FileNotFoundError -> NOTE below.
+        if file_arg is not None:
+            text = Path(file_arg).read_text(encoding="utf-8", errors="replace")
+        elif positional:
+            text = " ".join(positional)
+        else:
+            text = sys.stdin.read()
+        if not text.strip():
+            return 0  # nothing to place -> nothing to print
+
+        paths = _work_model_corpus_paths(project_dir, prawduct_dir)
+        if artifacts_only:
+            artifacts_root = prawduct_dir / "artifacts"
+            paths = [p for p in paths if artifacts_root in p.parents]
+
+        # Build (relpath, content) pairs; the pure function ranks and caps.
+        files: list[tuple[str, str]] = []
+        for p in paths:
+            try:
+                content = p.read_text(encoding="utf-8", errors="replace")
+            except OSError:
+                continue  # unreadable corpus file contributes nothing
+            try:
+                rel = str(p.relative_to(project_dir))
+            except ValueError:
+                rel = str(p)  # outside the project dir (unexpected) -> absolute
+            files.append((rel, content))
+
+        for cand in wmi.jurisdiction_candidates(text, files):
+            print(f"{cand['path']}  ({cand['count']}: {', '.join(cand['matched'])})")
+    except (OSError, ValueError) as exc:
+        # Missing/unreadable --file, decode issues, etc. This is an authoring
+        # aid, never a gate — surface the reason, but exit 0.
+        print(f"NOTE: prawduct-hook jurisdiction could not run: {exc}", file=sys.stderr)
+        return 0
+    except Exception as exc:  # prawduct:allow prawduct/broad-except -- authoring aid must never error out; always exit 0
+        print(f"NOTE: prawduct-hook jurisdiction skipped (error): {exc}", file=sys.stderr)
+        return 0
+    return 0
+
+
+def main() -> int:
+    if len(sys.argv) < 2:
+        print(_USAGE, file=sys.stderr)
+        return 1
+
+    command = sys.argv[1]
+    project_dir = get_project_dir()
+
+    if command == "clear":
+        return cmd_clear(project_dir, sys.argv[2:])
+    elif command == "critic-begin":
+        return cmd_critic_begin(project_dir, sys.argv[2:])
+    elif command == "critic-end":
+        return cmd_critic_end(project_dir)
+    elif command == "critic-consolidate":
+        return cmd_critic_consolidate(project_dir)
+    elif command == "subagent-stop":
+        return cmd_subagent_stop(project_dir, _read_stop_stdin())
+    elif command == "build-index":
+        return cmd_build_index(project_dir)
+    elif command == "user-prompt-submit":
+        return cmd_user_prompt_submit(project_dir)
+    elif command == "jurisdiction":
+        return cmd_jurisdiction(project_dir, sys.argv[2:])
+    elif command == "stop":
+        return cmd_stop(project_dir, _read_stop_stdin())
+    elif command == "test-status":
+        return cmd_test_status(project_dir)
+    elif command == "validate-evidence":
+        return cmd_validate_evidence(project_dir)
+    elif command == "test-evidence":
+        return cmd_test_evidence(project_dir, sys.argv[2:])
+    elif command == "check-cumulative-critic":
+        return cmd_check_cumulative_critic(project_dir)
+    elif command == "verify-chunk-refs":
+        chunk_id = sys.argv[2] if len(sys.argv) > 2 else None
+        return cmd_verify_chunk_refs(project_dir, chunk_id)
+    elif command == "verify-coverage":
+        return cmd_verify_coverage(project_dir)
+    elif command == "ledger-append":
+        return cmd_ledger_append(project_dir, sys.argv[2:])
+    elif command == "review-stats":
+        return cmd_review_stats(project_dir, sys.argv[2:])
+    elif command == "classify-diff-risk":
+        return cmd_classify_diff_risk(project_dir, sys.argv[2:])
+    elif command == "check-operator-verification":
+        return cmd_check_operator_verification(project_dir)
+    elif command == "accept-operator-verification":
+        rationale = sys.argv[2] if len(sys.argv) > 2 else None
+        return cmd_accept_operator_verification(project_dir, rationale)
+    elif command == "verify-operator-verification":
+        vrf_id = sys.argv[2] if len(sys.argv) > 2 else None
+        return cmd_verify_operator_verification(project_dir, vrf_id)
+    elif command == "check-change-log-entry":
+        return cmd_check_change_log_entry(project_dir)
+    elif command == "check-pr-doc-only":
+        return cmd_check_pr_doc_only(project_dir)
+    elif command == "stamp-merged":
+        return cmd_stamp_merged(project_dir)
+    elif command == "regen-views":
+        return cmd_regen_views(project_dir, sys.argv[2:])
+    elif command == "infer-critic-mode":
+        args = " ".join(sys.argv[2:]) if len(sys.argv) > 2 else None
+        return cmd_infer_critic_mode(project_dir, args)
+    elif command == "resolve-base":
+        return cmd_resolve_base(project_dir)
+    elif command == "evidence":
+        return cmd_evidence(project_dir, sys.argv[2:])
+    elif command == "bug-inbox":
+        return cmd_bug_inbox(project_dir)
+    elif command == "version":
+        return cmd_version()
+    elif command == "advisory":
+        return cmd_advisory(project_dir, sys.argv[2:])
+    elif command == "coverage-status":
+        return cmd_coverage_status(project_dir, sys.argv[2:])
+    elif command == "coverage-scaffold":
+        return cmd_coverage_scaffold(project_dir, sys.argv[2:])
+    elif command == "migrate-plugin":
+        return cmd_migrate_plugin(project_dir, sys.argv[2:])
+    elif command == "init-product":
+        return cmd_init_product(sys.argv[2:])
+    elif command == "update-gitignore":
+        return cmd_update_gitignore(project_dir)
+    elif command == "audit-learnings":
+        return cmd_audit_learnings(project_dir, sys.argv[2:])
+    elif command == "repo-disable":
+        return cmd_repo_disable(project_dir, sys.argv[2:])
+    else:
+        print(_USAGE, file=sys.stderr)
+        return 1
+
+
+if __name__ == "__main__":
+    sys.exit(main())

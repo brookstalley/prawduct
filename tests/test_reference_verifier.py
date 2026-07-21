@@ -19,7 +19,7 @@ from pathlib import Path
 
 import pytest
 
-REPO_ROOT = Path(__file__).resolve().parent.parent
+REPO_ROOT = Path(__file__).resolve().parent.parent / "plugin"
 VERIFIER_PATH = REPO_ROOT / "bin" / "test-reference-verify"
 
 

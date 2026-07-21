@@ -18,7 +18,7 @@ import re
 from pathlib import Path
 
 
-REPO_ROOT = Path(__file__).resolve().parents[1]
+REPO_ROOT = Path(__file__).resolve().parents[1] / "plugin"
 
 # Critic skill surface that must carry the structural safety set (pure-allow deny
 # set, read-only git verbs only). Chunk 13 removed the legacy framework

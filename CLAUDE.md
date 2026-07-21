@@ -42,7 +42,7 @@ These guide every decision. Apply them with judgment, not mechanically.
 23. **Challenge Gently, Defer Gracefully** — Explain disagreements, offer alternatives, but the user owns the product.
 24. **Retrieval Over Generation** — Before a consequential decision, do the cheapest check that could change it (read the mechanism, search current practice) instead of committing a plausible generated answer. Cite or flag.
 
-Full principles with rationale and examples: `docs/principles.md`
+Full principles with rationale and examples: `plugin/docs/principles.md`
 
 ## Getting Started
 
@@ -65,7 +65,7 @@ When someone opens this directory, route based on context:
 
 ## Sessions and Work Cycles
 
-A **session** is one Claude Code invocation (clear hook → stop hook). A **work cycle** is one unit of work within a session with its own governance: understand → plan → build → verify → Critic → reflect. Multiple work cycles can happen per session. Context compaction is NOT a session boundary — persist plans and decisions to files before compaction. See `methodology/building.md` for the full model.
+A **session** is one Claude Code invocation (clear hook → stop hook). A **work cycle** is one unit of work within a session with its own governance: understand → plan → build → verify → Critic → reflect. Multiple work cycles can happen per session. Context compaction is NOT a session boundary — persist plans and decisions to files before compaction. See `plugin/methodology/building.md` for the full model.
 
 ## Before Building: Requirements Clarity
 
@@ -82,18 +82,18 @@ If any is unclear, **don't start building.** Instead:
 
 The cost of one round of clarification is small. The cost of building the wrong thing is much higher (Principle 6 — Requirements Precede Code).
 
-**Don't interrogate.** One inference to confirm beats five questions. Pairs with Principle 20 (Infer, Confirm, Proceed). Once requirements are clear, the methodology files (`methodology/discovery.md`, `methodology/planning.md`, `methodology/building.md`) tell you what to do next.
+**Don't interrogate.** One inference to confirm beats five questions. Pairs with Principle 20 (Infer, Confirm, Proceed). Once requirements are clear, the methodology files (`plugin/methodology/discovery.md`, `plugin/methodology/planning.md`, `plugin/methodology/building.md`) tell you what to do next.
 
-**Scale the rigor to the work.** How hard you pin requirements down — and whether you must *research* rather than rely on intrinsic knowledge — depends on three things: the **stakes** of getting it wrong, your **confidence** in designing a *great* solution unaided, and the **volatility** of the domain (fast-moving or post-training-cutoff data must be verified, not recalled — a rapidly-evolving language, a fast-moving tool, current versions/prices/results). Fill what you can infer and record each as a vetoable assumption; surface only consequential, unverifiable unknowns. See `methodology/discovery.md` "Calibrate Rigor."
+**Scale the rigor to the work.** How hard you pin requirements down — and whether you must *research* rather than rely on intrinsic knowledge — depends on three things: the **stakes** of getting it wrong, your **confidence** in designing a *great* solution unaided, and the **volatility** of the domain (fast-moving or post-training-cutoff data must be verified, not recalled — a rapidly-evolving language, a fast-moving tool, current versions/prices/results). Fill what you can infer and record each as a vetoable assumption; surface only consequential, unverifiable unknowns. See `plugin/methodology/discovery.md` "Calibrate Rigor."
 
 ## Methodology
 
 These narrative guides teach the approach. **Read the relevant guide when entering each type of work** — not from memory, actually read the file:
 
-- `methodology/discovery.md` — Read this before starting discovery
-- `methodology/planning.md` — Read this before designing artifacts or build plans
-- `methodology/building.md` — **STOP. Read this before writing ANY code.** It defines the build cycle including mandatory Critic review after each chunk. The #1 governance failure is skipping this file and proceeding straight to code. If you are about to write code and have not read this file in the current session, read it now.
-- `methodology/reflection.md` — Read this before session-end reflection
+- `plugin/methodology/discovery.md` — Read this before starting discovery
+- `plugin/methodology/planning.md` — Read this before designing artifacts or build plans
+- `plugin/methodology/building.md` — **STOP. Read this before writing ANY code.** It defines the build cycle including mandatory Critic review after each chunk. The #1 governance failure is skipping this file and proceeding straight to code. If you are about to write code and have not read this file in the current session, read it now.
+- `plugin/methodology/reflection.md` — Read this before session-end reflection
 
 ## The Critic — Independent Review
 
@@ -103,7 +103,7 @@ The Critic skill runs with `context: fork` (separate context) and restricted `al
 
 After a **coordinator** review (`final`/`cumulative`, 5+ files), run `prawduct-hook critic-consolidate` before reading `.critic-findings.json` — an idempotent no-op when the `SubagentStop` trigger already landed it, and it closes the window where an unfired trigger would leave you reading the *previous* review's file (single-pass reviews consolidate themselves). Fix any blocking findings before proceeding to the next chunk — the follow-up `/prawduct:critic verify-resolutions` records the resolution facts that unblock them. After resolving findings, reflect: what did the Critic surface that you missed? Capture learnings immediately — Critic reviews are the richest source of methodology insights.
 
-The Critic's review protocol (goals, severity, coordinator pattern) is bundled with the plugin at `skills/critic/review-protocol.md`.
+The Critic's review protocol (goals, severity, coordinator pattern) is bundled with the plugin at `plugin/skills/critic/review-protocol.md`.
 
 ## PR Review — Release Readiness
 
@@ -111,7 +111,7 @@ The Critic's review protocol (goals, severity, coordinator pattern) is bundled w
 
 If the user asks to "PR this", "create a PR", "push this up", or anything PR-related — use `/prawduct:pr`.
 
-The PR reviewer's protocol is bundled with the plugin at `skills/pr/review-protocol.md`.
+The PR reviewer's protocol is bundled with the plugin at `plugin/skills/pr/review-protocol.md`.
 
 ## Commit Conventions
 
@@ -128,7 +128,7 @@ harness default to the contrary. Squash/rebase-merge only when `project-preferen
 `PR merge strategy` to say so or the user explicitly asks; an absent preference means merge
 commit, and a failing `--merge` is surfaced, never silently downgraded to `--squash`.
 Rewritten-history merges (squash, rebase) make branches single-use — delete after merge, never
-reuse (why and mechanics: `skills/pr/SKILL.md` Merge Flow step 4).
+reuse (why and mechanics: `plugin/skills/pr/SKILL.md` Merge Flow step 4).
 
 ## The Learning Loop
 
@@ -142,14 +142,14 @@ After every significant action:
 4. **Capture**: Append a narrative entry to `.prawduct/.session-reflected`; add a durable rule to `learnings.md` only if the cycle produced one.
 5. **Evolve**: Should this learning strengthen a principle or amend the methodology?
 
-Session-end becomes a quick synthesis scan, not a from-scratch write. Read `methodology/reflection.md` for the complete protocol.
+Session-end becomes a quick synthesis scan, not a from-scratch write. Read `plugin/methodology/reflection.md` for the complete protocol.
 
 ## Reference
 
-- `docs/principles.md` — Full principles with rationale and review perspectives
+- `plugin/docs/principles.md` — Full principles with rationale and review perspectives
 - `.prawduct/learnings.md` — Accumulated project wisdom (looked up via `/prawduct:learnings [topic]` or read directly when needed)
-- `skills/critic/review-protocol.md` — Independent quality review instructions (the Critic skill's bundled protocol)
-- `templates/` — Artifact templates for structured output
+- `plugin/skills/critic/review-protocol.md` — Independent quality review instructions (the Critic skill's bundled protocol)
+- `plugin/templates/` — Artifact templates for structured output
 - `.prawduct/cross-cutting-concerns.md` — Cross-cutting concerns registry (pipeline coverage matrix)
 - `.prawduct/project-state.yaml` — Source of truth for project state
 
@@ -181,7 +181,7 @@ When compacting this conversation, preserve:
 - Which product is being built and its current work (size, type, description)
 - Any unresolved issues, blocked work, or pending decisions
 - The instruction to re-read CLAUDE.md after compaction
-- The requirement to read `methodology/building.md` before writing any code
+- The requirement to read `plugin/methodology/building.md` before writing any code
 - The requirement for Critic review after each chunk (invoke via `/prawduct:critic`; the stop hook enforces this)
 - The requirement for reflection at work boundaries (the stop hook enforces only the session-end floor)
 - Any in-progress learnings not yet captured

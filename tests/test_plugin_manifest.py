@@ -21,7 +21,7 @@ from pathlib import Path
 import pytest
 import yaml
 
-ROOT = Path(__file__).resolve().parent.parent
+ROOT = Path(__file__).resolve().parent.parent / "plugin"
 PLUGIN_MANIFEST = ROOT / ".claude-plugin" / "plugin.json"
 HOOKS_JSON = ROOT / "hooks" / "hooks.json"
 BANNER = ROOT / "hooks" / "banner.py"

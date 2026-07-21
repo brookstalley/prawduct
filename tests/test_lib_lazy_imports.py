@@ -18,7 +18,7 @@ from pathlib import Path
 
 import pytest
 
-REPO_ROOT = Path(__file__).resolve().parent.parent
+REPO_ROOT = Path(__file__).resolve().parent.parent / "plugin"
 
 # The flat API the package must keep resolving via ``from lib import <name>``
 # and ``lib.<name>``. Hard-coded as the contract (not derived from the

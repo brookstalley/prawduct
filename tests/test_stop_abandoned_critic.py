@@ -26,7 +26,7 @@ import subprocess
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parent.parent
+ROOT = Path(__file__).resolve().parent.parent / "plugin"
 HOOK = ROOT / "bin" / "prawduct-hook"
 
 # A non-`.md` code diff: keeps the empirical doc-only shortcut False so the only

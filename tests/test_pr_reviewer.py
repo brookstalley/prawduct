@@ -13,7 +13,7 @@ from pathlib import Path
 
 import pytest
 
-REPO_ROOT = Path(__file__).resolve().parent.parent
+REPO_ROOT = Path(__file__).resolve().parent.parent / "plugin"
 HOOK_PATH = REPO_ROOT / "bin" / "prawduct-hook"
 FRAMEWORK_DIR = REPO_ROOT
 
@@ -505,8 +505,19 @@ class TestPrReviewSkillContent:
         assert "Release-promotion guard" in content, (
             "the /pr skill must carry an explicit release-promotion guard"
         )
-        assert "docs/release-process.md" in content, (
-            "the guard must redirect a release promotion to docs/release-process.md"
+        # The guard must NOT route consumers at `docs/release-process.md`. That doc is
+        # prawduct's own release procedure (its marketplace entry, its VERSION/plugin.json)
+        # and is deliberately excluded from what the plugin distributes (GOV-4H7T), so the
+        # reference would dangle in every consuming repo -- and where it resolved, it would
+        # describe the wrong project's release. The guard hands back to the user's own
+        # process instead. Kept as an assertion, not a deletion, so re-adding the pointer
+        # fails here rather than shipping a dead link.
+        assert "docs/release-process.md" not in content, (
+            "the /pr skill must not point consumers at prawduct's own release process -- "
+            "documentation/release-process.md is not distributed with the plugin"
+        )
+        assert "release process" in content, (
+            "the guard must still hand a release promotion back to a release process"
         )
         # The redirect must be tied to being on develop/main (release surfaces),
         # not a feature branch — that's the discriminator.
@@ -520,7 +531,7 @@ class TestPrReviewSkillContent:
         is neither a gate to satisfy nor a waiver case — so a contributor doing a
         release doesn't re-run the cumulative Critic over version bumps (the
         CRT-7M2D treadmill) or pollute the waiver file."""
-        content = (FRAMEWORK_DIR / "docs" / "release-process.md").read_text()
+        content = (FRAMEWORK_DIR.parent / "documentation" / "release-process.md").read_text()
         assert "not the release vehicle" in content, (
             "release-process.md must state /prawduct:pr is not the release vehicle"
         )
@@ -642,5 +653,5 @@ class TestDiscoverability:
 
     def test_framework_claude_mentions_pr(self):
         """Framework CLAUDE.md should mention /pr."""
-        content = (FRAMEWORK_DIR / "CLAUDE.md").read_text()
+        content = (FRAMEWORK_DIR.parent / "CLAUDE.md").read_text()
         assert "/pr" in content

@@ -19,7 +19,8 @@ from pathlib import Path
 
 import pytest
 
-ROOT = Path(__file__).resolve().parent.parent
+ROOT = Path(__file__).resolve().parent.parent / "plugin"
+REPO_ROOT = Path(__file__).resolve().parent.parent
 HOOK = ROOT / "bin" / "prawduct-hook"
 
 # Governing artifact: headings + bold define the covered vocabulary.
@@ -148,7 +149,7 @@ INDEX_RELPATH = ".prawduct/.work-model-index.json"
 
 
 def test_index_is_gitignored():
-    gitignore = (ROOT / ".gitignore").read_text()
+    gitignore = (REPO_ROOT / ".gitignore").read_text()
     assert INDEX_RELPATH in gitignore
 
 

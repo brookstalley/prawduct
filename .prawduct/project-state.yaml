@@ -17,7 +17,7 @@ backlog_format_version: 2
 # Last full backlog grooming (stamped by /prawduct:backlog list/pick/groom).
 # Timestamp, not a count — counts are always re-derived (D14). Resolves the
 # backlog-overdue-grooming advisory.
-backlog_last_groomed_at: 2026-07-17
+backlog_last_groomed_at: 2026-07-18
 
 # Distribution model. `plugin` = this repo is governed by the Prawduct plugin
 # (v2.0.0), not file-sync. Set in Chunk 13 when the repo cut over to dogfood its
@@ -432,6 +432,9 @@ scope_rollups:
   critic-session-guard:
     chunks: ["1"]
     releases: ["v2.0.14"]
+  discodon-upstream-defects:
+    chunks: ["01", "02", "03", "04"]
+    releases: ["v3.1.1"]
   discovery-capture-nudge:
     chunks: ["01", "02"]
     releases: ["v2.0.10"]
