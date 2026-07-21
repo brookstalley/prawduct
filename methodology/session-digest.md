@@ -52,12 +52,10 @@ inference as a vetoable assumption. Full model: `methodology/discovery.md` "Cali
   settings disallow it), surface it — never silently fall back to `--squash`. Where squash
   or rebase-merge IS configured, branches are single-use: delete after merge, never reuse (a
   reused branch's pre-rewrite merge-base over-counts already-merged work at every review gate).
-- **Backlog goes through `/prawduct:backlog`** — pick/add/update via the skill, not hand-edits;
-  it routes to whichever backend `backlog_service_repo` selects. "Done" = `update
-  status=shipped` (on the markdown backend that moves the item to `## Archive` — never
-  strikethrough, never left in `## Open`; on the Issues backend it closes the issue, and
-  `dedup` is not available yet). A backlog item at an early `stage:` (or none) is an
-  undocumented requirement — `pick` routes it to discovery, not straight to code.
+- **Backlog goes through `/prawduct:backlog`** — pick/add/update/dedup via the skill, not
+  hand-edits. "Done" = `update status=shipped` → `## Archive` (never strikethrough, never left
+  in `## Open`). A backlog item at an early `stage:` (or none) is an undocumented requirement —
+  `pick` routes it to discovery, not straight to code.
 
 ## Principles (apply with judgment, not mechanically)
 

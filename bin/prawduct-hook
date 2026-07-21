@@ -2860,33 +2860,6 @@ def cmd_advisory(project_dir: Path, argv: list[str]) -> int:
     return advisory_cmd.run(project_dir, argv)
 
 
-def cmd_backlog(project_dir: Path, argv: list[str]) -> int:
-    """Dispatch the ``prawduct-hook backlog <op>`` CLI (the backlog service).
-
-    Thin wrapper around the bundled ``lib.backlog.cli.run`` — one entry point (a
-    subcommand group, not a second binary; API §1/O5), so there is a single
-    platform-exposure/PATH surface. ``argv`` is ``sys.argv[2:]`` (everything after
-    ``backlog``); the per-subcommand import stays lazy so other commands pay no
-    startup cost.
-
-    Fail-safe: if the bundled lib/ cannot be imported (an incomplete plugin
-    install), print a clear message and return 1 rather than crashing.
-    """
-    lib_root = _plugin_root()
-    if lib_root not in sys.path:
-        sys.path.insert(0, lib_root)
-    try:
-        from lib.backlog import cli as backlog_cli  # noqa: PLC0415 — lazy keeps top-level cheap
-    except ImportError:
-        print(
-            "backlog CLI unavailable (could not import the plugin lib/ from "
-            "${CLAUDE_PLUGIN_ROOT})",
-            file=sys.stderr,
-        )
-        return 1
-    return backlog_cli.run(project_dir, argv)
-
-
 def _coverage_scaffold_stub(artifact_name: str) -> str:
     """A neutral placeholder for a missing strategy-class artifact.
 
@@ -3814,8 +3787,6 @@ def main() -> int:
         return cmd_version()
     elif command == "advisory":
         return cmd_advisory(project_dir, sys.argv[2:])
-    elif command == "backlog":
-        return cmd_backlog(project_dir, sys.argv[2:])
     elif command == "coverage-status":
         return cmd_coverage_status(project_dir, sys.argv[2:])
     elif command == "coverage-scaffold":

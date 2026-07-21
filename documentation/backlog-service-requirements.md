@@ -1,6 +1,6 @@
 # Backlog Service — Requirements
 
-`status: draft v3.1 — owner review incorporated 2026-07-14; PRD independent-review pass fed back 2026-07-16 — four requirements discovered during PRD design written back here per Principle 6: CC5 (human-UI-edit drift reconciliation), PV4 (public-submission abuse handling), GV6 (label-taxonomy provisioning + existing-Issues coexistence), MG4 (one-time pre-migration scrub) · added: 2026-07-13 · source: discovery session · stage: requirements`
+`status: draft v3 — owner review incorporated 2026-07-14 · added: 2026-07-13 · source: discovery session · stage: requirements`
 
 Predecessor spec for the current git-file system: `documentation/backlog-system-requirements.md` —
 item *semantics* (metadata, stage routing, archive discipline) carry forward; its storage and
@@ -114,13 +114,6 @@ MUST unless marked SHOULD.
   reaping stays a policy/human call.
 - **CC4** Every mutation records actor identity — which human, or which agent acting for whom, from
   which project/session — kept as per-item history. Git's free audit log gets replaced, not lost.
-- **CC5** The adapter tolerates and reconciles **out-of-band human edits** made directly in the
-  GitHub UI: a collaborator who removes a `stage:` label, closes an issue with no state-reason, or
-  relabels an item must not corrupt the two-axis encoding (DM2). Drift is detected and either
-  self-heals (labels re-derived from open/closed + state-reason where derivable) or is surfaced
-  advisory — never silently mis-decoded. *Distinct from GV3* (item↔ship reconciliation): this is
-  encoding↔direct-edit reconciliation, and it is a first-class feature (the human UI is a supported
-  editing surface), not merely an error path.
 
 ### Truth & freshness
 
@@ -172,11 +165,6 @@ speed. Centralization alone fixes stale *views* (TF1); stale *content* needs TF2
   prawduct itself and for any public downstream repo. "Anonymous" means **no prior relationship with
   the repo owner** — requiring the filer to hold a GitHub account (or sign up on a self-hosted page)
   is acceptable friction (owner, 2026-07-14). Private projects need not accept anonymous filing (XP3).
-- **PV4** Public submission surfaces (PV3) carry **abuse handling**: the anonymous-filing path must
-  be rate-limitable and moderatable (spam/abuse triage), and its safety composes with the
-  retro-governance path (`MET-6T4K`) that governs every out-of-band contribution before merge. PV3
-  is per-project opt-in; enabling it depends on this. (Distinct from TF3, which is about *not*
-  mistaking legitimate mass grooming for abuse; PV4 is about actual hostile submission.)
 
 ### Automation enablement
 
@@ -204,67 +192,6 @@ speed. Centralization alone fixes stale *views* (TF1); stale *content* needs TF2
 - **GV5** Zero-cost provisioning: `/prawduct:onboard` (and `doctor`) provisions a project's
   backlog surface automatically. Eight projects today and there will always be more — per-project
   setup is one command or none.
-- **GV6** Adoption **provisions and reconciles the label taxonomy** and **coexists with a repo's
-  existing Issues**: `/prawduct:onboard`/`doctor` create prawduct's namespaced labels (`stage:`,
-  `status:`, `kind:`, `id:` …) without colliding with labels or issues the repo already uses, keep
-  the taxonomy consistent across repos, and never assume an empty tracker. A repo adopted mid-life
-  already has Issues, labels, and milestones — the adapter treats non-prawduct items as
-  out-of-scope, not as malformed backlog.
-- **GV7** **Migration-required signal + shared read-path longevity.** While a project keeps a live
-  markdown backlog and has not cut over (`backlog_service_repo` unset), a **warn-priority
-  `backlog-service-migration-required` advisory** fires at session start — so a repo that adopts a
-  plugin version past prawduct's own cutover is *told to migrate*, never silently degraded to a zeroed
-  backlog count and lost grooming nudges. It is **distinct from `legacy-backlog-format`** (which nudges
-  a *pre-structured* file toward the structured format): GV7 nudges a *structured* file onto the
-  service, and retires on the same `backlog_service_repo` switch as the other markdown probes. Its
-  prerequisite is MG3's shared read-path invariant — the plugin's markdown parser (today
-  `lib/backlog/legacy.py`) is **retired only when the whole portfolio has migrated**, not at any one
-  project's cutover; retiring it earlier is exactly the silent degradation GV7 exists to prevent.
-- **GV8** **Norm-lifecycle signals survive cutover.** The three norm-lifecycle probes —
-  `revisit-due` (a norm exception or stopgap whose expiry date has passed), `dead-why` (a norm whose
-  stated rationale cites a shipped/dropped item), and `stalled-transition` (a `Status: in-transition`
-  norm whose tracking item has not moved) — must keep firing after a project sets
-  `backlog_service_repo`. Today each guards on `post_cutover` and returns nothing, so **a norm
-  exception stops expiring visibly** — which is precisely the silent-departure failure the norm
-  lifecycle exists to prevent (`docs/norms.md`, "Exceptions expire"). Losing them at cutover was a
-  **side effect of the markdown-premise sweep, not a decision** (owner ruling, 2026-07-19).
-  Three constraints shape the implementation:
-  - **`revisit:` needs a home.** GitHub has no native slot for it, so it is a **block-authoritative,
-    unmirrored** field in the `prawduct:` body block (Data Model §1.2), added under the
-    additive-only-forever rule (§7).
-  - **Probes must not touch the network.** They run at session start, where BLOCK-5/G2 forbid a
-    blocking call, so the restored checks read a **local persisted store with visible age**,
-    background-refreshed (the never-block pattern GV2 established for briefing counts).
-  - **That store is the W1 cache — one persisted format, not a bespoke projection** (owner decision
-    2026-07-19). GV8's readers join the other post-cutover backlog readers (Critic Backlog
-    Reconciliation, PR `R-2`, janitor Backlog Health) behind the same cache rather than each minting
-    its own. **GV8's restoration therefore lands with W1.**
-  **Until W1 lands, degradation must be loud.** A guarded probe returning `[]`, and a skill reading
-  the frozen markdown as if it were live, are both *silent* — the failure GV8 exists to prevent. In
-  the interim every post-cutover backlog reader states plainly that the check is unavailable on the
-  Issues backend. A missing check a reader is told about is recoverable; one it is not told about is
-  the norm-exception hole again, one layer down.
-- **GV9** **Item references survive the identifier change.** After cutover the canonical id is
-  `owner/repo#number` and **no new `PFX-XXXX` is ever minted** (Data Model §5;
-  `lib/backlog/ids.py`) — the `id:PFX` alias exists so *migrated* items' old refs resolve forever,
-  not as a continuing scheme. Every surface that **cites** an item must therefore recognize *both*
-  forms: the PFX alias for migrated items, and `owner/repo#number` / `repo#number` for everything
-  filed after cutover. Today several recognize only the first — e.g. `lib/norm_probes.py`'s
-  `_BACKLOG_ID_RE` (`\b[A-Z]{2,4}-[A-Z0-9]{4}\b`), the Critic's C-B4 dangling-id check, PR review
-  `R-2`'s `closes: PFX-XXXX` reconciliation, `closes:`/`closed-by:` in backlog metadata and
-  change-log tags, and the deferred build-plan backlog-id verification
-  (`lib/buildplan_refs.py`). A citation surface that recognizes only PFX does not error on a
-  post-cutover reference — it **fails to see it**, which is the same silent degradation GV7 and GV8
-  exist to prevent, one layer down: a dangling-id check that cannot parse the id reports a clean
-  pass.
-  - **Recognition is additive** (API contract: additive-first evolution). PFX matching is never
-    narrowed or replaced; the native form is accepted *alongside* it, because both remain valid
-    forever in any repo that migrated.
-  - **Recognizing is not resolving.** Parsing a reference is local and cheap; answering "is
-    `owner/repo#123` still open?" is a backlog read and therefore lands with the W1 cache under GV8.
-    The parse-side work can ship well before the resolve-side, and should — a surface that can *see*
-    a post-cutover reference but must say "status unavailable" is strictly better than one that
-    silently treats it as absent.
 
 ### Migration & exit
 
@@ -274,36 +201,7 @@ speed. Centralization alone fixes stale *views* (TF1); stale *content* needs TF2
 - **MG2** Full-fidelity export to plain files, scriptable, at any time. The backlog is never
   hostage to a vendor or a server; export doubles as backup.
 - **MG3** Per-project adoption: projects migrate independently; file-based and service backlogs
-  coexist across the portfolio during transition (never within one project). Because the adapter
-  ships in the **shared plugin**, portfolio coexistence binds the plugin's **markdown read path**
-  (briefing counts + the markdown-premise advisory probes) to keep working for every un-migrated repo
-  until the *last* project cuts over — no single project's cutover (prawduct's own included) may
-  retire it (GV7).
-- **MG4** Migration supports a **one-time pre-migration scrub** so stale, obsolete, and duplicate
-  items are *not* carried into the new store (garbage-in-garbage-out would re-seed the #1
-  stale-content pain the project exists to kill — the moment you touch every item is the moment to
-  groom). The scrub: (a) grooms live items (close dead-premise / already-shipped, merge duplicates);
-  (b) decides **archive scope** as an **explicit owner-confirmed choice surfaced at scrub time**, not
-  a silent default — `open` (migrate only the live/open set as issues; the historical archive stays in
-  the **git-tracked source markdown**, minting no closed issue per ancient item) or `all` (import the
-  full archive as closed issues, the pre-scrub behavior). *(Corrected 2026-07-20: this read "stays as
-  the MG2 export file." The export dumps the **migrated repo** and runs after import, so it can never
-  hold what `open` excluded; the git-tracked source file is the actual preservation mechanism. The
-  consequence the owner must hear at scrub time — skipped items are git history, not searchable
-  backlog, because the skill stops reading the source file after cutover — is stated with the lever
-  in `skills/backlog/migration-scrub.md` step 2c.)* The importer honors the chosen scope through an
-  `--archive-scope` selector (AG1 — a deterministic lever, not a model inference). `open` also
-  **reduces the total write volume** of a large migration (fewer creates) — but the write-*rate*
-  ceiling is enforced by the Pacer, **not** by this lever; crediting the archive window as the
-  rate-budget keeper is the mis-attribution **BKL-6X5D** was filed to correct (NF3). A quantified *recent-shipped
-  window* between the two poles (migrate the last N months of archive, drop older) is the adopter-scale
-  refinement tracked by **BKL-6X5D** — its window is deliberately not yet quantified; (c) **disposes, never hard-deletes**
-  (DM7) — scrubbed items are closed/dropped-with-reason in the file backlog (git preserves them) or
-  live in the export; (d) is **model-assisted, human-confirmed** (candidates surfaced via TF2
-  stale-verification + Q3 similarity; the owner confirms dispositions; deterministic import then runs
-  on the cleaned set, AG1). prawduct's own backlog runs the scrub for real (dogfood); adopters get an
-  **optional advisory pre-scan** (flag likely-stale/dup candidates, skippable — we can surface but
-  not groom their data).
+  coexist across the portfolio during transition (never within one project).
 
 ### Non-functional
 
@@ -431,8 +329,6 @@ story. Full agent reports available on request; what matters for the decision:
   tightest: 80 writes/min, 10 semantic searches/min — sweeps must pace). **One real gap: no public
   API for issue attachments** (workaround: release assets or orphan branch, both API-supported).
   Privacy: issues inherit repo visibility — the only candidate where PV1 is structural, free.
-  *(Correction, verified 2026-07-16: the write cap is 80 content-creations/min **and ~500/hr** — a
-  secondary limit; migration especially must pace across time, not just per-minute.)*
 - **Linear** — best-in-class agent ecosystem (official hosted MCP, agents as non-seat teammates,
   OpenAI's Symphony uses it as an agent control plane). **Per-seat, not per-workspace** (Basic
   $10/user/mo, verified 2026-06): one workspace holds all teams/projects with unlimited issues on

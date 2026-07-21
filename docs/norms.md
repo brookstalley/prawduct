@@ -156,12 +156,7 @@ recorded on the norm's Retroactivity line:
 
 1. **Migrate** — existing violations become sized backlog work, **and the norm is born
    `Status: in-transition` with the migration item as its tracking ref** — that is what makes a
-   stalled migration observable. *Completed at birth:* when the sweep finds every violation
-   inside the birthing changeset and fixes it there, the norm is born `steady-state` with no
-   tracking item — record the outcome as `migrate` with the inventory and "no residual sites,"
-   never as Grandfather. The distinction is load-bearing: Grandfather means *never intending to
-   converge*, so using it here would exempt sites that are already compliant and invite the next
-   editor to add more.
+   stalled migration observable.
 2. **Contain** — old and new regimes coexist behind an explicit, modeled boundary (adapters at
    the seams). Two regimes without a modeled boundary are an unmodeled-state defect.
 3. **Grandfather** — existing sites are exempt, with the exemption inventory recorded at the

@@ -3,12 +3,7 @@
 One probe, the *receiving* side of the `/prawduct:report-bug` channel: it nudges
 triage when downstream products have filed bug reports into this repo's
 gitignored ``incoming-bugs/`` drop-box and they have not yet been triaged into
-the backlog (and archived).
-
-The advisory text names the *backlog*, not ``.prawduct/backlog.md``: triage runs
-through ``/prawduct:backlog``, which routes to whichever backend is live, so
-naming the markdown file would misdescribe the destination the moment a repo
-receiving reports cuts over to the Issues backend.
+``.prawduct/backlog.md`` (and archived).
 
 It is **inert by absence**: it checks ``<repo-root>/incoming-bugs/`` directly on
 the filesystem (not via the Codebase scan). A product repo has no such directory,
@@ -56,7 +51,7 @@ def probe_untriaged_upstream_reports(state: ProjectState, codebase: Codebase):
             type="untriaged-upstream-reports",
             evidence=(
                 "incoming-bugs/ holds bug reports filed by downstream products, "
-                "not yet triaged into the backlog",
+                "not yet triaged into .prawduct/backlog.md",
             ),
             trigger_summary=(
                 f"{count} untriaged bug report(s) in incoming-bugs/ — triage each "

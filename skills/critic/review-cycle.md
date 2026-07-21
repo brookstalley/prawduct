@@ -117,17 +117,6 @@ Scan your findings against active learnings. If a change reintroduces a pattern 
 
 ### Backlog Reconciliation
 
-**Check the backend first.** Read the top-level `backlog_service_repo` scalar from
-`.prawduct/project-state.yaml`. If it is **set**, this project's live backlog is GitHub Issues and
-`.prawduct/backlog.md` is frozen history — **skip this walk and all of C-B1–C-B4**, and emit one
-NOTE: "Backlog reconciliation unavailable — this project is on the GitHub Issues backend and these
-checks have no Issues-mode path yet; they return when the backlog read-through cache lands." Do **not** open
-`.prawduct/backlog.md` for live state in that mode: every item archived at cutover still parses as
-open, so the walk would emit confident findings about items closed months ago while missing every
-live Issue. A stated gap is recoverable; a confident wrong answer is not.
-
-If it is **unset** (the markdown backend), run the walk as written below.
-
 Read `.prawduct/backlog.md`. For each open item, check whether this session's changes resolve it — directly or incidentally. For each resolved item, emit a **NOTE**: "Backlog item appears resolved: [item text]. Verify and archive it now, on this branch — `/prawduct:backlog update <id> status=shipped closed-by=<scope>` — so it ships in this PR." Do not change status yourself — the framework never infers status; the builder makes the explicit call.
 
 **Backlog hygiene checks (C-B1–C-B4 — all NOTE-level, never BLOCKING)** — four soft signals (`/prawduct:backlog` is the fix path for each):

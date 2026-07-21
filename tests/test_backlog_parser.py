@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from lib.backlog.legacy import BacklogItem, parse_backlog, parse_metadata_bar
+from lib.backlog import BacklogItem, parse_backlog, parse_metadata_bar
 
 
 # A representative structured item with the full v0.3 metadata bar.

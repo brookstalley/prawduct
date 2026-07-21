@@ -92,8 +92,7 @@ from datetime import date, datetime, timezone
 from pathlib import Path
 
 from .advisory_store import AdvisoryCandidate, Codebase, ProjectState, register_probe
-from .backlog.legacy import BacklogItem, parse_backlog
-from .backlog_probes import post_cutover
+from .backlog import BacklogItem, parse_backlog
 
 # Strategy-class artifact filenames (docs/norms.md § Where Norms Live). Presence of
 # any is the heuristic for "this product has architectural direction that may carry
@@ -370,8 +369,6 @@ def probe_revisit_due(state: ProjectState, codebase: Codebase):
     Non-date ``revisit:`` values are ignored (the janitor Norm Health sweep walks
     event triggers). One stable advisory; the past-due items are listed in the
     summary (id-independent evidence keeps the advisory id put)."""
-    if post_cutover(state):
-        return []  # item liveness now lives on GitHub Issues; the file is frozen
     today = datetime.now(timezone.utc).date()
     text = _read_text(_backlog_path(codebase))
     if not text:
@@ -410,8 +407,6 @@ def probe_dead_why(state: ProjectState, codebase: Codebase):
     literals on ``Why:``/``Status:`` lines; a literal resolving to a dead item
     means the rationale rests on completed/abandoned work. One stable advisory;
     the ``artifact→id`` pairs are listed in the summary."""
-    if post_cutover(state):
-        return []  # dead/live can no longer be judged from the frozen file
     index = _backlog_index(codebase)
     if not index:
         return []
@@ -456,8 +451,6 @@ def probe_stalled_transition(state: ProjectState, codebase: Codebase):
     A missing item (doctor's registry-integrity job) or a dead item (dead-why's
     job) or an item with no date signal all fail toward silence. One stable
     advisory; the stalled ``artifact→id`` pairs and their staleness are listed."""
-    if post_cutover(state):
-        return []  # item movement can no longer be judged from the frozen file
     index = _backlog_index(codebase)
     if not index:
         return []
