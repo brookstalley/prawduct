@@ -133,9 +133,20 @@ action be reversed to restore the original condition?* Decide read-do vs do-conf
 frequent work gets a short do-confirm verification list; rare, irreversible, or order-critical work
 gets the full read-do script.
 
-**Step 4 — Draft from the template.** Copy `templates/runbook.md`. Write to the product's runbook
-directory (create `.prawduct/runbooks/` if none exists; follow existing convention if one does).
-Name the file after the trigger.
+**Step 4 — Decide the sections, then draft.** Copy `templates/runbook.md`. Before filling anything
+in, run the template's include-test for every optional section and **delete the ones that fail**.
+Do not leave a section with "N/A" or a restated generality — an empty section still costs the reader
+a read to discover it is empty.
+
+Whole sections will not apply to whole products, and that is expected, not a gap: a library with no
+deployment has no blast radius or close-out; a frontend-only product has no physical prerequisites;
+a solo project has no authorization and no escalate-to-role (say what "escalate" actually means
+there — it may be "stop and look tomorrow"); a product with no alerting has no trigger signal, so
+title by symptom and say where the responder will find the document. **Do not manufacture
+applicability.** A runbook that legitimately uses four sections is not under-documented.
+
+Then write to the product's runbook directory (create `.prawduct/runbooks/` if none exists; follow
+existing convention if one does). Name the file after the trigger.
 
 Non-negotiables while drafting:
 - Every verification step names the instrument, the observed value, what passes, and where to go on

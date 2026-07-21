@@ -46,17 +46,43 @@
          ## If this doesn't work
          <escalation, and the exit for "this isn't my situation">
 
-     Everything below that is OPTIONAL and earns its place only when the
-     procedure actually needs it:
-       + Prerequisites .......... when a missing credential/tool would strand
-                                  the reader mid-procedure
-       + Phases + checkpoints ... only past ~15 steps
-       + Blast radius/duration .. when the reader must judge whether to start
-       + Irreversible block ..... ONLY before a step that cannot be undone
-       + Close-out .............. when the procedure changes system state that
-                                  must be put back (silenced alerts, flags)
-       + Authorization .......... when the executor is not the decision-maker
-       + Maintenance ............ Tier 2+
+     EVERY OTHER SECTION IS A DECISION, NOT A DEFAULT.
+     Do not ask "can I fill this in?" — you almost always can, and that is the
+     trap. Ask the include-test below. If the answer is no, DELETE THE SECTION
+     ENTIRELY. Do not leave it with "N/A", "None", or a restated generality:
+     an empty section still costs the reader a read to discover it is empty.
+
+       SECTION            INCLUDE ONLY IF...
+       ─────────────────  ────────────────────────────────────────────────
+       When NOT to use    a neighbouring procedure could plausibly be
+                          confused with this one
+       Prerequisites      a missing credential, tool, network position or
+                          physical item would strand the reader mid-procedure
+       Blast radius       the reader must judge whether it is safe to START
+       Expected duration  "is it stuck?" is a real question here
+       Authorization      the executor is not the person who decides
+       Phases/checkpoints the procedure exceeds ~15 steps
+       Irreversible block a step genuinely cannot be undone — NOT merely
+                          "important" or "scary"
+       Close-out          the procedure leaves state that must be put back
+                          (silenced alerts, feature flags, scaled capacity,
+                          maintenance mode, temp credentials)
+       Maintenance        anyone other than the author will ever run this
+
+     WHOLE SECTIONS WILL NOT APPLY TO WHOLE PRODUCTS, and that is expected:
+       - A library or CLI with no deployment has no blast radius or close-out.
+       - A frontend-only product has no physical prerequisites.
+       - A solo project has no authorization and no escalation-by-role;
+         "escalate" may just mean "stop and look at it tomorrow" — say that.
+       - A product with no alerting has no trigger signal; title by symptom
+         and say where the responder is expected to find the document.
+       - A reversible-everything system needs no irreversible block at all.
+     A product whose runbooks legitimately use four sections is not
+     under-documented. Do not manufacture applicability.
+
+     The FRONTMATTER is subject to the same test — drop `triggers:` if nothing
+     fires, drop `tier:` if the product does not tier. Keep `owner:` and
+     `last_verified:`; those earn their place everywhere.
 
      BUDGETS: ≤20 steps total, 5-15 per phase, action lines under ~25 words.
      Real production runbooks run ~5-15 steps. If yours is longer, split it.

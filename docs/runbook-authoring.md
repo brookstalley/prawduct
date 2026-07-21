@@ -582,7 +582,7 @@ establishes that any particular field set improves outcomes. Treat the list belo
 default to apply proportionately, not as a checklist to satisfy ceremonially — a runbook with three
 fields and excellent steps beats one with twelve fields and vague ones.
 
-**Always:**
+**Genuinely always** — these five are the minimal runbook:
 
 - **Title** — names what the responder observes, not the mechanism you suspect: "Database
   connection pool exhausted", not "Pool tuning". Where a named signal triggers the procedure, the
@@ -590,9 +590,21 @@ fields and excellent steps beats one with twelve fields and vague ones.
   the full rule.
 - **When to use this** — the trigger/entry condition, phrased so a reader can match it against what
   they are seeing. Include the alert name or error signature verbatim if there is one.
-- **When NOT to use this** — the neighbouring procedures this gets confused with, and where to go
-  instead. Selecting the wrong procedure is a real failure mode; aviation treats checklist selection
-  under ambiguity as its own design problem.
+- **Steps** — numbered, one action each.
+- **Done when** — the observable end state. Not "the procedure is complete" but the value that
+  proves it.
+- **If this doesn't work** — the escalation path *and* the exit for "reality does not match this
+  document". On a solo project "escalate" may mean "stop and look at it tomorrow" — say so.
+
+**Only when they apply.** Run the test, then delete what fails it — an unused section left as "N/A"
+still costs the reader a read to discover it is empty. Whole sections not applying to a whole
+product is normal, not a gap: a library with no deployment has no blast radius or close-out; a
+frontend-only product has no physical prerequisites; a product with no alerting has no trigger
+signal.
+
+- **When NOT to use this** — *if* a neighbouring procedure could plausibly be confused with this one.
+  Selecting the wrong procedure is a real failure mode; aviation treats checklist selection under
+  ambiguity as its own design problem.
 - **Prerequisites** — access, credentials, tools (with versions), physical items and consumables,
   required authorization level, and network position. Written as a checkable list, because
   discovering a missing credential at step 8 costs the whole procedure. Military technical-manual
@@ -600,14 +612,10 @@ fields and excellent steps beats one with twelve fields and vague ones.
   materials and replacement parts, personnel and skill level, referenced documents, and required
   starting conditions — and the S1000D schema makes it structurally non-optional. Adopt the habit
   even where you skip the ceremony.
-- **Expected duration** — so the reader can tell "slow" from "stuck".
-- **Blast radius** — what is affected while this runs, and whether users see it.
-- **Steps** — numbered, phased, one action each.
-- **Done when** — the observable end state. Not "the procedure is complete" but the value that
-  proves it.
-- **If this doesn't work** — the escalation path, by role, with how to reach them.
-- **Ownership and last-verified date** — who owns it, and when it was last *executed or rehearsed*,
-  not when the file was last edited.
+- **Expected duration** — *if* "is it stuck?" is a real question here.
+- **Blast radius** — *if* the reader must judge whether it is safe to start.
+- **Ownership and last-verified date** — *if* anyone other than the author will ever run it. When it
+  was last **executed or rehearsed**, never when the file was last edited.
 
 **Tier 3 adds:** explicit abort criteria per irreversible step · named authority per consequential
 step · rollback procedure (or an honest statement that there is none) · a rehearsal record.
@@ -1117,7 +1125,10 @@ how well you satisfy the ones that do.
 **Restraint** — run these before the rest; they delete work rather than adding it
 19a. Is it **20 steps or fewer**? If not, split it.
 19b. Did you do the **subtraction pass** — one read whose only purpose was deletion?
-19c. Is there any section present that has nothing product-specific in it? Delete it.
+19c. Is there any section present that has nothing product-specific in it? Delete it — including
+     any left as "N/A" or "None". An empty section still costs a read to discover it is empty.
+19f. Did you *decide* each optional section against its include-test, rather than keeping it because
+     you could fill it in? Whole sections not applying to a whole product is normal.
 19d. Would a responder doing this routinely on a Tuesday find it *fast* to use, not just correct?
 19e. Read it as someone with 30 seconds and a page alert. Can they start acting immediately?
 
