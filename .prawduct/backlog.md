@@ -7,6 +7,22 @@
 
 ## Open
 
+- **[DOC-2R7M]** Post-relayout stale references in durable PLANNING artifacts — the release plan names `lib/backlog/**` at the pre-relayout path and points v3.2.0 at the wrong branch; the repoint build plan instructs `python3 bin/prawduct-hook`, which no longer exists
+  `effort: S · impact: M · area: docs · kind: bug · source: critic · added: 2026-07-21 · reviewed: 2026-07-21 · status: open · stage: ready · related: DOC-7K4V, DOC-2W9P, BKL-3W6K, BKL-6M4T · refs: .prawduct/artifacts/release-plan-backlog-service-golive.md (lines 26, 38, 84, 117, 187 — the five `lib/backlog/**` mentions; lines 22–39 — the branch guidance), .prawduct/artifacts/build-plan-backlog-skill-repoint.md (lines 46, 86, 118, 136 — `python3 bin/prawduct-hook backlog …`), plugin/bin/prawduct-hook (the post-relocation path)`
+
+  Filed by the verify-resolutions pass `rev-20260721T165755Z-c3371605` — finding **R-20**'s durable-prose half.
+
+  **This is the durable-artifact remainder of the same relayout sweep that fixed the five shipped skills in commit `f62cae1`.** The *shipped* surface is clean; this is the *planning* surface, which the sweep did not reach.
+
+  **Two concrete defects, both verified against the tree (2026-07-21):**
+
+  1. `.prawduct/artifacts/release-plan-backlog-service-golive.md` names `lib/backlog/**` **five times** at the pre-relayout path (`:26`, `:38`, `:84`, `:117`, `:187`) — after the relocation the tree carries `plugin/lib/backlog/`. It also points v3.2.0 work at the wrong branch: its "First: the code is not on `develop` any more" section (`:22–39`) instructs resuming on top of `feature/backlog-service`, but the work is now on **`feature/backlog-service-relayout`**, heading for `develop`.
+  2. `.prawduct/artifacts/build-plan-backlog-skill-repoint.md` still instructs `python3 bin/prawduct-hook backlog …` (`:46`, `:86`, `:118`, `:136`). After the relocation that path is `plugin/bin/prawduct-hook`; `bin/prawduct-hook` does not exist, so **the command cannot run as written** — a reader following the verification steps gets a `No such file or directory`, not a hint.
+
+  **Why this is a bug and not mere aging.** Both are durable artifacts a future session reads as *current instruction* — the release plan is what a v3.2.0 resumption navigates by, and the build plan's steps are meant to be executed. Stale paths here mislead an agent into the wrong branch or a failing command, rather than simply reading as history. Compare **DOC-2W9P** (shipped): the same class of stale-path defect in `documentation/` design specs, which was correctly treated as low-impact *because* those are an internal design archive. These two are not.
+
+  Fix shape: repoint the five `lib/backlog/**` mentions to `plugin/lib/backlog/**`, correct the branch guidance to `feature/backlog-service-relayout` → `develop`, and repoint the four `bin/prawduct-hook` invocations to `plugin/bin/prawduct-hook`. Check for other post-relayout stragglers in `.prawduct/artifacts/` while in there — the shipped-skill sweep and this one together suggest the relocation had no artifact-surface pass at all. (critic — verify-resolutions R-20)
+
 - **[BKL-7Q4M]** Safe upstream filing — a private consuming repo must be able to file a prawduct bug into prawduct's PUBLIC repo without leaking its own content; the missing design is CONTENT MINIMIZATION, not auth
   `effort: L · impact: L · area: backlog-service · kind: feature · source: user · added: 2026-07-21 · reviewed: 2026-07-21 · status: open · stage: requirements · related: BKL-9XQ2, BKL-0QR1, BKL-2Q7F, BKL-8V3D, BKL-5N9W, BKL-6M4T, ONB-3F9P, MET-6T4K · refs: .prawduct/artifacts/security-model.md (§ Direction — the norm this item tracks), tests/preferences/test_no_upstream_content_egress.py (the interim enforcement mechanism), documentation/backlog-service-security-model.md (§1 auth by target owner, §4 cross-owner cache scoping, §5 XP2 untrusted-until-triaged, §6 PV3/PV4 abuse prevention), .prawduct/artifacts/build-plan-backlog-service.md:687 (W3 roadmap row — `file-upstream`, XP1/XP2 public/foreign identity plane), plugin/skills/report-bug/SKILL.md, plugin/lib/backlog/transport.py:34-58 (`scrub_secrets` — the existing denylist redaction precedent)`
 

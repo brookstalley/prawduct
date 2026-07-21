@@ -3,6 +3,73 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-07-21: the backlog service came back, laid out under plugin/ — and took the local-first norm with it
+
+<!-- prawduct: type=feature | scope=backlog-service-relayout | status=open -->
+
+The v3.1.1 candidate tree was built by an allowlist prune (`fcb4e5f`, 113 insertions /
+16,942 deletions). Two things then happened independently: `feature/backlog-service` reverted that
+prune, and `develop` — which sits *on top of* it — did the relocation properly, moving the plugin
+into `plugin/` as a real directory. Neither branch restored what the prune deleted, so the
+backlog-service feature was simply **not on develop**: 45 files, ~6,100 lines, Chunks 01–06 built,
+plus backlog wiring stripped out of 16 files that survived (`prawduct-hook` lost 30 lines,
+`backlog_probes.py` lost 169).
+
+So this merge is a **restoration plus a relayout**, not a conflict resolution. Git's rename
+detection did the relayout for the 16 surviving files for free — base `bin/prawduct-hook` →
+ours `plugin/bin/prawduct-hook` → theirs modified, merged rename-aware into the right place. Only
+the 45 net-new files landed at old root paths and needed moving; `lib/backlog/` and
+`skills/backlog/` went under `plugin/`, while `tests/`, `documentation/` and `.claude/workflows/`
+stayed at the repo root where they already belonged. `lib/backlog.py` was a rename/rename conflict
+— renamed to `plugin/lib/backlog.py` here and to `lib/backlog/legacy.py` there — and since all
+three blobs were byte-identical, the two moves simply compose to
+`plugin/lib/backlog/legacy.py`. No import changes were needed at all: `tests/conftest.py` already
+puts `plugin/` on `sys.path`. Suite went 1998 → 2550.
+
+**The norm was the real work.** `architecture.md` § Direction carried a ratified steady-state
+local-first norm — "no network, no daemon" — whose own text said any future network surface would
+be "a characteristic flip, not a quiet addition." `lib/backlog/transport.py` drives `gh`. That is
+the flip, and the Critic blocked on it correctly: nothing in `.prawduct/` recorded a decision.
+
+Resolved by owner decision as an **amendment**, not a redesign. Local-first now scopes to
+*governance* coordination, with an opt-in backlog backend permitted a network surface provided it
+stays off by default, degrades to the markdown backend, and carries no governance verdict. Both
+original rationales survive intact — a product that never sets `backlog_service_repo` runs exactly
+the substrate the norm always described, and no gate, evidence fact or review verdict crosses the
+network. `gh` is recorded in `design_decisions.infrastructure_dependencies`, which also re-enables
+two Critic checks that sit dormant while that field is null. **No structural characteristic flips:**
+`gh` owns the credential (`~/.config/gh`) and the adapter never manages a token, so
+`handles_sensitive_data` stays absent.
+
+**A second norm was born, deliberately in-transition.** The owner's concern — a *private* consuming
+repo filing backlog items into prawduct's *public* tracker — is the named 3.2.0 blocker. Verified
+rather than assumed: nothing egresses today (`file-upstream` has zero implementation,
+`/prawduct:report-bug` writes only to a local drop-box and explicitly refuses a remote write when no
+local checkout is reachable, `backlog_service_repo` is the product's own repo). `security-model.md`
+§ Direction now holds that a governed product's content never leaves its own repo and owner,
+`Status: in-transition` against **BKL-7Q4M**. The end state is not prohibition — safe upstream
+filing is a capability prawduct wants; BKL-7Q4M is the requirements work (content minimization,
+redaction, owner preview-and-consent) that earns it. Its interim guard test is provisional and will
+be *replaced* by the redaction-and-consent contract, never weakened.
+
+Three code defects the review caught, each with a regression test **verified to fail against the
+unfixed code**: `_valid_segment` accepted `.`/`..`, which reach `repos/{owner}/{repo}/…` at the
+transport from an attacker-writable `superseded_by` body field; the briefing discarded the snapshot
+warm's result, so a warm that never started still claimed "counts warming" forever with the child's
+stderr on `DEVNULL`; and `import_items`' unexpected-boundary `except` returned a bare error,
+dropping progress and one-shot audit warnings — the third instance of the learning at
+`learnings.md:39`, on the sibling `except` to the two already fixed.
+
+**One correction to the fix commit `f62cae1`:** its message claims the roadmap-wave names are gone
+from shipped prose entirely. Four remain, in `plugin/lib/` docstrings (`migrate.py:487`,
+`snapshot.py:8,16`, `backlog_probes.py:332`). They are norm-*compliant* — `docs/norms.md` puts
+comments and docstrings on the permitted non-emitted side — so they were deliberately left rather
+than churned to make the sentence true retroactively. The claim was still overstated.
+
+Deferred with items filed, not dropped: BKL-3N8Q (relationship/timeline shapes fake-verified only;
+`blocked_by` fails silently so `pick` calls a blocked item ready), BKL-4C9P, GOV-5R8T, BKL-8W2M,
+DOC-7K4V, DOC-2R7M.
+
 ## 2026-07-21: the plugin stopped shipping prawduct's own backlog, learnings, and requirements to every consumer
 
 <!-- prawduct: type=fix | release=v3.1.1 | status=shipped -->
