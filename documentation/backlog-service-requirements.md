@@ -1,12 +1,11 @@
 # Backlog Service — Requirements
 
-`status: draft v3.1 — owner review incorporated 2026-07-14; PRD independent-review pass fed back 2026-07-16 — four requirements discovered during PRD design written back here per Principle 6: CC5 (human-UI-edit drift reconciliation), PV4 (public-submission abuse handling), GV6 (label-taxonomy provisioning + existing-Issues coexistence), MG4 (one-time pre-migration scrub) · added: 2026-07-13 · source: discovery session · stage: requirements`
+`status: draft v3.2 — consolidation pass 2026-07-23: this is now the SINGLE durable requirements doc for the backlog service. It absorbs and retires the predecessor `backlog-system-requirements.md` (its still-live governance/item semantics carried forward as GV10–GV13 + the MG1 foreign-import SHOULD; its markdown-in-git storage/transport decisions dropped as superseded), and folds in the upstream bug-reporting requirements formerly stranded in the shipped `build-plan-upstream-bug-reporting.md` (an ephemeral build plan — drop-box mechanism) and in the BKL-9XQ2 / BKL-7Q4M backlog items (now XP4–XP7). Prior: v3.1 — owner review incorporated 2026-07-14; PRD independent-review pass fed back 2026-07-16 — four requirements discovered during PRD design written back here per Principle 6: CC5 (human-UI-edit drift reconciliation), PV4 (public-submission abuse handling), GV6 (label-taxonomy provisioning + existing-Issues coexistence), MG4 (one-time pre-migration scrub) · added: 2026-07-13 · source: discovery session · stage: requirements`
 
-Predecessor spec for the current git-file system: `documentation/backlog-system-requirements.md` —
-item *semantics* (metadata, stage routing, archive discipline) carry forward; its storage and
-transport decisions are superseded here. Evidence below is from a 2026-07-13 sweep of all 16
-local checkouts of the 8 backlog-bearing projects (prawduct, scriob, discodon, hallucinote,
-cordyceps, trenchant, puzzles, metallm).
+The retired predecessor `documentation/backlog-system-requirements.md` carries a SUPERSEDED banner
+pointing here; git history holds its full original text and the git-file-era rationale. Evidence
+below is from a 2026-07-13 sweep of all 16 local checkouts of the 8 backlog-bearing projects
+(prawduct, scriob, discodon, hallucinote, cordyceps, trenchant, puzzles, metallm).
 
 ## Problem
 
@@ -162,6 +161,78 @@ speed. Centralization alone fixes stale *views* (TF1); stale *content* needs TF2
   a nice-to-have that must **not** drive the backend choice — its removal as a hard requirement is
   what reopens plain GitHub Issues (see Pushback 5).
 
+#### Upstream bug reporting — content minimization & safe filing
+
+The sharp case of XP1/XP2 is a *consuming* product filing a bug about **prawduct itself** into
+prawduct's **public** repo: the boundary is (possibly private) consumer repo → public issues, and
+it is **irreversible** — GitHub has no ordinary issue-delete and never reuses numbers. Content
+minimization is **orthogonal to authentication** (PV1/PV3): it governs *what crosses the boundary*,
+not *who may file*. Settled with the owner 2026-07-23. This **supersedes** the `incoming-bugs/`
+drop-box formalized in the retired `build-plan-upstream-bug-reporting.md` (that channel — the
+`bug-inbox` resolver, `.bug-inbox` pointer, `incoming-bugs/` drop-box, the
+`untriaged-upstream-reports` probe, and the local-capture fallback — is **to be removed** (target
+state; it remains the interim supported path until the GitHub-issue path is built, per
+`security-model.md` § Direction), not carried forward). Tracked by **BKL-7Q4M** (content minimization — the artifact `security-model.md`
+§ Direction norm cites it by id) and **BKL-9XQ2** (consent / evidence / label taxonomy).
+
+- **XP4** Content minimization is a **two-layer guarantee, stated honestly**:
+  - *L1 — minimize by construction (soft, agent).* The composing agent **recomposes the report in
+    prawduct's terms** and never echoes product content. Two modes: **synthesize** a minimal generic
+    reproduction (simple code bugs), or **abstract** the scenario with generic placeholders for
+    branch/file/state/identifiers (diagnostic bugs — the common case). Attribution carries the
+    **prawduct version only** (`prawduct-hook version`, sourced not recalled), never product
+    identity, paths, internal ids, or domain terms.
+  - *L2 — owner approves the verbatim payload (hard, human).* The owner reviews the **exact**
+    outbound payload and **explicitly approves** before send — mandatory per report **under the
+    `ask-user` default**; a standing `always-file` preference (XP5) is the owner's *pre-consent* and
+    substitutes for the per-report review, which then falls back to L1 as the operative safeguard. A
+    payload containing a code block triggers an explicit "confirm synthetic / non-proprietary" prompt
+    so the review is active on the actual leak vector, not a rubber-stamp. Where it runs, this is the
+    authoritative guarantee.
+  - *Honest limitation (MUST be stated, not implied):* "no proprietary content" is **not**
+    mechanically enforceable at a prose boundary. The guarantee is best-effort authoring + mandatory
+    human review — **not a redactor**; the design must not claim a filter it cannot back.
+- **XP5** Consent is **per-report** and **adapter-bound** — **there is no install-time opt-in**
+  (owner, 2026-07-23); the per-report gate is the whole mechanism, so a report is never filed without
+  consent. A `project-preferences.md` setting mirroring the PR-merge pattern gives three states:
+  **`ask-user`** (**default** — ask per report; the ask *is* the XP4 L2 verbatim-payload review),
+  **`never-file`** (standing "no"), and **`always-file`** (standing "yes"). A user says **"never ask
+  me"** by moving off the default into either standing state. Honored without exception; the
+  unattended path is load-bearing — where no human is present (Security §1a), `ask-user` means
+  **don't file**, never "file anyway." **Standing consent (`always-file`) waives the per-report L2
+  review**, so for those reports the **L1 recomposition-in-prawduct's-terms is the operative
+  safeguard** — an informed standing choice, not a silent bypass. It binds at the **adapter (data
+  plane)**, not skill prose — retiring the drop-box *is* the prose rewrite, so a prose-only guard is
+  deleted by the same change that creates the risk (the MG4/G1 split; permissions bound *who may
+  call*, not *where the call may send*).
+- **XP6** Filing is **label-less; triage applies labels**. A consumer files as a **non-collaborator**,
+  who cannot set GitHub labels — so category rides in the issue-body template (Component, `Found in:`
+  version) and a title convention, and **prawduct-side triage** applies the taxonomy (the `submitted`
+  / untrusted-until-triaged posture of XP2 and Security §5). Consumers are **never coupled** to
+  prawduct's label taxonomy (GV6 is triage-side). *(Confirm current GitHub non-collaborator label
+  behavior against a throwaway issue at build — load-bearing, do not ship on recall.)*
+- **XP7** The safe path binds at the **adapter, where the guarantee is testable**. The file-upstream
+  op MUST: **pin the target** to the intended public repo (no unconstrained `--repo` owner —
+  BKL-2Q7F); **authenticate** via the session's GitHub identity (no anonymous — gh issues are
+  inherently authenticated); **refuse to execute without a recorded owner-approval** (XP4 L2); and
+  never let prawduct's **own** repo self-file upstream (it routes to its own backlog). This triple is
+  the durable enforcement that **replaces** the interim egress guard
+  (`tests/preferences/test_no_upstream_content_egress.py`), which stays live until a design
+  supersedes it. **Submit-or-nothing:** declining files nothing — there is no local backlog capture
+  of an upstream bug (a captured-but-unsubmitted upstream bug helps no one: prawduct never sees it
+  and it clutters the product). The flow MUST be **fast** — draft → one recomposition → one approve →
+  filed — because a slow flow degrades submit-or-nothing into "nothing" and loses the signal (the
+  real corpus of hallucinote/discodon upstream reports leaks product name, internal ids, and
+  proprietary call chains as *incidental color*: the prawduct signal is cleanly separable, but only
+  recomposition + review separates it).
+
+> **RESOLVED — no consent-at-install (owner decision, 2026-07-23).** BKL-9XQ2's consent-at-install /
+> disclosure leg (1a) is **not** a requirement: there is **no install-time opt-in**. Consent is
+> **per-report** (XP5) and that is the whole mechanism — a report is never filed without consent,
+> given either per-report (the `ask-user` default) or as a standing `always-file` / `never-file`
+> choice ("never ask me"). With 1a resolved, **all upstream-filing legs (XP4–XP7) are now settled as
+> requirements.**
+
 ### Privacy & access
 
 - **PV1** Per-project visibility: a private project's backlog is readable/writable only by its
@@ -189,7 +260,9 @@ speed. Centralization alone fixes stale *views* (TF1); stale *content* needs TF2
 ### Governance integration (prawduct-side)
 
 - **GV1** `/prawduct:backlog` keeps its UX contract (pick/add/find/list/update/dedup) as a thin
-  wrapper over the service. `pick`'s stage-aware routing and build-plan awareness survive unchanged.
+  wrapper over the service. `pick`'s stage-aware routing and build-plan awareness survive unchanged,
+  including its **default exclusion of in-flight (in-progress) and claimed items** — `pick` surfaces
+  ready, unclaimed work unless explicitly asked otherwise.
 - **GV2** Session briefing reads counts from the local cache (AG4), refreshed asynchronously —
   session start never waits on the network.
 - **GV3** Ship **traceability** replaces ship **atomicity**: closing an item still records
@@ -265,12 +338,50 @@ speed. Centralization alone fixes stale *views* (TF1); stale *content* needs TF2
     The parse-side work can ship well before the resolve-side, and should — a surface that can *see*
     a post-cutover reference but must say "status unavailable" is strictly better than one that
     silently treats it as absent.
+- **GV10** **Backlog hygiene at chunk close is the *primary* reconciliation, not only the safety
+  net.** When a work-cycle chunk concludes, the agent updates the items it affected based on **what
+  actually shipped** (shipped / partly / unaffected / obsolete) — because the agent knows and the
+  framework cannot infer it (the D4 rationale). This is the front-line contract; GV3's janitor
+  sweep, the Critic Backlog Reconciliation, and PR `R-2` are its **backstops**, not its replacement.
+  The change-log/release-prep pass performs the same reconciliation at release. *(Carried forward
+  from the retired predecessor §5.2–5.3; the base doc kept only the backstops.)*
+- **GV11** **The methodology routes agents *to* the skill — the backlog is wired into the work
+  cycle, not beside it.** The governance surfaces name `/prawduct:backlog` at the moments it is
+  needed: building (chunk close → `update`), reflection (→ `add`), planning/discovery (→ `pick`,
+  with early-stage or unspecified items routed to discovery, **not** code), and the session digest
+  carries the pointer for already-onboarded repos. Without this wiring agents hand-edit the store
+  and the skill is bypassed — the root cause the structured backlog exists to fix. *(Carried forward
+  from predecessor §0/§0.3 — the meta-driver of the whole rework; GV1 preserved the skill's UX but
+  not the routing to it.)*
+- **GV12** **The Critic/PR nudge suite survives, advisory (NOTE-level) and never hard-gate.** The
+  checks that surface neglected backlog hygiene: **C-B1** (item missing required metadata), **C-B2**
+  (no dedup search before a new item), **C-B3** (a change touches an area with open items but ran no
+  hygiene step), **C-B4** (dangling item id — recognizing *both* the `PFX-XXXX` alias and
+  `owner/repo#number`, per GV9), plus PR **R-1** (branch work appears to resolve an open item) and
+  **R-2** (a `closes:` disagreement). Service-side advisory validation (DM1/AG3) covers C-B1/C-B2
+  for service-written items; the **diff-side** nudge still matters for out-of-band human edits
+  (CC5). **Invariant:** the framework **routes and flags, it never hard-gates**, and it **never
+  pattern-matches `Closes PFX` text to auto-change an item's status** — status changes are always
+  explicit (D4/D13). *(Base named only C-B4/R-2, incidentally, inside GV9.)*
+- **GV13** **Activity-based grooming nudge survives cutover.** A `backlog-overdue-grooming` advisory
+  fires when a project's backlog has not been groomed in >90 days **and** carries >20 open items —
+  the self-surfacing nudge against the #1 stale-content pain. Like the GV8 norm-lifecycle probes it
+  reads the **local persisted store with visible age** (never blocking at session start,
+  background-refreshed) and lands with the same W1 cache. *(Carried forward from predecessor §8.2;
+  GV8 restored the three norm-lifecycle probes but not this activity probe.)*
 
 ### Migration & exit
 
 - **MG1** One-shot importer for existing `backlog.md` (+ `backlog-archive.md`): IDs, metadata bars,
   bodies, and sections preserved verbatim. Existing IDs stay valid — change-logs, learnings, and
   commit messages cite them.
+  - **(SHOULD) Foreign-backlog on-ramp.** A new adopter whose prior backlog is a plain file
+    (`TODO.md`/`BACKLOG.md`/`ROADMAP.md`) SHOULD have a supported on-ramp: an explicit `import <path>`
+    (**never** auto-import), a detect-and-advise signal at adoption (an `external-backlog-detected`
+    posture), and a `doctor` candidate-file report. **Descoped from MUST (owner, 2026-07-23)** — real
+    but low-frequency now the portfolio is GitHub-native; the MUST importer above covers prawduct's
+    own structured `backlog.md`, and GV6 covers coexistence with a repo's existing Issues. *(Carried
+    forward, descoped, from predecessor §4.3/§8.2–8.4.)*
 - **MG2** Full-fidelity export to plain files, scriptable, at any time. The backlog is never
   hostage to a vendor or a server; export doubles as backup.
 - **MG3** Per-project adoption: projects migrate independently; file-based and service backlogs

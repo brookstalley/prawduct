@@ -1,5 +1,16 @@
 # Backlog System — Requirements
 
+> **⚠ SUPERSEDED — 2026-07-23.** This predecessor spec is **retired**. The single durable
+> requirements doc for the backlog is **`documentation/backlog-service-requirements.md`**. Its
+> still-live content — item semantics (metadata, `stage:` routing, archive discipline), the
+> backlog-hygiene step at chunk close, methodology→skill workflow wiring, the Critic/PR nudge suite
+> (C-B1–C-B4, R-1/R-2), the overdue-grooming probe, and the foreign-import on-ramp — is carried
+> forward there (GV10–GV13 + the MG1 SHOULD + the DM/AG/CC/TF/Q/GV/MG map). The markdown-in-git
+> **storage/transport** decisions here (single-file storage, three-section layout, strikethrough
+> done-marking, the `lib/backlog.py` parser substrate, merge-conflict union rule, section-schema
+> probe) are **superseded and were NOT carried forward**. This file is retained for historical
+> rationale only — **do not add or amend requirements here.**
+
 **Status:** Draft v0.2 (2026-05-28) — **Phase 2 lean core built and shipped in framework v1.7.0** (2026-05-29). Shipped: the structured item format + three-section file (§3), the forked `/backlog` skill with `add`/`list`/`find`/`update`/`pick`/`migrate` (§4), and the single `legacy-backlog-format` post-sync probe (§8.2) registered against the v1.6.0 advisory infrastructure. **Deferred on proportionality grounds** (filed into `.prawduct/backlog.md`, not dropped): the other three probes (`external-backlog-detected`, `legacy-section-schema`, `backlog-overdue-grooming`), `/backlog import` (§4.3/§8.4), `/backlog dedup` (§4.3), the janitor Step 2.5 triage (§6) incl. the Q2 archive-split, the four Critic checks C-B1–C-B4 (§7), the `/backlog dismiss-advisory` alias (§8.2), the build-plan hygiene-step doc (§5.3), and the prawduct-doctor setup-time external-file report (§8.3) — each added when a real product needs it.
 **Scope:** Improve backlog management across all Prawduct products — creation, grooming, grouping, prioritization, and "pick what to do next" selection.
 **Out of scope:** Build plan (separate deliverable, after these requirements are approved).
