@@ -43,7 +43,7 @@ non-interactive) are owned and stable, and the adapter surface was read directly
   new `adapter-mode.md` runbook + a `Bash` grant, with no new `lib/` helper | MED impact | user can
   override if a code helper (e.g. a shared repo-resolution shim) is preferred]
 - [ASSUMPTION: per-chunk verification is adapter command/envelope-shape confirmation (repo-local
-  `python3 bin/prawduct-hook backlog …`) + frontmatter validity; the end-to-end behavioral proof is
+  `python3 plugin/bin/prawduct-hook backlog …`) + frontmatter validity; the end-to-end behavioral proof is
   Phase 1's sibling dogfood, tracked as an operator-verification (VRF) entry that drains at Phase 1 |
   LOW impact | this is inherent to a prose skill — there are no unit tests for skill behavior]
 
@@ -83,7 +83,7 @@ touches no `lib/`, so this is a regression guard, not new coverage).
 ### Verification Strategy
 
 Per chunk: (1) confirm the frontmatter still validates (plugin-manifest test); (2) run the adapter
-commands the chunk's prose depends on **repo-local** (`python3 bin/prawduct-hook backlog <op> --repo
+commands the chunk's prose depends on **repo-local** (`python3 plugin/bin/prawduct-hook backlog <op> --repo
 <throwaway> --json`, never the on-PATH cached plugin) and confirm the envelope shape + exit class
 match what the prose instructs. End-to-end behavioral proof (the human-output legibility a
 `--json`-only check can't speak to) is **Phase 1's sibling dogfood** — drive the full loop against a
@@ -115,7 +115,7 @@ envelope**, never to its human stdout (api-contract norm).
   (scoped to `prawduct-hook backlog *`); a new top-level **"Backend routing"** section resolves
   `backlog_service_repo` from `project-state.yaml` and branches (unset → the existing markdown
   sections, byte-unchanged; set → `adapter-mode.md`). New `adapter-mode.md` carries the protocol:
-  resolve the repo, run `python3 bin/prawduct-hook backlog <op> --repo <r> --json` (repo-local when
+  resolve the repo, run `python3 plugin/bin/prawduct-hook backlog <op> --repo <r> --json` (repo-local when
   developing; `prawduct-hook` in a consumer), parse the envelope, branch on the exit class, and
   **surface `warnings[]` from BOTH the ok AND the error envelope** (the error return is a different
   constructor that drops enrichment — the recurring backlog-service envelope bug). On exit `5`
@@ -133,7 +133,7 @@ envelope**, never to its human stdout (api-contract norm).
 - **Type:** doc-only
 - **Done when:**
   1. Acceptance criteria met; frontmatter validates; `pytest -q` green
-  2. Verified: `python3 bin/prawduct-hook backlog counts/list/get --repo <throwaway> --json` shapes
+  2. Verified: `python3 plugin/bin/prawduct-hook backlog counts/list/get --repo <throwaway> --json` shapes
      match `adapter-mode.md`'s instructions (incl. an error-envelope case for exit-class handling)
   3. `/prawduct:critic` run and blocking findings resolved
   4. Committed and chunk marked `[x]` in Status
