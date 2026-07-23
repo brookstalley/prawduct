@@ -7,6 +7,26 @@
 
 ## Open
 
+- **[COV-3M8Q]** Doc-only fast-path can't see a provably behavior-preserving code change (docstring/comment-only .py) — keys on .md extension alone
+  `effort: M · impact: M · area: governance/gates · kind: question · source: user · added: 2026-07-21 · reviewed: 2026-07-21 · status: open · stage: research · related: COV-2P7F, COV-4H7N, COV-6T3P, PR-5K8D · refs: plugin/lib/coverage_algebra.py:59-72 (is_judgeable_path — the extension/prefix-only classifier and its do-not-reintroduce docstring), plugin/lib/coverage.py (cmd_check_pr_doc_only), .prawduct/learnings.md (#258 — separate the rejected direction from the rejected primitive; #91 — language-agnosticism)`
+
+  **Observed live 2026-07-21** on `feature/backlog-service-relayout`. A branch whose entire delta was (a) a markdown reorder and (b) a docstring-only edit to a `.py` file demanded a fresh full review cycle: `check-pr-doc-only` classified it not-doc-only, and the cumulative Critic gate exited 1 / uncovered. The `.py` change was *proven* — not asserted — behavior-preserving: the file's AST is identical before and after once docstrings are stripped. So the review cycle was spent on a delta with a mechanical proof that no behavior moved.
+
+  The gap: `is_judgeable_path` (`plugin/lib/coverage_algebra.py:59-72`) classifies on **extension and prefix only** — metadata prefixes are exempt, `.md` is exempt unless governance-protected, and *everything else is judgeable unconditionally*. There is no notion of a code change that is provably inert. `check-pr-doc-only` inherits this.
+
+  **This runs straight into a deliberate design constraint, which is why the stage is `research`, not `ready`.** That same docstring says: "Deliberately no size or content inspection: paths classify, contents don't (do-not-reintroduce: content-hash freshness)." Content-hashing was rejected twice (v1.3.8 fingerprint, v2.1.8 `git_sha`). Learning #258 gives the test for re-proposing: separate the rejected *direction* from the rejected *primitive*. Here both legs are live questions:
+
+  1. **Primitive** — an AST-equivalence proof is content inspection, exactly what the ban names. But it is not a *hash*: it is a semantic equivalence check with a well-defined meaning, and its failure mode is the opposite of a hash's (a hash false-STALEs on churn; this can only false-*pass*). Whether the ban covers it needs an explicit ruling, not an assumption.
+  2. **Direction** — the safe-direction-only property that unblocked tree-anchoring does NOT transfer. Tree-anchoring could only move stale→current. This moves judgeable→non-judgeable, i.e. it *removes* review coverage. A bug in the equivalence check ships unreviewed code. That is the unsafe direction, so it needs a stronger correctness argument than the tree-anchoring precedent did.
+
+  Two further constraints any design must answer:
+  - **Language-agnosticism** (learning #91): AST-strip-and-compare is Python-only. A carveout that works solely for `.py` re-creates the ecosystem-gating problem `--from-counts` was built to fix. Either the primitive generalizes (comment/docstring-token stripping per language, opt-in per repo) or the carveout is explicitly scoped and that scope is documented as a known limit.
+  - **Non-hermetic tests** (COV-4H7N): the standing counterexample to "this file can't change outcomes". A docstring is a weaker case than `.prawduct/` state — a test would have to assert on `__doc__` — but the class is the same and must be ruled on, not waved past.
+
+  **Relationship to the existing family** — this is a *different axis*, not a duplicate. COV-2P7F / the `.prawduct/`-umbrella item / PR-5K8D all argue about which *paths* belong on which side of a path-based classifier. This one asks whether a *content-level proof* may ever override a path classification at all. Answering "no, deliberately" is a legitimate and cheap outcome — and if so, record the rationale in `is_judgeable_path`'s docstring so the next person hitting the treadmill finds the decision instead of re-deriving it.
+
+  Governance-protected (`plugin/lib/coverage_algebra.py`, gates) → full Critic + PR review if it ever leaves `research`. (user — observed live)
+
 - **[BLD-6P8T]** Nothing verifies that intra-repo path references RESOLVE — the packaging test pins where files may LIVE and is blind to references pointing at paths that no longer exist
   `effort: M · impact: L · area: governance · kind: feature · source: reflection · added: 2026-07-21 · reviewed: 2026-07-21 · status: open · stage: ready · related: DOC-2R7M, GOV-4H7T, GOV-3P8K, JNT-4R2M, GOV-6J3P, ONB-3F9P, BKL-8V3D · refs: tests/test_plugin_packaging.py:182 (`NOT_DISTRIBUTED_DIRS` — the location-only guard this complements), .prawduct/learnings.md:216 ("Relocating a source file: sweep every READER of the old path" — recurrence 3 at :220 names this item), plugin/skills/backlog/SKILL.md (an `allowed-tools:` grant that broke), f62cae1 (the five-skill fix), DOC-2R7M (the durable-artifact half of the same sweep)`
 
