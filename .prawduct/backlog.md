@@ -2532,6 +2532,17 @@
 
   Note: v3.1.1's shipped CHANGELOG now states `~/.claude*/plugins/cache/prawduct/` with the `du` command and the measured scale, so consumers get the manual remedy today; this item is the durable fix.
 
+- **[BKL-8Q3D]** `/prawduct:backlog update stage=X` flips the metadata field but leaves stage-DESCRIBING body prose stale, contradicting the new stage and misrouting pick
+  `effort: S · impact: M · area: backlog · kind: debt · source: reflection · added: 2026-07-23 · reviewed: 2026-07-23 · status: open · stage: research · related: BKL-7Q4M, BKL-9XQ2 · refs: plugin/skills/backlog/SKILL.md (### update — the mutation site that flips `stage:` without reconciling body prose), .prawduct/learnings.md:109 (reconcile a mechanism's retained self-descriptions in the same change or the prose reads as false), .prawduct/learnings.md:47 (stale-prose / falsification-query family — a replacement sentence gets the same falsification query the original needed)`
+
+  **Filed from reflection — the backlog skill's own `update` mutation site has the very stale-prose failure the skill exists to prevent elsewhere.** Advancing an item's stage via `/prawduct:backlog update stage=X` changes the `stage:` **metadata field** but does NOT reconcile the item's **body prose** that describes or justifies the *old* stage — e.g. "`stage: requirements` is deliberate and load-bearing", "do NOT route this into implementation via `pick`", "route through discovery", "open questions to settle below". After the field flips, that prose contradicts the new stage and would **misroute `pick`**: an item now at `stage: design` whose body still says "do not route into implementation, see /prawduct:methodology discovery" sends a reader who trusts the prose over the field back to discovery.
+
+  **Evidence — 2026-07-23 consolidation session.** Advancing BKL-7Q4M and BKL-9XQ2 (with a design→requirements→design correction mid-flight) left stale stage-describing prose in ~5 body spots (opening block, escalation block, sub-concern blocks, cross-references, a `refs:` annotation), caught only incrementally across ~3 extra backlog passes plus a Critic warning (stale-prose-after-status-change). The skill flips one field, but a stage change semantically ripples through the prose.
+
+  **Fix-shape (needs design — hence `stage: research`, not `ready`).** When `update` changes `stage`, detect stage-describing body prose (a small set of stage-referencing phrases — "stage: <name> is deliberate", "do NOT route … via pick", "route through discovery/planning", "open questions to settle") and prompt to reconcile it; at minimum warn "body prose references the old stage — reconcile it". This is the pattern-sweep / stale-prose-after-status-change learnings operationalized at the skill's own mutation site.
+
+  Relates to the documented stale-prose-after-status-change learnings: `.prawduct/learnings.md:109` (when you change a mechanism, reconcile its retained self-descriptions in the same change or the prose reads as false) and `:47` (a replacement sentence gets the same falsification query the original needed). (reflection)
+
 ## Promoted
 
 - **[BKL-5D2C]** Move the backlog out of git to a centralized, agent-friendly issue-tracking service
