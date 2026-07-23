@@ -36,7 +36,7 @@ this session. The one design fork (`find`/`dedup` have no adapter search op unti
 by owner decision — defer to W2 with a clear stub message, `find` may be non-functional against
 Issues meanwhile ("won't ship before W2; OK if find is broken for a bit"). No fast-moving external
 dependency: the `gh` CLI and the `prawduct-hook backlog` contract (exit classes, `--json` envelope,
-non-interactive) are owned and stable, and the adapter surface was read directly (`lib/backlog/cli.py`).
+non-interactive) are owned and stable, and the adapter surface was read directly (`plugin/lib/backlog/cli.py`).
 
 **Open assumptions / unknowns:**
 - [ASSUMPTION: the skill stays PROSE-ONLY — dual-mode routing lives in `SKILL.md` instructions + a
