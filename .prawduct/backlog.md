@@ -7,6 +7,315 @@
 
 ## Open
 
+- **[COV-3M8Q]** Doc-only fast-path can't see a provably behavior-preserving code change (docstring/comment-only .py) — keys on .md extension alone
+  `effort: M · impact: M · area: governance/gates · kind: question · source: user · added: 2026-07-21 · reviewed: 2026-07-21 · status: open · stage: research · related: COV-2P7F, COV-4H7N, COV-6T3P, PR-5K8D · refs: plugin/lib/coverage_algebra.py:59-72 (is_judgeable_path — the extension/prefix-only classifier and its do-not-reintroduce docstring), plugin/lib/coverage.py (cmd_check_pr_doc_only), .prawduct/learnings.md (#258 — separate the rejected direction from the rejected primitive; #91 — language-agnosticism)`
+
+  **Observed live 2026-07-21** on `feature/backlog-service-relayout`. A branch whose entire delta was (a) a markdown reorder and (b) a docstring-only edit to a `.py` file demanded a fresh full review cycle: `check-pr-doc-only` classified it not-doc-only, and the cumulative Critic gate exited 1 / uncovered. The `.py` change was *proven* — not asserted — behavior-preserving: the file's AST is identical before and after once docstrings are stripped. So the review cycle was spent on a delta with a mechanical proof that no behavior moved.
+
+  The gap: `is_judgeable_path` (`plugin/lib/coverage_algebra.py:59-72`) classifies on **extension and prefix only** — metadata prefixes are exempt, `.md` is exempt unless governance-protected, and *everything else is judgeable unconditionally*. There is no notion of a code change that is provably inert. `check-pr-doc-only` inherits this.
+
+  **This runs straight into a deliberate design constraint, which is why the stage is `research`, not `ready`.** That same docstring says: "Deliberately no size or content inspection: paths classify, contents don't (do-not-reintroduce: content-hash freshness)." Content-hashing was rejected twice (v1.3.8 fingerprint, v2.1.8 `git_sha`). Learning #258 gives the test for re-proposing: separate the rejected *direction* from the rejected *primitive*. Here both legs are live questions:
+
+  1. **Primitive** — an AST-equivalence proof is content inspection, exactly what the ban names. But it is not a *hash*: it is a semantic equivalence check with a well-defined meaning, and its failure mode is the opposite of a hash's (a hash false-STALEs on churn; this can only false-*pass*). Whether the ban covers it needs an explicit ruling, not an assumption.
+  2. **Direction** — the safe-direction-only property that unblocked tree-anchoring does NOT transfer. Tree-anchoring could only move stale→current. This moves judgeable→non-judgeable, i.e. it *removes* review coverage. A bug in the equivalence check ships unreviewed code. That is the unsafe direction, so it needs a stronger correctness argument than the tree-anchoring precedent did.
+
+  Two further constraints any design must answer:
+  - **Language-agnosticism** (learning #91): AST-strip-and-compare is Python-only. A carveout that works solely for `.py` re-creates the ecosystem-gating problem `--from-counts` was built to fix. Either the primitive generalizes (comment/docstring-token stripping per language, opt-in per repo) or the carveout is explicitly scoped and that scope is documented as a known limit.
+  - **Non-hermetic tests** (COV-4H7N): the standing counterexample to "this file can't change outcomes". A docstring is a weaker case than `.prawduct/` state — a test would have to assert on `__doc__` — but the class is the same and must be ruled on, not waved past.
+
+  **Relationship to the existing family** — this is a *different axis*, not a duplicate. COV-2P7F / the `.prawduct/`-umbrella item / PR-5K8D all argue about which *paths* belong on which side of a path-based classifier. This one asks whether a *content-level proof* may ever override a path classification at all. Answering "no, deliberately" is a legitimate and cheap outcome — and if so, record the rationale in `is_judgeable_path`'s docstring so the next person hitting the treadmill finds the decision instead of re-deriving it.
+
+  Governance-protected (`plugin/lib/coverage_algebra.py`, gates) → full Critic + PR review if it ever leaves `research`. (user — observed live)
+
+- **[BLD-6P8T]** Nothing verifies that intra-repo path references RESOLVE — the packaging test pins where files may LIVE and is blind to references pointing at paths that no longer exist
+  `effort: M · impact: L · area: governance · kind: feature · source: reflection · added: 2026-07-21 · reviewed: 2026-07-21 · status: open · stage: ready · related: DOC-2R7M, GOV-4H7T, GOV-3P8K, JNT-4R2M, GOV-6J3P, ONB-3F9P, BKL-8V3D · refs: tests/test_plugin_packaging.py:182 (`NOT_DISTRIBUTED_DIRS` — the location-only guard this complements), .prawduct/learnings.md:216 ("Relocating a source file: sweep every READER of the old path" — recurrence 3 at :220 names this item), plugin/skills/backlog/SKILL.md (an `allowed-tools:` grant that broke), f62cae1 (the five-skill fix), DOC-2R7M (the durable-artifact half of the same sweep)`
+
+  **Structural enforcement earned by a third recurrence, filed from reflection.** Nothing in the suite verifies that intra-repo path references *resolve*. `tests/test_plugin_packaging.py` pins where files may **live** (`NOT_DISTRIBUTED_DIRS`) and is blind to references pointing at paths that no longer exist. The `plugin/` relocation therefore shipped `bin/prawduct-hook` in five skills' instruction prose **and** in their `allowed-tools:` permission grants; the full suite was green throughout, because no test executes skill front-matter. The Critic caught it as BLOCKING.
+
+  This is the **third occurrence** of the confirmed learning at `.prawduct/learnings.md:216` ("Relocating a source file: sweep every READER of the old path"), which per `methodology/reflection.md` Learning Lifecycle promotes it from a rule to structural enforcement.
+
+  **Proposed shape, to be confirmed at design.** A test that extracts repo-relative path-shaped tokens from the surfaces that fail silently — `allowed-tools:` grants in `plugin/skills/**/*.md` front-matter, fenced/inline commands in skill and methodology prose, and `.prawduct/artifacts/**.md` — and asserts each resolves against the tree, with a **named-exception allowlist** for intentionally-absent paths: a path a skill tells the USER to create; product-side paths like `.prawduct/backlog.md` that exist only in a consuming repo; and illustrative examples. The allowlist must be small and reasoned or the test becomes ceremony.
+
+  **Named risk:** a naive implementation will drown in false positives from prose that mentions paths illustratively. Scoping the extraction to **command position and front-matter** is what makes it high-signal — `docs/norms.md` Deliberate Non-Design warns that a probe which misfires trains its reader to ignore the one real catch.
+
+  Sibling: **DOC-2R7M** is the durable-artifact half of the same sweep (the stale references this test would have caught in `.prawduct/artifacts/**`). (reflection)
+
+- **[BKL-7Q4M]** Safe upstream filing — a private consuming repo must be able to file a prawduct bug into prawduct's PUBLIC repo without leaking its own content; the missing design is CONTENT MINIMIZATION, not auth
+  `effort: L · impact: L · area: backlog-service · kind: feature · source: user · added: 2026-07-21 · reviewed: 2026-07-21 · status: open · stage: requirements · related: BKL-9XQ2, BKL-0QR1, BKL-2Q7F, BKL-8V3D, BKL-5N9W, BKL-6M4T, ONB-3F9P, MET-6T4K · refs: .prawduct/artifacts/security-model.md (§ Direction — the norm this item tracks), tests/preferences/test_no_upstream_content_egress.py (the interim enforcement mechanism), documentation/backlog-service-security-model.md (§1 auth by target owner, §4 cross-owner cache scoping, §5 XP2 untrusted-until-triaged, §6 PV3/PV4 abuse prevention), .prawduct/artifacts/build-plan-backlog-service.md:687 (W3 roadmap row — `file-upstream`, XP1/XP2 public/foreign identity plane), plugin/skills/report-bug/SKILL.md, plugin/lib/backlog/transport.py:34-58 (`scrub_secrets` — the existing denylist redaction precedent)`
+
+  **RELEASE BLOCKER for 3.2.0 — stated by the owner 2026-07-21.**
+
+  **This is the tracking item for a live norm exception.** `.prawduct/artifacts/security-model.md` § Direction carries the norm *"A governed product's content never leaves that product's own repository and owner. The backlog adapter reaches exactly the repo named in `backlog_service_repo`; the upstream bug channel is filesystem-local. Any cross-owner or public-plane filing surface is an owner decision, never an increment."* That norm moves from `Status: steady-state` to **`Status: in-transition`** and cites **BKL-7Q4M** literally as its tracking item. The capability described here is *blocked by that norm today* and is unbuilt; the norm's interim enforcement — `tests/preferences/test_no_upstream_content_egress.py`, which fails if a `file-upstream` surface appears anywhere in the plugin or if prawduct's own tracker reaches the backlog adapter — stays live until this item's requirements are settled and a design deliberately supersedes it.
+
+  **`stage: requirements` is deliberate and load-bearing. Do NOT route this into implementation via `pick`.** This is a security design before it is code (Principle 6). Advancing the stage — writing the requirement, settling the open questions below — *is* the next work; see `/prawduct:methodology discovery`.
+
+  **The design surface that already exists — reconcile with it, do not re-invent it.** `documentation/backlog-service-security-model.md` already covers the public-submission plane: **§1** (auth by target owner), **§5** (XP2 — arriving reports are *untrusted until triaged*, enforced by GitHub's non-collaborator permissions), **§6** (PV3/PV4 abuse prevention), **§4** (cross-owner cache scoping). `.prawduct/artifacts/build-plan-backlog-service.md:687` sizes the capability as roadmap wave **W3** (`file-upstream`, XP1/XP2 public/foreign identity plane). Any requirements pass starts by reading those, not by drafting a parallel model.
+
+  **What that existing design does NOT appear to cover — and what the owner's concern is actually about — is CONTENT MINIMIZATION rather than auth.** The written surface answers *who may file where* and *how much to trust what arrives*. The owner's question is the orthogonal one: **exactly which fields cross the boundary**, how repo paths / code excerpts / learnings prose / product names get redacted or omitted, and whether the owner **sees and approves the verbatim outbound payload** before it is sent. Auth being correct does not make the payload minimal.
+
+  **Open questions to settle in requirements:**
+  1. **Minimum field set** — what is the smallest set of fields a *useful* upstream report needs? (A report the maintainer cannot act on is not a win for having leaked less.)
+  2. **Redaction strategy** — **allowlist** the fields that may cross vs. **denylist** patterns that may not. Note the existing precedent is a *denylist*: `scrub_secrets` (`plugin/lib/backlog/transport.py:34-58`) is a regex denylist backstop for credentials in `gh` output. Whether that shape generalizes to *repo content* (where the sensitive material is arbitrary prose and paths, not a token with a recognizable form) is precisely the open question — an allowlist is the structurally safer default and should have to be argued *out of*, not *into*.
+  3. **Owner preview-and-consent** — is preview-and-consent **mandatory per report**? Is the shape a dry-run/`--apply` pair, consistent with the standing norm *"No destructive action without an explicit `--apply` step"*? (Cross-check BKL-8V3D: `adapter-mode.md` already *claims* an `--apply`/dry-run contract that `lib/backlog/` does not implement — do not design against a contract that does not exist yet.)
+  4. **Filer identity** — anonymous vs. authenticated. Interacts with BKL-9XQ2's refinement: the adapter **inherits the session's GitHub auth** (PRD O5), so an authenticated filing is attributed to the user personally, permanently, in someone else's public project. Anonymity trades that away for the abuse surface §6/PV3 exists to handle (PV3 is itself gated on MET-6T4K).
+  5. **Relation to the filesystem-local `incoming-bugs/` drop-box** — the safe path that *works today* whenever a local prawduct checkout is reachable. What does this capability replace, what does it complement, and what remains the fallback when no checkout is reachable? MG5 ties drop-box retirement to a live upstream path (BKL-0QR1), so this question is a sequencing dependency, not a footnote.
+
+  **Relationship to BKL-9XQ2 — deliberately separate, cross-linked, not merged.** BKL-9XQ2 (`stage: research`) is the broad "upstream filing is critically underspecified" item: consent-at-install (1a), consent-at-file (1b), agency/attribution, the adapter-vs-prose binding site, label taxonomy. **This item is narrower and downstream of it:** it is specifically the *content-minimization / outbound-payload* leg, and it is the item the § Direction norm cites. If a requirements pass ends up folding the two, do it explicitly via `dedup` — do not let either quietly absorb the other, because the norm's citation must keep resolving. (user — owner, 3.2.0 release blocker)
+
+- **[BKL-3N8Q]** Relationship/timeline foreign-API shapes are fake-verified only — `list_blocked_by` fails silently, so `pick` reports a blocked item as ready with a confident "no open blockers"
+  `effort: M · impact: L · area: backlog-service · kind: bug · source: critic · added: 2026-07-21 · reviewed: 2026-07-21 · status: open · stage: ready · related: BKL-9J3F, BKL-2K8V, BKL-6M4T, BKL-4H8P, BKL-6X5D · refs: lib/backlog/transport.py:166/217/222 (protocol) and :334/459/476 (the `gh` implementations of `list_blocked_by` / `list_sub_issues` / `list_timeline`), lib/backlog/query.py:180 (`blockers = transport.list_blocked_by(...)`), lib/backlog/query.py:368-369 (the "no open blockers" readiness string), tests/fakes/fake_github.py:52-59 (`blocked_by` / `sub_issues` / `timeline` — the only shapes these three are checked against), .prawduct/artifacts/build-plan-backlog-service.md (the unrun `verify-api` step / L5 smoke set), .prawduct/project-state.yaml `design_decisions.infrastructure_dependencies.integration_test_strategy` (cites THIS id), documentation/backlog-service-api-contract.md`
+
+  **Stable id — do not renumber.** `.prawduct/project-state.yaml` records this item by id inside
+  `design_decisions.infrastructure_dependencies.integration_test_strategy` ("tracked as BKL-3N8Q").
+  A dedup merge or migrate that changes the id dangles that reference; if this item is ever
+  superseded, update the design decision in the same commit.
+
+  Filed by the backlog-service relayout Critic review (rev-20260721T161120Z-c06da7f6).
+
+  Three foreign-API surfaces — `list_blocked_by`, `list_sub_issues`, `list_timeline` in
+  `lib/backlog/transport.py` — are exercised **only** against `tests/fakes/fake_github.py`. The
+  offline suite therefore proves the adapter agrees with *our model of* GitHub's relationship and
+  timeline payloads, not with GitHub. The build plan's `verify-api` step (the one that would check
+  the real shapes) has not been run; it is queued in the L5 smoke set and deferred by owner decision
+  to an owner-run session. So the fake is currently the *only* oracle for all three.
+
+  **The `blocked_by` leg is the dangerous one because it fails silently.** `query.pick` reads
+  blockers via `transport.list_blocked_by` (`query.py:180`) and, finding none, emits a readiness
+  verdict that literally asserts `"no open blockers"` (`query.py:368-369`). A shape mismatch — a
+  renamed field, a moved nesting level, a paginated envelope the parser doesn't unwrap — yields
+  `[]`, which is indistinguishable from *genuinely unblocked*. The failure mode is not an error the
+  operator sees; it is `pick` confidently handing the agent a **blocked** item and stating, as fact,
+  that nothing blocks it. That is the one output class where a silent empty is worse than a raise:
+  the framework's own requirements-precede-code routing runs off it.
+
+  `list_sub_issues` and `list_timeline` share the fake-only exposure but degrade visibly (a missing
+  child or a thin audit trail), so they rank below the blocker path.
+
+  Fix-shape (not yet designed): (a) run `verify-api` against a live repo and pin the observed shapes;
+  (b) make the three decoders **distinguish "no rows" from "did not understand the payload"** —
+  an unrecognized envelope must raise or return an explicit unknown, never `[]`; (c) have `pick`
+  refuse to assert "no open blockers" on an unknown-blocker result, degrading to an
+  unknown-blocker-state readiness string instead. (b) is the load-bearing half: it converts a silent
+  wrong answer into a loud one, and it is worth doing even before the live verification lands.
+
+- **[BKL-4C9P]** `migration-scrub.md` step 5 says cutover retires a "backlog trio" — it is a quartet, and the omitted probe is the one that sent the operator to that runbook
+  `effort: S · impact: M · area: backlog-service · kind: bug · source: critic · added: 2026-07-21 · reviewed: 2026-07-21 · status: open · stage: ready · related: BKL-6J2X, BKL-2Q7F, BKL-8V3D, BKL-8W2M, BKL-6M4T · refs: skills/backlog/migration-scrub.md:203-204 (step 5 — "the backlog trio `legacy-backlog-format` / `legacy-section-schema` / `backlog-overdue-grooming`"), lib/backlog_probes.py:240 (`probe_migration_required`) and :262 (its `post_cutover(state)` early return), lib/backlog_probes.py:367-376 (`register` — six probes), documentation/post-sync-advisory-spec.md:366-375 ("the four markdown probes above", naming `backlog-service-migration-required`), documentation/backlog-service-api-contract.md:113-118 (§2.4 — "the seven markdown-premise advisory probes retire on the same switch — the backlog quartet")`
+
+  Filed by the backlog-service relayout Critic review (rev-20260721T161120Z-c06da7f6).
+
+  `skills/backlog/migration-scrub.md:203-204` tells the operator that setting `backlog_service_repo`
+  retires "the backlog **trio** `legacy-backlog-format` / `legacy-section-schema` /
+  `backlog-overdue-grooming` AND the norm trio". Both governing specs say otherwise, and they agree
+  with each other and with the code:
+
+  - `documentation/backlog-service-api-contract.md:113` (§2.4) — "the **seven** markdown-premise
+    advisory probes retire on the same switch — the backlog **quartet** (`legacy-backlog-format`,
+    `backlog-service-migration-required`, `legacy-section-schema`, `backlog-overdue-grooming`)".
+  - `documentation/post-sync-advisory-spec.md:366-375` (§8.2) — "the **four** markdown probes above",
+    naming `backlog-service-migration-required` among them.
+  - `lib/backlog_probes.py:262` — `probe_migration_required` early-returns on
+    `post_cutover(state)`, i.e. it is in fact guarded by the same switch.
+
+  So the runbook is the only surface with the wrong count, and the probe it drops is
+  `backlog-service-migration-required` — **the advisory whose `recommended_action` is what routed the
+  operator into this runbook in the first place** (`migration-scrub.md:9-14` states that coupling
+  from the other side). An operator reading step 5 is left unable to answer the obvious question
+  "does the nudge that sent me here stop after I finish?" — and the natural wrong inference is that
+  it keeps firing forever, which invites a second, unnecessary scrub run.
+
+  Fix: correct step 5 to "backlog quartet", name the fourth probe explicitly, and state that the
+  migration-required advisory is self-clearing at cutover. Doc-only; no code change. Worth a
+  coherence check on any other prose surface that counts these probes while the fix is in hand.
+
+- **[GOV-5R8T]** Concerns-registry row "Backend declaration before a governance read" cites Discovery and Builder coverage that no methodology file has ever carried
+  `effort: S · impact: M · area: governance · kind: bug · source: critic · added: 2026-07-21 · reviewed: 2026-07-21 · status: open · stage: ready · related: BLD-4Q8W, GOV-4H7T, BKL-3W6K · refs: .prawduct/cross-cutting-concerns.md:42 (the "Backend declaration before a governance read" row — the Discovery cell and the Builder cell), methodology/discovery.md (no such text), methodology/building.md (no such text; `git log -S` finds no commit that ever added it), skills/critic/review-protocol.md (Goal 1/4 — the row's claimed Critic coverage), documentation/backlog-service-api-contract.md §2.4 (`backlog_service_repo`), .prawduct/artifacts/build-plan-backlog-service.md`
+
+  Filed by the backlog-service relayout Critic review (rev-20260721T161120Z-c06da7f6).
+
+  `.prawduct/cross-cutting-concerns.md:42` claims pipeline coverage for this concern at two stages:
+  a **Discovery** cell ("which store is system of record is a structural fact recorded in
+  `project-state.yaml` (`backlog_service_repo`), not inferred per reader", attributed to
+  `discovery.md`) and a **Builder** cell ("a reader declares the backend it read before it reports;
+  **repoint** a reader that consumes the item view as-is, declare **dormant** one that derives a
+  verdict from it", attributed to `building.md`). Neither file contains that text, and
+  `git log -S` over the phrasing finds **no commit that ever added it** — this is not drift from a
+  deleted rule, it is coverage that was recorded without ever being written.
+
+  Why it matters more than a stale cell: the registry is the artifact a reviewer consults to decide
+  whether a concern is *already handled upstream*. A row asserting Discovery + Builder coverage
+  reads as "two stages catch this before it reaches me", so the one stage that genuinely could
+  catch it (Critic judgment) is the only real coverage while the matrix reports three. The row's own
+  ⚠️ note already flags that every *enforcement* surface it names is absent from `main` at v3.1.1;
+  the methodology cells are a separate and older defect, since those surfaces at least exist on the
+  feature branch.
+
+  **Recurrence, not a one-off.** BLD-4Q8W is the identical failure on row :36 (the Build-plan
+  ref-drift row claimed `building.md` instructs builders to run `verify-chunk-refs`; `methodology/`
+  mentions it nowhere). Two rows, same mechanism: a registry cell asserting methodology coverage
+  that was never authored. Fix-shape should therefore be two-part — (a) correct the row (either write
+  the methodology rules or record the absence, matching how :36 was resolved), and (b) sweep the
+  remaining rows for methodology-attributed cells whose text does not exist in the cited file, since
+  a hand-maintained matrix has no mechanism that would have caught either instance.
+
+- **[BKL-8W2M]** No declared terminal-markdown state — `backlog-service-migration-required` warns forever in products that will never host on GitHub
+  `effort: M · impact: M · area: backlog-service · kind: feature · source: critic · added: 2026-07-21 · reviewed: 2026-07-21 · status: open · stage: requirements · related: BKL-6J2X, BKL-4C9P, BKL-3W6K, BKL-2Q7F · refs: lib/backlog_probes.py:240-262 (`probe_migration_required` — resolution is `post_cutover` only), lib/backlog_probes.py:370-372 (unconditional registration), lib/backlog_probes.py:106 (`post_cutover` — the single shared resolution predicate), skills/backlog/migration-scrub.md (the `recommended_action` target — requires `gh` and a GitHub owner/repo), documentation/backlog-service-requirements.md (GV7), documentation/post-sync-advisory-spec.md §8.2 (probe resolution conditions)`
+
+  Filed by the backlog-service relayout Critic review (rev-20260721T161120Z-c06da7f6).
+
+  `probe_migration_required` registers unconditionally (`backlog_probes.py:370-372`) and its **only**
+  resolution condition is `post_cutover(state)` — i.e. `backlog_service_repo` being set. There is no
+  third state. A product that is deliberately staying on the markdown backlog forever — no GitHub
+  remote, self-hosted git, an air-gapped or non-GitHub forge, or simply a small product whose owner
+  does not want an Issues tracker — has **no way to resolve the advisory**, because the only exit is
+  migrating to the thing it will never adopt. It gets a `warn`-priority nudge at every session start,
+  in perpetuity, recommending `/prawduct:backlog scrub`, a runbook that requires `gh` and a GitHub
+  `owner/repo` it does not have.
+
+  This is distinct from BKL-6J2X, which holds the same advisory out of v3.2.0 because the migration
+  path is *unproven*. That is a release-timing hold on a path that will eventually be right for those
+  repos. **This** item is the permanent case: repos for which the path will never be right, and for
+  which "hold the advisory" is not a fix because the advisory returns the moment the hold lifts. Both
+  need answering; only one is release-gating.
+
+  `stage: requirements` is deliberate — the fix is a **product decision** before it is code. The open
+  questions: is terminal-markdown a first-class supported state or an unsupported edge? If
+  first-class, how is it declared (an explicit `backlog_backend: markdown` scalar, a
+  `backlog_service_repo: none` sentinel, a dismissal that survives, or inference from the absence of
+  a GitHub remote)? Does declaring it also silence the rest of the migration-shaped surface, or only
+  this probe? And does the same declaration mean anything to `backlog-checks-dormant`, which exists
+  precisely to name checks with no Issues-backend path? Note that plain advisory *dismissal* is
+  probably not the answer — a permanent architectural fact deserves a recorded, shared, committed
+  state, not a per-user dismissal that every fresh clone re-nags about.
+
+- **[DOC-7K4V]** `artifacts/api-contract.md` never describes the `prawduct-hook backlog` surface, though the build plan declares it an Exposed API
+  `effort: S · impact: M · area: docs · kind: debt · source: critic · added: 2026-07-21 · reviewed: 2026-07-21 · status: open · stage: ready · related: CRT-4Q7K, TPL-8H3M, BKL-9XQ2, BKL-2D8N · refs: .prawduct/artifacts/api-contract.md (zero mentions of `backlog` — the gap), .prawduct/artifacts/build-plan-backlog-service.md (the `**Exposed API:**` declaration), lib/backlog/cli.py:33 (the op set), skills/backlog/adapter-mode.md (the error-envelope + exit-class contract the model reads instead), documentation/backlog-service-api-contract.md (the feature-local contract that exists but is not the product's api-contract artifact)`
+
+  Filed by the backlog-service relayout Critic review (rev-20260721T161120Z-c06da7f6).
+
+  The backlog-service build plan declares `prawduct-hook backlog` an **Exposed API** — the marker
+  whose whole purpose is to route the chunk through the versioning / error-model review. The
+  product's own API contract artifact, `.prawduct/artifacts/api-contract.md`, does not mention the
+  surface at all: not the op set, not the envelope, not the exit classes, not the compatibility
+  promise.
+
+  The surface is not *undocumented* — `documentation/backlog-service-api-contract.md` and
+  `skills/backlog/adapter-mode.md` both describe it in detail. The defect is that the artifact a
+  reader is told is the product's API source of truth omits an API the product exposes, so the two
+  disagree by omission and there is no pointer between them. A consumer (or a future Critic run)
+  reading `api-contract.md` to answer "what does prawduct expose, and under what compatibility
+  promise?" gets a confidently incomplete answer.
+
+  Cheapest sufficient fix is probably not a full re-authoring: add a section to `api-contract.md`
+  covering the `prawduct-hook backlog` surface at the level the artifact uses for its other entries,
+  with the versioning/error-model statements stated there and the operational detail **referenced**
+  into `documentation/backlog-service-api-contract.md` rather than duplicated (duplication here is a
+  second drift source, cf. BKL-2D8N). Worth checking in the same pass whether any *other*
+  `**Exposed API:**` declaration in a shipped chunk is likewise missing from the artifact — the gap
+  suggests nothing links the declaration to the artifact.
+
+- **[CRT-6R3W]** Critic should sweep by the RULE that generates a pattern, not by the instances it happened to see — instance-enumeration still misses sites the rule catches
+  `effort: M · impact: L · area: critic · kind: feature · source: user · added: 2026-07-21 · reviewed: 2026-07-21 · status: open · stage: research · related: CRT-4X2N, TST-9M4X, CRT-8Q6R, CRT-5M9J · refs: skills/critic/review-protocol.md (finding content / Output Format), skills/critic/SKILL.md, .prawduct/learnings.md ("verify at the quantifier" — CRT-8Q6R Correction 4)`
+
+  Relayed by the user 2026-07-21 from an agent using prawduct in another repo. **Capture, not a design** — `stage: research` is deliberate; route through discovery before any implementation.
+
+  **Relayed verbatim from the reporting agent** (the self-diagnosis is the valuable part — preserve it):
+
+  > That last verify pass caught three problems in the commit whose own message said "generalise the fix":
+  >
+  > - The %r sweep I described as complete was short by four sites — including the two success-path log lines one line below the ones I fixed.
+  > - My surrogate test was vacuous. It asserted only the 401, which %s also returns, because logging.Handler.emit swallows the encode error. The only revert signal was an xdist crash attributable to no test.
+  > - My null parametrize case never reached the guard — httpx sends an empty body for json=None, so it passed via the JSON-decode path instead.
+  >
+  > That's four rounds now where I declared a sweep done and the sweep wasn't. The pattern is consistent enough to name plainly: I keep fixing the instances a reviewer hands me instead of the rule that generates them. This round I applied the rule — anything carrying request-body, path, or external-API text logs with %r — which caught two more sites (mcp_token.py, entities.py) that no review had named.
+
+  **Why this is strictly stronger than [CRT-4X2N], and must not be deduped into it.** CRT-4X2N says the reviewer should grep tree-wide and enumerate every INSTANCE of a pattern. This report shows that is still not enough. The agent applied an instance sweep and was short by four sites, including two success-path log lines ONE LINE BELOW the ones it had just fixed — proximity that no reasonable "did you check nearby" heuristic would have missed, yet an instance-shaped search did. What finally converged was articulating the **generating rule** ("anything carrying request-body, path, or external-API text logs with %r") and sweeping by that rule, which surfaced two files no review round had ever named.
+
+  The distinction to design against: an *instance* is a string you can grep; a *rule* is a predicate over code that names the class. Grepping the string finds textual matches of what you already saw. Applying the predicate finds sites that instantiate the class in forms you had not seen — which is exactly where the residue lives.
+
+  **Actor question, which is the open design issue.** CRT-4X2N argued the reviewer is the right actor because the reviewer holds the pattern. This report complicates that: the reporting agent was the FIXER, and it was the fixer who eventually derived the rule, after four rounds. So the candidates are (a) reviewer states the generating rule in the finding, not just the sites; (b) fixer is required to state the rule before claiming a sweep complete; (c) both, with the reviewer's rule as a hypothesis the fixer must confirm or widen. Do not pick this by inference — it wants a real design pass. Note the failure recurred FOUR times under existing guidance, which is evidence that adding prose to one actor's protocol is the intervention most likely to fail again.
+
+  **Cost signal.** Four rounds on one defect class, and per CRT-4X2N each fix commit reopens the cumulative-Critic coverage gap and forces another delta review — so rule-vs-instance is a direct multiplier on review cost, not a quality nicety.
+
+  Sibling item from the same report, covering the test-discrimination half: **[TST-9M4X]**. (user — relayed external agent feedback)
+
+- **[TST-9M4X]** Nothing verifies that a regression test actually discriminates — a test can pass identically on fixed and unfixed code, or never reach the guard it claims to cover
+  `effort: M · impact: L · area: tests · kind: feature · source: user · added: 2026-07-21 · reviewed: 2026-07-21 · status: open · stage: research · related: CRT-6R3W, CRT-4X2N, COV-4M2J, CRT-5M9J · refs: methodology/building.md (Verify — acceptance criteria / test evidence), skills/critic/review-protocol.md (review goals), bin/prawduct-hook (test-evidence record), lib/gates.py (test-evidence freshness), bin/test-reference-verify (the coverage floor that counts a test as covering a change)`
+
+  Relayed by the user 2026-07-21 from an agent using prawduct in another repo — same source report as **[CRT-6R3W]**, distinct defect class. **Capture, not a design** — `stage: research` is deliberate.
+
+  Two of the three problems in the report behind CRT-6R3W are not about sweeps at all — they are about tests that looked like coverage and were not:
+
+  1. **Vacuous assertion.** "My surrogate test was vacuous. It asserted only the 401, which %s also returns, because logging.Handler.emit swallows the encode error. The only revert signal was an xdist crash attributable to no test." The test passed on the FIXED code and would have passed on the UNFIXED code — it could not distinguish them. Root cause is domain-specific (`logging.Handler.emit` swallows the encode error, so the observable outcome is identical either way), but the class is general.
+
+  2. **Test never reached the code under test.** "My null parametrize case never reached the guard — httpx sends an empty body for json=None, so it passed via the JSON-decode path instead." A green parametrize case that exercised a different branch entirely, and reported success.
+
+  **The class:** a test whose pass/fail carries no information about the property it claims to pin. Both instances were GREEN. Neither the test suite, the test-evidence machinery, nor the Critic surfaced either one — they were caught only by the agent's own later verify pass, and one of them was caught by a *crash* rather than a signal.
+
+  **Why prawduct should care.** Principle 1 says tests are contracts. A vacuous test is a contract that binds nothing while reporting that it does — and it is worse than no test, because it consumes the coverage slot and terminates the search. Test evidence that counts a vacuous test as coverage is confidently wrong in the framework's own defined sense.
+
+  **Candidate directions (NOT a design — the point of `stage: research`).** (a) Require a regression test to be shown failing against the pre-fix state before it counts as evidence — the red-then-green discipline, made checkable rather than assumed. (b) A Critic review goal that asks of each new test "would this fail on the unfixed code, and does it reach the guarded path?" (c) Mutation-style spot checks on the specific guard a fix introduces. Each has real cost and (a) interacts with how test evidence is currently captured, so this wants a proper look at what is affordable — see Principle 11, proportional effort. Do not build against this item without a discovery pass first.
+
+  Same shape as [CRT-5M9J] one layer down: that item asks "does this capability trace to a requirement and is it reachable end-to-end?"; this asks the same reachability question of the *test* that vouches for it. (user — relayed external agent feedback)
+
+- **[VWS-4T9P]** regen-views plan-discovery globs `artifacts/` NON-RECURSIVELY (two sites), so repos that organize build plans in subdirectories fail closed forever — and one sibling parser silently no-ops on a plausible authoring variant
+  `effort: M · impact: L · area: views · kind: bug · source: report-bug · added: 2026-07-21 · reviewed: 2026-07-21 · status: open · stage: ready · related: VWS-2W6H, VWS-2F9K, TST-6K3D, BLD-5J8N, VWS-7N3K · refs: lib/views.py:549 AND lib/views.py:614 (both `sorted(artifacts_dir.glob("*.md"))` — non-recursive; the upstream report named only :549, there are TWO sites), lib/views.py:532 (build_scope_to_plan_map), lib/views.py:649 (scope→plan diagnostic, fatal for the whole run), lib/views.py:49 (CHUNK_LINE_RE), lib/buildplan_refs.py:291 (_chunk_section_lines — NOTE: report said :251; the function is at :291), lib/critic_mode.py (the `**Critic mode:**` reader that folds onto the same walk), bin/prawduct-hook (cmd_regen_views fatal-diagnostics block), incoming-bugs/regen-views-cannot-see-build-plans-in-subdirectories.md`
+
+  Upstream report from the **hallucinote** product against prawduct v3.1.0 (filed 2026-07-20). Primary defect re-verified live on `main` 2026-07-21.
+
+  **Primary defect (live).** `build_scope_to_plan_map` iterates `sorted(artifacts_dir.glob("*.md"))` — non-recursive, directory not configurable. A repo that organizes plans as `.prawduct/artifacts/plans/<id>/build-plan.md` is invisible to it. **There are two such glob sites, not one** (`lib/views.py:549` and `lib/views.py:614`) — confirmed by reading the tree; the upstream report named only the first, so a fix that patches one site leaves the other. The scope→plan diagnostic then appends a validation error for any release-pending scope absent from the map, and the caller treats validation errors as fatal for the WHOLE run — so release-notes and scope-rollup regeneration, which have no dependency on the plan roster, are skipped too. All-or-nothing.
+
+  The failure is silent in effect: the error names a scope tag, so it reads as "you tagged the change-log wrong," not "your plans are in a directory I don't scan." In the reporting repo (48 plans under `plans/<id>/`) `release-notes.md` was missing SIX whole version sections and `scope_rollups` had 34 keys instead of 62 — drift accumulated with no signal at any point. On a branch with no scope-tagged entry, `regen-views --check` reports "up to date," so the drift stays invisible until one appears.
+
+  **Contributing factor worth checking across onboarded repos:** the reporting repo had `.prawduct/artifacts/build-plan.md` GITIGNORED until `prawduct-hook update-gitignore` un-ignored it. Plans plausibly drifted into `plans/` *because* the canonical path was ignored — so repos onboarded before that contract change may all be in this state.
+
+  **Parser-variant sub-claims — one live, one already fixed (verified on `main` 2026-07-21, do not re-fix blind).**
+  (a) LIVE: `CHUNK_LINE_RE` (`lib/views.py:49`) pins `\s+Chunk\s+(?P<id>[A-Za-z0-9_-]+):` — requires the colon, no tolerance for surrounding `**` or an em-dash — so `- [x] **Chunk A** — …` never matches and those checkboxes can never flip. **Substantially overlaps [VWS-2F9K]**, which already covers the em-dash/colon-less form for this same regex; the genuinely NEW facet here is the **bolded** (`**Chunk A**`) variant. Fix them together — do not fix one and leave the other.
+  (b) ALREADY FIXED UPSTREAM OF THIS FILING: the report claims `_chunk_section_lines` matches only `startswith("### Chunk ")` plus a colon. **Not true of current `main`** — `_chunk_section_lines` (`lib/buildplan_refs.py:291`) is the canonical walk and matches via `_CHUNK_HEADING_RE` (`^#{2,3}\s+Chunk\s+(\w+)` + `_CHUNK_ID_SEP = \s*(?:[:—–(-]|$)`), accepting both `##`/`###` and any of `: — – ( -` or end-of-line, with leading-zero tolerance (broadened by BLD-5J8N). So `## Chunk A — …` parses, and the `**Critic mode:**` reader that folds onto this walk is NOT inert. The reporter was presumably on an older tree. Retained here as a negative result so the next person doesn't re-open it. (Sibling test-replica drift on this same matcher is [TST-6K3D].)
+
+  Fix shape: (1) recursive plan discovery (or a configurable plan root) applied to **both** glob sites; (2) decouple view regeneration so one unresolvable scope doesn't block unrelated views — note [VWS-7N3K] already shipped the analogous decoupling for the null-plan abort, so follow that precedent; (3) broaden `CHUNK_LINE_RE` to tolerate the bolded/em-dash authoring variants — or reject them loudly — jointly with VWS-2F9K. The unifying defect is that each check quietly does nothing instead of complaining. Governance-protected code path → full Critic + PR review.
+
+  **Fleet survey, 2026-07-21 (measured, not estimated).** Surveyed all 23 onboarded repos under `/Users/brookstalley/source/`. Structural exposure — build plans below the top level of `.prawduct/artifacts/`, counted via `find … -mindepth 2 -name '*.md' -exec grep -l '^artifact: build-plan'`: `discodon`, `discodon-brooks2`, `discodon-research-sources`, `wt-discodon-backlog` — **16 nested build plans each**; `hallucinote` — **5 nested**, 1 top-level; all other onboarded repos — 0 nested.
+
+  **Nobody is blocked today, but both clear results are clear for contingent reasons — this is latent, not resolved.** `hallucinote`: `regen-views --check` passes ONLY because the single scope-tagged change-log entry resolves to `artifacts/build-plan-highroi-sweep.md`, which they hand-moved to top level as the workaround; five nested plans remain, and the next change-log entry whose scope resolves to one of those five re-blocks them. The discodon family: not blocked ONLY because `views_enabled` is unset in `project-state.yaml`, so `regen-views` no-ops entirely ("Views disabled").
+
+  **THE TRAP — enabling views is currently a landmine for the largest consumer.** discodon carries 16 nested build plans and 47 nested artifact files. The moment `views_enabled: true` is set, `regen-views` fails closed on the whole repo, and — because one unresolvable scope aborts the entire run — release-notes and scope-rollup regeneration die with it, neither of which depends on the plan roster. Anything that flips that flag walks them straight into it: a `/prawduct:doctor` repair, a future advisory recommending views, or a user following the hint in the error message the tool itself prints ("set views_enabled: true in project-state.yaml"). **prawduct's own tooling currently recommends the action that triggers the bug.** That is an argument for fixing this BEFORE any work that encourages view enablement, and for fix-shape step (2) — decouple view regeneration so one unresolvable scope can't block unrelated views — being the load-bearing half rather than a nice-to-have.
+
+  **Distribution note relevant to urgency.** All consumers install via `{"source": "github", "repo": "brookstalley/prawduct", "ref": "main"}` with `autoUpdate: true` — they track the `main` BRANCH, not a tag. A fix merged to `main` reaches every consumer on next update with no version bump required, so this does not need a release to ship; it needs a merge.
+
+  Note vs **[VWS-2W6H]**: RELATED BUT DISTINCT — that item is about design artifacts masquerading as build plans (an `artifact: build-plan` frontmatter filter); this one is about plans being invisible to the glob entirely. Both touch `build_scope_to_plan_map`; fixing either does not fix the other. Cross-linked deliberately, not merged. (report-bug — hallucinote upstream)
+
+- **[CRT-7P5J]** Session handoff reports resolved Critic findings as outstanding — it reads the derived view instead of composing over resolution facts, contradicting the kernel-v3 invariant
+  `effort: S · impact: M · area: critic · kind: bug · source: user · added: 2026-07-21 · reviewed: 2026-07-21 · status: open · stage: ready · related: CRT-4X2N, CRT-2Q6D, CRT-6D2N, GOV-9T2K, GOV-4H7T · refs: lib/briefing.py:804 (`_summarize_critic_findings` — reads `.critic-findings.json` raw), lib/briefing.py:886 (the call site in `generate_session_handoff`), lib/briefing.py:518 (the briefing line that surfaces the handoff to the next session), lib/core.py:87 (`.prawduct/.session-handoff.md` in the session-file set), CLAUDE.md ("gates read the evidence store, not this" / "no gate reads the view — gates compose over facts"), `<git-common-dir>/prawduct/evidence.jsonl` (where resolution facts land), tests/test_plugin_packaging.py:218-229 (the resolutions the handoff failed to reflect)`
+
+  **Observed live at the start of this session (2026-07-21).** `.prawduct/.session-handoff.md` reported "0 blocking, 4 warning, 2 note … Changes ready to proceed" and then enumerated three WARNING lines about the plugin-root guard (first-path-segment comparison; working-tree vs tracked "ships" side; R-5's surviving symlink instruction). All three had in fact been **resolved before v3.1.1 shipped** — `tests/test_plugin_packaging.py:218-229` carries the fixes with an explicit `(Critic verify-resolutions, 2026-07-21.)` annotation at exactly the points the warnings named, and the module docstring's symlink text is rationale for why symlinks were REJECTED, not a surviving instruction. The handoff recorded the findings and never recorded their resolutions.
+
+  **Cost, concretely.** This is the first artifact a new session reads (`lib/briefing.py:518` tells it to). The session acted on it, told the user three warnings were unfiled and at risk of being lost, and recommended filing them — a wrong recommendation that took a code-verification round to retract. The failure mode is a fresh session confidently re-opening closed work, which is the exact "confidently wrong context" class the framework exists to prevent.
+
+  **Root cause — verified by reading the source.** `_summarize_critic_findings` (`lib/briefing.py:804`) opens `.critic-findings.json`, pulls `data["findings"]`, buckets by `severity`, and prints every blocking plus the first three warnings. There is **no resolution composition anywhere in the path** — it never consults the evidence store. Under kernel v3 the review fact and the resolution facts are separate appends to `<git-common-dir>/prawduct/evidence.jsonl`, and `.critic-findings.json` is a *derived view of the latest review fact*. So a `verify-resolutions` pass that records resolutions does not change what the handoff prints.
+
+  **Why this is a design violation, not just a missing feature.** CLAUDE.md states the kernel-v3 invariant twice — "gates read the evidence store, not this" and "no gate reads the view — gates compose over facts." The handoff generator is a consumer that reads the derived view instead of composing over facts. It is arguably not a "gate," which is precisely the loophole: the invariant was stated for gates and this consumer sits outside that word while having the same correctness requirement. Worth checking whether OTHER non-gate consumers read `.critic-findings.json` the same way — this is a pattern-shaped defect and should be swept tree-wide, not fixed at the one site (see **[CRT-4X2N]**, same lesson).
+
+  **Fix shape.** Compose resolution facts over the review fact before summarizing: suppress or mark-resolved any finding carrying a resolution, and make the counts reflect the composed state. Secondary: the summary line and the enumerated findings disagreed with each other ("ready to proceed" above three WARNING lines) — whatever the composition does, those two must be derived from the same computation. A regression test should pin the case: review records N warnings → verify-resolutions resolves them → handoff shows zero outstanding. Governance-protected (`lib/`, Critic data plane) → full Critic + PR review. (user — observed live 2026-07-21)
+
+- **[CRT-4X2N]** Pattern-shaped Critic findings report only the first site, multiplying fix→re-review rounds
+  `effort: S · impact: M · area: critic · kind: fix · source: report-bug · added: 2026-07-21 · reviewed: 2026-07-21 · status: open · stage: ready · related: CRT-6R3W, CRT-8Q6R, CRT-5M9J · refs: skills/critic/review-protocol.md (finding content / Output Format), .prawduct/learnings.md ("verify at the quantifier" — CRT-8Q6R Correction 4), incoming-bugs/pattern-shaped-critic-findings-should-enumerate-every-instance-tree-wide.md`
+
+  Upstream report from the **hallucinote** product against prawduct v3.1.0 (filed 2026-07-20).
+
+  When a Critic finding is an instance of a REPEATED pattern — the same claim, term, or value across several files — the reviewer reports the site it happened to be looking at and stops. The fixer corrects that site; the next round finds the same pattern in the next file; repeat. Not a false-positive problem — every round was a legitimate catch. The reviewer holds the pattern and could enumerate it in one pass, but isn't asked to.
+
+  This interacts badly with the cumulative-Critic gate: because coverage must span to HEAD, every fix commit reopens the gap and needs another delta review. Partial enumeration multiplies directly into review rounds. Observed: one 15-commit bundle spent THREE rounds on TWO defects — a false claim surfaced in a SKILL.md then in a module docstring; a wrong release attribution surfaced in change-log tag lines, then change-log prose, then a build plan Status block, then that plan's Verification strategy section (leaving the file half-fixed and self-contradicting in between), then a backlog archive closure note. A single `git grep` per pattern produced the complete list in seconds.
+
+  Root cause (inferred, not traced): `review-protocol.md` asks for findings anchored to a site (`file:line`), right for one-off defects, but says nothing about a finding whose SHAPE is "this claim recurs." Nothing instructs the reviewer to search beyond the file under inspection, so scope follows attention rather than the pattern.
+
+  Key insight worth preserving: the fixer-side discipline already exists as a learning in the reporting repo ("pattern sweeps are tree-wide or they don't count"). It fired and they still got it wrong twice. That is evidence the guidance is aimed at the WRONG ACTOR — the reviewer is the one holding the pattern and can collapse N rounds into 1; telling the fixer to sweep leaves them inferring what the pattern is.
+
+  Fix shape: in `review-protocol.md`, when a finding is a repeated claim/term/value rather than a one-off, require the reviewer to grep tree-wide and enumerate every instance in the finding body. TWO CAVEATS belong in the same text or this does harm: (1) make it CONDITIONAL — trigger on pattern-shaped findings only; a blanket "always grep tree-wide" adds cost and noise to genuinely local findings. (2) require CLASSIFICATION, not a dump — most hits in the reported greps were LEGITIMATE and must not be touched (correction narratives deliberately quoting old wording, archived backlog items recording superseded history, tests deliberately pinning old behavior). An unclassified dump moves triage onto the fixer and invites over-correction of text that is supposed to say that. Mark each hit needs-fix vs legitimate. Cheap partial version if the full change is too invasive: one checklist line in the reviewer's finding template.
+
+  Note this pairs with prawduct's own "verify at the quantifier" learning (CRT-8Q6R Correction 4) — same underlying shape, opposite actor. (report-bug — hallucinote upstream)
+
+  **STRENGTHENED — do not fix this item without reading [CRT-6R3W] (filed 2026-07-21, same day).** A second external report shows instance enumeration is *necessary but not sufficient*: an agent ran exactly the tree-wide instance sweep this item prescribes and was still short by four sites, including two log lines one line below the ones it had just fixed. What converged was sweeping by the **generating rule** (the predicate that names the class) rather than by the instances. CRT-6R3W also reopens the actor question this item settled by inference (reviewer-side) — its report's rule came from the FIXER, after four rounds. Treat this item as the enumeration half of a larger problem; CRT-6R3W carries the rule-vs-instance design question and is deliberately **not** merged into this one.
+
 - **[REL-5W2J]** `docs/release-process.md` omits `pyproject.toml`, `CHANGELOG.md`, and clearing `active_build_plan`
   `effort: S · impact: M · area: docs · kind: fix · source: user · added: 2026-07-21 · reviewed: 2026-07-21 · status: open · stage: ready · related: REL-3M7K, REL-7D4X, GOV-4H7T · refs: docs/release-process.md, pyproject.toml (version — stale at 3.0.3), CHANGELOG.md, hooks/banner.py (the version-delta banner reader), .prawduct/project-state.yaml (`active_build_plan`), .prawduct/runbooks/cut-and-publish-a-plugin-release.md`
 
@@ -217,7 +526,7 @@
 
   Fix-shape: (1) an `init-product` flag (or onboard prompt) recording `backlog_service_repo` when a product adopts the Issues backend; (2) an onboard step invoking the adapter's label provisioning; (3) add `Bash(prawduct-hook backlog *)` to the doctor `allowed-tools` and a doctor step running `reconcile-labels` as a repair. Pairs naturally with JNT-5K3W (the janitor's orphan-label surfacing) — provision on adoption, reconcile in doctor, surface orphans in janitor. Governance-protected (`skills/`) → full Critic + PR review. (user — samsung-frame-art-loader Phase 1 dogfood)
 - **[BKL-9XQ2]** Consuming repos filing issues against prawduct is critically underspecified — needs discovery before any consumer files upstream
-  `effort: L · impact: L · area: backlog-service · source: user · added: 2026-07-20 · reviewed: 2026-07-20 · status: open · stage: research · related: BKL-0QR1, BKL-3T7X, BKL-7F3D, MET-6T4K, BKL-2Q7F, BKL-8V3D, BKL-5N9W, BKL-6J2X · refs: documentation/backlog-service-security-model.md#6-abuse-prevention--public-submission-pv3pv4, documentation/backlog-service-api-contract.md, artifacts/build-plan-backlog-service.md (Chunk 06 / MG5; W3 roadmap row — XP1/XP2), skills/report-bug/SKILL.md, artifacts/project-preferences.md, lib/backlog/cli.py:181-191 (file --repo), lib/backlog/ids.py:136-151 (parse_repo — shape-only), skills/backlog/SKILL.md:7 (allowed-tools wildcard), documentation/backlog-service-prd.md:258 (O5 — adapter inherits the session's GitHub auth), documentation/backlog-service-prd.md:217 (MG1 — GitHub has no ordinary issue-delete and never reuses numbers), skills/onboard/SKILL.md (consent-at-install surface)`
+  `effort: L · impact: L · area: backlog-service · source: user · added: 2026-07-20 · reviewed: 2026-07-21 · status: open · stage: research · related: BKL-7Q4M (the content-minimization leg — the § Direction norm's tracking item), BKL-0QR1, BKL-3T7X, BKL-7F3D, MET-6T4K, BKL-2Q7F, BKL-8V3D, BKL-5N9W, BKL-6J2X · refs: documentation/backlog-service-security-model.md#6-abuse-prevention--public-submission-pv3pv4, documentation/backlog-service-api-contract.md, artifacts/build-plan-backlog-service.md (Chunk 06 / MG5; W3 roadmap row — XP1/XP2), skills/report-bug/SKILL.md, artifacts/project-preferences.md, lib/backlog/cli.py:181-191 (file --repo), lib/backlog/ids.py:136-151 (parse_repo — shape-only), skills/backlog/SKILL.md:7 (allowed-tools wildcard), documentation/backlog-service-prd.md:258 (O5 — adapter inherits the session's GitHub auth), documentation/backlog-service-prd.md:217 (MG1 — GitHub has no ordinary issue-delete and never reuses numbers), skills/onboard/SKILL.md (consent-at-install surface)`
 
   **CAPTURE ONLY — DO NOT SOLVE NOW.** Owner flagged this 2026-07-20 as critically important to prawduct's future and explicitly asked that it be recorded, not designed, in this session. `stage: research` is deliberate: the questions below are open policy questions, not build tasks. Do not let this item flow into implementation — advancing the stage (writing the requirement, doing the spike) IS the next work (Principle 6; `/prawduct:methodology discovery`).
 
@@ -345,7 +654,7 @@
   **Salvage note (2026-07-19).** This item was itself stranded by the very defect it describes: it was filed on branch `worktree-backlog-service-plan`, whose worktree was later removed, so it never reached this checkout. Re-filed here verbatim with its original id. Filing it also RESOLVES A DANGLING REFERENCE: `.prawduct/learnings.md` already carries the companion durable rule ("A `/prawduct:*` skill fork writes `.prawduct/` state to the LAUNCH dir, not a worktree the session ENTERED mid-session…") and closes with "Full detail + fix-shape in [[backlog]] STH-7W9K" — a pointer that had no target in this repo until now. Verified 2026-07-19 against `.prawduct/learnings.md`.
 
 - **[VWS-2W6H]** regen-views plan-discovery mis-classifies scope-tagged design artifacts as build plans
-  `effort: S · impact: M · area: views · kind: bug · source: builder · added: 2026-07-16 · reviewed: 2026-07-19 · status: open · stage: ready · related: REL-3B7Q · refs: lib/views.py:532 (build_scope_to_plan_map), lib/views.py:588 (diagnose_scope_plan_coverage), lib/views.py:658 (validate_chunk_roster), lib/views.py:1023 (_plan_status_results), bin/prawduct-hook:2508-2520 (cmd_regen_views fatal-diagnostics block)`
+  `effort: S · impact: M · area: views · kind: bug · source: builder · added: 2026-07-16 · reviewed: 2026-07-21 · status: open · stage: ready · related: REL-3B7Q, VWS-4T9P · refs: lib/views.py:532 (build_scope_to_plan_map), lib/views.py:588 (diagnose_scope_plan_coverage), lib/views.py:658 (validate_chunk_roster), lib/views.py:1023 (_plan_status_results), bin/prawduct-hook:2508-2520 (cmd_regen_views fatal-diagnostics block)`
 
   ROOT DEFECT (unchanged and live): `build_scope_to_plan_map`, `diagnose_scope_plan_coverage`, and `validate_chunk_roster` in lib/views.py all glob `artifacts/*.md` and treat ANY file whose frontmatter declares a `scope:` as a build plan. There is no `artifact: build-plan` filter. Design artifacts (data-model, api-contract, security-model, api-notes) legitimately carry `scope:` for traceability — as the backlog-service Chunk 01 artifacts do — and are therefore indistinguishable from plans to plan-discovery. Fix: filter plan-discovery to files whose frontmatter declares `artifact: build-plan`.
 
@@ -560,7 +869,7 @@
   Two behaviors were manually CLI-verified during discodon-upstream-defects but have no regression test. (1) `cmd_verify_chunk_refs` differentiates its `cannot-verify:` exit message from its `missing-ref:` exit message — the distinction is untested, so a regression that collapsed the two would pass CI. (2) `cmd_critic_begin`'s bare-repo sibling-worktree `.get('branch', '?')` guard (the fallback when a sibling worktree has no branch, e.g. a detached/bare checkout) has no test exercising the missing-branch path. Both surfaces are in `bin/prawduct-hook`; add pytest coverage pinning each. Related: BLD-5J8N (chunk-HEADER parser family in cmd_verify_chunk_refs), CRT-6W2N / its Chunk 04 PDT-WT9K (the critic-begin worktree-guard work). Filed from /critic.
 
 - **[VWS-2F9K]** regen-views `CHUNK_LINE_RE` + the `chunks=`→Status-line match still require the colon `Status` form after BLD-5J8N broadened the em-dash form elsewhere — checkboxes silently fail to flip at merge
-  `effort: S · impact: M · area: views · kind: bug · source: builder · added: 2026-07-18 · status: open · stage: ready · related: BLD-5J8N, GOV-8N4V · refs: lib/views.py (CHUNK_LINE_RE, collect_shipped_chunks), .prawduct/learnings-detail.md (colon-form learning)`
+  `effort: S · impact: M · area: views · kind: bug · source: builder · added: 2026-07-18 · reviewed: 2026-07-21 · status: open · stage: ready · related: BLD-5J8N, GOV-8N4V, VWS-4T9P · refs: lib/views.py (CHUNK_LINE_RE, collect_shipped_chunks), .prawduct/learnings-detail.md (colon-form learning)`
 
   After BLD-5J8N broadened `verify-chunk-refs` + `infer-critic-mode` to accept the `## Chunk N (ID) — Name` / em-dash header form, `CHUNK_LINE_RE` (lib/views.py) and the `chunks=` tag → Status-line match were NOT broadened — they still require the colon `Status` form. Consequence: a build plan whose `## Status` checkbox LINES use the em-dash/colon-less form can pass the Goal-2 + mode-inference gates yet silently fail to flip its checkboxes at merge (partial/no flip). Also the `chunks=` tag → Status-line match is literal (no leading-zero tolerance — `Chunk 1` != `Chunk 01`). Fix-shape: broaden `CHUNK_LINE_RE` to the same separator set as `buildplan_refs._CHUNK_ITEM_RE`, and decide zero-padding-tolerant matching for `chunks=`.
 
@@ -2256,6 +2565,22 @@
   Promoted 2026-07-17: Offline code + tests landed 2026-07-17 (commit 8ecd02e, cumulative-Critic 0 blocking). core.resolve_ref wires PFX→canonical alias resolution into get/link; migrate._find_by_key gains a block-id_aliases fallback skip-authority (_AliasIndex) that self-heals a human-deleted id:PFX label so a re-import can't duplicate; reconcile-labels re-derives deleted aliases. In-flight under the Chunk 06 slice (BKL-6M4T) — closes when the slice merges. Follow-ups spun off: BKL-7Q2N (mutator-side PFX resolution), BKL-9J3F (CC5 decoder gaps).
 
 ## Archive
+
+- **[DOC-2R7M]** Post-relayout stale references in durable PLANNING artifacts — the release plan names `lib/backlog/**` at the pre-relayout path and points v3.2.0 at the wrong branch; the repoint build plan instructs `python3 bin/prawduct-hook`, which no longer exists
+  `effort: S · impact: M · area: docs · kind: bug · source: critic · added: 2026-07-21 · reviewed: 2026-07-23 · status: shipped · stage: ready · closed-by: feature/backlog-service-relayout · related: DOC-7K4V, DOC-2W9P, BKL-3W6K, BKL-6M4T, BLD-6P8T · refs: .prawduct/artifacts/release-plan-backlog-service-golive.md (lines 26, 38, 84, 117, 187 — the five `lib/backlog/**` mentions; lines 22–39 — the branch guidance), .prawduct/artifacts/build-plan-backlog-skill-repoint.md (lines 46, 86, 118, 136 — `python3 bin/prawduct-hook backlog …`), plugin/bin/prawduct-hook (the post-relocation path)`
+
+  Filed by the verify-resolutions pass `rev-20260721T165755Z-c3371605` — finding **R-20**'s durable-prose half.
+
+  **This is the durable-artifact remainder of the same relayout sweep that fixed the five shipped skills in commit `f62cae1`.** The *shipped* surface is clean; this is the *planning* surface, which the sweep did not reach.
+
+  **Two concrete defects, both verified against the tree (2026-07-21):**
+
+  1. `.prawduct/artifacts/release-plan-backlog-service-golive.md` names `lib/backlog/**` **five times** at the pre-relayout path (`:26`, `:38`, `:84`, `:117`, `:187`) — after the relocation the tree carries `plugin/lib/backlog/`. It also points v3.2.0 work at the wrong branch: its "First: the code is not on `develop` any more" section (`:22–39`) instructs resuming on top of `feature/backlog-service`, but the work is now on **`feature/backlog-service-relayout`**, heading for `develop`.
+  2. `.prawduct/artifacts/build-plan-backlog-skill-repoint.md` still instructs `python3 bin/prawduct-hook backlog …` (`:46`, `:86`, `:118`, `:136`). After the relocation that path is `plugin/bin/prawduct-hook`; `bin/prawduct-hook` does not exist, so **the command cannot run as written** — a reader following the verification steps gets a `No such file or directory`, not a hint.
+
+  **Why this is a bug and not mere aging.** Both are durable artifacts a future session reads as *current instruction* — the release plan is what a v3.2.0 resumption navigates by, and the build plan's steps are meant to be executed. Stale paths here mislead an agent into the wrong branch or a failing command, rather than simply reading as history. Compare **DOC-2W9P** (shipped): the same class of stale-path defect in `documentation/` design specs, which was correctly treated as low-impact *because* those are an internal design archive. These two are not.
+
+  Fix shape: repoint the five `lib/backlog/**` mentions to `plugin/lib/backlog/**`, correct the branch guidance to `feature/backlog-service-relayout` → `develop`, and repoint the four `bin/prawduct-hook` invocations to `plugin/bin/prawduct-hook`. Check for other post-relayout stragglers in `.prawduct/artifacts/` while in there — the shipped-skill sweep and this one together suggest the relocation had no artifact-surface pass at all. (critic — verify-resolutions R-20)
 
 - **[GOV-4H7T]** Plugin ships `source: ./` with no packaging boundary — every repo-local file reaches consumer caches
   `effort: L · impact: L · area: governance/plugin-runtime · kind: feature · source: user · added: 2026-07-21 · reviewed: 2026-07-21 · status: shipped · stage: ready · closed-by: plugin-packaging-boundary · related: GOV-6J3P, REL-5W2J · refs: .claude-plugin/marketplace.json:13 (`"source"` — was `"./"`, now `"./plugin"`), plugin/, documentation/, tests/test_plugin_packaging.py, docs/release-process.md, docs/principles.md (Principle 10 — Clean Deployment)`

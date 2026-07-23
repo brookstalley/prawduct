@@ -34,9 +34,11 @@ from __future__ import annotations
 import json
 import re
 import subprocess
+import sys
 from pathlib import Path
 
-from . import backlog, buildplan_refs, gates, gitstate
+from . import buildplan_refs, gates, gitstate
+from .backlog import legacy as backlog
 from .core import (
     BUILD_PLAN_POINTER_KEY,
     atomic_write_text,
@@ -215,17 +217,11 @@ def _get_product_name(prawduct_dir: Path) -> str:
 
 
 def _get_current_branch(project_dir: Path) -> str:
-    """Get current git branch name. Returns 'main' on failure."""
-    try:
-        result = subprocess.run(
-            ["git", "branch", "--show-current"],
-            capture_output=True, text=True, cwd=str(project_dir), timeout=10,
-        )
-        if result.returncode == 0 and result.stdout.strip():
-            return result.stdout.strip()
-    except Exception:  # prawduct:allow prawduct/broad-except -- branch detection is best-effort
-        pass
-    return "main"
+    """Get current git branch name. Returns 'main' on failure/detached — a
+    display default for the briefing. Contrast ``gitstate.current_branch``,
+    which returns None so a caller that must not be MISLED about which tree it
+    resolved to (the Critic's visibility print) can tell (PDT-WT9K)."""
+    return gitstate.current_branch(project_dir) or "main"
 
 
 def _parse_wip(prawduct_dir: Path, branch: str | None = None) -> dict[str, str]:
@@ -664,21 +660,106 @@ def assemble_session_briefing(project_dir: Path, staleness: list[str]) -> str:
         except Exception:  # prawduct:allow prawduct/broad-except -- briefing must never block session start
             pass
 
-    # Backlog — surface the count of outstanding items. Parsed via lib.backlog so
-    # the count tracks the structured item format (Open + Promoted, minus struck /
-    # resolved) rather than a hand-rolled line scan.
-    backlog_path = prawduct_dir / "backlog.md"
-    if backlog_path.is_file():
-        try:
-            pending = backlog.parse_backlog(backlog_path.read_text()).pending_items()
-            if pending:
-                # One count line, not a 5-item dump every session. /prawduct:backlog
-                # is the triage path; dumping arbitrary items here was tax.
-                lines.append(f"Backlog: {len(pending)} pending (/prawduct:backlog to triage)")
-        except Exception:  # prawduct:allow prawduct/broad-except -- briefing must never block session start
-            pass
+    # Backlog — surface the count of outstanding items (cutover-aware; see
+    # _backlog_pending_line for the adapter-vs-markdown routing).
+    try:
+        backlog_line = _backlog_pending_line(prawduct_dir, project_dir)
+        if backlog_line:
+            lines.append(backlog_line)
+    except Exception:  # prawduct:allow prawduct/broad-except -- briefing must never block session start
+        pass
 
     return "\n".join(lines)
+
+
+def _backlog_pending_line(
+    prawduct_dir: Path, project_dir: Path, *, popen=None, now=None
+) -> str | None:
+    """The one-line backlog rollup for the session briefing, cutover-aware.
+
+    **Post-cutover** (``backlog_service_repo: owner/repo`` set in
+    ``project-state.yaml`` — written by the migration session): read the GV2
+    ``briefing_counts`` snapshot with its **visible age**, then fire the
+    **detached** refresh warm (``snapshot.spawn_refresh``). The briefing path
+    touches **no network, ever** — the never-block requirement (BLOCK-5 /
+    NFR §6 "few s") is satisfied structurally, not by a timeout: a stalled or
+    slow backend costs the briefing nothing because the backend is only reached
+    by the fire-and-forget child. No snapshot yet → a clear "warming" line, and
+    the warm is still fired (the next session reads it).
+
+    **Pre-cutover** (key absent): parse the markdown backlog exactly as before.
+    ``popen``/``now`` are injectable for tests.
+    """
+    scope = read_str_yaml_key(prawduct_dir / "project-state.yaml", "backlog_service_repo")
+    if scope:
+        from .backlog import encode, snapshot  # noqa: PLC0415 — lazy; pre-cutover repos never pay it
+
+        path = snapshot.snapshot_path(project_dir)
+        snap = snapshot.read(path, scope, now=now) if path else None
+        # Read the snapshot first, then warm — the warm's outcome decides what the
+        # no-snapshot line may honestly claim, so its result is never discarded.
+        warmed = _spawn_snapshot_warm(project_dir, scope, popen=popen)
+        line = None
+        if snap and isinstance(snap.get("counts"), dict):
+            by_status = snap["counts"].get("by_status") or {}
+            # OPEN_STATUSES derives from encode's status SoT — no out-of-band copy.
+            pending = sum(by_status.get(status, 0) for status in encode.OPEN_STATUSES)
+            if pending:
+                age = _humanize_age(snap.get("age_seconds"))
+                line = (
+                    f"Backlog: {pending} pending on {scope} "
+                    f"(snapshot {age}; /prawduct:backlog to triage)"
+                )
+        elif warmed:
+            # Degrade visibly, never silently (G3): the count is not available
+            # yet, and the warm just fired — the next session start has it.
+            line = f"Backlog: counts warming for {scope} (/prawduct:backlog to triage)"
+        else:
+            # The warm never started, so "warming" would be a standing falsehood —
+            # a session that says it forever is indistinguishable from one in
+            # flight, and the child's stderr goes to DEVNULL. Name the real state
+            # and hand back the manual path.
+            line = (
+                f"Backlog: counts unavailable for {scope} — background refresh "
+                f"could not start; run `prawduct-hook backlog refresh-counts "
+                f"--repo {scope}` (/prawduct:backlog to triage)"
+            )
+        return line
+
+    backlog_path = prawduct_dir / "backlog.md"
+    if not backlog_path.is_file():
+        return None
+    pending_items = backlog.parse_backlog(backlog_path.read_text()).pending_items()
+    if not pending_items:
+        return None
+    # One count line, not a 5-item dump every session. /prawduct:backlog is the
+    # triage path; dumping arbitrary items here was tax.
+    return f"Backlog: {len(pending_items)} pending (/prawduct:backlog to triage)"
+
+
+def _spawn_snapshot_warm(project_dir: Path, scope: str, *, popen=None) -> bool:
+    """Fire the detached snapshot refresh (D6). Never raises, never waits."""
+    from .backlog import snapshot  # noqa: PLC0415 — lazy
+
+    hook = Path(__file__).resolve().parent.parent / "bin" / "prawduct-hook"
+    if not hook.is_file():
+        return False
+    return snapshot.spawn_refresh(
+        [sys.executable, str(hook)], project_dir, scope, popen=popen
+    )
+
+
+def _humanize_age(age_seconds) -> str:
+    """``age_seconds`` → a compact human age ("just now", "4m old", "3h old")."""
+    if not isinstance(age_seconds, (int, float)) or age_seconds < 0:
+        return "age unknown"
+    if age_seconds < 60:
+        return "just now"
+    if age_seconds < 3600:
+        return f"{int(age_seconds // 60)}m old"
+    if age_seconds < 86400:
+        return f"{int(age_seconds // 3600)}h old"
+    return f"{int(age_seconds // 86400)}d old"
 
 
 # =============================================================================

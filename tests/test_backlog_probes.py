@@ -8,10 +8,18 @@ integration (feature/probe_version stamping).
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 
 import pytest
 
-from lib.advisory_store import Codebase, ProjectState, clear_registry, make_codebase, run_all_probes
+from lib.advisory_store import (
+    Codebase,
+    ProjectState,
+    clear_registry,
+    load_project_state,
+    make_codebase,
+    run_all_probes,
+)
 from lib import backlog_probes as bp
 
 
@@ -157,13 +165,162 @@ class TestLegacyBacklogFormatProbe:
         assert bp.probe_legacy_backlog_format(ProjectState({}), _cb(tmp_path)) == []
 
 
+def _structured_backlog(n_open: int, *, archived: int = 0) -> str:
+    """A structured backlog: ``n_open`` open (pending) items + ``archived`` shipped
+    items under ``## Archive``. Every item carries a ``[PFX-XXXX]`` id, so the file
+    is in the structured format (the migration-required, not legacy-format, case)."""
+    open_items = "".join(
+        f"- **[SVC-{i:03d}]** open item {i}\n  `area: x · status: open`\n" for i in range(n_open)
+    )
+    arch_items = "".join(
+        f"- **[SVC-9{i:02d}]** shipped item {i}\n  `area: x · status: shipped`\n"
+        for i in range(archived)
+    )
+    return f"# Backlog\n## Open\n{open_items}## Archive\n{arch_items}"
+
+
+class TestMigrationRequiredProbe:
+    def test_fires_on_structured_unmigrated_backlog(self, tmp_path):
+        _write_backlog(tmp_path, _structured_backlog(3))
+        out = bp.probe_migration_required(ProjectState({}), _cb(tmp_path))
+        assert len(out) == 1
+        assert out[0].type == "backlog-service-migration-required"
+        assert out[0].priority == "warn"
+        assert out[0].recommended_action == "/prawduct:backlog scrub"
+        # Live count in the summary; evidence is count-independent (id-stable).
+        assert "3 pending" in out[0].trigger_summary
+        assert "3" not in out[0].evidence[0]
+
+    def test_pre_structured_file_defers_to_legacy_format(self, tmp_path):
+        # No item carries a [PFX-XXXX] id → legacy-backlog-format owns the nudge,
+        # so this probe stands down (the two partition the space).
+        _write_backlog(tmp_path, _legacy_backlog(bp.LEGACY_FORMAT_MIN_ITEMS + 2))
+        assert bp.probe_migration_required(ProjectState({}), _cb(tmp_path)) == []
+
+    def test_partition_is_exclusive(self, tmp_path):
+        # A fully-structured backlog trips migration-required and NOT legacy-format;
+        # the inverse (pre-structured) is covered above. At most one fires.
+        _write_backlog(tmp_path, _structured_backlog(4))
+        assert bp.probe_migration_required(ProjectState({}), _cb(tmp_path))
+        assert bp.probe_legacy_backlog_format(ProjectState({}), _cb(tmp_path)) == []
+
+    def test_frozen_all_archived_no_fire(self, tmp_path):
+        # A structured file whose items are all archived has nothing live to migrate.
+        _write_backlog(tmp_path, _structured_backlog(0, archived=3))
+        assert bp.probe_migration_required(ProjectState({}), _cb(tmp_path)) == []
+
+    def test_no_backlog_file(self, tmp_path):
+        assert bp.probe_migration_required(ProjectState({}), _cb(tmp_path)) == []
+
+    def test_surfaced_through_registered_roster(self, tmp_path):
+        _write_backlog(tmp_path, _structured_backlog(2))
+        bp.register()
+        cands = run_all_probes(ProjectState({}), make_codebase(tmp_path))
+        nudge = [c for c in cands if c.type == "backlog-service-migration-required"]
+        assert nudge and nudge[0].recommended_action == "/prawduct:backlog scrub"
+        assert nudge[0].feature == "backlog" and nudge[0].probe_version == bp.PROBE_VERSION
+
+
+class TestChecksDormantProbe:
+    def test_fires_post_cutover(self, tmp_path):
+        out = bp.probe_checks_dormant(
+            ProjectState({"backlog_service_repo": "acme/widgets"}), _cb(tmp_path)
+        )
+        assert len(out) == 1
+        assert out[0].type == "backlog-checks-dormant"
+        assert out[0].priority == "info"
+        # The evidence names every dormant reader: someone dismissing this advisory
+        # is choosing to run without those checks and has to be told which.
+        #
+        # Derived from `DORMANT_CHECKS` rather than a hand-written vocabulary. The
+        # old form listed the internal check labels ("Backlog Reconciliation",
+        # "R-1/R-2", "revisit-due"); those were replaced with plain-language names
+        # when `observability-strategy.md` § Direction ruled that emitted text names
+        # no internal id — an operator downstream cannot resolve "R-2". The contract
+        # the assertion enforces is unchanged: every dormant reader is named.
+        assert len(bp.DORMANT_CHECKS) >= 4
+        for _, reader in bp.DORMANT_CHECKS:
+            assert reader in out[0].evidence[0]
+
+    def test_silent_pre_cutover(self, tmp_path):
+        assert bp.probe_checks_dormant(ProjectState({}), _cb(tmp_path)) == []
+
+    def test_silent_on_empty_service_repo(self, tmp_path):
+        # An empty scalar is not a cutover (post_cutover is truthiness-based), so a
+        # half-written key must not read as "migrated, checks dormant".
+        assert bp.probe_checks_dormant(
+            ProjectState({"backlog_service_repo": ""}), _cb(tmp_path)
+        ) == []
+
+    def test_fires_independently_of_the_markdown_file(self, tmp_path):
+        # Dormancy is a property of the backend, not of what backlog.md holds. A
+        # cut-over repo whose frozen file still parses as full of open items must
+        # still fire — that file is precisely what the dormant readers misread.
+        _write_backlog(tmp_path, _structured_backlog(3))
+        out = bp.probe_checks_dormant(
+            ProjectState({"backlog_service_repo": "acme/widgets"}), _cb(tmp_path)
+        )
+        assert len(out) == 1
+
+    def test_partitions_with_migration_required(self, tmp_path):
+        # GV7 ("you have not migrated") and GV8 ("you have, and these checks are
+        # dormant") are mirrors across the cutover line: exactly one describes any
+        # given repo, never both and never neither.
+        _write_backlog(tmp_path, _structured_backlog(3))
+        pre, post = ProjectState({}), ProjectState({"backlog_service_repo": "acme/widgets"})
+        assert bp.probe_migration_required(pre, _cb(tmp_path))
+        assert bp.probe_checks_dormant(pre, _cb(tmp_path)) == []
+        assert bp.probe_checks_dormant(post, _cb(tmp_path))
+        assert bp.probe_migration_required(post, _cb(tmp_path)) == []
+
+    def test_surfaced_through_registered_roster(self, tmp_path):
+        bp.register()
+        cands = run_all_probes(
+            ProjectState({"backlog_service_repo": "acme/widgets"}), make_codebase(tmp_path)
+        )
+        fired = [c for c in cands if c.type == "backlog-checks-dormant"]
+        assert fired
+        assert fired[0].feature == "backlog" and fired[0].probe_version == bp.PROBE_VERSION
+
+    def test_operator_facing_action_is_consistent_and_id_free(self, tmp_path):
+        # The advisory's two operator-facing strings must not contradict each other:
+        # trigger_summary says the checks ARE dormant, so the action must not read as
+        # though they already work. It also lands in a downstream product's briefing,
+        # where prawduct's internal requirement ids mean nothing.
+        out = bp.probe_checks_dormant(
+            ProjectState({"backlog_service_repo": "acme/widgets"}), _cb(tmp_path)
+        )
+        action = out[0].recommended_action
+        assert "dormant" in out[0].trigger_summary
+        assert "are restored" not in action
+        for internal_id in ("GV8", "W1"):
+            assert internal_id not in action
+        assert "dismiss" in action.lower()
+
+    def test_zero_fire_against_this_repo(self):
+        # Repo-coupled tripwire (deliberately NOT hermetic). This repo is genuinely
+        # out of the target state — it has not cut over — so the probe is silent for
+        # the right reason. If prawduct itself cuts over while these readers are
+        # still dormant, this trips; that is the intended signal to restore them
+        # (GV8/W1), never a reason to narrow the trigger.
+        repo_root = Path(__file__).resolve().parents[1]
+        state = load_project_state(repo_root)
+        assert bp.probe_checks_dormant(state, Codebase(root=repo_root)) == [], (
+            "prawduct itself has now cut over while these checks are still dormant. "
+            "The remediation is to restore them against the backlog read-through "
+            "cache (GV8), not to narrow or delete this tripwire."
+        )
+
+
 class TestRegistration:
-    def test_register_adds_four_probes(self):
+    def test_register_adds_six_probes(self):
         from lib import advisory_store
         bp.register()
         keys = set(advisory_store._REGISTRY)
         assert keys == {
             "backlog:legacy-backlog-format",
+            "backlog:backlog-service-migration-required",
+            "backlog:backlog-checks-dormant",
             "backlog:external-backlog-detected",
             "backlog:legacy-section-schema",
             "backlog:backlog-overdue-grooming",
@@ -194,3 +351,35 @@ class TestRegistration:
         bp.register()
         cands = run_all_probes(ProjectState({}), make_codebase(tmp_path))
         assert isinstance(cands, list)  # no crash with an empty repo
+
+
+class TestPostCutoverRetirement:
+    """Once ``backlog_service_repo`` is set (migration cutover), the probes whose
+    premise is 'the markdown file IS the live backlog' retire — a frozen file
+    must not generate nudges. external-backlog keeps its independent premise."""
+
+    _CUTOVER = {"backlog_service_repo": "octo/backlog"}
+
+    def test_legacy_format_probe_retires(self, tmp_path):
+        _write_backlog(tmp_path, "# Backlog\n" + "".join(f"- item {i}\n" for i in range(9)))
+        assert bp.probe_legacy_backlog_format(ProjectState(dict(self._CUTOVER)), _cb(tmp_path)) == []
+
+    def test_section_schema_probe_retires(self, tmp_path):
+        _write_backlog(tmp_path, "# Backlog\n## Active — next up\n- a\n## Queue\n- b\n")
+        assert bp.probe_legacy_section_schema(ProjectState(dict(self._CUTOVER)), _cb(tmp_path)) == []
+
+    def test_overdue_grooming_probe_retires(self, tmp_path):
+        _write_backlog(tmp_path, "# Backlog\n## Open\n" + "".join(
+            f"- **[X-{i:04d}]** item {i}\n" for i in range(40)))
+        assert bp.probe_overdue_grooming(ProjectState(dict(self._CUTOVER)), _cb(tmp_path)) == []
+
+    def test_migration_required_probe_retires(self, tmp_path):
+        # Once cut over, the structured file is frozen history — the migrate-onward
+        # nudge is done (its whole premise was "not yet on the service").
+        _write_backlog(tmp_path, _structured_backlog(3))
+        assert bp.probe_migration_required(ProjectState(dict(self._CUTOVER)), _cb(tmp_path)) == []
+
+    def test_external_backlog_probe_survives_cutover(self, tmp_path):
+        (tmp_path / "TODO.md").write_text("- do a thing\n", encoding="utf-8")
+        out = bp.probe_external_backlog(ProjectState(dict(self._CUTOVER)), _cb(tmp_path))
+        assert len(out) == 1 and out[0].type == "external-backlog-detected"

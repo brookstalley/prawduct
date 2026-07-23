@@ -30,11 +30,12 @@ what we want to be true.
    run while a review is active), not merely by restricting a reviewer's tools — because a
    dispatched subagent does not inherit the coordinator's tool restrictions.
 
-3. **Local-first, no network, no daemon.** Coordination is process-spawn + atomically-written files
-   + the git object database. There is no socket, port, or long-running server. This is a
-   deliberate constraint: a governance layer that required infrastructure would not survive contact
-   with "I just want to code." Any future need for a network surface is a characteristic flip, not
-   a quiet addition.
+3. **Local-first, no network, no daemon — in governance.** Coordination is process-spawn +
+   atomically-written files + the git object database. There is no socket, port, or long-running
+   server. This is a deliberate constraint: a governance layer that required infrastructure would
+   not survive contact with "I just want to code." The one network surface is the **opt-in** backlog
+   backend (`backlog_service_repo`), which reaches GitHub Issues through the `gh` CLI; it is off by
+   default, degrades to the markdown backend, and no gate or review verdict depends on it.
 
 4. **Coordination is decoupled, idempotent, and fail-closed.** The processes that produce a review
    (coordinator, reviewers, consolidator) are never all alive at once; they communicate through
@@ -58,9 +59,10 @@ what we want to be true.
 - **Authority fails closed; advice fails soft.**
   Why: anything that produces or consumes a governance *verdict* blocks on incomplete, malformed, or ambiguous state (so governance means something), while anything that merely *informs* degrades to a note (so governance stays bearable) — the split is also an abuse-resistance property: you cannot make a gate pass by feeding it garbage, garbage makes it block.
   Status: steady-state.
-- **Local-first: coordination is process-spawn + atomically-written files + the git object database — no network, no daemon, and the runtime carries no third-party dependencies (dev/test tooling excepted).**
-  Why: a governance layer that required infrastructure would not survive contact with "I just want to code," and a zero-dependency stdlib runtime shrinks the supply-chain surface to prawduct's own code plus git; any future network surface is a characteristic flip, not a quiet addition.
+- **Local-first: *governance* coordination is process-spawn + atomically-written files + the git object database — no network, no daemon, and the governance runtime carries no third-party dependencies (dev/test tooling excepted). An opt-in backlog backend may take a network surface, provided it stays off by default, degrades to the markdown backend, and carries no governance verdict.**
+  Why: a governance layer that *required* infrastructure would not survive contact with "I just want to code," and a zero-dependency stdlib runtime shrinks the supply-chain surface to prawduct's own code plus git. Both rationales survive this amendment intact, because the network surface is opt-in per product (`backlog_service_repo` unset ⇒ the markdown backend) and confined to backlog storage: a product that never opts in runs exactly the substrate this norm has always described, and no gate, evidence fact, or review verdict crosses the network.
   Status: steady-state.
+  Amended: 2026-07-21, owner decision at the backlog-service cutover. The original entry declared that any future network surface would be "a characteristic flip, not a quiet addition" — this is that decision, taken deliberately rather than by accretion. Scope narrows from "no network anywhere" to "no network in governance; opt-in network for backlog storage." The dependency is the `gh` CLI, recorded in `project-state.yaml` `design_decisions.infrastructure_dependencies`. No structural characteristic flips: `gh` owns the credential (`~/.config/gh`) and the adapter never manages a token, so `handles_sensitive_data` stays absent.
 - **The plugin writes nothing into a governed repo except its own `.prawduct/` state, the shared evidence store, and the `.gitignore` / `.claude/settings*.json` it must reconcile — never framework files.**
   Why: least authority over the machine is what makes running the plugin a safe trust decision and what lets a governed repo commit only a tiny install reference; framework code stays in the plugin, read-only from the repo's perspective.
   Status: steady-state.
@@ -173,7 +175,8 @@ the plugin no longer places them.
 
 ## Communication Channels
 
-All local. There are four, and only four:
+Four are local, and they are the only channels governance uses. A fifth exists only when a product
+opts into the backlog service:
 
 1. **CLI invocation + JSON on stdin/stdout** — the harness passes event payloads to `prawduct-hook`
    on stdin; skills and the Critic fork reach the data plane by invoking `prawduct-hook`
@@ -185,6 +188,10 @@ All local. There are four, and only four:
    guidance; this is the harness→model channel.
 4. **The git object database as a side channel** — tree objects written to the shared ODB, then
    referenced by SHA, are the substrate that makes tree-keying work across worktrees.
+5. **`gh` subprocess → GitHub Issues REST** — *opt-in only*, present when `backlog_service_repo` is
+   set. Sole egress lives in `lib/backlog/transport.py`; the counts cache under
+   `<git-common-dir>/prawduct/` is a disposable, network-independent read-through of channel 2, never
+   an authority. Absent this opt-in, prawduct makes no network call.
 
 ## Failure Model
 

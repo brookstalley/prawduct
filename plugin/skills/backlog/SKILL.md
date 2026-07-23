@@ -4,16 +4,43 @@ argument-hint: "[pick|add|find|list|update|migrate] ... (e.g. `pick stop-hook st
 user-invocable: true
 disable-model-invocation: false
 context: fork
-allowed-tools: Read, Edit, Write, Grep, Glob
+allowed-tools: Read, Edit, Write, Grep, Glob, Bash(prawduct-hook backlog *), Bash(python3 plugin/bin/prawduct-hook backlog *)
 ---
 
-You manage `.prawduct/backlog.md` — the product's structured backlog. You run in a forked context, so the full backlog never pollutes the main session. Read the file, do the operation, write it back, and return a concise result. **Never** delete items (archive instead) and **never** weaken existing content.
+You manage the product's **structured backlog**. You run in a forked context, so the full backlog never pollutes the main session. The backlog has two backends — a markdown file, or GitHub Issues once the product has cut over — so **decide the backend first** (next section), then do the operation and return a concise result. **Never** delete items (archive instead) and **never** weaken existing content.
+
+## Backend routing — decide this first
+
+Read the top-level `backlog_service_repo` scalar from `.prawduct/project-state.yaml`:
+
+- **Unset → markdown backend (pre-cutover).** `.prawduct/backlog.md` is the system of record. Everything in *this* file applies as written: Read the file, do the operation, write it back.
+- **Set to `owner/repo` → GitHub Issues backend (post-cutover).** The markdown file is frozen history; the live backlog is GitHub Issues, reached through the `prawduct-hook backlog` adapter. **Follow `adapter-mode.md`** (this skill directory) for every operation — it maps each subcommand onto an adapter op and owns the envelope / exit-code / error discipline. Do **not** read or write `.prawduct/backlog.md` for live state in this mode — it is stale by construction, and showing it as live is the failure this routing prevents.
+
+Resolve the backend once per invocation, then stay on that path; the two never mix.
+
+**Direct reads of `.prawduct/backlog.md` — the rule every other reader follows.** This skill owns the
+file; readers elsewhere in the framework (the Critic, the PR path, the janitor) do not, so one rule
+governs them and it lives here:
+
+- **Writes never bypass this skill**, on either backend.
+- **Reads prefer the skill** — `/prawduct:backlog list` / `find` are backend-routed and therefore
+  work on both sides of a cutover. Reach for them first.
+- **A direct read of the file is permitted only after checking `backlog_service_repo` and finding it
+  unset**, and only for detail the skill's views don't carry (full item bodies, for instance). Once
+  the scalar is **set**, the file is frozen history and no reader may treat it as live state — every
+  item archived at cutover still parses as open, so a direct read answers with the same confidence
+  whether it is right or months stale.
+
+A blanket "never read the file directly" was considered and rejected: it would retire the janitor's
+full-body overlap read with no live replacement, which is exactly the bespoke per-reader projection
+the read-through cache exists to avoid. The gate is the rule; each reader states it inline rather
+than pointing here for it, so a reader that loads one file still gets the whole contract.
 
 **Archive discipline.** "Done" has exactly one representation: `update status=shipped` (or `dropped`), which **moves the item to `## Archive`**. Never mark done by **strikethrough** (`~~…~~`) and never leave a shipped item inline in `## Open`/`## Promoted` — a struck item still costs context tokens every session and muddies the derived counts, while archiving preserves it for search. `migrate` includes a one-shot cleanup that converts existing struck/done-marked Open items into proper archived items.
 
 **When to mark shipped — in the closing PR, not after it.** Archive an item *as part of the work that closes it*: on the feature branch, in the same PR as the change (`update <id> status=shipped closed-by=<scope>`, where `<scope>` is the branch/feature or chunk name — a handle that already exists on the branch, *not* a commit SHA or PR number that won't exist until later; see the `closed-by` rule under `update`). The archive then rides in that PR and is **atomic with the merge** — no separate after-merge bookkeeping commit/PR. This is still the explicit call D4 requires (not inferred from a view); doing it on the branch means an abandoned PR abandons the archive too, so the backlog can't drift. Backlog `shipped` = *the item's work is merged to the integration base* (the item's single terminal state) — distinct from a **change-log** entry's `status=shipped`, which means *released to consumers* (`main`) and legitimately batches at the `develop→main` release. Don't conflate them: the backlog archive belongs in the feature PR; the change-log `shipped` flip belongs to release-prep (gitflow) — or rides in the closing PR itself when the PR's base IS the release surface (trunk; `/prawduct:pr` create-flow Step 1d). Either way, no status change ever needs a post-merge commit on the integration branch.
 
-**Archive split (Q2).** When `## Archive` grows past ~200 entries, move the oldest archived items into a sibling `backlog-archive.md` (same item format) to keep the working file lean — `find` already searches both, and git preserves history regardless. This is a `/prawduct:backlog` operation (the skill owns backlog.md writes); the janitor's Backlog Health step only *surfaces* when a split is due.
+**Archive split (Q2) — markdown backend only.** When `## Archive` grows past ~200 entries, move the oldest archived items into a sibling `backlog-archive.md` (same item format) to keep the working file lean — `find` already searches both, and git preserves history regardless. This is a `/prawduct:backlog` operation (the skill owns backlog.md writes); the janitor's Backlog Health step only *surfaces* when a split is due. Post-cutover there is nothing to split — Issues has no archive-file size limit, closed issues *are* the archive, and the janitor's Backlog Health step is dormant (`adapter-mode.md`, "Operations that don't apply post-cutover").
 
 ## The format you operate on
 
@@ -51,7 +78,7 @@ File a new item. Accepts flags (`--title=`, `--body=`/`--body-file=`, `--area=`,
 3. Return the new ID and a one-line confirmation.
 
 ### find <query>
-Plaintext + tag search across title, metadata, and body of **all** sections (and `backlog-archive.md` if it exists). Return matching `[ID] title — one-line summary`, most-relevant first. Keep it tight (a handful of results).
+*(Markdown backend. Post-cutover, full-text search is unavailable — `adapter-mode.md` returns a NOTE and points at `list` filters.)* Plaintext + tag search across title, metadata, and body of **all** sections (and `backlog-archive.md` if it exists). Return matching `[ID] title — one-line summary`, most-relevant first. Keep it tight (a handful of results).
 
 ### list [--filter=...]
 Tabular view: `ID · title · effort · impact · area · status`. **Default filter: `status=open` AND `added` within 90 days** (so a 200-item backlog doesn't dump). `--all` overrides; filter on any metadata field (`--area=`, `--status=`, `--effort=`, etc.). Sort by status then recency. **Claimed items** (non-empty `accepted-by:`) are excluded by default; show them with `--include-claimed`, and when shown, display the claim holder in the row.
@@ -126,6 +153,9 @@ Surface likely-duplicate / overlapping items and propose merges. Idempotent and 
 1. Group `## Open` (and `## Promoted`) items by `area:`; within each group, find candidate pairs by title-keyword + body overlap. (The `add` subcommand already does dedup-on-create; this is the after-the-fact sweep.)
 2. Present each candidate pair/cluster with both titles + IDs and a one-line "why these look related." Ask which to merge, keep separate, or skip.
 3. On a confirmed merge: pick the surviving item, fold the other's body into it (preserve both — append the merged-in body under a `— merged from PFX-XXXX —` marker), set `related:`/`refs:` as appropriate, and `update <superseded> status=dropped` with `closes: <survivor>` recorded on the survivor. Report what merged.
+
+### scrub (migration to GitHub Issues)
+The **owner-confirmed cleanup** run once when a project moves its markdown backlog onto GitHub Issues through the backlog service (`prawduct-hook backlog <op>`). It surfaces stale/duplicate items *before* they become live issues (model proposes → owner confirms → the deterministic `status`/`merge`/`import` ops apply the cleaned set; the model is in the decision, never the data plane — MG4/G1). Distinct from `dedup`/`migrate` above, which edit `.prawduct/backlog.md` in place; this drives the service CLI and requires `gh`. **Full runbook: `migration-scrub.md`** (in this skill directory).
 
 ## Triage method
 

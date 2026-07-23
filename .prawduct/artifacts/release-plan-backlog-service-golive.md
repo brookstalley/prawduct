@@ -19,24 +19,26 @@ This plan enumerates what blocks that release and the order to clear it. It is a
 not a build plan — Chunk 06's build spec already lives in `build-plan-backlog-service.md` and is not
 restated here.
 
-## ⚠️ First: the code is not on `develop` any more
+## ⚠️ First: the code lives on `feature/backlog-service-relayout`, not `develop`
 
 **Read this before running any command in this plan.** On 2026-07-21 the v3.1.1 hotfix set
 `develop`'s tree to `v3.1.0` + an allowlist, deliberately withholding every backlog-service path.
-All of it — `lib/backlog/**`, `skills/backlog/**`, `lib/backlog_probes.py`, the
+All of it — `plugin/lib/backlog/**`, `plugin/skills/backlog/**`, `plugin/lib/backlog_probes.py`, the
 `documentation/backlog-service-*` set, `tests/test_backlog_*`, `tests/fakes/`, `tests/fixtures/`,
-`tests/spikes/` — now lives on **`feature/backlog-service`** at commit **`7fc00e1`** (`R`), which is
-pushed. Nothing was lost and no history was rewritten.
+`tests/spikes/` — was first stranded on **`feature/backlog-service`** at commit **`7fc00e1`** (`R`),
+then **restored and relaid-out under `plugin/`** on **`feature/backlog-service-relayout`**, which is
+where v3.2.0 work resumes and which heads for `develop`. Nothing was lost and no history was rewritten.
 
-**Resuming means merging `feature/backlog-service` into a `develop` that has moved** — one
-substantial conflict resolution, accepted deliberately as the price of a releasable `develop`. The
-merge works for real (it is not a no-op) because `R` is a revert commit `develop` does not contain;
-a plain snapshot branch would have been an ancestor and merged as nothing. Do v3.2.0 work on top of
-`R`, not on a fresh branch off `develop`.
+**Resuming means landing `feature/backlog-service-relayout` onto `develop`** — the substantial
+conflict resolution has already been done on that branch (the restoration plus the `plugin/`
+relayout), so what remains is a normal feature-branch merge. Do v3.2.0 work on top of
+`feature/backlog-service-relayout` (or on `develop` once it lands), not on a fresh branch off the
+pre-relayout `develop`.
 
-**Path names in this plan describe the `feature/backlog-service` tree**, not `main`. Where the two
-differ — most visibly `lib/backlog/legacy.py` (a package on the branch) vs `lib/backlog.py` (the
-single module v3.1.1 shipped) — the branch form is the one this plan means.
+**Path names in this plan describe the `feature/backlog-service-relayout` tree** (everything under
+`plugin/`), not the pre-relayout root paths. Where the branch and `main` differ — most visibly
+`plugin/lib/backlog/legacy.py` (a package on the branch) vs `plugin/lib/backlog.py` (the single
+module v3.1.1 shipped) — the branch form is the one this plan means.
 
 Recorded here rather than only in `release-plan-v3.1.1-hotfix.md` because that plan expires with its
 release, and this is the document someone opens six weeks from now. (Critic finding, 2026-07-21: the
@@ -81,7 +83,7 @@ form one chain, which is the reason they gate rather than merely annoy: the `war
 **every** un-migrated repo and routes to `/prawduct:backlog scrub`; `skills/backlog/SKILL.md` is
 `disable-model-invocation: false` with a wildcard adapter grant; the runbook it reaches never binds
 `--repo`; and the one safety property the instructions cite — a dry-run — **does not exist in
-`lib/backlog/`**. An agent can walk that path unprompted and write 100–250 real issues into a real
+`plugin/lib/backlog/`**. An agent can walk that path unprompted and write 100–250 real issues into a real
 repo, believing a dry-run guarded it. `BKL-8V3D` is the same defect class as the `--archive-scope
 open` backup claim (prose asserting a safety property the code does not implement); a guard test
 pinning instruction-surface flag claims to flags the CLI actually parses would close the class rather
@@ -114,7 +116,7 @@ before anyone noticed it was there.
 Reinforcing this, verified in code 2026-07-20: the capability already exists and is merely
 *uninstructed* — `skills/backlog/SKILL.md` grants `Bash(prawduct-hook backlog *)` (wildcard) and
 `--repo owner/repo` is shape-validated only, with no owner constraint anywhere in
-`lib/backlog/ids.py`. MG5 is the change that *instructs* it.
+`plugin/lib/backlog/ids.py`. MG5 is the change that *instructs* it.
 
 ## Sizing (snapshot, not a fact)
 
@@ -184,8 +186,8 @@ Prerequisite state verified 2026-07-20: `BKL-8P2R` **shipped**, `BKL-8N5K` (MG6 
 | C6 | **MG5** — drop-box retirement + `report-bug` files upstream, carrying `Found in: prawduct vX.Y.Z` from `prawduct-hook version` (provenance, not model recall) | **B1**, C5 |
 | C7 | `BKL-6X5D` part (b) — Pacer meters REST points for the create+close stretch | — (in scope: A1 = `all`) |
 
-`lib/backlog/legacy.py` (`lib/backlog.py` on `main` at v3.1.1 — the package split lives on
-`feature/backlog-service`) is **not** retired here — it stays as the shared markdown read path for
+`plugin/lib/backlog/legacy.py` (`plugin/lib/backlog.py` on `main` at v3.1.1 — the package split
+lives on `feature/backlog-service-relayout`) is **not** retired here — it stays as the shared markdown read path for
 un-migrated portfolio repos (MG3/GV7).
 
 ### D — Verification
