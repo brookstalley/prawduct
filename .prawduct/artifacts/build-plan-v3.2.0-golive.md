@@ -14,7 +14,7 @@ governed_by:
   - artifact: architecture
     dispositions:
       - "The adapter never manages a token — `gh` owns the credential → conforms (Chunk 02/08 resolve the session `gh` identity; no managed token introduced)"
-      - "Authority fails closed; advice fails soft → conforms (the file-upstream/migration guards refuse-and-explain on any failed check; never a silent fallback)"
+      - "Authority fails closed; advice fails soft → conforms, but on DIFFERENT evidence than originally cited (corrected 2026-07-24, cumulative Critic). The original rationale — 'the file-upstream/migration guards refuse-and-explain on any failed check' — cited evidence that does not exist: file-upstream is unbuilt (Chunk 08) and there is no adapter-side migration guard at all. What actually backs the disposition: advice fails soft (every advisory probe is non-blocking, and the briefing degrades visibly rather than serving stale markdown as live), and authority fails closed where authority exists (transport errors are typed and refuse rather than falling back; `_cost` raises on an unclassified verb). The conclusion stands; the stated reason did not."
   - artifact: api-contract
     dispositions:
       - "Exit codes are the contract; stable prefix vocabulary → conforms (new error vocab `filing-disabled`/`target-not-pinned`/`self-file`/`approval-mismatch` are additive, exit-class-typed)"
@@ -198,7 +198,11 @@ unconfirmed repo, and the migration-required advisory must not route repos to a 
 **Covers:** ship-list items 18 (BKL-2Q7F — skill **and** adapter legs; the adapter-side target guard
 folded here from Chunk 02, built with the skill step that records `backlog_service_repo` + ONB-3F9P
 provisioning sibling), 20 (BKL-5N9W), 21 (BKL-6J2X).
-**Depends on:** Chunk 02 (the target-pin lives at the adapter; the runbook binds to it)
+**Depends on:** — *(corrected 2026-07-24, cumulative-Critic blocking finding: this originally read "Chunk 02
+(the target-pin lives at the adapter; the runbook binds to it)". **There is no adapter target-pin, and
+Chunk 02 never built one** — its own DECISION block records that the shared-adapter-guard keystone "did
+not survive the code" and moved the pin to Chunk 08. The runbook's Step 0 confirmation is the whole
+guard.)*
 **Type:** code (skills/ + lib/) — governance-protected → full Critic + PR
 
 **Done when:**
@@ -211,8 +215,9 @@ provisioning sibling), 20 (BKL-5N9W), 21 (BKL-6J2X).
 3. **BKL-5N9W** — narrow the wildcard `Bash(prawduct-hook backlog *)` grant in `skills/backlog/SKILL.md`
    to the ops the skill actually drives, in **both** invocation forms (JNT-4R2M dual-form rule); scope
    or gate the scrub-only ops (`import`/`merge`/`provision`) behind the Chunk-03 confirmation step. Pin
-   the resulting list with a metadata test. (Defense-in-depth, not the primary guard — the adapter
-   target-pin from Chunk 02 is; CRT-9V4T caveat.)
+   the resulting list with a metadata test. (Defense-in-depth, not the primary guard — **the runbook's
+   Step 0 target confirmation is**; CRT-9V4T caveat. *Corrected 2026-07-24: this read "the adapter
+   target-pin from Chunk 02 is" — no such pin exists or was ever built.*)
 4. **BKL-6J2X** — hold the `backlog-service-migration-required` advisory
    (`lib/backlog_probes.py:277-291`) until the path is proven: it does not route to `/prawduct:backlog
    scrub` until Chunks 02–03 land and 18–20 are closed.
@@ -294,7 +299,7 @@ are correct, so the chunk did not grow. Build-time interpretation calls, recorde
 real run (Chunk 06) is a rehearsed, owner-confirmed act.
 
 **Covers:** ship-list items 5 (C1 SPIKE-S2), 6 (C2 MG4 scrub).
-**Depends on:** Chunk 02 (target-pin), Chunk 03 (scrub safety rails), Chunk 04 (metering — so the dry-run
+**Depends on:** ~~Chunk 02 (target-pin)~~ *(no such pin — corrected 2026-07-24)*, Chunk 03 (scrub safety rails), Chunk 04 (metering — so the dry-run
 measures the real paced behavior)
 **Type:** code + operator verification (live GitHub side effects on a throwaway repo)
 **Foreign API:** `gh` (real issue create/close) — `verify-api` step 0 already met in Chunk 02; re-confirm
@@ -548,8 +553,8 @@ re-derivation from memory samples instead of enumerating. **Append to this list 
 | BKL-6X5D part (b) | Chunk 04 | → `shipped` *(part (i) stays deferred — adopter-scale, not pulled in)* |
 | — | Chunk 05 | *(no backlog IDs — C1/C2)* |
 | BKL-6M4T | Chunk 06 | → `shipped` |
-| — | Chunk 07 | *(no backlog IDs — C5; BKL-8P2R contract honored, already shipped)* |
-| BKL-7Q4M · BKL-9XQ2 · BKL-0QR1 | Chunk 08 | → `shipped` |
+| **BKL-7D3V** · **BKL-6J2X** | Chunk 07 | → `shipped` — the advisory lift (done-when #5) closes the decision item **and** retires the hold it discharges. *(Corrected 2026-07-24: this row read "no backlog IDs" while the traceability table already credited Chunk 07 with closing BKL-7D3V — the two disagreed.)* |
+| BKL-7Q4M · BKL-9XQ2 · BKL-0QR1 · **BKL-4T9C** | Chunk 08 | → `shipped` — BKL-4T9C's git-remote identity resolution is built in 08a |
 
 **Unreleased change-log entries owed `status=shipped | release=v3.2.0`** (verified against the tree
 2026-07-24 — re-grep `scope=v3.2.0-golive` at Chunk 09, since chunks 06–08 will add more):

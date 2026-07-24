@@ -160,11 +160,18 @@ issues, and name the tradeoff:
      markdown no adapter op reads. Neither scope makes archived items show up in a
      default `list` or block a duplicate at add time. **Its cost, stated
      symmetrically:** an archived item is **two** writes, not one — a create, then a
-     status reconcile to closed (the create path has no initial-state field). Only
-     the create is paced (`Pacer.before_create` is the sole paced call), so a large
-     `all` run spends its close writes outside the meter. Size the run with that in
-     mind; if the archive is large, prefer running it when a rate-limit trip would be
-     cheap to absorb.
+     status reconcile to closed (the create path has no initial-state field).
+     **Both writes are metered** — a `_PacingTransport` decorator charges every
+     migration REST call against a 900-points/minute window (5 per write, 1 per
+     read), so the close is inside the meter alongside the create. *(Corrected
+     2026-07-24: this previously read "Only the create is paced (`Pacer.before_create`
+     is the sole paced call), so a large `all` run spends its close writes outside
+     the meter" — true when written, made false by the Chunk 04 metering fix, which
+     updated the NFR but not this runbook.)* A live `--archive-scope all` run of 295
+     items measured **zero** pacing waits: serial `gh` round-trip latency caps the
+     burst well under the ceiling, so the budget is a safety belt rather than the
+     governor (VRF-009). Size the run on **wall clock** — roughly latency × call
+     count, ~18 minutes for 295 items — not on rate-limit risk.
 
    The model surfaces the tradeoff; the owner decides; the deterministic importer
    applies it via **`--archive-scope {open|all}`** (Step 4) — a data-plane lever,

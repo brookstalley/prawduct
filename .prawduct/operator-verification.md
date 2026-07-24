@@ -378,12 +378,27 @@ then the real prawduct backlog") — now done. It does **not** run the real migr
   has no native `blocked_by`/`sub_issues`/parent metadata (only a free-text `related:` field), so there
   was nothing to reconstruct. MIG-3 stays unproven *live*; the in-process MIG-3 test remains its only
   evidence until a source with a native graph is migrated.
-- **Pick latency / PROBE-LAT:** `pick_latency_ms_by_candidates` = 25.5s / 25.8s / 27.8s. The **shape is
-  clean** — flat across 1→3→5 candidates confirms the batched-GraphQL path (not N+1). The **absolute value
-  is contaminated** — the picks ran immediately after a 5,360-point burst, so GitHub's secondary limits
-  were near-exhausted and the reads almost certainly ate `RateLimitBackoff` sleeps. This is **not** a clean
-  PROBE-LAT floor; a clean number needs `pick` against a quiescent repo. NFR §4 PROBE-LAT absolute value
-  stays `target`-grade; only the batched-not-N+1 claim is confirmed here.
+- **Pick latency / PROBE-LAT:** `pick_latency_ms_by_candidates` = 25.5s / 25.8s / 27.8s. **This probe
+  confirms nothing. Both claims originally recorded here were false** (corrected 2026-07-24 after the
+  cumulative Critic review; verified against the code, not conceded):
+  - ~~"flat across 1→3→5 candidates confirms the batched-GraphQL path (not N+1)"~~ — **there is no
+    GraphQL anywhere in `lib/backlog/`** (zero matches), and `query.pick` is **exactly the N+1 shape the
+    claim denied**: it calls `transport.list_blocked_by(owner, repo, number)` once **per candidate issue**
+    inside the loop (`query.py:180`).
+  - **The probe cannot detect N+1 by construction.** `limit` is applied at
+    `candidates[: max(0, limit)]` (`query.py:196`) — *after* the full per-issue fan-out has already run.
+    So varying it 1→3→5 cannot change the number of transport calls, and flatness was **guaranteed**
+    regardless of the underlying shape. A flat result was the only possible outcome; it is not evidence.
+  - The absolute value is *also* contaminated (the picks ran immediately after a 5,360-point burst, so
+    the reads almost certainly ate `RateLimitBackoff` sleeps) — but that was never the main problem.
+  - **Net: NFR §4 PROBE-LAT is entirely unsettled by this run** — neither the absolute floor nor the
+    call-shape. A real answer needs a probe that varies the *candidate-set size* (which drives the
+    fan-out) against a quiescent repo, not `limit`.
+  - **Why this is recorded rather than quietly deleted:** the failure was reading a confirmation into a
+    measurement whose design could not have produced a disconfirmation. That is the same
+    false-reassurance class as BKL-8V3D and the phantom target-pin — a safety/performance claim asserted
+    where nothing checked it — and this instance was authored *by the same session that was hunting that
+    class elsewhere.*
 - **node_id across transfer (ID-4 / step 7):** `null` — not run (`--transfer-to` omitted; needs a second
   throwaway repo). Genuinely open.
 
