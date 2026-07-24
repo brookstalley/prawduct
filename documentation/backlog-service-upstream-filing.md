@@ -128,7 +128,14 @@ The adapter **refuses to file unless ALL hold** (any failure → structured erro
 
 1. **Preference** ≠ `never-file`  → else `error: filing-disabled` *(non-retryable)*.
 2. **Target pinned** — the target is the plugin's **declared canonical upstream repo** (a plugin constant, resolved like `prawduct-hook version` resolves the version — not a caller-supplied `--repo`). A `--repo` that does not match the pinned target → `error: target-not-pinned`. This closes the unconstrained-`--repo` hole (BKL-2Q7F/BKL-9XQ2): `ids.parse_repo` shape-validation is **not** an owner constraint.
-3. **No self-file** — if the pinned target equals the running repo's own `backlog_service_repo`, refuse → `error: self-file` (prawduct's own bugs route to its own backlog, never upstream to itself). This is the XP7 "never let prawduct's own repo self-file" invariant and the durable replacement for the interim egress test.
+3. **No self-file** — if the pinned target equals the running repo's own identity, refuse → `error: self-file` (prawduct's own bugs route to its own backlog, never upstream to itself). This is the XP7 "never let prawduct's own repo self-file" invariant and the durable replacement for the interim egress test.
+
+   **[AMENDMENT 2026-07-24 (owner-approved) — identity is resolved from TWO signals, and the check fails closed. | Tracked by BKL-4T9C.]** As originally written this check compared the pinned target against the running repo's `backlog_service_repo` alone. That scalar is **unset in every pre-cutover repo** — including prawduct's own until the migration lands — and `lib/backlog/context.py` performs no git-remote resolution, so `backlog_service_repo` was the adapter's *only* self-identity signal. An invariant keyed on a field whose default value disables it is **fail-open**, and it was inert precisely where it matters most. The amended check:
+
+   - resolves the running repo's identity from **both** `backlog_service_repo` **and** the git remote (`origin`), and refuses if **either** matches the pinned target;
+   - **fails closed** when neither signal resolves — an unresolvable identity is a refusal, not a pass.
+
+   The norm is amended toward its guarantee, never weakened (§ Direction). Second-order effect, recorded so the sequencing rationale does not outlive its reason: the *only* hard reason this design's build sat behind the real migration was that the migration is what made this check live. With identity resolved independently, that coupling is gone — though note the `[XP6 verify]` step (§9) still needs a live throwaway issue, so the chunk cannot complete entirely offline.
 4. **Approval matches the bytes** *(when preference = `ask-user`)* — re-render the payload, recompute the digest, refuse unless it equals `--approve`'s value → `error: approval-mismatch`. Guarantees **sent == previewed** (closes approved-A-sent-B). Waived under `always-file` (standing consent; L1 is then the safeguard, §4.1).
 5. **Authenticated** — resolve the session `gh` identity (never anonymous — GitHub issues are inherently authenticated; never a managed token, `architecture.md` § Direction) → else `error: auth`.
 

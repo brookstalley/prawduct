@@ -53,7 +53,7 @@ completing cleanly. Neither blocks authoring the rest of the plan.
 - [ ] Chunk 04: Pacer REST-point metering for the create+close archive stretch (C7) — built 2026-07-24, `[ ]` until release
 - [ ] Chunk 05: SPIKE-S2 live dry-run + MG4 scrub workflow (C1 + C2) — live dry-run run 2026-07-24 (VRF-009, §9 S2 settled), `[ ]` until release
 - [ ] Chunk 06: The real prawduct migration + VRF-006 (C4) — irreversible, operator-run
-- [ ] Chunk 07: Briefing/gates repoint through the adapter (C5)
+- [ ] Chunk 07: Briefing/gates repoint through the adapter (C5) — scoping audit 2026-07-24 finds all four original done-whens already satisfied; the chunk's real content is now the **advisory lift** (done-when #5, owner decision BKL-7D3V)
 - [ ] Chunk 08: MG5 / upstream filing — file-upstream op, report-bug rewrite, drop-box retirement (splittable 08a/08b)
 - [ ] Chunk 09: Release mechanics — version bump, change-log flip, regen-views, tag; VRF-002/003 post-tag
 
@@ -343,6 +343,68 @@ through the adapter instead of the frozen markdown.
 3. A real-slowness never-block test (G2) covers the degraded path.
 4. Offline suite green.
 
+**Scoping audit 2026-07-24 (offline, code-read — no code written): all four done-whens appear ALREADY
+SATISFIED on develop. Chunk 07 is very likely verification-only, like Chunk 01.** Confirm before
+building; do not re-author what is already there (the Chunk 05 done-when-#2 lesson — the MG4 workflow
+was already complete and nearly got rewritten).
+
+- **#1 —** `lib/briefing.py:675-720` (`_backlog_pending_line`) is already cutover-aware: post-cutover it
+  reads the `briefing_counts` snapshot with visible age and fires the **detached** warm
+  (`snapshot.spawn_refresh`); pre-cutover it parses markdown as before. Its docstring states the
+  never-block property structurally — "the briefing path touches **no network, ever** … satisfied
+  structurally, not by a timeout." BKL-8P2R's 30s default is in place (`lib/backlog/transport.py:258`).
+- **#2 —** the fail-visible path exists and is deliberate: the snapshot is read *before* the warm is
+  fired precisely so the no-snapshot line can only claim what is true, with a distinct line for
+  "warming" vs "the warm never started" (the code names the standing-falsehood failure it avoids, G3).
+- **#3 —** `tests/test_briefing_functions.py:692` — `test_never_blocks_even_with_a_hanging_backend`,
+  asserting `elapsed < 2.0` against a hanging backend, plus `:673`
+  `test_post_cutover_no_snapshot_degrades_visibly`.
+- **#4 —** suite green (2572 passed / 7 skipped, 2026-07-24).
+
+**On the chunk title's "gates" half:** `lib/gates.py` contains **zero** backlog references. The backlog
+readers outside `/prawduct:backlog` are the `DORMANT_CHECKS` set (`lib/backlog_probes.py:307`) — the
+Critic's reconciliation walk + hygiene checks, the PR reviewer's two consistency checks, the janitor's
+Backlog Health block, and the three `norm_probes` time-domain probes. The `backlog-checks-dormant`
+advisory explicitly defers restoring those to **W1 (the read-through cache)**, not to this chunk, and
+that advisory already ships. So there is no unbuilt "gate repoint" work hiding behind the title in this
+release — the honest-dormancy posture *is* the v3.2.0 answer.
+
+**Consequence for the critical path:** if this holds, the tail is `06 → (07 ≈ free) → 08 → 09`, and 08
+becomes the only substantial chunk left after the migration. **Chunk 07 therefore absorbs the advisory
+lift below** — it has the capacity, it is post-migration (so the proof exists), and putting a fleet-wide
+behavior change in a code chunk gets it a Critic review, which parking it in Chunk 09's release ceremony
+would not.
+
+**Done when (added 2026-07-24):**
+5. **Lift the `backlog-service-migration-required` hold (BKL-6J2X → BKL-7D3V).** Register
+   `probe_migration_required` directly in `lib/backlog_probes.py` `register()` in place of
+   `_probe_migration_required_held`, delete the no-op wrapper, and flip
+   `tests/test_backlog_probes.py::TestMigrationRequiredProbe::test_held_out_of_live_roster`
+   (`:215-225`) back to asserting the **live roster** surfaces the advisory — it currently pins the
+   held behavior. *(Named, not line-numbered: the name survives the edits that shift line numbers,
+   which is the drift this very chunk is correcting in BKL-6J2X's `refs:`.)*
+   Update the module docstring and the `register()` docstring, which both describe the hold.
+
+**[DECISION — owner, 2026-07-24: the advisory SHIPS LIFTED in v3.2.0. | BKL-7D3V]** BKL-6J2X's recorded
+lift condition — (i) BKL-2Q7F/BKL-8V3D/BKL-5N9W resolved, (ii) the path proven on one real end-to-end
+run — is discharged by Chunks 02–03 and Chunk 06 respectively, so the hold's own precondition is met and
+the owner elected to lift rather than carry it forward. Recorded here so it is a decision, not the
+probe's default deciding (BKL-6J2X's own instruction).
+
+**Recorded dissent, so a later reader sees the trade rather than assuming it was unexamined:** the
+audit's recommendation was to ship held and let the consumer `CHANGELOG.md` headline carry discovery.
+Two costs come with lifting, and they are now live risks rather than hypotheticals:
+- **BKL-8W2M is unbuilt** (`stage: requirements` — a *product decision* before it is code). There is no
+  declared terminal-markdown state, so a repo that will never host on GitHub — no remote, non-GitHub
+  forge, or an owner who simply does not want an Issues tracker — has **no way to resolve** a `warn` it
+  receives every session, and advisory dismissal is per-user, so a fresh clone re-nags. **This promotes
+  BKL-8W2M from someday-work to the item that makes the lift survivable**; it should be scheduled
+  immediately behind v3.2.0 if it does not make the release. BKL-4C9P is its sibling.
+- **The proof is n=1 on prawduct-shaped data.** VRF-009 ran against a copy of prawduct's own backlog,
+  and Chunk 06 migrates that same backlog. No consumer-shaped backlog has been migrated. Draining
+  Chunk 01's VRF-005/007/008 against a real consuming repo is the cheapest thing that narrows this gap
+  and it is unblocked today.
+
 ---
 
 ### Chunk 08: MG5 / upstream filing — file-upstream op · report-bug rewrite · drop-box retirement
@@ -354,8 +416,14 @@ test) / 08b (skill rewrite + drop-box retirement + norm amendment) seam **only i
 (sizing policy above). The Done-when list is grouped by that seam so the split is mechanical if needed.
 
 **Covers:** ship-list item 11 (C6/MG5); closes BKL-7Q4M, BKL-9XQ2, BKL-0QR1.
-**Depends on:** Chunk 07 (repoint — MG5 is post-migration, lockstep). *(No longer on Chunk 02: the
-target-pin/preview it was to reuse is built here — Chunk 02 re-scope, 2026-07-24.)*
+**Depends on:** *(revised 2026-07-24 — BKL-4T9C amendment)* **08a: nothing.** The no-self-file check no
+longer keys on `backlog_service_repo` alone (it resolves identity from the git remote too and fails
+closed), so the check is live without the migration — which was the only hard reason 08 sat behind
+06/07. 08a is buildable and testable offline against `tests/fakes/fake_github.py`. **08b: Chunk 06** —
+the drop-box↔replacement lockstep (§7) and the `untriaged-upstream-reports` repoint still want the live
+target. Note the `[XP6 verify]` step (done-when #4) needs a live throwaway issue regardless, so the
+chunk cannot *complete* entirely offline. *(No longer on Chunk 02 either: the target-pin/preview it was
+to reuse is built here — Chunk 02 re-scope, 2026-07-24.)*
 **Type:** code (skills/ + lib/) — governance-protected → full Critic + PR
 **Exposed API:** `prawduct-hook backlog file-upstream` — the preview/`--approve`/digest contract and the
 error vocab (`filing-disabled`, `target-not-pinned`, `self-file`, `approval-mismatch`) are recorded in
@@ -369,6 +437,13 @@ error vocab (`filing-disabled`, `target-not-pinned`, `self-file`, `approval-mism
    canonical-upstream pin + self-file refusal; promote `migrate_plugin.py:39`'s literal to a constant and
    replace `test_no_upstream_content_egress.py` in the same breath), approval matches the bytes,
    authenticated `gh` identity. Any failure → structured error, files nothing.
+   **Note (BKL-4T9C, 2026-07-24):** the amended no-self-file check resolves identity from the git remote
+   **as well as** `backlog_service_repo`, and fails closed when neither resolves. **No git-remote
+   resolver exists yet** — `lib/gitstate.py` has no `remote get-url` helper, and `lib/backlog/context.py`
+   is execution-context only (its sole repo comparison is the Actions-only `GITHUB_REPOSITORY` vs
+   `PRAWDUCT_PR_HEAD_REPO` fork check — env-sourced, not git-sourced). Budget a small helper
+   (`git remote get-url origin` → `owner/repo` via `ids.parse_repo`) plus its unresolvable / malformed /
+   no-remote cases, all of which must fail **closed**.
 2. **Label-less payload (§2)** — `[prawduct]` title prefix + fixed body sections + the *trimmed*
    `prawduct:` provenance block (`v`/`found_in`/`source-key:` only; the product-name-bearing `source:`
    field is **not** emitted). `found_in` sourced from `prawduct-hook version`, `(unknown)` if unreadable.
@@ -408,13 +483,53 @@ error vocab (`filing-disabled`, `target-not-pinned`, `self-file`, `approval-mism
 **Type:** code (version + change-log) + release ceremony
 
 **Done when:**
-1. Bump `VERSION` + `.claude-plugin/plugin.json` → 3.2.0 (A2).
+1. Bump `VERSION` + `.claude-plugin/plugin.json` → 3.2.0 (A2). **Both files** — note they live under
+   `plugin/` (`plugin/VERSION`, `plugin/.claude-plugin/plugin.json`), not at the repo root.
 2. Flip **every** unreleased change-log entry to `status=shipped` + `release=v3.2.0` — enumerate, don't
-   sample (REL-2N8K lesson).
+   sample (REL-2N8K lesson). The running enumeration is § "Deferred to Chunk 09" below.
 3. `prawduct-hook regen-views --check` (fail-closed pre-flight) → then `regen-views` for real.
 4. Tag `v3.2.0`, push, confirm the version-delta banner.
-5. **Post-tag by construction:** VRF-002, VRF-003 (a new agent type + hook aren't live until the version
+5. **Consumer-facing release note** — add the v3.2.0 headline to `plugin/CHANGELOG.md`. This is the
+   surface the version-delta SessionStart banner shows a repo on upgrade, and v3.1.1's headline
+   explicitly primed consumers for it ("The GitHub-Issues backlog service is deliberately **not** in
+   this release — it ships when it is"). It must state: the service is here; **your backlog does not
+   migrate automatically**; the command to run when you want it; and — per the v2.3.2 precedent for
+   `stamp-merged` — that agent memory / learnings saying "write to `incoming-bugs/`" are obsolete
+   (Chunk 08 retires the drop-box). Also name the two surfaces that ship unproven-live: MIG-3
+   relationship reconstruction (in-process test evidence only — neither the SPIKE-S2 source nor
+   prawduct's own backlog has a native graph) and ID-4 node_id-across-transfer (VRF-009).
+6. **Post-tag by construction:** VRF-002, VRF-003 (a new agent type + hook aren't live until the version
    ships) — run immediately after promotion with a rollback plan; do not hold the release for them.
+
+#### Deferred to Chunk 09 — the running enumeration
+
+This release adopted a `[ ]`-until-release convention: chunks build and verify their work but defer the
+backlog `status=shipped` flip to here. That convention only survives contact with Chunk 09 if the
+deferrals are **accumulated as they happen** — REL-2N8K is precisely the lesson that a release-time
+re-derivation from memory samples instead of enumerating. **Append to this list at every deferral.**
+
+**Backlog status flips owed** (via `/prawduct:backlog update`, never hand-edits):
+
+| Item(s) | Deferred by | Flip |
+|---|---|---|
+| BKL-4W7H | Chunk 01 | `promoted` → `shipped` *(still pending — Chunk 01 not yet drained)* |
+| BKL-8V3D | Chunk 02 | → `shipped` |
+| BKL-2Q7F · ONB-3F9P · BKL-5N9W · BKL-6J2X | Chunk 03 | → `shipped` |
+| BKL-6X5D part (b) | Chunk 04 | → `shipped` *(part (i) stays deferred — adopter-scale, not pulled in)* |
+| — | Chunk 05 | *(no backlog IDs — C1/C2)* |
+| BKL-6M4T | Chunk 06 | → `shipped` |
+| — | Chunk 07 | *(no backlog IDs — C5; BKL-8P2R contract honored, already shipped)* |
+| BKL-7Q4M · BKL-9XQ2 · BKL-0QR1 | Chunk 08 | → `shipped` |
+
+**Unreleased change-log entries owed `status=shipped | release=v3.2.0`** (verified against the tree
+2026-07-24 — re-grep `scope=v3.2.0-golive` at Chunk 09, since chunks 06–08 will add more):
+
+1. Chunk 05 offline prep — *also needs `chunks=05` added*; the tag was deliberately withheld until the
+   live half landed (it has, VRF-009), so Chunk 09 adds it rather than minting a second entry.
+2. Chunk 04 (`chunks=04`)
+3. Chunk 03 (`chunks=03`)
+4. `verify-chunk-refs` branch-name false-positive fix — a rider fix, correctly carries **no** `chunks=`
+5. Chunk 02 (`chunks=02`)
 
 ---
 
@@ -443,7 +558,7 @@ error vocab (`filing-disabled`, `target-not-pinned`, `self-file`, `approval-mism
 | 8 | 04 | BKL-6X5D part (b) |
 | 5 · 6 | 05 | — (C1/C2) |
 | 9 · 12 | 06 | BKL-6M4T |
-| 10 | 07 | — (C5; BKL-8P2R contract honored) |
+| 10 · 21 (lift leg) | 07 | BKL-7D3V (the ship-lifted decision); BKL-6J2X's hold retired (C5; BKL-8P2R contract honored) |
 | 11 | 08 | BKL-7Q4M, BKL-9XQ2, BKL-0QR1 |
 | 13–17 | 09 | — (release ceremony) |
 

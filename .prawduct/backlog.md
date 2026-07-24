@@ -158,7 +158,7 @@
   a hand-maintained matrix has no mechanism that would have caught either instance.
 
 - **[BKL-8W2M]** No declared terminal-markdown state — `backlog-service-migration-required` warns forever in products that will never host on GitHub
-  `effort: M · impact: M · area: backlog-service · kind: feature · source: critic · added: 2026-07-21 · reviewed: 2026-07-21 · status: open · stage: requirements · related: BKL-6J2X, BKL-4C9P, BKL-3W6K, BKL-2Q7F · refs: lib/backlog_probes.py:240-262 (`probe_migration_required` — resolution is `post_cutover` only), lib/backlog_probes.py:370-372 (unconditional registration), lib/backlog_probes.py:106 (`post_cutover` — the single shared resolution predicate), skills/backlog/migration-scrub.md (the `recommended_action` target — requires `gh` and a GitHub owner/repo), documentation/backlog-service-requirements.md (GV7), documentation/post-sync-advisory-spec.md §8.2 (probe resolution conditions)`
+  `effort: M · impact: L · area: backlog-service · kind: feature · source: critic · added: 2026-07-21 · reviewed: 2026-07-24 · status: open · stage: requirements · related: BKL-6J2X, BKL-4C9P, BKL-3W6K, BKL-2Q7F, BKL-7D3V · refs: lib/backlog_probes.py:240-262 (`probe_migration_required` — resolution is `post_cutover` only), lib/backlog_probes.py:370-372 (unconditional registration), lib/backlog_probes.py:106 (`post_cutover` — the single shared resolution predicate), skills/backlog/migration-scrub.md (the `recommended_action` target — requires `gh` and a GitHub owner/repo), documentation/backlog-service-requirements.md (GV7), documentation/post-sync-advisory-spec.md §8.2 (probe resolution conditions)`
 
   Filed by the backlog-service relayout Critic review (rev-20260721T161120Z-c06da7f6).
 
@@ -186,6 +186,12 @@
   precisely to name checks with no Issues-backend path? Note that plain advisory *dismissal* is
   probably not the answer — a permanent architectural fact deserves a recorded, shared, committed
   state, not a per-user dismissal that every fresh clone re-nags about.
+
+  **[PROMOTED by owner decision — 2026-07-24. `impact: M` → `impact: L`.]** The owner decided the `backlog-service-migration-required` advisory **ships LIFTED** in v3.2.0 (BKL-7D3V; implementation is Chunk 07 done-when #5). That decision **supersedes the "distinct from BKL-6J2X" paragraph above**: the release-timing hold this item contrasted itself against is being retired, so the hold is no longer masking the permanent case — it is the permanent case that is about to become visible fleet-wide.
+
+  Concretely, with the advisory lifted and no terminal-markdown state declared, a repo that will never host on GitHub receives a `warn` **every session with no resolution path**, and because advisory dismissal is per-user it does not survive a fresh clone. That moves this item's failure mode from hypothetical to shipped, which is the whole justification for the impact raise — it is the recorded owner decision doing the re-ranking, not a fresh opinion about the item's merits.
+
+  **This is now the item that makes the lift survivable.** It should be scheduled immediately behind v3.2.0 if it does not make the release. `stage: requirements` is unchanged and still correct — the product decision above genuinely has to be settled before any code, and lifting the advisory does not settle it.
 
 - **[DOC-7K4V]** `artifacts/api-contract.md` never describes the `prawduct-hook backlog` surface, though the build plan declares it an Exposed API
   `effort: S · impact: M · area: docs · kind: debt · source: critic · added: 2026-07-21 · reviewed: 2026-07-21 · status: open · stage: ready · related: CRT-4Q7K, TPL-8H3M, BKL-9XQ2, BKL-2D8N · refs: .prawduct/artifacts/api-contract.md (zero mentions of `backlog` — the gap), .prawduct/artifacts/build-plan-backlog-service.md (the `**Exposed API:**` declaration), lib/backlog/cli.py:33 (the op set), skills/backlog/adapter-mode.md (the error-envelope + exit-class contract the model reads instead), documentation/backlog-service-api-contract.md (the feature-local contract that exists but is not the product's api-contract artifact)`
@@ -626,7 +632,7 @@
   Narrow the grant to the ops the skill actually drives, in **both** invocation forms (the dual-form rule from JNT-4R2M — landing only the bare form leaves the self-hosted path ungranted). Decide explicitly where the scrub's ops (`import`/`merge`/`provision`) live: they belong to the one-shot, owner-confirmed migration, so either scope them to a separate surface or gate them behind the confirmation step BKL-2Q7F adds. Precedent for this shape is CRT-2M5P (the Critic's `Bash(git *)` → explicit read-only verb list) — including its caveat that a skill `allowed-tools` list may be a no-prompt allow-list rather than a hard cap (CRT-9V4T), so **this narrowing is defense-in-depth, not the primary guard**. Per BKL-9XQ2's structural finding, a tools-allowlist narrowing is **not** a substitute for an adapter-side target guard: permissions bound *who may call*, not *where the call may send*. Pin the resulting list with a metadata test. Governance-protected (`skills/`) → full Critic + PR review.
 
 - **[BKL-6J2X]** Hold the `backlog-service-migration-required` advisory — a `warn` that fires in every un-migrated repo and routes the whole fleet into an unproven migration path
-  `effort: S · impact: L · area: backlog · kind: task · source: user · added: 2026-07-20 · reviewed: 2026-07-20 · status: open · stage: ready · related: BKL-2Q7F, BKL-8V3D, BKL-5N9W, BKL-9XQ2, BKL-6M4T · refs: lib/backlog_probes.py:277-291 (the advisory — type, recommended_action `/prawduct:backlog scrub`, priority `warn`), lib/backlog_probes.py:371 (registration), skills/backlog/migration-scrub.md:9-14 (the runbook's own statement that this advisory is what routes repos here), documentation/backlog-service-requirements.md (GV7), .prawduct/artifacts/release-plan-backlog-service-golive.md (Chunk 06 ship list)`
+  `effort: S · impact: L · area: backlog · kind: task · source: user · added: 2026-07-20 · reviewed: 2026-07-24 · status: open · stage: ready · related: BKL-2Q7F, BKL-8V3D, BKL-5N9W, BKL-9XQ2, BKL-6M4T, BKL-7D3V · refs: lib/backlog_probes.py:240 (probe_migration_required — the advisory: type, recommended_action /prawduct:backlog scrub, priority warn), lib/backlog_probes.py:384 (_probe_migration_required_held — the no-op standing in for it), lib/backlog_probes.py:380-381 (the how-to-lift comment), lib/backlog_probes.py:405 (roster registration — the held wrapper, not the probe), tests/test_backlog_probes.py:215-225 (test_held_out_of_live_roster — pins the held behavior), skills/backlog/migration-scrub.md:9-14 (the runbook's own statement that this advisory is what routes repos here), documentation/backlog-service-requirements.md (GV7), .prawduct/artifacts/build-plan-v3.2.0-golive.md (Chunk 07 done-when #5 — the scheduled retirement of this hold), .prawduct/artifacts/release-plan-backlog-service-golive.md (Chunk 06 ship list)`
 
   **Release-gating for v3.2.0 — this is the amplifier that turns the other three into a fleet-wide event.**
 
@@ -635,6 +641,8 @@
   So on the day v3.2.0 ships, every consuming repo is told at session start to run the scrub — and the scrub is the runbook with no target-repo selection or provisioning step (BKL-2Q7F), citing a safety contract that does not exist (BKL-8V3D), under a wildcard adapter grant (BKL-5N9W). Individually those are three defects in one runbook; combined with a fleet-wide `warn` they are an **automated route from every repo into an irreversible, unpinned bulk write**.
 
   Requirement: **the advisory must not ship until the migration path is owner-ready and proven.** Concretely — do not enable it in a release until (i) BKL-2Q7F, BKL-8V3D, BKL-5N9W are resolved, and (ii) the path has been proven on at least one real end-to-end run (prawduct's own migration, BKL-6M4T, is the natural proof case). Options for v3.2.0, in preference order: (a) hold the advisory out of the release (keep the probe, don't register/emit it); (b) demote to `info` **and** rewrite `recommended_action` so it does not name a runnable command until the path is ready. Note the ordering constraint: prawduct's own migration is itself gated on part (b) of BKL-6X5D, so the proof run is not immediately available — plan for (a). Whatever is chosen, record it as a release-plan decision rather than leaving the probe's default to decide.
+
+  **[SUPERSEDED — 2026-07-24. THE HOLD IS SCHEDULED FOR RETIREMENT; it is not permanent.]** Option (a) shipped as an interim measure and is live today (`_probe_migration_required_held`). The owner has since decided the advisory **ships LIFTED in v3.2.0** — this item's own lift condition, (i) BKL-2Q7F/BKL-8V3D/BKL-5N9W resolved and (ii) proven on one real end-to-end run, is discharged by Chunks 02–03 and Chunk 06. The decision this item asked to be *recorded rather than left to the probe's default* is recorded in **BKL-7D3V** and in `build-plan-v3.2.0-golive.md` Chunk 07 done-when #5, which retires the hold. A reader landing here should treat the hold as **temporary and already scheduled**, not as the standing posture.
 
 - **[CRT-2Q6D]** Dangling docstring reference — `lib/critic_mode.py:261` still cites `_verify_resolutions_gate_check`, deleted in the kernel-v3 cutover
   `effort: S · impact: S · area: critic · source: critic · added: 2026-07-19 · status: open · stage: ready · related: CRT-8H3R, CRT-5D8Q · refs: lib/critic_mode.py:261`
@@ -2555,6 +2563,56 @@
   **Fix-shape (needs design — hence `stage: research`, not `ready`).** When `update` changes `stage`, detect stage-describing body prose (a small set of stage-referencing phrases — "stage: <name> is deliberate", "do NOT route … via pick", "route through discovery/planning", "open questions to settle") and prompt to reconcile it; at minimum warn "body prose references the old stage — reconcile it". This is the pattern-sweep / stale-prose-after-status-change learnings operationalized at the skill's own mutation site.
 
   Relates to the documented stale-prose-after-status-change learnings: `.prawduct/learnings.md:109` (when you change a mechanism, reconcile its retained self-descriptions in the same change or the prose reads as false) and `:47` (a replacement sentence gets the same falsification query the original needed). (reflection)
+
+- **[BKL-4T9C]** `file-upstream`'s no-self-file check is fail-open in every pre-cutover repo — it keys off `backlog_service_repo`, which is unset by default
+  `effort: S · impact: L · area: backlog-service · kind: bug · source: user · added: 2026-07-24 · reviewed: 2026-07-24 · status: open · stage: ready · related: BKL-7Q4M, BKL-9XQ2, BKL-2Q7F, BKL-6M4T, BKL-7D3V · refs: documentation/backlog-service-upstream-filing.md:131 (§5 check 3 — the no-self-file refusal), documentation/backlog-service-upstream-filing.md:141 (the XP7 contract test that replaces the interim egress test), plugin/lib/backlog/context.py (execution-context only — no git-remote identity resolution), documentation/backlog-service-requirements.md (XP7), tests/preferences/test_no_upstream_content_egress.py (the interim enforcement this invariant durably replaces), .prawduct/artifacts/build-plan-v3.2.0-golive.md (the Chunk 06 → 07 → 08 serial tail)`
+
+  **Filed from the 2026-07-24 v3.2.0 pre-ship audit. Release-relevant; not yet decided.**
+
+  `documentation/backlog-service-upstream-filing.md` §5 check 3 refuses to file when the pinned upstream target equals "the running repo's own `backlog_service_repo`". That scalar is **unset in every pre-cutover repo** — including prawduct's own, until Chunk 06 lands. Verified: `plugin/lib/backlog/context.py` performs no git-remote resolution (it resolves *execution* context — Actions, unattended, untrusted trigger — not repo identity), so `backlog_service_repo` is the only self-identity signal the adapter has.
+
+  So the invariant that exists specifically to stop prawduct's own repo self-filing is **structurally inert exactly where it matters, and inert BY DEFAULT** — an invariant keyed on a field whose default value disables it is fail-open. XP7 names this the "never let prawduct's own repo self-file" invariant and the durable replacement for `tests/preferences/test_no_upstream_content_egress.py`, so it must hold on its own, not by sequencing luck.
+
+  **Fix-shape:** resolve the running repo's identity from the **git remote** as well as the state scalar; fail closed if **either** matches the pinned target — and fail closed, not open, when neither can be resolved.
+
+  **Second-order value:** this is the only hard reason Chunk 08 sits behind Chunk 06/07 in `build-plan-v3.2.0-golive.md` (the migration is what makes the check live). Fixing it decouples 08 from 06 and shortens a strictly-serial four-chunk tail whose first link is irreversible.
+
+  This **amends an owner-approved, Critic-reviewed design** → owner decision, not a silent edit. (user — pre-ship audit)
+
+  **[APPROVED — owner, 2026-07-24. The design amendment has landed.]** `documentation/backlog-service-upstream-filing.md` §5 check 3 now carries an `[AMENDMENT 2026-07-24 (owner-approved)]` block: identity resolves from **both** `backlog_service_repo` **and** the git remote (`origin`), the check refuses if **either** matches the pinned target, and it **fails closed** when neither signal resolves — an unresolvable identity is a refusal, not a pass. The norm is amended toward its guarantee, never weakened (§ Direction).
+
+  **Sequencing consequence, recorded in the build plan (`Chunk 08 — Depends on`, revised 2026-07-24):** **Chunk 08a no longer depends on Chunk 06/07.** The check is live without the migration, so 08a is buildable and testable offline against `tests/fakes/fake_github.py`. **08b still depends on Chunk 06** — the drop-box↔replacement lockstep (§7) and the `untriaged-upstream-reports` repoint still want the live target. Note that `[XP6 verify]` (08a done-when #4) needs a live throwaway issue regardless, so the chunk cannot *complete* entirely offline even though it can now be *built* offline.
+
+- **[BKL-7D3V]** v3.2.0 ships the `backlog-service-migration-required` advisory held BY OMISSION — no chunk lifts it and none records a decision to keep it held
+  `effort: S · impact: L · area: backlog-service · kind: task · source: user · added: 2026-07-24 · reviewed: 2026-07-24 · status: open · stage: ready · related: BKL-6J2X, BKL-8W2M, BKL-4C9P, BKL-6M4T, BKL-4T9C · refs: plugin/lib/backlog_probes.py:384 (_probe_migration_required_held — the no-op registered in the live roster), plugin/lib/backlog_probes.py:240 (probe_migration_required — the held probe), plugin/lib/backlog_probes.py:380-381 (the how-to-lift comment), .prawduct/artifacts/build-plan-v3.2.0-golive.md (no chunk lifts the hold; none records keeping it), plugin/CHANGELOG.md (the consumer-facing discovery surface the version-delta SessionStart banner surfaces), plugin/skills/backlog/migration-scrub.md (the runbook the advisory routes into)`
+
+  **Filed from the 2026-07-24 v3.2.0 pre-ship audit. Release-relevant; the deliverable is a recorded owner decision, not a code change.**
+
+  BKL-6J2X's recorded lift condition is *"(i) BKL-2Q7F / BKL-8V3D / BKL-5N9W resolved, and (ii) the path proven on at least one real end-to-end run (prawduct's own migration)"*. Chunks 02–03 cleared (i); Chunk 06 clears (ii). **So by tag time the stated precondition is MET** — and `build-plan-v3.2.0-golive.md` has no chunk that lifts the hold, and none that records a decision to keep it. It ships held **by silence**.
+
+  The two outcomes are materially different:
+  - **Held** — the flagship feature of v3.2.0 is invisible to every consumer (they must already know to run `/prawduct:backlog scrub`).
+  - **Lifted** — every consumer with a structured backlog gets a session-start `warn` routing them into an irreversible bulk write of 100–250 real issues.
+
+  **Verified held:** `plugin/lib/backlog_probes.py:384` registers `_probe_migration_required_held` (a no-op) in the live roster; the real `probe_migration_required` at :240 is not registered.
+
+  **Recommendation on record — NOT yet an owner decision:** ship **HELD**, and make discovery happen through the consumer-facing `plugin/CHANGELOG.md` headline, which the version-delta SessionStart banner already surfaces on upgrade. v3.1.1's headline already primed consumers ("deliberately not in this release — ships when it is"), so the 3.2.0 headline must say the feature **is here**, that the backlog does **NOT** migrate automatically, and **name the command**.
+
+  Lifting is gated on **BKL-8W2M** (no terminal-markdown state — a repo that will never host on GitHub has no way to resolve the advisory) and **BKL-4C9P**. Neither is in this release.
+
+  Whatever is chosen, BKL-6J2X itself requires it be *"recorded as a release-plan decision rather than leaving the probe's default to decide"* — **that recording is the deliverable here.** (user — pre-ship audit)
+
+  **[DECIDED — owner, 2026-07-24: the advisory SHIPS LIFTED in v3.2.0.]** The owner chose **lift** over this item's recommendation to ship held. BKL-6J2X's recorded lift condition — (i) BKL-2Q7F/BKL-8V3D/BKL-5N9W resolved, (ii) the path proven on one real end-to-end run — is discharged by Chunks 02–03 and Chunk 06 respectively, so the hold's own precondition is met. This is the decision BKL-6J2X asked to be recorded rather than left to the probe's default; the deliverable above is therefore **satisfied**, and what remains is implementation.
+
+  **Implementation is now Chunk 07 done-when #5** in `.prawduct/artifacts/build-plan-v3.2.0-golive.md` (Chunk 07's original four done-whens were found already satisfied by the 2026-07-24 scoping audit, so the lift is that chunk's real content — and landing it in a code chunk gets it a Critic review, which parking it in Chunk 09's release ceremony would not):
+  - register `probe_migration_required` directly in `lib/backlog_probes.py` `register()` in place of `_probe_migration_required_held`;
+  - delete the `_probe_migration_required_held` no-op wrapper;
+  - flip `tests/test_backlog_probes.py::TestMigrationRequiredProbe::test_held_out_of_live_roster` back to asserting the **live roster** surfaces the advisory (it currently pins the held behavior);
+  - correct the module docstring **and** the `register()` docstring, both of which describe the hold.
+
+  **Accepted risks, recorded so they are not rediscovered as surprises:**
+  - **BKL-8W2M is unbuilt** (`stage: requirements` — a product decision before it is code). With no declared terminal-markdown state, a repo that will never host on GitHub (no remote, a non-GitHub forge, or an owner who simply does not want an Issues tracker) receives an unresolvable `warn` every session, and advisory dismissal is per-user so a fresh clone re-nags. This promotes BKL-8W2M from someday-work to **the item that makes the lift survivable**.
+  - **The proof is n=1 on prawduct-shaped data.** VRF-009 ran against a copy of prawduct's own backlog and Chunk 06 migrates that same backlog; no consumer-shaped backlog has been migrated. Draining Chunk 01's VRF-005/007/008 against a real consuming repo is the cheapest thing that narrows this gap, and it is unblocked today.
 
 ## Promoted
 
