@@ -351,3 +351,27 @@ compute the achievable request rate from the round-trip time first (it's the cei
 plausible volume-based argument is not a rate argument. Relates to Honest Confidence (#5), Root Cause
 Discipline (#16), and Retrieval Over Generation (#24 — the spike is the cheapest check that changes the
 recorded constant).
+
+## When a release has two documents tracking its state, one is already wrong — designate a single live
+tracker and demote the other to a decision record; and author each build chunk from the TREE, never
+from the upstream plan, because a plan derived from a plan describes intent the code may have overtaken
+
+Confirmed 2026-07-24 (v3.2.0 pre-ship audit). One root cause, two symptoms, both found in one sitting.
+**Symptom A — plan-vs-plan.** `release-plan-backlog-service-golive.md` and `build-plan-v3.2.0-golive.md`
+both tracked v3.2.0 state. By day four, 11 of the release plan's 21 ship-list rows were stale, four of
+its five `blocker` rows were built, and the two documents *directly contradicted each other on the
+critical path*: the release plan said the long pole was a discovery spike that had been settled the day
+before, while the build plan said the long pole was the migration. Nobody was misled only because the
+build plan happened to be the one being read — that is luck, not a control. **Symptom B —
+plan-vs-tree.** Two chunks (05's MG4 scrub workflow, 07's briefing repoint) were authored from the
+release plan rather than from the code, and BOTH were already fully built when finally read against the
+tree; each was minutes away from being re-authored. **The shared cause is derivation from a document
+instead of from reality.** Two rules follow. (1) Exactly one artifact holds live release state; every
+other release-adjacent doc is explicitly demoted to a decision record, keeps only what nothing else
+records (owner decisions, ratified rationale, sequencing rules), and says so at the top — re-ticking a
+stale tracker just restarts the drift clock. (2) A build chunk's step 0 is a scoping read against the
+tree; "the plan says this is unbuilt" is a hypothesis, not a finding. Note the asymmetry that makes this
+cheap to act on: reading the tree first costs minutes and the failure it prevents is building something
+twice, or worse, "fixing" working code to match a stale description. Relates to Living Documentation
+(#3), Validate Before Propagating (#15 — a plan is an intermediate output), Coherent Artifacts (#13),
+and Retrieval Over Generation (#24).

@@ -6,7 +6,8 @@ depends_on:
   - artifact: build-plan-backlog-service
   - artifact: backlog-service-prd
   - artifact: backlog-service-requirements
-last_validated: 2026-07-20
+superseded_as_tracker_by: build-plan-v3.2.0-golive
+last_validated: 2026-07-24
 ---
 
 # Release Plan — v3.2.0, Backlog Service Go-Live
@@ -16,8 +17,32 @@ own backlog migrates to gh issues, we have to bring in all that implies."* Versi
 (A2 decided).
 
 This plan enumerates what blocks that release and the order to clear it. It is a **release plan**,
-not a build plan — Chunk 06's build spec already lives in `build-plan-backlog-service.md` and is not
-restated here.
+not a build plan — the migration's build spec already lives in `build-plan-backlog-service.md` and is
+not restated here.
+
+---
+
+## ⚠️ STATUS 2026-07-24 — this document is now the DECISION RECORD, not the live tracker
+
+**The single live tracker for v3.2.0 is `build-plan-v3.2.0-golive.md`.** Read that for what is done,
+what is next, and what the critical path is. This document is retained — and is still worth reading —
+for the things only it records: the **A1/A2 owner decisions**, **decision 6**'s ratification and
+its reasoning, the **re-derived-count lesson** in § Sizing, and the **drop-box sequencing rule** at the
+end. Those are durable. Its *state* columns are not, and are no longer maintained.
+
+**Why the split.** Two documents were tracking the same release state — a 21-item ship list plus a § C
+build table here, and nine chunks there. Two live trackers for one release drift, and by 2026-07-24
+these had: **11 of the 21 ship-list rows were stale**, including four of the five ☐ **blocker** rows,
+and the two documents *contradicted each other on what the critical path was* (§ Burn-down order said
+`B1 → C6 → release`; the build plan said the real migration is the long pole because B1 was already
+settled — the build plan was right). Each stale claim is corrected in place below rather than deleted,
+so the drift is legible instead of quietly tidied away.
+
+**Naming hazard, stated once.** § C below is headed *"Build: Chunk 06"* and its chunk numbers are
+`build-plan-backlog-service.md`'s. `build-plan-v3.2.0-golive.md` has its **own** Chunk 06 — the real
+migration, which § C calls **C4**. "Chunk 06" therefore means two different things depending on which
+document you are in. Where this document says "Chunk 06" it always means the backlog-service plan's;
+the go-live plan's chunks are referred to as "go-live Chunk NN".
 
 ## ⚠️ First: the code lives on `feature/backlog-service-relayout`, not `develop`
 
@@ -57,32 +82,42 @@ The checkable form. Detail and rationale for each line are in the sections below
 thing to iterate on and check off. **Blocked-by is the load-bearing column** — the plan's whole shape
 is that one discovery spike gates the end of the chain while everything else runs beside it.
 
-| # | must land | blocked by | state |
+**State column reconciled against the tree 2026-07-24 and NOT maintained past that date** — the live
+tracker is `build-plan-v3.2.0-golive.md` § Status. Each row now carries what was planned *and* what is
+actually true, with the go-live chunk that did it.
+
+| # | must land | blocked by | state (reconciled 2026-07-24) |
 |---|---|---|---|
 | 1 | `--archive-scope` decision for prawduct's own migration (A1) | — | ☑ **decided 2026-07-20: `all`** |
 | 2 | Merge PR #134 (`skills-cutover-awareness`) — change-log conflict expected | — | ☑ **merged 2026-07-20** (`43dda9c`) |
-| 3 | VRF-005 · VRF-007 · VRF-008 drained against `samsung-frame-art-loader` | — | ☐ unblocked today |
-| 4 | **`BKL-9XQ2` discovery spike** — consent (1a/1b), evidence+PII, label taxonomy | — | ☐ **critical path** |
-| 5 | SPIKE-S2 live dry-run on a throwaway repo (C1) | ~~1~~ (met) | ☐ run it with `--archive-scope all` |
-| 6 | MG4 scrub workflow (C2) | — | ☐ |
-| 7 | `BKL-4W7H` — PFX read-resolution + alias idempotency (C3) | — | ☐ in flight (`promoted`) |
-| 8 | `BKL-6X5D` part (b) — Pacer meters REST points (C7) | — | ☐ **blocker** (A1 = `all` promoted it; no longer conditional) |
-| 9 | The real prawduct migration (C4) | ~~1~~ (met), 5, 6, 7, **8** | ☐ *(8-before-9 is **decision 6 — ratified 2026-07-23: accept**; C7 lands before C4 so the archive leg runs fully metered on the real repo)* |
-| 10 | Briefing/gates repoint through the adapter (C5) | 9 | ☐ |
-| 11 | **MG5** — drop-box retirement + `report-bug` upstream filing (C6) | **4**, 10 | ☐ |
-| 12 | VRF-006 — the migration is its own acceptance evidence | 9 | ☐ |
-| 13 | Version bump `VERSION` + `plugin.json` → 3.2.0 | 1–12 | ☐ release trigger |
-| 14 | Change-log: flip **every** unreleased entry `status=shipped` + `release=v3.2.0` | 13 | ☐ enumerate, don't sample |
+| 3 | VRF-005 · VRF-007 · VRF-008 drained against `samsung-frame-art-loader` | — | ☐ **still open, still unblocked** — go-live Chunk 01. The only consumer-shaped evidence in the release |
+| 4 | **`BKL-9XQ2` discovery spike** — consent (1a/1b), evidence+PII, label taxonomy | — | ☑ **SETTLED 2026-07-23** — requirements XP4–XP7 + an owner-approved, Critic-reviewed design (`documentation/backlog-service-upstream-filing.md`, 0 blocking). `stage: ready`. **This row said "critical path" and § B still describes it as unstarted research — both were wrong; see § B's correction** |
+| 5 | SPIKE-S2 live dry-run on a throwaway repo (C1) | ~~1~~ (met) | ☑ **run 2026-07-24 with `--archive-scope all`** — VRF-009; go-live Chunk 05 |
+| 6 | MG4 scrub workflow (C2) | — | ☑ **complete** — `skills/backlog/migration-scrub.md` + go-live Chunk 03's Step 0 target-bind cover every clause |
+| 7 | `BKL-4W7H` — PFX read-resolution + alias idempotency (C3) | — | ◐ **code on develop** via PR #137; only the `promoted → shipped` flip remains (go-live Chunk 01 done-when #2) |
+| 8 | `BKL-6X5D` part (b) — Pacer meters REST points (C7) | — | ☑ **built 2026-07-24** — `_PacingTransport`; go-live Chunk 04 |
+| 9 | The real prawduct migration (C4) | ~~1~~ (met), ~~5~~, ~~6~~, ~~7~~, ~~**8**~~ — **all met** | ☐ **the long pole** — go-live Chunk 06, irreversible, operator-run *(8-before-9 is **decision 6 — ratified 2026-07-23: accept**)* |
+| 10 | Briefing/gates repoint through the adapter (C5) | 9 | ☑ **already built** — the cutover-aware briefing (`lib/briefing.py`) shipped ahead of this plan; go-live Chunk 07's scoping audit found all four done-whens satisfied. That chunk now carries the advisory lift instead |
+| 11 | **MG5** — drop-box retirement + `report-bug` upstream filing (C6) | ~~**4**~~ (met), ~~10~~ (met) | ☐ **unblocked** — go-live Chunk 08. Both its blockers are discharged; 08a is now offline-buildable (BKL-4T9C) |
+| 12 | VRF-006 — the migration is its own acceptance evidence | 9 | ☐ rides item 9 |
+| 13 | Version bump `VERSION` + `plugin.json` → 3.2.0 | 1–12 | ☐ release trigger — **note both files live under `plugin/`** |
+| 14 | Change-log: flip **every** unreleased entry `status=shipped` + `release=v3.2.0` | 13 | ☐ enumerate, don't sample — **the enumeration now exists**: go-live Chunk 09 § "Deferred to Chunk 09" |
 | 15 | `regen-views --check` → `regen-views` | 14 | ☐ fail-closed pre-flight |
 | 16 | Tag `v3.2.0`, push, confirm the version-delta banner | 15 | ☐ |
 | 17 | VRF-002 · VRF-003 | promotion | ☐ **post-release by construction** |
-| 18 | `BKL-2Q7F` — the scrub runbook never selects/creates/provisions the target repo | — | ☐ **blocker** |
-| 19 | `BKL-8V3D` — `adapter-mode.md:96` promises an `--apply`/dry-run contract that does not exist | — | ☐ **blocker** |
-| 20 | `BKL-5N9W` — narrow the wildcard `Bash(prawduct-hook backlog *)` grant to the ops the skill drives | — | ☐ **blocker** |
-| 21 | `BKL-6J2X` — hold the migration-required advisory until the path is proven | 18, 19, 20 | ☐ **blocker** |
+| 18 | `BKL-2Q7F` — the scrub runbook never selects/creates/provisions the target repo | — | ☑ **built 2026-07-24** — go-live Chunk 03 (+ ONB-3F9P taken to a full close) |
+| 19 | `BKL-8V3D` — `adapter-mode.md:96` promises an `--apply`/dry-run contract that does not exist | — | ☑ **built 2026-07-24** — go-live Chunk 02, with a class-closing guard test |
+| 20 | `BKL-5N9W` — narrow the wildcard `Bash(prawduct-hook backlog *)` grant to the ops the skill drives | — | ☑ **built 2026-07-24** — go-live Chunk 03, both invocation forms, pinned by a metadata test |
+| 21 | `BKL-6J2X` — hold the migration-required advisory until the path is proven | 18, 19, 20 | ☑ **held 2026-07-24** — **and SUPERSEDED the same day**: owner decided the advisory **ships LIFTED** in v3.2.0 (**BKL-7D3V**), so the hold is retired in go-live Chunk 07 done-when #5. This row's framing ("hold until proven") is no longer the plan |
 
 Nothing above is optional-by-default: item 8 **was** conditional on A1 and is now firm, and item 17
 is deliberately *after* the tag. Everything else lands before v3.2.0 ships.
+
+**What the reconciliation changes about the release's shape.** Four of the five ☐ **blocker** rows
+(18–21) are built, and the row this plan called *the* critical path (4) was settled a day before the
+build began. The remaining work is **items 3, 9, 11, 12, 13–17** — one operator verification, the
+irreversible migration, one substantial build chunk (MG5), and the release ceremony. The long pole is
+**item 9**, not item 4 or item 11.
 
 **Items 18–21 were found on 2026-07-20 while scoping the v3.1.1 hotfix** (`release-plan-v3.1.1-hotfix.md`),
 and they are why that release ships from `v3.1.0`'s tree rather than from `develop`. Together they
@@ -157,9 +192,35 @@ downstream of it.)*
 | **A2** | ~~Release version~~ — **decided 2026-07-20: v3.2.0** | The bump *is* the release trigger (`VERSION` + `plugin.json`). A minor bump for a subsystem going live, consistent with the standing "version conservatively" preference. |
 | **A3** | `BKL-9XQ2` policy shape | Follows the B1 spike; listed here so it is not mistaken for a build task. |
 
-### B — Discovery: `BKL-9XQ2` (the long pole)
+### B — Discovery: `BKL-9XQ2` — ✅ **SETTLED 2026-07-23. NO LONGER THE LONG POLE.**
 
-`stage: research`, release-gating, capture-only in activity. Three sub-questions, unequal difficulty:
+> **This section is retained as the record of what the discovery had to answer, and it is answered.**
+> `BKL-9XQ2` is `stage: ready`; so is `BKL-7Q4M`. The output is
+> `documentation/backlog-service-upstream-filing.md` — owner-approved and Critic-reviewed (0 blocking),
+> settling **XP4–XP7**. How each sub-question below landed:
+>
+> - **B1a — consent.** Three-state `Upstream filing: ask-user | always-file | never-file`, default
+>   `ask-user`, in `project-preferences.md`. **Disclosure at install was resolved as NOT required**
+>   (owner, 2026-07-23) — per-report consent is the whole mechanism, so `skills/onboard/` is explicitly
+>   *not* a consent surface. The "must bind at the adapter, not in skill prose" constraint held: it is
+>   § 5's five-check contract. The `ask`-vs-unattended collision below was pinned the right way —
+>   **don't file**, never "file anyway" (§ 4.3), with the honest limit that attendance is not
+>   mechanically detectable stated rather than papered over.
+> - **B1b — evidence & PII.** The item this plan called *"the schedule risk in the whole plan… a
+>   research question with an unknown answer"* was answered by **declining to claim what cannot be
+>   backed**: L1 recomposition (synthesize or abstract) in the model's *decision*, never the data plane;
+>   a fixed label-less payload; a trimmed provenance block that omits the product name; and an explicit
+>   statement that "no proprietary content" is **not** mechanically enforceable at a prose boundary —
+>   no redactor ships and none is claimed. The guarantee is L1 plus mandatory human review of L2.
+> - **B1c — label taxonomy.** Resolved by **filing label-less**: a non-collaborator cannot set labels,
+>   so category rides a `[prawduct]` title convention and prawduct-side triage applies the taxonomy.
+>   Consumers are never coupled to it.
+>
+> **One item was handed to build, not settled here:** `[XP6 — verify]` current GitHub non-collaborator
+> label behavior against a throwaway issue — load-bearing, explicitly *do not ship on recall*.
+
+The original framing, for the record — `stage: research`, release-gating, capture-only in activity.
+Three sub-questions, unequal difficulty:
 
 - **B1a — consent, two obligations.** Disclosure *at install* (a user who does not know the
   capability exists cannot evaluate a prompt) **and** consent *at file* (three-state preference:
@@ -178,20 +239,21 @@ downstream of it.)*
 Known collision to resolve in the spike: `ask` collides with Security §1a (unattended operation, no
 human present). The answer needs pinning as *don't file*, not *file anyway*.
 
-### C — Build: Chunk 06
+### C — Build: Chunk 06 *(= `build-plan-backlog-service.md`'s Chunk 06 — NOT go-live Chunk 06)*
 
-Prerequisite state verified 2026-07-20: `BKL-8P2R` **shipped**, `BKL-8N5K` (MG6 restructure pre-pass)
-**shipped**, `BKL-4W7H` **promoted** (in flight), `BKL-6M4T` and `BKL-0QR1` **open**.
+Prerequisite state verified 2026-07-20 — **stale, see the reconciled column**: `BKL-8P2R` **shipped**,
+`BKL-8N5K` (MG6 restructure pre-pass) **shipped**, `BKL-4W7H` **promoted** (in flight), `BKL-6M4T` and
+`BKL-0QR1` **open**.
 
-| id | work | blocked by |
-|---|---|---|
-| C1 | SPIKE-S2 live dry-run on a throwaway repo (step 0) | ~~A1~~ (met — run it with `--archive-scope all`) |
-| C2 | MG4 scrub workflow — model-surfaced candidates → owner-confirmed dispositions | — |
-| C3 | `BKL-4W7H` (PFX read-resolution + alias idempotency) — must-fix-before-done | — |
-| C4 | The real prawduct migration (bulk import) | ~~A1~~ (met), C1, C2, C3, **C7** *(decision 6 — **ratified 2026-07-23: C7 before C4**)* |
-| C5 | Briefing/gates repoint through the adapter | C4 |
-| C6 | **MG5** — drop-box retirement + `report-bug` files upstream, carrying `Found in: prawduct vX.Y.Z` from `prawduct-hook version` (provenance, not model recall) | **B1**, C5 |
-| C7 | `BKL-6X5D` part (b) — Pacer meters REST points for the create+close stretch | — (in scope: A1 = `all`) |
+| id | work | blocked by | state 2026-07-24 |
+|---|---|---|---|
+| C1 | SPIKE-S2 live dry-run on a throwaway repo (step 0) | ~~A1~~ (met — run it with `--archive-scope all`) | ☑ **done** — VRF-009, go-live Chunk 05 |
+| C2 | MG4 scrub workflow — model-surfaced candidates → owner-confirmed dispositions | — | ☑ **done** — go-live Chunk 03 Step 0 |
+| C3 | `BKL-4W7H` (PFX read-resolution + alias idempotency) — must-fix-before-done | — | ◐ code on develop (PR #137); status flip pending |
+| C4 | The real prawduct migration (bulk import) | ~~A1~~, ~~C1~~, ~~C2~~, ~~C3~~, ~~**C7**~~ — **all met** *(decision 6 — **ratified 2026-07-23: C7 before C4**)* | ☐ **the long pole** — go-live Chunk 06 |
+| C5 | Briefing/gates repoint through the adapter | C4 | ☑ **already built** — go-live Chunk 07's audit found it satisfied; that chunk now carries the advisory lift |
+| C6 | **MG5** — drop-box retirement + `report-bug` files upstream, carrying `Found in: prawduct vX.Y.Z` from `prawduct-hook version` (provenance, not model recall) | ~~**B1**~~ (settled), ~~C5~~ (built) | ☐ **unblocked** — go-live Chunk 08; 08a offline-buildable (BKL-4T9C) |
+| C7 | `BKL-6X5D` part (b) — Pacer meters REST points for the create+close stretch | — (in scope: A1 = `all`) | ☑ **built** — go-live Chunk 04 |
 
 `plugin/lib/backlog/legacy.py` (`plugin/lib/backlog.py` on `main` at v3.1.1 — the package split
 lives on `feature/backlog-service-relayout`) is **not** retired here — it stays as the shared markdown read path for
@@ -220,14 +282,32 @@ un-migrated portfolio repos (MG3/GV7).
 
 ### F — Accepted risks / explicitly not blockers
 
-- The `backlog-service-migration-required` advisory resolves *as a consequence* of C4 — it is not
-  separate work.
+- ~~The `backlog-service-migration-required` advisory resolves *as a consequence* of C4 — it is not
+  separate work.~~ **FALSE as of 2026-07-24 — this was wrong in both directions, and the correction is
+  the reason it is struck rather than edited.** (a) The claim only ever described *prawduct's own*
+  advisory resolving, because C4 sets prawduct's `backlog_service_repo`; it never described the
+  **fleet-wide** behavior, which is what actually matters to consumers. (b) The advisory was
+  subsequently **held** out of the live roster entirely (`BKL-6J2X`, go-live Chunk 03) and then, by
+  owner decision the same day, scheduled to **ship lifted** (`BKL-7D3V`, go-live Chunk 07 done-when #5).
+  So it is **separate work**, it is release-relevant, and it is a fleet-wide behavior change that gets
+  its own Critic review. Treating it as a free consequence is how it nearly shipped undecided.
 - The full XP1 cross-owner / foreign-identity / private-target plane stays **W3**. MG5 ships only the
   fixed-target public-repo subset. Do not let B1's discovery pull W3 forward.
 - `BKL-6X5D` window *quantification* stays deferred (adopter-scale); only part (b) is in scope, and
   now firmly in scope because A1 landed on `all`.
 
 ## Burn-down order
+
+> **⚠️ SUPERSEDED 2026-07-24 — the critical path below is no longer the critical path.** B1 settled on
+> 2026-07-23, so the item this section calls "the only genuinely unknown-duration item" is done. The
+> real path is now **C4 (the irreversible migration) → C6 → release**, and the live ordering is
+> `build-plan-v3.2.0-golive.md` § "Critical path & parallelization". This section is retained for its
+> **decision 6** reasoning (step 4), which is still binding and still correct, and for the drop-box
+> sequencing rule at the end. Steps 1–3 are history.
+>
+> Worth naming, because it is the lesson of this whole reconciliation: for four days the two plans
+> disagreed about what the long pole was, and the stale one said the schedule risk sat in a discovery
+> that had already landed. Nobody was misled only because the build plan was the one being read.
 
 The critical path is **B1 → C6 → release**, and B1b is the only genuinely unknown-duration item.
 Everything else parallelizes around it.

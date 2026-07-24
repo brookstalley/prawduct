@@ -74,6 +74,36 @@ dry-run is turnkey (Critic chunk-mode 0/0/1; suite 2572). Next: **Chunk 05 live 
 runs the SPIKE-S2 dry-run on a throwaway repo and records results (settles NFR §9 S2 for real), with the
 Chunk 01 VRFs (operator/live) in parallel; then Chunk 06 (the irreversible real migration).
 
+## Where v3.2.0's state lives — one tracker, and why the other surfaces disagree
+
+**This document is the single live tracker for v3.2.0** (established 2026-07-24). Four surfaces describe
+this release and they had drifted apart; each now has one job:
+
+| Surface | Job | How to read it |
+|---|---|---|
+| **This build plan** | **Live state** — what is done, what is next, what the critical path is | Authoritative. § Status is the answer |
+| `release-plan-backlog-service-golive.md` | **Decision record** — A1/A2, decision 6, the re-derived-count lesson, the drop-box sequencing rule | Its state columns were reconciled 2026-07-24 and are **not maintained**; it is no longer a tracker |
+| The tree | **Ground truth** | Beats both plans. Two chunks (05's MG4 workflow, 07's briefing repoint) were found **already built** when read against the tree |
+| `.prawduct/backlog.md` | **Item lifecycle** | Deliberately lags this release — see below |
+
+**Why the backlog reads as though nothing is done.** This release adopted a `[ ]`-until-release
+convention: chunks build and verify, but the `status=shipped` flip rides the release PR (Chunk 09). So
+BKL-2Q7F, BKL-8V3D, BKL-5N9W, BKL-6J2X, BKL-6X5D(b) and ONB-3F9P all read `status: open` while their
+work is built, verified, and sitting on this branch, and BKL-4W7H reads `promoted` with its code already
+on develop. **That is intended, not drift** — but it means the backlog alone will tell a reader that
+every release blocker is outstanding. The reconciliation is § "Deferred to Chunk 09"; that list is the
+mechanism that keeps the convention honest, and it is why the list has to be appended to at each
+deferral rather than reconstructed at release.
+
+**The failure mode this table exists to prevent.** By 2026-07-24 the release plan and this plan
+contradicted each other on the critical path — the release plan said the long pole was the `BKL-9XQ2`
+discovery, which had already been settled on 2026-07-23. Two live trackers for one release always drift;
+the fix was to stop having two, not to re-tick the stale one.
+
+**Reading order for a chunk that has not been built yet: read the tree first.** Chunks 05 and 07 were
+both authored from the release plan rather than from the code, and both described work that was already
+done. Chunks 06 and 08 should get a scoping read against the tree as step 0 before any building.
+
 ## Prerequisites & branch reality (read before Chunk 02)
 
 **The backlog-service code is on develop as of PR #137 (merged 2026-07-23).** The relayout branch
