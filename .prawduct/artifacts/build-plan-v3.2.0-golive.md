@@ -10,6 +10,8 @@ depends_on:
 governed_by:
   - artifact: security-model
     dispositions:
+      - "A destructive/irreversible operation requires explicit owner approval at the OPERATION level, not per granular action (amended 2026-07-24, owner ruling) → conforms. Chunk 06's migration takes one informed owner confirmation at scrub Step 0 — target repo named and bound, volume known, MG1 irreversibility stated — and then performs its ~900 writes without re-prompting. Under the norm's PRIOR absolute form ('no destructive action without an explicit --apply step') Chunk 06 would have been a departure, and the adapter's absent dry-run contract (BKL-8V3D) an unrecorded one; the amendment is what makes the disposition honest rather than the disposition straining to fit the old text."
+      - "Chunk 06 telemetry obligation (BKL-8K2N) → the operation-level approval is only informed if the operator can see what the approved run is doing: pacing counters now ride every import exit path (success and both resumable cuts) and every blocking sleep announces itself, so a paced run is distinguishable from a wedged one."
       - "A governed product's content never leaves its own repo/owner; any cross-owner/public-plane filing surface is an owner decision (Status: in-transition, tracks BKL-7Q4M) → conforms + amendment proposed (Chunk 08 is the reviewed design the norm waits on; it moves in-transition→steady-state when §5's contract test replaces the interim egress test)"
   - artifact: architecture
     dispositions:

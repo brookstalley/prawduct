@@ -37,6 +37,7 @@ for _p in (str(_REPO_ROOT), str(_TESTS_DIR)):
 import pytest  # noqa: E402
 
 from lib.backlog import cli, core, encode, ids, legacy, migrate  # noqa: E402
+from lib.backlog.transport import TransportError  # noqa: E402
 from fakes.fake_github import FakeGitHub  # noqa: E402
 from fixtures.backlog_fixtures import DISCODON_MINI, multi_prefix_backlog  # noqa: E402
 
@@ -1160,3 +1161,114 @@ class TestMigrateCli:
         b = _file(fake, title="keep")
         assert cli.run("/x", ["merge", a, "--into", b], transport=fake) == 0
         assert "superseded-by" in capsys.readouterr().out
+
+
+class TestPacingObservability:
+    """A ~900-issue irreversible migration must be legible WHILE it runs and AFTER
+    it stops (BKL-8K2N).
+
+    `import_items` already constructs a default `Pacer`, so pacing was never absent
+    — but every counter it accumulated was dropped on the floor (the SPIKE-S2
+    harness was the only reader in the tree), and both blocking sleeps were silent.
+    Together that meant an operator watching a paused run could not distinguish
+    "waiting out a rate budget" from "wedged", and could not say afterward where the
+    budget stood. For an act GitHub cannot undo, that is the observability that
+    matters most.
+    """
+
+    _KEYS = {
+        "rest_points_charged",
+        "rest_point_waits",
+        "rest_point_wait_seconds",
+        "content_creation_waits",
+        "content_creation_wait_seconds",
+        "rate_limit_pauses",
+        "rate_limit_paused_seconds",
+        "budgets",
+    }
+
+    def test_run_summary_carries_pacing_telemetry(self, fake):
+        result = _import(fake, DISCODON_MINI)
+        assert result["status"] == "ok"
+        pacing = result["data"]["pacing"]
+        assert set(pacing) >= self._KEYS
+        # Charged points prove the meter ran; the wait counters are the operator's
+        # answer to "was I throttled, and for how long?"
+        assert pacing["rest_points_charged"] > 0
+        assert pacing["rest_point_waits"] == 0
+        assert pacing["content_creation_waits"] == 0
+        assert pacing["rate_limit_pauses"] == 0
+        assert pacing["budgets"]["per_minute_points"] == 900
+
+    def test_pacing_telemetry_survives_a_resumable_cut(self, fake):
+        """The cut path is where telemetry matters MOST — a run that stopped is
+        exactly when someone asks "how far did it get, and was it throttled?".
+        Reporting only on the success path would describe only the runs that never
+        had a problem."""
+        _seed_labels(fake, DISCODON_MINI)
+        original = fake.create_issue
+        calls = {"n": 0}
+
+        def failing_create(*a, **kw):
+            calls["n"] += 1
+            if calls["n"] > 1:
+                raise TransportError("unavailable", "backend down")
+            return original(*a, **kw)
+
+        fake.create_issue = failing_create
+        result = _import(fake, DISCODON_MINI)
+        assert result["status"] == "error"
+        assert result["error"]["details"]["resumable"] is True
+        pacing = result["error"]["details"]["pacing"]
+        assert set(pacing) >= self._KEYS
+        assert pacing["rest_points_charged"] > 0
+
+    def test_a_points_throttle_announces_itself(self, capsys):
+        """A silent sleep is indistinguishable from a hang."""
+        _state, now, sleep = _fake_clock()
+        pacer = migrate.Pacer(per_minute_points=10, now=now, sleep=sleep)
+        pacer.before_points(8)
+        capsys.readouterr()  # under budget — nothing to announce
+        pacer.before_points(8)  # breaches 10/min → must block AND say so
+        err = capsys.readouterr().err
+        assert "rest-point budget" in err
+        assert "resuming in" in err
+
+    def test_a_content_cap_throttle_announces_itself(self, capsys):
+        _state, now, sleep = _fake_clock()
+        pacer = migrate.Pacer(per_minute=1, per_hour=1000, now=now, sleep=sleep)
+        pacer.before_create()
+        capsys.readouterr()
+        pacer.before_create()
+        err = capsys.readouterr().err
+        assert "content-creation budget" in err
+        assert "resuming in" in err
+
+    def test_a_rate_limit_pause_announces_itself(self, capsys):
+        backoff = migrate.RateLimitBackoff(sleep=lambda s: None)
+        backoff.pause(0, {"retry_after": 30})
+        err = capsys.readouterr().err
+        assert "rate-limited" in err
+        assert "30" in err
+
+    def test_an_unthrottled_run_stays_quiet(self, fake, capsys):
+        """Pacing output must be exception reporting, not a running commentary — a
+        line per call would bury the one message that matters."""
+        _import(fake, DISCODON_MINI)
+        assert "budget" not in capsys.readouterr().err
+
+    def test_human_mode_import_prints_a_pacing_footer(self, fake, tmp_path, capsys):
+        """`migration-scrub.md` invokes import WITHOUT --json, so a JSON-only
+        summary would reach every consumer except the operator running the
+        irreversible migration."""
+        src = tmp_path / "backlog.md"
+        src.write_text(DISCODON_MINI, encoding="utf-8")
+        assert cli.run(
+            str(tmp_path),
+            ["import", "--repo", f"{OWNER}/{REPO}", "--from", str(src)],
+            transport=fake,
+        ) == 0
+        out = capsys.readouterr().out
+        assert "pacing:" in out
+        assert "REST points" in out
+        assert "no throttling" in out

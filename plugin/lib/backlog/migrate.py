@@ -150,6 +150,14 @@ class Pacer:
         transport, by :meth:`before_points`.)"""
         wait = self._required_wait()
         if wait > 0:
+            # Announce BEFORE sleeping. A silent block is indistinguishable from a
+            # wedged process, and on the irreversible migration the operator's only
+            # alternative reading is "kill it" — the one response that turns a
+            # self-resolving pause into a half-done import (BKL-8K2N).
+            _diag(
+                f"paced: content-creation budget reached "
+                f"({self.per_minute}/min, {self.per_hour}/hr) — resuming in {wait:.0f}s"
+            )
             self._sleep(wait)
             self.waits += 1
             self.total_waited += wait
@@ -177,6 +185,11 @@ class Pacer:
         not just the create (BKL-6X5D part b)."""
         wait = self._required_points_wait(cost)
         if wait > 0:
+            # See before_create: announce before blocking (BKL-8K2N).
+            _diag(
+                f"paced: rest-point budget reached ({self.per_minute_points} pts/min; "
+                f"{self.points_charged} charged so far) — resuming in {wait:.0f}s"
+            )
             self._sleep(wait)
             self.point_waits += 1
             self.total_point_waited += wait
@@ -250,9 +263,53 @@ class RateLimitBackoff:
 
     def pause(self, attempt: int, details: dict | None = None) -> None:
         wait = self.wait_seconds(attempt, details)
+        # A REACTIVE pause means GitHub already pushed back — strictly more alarming
+        # than the Pacer's proactive waits, and the one an operator most needs to see
+        # rather than infer from a stalled terminal (BKL-8K2N). Name the server's
+        # Retry-After when it gave one, so "why this long?" is answered in the line.
+        served = _coerce_seconds((details or {}).get("retry_after"))
+        because = (
+            f"server Retry-After: {served:.0f}s"
+            if served is not None
+            else "exponential backoff"
+        )
+        _diag(
+            f"rate-limited by GitHub — pausing {wait:.0f}s before retry "
+            f"{attempt + 1}/{self.max_retries} ({because})"
+        )
         self._sleep(wait)
         self.pauses += 1
         self.total_paused += wait
+
+
+def pacing_summary(pacer: "Pacer", backoff: "RateLimitBackoff") -> dict:
+    """The run's pacing telemetry, for the import envelope (BKL-8K2N).
+
+    ``import_items`` has always *constructed* a Pacer, so the run was paced — but
+    the counters were never surfaced, and the SPIKE-S2 harness was the only reader
+    in the tree. That left the operator of an irreversible ~900-issue migration
+    unable to answer "was I throttled, and where did the budget stand?" after the
+    fact. This is that answer, and it rides **every** exit path — success and both
+    resumable cuts — because a run that stopped is exactly when the question gets
+    asked.
+
+    Names match the SPIKE-S2 recorded-facts vocabulary so a dry-run and a real run
+    are read side by side without a translation step.
+    """
+    return {
+        "rest_points_charged": pacer.points_charged,
+        "rest_point_waits": pacer.point_waits,
+        "rest_point_wait_seconds": round(pacer.total_point_waited, 3),
+        "content_creation_waits": pacer.waits,
+        "content_creation_wait_seconds": round(pacer.total_waited, 3),
+        "rate_limit_pauses": backoff.pauses,
+        "rate_limit_paused_seconds": round(backoff.total_paused, 3),
+        "budgets": {
+            "per_minute_creates": pacer.per_minute,
+            "per_hour_creates": pacer.per_hour,
+            "per_minute_points": pacer.per_minute_points,
+        },
+    }
 
 
 def _coerce_seconds(value) -> float | None:
@@ -742,7 +799,13 @@ def import_items(
     except TransportError as exc:
         result = core.from_transport_error(exc)
         result["error"]["details"].update(
-            {"created": created, "skipped": skipped, "collisions": collisions, "resumable": True}
+            {
+                "created": created,
+                "skipped": skipped,
+                "collisions": collisions,
+                "resumable": True,
+                "pacing": pacing_summary(pacer, backoff),
+            }
         )
         # Carry the audit warnings accrued before the cut (checkpoint notes + per-record
         # self-heal lines). A self-heal line from an already-completed record can't be
@@ -766,6 +829,7 @@ def import_items(
                 "skipped": skipped,
                 "collisions": collisions,
                 "resumable": True,
+                "pacing": pacing_summary(pacer, backoff),
             },
         )
         result["warnings"] = warnings
@@ -779,6 +843,7 @@ def import_items(
         "skipped": skipped,
         "collisions": collisions,
         "total_source": len(records),
+        "pacing": pacing_summary(pacer, backoff),
     }
     return core.ok(data, warnings)
 

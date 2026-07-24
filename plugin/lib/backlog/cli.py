@@ -855,6 +855,34 @@ def _print_human_ok(data) -> None:
         if "restructured" in data:
             line += f" ({data['restructured']} restructured by plan)"
         print(line)
+        # The pacing footer is the operator's after-the-fact answer to "was this run
+        # throttled, and where did the budget stand?" — printed in HUMAN mode because
+        # that is how `migration-scrub.md` actually invokes import (no --json), so a
+        # JSON-only summary would reach every consumer except the one person running
+        # the irreversible migration (BKL-8K2N).
+        pacing = data.get("pacing")
+        if pacing:
+            throttled = (
+                pacing.get("rest_point_waits", 0)
+                + pacing.get("content_creation_waits", 0)
+                + pacing.get("rate_limit_pauses", 0)
+            )
+            summary = f"  pacing: {pacing.get('rest_points_charged', 0)} REST points"
+            if throttled:
+                waited = (
+                    pacing.get("rest_point_wait_seconds", 0.0)
+                    + pacing.get("content_creation_wait_seconds", 0.0)
+                    + pacing.get("rate_limit_paused_seconds", 0.0)
+                )
+                summary += (
+                    f"; THROTTLED {throttled}× for {waited:.0f}s total "
+                    f"({pacing.get('rest_point_waits', 0)} rest-point, "
+                    f"{pacing.get('content_creation_waits', 0)} content-cap, "
+                    f"{pacing.get('rate_limit_pauses', 0)} rate-limit)"
+                )
+            else:
+                summary += "; no throttling (budgets never bound)"
+            print(summary)
     elif "dir" in data and "count" in data:
         # An export result (its `items` is a list of id strings, not item dicts).
         print(f"{data.get('repo')}: exported {data.get('count')} item(s) to {data.get('dir')}")
