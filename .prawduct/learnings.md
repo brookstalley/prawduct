@@ -319,3 +319,18 @@ observed fact — including into CRT-3F7M's title.
 Auditing the runbook guide/skill/template (2026-07-20), I argued from the text that the template should be inverted — minimal default, optional sections in a library — because a form-shaped template pulls authors into filling it in and "deletion is the weaker operation." Two subagents then authored real runbooks from the *unmodified* material and both deleted correctly and for the right reasons (blast radius, duration, authorization, maintenance, prerequisites, phases, irreversible block — each against its include-test), with one reporting the guide "stopped me from writing a bloated runbook, which is what I would otherwise have produced." The recommendation was refuted by the artifact it was about. The trials also produced findings no amount of reading would have: that ~150 of 1,277 lines carried all the binding instruction, that the worked example outperformed everything after it, and that a documented procedure contradicted itself in a way only a deriving reader would hit. So: for any material whose purpose is to *make an agent produce something*, the audit is a usage trial, and reading is only how you form hypotheses to test. Run the trial before writing recommendations, not after — otherwise the write-up is sunk cost arguing against the evidence. Corollary, learned the same session: an audit's deliverable is ranked findings, not a work program; ~7 verified small defects became a 5-chunk plan with 12 new rules before the owner cut it back to the defects. Relates to Proportional Effort (#11 — which the methodology states for artifacts and rigor but not for the size of a response to a finding), Retrieval Over Generation (#24), and Honest Confidence (#5).
 
 ## When a durable plan asserts VCS state ("the code lives on branch X, not develop", "resuming means landing Y", an ahead/behind count), re-derive it from git before acting on or copying it — plan prose about branches and merges is a snapshot that expires the instant the next merge lands, so run `gh pr view` / `git merge-base --is-ancestor` / compare tree hashes first; a since-merged "land this branch" step is a no-op a plain merge performs silently, and the check costs under a minute
+
+## When you relocate importable code behind a conftest sys.path shim, standalone/non-collected scripts do NOT get the shim — grep for `__main__` scripts that self-insert the old root and fix each, because conftest only fires under pytest
+
+Confirmed 2026-07-24 (SPIKE-S2 harness, v3.2.0 Chunk 05). The v3.1.1 relocation moved `lib/` under
+`plugin/` (GOV-4H7T) and updated `tests/conftest.py` to insert `plugin/` — which silently rescues every
+pytest-*collected* test whose own `parent.parent` self-insert now points at the wrong root (the insert
+became "harmless redundant"). But `tests/spikes/s2_migration.py` runs *outside* pytest (dev-only,
+operator-run), where conftest never fires, so its stale self-insert was load-bearing and left the script
+dead on `import` (`ModuleNotFoundError: No module named 'lib'`) for a full minor version — undetected
+because no CI test imports it. Lesson: a conftest path shim makes collected tests lie about whether their
+own path setup is correct; when you move importable code, the collected suite passing proves nothing about
+standalone scripts. Grep for `if __name__ == "__main__"` files (and `bin/` entrypoints) that compute a
+root and `sys.path.insert` it, and fix each to the new layout. Relates to "no pre-existing exception" (a
+found breakage is yours to fix or flag) and Honest Confidence (#5 — green collected tests are not coverage
+of uncollected code).

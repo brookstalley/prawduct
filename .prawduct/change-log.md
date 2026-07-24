@@ -3,6 +3,40 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-07-24: v3.2.0 go-live — Chunk 05 offline prep: SPIKE-S2 harness measures the paced archive burst, and runs standalone again
+
+<!-- prawduct: type=feature | scope=v3.2.0-golive -->
+
+Prep for Chunk 05's operator dry-run — the **offline half only**. The MG4 scrub *workflow* Chunk 05
+pairs with is already complete (`skills/backlog/migration-scrub.md`; its Step 0 target-bind landed in
+Chunk 03), so the genuine offline gap was the dry-run harness: as written it could not produce the
+paced-burst measurement Chunk 04 deferred to it (NFR §9 S2), and it could not even import.
+
+- **The SPIKE-S2 harness now measures the paced create-then-close burst.** `tests/spikes/s2_migration.py`
+  gains a `--archive-scope {all|open}` lever (default `all` — the volume lever *disabled*, so the run
+  proves the Pacer against the full archive, not a small input), constructs a `migrate.Pacer`, threads it
+  into `import_backlog(..., archive_scope=, pacer=)`, and a new `_record_pacing()` lifts its run-summary
+  counters into the settled facts: `rest_points_charged`, `rest_point_waits` (>0 ⇒ the 900-pts/min burst
+  was hit and paced), `rest_point_wait_seconds`, the content-creation waits, `archive_burst_wall_seconds`,
+  and the budget ceilings in force. Only the import routes through the paced transport (export uses the
+  raw one), so the point total reflects the burst alone. This is what lets the live dry-run *settle* the
+  pacing constants NFR §9 S2 leaves open, rather than recording archive *volume* alone.
+- **The harness runs standalone again (bugfix).** Since the v3.1.1 plugin relocation (GOV-4H7T) moved
+  `lib/` under `plugin/`, a standalone `python tests/spikes/s2_migration.py` died at import with
+  `ModuleNotFoundError: No module named 'lib'`: the script self-inserted the repo root, but the root
+  conftest the suite relies on inserts `plugin/`, and conftest never fires for a script run outside
+  pytest. The relocation updated every collected test's path but missed the one standalone script. Now it
+  mirrors conftest (`_SPIKE_DIR.parent.parent / "plugin"`). One-off — the only standalone script; all
+  other repo-root self-inserts are in pytest-collected files conftest rescues.
+
+**Not Chunk 05 complete** — done-when #1 (the live `--archive-scope all` dry-run on a throwaway repo) and
+#3 (record results to `operator-verification.md`) are operator acts over live `gh`; they remain. This
+entry carries no `chunks=` tag for that reason. Verified: clean import, `--help` exposes the flag,
+invalid `--archive-scope` rejected, no-`--yes` safety refusal (exit 2) intact, `_record_pacing` lifts a
+real Pacer correctly. Offline suite **2572 passed** (the harness is dev-only/L4, not pytest-collected —
+the change alters no CI test). Critic chunk-mode clean (0 blocking / 0 warning / 1 note — the note is the
+known `verify-chunk-refs` main-worktree false-positive, self-resolving at promotion).
+
 ## 2026-07-24: v3.2.0 go-live — Chunk 04: Pacer meters total REST points for the create-then-close archive stretch (BKL-6X5D part b)
 
 <!-- prawduct: type=feature | scope=v3.2.0-golive | chunks=04 -->

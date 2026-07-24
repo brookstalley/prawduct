@@ -67,8 +67,12 @@ doctor provisioning legs, owner decision; BKL-5N9W grant narrowing + metadata te
 held). Critic chunk-mode clean (0/0/0); suite 2563 passed. **Chunk 04 built 2026-07-24** — the Pacer now
 meters total REST points (900/min; 5/write, 1/read) across create **and** close via the
 `_PacingTransport` decorator, closing the create-then-close metering gap (BKL-6X5D part b); suite 2571
-passed. Next: Chunk 05 (SPIKE-S2 live dry-run + MG4 scrub — the operator dry-run that measures the paced
-burst live, NFR §9 S2), with the Chunk 01 VRFs (operator/live) in parallel.
+passed. **Chunk 05 offline half prepped 2026-07-24** — the MG4 scrub workflow (done-when #2) was already
+complete; the SPIKE-S2 harness is now instrumented to measure the paced `--archive-scope all` burst
+(`Pacer` counters → recorded facts) and its standalone-run import regression fixed, so the operator
+dry-run is turnkey (Critic chunk-mode 0/0/1; suite 2572). Next: **Chunk 05 live half** — the operator
+runs the SPIKE-S2 dry-run on a throwaway repo and records results (settles NFR §9 S2 for real), with the
+Chunk 01 VRFs (operator/live) in parallel; then Chunk 06 (the irreversible real migration).
 
 ## Prerequisites & branch reality (read before Chunk 02)
 
@@ -272,6 +276,18 @@ non-collaborator label behavior here is out of scope (that's Chunk 08's XP6 item
 2. **MG4 scrub workflow** built: model-surfaced stale/dup candidates → owner-confirmed dispositions; the
    model is in the *decision*, never the data plane (G1/MIG-5). Runbook binds `--repo` via Chunk 03's step.
 3. Dry-run results recorded to `.prawduct/operator-verification.md`; no unintended writes to any real repo.
+
+**Offline prep 2026-07-24** (the *code* half; the live dry-run + recording stay the operator's — Type is
+"code + operator verification"). Done-when #2 (the MG4 scrub *workflow*) was already satisfied —
+`skills/backlog/migration-scrub.md` + Chunk 03's Step 0 target-bind cover every clause; no re-author. The
+genuine offline gap was the SPIKE-S2 harness (`tests/spikes/s2_migration.py`): it could not measure the
+paced burst done-when #1 needs, nor even import standalone (a `ModuleNotFoundError` regression from the
+v3.1.1 relocation, GOV-4H7T — fixed). Now instrumented — `--archive-scope {all|open}` (default `all`) +
+an injected `Pacer` whose counters (`rest_points_charged` / `rest_point_waits` / `archive_burst_wall_
+seconds` / budgets) land in the recorded facts — so the operator run is turnkey and will *settle* NFR §9
+S2's pacing constants, not just record volume. **Still open:** done-when #1 (live throwaway-repo dry-run,
+`--archive-scope all`) and #3 (record results). Chunk stays `[ ]`; no `chunks=05` change-log tag until
+the live half lands.
 
 ---
 
