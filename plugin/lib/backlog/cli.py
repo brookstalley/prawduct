@@ -867,7 +867,13 @@ def _print_human_ok(data) -> None:
                 + pacing.get("content_creation_waits", 0)
                 + pacing.get("rate_limit_pauses", 0)
             )
-            summary = f"  pacing: {pacing.get('rest_points_charged', 0)} REST points"
+            # "≥" is not decoration. The meter charges per transport METHOD call,
+            # not per HTTP request, so a paged read (up to 100 requests) is charged
+            # once and per-item label reads are undercounted (BKL-3H7W). The number
+            # is a floor. Printing it bare would put a figure that reads exact in
+            # front of the one person sizing an irreversible run — drop the "≥" only
+            # when BKL-3H7W makes it true.
+            summary = f"  pacing: ≥{pacing.get('rest_points_charged', 0)} REST points"
             if throttled:
                 waited = (
                     pacing.get("rest_point_wait_seconds", 0.0)

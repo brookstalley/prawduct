@@ -1272,3 +1272,7 @@ class TestPacingObservability:
         assert "pacing:" in out
         assert "REST points" in out
         assert "no throttling" in out
+        # A floor, not an exact figure: the meter charges per transport method call,
+        # not per HTTP request (BKL-3H7W), so an unqualified number would read as
+        # precise to the person sizing an irreversible run.
+        assert "\u2265" in out

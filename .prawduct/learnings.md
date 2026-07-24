@@ -375,3 +375,29 @@ cheap to act on: reading the tree first costs minutes and the failure it prevent
 twice, or worse, "fixing" working code to match a stale description. Relates to Living Documentation
 (#3), Validate Before Propagating (#15 — a plan is an intermediate output), Coherent Artifacts (#13),
 and Retrieval Over Generation (#24).
+
+## When a guard test pins a safety claim, assert the PROPERTY, not one spelling of it — a test that
+matches a literal (an exact flag token, an exact grant string, a substring anywhere in a file) passes
+for every rewording of the same defect, so write the check to answer the question the property asks
+and verify it red against a DIFFERENT phrasing than the one that prompted it
+
+Confirmed 2026-07-24 (v3.2.0 cumulative Critic — three instances surfaced in a single review, two of
+them in guards written days earlier specifically to prevent the class). **(a)** BKL-8V3D's guard scanned
+for the flag tokens `--apply`/`--dry-run` in backlog instruction surfaces. The very branch that shipped it
+introduced a *mechanism* claim — "the primary guard is the adapter's target-pin", a thing that exists
+nowhere in the code — and the guard could not see it, because it was hunting flags. **(b)** BKL-5N9W's
+grant test asserted the absence of exact strings like `Bash(prawduct-hook backlog import *)`; a
+**broader** wildcard, `Bash(prawduct-hook *)`, re-granted every withheld high-consequence op with all
+three tests green. Widening is the most natural way that rail ever gets dismantled, and the test was
+blind to precisely that. **(c)** My first fix for (a) used a "backing token must appear in the adapter
+source" check — which passed, because the token appeared in a *docstring*, reproducing one level up the
+whole-file-substring flaw I was fixing. The shared shape: **the property is semantic ("does any granted
+pattern permit this command?", "is this named mechanism implemented?") and the test asked a lexical
+question instead.** Two rules. (1) Write the check as the property's own question — expand grant patterns
+and test whether they *match*; resolve claimed mechanisms against an explicit allowlist of what exists
+(an allowlist fails safe; a source-scan heuristic fails open, and unknown-is-unbacked forces a deliberate
+review when something real ships). (2) **Verify red against a different phrasing than the one that
+prompted the guard** — re-running the original defect only proves the test remembers its origin story. A
+line-wide negation filter I wrote also swallowed the exact claim it targeted, because the offending line
+contained an unrelated "not"; only injecting a *variant* exposed it. Relates to Tests Are Contracts (#1),
+Honest Confidence (#5), and the false-reassuring-claim-in-an-instruction-surface class BKL-8V3D named.
