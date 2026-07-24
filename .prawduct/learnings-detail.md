@@ -982,3 +982,27 @@ robustness claim (never raises / always returns / idempotent), make it literally
 claimed-safe path]]. Discovered BRF-7Q4M banner load provenance (2026-07-19). Relates to Honest
 Confidence (#5), Root Cause Discipline (#16), Independent Review (#14) — self-review reliably
 re-walks the happy path.
+
+## When a durable plan asserts VCS state ("the code lives on branch X, not develop", "resuming means landing Y", an ahead/behind count), re-derive it from git before acting on or copying it — plan prose about branches and merges is a snapshot that expires the instant the next merge lands, so run `gh pr view` / `git merge-base --is-ancestor` / compare tree hashes first; a since-merged "land this branch" step is a no-op a plain merge performs silently, and the check costs under a minute
+
+Authoring `build-plan-v3.2.0-golive.md` (2026-07-24), I trusted the release plan's
+"⚠️ First: the code lives on `feature/backlog-service-relayout`, not `develop`" section — a section
+written 2026-07-21 and *self-consciously* written to be durable ("the document someone opens six weeks
+from now"). It was falsified within two days: **PR #137 merged relayout → develop on 2026-07-23.** On
+that stale premise I wrote a "Chunk 01: land the relayout branch → develop" step plus a whole
+Prerequisites block. Had we run `/prawduct:pr` on it, it would have merged **nothing**: relayout was an
+*ancestor* of develop (`git merge-base --is-ancestor` → yes), and develop's `plugin/lib/backlog` tree
+was **byte-identical** (`e25f555`) to relayout's — the code was already there. Three sub-minute checks
+each catch it before a line of plan prose is written: `gh pr view 137` (state MERGED), `git merge-base
+--is-ancestor <branch> origin/develop` (yes ⇒ a merge is a no-op), and comparing
+`git rev-parse origin/develop:<path>` to the branch's (identical ⇒ code already landed). The tell is a
+plan step of the shape "merge/land branch X" or "the code is on X, not Y" — a claim about VCS state,
+which is exactly the class that expires on the next merge. Distinct from
+[[A red version/release-hygiene test on a feature branch is often a branch-STALENESS symptom, not a doc
+defect — check distance from the integration branch before patching the changelog]]: that one is *your
+current branch* being stale versus integration; this one is *a plan's prose about branch state* being
+stale, and it bites when you copy that prose forward into a new artifact. Kin to the coverage-claim
+falsification family ([[Before writing any sentence of the shape "X now covers/catches/handles Y" or
+"there is no Y", run the one query that would falsify it]]) — same reflex, applied to VCS-state claims —
+and to Validate Before Propagating (#15) and Living Documentation (#3, the release plan's own section
+should have been annotated the moment #137 landed).

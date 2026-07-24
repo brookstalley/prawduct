@@ -21,6 +21,13 @@ restated here.
 
 ## ⚠️ First: the code lives on `feature/backlog-service-relayout`, not `develop`
 
+> **SUPERSEDED 2026-07-24 — the relayout branch has since landed.** `feature/backlog-service-relayout`
+> merged to develop via **PR #137 (2026-07-23)**; develop now carries the backlog-service code (its
+> `plugin/lib/backlog` tree is byte-identical to relayout's, `e25f555`). The subsequent upstream-filing
+> design also landed (PRs #138/#139). The instruction below describes the *pre*-#137 state — do v3.2.0
+> work on **develop** (or a feature branch off it), not by "landing the relayout branch." Retained for
+> history. Current branch state: `build-plan-v3.2.0-golive.md` § Prerequisites.
+
 **Read this before running any command in this plan.** On 2026-07-21 the v3.1.1 hotfix set
 `develop`'s tree to `v3.1.0` + an allowlist, deliberately withholding every backlog-service path.
 All of it — `plugin/lib/backlog/**`, `plugin/skills/backlog/**`, `plugin/lib/backlog_probes.py`, the

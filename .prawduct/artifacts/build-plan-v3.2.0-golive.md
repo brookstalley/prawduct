@@ -35,9 +35,9 @@ design (`backlog-service-upstream-filing.md`, 0 blocking, 2026-07-23). Every oth
 - [ASSUMPTION: BKL-6X5D part (b) — the Pacer REST-point metering fix-shape (meter 5/write + 1/read
   vs 900/min) is correct and needs only a ~30-min design confirmation at Chunk 04 step 0, not a fresh
   discovery pass | MED impact | user can veto — if the metering model is wrong, Chunk 04 grows]
-- [ASSUMPTION: landing `feature/backlog-service-relayout` → develop is a normal feature-branch merge
-  (the substantial conflict resolution was already done on that branch per the release plan) | MED
-  impact | user can correct if the merge surfaces new conflicts]
+- [RESOLVED 2026-07-24: `feature/backlog-service-relayout` already merged to develop (PR #137,
+  2026-07-23) — no longer an assumption. develop's `plugin/lib/backlog` tree is byte-identical to
+  relayout's; the code is on develop.]
 - [ASSUMPTION: v3.2.0's canonical upstream target is `brookstalley/prawduct` (the string already
   hardcoded at `plugin/lib/migrate_plugin.py:39`), promoted to a single pinned constant in Chunk 02 |
   LOW impact | user can override the target]
@@ -47,7 +47,7 @@ completing cleanly. Neither blocks authoring the rest of the plan.
 
 ## Status
 
-- [ ] Chunk 01: Land `feature/backlog-service-relayout` → develop + live verification (VRF-005/007/008)
+- [ ] Chunk 01: Live verification (VRF-005/007/008) — the relayout merge already landed (PR #137)
 - [ ] Chunk 02: Adapter safety foundation — pinned target, no-self-file, real preview/`--apply` (keystone)
 - [ ] Chunk 03: Scrub + grant safety rails (repo-selection/confirm, provisioning, grant narrowing, advisory hold)
 - [ ] Chunk 04: Pacer REST-point metering for the create+close archive stretch (C7)
@@ -58,20 +58,20 @@ completing cleanly. Neither blocks authoring the rest of the plan.
 - [ ] Chunk 09: Release mechanics — version bump, change-log flip, regen-views, tag; VRF-002/003 post-tag
 
 Context: Plan authored 2026-07-24 from `release-plan-backlog-service-golive.md` + the upstream-filing
-design. Nothing built against this plan yet. On approval, set `active_build_plan:
-artifacts/build-plan-v3.2.0-golive.md`. Next: Chunk 01.
+design; `active_build_plan` now points here. **Correction 2026-07-24:** the relayout merge (the old
+Chunk 01) was already done — PR #137 landed it on develop 2026-07-23 — so Chunk 01 is now
+verification-only (see Prerequisites). Next: Chunk 01 VRFs (operator/live), then Chunk 02.
 
-## Prerequisites & branch reality (read before Chunk 01)
+## Prerequisites & branch reality (read before Chunk 02)
 
-**The code is on `feature/backlog-service-relayout`, not develop.** On 2026-07-21 the v3.1.1 hotfix set
-develop's tree to v3.1.0 + an allowlist, deliberately withholding every backlog-service path. All of it
-(`plugin/lib/backlog/**`, `plugin/skills/backlog/**`, `plugin/lib/backlog_probes.py`, the
-`documentation/backlog-service-*` set, the tests/fakes/fixtures) was restored and relaid-out under
-`plugin/` on `feature/backlog-service-relayout` — which carries backlog-service **Chunks 01–05** plus
-**BKL-4W7H** (already built offline, cumulative-Critic 0 blocking) and **BKL-8P2R** (shipped). Nothing
-was lost; no history was rewritten. Resuming = landing that branch (Chunk 01). Do v3.2.0 work on top of
-`feature/backlog-service-relayout` (or on develop once it lands), not on a fresh branch off the
-pre-relayout develop. Full detail: `release-plan-backlog-service-golive.md` § "First: the code lives on…".
+**The backlog-service code is on develop as of PR #137 (merged 2026-07-23).** The relayout branch
+already landed: `feature/backlog-service-relayout` merged to develop, so develop now carries
+backlog-service **Chunks 01–05**, **BKL-4W7H** (built offline, cumulative-Critic 0 blocking), and
+**BKL-8P2R** (shipped) — develop's `plugin/lib/backlog` tree is byte-identical to relayout's (`e25f555`,
+verified 2026-07-24). The subsequent upstream-filing design also landed (PRs #138/#139). **Do v3.2.0
+work on develop** (or a feature branch cut from it) — the earlier "land the relayout branch first"
+instruction is already satisfied. `release-plan-backlog-service-golive.md` § "First: the code lives on…"
+recorded the *pre*-#137 state and is now superseded (annotated there).
 
 **Governance posture.** Chunks 02, 03, 07, 08 touch `plugin/skills/**` and/or `plugin/lib/backlog/**`
 (governance-protected surfaces) → full Critic + `/prawduct:pr` review. Chunks 05 and 06 are
@@ -87,24 +87,24 @@ the advisory-hold (BKL-6J2X) off the three it gates on.
 
 ## Build Chunks
 
-### Chunk 01: Land the relayout branch → develop + live verification
+### Chunk 01: Live verification (the relayout merge already landed)
 
-**Goal:** Get the built-but-unmerged service (Chunks 01–05, BKL-4W7H, BKL-8P2R) onto develop, then
-exercise it end-to-end against a real consuming repo before any migration depends on it.
+**Goal:** Exercise the already-landed service end-to-end against a real consuming repo before any
+migration depends on it. **There is no branch to land here** — `feature/backlog-service-relayout` merged
+to develop via PR #137 (2026-07-23); develop carries Chunks 01–05 + BKL-4W7H + BKL-8P2R (verified
+2026-07-24). This chunk is the verification that was bundled with that merge.
 
-**Covers:** ship-list item 3 (VRF-005/007/008); closes BKL-4W7H, BKL-8P2R at merge.
+**Covers:** ship-list item 3 (VRF-005/007/008). BKL-8P2R already `shipped`; BKL-4W7H's slice merged via
+PR #137 → flip `promoted → shipped` (backlog bookkeeping via `/prawduct:backlog`).
 **Depends on:** —
-**Type:** cleanup (branch hygiene) + operator verification
-**Critic mode:** final (the merge lands a large tree onto develop; coherence of the merged state matters)
+**Type:** operator verification (no code change in this chunk)
+**Critic mode:** n/a (verification only — nothing to review)
 
 **Done when:**
-1. `feature/backlog-service-relayout` merges to develop via `/prawduct:pr` (merge commit). Verify the
-   predicted additive change-log/backlog conflicts resolve as a set-union (the check from release-plan E1).
-2. Offline suite green on develop post-merge (`python3 -m pytest tests/ -q`).
-3. **VRF-005** (Chunk 02 live two-axis status), **VRF-007** (`/prawduct:backlog` end-to-end), **VRF-008**
+1. **VRF-005** (Chunk 02 live two-axis status), **VRF-007** (`/prawduct:backlog` end-to-end), **VRF-008**
    (dormancy) drained against `samsung-frame-art-loader` via `--plugin-dir`. Record results to
    `.prawduct/operator-verification.md`.
-4. BKL-4W7H and BKL-8P2R marked `status=shipped` (they close with the slice).
+2. BKL-4W7H flipped `promoted → shipped` (its offline code is on develop via PR #137).
 
 **Verification:** the three VRFs are the acceptance evidence; they de-risk the adapter before Chunk 06's
 irreversible migration builds on it.
@@ -347,8 +347,8 @@ error vocab (`filing-disabled`, `target-not-pinned`, `self-file`, `approval-mism
 
 - **Critical path:** `01 → 02 → (03 ∥ 04) → 05 → 06 → 07 → 08 → 09`.
 - With the B1 discovery already settled, the **real migration (06)** is the long pole, not MG5.
-- **Runs in parallel:** Chunk 04 (Pacer) alongside 02/03 after 01; the VRF-005/007/008 verifications
-  (Chunk 01 step 3) alongside 02.
+- **Runs in parallel:** Chunk 04 (Pacer) alongside 02/03; the Chunk 01 VRF-005/007/008 verifications
+  (no code — the relayout merge is done) alongside 02.
 - **Operator-gated (live side effects):** 05 (throwaway repo), 06 (the real, irreversible migration).
   The operator runs the live steps.
 
@@ -356,7 +356,7 @@ error vocab (`filing-disabled`, `target-not-pinned`, `self-file`, `approval-mism
 
 | Ship-list item(s) | Chunk | Backlog IDs closed |
 |---|---|---|
-| 3 (VRF-005/007/008) | 01 | BKL-4W7H, BKL-8P2R (at merge) |
+| 3 (VRF-005/007/008) | 01 | relayout merged via PR #137; BKL-8P2R already shipped, BKL-4W7H → flip to shipped |
 | 19 · 18 (adapter leg) | 02 | BKL-8V3D |
 | 18 (skill leg) · 20 · 21 | 03 | BKL-2Q7F, ONB-3F9P, BKL-5N9W, BKL-6J2X |
 | 8 | 04 | BKL-6X5D part (b) |
