@@ -85,42 +85,69 @@ def run_key(
     return hashlib.sha256(payload.encode()).hexdigest()[:12]
 
 
-# --- write-pacing (NFR §3 — the content-creation budget) ---------------------
+# --- write-pacing (NFR §3/§9 — the content-creation and REST-points budgets) --
+
+# GitHub's per-request REST-point costs for the 900-pts/min secondary rate limit
+# (docs.github.com "Rate limits for the REST API", verified 2026-07-24): a write
+# (POST/PATCH/PUT/DELETE) is 5 points, a read (GET/HEAD/OPTIONS) is 1.
+_REST_WRITE_POINTS = 5
+_REST_READ_POINTS = 1
 
 
 class Pacer:
-    """Content-creation write-pacing (NFR §3): the **scarce** budget is issue/
-    comment *creation* — **80/min and 500/hr** (exact caps). ``import`` creates one
-    issue per item, so it is content-bound and must pace across the clock (317
-    creates ≈ 40 min at the cap — NFR §3.3). Reads and non-creation edits spend the
-    abundant core budget and are **not** paced here; the 900 pts/min REST burst
-    (~180 writes/min) is looser than the 80/min content cap for a pure-create
-    workload, so the content cap binds first.
+    """Proactive write-pacing for a migration run, holding it under **both** of
+    GitHub's secondary rate limits:
+
+    1. **Content creation** (NFR §3) — issue/comment *creation* is the scarce
+       budget: **80/min and 500/hr** (exact caps). ``import`` creates one issue per
+       item, so a pure-``open`` run is content-bound and paces across the clock via
+       :meth:`before_create` (317 creates ≈ 40 min at the cap — NFR §3.3).
+    2. **REST points** (NFR §9) — *every* request spends the **900 points/min** REST
+       burst: 5 points per write, 1 per read (constants above). :meth:`before_points`
+       meters this budget; the :class:`_PacingTransport` decorator charges every
+       migration REST call, so reads **and** writes both count.
+
+    For a *pure-create* workload the content cap binds first (80 creates/min × 5 pts
+    = 400 pts/min < 900), which is why creation was the only budget modelled
+    originally. But ``--archive-scope all`` imports each archived item as a **create
+    *and* a close** (2 writes + the reconcile reads), so at the content cap the
+    archive stretch would spend ≈ 80×5 (creates) + 80×5 (closes) + reads > 900
+    pts/min — the REST-points budget binds there, and metering only the create would
+    breach it (BKL-6X5D part b). Both budgets are enforced together; the effective
+    rate is whichever binds.
 
     Deterministic and injectable: ``now()`` (a monotonic clock) and ``sleep(s)``
     are seams, so the L1 suite runs instantly (small fixtures never hit a cap) and
-    an L3 PROBE-RATE test asserts the pacing *decisions* without wall-clock waits.
-    Conservative defaults until S3 measures the real constants (NFR §3.5)."""
+    the PROBE-RATE tests assert the pacing *decisions* without wall-clock waits.
+    Conservative defaults until S2/S3 measure the real constants (NFR §3.5/§9)."""
 
     def __init__(
         self,
         *,
         per_minute: int = 80,
         per_hour: int = 500,
+        per_minute_points: int = 900,
         now=None,
         sleep=None,
     ) -> None:
         self.per_minute = per_minute
         self.per_hour = per_hour
+        self.per_minute_points = per_minute_points
         self._now = now or time.monotonic
         self._sleep = sleep or time.sleep
         self._events: "deque[float]" = deque()  # creation timestamps (monotonic)
+        self._point_events: "deque[tuple[float, int]]" = deque()  # (timestamp, cost)
         self.waits = 0
         self.total_waited = 0.0
+        self.point_waits = 0
+        self.total_point_waited = 0.0
+        self.points_charged = 0  # total REST points this run has spent (run summary)
 
     def before_create(self) -> None:
-        """Block (only if a cap is hit) until a creation slot is free, then record
-        the creation. A no-op while under both caps — the common case."""
+        """Block (only if a cap is hit) until a *content-creation* slot is free, then
+        record the creation. A no-op while under both the 80/min and 500/hr caps —
+        the common case. (The create's REST-point cost is metered separately, at the
+        transport, by :meth:`before_points`.)"""
         wait = self._required_wait()
         if wait > 0:
             self._sleep(wait)
@@ -140,6 +167,40 @@ class Pacer:
         if len(self._events) >= self.per_hour:
             waits.append(3600 - (now - self._events[0]))
         return max(waits)
+
+    def before_points(self, cost: int) -> None:
+        """Block (only if the 900-pts/min REST burst would be breached) until ``cost``
+        points of headroom free in the trailing minute, then record the spend. A
+        no-op while the window has room — the common case. Called by
+        :class:`_PacingTransport` for every migration REST request (write = 5, read =
+        1), so the create-then-close archive stretch stays inside the burst ceiling —
+        not just the create (BKL-6X5D part b)."""
+        wait = self._required_points_wait(cost)
+        if wait > 0:
+            self._sleep(wait)
+            self.point_waits += 1
+            self.total_point_waited += wait
+        self._point_events.append((self._now(), cost))
+        self.points_charged += cost
+
+    def _required_points_wait(self, cost: int) -> float:
+        now = self._now()
+        while self._point_events and now - self._point_events[0][0] > 60:
+            self._point_events.popleft()  # prune anything older than the minute window
+        used = sum(c for _, c in self._point_events)
+        if used + cost <= self.per_minute_points:
+            return 0.0
+        # Free (used + cost - ceiling) points: the oldest in-window spends age out of
+        # the 60s window first, so wait just past the newest spend we must shed.
+        need_to_free = used + cost - self.per_minute_points
+        freed = 0
+        wait = 0.0
+        for ts, spent in self._point_events:
+            freed += spent
+            wait = 60 - (now - ts)
+            if freed >= need_to_free:
+                break
+        return max(0.0, wait)
 
 
 class RateLimitBackoff:
@@ -203,6 +264,56 @@ def _coerce_seconds(value) -> float | None:
         return max(0.0, float(value))
     except (TypeError, ValueError):
         return None
+
+
+class _PacingTransport:
+    """A transparent :class:`~lib.backlog.transport.Transport` decorator that meters
+    **every** REST call routed **through it** against the Pacer's 900-pts/min budget
+    (:meth:`Pacer.before_points`): 5 points per write, 1 per read. Installed on the
+    ``import`` path (:func:`import_items`), whose create-then-close archive stretch is
+    the write burst BKL-6X5D part (b) targets; ``merge``/``export`` are separate,
+    non-bursting ops and use the raw transport.
+
+    Deliberately **not** a ``Transport`` subclass. ``__getattr__`` only fires for
+    attributes the instance/class does *not* already define — so proxying via
+    ``__getattr__`` requires that the wrapped methods be absent here. That is also
+    what makes the metering **non-fragile**: a call is metered by classifying its
+    *name* (``get_``/``list_`` = read, ``create_``/``update_``/``add_``/``remove_`` =
+    write), and any transport method that fits neither prefix raises rather than
+    silently escaping the budget — closing the "only paced call" gap (BKL-6X5D b).
+
+    Because the migration passes *this* wrapper into ``core.set_status`` (the shared
+    close/reconcile path), that path's reads and the close write are metered too,
+    with no change to ``core``'s signatures."""
+
+    _READ_PREFIXES = ("get_", "list_")
+    _WRITE_PREFIXES = ("create_", "update_", "add_", "remove_")
+
+    def __init__(self, transport: Transport, pacer: "Pacer") -> None:
+        self._transport = transport
+        self._pacer = pacer
+
+    def _cost(self, name: str) -> int:
+        if name.startswith(self._READ_PREFIXES):
+            return _REST_READ_POINTS
+        if name.startswith(self._WRITE_PREFIXES):
+            return _REST_WRITE_POINTS
+        raise AssertionError(
+            f"_PacingTransport: unclassified transport method {name!r} — classify it "
+            "as read/write so its REST-point cost is metered (do not bypass the budget)"
+        )
+
+    def __getattr__(self, name: str):
+        attr = getattr(self._transport, name)
+        if name.startswith("_") or not callable(attr):
+            return attr
+        cost = self._cost(name)
+
+        def paced(*args, **kwargs):
+            self._pacer.before_points(cost)
+            return attr(*args, **kwargs)
+
+        return paced
 
 
 # --- durable checkpoint (resumable import accelerator) -----------------------
@@ -602,6 +713,10 @@ def import_items(
     the rest (no rollback, M6)."""
     pacer = pacer or Pacer()
     backoff = backoff or RateLimitBackoff()
+    # Meter every downstream REST call against the 900-pts/min budget. Wrapping the
+    # transport here means the create, the reconcile reads, and the close write (via
+    # core.set_status, which receives this wrapper) all count — not just the create.
+    transport = _PacingTransport(transport, pacer)
     collisions = list(collisions or [])
     created: list[dict] = []
     skipped: list[dict] = []
@@ -829,7 +944,8 @@ def _create_item(
     # The body↔block framing is the one in encode (shared with `file`), so the
     # importer's fresh block attaches identically — export round-trips depend on it.
     body = encode.compose_body(record.body, record.block)
-    pacer.before_create()  # content budget (80/min, 500/hr) — the only paced call
+    pacer.before_create()  # content-creation budget (80/min, 500/hr); the create's
+    # 5-pt REST cost — like every other call — is metered by _PacingTransport below.
     return transport.create_issue(owner, repo, title=record.title, body=body, labels=all_labels)
 
 

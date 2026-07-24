@@ -3,6 +3,42 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-07-24: v3.2.0 go-live — Chunk 04: Pacer meters total REST points for the create-then-close archive stretch (BKL-6X5D part b)
+
+<!-- prawduct: type=feature | scope=v3.2.0-golive | chunks=04 -->
+
+The migration Pacer paced only issue *creation* (the 80/min·500/hr content-creation cap), annotated
+"the only paced call." But an `--archive-scope all` run imports each archived item as a **create *and*
+a close** (2 writes + reconcile reads), so at the content cap the archive stretch spends ≈ 80×5
+(creates) + 80×5 (closes) + reads > 900 pts/min — breaching GitHub's **900 REST-points/min** secondary
+burst, which the create-only metering never accounted (BKL-6X5D part b). Its only prior mitigation was
+*incidental* `gh`-subprocess latency, forfeit by the raw-HTTP fast-path.
+
+- **The Pacer gains a second budget** — a **900 pts/min REST-points** window alongside the
+  content-creation window. GitHub's per-request costs (docs, verified 2026-07-24): **5 pts/write**
+  (POST/PATCH/PUT/DELETE), **1 pt/read** (GET/HEAD/OPTIONS). `before_points(cost)` blocks only when the
+  trailing minute would breach 900, then records the spend; `points_charged` is a run-summary metric.
+- **`_PacingTransport`** — a transparent transport decorator that charges **every** migration REST call
+  by name-classification (`get_`/`list_` = read, `create_`/`update_`/`add_`/`remove_` = write). Wired
+  in `import_items`, so the create, the reconcile reads, **and the close write** (via `core.set_status`,
+  which receives the wrapper) all count — not just the create. An unclassified transport method **raises**
+  rather than silently escaping the budget, closing the "only paced call" fragility at its root.
+- **Content-cap pacing is untouched** — `before_create` stays at the create site; the two windows are
+  orthogonal (content-creation vs. REST-points), so a create is charged to each once, no double-count.
+
+**Design confirmation (Done-when 0):** GitHub's point model (900/min; 5/write, 1/read) was verified
+against current docs before building — the fix-shape's constants are correct, so the chunk did not grow.
+**NFR §9 S2 (Done-when 2):** the archive stretch is now inside 900 pts/min *by construction*, proven by
+a deterministic throttle test; the **live burst measurement** is Chunk 05's `--archive-scope all`
+dry-run (S2 is now the live confirmation of the paced burst, not a discovery of whether it breaches) —
+NFR §3.3 + §9 updated to match. **Window quantification (i)** stays deferred (adopter-scale) — not
+pulled in. Eight new tests (Pacer points window, `_PacingTransport` classification + fail-loud,
+create+close metering, throttle-by-construction). Full offline suite **2571 passed**.
+
+**Backlog status flip deferred to release (Chunk 09)** per this release's `[ ]`-until-release
+convention (mirroring Chunks 02/03): BKL-6X5D part (b) is built and verified on
+`feature/v3.2.0-c02-adapter-safety`; the `status=shipped` flip rides the release, not this chunk.
+
 ## 2026-07-24: v3.2.0 go-live — Chunk 03: scrub + grant safety rails (BKL-2Q7F · ONB-3F9P · BKL-5N9W · BKL-6J2X)
 
 <!-- prawduct: type=feature | scope=v3.2.0-golive | chunks=03 -->

@@ -101,6 +101,34 @@ def _alias_issues(fake, pfx: str) -> list[dict]:
     return fake.list_issues(OWNER, REPO, state="all", labels=[ids.alias_label(pfx)])
 
 
+def _fake_clock():
+    """A deterministic (now, sleep) pair: ``now()`` reads a virtual clock that only
+    advances when ``sleep(s)`` is called, so pacing decisions are asserted with no
+    wall-clock wait. Returns ``(state, now, sleep)`` — ``state['slept']`` records the
+    sleeps."""
+    state = {"t": 0.0, "slept": []}
+    return (
+        state,
+        lambda: state["t"],
+        lambda s: (state["slept"].append(s), state.__setitem__("t", state["t"] + s)),
+    )
+
+
+def _archive_heavy_backlog(n: int) -> str:
+    """A backlog whose items all sit in the ``## Archive`` section (``status:
+    shipped``), so each import is a **create *and* a close** — the create-then-close
+    stretch BKL-6X5D part (b) meters against the 900-pts/min REST burst."""
+    lines = ["# Backlog — archive-heavy", "", "## Archive", ""]
+    for i in range(1, n + 1):
+        lines += [
+            f"- **[ARC-{i:04d}]** Archived item {i}",
+            "  `effort: S · impact: S · area: core · source: builder · "
+            "added: 2026-01-01 · status: shipped`",
+            "",
+        ]
+    return "\n".join(lines)
+
+
 # --- MIG-1: import→export round-trip fidelity --------------------------------
 
 
@@ -830,12 +858,7 @@ class TestScrubDataPlaneBoundary:
 
 class TestPacer:
     def _clock(self):
-        state = {"t": 0.0, "slept": []}
-        return (
-            state,
-            lambda: state["t"],
-            lambda s: (state["slept"].append(s), state.__setitem__("t", state["t"] + s)),
-        )
+        return _fake_clock()
 
     def test_under_the_cap_never_waits(self):
         state, now, sleep = self._clock()
@@ -878,6 +901,116 @@ class TestPacer:
         pacer = CountingPacer()
         _import(fake, DISCODON_MINI, pacer=pacer)
         assert pacer.calls == len(_DIS_PFXS)  # one paced create per source item
+
+    # --- REST-points budget (900/min) — BKL-6X5D part (b) --------------------
+
+    def test_points_under_the_cap_never_waits(self):
+        state, now, sleep = self._clock()
+        pacer = migrate.Pacer(per_minute_points=900, now=now, sleep=sleep)
+        for _ in range(100):  # 100 reads = 100 pts, well under 900
+            pacer.before_points(migrate._REST_READ_POINTS)
+        assert pacer.point_waits == 0
+        assert state["slept"] == []
+        assert pacer.points_charged == 100
+
+    def test_points_cap_paces_writes(self):
+        state, now, sleep = self._clock()
+        # Ceiling 10 pts/min → two 5-pt writes fill the window; the third must wait.
+        pacer = migrate.Pacer(per_minute_points=10, now=now, sleep=sleep)
+        pacer.before_points(migrate._REST_WRITE_POINTS)  # t=0
+        pacer.before_points(migrate._REST_WRITE_POINTS)  # t=0 — window now 10/10
+        assert pacer.point_waits == 0
+        pacer.before_points(migrate._REST_WRITE_POINTS)  # waits ~60s for a slot
+        assert pacer.point_waits == 1
+        assert state["slept"] and abs(state["slept"][0] - 60) < 1e-6
+        assert pacer.points_charged == 15
+
+    def test_points_cap_counts_reads_and_writes_together(self):
+        state, now, sleep = self._clock()
+        # Ceiling 6 → a write (5) + a read (1) fills it; the next read must wait.
+        # This is the create-then-close insight: it is the SUM of read+write points,
+        # not creates alone, that binds (BKL-6X5D part b).
+        pacer = migrate.Pacer(per_minute_points=6, now=now, sleep=sleep)
+        pacer.before_points(migrate._REST_WRITE_POINTS)  # 5
+        pacer.before_points(migrate._REST_READ_POINTS)   # +1 = 6/6
+        assert pacer.point_waits == 0
+        pacer.before_points(migrate._REST_READ_POINTS)   # 7th point — must wait
+        assert pacer.point_waits == 1
+        assert abs(state["slept"][0] - 60) < 1e-6
+
+
+class TestPacingTransport:
+    """Every migration REST call is metered against the 900-pts/min budget by
+    name-classification, and an unclassified call fails loud rather than silently
+    escaping the budget (BKL-6X5D part b — the anti-fragility of the seam)."""
+
+    def test_write_charges_five_read_charges_one(self, fake):
+        pacer = migrate.Pacer()
+        wrapped = migrate._PacingTransport(fake, pacer)
+        wrapped.create_label(OWNER, REPO, name="x", color="ededed", description="")
+        assert pacer.points_charged == migrate._REST_WRITE_POINTS  # a write = 5
+        wrapped.list_labels(OWNER, REPO)
+        assert pacer.points_charged == migrate._REST_WRITE_POINTS + migrate._REST_READ_POINTS
+
+    def test_delegates_args_and_return_value_unchanged(self, fake):
+        pacer = migrate.Pacer()
+        wrapped = migrate._PacingTransport(fake, pacer)
+        issue = wrapped.create_issue(OWNER, REPO, title="t", body="b", labels=[])
+        # The wrapper is transparent: it returns the transport's own result verbatim.
+        assert wrapped.get_issue(OWNER, REPO, issue["number"])["number"] == issue["number"]
+
+    def test_unclassified_method_raises_rather_than_bypassing(self, fake):
+        pacer = migrate.Pacer()
+        wrapped = migrate._PacingTransport(fake, pacer)
+        fake.frobnicate = lambda: None  # a method fitting neither read nor write prefix
+        with pytest.raises(AssertionError, match="unclassified"):
+            _ = wrapped.frobnicate
+
+    def test_every_transport_method_classifies(self, fake):
+        """Metering is keyed on the method-name verb, and an unclassified name raises
+        only at *call* time — i.e. mid-migration. This pins the classification at test
+        time instead: every public Transport method must resolve to a known read or
+        write cost, so a future method with a novel verb fails here, not in a live run."""
+        import inspect
+
+        from lib.backlog import transport as transport_mod
+
+        wrapped = migrate._PacingTransport(fake, migrate.Pacer())
+        methods = [
+            name
+            for name, _ in inspect.getmembers(
+                transport_mod.Transport, predicate=inspect.isfunction
+            )
+            if not name.startswith("_")
+        ]
+        assert methods, "expected to enumerate the Transport surface"
+        for name in methods:
+            cost = wrapped._cost(name)  # raises AssertionError if the verb is unknown
+            assert cost in (migrate._REST_READ_POINTS, migrate._REST_WRITE_POINTS)
+
+    def test_import_meters_create_and_close_not_just_create(self, fake):
+        """The create-then-close stretch is fully metered: points are charged for the
+        closes and reconcile reads, not only the creates (BKL-6X5D part b — the old
+        bug metered 'only the create')."""
+        _seed_labels(fake, DISCODON_MINI)
+        pacer = migrate.Pacer()  # real caps; DISCODON_MINI is tiny, so no waits
+        _import(fake, DISCODON_MINI, pacer=pacer)
+        creates_only = len(_DIS_PFXS) * migrate._REST_WRITE_POINTS
+        # DIS-0004 (shipped) and DIS-0005 (dropped) each add a close write — so the
+        # metered points must exceed creates-alone by at least those two closes.
+        assert pacer.points_charged >= creates_only + 2 * migrate._REST_WRITE_POINTS
+
+    def test_archive_stretch_throttles_on_the_points_ceiling(self, fake):
+        """S2 by construction: an all-scope import whose create+close point rate
+        breaches the ceiling throttles on the REST-points budget — the burst is held
+        inside the ceiling, asserted as a decision (no wall clock)."""
+        content = _archive_heavy_backlog(n=6)
+        _seed_labels(fake, content)
+        state, now, sleep = _fake_clock()
+        # A deliberately tight ceiling so a few create+close items breach it.
+        pacer = migrate.Pacer(per_minute_points=25, now=now, sleep=sleep)
+        assert _import(fake, content, pacer=pacer)["status"] == "ok"
+        assert pacer.point_waits > 0  # the points budget bound and throttled the run
 
 
 # --- BKL-3K9N: reactive rate-limit backoff (pause-and-resume, never a hard-stop)

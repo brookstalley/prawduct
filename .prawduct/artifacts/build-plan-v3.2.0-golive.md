@@ -50,7 +50,7 @@ completing cleanly. Neither blocks authoring the rest of the plan.
 - [ ] Chunk 01: Live verification (VRF-005/007/008) — the relayout merge already landed (PR #137)
 - [ ] Chunk 02: BKL-8V3D — the adapter's mutation-safety claim made honest (doc + guard test) — built 2026-07-24, `[ ]` until release
 - [ ] Chunk 03: Scrub + grant safety rails (repo-selection/confirm, provisioning, grant narrowing, advisory hold) — built 2026-07-24 (ONB-3F9P full close), `[ ]` until release
-- [ ] Chunk 04: Pacer REST-point metering for the create+close archive stretch (C7)
+- [ ] Chunk 04: Pacer REST-point metering for the create+close archive stretch (C7) — built 2026-07-24, `[ ]` until release
 - [ ] Chunk 05: SPIKE-S2 live dry-run + MG4 scrub workflow (C1 + C2)
 - [ ] Chunk 06: The real prawduct migration + VRF-006 (C4) — irreversible, operator-run
 - [ ] Chunk 07: Briefing/gates repoint through the adapter (C5)
@@ -64,8 +64,11 @@ verification-only (see Prerequisites). **Chunk 02 built 2026-07-24** (BKL-8V3D h
 suite 2551 passed). **Chunk 03 built 2026-07-24** — the four safety rails (BKL-2Q7F scrub-runbook
 target-binding + provision; ONB-3F9P *full* close incl. the `init-product --backlog-repo` + onboard/
 doctor provisioning legs, owner decision; BKL-5N9W grant narrowing + metadata test; BKL-6J2X advisory
-held). Critic chunk-mode clean (0/0/0); suite 2563 passed. Next: Chunk 04 (Pacer REST-point metering)
-and Chunk 05 (SPIKE-S2 dry-run + scrub workflow), with the Chunk 01 VRFs (operator/live) in parallel.
+held). Critic chunk-mode clean (0/0/0); suite 2563 passed. **Chunk 04 built 2026-07-24** — the Pacer now
+meters total REST points (900/min; 5/write, 1/read) across create **and** close via the
+`_PacingTransport` decorator, closing the create-then-close metering gap (BKL-6X5D part b); suite 2571
+passed. Next: Chunk 05 (SPIKE-S2 live dry-run + MG4 scrub — the operator dry-run that measures the paced
+burst live, NFR §9 S2), with the Chunk 01 VRFs (operator/live) in parallel.
 
 ## Prerequisites & branch reality (read before Chunk 02)
 
@@ -231,6 +234,23 @@ decision 6, ratified 2026-07-23: C7 before C4).
 3. The unbuilt window *quantification* (i) stays deferred (adopter-scale, BKL-4Z7M-adjacent) — this
    chunk is part (b) only. Say so; don't silently pull it in.
 4. Offline suite green; BKL-6X5D part (b) marked `status=shipped`.
+
+**Built 2026-07-24** (suite 2571; +8 tests). Design confirmed (Done-when #0): GitHub's point model
+(900/min; 5 pts/write, 1 pt/read) verified against current docs before code — the fix-shape's constants
+are correct, so the chunk did not grow. Build-time interpretation calls, recorded:
+- **The metering seam is a transparent transport decorator (`_PacingTransport`), not a `before_write`
+  threaded through `core.set_status`.** The close write lives in `core.set_status` (shared with the
+  interactive `set` path); because the migration passes its transport *into* `set_status`, wrapping the
+  transport meters the close's reads+writes with zero signature changes — and it is non-fragile (a new
+  transport call is auto-metered; an unclassified one raises), killing the "only paced call" gap the item
+  names. The content-cap `before_create()` stays put (orthogonal window, no double-count).
+- **Done-when #2 (S2) is satisfied *by construction + a deterministic throttle test*, not a live
+  measurement.** The live `--archive-scope all` burst measurement is Chunk 05's operator dry-run (which
+  depends on this chunk's metering); NFR §3.3 + §9 updated so S2 now reads as the *live confirmation* of
+  the paced burst, not a discovery of whether it breaches.
+- **Done-when #4 status flip deferred to release (Chunk 09)**, per this release's `[ ]`-until-release
+  convention (mirroring Chunks 02/03). Part (i) window quantification stays deferred (adopter-scale) —
+  not pulled in.
 
 ---
 
