@@ -334,3 +334,20 @@ standalone scripts. Grep for `if __name__ == "__main__"` files (and `bin/` entry
 root and `sys.path.insert` it, and fix each to the new layout. Relates to "no pre-existing exception" (a
 found breakage is yours to fix or flag) and Honest Confidence (#5 — green collected tests are not coverage
 of uncollected code).
+
+## Before predicting a per-minute rate ceiling will engage, check whether serial round-trip latency already caps throughput below it — a rate ceiling is bounded by requests/min = 60 / round-trip-seconds, so it never binds on TOTAL volume no matter how large; it binds only when you issue requests concurrently/batched faster than one round-trip drains
+
+Confirmed 2026-07-24 (SPIKE-S2 live dry-run, v3.2.0 Chunk 05 → VRF-009). I forecast the `--archive-scope
+all` burst (147 archived items, create-then-close) would breach the Pacer's 900-pts/min ceiling
+(`rest_point_waits > 0`) because 147 sits "comfortably over" a ~75-item threshold I invented. The live run
+reported `rest_point_waits: 0` and `content_creation_waits: 0` — *neither* ceiling engaged. The error was
+conflating **total volume** with **per-minute rate**: the serial `gh` importer does ~1.3s per archived
+item (~11 pts: read+create+close), so peak ≈ ~500 pts/min — under 900 regardless of total count. 5,360 pts
+over ~18 min = ~296 pts/min average. There is no total-count threshold for a rate ceiling under serial
+I/O; the ceiling would bind only under parallelized writes. So the settled NFR §9 S2 fact is the opposite
+of the forecast: the Pacer budgets are a non-binding safety belt for the serial importer, and wall-clock
+is latency×call-count, not pacing-limited. General rule for any "will we hit the rate limit?" question:
+compute the achievable request rate from the round-trip time first (it's the ceiling on the ceiling); a
+plausible volume-based argument is not a rate argument. Relates to Honest Confidence (#5), Root Cause
+Discipline (#16), and Retrieval Over Generation (#24 — the spike is the cheapest check that changes the
+recorded constant).

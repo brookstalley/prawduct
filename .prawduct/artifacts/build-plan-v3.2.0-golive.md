@@ -51,7 +51,7 @@ completing cleanly. Neither blocks authoring the rest of the plan.
 - [ ] Chunk 02: BKL-8V3D — the adapter's mutation-safety claim made honest (doc + guard test) — built 2026-07-24, `[ ]` until release
 - [ ] Chunk 03: Scrub + grant safety rails (repo-selection/confirm, provisioning, grant narrowing, advisory hold) — built 2026-07-24 (ONB-3F9P full close), `[ ]` until release
 - [ ] Chunk 04: Pacer REST-point metering for the create+close archive stretch (C7) — built 2026-07-24, `[ ]` until release
-- [ ] Chunk 05: SPIKE-S2 live dry-run + MG4 scrub workflow (C1 + C2)
+- [ ] Chunk 05: SPIKE-S2 live dry-run + MG4 scrub workflow (C1 + C2) — live dry-run run 2026-07-24 (VRF-009, §9 S2 settled), `[ ]` until release
 - [ ] Chunk 06: The real prawduct migration + VRF-006 (C4) — irreversible, operator-run
 - [ ] Chunk 07: Briefing/gates repoint through the adapter (C5)
 - [ ] Chunk 08: MG5 / upstream filing — file-upstream op, report-bug rewrite, drop-box retirement (splittable 08a/08b)
@@ -285,9 +285,21 @@ paced burst done-when #1 needs, nor even import standalone (a `ModuleNotFoundErr
 v3.1.1 relocation, GOV-4H7T — fixed). Now instrumented — `--archive-scope {all|open}` (default `all`) +
 an injected `Pacer` whose counters (`rest_points_charged` / `rest_point_waits` / `archive_burst_wall_
 seconds` / budgets) land in the recorded facts — so the operator run is turnkey and will *settle* NFR §9
-S2's pacing constants, not just record volume. **Still open:** done-when #1 (live throwaway-repo dry-run,
-`--archive-scope all`) and #3 (record results). Chunk stays `[ ]`; no `chunks=05` change-log tag until
-the live half lands.
+S2's pacing constants, not just record volume.
+
+**Live half landed 2026-07-24** (done-when #1 + #3 met; recorded as **VRF-009** in
+`operator-verification.md`). Ran `--archive-scope all` against the private throwaway
+`brookstalley/prawduct-s2-dryrun-20260724` — live tally **148 open / 147 closed / 295 total** (exact),
+`fidelity_ok`, 294 aliases minted / 0 new PFX, `resume_created_duplicates: 0`. **§9 S2 settled in the
+negative:** `rest_point_waits: 0` **and** `content_creation_waits: 0` — under the *serial* importer the
+Pacer budgets (80/min, 500/hr, 900 pts/min) never bind; serial `gh` round-trip latency caps the burst at
+~500 pts/min (5,360 pts over ~18 min wall), so the point ceiling is a non-binding safety belt, not the
+governor. (This *corrects* the pre-run forecast that 147 archived items would breach 900/min — that
+conflated total volume with per-minute rate; the ceiling would bind only under parallelized writes.)
+**Still open (not blockers for #1/#3):** MIG-3 relationships not exercised (source has no native graph),
+PROBE-LAT absolute value contaminated by post-burst backoff (shape confirmed batched-not-N+1), ID-4
+node_id-across-transfer not run (`--transfer-to` omitted). Chunk stays `[ ]` (release convention); no
+`chunks=05` change-log tag until release (Chunk 09).
 
 ---
 

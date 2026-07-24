@@ -312,3 +312,82 @@ substitutes for another: a Critic run never dispatches the PR reviewer (steps 6-
 runs the janitor (steps 8-9) — draining on a subset would leave the unexercised readers reading as
 verified. This is the plan's Verification Strategy stated as a drain condition rather than as prose
 alongside one.
+
+## VRF-009 — Chunk 05 — SPIKE-S2 live migration dry-run (paced archive burst + fidelity)
+
+**Status:** verified
+**Run:** 2026-07-24 (SPIKE-S2 live dry-run, `--archive-scope all`)
+**Where run:** private throwaway `brookstalley/prawduct-s2-dryrun-20260724` (created for this run —
+deletion pending; the session `gh` token has `repo` but not `delete_repo` scope, so the owner removes
+it). Invocation:
+`python tests/spikes/s2_migration.py --repo brookstalley/prawduct-s2-dryrun-20260724 --yes --archive-scope all`
+(`--from .prawduct/backlog.md` default; **no** `--archive` file — the full backlog already carries the
+`## Archive` section, so archived items create-then-close from the main source under scope `all`. Passing
+`--archive` at the same file would double-parse; the non-PFX archive item would duplicate).
+
+**This is the SPIKE-S2 that VRF-006 names as the prerequisite** ("first SPIKE-S2 on a throwaway copy,
+then the real prawduct backlog") — now done. It does **not** run the real migration (still VRF-006).
+
+**Settled facts (raw harness output):**
+```json
+{
+  "aliases_minted": 294,
+  "archive_burst_wall_seconds": 1086.422,
+  "archive_scope": "all",
+  "content_creation_wait_seconds": 0.0,
+  "content_creation_waits": 0,
+  "fidelity_ok": true,
+  "new_pfx_minted": [],
+  "node_id_stable_across_transfer": null,
+  "pacer_budgets": {"per_hour_creates": 500, "per_minute_creates": 80, "per_minute_points": 900},
+  "pick_latency_ms_by_candidates": {"1": 25501, "3": 25787, "5": 27778},
+  "relationships_reconstructed": false,
+  "rest_point_wait_seconds": 0.0,
+  "rest_point_waits": 0,
+  "rest_points_charged": 5360,
+  "resume_created_duplicates": 0
+}
+```
+
+**Confirmed live:**
+- **Volume + idempotency:** live tally **148 open / 147 closed / 295 total** — exactly the parser's
+  prediction (148 open + 147 archived→closed). `resume_created_duplicates: 0`; a second full import was a
+  pure no-op (find-or-create skip). No over/under-creation, no duplicates.
+- **Body fidelity (live MIG-1):** `fidelity_ok: true` — every hand-minted PFX item's body survived
+  import→export→diff verbatim.
+- **ID aliasing (live MIG-2):** `aliases_minted: 294` (all 294 PFX source items; the 295th
+  pending/archived item carries no PFX), `new_pfx_minted: []` — no PFX minted on import.
+
+**The §9 S2 pacing result — and a correction to last session's prediction:**
+- `rest_point_waits: 0` **and** `content_creation_waits: 0` — **neither the 900-pts/min REST ceiling nor
+  the 80-creates/min ceiling ever engaged.** `rest_points_charged: 5360` (write=5 / read=1; 295 creates +
+  147 closes = 2,210 write-points, the ~3,150 balance is reads) over `archive_burst_wall_seconds: 1086`
+  (~18 min) ≈ **296 pts/min average**. Peak: an archived item = read+create+close ≈ 11 pts over ~3 serial
+  round-trips (~1.3s) ≈ **~500 pts/min** — still under 900.
+- **Root cause (I predicted the opposite last session).** I forecast `point_waits > 0`, reasoning that
+  147 archived items sit "comfortably over" a ~75-item threshold. That was wrong — it conflated *total
+  volume* with *per-minute rate*. Serial `gh` round-trip latency caps the create-then-close rate at
+  ~40–45 items/min (~500 pts/min) **regardless of total count**, so the 900/min ceiling is never breached
+  no matter how large the archive. **Settled constant for NFR §9 S2: under the serial importer the Pacer
+  budgets (80/min, 500/hr, 900 pts/min) are a non-binding safety belt, not the active governor; wall-clock
+  is latency×call-count (~442 writes + ~3,150 reads ≈ 18 min), not pacing-limited.** The point ceiling
+  would bind only if writes were parallelized/batched — untrue today. Flag this fact if that changes.
+
+**Not exercised by this run (honest gaps, not failures):**
+- **Relationships (live MIG-3):** `relationships_reconstructed: false` — **expected**: the source backlog
+  has no native `blocked_by`/`sub_issues`/parent metadata (only a free-text `related:` field), so there
+  was nothing to reconstruct. MIG-3 stays unproven *live*; the in-process MIG-3 test remains its only
+  evidence until a source with a native graph is migrated.
+- **Pick latency / PROBE-LAT:** `pick_latency_ms_by_candidates` = 25.5s / 25.8s / 27.8s. The **shape is
+  clean** — flat across 1→3→5 candidates confirms the batched-GraphQL path (not N+1). The **absolute value
+  is contaminated** — the picks ran immediately after a 5,360-point burst, so GitHub's secondary limits
+  were near-exhausted and the reads almost certainly ate `RateLimitBackoff` sleeps. This is **not** a clean
+  PROBE-LAT floor; a clean number needs `pick` against a quiescent repo. NFR §4 PROBE-LAT absolute value
+  stays `target`-grade; only the batched-not-N+1 claim is confirmed here.
+- **node_id across transfer (ID-4 / step 7):** `null` — not run (`--transfer-to` omitted; needs a second
+  throwaway repo). Genuinely open.
+
+**Follow-ups:**
+- Owner deletes throwaway `brookstalley/prawduct-s2-dryrun-20260724` (needs `delete_repo` scope).
+- Optional: node_id-transfer probe (second throwaway + `--transfer-to`) to settle ID-4.
+- Optional: clean PROBE-LAT floor — `pick` against a quiescent migrated repo, no preceding burst.
