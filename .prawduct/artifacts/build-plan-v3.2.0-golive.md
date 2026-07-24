@@ -1,7 +1,7 @@
 ---
 artifact: build-plan
 version: 2
-scope: backlog-service-golive
+scope: v3.2.0-golive
 depends_on:
   - artifact: release-plan-backlog-service-golive
   - artifact: build-plan-backlog-service
@@ -48,7 +48,7 @@ completing cleanly. Neither blocks authoring the rest of the plan.
 ## Status
 
 - [ ] Chunk 01: Live verification (VRF-005/007/008) — the relayout merge already landed (PR #137)
-- [ ] Chunk 02: Adapter safety foundation — pinned target, no-self-file, real preview/`--apply` (keystone)
+- [ ] Chunk 02: BKL-8V3D — the adapter's mutation-safety claim made honest (doc + guard test) — built 2026-07-24, `[ ]` until release
 - [ ] Chunk 03: Scrub + grant safety rails (repo-selection/confirm, provisioning, grant narrowing, advisory hold)
 - [ ] Chunk 04: Pacer REST-point metering for the create+close archive stretch (C7)
 - [ ] Chunk 05: SPIKE-S2 live dry-run + MG4 scrub workflow (C1 + C2)
@@ -60,7 +60,9 @@ completing cleanly. Neither blocks authoring the rest of the plan.
 Context: Plan authored 2026-07-24 from `release-plan-backlog-service-golive.md` + the upstream-filing
 design; `active_build_plan` now points here. **Correction 2026-07-24:** the relayout merge (the old
 Chunk 01) was already done — PR #137 landed it on develop 2026-07-23 — so Chunk 01 is now
-verification-only (see Prerequisites). Next: Chunk 01 VRFs (operator/live), then Chunk 02.
+verification-only (see Prerequisites). **Chunk 02 built 2026-07-24** (BKL-8V3D honest fix + guard test;
+suite 2551 passed). Next: Chunk 03 (scrub + grant safety rails — now incl. BKL-2Q7F's adapter leg), with
+the Chunk 01 VRFs (operator/live) in parallel.
 
 ## Prerequisites & branch reality (read before Chunk 02)
 
@@ -111,37 +113,40 @@ irreversible migration builds on it.
 
 ---
 
-### Chunk 02: Adapter safety foundation — pinned target · no-self-file · real preview (KEYSTONE)
+### Chunk 02: BKL-8V3D — the adapter's mutation-safety claim, made honest
 
-**Goal:** Build, once, the adapter-level guard that both the real migration (Chunk 06) and upstream
-filing (Chunk 08) sit on. This is the durable form of two blockers and the design's §5 checks 2–3.
+**Goal:** `skills/backlog/adapter-mode.md:96` tells the model "mutations follow the adapter's own
+`--apply`/dry-run … contracts (you never invent a mutation path)" — but no such flag exists in
+`lib/backlog/`. The migration's *real* preview is `restructure-preview` (cli.py:563); file-upstream's
+preview lands with that op (Chunk 08). Correct the false claim and pin the defect class shut with a test.
 
-**Covers:** ship-list item 19 (BKL-8V3D); the adapter leg of item 18 (BKL-2Q7F). Provides the shared
-target-pin/preview foundation Chunk 08 reuses.
-**Depends on:** Chunk 01
-**Type:** code
-**Critic mode:** final (architectural keystone — coherence must hold before 03/06/08 build on it)
-**Foreign API:** `gh` (identity resolution) — `verify-api` step 0: confirm `gh auth status` shape.
-**Exposed API:** `prawduct-hook backlog` — new error vocab is additive (recorded in api-contract, Chunk 08).
+**Covers:** ship-list item 19 (BKL-8V3D).
+**Depends on:** — (independent; the code is on develop)
+**Type:** code (doc surface + guard test)
+**Critic mode:** chunk
+
+**[DECISION — build-time re-scope (2026-07-24) | the planning-altitude "shared adapter guard" keystone
+did not survive the code. The adapter is stateless about the product's own repo (callers pass `--repo`;
+no `backlog_service_repo` read — `context.py`), so the migration guard (pins to the runtime
+`backlog_service_repo`, whose value only Chunk 03's skill step records) and the file-upstream guard
+(pins to a fixed constant, and replaces the egress test) share **no** adapter mechanism. So: BKL-2Q7F's
+adapter-side guard folds into **Chunk 03** (built with the skill step that records the target); the
+upstream target-pin + no-self-file + preview-by-default stay in **Chunk 08** (with the egress-test
+replacement — a `brookstalley/prawduct` literal in `lib/backlog/` before then reddens
+`test_no_upstream_content_egress.py`, which must stay green until Chunk 08). Chunk 02 is now BKL-8V3D
+only. | user can veto the re-scope]**
 
 **Done when:**
-0. `verify-api`: confirm the `gh` identity-resolution surface against a live `gh` (not from docs).
-1. **Pinned-target constant** — promote the hardcoded `brookstalley/prawduct`
-   (`plugin/lib/migrate_plugin.py:39`) to a single canonical-upstream constant, resolved the way
-   `prawduct-hook version` resolves the version (a plugin constant, not a caller `--repo`).
-2. **`--apply`/preview is real** — resolve BKL-8V3D: the dry-run/preview posture that
-   `skills/backlog/adapter-mode.md:96` *claims* becomes an implemented adapter contract
-   (side-effect-free by default; a mutation requires an explicit apply/approve token). Grep
-   `lib/backlog/` for `--apply`/`dry_run` now returns implementation, not zero hits.
-3. **No-self-file / target-not-pinned checks** — a `--repo` that does not match the pinned target →
-   `error: target-not-pinned`; a pinned target equal to the running repo's own `backlog_service_repo`
-   → `error: self-file`. `ids.parse_repo` shape-validation is explicitly *not* an owner constraint.
-4. New structured error vocabulary (`target-not-pinned`, `self-file`) is exit-class-typed and covered
-   by a metadata/contract test.
-5. Offline suite green; a guard test pins the instruction-surface flag claims to the flags the CLI
-   actually parses (closes the BKL-8V3D defect *class*, per release-plan item 18–21 note).
+1. `adapter-mode.md`'s Write-operations section no longer claims a generic adapter `--apply`/dry-run
+   contract; it names the real mechanism — `restructure-preview` for the migration/import mutation, with
+   a forward ref to file-upstream's own preview (Chunk 08).
+2. A guard test asserts no backlog instruction surface (`skills/backlog/*.md`) promises an adapter
+   mutation-safety flag (`--apply`/`--dry-run`) that the CLI does not parse — closing the defect *class*
+   (release-plan item 18–21 note), not just this instance.
+3. Offline suite green; `test_no_upstream_content_egress.py` still green (untouched); BKL-8V3D → shipped.
 
-**Verification:** contract test asserting each refusal path files nothing and returns the typed error.
+**Verification:** run the new guard test red first (against the pre-fix doc) to prove it catches the
+class, then green after the correction.
 
 ---
 
@@ -150,8 +155,9 @@ target-pin/preview foundation Chunk 08 reuses.
 **Goal:** Make the scrub/migration *skill* path safe — a scrub run must never write issues into an
 unconfirmed repo, and the migration-required advisory must not route repos to a path that isn't proven.
 
-**Covers:** ship-list items 18 (BKL-2Q7F skill leg + ONB-3F9P provisioning sibling), 20 (BKL-5N9W), 21
-(BKL-6J2X).
+**Covers:** ship-list items 18 (BKL-2Q7F — skill **and** adapter legs; the adapter-side target guard
+folded here from Chunk 02, built with the skill step that records `backlog_service_repo` + ONB-3F9P
+provisioning sibling), 20 (BKL-5N9W), 21 (BKL-6J2X).
 **Depends on:** Chunk 02 (the target-pin lives at the adapter; the runbook binds to it)
 **Type:** code (skills/ + lib/) — governance-protected → full Critic + PR
 
@@ -274,8 +280,8 @@ test) / 08b (skill rewrite + drop-box retirement + norm amendment) seam **only i
 (sizing policy above). The Done-when list is grouped by that seam so the split is mechanical if needed.
 
 **Covers:** ship-list item 11 (C6/MG5); closes BKL-7Q4M, BKL-9XQ2, BKL-0QR1.
-**Depends on:** Chunk 02 (the shared target-pin/preview foundation), Chunk 07 (repoint — MG5 is
-post-migration, lockstep)
+**Depends on:** Chunk 07 (repoint — MG5 is post-migration, lockstep). *(No longer on Chunk 02: the
+target-pin/preview it was to reuse is built here — Chunk 02 re-scope, 2026-07-24.)*
 **Type:** code (skills/ + lib/) — governance-protected → full Critic + PR
 **Exposed API:** `prawduct-hook backlog file-upstream` — the preview/`--approve`/digest contract and the
 error vocab (`filing-disabled`, `target-not-pinned`, `self-file`, `approval-mismatch`) are recorded in
@@ -285,9 +291,10 @@ error vocab (`filing-disabled`, `target-not-pinned`, `self-file`, `approval-mism
 **Done when (08a — adapter):**
 1. **`file-upstream` op** — preview-by-default (renders the exact §2 payload, computes
    `payload-digest`, sends nothing); a second `--approve sha256:<digest>` call sends only if **all five
-   §5 checks** hold: preference ≠ `never-file`, target pinned (reuses Chunk 02), no-self-file (reuses
-   Chunk 02), approval matches the bytes, authenticated `gh` identity. Any failure → structured error,
-   files nothing.
+   §5 checks** hold: preference ≠ `never-file`, target pinned + no-self-file (**built here** — the fixed
+   canonical-upstream pin + self-file refusal; promote `migrate_plugin.py:39`'s literal to a constant and
+   replace `test_no_upstream_content_egress.py` in the same breath), approval matches the bytes,
+   authenticated `gh` identity. Any failure → structured error, files nothing.
 2. **Label-less payload (§2)** — `[prawduct]` title prefix + fixed body sections + the *trimmed*
    `prawduct:` provenance block (`v`/`found_in`/`source-key:` only; the product-name-bearing `source:`
    field is **not** emitted). `found_in` sourced from `prawduct-hook version`, `(unknown)` if unreadable.

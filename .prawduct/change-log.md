@@ -3,6 +3,26 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-07-24: v3.2.0 go-live — Chunk 02: the adapter's mutation-safety claim, made honest (BKL-8V3D)
+
+<!-- prawduct: type=bugfix | scope=v3.2.0-golive | chunks=02 -->
+
+`skills/backlog/adapter-mode.md` told the model that backlog "mutations follow the adapter's own
+`--apply`/dry-run … contracts (you never invent a mutation path)" — but `lib/backlog/` implements no
+such flag. That is not cosmetic: a migration/scrub run could walk a write path *believing a dry-run
+guarded it* (BKL-2Q7F's 100–250-real-issues blast radius). Corrected the claim to name the real
+mechanism — `restructure-preview` is the only preview-before-write; the upstream filing op brings its
+own preview-by-default (Chunk 08) — and added `tests/test_backlog_instruction_surface.py`, a guard that
+fails if any backlog instruction surface names a mutation preview/apply flag the CLI does not parse,
+closing the defect *class* rather than the instance (proven red→green). Full suite 2551 passed.
+
+**Build-time re-scope (recorded in `build-plan-v3.2.0-golive.md` Chunk 02):** the planning-altitude
+"shared adapter guard" keystone did not survive the code — the adapter is stateless about the product's
+own repo, so the migration guard (pins to runtime `backlog_service_repo`) and the file-upstream guard
+(pins to a fixed constant) share no mechanism. BKL-2Q7F's adapter leg moved to Chunk 03 (built with the
+skill step that records the target); the upstream target-pin/no-self-file/preview stay in Chunk 08 (with
+the egress-test replacement). Chunk 02 is BKL-8V3D only.
+
 ## 2026-07-21: the backlog service came back, laid out under plugin/ — and took the local-first norm with it
 
 <!-- prawduct: type=feature -->
