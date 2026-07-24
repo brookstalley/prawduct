@@ -50,6 +50,23 @@ def _allowed_tools() -> str:
     return m.group(1).strip()
 
 
+def _granted_patterns() -> list[str]:
+    """Every `Bash(...)` pattern in the grant, as written."""
+    return re.findall(r"Bash\(([^)]*)\)", _allowed_tools())
+
+
+def _grant_matches(pattern: str, command: str) -> bool:
+    """Whether a `Bash(...)` grant pattern would permit ``command``.
+
+    Claude Code grants are glob-ish: ``*`` stands for "any remainder". Comparing
+    the *semantics* rather than the literal string is the point — see
+    :func:`test_scrub_ops_not_granted`.
+    """
+    regex = "".join(".*" if part == "*" else re.escape(part)
+                    for part in re.split(r"(\*)", pattern.strip()))
+    return re.fullmatch(regex, command) is not None
+
+
 def test_no_bare_wildcard_grant():
     allowed = _allowed_tools()
     for inv in _INVOCATIONS:
@@ -75,13 +92,25 @@ def test_everyday_ops_granted_in_both_forms():
 
 
 def test_scrub_ops_not_granted():
-    allowed = _allowed_tools()
+    """No granted pattern may MATCH a scrub-op invocation.
+
+    This asks the semantic question, not the literal one. The first version
+    checked for the exact strings ``Bash(prawduct-hook backlog import *)`` etc.
+    and was therefore evadable in a way that mattered: a *broader* wildcard —
+    ``Bash(prawduct-hook *)`` — re-grants every withheld op while leaving all
+    three tests in this file green, because none of the exact strings it looks
+    for would appear. Widening a grant is the most natural way this rail gets
+    dismantled ("the prompts are annoying"), so the check has to catch the
+    widening, not one spelling of it. (Cumulative Critic, 2026-07-24.)
+    """
+    patterns = _granted_patterns()
     leaked: list[str] = []
     for op in SCRUB_ONLY_OPS:
         for inv in _INVOCATIONS:
-            grant = f"Bash({inv} {op} *)"
-            if grant in allowed:
-                leaked.append(grant)
+            command = f"{inv} {op} --repo owner/repo"
+            for pattern in patterns:
+                if _grant_matches(pattern, command):
+                    leaked.append(f"`Bash({pattern})` permits `{command}`")
     assert not leaked, (
         "backlog SKILL.md grants a high-consequence scrub op no-prompt — these must "
         "stay OUT of the grant so they prompt at the migration write (BKL-5N9W):\n  - "
