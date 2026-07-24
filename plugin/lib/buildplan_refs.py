@@ -229,6 +229,15 @@ _BUILD_PLAN_TRIVIAL_RATIONALE_RE = re.compile(
     r"^[\s\-\*]*\*\*Trivial because:\*\*\s*(.*)$"
 )
 
+# Git branch/ref names (`feature/backlog-service-relayout`, `origin/develop`) are
+# backticked identifiers that contain `/` but name a branch, not a file — the same
+# "contains `/`, isn't a path" family as the slash-command / URL carveouts in
+# `_looks_like_file_path`. A token whose first segment is one of these prefixes and
+# whose final segment carries no extension is a ref to skip, not a missing file.
+_GIT_REF_PREFIXES = frozenset(
+    {"feature", "fix", "hotfix", "release", "bugfix", "support", "origin", "upstream"}
+)
+
 
 def _looks_like_file_path(token: str) -> bool:
     """A backticked token is a precise file-path reference only when it
@@ -253,7 +262,14 @@ def _looks_like_file_path(token: str) -> bool:
     ``<inbox>/<kebab-slug>.md``) and URLs (e.g. ``https://example.com/x``) also
     contain ``/`` but are not literal on-disk paths — a token carrying ``<``,
     ``>``, or ``://`` is a placeholder/URL to skip, not a missing file to flag
-    (BLD-4K7P; same form-family as the glob carveout above)."""
+    (BLD-4K7P; same form-family as the glob carveout above).
+
+    Git branch/ref names (e.g. ``feature/backlog-service-relayout``,
+    ``origin/develop``) also contain ``/`` but name a branch, not a file — a
+    build/release plan legitimately backticks them in prose. An extensionless
+    token whose first segment is a git-flow branch prefix (``_GIT_REF_PREFIXES``)
+    is a ref to skip; a real path keeps its extension (``feature/foo.py`` stays
+    checked), so this does not blind the verifier to genuine missing files."""
     if "/" not in token:
         return False
     if token.startswith("/") and "/" not in token[1:] and "." not in token:
@@ -263,6 +279,9 @@ def _looks_like_file_path(token: str) -> bool:
     if "<" in token or ">" in token:
         return False
     if "://" in token:
+        return False
+    first, _, rest = token.partition("/")
+    if first in _GIT_REF_PREFIXES and "." not in rest.rsplit("/", 1)[-1]:
         return False
     return True
 

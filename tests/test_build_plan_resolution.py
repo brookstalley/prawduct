@@ -484,6 +484,37 @@ class TestVerifyChunkRefsGlobPaths:
         assert _bpr._verify_chunk_refs(project, refs) == []
 
 
+class TestVerifyChunkRefsGitRefs:
+    """Git branch/ref names backticked in a build/release plan (`feature/…`,
+    `origin/develop`) contain `/` but name a branch, not a file — the parser must
+    skip them, not flag a `missing-ref`. The carveout is extension-gated: a real
+    path that merely starts with a git-flow prefix keeps being captured, so it does
+    not blind the verifier to genuine drift."""
+
+    def test_feature_branch_name_is_skipped(self, tmp_path: Path):
+        # The exact shape that false-positived: a Prerequisites bullet naming a branch.
+        project, prawduct = _project_with_chunk(
+            tmp_path, "- resumes by landing `feature/backlog-service-relayout`\n"
+        )
+        refs = _bpr._parse_build_plan_chunk_refs(prawduct, "01")
+        assert refs["error"] is None
+        assert refs["file_paths"] == []
+        assert _bpr._verify_chunk_refs(project, refs) == []
+
+    def test_remote_tracking_ref_is_skipped(self, tmp_path: Path):
+        project, prawduct = _project_with_chunk(tmp_path, "- rebased on `origin/develop`\n")
+        refs = _bpr._parse_build_plan_chunk_refs(prawduct, "01")
+        assert refs["file_paths"] == []
+
+    def test_extensioned_path_under_git_prefix_still_captured(self, tmp_path: Path):
+        # Extension-gated: a real file whose path starts with a git-flow prefix is
+        # still captured for existence-checking, so drift under such a path is not
+        # silently skipped by the carveout.
+        project, prawduct = _project_with_chunk(tmp_path, "- touches `feature/gen.py`\n")
+        refs = _bpr._parse_build_plan_chunk_refs(prawduct, "01")
+        assert [e["ref"] for e in refs["file_paths"]] == ["feature/gen.py"]
+
+
 class TestVerifyChunkRefsNonPathTokens:
     """BLD-4K7P: backticked tokens that aren't literal on-disk paths must not
     produce false `missing-ref` positives — angle-bracket write-target templates

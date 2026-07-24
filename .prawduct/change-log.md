@@ -3,6 +3,22 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-07-24: verify-chunk-refs no longer false-positives on git branch names in plan prose
+
+<!-- prawduct: type=bugfix | scope=v3.2.0-golive -->
+
+Surfaced by Chunk 02's Critic review: `prawduct-hook verify-chunk-refs` flagged
+`` `feature/backlog-service-relayout` `` (a git branch name backticked in the go-live plan's
+Prerequisites) as a `missing-ref`, because `_looks_like_file_path` (`plugin/lib/buildplan_refs.py`)
+treats any backticked token containing `/` as a file path. A git ref is the same "contains `/`,
+isn't a file" family as the slash-command / glob / URL carveouts already there. Added a
+`_GIT_REF_PREFIXES` carveout: an extensionless token whose first segment is a git-flow prefix
+(`feature`, `fix`, `hotfix`, `release`, `bugfix`, `support`, `origin`, `upstream`) is a ref to skip —
+extension-gated, so a real path like `feature/gen.py` stays existence-checked and genuine drift is not
+blinded. Fixed the classification rather than de-backticking branch names (a warning on the release's
+PR-gate path, so working around it was not the right call). `TestVerifyChunkRefsGitRefs` covers it.
+Full suite 2554 passed.
+
 ## 2026-07-24: v3.2.0 go-live — Chunk 02: the adapter's mutation-safety claim, made honest (BKL-8V3D)
 
 <!-- prawduct: type=bugfix | scope=v3.2.0-golive | chunks=02 -->
