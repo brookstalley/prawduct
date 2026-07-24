@@ -12,9 +12,9 @@ backlog and `backlog_service_repo` is unset, every session flags that migration 
 required — so a repo that upgraded past prawduct's own cutover is told to migrate,
 never silently degraded to a zeroed backlog count.
 
-This is a **workflow over the deterministic ops** (`list` / `status` / `merge` /
-`import`), **not a single command** (API §2.5). Run it interactively with the
-owner.
+This is a **workflow over the deterministic ops** (`provision` / `list` / `status` /
+`merge` / `import`), **not a single command** (API §2.5). Run it interactively with
+the owner.
 
 ## The one invariant: the model decides, it never touches the data plane (MG4/G1)
 
@@ -29,13 +29,48 @@ the import op consumes a record set, not a model call.
 
 ## Steps
 
-**0. Back up.** The source `.prawduct/backlog.md` (+ any archive file) is
+**0. Select and confirm the target repo — the one binding every later step reads.**
+This is the guard that stops a scrub from writing 100–250 real issues into a repo
+nobody chose. Nothing below runs until it is done.
+   - **Name the target `owner/repo`** with the owner — the GitHub repo whose Issues
+     will hold the migrated backlog. **Never infer it from the current directory's
+     git remote.** A product may migrate into its own repo, a dedicated backlog
+     repo, or an org repo; the current checkout's remote is a guess, and a wrong
+     guess is not cleanly reversible — GitHub has no ordinary issue-delete and never
+     reuses numbers. If the current directory is not a GitHub repo — or not a git
+     repo at all — there is no default to offer: the owner names the target outright.
+     (A product staying on the markdown backend has nothing to migrate and should
+     not be running this at all.)
+   - **Owner confirms** the exact `owner/repo`. Apply nothing until they do.
+   - **Record it** where the other scrub decisions live — with the date — so the
+     target is auditable later, not remembered only in a transcript. (This repo's
+     own run records it in `.prawduct/artifacts/migration-scrub-decisions.md`; a
+     product following this runbook uses whatever artifact holds its scrub
+     decisions.)
+   - **This is NOT the cutover.** Recording the target here does *not* set
+     `backlog_service_repo` in `project-state.yaml` — that scalar flip is **Step 6**,
+     after the import is verified. Flipping it now would freeze the markdown backlog
+     before a single issue exists. Here you *bind* the value; Step 6 *activates* it.
+   - **Provision the label taxonomy** against the confirmed target, before any import
+     creates labels ad hoc:
+     `prawduct-hook backlog provision --repo <target>`
+     Idempotent and collision-free — it only ever creates the `<facet>:`-namespaced
+     base labels it does not find, and never touches a repo's existing labels. This
+     is the scrub's ownership of provisioning; the other two entry paths own it for
+     theirs — `/prawduct:onboard` provisions at adoption, `/prawduct:doctor`
+     reconciles as a repair.
+
+**Throughout the steps below, `<target>` is that one owner-confirmed repo from
+Step 0 — bound once, never re-derived. Every `--repo <target>` is the same value; do
+not re-template it per step, and never fall back to the current repo's git remote.**
+
+**1. Back up.** The source `.prawduct/backlog.md` (+ any archive file) is
 git-tracked — that is the pre-migration backup. After the first import, run
-`prawduct-hook backlog export --repo <owner/repo> --to <dir>` for a
+`prawduct-hook backlog export --repo <target> --to <dir>` for a
 full-fidelity restorable dump (body block + native graph).
 
-**1. Surface candidates.** Read the backlog — before import, the source file;
-after a first import, `prawduct-hook backlog list --repo <owner/repo> --json`.
+**2. Surface candidates.** Read the backlog — before import, the source file;
+after a first import, `prawduct-hook backlog list --repo <target> --json`.
 Propose two candidate sets:
    - **Stale** — items unmoved for a long time, superseded, or obviously
      obsolete. Group with a one-line "why this looks stale."
@@ -49,11 +84,11 @@ Propose two candidate sets:
    merge→survivor) | reason`. This table is the model's decision, expressed as
    data.
 
-**2. Owner confirms.** Show the table. The owner accepts, edits (change an
+**3. Owner confirms.** Show the table. The owner accepts, edits (change an
 action, correct a survivor), or defers individual rows. **Apply nothing that is
 not confirmed.** Deferred rows stay live and untouched — never a silent drop.
 
-**2b. Restructure pre-pass (MG6 — issue-standard §5).** For the items being
+**3b. Restructure pre-pass (MG6 — issue-standard §5).** For the items being
 migrated (typically the open set; archive items may stay verbatim), *propose* a
 restructure plan as a JSON file — per item: a ≤72 `area:`-prefixed title,
 template body sections, and a `kind:`. **Flag non-atomic items
@@ -94,7 +129,7 @@ byte-for-byte what gets written. Originals are preserved verbatim
 (`original_title`/`original_body` block fields + the MG2 export backup + git
 history of the source file) — a bad rewrite is always recoverable.
 
-**2c. Decide archive scope (MG4b) — an explicit owner choice, never a silent
+**3c. Decide archive scope (MG4b) — an explicit owner choice, never a silent
 default.** Ask the owner how much of the historical archive to mint as GitHub
 issues, and name the tradeoff:
    - **`open`** — migrate only the live/open set, minting **no** closed issue per
@@ -102,7 +137,7 @@ issues, and name the tradeoff:
      ≈80/min + ≈500/hr *rate* ceiling is the Pacer's job, not this lever's (it
      reduces write *volume*, not the rate — BKL-6X5D). **State the cost plainly
      before the owner chooses:** the skipped archive stays in the **git-tracked
-     source markdown** (step 0's pre-migration backup) — *not* in the MG2 export,
+     source markdown** (Step 1's pre-migration backup) — *not* in the MG2 export,
      which dumps the migrated repo and therefore never contains what this lever
      excluded. So those items are preserved as **git history, not as live backlog**:
      after cutover the skill treats the source file as frozen history and stops
@@ -132,8 +167,8 @@ issues, and name the tradeoff:
      cheap to absorb.
 
    The model surfaces the tradeoff; the owner decides; the deterministic importer
-   applies it via **`--archive-scope {open|all}`** (step 3) — a data-plane lever,
-   never a model inference. Keep the restructure plan (step 2b) scoped to the set
+   applies it via **`--archive-scope {open|all}`** (Step 4) — a data-plane lever,
+   never a model inference. Keep the restructure plan (Step 3b) scoped to the set
    you migrate: under `open`, don't author plan entries for archived items you're
    dropping (the importer refuses fail-closed if the plan names an item outside the
    chosen scope — a contradiction, caught, never a silent mis-import). A *quantified*
@@ -158,43 +193,44 @@ issues, and name the tradeoff:
    repo that has been live for a while, treat the backfill as a migration in its own
    right (re-scrub the source first), never as a free top-up.
 
-**3. Apply the confirmed plan — deterministically.**
+**4. Apply the confirmed plan — deterministically.**
    - **Import** the source into issues (idempotent/resumable, keyed on the
      `id:PFX` alias, so a re-run never duplicates), applying the confirmed
      restructure plan at create:
-     `prawduct-hook backlog import --repo <owner/repo> --from .prawduct/backlog.md [--archive <archive>] [--archive-scope {all|open}] [--restructure <plan.json>]`
-     (`--archive-scope` defaults to `all`; pass `open` for the open-only choice from step 2c —
+     `prawduct-hook backlog import --repo <target> --from .prawduct/backlog.md [--archive <archive>] [--archive-scope {all|open}] [--restructure <plan.json>]`
+     (`--archive-scope` defaults to `all`; pass `open` for the open-only choice from Step 3c —
      the closed/archived items it skips stay in the git-tracked source markdown — never lost, but
-     outside the migrated tracker and so outside post-cutover `list` and dedup; see step 2c)
+     outside the migrated tracker and so outside post-cutover `list` and dedup; see Step 3c)
    - **Fold each duplicate** into its survivor (writes the `superseded_by`
      redirect *before* closing the source, so a crash leaves a resolvable
      open-but-redirected item, never an orphan — AU3/CRASH-2):
-     `prawduct-hook backlog merge <duplicate-id> --into <survivor-id> --repo <owner/repo>`
+     `prawduct-hook backlog merge <duplicate-id> --into <survivor-id> --repo <target>`
      (`--repo` is required for bare `PFX-XXXX` ids — alias resolution needs the
      target repo)
    - **Close each stale item** (closed + preserved, not deleted):
-     `prawduct-hook backlog status <id> --to dropped --repo <owner/repo>`
+     `prawduct-hook backlog status <id> --to dropped --repo <target>`
 
    Ordering: import-then-dispose is always safe and idempotent. For a **large**
    backlog where the content-creation budget (≈80/min, ≈500/hr) is the scarce
    path, it is tempting to import obvious stale items already-closed to avoid
    create-then-close churn — **but the importer cannot do that today**: the create
-   path carries no initial-state field (step 2c), so every closed item is a create
+   path carries no initial-state field (Step 3c), so every closed item is a create
    plus a status reconcile regardless of ordering. Treat the churn as a fixed cost
    of `all` and size the run for it; revisit only if the create path gains an
    initial state.
 
-**4. Verify.** `prawduct-hook backlog counts --repo <owner/repo>` for the
+**5. Verify.** `prawduct-hook backlog counts --repo <target>` for the
 rollup; spot-check a handful of migrated bodies and IDs; confirm every
 hand-minted `PFX` resolves as an `id:PFX` alias and every disposed item is
 *closed*, not missing. Total issue count = every source item — a dropped or
 merged item is still present, just closed.
 
-**5. Cut over.** Record the switch that makes the migrated repo the live
-backlog — a top-level scalar in `.prawduct/project-state.yaml`:
+**6. Cut over.** Record the switch that makes the migrated repo the live
+backlog — a top-level scalar in `.prawduct/project-state.yaml`, set to the same
+`<target>` bound in Step 0:
 
 ```yaml
-backlog_service_repo: <owner/repo>
+backlog_service_repo: <target>
 ```
 
 This single key (API §2.4) repoints the session briefing to the GV2 snapshot
@@ -208,7 +244,7 @@ not silence: one probe starts firing at the same switch —
 no Issues-backend path yet, so the operator running this scrub learns what goes
 dark rather than discovering it as an unexplained absence (full retirement
 table: post-sync-advisory-spec §8.2). **Do not set
-it before the import has been verified** (step 4) — once set, the briefing
+it before the import has been verified** (Step 5) — once set, the briefing
 stops counting the markdown file. From here the markdown backlog is frozen
 history; `legacy.py` + `incoming-bugs/` retirement follows in lockstep with
 their replacements (build plan Chunk 06).

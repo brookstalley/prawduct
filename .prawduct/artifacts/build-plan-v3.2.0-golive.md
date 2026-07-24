@@ -49,7 +49,7 @@ completing cleanly. Neither blocks authoring the rest of the plan.
 
 - [ ] Chunk 01: Live verification (VRF-005/007/008) — the relayout merge already landed (PR #137)
 - [ ] Chunk 02: BKL-8V3D — the adapter's mutation-safety claim made honest (doc + guard test) — built 2026-07-24, `[ ]` until release
-- [ ] Chunk 03: Scrub + grant safety rails (repo-selection/confirm, provisioning, grant narrowing, advisory hold)
+- [ ] Chunk 03: Scrub + grant safety rails (repo-selection/confirm, provisioning, grant narrowing, advisory hold) — built 2026-07-24 (ONB-3F9P full close), `[ ]` until release
 - [ ] Chunk 04: Pacer REST-point metering for the create+close archive stretch (C7)
 - [ ] Chunk 05: SPIKE-S2 live dry-run + MG4 scrub workflow (C1 + C2)
 - [ ] Chunk 06: The real prawduct migration + VRF-006 (C4) — irreversible, operator-run
@@ -61,8 +61,11 @@ Context: Plan authored 2026-07-24 from `release-plan-backlog-service-golive.md` 
 design; `active_build_plan` now points here. **Correction 2026-07-24:** the relayout merge (the old
 Chunk 01) was already done — PR #137 landed it on develop 2026-07-23 — so Chunk 01 is now
 verification-only (see Prerequisites). **Chunk 02 built 2026-07-24** (BKL-8V3D honest fix + guard test;
-suite 2551 passed). Next: Chunk 03 (scrub + grant safety rails — now incl. BKL-2Q7F's adapter leg), with
-the Chunk 01 VRFs (operator/live) in parallel.
+suite 2551 passed). **Chunk 03 built 2026-07-24** — the four safety rails (BKL-2Q7F scrub-runbook
+target-binding + provision; ONB-3F9P *full* close incl. the `init-product --backlog-repo` + onboard/
+doctor provisioning legs, owner decision; BKL-5N9W grant narrowing + metadata test; BKL-6J2X advisory
+held). Critic chunk-mode clean (0/0/0); suite 2563 passed. Next: Chunk 04 (Pacer REST-point metering)
+and Chunk 05 (SPIKE-S2 dry-run + scrub workflow), with the Chunk 01 VRFs (operator/live) in parallel.
 
 ## Prerequisites & branch reality (read before Chunk 02)
 
@@ -177,6 +180,29 @@ provisioning sibling), 20 (BKL-5N9W), 21 (BKL-6J2X).
    (`lib/backlog_probes.py:277-291`) until the path is proven: it does not route to `/prawduct:backlog
    scrub` until Chunks 02–03 land and 18–20 are closed.
 5. Offline suite green; the four items marked `status=shipped`.
+
+**Built 2026-07-24** (Critic chunk-mode clean 0/0/0; suite 2563). Four build-time interpretation calls,
+recorded so a later reader isn't surprised:
+- **Done-when #1 — "records `backlog_service_repo`" means *bind the target*, not *flip the scalar*.**
+  Setting the `backlog_service_repo` project-state scalar at the top of the runbook would freeze the
+  markdown backend before any issue exists, contradicting the runbook's own "don't cut over before the
+  import is verified" invariant. So Step 0 records the owner-confirmed target as a *scrub decision* and
+  every step binds to it as `<target>`; the scalar flip stays at Step 6 (cutover). Renumbered 0–6.
+- **Done-when #2 / ONB-3F9P — taken to a *full* close (owner decision, 2026-07-24), not just the
+  scrub-side sibling.** Provisioning now has one owner per entry path: onboard provisions at adoption
+  (new `init-product --backlog-repo` records the backend, offline + shape-only; onboard SKILL runs
+  `provision`), doctor reconciles as a repair (Health Check #12, post-cutover only), scrub provisions
+  at migration (Step 0). The onboard legs needed `init_product.py`/`bin` code — built here rather than
+  split.
+- **Done-when #3 — `merge` left OUT of the everyday grant** (prompts), with `import`/`provision`/
+  `reconcile-labels`. It is dual-use (dedup also folds), but its blast radius (closes an issue) puts it
+  with the migration set; post-cutover dedup is degraded anyway.
+- **Done-when #4 — the advisory is held *at registration* (a no-op wrapper), not by gutting the
+  probe.** `probe_migration_required`'s firing logic and its direct-call tests stay intact; lifting the
+  hold is a one-line swap in `register()`. Kept the roster at six probes.
+- **Done-when #5 — status flips deferred to release (Chunk 09)**, per this release's
+  `[ ]`-until-release convention (mirroring Chunk 02's BKL-8V3D). The work is built + verified; the
+  `status=shipped` flip rides the release PR, not this chunk.
 
 ---
 

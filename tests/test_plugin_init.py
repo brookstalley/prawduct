@@ -235,3 +235,72 @@ def test_doctor_skill_does_not_onboard():
         "doctor must not grant init-product — scaffolding moved to /prawduct:onboard"
     )
     assert "/prawduct:onboard" in text, "doctor must route setup requests to /prawduct:onboard"
+
+
+# =============================================================================
+# --backlog-repo — day-one GitHub Issues adoption (ONB-3F9P)
+# =============================================================================
+
+
+def test_backlog_repo_recorded_on_apply(tmp_path: Path):
+    target = tmp_path / "issuesprod"
+    result = run_init(target, "Issues Prod", "--backlog-repo", "acme/widgets", "--apply")
+    assert result["backlog_service_repo"] == "acme/widgets"
+    state = (target / ".prawduct" / "project-state.yaml").read_text()
+    assert "backlog_service_repo: acme/widgets" in state
+    # Coexists with the distribution marker on the same file.
+    assert "distribution: plugin" in state
+
+
+def test_backlog_repo_dry_run_reports_without_writing(tmp_path: Path):
+    target = tmp_path / "issuesprod"
+    result = run_init(target, "Issues Prod", "--backlog-repo=acme/widgets")  # no --apply
+    assert result["applied"] is False
+    assert result["backlog_service_repo"] == "acme/widgets"  # would record
+    assert not target.exists(), "dry run must not write anything"
+
+
+def test_no_backlog_repo_leaves_scalar_unset(scaffolded: Path):
+    # The normal markdown-first path: no --backlog-repo → no backend recorded.
+    state = (scaffolded / ".prawduct" / "project-state.yaml").read_text()
+    assert "backlog_service_repo" not in state
+
+
+def test_invalid_backlog_repo_is_usage_error(tmp_path: Path):
+    target = tmp_path / "p"
+    proc = subprocess.run(
+        [sys.executable, str(HOOK), "init-product", str(target),
+         "--name", "P", "--backlog-repo", "a/b/c", "--apply", "--json"],
+        capture_output=True, text=True, env=_env(target), timeout=30,
+    )
+    assert proc.returncode == 1
+    assert "backlog-repo" in json.loads(proc.stdout)["error"]
+    assert not (target / ".prawduct").exists(), "a bad target must not scaffold a half-repo"
+
+
+def test_init_product_guards_bad_backlog_repo_directly(tmp_path: Path):
+    # The library guard behind run()'s CLI validation: a direct caller passing a
+    # malformed backlog_repo gets a warning and NO recorded scalar — never a junk
+    # write. (run() rejects it earlier with exit 1; this pins the belt-and-braces.)
+    from lib import init_product as ip
+
+    target = tmp_path / "direct"
+    result = ip.init_product(target, "Direct", backlog_repo="a/b/c", apply=True)
+    assert result["backlog_service_repo"] is None
+    assert any("--backlog-repo" in w for w in result["warnings"])
+    assert "backlog_service_repo" not in (
+        target / ".prawduct" / "project-state.yaml"
+    ).read_text()
+
+
+def test_backlog_repo_ignored_on_reapply(scaffolded: Path):
+    # Re-running an already-scaffolded repo with --backlog-repo is a no-op that
+    # does NOT record the backend — that would be a cutover (/prawduct:backlog
+    # scrub), not a re-scaffold.
+    again = run_init(scaffolded, "Acme Widgets", "--backlog-repo", "acme/widgets", "--apply")
+    assert again["already_scaffolded"] is True
+    assert again["backlog_service_repo"] is None
+    assert any("--backlog-repo ignored" in w for w in again["warnings"])
+    assert "backlog_service_repo" not in (
+        scaffolded / ".prawduct" / "project-state.yaml"
+    ).read_text()

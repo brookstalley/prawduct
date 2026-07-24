@@ -3,6 +3,48 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-07-24: v3.2.0 go-live — Chunk 03: scrub + grant safety rails (BKL-2Q7F · ONB-3F9P · BKL-5N9W · BKL-6J2X)
+
+<!-- prawduct: type=feature | scope=v3.2.0-golive | chunks=03 -->
+
+The four migration-path safety rails that keep an un-migrated repo from being routed into an
+irreversible, unpinned bulk write:
+
+- **BKL-2Q7F** — `skills/backlog/migration-scrub.md` gained a top-of-runbook **Step 0** that selects
+  and owner-confirms the target `owner/repo` (never inferred from the current git remote — a wrong
+  guess mints 100–250 undeletable GitHub issues), records it, and provisions the label taxonomy against
+  it. The runbook renumbered 0–6 and every one of the six `--repo <owner/repo>` placeholders now binds
+  to the single confirmed `<target>`. Recording the target is *not* the cutover — the
+  `backlog_service_repo` scalar flip stays at Step 6, after the import is verified. Handles the
+  not-a-GitHub-repo (or not-a-git-repo) case: the target is owner-named, so there is simply no default
+  to offer, never a silent fallback to the current remote.
+- **ONB-3F9P** (full close) — provisioning now has exactly one owner per entry path:
+  `init-product --backlog-repo owner/repo` records `backlog_service_repo` for a product adopting the
+  GitHub Issues backend from day one (offline, shape-only via `parse_repo` — no GitHub or even git
+  required to record; malformed → exit 1, no half-scaffold; ignored on a re-scaffold, which would be a
+  cutover); `/prawduct:onboard` provisions the taxonomy at adoption; `/prawduct:doctor` reconciles it
+  as a repair (Health Check #12, post-cutover only). The markdown backend stays the default and needs
+  none of this.
+- **BKL-5N9W** — the wildcard `Bash(prawduct-hook backlog *)` grant in `skills/backlog/SKILL.md`
+  narrowed to the 12 everyday no-prompt ops (both invocation forms; JNT-4R2M dual-form rule). The
+  high-consequence scrub ops (`import`/`merge`/`provision`/`reconcile-labels`) are deliberately out, so
+  they surface a permission prompt — defense-in-depth atop the runbook's owner-confirmation, not the
+  primary guard (CRT-9V4T caveat: a skill `allowed-tools` is a no-prompt allow-list, not a hard cap).
+  Pinned by `tests/test_backlog_skill_metadata.py`.
+- **BKL-6J2X** — the fleet-wide `backlog-service-migration-required` `warn` is **held**: registered but
+  wired to a no-op, so no un-migrated repo is auto-routed to `/prawduct:backlog scrub` until the path is
+  proven end-to-end. The probe's firing logic and its direct-call tests are intact; lifting the hold is
+  a one-line swap in `register()`.
+
+Critic (chunk mode) clean: 0 blocking / 0 warning / 0 note. Full offline suite **2563 passed**.
+
+**Backlog status flips deferred to release (Chunk 09), per this release's `[ ]`-until-release
+convention** (mirroring Chunk 02's BKL-8V3D) — the four items' work is built and verified on
+`feature/v3.2.0-c02-adapter-safety`; their `status=shipped` flip rides the release, not this chunk.
+**Owner decision (2026-07-24):** ONB-3F9P taken to a *full* close rather than split — the onboard
+`--backlog-repo` + provision legs (needing `init_product.py`/`bin` code) were built here, so all three
+provisioning entry paths land together.
+
 ## 2026-07-24: verify-chunk-refs no longer false-positives on git branch names in plan prose
 
 <!-- prawduct: type=bugfix | scope=v3.2.0-golive -->
