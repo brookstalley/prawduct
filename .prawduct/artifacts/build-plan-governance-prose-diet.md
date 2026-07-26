@@ -81,8 +81,27 @@ claim the cited file contradicted), both corrected before commit. Digests grew s
 1,661; 530 → 562) — this chunk bought readability, not shrinkage. Always-loaded now **2,183**
 (CLAUDE.md 1,621 + slim 562), down from 3,573.
 
-Next: Chunk 03 — and read the "Known input to Chunk 03" note under Governance Checkpoints first;
-it carries an adjudication this chunk's review surfaced.
+**Chunk 03 complete** — the reverse gap adjudicated (both rules promoted to the slim digest) and
+co-load duplicates removed from five surfaces (six touched; the slim digest is additions-only).
+`review-protocol.md` 3,526 → 3,497 (ceiling 3,530) and `building.md` 4,591 → 4,546 (ceiling
+4,600); `critic/SKILL.md` 1,771 → 1,609. Always-loaded rose 2,183 → **2,272**, entirely from the
+adjudication's +89 — the one deliberate wrong-way move in this plan. Critic `chunk`: 0 blocking,
+2 warnings, 1 note, all three resolved. It caught the pass keeping the *less* accurate copy of the
+mode-resolution rule, and a five-vs-six surface-count disagreement between the plan and the
+change-log — the same records-from-memory defect class as Chunk 02's 11-vs-12, recurring on the
+very next chunk despite the learning committed in `de2278e`.
+
+Carried forward into Chunk 04:
+- The Goal 4 draft is at `scratchpad/goal4-document-size.md`, rescued from the previous session's
+  scratchpad before it aged out. The bullet swap is +17 exactly (59 → 76); composing it and
+  measuring the whole file gives **3,513, i.e. 17 tokens of margin** under the 3,530 ceiling —
+  real but thin, so any rewording of the draft must be re-measured on the composed file. (Adding
+  the bullet delta to the file estimate gives 3,514/16: close, but two truncated estimates summed
+  is not a measurement. Same distinction the sentence above makes, one level up.)
+- The ratchet must set each ceiling from the **post-Chunk-04** actual, not from these numbers, or
+  it will block its own check.
+
+Next: Chunk 04 — the budget ratchet and the deferred Goal 4 check.
 
 ## Problem, Success, Scope
 
@@ -205,11 +224,40 @@ never its gate. Where a surface's copy is the one an agent actually reads at the
 must comply, that copy is the canonical one and the others go.
 
 **Done when:**
-1. Each of the 12 rules resolves to exactly one canonical statement.
+1. Each of the 12 rules resolves to exactly one canonical statement *per co-loaded surface set*
+   (see the CORRECTION below).
 2. No rule lost its gate; no gate semantics changed.
 3. `building.md` and `review-protocol.md` gain measurable headroom (this funds Chunk 04).
 4. Full suite green.
 5. `/prawduct:critic` passes with no blocking findings.
+
+`[CORRECTION: the "12 measured rules" census was never persisted — it lived only in the planning
+session's context, and the plan cited its count without its contents. Re-derived at HEAD, and the
+re-derivation showed the plan's counting method was wrong: raw occurrence counts treat every
+statement as redundancy, but CLAUDE.md and the full session digest are NEVER both loaded (framework
+= CLAUDE.md + slim; product = full digest), and `critic-reviewer.md` is read by a subagent that
+never sees `SKILL.md`. Those are one rule reaching disjoint audiences — the correct state is one
+statement PER audience, not one globally. The criterion that finds real redundancy is **co-load**:
+two statements compete only when a single session holds both. Under it, most of the measured "4-7x"
+collapses to legitimate audience coverage, and the genuine duplication is overwhelmingly WITHIN
+single files. Done-when 1 is amended accordingly. The plan's central ASSUMPTION is unaffected —
+pointers still replaced restatements — but its problem statement overstated the redundancy.]`
+
+`[DECISION: the reverse gap is closed by promoting BOTH rules to the slim digest (option 1 of the
+three the checkpoint named) | because the slim digest's stated charter is "hardest rules CLAUDE.md
+does not restate" and both qualify exactly — their absence was an oversight in its construction,
+not a deliberate placement. Both are Critic-gated (`review-protocol.md` Goal 1 "no pre-existing
+exception", Goal 4 durable-artifact drift), but a gate fires at review time, after the defect is
+written; "no pre-existing exception" binds at session baseline and the durable-artifact rule binds
+at writing time, so gate-only placement misses the moment. The durable-artifact rule earned it
+empirically: three violations landed in this cycle's own records (see the Chunk 02 reflection).
+Cost +89 est tokens on the always-loaded payload — accepted deliberately | user can veto: the
+alternative is accepting on-demand-only placement in building.md and relying on the gates]`
+
+`[NOTE: the general form of the asymmetry — that a consolidation pass must check reach, not only
+duplication — is NOT built here. It is a new requirement with no parent in this plan, and doing it
+properly means a Critic check (structural, per Principle 22) competing for the same budget Chunk 04
+is spending. Filed to the backlog instead.]`
 
 ### Chunk 04: Ratchet the budgets, land the deferred check
 **Type:** cumulative-final

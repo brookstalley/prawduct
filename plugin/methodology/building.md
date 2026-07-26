@@ -208,7 +208,7 @@ If the mode is missing, unrecognized, or inference cannot make a confident call,
 
 `/prawduct:pr` handles the full lifecycle (it detects git state and routes to create, update, merge, or status) and invokes the PR reviewer agent for independent release-readiness assessment of the full changeset — complementing the Critic's per-chunk reviews. Review criteria: the plugin's `skills/pr/review-protocol.md`. After merge, `/prawduct:pr` cleans up the build plan.
 
-**Cumulative-Critic gate.** `/prawduct:pr create` calls `prawduct-hook check-cumulative-critic` — composed coverage must span merge-base → HEAD by tree with zero unresolved blocking findings (details: `skills/critic/review-cycle.md`). Land every non-`.md` fix, run `/prawduct:critic cumulative` once, commit verbatim; post-cumulative fixes take a `verify-resolutions` pass, never a second full run. While it runs, do findings-independent prep.
+**Cumulative-Critic gate.** `/prawduct:pr create` calls `prawduct-hook check-cumulative-critic` — composed coverage must span merge-base → HEAD by tree with zero unresolved blocking findings (details: `skills/critic/review-cycle.md`). Land every non-`.md` fix, run `/prawduct:critic cumulative` once, commit verbatim; post-cumulative fixes take a `verify-resolutions` pass, never a second full run.
 
 ## Exception Handling
 
@@ -221,8 +221,6 @@ Catch specific exceptions. Broad catches (`except Exception`, empty `catch {}`) 
 
 ## Common Traps
 
-**Silent requirement dropping**: Implementing 9 of 10 requirements and hoping nobody notices.
-
 **Gold plating**: Adding features the spec didn't ask for (Principle 12 — Scope Discipline).
 
 **Test-last**: Tests written to pass against existing implementation document behavior, including bugs.
@@ -230,8 +228,6 @@ Catch specific exceptions. Broad catches (`except Exception`, empty `catch {}`) 
 **Ignoring the Critic**: Dismissing findings without reflection.
 
 **Verification theater / mock-as-implementation**: Claiming verification without exercising the product, or shipping mocks where the data model declares a real integration. Green tests against in-memory stand-ins are not "done."
-
-**"Pre-existing" dismissal**: There is no pre-existing exception. If you found it, it's yours to fix or flag.
 
 **Uninvestigated decisions**: Major technology or architectural choices without research — lock-in, pervasiveness, structural impact, and external dependencies warrant investigation.
 

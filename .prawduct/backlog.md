@@ -2554,6 +2554,15 @@
 
   Relates to the documented stale-prose-after-status-change learnings: `.prawduct/learnings.md:109` (when you change a mechanism, reconcile its retained self-descriptions in the same change or the prose reads as false) and `:47` (a replacement sentence gets the same falsification query the original needed). (reflection)
 
+- **[MET-4R9X]** Consolidation passes must check reach, not only duplication — a dedup pass that only subtracts widens gaps silently
+  `effort: S · impact: M · area: methodology · source: builder · added: 2026-07-26 · status: open · related: MET-7R4J · refs: plugin/methodology/reflection.md:112 (Prune regularly / Consolidate related entries — the guidance that authorizes consolidation passes)`
+
+  A consolidation pass ("this rule is stated 6x across always-loaded surfaces — collapse to one canonical statement plus cross-refs") is measured today by what it **removes**: duplicate count down, token count down. That metric is one-sided. Deleting a restatement is only safe if every surface that needed the rule still **reaches** it — via a cross-ref that is actually followed, or because the surviving statement lives on a surface that reader already loads. When the surviving copy sits somewhere the affected reader never opens, the pass reports success while silently opening a coverage gap: the duplication is gone, and so is the reach. Subtraction is visible and countable; lost reach is neither, which is why the pass can only ever look like a win.
+
+  Fix-shape (target surface not yet decided). Make reach an explicit, checkable step of any consolidation pass: for each removed restatement, name the surface(s) that relied on it and the path by which each still reaches the canonical statement — a removal with no such path is a gap, not a saving. Candidate homes: the consolidation guidance in `plugin/methodology/reflection.md` (§ Prune regularly), the planning/building guides where prose diets get planned, or a Critic review goal that fires on consolidation-shaped diffs (net-deletion across always-loaded surfaces).
+
+  Pairs with MET-7R4J, the standing consolidation vehicle — its 2026-07-03 note records exactly such a pass (a whole duplicate surface deleted, in-file restatements dropped to zero) and reports the outcome in what was removed. This item is the guardrail that kind of pass should run under. (builder)
+
 ## Promoted
 
 - **[BKL-5D2C]** Move the backlog out of git to a centralized, agent-friendly issue-tracking service

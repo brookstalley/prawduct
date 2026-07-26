@@ -9,6 +9,11 @@ plan.** Skipping it is the most common governance failure.
 
 ## Hardest rules CLAUDE.md does not restate
 
+- **There is no "pre-existing" exception.** A problem you find — failing test, broad catch,
+  stale artifact — is yours: fix it, or flag why it can't be fixed now.
+- **Durable artifacts are self-contained.** A comment, docstring, or long-lived spec never
+  anchors its meaning to an ephemeral build id (chunk, build-plan, work-cycle name) — carry the
+  *why* inline. Exception: bookkeeping that records the work (change-log `chunks=`, `closed-by:`).
 - **Catch specific exceptions.** Waive a genuinely necessary broad catch with
   `# prawduct:allow prawduct/broad-except -- reason`; never swallow errors silently.
   (`prawduct:allow <scope>/<rule-id> -- reason` is the general pragma — `docs/waivers.md`.)

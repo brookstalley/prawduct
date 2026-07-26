@@ -3,6 +3,72 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-07-26: the dedup pass that had to run backwards first
+
+<!-- prawduct: type=refactor | scope=governance-prose-diet | chunks=03 -->
+
+Chunk 03 was planned as the removal chunk: take the hard rules measured at 4-7 statements each,
+pick one canonical home, convert the rest to pointers. Two things changed it before a line came out.
+
+**The measurement did not survive its own session.** The "12 measured rules" census lived only in
+the context that produced it — the plan cited the count without persisting the list. Re-deriving
+it at HEAD was the honest option and the better one anyway, since Chunks 01-02 had already removed
+restatements the original census counted.
+
+**Re-deriving it exposed the wrong criterion.** Raw occurrence counting treats every statement of
+a rule as redundancy, but *CLAUDE.md and the full session digest are never both loaded* — the
+framework repo gets CLAUDE.md plus the slim digest, products get the full digest. The same is true
+of `critic-reviewer.md`, which the reviewer subagent reads without ever seeing `SKILL.md`. Those
+are one rule reaching disjoint audiences, not one rule stated twice. The criterion that actually
+finds redundancy is **co-load**: two statements compete only when one session holds both. Applying
+it moved nearly all the real duplication *inside* single files — which is where this chunk cut.
+
+**The reverse gap, adjudicated.** Chunk 02's review found the consolidation had been running one
+direction only, asking "is this stated twice?" and never "does this reach the reader at all?" Two
+hardest rules — **no "pre-existing" exception** and **durable artifacts are self-contained** — sat
+in the full digest and in neither CLAUDE.md nor the slim digest, so no framework-repo session
+received either. Both are promoted to the slim digest, whose charter is literally "hardest rules
+CLAUDE.md does not restate." Both are Critic-gated already (`review-protocol.md` Goal 1 and Goal
+4), but a gate fires at review time, after the defect is written; these two bind at baseline and
+at writing time. The durable-artifact rule earned its place empirically — three violations of it
+landed in this cycle's own durable records.
+
+That promotion costs the always-loaded payload **+89 est tokens** (slim digest 562 → 651), and it
+is the one number in this plan that moved the wrong way on purpose. Always-loaded total is now
+**2,272** against 3,573 at plan start.
+
+The removals, all co-load duplicates: `building.md` lost two Common Traps entries restating its own
+operative sections (`Silent requirement dropping` vs "Working With Specs", `"Pre-existing"
+dismissal` vs "Establish a clean baseline") and a second "do prep while the review runs";
+`critic/SKILL.md` lost a header comment that restated "Structural Constraints" almost whole and a
+closing paragraph that restated its own data-plane paragraph; `review-protocol.md` stopped stating
+the no-`model:`-override rule twice in adjacent steps; `review-cycle.md`'s "Recording Reviews"
+became a pointer to the flow `review-protocol.md` owns; `pr/SKILL.md`'s "Important" list stopped
+restating its own Step 1 and Merge Flow step 4.
+
+**The headroom this funds** — `review-protocol.md` 3,526 → 3,497 against its 3,530 ceiling, so
+Chunk 04's deferred Goal 4 document-size check (+17) composes to 3,513, 17 to spare;
+`building.md` 4,591 → 4,546 against 4,600. `critic/SKILL.md` gave up the most in absolute terms,
+1,771 → 1,609. (All figures via the guards' own `estimate_tokens` — `int(len(text.split()) * 1.3)`.)
+
+**The review caught the pass keeping the wrong copy.** Reducing `review-protocol.md`'s step 1 to a
+pointer deleted the copy that named `infer-critic-mode` and the non-zero-exit fallback — leaving
+the file's `## Modes` line, "`$ARGUMENTS` selects the mode", as its only mode-resolution statement.
+That sentence is contradicted by both co-loaded siblings: SKILL step 1 says arguments arrive three
+ways and are frequently *not* substituted for a fork-context skill, and `review-cycle.md` says
+"forward, never parse." So the pass cut the more-correct restatement and left the least-correct one
+standing — a net accuracy loss from a chunk whose own rule is that the copy an agent reads at the
+moment it must comply is the canonical one. Deduplication picks a survivor; it does not check that
+the survivor is the true one. The line is now reworded to state the actual mechanism. The
+stop-hook sentence in the same file's opener went too — `review-cycle.md` states that enforcement
+both more fully and more accurately ("when a build plan exists").
+
+One planned cut was **abandoned on evidence**: dropping the slim digest's build-cycle pointer as a
+CLAUDE.md restatement. `test_both_variants_carry_load_bearing_pointers` pins
+`/prawduct:methodology building` in *both* digests — and it is right to. CLAUDE.md names the file
+path, the digest names the slash command, and in a product repo only the command form works.
+Checking the guard before cutting is what caught it.
+
 ## 2026-07-26: the session digests get the Opus-5 alignment, and 9 stance bars become 8
 
 <!-- prawduct: type=refactor | scope=governance-prose-diet | chunks=02 -->

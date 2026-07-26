@@ -7,16 +7,9 @@ allowed-tools: Read, Glob, Grep, Bash(git diff *), Bash(git log *), Bash(git sta
 argument-hint: (omit for inference) | chunk | final | cumulative | verify-resolutions
 ---
 
-<!-- Role: Independent quality reviewer. NO test execution, NO builds. Code analysis only.
-     Git is restricted to read-only verbs; the allow-list is pure-allow and does NOT
-     include pytest (the `!Bash(...pytest*)` entries are documentation — frontmatter
-     deny is not reliably enforced; the prose rule below is authoritative). This
-     allow-list governs the single-pass fork; the coordinator's reviewers are the
-     `critic-reviewer` agent type, whose OWN tools allow-list binds them (no pytest,
-     Write only). The critic-active marker (critic-begin at step 4) is the
-     session-mutation backstop: while set, `prawduct-hook clear` refuses to run; it is
-     cleared by critic-consolidate when it persists the review (every mode ends there),
-     or by critic-end when a dispatched review must be abandoned. -->
+<!-- The `!Bash(...pytest*)` entries above are documentation only — skill-frontmatter
+     `!`-deny is not reliably enforced by the harness. The pure-allow list (no pattern
+     matches pytest) and the prose in "Structural Constraints" below are the mechanism. -->
 
 You are the Critic — an independent quality reviewer. You have NOT seen the builder's reasoning or decision-making. That independence is the point.
 
@@ -33,11 +26,11 @@ The project is at the current working directory — in a git worktree session th
 
 ## Structural Constraints
 
-Your tools are restricted to file reading, code search, git inspection, and writing findings. You **cannot** run test suites, build commands, linters, or any executable — review through code analysis only; the builder runs tests before requesting review.
+Your tools are restricted to file reading, code search, read-only git inspection, and writing findings. You **cannot** run test suites, build commands, linters, or any executable — review through code analysis only; the builder runs tests before requesting review.
 
 In the coordinator pattern the reviewers are the plugin's **`critic-reviewer` agent type**, whose frontmatter `tools` allow-list (read-only file/search/git + `Write`) genuinely binds — a defined agent type's tools DO constrain it, unlike a skill's `allowed-tools`, which Agent-dispatched subagents don't inherit. So "no test execution" is structural for the reviewers; "write only your partial" remains a prose contract (`Write` is not path-scoped), backstopped by consolidation validating every partial and the marker guarding session mutation.
 
-The data plane is deterministic (kernel v3): `prawduct-hook critic-begin --mode <m>` derives the review interval and roster and writes the dispatch manifest — code, never a model; reviewers (you, or the dispatched subagents) hand judgment over as freeform **partials**; `prawduct-hook critic-consolidate` merges the partials against that manifest, appends the review fact to the shared evidence store, and regenerates `.prawduct/.critic-findings.json` as a derived view. You never author the findings file, the manifest, or any ledger line. The **critic-active marker** is the session-mutation backstop: `critic-begin` sets it, and while it is set `prawduct-hook clear` refuses to mutate session state (from any context). `critic-consolidate` clears it when it persists the review; `prawduct-hook critic-end` clears it only when abandoning a dispatched review (otherwise it auto-expires after 30 min).
+The data plane is deterministic (kernel v3): `prawduct-hook critic-begin --mode <m>` derives the review interval and roster and writes the dispatch manifest — code, never a model; reviewers (you, or the dispatched subagents) hand judgment over as freeform **partials**; `prawduct-hook critic-consolidate` merges the partials against that manifest, appends the review fact to the shared evidence store, and regenerates `.prawduct/.critic-findings.json` as a derived view. You never author the findings file, the manifest, or any ledger line. The **critic-active marker** is the session-mutation backstop: `critic-begin` sets it, and while it is set `prawduct-hook clear` refuses to mutate session state (from any context). `critic-consolidate` clears it when it persists the review; if you must abandon a dispatched review, run `prawduct-hook critic-end` yourself (otherwise it auto-expires after 30 min and is swept at next session start).
 
 ## Getting Started
 
@@ -55,5 +48,3 @@ The data plane is deterministic (kernel v3): `prawduct-hook critic-begin --mode 
 7. **Follow the roster** (`review-protocol.md` "Review Execution"):
    - **Roster `["reviewer"]` (single-pass)** — `chunk`, `verify-resolutions`, and small `final`/`cumulative`. You (the fork) do the whole review inline, write ONE partial to `.prawduct/.critic-partials/reviewer.json` (schema: `review-protocol.md` — role `"reviewer"`, the manifest's `commit_reviewed` verbatim, your findings; `resolutions` only in `verify-resolutions` mode), then run `prawduct-hook critic-consolidate` yourself — it appends the review fact, regenerates `.critic-findings.json`, anchors the ledger event, and clears the marker. No subagents are dispatched, so nothing is backgrounded.
    - **Roster `correctness`/`design`/`sustainability` (coordinator)** — `final`/`cumulative` at 5+ changed files. Follow `review-protocol.md` "Coordinator Pattern": dispatch the three `critic-reviewer` subagents against the manifest (they each write only their partial) and **STOP**. Do NOT write a partial or run consolidate yourself — `prawduct-hook critic-consolidate` merges deterministically from the partials on disk (triggered per-reviewer by the `SubagentStop` hook, floored by the session-end backstop). Once the reviewers are dispatched you are done; there is no resume-to-aggregate.
-
-You never write `.prawduct/.critic-findings.json` or a ledger line — `critic-consolidate` is the only writer of both (it validates every partial against the manifest and fails closed on any gap). If you must abandon a review after dispatch, run `prawduct-hook critic-end` to clear the marker (otherwise it auto-expires after 30 min and is swept at next session start).

@@ -321,3 +321,23 @@ observed fact — including into CRT-3F7M's title.
 ## When auditing guidance material, have a fresh agent USE it before you recommend changing it — analytic review predicts defects that do not survive contact with practice, and the trial is what tells you which findings are real
 
 Auditing the runbook guide/skill/template (2026-07-20), I argued from the text that the template should be inverted — minimal default, optional sections in a library — because a form-shaped template pulls authors into filling it in and "deletion is the weaker operation." Two subagents then authored real runbooks from the *unmodified* material and both deleted correctly and for the right reasons (blast radius, duration, authorization, maintenance, prerequisites, phases, irreversible block — each against its include-test), with one reporting the guide "stopped me from writing a bloated runbook, which is what I would otherwise have produced." The recommendation was refuted by the artifact it was about. The trials also produced findings no amount of reading would have: that ~150 of 1,277 lines carried all the binding instruction, that the worked example outperformed everything after it, and that a documented procedure contradicted itself in a way only a deriving reader would hit. So: for any material whose purpose is to *make an agent produce something*, the audit is a usage trial, and reading is only how you form hypotheses to test. Run the trial before writing recommendations, not after — otherwise the write-up is sunk cost arguing against the evidence. Corollary, learned the same session: an audit's deliverable is ranked findings, not a work program; ~7 verified small defects became a 5-chunk plan with 12 new rules before the owner cut it back to the defects. Relates to Proportional Effort (#11 — which the methodology states for artifacts and rigor but not for the size of a response to a finding), Retrieval Over Generation (#24), and Honest Confidence (#5).
+
+## Deduplication picks a survivor; it does not check that the survivor is the CORRECT one — before deleting a restatement, read the copy you are KEEPING against every co-loaded sibling, because "which copy is redundant" and "which copy is true" are independent questions
+
+Consolidating the Critic's mode-resolution rule (governance-prose-diet Chunk 03, 2026-07-26), I
+reduced `review-protocol.md` step 1 to a pointer, deleting the copy that named
+`prawduct-hook infer-critic-mode` and the non-zero-exit fallback. That left the file's `## Modes`
+line — "`$ARGUMENTS` selects the mode" — as its only mode-resolution statement, and that sentence
+is contradicted by both siblings the Critic loads in the same invocation: SKILL step 1 (arguments
+arrive three ways and are frequently NOT substituted for a fork-context skill,
+anthropics/claude-code#34164) and `review-cycle.md` ("the skill must forward, never parse"). So the
+pass cut the more-correct restatement and left the least-correct one standing as canonical — a net
+accuracy loss, from a chunk whose own stated rule was that the copy an agent reads at the moment it
+must comply is the canonical one. The framing that produced it ("which of these is the duplicate?")
+never asks which is right; picking the survivor by *position* — shortest, or in the file that owns
+the concept — silently ranks tidiness over truth. Test: for each restatement you delete, read the
+survivor against every co-loaded sibling and confirm it is the sentence you would write today; if
+it disagrees with a sibling, fix the survivor in the same commit. Sibling asymmetry to the reach
+gap ([[backlog]] MET-4R9X): a consolidation pass can lose reach AND lose accuracy, and neither
+shows up in the duplicate count or the token delta that make the pass look like a win. Relates to
+Validate Before Propagating (#15), Living Documentation (#3), and Honest Confidence (#5).

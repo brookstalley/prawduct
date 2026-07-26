@@ -154,10 +154,9 @@ PR review evidence is stored in `.prawduct/.pr-reviews/<branch-name>.json` (with
 
 - The PR reviewer runs as a **separate agent** — it must have independent context
 - The reviewer reads `${CLAUDE_SKILL_DIR}/review-protocol.md` for its instructions
-- Run the full test suite before creating a PR — but check `prawduct-hook test-status` first; skip the run if it reports `current`
 - **The doc-only fast-path (Step 1b) is the only review-gate skip.** It fails closed, and there is no code-side trivial fast-path (rationale in Step 1b's note).
 - **The cumulative-Critic gate (Step 2) and operator-verification gate (Step 2b) are mandatory** — never open a PR without a blocking-free record vouching for HEAD, or with pending verification entries (full mechanics in those steps).
 - Include review findings summary in the PR description
 - **No attribution trailers by default** — do not add `Co-Authored-By`, `Signed-off-by`, or "Generated with …" lines to commit messages or the PR body unless `project-preferences.md` sets `Commit attribution` to opt in
-- **Merge-commit by default** — squash/rebase only via an explicit `PR merge strategy` preference or the user's in-the-moment ask; a failing `--merge` is surfaced to the user, never silently downgraded to `--squash`
+- **Merge-commit by default** — mechanics, the two things that select another strategy, and why a rewritten-history branch is single-use: Merge Flow step 4
 - **Never run `gh pr create` without a valid evidence file on disk**

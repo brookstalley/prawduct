@@ -1,10 +1,10 @@
 # Build Governance (The Critic)
 
-The Critic reviews changes against principles and specifications as a **separate agent** (the `/prawduct:critic` skill, `context: fork`) — genuinely independent review: it hasn't seen the builder's reasoning. This file is the Critic's complete instruction set. The stop hook enforces review before session end when code was modified.
+The Critic reviews changes against principles and specifications as a **separate agent** (the `/prawduct:critic` skill, `context: fork`) — genuinely independent review: it hasn't seen the builder's reasoning. This file is the Critic's complete instruction set.
 
 ## When You Are Activated
 
-1. Resolve mode (full procedure: SKILL step 1). `$ARGUMENTS` token (`chunk` / `final` / `cumulative` / `verify-resolutions`) wins; else `prawduct-hook infer-critic-mode`; non-zero exit → `final`.
+1. Resolve mode (full procedure: SKILL step 1; per-mode scope under "Modes" below).
 2. Read `.prawduct/project-state.yaml`.
 3. Assess change scope/nature (git diff or read changed files).
 4. Read relevant `.prawduct/artifacts/`.
@@ -14,7 +14,7 @@ The Critic reviews changes against principles and specifications as a **separate
 
 ## Modes
 
-`$ARGUMENTS` selects the mode. See `review-cycle.md` for full per-mode behavior.
+Mode is resolved by `prawduct-hook infer-critic-mode` — collect the invocation arguments and forward them verbatim, never parse them (procedure: SKILL step 1). Full per-mode behavior: `review-cycle.md`.
 
 - **`chunk`** — Goals 1-3 only, single-pass, scoped to the uncommitted diff. Target 1-2 min.
 - **`final`** — all 7 goals + Learnings Cross-Check + Backlog Reconciliation + Framework-Specific Checks. Coordinator pattern eligible. Target 4-10 min.
@@ -149,9 +149,9 @@ The roster in the code-written dispatch manifest (`.prawduct/.critic-partials/ma
 
 Persistence is **decoupled from the review** (the coordinator never resumes to aggregate): reviewers write partials; `critic-consolidate` merges them against the code-written manifest into the evidence fact + `.critic-findings.json` + the ledger anchor — no model authors any file the data plane trusts.
 
-1. **Assess** (coordinator): read project state and the manifest (review id, `commit_reviewed`, `files_changed`), run git diff, and determine signals (size, type, boundaries). Reviewers run on the **current session model** — do **not** pass a `model:` override; whatever model the session is on reviews the work. (Reviewer-model tiering was removed; the manifest's `tier` is telemetry only and selects no model.)
+1. **Assess** (coordinator): read project state and the manifest (review id, `commit_reviewed`, `files_changed`), run git diff, and determine signals (size, type, boundaries). The manifest's `tier` is telemetry only — reviewer-model tiering was removed and it selects no model.
 
-2. **Dispatch** three **`critic-reviewer`** subagents (Agent tool, `subagent_type: critic-reviewer`) with **no `model:` override** — they inherit the session model (`critic-reviewer` declares `model: inherit`). Each reviews ONLY its goals and writes ONLY its partial to `.critic-partials/<role>.json` — never `.critic-findings.json`, `critic-consolidate`, or `critic-end`. Prompt template (substitute `<ROLE>`/`<GOALS>`/`<SHA>` — the SHA is the manifest's `commit_reviewed`):
+2. **Dispatch** three **`critic-reviewer`** subagents (Agent tool, `subagent_type: critic-reviewer`) with **no `model:` override** — they inherit the **current session model** (`critic-reviewer` declares `model: inherit`), so opus reviews as opus. Each reviews ONLY its goals and writes ONLY its partial to `.critic-partials/<role>.json` — never `.critic-findings.json`, `critic-consolidate`, or `critic-end`. Prompt template (substitute `<ROLE>`/`<GOALS>`/`<SHA>` — the SHA is the manifest's `commit_reviewed`):
 
    > "Critic reviewer (`<ROLE>`). Read `[critic path]` for goal definitions. Review ONLY <GOALS>. Project: `[dir]`. Changed files: [list]. Signals: [summary]. Commit under review: `<SHA>` — record it verbatim as `commit_reviewed`. NO tests/builds. Write ONLY your partial to `.critic-partials/<ROLE>.json`; nothing else."
 
