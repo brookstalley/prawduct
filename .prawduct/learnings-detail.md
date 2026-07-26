@@ -982,3 +982,30 @@ robustness claim (never raises / always returns / idempotent), make it literally
 claimed-safe path]]. Discovered BRF-7Q4M banner load provenance (2026-07-19). Relates to Honest
 Confidence (#5), Root Cause Discipline (#16), Independent Review (#14) — self-review reliably
 re-walks the happy path.
+
+## When a test asserts that a MOVE landed content, pin a marker that is ABSENT at the pre-move commit
+
+Chunk 01 of the governance-prose-diet plan moved the product-repo layout tree out of CLAUDE.md
+into `artifacts/architecture.md`, and shipped `test_moved_content_landed_in_architecture` to
+bind the "no content lost, only relocated" half of the contract. It asserted three markers were
+present in the destination: `critic-consolidate`, `install reference`, `PRAWDUCT:ANCHOR`.
+
+Two of the three were already in `architecture.md` before the move — `critic-consolidate` x4,
+`install reference` x2. So two thirds of the assertion was satisfied by the status quo, and the
+test would have passed had the move dropped the layout tree entirely. The Critic caught it;
+`git show HEAD:<file> | grep` confirmed it in seconds.
+
+The root cause is a question-shape error, and it generalizes past moves. I chose markers by
+asking *"what should be in the destination?"* — which the status quo can answer — instead of
+*"what does this change introduce?"*, which only the change can answer. The same trap sits under
+any test guarding a migration, an extraction, a rename, or a copy: assert on the delta, and
+verify the delta is real at the base commit rather than trusting that it is.
+
+Cheap discipline: for each marker, run `git show <base>:<path> | grep -c <marker>` and require 0.
+The fix here swapped in `PRAWDUCT:ANCHOR`, `my-product/`, and `.pr-reviews/` — all 0 at the
+pre-move commit, all 1 after.
+
+Relates to [[When compacting or migrating a file that tooling parses, classify every span by its
+CONSUMER before moving it]] — same migration, different failure mode: that one is about content
+landing somewhere its reader cannot see, this one is about the guard that was supposed to notice.
+

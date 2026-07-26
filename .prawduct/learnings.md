@@ -4,6 +4,8 @@ Active rules from this project's development. Surfaced via the `/learnings [topi
 
 ---
 
+## When a test asserts that a MOVE landed content, pin a marker that is ABSENT at the pre-move commit — verify the absence, do not assume it — because a marker already present in the destination makes the test self-satisfying: it passes unchanged if the move silently dropped everything, which is the exact failure it was written to catch
+
 ## When a commit claims to close a backlog item, verify the claim against the item's FILED CASE before crediting it — a fix aimed at the item's title routinely lands the ADJACENT sub-case, passing every guard while the filed reproduction still reproduces, so merging closes a still-broken item as shipped
 
 ## Merge instructions written BEFORE the merge — a subagent's advice, or a note you wrote yourself — are verified against the merge's actual hunk shape, never applied literally: whoever reasons from the BRANCH cannot see a convention the DESTINATION adopted after the branch was cut

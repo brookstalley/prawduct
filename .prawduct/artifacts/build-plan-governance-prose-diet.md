@@ -49,9 +49,12 @@ chunk where a removal could silently drop a binding rule.
 
 ## Status
 
-<!-- views_enabled: true — these checkboxes are a DERIVED VIEW. Do not hand-flip; add a
-     tagged change-log entry (scope=governance-prose-diet, status=shipped) and run
-     `prawduct-hook regen-views`. -->
+<!-- views_enabled: true — these checkboxes are a DERIVED VIEW (lib/views.py). Do not hand-flip.
+     Each chunk lands a change-log entry tagged `chunks=NN | scope=governance-prose-diet` with
+     NO `status=` — that is the normal release-pending state, and the checkbox correctly stays
+     `[ ]` until the work releases. `status=shipped` means RELEASED, not chunk-complete; it is
+     the release that stamps it and `regen-views` that flips the box. The `Context:` line below
+     is author-curated and regen never touches it — that is where chunk progress is recorded. -->
 
 - [ ] Chunk 01: CLAUDE.md diet — architecture out, emphasis-escalation out, line-count guard in
 - [ ] Chunk 02: The two session digests — Opus-5 alignment, slim dedupe, sentence density
@@ -60,7 +63,14 @@ chunk where a removal could silently drop a binding rule.
 
 Context: Plan written 2026-07-26 on `feature/governance-prose-diet` (off develop). Parents:
 DOC-8L3F (CLAUDE.md line count), MET-7R4J (cross-surface redundancy residue), plus the
-Opus-5 prompting alignment the owner requested. Next: Chunk 01.
+Opus-5 prompting alignment the owner requested.
+
+**Chunk 01 complete** (`26534ec`) — CLAUDE.md 190 → 150 lines, 3,043 → 1,617 est tokens;
+always-loaded payload 3,573 → 2,147. Critic `chunk` + `verify-resolutions`: 0 blocking,
+0 warnings. Carried forward into Chunk 02: one NOTE — the `LIMIT = 150` comment in
+`tests/test_v5_methodology.py` cites `plugin/methodology/building.md:83` by line number, which
+Chunk 04 will itself invalidate; restate it in the quoted-heading form the class docstring
+already uses. Next: Chunk 02 (the two session digests).
 
 ## Problem, Success, Scope
 
