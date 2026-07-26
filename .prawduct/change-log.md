@@ -3,6 +3,43 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-07-26: CLAUDE.md went on the diet it enforces on everyone else
+
+<!-- prawduct: type=refactor | scope=governance-prose-diet | chunks=01 -->
+
+The framework's own `CLAUDE.md` was 190 lines against the ~150-line bar it ships and enforces
+on products (`review-protocol.md` Goal 4, `building.md` "CLAUDE.md is instructions, not
+documentation") — and it was over for exactly the reason the check names: it carried
+implementation architecture. One 101-word sentence described the kernel-v3 Critic data plane,
+four nested parentheticals deep, in a file loaded into every session forever. It instructed the
+agent to do nothing.
+
+That paragraph turned out to be a **pure duplicate** — `artifacts/architecture.md` already had a
+"Critic Data Plane" section covering all of it more precisely — so it was a delete, not a move.
+The product-repo layout tree did move, landing under "Worktree & Distribution Model" beside the
+"commits only an install reference" prose it belonged with. Result: 190 → 150 lines, 3,043 →
+1,617 est tokens (−47%), which takes the always-loaded payload (CLAUDE.md + slim digest) from
+3,573 to 2,147.
+
+**Where the moved prose went was forced by mechanism, not taste.** `_work_model_corpus_paths`
+globs *top-level* `docs/` and `methodology/`, neither of which exists in this repo, so the
+work-model index here is `.prawduct/artifacts/*.md` plus `CLAUDE.md`. Relocating to
+`plugin/docs/` would have dropped that vocabulary from the index and started firing the
+orphan-term tripwire on words that are currently known. `artifacts/` keeps it indexed.
+
+Three guard tests bind the diet, because an untested bound regrows: the 150-line budget, an
+assertion that architecture vocabulary (`kernel v3`, `evidence.jsonl`, `critic-begin`) stays
+*out*, and the other half of the move — that the layout tree actually *arrived*. The Critic
+caught that third test self-satisfying on its first draft: two of its three markers already
+existed in `architecture.md`, so a test contracted to prove "no content lost" would have passed
+had the move dropped everything. It now pins only what the move introduced.
+
+`LIMIT = 150` carries zero headroom deliberately, matching the posture `review-protocol.md`'s
+budget already documents — the next addition trims or relocates, it does not bump the number.
+
+Closes the CLAUDE.md leg of DOC-8L3F. Chunk 01 of four; the cross-surface consolidation that
+MET-7R4J tracks is still ahead.
+
 ## 2026-07-21: the backlog service came back, laid out under plugin/ — and took the local-first norm with it
 
 <!-- prawduct: type=feature -->

@@ -147,6 +147,31 @@ the plugin root and is read-only from the repo's perspective. The one legacy exc
 file-sync file registry — exists now only so migration can *remove* committed framework copies;
 the plugin no longer places them.
 
+What a governed product repo therefore contains — its own state plus the install reference, and
+no framework files:
+
+```
+my-product/
+├── CLAUDE.md                    # product instructions + a thin static governance anchor (PRAWDUCT:ANCHOR)
+├── .prawduct/
+│   ├── project-state.yaml      # source of truth for project state
+│   ├── learnings.md            # accumulated wisdom
+│   ├── learnings-detail.md     # full learning context and history
+│   ├── backlog.md              # deferred work items (out-of-scope captures)
+│   ├── change-log.md           # change log (separate for merge-friendliness)
+│   ├── artifacts/              # generated specifications (project-preferences, boundary-patterns, …)
+│   ├── .pr-reviews/            # PR review evidence (gitignored)
+│   └── .critic-findings.json   # derived view of the latest review fact (gitignored; gates read
+│                               #   the evidence store, not this)
+├── .claude/
+│   └── settings.json           # the committed install reference (marketplace + enabled plugin)
+└── src/                        # product source code (+ the product's own skills, MCP servers, configs)
+```
+
+Governance — the `/prawduct:*` skills, the SessionStart and Stop hooks, the methodology guides, and
+the Critic/PR protocols — comes from the **plugin**, not the repo. (A v1 file-sync repo still
+carries committed framework files until it runs `/prawduct:migrate`.)
+
 ## Concurrency Model
 
 - **Races are avoided by construction, not locks.** Parallel reviewers each write a distinct partial

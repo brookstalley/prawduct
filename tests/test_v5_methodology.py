@@ -459,3 +459,72 @@ class TestPrinciplesDoc:
         assert [int(h) for h in headings] == list(range(1, 25)), (
             f"expected principle headings 1..24 in order, found {headings}"
         )
+
+
+# =============================================================================
+# CLAUDE.md instruction budget (DOC-8L3F)
+# =============================================================================
+
+
+class TestClaudeMdBudget:
+    """CLAUDE.md is always loaded, every session, so its size is a standing cost.
+
+    The framework enforces ~150 lines of project content on its *products*
+    (`skills/critic/review-protocol.md` Goal 4; `methodology/building.md`
+    "CLAUDE.md is instructions, not documentation"). This repo's own CLAUDE.md
+    ran to 190 lines carrying architecture description, so it failed the check it
+    ships. These tests bind the diet: without them the prose is trimmed once and
+    regrows, because an untested governance bound rots silently.
+
+    This repo's CLAUDE.md carries no PRAWDUCT markers, so every line is project
+    content. If markers are ever added, this count becomes marker-aware.
+    """
+
+    # 150 is not a ceiling invented here — it is the published guidance this
+    # framework already enforces on its products (review-protocol.md Goal 4,
+    # building.md:83), so the framework meets its own bar rather than a softer
+    # one. CLAUDE.md sits at exactly 150: near-zero headroom BY DESIGN, the same
+    # posture the review-protocol.md budget takes a few classes up — the next
+    # addition must trim or relocate, not bump this number.
+    LIMIT = 150
+
+    def claude_md(self) -> str:
+        return (REPO_ROOT / "CLAUDE.md").read_text(encoding="utf-8")
+
+    def test_line_budget(self):
+        n = len(self.claude_md().splitlines())
+        assert n <= self.LIMIT, (
+            f"CLAUDE.md is {n} lines, over the {self.LIMIT}-line guidance it enforces on "
+            "products. Move architecture, config tables, and component inventories to "
+            "`.prawduct/artifacts/` — and prefer trimming to raising this number."
+        )
+
+    def test_architecture_description_stays_out(self):
+        """The specific regression: implementation architecture drifting back in.
+
+        These strings named the Critic data plane in CLAUDE.md; they belong to
+        `artifacts/architecture.md`, which is also the work-model corpus (the
+        index globs top-level docs/ + methodology/, neither of which exists here,
+        so artifacts/ is where moved vocabulary stays indexed).
+        """
+        content = self.claude_md()
+        for marker in ("kernel v3", "evidence.jsonl", "critic-begin"):
+            assert marker not in content, (
+                f"CLAUDE.md names {marker!r} — that is data-plane architecture, not an "
+                "instruction. It belongs in .prawduct/artifacts/architecture.md."
+            )
+
+    def test_moved_content_landed_in_architecture(self):
+        """No content lost, only relocated — the other half of the move.
+
+        Pins only what the move actually INTRODUCED. An earlier version asserted
+        `critic-consolidate` and `install reference`, both of which already existed
+        in architecture.md, so two thirds of the contract was self-satisfying and
+        would have passed even if the move had silently dropped everything.
+        """
+        arch = read_file(".prawduct/artifacts/architecture.md")
+        for marker in ("PRAWDUCT:ANCHOR", "my-product/", ".pr-reviews/"):
+            assert marker in arch, (
+                f"architecture.md is missing {marker!r} — the product-repo layout moved out "
+                "of CLAUDE.md must arrive here, not evaporate."
+            )

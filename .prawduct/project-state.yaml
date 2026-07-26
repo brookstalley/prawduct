@@ -333,7 +333,7 @@ views_enabled: true
 # field holds only the current in-progress plan (absent/empty -> the gates
 # fall back to artifacts/build-plan.md).
 
-active_build_plan: null
+active_build_plan: artifacts/build-plan-governance-prose-diet.md
 
 # =============================================================================
 # COVERAGE EVIDENCE (opt-in, v1.4+)
