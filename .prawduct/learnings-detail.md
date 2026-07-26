@@ -1009,3 +1009,35 @@ Relates to [[When compacting or migrating a file that tooling parses, classify e
 CONSUMER before moving it]] — same migration, different failure mode: that one is about content
 landing somewhere its reader cannot see, this one is about the guard that was supposed to notice.
 
+## When writing a durable record of what a change did, compose it from the DIFF
+
+Three instances in one session (governance-prose-diet, Chunks 01-02), all caught by the Critic,
+all in durable records rather than in the instructions the chunks were actually changing:
+
+1. A guard test asserted three markers had arrived in the destination file. Two already existed
+   there before the move, so the test was self-satisfying — see
+   [[When a test asserts that a MOVE landed content, pin a marker that is ABSENT at the pre-move commit]].
+2. A registry row recorded "consolidated the stance block 11 bars → 8". `git show HEAD:` carries
+   **9**. The 11 was a working-tree state that existed for about twenty minutes: nine bars plus
+   two popped from a stash, before the same chunk consolidated them. No commit ever held it.
+3. A change-log entry claimed a prior build plan "had phrased it `show evidence, don't assert`;
+   the verification imperative crept in during drafting." The cited line reads
+   `**verify your own work before declaring done** ("show evidence, don't assert success")` — the
+   imperative was that plan's own bolded bar name and show-evidence was its parenthetical gloss.
+   I had read the file earlier in the session and paraphrased from memory when citing it.
+
+The shared root is not carelessness about facts — each claim felt well-grounded, because it was
+grounded in *having done the work*. It is that process memory and tree state diverge: memory
+retains intent, intermediate states, and the gist of sources, while a reader can only check the
+tree. Records written from the first describe something unverifiable.
+
+Two cheap disciplines, both seconds long:
+- Before writing "X went from A to B", run `git show <base>:<path>` and count A. Never carry A
+  from working memory, especially mid-chunk when the tree has moved under you.
+- Before citing a file as saying something, re-open it and quote it. A source used as
+  corroboration is exactly the case where paraphrase is most tempting and most damaging, because
+  it is doing evidentiary work.
+
+Sharpened by these landing in `change-log.md` and `cross-cutting-concerns.md` — append-only
+history, where a wrong number is corrected by a later entry admitting it, never by a clean edit.
+

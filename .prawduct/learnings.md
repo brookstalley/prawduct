@@ -4,6 +4,8 @@ Active rules from this project's development. Surfaced via the `/learnings [topi
 
 ---
 
+## When writing a durable record of what a change did (change-log entry, registry row, artifact note), compose it from the DIFF — `git show <base>:<file>` against the result — never from memory of your own process, because process memory carries transient intermediate states and half-read sources into files that are append-only, producing claims no reader can verify against any tree that ever existed
+
 ## When a test asserts that a MOVE landed content, pin a marker that is ABSENT at the pre-move commit — verify the absence, do not assume it — because a marker already present in the destination makes the test self-satisfying: it passes unchanged if the move silently dropped everything, which is the exact failure it was written to catch
 
 ## When a commit claims to close a backlog item, verify the claim against the item's FILED CASE before crediting it — a fix aimed at the item's title routinely lands the ADJACENT sub-case, passing every guard while the filed reproduction still reproduces, so merging closes a still-broken item as shipped
