@@ -481,8 +481,9 @@ class TestClaudeMdBudget:
     """
 
     # 150 is not a ceiling invented here — it is the published guidance this
-    # framework already enforces on its products (review-protocol.md Goal 4,
-    # building.md:83), so the framework meets its own bar rather than a softer
+    # framework already enforces on its products (review-protocol.md Goal 4;
+    # building.md "CLAUDE.md is instructions, not documentation"), so the
+    # framework meets its own bar rather than a softer
     # one. CLAUDE.md sits at exactly 150: near-zero headroom BY DESIGN, the same
     # posture the review-protocol.md budget takes a few classes up — the next
     # addition must trim or relocate, not bump this number.

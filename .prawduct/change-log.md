@@ -3,6 +3,52 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-07-26: the session digests get the Opus-5 alignment, and 9 stance bars become 8
+
+<!-- prawduct: type=refactor | scope=governance-prose-diet | chunks=02 -->
+
+Anthropic's Opus 5 prompting guidance names three things prawduct was getting wrong. Its
+"Task scope and over-verification" section says explicit self-verification instructions cause
+over-verification and should be *removed* — the digest's `Verify your own work before "done"`
+was exactly that shape. The intent behind it was reporting honesty, not a second pass: the
+build plan that introduced the stance (`build-plan-rigor-and-stance.md`:99) named the bar
+`verify your own work before declaring done` and *glossed* it `("show evidence, don't assert
+success")`. So the imperative was deliberate, not an accident — this chunk promotes the gloss to
+be the bar itself, because Opus 5 reads the imperative form as an instruction to verify again.
+
+The other two are additions: Opus 5 delegates to subagents more readily, and writes longer files
+than prior models. So the stance gains **delegation has a floor** and folds document-sizing into
+**do what was asked**. The delegation bar carries an explicit Critic exemption — the Critic is
+dispatched for *independence*, not thoroughness, and Anthropic's "do not use subagents to verify
+your own work" is a thrift rule about redundant self-checking that does not reach it. Without
+that clause, a future agent reading the same guidance could optimize the Critic away by citing it.
+
+The three opus-5 edits are one reword plus two new bars, so landing them unconsolidated would
+have taken a nine-bar stance to **eleven** — past the point where a stance is weighed rather
+than skimmed. The block was instead consolidated **9 to 8**: show-evidence
+folded into "verify, don't guess", research-fast-moving into "retrieval before generation".
+`Delegation has a floor` deliberately stayed standalone — burying an exemption clause inside a
+compound bullet is precisely where it gets misread. The slim digest's stance went from one
+run-on paragraph to seven bullets, and both digests dropped the `STOP ... ANY code` emphasis caps
+(MET-7R4J sub-item 2 — prompt-rot, and it misstated Critic timing).
+
+Two corrections worth recording. The `53.8 / 50.2 average words per sentence` figures that
+motivated this chunk's readability criterion were a **measurement artifact** — the splitter did
+not break markdown bullets or dot-separated rosters, so it scored list blocks as single
+sentences. Real baseline: 26.9 and 33.1, meaning the full digest already passed and only the
+slim one failed. Post-chunk: 22.1 and 19.1. And a density edit dropped one word — "on the
+markdown backend" became "on markdown" — which `test_cutover_prose_coherence` caught: it pins
+the literal backend name within 200 characters of `## Archive`, because post-cutover that
+section does not exist and an unqualified sentence misleads. A compression pass can silently
+un-fix a deliberate fix.
+
+These digests grew slightly (1,589 to 1,661 and 530 to 562 est tokens): short sentences cost
+words and two new bars are not free. This chunk bought readability and correctness, not
+shrinkage — that is Chunks 03 and 04's job. Always-loaded total after Chunks 01-02: 3,573 to
+**2,183** (-39%), of which CLAUDE.md is 1,621. (The chunks=01 entry above records 1,617 / 2,147;
+those were measured before that chunk's own Critic fixes edited CLAUDE.md, so they read 4 low.
+Left as written — the log is append-only history, and Chunk 04's ratchet measures actuals.)
+
 ## 2026-07-26: CLAUDE.md went on the diet it enforces on everyone else
 
 <!-- prawduct: type=refactor | scope=governance-prose-diet | chunks=01 -->

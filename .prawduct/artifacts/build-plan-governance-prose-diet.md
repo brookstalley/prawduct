@@ -70,7 +70,19 @@ always-loaded payload 3,573 → 2,147. Critic `chunk` + `verify-resolutions`: 0 
 0 warnings. Carried forward into Chunk 02: one NOTE — the `LIMIT = 150` comment in
 `tests/test_v5_methodology.py` cites `plugin/methodology/building.md:83` by line number, which
 Chunk 04 will itself invalidate; restate it in the quoted-heading form the class docstring
-already uses. Next: Chunk 02 (the two session digests).
+already uses.
+
+**Chunk 02 complete** — three opus-5 edits landed in both digests; full-digest stance
+consolidated 9 bars → 8; slim stance went from a run-on paragraph to 7 bullets; both dropped the
+`STOP … ANY code` caps (MET-7R4J sub-item 2). Chunk 01's carried NOTE discharged. Critic `chunk`:
+0 blocking, 1 warning, 3 notes — all resolved; `verify-resolutions` confirmed all four and raised
+two prose warnings on the fix delta (a 11-vs-12 disagreement between records, and a provenance
+claim the cited file contradicted), both corrected before commit. Digests grew slightly (1,589 →
+1,661; 530 → 562) — this chunk bought readability, not shrinkage. Always-loaded now **2,183**
+(CLAUDE.md 1,621 + slim 562), down from 3,573.
+
+Next: Chunk 03 — and read the "Known input to Chunk 03" note under Governance Checkpoints first;
+it carries an adjudication this chunk's review surfaced.
 
 ## Problem, Success, Scope
 
@@ -171,6 +183,15 @@ CLAUDE.md.
 4. Digest pointer tests and the 10,000-char inline limit still pass.
 5. `/prawduct:critic` passes with no blocking findings.
 
+`[CORRECTION: the 53.8 / 50.2 "average words per sentence" figures that motivated criterion 2
+were a measurement artifact. The splitter did not break markdown bullets or ·-separated
+rosters, so it scored whole list blocks as single sentences. Re-measured with list markers
+stripped, the real baseline was 26.9 (full) and 33.1 (slim) — meaning the FULL digest already
+met criterion 2 before this chunk touched it, and only the slim digest genuinely failed.
+Post-chunk: 22.1 and 19.1. The prose improvement is real but smaller than the plan claimed, and
+the remaining "130-word sentence" is the principles roster — a list, not prose. Recorded rather
+than quietly restated: the criterion was written on bad data.]`
+
 ### Chunk 03: Cross-surface rule consolidation
 **Type:** doc-only
 
@@ -219,3 +240,13 @@ shrank. Measure with the same script used to size this plan (word-count × 1.3, 
   CLAUDE.md need some of what left?
 - After Chunk 03 — the removal chunk. Re-read the 12 rules as a fresh agent would and confirm
   each is still findable at the moment it binds.
+
+**Known input to Chunk 03, surfaced by Chunk 02's review (pre-dates this plan).** The
+consolidation so far has run one direction only — checking that nothing is stated *twice*.
+The reverse gap is real: **"There is no 'pre-existing' exception"** and **"Durable artifacts are
+self-contained"** sit on the *full* digest's hardest-rules list and appear in neither CLAUDE.md
+nor the slim digest, so a **framework-repo** session receives neither in always-loaded context —
+they live only in `building.md`, which is read on demand. Chunk 03 adjudicates: promote both to
+the slim digest, accept the on-demand-only placement deliberately, or record why the framework
+repo needs them less than products do. Do not let the dedup pass close without answering this —
+a consolidation that only ever *removes* will silently widen a gap like this.
