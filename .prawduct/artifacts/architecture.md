@@ -217,6 +217,19 @@ unbounded, announced failure over an automatic deletion is the deliberate trade 
 exists because deleting an agent's note is the loss that matters — but the bound is the operator's
 to close, not the code's.
 
+**Both sides of the boundary can see the channel's state.** The failure this pair exists to fix was
+silent in both directions, so two surfaces make it visible, and neither is a gate. *Forward:* when a
+session did work and left no note — and left no hand-authored handoff to rescue either — the
+generated handoff says so, in the position the note would have occupied, because a file listing a
+session's commits and nothing else reads as a complete account of it. It is deliberately not raised
+when a note exists but could not be *read*: that is the machine's failure, has its own notice at the
+consumption site, and blaming the agent for it would contradict that notice. *Backward:* `handoff
+preview` renders through the same function `/clear` does and stops there, so checking what the next
+session would receive is no longer the same act as replacing what is there. The asymmetry is real
+and worth stating: the absence signal reaches the incoming agent, who cannot act on it. What reaches
+the agent who still could — the chunk-close step, the digest line, the preview — is all advisory
+too, by the same norm.
+
 **Known gap in the marker scheme:** it recognises a handoff that was *replaced* (no marker), not one
 that was *appended to* (marker still present) — that text is still overwritten. Closing it needs a
 retained copy or hash to diff against, judged disproportionate against a marker that already

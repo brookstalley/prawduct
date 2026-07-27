@@ -309,7 +309,14 @@ numbers in this plan are evidence of where the defects were observed, not the ed
 7. Full suite green; `/prawduct:critic` passes with no blocking findings.
 
 ### Chunk 03: Proactive close and the documentation surfaces
-**Type:** doc-only
+**Type:** code
+
+`[DECISION: Type corrected from `doc-only` to `code` at build time | because this chunk's own
+Status line and the plan's `governed_by` disposition both name a "false-success check" that no other
+chunk owns, and a check is a mechanism — Chunk 04 is CRT-7P5J and Chunk 05 is design-only, so
+leaving it out would have silently dropped a requirement the frontmatter had already committed to.
+The Done-when list below was written as if the chunk were prose-only; criteria 4 and 5 are added
+rather than the mechanism being cut | user can veto and demand the signal be dropped]`
 
 Make writing notes part of chunk close, and fix the affordance that caused the bug.
 
@@ -337,8 +344,15 @@ not by refusing to clear | user can veto and ask for a hard gate]`
    Builder the `building.md` chunk-close step this chunk adds; Critic **none today**, stated as
    such rather than left blank. (The surface table named this row and no chunk owned it — a
    Chunk 01 Critic finding under Framework Check 10.)
-4. Every touched budget still passes; no ceiling raised.
-5. `/prawduct:critic` passes with no blocking findings.
+4. The false-success check exists and is advisory: a session that did work and left no forward
+   note is told so **in the handoff**, and `/clear` is not blocked, delayed, or changed by it.
+   It must not fire when a note was left but could not be read — that is the machine's failure and
+   already has its own notice.
+5. `handoff preview` renders what the next session would receive and writes nothing — same
+   renderer as `/clear`, notes not consumed. (The plan listed this as optional; built because the
+   absence signal alone only reaches the agent who can no longer act on it.)
+6. Every touched budget still passes; no ceiling raised.
+7. `/prawduct:critic` passes with no blocking findings.
 
 ### Chunk 04: CRT-7P5J — the handoff stops reporting resolved findings
 **Type:** code

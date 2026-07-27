@@ -60,7 +60,9 @@ Before ending a work cycle, verify:
 
 Rationale: auto-filed NOTEs turn one-time observations into perpetual every-session lines — how a backlog drifts from a working set into a self-portrait of the tooling reviewing itself.
 
-**Work cycle boundary**: Is the work complete and the next task independent? Complete handoff and *affirmatively* tell the user `/clear` is safe: (1) persist pending requirements/decisions/plans, (2) update the build plan Status section — mark chunks, update Context, (3) state explicitly that governance is complete. Never signal safety if a governance step was skipped or failed. See `methodology/building.md` "Session Scope Discipline".
+**Work cycle boundary**: Is the work complete and the next task independent? Then *affirmatively* tell the user `/clear` is safe: (1) persist pending requirements/decisions/plans, (2) update the build plan Status section — mark chunks, update Context, (3) write the forward notes, (4) state explicitly that governance is complete. Never signal safety if a governance step was skipped or failed. See `methodology/building.md` "Session Scope Discipline".
+
+**Forward notes are not a reflection.** A reflection looks back at what happened; `.prawduct/.handoff-notes.md` looks forward at what the next session needs — where you stopped, what you'd do next, what would bite them. It is the one session file **you** own; the rest of what the next session receives is machine state about the past, plus whatever you curated into the build plan's Context block. The generated `.prawduct/.session-handoff.md` is the machine's: it is rewritten from your notes at every `/clear`, so writing into it directly is how context gets lost.
 
 ### Step 7: Methodology Check
 

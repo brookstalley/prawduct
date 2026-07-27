@@ -63,6 +63,8 @@ The CLI groups by responsibility. Every subcommand is read-only unless marked mu
   (`verify-coverage`, `check-cumulative-critic`, `infer-critic-mode`, `classify-diff-risk`,
   `verify-chunk-refs`).
 - **Test evidence** — `test-evidence record` (mutating), `test-status` (freshness), `validate-evidence`.
+- **Session handoff** — `handoff preview`: renders the handoff the next session would receive,
+  through the same function `clear` uses, without writing it or consuming the forward notes.
 - **PR / release gates & views** — `check-pr-doc-only`, `check-change-log-entry`, `resolve-base`,
   `regen-views` (mutating), `stamp-merged` (deprecated, mutating).
 - **Operator verification** — `check-operator-verification`, `accept-operator-verification`,

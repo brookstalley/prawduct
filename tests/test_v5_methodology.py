@@ -107,9 +107,20 @@ class TestBuildingMethodology:
         # cadence detail lives in review-cycle.md (the file that owns per-mode
         # behavior), the Resolve-findings step dropped a why that CLAUDE.md
         # already carries, and the "Test corruption" trap went — it restated
-        # "Tests never weaken" verbatim, closing sentence included. ~4591 now —
-        # headroom is a few words BY DESIGN; the next addition trims or
-        # relocates first.
+        # "Tests never weaken" verbatim, closing sentence included. The
+        # session-continuity work (2026-07-27) added chunk-close step 7 (write
+        # the forward notes) and rewrote the one sentence describing the /clear
+        # hook into the two-files-two-owners paragraph, and PAID FOR BOTH the
+        # same way — ~135 tokens of additions against ~145 of trims, all of it
+        # in-file redundancy rather than content: two Common Traps that restated
+        # rules stated earlier in this same file ("Silent requirement dropping"
+        # ↔ Working With Specs' closing line; "Ignoring the Critic" ↔ the
+        # Blocking-findings paragraph; "Pre-existing dismissal" was already gone
+        # on the same grounds), trailing sentences that restated their own
+        # bullet (multi-hop, PBT, verification theater), and prose fat in the
+        # intro, worktree, PR and Critic-timing paragraphs. ~4590 now, one token
+        # BELOW where the addition found it. Headroom is a few words BY DESIGN;
+        # the next addition trims or relocates first.
         tokens = estimate_tokens(self.content)
         assert tokens < 4600, f"building.md is ~{tokens} tokens, should be <4600"
 

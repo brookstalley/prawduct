@@ -132,7 +132,7 @@ reuse (why and mechanics: `plugin/skills/pr/SKILL.md` Merge Flow step 4).
 
 ## The Learning Loop
 
-Reflect at **work boundaries**, not at session end. When a chunk concludes (Critic passes), a bug is fixed, an error is recovered from, or a judgment call is made — reflect *now*, while context is fresh. Append to `.prawduct/.session-reflected` as you go. The stop hook enforces only a session-end floor (a reflection exists), not this cadence — by the time the user says `/clear`, reflection should already be captured and the handoff fast.
+Reflect at **work boundaries**, not at session end. When a chunk concludes (Critic passes), a bug is fixed, an error is recovered from, or a judgment call is made — reflect *now*, while context is fresh. Append to `.prawduct/.session-reflected` as you go. The stop hook enforces only a session-end floor (a reflection exists), not this cadence — by the time the user says `/clear`, both the reflection and the forward notes (`.prawduct/.handoff-notes.md`, the one session file you own) should already be on disk, and the boundary fast.
 
 After every significant action:
 

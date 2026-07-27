@@ -3,6 +3,63 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-07-27: The guides stop naming only the file the agent must not write (session-handoff-continuity Chunk 03)
+
+<!-- prawduct: type=feature | scope=session-handoff-continuity | chunks=03 -->
+
+Chunk 01 built the forward channel and Chunk 02 made the read path correct. Neither addressed why
+agents wrote `.session-handoff.md` by hand in the first place: it was the only handoff filename the
+methodology named. An affordance, not a missing mechanism — so this chunk is mostly prose, plus the
+two runtime surfaces that let each side of a session boundary see the channel's real state.
+
+**Writing the notes is now a step in chunk close.** `building.md`'s "Session Scope Discipline"
+sequence gains step 7 (append to `.prawduct/.handoff-notes.md`: where you stopped, what you'd do
+next, what would bite them), and the affirmative signal becomes "… build plan updated, handoff notes
+written. Safe to `/clear`." The single sentence that used to describe the `/clear` hook is now a
+**two files, two owners** paragraph naming both files and who owns each. `reflection.md`'s Step 6
+said "Complete handoff", which reads as an action on the generated file; it now numbers the notes
+step and carries a "forward notes are not a reflection" paragraph. Both digests gain the rule.
+
+**Paid for in place.** `building.md` sat at ~4591 of a 4600-token ceiling that exists to lock a diet
+in. The additions (~135 tokens) were funded by ~145 tokens of in-file redundancy — three Common
+Traps that restated rules stated earlier in the same file, three trailing sentences that restated
+their own bullet, and prose fat in four paragraphs. It now measures 4590: one token below where the
+addition found it. No ceiling raised.
+
+**The handoff states its own absence.** When a session did work and left no forward note — and left
+no hand-authored handoff to rescue either — the generated handoff says so, in the position the note
+would have occupied, and names the file the next agent should write. A handoff that lists a
+session's commits and nothing else *reads* as a complete account of it, which is how continuity was
+lost while the agent reported success. Advisory by construction: it adds a section and can block,
+delay, or alter nothing, per the ratified "authority fails closed; advice fails soft". It stays
+silent in three cases, each a deliberate discrimination rather than an omission — a note that exists
+but could not be *read* (the machine's failure, which already has its own notice, and blaming the
+agent for it would contradict that notice), a rescued hand-authored handoff (forward context did
+arrive, by the wrong route), and a session that changed nothing (a notice with no substance behind
+it only teaches the reader to skip the section).
+
+**`prawduct-hook handoff preview` shows what the next session would receive, without causing it.**
+`generate_session_handoff` split into a pure `render_session_handoff` plus the two things a preview
+must not do — writing the file and narrating failures. Until now the only way to see the handoff was
+`/clear`, which is also the act that destroys what it replaces, so the check that would prevent a
+mistake required making it. Read-only: nothing is written and the notes are never consumed, both
+pinned by mutation-tested assertions. The plan listed this as optional; it was built because the
+absence signal alone reaches only the incoming agent, who can no longer act on it.
+
+**A prose pin, not a fourth grep.** Every agent-facing guide naming `.session-handoff.md` must also
+name `.handoff-notes.md`. Deliberately not a verb list ("no sentence tells the agent to *write* the
+handoff") — that keys on which words read as instructions, and a convention-keyed detector drifts
+with the convention. What it does not prove is recorded in the test: co-naming is not adjacency, so
+it catches the whole-file omission the defect actually had, and no more.
+
+Chunk 03's declared `Type:` was `doc-only`, but the plan's own Status line and its `governed_by`
+disposition both named a false-success check that no other chunk owned. Corrected to `code` with the
+reasoning recorded, and the two missing acceptance criteria added rather than the mechanism cut.
+
+23 new tests (suite 2623 → 2646, counted not estimated). Verified live through the real `/clear` on
+a scratch repo, both branches: a session with three commits and no note gets the signal with an
+honest count; the same shape with a note gets the note instead, and the note is consumed.
+
 ## 2026-07-27: One answer to "which chunk is current," and a handoff that stops lying about the plan (session-handoff-continuity Chunk 02)
 
 <!-- prawduct: type=fix | scope=session-handoff-continuity | chunks=02 -->

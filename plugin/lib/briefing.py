@@ -1068,6 +1068,20 @@ class HandoffResult(NamedTuple):
         return self.notes_state in (NOTES_CARRIED, NOTES_EMPTY)
 
 
+class HandoffRender(NamedTuple):
+    """The assembled handoff text, and what each input contributed to it.
+
+    ``text`` is ``""`` for the two cases where there is nothing to write:
+    nothing beyond the boilerplate header, and an existing handoff that could
+    not be read (which the writer must leave alone rather than overwrite — the
+    ``rescue_state`` distinguishes them).
+    """
+
+    text: str
+    notes_state: str
+    rescue_state: str
+
+
 def _read_handoff_notes(prawduct_dir: Path) -> tuple[str, str]:
     """Read the model-authored forward notes as ``(text, state)``.
 
@@ -1138,22 +1152,54 @@ def _read_unmarked_handoff(prawduct_dir: Path) -> tuple[str, str]:
     return (body, RESCUE_CARRIED if body else RESCUE_NONE)
 
 
-def generate_session_handoff(project_dir: Path) -> HandoffResult:
-    """Generate .prawduct/.session-handoff.md with context for the next session.
+def _no_forward_note_section(changed: list[str], commits: list[str]) -> list[str]:
+    """The handoff's own statement that its forward half is missing.
 
-    Called during /clear BEFORE session files are deleted. Assembles handoff
-    from: the model-authored forward notes, any hand-authored handoff being
-    rescued, WIP context, session reflection, critic findings, files changed,
-    and commits made during the session.
+    Advice fails soft, so nothing here blocks anything — but failing soft is
+    not failing silent. A handoff that lists a session's commits and says
+    nothing else *reads* as a complete account of that session, which is how
+    continuity got lost while the agent reported success. When work happened
+    and no forward note was left, the handoff says so, in the position the note
+    would have occupied.
 
-    Reports whether a handoff was written and what became of the notes, so the
-    caller can clear the notes file only once its text is durably in the
-    handoff. A note that was never carried — unreadable, or lost to a failed
-    write — survives for the next `/clear` rather than being dropped.
+    Empty when the session changed nothing: there was nothing to hand off, and
+    a notice with no substance behind it only teaches the reader to skip the
+    section.
+    """
+    if not changed and not commits:
+        return []
+    did = []
+    if changed:
+        did.append(f"{len(changed)} file{'' if len(changed) == 1 else 's'} changed")
+    if commits:
+        did.append(f"{len(commits)} commit{'' if len(commits) == 1 else 's'}")
+    return [
+        "## No Forward Note From The Previous Session",
+        "<!-- the machine can report this absence; it cannot fill it -->",
+        f"That session ({', '.join(did)}) left no `.prawduct/{HANDOFF_NOTES_NAME}`. "
+        "Everything below is machine-derived and backward-looking: a record of what "
+        "happened, not a statement of what to do next or of what the previous agent "
+        "knew and did not write down. Re-derive intent from the build plan rather "
+        "than reading this handoff as complete.",
+        "",
+    ]
+
+
+def render_session_handoff(project_dir: Path) -> HandoffRender:
+    """Assemble the handoff text without writing, deleting, or consuming anything.
+
+    Split out from :func:`generate_session_handoff` so the content can be
+    inspected without causing it. `/clear` is the only other way to see this
+    text, and it is also the act that destroys what it replaces — so until this
+    existed, the check that would prevent the mistake required making it.
+
+    Reads the repo and nothing else: no file is created, modified, or removed
+    here, and the notes file is never consumed. The states it reports are what
+    the writer needs in order to decide both of those.
     """
     prawduct_dir = gitstate.get_prawduct_dir(project_dir)
     if not prawduct_dir.is_dir():
-        return HandoffResult(False, NOTES_ABSENT)
+        return HandoffRender("", NOTES_ABSENT, RESCUE_NONE)
 
     sections: list[str] = ["# Session Handoff", "", HANDOFF_MARKER, ""]
     # Everything above is boilerplate every run emits; content is anything past it.
@@ -1173,18 +1219,9 @@ def generate_session_handoff(project_dir: Path) -> HandoffResult:
     if rescue_state == RESCUE_UNREADABLE:
         # The one case where NOT writing is the safe move. The file cannot be
         # read, so it cannot be folded in, so writing would destroy content that
-        # may be the previous agent's only forward context. Preserve first, and
-        # say so on stdout — SessionStart shows stdout to the model, and the
-        # incoming agent is the party harmed by a stale handoff.
-        print(
-            f"NOTE: .prawduct/.session-handoff.md could not be read, so it was left "
-            "untouched rather than overwritten — anything you read in it is from an "
-            "earlier session, and this session's context is NOT in it. Move or fix "
-            f"that file, then write forward notes to `.prawduct/{HANDOFF_NOTES_NAME}`."
-        )
-        return HandoffResult(
-            False, NOTES_UNDELIVERED if notes_state == NOTES_CARRIED else notes_state
-        )
+        # may be the previous agent's only forward context. Rendering stops here
+        # and reports the state; the writer declines and narrates it.
+        return HandoffRender("", notes_state, rescue_state)
     if rescued:
         sections.append("## Preserved: Hand-Authored Handoff")
         sections.append(
@@ -1195,6 +1232,21 @@ def generate_session_handoff(project_dir: Path) -> HandoffResult:
         )
         sections.append(rescued)
         sections.append("")
+
+    # What the session actually did. Read here rather than at their own sections
+    # below because the no-forward-note signal is a judgement about the same
+    # facts, and deriving "was this a substantive session" from a second source
+    # would let the two answers drift.
+    changed = gitstate._get_session_changed_files(project_dir)
+    commits = _git_session_commits(project_dir)
+
+    # 0c. The forward channel exists and was not used. Deliberately NOT fired on
+    # NOTES_UNREADABLE: a note WAS left there, and saying otherwise would blame
+    # the agent for the machine's failure to read it — that state has its own
+    # notice at the consumption site. A rescued hand-authored handoff is forward
+    # context too, so it suppresses this as well.
+    if notes_state in (NOTES_ABSENT, NOTES_EMPTY) and not rescued:
+        sections.extend(_no_forward_note_section(changed, commits))
 
     # 1. Work context (prefer build plan Status, fall back to project-state.yaml WIP)
     wip = _get_active_work(project_dir)
@@ -1236,7 +1288,6 @@ def generate_session_handoff(project_dir: Path) -> HandoffResult:
         sections.append("")
 
     # 4. Files changed during session
-    changed = gitstate._get_session_changed_files(project_dir)
     if changed:
         sections.append("## Files Changed This Session")
         for f in changed[:20]:  # Cap at 20 to keep handoff manageable
@@ -1246,7 +1297,6 @@ def generate_session_handoff(project_dir: Path) -> HandoffResult:
         sections.append("")
 
     # 5. Commits made during session
-    commits = _git_session_commits(project_dir)
     if commits:
         sections.append("## Commits This Session")
         for c in commits[:10]:
@@ -1255,20 +1305,60 @@ def generate_session_handoff(project_dir: Path) -> HandoffResult:
             sections.append(f"- ... and {len(commits) - 10} more")
         sections.append("")
 
-    # Only write if there's actual content beyond the header. Atomic
-    # (STH-8M3V): the next session's briefing reads this file, and a torn
-    # handoff silently loses cross-session context.
+    # Nothing beyond the boilerplate header means nothing to write — and,
+    # because the rescued body counts as content, that verdict is only reached
+    # when there is no hand-authored context either. Deliberately NOT a guard on
+    # overwriting: preservation happens by folding the old body in above, never
+    # by declining to write.
     #
-    # Nothing to say means nothing to write — and, because the rescued body
-    # counts as content, the file is left untouched only when it holds no
-    # hand-authored context either. This is deliberately NOT a guard on
-    # overwriting: preservation happens by folding the old body in above,
-    # never by declining to write.
-    if len(sections) > header_len:
+    # Non-empty notes always push past header_len, so an empty render can never
+    # coincide with notes pending — nothing is dropped by returning "".
+    text = "\n".join(sections) + "\n" if len(sections) > header_len else ""
+    return HandoffRender(text, notes_state, rescue_state)
+
+
+def generate_session_handoff(project_dir: Path) -> HandoffResult:
+    """Write .prawduct/.session-handoff.md with context for the next session.
+
+    Called during /clear BEFORE session files are deleted. The content comes
+    from :func:`render_session_handoff` (the model-authored forward notes, any
+    hand-authored handoff being rescued, WIP context, session reflection, critic
+    findings, files changed, and commits made during the session); this function
+    owns only the two things a preview must not do — writing the file, and
+    narrating the failures to the audience that can act on them.
+
+    Reports whether a handoff was written and what became of the notes, so the
+    caller can clear the notes file only once its text is durably in the
+    handoff. A note that was never carried — unreadable, or lost to a failed
+    write — survives for the next `/clear` rather than being dropped.
+    """
+    prawduct_dir = gitstate.get_prawduct_dir(project_dir)
+    if not prawduct_dir.is_dir():
+        return HandoffResult(False, NOTES_ABSENT)
+
+    rendered = render_session_handoff(project_dir)
+    notes_state = rendered.notes_state
+
+    if rendered.rescue_state == RESCUE_UNREADABLE:
+        # The existing handoff could not be read, so it could not be folded in,
+        # so writing would destroy content that may be the previous agent's only
+        # forward context. Say so on stdout — SessionStart shows stdout to the
+        # model, and the incoming agent is the party harmed by a stale handoff.
+        print(
+            "NOTE: .prawduct/.session-handoff.md could not be read, so it was left "
+            "untouched rather than overwritten — anything you read in it is from an "
+            "earlier session, and this session's context is NOT in it. Move or fix "
+            f"that file, then write forward notes to `.prawduct/{HANDOFF_NOTES_NAME}`."
+        )
+        return HandoffResult(
+            False, NOTES_UNDELIVERED if notes_state == NOTES_CARRIED else notes_state
+        )
+
+    if rendered.text:
         try:
-            atomic_write_text(
-                prawduct_dir / ".session-handoff.md", "\n".join(sections) + "\n"
-            )
+            # Atomic: the next session's briefing reads this file, and a torn
+            # handoff silently loses cross-session context.
+            atomic_write_text(prawduct_dir / ".session-handoff.md", rendered.text)
             return HandoffResult(True, notes_state)
         except Exception as exc:  # prawduct:allow prawduct/broad-except -- handoff write must never block clear
             # Fails soft, but never silent — degrading gracefully and narrating
@@ -1290,9 +1380,59 @@ def generate_session_handoff(project_dir: Path) -> HandoffResult:
             return HandoffResult(
                 False, NOTES_UNDELIVERED if notes_state == NOTES_CARRIED else notes_state
             )
-    # Nothing to write. Non-empty notes always push past header_len, so this
-    # branch cannot be reached with notes pending — nothing is being dropped.
     return HandoffResult(False, notes_state)
+
+
+def handoff_cmd(project_dir: Path, argv: list[str]) -> int:
+    """``prawduct-hook handoff preview`` — what the next session would receive.
+
+    Read-only by construction: it renders through the same function `/clear`
+    does and stops, so the preview is the artifact rather than a description of
+    it, and looking is not the same act as replacing. Nothing is written and the
+    notes file is never consumed.
+
+    Exit codes per ``artifacts/api-contract.md``: 0 for a successful preview,
+    including the truthful "nothing would be written"; 1 when the repo has no
+    ``.prawduct/``; 2 for a usage error. Content goes to stdout so it can be
+    piped; every diagnostic goes to stderr so it cannot be mistaken for content.
+    """
+    if argv[:1] != ["preview"] or len(argv) > 1:
+        print("Usage: prawduct-hook handoff preview", file=sys.stderr)
+        return 2
+
+    prawduct_dir = gitstate.get_prawduct_dir(project_dir)
+    if not prawduct_dir.is_dir():
+        print("handoff: no .prawduct/ in this repo — nothing to preview", file=sys.stderr)
+        return 1
+
+    rendered = render_session_handoff(project_dir)
+    if rendered.rescue_state == RESCUE_UNREADABLE:
+        print(
+            "NOTE: .prawduct/.session-handoff.md exists and cannot be read, so /clear "
+            "would leave it untouched rather than overwrite it — the next session would "
+            "read an EARLIER session's handoff. Move or fix that file.",
+            file=sys.stderr,
+        )
+        return 0
+    if not rendered.text:
+        print(
+            "NOTE: nothing to hand off yet — /clear would leave "
+            ".prawduct/.session-handoff.md exactly as it is.",
+            file=sys.stderr,
+        )
+        return 0
+
+    print(rendered.text, end="")
+    if rendered.notes_state == NOTES_UNREADABLE:
+        # The preview's job is to show what would arrive; a note that cannot be
+        # read would not arrive, and its absence above is otherwise silent.
+        print(
+            f"NOTE: .prawduct/{HANDOFF_NOTES_NAME} exists and could not be read (not "
+            "valid UTF-8?) — none of it is in the preview above, and none of it would "
+            "reach the next session.",
+            file=sys.stderr,
+        )
+    return 0
 
 
 # =============================================================================
