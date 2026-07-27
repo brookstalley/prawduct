@@ -36,6 +36,7 @@ import re
 import subprocess
 import sys
 from pathlib import Path
+from typing import NamedTuple
 
 from . import buildplan_refs, gates, gitstate
 from .backlog import legacy as backlog
@@ -918,18 +919,140 @@ def _summarize_critic_findings(prawduct_dir: Path) -> str | None:
         return None
 
 
-def generate_session_handoff(project_dir: Path) -> None:
+# The machine marker. Every generated handoff carries it as its first body
+# line; its absence is how the generator recognises a `.session-handoff.md`
+# that a model or a human wrote by hand, so it can be rescued rather than
+# overwritten. Detection matches the stable PREFIX, never the whole line, so
+# the human-readable tail can be reworded without stranding older files.
+HANDOFF_MARKER_PREFIX = "<!-- prawduct:generated-handoff"
+HANDOFF_MARKER = (
+    f"{HANDOFF_MARKER_PREFIX} — written by the machine at /clear. Do not hand-edit: "
+    "the next /clear regenerates this file. Forward notes for the next session go in "
+    "`.prawduct/.handoff-notes.md`. -->"
+)
+
+# The forward channel: the one file in the handoff pair that a model owns.
+HANDOFF_NOTES_NAME = ".handoff-notes.md"
+
+# What became of the notes file this run. The caller deletes on CARRIED and
+# EMPTY and on nothing else: "absent" has nothing to delete, and the two
+# failure states hold text that never reached the handoff, so unlinking them
+# would destroy the note — the exact loss this channel exists to prevent.
+# Collapsing "unreadable" into "no notes" is what makes that mistake easy, so
+# the states are kept distinct all the way to the deletion site.
+NOTES_ABSENT = "absent"
+NOTES_EMPTY = "empty"
+NOTES_CARRIED = "carried"
+NOTES_UNREADABLE = "unreadable"
+NOTES_UNDELIVERED = "undelivered"
+
+
+class HandoffResult(NamedTuple):
+    """Outcome of a handoff generation: was it written, and what became of the notes."""
+
+    written: bool
+    notes_state: str
+
+    @property
+    def notes_consumed(self) -> bool:
+        """True when the notes file may be deleted without losing anything."""
+        return self.notes_state in (NOTES_CARRIED, NOTES_EMPTY)
+
+
+def _read_handoff_notes(prawduct_dir: Path) -> tuple[str, str]:
+    """Read the model-authored forward notes as ``(text, state)``.
+
+    The counterpart to every other handoff source, which is machine state
+    looking backward: this is the only place an agent can leave intent for the
+    next session. Consumed into the handoff and then cleared by `/clear`, so a
+    note never outlives the session boundary it was written for.
+
+    The state is returned rather than inferred from an empty string because
+    "there were no notes" and "the notes could not be read" demand opposite
+    handling at the deletion site.
+    """
+    notes_path = prawduct_dir / HANDOFF_NOTES_NAME
+    if not notes_path.is_file():
+        return "", NOTES_ABSENT
+    try:
+        # Explicit encoding: the notes are markdown written by an agent, and
+        # decodability must not depend on the operator's locale.
+        text = notes_path.read_text(encoding="utf-8").strip()
+    except (UnicodeDecodeError, OSError):
+        return "", NOTES_UNREADABLE
+    return (text, NOTES_CARRIED if text else NOTES_EMPTY)
+
+
+def _read_unmarked_handoff(prawduct_dir: Path) -> str:
+    """Return the body of a `.session-handoff.md` the machine did not write.
+
+    Returns "" when the file is absent, machine-generated, or empty. A file
+    without :data:`HANDOFF_MARKER_PREFIX` was authored by a model or a human,
+    and overwriting it is exactly the silent context loss this generator
+    exists to prevent — so its body is preserved into the new handoff instead.
+    Belt to the notes channel's braces: the channel is the documented path,
+    this catches the agent who writes the familiar filename out of habit.
+    """
+    handoff_path = prawduct_dir / ".session-handoff.md"
+    if not handoff_path.is_file():
+        return ""
+    try:
+        existing = handoff_path.read_text()
+    except (UnicodeDecodeError, OSError):
+        return ""
+    if HANDOFF_MARKER_PREFIX in existing:
+        return ""
+    body = existing.strip()
+    # Drop a leading "# Session Handoff" H1 so the rescued body nests cleanly
+    # under its own section heading instead of re-titling the document.
+    lines = body.splitlines()
+    if lines and lines[0].strip().lower() == "# session handoff":
+        body = "\n".join(lines[1:]).strip()
+    return body
+
+
+def generate_session_handoff(project_dir: Path) -> HandoffResult:
     """Generate .prawduct/.session-handoff.md with context for the next session.
 
     Called during /clear BEFORE session files are deleted. Assembles handoff
-    from: WIP context, session reflection, critic findings, files changed,
+    from: the model-authored forward notes, any hand-authored handoff being
+    rescued, WIP context, session reflection, critic findings, files changed,
     and commits made during the session.
+
+    Reports whether a handoff was written and what became of the notes, so the
+    caller can clear the notes file only once its text is durably in the
+    handoff. A note that was never carried — unreadable, or lost to a failed
+    write — survives for the next `/clear` rather than being dropped.
     """
     prawduct_dir = gitstate.get_prawduct_dir(project_dir)
     if not prawduct_dir.is_dir():
-        return
+        return HandoffResult(False, NOTES_ABSENT)
 
-    sections: list[str] = ["# Session Handoff", ""]
+    sections: list[str] = ["# Session Handoff", "", HANDOFF_MARKER, ""]
+    # Everything above is boilerplate every run emits; content is anything past it.
+    header_len = len(sections)
+
+    # 0. The model's forward notes come first, above every machine section —
+    #    intent for the next session outranks the record of the last one.
+    notes, notes_state = _read_handoff_notes(prawduct_dir)
+    if notes:
+        sections.append("## Notes For The Next Session")
+        sections.append("<!-- written by the previous session's agent, not the machine -->")
+        sections.append(notes)
+        sections.append("")
+
+    # 0b. Preservation net: rescue a handoff the machine did not write.
+    rescued = _read_unmarked_handoff(prawduct_dir)
+    if rescued:
+        sections.append("## Preserved: Hand-Authored Handoff")
+        sections.append(
+            "<!-- the previous `.session-handoff.md` had no machine marker, so it was "
+            "authored by a model or a human and is preserved here rather than "
+            f"overwritten. Write forward notes to `.prawduct/{HANDOFF_NOTES_NAME}` instead — "
+            "this file is regenerated on every /clear. -->"
+        )
+        sections.append(rescued)
+        sections.append("")
 
     # 1. Work context (prefer build plan Status, fall back to project-state.yaml WIP)
     wip = _get_active_work(prawduct_dir)
@@ -993,13 +1116,41 @@ def generate_session_handoff(project_dir: Path) -> None:
     # Only write if there's actual content beyond the header. Atomic
     # (STH-8M3V): the next session's briefing reads this file, and a torn
     # handoff silently loses cross-session context.
-    if len(sections) > 2:
+    #
+    # Nothing to say means nothing to write — and, because the rescued body
+    # counts as content, the file is left untouched only when it holds no
+    # hand-authored context either. This is deliberately NOT a guard on
+    # overwriting: preservation happens by folding the old body in above,
+    # never by declining to write.
+    if len(sections) > header_len:
         try:
             atomic_write_text(
                 prawduct_dir / ".session-handoff.md", "\n".join(sections) + "\n"
             )
-        except Exception:  # prawduct:allow prawduct/broad-except -- handoff write must never block clear
-            pass
+            return HandoffResult(True, notes_state)
+        except Exception as exc:  # prawduct:allow prawduct/broad-except -- handoff write must never block clear
+            # Fails soft, but never silent — degrading gracefully and narrating
+            # false success are not the same thing. This half is the operator's:
+            # a write that failed is theirs to diagnose, so it goes to stderr
+            # with its housekeeping siblings. The agent-facing half (a note that
+            # did not reach the next session) is emitted by the caller on
+            # stdout, which is the channel the incoming agent actually reads.
+            print(
+                f"NOTE: could not write .session-handoff.md ({exc}) — this session's "
+                "context will not reach the next one"
+                + (
+                    f"; {HANDOFF_NOTES_NAME} is kept for the next /clear"
+                    if notes_state == NOTES_CARRIED
+                    else ""
+                ),
+                file=sys.stderr,
+            )
+            return HandoffResult(
+                False, NOTES_UNDELIVERED if notes_state == NOTES_CARRIED else notes_state
+            )
+    # Nothing to write. Non-empty notes always push past header_len, so this
+    # branch cannot be reached with notes pending — nothing is being dropped.
+    return HandoffResult(False, notes_state)
 
 
 # =============================================================================

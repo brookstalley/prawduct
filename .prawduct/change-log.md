@@ -3,6 +3,75 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-07-26: The handoff gets a forward channel, and stops destroying what it finds (session-handoff-continuity Chunk 01)
+
+<!-- prawduct: type=feature | scope=session-handoff-continuity | chunks=01 -->
+
+Every source feeding `.session-handoff.md` was backward-looking machine state, so an agent with
+something to tell the next session had nowhere to put it — and wrote the handoff file itself, which
+`/clear` then overwrote. The overwrite guard was `if len(sections) > 2`: it preserved a
+hand-authored handoff *only when the machine had nothing to say*, so the file survived when it
+mattered least and was clobbered in every session with real work. Intermittent, therefore
+unlearnable.
+
+**The channel.** `.prawduct/.handoff-notes.md` is model-owned — the one session file the model
+writes and the machine reads. The generator consumes it and emits it above every machine section,
+because intent for the next session outranks the record of the last one.
+
+**The preservation net.** Every generated handoff now opens with a machine marker. A
+`.session-handoff.md` *without* it was authored by a model or a human, so its body is folded into
+the new handoff under a labelled section instead of being dropped. Two mechanisms rather than one
+because they fail differently: the channel is the documented path, the net catches the agent who
+reaches for the familiar filename out of habit — which the evidence says is the common case. The
+marker is also what keeps the net from compounding; without it every `/clear` would nest the
+previous handoff inside the next one, unbounded, and a test pins that.
+
+*Two choices worth naming.* **Consumption is transactional** — a note is deleted only once its text
+is durably in the handoff; deleting a note the agent deliberately wrote is the exact loss this
+channel exists to prevent. And notes get **no separate archive** unlike `.session-reflected` →
+`reflections.md`: their text is already carried verbatim into the handoff, and a second growing file
+with no reader is clutter.
+
+**The Critic caught the near-miss in that first claim, and all three reviewers found it
+independently.** The transaction gated on "a handoff was written" — which is true whenever any
+*other* section produced content. Meanwhile the notes reader collapsed absent, empty and
+*unreadable* into one empty string, so an undecodable notes file was deleted with its text carried
+nowhere: unrecoverable, and reachable through the documented happy path. The code asserted the
+invariant in four places and implemented a proxy for it. Fixed at the model rather than the comment
+— the reader now reports a state (`absent` / `empty` / `carried` / `unreadable` / `undelivered`) and
+consumption keys on **delivery**, with `read_text(encoding="utf-8")` so decodability no longer
+depends on the operator's locale. Generalizable: *when a guarantee names a specific event, gate on
+that event, not on a signal that usually co-occurs with it.*
+
+Two follow-ons from the same review. Handoff generation was the **only** failure path in `cmd_clear`
+that stayed silent while every sibling printed a `NOTE:` — an agent who wrote a note, saw `/clear`
+succeed and said "safe to clear" was wrong and nobody was told, which is the same silent-success
+class as the original bug. It now names its consequence on stderr; *fails soft* was never *fails
+silent*. And `active_build_plan` was `null` while the plan's own prose claimed it "deliberately"
+pointed at an artifact that does not exist — so this repo's handoff carried no work section at all,
+the defect class this plan is fixing, reproduced by the plan's own stale text. Repointed.
+
+*Accepted, one-time:* every `.session-handoff.md` that exists today predates the marker, so the
+first `/clear` after this ships preserves one machine-generated handoff as "hand-authored". One
+mislabeled section, self-clearing on the following run. The alternative — sniffing old machine
+handoffs by their headings — is a heuristic that could silently drop a model-authored file that
+happens to use the same headings, i.e. the failure being fixed. Noise once beats loss ever.
+
+One follow-on the resolution pass surfaced: the never-silent diagnostics were routed to the audience
+that cannot act on them. Both were on stderr — which `cmd_clear` itself documents as *user*-visible
+only, "not to the agent" — while their comments named the agent as the reader. Split by audience
+rather than by convention: a note that failed to reach the next session is a continuity fact and
+goes to **stdout**, which SessionStart shows to the incoming agent; a failed write is housekeeping
+and stays on stderr with its siblings. The unreadable-notes notice also gained a remedy line, since
+it re-fires every session until someone acts and a repeating notice with no exit is noise.
+
+`generate_session_handoff` now returns a `HandoffResult(written, notes_state)` so the caller can
+gate consumption on delivery; the write guard moved from a magic `> 2` to a computed header length.
+One test was removed, not weakened: `test_notes_file_in_untrack_set` asserted hook *source text*,
+and `TestSessionGitignoreMirror::test_session_file_sets_match` already asserts set equality between
+`_SESSION_GITIGNORED_PATHS` and `GITIGNORE_ENTRIES` — strictly stronger, and it would catch a
+drifted list that the grep would pass. Suite 2550 → 2571.
+
 ## 2026-07-21: the backlog service came back, laid out under plugin/ — and took the local-first norm with it
 
 <!-- prawduct: type=feature -->

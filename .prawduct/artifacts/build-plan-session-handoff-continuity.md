@@ -33,10 +33,13 @@ agent left no note.
   `/clear`s without warning still gets continuity), so something must always generate it. Two
   owners for one file is the bug we are fixing. Cost of this choice: a second filename the model
   must learn, mitigated by Chunk 01's preservation net.
-- `[ASSUMPTION: notes are consumed and archived at `/clear`, not carried forward indefinitely
+- `[ASSUMPTION: notes are consumed at `/clear`, not carried forward indefinitely
   | MED impact | user can correct]`
-  A note written three sessions ago and never cleared would resurface as current intent. Archival
-  mirrors `.session-reflected` → `reflections.md`.
+  A note written three sessions ago and never cleared would resurface as current intent.
+  *Resolved in Chunk 01, and narrowed:* consumed yes, **archived no** — the note's text is already
+  carried verbatim into `.session-handoff.md`, so a second growing file mirroring
+  `.session-reflected` → `reflections.md` would have no reader. Consumption is transactional and
+  keys on delivery, so a note that never reached the handoff is kept rather than cleared.
 - `[ASSUMPTION: the "no forward note despite substantive work" signal is advisory, never blocking
   | MED impact | user can override]`
   Forced by the architecture's "advice fails soft" norm, not by preference — see the Chunk 03
@@ -62,7 +65,14 @@ is the single decision the rest of the plan hangs from.
 - [ ] Chunk 04: CRT-7P5J — the handoff's Critic summary composes resolution facts
 - [ ] Chunk 05: SCN-7K4B — design only: program-level continuity, advance the item or defer it
 
-Context: Plan written 2026-07-26 on `feature/session-handoff-continuity` (off develop). Parents:
+Context: **Chunk 01 built** (2026-07-26) — `.prawduct/.handoff-notes.md` is the model-owned forward
+channel; the generator emits it first, carries a machine marker, and folds an unmarked
+(hand-authored) handoff in rather than overwriting it. Consumption is transactional. The pair's
+contract is recorded in `architecture.md` § "The one model-owned session file" — that is the
+persisted-format enumeration Chunk 01 called for, and the answers are: nothing but the generator
+reads the notes; per-worktree; unconsumed notes survive to the next `/clear`. Chunk 02 is next.
+
+Plan written 2026-07-26 on `feature/session-handoff-continuity` (off develop). Parents:
 **SCN-4H9T** (the upstream triage of discodon's STH-9FYI — five defects, all reproduced against
 this repo's own live plan), plus **CRT-7P5J** and **SCN-7K4B**. All three touch
 `generate_session_handoff`, which is why they are one plan and not three patches to one function.
@@ -74,8 +84,12 @@ the correct derivation lives.
 Four independent wrong-output defects in one generator is the argument for scoping it as one body
 of work rather than four picks.
 
-`active_build_plan` deliberately still points at `build-plan-governance-prose-diet.md` (Chunk 04
-pending); repoint after that plan's release, per `planning.md` "Plan lifecycle on gitflow".
+`active_build_plan` now points here. The plan previously claimed it "deliberately still points at
+`build-plan-governance-prose-diet.md` (Chunk 04 pending)" — false on both halves, caught by the
+Chunk 01 Critic: the pointer was `null` (cleared at the v2.1.8 release) and no artifact by that name
+exists; `build-plan-prose-diet.md` does, and it is 3/3 complete. A null pointer with no
+`artifacts/build-plan.md` fallback is exactly why this repo's own handoff carries no work section —
+the defect class this plan fixes, reproduced by the plan's own stale prose.
 
 ## Problem, Success, Scope
 
@@ -172,6 +186,17 @@ reads it, and when it is cleared. Enumerate before implementing: does anything o
 handoff generator ever read it (the briefing? `/prawduct:pr`?); is it per-worktree or shared;
 what happens to notes written but never consumed because the session ended without `/clear`.
 
+*Enumerated and recorded* in `architecture.md` § "The one model-owned session file": sole reader is
+the handoff generator (the briefing reads only the generated handoff; `/prawduct:pr` never touches
+it); per-worktree like every session file; unconsumed notes persist to the next `/clear` — at most
+one stale hop, and visible in the handoff when it happens.
+
+`[DECISION: a pre-marker `.session-handoff.md` is preserved as "hand-authored" on the first `/clear`
+after this ships, rather than sniffed as machine-generated | because the only discriminator for an
+old machine handoff is its section headings, and a model-authored file using those same headings
+would then be silently dropped — the exact failure being fixed. The cost of accepting it is one
+mislabeled section, once, self-clearing on the next run | user can ask for the heuristic]`
+
 **Done when:**
 1. A note written to `.handoff-notes.md` appears, first, in the next session's handoff.
 2. A model-authored `.session-handoff.md` is preserved, not destroyed, by `/clear`.
@@ -239,8 +264,13 @@ not by refusing to clear | user can veto and ask for a hard gate]`
 **Done when:**
 1. Chunk-close sequence and the safe-to-`/clear` signal both name the notes step.
 2. No surviving text implies the agent authors `.session-handoff.md`.
-3. Every touched budget still passes; no ceiling raised.
-4. `/prawduct:critic` passes with no blocking findings.
+3. `cross-cutting-concerns.md` gains a session-continuity row, all four dimensions filled
+   honestly — Discovery n/a; Artifact `architecture.md` § "The one model-owned session file";
+   Builder the `building.md` chunk-close step this chunk adds; Critic **none today**, stated as
+   such rather than left blank. (The surface table named this row and no chunk owned it — a
+   Chunk 01 Critic finding under Framework Check 10.)
+4. Every touched budget still passes; no ceiling raised.
+5. `/prawduct:critic` passes with no blocking findings.
 
 ### Chunk 04: CRT-7P5J — the handoff stops reporting resolved findings
 **Type:** code
@@ -297,6 +327,11 @@ nobody exercised the real path:
 - **After Chunk 01** — the architecture-validation checkpoint. Does the two-file split hold once
   it is real, or does the model still reach for the wrong file? If the net fires often in practice,
   that is evidence the naming is wrong, and it is cheap to change now and expensive later.
+  **Known residual gap, named not closed:** the net catches an agent that *replaces*
+  `.session-handoff.md`, not one that *appends* to a marked (machine-generated) one — that text is
+  still lost. Closing it means retaining a copy or hash of what was generated to diff against;
+  disproportionate for a case the marker explicitly redirects. Chunk 03's affordance work is the
+  real mitigation. Revisit if the checkpoint shows the net firing at all.
 - **After Chunk 02** — re-run the live reproduction from Problem items 3-5 against this repo's own
   plan. Each must now be correct; a green unit test is not the same evidence.
 - **Before Chunk 05** — confirm with the owner that designing SCN-7K4B here does not collide with

@@ -2583,6 +2583,40 @@
 
   Governance-protected (`plugin/lib/`, session-continuity machinery) → full Critic + PR review. (user — verified against the live repo)
 
+- **[SCN-2M6P]** The handoff preservation net catches a REPLACED `.session-handoff.md` but not an APPENDED one — the marker is still present, so appended model text is silently overwritten
+  `effort: M · impact: S · area: session-continuity · kind: bug · source: critic · added: 2026-07-26 · reviewed: 2026-07-26 · status: open · stage: ready · related: SCN-4H9T, CRT-7P5J, SCN-7K4B · refs: plugin/lib/briefing.py:922-931 (`HANDOFF_MARKER` / `HANDOFF_MARKER_PREFIX` — the machine marker and its "do not hand-edit" redirect), plugin/lib/briefing.py:985-1010 (`_read_unmarked_handoff` — the rescue, keyed on marker ABSENCE), plugin/lib/briefing.py:1031 (every generated handoff opens with the marker), plugin/lib/briefing.py:1049 (the "had no machine marker, so it was preserved" note), plugin/lib/briefing.py:935 (`HANDOFF_NOTES_NAME` — the documented forward channel), plugin/bin/prawduct-hook:540 (consume-and-clear of `.handoff-notes.md`), .prawduct/artifacts/build-plan-session-handoff-continuity.md (Chunk 01 built the net; Chunk 03 is the affordance mitigation) · revisit: after the Chunk 01 governance checkpoint reports whether the unmarked-handoff rescue fires in practice`
+
+  **Known gap, deliberately left open at build time — not an oversight.** `generate_session_handoff` stamps `HANDOFF_MARKER` on every handoff it writes, and `_read_unmarked_handoff` rescues a `.session-handoff.md` that **lacks** the marker (model- or human-authored) by folding its body into the new handoff. The net is keyed on marker *absence*, so it catches an agent who **replaces** the file.
+
+  **It does not catch an agent who APPENDS** to a marked, machine-generated handoff. The marker is still the first body line, so the file reads as machine-written, the rescue returns `""`, and the appended text is overwritten and lost — the same silent-context-loss failure mode SCN-4H9T was filed for, surviving in a narrower shape.
+
+  **Why it wasn't closed.** Detection requires retaining a copy or content hash of what the machine generated, to diff the on-disk file against at the next `/clear`. That was judged disproportionate for a case the marker text explicitly redirects ("Do not hand-edit … forward notes go in `.prawduct/.handoff-notes.md`"), and it drags in the content-hash-freshness question this repo has ruled on before (cf. COV-3M8Q's discussion of the do-not-reintroduce constraint) — so it is a design question, not a mechanical patch, despite the item being well-understood.
+
+  **What ships instead.** Chunk 03 is *affordance* work — documenting the notes channel in `building.md` / `reflection.md` / the session digests so agents reach for `.handoff-notes.md` rather than the handoff file. That is mitigation, not detection: it lowers the rate, it does not close the hole.
+
+  **Impact is rated S conditionally, and the condition is written into `revisit:`.** The residual case is narrow *because* the affordance work is in flight. If the Chunk 01 governance checkpoint shows the unmarked-handoff rescue firing at all in practice, that is evidence agents still reach for the wrong file despite the redirect — which raises this to a real detection requirement and the impact with it. Re-rate on that evidence rather than on intuition.
+
+  Filed from the Chunk 01 Critic review (note severity) on `feature/session-handoff-continuity`, whose only other home would be a build plan deleted at release. Governance-protected (`plugin/lib/`, session-continuity machinery) → full Critic + PR review. (critic)
+
+- **[SCN-8T4R]** The session-file registry is a replicated contract surface with no `boundary-patterns.md` entry — four sites edited in lockstep, only two held together by a test
+  `effort: M · impact: M · area: session-continuity · kind: tech-debt · source: critic · added: 2026-07-26 · reviewed: 2026-07-26 · status: open · stage: ready · related: SCN-4H9T, STH-8M3V · refs: plugin/lib/core.py:76 (`GITIGNORE_ENTRIES` — site 1), plugin/bin/prawduct-hook:415 (`_SESSION_GITIGNORED_PATHS` — site 2, the untrack set), .gitignore:3-43 (this repo's own copy — site 3), plugin/bin/prawduct-hook:690 (the `cmd_clear` deletion list — site 4), tests/test_build_plan_resolution.py:208-228 (the sites-1↔2 parity test — the ONLY guard), .prawduct/artifacts/boundary-patterns.md (where the entry is missing), plugin/bin/prawduct-hook:291 and plugin/hooks/banner.py:29 (comments that name the 1↔2 mirror but not the full set)`
+
+  **Adding one session file requires editing at least four places in lockstep:**
+  1. `core.GITIGNORE_ENTRIES` (`plugin/lib/core.py:76`) — the canonical set
+  2. the hook's `_SESSION_GITIGNORED_PATHS` (`plugin/bin/prawduct-hook:415`) — the untrack set used by `_untrack_session_files`
+  3. this repo's own `.gitignore`
+  4. the deletion list in `cmd_clear` (`plugin/bin/prawduct-hook:690`)
+
+  **Only sites 1 and 2 are guarded** — `tests/test_build_plan_resolution.py:208-228` asserts the mirror parity (with an explicit `__pycache__` carve-out). Sites 3 and 4 can silently fall out of sync: a new session file that misses site 3 gets committed by accident, and one that misses site 4 survives `/clear` and leaks state into the next session.
+
+  **`boundary-patterns.md` does not record this as a contract surface at all** (verified — it contains no session-file, gitignore, or registry entry). So nothing tells the next author that a fourth site exists or which ones are guarded. The two in-code comments that mention the pattern (`prawduct-hook:291`, `hooks/banner.py:29`) name only the 1↔2 mirror, which actively *understates* the fan-out to a reader who finds them.
+
+  **Surfaced concretely** during `session-handoff-continuity` Chunk 01 when adding `.prawduct/.handoff-notes.md` — it had to be threaded through all four sites by hand.
+
+  **Fix direction, two legs.** (a) Record it in `boundary-patterns.md` as a replicated registry, naming all four sites and which parity test covers which — cheap, and it is the leg that stops the next author guessing. (b) Consider whether sites 2–4 can be *derived* from `GITIGNORE_ENTRIES` rather than kept in sync by hand; the existing `__pycache__` carve-out in the parity test is the shape of the divergence any derivation has to model, so this leg needs a look at the real differences before committing to it. Leg (a) is worth doing even if leg (b) is rejected.
+
+  Filed from the Chunk 01 Critic review (note severity) on `feature/session-handoff-continuity`. Governance-protected (`plugin/lib/`, `plugin/bin/`) → full Critic + PR review. (critic)
+
 ## Promoted
 
 - **[BKL-5D2C]** Move the backlog out of git to a centralized, agent-friendly issue-tracking service

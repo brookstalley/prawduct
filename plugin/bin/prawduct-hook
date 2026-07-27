@@ -419,6 +419,7 @@ _SESSION_GITIGNORED_PATHS = (
     ".prawduct/.critic-findings.json",
     ".prawduct/.critic-partials",
     ".prawduct/.governance-ledger.jsonl",
+    ".prawduct/.handoff-notes.md",
     ".prawduct/.test-evidence.json",
     ".prawduct/.pr-reviews",
     ".prawduct/.session-base-tree",
@@ -535,6 +536,51 @@ def _untrack_session_files(project_dir: Path) -> list[str]:
 # =============================================================================
 
 
+def _consume_handoff_notes(prawduct_dir: Path, briefing, handoff) -> None:
+    """Clear `.handoff-notes.md` iff its text reached the generated handoff.
+
+    Consumption keys on delivery, never on "a handoff was written" — that is
+    true whenever any *other* section had content, so gating on it would delete
+    an unreadable note whose text reached nothing. Losing a note the agent
+    deliberately wrote is the exact failure the channel exists to prevent, so an
+    undelivered note is kept for the next `/clear`. Unlike `.session-reflected`
+    there is no separate archive: the text is already carried verbatim into
+    `.session-handoff.md`, which is where the next session reads it.
+
+    Audience split, deliberate: an undelivered note is a *continuity* fact and
+    goes to stdout, because this runs at the new session's start and stdout is
+    what reaches the incoming agent — the one whose predecessor's context just
+    went missing. Housekeeping failures the agent can do nothing about stay on
+    stderr with their operator siblings.
+    """
+    if handoff.notes_consumed:
+        notes = prawduct_dir / briefing.HANDOFF_NOTES_NAME
+        try:
+            if notes.is_file():
+                notes.unlink()
+        except OSError as exc:
+            print(
+                f"NOTE: could not remove {briefing.HANDOFF_NOTES_NAME} ({exc}) — "
+                "last session's notes may resurface in the next handoff",
+                file=sys.stderr,
+            )
+    elif handoff.notes_state == briefing.NOTES_UNREADABLE:
+        # Re-fires every session until someone acts, so it carries the remedy —
+        # a repeating notice with no way to end it is noise, not a signal.
+        print(
+            f"NOTE: .prawduct/{briefing.HANDOFF_NOTES_NAME} could not be read (not valid "
+            "UTF-8?) — the previous session left you a note and its content did NOT reach "
+            "this handoff. The file was kept, not consumed; remove or rewrite it to clear "
+            "this notice."
+        )
+    elif handoff.notes_state == briefing.NOTES_UNDELIVERED:
+        print(
+            f"NOTE: the previous session left a note in .prawduct/{briefing.HANDOFF_NOTES_NAME} "
+            "that could not be written into this handoff. It was kept, not consumed — read it "
+            "directly."
+        )
+
+
 def cmd_clear(project_dir: Path, argv: list[str] | None = None) -> int:
     """Reset session state and render the session briefing (plugin runtime: no sync).
 
@@ -622,11 +668,20 @@ def cmd_clear(project_dir: Path, argv: list[str] | None = None) -> int:
     except Exception:  # prawduct:allow prawduct/broad-except -- defensive cleanup must never block clear
         pass
 
-    # Generate handoff BEFORE archiving/deleting session files
+    # Generate handoff BEFORE archiving/deleting session files, then consume the
+    # notes it carried. Both live under one guard because both need lib.briefing,
+    # which an incomplete install may not have — and neither may ever block /clear.
     try:
-        _briefing().generate_session_handoff(project_dir)
-    except Exception:  # prawduct:allow prawduct/broad-except -- handoff must never block clear
-        pass
+        briefing = _briefing()
+        _consume_handoff_notes(
+            prawduct_dir, briefing, briefing.generate_session_handoff(project_dir)
+        )
+    except Exception as exc:  # prawduct:allow prawduct/broad-except -- handoff must never block clear
+        print(
+            f"NOTE: could not generate the session handoff ({exc}) — this session's "
+            "context will not reach the next one",
+            file=sys.stderr,
+        )
 
     # Preserve previous session's reflection before clearing
     reflected = prawduct_dir / ".session-reflected"

@@ -173,6 +173,40 @@ the plugin no longer places them.
 | Framework docs (this repo) | `documentation/` (tracked) | long-form requirements, PRDs, research, and the migration guide — human-facing working docs, framework-repo only (distinct from the plugin-bundled `docs/` reference) | committed to the framework repo |
 | Upstream bug intake (this repo) | `incoming-bugs/` (tracked) | bug reports products file upstream about prawduct itself, via `/prawduct:report-bug`; triaged into the backlog, then archived under `incoming-bugs/archive/` | committed to the framework repo |
 
+### The one model-owned session file
+
+Session/gate state is machine-written by default — the model reads it, code writes it. Models do
+write into `.prawduct/` elsewhere (reviewer subagents emit their own review partials), but those are
+inputs to a machine consolidation step. Two files are different: they are narrative, and the machine
+cannot synthesize them — `.session-reflected` (backward — what happened) and `.handoff-notes.md`
+(forward — what the next session needs to know). The handoff pair's contract, which is the lock-in
+that matters more than either file's format:
+
+| | `.handoff-notes.md` | `.session-handoff.md` |
+|---|---|---|
+| Writer | the model, any time | the machine, at `/clear` only |
+| Reader | the handoff generator, and nothing else | the next session (via the briefing pointer) |
+| Lifetime | until consumed by the next `/clear` | until the next `/clear` regenerates it |
+| Scope | per-worktree, like every session file | per-worktree |
+
+Consumption is transactional and keys on **delivery, not on the handoff having been written**: a
+note is cleared only once its text is in the handoff, so one that was unreadable — or lost to a
+failed write — survives for the next `/clear`. (Gating on "a handoff was written" is the near-miss:
+it is true whenever any *other* section had content, so an unreadable note would be deleted
+undelivered.) Notes get no archive of their own — their text is carried verbatim into the handoff,
+which is where it is read. A generated handoff carries a machine marker; a `.session-handoff.md`
+lacking it was hand-authored, and is folded into the new handoff rather than overwritten. Advice
+fails soft applies throughout: none of this can block `/clear` — but every failure names its
+consequence, because silent degradation is the bug this pair exists to fix. Failures split by
+audience: housekeeping goes to stderr (the operator's), while "a note was left for you and did not
+arrive" goes to stdout, which is the channel the incoming agent reads.
+
+**Known gap in the marker scheme:** it recognises a handoff that was *replaced* (no marker), not one
+that was *appended to* (marker still present) — that text is still overwritten. Closing it needs a
+retained copy or hash to diff against, judged disproportionate against a marker that already
+redirects the writer. Tracked as SCN-2M6P; revisit if the net is observed firing at all, since that
+is evidence agents still reach for the wrong file.
+
 ## Communication Channels
 
 Four are local, and they are the only channels governance uses. A fifth exists only when a product
