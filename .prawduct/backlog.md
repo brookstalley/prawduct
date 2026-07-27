@@ -2623,6 +2623,23 @@
 
   Filed from the Chunk 02 Critic review on `feature/session-handoff-continuity`. Governance-protected (`plugin/lib/`, SessionStart hot path) → full Critic + PR review. (critic)
 
+- **[ROB-7T2N]** Sweep explicit encoding across the ~67 remaining bare `read_text()` calls in the plugin runtime, or pin the rule repo-wide
+  `effort: M · impact: M · area: robustness · kind: debt · source: critic · added: 2026-07-26 · status: open · stage: ready · related: STH-8M3V, STH-9T4F, TST-3E8V · refs: plugin/lib/buildplan_refs.py (the swept module + docstring stating the rule), tests/test_handoff_parser_correctness.py::test_every_build_plan_read_names_its_encoding (the build-plan pin), plugin/lib/critic_mode.py, plugin/lib/ledger.py, plugin/bin/prawduct-hook`
+
+  **Origin.** `session-handoff-continuity` Chunk 02 found the same class **three review rounds running**: a file read that decodes with the *operator's locale*, so two readers of the SAME file can disagree by construction about whether it parses. Build-plan reads are now fixed and pinned — `tests/test_handoff_parser_correctness.py::test_every_build_plan_read_names_its_encoding` asserts no module under `plugin/lib` uses a bare `plan_path.read_text()`. The rest of the runtime was deliberately left alone as scope creep; this item is that deferral, not an oversight.
+
+  **The surface.** `grep -rn "read_text()" plugin/lib plugin/bin` returns **67 sites** (verified 2026-07-26) reading `learnings.md`, gitignore, `project-state.yaml`, `VERSION`, findings JSON, evidence JSONL, templates and more.
+
+  **Two facets, both worth deciding deliberately rather than by default.**
+  1. **The codec.** Which of these files can contain non-ASCII authored by a model or a human? `learnings.md`, `project-state.yaml`, artifacts and templates certainly can. JSON reads are lower risk since `json.loads` handles its own encoding rules — but the *read* still happens first.
+  2. **The except-set (the sharper half).** `UnicodeDecodeError` is a **`ValueError`, NOT an `OSError`**, so every `except OSError` wrapped around a `read_text` lets it escape. The build-plan case escaped past an unguarded caller in `bin/prawduct-hook` as a **traceback rather than a degradation**.
+
+  **Fix-shape options (the embedded decision — make it, don't relitigate the problem).** Either (a) sweep all sites and add a repo-wide pin in `tests/preferences/` that every `read_text` under `plugin/` names an encoding; or (b) scope the pin to files a model or a human authors and record *why* the rest are exempt. **Prefer whichever is enforceable** — the reason this class recurred is that it was a **convention, not a pin**.
+
+  **Prior art in the same family.** STH-8M3V (shipped) already noted that `gitstate._get_session_changed_files` lacks the `(UnicodeDecodeError, OSError)` guard its siblings have — the same except-set gap, spotted a month earlier and never generalized. TST-3E8V (shipped) is the sibling widen-the-except fix. That two-for-two history is the argument for the repo-wide pin over another one-site patch. `tests/preferences/test_no_upstream_content_egress.py` is the local precedent for a preference-pin of this shape.
+
+  Filed from the Chunk 02 Critic review on `feature/session-handoff-continuity`. Governance-protected (`plugin/lib/`, `plugin/bin/`) → full Critic + PR review. (critic)
+
 ## Promoted
 
 - **[BKL-5D2C]** Move the backlog out of git to a centralized, agent-friendly issue-tracking service
