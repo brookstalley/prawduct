@@ -711,7 +711,7 @@
   (builder — verify-chunk-refs-token-fixes)
 
 - **[BLD-8R3T]** `verify-chunk-refs`' chunk-scoped `new` exemption never expires — it is unconditional on chunk completion, so a SHIPPED chunk's declared-new deliverable is never existence-checked
-  `effort: S · impact: M · area: build-plan · kind: bug · source: critic · added: 2026-07-19 · reviewed: 2026-07-19 · status: open · stage: ready · related: BLD-5N7C, BLD-9H2M, BLD-6T4R, BLD-4V7Q · refs: lib/buildplan_refs.py (the forward_refs set in _parse_build_plan_chunk_refs, _BUILD_PLAN_NEW_QUALIFIER_RE, _ref_path_part), .prawduct/change-log.md (2026-07-19 "verify-chunk-refs stops flagging path:line citations…"), skills/critic/review-protocol.md (Build-plan ref drift goal)`
+  `effort: S · impact: M · area: build-plan · kind: bug · source: critic · added: 2026-07-19 · reviewed: 2026-07-26 · status: open · stage: ready · related: BLD-5N7C, BLD-9H2M, BLD-6T4R, BLD-4V7Q, BLD-7K3Q, CRT-7B4M · refs: lib/buildplan_refs.py (the forward_refs set in _parse_build_plan_chunk_refs, _BUILD_PLAN_NEW_QUALIFIER_RE, _ref_path_part), lib/buildplan_refs.py:301 (resolve_chunk_progress — the ONE progress answer) + :218 (_git_aware_progress — the git-derived completion signal), lib/gates.py:744 (_has_active_build_plan_file — the deliberate checkbox precedent), .prawduct/change-log.md (2026-07-19 "verify-chunk-refs stops flagging path:line citations…"), skills/critic/review-protocol.md (Build-plan ref drift goal)`
 
   Contract gap in BLD-6T4R's shipped fix, surfaced by the Critic on that change's change-log draft
   and deliberately filed rather than folded in. The `new` qualifier means *"this chunk will CREATE
@@ -761,6 +761,40 @@
   numeric groups, so `lib/foo.py:1:2:3` still half-strips to `lib/foo.py:1`; no corpus instance exists
   and no citation convention here uses three levels, so it stays a near-miss rather than an open item.
   Noted here only because the two findings arrived together — this item does not carry that work.
+
+  **PREMISE MAY HAVE SHIFTED — re-derive the fix-shape before building (2026-07-26, Chunk 02 Critic
+  cross-check C-B3 on `session-handoff-continuity`).** Status deliberately unchanged; this is an
+  annotation, not a reopen or a resolution. This item's whole behaviour — the `new` exemption is
+  unconditional on chunk completion — was written when "complete" meant exactly one thing: the
+  `## Status` checkbox. It no longer does. **BLD-7K3Q** shipped in `session-handoff-continuity`
+  Chunk 02 and changed how "which chunk is current" and "which chunks are complete" are derived for
+  `verify-chunk-refs` itself: every consumer now resolves through
+  `lib/buildplan_refs.py:301 resolve_chunk_progress`, which prefers a **git-derived** reading
+  (`:218 _git_aware_progress`) on a `views_enabled` branch that is ahead of its base — there a chunk
+  counts complete when its box is `[x]` **OR** its id appears in a commit subject since base. So a
+  chunk can read as complete on the branch long before the release flips its box.
+
+  What this does to the fix-shape above: the fix-shape says "apply the `forward_refs` set only when
+  the chunk is unchecked," and its edge (a) fails toward the exemption precisely *because*
+  checkboxes stay `[ ]` mid-branch. That edge is no longer the only reading available — the
+  git-derived signal is exactly the "is this chunk actually done on this branch" answer edge (a)
+  lacked. Whoever picks this up should **re-derive against `resolve_chunk_progress`, not against
+  "first unchecked box,"** and decide *deliberately* which completion the exemption expires on:
+  the git-derived completion (exemption dies when the chunk's commit lands), the checkbox
+  completion (exemption dies only at release), or neither. That is a judgment call with a live
+  precedent worth reading first: `lib/gates.py:744 _has_active_build_plan_file` deliberately kept
+  the **checkbox** reading and documents why — a chunk's last commit lands BEFORE its Critic pass
+  and its reflection, so routing that gate through the git signal switched the blocking gates off
+  during the complete-but-unmerged window. The same "committed ≠ finished" asymmetry may or may not
+  apply to a deliverable's existence check (a declared-new file arguably *does* exist by the time
+  its chunk is committed) — that difference is the actual decision, and it should be made on
+  purpose rather than inherited.
+
+  Raised by the Chunk 02 Critic's C-B3 cross-check, which noted five open `area:build-plan` items
+  sit on this same gate surface (BLD-9H2M, BLD-8R3T, BLD-5N7C, BLD-4Q8W, BLD-5V8F) and found this
+  one to be the only member whose premise actually moved. The others are unaffected by Chunk 02.
+  (critic — session-handoff-continuity Chunk 02)
+
   (critic — verify-chunk-refs-token-fixes)
 
 - **[BLD-5N7C]** Two stale shipped-deliverable paths in closed chunks — `lib/backlog.py` and `methodology/agent-stance.md` are declared `new` in `[x]` chunks but no longer exist

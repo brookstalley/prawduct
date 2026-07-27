@@ -58,7 +58,8 @@ is the single decision the rest of the plan hangs from.
 <!-- views_enabled: true — these checkboxes are a DERIVED VIEW (lib/views.py). Do not hand-flip.
      Each chunk lands a change-log entry tagged `chunks=NN | scope=session-handoff-continuity`
      with NO `status=`; the release stamps `status=shipped` and regen-views flips the box. The
-     `Context:` line below is author-curated and regen never touches it. -->
+     `Context:` BLOCK below — from `Context:` to the end of this section — is author-curated and
+     regen never touches it. -->
 
 - [ ] Chunk 01: The forward channel — a model-owned notes file, and a generator that stops destroying
 - [ ] Chunk 02: Parser correctness — done-predicate, views_enabled, missing H1, truncated Context
@@ -79,16 +80,19 @@ reads the notes; per-worktree; unconsumed notes survive to the next `/clear`.
 
 **Chunk 02 complete** (2026-07-27) — the read path feeding the handoff is correct at every
 consumer. The git-derived "which chunk is current" derivation moved from `critic_mode` into
-`buildplan_refs._parse_build_plan_status`, so the handoff, `verify-chunk-refs` (**closes
-BLD-7K3Q**) and mode inference share one implementation; four functions took `project_dir` instead
+`buildplan_refs`, and — after the Critic pointed out that moving the helpers left the *precedence*
+between git and checkboxes written in two places — `resolve_chunk_progress` now owns that choice, so
+the handoff, `verify-chunk-refs` (**closes BLD-7K3Q**) and mode inference share one implementation; four functions took `project_dir` instead
 of `prawduct_dir` because resolving "current" reads git and the call sites should say so. The
 done-predicate is the named `build_plan_is_complete`, shared by `staleness_scan` and
 `_get_active_work`. `description` falls back to frontmatter `scope:` then filename, so the work
 section cannot vanish. Context is a block to the end of the Status section, which dissolves the
 first-wins/last-wins question instead of answering it. **BRF-6K2D landed** with it (merge-aware
-delete nudge). Live re-reproduction on this repo's own plan: description
-`session-handoff-continuity`, current `Chunk 02`, context 2283 chars (was 85), `verify-chunk-refs`
-and `infer-critic-mode` both resolving Chunk 02. Chunk 03 is next.
+delete nudge). Live re-reproduction on this repo's own plan (run from the worktree by explicit
+path, never the installed `prawduct-hook` on `$PATH`, which is a different checkout): description
+`session-handoff-continuity` where it was empty, context 5057 chars where 85 survived, and
+`verify-chunk-refs`, `infer-critic-mode` and the parse all naming the same chunk — Chunk 02 while it
+was in flight, Chunk 03 once its commit landed.
 
 Two things the Chunk 02 Critic corrected, both recorded rather than absorbed:
 

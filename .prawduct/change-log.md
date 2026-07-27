@@ -96,6 +96,12 @@ module is swept, and the test now asserts by dependence: redirect the resolver, 
 to move. Confirmed by mutation — reverting `infer_mode` to composing the precedence itself makes it
 fail.
 
+One provenance note the Critic asked be recorded rather than left to inference: **CRT-3D9K** was
+dropped in June as "merged into STH-2K8R, whose consolidation closes this by construction."
+STH-2K8R shipped, the stop hook kept calling the non-git-aware resolver, and the defect survived
+both closures for seven weeks — it is fixed only here. "Closed by construction via another item" is
+the reasoning pattern that failed, and this is the evidence for it.
+
 41 new tests; suite 2572 → 2611. Two existing tests were updated, not weakened: they passed
 `.prawduct/` positionally to functions whose argument is now the project dir. One new test was
 rewritten after the Critic found it passed vacuously — its `"01" not in stdout` assertion was
