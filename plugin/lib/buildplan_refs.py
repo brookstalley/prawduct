@@ -145,40 +145,6 @@ def _count_build_plan_chunks(prawduct_dir: Path) -> tuple[int, int]:
     return total, complete
 
 
-def _status_chunk_states(content: str) -> list[tuple[bool, str]]:
-    """``(checked, chunk_id)`` for each Status item that names a chunk, in order.
-
-    The one walk that carries BOTH halves a progress reading needs. Checkbox
-    state and chunk identity are only separable while a single signal answers
-    "is this chunk done"; the git-derived reading has to consider ``[x]`` OR
-    committed, so it needs the pair (see :func:`_git_aware_progress`).
-    Non-chunk Status items (a plain to-do) are skipped.
-    """
-    return [
-        (checked, cid)
-        for checked, text in _iter_status_section_items(content)
-        if (cid := _chunk_id_from_item_text(text))
-    ]
-
-
-def _chunk_ids_in_status_order(prawduct_dir: Path) -> list[str]:
-    """Raw chunk ids (e.g. ``"01"``) in build-plan Status order, both states.
-
-    Returns the ordered ``Chunk <id>:`` ids for ``- [ ]`` and ``- [x]`` items
-    alike. Empty list when the plan or its Status section is missing or
-    unreadable. The identity half of :func:`_status_chunk_states`, for callers
-    that do not care which boxes are ticked.
-    """
-    plan_path = resolve_build_plan_path(prawduct_dir)
-    if not plan_path.is_file():
-        return []
-    try:
-        content = plan_path.read_text(encoding="utf-8")
-    except (OSError, UnicodeDecodeError):
-        return []
-    return [cid for _checked, cid in _status_chunk_states(content)]
-
-
 # A commit subject that references a build-plan chunk, e.g. "feat: … (Chunk 03)".
 # Capital-C + digits matches the "Chunk NN" commit convention without
 # false-matching prose like "10-chunk plan" (CRT-7B4M).
@@ -315,13 +281,13 @@ class ChunkProgress(NamedTuple):
     ``git_derived`` records which of the two readings answered. Stated honestly:
     **no production caller reads it today** — it is asserted by tests and
     available to a caller that wants to report *why* instead of guessing. The
-    gap it leaves is real and tracked rather than papered over: when the
-    git-derived path bails (absent base branch, git failure, a branch not ahead)
-    the answer silently becomes the checkbox reading, and on a `views_enabled`
-    repo mid-branch that is the reading known to be wrong. Nothing tells anyone.
-    Fixing that means picking the surface that should report it — a diagnostic
-    one, not the hot path, since most `git_derived=False` answers are perfectly
-    normal — which is a design call, not a rename.
+    gap that leaves is named rather than papered over: when the git-derived path
+    bails (absent base branch, git failure, a branch not ahead) the answer
+    silently becomes the checkbox reading, and on a ``views_enabled`` repo
+    mid-branch that is the reading known to be wrong. Nothing tells anyone.
+    Closing it means choosing which surface should report — a deliberately
+    invoked diagnostic, not this hot path, since most ``git_derived=False``
+    answers are perfectly normal — so it is a design call, not a rename.
     """
 
     total: int

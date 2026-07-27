@@ -21,7 +21,8 @@ said "Complete handoff", which reads as an action on the generated file; it now 
 step and carries a "forward notes are not a reflection" paragraph. Both digests gain the rule.
 
 **Paid for in place.** `building.md` sat at 4591 of a 4600-token ceiling that exists to lock a diet
-in; it now measures **4590** — one token below where the addition found it, ceiling untouched. The
+in. The trims took it to 4590 — one token below where the addition found it — and the review's
+step-7 fix below then spent 5 more, landing at **4595**, ceiling untouched. The
 additions were funded entirely by in-file redundancy: three Common Traps that restated rules stated
 earlier in the same file, three trailing sentences that restated their own bullet, and prose fat in
 four paragraphs. Surviving coverage was checked per trap rather than assumed, and one is thinner
@@ -84,7 +85,17 @@ of them older than this work, all four now indexed, and the handoff prose pin mo
 `tests/preferences/` where prose pins live; and `ChunkProgress.git_derived`'s docstring claimed a
 reporting capability with no production consumer, now stated honestly along with the gap it leaves.
 
-30 new tests (suite 2623 → 2653, counted not estimated). Verified live through the real `/clear` on
+The `verify-resolutions` pass confirmed all eight fixed and found two more, both in the fix commit's
+own work: the recorded test run predated the tree it vouched for (re-recorded), and the replacement
+`git_derived` docstring traded one unverifiable claim for another — it called the gap "tracked" with
+nothing tracking it (now **SCN-6V3D**, and the word is gone). Its notes also caught that the
+"write the line, not nothing" instruction had landed in `building.md` alone while `reflection.md`
+and the slim digest still said only "write the forward notes" — the branch's signature failure, in
+the fix for the finding that named it — and that the progress fix left a second helper without a
+production caller, so the dead pair and its tests are removed.
+
+27 new tests (suite 2623 → 2650, counted from a recorded run over this tree, not derived).
+Verified live through the real `/clear` on
 a scratch repo, both branches: a session with three commits and no note gets the signal with an
 honest count; the same shape with a note gets the note instead, and the note is consumed.
 

@@ -2637,6 +2637,24 @@
 
   Filed from the Chunk 02 Critic review on `feature/session-handoff-continuity`. Governance-protected (`plugin/lib/`, `plugin/bin/`) → full Critic + PR review. (critic)
 
+- **[SCN-6V3D]** Git-derived chunk progress degrades to the known-wrong checkbox reading silently — `ChunkProgress.git_derived` records which reading answered and no production caller reads it
+  `effort: S · impact: S · area: session-continuity · kind: bug · source: critic · added: 2026-07-27 · reviewed: 2026-07-27 · status: open · stage: ready · related: SCN-4H9T, STH-4P2R, BLD-7K3Q, BLD-8R3T, CRT-7B4M · refs: plugin/lib/buildplan_refs.py:230 (`_git_aware_progress` — the six `return None` paths), plugin/lib/buildplan_refs.py:309 (`ChunkProgress` — the `git_derived` field and the docstring that states this gap honestly), plugin/lib/buildplan_refs.py:335 (`resolve_chunk_progress` — the ONE progress answer, and two more `git_derived=False` returns), plugin/lib/buildplan_refs.py:362 (`_resolve_chunk_progress_from` — where the fallback is chosen), tests/test_handoff_parser_correctness.py:227 (`assert progress.git_derived is True` — the only reader), .prawduct/learnings.md:329 ("Advice fails soft" is not "advice fails silent" — the rule this instantiates), plugin/lib/gates.py:744 (`_has_active_build_plan_file` — the deliberate checkbox-reading precedent)`
+
+  **The gap.** `_git_aware_progress` returns `None` — falling back to the checkbox reading — for several distinct reasons: `views_enabled` unset, no base branch resolves, HEAD not ahead of base, no chunk id appears in a commit since base, and any `OSError`/`SubprocessError` from git. (There is a sixth, `total <= 0`; it is inert, since with no Status items both readings are empty.) The `views_enabled`-unset case is normal and correct. The rest are **degradations**, and on a `views_enabled` repo mid-branch the checkbox reading is the one **known** to be wrong — every box reads unchecked until release, which is the entire reason the git derivation exists. Nothing announces it.
+
+  **The discarded signal.** `ChunkProgress.git_derived` records which reading answered. It is asserted by `tests/test_handoff_parser_correctness.py:227` and read by **no production caller** — so the information needed to report *why* is computed and thrown away. Note `resolve_chunk_progress` also returns `git_derived=False` on its two early exits (no plan file, unreadable plan); those carry `has_status_items=False`, so a reporting surface can distinguish "no plan" from "plan read, git path bailed" without new plumbing.
+
+  **Why this is a defect and not a nit.** It is an instance of this repo's own ratified rule — *"advice fails soft" is not "advice fails silent": a degraded advisory path must still name its consequence* (`.prawduct/learnings.md:329`, filed from Chunk 01 of this same branch). The consequence here is a handoff/briefing that reports the wrong current chunk with full confidence.
+
+  **The fix is NOT a diagnostic at the failure point.** `_git_aware_progress` runs on the SessionStart/Stop hot path, most `git_derived=False` answers are perfectly normal, and a notice on every session is the noise pattern the orphan-term hook already taught us to avoid. The work is **picking the surface that should report** — a deliberately-invoked diagnostic one. Candidates worth *evaluating* rather than a decision already made:
+  - `prawduct-hook handoff preview` — a human ran it precisely to ask what the machine thinks.
+  - `verify-chunk-refs` — already prints a per-chunk verdict.
+  - the session briefing's Resume line.
+
+  **Narrow it to the case that actually matters:** `views_enabled` is true **AND** the git path bailed. That is the only combination where the fallback is known-wrong rather than merely unused; reporting the `views_enabled`-unset case would be pure noise.
+
+  Surfaced by the `session-handoff-continuity` Chunk 03 cumulative Critic (2026-07-27, warning). The `ChunkProgress` docstring was corrected in `90397b6` to state the gap honestly instead of claiming a capability — **this item is what makes the word "tracked" in that docstring true.** Governance-protected (`plugin/lib/`, SessionStart hot path) → full Critic + PR review. (critic)
+
 ## Promoted
 
 - **[BKL-5D2C]** Move the backlog out of git to a centralized, agent-friendly issue-tracking service

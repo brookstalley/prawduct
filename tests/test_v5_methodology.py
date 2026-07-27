@@ -123,8 +123,12 @@ class TestBuildingMethodology:
         # first to restore if the ceiling is ever raised. Plus trailing sentences
         # restating their own bullet (multi-hop, PBT, verification theater) and
         # prose fat in the intro, worktree, PR and Critic-timing paragraphs.
-        # 4590 now, one token BELOW where the addition found it. Headroom is a
-        # few words BY DESIGN; the next addition trims or relocates first.
+        # The trims took it to 4590 — one token BELOW the 4591 the addition
+        # found — and the review then required step 7 to say what to write when
+        # there is nothing to add (silence there fires the next session's
+        # no-forward-note notice on every clean close). That cost 5, paid down
+        # from 8 by compressing the same paragraph. 4595 now. Headroom is a few
+        # words BY DESIGN; the next addition trims or relocates first.
         tokens = estimate_tokens(self.content)
         assert tokens < 4600, f"building.md is ~{tokens} tokens, should be <4600"
 

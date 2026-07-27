@@ -55,7 +55,6 @@ PLAN_PARSERS = frozenset(
         "_iter_status_section_lines",
         "_iter_status_section_items",
         "_chunk_section_lines",
-        "_status_chunk_states",
         "_resolve_chunk_progress_from",
         "_chunk_id_from_item_text",
         "build_status_view",
