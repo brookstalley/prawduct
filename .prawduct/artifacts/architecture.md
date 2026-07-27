@@ -186,7 +186,7 @@ that matters more than either file's format:
 |---|---|---|
 | Writer | the model, any time | the machine, at `/clear` only |
 | Reader | the handoff generator, and nothing else | the next session (via the briefing pointer) |
-| Lifetime | until consumed by the next `/clear` | until the next `/clear` regenerates it |
+| Lifetime | until *delivered*, then cleared (see below) | until the next `/clear` regenerates it |
 | Scope | per-worktree, like every session file | per-worktree |
 
 Consumption is transactional and keys on **delivery, not on the handoff having been written**: a
@@ -200,6 +200,22 @@ fails soft applies throughout: none of this can block `/clear` — but every fai
 consequence, because silent degradation is the bug this pair exists to fix. Failures split by
 audience: housekeeping goes to stderr (the operator's), while "a note was left for you and did not
 arrive" goes to stdout, which is the channel the incoming agent reads.
+
+**What "survives" actually means, stated honestly** — the three survival paths differ, and only one
+of them self-clears:
+
+- *Delivered but not unlinked* — the text IS in the handoff; the stale copy is consumed on the next
+  `/clear`. One hop, bounded.
+- *Undelivered* (the handoff write failed) — the note is kept and persists until some later `/clear`
+  writes successfully. Its text is in no handoff meanwhile.
+- *Unreadable* — kept, and **unbounded**: nothing clears it until a human fixes or removes the file,
+  and its text never reaches any handoff.
+
+The last two are announced on stdout every session, which is what keeps them from being silent, but
+neither is bounded by the mechanism and neither is visible *in the handoff*. Preferring an
+unbounded, announced failure over an automatic deletion is the deliberate trade — this channel
+exists because deleting an agent's note is the loss that matters — but the bound is the operator's
+to close, not the code's.
 
 **Known gap in the marker scheme:** it recognises a handoff that was *replaced* (no marker), not one
 that was *appended to* (marker still present) — that text is still overwritten. Closing it needs a

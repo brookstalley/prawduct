@@ -28,6 +28,7 @@ from __future__ import annotations
 import re
 import subprocess
 from pathlib import Path
+from typing import NamedTuple
 
 from . import gitstate
 from .core import read_bool_yaml_key, resolve_build_plan_path
@@ -125,13 +126,29 @@ def _count_build_plan_chunks(prawduct_dir: Path) -> tuple[int, int]:
     return total, complete
 
 
+def _status_chunk_states(content: str) -> list[tuple[bool, str]]:
+    """``(checked, chunk_id)`` for each Status item that names a chunk, in order.
+
+    The one walk that carries BOTH halves a progress reading needs. Checkbox
+    state and chunk identity are only separable while a single signal answers
+    "is this chunk done"; the git-derived reading has to consider ``[x]`` OR
+    committed, so it needs the pair (see :func:`_git_aware_progress`).
+    Non-chunk Status items (a plain to-do) are skipped.
+    """
+    return [
+        (checked, cid)
+        for checked, text in _iter_status_section_items(content)
+        if (cid := _chunk_id_from_item_text(text))
+    ]
+
+
 def _chunk_ids_in_status_order(prawduct_dir: Path) -> list[str]:
     """Raw chunk ids (e.g. ``"01"``) in build-plan Status order, both states.
 
     Returns the ordered ``Chunk <id>:`` ids for ``- [ ]`` and ``- [x]`` items
-    alike, so a git-derived progress count can map to the right current chunk
-    (CRT-7B4M — see ``lib.critic_mode._git_aware_progress``, its consumer).
-    Empty list when the plan or its Status section is missing or unreadable.
+    alike. Empty list when the plan or its Status section is missing or
+    unreadable. The identity half of :func:`_status_chunk_states`, for callers
+    that do not care which boxes are ticked.
     """
     plan_path = resolve_build_plan_path(prawduct_dir)
     if not plan_path.is_file():
@@ -140,12 +157,7 @@ def _chunk_ids_in_status_order(prawduct_dir: Path) -> list[str]:
         content = plan_path.read_text()
     except (OSError, UnicodeDecodeError):
         return []
-    ids: list[str] = []
-    for _checked, text in _iter_status_section_items(content):
-        cid = _chunk_id_from_item_text(text)
-        if cid:
-            ids.append(cid)
-    return ids
+    return [cid for _checked, cid in _status_chunk_states(content)]
 
 
 # A commit subject that references a build-plan chunk, e.g. "feat: … (Chunk 03)".
@@ -197,7 +209,7 @@ def _committed_chunk_ids(project_dir: Path, base: str) -> set[str]:
 
 
 def _git_aware_progress(
-    project_dir: Path, total: int
+    project_dir: Path, content: str, total: int
 ) -> tuple[int, str | None] | None:
     """Git-derived ``(complete, current_chunk_id)``, or ``None`` to use checkboxes.
 
@@ -206,39 +218,137 @@ def _git_aware_progress(
     ``status=shipped`` change-log entries and won't flip until release),
     (b) a base branch resolves and HEAD is ahead of it (a pre-release feature
     branch), and (c) at least one chunk is referenced by a commit since base.
-    ``complete`` = Status chunks whose id has a commit; ``current_chunk_id`` =
-    the first Status chunk with NO commit (``None`` when all are committed).
     Returns ``None`` whenever any condition fails — the caller then uses the
-    checkbox count, so behavior on non-views / non-branch / convention-free
-    repos is exactly as before (never worse).
+    checkbox reading.
+
+    A chunk counts as complete when its box is ``[x]`` **or** its id appears in
+    a commit subject since base. The commit signal alone is not enough: on a
+    plan whose earlier chunks shipped in a *prior* release, those boxes ARE
+    flipped and their commits are behind the base, so a commit-only reading
+    resolves "current" back to an already-shipped Chunk 01 — strictly worse than
+    the checkbox fallback this is supposed to never be worse than. The union is
+    what makes the promise true; the same union also keeps a branch whose
+    commits only partly follow the ``Chunk NN`` convention from reading a
+    half-populated set as authoritative.
 
     This is the ONE implementation of git-derived chunk progress. It shipped in
     ``lib.critic_mode`` for the ``infer-critic-mode`` consumer alone; the same
     defect then recurred at ``verify-chunk-refs`` (BLD-7K3Q) and at the session
     handoff, so it now lives here — with the rest of the build-plan Status
     parsing — and every consumer reaches "which chunk is current" through
-    :func:`_parse_build_plan_status`, which calls this.
+    :func:`resolve_chunk_progress`.
+
+    Every git touchpoint is guarded. ``_resolve_base_branch``, ``rev-list`` and
+    ``git log`` all handle a non-zero return code but none catches a *raise*
+    (absent git binary → ``OSError``; the ``timeout=`` → ``TimeoutExpired``),
+    and the only catch above this is the parser's broad-except, which would
+    return ``{}`` — turning a transient git hiccup into "there is no build
+    plan," blanking the handoff's work section and quietly relaxing gates. The
+    correct degradation is to the checkbox reading, so the promise is kept here,
+    at the function that makes it, rather than at each of its callers.
     """
     prawduct_dir = gitstate.get_prawduct_dir(project_dir)
     if total <= 0:
         return None
     if not read_bool_yaml_key(prawduct_dir / "project-state.yaml", "views_enabled"):
         return None
-    base, _ = _resolve_base_branch(project_dir)
-    if not base:
+    try:
+        base, _ = _resolve_base_branch(project_dir)
+        if not base:
+            return None
+        if _commits_ahead_of_base(project_dir, base) <= 0:
+            return None
+        committed = _committed_chunk_ids(project_dir, base)
+    except (OSError, subprocess.SubprocessError):
         return None
-    if _commits_ahead_of_base(project_dir, base) <= 0:
-        return None
-    committed = _committed_chunk_ids(project_dir, base)
     if not committed:
         return None
-    status_ids = _chunk_ids_in_status_order(prawduct_dir)
-    complete = sum(1 for cid in status_ids if (cid.lstrip("0") or "0") in committed)
+
+    def _done(checked: bool, cid: str) -> bool:
+        return checked or (cid.lstrip("0") or "0") in committed
+
+    status_chunks = _status_chunk_states(content)
+    complete = sum(1 for checked, cid in status_chunks if _done(checked, cid))
     current = next(
-        (cid for cid in status_ids if (cid.lstrip("0") or "0") not in committed),
-        None,
+        (cid for checked, cid in status_chunks if not _done(checked, cid)), None
     )
     return complete, current
+
+
+class ChunkProgress(NamedTuple):
+    """How far the active build plan has got, and which chunk is current.
+
+    ``current_id`` / ``current_text`` are empty-ish (``None`` / ``""``) when the
+    plan has no remaining chunk. ``git_derived`` records which reading answered,
+    so a caller can report *why* rather than guess.
+    """
+
+    total: int
+    complete: int
+    current_id: str | None
+    current_text: str
+    has_status_items: bool
+    git_derived: bool
+
+
+def resolve_chunk_progress(project_dir: Path) -> ChunkProgress:
+    """The ONE answer to "how far along is the plan, and which chunk is current."
+
+    Two readings exist — the Status checkboxes, and the git-derived one for
+    ``views_enabled`` repos where those checkboxes only flip at release — and the
+    *precedence between them* is what this function owns. Moving the three git
+    helpers into this module was not enough on its own: while `infer_mode` still
+    wrote "try git, else checkboxes" for itself, the composition existed twice,
+    and a third progress signal would make the two diverge again with the
+    consolidation pins still green. That duplication is the exact shape that let
+    the original defect reach three consumers.
+
+    Every consumer — :func:`_parse_build_plan_status` and so the handoff, the
+    briefing, ``verify-chunk-refs``, and ``critic_mode.infer_mode`` — resolves
+    through here.
+    """
+    prawduct_dir = gitstate.get_prawduct_dir(project_dir)
+    plan_path = resolve_build_plan_path(prawduct_dir)
+    if not plan_path.is_file():
+        return ChunkProgress(0, 0, None, "", False, False)
+    try:
+        content = plan_path.read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError):
+        return ChunkProgress(0, 0, None, "", False, False)
+    return _resolve_chunk_progress_from(project_dir, content)
+
+
+def _resolve_chunk_progress_from(project_dir: Path, content: str) -> ChunkProgress:
+    """:func:`resolve_chunk_progress` against already-read plan content — so the
+    parser below resolves progress without re-reading the file it already holds."""
+    items = list(_iter_status_section_items(content))
+    total = len(items)
+    checkbox_complete = sum(1 for checked, _t in items if checked)
+    checkbox_current = next((t for checked, t in items if not checked), "")
+
+    git_progress = _git_aware_progress(project_dir, content, total)
+    if git_progress is None:
+        return ChunkProgress(
+            total,
+            checkbox_complete,
+            _chunk_id_from_item_text(checkbox_current),
+            checkbox_current,
+            total > 0,
+            False,
+        )
+
+    complete, current_id = git_progress
+    current_text = ""
+    if current_id is not None:
+        current_text = next(
+            (
+                text
+                for _checked, text in items
+                if _chunk_id_from_item_text(text) == current_id
+            ),
+            "",
+        )
+    return ChunkProgress(total, complete, current_id, current_text, total > 0, True)
 
 
 def _plan_description_fallback(plan_path: Path, content: str) -> str:
@@ -309,12 +419,17 @@ def _parse_build_plan_status(project_dir: Path) -> dict[str, str]:
                         result["governance_level"] = segment.removeprefix("**Governance**:").strip()
                 break
 
-        # Parse the Status section: the chunk items, then the Context block.
-        #
-        # `checkbox_current` is the first `- [ ]` item, which is the right answer
-        # only where the checkboxes are hand-maintained; the git-derived
-        # resolution below overrides it on a views_enabled branch.
-        #
+        # Which chunk is current — resolved by the one owner of that question,
+        # checkbox-wise or git-wise as the repo demands. Note it can come back
+        # EMPTY on a plan that has items: every chunk done means there is no
+        # current chunk, which is what stops a finished plan being reported as
+        # active work.
+        progress = _resolve_chunk_progress_from(project_dir, content)
+        if progress.current_text:
+            result["current_chunk"] = progress.current_text
+        if progress.has_status_items:
+            result["_has_status_items"] = "true"
+
         # The Context BLOCK runs from the first `Context:` line to the end of the
         # Status section, not to the end of that physical line. `building.md`
         # calls Context "the cross-session handoff" and plans write it as several
@@ -322,24 +437,18 @@ def _parse_build_plan_status(project_dir: Path) -> dict[str, str]:
         # semantics also settle the multiple-`Context:` question by dissolving
         # it: the FIRST `Context:` opens the block and a later one is simply text
         # inside it, so neither wins and nothing is dropped.
-        checkbox_current = ""
         context_lines: list[str] = []
         in_context = False
-        has_any_items = False
         for stripped in _iter_status_section_lines(content):
-            is_item = (
+            if (
                 stripped.startswith("- [ ]")
                 or stripped.startswith("- [x]")
                 or stripped.startswith("- [X]")
-            )
-            if is_item:
-                has_any_items = True
+            ):
                 # A chunk item after Context ends the block — Context is
                 # conventionally last, but a plan that interleaves them should
                 # not swallow its own checklist into the handoff.
                 in_context = False
-                if stripped.startswith("- [ ]") and not checkbox_current:
-                    checkbox_current = stripped[5:].strip()
                 continue
             if not in_context and stripped.startswith("Context:"):
                 in_context = True
@@ -348,33 +457,9 @@ def _parse_build_plan_status(project_dir: Path) -> dict[str, str]:
             if in_context:
                 context_lines.append(stripped)
 
-        if checkbox_current:
-            result["current_chunk"] = checkbox_current
-
         context = "\n".join(context_lines).strip()
         if context:
             result["context"] = context
-
-        # Mark whether Status section had items (for staleness detection)
-        if has_any_items:
-            result["_has_status_items"] = "true"
-
-        # Git-derived override: where the checkboxes are a derived view, the
-        # commits are the progress record. This can both CORRECT the current
-        # chunk (01 → the one actually in flight) and CLEAR it (every chunk
-        # committed → the plan is complete, so there is no current chunk) —
-        # the second is what stops a finished plan being reported as active.
-        if has_any_items:
-            total = sum(1 for _c, _t in _iter_status_section_items(content))
-            git_progress = _git_aware_progress(project_dir, total)
-            if git_progress is not None:
-                _complete, current_id = git_progress
-                result.pop("current_chunk", None)
-                if current_id is not None:
-                    for _checked, text in _iter_status_section_items(content):
-                        if _chunk_id_from_item_text(text) == current_id:
-                            result["current_chunk"] = text
-                            break
 
         return result
     except Exception:  # prawduct:allow prawduct/broad-except -- build plan parsing is best-effort

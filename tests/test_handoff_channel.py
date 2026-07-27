@@ -23,6 +23,7 @@ Layers: unit against `lib/briefing` for assembly, behavioral through the real
 
 from __future__ import annotations
 
+import pathlib
 import sys
 from pathlib import Path
 
@@ -122,6 +123,81 @@ class TestPreservationNet:
         assert "the migration is half-applied" in text
         # The regression: it used to survive ONLY when the machine had nothing.
         assert "## Previous Session Reflection" in text
+
+    def test_undecodable_hand_authored_handoff_is_preserved_lossily(
+        self, tmp_path, monkeypatch
+    ):
+        """The net's own read must not be the thing that destroys the file.
+
+        `read_text()` with no `encoding` uses the operator's locale, so a single
+        em dash in a model-authored handoff raises UnicodeDecodeError under
+        `LC_ALL=C`. That returned "" — the same value as "absent" and
+        "machine-generated" — so the caller overwrote the file the net exists to
+        save. Replacement characters in a preserved paragraph beat a deleted one.
+        """
+        pr = _prawduct(tmp_path)
+        _quiet_git(monkeypatch)
+        (pr / ".session-handoff.md").write_bytes(
+            b"# Session Handoff\n\nHand-written \xff\xfe: the migration is half-applied.\n"
+        )
+        (pr / ".session-reflected").write_text("machine has plenty to say")
+
+        assert briefing.generate_session_handoff(tmp_path).written is True
+        text = (pr / ".session-handoff.md").read_text()
+        assert "## Preserved: Hand-Authored Handoff" in text
+        assert "the migration is half-applied" in text
+
+    def test_unreadable_handoff_is_never_overwritten(self, tmp_path, monkeypatch, capsys):
+        """A file that cannot be read cannot be folded in, so writing over it
+        would destroy content — possibly the previous agent's only forward
+        context. Preserve first, and tell the agent on stdout (the channel
+        SessionStart shows the model) that what it is reading is stale."""
+        pr = _prawduct(tmp_path)
+        _quiet_git(monkeypatch)
+        handoff = pr / ".session-handoff.md"
+        handoff.write_text("# Session Handoff\n\nirreplaceable hand-written context\n")
+        (pr / ".session-reflected").write_text("machine has plenty to say")
+
+        real_read = pathlib.Path.read_text
+
+        def _explode(self, *a, **kw):
+            if self.name == ".session-handoff.md":
+                raise OSError("simulated I/O error")
+            return real_read(self, *a, **kw)
+
+        monkeypatch.setattr(pathlib.Path, "read_text", _explode)
+        result = briefing.generate_session_handoff(tmp_path)
+        monkeypatch.undo()
+
+        assert result.written is False
+        assert handoff.read_text() == (
+            "# Session Handoff\n\nirreplaceable hand-written context\n"
+        ), "the unreadable handoff was overwritten"
+        out = capsys.readouterr().out
+        assert "could not be read" in out
+        assert "EARLIER session" in out or "earlier session" in out
+
+    def test_unreadable_handoff_keeps_the_notes(self, tmp_path, monkeypatch):
+        """Declining to write means the note did not reach anything, so it must
+        survive to the next `/clear` rather than being consumed."""
+        pr = _prawduct(tmp_path)
+        _quiet_git(monkeypatch)
+        (pr / ".session-handoff.md").write_text("hand-written, unreadable below")
+        (pr / ".handoff-notes.md").write_text("the predecessor's note")
+
+        real_read = pathlib.Path.read_text
+
+        def _explode(self, *a, **kw):
+            if self.name == ".session-handoff.md":
+                raise OSError("simulated I/O error")
+            return real_read(self, *a, **kw)
+
+        monkeypatch.setattr(pathlib.Path, "read_text", _explode)
+        result = briefing.generate_session_handoff(tmp_path)
+        monkeypatch.undo()
+
+        assert result.notes_consumed is False
+        assert result.notes_state == briefing.NOTES_UNDELIVERED
 
     def test_preserved_body_drops_duplicate_h1(self, tmp_path, monkeypatch):
         pr = _prawduct(tmp_path)
@@ -300,7 +376,13 @@ class TestNotesConsumption:
         monkeypatch.setattr(hook, "_briefing", _boom)
 
         assert hook.cmd_clear(tmp_path) == 0, "a broken install must never block session start"
-        assert "could not generate the session handoff" in capsys.readouterr().err
+        captured = capsys.readouterr()
+        assert "could not generate the session handoff" in captured.err
+        # `.session-handoff.md` is NOT in the session-file deletion loop, so the
+        # PREVIOUS boundary's handoff survives and the incoming agent reads it as
+        # this session's. The operator gets the diagnosis on stderr; the agent
+        # harmed by the stale provenance has to be told on stdout.
+        assert "EARLIER session" in captured.out
         assert (pr / ".handoff-notes.md").is_file()
 
     def test_undelivered_note_is_announced_to_the_next_agent(self, tmp_path, monkeypatch, capsys):

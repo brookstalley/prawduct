@@ -8,9 +8,9 @@ honored as a successive override (rationale ``"plan-override: <mode>"``).
 "Current" is normally the first unchecked ``- [ ]`` item, but on a
 ``views_enabled`` feature branch the Status checkboxes are a derived view
 that only flips at release (so "first unchecked" is always Chunk 01) — there
-the current chunk is derived from git instead (CRT-7B4M). Both readings live
-in :func:`lib.buildplan_refs._parse_build_plan_status`, which this module
-consumes rather than reimplements. The methodology has always called this field
+the current chunk is derived from git instead (CRT-7B4M). Choosing between
+those two readings lives in :func:`lib.buildplan_refs.resolve_chunk_progress`,
+which this module consumes rather than reimplements. The methodology has always called this field
 a "successive override," and this is where it is read (CRT-3M8Q). Only when neither override fires
 does :func:`infer_mode` walk four inference rules in precedence order and
 return the first that fires:
@@ -137,21 +137,18 @@ def infer_mode(
 
     prawduct_dir = project_dir / ".prawduct"
 
-    # Resolve chunk progress ONCE. The build-plan Status checkboxes are the
-    # default signal, but with ``views_enabled`` they are a *derived view* that
-    # only flips at release — so on a pre-release feature branch they never flip
-    # and "first unchecked" is always Chunk 01, which would pin every chunk's
-    # mode to Chunk 01's declaration. When that's the case, derive progress from
-    # git instead (CRT-7B4M); otherwise use the checkboxes. Both live in
-    # ``buildplan_refs`` now, so this module gets the same answer the handoff and
-    # ``verify-chunk-refs`` get, rather than a private copy of it.
-    total, checkbox_complete = buildplan_refs._count_build_plan_chunks(prawduct_dir)
-    git_progress = buildplan_refs._git_aware_progress(project_dir, total)
-    if git_progress is not None:
-        complete, current_chunk_id = git_progress
-    else:
-        complete = checkbox_complete
-        current_chunk_id = buildplan_refs._current_chunk_id_from_status(project_dir)
+    # Resolve chunk progress ONCE, through the one owner of the question. The
+    # Status checkboxes are the default signal, but with ``views_enabled`` they
+    # are a *derived view* that only flips at release — so on a pre-release
+    # feature branch they never flip and "first unchecked" is always Chunk 01,
+    # which would pin every chunk's mode to Chunk 01's declaration; there
+    # progress comes from git instead (CRT-7B4M). Choosing BETWEEN those two
+    # readings is exactly what `resolve_chunk_progress` owns. Writing that
+    # choice out here as well is what let the defect reach three consumers, so
+    # this module asks rather than re-derives.
+    progress = buildplan_refs.resolve_chunk_progress(project_dir)
+    total, complete = progress.total, progress.complete
+    current_chunk_id = progress.current_id
 
     # Plan-level override: the CURRENT chunk may declare a ``**Critic mode:**``
     # field. Honor it here (above inference, below explicit args) so a

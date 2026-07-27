@@ -49,8 +49,49 @@ sufficient signals (foreign-branch WIP; HEAD not an ancestor of base), failing t
 nudge on every uncertainty, so this can only ADD a keep-recommendation and never silently suppress
 a legitimate one. A test pins the merged case still getting told to delete.
 
-31 new tests; suite 2572 → 2603. Two existing tests were updated, not weakened: they passed
-`.prawduct/` positionally to functions whose argument is now the project dir.
+**What the Critic changed, because two of these were regressions in the fix itself.**
+
+*Completion is `[x]` OR committed, never commits alone.* The first cut read only commit subjects
+since base, so a plan whose earlier chunks shipped in a *prior* release — boxes flipped, commits
+behind base — resolved "current" back to an already-shipped Chunk 01. Strictly worse than the
+checkbox fallback the derivation's own docstring promises never to be worse than.
+
+*The gate trigger keeps the checkbox reading.* Routing `_has_active_build_plan_file` through the git
+signal disarmed the blocking reflection and Critic gates the moment a views_enabled branch's last
+chunk was committed — through the entire complete-but-unmerged window, which is when the PR-fix and
+finding-resolution sessions happen. Git answers "which chunk is in flight"; the gate asks "is there
+still governed work", and a chunk's last commit lands before its Critic pass. Recorded as a
+`[DECISION]` in the plan and pinned by `TestGateSemanticsUnchanged`.
+
+*A raising git call no longer collapses the parse.* Every git touchpoint handled a non-zero return
+code and none caught a *raise*, so an absent binary or a timeout fell through to the parser's
+broad-except and returned `{}` — "there is no build plan", blanking the handoff's work section and
+relaxing the gates on a transient hiccup. Guarded inside `_git_aware_progress`, where the promise is
+made, so it degrades to the checkbox reading.
+
+*The precedence has one home.* Moving the three git helpers was not enough while `infer_mode` still
+wrote "try git, else checkboxes" for itself — the composition existed twice, which is the shape that
+let the defect reach three consumers. Both callers now go through `resolve_chunk_progress`.
+
+*And one in Chunk 01's code that this chunk's own learnings had warned about.*
+`_read_unmarked_handoff` returned `""` for three different things — absent, machine-generated, and
+**unreadable** — so a handoff the net could not read was treated as "nothing to preserve" and
+overwritten. Reachable, not exotic: that read carried no `encoding`, so one em dash under `LC_ALL=C`
+destroyed the file the net exists to save. Its sibling three lines above had been hardened for
+exactly this a chunk earlier; the fix had been applied to the instance the Critic named rather than
+to the class. It now returns a state, recovers undecodable bytes lossily, and declines to overwrite
+what it cannot read — announcing on stdout, because the incoming agent is the party harmed.
+
+Relatedly, `cmd_clear`'s generation failure now also speaks to the agent. `.session-handoff.md` is
+not in the session-file deletion loop, so a failed generation leaves the *previous* boundary's
+handoff in place and the next agent reads it as current. The operator got the diagnosis; the party
+harmed by the stale provenance got nothing.
+
+39 new tests; suite 2572 → 2611. Two existing tests were updated, not weakened: they passed
+`.prawduct/` positionally to functions whose argument is now the project dir. One new test was
+rewritten after the Critic found it passed vacuously — its `"01" not in stdout` assertion was
+satisfied by the empty stdout of a `cannot-verify` exit, so it would have gone green against the
+unfixed code; it now asserts `ok: chunk 04` positively.
 
 ## 2026-07-26: The handoff gets a forward channel, and stops destroying what it finds (session-handoff-continuity Chunk 01)
 

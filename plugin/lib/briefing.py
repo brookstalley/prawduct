@@ -73,10 +73,17 @@ def _plan_work_possibly_unmerged(
        ``git merge-base --is-ancestor HEAD <base>`` says HEAD is not reachable
        from it, i.e. this branch has commits the base does not.
 
-    Fails toward ``(False, "")`` on every uncertainty — no base resolves, git is
-    unavailable, detached HEAD. This may only ADD a keep-recommendation on
-    positive evidence; it must never silently suppress a legitimate delete nudge,
-    because a plan that really is finished and merged should still be cleaned up.
+    Signal 1 is checked first and does not need a resolvable branch, so on a
+    detached HEAD every recorded WIP entry counts as foreign and the answer is
+    "keep". That is deliberate — an unidentifiable HEAD is the *worst* moment to
+    recommend deleting a plan — but it means the fail-toward-``(False, "")``
+    posture below describes signal 2 only.
+
+    Signal 2 fails toward ``(False, "")`` on every uncertainty: no base resolves,
+    git unavailable, any return code other than the "not an ancestor" 1. Both
+    signals may only ADD a keep-recommendation on positive evidence; neither may
+    silently suppress a legitimate delete nudge, because a plan that really is
+    finished and merged should still be cleaned up.
     """
     try:
         current_branch = gitstate.current_branch(project_dir)
@@ -1040,6 +1047,14 @@ NOTES_CARRIED = "carried"
 NOTES_UNREADABLE = "unreadable"
 NOTES_UNDELIVERED = "undelivered"
 
+# What became of an existing `.session-handoff.md` the machine did not write.
+# Same reason the notes states exist: "nothing to preserve" and "could not read
+# the thing I am about to overwrite" demand opposite handling, and collapsing
+# them into one empty string is what made the destructive case invisible.
+RESCUE_NONE = "none"
+RESCUE_CARRIED = "carried"
+RESCUE_UNREADABLE = "unreadable"
+
 
 class HandoffResult(NamedTuple):
     """Outcome of a handoff generation: was it written, and what became of the notes."""
@@ -1077,32 +1092,50 @@ def _read_handoff_notes(prawduct_dir: Path) -> tuple[str, str]:
     return (text, NOTES_CARRIED if text else NOTES_EMPTY)
 
 
-def _read_unmarked_handoff(prawduct_dir: Path) -> str:
-    """Return the body of a `.session-handoff.md` the machine did not write.
+def _read_unmarked_handoff(prawduct_dir: Path) -> tuple[str, str]:
+    """Return ``(body, state)`` for a `.session-handoff.md` the machine did not write.
 
-    Returns "" when the file is absent, machine-generated, or empty. A file
-    without :data:`HANDOFF_MARKER_PREFIX` was authored by a model or a human,
-    and overwriting it is exactly the silent context loss this generator
+    A file without :data:`HANDOFF_MARKER_PREFIX` was authored by a model or a
+    human, and overwriting it is exactly the silent context loss this generator
     exists to prevent — so its body is preserved into the new handoff instead.
-    Belt to the notes channel's braces: the channel is the documented path,
-    this catches the agent who writes the familiar filename out of habit.
+    Belt to the notes channel's braces: the channel is the documented path, this
+    catches the agent who writes the familiar filename out of habit.
+
+    The state is returned rather than inferred from an empty body, for the same
+    reason its sibling :func:`_read_handoff_notes` returns one. A bare ``""``
+    meant three different things here — absent, machine-generated, and
+    *unreadable* — and the caller reads it as "nothing to preserve" and
+    overwrites. So the one failure the net exists to survive destroyed the file
+    silently. Reachable, not exotic: this read had no explicit ``encoding``, so
+    it used the operator's locale, and a single em dash in a model-authored
+    handoff raises ``UnicodeDecodeError`` under ``LC_ALL=C``.
+
+    Undecodable bytes are recovered lossily rather than dropped — replacement
+    characters in a preserved paragraph beat a deleted one. Only a file that
+    cannot be read at all yields :data:`RESCUE_UNREADABLE`, and the caller
+    declines to overwrite on it.
     """
     handoff_path = prawduct_dir / ".session-handoff.md"
     if not handoff_path.is_file():
-        return ""
+        return "", RESCUE_NONE
     try:
-        existing = handoff_path.read_text()
-    except (UnicodeDecodeError, OSError):
-        return ""
+        existing = handoff_path.read_text(encoding="utf-8")
+    except UnicodeDecodeError:
+        try:
+            existing = handoff_path.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            return "", RESCUE_UNREADABLE
+    except OSError:
+        return "", RESCUE_UNREADABLE
     if HANDOFF_MARKER_PREFIX in existing:
-        return ""
+        return "", RESCUE_NONE
     body = existing.strip()
     # Drop a leading "# Session Handoff" H1 so the rescued body nests cleanly
     # under its own section heading instead of re-titling the document.
     lines = body.splitlines()
     if lines and lines[0].strip().lower() == "# session handoff":
         body = "\n".join(lines[1:]).strip()
-    return body
+    return (body, RESCUE_CARRIED if body else RESCUE_NONE)
 
 
 def generate_session_handoff(project_dir: Path) -> HandoffResult:
@@ -1136,7 +1169,22 @@ def generate_session_handoff(project_dir: Path) -> HandoffResult:
         sections.append("")
 
     # 0b. Preservation net: rescue a handoff the machine did not write.
-    rescued = _read_unmarked_handoff(prawduct_dir)
+    rescued, rescue_state = _read_unmarked_handoff(prawduct_dir)
+    if rescue_state == RESCUE_UNREADABLE:
+        # The one case where NOT writing is the safe move. The file cannot be
+        # read, so it cannot be folded in, so writing would destroy content that
+        # may be the previous agent's only forward context. Preserve first, and
+        # say so on stdout — SessionStart shows stdout to the model, and the
+        # incoming agent is the party harmed by a stale handoff.
+        print(
+            f"NOTE: .prawduct/.session-handoff.md could not be read, so it was left "
+            "untouched rather than overwritten — anything you read in it is from an "
+            "earlier session, and this session's context is NOT in it. Move or fix "
+            f"that file, then write forward notes to `.prawduct/{HANDOFF_NOTES_NAME}`."
+        )
+        return HandoffResult(
+            False, NOTES_UNDELIVERED if notes_state == NOTES_CARRIED else notes_state
+        )
     if rescued:
         sections.append("## Preserved: Hand-Authored Handoff")
         sections.append(
@@ -1291,7 +1339,7 @@ def _check_previous_session_gates(project_dir: Path) -> list[str]:
     # composed-coverage verdict cmd_stop blocks on (kernel-v3 chunk 04), so
     # the advisory and the blocking gate can never diverge. Advisory tone:
     # one warning line, not the full remedy text.
-    has_build_plan = gates._has_active_build_plan_file(project_dir) or gates._has_build_plan_in_state(prawduct_dir)
+    has_build_plan = gates._has_active_build_plan_file(prawduct_dir) or gates._has_build_plan_in_state(prawduct_dir)
     if has_build_plan and not doc_only and "critic" not in waivers and gitstate.git_has_code_changes(project_dir, status_output):
         verdict = gates.session_review_verdict(project_dir)
         status = verdict.get("status")

@@ -108,6 +108,11 @@ Context: Chunks 01-03 shipped.
 
 ### Chunk 02: Parser correctness
 - **Type:** code
+
+### Chunk 04: The Critic summary
+- **Type:** code
+
+Touches `.prawduct/artifacts/build-plan.md`.
 """
 
 
@@ -194,7 +199,12 @@ class TestViewsEnabledCurrentChunk:
 
     def test_verify_chunk_refs_grades_the_right_chunk(self, tmp_path: Path):
         """BLD-7K3Q: the gate reported `ok: chunk 01` for a whole branch while
-        chunks 02..N went unverified — silently, and green."""
+        chunks 02..N went unverified — silently, and green.
+
+        Asserted POSITIVELY. A `"01" not in stdout` check passes on empty
+        stdout, which is what a `cannot-verify` exit produces — so it would
+        have gone green against the pre-fix code too.
+        """
         repo = _views_repo(tmp_path)
         proc = subprocess.run(
             [sys.executable, str(REPO_ROOT / "bin" / "prawduct-hook"), "verify-chunk-refs"],
@@ -204,14 +214,26 @@ class TestViewsEnabledCurrentChunk:
             env={**_git_env(repo), "CLAUDE_PROJECT_DIR": str(repo)},
             timeout=30,
         )
-        assert "01" not in proc.stdout, proc.stdout + proc.stderr
+        assert proc.returncode == 0, proc.stdout + proc.stderr
+        assert "ok: chunk 04" in proc.stdout, proc.stdout + proc.stderr
 
-    def test_mode_inference_agrees(self, tmp_path: Path):
-        """CRT-7B4M's consumer keeps its answer after the derivation moved."""
+    def test_progress_counts_committed_chunks(self, tmp_path: Path):
+        """CRT-7B4M's derivation keeps its answer after the move."""
         repo = _views_repo(tmp_path)
-        total, _ = buildplan_refs._count_build_plan_chunks(repo / ".prawduct")
-        progress = buildplan_refs._git_aware_progress(repo, total)
-        assert progress == (3, "04")
+        progress = buildplan_refs.resolve_chunk_progress(repo)
+        assert (progress.complete, progress.current_id) == (3, "04")
+        assert progress.git_derived is True
+
+    def test_mode_inference_resolves_the_same_chunk(self, tmp_path: Path):
+        """`infer_mode` must not re-derive the git-vs-checkbox precedence for
+        itself — that duplication is how the defect reached three consumers."""
+        repo = _views_repo(tmp_path)
+        critic_mode.infer_mode(repo)  # must not raise
+        assert (
+            buildplan_refs.resolve_chunk_progress(repo).current_id
+            == buildplan_refs._current_chunk_id_from_status(repo)
+            == "04"
+        )
 
     def test_briefing_resume_line_names_the_right_chunk(self, tmp_path: Path):
         repo = _views_repo(tmp_path)
@@ -224,10 +246,6 @@ class TestViewsEnabledCurrentChunk:
         handoff = (repo / ".prawduct" / ".session-handoff.md").read_text()
         assert "**Current chunk**: Chunk 04: The Critic summary" in handoff
 
-    def test_gate_sees_an_active_plan(self, tmp_path: Path):
-        repo = _views_repo(tmp_path)
-        assert gates._has_active_build_plan_file(repo) is True
-
     def test_all_chunks_committed_clears_the_current_chunk(self, tmp_path: Path):
         """Every chunk has a commit → the plan is complete, so there is no
         current chunk even though every box still reads `- [ ]`."""
@@ -235,7 +253,75 @@ class TestViewsEnabledCurrentChunk:
         status = buildplan_refs._parse_build_plan_status(repo)
         assert "current_chunk" not in status
         assert buildplan_refs.build_plan_is_complete(status) is True
-        assert gates._has_active_build_plan_file(repo) is False
+
+    def test_a_prior_releases_shipped_chunk_is_never_current(self, tmp_path: Path):
+        """A `[x]` chunk shipped in an EARLIER release has no commit on this
+        branch, so a commit-only reading walks back and names it current —
+        strictly worse than the checkbox fallback the derivation promises never
+        to be worse than. Completion is `[x]` OR committed, never commits alone.
+        """
+        repo = tmp_path / "repo"
+        _init_repo(repo, branch="develop")
+        _write_state(repo, "views_enabled: true\nbase_branch: develop\n")
+        _write_plan(
+            repo,
+            VIEWS_PLAN.replace("- [ ] Chunk 01", "- [x] Chunk 01").replace(
+                "- [ ] Chunk 02", "- [x] Chunk 02"
+            ),
+        )
+        _commit(repo, "chore: plan")
+        _git(repo, "checkout", "-b", "feature/next", "--quiet")
+        _commit(repo, "feat: continue (Chunk 03)")
+        progress = buildplan_refs.resolve_chunk_progress(repo)
+        assert progress.current_id == "04"
+        assert progress.complete == 3
+
+
+class TestGateSemanticsUnchanged:
+    """Success criterion 6 of the governing plan: no gate semantics change.
+
+    The gate trigger deliberately stays on the CHECKBOX reading. Git answers
+    "which chunk is in flight," which is right for reporting; the gate asks "is
+    there still governed work," and a chunk's last commit lands BEFORE its
+    Critic pass and its reflection. Deriving the gate from git switched the
+    blocking reflection and Critic gates off for the entire complete-but-
+    unmerged window — the PR-fix and finding-resolution sessions.
+    """
+
+    def test_gate_armed_mid_branch(self, tmp_path: Path):
+        repo = _views_repo(tmp_path)
+        assert gates._has_active_build_plan_file(repo / ".prawduct") is True
+
+    def test_gate_stays_armed_through_the_complete_but_unmerged_window(
+        self, tmp_path: Path
+    ):
+        repo = _views_repo(tmp_path, committed_chunks=4)
+        assert gates._has_active_build_plan_file(repo / ".prawduct") is True
+
+    def test_gate_disarms_once_the_release_flips_the_boxes(self, tmp_path: Path):
+        repo = _views_repo(tmp_path, committed_chunks=4)
+        _write_plan(repo, VIEWS_PLAN.replace("- [ ] Chunk", "- [x] Chunk"))
+        assert gates._has_active_build_plan_file(repo / ".prawduct") is False
+
+    def test_git_failure_degrades_to_the_checkboxes_not_to_nothing(
+        self, tmp_path: Path, monkeypatch
+    ):
+        """A raising git call (absent binary, timeout) must fall back to the
+        checkbox reading. Collapsing the whole parse to `{}` would blank the
+        handoff's work section AND read as "no build plan" to the gates —
+        authority failing OPEN, on a transient hiccup.
+        """
+        repo = _views_repo(tmp_path)
+
+        def _boom(*_a, **_k):
+            raise subprocess.TimeoutExpired(cmd="git", timeout=10)
+
+        monkeypatch.setattr(buildplan_refs.subprocess, "run", _boom)
+        status = buildplan_refs._parse_build_plan_status(repo)
+        assert status["description"] == "session-handoff-continuity"
+        assert status["current_chunk"] == "Chunk 01: The forward channel"
+        assert "Chunks 01-03 shipped." in status["context"]
+        assert gates._has_active_build_plan_file(repo / ".prawduct") is True
 
     def test_non_views_repo_still_uses_checkboxes(self, tmp_path: Path):
         """The git path is opt-in; a hand-maintained plan is unaffected."""

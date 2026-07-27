@@ -9,7 +9,8 @@ governed_by:
     dispositions:
       - "an independent reviewer never mutates the session it reviews → conforms (the new notes file is written by the builder, never by a review agent; `clear` already refuses while `critic-active` is set, and that guard is untouched)"
       - "authority fails closed; advice fails soft → conforms, and this norm DECIDES a design question: the handoff is advice (no gate reads it), so neither generation nor the new false-success check may ever block `/clear` — both degrade to a note. See the [DECISION] in Chunk 03."
-      - "local-first governance coordination → inapplicable because this plan adds no network surface"
+      - "local-first governance coordination, network/daemon limb → inapplicable because this plan adds no network surface"
+      - "local-first governance coordination, zero-dependency limb → conforms; this plan DOES add code to the governance runtime, and it is stdlib-only (`subprocess`, `typing.NamedTuple`) plus internal lib siblings — no manifest change. Applicability is recorded, not assumed: disposing of a two-limbed norm wholesale on the limb that happens not to apply is how the applicable limb goes unchecked."
       - "the plugin writes nothing into a governed repo except its own `.prawduct/` state → conforms (the new file is `.prawduct/` session state, gitignored like its siblings)"
 last_validated: 2026-07-26
 ---
@@ -89,11 +90,27 @@ delete nudge). Live re-reproduction on this repo's own plan: description
 `session-handoff-continuity`, current `Chunk 02`, context 2283 chars (was 85), `verify-chunk-refs`
 and `infer-critic-mode` both resolving Chunk 02. Chunk 03 is next.
 
-One fragility found and NOT fixed here (filed, not silently absorbed): the git-derived path keys on
-the `Chunk NN` **commit-subject convention**, so a branch whose commits omit it falls back to the
-checkbox reading — fail-soft and never worse, but load-bearing on a convention nothing enforces.
-The change-log's per-chunk tagged entries are a stronger signal and already written; changing the
-signal is a design decision this chunk deliberately did not make.
+Two things the Chunk 02 Critic corrected, both recorded rather than absorbed:
+
+**`views_enabled` completion is `[x]` OR committed, never commits alone.** The first cut counted
+only commit subjects since base, so a plan whose earlier chunks shipped in a *prior* release — boxes
+flipped, commits behind the base — resolved "current" back to an already-shipped Chunk 01: strictly
+worse than the checkbox fallback the derivation promises never to be worse than. The union fixes it
+and also stops a branch whose commits only *partly* follow the convention from treating a
+half-populated set as authoritative. The residual fragility is narrower than first filed: with the
+union, a branch that omits the convention entirely degrades to the checkbox reading (fail-soft), and
+a partial one is corrected by the `[x]` half rather than trusted.
+
+**`[DECISION: the governance-gate trigger keeps the CHECKBOX reading, and does not follow the git
+derivation | because the two answer different questions — git answers "which chunk is in flight",
+which is right for reporting and for `verify-chunk-refs`, while the gate asks "is there still
+governed work", and a chunk's last commit lands BEFORE its Critic pass and its reflection. Routing
+the gate through git switched the blocking reflection and Critic gates off for the whole
+complete-but-unmerged window, which is exactly when the PR-fix and finding-resolution sessions
+happen — a silent loosening against this plan's own Success #6 ("no gate semantics change"). Under
+`views_enabled` a flipped box means *shipped*, so "unflipped" is the right reading of "still
+governed" | user can ask for the gate to track in-flight chunks instead]` Pinned by
+`TestGateSemanticsUnchanged`.
 
 Plan written 2026-07-26 on `feature/session-handoff-continuity` (off develop). Parents:
 **SCN-4H9T** (the upstream triage of discodon's STH-9FYI — five defects, all reproduced against

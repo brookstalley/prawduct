@@ -447,17 +447,6 @@
 
   Fix-shape: grant **both invocation forms** on the `allowed-tools` line — `Bash(prawduct-hook review-stats*)` **and** `Bash(python3 bin/prawduct-hook review-stats*)` — scoped to the subcommands the janitor actually instructs (audit the file for any others before landing). `skills/backlog/SKILL.md:7` is the house precedent and grants both forms (`Bash(prawduct-hook backlog *)`, `Bash(python3 bin/prawduct-hook backlog *)`) precisely to cover the installed-plugin and self-hosted invocations; mirror that. **Landing only the bare form recreates half the gap** — it fixes the product repo and leaves the self-hosted path ungranted. Same class as the `skills/doctor/SKILL.md` grant gap tracked under **ONB-3F9P** and the earlier BKL-3W6K finding that the backlog skill lacked Bash entirely; if ONB-3F9P is worked first, fold this in with it. Governance-protected (`skills/`) → full Critic + PR review. (critic — skills-cutover-awareness)
 
-- **[BLD-7K3Q]** `verify-chunk-refs` grades the WRONG chunk on a `views_enabled` branch — it reads the first *unchecked* Status item, but checkboxes only flip at release
-  `effort: M · impact: M · area: build-plan · kind: bug · source: critic · added: 2026-07-19 · status: open · stage: ready · related: BLD-8R3T, BLD-9H2M, VWS-2F9K, CRT-3T6V · refs: lib/buildplan_refs.py:188 (_parse_build_plan_status — "Current chunk = first unchecked item"), lib/buildplan_refs.py:606 (_current_chunk_id_from_status), lib/critic_mode.py:151-158 + :520 (_git_aware_progress — the git-derived path, CRT-7B4M), lib/views.py:1237 (is_views_enabled)`
-
-  Surfaced by the Chunk 03 Critic review of `skills-cutover-awareness`. `verify-chunk-refs` resolves "which chunk is current" from the build-plan `## Status` checkboxes: `lib/buildplan_refs.py:188` takes the first `- [ ]` item, and `:606` `_current_chunk_id_from_status` extracts its id. On a `views_enabled` repo the Status checkboxes are a **derived view** that only flips at release, so on a feature branch *every* chunk stays unchecked and Chunk 01 remains "current" for the entire branch.
-
-  Consequence: chunks 02..N are never ref-verified while the gate reports success. It fails **silently and green** — the worst shape for a gate whose whole job is catching drift.
-
-  Observed live on this branch: `verify-chunk-refs` returned `ok: chunk 01` while `infer-critic-mode` correctly resolved Chunk 03.
-
-  Fix-shape: `lib/critic_mode.py` already solved exactly this (CRT-7B4M) — `_git_aware_progress` (`:520`) derives `(complete, current_chunk_id)` from commits against the base when `views_enabled` is set, falling back to `buildplan_refs._current_chunk_id_from_status` otherwise (`:151-158`). Give `buildplan_refs` the same git-derived path so the two agree on "current chunk" by construction. Note the current import direction — `critic_mode` imports `buildplan_refs`, not the reverse — so the shared derivation needs a home that doesn't create a cycle (extract into `buildplan_refs` and have `critic_mode` call it, per the STH-2K8R canonical-homes note in `lib/critic_mode.py:62`). Sibling non-broadening drift lives in **VWS-2F9K**. Governance-protected (gate logic) → full Critic + PR review. (critic — skills-cutover-awareness)
-
 - **[TST-6K3D]** Build-plan chunk-heading test replica has drifted from the production matcher — the guard rejects headings production parses fine
   `effort: S · impact: M · area: tests · kind: bug · source: critic · added: 2026-07-19 · status: open · stage: ready · related: BLD-7P3K, BLD-5J8N, VWS-2F9K, CRT-3T6V · refs: tests/test_build_plan_resolution.py:264 (_parseable_body_chunk_ids), lib/buildplan_refs.py:82 (_CHUNK_HEADING_RE, _CHUNK_ID_SEP)`
 
@@ -1166,52 +1155,6 @@
   design→ready: the fix, its blast radius, and its tests are all determined. Resolve alongside
   PR-4V2N (the `skills/pr/SKILL.md:47` step-skip ambiguity that decides whether a `.prawduct/`-only
   PR even reaches this gate).
-
-- **[BRF-6K2D]** Session-briefing "delete the plan" nudge isn't merge-aware — fires on develop while the plan's feature branch is unmerged
-  `effort: S · impact: M · area: briefing · source: reflection · added: 2026-07-09 · reviewed: 2026-07-19 · status: open · stage: ready · related: STH-3K7M, STH-3R8K, DOC-5T8N, WT-7M4K, COV-7K4N · refs: lib/briefing.py (staleness_scan, _get_other_branch_wip, _get_current_branch), lib/coverage.py (_resolve_base_branch), skills/pr/SKILL.md:142 (the live workaround)`
-
-  The session-briefing / stale-plan nudge recommends deleting build-plan.md when all its chunks are checked complete. But build-plan.md is gitignored/session-local and persists across branch switches, so the nudge can fire while the session is on `develop` even though the plan's feature branch is still unmerged with no PR open. Following it would orphan live, unshipped work. Reported by discodon (2026-06-11, pre-2.3.0). Fix-shape: make the staleness check branch/merge-aware — before recommending deletion, confirm the plan's feature-branch commits are actually reachable from the integration branch (or its PR merged), e.g. `git merge-base --is-ancestor <plan-branch-tip> <base>`; otherwise say "plan complete but branch not yet merged — keep until merged" rather than "delete". Source: discodon reflection sweep 2026-07-09.
-
-  **Salvage annotation (2026-07-19) — VERDICT: STILL-PRESENT; the branch fix still applies
-  near-mechanically.** Captured before the stale branch `feature/gate-friction-batch` was deleted;
-  its work is preserved at tag `archive/gate-friction-batch` (restore with
-  `git branch feature/gate-friction-batch archive/gate-friction-batch`), relevant commit `d7a632f`.
-  `lib/briefing.py:146-170` is the stale-plan scan; both nudges fire unconditionally on plan state
-  alone — `:154-159` ("has all chunks complete — if work is done, delete the plan") and `:160-168`
-  (the no-Status fallback). Nothing between `:151` and `:168` consults branch, base, or merge
-  state. `git grep "delete the plan"` hits only `lib/briefing.py:158` and `:167`. No
-  `_plan_work_possibly_unmerged` or equivalent exists; `lib/briefing.py:40` imports only
-  `buildplan_refs, gates, gitstate` — `coverage` (which owns `_resolve_base_branch`) is not
-  imported. The defect is currently documented as a LIVE WORKAROUND rather than fixed:
-  `skills/pr/SKILL.md:142` — "A non-blocking 'consider deleting idle plan' advisory may surface …
-  ignore it until the release ships." Treated as unshipped as recently as 2026-07-19
-  (`.prawduct/change-log.md:167-168`).
-
-  *Salvageable fix-shape.* Add
-  `lib/briefing.py::_plan_work_possibly_unmerged(project_dir, prawduct_dir) -> (bool, reason)` with
-  two independent sufficient signals: (1) foreign-branch WIP — `_get_other_branch_wip` non-empty (a
-  session-local plan surviving a switch onto the base branch, the exact repro); (2) feature branch
-  ahead of base — resolve base via `coverage._resolve_base_branch`, and if `current_branch != base`
-  run `git merge-base --is-ancestor HEAD <base>`, where rc 1 means unmerged. Fail toward
-  `(False, "")` on every uncertainty, so the change only ADDS a keep-recommendation on positive
-  evidence and never silently suppresses a legitimate delete nudge. In `staleness_scan`, branch
-  both findings: when unmerged, emit "… has all chunks complete but <reason> — keep the plan until
-  it merges (deleting now would orphan unshipped work)". All inside the existing best-effort
-  try/except.
-
-  *Still applies? Yes.* Every dependency survives with the same shape: `_get_other_branch_wip`
-  (`lib/briefing.py:431`), `_get_current_branch` (`:219`), `_parse_wip` (used at `:163`),
-  `coverage._resolve_base_branch` (`lib/coverage.py:56`), target try/except (`:150`, `:169`).
-  Adding `coverage` to briefing's imports is safe — nothing under `lib/` imports `briefing`, so no
-  cycle. Two carry-over caveats: (a) the branch's import line imported `backlog`, which develop has
-  restructured to `from .backlog import legacy as backlog` (`:41`) — **don't clobber it**;
-  (b) `_resolve_base_branch` prefers `origin/<b>` and can be stale (see COV-7K4N) — for this nudge
-  the stale case errs toward "keep", the safe direction, but leave a comment saying so.
-
-  *Test pointers (on the archive tag).* New `tests/test_briefing_merge_aware_plan.py` (105 lines,
-  real git fixtures) — `test_on_base_branch_merged_says_delete`,
-  `test_feature_branch_unmerged_says_keep`, `test_foreign_branch_wip_says_keep`. Develop's `tests/`
-  has only `test_briefing_extraction.py` and `test_briefing_functions.py`.
 
 - **[STH-4B7Q]** check-operator-verification gate reportedly throws ModuleNotFoundError (needs repro)
   `effort: S · impact: M · area: stop-hook · source: user · added: 2026-07-09 · status: open · stage: idea · related: STH-2J9F, STH-8M3V`
@@ -2571,12 +2514,20 @@
 
   **Severity: continuity is destroyed silently while the model reports success.**
 
+  **Build progress as of 2026-07-26 — OPEN because UNFINISHED, not because unmarked.** All five enumerated legs are now addressed at the **code** level:
+  - legs **(1)** unconditional overwrite and **(2)** no forward channel — the mechanism half — shipped in **Chunk 01** of `session-handoff-continuity` (commit `5e5b178`);
+  - legs **(3)** no done-predicate, **(4)** `views_enabled` current-chunk, and **(5)** vanishing work section + truncated Context shipped in **Chunk 02** (commit `d43f1b1`).
+
+  It stays open **deliberately** for the remaining half of leg (2): the **affordance** work in **Chunk 03** — `building.md`'s chunk-close write-the-notes step, the `reflection.md:63` "Complete handoff" disambiguation, and the digest lines naming the channel. The bug report's own diagnosis was that the *affordance*, not just the mechanism, is what caused agents to write the wrong file; closing on the mechanism alone would close this item on half of its own analysis. **Close with `closed-by: session-handoff-continuity` when Chunk 03 lands.**
+
+  **The `refs:` line above is pre-fix** — it records the code sites as found and is deliberately left intact as the defect record. It no longer points at the cited code: `plugin/lib/briefing.py:921`, `:993-999` and `:355`, and `plugin/lib/buildplan_refs.py:144` and `:188`, have all moved or been rewritten by Chunks 01–02 (`_git_aware_progress` now lives in `plugin/lib/buildplan_refs.py:200`, applied from `:322`).
+
   **Stage history.** *Filed* `stage: design`, not `ready`, because the five legs were not uniformly buildable: legs **(3)**, **(4)** and **(5)** are mechanical fixes with obvious shapes (apply `staleness_scan`'s existing done-predicate in `_get_active_work`; adopt the git-derived current-chunk path; relax the H1 requirement and make Context multi-line), while legs **(1)** and **(2)** shared one unsettled design question — **who owns `.session-handoff.md`, and by what contract does model-authored forward-looking content survive a machine regeneration?** The filing note asked that a build plan either settle that contract first or split (3)/(4)/(5) out as a separate mechanical chunk.
 
   **Advanced to `stage: ready` 2026-07-26.** `.prawduct/artifacts/build-plan-session-handoff-continuity.md` does both: it answers the ownership question (a **new model-owned notes file** consumed into the generated handoff, so the generator keeps sole ownership of `.session-handoff.md` and the two-owners-one-file bug is designed out) in Chunk 01, and it splits the mechanical legs into Chunk 02. Note the plan records the channel shape as a HIGH-impact **vetoable assumption**, not an owner ruling — its Requirements Confidence is Medium and "what would raise confidence" is exactly that ruling. So this is buildable, but leg (1)/(2) work should confirm the channel shape with the owner before it hardens.
 
   **Overlap notes (filed as distinct; cross-linked, not merged).**
-  - **BLD-7K3Q** and **CRT-7B4M** are the *same root cause* as leg (4) — `buildplan_refs._parse_build_plan_status` treating the first unchecked box as current on a `views_enabled` branch — at two other consumers (`verify-chunk-refs` and `infer-critic-mode`). BLD-7K3Q is `stage: ready` and already carries the fix-shape: give `buildplan_refs` the git-derived path `critic_mode._git_aware_progress` already uses. **Leg (4) should be closed by that shared fix, not by a third local patch** — whoever picks BLD-7K3Q should sweep this consumer too.
+  - **BLD-7K3Q** and **CRT-7B4M** were the *same root cause* as leg (4) — `buildplan_refs._parse_build_plan_status` treating the first unchecked box as current on a `views_enabled` branch — at two other consumers (`verify-chunk-refs` and `infer-critic-mode`). **Resolved as prescribed:** BLD-7K3Q is archived `status: shipped · closed-by: session-handoff-continuity`, fixed as the shared sweep it called for (`_git_aware_progress` moved into `buildplan_refs` and applied from `_parse_build_plan_status`), and **leg (4) closed by that same fix** rather than by a third local patch. No sweep remains outstanding here.
   - **BRF-6K2D** is the adjacent half of leg (3): it makes `staleness_scan`'s delete-nudge merge-aware. This item points the other way — `_get_active_work` doesn't apply the predicate `staleness_scan` already has. Both touch the same two functions and are cheaper done together.
   - **CRT-7P5J** is a third correctness defect in the *same* `generate_session_handoff` output (it reads the derived critic-findings view instead of composing over resolution facts). Not a duplicate — different source, different fix — but it is the fourth known way this one function emits wrong context, which is itself an argument for treating the handoff generator as one body of work.
   - **SCN-7K4B** is the granularity axis of the same machinery (chunk-granular continuity has no home for multi-plan programs). Complementary, not overlapping.
@@ -2617,6 +2568,27 @@
 
   Filed from the Chunk 01 Critic review (note severity) on `feature/session-handoff-continuity`. Governance-protected (`plugin/lib/`, `plugin/bin/`) → full Critic + PR review. (critic)
 
+- **[STH-4P2R]** A `views_enabled` repo's SessionStart re-resolves git-derived chunk progress 3× per `/clear` — 12–16 git subprocesses answering one question — memoize the resolution per process
+  `effort: S · impact: M · area: performance · kind: debt · source: critic · added: 2026-07-26 · status: open · stage: ready · related: STH-3K7M, STH-6Q9D, BLD-7K3Q, SCN-4H9T · refs: plugin/lib/buildplan_refs.py:287 (`resolve_chunk_progress`), plugin/lib/buildplan_refs.py:200 (`_git_aware_progress`), plugin/lib/briefing.py:152 (`staleness_scan`), plugin/lib/briefing.py:440 (`_get_active_work`), plugin/lib/briefing.py:542 (`assemble_session_briefing`), plugin/lib/briefing.py:1141 (`generate_session_handoff`), .prawduct/artifacts/build-plan-hot-path-git-batching.md (the standing concern that sets the posture), tests/test_hot_path_git_batching.py`
+
+  **Origin.** `session-handoff-continuity` Chunk 02 routed every build-plan progress consumer through `buildplan_refs.resolve_chunk_progress`. On a `views_enabled` repo ahead of its base, that path runs `_resolve_base_branch` + `git rev-list --count` + `git log --format=%s` — roughly 4 git invocations per resolution, on a code path that previously ran **none**.
+
+  **The cost.** One `/clear` reaches `_parse_build_plan_status` from three places: `staleness_scan`, `assemble_session_briefing` (via `_get_active_work`), and `generate_session_handoff` (via `_get_active_work`). That is ~3 resolutions × ~4 git invocations = **12–16 subprocesses per SessionStart**, all answering the identical question "which chunk is current." `assemble_session_briefing` already dedupes *its own* two calls; the cross-function repetition is what remains.
+
+  **Deliberately not fixed in Chunk 02.** The Critic recommended a backlog item over a scope expansion rather than growing the chunk — this is that item, not an oversight.
+
+  **Posture is already established, don't relitigate it.** This repo carries a standing hot-path-git-batching concern (`.prawduct/artifacts/build-plan-hot-path-git-batching.md`, pinned by `tests/test_hot_path_git_batching.py`): **batch or memoize, do not cache-with-invalidation.**
+
+  **Fix-shape (two options, both mechanical).**
+  1. A per-process memo of the git-derived progress keyed on the resolved project dir, with an **explicit reset hook for tests** (a process-lifetime memo without a reset is a test-isolation bug waiting to happen).
+  2. Thread one resolved `ChunkProgress` through `cmd_clear`'s consumers, so the resolution happens once at the entry and is passed down.
+
+  **The gate path does not pay this** — `_has_active_build_plan_file` (`plugin/lib/gates.py:744`) was deliberately kept on the cheap checkbox reading, so this is a SessionStart-briefing/handoff cost only.
+
+  **Cluster note (do these together).** **STH-3K7M** is the *same fix on the same hot path* for a different value — `_get_current_branch` invoked 4× across `staleness_scan` / `assemble_session_briefing` / `_parse_wip`, with the identical "cross-function thread, unlike a local batch" rationale. Whoever picks either should sweep both: one "resolve the session's git context once at the `cmd_clear` entry and pass it down" change closes both items. **STH-6Q9D** (shipped, `hot-path-git-batching`) is the precedent that set the posture; **BLD-7K3Q** (shipped, `closed-by: session-handoff-continuity`) is the correctness fix that made the git-derived path load-bearing and therefore introduced this cost.
+
+  Filed from the Chunk 02 Critic review on `feature/session-handoff-continuity`. Governance-protected (`plugin/lib/`, SessionStart hot path) → full Critic + PR review. (critic)
+
 ## Promoted
 
 - **[BKL-5D2C]** Move the backlog out of git to a centralized, agent-friendly issue-tracking service
@@ -2650,6 +2622,92 @@
   Promoted 2026-07-17: Offline code + tests landed 2026-07-17 (commit 8ecd02e, cumulative-Critic 0 blocking). core.resolve_ref wires PFX→canonical alias resolution into get/link; migrate._find_by_key gains a block-id_aliases fallback skip-authority (_AliasIndex) that self-heals a human-deleted id:PFX label so a re-import can't duplicate; reconcile-labels re-derives deleted aliases. In-flight under the Chunk 06 slice (BKL-6M4T) — closes when the slice merges. Follow-ups spun off: BKL-7Q2N (mutator-side PFX resolution), BKL-9J3F (CC5 decoder gaps).
 
 ## Archive
+
+- **[BRF-6K2D]** Session-briefing "delete the plan" nudge isn't merge-aware — fires on develop while the plan's feature branch is unmerged
+  `effort: S · impact: M · area: briefing · source: reflection · added: 2026-07-09 · reviewed: 2026-07-26 · status: shipped · stage: ready · closed-by: session-handoff-continuity · related: STH-3K7M, STH-3R8K, DOC-5T8N, WT-7M4K, COV-7K4N · refs: lib/briefing.py (staleness_scan, _get_other_branch_wip, _get_current_branch), lib/coverage.py (_resolve_base_branch), skills/pr/SKILL.md:142 (the live workaround)`
+
+  The session-briefing / stale-plan nudge recommends deleting build-plan.md when all its chunks are checked complete. But build-plan.md is gitignored/session-local and persists across branch switches, so the nudge can fire while the session is on `develop` even though the plan's feature branch is still unmerged with no PR open. Following it would orphan live, unshipped work. Reported by discodon (2026-06-11, pre-2.3.0). Fix-shape: make the staleness check branch/merge-aware — before recommending deletion, confirm the plan's feature-branch commits are actually reachable from the integration branch (or its PR merged), e.g. `git merge-base --is-ancestor <plan-branch-tip> <base>`; otherwise say "plan complete but branch not yet merged — keep until merged" rather than "delete". Source: discodon reflection sweep 2026-07-09.
+
+  **Salvage annotation (2026-07-19) — VERDICT: STILL-PRESENT; the branch fix still applies
+  near-mechanically.** Captured before the stale branch `feature/gate-friction-batch` was deleted;
+  its work is preserved at tag `archive/gate-friction-batch` (restore with
+  `git branch feature/gate-friction-batch archive/gate-friction-batch`), relevant commit `d7a632f`.
+  `lib/briefing.py:146-170` is the stale-plan scan; both nudges fire unconditionally on plan state
+  alone — `:154-159` ("has all chunks complete — if work is done, delete the plan") and `:160-168`
+  (the no-Status fallback). Nothing between `:151` and `:168` consults branch, base, or merge
+  state. `git grep "delete the plan"` hits only `lib/briefing.py:158` and `:167`. No
+  `_plan_work_possibly_unmerged` or equivalent exists; `lib/briefing.py:40` imports only
+  `buildplan_refs, gates, gitstate` — `coverage` (which owns `_resolve_base_branch`) is not
+  imported. The defect is currently documented as a LIVE WORKAROUND rather than fixed:
+  `skills/pr/SKILL.md:142` — "A non-blocking 'consider deleting idle plan' advisory may surface …
+  ignore it until the release ships." Treated as unshipped as recently as 2026-07-19
+  (`.prawduct/change-log.md:167-168`).
+
+  *Salvageable fix-shape.* Add
+  `lib/briefing.py::_plan_work_possibly_unmerged(project_dir, prawduct_dir) -> (bool, reason)` with
+  two independent sufficient signals: (1) foreign-branch WIP — `_get_other_branch_wip` non-empty (a
+  session-local plan surviving a switch onto the base branch, the exact repro); (2) feature branch
+  ahead of base — resolve base via `coverage._resolve_base_branch`, and if `current_branch != base`
+  run `git merge-base --is-ancestor HEAD <base>`, where rc 1 means unmerged. Fail toward
+  `(False, "")` on every uncertainty, so the change only ADDS a keep-recommendation on positive
+  evidence and never silently suppresses a legitimate delete nudge. In `staleness_scan`, branch
+  both findings: when unmerged, emit "… has all chunks complete but <reason> — keep the plan until
+  it merges (deleting now would orphan unshipped work)". All inside the existing best-effort
+  try/except.
+
+  *Still applies? Yes.* Every dependency survives with the same shape: `_get_other_branch_wip`
+  (`lib/briefing.py:431`), `_get_current_branch` (`:219`), `_parse_wip` (used at `:163`),
+  `coverage._resolve_base_branch` (`lib/coverage.py:56`), target try/except (`:150`, `:169`).
+  Adding `coverage` to briefing's imports is safe — nothing under `lib/` imports `briefing`, so no
+  cycle. Two carry-over caveats: (a) the branch's import line imported `backlog`, which develop has
+  restructured to `from .backlog import legacy as backlog` (`:41`) — **don't clobber it**;
+  (b) `_resolve_base_branch` prefers `origin/<b>` and can be stale (see COV-7K4N) — for this nudge
+  the stale case errs toward "keep", the safe direction, but leave a comment saying so.
+
+  *Test pointers (on the archive tag).* New `tests/test_briefing_merge_aware_plan.py` (105 lines,
+  real git fixtures) — `test_on_base_branch_merged_says_delete`,
+  `test_feature_branch_unmerged_says_keep`, `test_foreign_branch_wip_says_keep`. Develop's `tests/`
+  has only `test_briefing_extraction.py` and `test_briefing_functions.py`.
+
+  **Shipped 2026-07-26 by Chunk 02 of `session-handoff-continuity`** (commit `d43f1b1`) — landed
+  with the done-predicate work exactly as the build plan prescribed
+  (`.prawduct/artifacts/build-plan-session-handoff-continuity.md:255`, acceptance item 6), because
+  it is the adjacent half of the same two functions. Delivered along the salvaged fix-shape above:
+  `plugin/lib/briefing.py::_plan_work_possibly_unmerged` (`:57`) with the two independent
+  sufficient signals — foreign-branch WIP via `_get_other_branch_wip`, and
+  `git merge-base --is-ancestor HEAD <base>` with the base resolved through `_resolve_base_branch`
+  — wired into both nudges in `staleness_scan` (`:221`, `:240`), inside the existing best-effort
+  try/except. Both carry-over caveats were honored: the restructured `backlog` import was not
+  clobbered, and the stale-`origin/<base>` case (COV-7K4N) errs toward "keep" with a comment
+  saying so. Signal 2 fails toward `(False, "")` on every uncertainty, so the change can only ADD
+  a keep-recommendation and never silently suppress a legitimate delete nudge. Coverage landed as
+  `TestDeleteNudgeIsMergeAware` (4 tests) in `tests/test_handoff_parser_correctness.py` rather
+  than the salvage note's proposed `test_briefing_merge_aware_plan.py` — including
+  `test_merged_branch_still_gets_the_delete_nudge`, which pins the direction the fix must not
+  break. Change-log entry: `.prawduct/change-log.md:45`.
+
+  **One leg explicitly descoped, not silently dropped.** The `refs:` line lists
+  `skills/pr/SKILL.md:142 (the live workaround)`, and that note still stands — correctly. It
+  describes the *release-pending* window (work already merged to `develop`, awaiting the batched
+  `develop→main` release), where `current_branch == base`, so `_plan_work_possibly_unmerged`
+  returns `(False, "")` and the delete nudge still fires by design while `/prawduct:pr` says
+  RETAIN the plan for `regen-views`. That is a **different trigger** from this item's
+  unmerged-feature-branch repro and was never in its fix-shape. If the residual advisory noise in
+  that window is worth removing, it needs its own item (the signal would be "plan's scope tag has
+  a release-pending change-log entry"), not a reopen of this one.
+
+- **[BLD-7K3Q]** `verify-chunk-refs` grades the WRONG chunk on a `views_enabled` branch — it reads the first *unchecked* Status item, but checkboxes only flip at release
+  `effort: M · impact: M · area: build-plan · kind: bug · source: critic · added: 2026-07-19 · reviewed: 2026-07-26 · status: shipped · stage: ready · closed-by: session-handoff-continuity · related: BLD-8R3T, BLD-9H2M, VWS-2F9K, CRT-3T6V, SCN-4H9T, CRT-7B4M · refs: lib/buildplan_refs.py:188 (_parse_build_plan_status — "Current chunk = first unchecked item"), lib/buildplan_refs.py:606 (_current_chunk_id_from_status), lib/critic_mode.py:151-158 + :520 (_git_aware_progress — the git-derived path, CRT-7B4M), lib/views.py:1237 (is_views_enabled)`
+
+  Surfaced by the Chunk 03 Critic review of `skills-cutover-awareness`. `verify-chunk-refs` resolves "which chunk is current" from the build-plan `## Status` checkboxes: `lib/buildplan_refs.py:188` takes the first `- [ ]` item, and `:606` `_current_chunk_id_from_status` extracts its id. On a `views_enabled` repo the Status checkboxes are a **derived view** that only flips at release, so on a feature branch *every* chunk stays unchecked and Chunk 01 remains "current" for the entire branch.
+
+  Consequence: chunks 02..N are never ref-verified while the gate reports success. It fails **silently and green** — the worst shape for a gate whose whole job is catching drift.
+
+  Observed live on this branch: `verify-chunk-refs` returned `ok: chunk 01` while `infer-critic-mode` correctly resolved Chunk 03.
+
+  Fix-shape: `lib/critic_mode.py` already solved exactly this (CRT-7B4M) — `_git_aware_progress` (`:520`) derives `(complete, current_chunk_id)` from commits against the base when `views_enabled` is set, falling back to `buildplan_refs._current_chunk_id_from_status` otherwise (`:151-158`). Give `buildplan_refs` the same git-derived path so the two agree on "current chunk" by construction. Note the current import direction — `critic_mode` imports `buildplan_refs`, not the reverse — so the shared derivation needs a home that doesn't create a cycle (extract into `buildplan_refs` and have `critic_mode` call it, per the STH-2K8R canonical-homes note in `lib/critic_mode.py:62`). Sibling non-broadening drift lives in **VWS-2F9K**. Governance-protected (gate logic) → full Critic + PR review. (critic — skills-cutover-awareness)
+
+  **Shipped 2026-07-26 by Chunk 02 of `session-handoff-continuity`** (commit `d43f1b1`), as the build plan prescribed — `.prawduct/artifacts/build-plan-session-handoff-continuity.md` names this item as closing with that chunk. Fixed as a **sweep, not a local patch**, exactly along the fix-shape above: `_git_aware_progress` moved out of `lib/critic_mode.py` into `plugin/lib/buildplan_refs.py` (now `:200`) beside the rest of the Status parsing, and `_parse_build_plan_status` applies it (`:322`), so `verify-chunk-refs`, mode inference, the session handoff and the stop-hook gate are correct by construction rather than each carrying their own derivation. Four functions now take `project_dir` instead of `prawduct_dir` — resolving "current" reads git, so the call sites say so. The same root cause at the handoff consumer was leg (4) of **SCN-4H9T**; **CRT-7B4M** was the first, single-consumer fix this sweep generalised. Regression coverage for the failing case (all boxes `[ ]`, chunks committed) is in `tests/test_build_plan_resolution.py`. Note the `refs:` line above records the *pre-fix* code sites as filed — the live homes are `plugin/lib/buildplan_refs.py`.
 
 - **[DOC-2R7M]** Post-relayout stale references in durable PLANNING artifacts — the release plan names `lib/backlog/**` at the pre-relayout path and points v3.2.0 at the wrong branch; the repoint build plan instructs `python3 bin/prawduct-hook`, which no longer exists
   `effort: S · impact: M · area: docs · kind: bug · source: critic · added: 2026-07-21 · reviewed: 2026-07-23 · status: shipped · stage: ready · closed-by: feature/backlog-service-relayout · related: DOC-7K4V, DOC-2W9P, BKL-3W6K, BKL-6M4T, BLD-6P8T · refs: .prawduct/artifacts/release-plan-backlog-service-golive.md (lines 26, 38, 84, 117, 187 — the five `lib/backlog/**` mentions; lines 22–39 — the branch guidance), .prawduct/artifacts/build-plan-backlog-skill-repoint.md (lines 46, 86, 118, 136 — `python3 bin/prawduct-hook backlog …`), plugin/bin/prawduct-hook (the post-relocation path)`

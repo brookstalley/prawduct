@@ -677,10 +677,22 @@ def cmd_clear(project_dir: Path, argv: list[str] | None = None) -> int:
             prawduct_dir, briefing, briefing.generate_session_handoff(project_dir)
         )
     except Exception as exc:  # prawduct:allow prawduct/broad-except -- handoff must never block clear
+        # Split by audience, not by precedent. The diagnosis is the operator's,
+        # so the exception text goes to stderr with its housekeeping siblings.
+        # But `.session-handoff.md` is NOT in the session-file deletion loop
+        # below, so the PREVIOUS boundary's handoff survives and the incoming
+        # agent reads it as this session's — a wrong-provenance failure the
+        # party harmed by it would otherwise never learn about. That half goes
+        # to stdout, which is the channel SessionStart shows the model.
         print(
             f"NOTE: could not generate the session handoff ({exc}) — this session's "
             "context will not reach the next one",
             file=sys.stderr,
+        )
+        print(
+            "NOTE: no handoff was generated for this session boundary — any "
+            ".prawduct/.session-handoff.md you read is from an EARLIER session, not "
+            "this one. Treat its contents as stale provenance."
         )
 
     # Preserve previous session's reflection before clearing
@@ -1208,7 +1220,7 @@ def cmd_stop(project_dir: Path, stop_input: dict | None = None) -> int:
 
     # Determine if there's an active build plan (used by both gates).
     # "Active" means incomplete chunks remain — a completed plan (all [x]) does not count.
-    has_build_plan = _gates()._has_active_build_plan_file(project_dir) or _gates()._has_build_plan_in_state(prawduct_dir)
+    has_build_plan = _gates()._has_active_build_plan_file(prawduct_dir) or _gates()._has_build_plan_in_state(prawduct_dir)
 
     # Gate 1: Reflection
     # - With active build plan: BLOCKING (structured work deserves reflection)
@@ -2394,9 +2406,12 @@ def cmd_verify_chunk_refs(project_dir: Path, chunk_id: str | None) -> int:
     ref is missing, or the gate cannot be evaluated. stderr lists each
     missing ref so the Critic can quote it in findings.
 
-    With no ``chunk_id``, reads the current chunk from Status (first unchecked
-    ``- [ ]`` item). If Status has no current chunk (all complete or no
-    Status section), exits 0 — there is nothing to verify.
+    With no ``chunk_id``, resolves the current chunk via
+    ``buildplan_refs._current_chunk_id_from_status`` — the first unchecked
+    ``- [ ]`` item normally, and the git-derived chunk on a ``views_enabled``
+    branch, where the checkboxes only flip at release and "first unchecked"
+    would grade Chunk 01 for the whole branch (BLD-7K3Q). If there is no current
+    chunk (all complete or no Status section), exits 0 — nothing to verify.
     """
     prawduct_dir = get_prawduct_dir(project_dir)
     if chunk_id is None:

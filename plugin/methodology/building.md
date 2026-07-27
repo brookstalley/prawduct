@@ -86,7 +86,7 @@ Test at the right level — **unit** (functions, logic), **integration** (compon
 
 **Verify.** Two layers:
 
-- *Code:* Record **once**, at Verify — **not** after committing (a commit doesn't stale session-scoped evidence). Check `test-status` first (exit 0 = already passed; don't re-run). Record via `prawduct-hook test-evidence record`, or ingest an existing run — `--from-junit`, `--from-counts` (any toolchain), `--no-rerun` (restamp) — no re-run even when `test_command:` is declared. Non-default suites: `test_command:`/`test_commands:`/`tests_dirs:`.
+- *Code:* Record **once**, at Verify — **not** after committing (a commit doesn't stale session-scoped evidence). Check `test-status` first (exit 0 = already passed; don't re-run). Record via `prawduct-hook test-evidence record`, or ingest an existing run — `--from-junit`, `--from-counts` (any toolchain), `--no-rerun` (restamp) — no re-run even when `test_command:` is declared (run once with `--junit-xml`, then `--from-junit` it; `--from-counts` covers no-JUnit toolchains). Non-default suites: `test_command:`/`test_commands:`/`tests_dirs:`.
 - *Product:* Launch it, call it, inspect output. If infrastructure dependencies are declared, verify against real instances — mocks are not verification.
 
 Scale to chunk significance. When you can't verify, say so (Principle 5).
@@ -105,7 +105,7 @@ Scale to chunk significance. When you can't verify, say so (Principle 5).
 
 **Verify artifacts are current.** Confirm artifacts reflect the code — the Critic checks bidirectional freshness.
 
-**Update build plan Status.** Mark the chunk `[x]` in `build-plan.md`'s Status section and update the Context block — the cross-session handoff, read whole to the end of the Status section, so it may be several paragraphs. (When `views_enabled`, Status is a derived view — add a tagged change-log entry and run regen-views instead.)
+**Update build plan Status.** Mark the chunk `[x]` in `build-plan.md`'s Status section and update the Context block — the cross-session handoff. (When `views_enabled`, Status is a derived view — add a tagged change-log entry and run regen-views instead.)
 
 ## Session Scope Discipline
 
