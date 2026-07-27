@@ -110,6 +110,94 @@ A claim-conflict test stamped the holder's claim via `core.claim(now=NOW)` (fixe
 
 ## When verifying a framework-repo `lib/`/`bin/` change by running the hook, invoke the repo-local `python3 plugin/bin/prawduct-hook` — the bare `prawduct-hook` on PATH is the installed plugin cache, not your working tree
 
+**Sharpening (2026-07-27, SCN-5B8Q Chunk 01) — the case where you don't get to choose the binary.**
+The rule above assumes you invoke the hook. When the change is to `hooks.json` itself, the *harness*
+invokes it, and the user-scoped installed plugin (`prawduct@prawduct`, a different checkout at `main`)
+fires its own SessionStart entries in **every** repo you open — including the scratch repo you built to
+test your fix. A real `claude --resume` against fixed hooks destroyed session evidence anyway, because
+the OLD matcher fired alongside the new one; the fixed code was never at fault. Two rules: (a) an
+end-to-end test of a hook/matcher change must isolate the config (`CLAUDE_CONFIG_DIR=<empty dir>`) or
+it is testing the installed copy, not yours; (b) **when an integration test fails against a globally
+installed component, identify which copy ran before debugging your own** — trusting the first failure
+here would have meant "fixing" correct code. The contaminated run is not waste: it reproduced the
+defect end-to-end on shipped code, which is stronger evidence than the simulation that motivated the
+plan. Relates to Root Cause Discipline (#16) and Validate Before Propagating (#15).
+
+## Verifying an inventory against the code cannot catch a wrong CATEGORY — the check confirms the frame it was built from
+
+Splitting `cmd_clear` into boundary vs. orientation, I sorted its 17 statements by *does it destroy
+session evidence*, enumerated them, verified the inventory against the source (the plan explicitly told
+me to), and it passed. Two reviewers then independently found the axis was wrong: a **third** category
+exists — statements that destroy nothing yet **interpret session state as belonging to a session that
+has finished**. Two qualified (the critic-active marker sweep; the previous-session gate check), both
+looked read-only, and a destruction-based sort files them under orientation *and then the verification
+agrees*, because it re-asks the frame's own question. Worse, the refutation was already in my own
+artifact: the `fork` decision said "a fork's parent is often still running" three paragraphs above a
+sweep decision asserting "a marker outliving a session cannot correspond to a live reviewer." Rule:
+when a change is driven by a **classification**, the verification pass must ask a *different* question
+than the one that produced the classes — for session-lifecycle code, "what does this statement believe
+about the session it is running in?" rather than "what does it write?" And when two decisions in one
+artifact rest on opposite premises about the same entity, that is a contradiction to find by reading
+your own decisions against each other, not something to wait for a reviewer to catch. Relates to
+Validate Before Propagating (#15), Root Cause Discipline (#16), and [[Before writing any sentence of
+the shape "X now covers/catches/handles Y" or "there is no Y", run the one query that would falsify
+it]].
+
+## A mechanism that collapses a distinction forces every downstream rule to hold for the WEAKEST member of the collapsed set
+
+`--brief-only` marks "continuation," so `resume`, `compact` and `fork` reach the hook
+indistinguishably. Fine for the boundary/continuation split it was built for — but the premise
+licensing the critic-marker sweep ("an in-flight review dies with its process") is true for `resume`,
+false for `compact` (fires in-process) and often false for `fork` (parent still running). One flag
+covering all three means the safe semantics are the weakest member's, so the sweep had to become
+boundary-only. Rule: when introducing a flag/enum that merges cases, enumerate the merged set and check
+each downstream rule against **every** member, not the motivating one; if a rule holds for only some,
+either split the mechanism or take the weakest member's answer — and record which you chose and why.
+Relates to Reasoned Decisions (#4).
+
+## When a finding is "harmless by coincidence," check what makes it harmless before deferring it
+
+The cross-plan chunk-id conflation (`_committed_chunk_ids` matching `Chunk NN` in any commit subject,
+no scope filter) was pre-existing, outside the chunk's surface, and provably harmless on the branch —
+an easy defer. But it was harmless only because `active_build_plan` pointed at the *wrong* plan, and
+correcting that pointer (my own bookkeeping error, a separate finding) would have armed it: the active
+plan's two-chunk Status would have read COMPLETE with a chunk unbuilt. The "cosmetic" fix was
+load-bearing. Rule: before deferring a latent defect, name the specific condition keeping it dormant
+and check whether anything in the current changeset removes that condition. Corollary on the fix
+itself: a filter that could **erase** a signal rather than narrow it needs a no-match fallback — scope
+tags are a convention, so filtering strictly would have wiped a sibling plan's entire git signal
+(its commits say `session-continuity`, its frontmatter `session-handoff-continuity`) and traded
+cross-contamination for a different wrong answer. Apply the filter only when it matches something, so
+it is always narrowing, never erasing. Relates to Scope Discipline (#12) and Complete Delivery (#2).
+
+## When verifying an assumption, build the instrument WIDER than the proposition — the confirm/deny answer is rarely where the value is
+
+SCN-5B8Q's plan named one load-bearing assumption (`--resume` restores the transcript) and said verify
+before building. A codeword planted in a headless session and read back from the resumed one answered
+it: yes. But the probe also logged the whole `SessionStart` payload — strictly more than the question
+needed — and *that* surfaced `fork`, a **fifth** source the plan was written without, which restores
+the transcript AND allocates a new session id (so its parent session is often still live, making it the
+one source where a boundary reset destroys a **running** session's evidence). Under the plan's proposed
+matchers `fork` matched neither entry and would have silently received nothing. The assumption was
+true; the plan was still wrong, and no amount of testing the *proposition* would have shown it. Rule:
+when a check is cheap, record the mechanism's full output rather than the single field that answers
+your question — unknown unknowns live in the columns you didn't ask for. Corollary for the guard that
+results: pin the **partition/class property** over the enumerated set, not a spot-check on the one
+member that motivated the work — a spot-check on `compact` is exactly what let `fork` go unnoticed.
+Relates to Retrieval Over Generation (#24) and Honest Confidence (#5).
+
+## A test written against a not-yet-implemented flag can pass because the arg guard REJECTED it — assert success before asserting absence
+
+Pre-implementation, 11 of 15 new tests failed and 4 passed; two of those passes were free. `--brief-only`
+was unrecognized, so the command exited 2 having done nothing — and "no handoff was written" is true
+when nothing ran. Absence-of-side-effect is precisely the assertion that cannot distinguish "correctly
+skipped" from "never executed." Rule: any test whose assertion is a *negative* (file not created, state
+not mutated) asserts `returncode == 0` (or equivalent liveness) first. The detection habit that caught
+it: on a test-first run, read **which** tests passed and why, rather than being satisfied that most
+failed. Sibling rule for fixtures: to detect "was this rewritten," the fixture must make a rewrite
+*observable* — comparing hashes of a file that gets rewritten to identical content proves nothing, so
+seed distinct sentinel content. Relates to Tests Are Contracts (#1).
+
 ## After a clean cumulative (0 blocking/0 warning), NOTEs are advisory — don't chase cosmetic ones; fixing them reopens the coverage gate on judgeable governance files and forces a no-value review pass
 
 ## A new build plan with `scope: null` and low chunk numbers inherits another scope's shipped checkbox flips — set `scope:` from the start

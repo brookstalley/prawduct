@@ -125,9 +125,12 @@ def _count_build_plan_chunks(prawduct_dir: Path) -> tuple[int, int]:
     Resolves the plan via the ``active_build_plan:`` pointer (falls back to
     ``artifacts/build-plan.md``), so scope-named plans are counted too.
     Returns ``(total, complete)``; ``(0, 0)`` if the plan or its Status section
-    is missing or unreadable. The single canonical implementation — consumed by
-    ``lib.gates`` (end-of-cycle synthesis gate) and ``lib.critic_mode`` (mode
-    inference), which carried near-duplicate copies until STH-2K8R/BLD-6Q1N.
+    is missing or unreadable. The single canonical implementation — both callers
+    are in ``lib.gates`` (the end-of-cycle synthesis gate and its sibling); they
+    and ``lib.critic_mode`` carried near-duplicate copies until STH-2K8R/BLD-6Q1N.
+    ``critic_mode`` no longer calls this at all: it asks
+    :func:`resolve_chunk_progress`, which is the one place the checkbox and
+    git-derived readings are reconciled.
     """
     plan_path = resolve_build_plan_path(prawduct_dir)
     if not plan_path.is_file():
@@ -149,6 +152,10 @@ def _count_build_plan_chunks(prawduct_dir: Path) -> tuple[int, int]:
 # Capital-C + digits matches the "Chunk NN" commit convention without
 # false-matching prose like "10-chunk plan" (CRT-7B4M).
 _CHUNK_COMMIT_RE = re.compile(r"Chunk\s+(\d+)")
+# Conventional-commit scope: `fix(session-boundary-events): … (Chunk 01)`.
+_COMMIT_SCOPE_RE = re.compile(r"^\w+\(([^)]+)\)!?:")
+# The plan's own `scope:` frontmatter key.
+_PLAN_SCOPE_RE = re.compile(r"^scope:\s*(\S+)\s*$", re.MULTILINE)
 
 
 def _commits_ahead_of_base(project_dir: Path, base: str) -> int:
@@ -168,7 +175,9 @@ def _commits_ahead_of_base(project_dir: Path, base: str) -> int:
         return -1
 
 
-def _committed_chunk_ids(project_dir: Path, base: str) -> set[str]:
+def _committed_chunk_ids(
+    project_dir: Path, base: str, plan_scope: str | None = None
+) -> set[str]:
     """Normalized chunk ids referenced in commit subjects on ``base..HEAD``.
 
     The branch-robust progress signal for CRT-7B4M: when the build-plan Status
@@ -176,6 +185,26 @@ def _committed_chunk_ids(project_dir: Path, base: str) -> set[str]:
     branch), git commits are the only record of which chunks are done. Counts
     distinct chunk numbers (``Chunk <n>`` in a commit subject), leading-zero-
     normalized to match Status ids. Returns ``set()`` on git failure.
+
+    **Chunk ids are per-plan, so a branch carrying two plans cross-contaminates**
+    (SCN-5B8Q review R-2/R-7): a foreign plan's ``(Chunk 02)`` would otherwise
+    mark the active plan's chunk 02 complete. ``plan_scope`` — the active plan's
+    ``scope:`` frontmatter — restricts the count to commits whose
+    conventional-commit scope matches.
+
+    The filter is applied **only when it matches something**. Scope tags are a
+    convention, not a guarantee: on this very branch the continuity plan's commits
+    say ``session-continuity`` while its frontmatter says
+    ``session-handoff-continuity``, so a strict filter would silently erase that
+    plan's entire git signal and fall back to all-unchecked boxes — replacing
+    cross-contamination with a different wrong answer. When no commit carries the
+    plan's scope we therefore keep the pre-existing unscoped reading, which is
+    exactly today's behavior; the filter only ever *narrows* a set that was
+    demonstrably about this plan.
+
+    Bounding by the plan's own declared chunk ids needs no code here: the caller
+    walks Status items and asks whether each item's id is in this set, so an id
+    that belongs to no Status item is never consulted.
     """
     proc = subprocess.run(
         ["git", "log", "--format=%s", f"{base}..HEAD"],
@@ -186,11 +215,24 @@ def _committed_chunk_ids(project_dir: Path, base: str) -> set[str]:
     )
     if proc.returncode != 0:
         return set()
-    ids: set[str] = set()
-    for subject in proc.stdout.splitlines():
-        for m in _CHUNK_COMMIT_RE.finditer(subject):
-            ids.add(m.group(1).lstrip("0") or "0")
-    return ids
+
+    def _ids(subjects: list[str]) -> set[str]:
+        out: set[str] = set()
+        for subject in subjects:
+            for m in _CHUNK_COMMIT_RE.finditer(subject):
+                out.add(m.group(1).lstrip("0") or "0")
+        return out
+
+    subjects = proc.stdout.splitlines()
+    if plan_scope:
+        scoped = [
+            s for s in subjects
+            if (m := _COMMIT_SCOPE_RE.match(s)) and m.group(1).strip() == plan_scope
+        ]
+        scoped_ids = _ids(scoped)
+        if scoped_ids:
+            return scoped_ids
+    return _ids(subjects)
 
 
 def _git_aware_progress(
@@ -254,7 +296,10 @@ def _git_aware_progress(
             return None
         if _commits_ahead_of_base(project_dir, base) <= 0:
             return None
-        committed = _committed_chunk_ids(project_dir, base)
+        plan_scope_m = _PLAN_SCOPE_RE.search(content)
+        committed = _committed_chunk_ids(
+            project_dir, base, plan_scope_m.group(1) if plan_scope_m else None
+        )
     except (OSError, subprocess.SubprocessError):
         return None
     if not committed:

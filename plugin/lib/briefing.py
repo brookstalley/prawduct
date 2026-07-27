@@ -10,9 +10,11 @@ handoff. Plus the previous-session governance check ``cmd_clear`` warns on.
 ``cmd_clear`` itself STAYS in the hook (it is the deliberately-inline hot-path
 SessionStart entry point that orchestrates session-marker hygiene, the advisory
 probe step, and the git baseline; design constraint 1). It reaches these
-functions via the lazy ``_briefing()`` accessor — its five resident call sites
-(``staleness_scan`` / ``assemble_session_briefing`` / ``generate_subagent_briefing``
-/ ``generate_session_handoff`` / ``_check_previous_session_gates``) are each
+functions via the lazy ``_briefing()`` accessor — the hook's five resident call
+sites (``staleness_scan`` / ``assemble_session_briefing`` /
+``generate_subagent_briefing`` / ``_check_previous_session_gates`` in
+``cmd_clear`` itself, and ``generate_session_handoff`` in its boundary helper
+``_boundary_close_session``, which runs only at a real session boundary) are each
 already wrapped in a broad catch, so a ``lib.briefing`` import failure on an
 incomplete plugin install degrades to a skipped briefing (stderr NOTE) and never
 blocks session start — the lib-free hook top level is preserved (the ch.2–6

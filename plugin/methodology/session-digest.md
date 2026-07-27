@@ -43,8 +43,9 @@ inference as a vetoable assumption. Full model: `methodology/discovery.md` "Cali
   (`prawduct:allow <scope>/<rule-id> -- reason` is the general intentional-waiver
   pragma — see `docs/waivers.md`.)
 - **Feature-branch medium+ work.** Don't create PRs unless asked — then use `/prawduct:pr`.
-- **Forward notes go in `.prawduct/.handoff-notes.md`** — the one session file you own, and the
-  session channel that carries your intent across a `/clear`. Write it at each chunk close, not
+- **Forward notes go in `.prawduct/.handoff-notes.md`** — yours to write (as is
+  `.session-reflected`, its backward-looking twin), and the session channel that carries your
+  intent across a `/clear`. Write it at each chunk close, not
   when the user asks to clear — "nothing beyond the plan" if that is the truth, but write the
   line rather than no file, which reads to the next session as an omission.
   `.prawduct/.session-handoff.md` is the machine's: it is regenerated at every `/clear`, so

@@ -472,8 +472,8 @@ def _commit_resolves(project_dir: Path, sha: str) -> bool:
 # to lib/buildplan_refs.py — they answer "which chunk is current," which is
 # build-plan Status parsing, and keeping the derivation here made it reachable
 # only by this module's consumer (the defect recurred at two others: BLD-7K3Q,
-# SCN-4H9T). This module now reaches it through `_parse_build_plan_status` like
-# every other consumer.
+# SCN-4H9T). This module now reaches it through `buildplan_refs.resolve_chunk_progress`
+# like every other consumer — `infer_mode` calls that directly.
 
 
 def _critic_mode_for_chunk(prawduct_dir: Path, chunk_id: str | None) -> str | None:

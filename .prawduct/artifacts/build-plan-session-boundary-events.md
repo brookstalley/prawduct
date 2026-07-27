@@ -7,10 +7,20 @@ depends_on:
 governed_by:
   - artifact: architecture
     dispositions:
-      - "an independent reviewer never mutates the session it reviews → conforms, and this plan STRENGTHENS it: the critic-active marker sweep is deliberately kept on the orientation path (a session that died took any in-flight review with it, so a marker surviving a resume is stale by construction), while the session-mutating half is what `resume` stops running"
+      - "an independent reviewer never mutates the session it reviews → conforms, and this plan STRENGTHENS it: the session-mutating half is what `resume` stops running, and the critic-active marker sweep is now BOUNDARY-only (review R-1/R-6 — the 'stale by construction' premise holds only for a session that ended; `compact` is in-process and `fork`'s parent is often still live, so sweeping there would disarm this very norm's enforcement plus the Stop hook's abandoned-review backstop)"
       - "authority fails closed; advice fails soft → conforms. Nothing here is a gate. The one place it bites: the session-end Critic gate's jurisdiction is derived from state this plan stops resetting, so the gate gets *wider* on resume, never narrower — a change in the fail-closed direction"
       - "the plugin writes nothing into a governed repo except its own `.prawduct/` state → conforms; the only new write is one line inside an existing `.prawduct/` file"
       - "local-first governance coordination, zero-dependency limb → conforms; stdlib only, no manifest change. Network/daemon limb inapplicable — this plan adds no network surface"
+  - artifact: api-contract
+    dispositions:
+      - "additive-first evolution; existing flag names and exit-code meanings never repurposed → conforms. `--brief-only` is a NEW flag; `clear --session-start` keeps its meaning and its behavior on `startup`/`clear` is unchanged (pinned by the pre-existing tests passing untouched). What changed is which SOURCES the hook routes down which path — a hooks.json wiring change, not a repurposed flag. Exit codes are untouched: 0 normally, 2 for the arg guard and the critic-active refusal"
+      - "whole-surface semver; the internal CLI carries no per-subcommand version → conforms, nothing to version. The persisted-data limb is inapplicable — this plan changes no evidence-store schema"
+      - "exit codes are the contract; errors attributed, never raised as stack traces across the boundary → conforms and extends: both new failure paths (`.session-reflected` unarchivable, absent base-tree anchor) print an attributed `NOTE:` and return 0 rather than raising, holding the never-block-session-start posture"
+  - artifact: observability-strategy
+    dispositions:
+      - "severity-prefix vocabulary + stdout/stderr channel split → conforms. Both new signals use the `NOTE:` prefix and go to **stderr**, the user-and-diagnostics channel: each is operator-actionable (archive the file by hand; `/clear` in this worktree to anchor it) rather than something the agent acts on. This matches the sibling notice the boundary path already emits for the same narrowing"
+      - "emitted text names no prawduct-internal identifier → conforms; both new messages carry the plain-language reason and no id (verified by grepping added lines for id-shaped tokens outside comments). The ids stay one line away in comments, tests and this plan. The pre-existing `(CRT-3X9D)` in the critic-refusal message is NOT touched by this changeset, so under the norm's interim rule it waits for OBS-7M4D rather than being swept here"
+      - "single ledger writer → inapplicable; this plan appends no ledger event"
 last_validated: 2026-07-27
 ---
 
@@ -179,11 +189,32 @@ for fork to be left uncovered]`
 `--brief-only` is orthogonal to `--session-start` rather than replacing it: `--session-start` keeps
 meaning "a genuine hook invocation, so sweep the critic-active marker", which both paths want.
 
-`[DECISION: the critic-active marker sweep stays on the orientation path | because a review is
+~~`[DECISION: the critic-active marker sweep stays on the orientation path | because a review is
 dispatched by a process, so an in-flight review dies with the session that died; a marker outliving a
 session cannot correspond to a live reviewer, and resume is currently what rescues an operator from a
 crashed Critic. Dropping the sweep would trade a loud bug for a 30-minute wedge | user can ask for the
-sweep to be boundary-only]`
+sweep to be boundary-only]`~~
+
+**REVERSED by the Chunk 01 review (R-1 + R-6, reached independently by two reviewers).** The premise
+is true only for `resume`. `compact` fires **mid-session, in-process**, and `fork`'s parent is
+frequently still running — a fact *this plan's own `fork` DECISION states three paragraphs up. The two
+decisions contradicted each other and were written in the same sitting.* So a marker seen on those
+sources is very likely **live**, and sweeping it disarms both the CRT-3X9D guard and the Stop hook's
+abandoned-review backstop (which keys on the marker's presence) while a reviewer is genuinely working.
+Compaction previously ran no `clear` hook at all, so the exposure was **new in this bundle**.
+
+`[DECISION: the critic-active marker sweep is BOUNDARY-only | because the "stale by construction"
+premise holds only for a session that ended, and the asymmetry is decisive: sweeping a live marker is a
+silent governance failure, while leaving a dead one costs at most the 30-minute TTL with `--force` and
+`rm` as loud documented overrides. A crashed Critic is now rescued by the next real boundary rather
+than by a resume | user can ask for resume-only sweeping if the TTL wait proves painful]`
+
+**The category this exposed.** The split's first cut sorted statements by *does it destroy evidence*.
+That missed a third kind: statements that destroy nothing but **interpret session state as belonging to
+a finished session**. Two qualify — the marker sweep, and `_check_previous_session_gates` (R-4), which
+reads `.session-reflected`/`.gates-waived`/the change baseline and would report the *running* session
+as a previous one with unmet gates, repeatedly under `compact`. Both are now boundary-only. However
+read-only such a statement looks, it is not orientation.
 
 Scope the change **by pattern, not line number**: enumerate every statement in `cmd_clear` and assign
 it to a column before editing. The table in Problem is the inventory; verify it against the code
@@ -208,8 +239,10 @@ mid-cycle worktree entry `building.md` already names | user can ask for create-i
 1. A simulated resume leaves `.handoff-notes.md`, `.session-reflected`, `.session-start`,
    `.session-git-baseline` and `.session-base-tree` untouched, and writes no handoff. Regression test
    pins the case reproduced in SCN-5B8Q.
-2. The same invocation still emits the briefing, refreshes advisories, and sweeps a stale
-   `.critic-active`.
+2. The same invocation still emits the briefing, refreshes advisories, untracks committed session
+   files, and runs the size/preferences checks. It does **not** sweep `.critic-active` and does **not**
+   run the previous-session gate check — those interpret session state as a finished session's and are
+   boundary-only (review R-1/R-4/R-6). A boundary still does both.
 3. `startup` and `clear` behave exactly as today — pinned by the existing tests passing unchanged.
 4. `compact` and `fork` receive orientation. The test asserts the **partition property** over a
    pinned roster of all five documented sources — every source is covered by exactly one of the two
@@ -240,11 +273,63 @@ briefing line.
 "advice fails soft" — a stale handoff must still be offered, with its age, not suppressed. Suppression
 would turn a visible weak signal into an invisible absent one | user can ask for a staleness ceiling]`
 
+**Requirement added 2026-07-27 (owner, post-Chunk-01): the pointer must know it is speaking to a
+continuation.** `assemble_session_briefing` emits "Previous session context available" on **pure file
+existence** — no source awareness, no vintage. Chunk 01 deliberately gave continuations the *full*
+briefing (Success #2), which means a `resume`/`fork` session is now pointed at a handoff describing the
+boundary *before* its own session — context it already holds in full, and which the parent has since
+worked past. The pointer is boundary-scoped; the briefing that carries it is not.
+
+The line splits three ways, not two:
+
+| source | context state | the pointer is |
+|---|---|---|
+| `startup`, `clear` | fresh | correct — this is its job |
+| `resume`, `fork` | fully restored | redundant, and points at superseded state |
+| `compact` | genuinely lost | *wanted*, but this is the wrong artifact |
+
+`fork` is the sharp case: the parent is often still running, so two live sessions read one pointer and
+the drift is however long the parent has worked, not one boundary. `compact` is the interesting one —
+the only continuation with real context loss, so it wants a bridge, but the pre-session handoff
+describes the wrong side of the boundary and compaction can fire repeatedly in one session.
+
+**This reframes the chunk.** Age was the planned signal; **applicability** is the stronger one —
+"you are a continuation, this predates your session" beats "this is 6 days old", because age is a proxy
+for the fact and source *is* the fact. Report both; lead with source. Suppression stays rejected
+(advice fails soft): the handoff is still offered, the line just stops implying it is news.
+
+`[ASSUMPTION: `compact` keeps the pointer, labelled, rather than gaining a new mid-session artifact |
+MED impact | owner can veto]` Building the thing compaction actually wants — a bridge describing what
+*this* session has done since its boundary — is a different feature, and the Out of Scope note about
+re-asking whether the handoff *pair* is the right shape is where it belongs.
+
+**Interface consequence — read this before starting Chunk 02.** `--brief-only` carries
+*continuation vs. boundary* and nothing finer; `resume`, `compact` and `fork` all arrive through it
+indistinguishably. Chunk 01 needs no more than that, but the three-way table above does. Two ways to
+get the source, and they are not equivalent:
+
+- **Split the orientation matcher** into `resume|fork` and `compact`, each passing its own flag. Keeps
+  the "matcher carries the fact" design and stays free of payload parsing. Note this **breaks
+  `test_exactly_one_boundary_and_one_orientation_entry` by design** — generalize it and the partition
+  test to N entries rather than reading the failure as a regression.
+- **Parse `source` from the hook's stdin JSON.** More precise and future-proof against a sixth source,
+  but it is the payload parsing Chunk 01 deliberately avoided, and it puts a JSON read on the
+  SessionStart hot path.
+
+Recommendation: the matcher split, for consistency with Chunk 01 — unless Chunk 02 finds it needs the
+source for something else too, at which point parsing earns its cost once.
+
+Either way `assemble_session_briefing` must learn the distinction: today `cmd_clear` knows `brief_only`
+and does not pass it, so threading it through is part of the chunk.
+
 **Done when:**
 1. A generated handoff records when it was written and the HEAD it was written at.
 2. The briefing distinguishes a fresh handoff from a stale one in words an agent will act on.
-3. An old handoff is still offered, never withheld.
-4. Full suite green; `/prawduct:critic` passes with no blocking findings.
+3. **The pointer distinguishes a boundary from a continuation.** On `resume`/`fork` it says the handoff
+   predates this session and the transcript already covers it; on `startup`/`clear` it reads as it does
+   today. This is a *stronger* signal than age and the one to lead with.
+4. An old handoff is still offered, never withheld — on every source, continuations included.
+5. Full suite green; `/prawduct:critic` passes with no blocking findings.
 
 ## Verification Strategy
 

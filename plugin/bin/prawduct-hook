@@ -617,9 +617,13 @@ def _boundary_close_session(project_dir: Path, prawduct_dir: Path) -> None:
             "this one. Treat its contents as stale provenance."
         )
 
-    # Preserve previous session's reflection before clearing
+    # Preserve previous session's reflection before clearing. `reflection_preserved`
+    # gates the delete below: True when there was nothing to preserve or the archive
+    # succeeded, False only when the archive genuinely failed.
     reflected = prawduct_dir / ".session-reflected"
+    reflection_preserved = True
     if reflected.is_file():
+        reflection_preserved = False
         try:
             content = reflected.read_text().strip()
             if content:
@@ -627,14 +631,31 @@ def _boundary_close_session(project_dir: Path, prawduct_dir: Path) -> None:
                 separator = "\n\n---\n\n" if log.is_file() and log.read_text().strip() else ""
                 with open(log, "a") as f:
                     f.write(f"{separator}{content}\n")
-        except (UnicodeDecodeError, OSError):
-            pass  # Corrupted reflection — skip archival, safe to proceed
+            reflection_preserved = True
+        except (UnicodeDecodeError, OSError) as exc:
+            # Consumption keys on PRESERVATION, not on "we tried" — the same rule
+            # `.handoff-notes.md` already uses, applied to its literal sibling.
+            # Previously this swallowed the failure and the deletion loop below
+            # unlinked the file three statements later, so a reflection that could
+            # not be archived was destroyed rather than kept: the one silent
+            # permanent-loss path left in the boundary. Keeping it is an
+            # unbounded-but-announced failure, which is the trade architecture.md
+            # already ratifies for this channel.
+            print(
+                f"NOTE: could not archive .session-reflected ({exc}) — keeping the file "
+                "so the reflection is not lost; it will be retried at the next boundary "
+                "(archive or remove it by hand to stop this repeating)",
+                file=sys.stderr,
+            )
 
     # Remove session files. Best-effort per file (STH-8M3V): an OSError here
     # (permissions, transient FS) must not traceback the SessionStart hook —
     # a survivor just carries stale state into the new session, which the
     # NOTE names so the user can remove it by hand.
-    for name in (".session-reflected", ".session-start", ".session-git-baseline", ".session-base-tree", ".gates-waived"):
+    doomed = [".session-start", ".session-git-baseline", ".session-base-tree", ".gates-waived"]
+    if reflection_preserved:
+        doomed.insert(0, ".session-reflected")
+    for name in doomed:
         f = prawduct_dir / name
         try:
             if f.is_file():
@@ -766,16 +787,33 @@ def cmd_clear(project_dir: Path, argv: list[str] | None = None) -> int:
     # Critic-active session-mutation guard (CRT-3X9D). cmd_clear is destructive
     # (it archives/deletes .session-reflected, rewrites .session-start, recaptures
     # the git baseline). An independent reviewer must never mutate the session it
-    # is reviewing. A genuine new session (--session-start) or an explicit
-    # --force sweeps any marker and proceeds; a bare clear refuses while a review
-    # is plausibly in progress. The check fails OPEN on a lib import error so an
-    # incomplete install never blocks session start (a broken lib also means the
-    # Critic can't run, so there is no review to protect).
-    if session_start or force:
+    # is reviewing. A genuine session BOUNDARY (--session-start without
+    # --brief-only) or an explicit --force sweeps any marker and proceeds; a bare
+    # clear refuses while a review is plausibly in progress. The check fails OPEN
+    # on a lib import error so an incomplete install never blocks session start (a
+    # broken lib also means the Critic can't run, so there is no review to protect).
+    #
+    # The sweep is BOUNDARY-only, not orientation (SCN-5B8Q review R-1/R-6). What
+    # licenses deleting someone else's marker is that an in-flight review dies with
+    # the process that dispatched it, so a marker outliving its session is stale by
+    # construction. That premise holds for a session that ENDED. It is false for
+    # `compact`, which fires mid-session *in-process*, and often false for `fork`,
+    # whose parent session is frequently still running — sweeping there would
+    # disarm this very guard, and the Stop hook's abandoned-review backstop (which
+    # keys on the marker's presence), while a reviewer is genuinely alive. The
+    # asymmetry decides it: sweeping a live marker is a silent governance failure,
+    # while not sweeping a dead one costs at most the 30-minute TTL, with `--force`
+    # and `rm` as loud, documented overrides.
+    boundary = session_start and not brief_only
+    if boundary or force:
         try:
             _critic_marker().clear_marker(prawduct_dir)
         except Exception:  # prawduct:allow prawduct/broad-except -- marker sweep must never block session start
             pass
+    elif session_start:
+        # A continuation: mutates no session state, so there is nothing for the
+        # guard to protect — it neither sweeps nor refuses.
+        pass
     else:
         try:
             active, age_s = _critic_marker().review_active(prawduct_dir)
@@ -798,16 +836,30 @@ def cmd_clear(project_dir: Path, argv: list[str] | None = None) -> int:
             )
             return 2
 
-    # Check previous session's governance gates (warn, never block)
-    try:
-        gate_warnings = _briefing()._check_previous_session_gates(project_dir)
-        if gate_warnings:
-            print(
-                f"WARNING: Previous session had unmet governance: {', '.join(gate_warnings)}. "
-                f"Consider addressing before continuing."
-            )
-    except Exception:  # prawduct:allow prawduct/broad-except -- gate check must never block clear
-        pass
+    # Check previous session's governance gates (warn, never block).
+    #
+    # BOUNDARY-only (SCN-5B8Q review R-4). This reads `.session-reflected`,
+    # `.gates-waived` and the session-change baseline and interprets them as a
+    # *finished* session's record. On a continuation those files belong to the
+    # session still running, so the check would nag "reflection not captured"
+    # about work that has not reached its close yet — and on `compact`, which can
+    # fire repeatedly, it would do so over and over. Its waiver handling assumes
+    # the same thing: the comment there notes `.gates-waived` is deleted right
+    # after this runs, which is true only on the path that deletes it.
+    #
+    # This is the second member of a category the first cut of the split missed:
+    # statements that destroy nothing but *interpret* session state as belonging
+    # to a previous session. They are not orientation, however read-only they look.
+    if not brief_only:
+        try:
+            gate_warnings = _briefing()._check_previous_session_gates(project_dir)
+            if gate_warnings:
+                print(
+                    f"WARNING: Previous session had unmet governance: {', '.join(gate_warnings)}. "
+                    f"Consider addressing before continuing."
+                )
+        except Exception:  # prawduct:allow prawduct/broad-except -- gate check must never block clear
+            pass
 
     # Defensively untrack any session files that were accidentally committed.
     # Runs every session-start so the cleanup happens in any product repo,
@@ -904,6 +956,24 @@ def cmd_clear(project_dir: Path, argv: list[str] | None = None) -> int:
     # Session BOUNDARY region 2 of 2 — skipped on a continuation (SCN-5B8Q).
     if not brief_only:
         _boundary_capture_git_anchors(project_dir, prawduct_dir)
+    elif not (prawduct_dir / ".session-base-tree").is_file():
+        # The continuation path never writes an anchor — correct, because stamping
+        # a resume-time clock onto a session that began earlier narrows the very
+        # jurisdiction this split exists to protect. But an ALREADY-absent anchor
+        # then degrades in silence: gates.session_review_verdict falls back to
+        # base_source='head-fallback', which shrinks the session Critic gate to
+        # uncommitted work AND skips the merge-base rescue (that rescue is gated on
+        # base_source == 'marker'). The boundary path announces the same narrowing
+        # when it fails to resolve HEAD^{tree}; the continuation path attempts no
+        # write, so without this there is no notice at all (review R-15). Reaching
+        # it is ordinary now — a mid-cycle worktree entry followed by resume/fork.
+        print(
+            "NOTE: no .prawduct/.session-base-tree and this is a continuation "
+            "(resume/compact/fork), which never writes one — the session Critic gate "
+            "will judge uncommitted work only and skip the merge-base rescue. "
+            "Start the session with /clear in this worktree to anchor it.",
+            file=sys.stderr,
+        )
 
     # v5: Staleness scan + session briefing + subagent briefing
     try:

@@ -162,27 +162,139 @@ class TestBriefOnlyStillOrients:
             "repeated observation — a continuation must still receive it"
         )
 
-    def test_resume_still_sweeps_a_stale_critic_marker(self, tmp_path):
-        """A review is dispatched by a process, so an in-flight review dies with
-        the session that died. A marker outliving a session cannot correspond to
-        a live reviewer, and resume is what rescues an operator from a crashed
-        Critic — so the sweep stays on the ORIENTATION path."""
-        prawduct = _seed_session(tmp_path)
-        marker = prawduct / ".critic-active"
-        marker.write_text(json.dumps({"started_at": "2026-07-27T06:00:00Z"}))
-
-        res = run_plugin_hook("clear", tmp_path, "--session-start", "--brief-only")
-        assert res.returncode == 0, res.stderr
-        assert not marker.is_file(), (
-            "a stale critic-active marker must still be swept on a continuation"
-        )
-
     def test_resume_refreshes_advisories(self, tmp_path):
         prawduct = _seed_session(tmp_path)
         res = run_plugin_hook("clear", tmp_path, "--session-start", "--brief-only")
         assert res.returncode == 0, res.stderr
         assert (prawduct / ".advisories.json").is_file(), (
             "advisory probes must still run on a continuation"
+        )
+
+
+# =============================================================================
+# R-14 — the boundary's last silent-loss path: consumption keys on preservation
+# =============================================================================
+
+
+class TestReflectionArchivalIsDeliveryKeyed:
+    def test_unarchivable_reflection_is_kept_not_deleted(self, tmp_path):
+        """Archival used to swallow its failure and the deletion loop unlinked the
+        file anyway — destroying a reflection that reached no archive. Same rule as
+        `.handoff-notes.md`: consume only what was preserved."""
+        prawduct = _seed_session(tmp_path)
+        # Make reflections.md un-appendable so archival fails at the write, while
+        # the reflection itself stays perfectly readable.
+        archive = prawduct / "reflections.md"
+        archive.mkdir()  # a directory where a file is expected -> OSError on open()
+
+        res = run_plugin_hook("clear", tmp_path, "--session-start")
+        assert res.returncode == 0, res.stderr
+        assert (prawduct / ".session-reflected").is_file(), (
+            "an un-archivable reflection must be KEPT, not silently destroyed"
+        )
+        assert "could not archive .session-reflected" in res.stderr, (
+            "the failure must be announced, not silent"
+        )
+
+    def test_archived_reflection_is_still_deleted(self, tmp_path):
+        """The discriminating half — preservation is what licenses the delete, so
+        the normal path must still clear the file."""
+        prawduct = _seed_session(tmp_path)
+        res = run_plugin_hook("clear", tmp_path, "--session-start")
+        assert res.returncode == 0, res.stderr
+        assert not (prawduct / ".session-reflected").is_file(), (
+            "a successfully archived reflection must still be consumed"
+        )
+        assert "the chunk went fine" in (prawduct / "reflections.md").read_text()
+
+
+# =============================================================================
+# The third category: statements that DESTROY nothing but INTERPRET session
+# state as a finished session's. Neither orientation nor a destructive act.
+# =============================================================================
+
+
+class TestBoundaryDependentInterpretation:
+    """The first cut of this split classified two statements as orientation
+    because they destroy no evidence. Both actually assume a boundary just
+    happened, and both are wrong on a continuation (review R-1/R-4/R-6)."""
+
+    def test_continuation_does_not_sweep_the_critic_marker(self, tmp_path):
+        """What licenses deleting someone else's marker is that an in-flight
+        review dies with the process that dispatched it — true for a session that
+        ENDED, false for `compact` (fires mid-session, in-process) and often false
+        for `fork` (parent still running). Sweeping there disarms CRT-3X9D and the
+        Stop hook's abandoned-review backstop while a reviewer is genuinely live.
+
+        This replaces test_resume_still_sweeps_a_stale_critic_marker, which pinned
+        the opposite. That test asserted a real defect, so this is a correction,
+        not a relaxation: the marker's three independent recoveries (30-min TTL,
+        `--force`, `rm`) all survive, and the boundary sweep below still fires.
+        """
+        prawduct = _seed_session(tmp_path)
+        marker = prawduct / ".critic-active"
+        marker.write_text(json.dumps({"started_at": "2026-07-27T06:00:00Z"}))
+
+        res = run_plugin_hook("clear", tmp_path, "--session-start", "--brief-only")
+        assert res.returncode == 0, res.stderr
+        assert marker.is_file(), (
+            "a continuation must NOT sweep the marker — the reviewing process may "
+            "still be alive (compact is in-process; fork's parent often is)"
+        )
+
+    def test_boundary_still_sweeps_the_critic_marker(self, tmp_path):
+        """The discriminating half — the sweep is not lost, only re-scoped."""
+        prawduct = _seed_session(tmp_path)
+        marker = prawduct / ".critic-active"
+        marker.write_text(json.dumps({"started_at": "2026-07-27T06:00:00Z"}))
+
+        res = run_plugin_hook("clear", tmp_path, "--session-start")
+        assert res.returncode == 0, res.stderr
+        assert not marker.is_file(), (
+            "a genuine boundary must still sweep a stale marker"
+        )
+
+    def test_continuation_announces_a_missing_base_tree_anchor(self, tmp_path):
+        """Not writing the anchor is correct; degrading in silence is not. With no
+        anchor the Critic gate shrinks to uncommitted work and skips the merge-base
+        rescue — the boundary path announces that, the continuation path had no
+        notice at all (review R-15)."""
+        prawduct = _seed_session(tmp_path)
+        (prawduct / ".session-base-tree").unlink()
+
+        res = run_plugin_hook("clear", tmp_path, "--session-start", "--brief-only")
+        assert res.returncode == 0, res.stderr
+        assert ".session-base-tree" in res.stderr and "uncommitted work only" in res.stderr, (
+            "a missing anchor on a continuation must name its consequence"
+        )
+
+    def test_continuation_is_quiet_when_the_anchor_is_present(self, tmp_path):
+        """The discriminating half — the notice fires on the degradation, not on
+        every continuation."""
+        _seed_session(tmp_path)
+        res = run_plugin_hook("clear", tmp_path, "--session-start", "--brief-only")
+        assert res.returncode == 0, res.stderr
+        assert "session-base-tree" not in res.stderr, (
+            "an anchored continuation must not emit the degradation notice"
+        )
+
+    def test_continuation_does_not_warn_about_the_running_session(self, tmp_path):
+        """`_check_previous_session_gates` reads `.session-reflected` /
+        `.gates-waived` / the change baseline and reports them as a *finished*
+        session's record. On a continuation they belong to the session still
+        running, so the warning would blame work that has not reached its close —
+        repeatedly, since `compact` can fire many times in one session."""
+        prawduct = _seed_session(tmp_path)
+        # Mid-session state that WOULD trip the gate check at a boundary: a
+        # too-short reflection, with the waiver file removed so nothing excuses it.
+        (prawduct / ".session-reflected").write_text("wip\n")
+        (prawduct / ".gates-waived").unlink()
+
+        res = run_plugin_hook("clear", tmp_path, "--session-start", "--brief-only")
+        assert res.returncode == 0, res.stderr
+        assert "Previous session had unmet governance" not in res.stdout, (
+            "a continuation must not report the running session as a previous "
+            "session with unmet gates"
         )
 
 

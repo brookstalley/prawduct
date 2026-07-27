@@ -61,7 +61,54 @@ The correction names the boundary/continuation split and all three continuation 
 redundant, which funds it. 4595 → 4596 tokens, ceiling untouched. The handoff notes had predicted
 this addition would need the ceiling raised; it did not.
 
-15 tests added, suite 2650 → 2665.
+**The review found a third category the split had missed, and it was the sharp one.** 0 blocking,
+12 warnings — but two findings were reached *independently by two reviewers*, and both said the same
+thing: the first cut sorted statements by *does it destroy evidence*, which is the wrong axis for two
+of them. The critic-active marker sweep and `_check_previous_session_gates` destroy nothing; they
+**interpret session state as belonging to a session that has finished**. Both were wrong on a
+continuation, and both are now boundary-only:
+
+- **The marker sweep.** What licenses deleting someone else's marker is "an in-flight review dies with
+  the process that dispatched it." True for `resume`; false for `compact`, which fires *in-process*;
+  and often false for `fork` — *as this same chunk's own `fork` decision states three paragraphs
+  above the sweep decision that contradicted it.* Sweeping there disarms the CRT-3X9D guard and the
+  Stop hook's abandoned-review backstop while a reviewer is genuinely alive, and compaction previously
+  ran no `clear` hook at all, so the exposure was **new in this bundle**. The asymmetry settles it:
+  sweeping a live marker is a silent governance failure; leaving a dead one costs the 30-minute TTL
+  with two loud overrides.
+- **The previous-session gate check** reads `.session-reflected`/`.gates-waived`/the change baseline
+  and reports them as a completed session's record — so on a continuation it would blame the *running*
+  session for work that has not reached its close, repeatedly under `compact`.
+
+**Cross-plan chunk-id conflation** (also convergent). `_committed_chunk_ids` matched `Chunk NN` in any
+subject on the branch with no scope filter, and this branch carries two plans — so a foreign plan's
+`(Chunk 02)` marked the active plan's chunk 02 done. It was harmless only by coincidence, and
+repointing `active_build_plan` at this plan (which it should have named all along) would have made it
+live: the two-chunk Status would have read COMPLETE with Chunk 02 unbuilt. Now filtered by the
+conventional-commit scope — but only when the filter *matches something*, because scope tags are a
+convention, not a guarantee: this branch's continuity commits say `session-continuity` while the plan
+says `session-handoff-continuity`, and a strict filter would have erased that plan's entire git signal
+and fallen back to all-unchecked boxes. Verified against the real branch: boundary-events now reads
+`complete=1, current=Chunk 02`, and continuity is unchanged at `complete=3, current=Chunk 04`.
+
+**Two silent-degradation paths closed.** Reflection archival swallowed its failure and the deletion
+loop unlinked the file three statements later — destroying a reflection that reached no archive, the
+last silent permanent-loss path in the boundary, and the delivery-keyed rule built for
+`.handoff-notes.md` never applied to its literal sibling. And the continuation path narrowed the Critic
+gate's jurisdiction without saying so when the base-tree anchor is absent (the boundary path announces
+the same narrowing); it now names the consequence and the remedy.
+
+**Claims corrected rather than softened.** "The sweep is the one mutation on the continuation path" was
+a quantifier over-claim falsified by this bundle's own test asserting `.advisories.json` is written
+there — written the same session the learnings say to verify at the quantifier. "The one session file
+you own" was asserted in five places and contradicted by `.session-reflected`, including by the
+architecture section whose own body says "Two files are different" one line below the heading that
+says one — and including in `reflection.md`, the guide about the other file. Dispositions against
+`api-contract.md` and `observability-strategy.md` were missing from both plans and are now recorded.
+
+24 tests added net, suite 2650 → 2673. Re-verified end-to-end after the fixes: a real `claude --resume`
+now preserves a **live** Critic marker, the notes, the reflection and the waivers, while a control
+boundary still sweeps and consumes all of them.
 
 ## 2026-07-27: The guides stop naming only the file the agent must not write (session-handoff-continuity Chunk 03)
 

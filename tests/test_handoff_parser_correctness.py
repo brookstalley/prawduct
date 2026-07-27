@@ -379,6 +379,60 @@ class TestGateSemanticsUnchanged:
         assert "Chunks 01-03 shipped." in status["context"]
         assert gates._has_active_build_plan_file(repo / ".prawduct") is True
 
+    def test_foreign_plans_chunk_ids_do_not_mark_this_plan_complete(
+        self, tmp_path: Path
+    ):
+        """Chunk ids are PER-PLAN, so a branch carrying two plans conflated them
+        (SCN-5B8Q review R-2/R-7): a sibling plan's `(Chunk 02)` marked THIS
+        plan's chunk 02 done. Scoping by the conventional-commit scope fixes it.
+
+        The fixture mirrors the branch that surfaced it: the active plan has two
+        chunks and only its Chunk 01 is committed under its own scope, while a
+        foreign scope contributes `(Chunk 02)` and `(Chunk 03)`.
+        """
+        repo = tmp_path / "repo"
+        _init_repo(repo, branch="develop")
+        _write_state(repo, "views_enabled: true\nbase_branch: develop\n")
+        _write_plan(
+            repo,
+            "---\nartifact: build-plan\nscope: boundary-events\n---\n\n"
+            "## Status\n\n<!-- views_enabled: true -->\n\n"
+            "- [ ] Chunk 01: Split the acts\n- [ ] Chunk 02: Handoff vintage\n",
+        )
+        _commit(repo, "chore: plan")
+        _git(repo, "checkout", "-b", "feature/x", "--quiet")
+        _commit(repo, "fix(boundary-events): split the acts (Chunk 01)")
+        _commit(repo, "feat(other-plan): unrelated work (Chunk 02)")
+        _commit(repo, "docs(other-plan): more unrelated work (Chunk 03)")
+
+        status = buildplan_refs._parse_build_plan_status(repo)
+        assert status["current_chunk"] == "Chunk 02: Handoff vintage", (
+            "a foreign plan's (Chunk 02) must not complete this plan's chunk 02"
+        )
+
+    def test_unmatched_plan_scope_keeps_the_unscoped_reading(self, tmp_path: Path):
+        """The filter narrows only a set demonstrably about this plan. Scope tags
+        are a convention, not a guarantee — on the branch that surfaced this, the
+        continuity plan's commits said `session-continuity` while its frontmatter
+        said `session-handoff-continuity`. A strict filter would erase that plan's
+        whole git signal and fall back to all-unchecked boxes: cross-contamination
+        traded for a different wrong answer. So when nothing matches, behave as
+        before."""
+        repo = tmp_path / "repo"
+        _init_repo(repo, branch="develop")
+        _write_state(repo, "views_enabled: true\nbase_branch: develop\n")
+        _write_plan(repo, VIEWS_PLAN)  # scope: session-handoff-continuity
+        _commit(repo, "chore: plan")
+        _git(repo, "checkout", "-b", "feature/x", "--quiet")
+        # Short-form scope that does NOT equal the plan's frontmatter scope.
+        _commit(repo, "feat(session-continuity): the forward channel (Chunk 01)")
+        _commit(repo, "fix(session-continuity): parser correctness (Chunk 02)")
+
+        status = buildplan_refs._parse_build_plan_status(repo)
+        assert status["current_chunk"] == "Chunk 03: Proactive close", (
+            "with no scope match the unscoped reading must survive, not vanish"
+        )
+
     def test_non_views_repo_still_uses_checkboxes(self, tmp_path: Path):
         """The git path is opt-in; a hand-maintained plan is unaffected."""
         repo = tmp_path / "repo"

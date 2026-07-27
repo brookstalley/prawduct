@@ -12,7 +12,17 @@ governed_by:
       - "local-first governance coordination, network/daemon limb → inapplicable because this plan adds no network surface"
       - "local-first governance coordination, zero-dependency limb → conforms; this plan DOES add code to the governance runtime, and it is stdlib-only (`subprocess`, `typing.NamedTuple`) plus internal lib siblings — no manifest change. Applicability is recorded, not assumed: disposing of a two-limbed norm wholesale on the limb that happens not to apply is how the applicable limb goes unchecked."
       - "the plugin writes nothing into a governed repo except its own `.prawduct/` state → conforms (the new file is `.prawduct/` session state, gitignored like its siblings)"
-last_validated: 2026-07-26
+  - artifact: api-contract
+    dispositions:
+      - "additive-first evolution; existing flag names and exit-code meanings never repurposed → conforms. `handoff preview` is a NEW subcommand; no existing subcommand, flag or exit code changed meaning. Recorded retroactively during the SCN-5B8Q Chunk 01 review, which found this plan adds a CLI surface with no disposition against the artifact that governs it"
+      - "whole-surface semver; the internal CLI carries no per-subcommand version → conforms, nothing to version"
+      - "exit codes are the contract; errors attributed, never raised across the boundary → conforms; `preview` is read-only and its failures degrade to an attributed note rather than a traceback"
+  - artifact: observability-strategy
+    dispositions:
+      - "severity-prefix vocabulary + stdout/stderr channel split → conforms, and this plan REASONS with the split rather than inheriting it: the handoff-generation failure is deliberately split by audience, with the operator's diagnosis on stderr and the wrong-provenance warning on stdout, because the party harmed by a stale handoff is the incoming agent, which only reads stdout"
+      - "emitted text names no prawduct-internal identifier → conforms for the text this plan writes; the pre-existing id-bearing sites it does not touch wait for OBS-7M4D under the norm's interim rule"
+      - "single ledger writer → inapplicable; this plan appends no ledger event"
+last_validated: 2026-07-27
 ---
 
 ## Requirements Confidence
