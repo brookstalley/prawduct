@@ -546,14 +546,21 @@ def build_scope_to_plan_map(artifacts_dir: Path) -> dict[str, Path]:
     result: dict[str, Path] = {}
     if not artifacts_dir.is_dir():
         return result
-    for path in sorted(artifacts_dir.glob("*.md")):
+    # Named `plan_path` because these ARE build-plan candidates, and that local
+    # is the idiom `tests/preferences/test_build_plan_decoding.py` enforces the
+    # decoding rule through. Under a bare `path` this read was invisible to that
+    # pin and kept the locale-codec/except-set defect a round longer.
+    for plan_path in sorted(artifacts_dir.glob("*.md")):
         try:
-            content = path.read_text(encoding="utf-8")
-        except OSError:
+            content = plan_path.read_text(encoding="utf-8")
+        except (OSError, UnicodeDecodeError):
+            # One malformed file in artifacts/ must not blind the scope map to
+            # every other plan. `UnicodeDecodeError` is a `ValueError`, so the
+            # narrower `except OSError` here let it escape to `regen-views`.
             continue
         _present, scope = _parse_build_plan_frontmatter_scope(content)
         if scope and scope not in result:
-            result[scope] = path
+            result[scope] = plan_path
     return result
 
 

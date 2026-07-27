@@ -30,7 +30,7 @@ REPO_ROOT = Path(__file__).resolve().parent.parent / "plugin"
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from lib import briefing, buildplan_refs, critic_mode, gates  # noqa: E402
+from lib import briefing, buildplan_refs, critic_mode, gates, views  # noqa: E402
 
 
 # ---------------------------------------------------------------------------
@@ -589,3 +589,70 @@ class TestDeleteNudgeIsMergeAware:
         assert briefing._plan_work_possibly_unmerged(
             tmp_path, tmp_path / ".prawduct"
         ) == (False, "")
+
+
+# ---------------------------------------------------------------------------
+# A non-UTF-8 plan degrades, at each reader that has to survive one
+# ---------------------------------------------------------------------------
+
+
+class TestNonUtf8PlanDegrades:
+    """The behavioral half of `tests/preferences/test_build_plan_decoding.py`.
+
+    That pin is grep-level — it asserts each read names UTF-8 and each guard
+    spells `UnicodeDecodeError`. It cannot assert the designed degradation
+    actually *runs*, so a refactor that keeps the token and breaks the return
+    would pass it. Shape and behavior are different claims; the gap between
+    them is where this class lived for three review rounds.
+    """
+
+    UNDECODABLE = (
+        b"# Build Plan \xff\xfe Bad Bytes (2026-07-27)\n\n"
+        b"## Status\n\n- [ ] Chunk 01: A\n\n"
+        b"### Chunk 01: A\n- **Type:** code\n"
+    )
+
+    def _write_undecodable_plan(self, project_dir: Path) -> Path:
+        plan = project_dir / ".prawduct" / "artifacts" / "build-plan.md"
+        plan.parent.mkdir(parents=True, exist_ok=True)
+        plan.write_bytes(self.UNDECODABLE)
+        return plan
+
+    def test_chunk_refs_returns_its_error_instead_of_raising(self, tmp_path: Path):
+        """The reachable symptom: `verify-chunk-refs --chunk <id>` bypasses the
+        degrading resolver and calls this directly, so a raise here becomes a
+        traceback where the CLI documents a `cannot-verify:` exit."""
+        self._write_undecodable_plan(tmp_path)
+        refs = buildplan_refs._parse_build_plan_chunk_refs(tmp_path / ".prawduct", "01")
+        assert "unreadable build-plan" in refs["error"]
+
+    def test_verify_chunk_refs_cli_reports_rather_than_tracebacks(self, tmp_path: Path):
+        """End-to-end, because the boundary's recorded error model says no
+        internal stack trace may cross it."""
+        _init_repo(tmp_path)
+        self._write_undecodable_plan(tmp_path)
+        proc = subprocess.run(
+            [
+                sys.executable,
+                str(REPO_ROOT / "bin" / "prawduct-hook"),
+                "verify-chunk-refs",
+                "--chunk",
+                "01",
+            ],
+            cwd=str(tmp_path),
+            capture_output=True,
+            text=True,
+            env={**_git_env(tmp_path), "CLAUDE_PROJECT_DIR": str(tmp_path)},
+            timeout=30,
+        )
+        assert proc.returncode == 1, proc.stdout + proc.stderr
+        assert "cannot-verify" in proc.stderr, proc.stdout + proc.stderr
+        assert "Traceback" not in proc.stderr, proc.stderr
+
+    def test_regen_reports_the_bad_plan_and_keeps_going(self, tmp_path: Path):
+        """One unreadable plan must not take out a multi-plan repo's whole
+        regen — the branch this delta added, which nothing else reaches."""
+        prawduct = tmp_path / ".prawduct"
+        self._write_undecodable_plan(tmp_path)
+        results = views._plan_status_results(prawduct, "")
+        assert not any("Traceback" in r.summary for r in results)

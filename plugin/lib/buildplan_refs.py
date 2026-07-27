@@ -18,7 +18,9 @@ path; this module is a lib citizen and reaches the canonical resolver in
 ``lib.core`` directly, exactly as ``critic_mode`` and ``views`` do.
 
 Every read of the plan — here and in every other module that reads it — is
-explicitly UTF-8, pinned by ``tests/test_handoff_parser_correctness.py``. The
+explicitly UTF-8, and every guarded read catches ``UnicodeDecodeError`` beside
+``OSError``. Both axes are pinned by
+``tests/preferences/test_build_plan_decoding.py``. The
 plan is markdown authored by a model or a human (em dashes, arrows,
 box-drawing), and which of its readers can decode it must not depend on the
 operator's locale. The divergence this rule exists to prevent is not a decode

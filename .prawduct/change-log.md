@@ -114,7 +114,17 @@ you are inside is invisible. So the rule is now a **pin** —
 matching nothing — rather than a fourth application of attention. The ~67 other runtime reads are
 ROB-7T2N, deliberately not swept here.
 
-42 new tests; suite 2572 → 2614. Two existing tests were updated, not weakened: they passed
+The last round is the one worth recording, because it argues for keeping both instruments. The
+structural pin is a grep, so it asserts *shape* — that each read names UTF-8 and each guard spells
+`UnicodeDecodeError` — and never that the designed degradation runs. Adding the behavioral half
+found a **twelfth** reader the pin could not see: `views.build_scope_to_plan_map` iterated candidate
+plan files under a bare `path`, outside the `plan_path` idiom the rule keys on. The fix was to
+rename the local so the code matches the convention, not to widen the pattern to `path.read_text(`
+— which would have swept every unrelated file read in the runtime and quietly changed what the rule
+means. Shape and behavior are different claims, and the gap between them is where this class lived
+for four rounds.
+
+45 new tests; suite 2572 → 2617. Two existing tests were updated, not weakened: they passed
 `.prawduct/` positionally to functions whose argument is now the project dir. One new test was
 rewritten after the Critic found it passed vacuously — its `"01" not in stdout` assertion was
 satisfied by the empty stdout of a `cannot-verify` exit, so it would have gone green against the

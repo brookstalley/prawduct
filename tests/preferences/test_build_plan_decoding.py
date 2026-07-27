@@ -30,7 +30,13 @@ from pathlib import Path
 
 PLUGIN = Path(__file__).resolve().parent.parent.parent / "plugin"
 
-# `plan_path.read_text(...)` and, on the following lines, the `except` guarding it.
+# A read of a build-plan file, and on the following lines the `except` guarding
+# it. `plan_path` is the shared idiom, and the rule is enforceable BECAUSE it is
+# shared — `views.build_scope_to_plan_map` iterated candidate plan files under a
+# bare `path`, so this pin could not see it and a behavioral test found the gap
+# instead. That local was renamed to match rather than this pattern widened to
+# `path.read_text(`, which would have swept every unrelated file read in the
+# runtime (ROB-7T2N's territory) and made the rule mean something else.
 _READ = re.compile(r"plan_path\.read_text\((?P<args>[^)]*)\)")
 
 
@@ -78,8 +84,19 @@ def test_every_guarded_build_plan_read_catches_unicode_decode_error():
     """The half that was swept a round later than the codec.
 
     A read that is guarded at all must catch what it can actually raise.
-    An UNGUARDED read is out of scope here — that is a deliberate
-    let-it-propagate choice, and this pin does not second-guess it.
+
+    The probe looks three lines ahead, so "no ``except`` found" covers two
+    different situations and this pin second-guesses neither:
+
+    * genuinely unguarded — a deliberate let-it-propagate choice
+      (``views.py``'s regen loop was one until it grew a degradation);
+    * guarded further away than the probe can see — ``buildplan_refs.py``'s
+      ``_parse_build_plan_status`` read sits inside a broad ``except Exception``
+      74 lines below that returns ``{}``, and is the one site skipped today.
+
+    Stated because a reader reconciling this file against the code would
+    otherwise find a site matching neither branch of a two-way claim. The
+    vacuity guard above is what stops the exemption spreading quietly.
     """
     offenders = [
         f"{rel}:{num} -> {exc}"
