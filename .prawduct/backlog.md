@@ -2599,13 +2599,13 @@
   Filed from the Chunk 01 Critic review (note severity) on `feature/session-handoff-continuity`, whose only other home would be a build plan deleted at release. Governance-protected (`plugin/lib/`, session-continuity machinery) → full Critic + PR review. (critic)
 
 - **[SCN-8T4R]** The session-file registry is a replicated contract surface with no `boundary-patterns.md` entry — four sites edited in lockstep, only two held together by a test
-  `effort: M · impact: M · area: session-continuity · kind: tech-debt · source: critic · added: 2026-07-26 · reviewed: 2026-07-26 · status: open · stage: ready · related: SCN-4H9T, STH-8M3V · refs: plugin/lib/core.py:76 (`GITIGNORE_ENTRIES` — site 1), plugin/bin/prawduct-hook:415 (`_SESSION_GITIGNORED_PATHS` — site 2, the untrack set), .gitignore:3-43 (this repo's own copy — site 3), plugin/bin/prawduct-hook:690 (the `cmd_clear` deletion list — site 4), tests/test_build_plan_resolution.py:208-228 (the sites-1↔2 parity test — the ONLY guard), .prawduct/artifacts/boundary-patterns.md (where the entry is missing), plugin/bin/prawduct-hook:291 and plugin/hooks/banner.py:29 (comments that name the 1↔2 mirror but not the full set)`
+  `effort: M · impact: M · area: session-continuity · kind: tech-debt · source: critic · added: 2026-07-26 · reviewed: 2026-07-26 · status: open · stage: ready · related: SCN-4H9T, STH-8M3V · refs: plugin/lib/core.py:76 (`GITIGNORE_ENTRIES` — site 1), plugin/bin/prawduct-hook:415 (`_SESSION_GITIGNORED_PATHS` — site 2, the untrack set), .gitignore:3-43 (this repo's own copy — site 3), plugin/bin/prawduct-hook (site 4 — the session-file deletion loop in `cmd_clear`, the `for name in (".session-reflected", …)` loop — symbol-anchored deliberately: this ref was drafted as `:690` and was already stale one commit later), tests/test_build_plan_resolution.py:208-228 (the sites-1↔2 parity test — the ONLY guard), .prawduct/artifacts/boundary-patterns.md (where the entry is missing), plugin/bin/prawduct-hook:291 and plugin/hooks/banner.py:29 (comments that name the 1↔2 mirror but not the full set)`
 
   **Adding one session file requires editing at least four places in lockstep:**
   1. `core.GITIGNORE_ENTRIES` (`plugin/lib/core.py:76`) — the canonical set
   2. the hook's `_SESSION_GITIGNORED_PATHS` (`plugin/bin/prawduct-hook:415`) — the untrack set used by `_untrack_session_files`
   3. this repo's own `.gitignore`
-  4. the deletion list in `cmd_clear` (`plugin/bin/prawduct-hook:690`)
+  4. the session-file deletion loop in `cmd_clear` (`plugin/bin/prawduct-hook`, the `for name in (".session-reflected", …)` loop)
 
   **Only sites 1 and 2 are guarded** — `tests/test_build_plan_resolution.py:208-228` asserts the mirror parity (with an explicit `__pycache__` carve-out). Sites 3 and 4 can silently fall out of sync: a new session file that misses site 3 gets committed by accident, and one that misses site 4 survives `/clear` and leaks state into the next session.
 

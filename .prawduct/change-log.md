@@ -70,7 +70,9 @@ gate consumption on delivery; the write guard moved from a magic `> 2` to a comp
 One test was removed, not weakened: `test_notes_file_in_untrack_set` asserted hook *source text*,
 and `TestSessionGitignoreMirror::test_session_file_sets_match` already asserts set equality between
 `_SESSION_GITIGNORED_PATHS` and `GITIGNORE_ENTRIES` — strictly stronger, and it would catch a
-drifted list that the grep would pass. Suite 2550 → 2571.
+drifted list that the grep would pass. Both never-silent emission sites the audience split created
+are pinned, including the undelivered-note announcement — reachable through the real CLI on a failed
+write, and the half the incoming agent actually sees. Suite 2550 → 2572.
 
 ## 2026-07-21: the backlog service came back, laid out under plugin/ — and took the local-first norm with it
 

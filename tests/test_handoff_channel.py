@@ -303,6 +303,27 @@ class TestNotesConsumption:
         assert "could not generate the session handoff" in capsys.readouterr().err
         assert (pr / ".handoff-notes.md").is_file()
 
+    def test_undelivered_note_is_announced_to_the_next_agent(self, tmp_path, monkeypatch, capsys):
+        # The likelier trigger for "your predecessor's note did not arrive": the
+        # write failed, so `generate_session_handoff` RETURNS undelivered rather
+        # than raising. Data preservation on that path is pinned above; this
+        # pins the announcement, which is the half the agent actually sees.
+        from test_briefing_extraction import _load_hook  # noqa: PLC0415
+
+        pr = _prawduct(tmp_path)
+        (pr / ".handoff-notes.md").write_text("the predecessor's note")
+        hook = _load_hook()
+        monkeypatch.setattr(
+            briefing,
+            "atomic_write_text",
+            lambda *a, **kw: (_ for _ in ()).throw(OSError("disk full")),
+        )
+
+        assert hook.cmd_clear(tmp_path) == 0
+        captured = capsys.readouterr()
+        assert "could not be written into this handoff" in captured.out
+        assert (pr / ".handoff-notes.md").is_file(), "an undelivered note must survive"
+
     def test_no_notes_is_not_an_error(self, tmp_path):
         pr = _prawduct(tmp_path)
         result = run_plugin_hook("clear", tmp_path, git_status=" M src/app.py")
