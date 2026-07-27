@@ -2728,10 +2728,11 @@
   **The owner's framing, preserved because it is the correct one:** per-chunk review facts **compose over trees**, which is exactly why the framework does not re-review the cumulative stack on every commit — demanding session-base coverage that no dispatchable review can produce would only train waivers, which is precisely what the fallback exists to prevent.
 
   **ROOT CAUSE:** `cmd_clear` does two categorically different jobs under one entry point.
-  - **READ-ONLY ORIENTATION** — render the session briefing (`:864`), refresh advisories (`:800-812`), sweep a stale `.critic-active` marker (`:620-645`), untrack accidentally-committed session files (`:658-669`), warn on the previous session's unmet gates (`:647-656`).
+  - **CORRECTION (Chunk 01 review, 2026-07-27): this two-column split is WRONG and the error is the item's own.** Statements sort THREE ways. Sorting by "does it destroy evidence" files two of them in the orientation column, and both are boundary-only: the `.critic-active` sweep and the previous-session gate check destroy nothing but *interpret* session state as a **finished** session's. `compact` fires in-process and `fork`'s parent is often still running, so a marker seen there is likely LIVE. Shipped behaviour is below; the columns as originally written are kept for the record.
+  - **ORIENTATION (safe on every source)** — render the session briefing (`:864`), refresh advisories (`:800-812`), untrack accidentally-committed session files (`:658-669`), warn on the previous session's unmet gates (`:647-656`).
   - **MUTATING BOUNDARY WORK** — generate `.session-handoff.md` (`:671-696`), consume and delete `.handoff-notes.md` (`:540`), archive and delete `.session-reflected` (`:698-709`), reset the git baseline (`:818-826`) and `.session-base-tree` (`:840-857`) and `.session-start` (`:729-736`), delete `.gates-waived` (`:715`).
 
-  `resume` needs the first column and must not get the second; the matcher forces both.
+  `resume` needs orientation only and must not get the boundary reset OR the two boundary-dependent readers; the matcher forces all of it.
 
   **PROPOSED FIX (owner-reviewed shape, not yet ruled):** keep one entry point and split by matcher — `startup|clear` gets `clear --session-start` (both columns), `resume|compact` gets a new read-only `clear --brief-only` (first column only). No stdin parsing, no new entry point: the matcher already carries the one fact needed.
 

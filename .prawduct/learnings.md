@@ -138,10 +138,10 @@ truncation must not be reported as resolved.** Two rules: (1) read each finding'
 FULL before acting, and re-read it before claiming closure — the tail is where reviewers put the
 "while you're in there" sites; (2) resolve by **grepping the claim's distinctive wording across the
 repo** (prose, docstrings, skill instructions, operator-facing message strings, plans, change-log),
-not by editing the files the finding lists. On the round that finally worked, the claim-grep found
-**two sites the reviewer's own enumeration had not included** — so the mechanical sweep is strictly
+not by editing the files the finding lists. When that sweep was finally run correctly it found
+**sites the reviewers' own enumerations had not included** — so the mechanical sweep is strictly
 stronger than following the finding's file list, and it is the move that scales when the same claim
-was copied. Corollary for the change-log specifically: an entry authored inside an unreleased bundle
+was copied. (It took three attempts to run it correctly; the failures are (a) and (b) below.) Corollary for the change-log specifically: an entry authored inside an unreleased bundle
 is not append-only history — if a later commit in the same bundle reverses its claim, fix the sentence
 (with a note that it was corrected), because with `views_enabled` it derives release-notes and the
 contradiction ships. Relates to Living Documentation (#3) and Validate Before Propagating (#15).
@@ -149,13 +149,17 @@ contradiction ships. Relates to Living Documentation (#3) and Validate Before Pr
 **Round five sharpened it twice more, and both are mechanical.** (a) **Grep the REVERSED SENTENCE's
 own wording, not the wording of the sites you already found.** I swept `"swept at next session start"`
 — the phrasing of the two sites the previous finding named — when the load-bearing claim was
-`"both paths want"`. The reviewer's one-line refutation: `grep -rn "both paths want" .` returns three
-hits and two were fixed. Right method, wrong claim: the claim to sweep is the *proposition that
-changed*, which you can name from the decision you reversed, not from the files you last edited.
+`"both paths want"`. Right method, wrong claim: the claim to sweep is the *proposition that changed*,
+which you can name from the decision you reversed, not from the files you last edited.
 (b) **Claim sweeps are case-insensitive, always.** The hit I missed was in a test module's docstring
 and read "which **BOTH** paths want" — capitalized for emphasis, so a case-sensitive `grep` skipped
 it, and emphasis-capitalization is exactly the variation a durable-prose sweep will meet. Use `grep
--rni`, and sweep several *formulations* of the claim, not one string. The two sites that survived to
+-rni`, and sweep several *formulations* of the claim, not one string. Measured on the pre-fix tree:
+`git grep "both paths want"` → **2** hits; `git grep -i` → **3**. The one letter of difference was
+the whole miss. *(This entry first cited the case-sensitive command as returning three — quoting a
+count that its own next sentence explains is impossible. A later review caught it. Correcting a false
+claim is authoring a new one, and a learning that states its evidence wrongly teaches a future session
+to discount the rule when the command disagrees.)* The two sites that survived to
 round five were the worst two in the bundle: a test module docstring that hands a maintainer written
 license to revert the test back to the defect, and a build plan's Verification Strategy step that
 would have had an operator confirm the regression as a success.

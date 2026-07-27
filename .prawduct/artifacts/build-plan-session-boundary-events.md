@@ -143,8 +143,11 @@ three-way, not two, and the middle category is invisible to the axis this table 
 2. **Boundary-dependent readers** — the two bolded rows. Read-only, and still boundary-only.
 3. **Orientation** — the left column. Safe on every source.
 
-The axis is **not** read-only vs. mutating — orientation refreshes caches and repairs stale markers.
-It is *orientation* vs. *destruction of session-scoped evidence*.
+~~The axis is **not** read-only vs. mutating — orientation refreshes caches and repairs stale markers.
+It is *orientation* vs. *destruction of session-scoped evidence*.~~ **Both halves are pre-reversal.**
+The "repairs stale markers" example is the behaviour that just moved columns, and the
+destruction-based axis is the one the paragraph above calls the chunk's central error. The correct
+statement is the three-way split, not a better two-way one.
 
 `resume` is a **continuation**: the transcript is restored and nothing was lost. It needs the left
 column and must not get the right one. Today it gets both. Reproduced end-to-end: after a simulated
