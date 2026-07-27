@@ -112,6 +112,12 @@ happen — a silent loosening against this plan's own Success #6 ("no gate seman
 governed" | user can ask for the gate to track in-flight chunks instead]` Pinned by
 `TestGateSemanticsUnchanged`.
 
+Critic: 2 blocking / 12 warnings resolved, then `verify-resolutions` clean (0 blocking, 2 warnings
+also fixed here). Three of the four Critic-found defects were instances of one class — a fix landed
+at the instance a review named rather than the class it belonged to — including one in Chunk 01's
+`_read_unmarked_handoff` that Chunk 01's own recorded learning had described. That is now a learning
+in its own right. Chunk 03 is next.
+
 Plan written 2026-07-26 on `feature/session-handoff-continuity` (off develop). Parents:
 **SCN-4H9T** (the upstream triage of discodon's STH-9FYI — five defects, all reproduced against
 this repo's own live plan), plus **CRT-7P5J** and **SCN-7K4B**. All three touch

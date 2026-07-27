@@ -111,6 +111,7 @@ Context: Chunks 01-03 shipped.
 
 ### Chunk 04: The Critic summary
 - **Type:** code
+- **Critic mode:** final
 
 Touches `.prawduct/artifacts/build-plan.md`.
 """
@@ -224,15 +225,32 @@ class TestViewsEnabledCurrentChunk:
         assert (progress.complete, progress.current_id) == (3, "04")
         assert progress.git_derived is True
 
-    def test_mode_inference_resolves_the_same_chunk(self, tmp_path: Path):
-        """`infer_mode` must not re-derive the git-vs-checkbox precedence for
-        itself — that duplication is how the defect reached three consumers."""
+    def test_mode_inference_routes_through_the_single_owner(
+        self, tmp_path: Path, monkeypatch
+    ):
+        """`infer_mode` must not re-derive the git-vs-checkbox precedence.
+
+        Asserted by DEPENDENCE, not by agreement: two functions returning "04"
+        is equally true of an `infer_mode` that derives "04" for itself. So
+        redirect the owner and require `infer_mode`'s answer to move with it.
+        Chunk 04 declares `**Critic mode:** final`; Chunk 02 declares none, so
+        the plan-override appears only when 04 is the resolved chunk. An
+        `infer_mode` that composed the precedence itself would still resolve 04
+        from git and stay green.
+        """
         repo = _views_repo(tmp_path)
-        critic_mode.infer_mode(repo)  # must not raise
-        assert (
-            buildplan_refs.resolve_chunk_progress(repo).current_id
-            == buildplan_refs._current_chunk_id_from_status(repo)
-            == "04"
+        mode, rationale = critic_mode.infer_mode(repo)
+        assert (mode, rationale) == ("final", "plan-override: final")
+
+        redirected = buildplan_refs.resolve_chunk_progress(repo)._replace(
+            current_id="02", current_text="Chunk 02: Parser correctness"
+        )
+        monkeypatch.setattr(
+            critic_mode.buildplan_refs, "resolve_chunk_progress", lambda _d: redirected
+        )
+        assert critic_mode.infer_mode(repo)[1] != "plan-override: final", (
+            "infer_mode ignored the resolver — it is re-deriving which chunk is "
+            "current for itself"
         )
 
     def test_briefing_resume_line_names_the_right_chunk(self, tmp_path: Path):

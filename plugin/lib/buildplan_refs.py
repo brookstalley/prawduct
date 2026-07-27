@@ -17,6 +17,13 @@ mirror (``_resolve_build_plan_path``) stays in the hook for its import-light hot
 path; this module is a lib citizen and reaches the canonical resolver in
 ``lib.core`` directly, exactly as ``critic_mode`` and ``views`` do.
 
+Every read of the plan is explicitly UTF-8. The plan is markdown authored by a
+model or a human — em dashes, arrows, box-drawing — and which of its readers can
+decode it must not depend on the operator's locale. Six of these used the locale
+codec while a seventh did not, so two consumers of the SAME file could disagree
+by construction: the gate trigger (``_count_build_plan_chunks``) and the parser
+feeding the handoff sat on opposite sides of that split.
+
 ``_parse_build_plan_status`` was reassigned here from the briefing cluster (it is
 build-plan parsing, not briefing assembly) — that reassignment turns the hook's
 concern clusters into an acyclic dependency graph (STH-9V4K constraint 2). The
@@ -114,7 +121,7 @@ def _count_build_plan_chunks(prawduct_dir: Path) -> tuple[int, int]:
     if not plan_path.is_file():
         return 0, 0
     try:
-        content = plan_path.read_text()
+        content = plan_path.read_text(encoding="utf-8")
     except (OSError, UnicodeDecodeError):
         return 0, 0
     total = 0
@@ -154,7 +161,7 @@ def _chunk_ids_in_status_order(prawduct_dir: Path) -> list[str]:
     if not plan_path.is_file():
         return []
     try:
-        content = plan_path.read_text()
+        content = plan_path.read_text(encoding="utf-8")
     except (OSError, UnicodeDecodeError):
         return []
     return [cid for _checked, cid in _status_chunk_states(content)]
@@ -388,7 +395,7 @@ def _parse_build_plan_status(project_dir: Path) -> dict[str, str]:
     if not plan_path.is_file():
         return {}
     try:
-        content = plan_path.read_text()
+        content = plan_path.read_text(encoding="utf-8")
         result: dict[str, str] = {}
 
         # Extract title from header: "# Build Plan — Title (date)"
@@ -636,7 +643,7 @@ def _parse_build_plan_chunk_refs(prawduct_dir: Path, chunk_id: str) -> dict:
         result["error"] = f"missing build-plan: {plan_path}"
         return result
     try:
-        content = plan_path.read_text()
+        content = plan_path.read_text(encoding="utf-8")
     except OSError as exc:
         result["error"] = f"unreadable build-plan: {exc}"
         return result
@@ -696,7 +703,7 @@ def _parse_build_plan_chunk_type(
     if not plan_path.is_file():
         return None, f"missing build-plan: {plan_path}"
     try:
-        content = plan_path.read_text()
+        content = plan_path.read_text(encoding="utf-8")
     except OSError as exc:
         return None, f"unreadable build-plan: {exc}"
 
@@ -738,7 +745,7 @@ def _parse_build_plan_chunk_trivial_rationale(
     if not plan_path.is_file():
         return None, f"missing build-plan: {plan_path}"
     try:
-        content = plan_path.read_text()
+        content = plan_path.read_text(encoding="utf-8")
     except OSError as exc:
         return None, f"unreadable build-plan: {exc}"
 

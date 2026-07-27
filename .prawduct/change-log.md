@@ -87,7 +87,16 @@ not in the session-file deletion loop, so a failed generation leaves the *previo
 handoff in place and the next agent reads it as current. The operator got the diagnosis; the party
 harmed by the stale provenance got nothing.
 
-39 new tests; suite 2572 → 2611. Two existing tests were updated, not weakened: they passed
+The `verify-resolutions` pass then found the same class twice more, in this very commit: the one
+`read_text` written here carried `encoding="utf-8"` while six siblings in the same module kept the
+locale codec — so the gate trigger and the handoff parser could disagree about whether the plan
+decodes at all — and the test pinning "infer_mode routes through the single owner" asserted only
+that two *other* functions agree, which an `infer_mode` that re-derived would satisfy too. The
+module is swept, and the test now asserts by dependence: redirect the resolver, require the answer
+to move. Confirmed by mutation — reverting `infer_mode` to composing the precedence itself makes it
+fail.
+
+41 new tests; suite 2572 → 2611. Two existing tests were updated, not weakened: they passed
 `.prawduct/` positionally to functions whose argument is now the project dir. One new test was
 rewritten after the Critic found it passed vacuously — its `"01" not in stdout` assertion was
 satisfied by the empty stdout of a `cannot-verify` exit, so it would have gone green against the
