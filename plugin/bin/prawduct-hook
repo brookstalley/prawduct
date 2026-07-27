@@ -581,24 +581,178 @@ def _consume_handoff_notes(prawduct_dir: Path, briefing, handoff) -> None:
         )
 
 
+def _boundary_close_session(project_dir: Path, prawduct_dir: Path) -> None:
+    """The first of two session-BOUNDARY regions: end the outgoing session.
+
+    Generates the handoff, consumes the forward notes it carried, archives the
+    reflection, deletes the session-scoped files, and re-stamps the session
+    clock. Every statement here destroys evidence belonging to a session that is
+    OVER, so none of it may run on a continuation (SCN-5B8Q) — a new boundary
+    statement belongs inside this function, which is the point of extracting it.
+    """
+    # Generate handoff BEFORE archiving/deleting session files, then consume the
+    # notes it carried. Both live under one guard because both need lib.briefing,
+    # which an incomplete install may not have — and neither may ever block /clear.
+    try:
+        briefing = _briefing()
+        _consume_handoff_notes(
+            prawduct_dir, briefing, briefing.generate_session_handoff(project_dir)
+        )
+    except Exception as exc:  # prawduct:allow prawduct/broad-except -- handoff must never block clear
+        # Split by audience, not by precedent. The diagnosis is the operator's,
+        # so the exception text goes to stderr with its housekeeping siblings.
+        # But `.session-handoff.md` is NOT in the session-file deletion loop
+        # below, so the PREVIOUS boundary's handoff survives and the incoming
+        # agent reads it as this session's — a wrong-provenance failure the
+        # party harmed by it would otherwise never learn about. That half goes
+        # to stdout, which is the channel SessionStart shows the model.
+        print(
+            f"NOTE: could not generate the session handoff ({exc}) — this session's "
+            "context will not reach the next one",
+            file=sys.stderr,
+        )
+        print(
+            "NOTE: no handoff was generated for this session boundary — any "
+            ".prawduct/.session-handoff.md you read is from an EARLIER session, not "
+            "this one. Treat its contents as stale provenance."
+        )
+
+    # Preserve previous session's reflection before clearing
+    reflected = prawduct_dir / ".session-reflected"
+    if reflected.is_file():
+        try:
+            content = reflected.read_text().strip()
+            if content:
+                log = prawduct_dir / "reflections.md"
+                separator = "\n\n---\n\n" if log.is_file() and log.read_text().strip() else ""
+                with open(log, "a") as f:
+                    f.write(f"{separator}{content}\n")
+        except (UnicodeDecodeError, OSError):
+            pass  # Corrupted reflection — skip archival, safe to proceed
+
+    # Remove session files. Best-effort per file (STH-8M3V): an OSError here
+    # (permissions, transient FS) must not traceback the SessionStart hook —
+    # a survivor just carries stale state into the new session, which the
+    # NOTE names so the user can remove it by hand.
+    for name in (".session-reflected", ".session-start", ".session-git-baseline", ".session-base-tree", ".gates-waived"):
+        f = prawduct_dir / name
+        try:
+            if f.is_file():
+                f.unlink()
+        except OSError as exc:
+            print(
+                f"NOTE: could not remove {name} ({exc}) — stale session state may carry over",
+                file=sys.stderr,
+            )
+
+    # Create session start timestamp (atomic — STH-8M3V). On failure the
+    # freshness gates fail closed this session (no marker → no fresh
+    # evidence/findings), which the NOTE names; never block session start.
+    stamp = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    try:
+        _core().atomic_write_text(prawduct_dir / ".session-start", stamp)
+    except (OSError, ImportError) as exc:
+        print(
+            f"NOTE: could not write .session-start ({exc}) — freshness gates will fail closed this session",
+            file=sys.stderr,
+        )
+
+
+def _boundary_capture_git_anchors(project_dir: Path, prawduct_dir: Path) -> None:
+    """The second session-BOUNDARY region: anchor the new session in git.
+
+    Re-capturing either anchor on a continuation is what silently NARROWED the
+    session Critic gate's jurisdiction to post-resume work (SCN-5B8Q), so this
+    runs at a boundary only. It deliberately does NOT create a missing anchor on
+    the continuation path: stamping a resume-time clock onto a session that
+    started earlier would narrow the same jurisdiction by a different route, and
+    an absent anchor already has a documented fail-closed degradation.
+    """
+    # Capture git status baseline so session-start state doesn't trigger
+    # spurious stop-hook gates (no sync runs first in the plugin runtime).
+    # Atomic + best-effort (STH-8M3V): a torn/missing baseline makes every
+    # pre-existing dirty file count as session-changed (spurious gates), so
+    # the failure NOTE names that consequence; never block session start.
+    baseline = _gitstate().git_status_output(project_dir)
+    if baseline is not None:
+        try:
+            _core().atomic_write_text(prawduct_dir / ".session-git-baseline", baseline)
+        except (OSError, ImportError) as exc:
+            print(
+                f"NOTE: could not write .session-git-baseline ({exc}) — "
+                "pre-existing dirty files will count as session changes",
+                file=sys.stderr,
+            )
+
+    # Record HEAD's tree at session start (kernel-v3 chunk 04) — the base of
+    # the Stop-hook Critic gate's coverage question (Q2: composed review
+    # coverage must span this tree → the working tree at session end).
+    # HEAD^{tree}, not a working-tree capture: review facts anchor their base
+    # at HEAD's tree (D8), so this is the tree the session's evidence chain
+    # composes from — pre-session dirt rides inside every reviewed diff.
+    # Best-effort: on failure (unborn HEAD, git error) the marker stays
+    # absent and the gate degrades to a HEAD-tree base at session end
+    # (uncommitted-work jurisdiction), which the NOTE names.
+    try:
+        tree_proc = subprocess.run(
+            ["git", "rev-parse", "HEAD^{tree}"],
+            capture_output=True, text=True, cwd=str(project_dir), timeout=10,
+        )
+        if tree_proc.returncode == 0 and tree_proc.stdout.strip():
+            _core().atomic_write_text(
+                prawduct_dir / ".session-base-tree", tree_proc.stdout.strip()
+            )
+        elif baseline is not None:
+            print(
+                "NOTE: could not resolve HEAD^{tree} — the session Critic gate "
+                "will judge uncommitted work only this session",
+                file=sys.stderr,
+            )
+    except (OSError, subprocess.SubprocessError, ImportError) as exc:
+        # Same never-block-session-start posture as the baseline write above.
+        print(
+            f"NOTE: could not write .session-base-tree ({exc}) — the session "
+            "Critic gate will judge uncommitted work only this session",
+            file=sys.stderr,
+        )
+
+
 def cmd_clear(project_dir: Path, argv: list[str] | None = None) -> int:
-    """Reset session state and render the session briefing (plugin runtime: no sync).
+    """Orient a session, and at a genuine boundary also reset it (plugin runtime: no sync).
+
+    This entry point does two categorically different jobs, and the axis is NOT
+    read-only vs. mutating — orientation refreshes caches and repairs stale
+    markers. It is *orientation* (what a live agent needs: the briefing,
+    advisories, the stale-marker sweep, gate warnings) vs. *destruction of
+    session-scoped evidence* (the handoff, the forward notes, the reflection, the
+    three session anchors).
 
     Flags (argv): ``--session-start`` marks the genuine SessionStart-hook
     invocation — it always proceeds and sweeps any critic-active marker.
-    ``--force`` is the operator override for a stale marker. A bare ``clear``
-    (what a reviewer subagent issued in CRT-3X9D) is the guarded path: it refuses
-    while a Critic review is plausibly in progress so an independent reviewer
-    cannot clobber the session it is reviewing.
+    ``--brief-only`` runs orientation and skips the boundary reset; it is
+    orthogonal to ``--session-start`` rather than replacing it, because
+    ``--session-start`` means "a genuine hook invocation, so sweep the marker",
+    which both paths want. ``--force`` is the operator override for a stale
+    marker. A bare ``clear`` (what a reviewer subagent issued in CRT-3X9D) is the
+    guarded path: it refuses while a Critic review is plausibly in progress so an
+    independent reviewer cannot clobber the session it is reviewing.
+
+    ``--brief-only`` exists because the SessionStart matcher is the only thing
+    that knows whether this invocation ends a session or continues one, and
+    ``startup|resume|clear`` threw that fact away: `resume`, `compact` and `fork`
+    all restore the transcript (verified), so they are continuations that must
+    keep their evidence. hooks.json partitions the five documented sources
+    between the two paths (SCN-5B8Q).
     """
     argv = argv or []
     rejected = _reject_unknown_args(
-        "clear", argv, {"--session-start", "--force"}
+        "clear", argv, {"--session-start", "--force", "--brief-only"}
     )
     if rejected is not None:
         return rejected
     session_start = "--session-start" in argv
     force = "--force" in argv
+    brief_only = "--brief-only" in argv
     prawduct_dir = get_prawduct_dir(project_dir)
 
     # The plugin is user-scoped, so this SessionStart hook fires in every repo the
@@ -668,72 +822,9 @@ def cmd_clear(project_dir: Path, argv: list[str] | None = None) -> int:
     except Exception:  # prawduct:allow prawduct/broad-except -- defensive cleanup must never block clear
         pass
 
-    # Generate handoff BEFORE archiving/deleting session files, then consume the
-    # notes it carried. Both live under one guard because both need lib.briefing,
-    # which an incomplete install may not have — and neither may ever block /clear.
-    try:
-        briefing = _briefing()
-        _consume_handoff_notes(
-            prawduct_dir, briefing, briefing.generate_session_handoff(project_dir)
-        )
-    except Exception as exc:  # prawduct:allow prawduct/broad-except -- handoff must never block clear
-        # Split by audience, not by precedent. The diagnosis is the operator's,
-        # so the exception text goes to stderr with its housekeeping siblings.
-        # But `.session-handoff.md` is NOT in the session-file deletion loop
-        # below, so the PREVIOUS boundary's handoff survives and the incoming
-        # agent reads it as this session's — a wrong-provenance failure the
-        # party harmed by it would otherwise never learn about. That half goes
-        # to stdout, which is the channel SessionStart shows the model.
-        print(
-            f"NOTE: could not generate the session handoff ({exc}) — this session's "
-            "context will not reach the next one",
-            file=sys.stderr,
-        )
-        print(
-            "NOTE: no handoff was generated for this session boundary — any "
-            ".prawduct/.session-handoff.md you read is from an EARLIER session, not "
-            "this one. Treat its contents as stale provenance."
-        )
-
-    # Preserve previous session's reflection before clearing
-    reflected = prawduct_dir / ".session-reflected"
-    if reflected.is_file():
-        try:
-            content = reflected.read_text().strip()
-            if content:
-                log = prawduct_dir / "reflections.md"
-                separator = "\n\n---\n\n" if log.is_file() and log.read_text().strip() else ""
-                with open(log, "a") as f:
-                    f.write(f"{separator}{content}\n")
-        except (UnicodeDecodeError, OSError):
-            pass  # Corrupted reflection — skip archival, safe to proceed
-
-    # Remove session files. Best-effort per file (STH-8M3V): an OSError here
-    # (permissions, transient FS) must not traceback the SessionStart hook —
-    # a survivor just carries stale state into the new session, which the
-    # NOTE names so the user can remove it by hand.
-    for name in (".session-reflected", ".session-start", ".session-git-baseline", ".session-base-tree", ".gates-waived"):
-        f = prawduct_dir / name
-        try:
-            if f.is_file():
-                f.unlink()
-        except OSError as exc:
-            print(
-                f"NOTE: could not remove {name} ({exc}) — stale session state may carry over",
-                file=sys.stderr,
-            )
-
-    # Create session start timestamp (atomic — STH-8M3V). On failure the
-    # freshness gates fail closed this session (no marker → no fresh
-    # evidence/findings), which the NOTE names; never block session start.
-    stamp = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-    try:
-        _core().atomic_write_text(prawduct_dir / ".session-start", stamp)
-    except (OSError, ImportError) as exc:
-        print(
-            f"NOTE: could not write .session-start ({exc}) — freshness gates will fail closed this session",
-            file=sys.stderr,
-        )
+    # Session BOUNDARY region 1 of 2 — skipped on a continuation (SCN-5B8Q).
+    if not brief_only:
+        _boundary_close_session(project_dir, prawduct_dir)
 
     # Agent-facing messages go to stdout (SessionStart hooks show stdout to the model).
     # stderr is only visible to the user in the terminal, not to the agent.
@@ -810,53 +901,9 @@ def cmd_clear(project_dir: Path, argv: list[str] | None = None) -> int:
     except Exception as exc:  # prawduct:allow prawduct/broad-except -- advisory probes must never block session start
         print(f"NOTE: advisory probe step skipped: {exc}", file=sys.stderr)
 
-    # Capture git status baseline so session-start state doesn't trigger
-    # spurious stop-hook gates (no sync runs first in the plugin runtime).
-    # Atomic + best-effort (STH-8M3V): a torn/missing baseline makes every
-    # pre-existing dirty file count as session-changed (spurious gates), so
-    # the failure NOTE names that consequence; never block session start.
-    baseline = _gitstate().git_status_output(project_dir)
-    if baseline is not None:
-        try:
-            _core().atomic_write_text(prawduct_dir / ".session-git-baseline", baseline)
-        except (OSError, ImportError) as exc:
-            print(
-                f"NOTE: could not write .session-git-baseline ({exc}) — "
-                "pre-existing dirty files will count as session changes",
-                file=sys.stderr,
-            )
-
-    # Record HEAD's tree at session start (kernel-v3 chunk 04) — the base of
-    # the Stop-hook Critic gate's coverage question (Q2: composed review
-    # coverage must span this tree → the working tree at session end).
-    # HEAD^{tree}, not a working-tree capture: review facts anchor their base
-    # at HEAD's tree (D8), so this is the tree the session's evidence chain
-    # composes from — pre-session dirt rides inside every reviewed diff.
-    # Best-effort: on failure (unborn HEAD, git error) the marker stays
-    # absent and the gate degrades to a HEAD-tree base at session end
-    # (uncommitted-work jurisdiction), which the NOTE names.
-    try:
-        tree_proc = subprocess.run(
-            ["git", "rev-parse", "HEAD^{tree}"],
-            capture_output=True, text=True, cwd=str(project_dir), timeout=10,
-        )
-        if tree_proc.returncode == 0 and tree_proc.stdout.strip():
-            _core().atomic_write_text(
-                prawduct_dir / ".session-base-tree", tree_proc.stdout.strip()
-            )
-        elif baseline is not None:
-            print(
-                "NOTE: could not resolve HEAD^{tree} — the session Critic gate "
-                "will judge uncommitted work only this session",
-                file=sys.stderr,
-            )
-    except (OSError, subprocess.SubprocessError, ImportError) as exc:
-        # Same never-block-session-start posture as the baseline write above.
-        print(
-            f"NOTE: could not write .session-base-tree ({exc}) — the session "
-            "Critic gate will judge uncommitted work only this session",
-            file=sys.stderr,
-        )
+    # Session BOUNDARY region 2 of 2 — skipped on a continuation (SCN-5B8Q).
+    if not brief_only:
+        _boundary_capture_git_anchors(project_dir, prawduct_dir)
 
     # v5: Staleness scan + session briefing + subagent briefing
     try:
@@ -3593,7 +3640,7 @@ def cmd_repo_disable(project_dir: Path, argv: list[str]) -> int:
 
 _USAGE = (
     "Usage: prawduct-hook "
-    "{clear [--session-start|--force]|critic-begin --mode <m>|critic-end|critic-consolidate|"
+    "{clear [--session-start|--force|--brief-only]|critic-begin --mode <m>|critic-end|critic-consolidate|"
     "subagent-stop|"
     "stop|build-index|user-prompt-submit|"
     "jurisdiction [--file <path>|<text...>] [--artifacts-only]|"

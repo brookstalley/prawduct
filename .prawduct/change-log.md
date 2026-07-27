@@ -3,6 +3,66 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-07-27: Orientation and boundary become separate acts (session-boundary-events Chunk 01)
+
+<!-- prawduct: type=fix | scope=session-boundary-events | chunks=01 -->
+
+`clear --session-start` was registered on `startup|resume|clear`, so `claude --resume` — a
+*continuation* — ran a full boundary reset: it folded `.handoff-notes.md` into a handoff for a
+session that had not ended, archived `.session-reflected` away mid-session, and re-captured all three
+session anchors, which silently narrowed the session Critic gate's jurisdiction to post-resume work.
+Three chunks of `session-handoff-continuity` fixed what the handoff *said* while the thing driving it
+was wrong the whole time.
+
+**The premise was verified before it was built on, and the verification changed the design.** The
+plan rested on one unexercised assumption — that `--resume` restores the transcript, so a resumed
+session has not lost context. A headless session was given a codeword, resumed by session id, and
+returned it; the assumption holds and the chunk's shape survived. But the same probe, which logged
+the `SessionStart` payload, turned up a **fifth** source the plan never mentioned: `fork`
+(`--fork-session`, `/fork`, `/branch`). It restores the transcript *and* allocates a new session id,
+so the parent session is often still running — making `fork` the source where a boundary reset would
+destroy a **live** session's evidence rather than a finished one's. It had been getting no hook at
+all.
+
+**The split is by matcher, not by parsing the event payload** — the matcher already carries the one
+fact needed. `startup|clear` runs the boundary; `resume|compact|fork` runs
+`clear --session-start --brief-only`, which is orientation only. `--brief-only` is orthogonal to
+`--session-start` rather than replacing it, because `--session-start` keeps meaning "a genuine hook
+invocation, so sweep the critic-active marker" — which both paths want, and which is what rescues an
+operator from a crashed Critic. The three orientation-only hooks (banner, digest, build-index) gained
+`fork` for the same reason.
+
+**Two contiguous regions, not six scattered guards.** All 17 statement blocks in `cmd_clear` were
+enumerated and assigned to a column before editing (the plan's instruction, and the inventory table
+proved accurate). The six boundary statements turned out to form exactly two adjacent runs, now
+extracted as `_boundary_close_session` and `_boundary_capture_git_anchors` — named so a future
+boundary statement lands *inside* the guard rather than beside it, which is this branch's recurring
+failure mode. Orientation blocks keep their relative order, because the briefing reads the advisory
+store the probes refresh and the handoff must be generated before the reflection it consumes is
+archived.
+
+`--brief-only` deliberately does **not** create a missing anchor: stamping a resume-time clock onto a
+session that began earlier would narrow the same jurisdiction by another route, and an absent anchor
+already fails closed.
+
+**One test was replaced, not relaxed.** `test_clear_matcher_excludes_compact` identified the clear
+entry by its `clear` token, which now matches both entries. Its successor asserts the invariant it
+was actually protecting and strengthens it: the state-reset entry must exclude `resume` and `fork`
+too, which the original never checked. The headline guard is a **partition property** over a pinned
+roster of all five documented sources — every source covered by exactly one entry — rather than a
+spot-check on one string; a spot-check on `compact` is precisely what let `fork` go unnoticed. The
+roster's honest limit (a local pin of an external fact cannot *discover* a sixth source) is written
+into the test.
+
+**Paid for in place, again.** `building.md`'s "Sessions and Work Cycles" said compaction gets "no
+hooks" — false even before this change, since banner/digest/build-index already fired on `compact`.
+The correction names the boundary/continuation split and all three continuation sources, and cost
+**+1 word** against 3 words of headroom: the new sentence makes half the compaction paragraph
+redundant, which funds it. 4595 → 4596 tokens, ceiling untouched. The handoff notes had predicted
+this addition would need the ceiling raised; it did not.
+
+15 tests added, suite 2650 → 2665.
+
 ## 2026-07-27: The guides stop naming only the file the agent must not write (session-handoff-continuity Chunk 03)
 
 <!-- prawduct: type=feature | scope=session-handoff-continuity | chunks=03 -->

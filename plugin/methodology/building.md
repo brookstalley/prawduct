@@ -4,11 +4,11 @@ Every unit of work follows the same cycle: **understand → plan → build → v
 
 ## Sessions and Work Cycles
 
-A **session** is one Claude Code invocation — from the `clear` hook (startup or `/clear`) to the `stop` hook (exit). The git baseline, reflection gate, and Critic gate all scope to the session.
+A **session** is one Claude Code invocation. Only `startup` and `/clear` **begin** one; `resume`, `compact` and `fork` are continuations — the transcript survives, so they brief but reset nothing. The git baseline, reflection gate, and Critic gate all scope to the session.
 
 A **work cycle** is one unit of work with its own governance: understand → plan → build → verify → Critic → reflect. Multiple work cycles can happen within a single session.
 
-**Context compaction** is a context-management event, not a session boundary: no hooks, no baseline reset, no governance checkpoint. Anything that must survive — plans, decisions, rationale, chunk definitions — must be written to a file first.
+**Context compaction** resets nothing and passes no governance checkpoint, so anything that must survive — plans, decisions, rationale, chunk definitions — must be written to a file first.
 
 **`/clear` between work cycles is recommended** (not required): it resets the git baseline so the next cycle's canary only sees its own changes, archives the previous reflection, and starts fresh context.
 

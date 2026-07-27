@@ -27,11 +27,13 @@ firing on every source).
 
 **Open assumptions / unknowns:**
 
-- `[ASSUMPTION: `--resume`/`--continue` restore the conversation transcript, so a resumed session has
-  NOT lost context | HIGH impact | verifiable in one session]`
-  This is the load-bearing premise: if resume *did* lose context, treating it as a boundary would be
-  closer to right and Chunk 01 changes shape. Documented Claude Code behaviour, not yet exercised
-  end-to-end here. **Verify before building** — it is one manual session.
+- ~~`[ASSUMPTION: `--resume`/`--continue` restore the conversation transcript, so a resumed session has
+  NOT lost context | HIGH impact | verifiable in one session]`~~ **VERIFIED 2026-07-27.** Exercised
+  end-to-end, not reasoned about: a headless session was given the codeword `QUILLFROST-8842`, then
+  resumed by session id; the resumed session returned the codeword, which exists nowhere but the
+  prior transcript. `--fork-session` returned it too. The premise holds and Chunk 01's shape is
+  unchanged. The same probe logged the SessionStart payload and confirmed `source: "resume"` fires
+  with the **same** session id, so the matcher split is mechanically viable.
 - `[ASSUMPTION: a `.critic-active` marker surviving into a resume is always stale | MED impact]`
   Reasoning: an in-flight review dies with the process that dispatched it, so a marker that outlives
   the session cannot correspond to a live reviewer. If false, sweeping on resume would clear a guard
@@ -40,6 +42,16 @@ firing on every source).
   It receives none today. Compaction is the one source where context genuinely *was* just lost, so a
   briefing is arguably most valuable there — but it also fires mid-session, potentially often, and
   the briefing is not free.
+- `[ASSUMPTION: `fork` should receive the orientation half, on the same reasoning as `compact` | MED
+  impact | owner can veto]`
+  **Found during the verification above, and this plan was written without it.** There are **five**
+  SessionStart sources, not four: `startup`, `resume`, `clear`, `compact`, **`fork`** (`--fork-session`
+  with `--resume`/`--continue`, `/fork`'s background copy, `/branch`). Verified empirically — `fork`
+  fires with a **new** session id and a **restored** transcript. It is therefore a continuation by the
+  same test as `resume`, and the *most* dangerous source to hand a boundary reset to: the parent
+  session may still be running, so resetting would destroy a **live** session's evidence rather than a
+  finished one's. Today it gets nothing (the matcher is `startup|resume|clear`), so covering it is a
+  gap closed, not a regression fixed.
 
 ## Status
 
@@ -69,7 +81,25 @@ survives is smaller and is this plan's concern only in passing: the session-end 
 narrows* its own jurisdiction on resume, and that narrowing is not among the degradations the
 docstring enumerates. Chunk 01 removes the narrowing as a side effect of not resetting the anchor.
 
-Chunk 01 is next.
+**Chunk 01 is DONE (2026-07-27).** Verification Strategy steps 1–4 were all exercised against the
+real CLI, not simulated. Step 1 confirmed the load-bearing assumption *and* turned up `fork`, a fifth
+source this plan was written without — the design changed as a result (see the assumption block and
+Chunk 01's DECISION). Steps 2–4 ran in a scratch git repo wired to the real `hooks.json`: after a
+genuine `claude --resume`, all six session-scoped files were byte-identical, the handoff was not
+regenerated, the forward notes were not consumed, and a stale `.critic-active` was still swept; a
+control run confirmed a genuine boundary still consumes notes, clears waivers and archives the
+reflection.
+
+**One finding worth carrying forward.** The first end-to-end attempt *failed* — and the cause was the
+environment, not the code: the plugin is installed user-scoped from `~/source/prawduct` at `main`,
+whose matcher is still `startup|resume|clear`, so the old hook fired alongside the new one. That run
+is therefore the defect reproduced end-to-end on shipped code with the real CLI. The clean run needed
+`CLAUDE_CONFIG_DIR` isolation. **This is not a fix that takes effect for this repo's own sessions
+until the branch merges and the installed plugin updates** — until then, every `claude --resume` here
+still destroys session evidence.
+
+Chunk 02 is next, and its Governance Checkpoint (confirm with the owner that *reporting* handoff age
+is enough) is unchanged.
 
 ## Problem, Success, Scope
 
@@ -132,9 +162,19 @@ Split by matcher, not by parsing the event payload — the matcher already carri
 and today's config throws it away by lumping `resume` in with `startup`:
 
 ```
-matcher: "startup|clear"      → prawduct-hook clear --session-start
-matcher: "resume|compact"     → prawduct-hook clear --session-start --brief-only
+matcher: "startup|clear"           → prawduct-hook clear --session-start
+matcher: "resume|compact|fork"     → prawduct-hook clear --session-start --brief-only
 ```
+
+Together these **exhaustively partition** all five documented sources — that property, not the
+literal strings, is what the test pins (Done-when 4).
+
+`[DECISION: `fork` joins the orientation matcher | because it restores the transcript (verified), so
+it is a continuation by the same test as `resume` — and because a fork's parent session is often still
+alive, making a boundary reset there destroy evidence belonging to a *running* session. The three
+orientation-only entries (banner, digest, build-index) gain `fork` for the same reason: a forked
+session that receives no governance context at all is the same defect one level down | user can ask
+for fork to be left uncovered]`
 
 `--brief-only` is orthogonal to `--session-start` rather than replacing it: `--session-start` keeps
 meaning "a genuine hook invocation, so sweep the critic-active marker", which both paths want.
@@ -149,6 +189,21 @@ Scope the change **by pattern, not line number**: enumerate every statement in `
 it to a column before editing. The table in Problem is the inventory; verify it against the code
 rather than trusting it — it was written by reading, not by executing.
 
+**Inventory verified against the code 2026-07-27.** All 17 statement blocks in `cmd_clear` were
+enumerated and assigned; the Problem table is accurate. Useful structural finding: the six boundary
+blocks form exactly **two contiguous regions** (handoff → consume notes → archive reflection → delete
+the five session files → rewrite `.session-start`; and later, `.session-git-baseline` →
+`.session-base-tree`). So this is a **two-site** change, not six, and the orientation blocks between
+them keep their current relative order — which matters, because the briefing reads the advisory store
+the probes refresh, and the handoff must be generated before the reflection it consumes is archived.
+
+`[DECISION: `--brief-only` never writes a session anchor, not even when one is absent | because
+"create if missing" would stamp a *resume-time* clock onto a session that started earlier — narrowing
+the Critic gate's jurisdiction, which is the very bug this chunk removes. An absent anchor already has
+a documented degradation (freshness gates fail closed; the base-tree falls back to HEAD's tree), and
+failing closed is the direction this plan committed to. The edge is real but rare — it is the
+mid-cycle worktree entry `building.md` already names | user can ask for create-if-absent]`
+
 **Done when:**
 1. A simulated resume leaves `.handoff-notes.md`, `.session-reflected`, `.session-start`,
    `.session-git-baseline` and `.session-base-tree` untouched, and writes no handoff. Regression test
@@ -156,9 +211,18 @@ rather than trusting it — it was written by reading, not by executing.
 2. The same invocation still emits the briefing, refreshes advisories, and sweeps a stale
    `.critic-active`.
 3. `startup` and `clear` behave exactly as today — pinned by the existing tests passing unchanged.
-4. `compact` receives orientation; a test asserts the matcher covers it.
-5. `--brief-only` is in the arg guard's allowed set and rejected nowhere it should be accepted.
-6. Full suite green; `/prawduct:critic` passes with no blocking findings.
+4. `compact` and `fork` receive orientation. The test asserts the **partition property** over a
+   pinned roster of all five documented sources — every source is covered by exactly one of the two
+   entries — rather than spot-checking one string. A future source is then a *test failure* instead of
+   a silent hole. (Honest limit, written into the test: the roster is a local pin of an external fact,
+   so it cannot *discover* a sixth source Claude Code adds — it can only keep the five we know
+   partitioned. The doc URL and verification date go in the pin.)
+5. `--brief-only` is in the arg guard's allowed set, appears in the usage string, and is rejected
+   nowhere it should be accepted.
+6. `test_clear_matcher_excludes_compact` is **replaced, not relaxed**: the invariant it protects (no
+   boundary reset on compaction) still holds, and the successor asserts it more precisely — the
+   boundary entry must exclude `resume` and `fork` too, which the original never checked.
+7. Full suite green; `/prawduct:critic` passes with no blocking findings.
 
 ### Chunk 02: The handoff carries its vintage
 **Type:** code

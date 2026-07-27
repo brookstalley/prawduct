@@ -2,7 +2,7 @@
   "hooks": {
     "SessionStart": [
       {
-        "matcher": "startup|resume|clear|compact",
+        "matcher": "startup|resume|clear|compact|fork",
         "hooks": [
           {
             "type": "command",
@@ -12,7 +12,7 @@
         ]
       },
       {
-        "matcher": "startup|resume|clear|compact",
+        "matcher": "startup|resume|clear|compact|fork",
         "hooks": [
           {
             "type": "command",
@@ -22,7 +22,7 @@
         ]
       },
       {
-        "matcher": "startup|resume|clear",
+        "matcher": "startup|clear",
         "hooks": [
           {
             "type": "command",
@@ -32,7 +32,17 @@
         ]
       },
       {
-        "matcher": "startup|resume|clear|compact",
+        "matcher": "resume|compact|fork",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/bin/prawduct-hook\" clear --session-start --brief-only",
+            "statusMessage": "Prawduct: orienting session…"
+          }
+        ]
+      },
+      {
+        "matcher": "startup|resume|clear|compact|fork",
         "hooks": [
           {
             "type": "command",

@@ -173,6 +173,37 @@ the plugin no longer places them.
 | Framework docs (this repo) | `documentation/` (tracked) | long-form requirements, PRDs, research, and the migration guide — human-facing working docs, framework-repo only (distinct from the plugin-bundled `docs/` reference) | committed to the framework repo |
 | Upstream bug intake (this repo) | `incoming-bugs/` (tracked) | bug reports products file upstream about prawduct itself, via `/prawduct:report-bug`; triaged into the backlog, then archived under `incoming-bugs/archive/` | committed to the framework repo |
 
+### What counts as a session boundary
+
+Session/gate state is scoped to a *session*, so the definition of where one ends is load-bearing for
+every gate that reads it. Claude Code fires `SessionStart` with five sources, and they divide on one
+question — **was the transcript restored?**
+
+| | Sources | What the hook does |
+|---|---|---|
+| **Boundary** | `startup`, `clear` | orientation **+** the reset: generate the handoff, consume the forward notes, archive the reflection, re-capture the three session anchors |
+| **Continuation** | `resume`, `compact`, `fork` | orientation **only**: briefing, advisories, gate warnings, stale-marker sweep, session-file untracking |
+
+The axis is deliberately **not** read-only vs. mutating — orientation refreshes caches and repairs
+stale markers. It is *orientation* vs. *destruction of session-scoped evidence*. The split is carried
+by the hooks.json matcher rather than by parsing the event payload, because the matcher already
+carries the one fact needed; `--brief-only` selects the continuation path and is orthogonal to
+`--session-start`, which keeps meaning "a genuine hook invocation, so sweep the critic-active marker"
+— something both paths want. A crashed Critic's marker outlives the process that dispatched it, so
+sweeping on a continuation is what rescues an operator from a wedge.
+
+Two properties are worth stating because they are easy to get backwards. First, the sweep is the one
+*mutation* on the continuation path, and it is safe precisely because an in-flight review dies with
+its process — a surviving marker is stale by construction. Second, a continuation must never
+re-capture an anchor even when one is **missing**: stamping a resume-time clock onto a session that
+began earlier narrows the Critic gate's jurisdiction, which is the defect the split exists to remove.
+An absent anchor already fails closed, and failing closed is the safe direction.
+
+`fork` is the source most easily overlooked (it postdates the other four and was missing from this
+plan's first draft). It restores the transcript *and* allocates a new session id, so the parent
+session is frequently still running — making it the source where a boundary reset would destroy a
+**live** session's evidence rather than a finished one's.
+
 ### The one model-owned session file
 
 Session/gate state is machine-written by default — the model reads it, code writes it. Models do
@@ -184,9 +215,9 @@ that matters more than either file's format:
 
 | | `.handoff-notes.md` | `.session-handoff.md` |
 |---|---|---|
-| Writer | the model, any time | the machine, at `/clear` only |
+| Writer | the model, any time | the machine, at a session **boundary** only (`startup` / `clear` — never on a continuation) |
 | Reader | the handoff generator, and nothing else | the next session (via the briefing pointer) |
-| Lifetime | until *delivered*, then cleared (see below) | until the next `/clear` regenerates it |
+| Lifetime | until *delivered*, then cleared (see below) | until the next boundary regenerates it |
 | Scope | per-worktree, like every session file | per-worktree |
 
 Consumption is transactional and keys on **delivery, not on the handoff having been written**: a

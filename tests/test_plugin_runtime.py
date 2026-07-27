@@ -98,19 +98,39 @@ class TestPluginHookStructure:
         # Chunk-1 banner is preserved.
         assert any("banner.py" in c for c in ss_cmds), "the version banner must stay wired"
 
-    def test_clear_matcher_excludes_compact(self):
-        # cmd_clear resets the git baseline + archives reflection — that is a
-        # session boundary, not a compaction event (building.md). The clear
-        # entry's matcher must not include `compact`.
+    def test_state_reset_matcher_excludes_every_continuation(self):
+        # Successor to test_clear_matcher_excludes_compact (SCN-5B8Q). The
+        # invariant is unchanged — the state-reset hook must not fire on a
+        # compaction — but `clear` now runs on TWO entries, and the continuation
+        # one carries `--brief-only` (orientation, no reset). So identifying the
+        # reset entry by the `clear` token alone no longer distinguishes them.
+        #
+        # The assertion is STRENGTHENED rather than relaxed: `resume` and `fork`
+        # are continuations by the same test as `compact` (all three restore the
+        # transcript), and the original checked only `compact`. `fork` is the one
+        # that matters most — its parent session is often still running, so a
+        # reset there destroys a LIVE session's evidence.
+        #
+        # The exhaustive partition over all five documented sources is asserted
+        # in test_session_boundary_events.py::TestMatcherPartition; this keeps a
+        # local guard in the file that owns hooks.json wiring.
         data = json.loads(HOOKS_JSON.read_text())
-        for entry in data["hooks"]["SessionStart"]:
-            cmds = [h["command"] for h in entry["hooks"]]
-            # Identify the clear entry by the `clear` token (now followed by
-            # `--session-start`); build-index/stop/banner/digest don't carry it.
-            if any("bin/prawduct-hook" in c and "clear" in c.split() for c in cmds):
-                assert "compact" not in entry["matcher"], (
-                    "the clear (state-reset) hook must not fire on compact"
-                )
+        reset_entries = [
+            e for e in data["hooks"]["SessionStart"]
+            if any(
+                "bin/prawduct-hook" in c and "clear" in c.split()
+                and "--brief-only" not in c
+                for c in (h["command"] for h in e["hooks"])
+            )
+        ]
+        assert len(reset_entries) == 1, (
+            f"expected exactly one state-reset clear entry, got {len(reset_entries)}"
+        )
+        sources = set(reset_entries[0]["matcher"].split("|"))
+        for continuation in ("compact", "resume", "fork"):
+            assert continuation not in sources, (
+                f"the clear (state-reset) hook must not fire on {continuation}"
+            )
 
 
 # =============================================================================
