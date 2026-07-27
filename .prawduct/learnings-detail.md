@@ -6,6 +6,46 @@ No size constraint on this file — it's the deep reference, consulted via `/lea
 
 ---
 
+## When a release ships a PRUNED tree, a clean `git apply` is NOT evidence of a sound tree — the shipping code can depend on a symbol the WITHHELD work introduced, which a textual patch tool cannot see: v3.1.2's ship set called `sys.stderr` while `import sys` had arrived in `briefing.py` with the withheld backlog-service work, so `git apply` reported the file applied cleanly and produced a `NameError` in a shipped path (11 test failures). Run the suite against the candidate tree, and diff every shipped file's imports against its `develop` counterpart
+
+v3.1.2 was a pruned promotion: `main`'s tree was built as `v3.1.1` + the diff `e597b21..develop`, withholding the backlog-service subsystem. `git apply --3way` reported three conflicts and applied everything else "cleanly" — including `plugin/lib/briefing.py` and `plugin/bin/prawduct-hook`.
+
+The resulting program was broken. `prawduct-hook handoff preview` raised `NameError: name 'sys' is not defined`, taking 11 tests with it. The ship set added code calling `sys.stderr`, but `import sys` had been added to `briefing.py` by the **withheld** work, in a hunk the ship patch therefore did not carry. Neither side of the patch is wrong; the dependency simply crosses the cut, and a textual tool has no way to notice.
+
+The general shape: **a patch tool verifies textual applicability, not semantic completeness.** Any tree assembled by patching rather than by checking out a reviewed commit needs execution-level validation, because the failure mode is a silent reference to something that no longer exists.
+
+Two checks caught and bounded it here, and both are cheap enough to be standard for pruned releases:
+
+1. **Run the suite against the candidate tree.** It found the defect immediately. This is also the argument for a pruned release being validated as a *tree*, not as a patch review.
+2. **Diff imports per shipped file.** For each Python file the ship set touched, compare module-level imports in the candidate against the same file on `develop`; anything present there and absent here is a candidate for this class. Run across all 23 shipped Python files, it confirmed exactly one instance — which converts "we fixed the bug we found" into "we bounded the class."
+
+The residue is worth recording where the code lives: `main` now carries one line of shipped code that exists in no reviewed commit. It self-resolves at the next release that ships the withheld work, because `main` then takes `develop`'s tree wholesale. Recorded in `artifacts/release-plan-v3.1.2-pruned.md` so the divergence is not later read as an accident.
+
+## When determining what a PREVIOUS release actually shipped, test its CODE against that release's tree — never the change-log's prose or heading presence, which a pruned release leaves behind: v3.1.1's tree carries all ten backlog-service change-log entries whose code it deliberately withheld, so a heading-presence test called them shipped and would have mis-tagged them, silently dropping ten entries from v3.1.2's release notes. This is the runbook's own REL-7D4X rule and it is load-bearing in both directions
+
+The release runbook's step 2 states the rule: an entry is release-pending iff it carries no `release=` tag **and** its code is absent from the previous release's tree. I reached for a cheaper proxy instead — is the entry's heading present in `git show v3.1.1:.prawduct/change-log.md`? — reasoning that the change-log gate guarantees an entry lands with its code, so prose presence implies code presence.
+
+That inference fails across a pruned release. v3.1.1 was itself cut from `v3.1.0`'s tree, and the prune removed the backlog-service **code** while leaving its **change-log entries** in the tree. So all ten entries read as "shipped in v3.1.1" while their code had never reached a consumer. Acting on it would have left ten genuinely-unreleased entries untagged — no release-notes entry, no checkbox flip, and nothing downstream complains.
+
+The code test inverted the answer completely: `v3.1.1` has `plugin/lib/backlog.py` (single module) where `develop` has the `plugin/lib/backlog/` package, and v3.1.1's `backlog_probes.py` has **zero** occurrences of `backlog-service-migration-required`. All ten were release-pending.
+
+Two general points:
+
+- **The runbook already knew.** Its REL-7D4X warning says the boundary "narrows the search, it does NOT define the set" and that a positional sweep drops entries silently. I read that warning, correctly rejected the positional shortcut it names — and then invented a *different* shortcut with the same defect. The lesson is about the class, not the instance: when a document warns that a cheap proxy for X is unsound, the warning is about proxies for X, not about the one proxy it names.
+- **It is load-bearing in both directions.** A pruned release makes prose and code diverge permanently, so prose-based reasoning can both over-claim (an entry looks shipped when it is not) and under-claim. Only the code test is stable across it.
+
+## When work is authored ON TOP OF work you may later need to withhold, the two become inseparable by file — pruning is by commit range, so everything merged in between ships or waits together: v3.1.2's ship and withhold sets overlapped in 11 files including `prawduct-hook` and `briefing.py`, so "ship only the session work" also withheld an unrelated refactor and five skills' prose. Sequence a release-gated subsystem BEHIND independently-shippable work, not before it
+
+The backlog-service subsystem was release-gated on four open safety blockers (BKL-6J2X, BKL-5N9W, BKL-8V3D, BKL-2Q7F) — a chain that routes the whole installed fleet into a migration path able to write 100–250 real issues into a real repo while an agent believes a dry-run guarded it. It merged to `develop` in PRs #137–#139. The session-continuity work then merged **on top of it** in PR #140.
+
+That ordering is what made v3.1.2 expensive. v3.1.1 had pruned *parallel* work — it cut from `v3.1.0`'s tree and applied a small hotfix. Here the work we wanted to ship was authored against the post-relayout codebase, so:
+
+- the two sets overlapped in **11 files**, including `plugin/bin/prawduct-hook` and `plugin/lib/briefing.py`, making a file-level split impossible;
+- the split had to be by commit range (`e597b21..HEAD`), which is coarser than by feature — so an unrelated refactor (PDT-WT9K) and prose in five skills were withheld as collateral;
+- the ship set had a latent dependency on the withheld set (the `import sys` above), which only execution revealed.
+
+**The scheduling rule:** when a subsystem is gated on blockers that are not yet closed, land it *after* the work that must ship independently, or keep it on its own long-lived branch. Merging a release-gated subsystem into the integration branch early converts every subsequent release into tree surgery. The cost is invisible at merge time and paid later, by someone reconstructing which commits belong to which feature.
+
 ## When deferring something to a live/operator check, SPLIT it into "can this be true in principle" (static — test it now) and "does the harness actually do it" (live — queue it) — bundling them defers the testable half indefinitely, and that half is where the bug usually is: CRT-2J8N deferred all of "does the SubagentStop matcher fire" as un-unit-testable because *anchoring semantics vary by version*, true of delivery but false of matchability, and the bare-name matcher could never have matched the plugin-scoped `agent_type` on any version
 
 `operator-verification.md` VRF-002 (2026-07-10) listed three integration facts as "unverifiable by code analysis." Fact 2 was whether the `SubagentStop` matcher fires for the dispatched reviewer, justified with "matcher-anchoring semantics vary by Claude Code version."
