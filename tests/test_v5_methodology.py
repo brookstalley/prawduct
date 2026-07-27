@@ -107,9 +107,28 @@ class TestBuildingMethodology:
         # cadence detail lives in review-cycle.md (the file that owns per-mode
         # behavior), the Resolve-findings step dropped a why that CLAUDE.md
         # already carries, and the "Test corruption" trap went — it restated
-        # "Tests never weaken" verbatim, closing sentence included. ~4591 now —
-        # headroom is a few words BY DESIGN; the next addition trims or
-        # relocates first.
+        # "Tests never weaken" verbatim, closing sentence included. The
+        # session-continuity work (2026-07-27) added chunk-close step 7 (write
+        # the forward notes) and rewrote the one sentence describing the /clear
+        # hook into the two-files-two-owners paragraph, and PAID FOR BOTH the
+        # same way — the additions funded entirely by in-file redundancy rather
+        # than by cutting content: three Common Traps that restated
+        # rules stated earlier in this same file. Surviving coverage checked per
+        # item, not assumed: "Silent requirement dropping" -> Working With
+        # Specs' closing line + the digest + CLAUDE.md's principle roster;
+        # "Pre-existing dismissal" -> the clean-baseline paragraph + the full
+        # digest (NOT the slim one, so a framework session keeps it only in this
+        # file); "Ignoring the Critic" -> the Blocking-findings paragraph two
+        # sections down, and nowhere else — the thinnest of the three, and the
+        # first to restore if the ceiling is ever raised. Plus trailing sentences
+        # restating their own bullet (multi-hop, PBT, verification theater) and
+        # prose fat in the intro, worktree, PR and Critic-timing paragraphs.
+        # The trims took it to 4590 — one token BELOW the 4591 the addition
+        # found — and the review then required step 7 to say what to write when
+        # there is nothing to add (silence there fires the next session's
+        # no-forward-note notice on every clean close). That cost 5, paid down
+        # from 8 by compressing the same paragraph. 4595 now. Headroom is a few
+        # words BY DESIGN; the next addition trims or relocates first.
         tokens = estimate_tokens(self.content)
         assert tokens < 4600, f"building.md is ~{tokens} tokens, should be <4600"
 

@@ -197,12 +197,17 @@ class TestParseAllWipBranches:
 # --------------------------------------------------------------------------- #
 class TestGetActiveWork:
     def test_prefers_build_plan_status(self, tmp_path, monkeypatch):
-        pr = _prawduct(tmp_path)
+        # `_get_active_work` takes the PROJECT dir now: on a views_enabled repo
+        # "which chunk is current" is git-derived, so the repo root is part of
+        # the question (BLD-7K3Q).
+        _prawduct(tmp_path)
         monkeypatch.setattr(
             briefing.buildplan_refs, "_parse_build_plan_status",
             lambda d: {"description": "from plan", "current_chunk": "C1"},
         )
-        assert briefing._get_active_work(pr) == {"description": "from plan", "current_chunk": "C1"}
+        assert briefing._get_active_work(tmp_path) == {
+            "description": "from plan", "current_chunk": "C1",
+        }
 
     def test_falls_back_to_wip_when_no_plan_description(self, tmp_path, monkeypatch):
         pr = _prawduct(tmp_path)
@@ -210,7 +215,24 @@ class TestGetActiveWork:
         (pr / "project-state.yaml").write_text(
             "work_in_progress:\n  description: wip work\n"
         )
-        assert briefing._get_active_work(pr) == {"description": "wip work"}
+        assert briefing._get_active_work(tmp_path) == {"description": "wip work"}
+
+    def test_completed_plan_is_not_active_work(self, tmp_path, monkeypatch):
+        """A plan with every chunk done must NOT be reported as active work.
+
+        `staleness_scan` reads the same parse and says "all chunks complete";
+        this function said "in progress" from the same bytes, so the handoff
+        stamped a finished plan as the next session's **Task** (SCN-4H9T).
+        """
+        pr = _prawduct(tmp_path)
+        monkeypatch.setattr(
+            briefing.buildplan_refs, "_parse_build_plan_status",
+            lambda d: {"description": "finished plan", "_has_status_items": "true"},
+        )
+        (pr / "project-state.yaml").write_text(
+            "work_in_progress:\n  description: wip work\n"
+        )
+        assert briefing._get_active_work(tmp_path) == {"description": "wip work"}
 
 
 # --------------------------------------------------------------------------- #

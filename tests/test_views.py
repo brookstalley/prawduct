@@ -932,10 +932,11 @@ class TestRegenViewsScopeFilter:
         assert "- [x] Chunk 01: B" in new
 
     def test_production_shape_html_comment_then_frontmatter(self):
-        """End-to-end with the exact shape every real build-plan uses: leading
-        HTML comment block, then ``---`` frontmatter with ``scope:``. Guards
-        against the parser silently failing on production files (which is what
-        the v1 implementation did)."""
+        """End-to-end with the comment-header shape: leading HTML comment
+        block, then ``---`` frontmatter with ``scope:``. A third of this repo's
+        plans are written this way (16 of 48 as of 2026-07-27; the rest open
+        with ``---``), and the v1 implementation silently failed on all of them
+        — which is what this guards."""
         change_log = (
             "## 2026-05-22: v1.5.1 chunk 01 shipped\n"
             "<!-- prawduct: chunks=01 | status=shipped | scope=v1.5.1 -->\n"

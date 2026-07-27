@@ -7,6 +7,194 @@
 
 ## Open
 
+- **[CRT-7N4B]** A bare `clear --brief-only` classifies as CONTINUATION and so bypasses the CRT-3X9D guard — a NEWLY-CREATED argv shape, justified by a "mutates nothing" claim this bundle's own test falsifies, with the marker-present case untested
+  `effort: S · impact: M · area: critic · kind: bug · source: critic · added: 2026-07-27 · reviewed: 2026-07-27 · status: open · stage: design · related: CRT-3X9D, SCN-5B8Q, DOC-4T6P, STH-6D4Q · refs: plugin/bin/prawduct-hook:820-823 (the invocation-kind resolver — the two-line classification), :785-786 (the docstring justification, the false half), :815 (the correct qualified form, 29 lines below), :858 (the marker sweep, gated on BOUNDARY or forced-GUARDED), :930 + :1009 (`_boundary_close_session` / `_boundary_capture_git_anchors`, both gated on `not brief_only`), :442-510 (`_untrack_session_files` — the batched `git rm --cached`), :3774 (`_USAGE` — where the flag is advertised), tests/test_session_boundary_events.py:439-444 (`test_brief_only_accepted_without_session_start`) and :176-182 (`test_resume_refreshes_advisories`)`
+
+  Filed from cumulative Critic review fact `rev-20260727T164842Z-1b70981d`, finding **R-1** (warning, goal *Nothing Is Broken*): *"`clear --brief-only` without `--session-start` silently bypasses the CRT-3X9D refusal, on a premise this bundle's own test contradicts."* Filed rather than fixed pre-merge — owner's file-don't-fix call, to avoid a seventh review round on a branch that already spent six.
+
+  **What distinguishes this from the branch's other deferrals: `--brief-only` is NEW in this bundle.** The other filed warnings are pre-existing conditions this branch merely made visible or more reachable. This is a **newly-created argv shape** — the flag, its classification, and its usage-string advertisement all ship here for the first time. So it is a new surface, not an inherited one, and it should be weighed accordingly when sequencing.
+
+  **The mechanism, verified at the source.** The invocation-kind resolver is two lines (`prawduct-hook:820-823`):
+
+  ```
+  if "--session-start" in argv:
+      kind = "CONTINUATION" if "--brief-only" in argv else "BOUNDARY"
+  else:
+      kind = "CONTINUATION" if "--brief-only" in argv else "GUARDED"
+  ```
+
+  A **bare** `clear --brief-only` therefore lands in CONTINUATION, and CONTINUATION neither sweeps the critic marker nor refuses. The vector CRT-3X9D was filed for — an agent or reviewer subagent issuing `clear` by hand — is GUARDED only in its bare form; adding one documented flag skips the guard. **Sharpening detail, verified against `hooks.json`: the SessionStart hook never issues this shape.** Its two `clear` registrations are `startup|clear → clear --session-start` and `resume|compact|fork → clear --session-start --brief-only` — both carry `--session-start`. So a bare `clear --brief-only` is reachable *only* by hand, which is precisely and exclusively the CRT-3X9D vector. That cuts both ways: it is not on any automatic path (bounding the risk), and every invocation of it is the kind the guard exists to catch. `_USAGE` (`:3774`) advertises the flag, and `test_usage_string_documents_the_flag` pins that it stays advertised.
+
+  **The blast radius was independently checked, and the invariant HOLDS in practice.** Verified here as well: the marker sweep is gated at `:858` on `kind == "BOUNDARY" or (kind == "GUARDED" and force)`, and both destructive halves are gated on `not brief_only` (`_boundary_close_session` at `:930`, `_boundary_capture_git_anchors` at `:1009`). So a bare `clear --brief-only` touches **none** of the reviewed session's evidence — `.critic-active`, `.session-start`, `.session-base-tree`, `.session-reflected` and `.gates-waived` are all untouched. **The load-bearing invariant — an independent reviewer never mutates the session it reviews — is not currently violated.** That is why this is a warning and not a blocker.
+
+  **What IS false is the justification, and that is the actual defect.** The docstring at `:785-786` states the exemption as *"A continuation neither sweeps nor refuses — it **mutates nothing**, so the guard has nothing to protect."* The continuation path demonstrably mutates three things: it writes `.prawduct/.advisories.json` (asserted by this bundle's own `test_resume_refreshes_advisories`, `tests/test_session_boundary_events.py:176-182`), regenerates `.prawduct/.subagent-briefing.md`, and can run a batched `git rm --cached` through `_untrack_session_files` (`:442-510`) — which mutates the **git index**, i.e. repo state outside `.prawduct/` entirely. Worth stating precisely, because remedy (b) depends on enumerating this correctly: none of the three is *the reviewed session's evidence*, so the invariant survives — but "mutates nothing" is not the sentence that says so. The correct qualified form already exists 29 lines below at `:815` ("mutates no session state"); the module disagrees with itself about the exact property the guard rests on.
+
+  **And the safe behaviour is incidental, not pinned.** `test_brief_only_accepted_without_session_start` (`:439-444`) seeds a session, runs `clear --brief-only` with **no marker present**, and asserts only `returncode == 0`. Its own docstring says "No marker present, so the bare-clear guard lets it pass." So the marker-present case for this argv shape — the only case that exercises the guard — has **no test at all**. Nothing would fail if a future edit made this path sweep or mutate.
+
+  **Two remedies; choosing between them is a design call, which is why this is `stage: design` rather than `ready`.**
+  - **(a) The stricter reading** — require `--session-start` for the CONTINUATION classification, so a bare `clear --brief-only` stays GUARDED. Restores the property that *any* hand-issued `clear`, flagged or not, meets the guard. Cost: `--brief-only` stops being orthogonal to `--session-start`, which is a deliberate design property of this bundle (stated in the docstring and pinned by `test_brief_only_accepted_without_session_start`), so (a) means revisiting that decision and generalizing at least one test.
+  - **(b) Keep the exemption, make it honest and pinned** — this is **what the code already does**, so it is the lower-risk path: replace "mutates nothing" with the enumerated set above, and add the missing test (live marker + `clear --brief-only`, no `--session-start`) so the chosen behaviour is asserted rather than incidental.
+
+  **R-1 and R-8 are the correctness and coherence faces of one defect** — the docstring half is filed as item (d) of **DOC-4T6P**. Whichever remedy is chosen, fix them together: under (b) the docstring correction *is* half the remedy, and under (a) the sentence has to change anyway. Governance-protected (hooks + the Critic session guard) → full Critic + PR review. (critic — cumulative `rev-20260727T164842Z-1b70981d`, R-1)
+
+- **[CRT-2J8N]** The `SubagentStop` matcher is `critic-reviewer` but the dispatched agent type is the plugin-scoped `prawduct:critic-reviewer` — the Critic consolidation trigger never fires, on every product running v3.1.1
+  `effort: S · impact: L · area: critic · kind: bug · source: critic · added: 2026-07-27 · reviewed: 2026-07-27 · status: open · stage: research · related: CRT-3F7M, CRT-8Q6R, ENV-7C4K · refs: plugin/hooks/hooks.json (the SubagentStop block — sole matcher `"critic-reviewer"`), plugin/bin/prawduct-hook:1193-1229 (cmd_subagent_stop — the `.endswith("critic-reviewer")` defense-in-depth check that never gets reached), plugin/agents/critic-reviewer.md, plugin/skills/critic/SKILL.md:57 (dispatch-and-STOP), CLAUDE.md § The Critic ("run `critic-consolidate` before reading `.critic-findings.json` — an idempotent no-op when the trigger already landed it")`
+
+  Filed from cumulative Critic review fact `rev-20260727T164842Z-1b70981d` (branch `feature/session-handoff-continuity`, 0 blocking / 10 warnings / 12 notes). **Not introduced by that branch** — `git diff f802971 -- plugin/hooks/hooks.json` touches only the two `SessionStart` matchers; the `SubagentStop` block is byte-identical to `main@f802971` (v3.1.1, the installed plugin). So this is **shipped, live, and affects every product on v3.1.1.**
+
+  **The defect.** `plugin/hooks/hooks.json` registers the consolidation trigger with `"matcher": "critic-reviewer"`. The agent type the coordinator actually dispatches is the plugin-scoped **`prawduct:critic-reviewer`** (that is the name in the harness's agent roster — plugin agents are namespaced on registration). The matcher never matches, so `prawduct-hook subagent-stop` never runs.
+
+  Telling detail: `cmd_subagent_stop` **already anticipates the scoped form** — it early-returns unless the reported agent type `.endswith("critic-reviewer")`, which is precisely the guard you write when you expect a `prawduct:`-prefixed value. The Python side is correct; the JSON wiring upstream of it is what fails, so that check never executes.
+
+  **Observed 2026-07-27** during the review above: after all three reviewer subagents finished, `.prawduct/.critic-findings.json` still carried its pre-review mtime and `.critic-active` was still set. Consolidation happened only because `critic-consolidate` was run explicitly.
+
+  **Consequence — a documented belt-and-braces step is actually load-bearing.** CLAUDE.md tells the reader to run `critic-consolidate` first and calls it "an idempotent no-op when the `SubagentStop` trigger already landed it." The trigger never lands it. Anyone who skips that step reads the **previous** review's findings — a wrong-provenance read with no signal — and the session-end backstop is the only remaining floor. That is also a Living Documentation defect in CLAUDE.md's own description of the mechanism.
+
+  **Probable root cause of CRT-3F7M's symptom class, and the reason to cross-link rather than merge.** CRT-3F7M is about *inferring reviewer death from silence* and stayed at `stage: research` on the question "do reviewer subagents genuinely die with the fork?" Its 2026-07-20 update already established that in at least one instance the reviewers **survived and completed** while the caller saw nothing. This item supplies a mechanism for exactly that: the reviewers finish, and nothing consolidates, because the per-reviewer trigger is inert. It does not settle CRT-3F7M's dispatch-lifetime question (a genuinely dead reviewer writes no partial either way) but it removes the largest confound from any repro — **fix or characterise this first, then re-run CRT-3F7M's proposed repro**, otherwise that repro measures this bug.
+
+  **Stage is `research`, deliberately — do NOT assume a regex widening is the fix.** The correct change depends on Claude Code's `SubagentStop` matcher semantics, which are **not** established here: exact string match, regex, or substring. If it is a regex the `SessionStart` blocks' alternation (`startup|resume|clear|compact|fork`) suggests, then `critic-reviewer` would already match `prawduct:critic-reviewer` as a substring and the diagnosis needs re-derivation from the observed non-fire; if it is an exact match, the matcher must name the scoped type (or both forms). **Confirm the semantics against the harness before writing the fix** — retrieval over generation. Then add a regression pin so the matcher and the dispatched agent type cannot drift apart again, and re-check the same wiring for any other matcher naming a plugin-scoped agent. Governance-protected (hooks + Critic data plane) → full Critic + PR review. (critic — cumulative `rev-20260727T164842Z-1b70981d`)
+
+- **[STH-6D4Q]** `tests_are_current` fails OPEN when `.session-start` is absent — with no tree check on that path — and this bundle widened the reachability by removing `resume`'s accidental re-anchoring; plus a narrow reflection-freshness residue on the archival-failure path
+  `effort: M · impact: M · area: gates · kind: bug · source: critic · added: 2026-07-27 · reviewed: 2026-07-27 · status: open · stage: requirements · related: SCN-5B8Q, SCN-4H9T, STH-7W9K, COV-3R9K · refs: plugin/lib/gates.py:156 (the no-marker fail-open return) and :139-150 (the tree-validity clause, inside `if session_start:` and therefore unreachable without a marker), plugin/bin/prawduct-hook:622-668 (`reflection_preserved` gating the `.session-reflected` unlink), plugin/bin/prawduct-hook:1399-1405 and plugin/lib/briefing.py:1491-1493 (both readers — presence + `len(...) >= 50`, no freshness), .prawduct/artifacts/build-plan-session-boundary-events.md:170 (Success #5) and ~:259-264 (the Chunk 01 `[DECISION]`)`
+
+  Filed from cumulative Critic review fact `rev-20260727T164842Z-1b70981d` (branch `feature/session-handoff-continuity`). Filed rather than fixed pre-merge — owner's explicit call, to avoid a seventh review round on a branch that already spent six.
+
+  **Half one — the freshness fail-open (pre-existing, newly more reachable).** `gates.py:156` returns `True, "evidence has passing tests (…, no session marker to verify)"` when `.session-start` is missing. Verified at the source: the additive tree-validity clause (`_test_evidence_tree_valid`) sits **inside** the `if session_start:` branch, so on the no-marker path there is *no* tree check at all — arbitrarily old passing evidence is accepted on nothing but a schema check, `failed == 0`, and the presence of a timestamp. The fail-open predates this bundle. What the bundle changed is how long an unanchored working copy stays unanchored: the old boundary reset wrote `.session-start` on its way through, so a `resume` **accidentally re-anchored** an unanchored worktree. That accidental repair is gone by design (the handoff notes record the trade as "silent-and-sometimes-destructive → loud-and-never-destructive", with an R-15 notice in its place), which is the right call — but it means the fail-open path is now reachable indefinitely rather than being papered over at the next resume.
+
+  **Half two — a NARROW residue on the reflection file. Read this scoping before sizing any work off it; an earlier draft of this item over-generalized it.** Gating the `.session-reflected` unlink on `reflection_preserved` is a **net improvement, not a new hole.** Re-read against `prawduct-hook:622-668`: `reflection_preserved` starts `True`, is set `False` only once the file is found to exist, and returns to `True` **the moment archival succeeds** (including the empty-content case, which skips the append and still deletes). So the file survives a boundary **only when archival genuinely failed** on a `UnicodeError`/`OSError` — and that path prints an attributed `NOTE:` naming the hand-remedy and saying it will retry at the next boundary. The prior behaviour on that same path destroyed the reflection permanently and silently; this trades an unbounded-but-announced survival for a silent permanent loss, which is the trade `architecture.md` already ratifies for this channel.
+
+  The residue, stated at its true size: on that failure path the file persists, and *both* readers check only presence and `len(content) >= 50` — `prawduct-hook:1405` (the blocking reflection gate) and `briefing.py:1491` (the warning). Neither checks freshness. So **in the session following a failed archive**, the blocking reflection gate can be satisfied by the previous session's text. That is a real gap in the freshness model, and it belongs in the same design pass as half one because it is the same missing concept — but it is gated behind an announced I/O failure, not something a normal boundary reaches. Do not size design work off a "the reflection gate can pass on stale text" reading without that qualifier.
+
+  **Half three — the documentation defect, and it is the cheap half.** Both the Chunk 01 `[DECISION]` ("An absent anchor already has a documented degradation (**freshness gates fail closed**; the base-tree falls back to HEAD's tree), and failing closed is the direction this plan committed to") and Success #5 ("No gate semantics change except in the fail-closed direction") assert the opposite of what `gates.py:156` does. Verified false at the source. This is a Living Documentation violation (Principle 3) in a **governing artifact**, and it is load-bearing: the DECISION's stated rationale for `--brief-only` never writing an anchor rests on the false premise. Correct the artifact even if the code change waits.
+
+  **Fix shape — split deliberately, the two halves are not the same size.** The doc-accuracy half is a small correction to the plan (state what the gates actually do, and re-derive whether the DECISION still holds on a true premise — it may well, on the "don't stamp a resume-time clock" leg alone). The freshness half is **design work, not a patch**: closing a fail-open changes which sessions get blocked, and the obvious moves each have a cost — extending the tree-validity clause to cover the no-marker case (probably the cheapest sound option, since it answers "has anything judgeable changed" without needing a session clock), stamping an anchor at the R-15 notice site (rejected once already, for good reason), or adding a freshness check to the reflection readers (needs a definition of fresh that a legitimately-long session does not trip). Requirements first. Governance-protected (gates + boundary) → full Critic + PR review. (critic — cumulative `rev-20260727T164842Z-1b70981d`)
+
+- **[TST-9M2X]** A prose pin that passes vacuously: `test_session_boundary_prose.py`'s regex cannot match a past participle, so both sites it exists to catch survive it — and one of the two is loose
+  `effort: S · impact: M · area: tests · kind: bug · source: critic · added: 2026-07-27 · reviewed: 2026-07-27 · status: open · stage: ready · related: SCN-5B8Q · refs: tests/preferences/test_session_boundary_prose.py:48-51 (`_BARE_NEXT_SESSION`) and :36-46 (the `SURFACES` roster), plugin/bin/prawduct-hook:1374 ("(auto-cleared at session start)" — the loose site), plugin/methodology/building.md:94 ("Auto-cleared next session" — survives the pin but reads correctly under `building.md:7`), plugin/bin/prawduct-hook:586 + :667 (`_boundary_close_session` — the only `.gates-waived` deletion), .prawduct/artifacts/project-preferences.md § Enforcement`
+
+  Filed from cumulative Critic review fact `rev-20260727T164842Z-1b70981d` (branch `feature/session-handoff-continuity`). Filed rather than fixed pre-merge — owner's call, to avoid a seventh review round.
+
+  **The defect, verified at the source.** The pin's regex is `(?:on|at|the)\s+next\s+session\s+start\b|auto-?clears?\s+next\s+session\b`. `auto-?clears?` matches `auto-clear` / `auto-clears` and nothing else, so **neither** of the two candidate sites can match — the pin is blind to the past participle, which is the form both sites happen to use:
+  - `building.md:94` — "Auto-cleared next session." `auto-?clears?` consumes "Auto-clear", then requires `\s+`, but the next character is `e`. No match.
+  - `prawduct-hook:1374` — "(auto-cleared at session start)". Same failure on the second alternative; the first needs the literal "next", which is absent.
+
+  **Of the two survivors, only ONE is actually loose — the site list is corrected here, and the correction does not weaken the item.** `.gates-waived` is deleted only inside `_boundary_close_session` (`prawduct-hook:667`), so a waiver outlives an unbounded number of continuations and clears at a boundary. Against that:
+  - **`building.md:94` reads correctly** — because the same file *defines* the vocabulary it uses. `building.md:7`, the opening paragraph under `## Sessions and Work Cycles`, states: *"A **session** is one Claude Code invocation. Only `startup` and `/clear` **begin** one; `resume`, `compact` and `fork` are continuations."* Under that definition "next session" means the next session that *begins*, i.e. a boundary — which is exactly what the code does. (An earlier draft of this item called it false; it is not. Recorded rather than quietly edited. Worth noting the definition sits **87 lines and five headings earlier**, at the top of the file rather than adjacent — so the sentence is terse and definition-dependent, not wrong. If it is ever reworded, it needs that context carried with it.)
+  - **`prawduct-hook:1374` IS loose** — "(auto-cleared at session start)". In the hook's own vocabulary "session start" is the `SessionStart` event, which fires on `resume`/`compact`/`fork` too, and on none of those is the waiver cleared. It names the event rather than the boundary, which is precisely the distinction this bundle introduced.
+
+  So the pin's failure is not that two false sentences slipped past — it is that the pin **cannot detect this class of sentence at all**, which is the durable defect regardless of how many current sites happen to be wrong.
+
+  **`bin/prawduct-hook` is the FIRST entry in the pin's own `SURFACES` roster** (`:37`), and `building.md` is the second. So the pin does not merely fail to catch the loose sentence — it **reports coverage it does not provide, over the exact file that carries it.** Widening to `auto-?clear(s|ed|ing)?` restores the pin's reach; whether `:1374` is then reworded or qualified is a one-line call for whoever fixes it.
+
+  **Name the class, because it is the durable part.** A pin that passes vacuously is *worse than no pin*: it consumes the coverage slot, terminates the search, and reports safety it does not deliver. Same class the backlog already records for vacuous tests (Principle 1 — a contract that binds nothing while reporting that it does). The general rule worth writing down where prose-pin authors will meet it: **write the failing case first.** A prose pin must be demonstrated red against a real offending sentence — ideally the exact sentence that motivated it — before it is committed green. Consider whether that belongs in `building.md` or the Enforcement table's own conventions. Governance-protected (a preference pin) → full Critic + PR review. (critic — cumulative `rev-20260727T164842Z-1b70981d`)
+
+- **[BLD-5R7K]** `resolve_chunk_progress`'s git-derived reading has an undocumented precondition — a commit convention written down nowhere — and degrades silently to the reading that always reports Chunk 01
+  `effort: M · impact: M · area: build-plan · kind: bug · source: critic · added: 2026-07-27 · reviewed: 2026-07-27 · status: open · stage: requirements · refs: plugin/lib/buildplan_refs.py:369 (`resolve_chunk_progress`), :185 (`_committed_chunk_ids` — the `Chunk NN` subject regex at :152 plus the scope filter), :343-366 (the `ChunkProgress.git_derived` docstring, which names this gap itself), plugin/templates/build-plan.md, plugin/methodology/building.md, tests/test_handoff_parser_correctness.py:227 (the only reader of `git_derived` anywhere)`
+
+  Filed from cumulative Critic review fact `rev-20260727T164842Z-1b70981d` (branch `feature/session-handoff-continuity`). Filed rather than fixed pre-merge — owner's call.
+
+  **The consolidation itself is genuine** and should not be re-litigated: `_chunk_ids_in_status_order` is gone, every consumer (`_parse_build_plan_status` and so the handoff, the briefing, `verify-chunk-refs`, `critic_mode.infer_mode`) resolves through the one function, and the precedence between the two readings now lives in one place. This item is about the **precondition**, not the design.
+
+  **The precondition, verified as undocumented.** Correct git-derived progress requires **both**: (a) `Chunk NN` in the commit subject, matched by a capital-C + digits regex, and (b) a conventional-commit **scope** matching the plan's `scope:` frontmatter. A grep of `plugin/methodology/*.md`, `plugin/templates/*.md` and `plugin/skills/*/SKILL.md` for the `Chunk NN` convention returns three unrelated hits (an operator-verification field label and two skill-history mentions) and **nothing** stating the requirement; "conventional commit scope" appears in neither methodology nor templates. So a product that does not happen to have the habit falls back to the checkbox reading — which, on a `views_enabled` repo mid-branch, is the reading known to be wrong and typically reports Chunk 01 forever.
+
+  **And the degradation is silent.** `ChunkProgress.git_derived` records which reading answered, but has **no production reader** — the only reference outside the module is a test assertion. The docstring states this honestly and names the gap rather than papering over it, which is why this is a follow-up rather than a finding against the author.
+
+  **Generality finding — the reason this is worth an item.** It works in this repo because this repo has the habit, and this branch's own handoff notes reinforce it ("use the `(Chunk NN)` commit-subject convention from the FIRST commit of a chunk"). That is exactly the shape that ships a framework mechanism which is correct for its author and quietly wrong for everyone else. Note also that the scope filter is applied **only when it matches something** — a deliberate softening, since a strict filter would have erased this repo's own continuity-plan signal (its commits say `session-continuity`, its frontmatter `session-handoff-continuity`). That softening is a second, related reason the mechanism can be half-right without anyone noticing.
+
+  **Two-part fix.** (1) **Document the precondition where authors will meet it** — the build-plan template (so it is stated when the plan is authored) and `building.md` (so it is stated when the chunk is committed); note `building.md` is at 4596 of a hard 4600, so this needs a relocation rather than an addition. (2) **Announce the degradation at runtime instead of failing quiet** — the docstring is right that this is a design call about *which surface* should report, not a rename: most `git_derived=False` answers are perfectly normal, so a hot-path warning would be noise. A deliberately-invoked diagnostic (`verify-chunk-refs`, or the janitor's build-plan health step) is the likelier home. Requirements first on part (2); part (1) is ready to write. (critic — cumulative `rev-20260727T164842Z-1b70981d`)
+
+- **[GOV-8C3W]** Norm-disposition sweep stopped at the instance: `security-model`'s `--apply`/dry-run norm is undisposed in both session plans, while this bundle ADDED a destructive act
+  `effort: S · impact: M · area: governance · kind: bug · source: critic · added: 2026-07-27 · reviewed: 2026-07-27 · status: open · stage: ready · related: MET-6Q3D · refs: .prawduct/artifacts/security-model.md § Direction (three ratified norms), .prawduct/artifacts/build-plan-session-boundary-events.md:24-26 (`governed_by: security-model` — one disposition), .prawduct/artifacts/build-plan-session-handoff-continuity.md:25-27 (same), plugin/bin/prawduct-hook:586-668 (`_boundary_close_session` — deletes up to five session files, no `--apply`), plugin/docs/norms.md`
+
+  Filed from cumulative Critic review fact `rev-20260727T164842Z-1b70981d` (branch `feature/session-handoff-continuity`). Filed rather than fixed pre-merge — owner's call.
+
+  **Verified counts.** `security-model.md` § Direction carries **three** norms: untrusted-governance-state-is-data; **no destructive action without an explicit `--apply` step / state-mutating lifecycle commands default to a dry run**; and no cross-owner content egress. Both build plans dispose of exactly **one** — the untrusted-state norm, recorded retroactively during the Chunk 01 cumulative. The other two are undisposed in both. By contrast `architecture` (4 dispositions), `api-contract` (3) and `observability-strategy` (3) are complete in both plans. So the gap is specific to `security-model`, and it is a four-line sweep.
+
+  **The undisposed `--apply` norm is germane, not bookkeeping.** `cmd_clear` deletes `.session-start`, `.session-git-baseline`, `.session-base-tree`, `.gates-waived` and (conditionally) `.session-reflected` with no `--apply` and no dry-run default — and **this bundle added a destructive act to that path** while changing which sources reach it. Whether the norm applies to a hook-driven session boundary at all is a legitimate reading (it names "migrate/init/scaffold/repo-disable/learnings-audit" lifecycle commands), and "inapplicable, because —" is a perfectly good disposition. What is not available is leaving it unrecorded: that is the assumed-applicability failure the Chunk 01 cumulative already caught once on this same artifact. The third norm (cross-owner egress) is almost certainly a one-line "inapplicable; no network surface", matching how both plans dispose of the architecture norm's network limb.
+
+  **Escalation basis — the class, not the instance.** This bundle's own headline learning is that a fix landing at the instance a review named leaves the defect alive in the class. The Chunk 01 cumulative found *one* missing `security-model` disposition and each plan added *that one*; nobody enumerated the artifact's full norm set against either plan. Same shape, one level up. So the fix is two moves: complete the four dispositions **and** make the enumeration mechanical — a `governed_by` block should be checkable against the cited artifact's actual `## Direction` count, which is the kind of thing `verify-chunk-refs` or the janitor's norm-health sweep could answer deterministically. Consider whether that check is worth building here or belongs with the norm-lifecycle work. (critic — cumulative `rev-20260727T164842Z-1b70981d`)
+
+- **[DOC-4T6P]** Four documentation-accuracy defects from the cumulative: `cmd_clear`'s docstring keeps a quantifier its own change-log retracts, the change-log names the wrong function, the Enforcement table skips one of three new prose pins, and a concerns cell cites a plan that will be deleted
+  `effort: S · impact: S · area: docs · kind: bug · source: critic · added: 2026-07-27 · reviewed: 2026-07-27 · status: open · stage: ready · related: GOV-3P8K, CRT-7N4B · refs: plugin/bin/prawduct-hook:785-786 (the docstring over-claim) and :815 (the correct qualified form), .prawduct/change-log.md:103-104 (the retraction that falsifies it), :228 (the Chunk 02 function list) and :264 (the DECISION that reverses it), tests/test_session_boundary_events.py:176-182 (`test_resume_refreshes_advisories` — the pinned counter-example), .prawduct/artifacts/project-preferences.md § Enforcement (~:78-83), tests/preferences/test_session_boundary_prose.py (the unrostered pin), .prawduct/cross-cutting-concerns.md:44 (the citing cell) and :40 (the ephemeral-ref firewall row), plugin/lib/gates.py:744, plugin/lib/briefing.py:442 + :457, plugin/lib/buildplan_refs.py:445 + :958`
+
+  Filed from cumulative Critic review fact `rev-20260727T164842Z-1b70981d` (branch `feature/session-handoff-continuity`), findings **R-8** (item (d)) and three further documentation warnings. Grouped as one small item because all four are single-line corrections; each is independently verified at the source.
+
+  **(a) The change-log names a function that does not do what the sentence says.** `change-log.md:228` reads "`_parse_build_plan_status`, `_current_chunk_id_from_status`, `_has_active_build_plan_file` and `_get_active_work` now take the **project dir**, not `.prawduct/`." Three of those four check out (`buildplan_refs.py:445`, `:958`, `briefing.py:442`). The fourth does not: `gates.py:744` is `def _has_active_build_plan_file(prawduct_dir: Path)`. The real fourth member is `_get_work_in_progress` (`briefing.py:457`, takes `project_dir`). The entry is self-contradicting, too — two paragraphs later at `:264` it records the `[DECISION]` that *"the gate trigger keeps the checkbox reading"*, whose whole content is that routing `_has_active_build_plan_file` through the git signal disarmed the blocking gates and was therefore **reversed**. The same entry both claims the change and records its reversal.
+
+  **(b) The Enforcement table gained rows for two of the three new prose pins.** This branch adds three files under `tests/preferences/` (`git diff develop...HEAD --name-status`): `test_build_plan_decoding.py`, `test_handoff_prose.py` and `test_session_boundary_prose.py`. The first two got Enforcement rows; the third did not. That matters more than a normal omission because the Enforcement table is the product's **norm index** — an unrostered pin is a rule enforced in CI that the index does not know exists, which is the inverse of the usual drift and just as unreadable. (TST-9M2X is about that same pin being vacuous; this is about it being unlisted. Fix both together — the row should be written *after* the regex is widened, so it does not roster a pin that catches nothing.)
+
+  **(c) A concerns cell rides its meaning on a build plan that is about to be deleted.** `cross-cutting-concerns.md:44` (the "Session continuity across `/clear`" row) contains "…it is exactly what `build-plan-session-boundary-events.md` Chunk 02 changes, so an audit of 'who reads the handoff' must not stop at this parenthetical." Build plans are ephemeral; when that one is deleted the pointer dangles and the sentence loses its referent. And the row sits in the **same table**, a few rows below `:40` — the "Durable-artifact self-containment (ephemeral-ref firewall)" row, which exists to prevent exactly this. The registry that documents the firewall is violating it. Rewrite the cell to state the *behaviour* self-containedly (the briefing emits the pointer on file existence alone, so it must be counted as a reader) rather than naming a plan and a chunk. Cross-linked to GOV-3P8K, which tracks the deterministic tripwire that would have caught it.
+
+  **(d) `cmd_clear`'s docstring keeps the quantifier its own change-log entry records as falsified.** Finding **R-8** (warning, goal *Everything Is Coherent*), verbatim summary: *"cmd_clear's docstring keeps the quantifier its own change-log entry records as falsified."* The docstring at `prawduct-hook:785-786` reads *"A continuation neither sweeps nor refuses — it **mutates nothing**, so the guard has nothing to protect."* The change-log entry in this same bundle (`change-log.md:103-104`) retracts exactly that shape: *"'The sweep is the one mutation on the continuation path' was a quantifier over-claim falsified by this bundle's own test asserting `.advisories.json` is written."* That counter-example is pinned by `tests/test_session_boundary_events.py::test_resume_refreshes_advisories` (`:176-182`), and `_untrack_session_files` additionally runs `git rm --cached` on the same path, mutating the index. So the sibling claim was corrected and this one — carrying the identical over-claim — survived the sweep. The **correct qualified form already exists 29 lines below at `:815`** ("mutates no session state"), so the module disagrees with itself about the exact property the CRT-3X9D guard rests on; the fix is to make `:786` say what `:815` says. **This is the coherence face of CRT-7N4B's correctness finding (R-1) — same sentence, same defect. Fix them together**: under CRT-7N4B remedy (b) this correction *is* half the remedy, and under remedy (a) the sentence has to change anyway. Note also that this is a **third** instance of the branch's headline lesson — a claim sweep that fixed the sites a review named and not the class of sentences sharing the reversed wording. (critic — cumulative `rev-20260727T164842Z-1b70981d`)
+
+- **[MET-8K4R]** Should prawduct ship PROCESS norms as ratifiable defaults, not only product norms? The plugin's own rules bind every governed repo on installation with no lifecycle — no exception path, no expiry, no erosion probe, no amend-tell
+  `effort: M · impact: L · area: methodology · kind: question · source: user · added: 2026-07-27 · reviewed: 2026-07-27 · status: open · stage: research · related: MET-6Q3D, GOV-7Q4N, GOV-6N4W, GOV-EXI2, GOV-4X9M, JNT-8E3P · refs: plugin/docs/norms.md (§ Where Norms Live — all three homes are product-owned; § Adoption — "no auto-ratification"; § Exceptions expire; § Deliberate Non-Design — the no-new-file-class constraint), plugin/skills/doctor/SKILL.md § Norm Ratification Flow (the existing candidate-triage / bulk-confirm surface the sketch reuses), .prawduct/artifacts/architecture.md:226 ("The two model-owned session files" — the handoff-pair contract that surfaced this, currently descriptive prose), .prawduct/artifacts/architecture.md:172 (persistence table — "read-only; never placed into a repo"; the ruling's supporting finding), .prawduct/artifacts/architecture.md:59 ("Authority fails closed; advice fails soft" — a product ## Direction norm that the ruling reclassifies as constitutional; risk 1), plugin/templates/project-preferences.md:65 (§ Enforcement — "the product's norm index"; why preferences are a subset of norms, not a parallel kind), plugin/docs/principles.md, plugin/methodology/ (building.md, discovery.md, planning.md, reflection.md — the shipped rules with no lifecycle)`
+
+  **Raised by the owner 2026-07-27 during the session-handoff-continuity build (Chunk 03). They asked the question rather than ruling, so nothing is decided.** *(Superseded in part — the owner ruled later the same day; see **OWNER RULING — 2026-07-27** at the foot of this item. The store question is settled; the constitutional-vs-default test is not.)*
+
+  **The observation.** The norm lifecycle (`plugin/docs/norms.md`) is deliberately *product-scoped*: all three homes for a norm (project-preferences rows, `## Direction` sections, project-state classification) are product-owned, and binding force comes from the owner's declaration — "no auto-ratification." But the plugin **also** ships rules that bind every governed repo on installation: the methodology guides, the principles, the hook gates. Those have **no lifecycle at all** — no way to record a bounded exception, no expiry, no erosion probe, no amend-tell. A product either complies or silently does not, which is precisely the silent departure the Authority Rule says is never available.
+
+  **Two parallel binding systems, and only one has a lifecycle.**
+
+  **How it surfaced.** The handoff-pair contract — who may write which session file (`.handoff-notes.md` vs `.session-handoff.md`) — is norm-shaped, binds every governed repo's PROCESS, and currently lives as descriptive prose in this repo's `architecture.md`. It has no home in the norm system because the norm system has no place for a *plugin-shipped* norm.
+
+  **Sketch of a resolution worth evaluating — not a decision.** The plugin ships process norms as **candidates** (a `## Direction` section in a plugin doc), and `/prawduct:doctor`'s existing ratification flow — which already reads artifacts, proposes candidates, triages the decision-worthy ones and bulk-confirms the obvious — offers them alongside the product's own. A product that ratifies gets the rule in its own Enforcement table with the full lifecycle; one that does not still gets today's advisory methodology guidance. This preserves "no auto-ratification" and adds no new file class — `norms.md` § Deliberate Non-Design forbids both.
+
+  **THE ACTUAL DESIGN WORK is a split the spec does not currently have:** which process rules are **CONSTITUTIONAL** (bind on installation, no exception path — "never write Critic findings yourself" is fraud, not a preference) versus **DEFAULT** (shipped as candidates, product-ratifiable). Drawing that line is discovery-shaped, not a chunk. (user — owner)
+
+  ---
+
+  **=== OWNER RULING — 2026-07-27 ===** *Everything above this line is the question as originally raised. Everything below is decided by the owner, except where marked **STILL OPEN**. Status/stage/kind deliberately unchanged: the item stays `stage: research` because the constitutional-vs-default test is not yet ruled.*
+
+  **RULED — two stores, not one.** A single norm data store cannot govern both consuming products and prawduct itself: you would have to merge prawduct norm updates *into* consumer repos, and parse consumer norms during prawduct updates. So — **separate terminology and separate storage**, even though the two are conceptually the same thing. Prawduct ships **only constitutional, inviolable norms**; anything that may legitimately vary by user or project belongs in the product's own `project-preferences`. Prawduct must therefore be very opinionated about exactly two things: **(1)** inviolable principles, and **(2)** **suggested defaults** that are *hoisted* into a consuming project's preferences/norms at onboard, where the user may adjust them.
+
+  **Supporting finding — stronger than the merge-pain argument.** `architecture.md`'s persistence table (`.prawduct/artifacts/architecture.md:172`) says the plugin is *"read-only; never placed into a repo."* A shipped **mutable** norm store therefore has only two possible shapes, and both are dead on arrival:
+  - **Read-only in the plugin** → a product cannot record an exception against it, so the norm *lifecycle* (exception, expiry, erosion probe, amend-tell) is dead — which is precisely the gap this item was filed about; or
+  - **Copied into the repo at install** → that **is** the file-sync engine retired in M4 / v2.0.3 (`MANAGED_FILES` survives only so migration can delete committed framework copies).
+
+  One store re-litigates the v2.0 transition. Cite this finding in the design rather than re-deriving it.
+
+  **STILL OPEN — the constitutional-vs-default test.** Proposed 2026-07-27, **not yet ruled.** A rule is **CONSTITUTIONAL** if either:
+  - **(a)** the shipped code already enforces it unconditionally, so a product *cannot* depart even if it wants to — calling it a preference would be a lie; or
+  - **(b)** departing makes the framework's **output dishonest**, rather than merely different.
+
+  Everything else is a **DEFAULT** (shipped as a candidate, hoisted at onboard, product-adjustable).
+
+  Worked, as evidence the test actually discriminates:
+  - *An independent reviewer never mutates the session it reviews* — passes **(a)**: `prawduct-hook clear` refuses while a review is active.
+  - *Never write Critic findings yourself* — fails (a), passes **(b)** decisively.
+  - *The handoff-pair **contract*** — passes **(a)**: the generator overwrites regardless of preference. But the *practice* of writing handoff notes at chunk close fails both limbs and is a **default**. The same surface splits across the line — which is exactly why it felt slippery when the question was raised.
+  - *Never weaken a test* — fails (a), passes **(b)**: green stops meaning "behaviour preserved."
+  - *Merge strategy, branching model, reflection cadence* — fail both ⇒ defaults.
+
+  **Corollary worth keeping:** a rule *believed* constitutional that fails both limbs must either get its enforcing mechanism built, or be demoted to a default. That is the "quietly becomes aspirational" failure one level up from this item.
+
+  **ANSWERED — preferences vs. norms are NOT duplicative, and should NOT be split terminologically.** `project-preferences.md` § Enforcement already declares itself *"the product's **norm index**"* (`plugin/templates/project-preferences.md:65`), and `docs/norms.md` § Where Norms Live lists preferences rows as one of the three homes a norm can occupy. Preferences are therefore a **subset** of norms, split by **subject** (code / architecture / identity), not by kind. **Methodology sits in none of the three homes — that hole is this item.** Under the ruling the load-bearing axis becomes **constitutional vs. product**, which cuts *across* preferences and norms; a second terminological axis would yield four quadrants with two of them empty.
+
+  **Recommended shape (design input, not a ruling).** Keep **one index and one store** on the product side, and add a **third sub-table — hoisted process defaults** — populated by `/prawduct:doctor` from the plugin's candidate set. Separately: the blur the owner noticed in the Enforcement table has a *different source* than the constitutional/default distinction — that table is a **registry** in its top half (rows state the rule inline) and an **index** in its bottom half (rows are pointers). Same table, two jobs.
+
+  **RISKS TO CLOSE BEFORE BUILDING.**
+  1. **Prawduct is its own first consumer, and the one place the two stores overlap.** `architecture.md:59` today carries *"Authority fails closed; advice fails soft"* as a **product** `## Direction` norm — but under this ruling it is **constitutional**. Prawduct would become the first product whose norm store can drift from the constitution it ships. This must be a **rule, not a habit**: a constitutional rule is authored **once** in the plugin, and every artifact — prawduct's own included — **cites** it rather than restating it.
+  2. **Hoist-at-install is one-shot.** Products onboarded at different plugin versions get different defaults, and neither re-hoists. That is *correct* for defaults (once adopted they are the product's to own), but it means a **bad** default can never be fixed retroactively — only re-offered via `doctor`. Design that re-offer path in deliberately, rather than discovering it after the first bad default ships. (owner ruling — 2026-07-27)
+
+- **[MET-6Q3D]** Correctness must never depend on a user-invoked command — audit every remedy that routes through `/prawduct:doctor`, and write the always-run-surfaces rule down where the next mechanism's author will hit it
+  `effort: S · impact: M · area: methodology · kind: task · source: user · added: 2026-07-27 · reviewed: 2026-07-27 · status: open · stage: ready · related: MET-8K4R, GOV-9K2T · refs: plugin/bin/prawduct-hook:3063 (the live instance — coverage-status' norm-ratification fix line), plugin/docs/norms.md:354-377 (§ Adoption — "binding force comes from the owner having declared a direction; ratification records it, never creates it"; "Day one, automatically"), plugin/docs/norms.md:288 (§ Enforcement — who checks what, when; candidate home for the rule), plugin/docs/doctor-vs-janitor.md (the other candidate home — already describes who checks what and when), plugin/skills/doctor/SKILL.md`
+
+  **Owner ruling — 2026-07-27.** `/prawduct:doctor` is a **repair path, not a workflow step**: it is what people run when something is obviously broken, and it is not part of the normal loop. Therefore any mechanism whose **absence** produces a wrong answer must live on a surface that runs **unconditionally**; user-invoked commands may only **REPAIR** or **REPORT**.
+
+  **The always-run surfaces are exactly:** SessionStart (banner, digest, `clear --session-start`, `build-index`), UserPromptSubmit, Stop, SubagentStop. Everything else is opt-in.
+
+  **Live instance, not hypothetical.** `prawduct-hook coverage-status` emits `fix = "ratify the product's norms via /prawduct:doctor"` (`plugin/bin/prawduct-hook:3063`), so the norm-ratification remedy is routed through a command nobody runs.
+
+  **Why this is an audit rather than a bug.** Whether that routing is acceptable turns on a distinction worth making explicit rather than assuming — and the answer looks like **yes**. `docs/norms.md` § Adoption states that binding is automatic ("Day one, automatically: reviewers apply the normative/descriptive test to unmarked prose… the amend tell needs no markers at all") and that ratification exists for **lifecycle and visibility**, not for binding force. So the shipped design already keeps doctor out of the correctness path; the advisory's remedy line is about making an *already-binding* norm visible, and the wording may simply need to say so.
+
+  **The work.**
+  1. **Audit** every surface that names `/prawduct:doctor` as a remedy and classify each as *correctness-critical* or *visibility-only*.
+  2. **Reword** any that read as correctness-critical, so the consequence of never running doctor is stated honestly.
+  3. **Write the rule down** where the NEXT mechanism's author will hit it — the natural home is `docs/norms.md` § Enforcement or the doctor-vs-janitor split doc, since both already describe who checks what and when.
+
+  **Why file this rather than capture it as a learning.** It has a concrete near-term consumer. The constitutional-vs-default work (**MET-8K4R**) proposed hoisting suggested defaults into a product's preferences via doctor's ratification flow; the owner's objection is what killed that shape, and the rule needs to be written down before it is re-proposed. A learning would not be read at the moment someone designs the next hoist. (user — owner ruling)
+
 - **[COV-3M8Q]** Doc-only fast-path can't see a provably behavior-preserving code change (docstring/comment-only .py) — keys on .md extension alone
   `effort: M · impact: M · area: governance/gates · kind: question · source: user · added: 2026-07-21 · reviewed: 2026-07-21 · status: open · stage: research · related: COV-2P7F, COV-4H7N, COV-6T3P, PR-5K8D · refs: plugin/lib/coverage_algebra.py:59-72 (is_judgeable_path — the extension/prefix-only classifier and its do-not-reintroduce docstring), plugin/lib/coverage.py (cmd_check_pr_doc_only), .prawduct/learnings.md (#258 — separate the rejected direction from the rejected primitive; #91 — language-agnosticism)`
 
@@ -447,17 +635,6 @@
 
   Fix-shape: grant **both invocation forms** on the `allowed-tools` line — `Bash(prawduct-hook review-stats*)` **and** `Bash(python3 bin/prawduct-hook review-stats*)` — scoped to the subcommands the janitor actually instructs (audit the file for any others before landing). `skills/backlog/SKILL.md:7` is the house precedent and grants both forms (`Bash(prawduct-hook backlog *)`, `Bash(python3 bin/prawduct-hook backlog *)`) precisely to cover the installed-plugin and self-hosted invocations; mirror that. **Landing only the bare form recreates half the gap** — it fixes the product repo and leaves the self-hosted path ungranted. Same class as the `skills/doctor/SKILL.md` grant gap tracked under **ONB-3F9P** and the earlier BKL-3W6K finding that the backlog skill lacked Bash entirely; if ONB-3F9P is worked first, fold this in with it. Governance-protected (`skills/`) → full Critic + PR review. (critic — skills-cutover-awareness)
 
-- **[BLD-7K3Q]** `verify-chunk-refs` grades the WRONG chunk on a `views_enabled` branch — it reads the first *unchecked* Status item, but checkboxes only flip at release
-  `effort: M · impact: M · area: build-plan · kind: bug · source: critic · added: 2026-07-19 · status: open · stage: ready · related: BLD-8R3T, BLD-9H2M, VWS-2F9K, CRT-3T6V · refs: lib/buildplan_refs.py:188 (_parse_build_plan_status — "Current chunk = first unchecked item"), lib/buildplan_refs.py:606 (_current_chunk_id_from_status), lib/critic_mode.py:151-158 + :520 (_git_aware_progress — the git-derived path, CRT-7B4M), lib/views.py:1237 (is_views_enabled)`
-
-  Surfaced by the Chunk 03 Critic review of `skills-cutover-awareness`. `verify-chunk-refs` resolves "which chunk is current" from the build-plan `## Status` checkboxes: `lib/buildplan_refs.py:188` takes the first `- [ ]` item, and `:606` `_current_chunk_id_from_status` extracts its id. On a `views_enabled` repo the Status checkboxes are a **derived view** that only flips at release, so on a feature branch *every* chunk stays unchecked and Chunk 01 remains "current" for the entire branch.
-
-  Consequence: chunks 02..N are never ref-verified while the gate reports success. It fails **silently and green** — the worst shape for a gate whose whole job is catching drift.
-
-  Observed live on this branch: `verify-chunk-refs` returned `ok: chunk 01` while `infer-critic-mode` correctly resolved Chunk 03.
-
-  Fix-shape: `lib/critic_mode.py` already solved exactly this (CRT-7B4M) — `_git_aware_progress` (`:520`) derives `(complete, current_chunk_id)` from commits against the base when `views_enabled` is set, falling back to `buildplan_refs._current_chunk_id_from_status` otherwise (`:151-158`). Give `buildplan_refs` the same git-derived path so the two agree on "current chunk" by construction. Note the current import direction — `critic_mode` imports `buildplan_refs`, not the reverse — so the shared derivation needs a home that doesn't create a cycle (extract into `buildplan_refs` and have `critic_mode` call it, per the STH-2K8R canonical-homes note in `lib/critic_mode.py:62`). Sibling non-broadening drift lives in **VWS-2F9K**. Governance-protected (gate logic) → full Critic + PR review. (critic — skills-cutover-awareness)
-
 - **[TST-6K3D]** Build-plan chunk-heading test replica has drifted from the production matcher — the guard rejects headings production parses fine
   `effort: S · impact: M · area: tests · kind: bug · source: critic · added: 2026-07-19 · status: open · stage: ready · related: BLD-7P3K, BLD-5J8N, VWS-2F9K, CRT-3T6V · refs: tests/test_build_plan_resolution.py:264 (_parseable_body_chunk_ids), lib/buildplan_refs.py:82 (_CHUNK_HEADING_RE, _CHUNK_ID_SEP)`
 
@@ -722,7 +899,7 @@
   (builder — verify-chunk-refs-token-fixes)
 
 - **[BLD-8R3T]** `verify-chunk-refs`' chunk-scoped `new` exemption never expires — it is unconditional on chunk completion, so a SHIPPED chunk's declared-new deliverable is never existence-checked
-  `effort: S · impact: M · area: build-plan · kind: bug · source: critic · added: 2026-07-19 · reviewed: 2026-07-19 · status: open · stage: ready · related: BLD-5N7C, BLD-9H2M, BLD-6T4R, BLD-4V7Q · refs: lib/buildplan_refs.py (the forward_refs set in _parse_build_plan_chunk_refs, _BUILD_PLAN_NEW_QUALIFIER_RE, _ref_path_part), .prawduct/change-log.md (2026-07-19 "verify-chunk-refs stops flagging path:line citations…"), skills/critic/review-protocol.md (Build-plan ref drift goal)`
+  `effort: S · impact: M · area: build-plan · kind: bug · source: critic · added: 2026-07-19 · reviewed: 2026-07-26 · status: open · stage: ready · related: BLD-5N7C, BLD-9H2M, BLD-6T4R, BLD-4V7Q, BLD-7K3Q, CRT-7B4M · refs: lib/buildplan_refs.py (the forward_refs set in _parse_build_plan_chunk_refs, _BUILD_PLAN_NEW_QUALIFIER_RE, _ref_path_part), lib/buildplan_refs.py:301 (resolve_chunk_progress — the ONE progress answer) + :218 (_git_aware_progress — the git-derived completion signal), lib/gates.py:744 (_has_active_build_plan_file — the deliberate checkbox precedent), .prawduct/change-log.md (2026-07-19 "verify-chunk-refs stops flagging path:line citations…"), skills/critic/review-protocol.md (Build-plan ref drift goal)`
 
   Contract gap in BLD-6T4R's shipped fix, surfaced by the Critic on that change's change-log draft
   and deliberately filed rather than folded in. The `new` qualifier means *"this chunk will CREATE
@@ -772,6 +949,40 @@
   numeric groups, so `lib/foo.py:1:2:3` still half-strips to `lib/foo.py:1`; no corpus instance exists
   and no citation convention here uses three levels, so it stays a near-miss rather than an open item.
   Noted here only because the two findings arrived together — this item does not carry that work.
+
+  **PREMISE MAY HAVE SHIFTED — re-derive the fix-shape before building (2026-07-26, Chunk 02 Critic
+  cross-check C-B3 on `session-handoff-continuity`).** Status deliberately unchanged; this is an
+  annotation, not a reopen or a resolution. This item's whole behaviour — the `new` exemption is
+  unconditional on chunk completion — was written when "complete" meant exactly one thing: the
+  `## Status` checkbox. It no longer does. **BLD-7K3Q** shipped in `session-handoff-continuity`
+  Chunk 02 and changed how "which chunk is current" and "which chunks are complete" are derived for
+  `verify-chunk-refs` itself: every consumer now resolves through
+  `lib/buildplan_refs.py:301 resolve_chunk_progress`, which prefers a **git-derived** reading
+  (`:218 _git_aware_progress`) on a `views_enabled` branch that is ahead of its base — there a chunk
+  counts complete when its box is `[x]` **OR** its id appears in a commit subject since base. So a
+  chunk can read as complete on the branch long before the release flips its box.
+
+  What this does to the fix-shape above: the fix-shape says "apply the `forward_refs` set only when
+  the chunk is unchecked," and its edge (a) fails toward the exemption precisely *because*
+  checkboxes stay `[ ]` mid-branch. That edge is no longer the only reading available — the
+  git-derived signal is exactly the "is this chunk actually done on this branch" answer edge (a)
+  lacked. Whoever picks this up should **re-derive against `resolve_chunk_progress`, not against
+  "first unchecked box,"** and decide *deliberately* which completion the exemption expires on:
+  the git-derived completion (exemption dies when the chunk's commit lands), the checkbox
+  completion (exemption dies only at release), or neither. That is a judgment call with a live
+  precedent worth reading first: `lib/gates.py:744 _has_active_build_plan_file` deliberately kept
+  the **checkbox** reading and documents why — a chunk's last commit lands BEFORE its Critic pass
+  and its reflection, so routing that gate through the git signal switched the blocking gates off
+  during the complete-but-unmerged window. The same "committed ≠ finished" asymmetry may or may not
+  apply to a deliverable's existence check (a declared-new file arguably *does* exist by the time
+  its chunk is committed) — that difference is the actual decision, and it should be made on
+  purpose rather than inherited.
+
+  Raised by the Chunk 02 Critic's C-B3 cross-check, which noted five open `area:build-plan` items
+  sit on this same gate surface (BLD-9H2M, BLD-8R3T, BLD-5N7C, BLD-4Q8W, BLD-5V8F) and found this
+  one to be the only member whose premise actually moved. The others are unaffected by Chunk 02.
+  (critic — session-handoff-continuity Chunk 02)
+
   (critic — verify-chunk-refs-token-fixes)
 
 - **[BLD-5N7C]** Two stale shipped-deliverable paths in closed chunks — `lib/backlog.py` and `methodology/agent-stance.md` are declared `new` in `[x]` chunks but no longer exist
@@ -1166,52 +1377,6 @@
   design→ready: the fix, its blast radius, and its tests are all determined. Resolve alongside
   PR-4V2N (the `skills/pr/SKILL.md:47` step-skip ambiguity that decides whether a `.prawduct/`-only
   PR even reaches this gate).
-
-- **[BRF-6K2D]** Session-briefing "delete the plan" nudge isn't merge-aware — fires on develop while the plan's feature branch is unmerged
-  `effort: S · impact: M · area: briefing · source: reflection · added: 2026-07-09 · reviewed: 2026-07-19 · status: open · stage: ready · related: STH-3K7M, STH-3R8K, DOC-5T8N, WT-7M4K, COV-7K4N · refs: lib/briefing.py (staleness_scan, _get_other_branch_wip, _get_current_branch), lib/coverage.py (_resolve_base_branch), skills/pr/SKILL.md:142 (the live workaround)`
-
-  The session-briefing / stale-plan nudge recommends deleting build-plan.md when all its chunks are checked complete. But build-plan.md is gitignored/session-local and persists across branch switches, so the nudge can fire while the session is on `develop` even though the plan's feature branch is still unmerged with no PR open. Following it would orphan live, unshipped work. Reported by discodon (2026-06-11, pre-2.3.0). Fix-shape: make the staleness check branch/merge-aware — before recommending deletion, confirm the plan's feature-branch commits are actually reachable from the integration branch (or its PR merged), e.g. `git merge-base --is-ancestor <plan-branch-tip> <base>`; otherwise say "plan complete but branch not yet merged — keep until merged" rather than "delete". Source: discodon reflection sweep 2026-07-09.
-
-  **Salvage annotation (2026-07-19) — VERDICT: STILL-PRESENT; the branch fix still applies
-  near-mechanically.** Captured before the stale branch `feature/gate-friction-batch` was deleted;
-  its work is preserved at tag `archive/gate-friction-batch` (restore with
-  `git branch feature/gate-friction-batch archive/gate-friction-batch`), relevant commit `d7a632f`.
-  `lib/briefing.py:146-170` is the stale-plan scan; both nudges fire unconditionally on plan state
-  alone — `:154-159` ("has all chunks complete — if work is done, delete the plan") and `:160-168`
-  (the no-Status fallback). Nothing between `:151` and `:168` consults branch, base, or merge
-  state. `git grep "delete the plan"` hits only `lib/briefing.py:158` and `:167`. No
-  `_plan_work_possibly_unmerged` or equivalent exists; `lib/briefing.py:40` imports only
-  `buildplan_refs, gates, gitstate` — `coverage` (which owns `_resolve_base_branch`) is not
-  imported. The defect is currently documented as a LIVE WORKAROUND rather than fixed:
-  `skills/pr/SKILL.md:142` — "A non-blocking 'consider deleting idle plan' advisory may surface …
-  ignore it until the release ships." Treated as unshipped as recently as 2026-07-19
-  (`.prawduct/change-log.md:167-168`).
-
-  *Salvageable fix-shape.* Add
-  `lib/briefing.py::_plan_work_possibly_unmerged(project_dir, prawduct_dir) -> (bool, reason)` with
-  two independent sufficient signals: (1) foreign-branch WIP — `_get_other_branch_wip` non-empty (a
-  session-local plan surviving a switch onto the base branch, the exact repro); (2) feature branch
-  ahead of base — resolve base via `coverage._resolve_base_branch`, and if `current_branch != base`
-  run `git merge-base --is-ancestor HEAD <base>`, where rc 1 means unmerged. Fail toward
-  `(False, "")` on every uncertainty, so the change only ADDS a keep-recommendation on positive
-  evidence and never silently suppresses a legitimate delete nudge. In `staleness_scan`, branch
-  both findings: when unmerged, emit "… has all chunks complete but <reason> — keep the plan until
-  it merges (deleting now would orphan unshipped work)". All inside the existing best-effort
-  try/except.
-
-  *Still applies? Yes.* Every dependency survives with the same shape: `_get_other_branch_wip`
-  (`lib/briefing.py:431`), `_get_current_branch` (`:219`), `_parse_wip` (used at `:163`),
-  `coverage._resolve_base_branch` (`lib/coverage.py:56`), target try/except (`:150`, `:169`).
-  Adding `coverage` to briefing's imports is safe — nothing under `lib/` imports `briefing`, so no
-  cycle. Two carry-over caveats: (a) the branch's import line imported `backlog`, which develop has
-  restructured to `from .backlog import legacy as backlog` (`:41`) — **don't clobber it**;
-  (b) `_resolve_base_branch` prefers `origin/<b>` and can be stale (see COV-7K4N) — for this nudge
-  the stale case errs toward "keep", the safe direction, but leave a comment saying so.
-
-  *Test pointers (on the archive tag).* New `tests/test_briefing_merge_aware_plan.py` (105 lines,
-  real git fixtures) — `test_on_base_branch_merged_says_delete`,
-  `test_feature_branch_unmerged_says_keep`, `test_foreign_branch_wip_says_keep`. Develop's `tests/`
-  has only `test_briefing_extraction.py` and `test_briefing_functions.py`.
 
 - **[STH-4B7Q]** check-operator-verification gate reportedly throws ModuleNotFoundError (needs repro)
   `effort: S · impact: M · area: stop-hook · source: user · added: 2026-07-09 · status: open · stage: idea · related: STH-2J9F, STH-8M3V`
@@ -2554,6 +2719,162 @@
 
   Relates to the documented stale-prose-after-status-change learnings: `.prawduct/learnings.md:109` (when you change a mechanism, reconcile its retained self-descriptions in the same change or the prose reads as false) and `:47` (a replacement sentence gets the same falsification query the original needed). (reflection)
 
+- **[SCN-2M6P]** The handoff preservation net catches a REPLACED `.session-handoff.md` but not an APPENDED one — the marker is still present, so appended model text is silently overwritten
+  `effort: M · impact: S · area: session-continuity · kind: bug · source: critic · added: 2026-07-26 · reviewed: 2026-07-26 · status: open · stage: ready · related: SCN-4H9T, CRT-7P5J, SCN-7K4B · refs: plugin/lib/briefing.py:922-931 (`HANDOFF_MARKER` / `HANDOFF_MARKER_PREFIX` — the machine marker and its "do not hand-edit" redirect), plugin/lib/briefing.py:985-1010 (`_read_unmarked_handoff` — the rescue, keyed on marker ABSENCE), plugin/lib/briefing.py:1031 (every generated handoff opens with the marker), plugin/lib/briefing.py:1049 (the "had no machine marker, so it was preserved" note), plugin/lib/briefing.py:935 (`HANDOFF_NOTES_NAME` — the documented forward channel), plugin/bin/prawduct-hook:540 (consume-and-clear of `.handoff-notes.md`), .prawduct/artifacts/build-plan-session-handoff-continuity.md (Chunk 01 built the net; Chunk 03 is the affordance mitigation) · revisit: after the Chunk 01 governance checkpoint reports whether the unmarked-handoff rescue fires in practice`
+
+  **Known gap, deliberately left open at build time — not an oversight.** `generate_session_handoff` stamps `HANDOFF_MARKER` on every handoff it writes, and `_read_unmarked_handoff` rescues a `.session-handoff.md` that **lacks** the marker (model- or human-authored) by folding its body into the new handoff. The net is keyed on marker *absence*, so it catches an agent who **replaces** the file.
+
+  **It does not catch an agent who APPENDS** to a marked, machine-generated handoff. The marker is still the first body line, so the file reads as machine-written, the rescue returns `""`, and the appended text is overwritten and lost — the same silent-context-loss failure mode SCN-4H9T was filed for, surviving in a narrower shape.
+
+  **Why it wasn't closed.** Detection requires retaining a copy or content hash of what the machine generated, to diff the on-disk file against at the next `/clear`. That was judged disproportionate for a case the marker text explicitly redirects ("Do not hand-edit … forward notes go in `.prawduct/.handoff-notes.md`"), and it drags in the content-hash-freshness question this repo has ruled on before (cf. COV-3M8Q's discussion of the do-not-reintroduce constraint) — so it is a design question, not a mechanical patch, despite the item being well-understood.
+
+  **What ships instead.** Chunk 03 is *affordance* work — documenting the notes channel in `building.md` / `reflection.md` / the session digests so agents reach for `.handoff-notes.md` rather than the handoff file. That is mitigation, not detection: it lowers the rate, it does not close the hole.
+
+  **Impact is rated S conditionally, and the condition is written into `revisit:`.** The residual case is narrow *because* the affordance work is in flight. If the Chunk 01 governance checkpoint shows the unmarked-handoff rescue firing at all in practice, that is evidence agents still reach for the wrong file despite the redirect — which raises this to a real detection requirement and the impact with it. Re-rate on that evidence rather than on intuition.
+
+  Filed from the Chunk 01 Critic review (note severity) on `feature/session-handoff-continuity`, whose only other home would be a build plan deleted at release. Governance-protected (`plugin/lib/`, session-continuity machinery) → full Critic + PR review. (critic)
+
+- **[SCN-8T4R]** The session-file registry is a replicated contract surface with no `boundary-patterns.md` entry — four sites edited in lockstep, only two held together by a test
+  `effort: M · impact: M · area: session-continuity · kind: tech-debt · source: critic · added: 2026-07-26 · reviewed: 2026-07-26 · status: open · stage: ready · related: SCN-4H9T, STH-8M3V · refs: plugin/lib/core.py:76 (`GITIGNORE_ENTRIES` — site 1), plugin/bin/prawduct-hook:415 (`_SESSION_GITIGNORED_PATHS` — site 2, the untrack set), .gitignore:3-43 (this repo's own copy — site 3), plugin/bin/prawduct-hook (site 4 — the session-file deletion loop in `cmd_clear`, the `for name in (".session-reflected", …)` loop — symbol-anchored deliberately: this ref was drafted as `:690` and was already stale one commit later), tests/test_build_plan_resolution.py:208-228 (the sites-1↔2 parity test — the ONLY guard), .prawduct/artifacts/boundary-patterns.md (where the entry is missing), plugin/bin/prawduct-hook:291 and plugin/hooks/banner.py:29 (comments that name the 1↔2 mirror but not the full set)`
+
+  **Adding one session file requires editing at least four places in lockstep:**
+  1. `core.GITIGNORE_ENTRIES` (`plugin/lib/core.py:76`) — the canonical set
+  2. the hook's `_SESSION_GITIGNORED_PATHS` (`plugin/bin/prawduct-hook:415`) — the untrack set used by `_untrack_session_files`
+  3. this repo's own `.gitignore`
+  4. the session-file deletion loop in `cmd_clear` (`plugin/bin/prawduct-hook`, the `for name in (".session-reflected", …)` loop)
+
+  **Only sites 1 and 2 are guarded** — `tests/test_build_plan_resolution.py:208-228` asserts the mirror parity (with an explicit `__pycache__` carve-out). Sites 3 and 4 can silently fall out of sync: a new session file that misses site 3 gets committed by accident, and one that misses site 4 survives `/clear` and leaks state into the next session.
+
+  **`boundary-patterns.md` does not record this as a contract surface at all** (verified — it contains no session-file, gitignore, or registry entry). So nothing tells the next author that a fourth site exists or which ones are guarded. The two in-code comments that mention the pattern (`prawduct-hook:291`, `hooks/banner.py:29`) name only the 1↔2 mirror, which actively *understates* the fan-out to a reader who finds them.
+
+  **Surfaced concretely** during `session-handoff-continuity` Chunk 01 when adding `.prawduct/.handoff-notes.md` — it had to be threaded through all four sites by hand.
+
+  **Fix direction, two legs.** (a) Record it in `boundary-patterns.md` as a replicated registry, naming all four sites and which parity test covers which — cheap, and it is the leg that stops the next author guessing. (b) Consider whether sites 2–4 can be *derived* from `GITIGNORE_ENTRIES` rather than kept in sync by hand; the existing `__pycache__` carve-out in the parity test is the shape of the divergence any derivation has to model, so this leg needs a look at the real differences before committing to it. Leg (a) is worth doing even if leg (b) is rejected.
+
+  Filed from the Chunk 01 Critic review (note severity) on `feature/session-handoff-continuity`. Governance-protected (`plugin/lib/`, `plugin/bin/`) → full Critic + PR review. (critic)
+
+- **[STH-4P2R]** A `views_enabled` repo's SessionStart re-resolves git-derived chunk progress 3× per `/clear` — 12–16 git subprocesses answering one question — memoize the resolution per process
+  `effort: S · impact: M · area: performance · kind: debt · source: critic · added: 2026-07-26 · status: open · stage: ready · related: STH-3K7M, STH-6Q9D, BLD-7K3Q, SCN-4H9T · refs: plugin/lib/buildplan_refs.py:287 (`resolve_chunk_progress`), plugin/lib/buildplan_refs.py:200 (`_git_aware_progress`), plugin/lib/briefing.py:152 (`staleness_scan`), plugin/lib/briefing.py:440 (`_get_active_work`), plugin/lib/briefing.py:542 (`assemble_session_briefing`), plugin/lib/briefing.py:1141 (`generate_session_handoff`), .prawduct/artifacts/build-plan-hot-path-git-batching.md (the standing concern that sets the posture), tests/test_hot_path_git_batching.py`
+
+  **Origin.** `session-handoff-continuity` Chunk 02 routed every build-plan progress consumer through `buildplan_refs.resolve_chunk_progress`. On a `views_enabled` repo ahead of its base, that path runs `_resolve_base_branch` + `git rev-list --count` + `git log --format=%s` — roughly 4 git invocations per resolution, on a code path that previously ran **none**.
+
+  **The cost.** One `/clear` reaches `_parse_build_plan_status` from three places: `staleness_scan`, `assemble_session_briefing` (via `_get_active_work`), and `generate_session_handoff` (via `_get_active_work`). That is ~3 resolutions × ~4 git invocations = **12–16 subprocesses per SessionStart**, all answering the identical question "which chunk is current." `assemble_session_briefing` already dedupes *its own* two calls; the cross-function repetition is what remains.
+
+  **Deliberately not fixed in Chunk 02.** The Critic recommended a backlog item over a scope expansion rather than growing the chunk — this is that item, not an oversight.
+
+  **Posture is already established, don't relitigate it.** This repo carries a standing hot-path-git-batching concern (`.prawduct/artifacts/build-plan-hot-path-git-batching.md`, pinned by `tests/test_hot_path_git_batching.py`): **batch or memoize, do not cache-with-invalidation.**
+
+  **Fix-shape (two options, both mechanical).**
+  1. A per-process memo of the git-derived progress keyed on the resolved project dir, with an **explicit reset hook for tests** (a process-lifetime memo without a reset is a test-isolation bug waiting to happen).
+  2. Thread one resolved `ChunkProgress` through `cmd_clear`'s consumers, so the resolution happens once at the entry and is passed down.
+
+  **The gate path does not pay this** — `_has_active_build_plan_file` (`plugin/lib/gates.py:744`) was deliberately kept on the cheap checkbox reading, so this is a SessionStart-briefing/handoff cost only.
+
+  **Cluster note (do these together).** **STH-3K7M** is the *same fix on the same hot path* for a different value — `_get_current_branch` invoked 4× across `staleness_scan` / `assemble_session_briefing` / `_parse_wip`, with the identical "cross-function thread, unlike a local batch" rationale. Whoever picks either should sweep both: one "resolve the session's git context once at the `cmd_clear` entry and pass it down" change closes both items. **STH-6Q9D** (shipped, `hot-path-git-batching`) is the precedent that set the posture; **BLD-7K3Q** (shipped, `closed-by: session-handoff-continuity`) is the correctness fix that made the git-derived path load-bearing and therefore introduced this cost.
+
+  Filed from the Chunk 02 Critic review on `feature/session-handoff-continuity`. Governance-protected (`plugin/lib/`, SessionStart hot path) → full Critic + PR review. (critic)
+
+- **[ROB-7T2N]** Sweep explicit encoding across the ~67 remaining bare `read_text()` calls in the plugin runtime, or pin the rule repo-wide
+  `effort: M · impact: M · area: robustness · kind: debt · source: critic · added: 2026-07-26 · status: open · stage: ready · related: STH-8M3V, STH-9T4F, TST-3E8V · refs: tests/preferences/test_build_plan_decoding.py (the build-plan pin — both axes, two mechanisms, vacuity guard), tests/test_handoff_parser_correctness.py::TestNonUtf8PlanDegrades (the behavioral half — asserts the designed degradation actually runs), plugin/lib/buildplan_refs.py (the swept module + docstring stating the rule), plugin/lib/views.py (swept + designed degradations), plugin/lib/critic_mode.py, plugin/lib/ledger.py (_scope_from_plan — folded onto the canonical frontmatter reader), plugin/bin/prawduct-hook · reviewed: 2026-07-26`
+
+  **Origin.** `session-handoff-continuity` Chunk 02 found the same class **three review rounds running**: a file read that decodes with the *operator's locale*, so two readers of the SAME file can disagree by construction about whether it parses. The rest of the runtime was deliberately left alone as scope creep; this item is that deferral, not an oversight.
+
+  **Status of the build-plan slice — a dated verification, NOT a standing claim of closure (verified 2026-07-26 at `7d03b56`).** Build-plan reads are fixed and pinned in `tests/preferences/test_build_plan_decoding.py` (the home this item itself recommended; the pin previously lived at `tests/test_handoff_parser_correctness.py::test_every_build_plan_read_names_its_encoding`, **which no longer exists** — do not grep for it). The pin checks **both** axes plus a vacuity guard:
+  - `test_every_build_plan_read_names_utf8` — the codec axis.
+  - `test_every_guarded_build_plan_read_catches_unicode_decode_error` — the except-set axis. As of 2026-07-26 every build-plan read the pin sees passes both axes. Phrase it that way and no stronger: an earlier revision of this item said "this half is now closed for build-plan reads," and that sentence was **false when written**. Still open at the time: `plugin/lib/views.py::diagnose_scope_plan_coverage` — a line-for-line twin of `build_scope_to_plan_map` sixty-eight lines above it (same `artifacts/*.md` glob, same `_parse_build_plan_frontmatter_scope` consumer) still caught `OSError` alone, and was *worse*-guarded than its twin: `prawduct-hook` calls it bare with no global handler and it had no designed degradation, so one non-UTF-8 file under `artifacts/` tracebacked out of `regen-views`, across a boundary whose recorded error model forbids an internal stack trace crossing it. Fixed at `7d03b56`.
+  - `test_the_pin_has_something_to_check` — vacuity guard (≥12 matches), so a rename can't silently empty coverage.
+
+  **Do not hand-count the swept sites — ask the pin.** The earlier revision of this item enumerated "`plugin/lib/views.py` (×2)", which was wrong in both directions: there are **four** widened sites in that module and it omitted the one that was still unwidened. Run the pin's collector (`_plan_reads()` in `tests/preferences/test_build_plan_decoding.py`) for the current, mechanically-derived list of file/line/function/guard. A hand-count in this item will drift again.
+
+  **There is no skip list.** The earlier revision named `buildplan_refs._parse_build_plan_status` "the one skip." That is retired, and the framing was wrong anyway. The except-set test scopes itself to reads that are *guarded at all* (an unguarded read is a deliberate let-it-propagate choice the pin does not second-guess) and accepts a broad `except Exception`. That site's guard sits 74 lines below it, and the rebuilt pin walks to the enclosing `try` however far away it is — so it passes **on its merits**, not by exemption. No site is exempted.
+
+  **What the instrument actually is (the old description is stale — this is the one to trust).** The pin no longer keys on the `plan_path.read_text(` local-name idiom at all. It is AST-based, in two mechanisms, each covering the other's blind spot:
+  1. **File-scoped and exhaustive** over `plugin/lib/buildplan_refs.py` and `plugin/lib/views.py` — the modules whose job *is* the build plan, so **every** `read_text` in them counts regardless of what the local is called. No naming convention left to drift from.
+  2. **AST data-flow** for readers outside those modules — any read whose content is passed to a build-plan parser (the `PLAN_PARSERS` set). Catches `critic_mode` and `ledger` without dragging in their unrelated JSON reads (those are this item's territory).
+
+  It sees **16 reads** as of 2026-07-26 where the idiom saw **12** (the rebuild commit's message says 15; the number moves, which is exactly why it is derived by running the collector and not maintained here). The sweeper does **not** need to widen the detector to AST — that is done. The open design question is only how to extend the rule, or a rule of its shape, to the remaining ~67 general runtime reads.
+
+  **A third hand-rolled frontmatter parser fell out of closing the data-flow gap — expect more of these.** `ledger._scope_from_plan` parsed the plan's frontmatter **inline**, which is precisely why the pin could not see it (it never called `views._parse_build_plan_frontmatter_scope`, so there was no data-flow edge to follow). It also **could not read a comment-header plan**: it required `---` on line 1, and 16 of this repo's 48 plans open with an HTML comment first (the other 32, including the plan this branch is executing, open with `---`) — counts as of 2026-07-27, and re-derive them before relying on them: `for f in .prawduct/artifacts/build-plan*.md; do head -1 "$f"; done | sort | uniq -c`. That divergence is real in principle and **zero in practice here** — on all 16 the frontmatter `scope:` is byte-identical to the filename stem, which was the inline copy's fallback, so it produced the canonical answer on every file in the repo. An earlier version of this paragraph claimed "every real build-plan" opens with a comment header AND an observable disagreement; both were false and neither was checked before being written. The verifiable driver is the data-flow one above, which needs no corroboration. Folded onto the canonical reader at `7d03b56`. The lesson for the ~67-site sweep: an inline re-implementation is invisible to a data-flow detector *and* is where the disagreement lives.
+
+  **The deferred sweep should EXTEND that file, not re-derive the rule.** The two-axis framing, the reachability argument (PEP 538/540 narrow the "fails to decode" risk; the real risk is *disagreement*), and why each of the two mechanisms exists are already written down there. Note the pin deliberately does **not** treat every `read_text` under `plugin/` as a build-plan read — that would sweep every unrelated file read in the runtime, which is this item's own territory and a different risk profile, and would make the rule mean something else.
+
+  **The surface.** `grep -rn "read_text()" plugin/lib plugin/bin` returns **67 sites** (verified 2026-07-26) reading `learnings.md`, gitignore, `project-state.yaml`, `VERSION`, findings JSON, evidence JSONL, templates and more.
+
+  **Two facets, both worth deciding deliberately rather than by default.**
+  1. **The codec.** Which of these files can contain non-ASCII authored by a model or a human? `learnings.md`, `project-state.yaml`, artifacts and templates certainly can. JSON reads are lower risk since `json.loads` handles its own encoding rules — but the *read* still happens first.
+  2. **The except-set (the sharper half).** `UnicodeDecodeError` is a **`ValueError`, NOT an `OSError`**, so every `except OSError` wrapped around a `read_text` lets it escape. The build-plan case escaped past an unguarded caller in `bin/prawduct-hook` as a **traceback rather than a degradation**.
+
+  **Fix-shape options (the embedded decision — make it, don't relitigate the problem).** Either (a) sweep all sites and add a repo-wide pin in `tests/preferences/` that every `read_text` under `plugin/` names an encoding; or (b) scope the pin to files a model or a human authors and record *why* the rest are exempt. **Prefer whichever is enforceable** — the reason this class recurred is that it was a **convention, not a pin**.
+
+  **Prior art in the same family.** STH-8M3V (shipped) already noted that `gitstate._get_session_changed_files` lacks the `(UnicodeDecodeError, OSError)` guard its siblings have — the same except-set gap, spotted a month earlier and never generalized. TST-3E8V (shipped) is the sibling widen-the-except fix. That two-for-two history is the argument for the repo-wide pin over another one-site patch. `tests/preferences/test_no_upstream_content_egress.py` is the local precedent for a preference-pin of this shape.
+
+  Filed from the Chunk 02 Critic review on `feature/session-handoff-continuity`. Governance-protected (`plugin/lib/`, `plugin/bin/`) → full Critic + PR review. (critic)
+
+- **[SCN-6V3D]** Git-derived chunk progress degrades to the known-wrong checkbox reading silently — `ChunkProgress.git_derived` records which reading answered and no production caller reads it
+  `effort: S · impact: S · area: session-continuity · kind: bug · source: critic · added: 2026-07-27 · reviewed: 2026-07-27 · status: open · stage: ready · related: SCN-4H9T, STH-4P2R, BLD-7K3Q, BLD-8R3T, CRT-7B4M · refs: plugin/lib/buildplan_refs.py:230 (`_git_aware_progress` — the six `return None` paths), plugin/lib/buildplan_refs.py:309 (`ChunkProgress` — the `git_derived` field and the docstring that states this gap honestly), plugin/lib/buildplan_refs.py:335 (`resolve_chunk_progress` — the ONE progress answer, and two more `git_derived=False` returns), plugin/lib/buildplan_refs.py:362 (`_resolve_chunk_progress_from` — where the fallback is chosen), tests/test_handoff_parser_correctness.py:227 (`assert progress.git_derived is True` — the only reader), .prawduct/learnings.md:329 ("Advice fails soft" is not "advice fails silent" — the rule this instantiates), plugin/lib/gates.py:744 (`_has_active_build_plan_file` — the deliberate checkbox-reading precedent)`
+
+  **The gap.** `_git_aware_progress` returns `None` — falling back to the checkbox reading — for several distinct reasons: `views_enabled` unset, no base branch resolves, HEAD not ahead of base, no chunk id appears in a commit since base, and any `OSError`/`SubprocessError` from git. (There is a sixth, `total <= 0`; it is inert, since with no Status items both readings are empty.) The `views_enabled`-unset case is normal and correct. The rest are **degradations**, and on a `views_enabled` repo mid-branch the checkbox reading is the one **known** to be wrong — every box reads unchecked until release, which is the entire reason the git derivation exists. Nothing announces it.
+
+  **The discarded signal.** `ChunkProgress.git_derived` records which reading answered. It is asserted by `tests/test_handoff_parser_correctness.py:227` and read by **no production caller** — so the information needed to report *why* is computed and thrown away. Note `resolve_chunk_progress` also returns `git_derived=False` on its two early exits (no plan file, unreadable plan); those carry `has_status_items=False`, so a reporting surface can distinguish "no plan" from "plan read, git path bailed" without new plumbing.
+
+  **Why this is a defect and not a nit.** It is an instance of this repo's own ratified rule — *"advice fails soft" is not "advice fails silent": a degraded advisory path must still name its consequence* (`.prawduct/learnings.md:329`, filed from Chunk 01 of this same branch). The consequence here is a handoff/briefing that reports the wrong current chunk with full confidence.
+
+  **The fix is NOT a diagnostic at the failure point.** `_git_aware_progress` runs on the SessionStart/Stop hot path, most `git_derived=False` answers are perfectly normal, and a notice on every session is the noise pattern the orphan-term hook already taught us to avoid. The work is **picking the surface that should report** — a deliberately-invoked diagnostic one. Candidates worth *evaluating* rather than a decision already made:
+  - `prawduct-hook handoff preview` — a human ran it precisely to ask what the machine thinks.
+  - `verify-chunk-refs` — already prints a per-chunk verdict.
+  - the session briefing's Resume line.
+
+  **Narrow it to the case that actually matters:** `views_enabled` is true **AND** the git path bailed. That is the only combination where the fallback is known-wrong rather than merely unused; reporting the `views_enabled`-unset case would be pure noise.
+
+  Surfaced by the `session-handoff-continuity` Chunk 03 cumulative Critic (2026-07-27, warning). The `ChunkProgress` docstring was corrected in `90397b6` to state the gap honestly instead of claiming a capability — **this item is what makes the word "tracked" in that docstring true.** Governance-protected (`plugin/lib/`, SessionStart hot path) → full Critic + PR review. (critic)
+
+- **[SCN-5B8Q]** SessionStart treats `resume` as a work boundary — `clear --session-start` destroys in-flight session state on a *continuation*, and re-anchoring the session base silently narrows the session-end Critic gate's own jurisdiction
+  `effort: S · impact: M · area: session-continuity · kind: bug · source: user · added: 2026-07-27 · reviewed: 2026-07-27 · status: open · stage: ready · related: SCN-4H9T, SCN-2M6P, SCN-8T4R, CRT-3X9D, CRT-7N4B, DOC-4T6P · refs: plugin/hooks/hooks.json:25 (the `startup|resume|clear` matcher on `clear --session-start` — the single line that forces the coupling), plugin/hooks/hooks.json:5/:15/:35 (banner, digest, build-index — all `startup|resume|clear|compact`, which is why a compacted session gets those three but no briefing), plugin/bin/prawduct-hook:584 (`cmd_clear` — the one entry point doing both jobs), plugin/bin/prawduct-hook:620-645 (critic-active marker sweep vs. refusal), plugin/bin/prawduct-hook:647-656 (`_check_previous_session_gates` warning), plugin/bin/prawduct-hook:658-669 (`_untrack_session_files`), plugin/bin/prawduct-hook:671-696 + :540 (`generate_session_handoff` + `_consume_handoff_notes` — MUTATING), plugin/bin/prawduct-hook:698-709 (`.session-reflected` → `reflections.md` archive — MUTATING), plugin/bin/prawduct-hook:715 (the session-file deletion loop — MUTATING), plugin/bin/prawduct-hook:729-736 (`.session-start` recapture — MUTATING), plugin/bin/prawduct-hook:800-812 (advisory probe refresh — read-only), plugin/bin/prawduct-hook:818-826 (`.session-git-baseline` recapture — MUTATING), plugin/bin/prawduct-hook:840-857 (`.session-base-tree` recapture — MUTATING, the Critic-gate anchor), plugin/bin/prawduct-hook:864 (`assemble_session_briefing` — read-only), plugin/lib/gates.py:484 (`_read_session_base_tree`), plugin/lib/gates.py:556-585 (the Stop-hook Critic gate — composes coverage from the session base tree to the working tree), plugin/lib/gates.py:514 (`session_changes_all_non_judgeable` — the baseline-relative gate-skip predicate), plugin/lib/gitstate.py:230 (`git_has_session_changes`), plugin/lib/gitstate.py:447 (`_get_session_changed_files`)`
+
+  **=== STATUS ANNOTATION — 2026-07-27: SHIPPED IN PART. Read this before the body. ===** *This item stays `## Open` because Chunk 02 is unbuilt, but the body below — including the "PROPOSED FIX (owner-reviewed shape, not yet ruled)" block — describes work that has since **landed**. Without this note a reader sees an unruled proposal for shipped code. Nothing below is edited away; this is the reconciliation.*
+
+  **Chunk 01 of `build-plan-session-boundary-events.md` shipped the continuity half** on `feature/session-handoff-continuity` (`5074d5c` + five review-fix commits; cumulative Critic 0 blocking). Verified against `plugin/hooks/hooks.json` as it now stands, the matcher partition is:
+  - `startup|clear` → `clear --session-start` (the boundary: destructive acts **and** the boundary-dependent readers)
+  - `resume|compact|fork` → `clear --session-start --brief-only` (orientation only)
+  - banner, digest and `build-index` → `startup|resume|clear|compact|fork` (all five sources)
+
+  A `claude --resume` no longer destroys session evidence — verified end-to-end against the real CLI, not simulated.
+
+  **Three deltas from the PROPOSED FIX below, all deliberate:** (1) **`fork` joined the continuation set** — the proposal named only `resume|compact`; `fork` restores the transcript by the same test, and a fork's parent is often still running, so a boundary reset there would destroy a *live* session's evidence. (2) The continuation invocation carries **both** flags (`--session-start --brief-only`), not `--brief-only` alone — the two are orthogonal (`--session-start` means "a genuine hook invocation, not a subagent's bare `clear`"), and the boundary is `--session-start` *without* `--brief-only`. (3) The **critic-marker sweep and the previous-session gate check moved to BOUNDARY-only**, not "first column only" as the proposal's two-column split implied — the item's own **CORRECTION (Chunk 01 review)** note below already records why that split was wrong, and this is what shipped instead. The **INCIDENTAL GAP is closed**: `compact` now receives the briefing.
+
+  **What remains, and why this item is still open — Chunk 02, unbuilt.** The briefing's "Previous session context available" pointer is emitted on **pure file existence** (`lib/briefing.py`, `assemble_session_briefing`) with no source awareness, so a `resume`/`fork` session is now pointed at a handoff describing the boundary *before its own session* — context it already holds in full. The pointer is boundary-scoped; the briefing carrying it is not. Chunk 02 must lead with **applicability** ("you are a continuation, this predates your session") and report age as secondary. Note the interface constraint that will bite: `--brief-only` carries continuation-vs-boundary and **nothing finer**, so `resume`, `compact` and `fork` are indistinguishable at the hook, and Chunk 02's three-way table needs the source. **Two follow-ups were filed from the Chunk 01 cumulative rather than fixed** — CRT-7N4B (the bare `clear --brief-only` classification, a shape this item's proposed flag created) and DOC-4T6P item (d) (the docstring quantifier). *(Everything from here down is the item as originally filed, with its own in-place corrections.)*
+
+  The `clear --session-start` hook is registered with matcher `startup|resume|clear` (`plugin/hooks/hooks.json:25`), and `cmd_clear` is a full boundary reset. So `claude --resume` / `--continue` — a session **continuation**, where the transcript is restored and nothing was lost — runs the same destructive path as a real boundary.
+
+  **Reproduced end-to-end in a scratch repo, not inferred.** After a simulated resume: `.prawduct/.handoff-notes.md` was DELETED (consumed into a handoff for a session still running); `.prawduct/.session-reflected` was archived to `reflections.md` and DELETED mid-session; `.session-git-baseline` and `.session-start` were recaptured; and `.session-handoff.md` was written describing a session that had not ended.
+
+  **THE CONTINUITY HALF ABOVE IS THIS ITEM'S PRIMARY JUSTIFICATION.** It was reproduced end-to-end and no part of it is affected by the correction below. The governance half is real but *smaller than this item originally claimed*; the correction is recorded in full rather than quietly edited away.
+
+  **The anchor anatomy (checked against the live tree while filing, 2026-07-27 — this part stands).** The porcelain baseline (`.session-git-baseline`) is only half the anchor, and the smaller half — it feeds `git_has_session_changes` / `_get_session_changed_files` (`plugin/lib/gitstate.py:230`, `:447`) and through them `session_changes_all_non_judgeable` (`plugin/lib/gates.py:514`), the predicate that decides a session's changes are all non-judgeable and the gates may be skipped. The **load-bearing** anchor is `.session-base-tree` — the `HEAD^{tree}` SHA `cmd_clear` records at session start and the deletion loop at `:715` removes on every fire. The Stop-hook Critic gate's whole question is *"does composed review coverage span this session's base tree → the current working tree"* (`plugin/lib/gates.py:556-585`). Re-recording that marker at the resume point moves the base forward.
+
+  **WHAT THAT ACTUALLY COSTS — undocumented narrowing, not an exploitable hole.** On resume the session-end gate silently narrows *its own jurisdiction* to `resume-point → working tree`. Nothing reports the narrowing, and it is not among the degradations `session_review_verdict`'s docstring carefully enumerates: that docstring covers a **missing** marker (jurisdiction shrinks to uncommitted work), not a silently **re-anchored** one. So the weaker end-of-session check is invisible to the person relying on it. That is the whole of the governance defect — worth fixing alongside the continuity half, not worth calling a hole.
+
+  **CORRECTION (owner challenge, 2026-07-27, accepted — `impact` lowered L → M).** This item previously claimed re-anchoring "blinds the Critic gate" and put "every commit made before the resume outside the gate's jurisdiction by construction"; the filing-time verification note amplified it. Overstated, on two counts each re-verified in code:
+  - `session_review_verdict` **already documents the committed-but-unreviewed case as a deliberate degradation** — *"A commit made without review leaves a gap no dispatchable review can span from the session base (chunk/final reviews anchor at HEAD's tree); composed coverage of merge-base → working tree is the PR gate's own bar — strictly stronger evidence about the current state — so requiring an unsatisfiable base instead would only train waivers"* (`plugin/lib/gates.py:582-588`). That merge-base fallback is **unaffected** by a re-anchored marker: it fires whenever the marker-based verdict fails to compose (`gates.py:623-630`), so a resume cannot defeat it. It equally does not *rescue* the narrowed case — when the narrow span composes clean, the fallback is never consulted — which is exactly why the residue is undocumented narrowing rather than a hole.
+  - `check_cumulative_critic` (`plugin/lib/gates.py:885`) **independently requires composed coverage of `merge-base(base_branch, HEAD)` → `HEAD` before any PR is created.** Unreviewed pre-resume commits are therefore caught at the **merge** boundary regardless; the session gate was never the last line of defence.
+
+  **The owner's framing, preserved because it is the correct one:** per-chunk review facts **compose over trees**, which is exactly why the framework does not re-review the cumulative stack on every commit — demanding session-base coverage that no dispatchable review can produce would only train waivers, which is precisely what the fallback exists to prevent.
+
+  **ROOT CAUSE:** `cmd_clear` does two categorically different jobs under one entry point.
+  - **CORRECTION (Chunk 01 review, 2026-07-27): this two-column split is WRONG and the error is the item's own.** Statements sort THREE ways. Sorting by "does it destroy evidence" files two of them in the orientation column, and both are boundary-only: the `.critic-active` sweep and the previous-session gate check destroy nothing but *interpret* session state as a **finished** session's. `compact` fires in-process and `fork`'s parent is often still running, so a marker seen there is likely LIVE. Shipped behaviour is below; the columns as originally written are kept for the record.
+  - **ORIENTATION (safe on every source)** — render the session briefing (`:864`), refresh advisories (`:800-812`), untrack accidentally-committed session files (`:658-669`), warn on the previous session's unmet gates (`:647-656`).
+  - **MUTATING BOUNDARY WORK** — generate `.session-handoff.md` (`:671-696`), consume and delete `.handoff-notes.md` (`:540`), archive and delete `.session-reflected` (`:698-709`), reset the git baseline (`:818-826`) and `.session-base-tree` (`:840-857`) and `.session-start` (`:729-736`), delete `.gates-waived` (`:715`).
+
+  `resume` needs orientation only and must not get the boundary reset OR the two boundary-dependent readers; the matcher forces all of it.
+
+  **PROPOSED FIX** ~~(owner-reviewed shape, not yet ruled)~~ — **SHIPPED in Chunk 01, 2026-07-27, with the three deltas listed in the STATUS ANNOTATION at the head of this item. Kept verbatim as the record of what was proposed; it is no longer an open question.** Keep one entry point and split by matcher — `startup|clear` gets `clear --session-start` (both columns), `resume|compact` gets a new read-only `clear --brief-only` (first column only). No stdin parsing, no new entry point: the matcher already carries the one fact needed.
+
+  **REJECTED ALTERNATIVE, recorded so nobody re-proposes it.** Simply dropping `resume` from the matcher is a one-token diff that discards BOTH columns — no briefing on resume (you resume into a repo you believe is unchanged: new commits, new advisories, another worktree taken), no `.critic-active` sweep (so a crashed Critic leaves `clear` refusing until the 30-minute expiry — resume is currently what rescues you from that), no defensive untrack. The owner confirmed from repeated observation that the session briefing has substantial value, which settles it: the read-only half must keep firing.
+
+  **INCIDENTAL GAP the fix closes:** `compact` is excluded from the `clear` hook entirely (it *is* on the banner/digest/build-index matchers at `hooks.json:5`/`:15`/`:35`), so a compacted session gets banner + digest + index but NO briefing — and compaction is the one source where context genuinely was just lost.
+
+  Governance-protected (`plugin/hooks/`, `plugin/bin/prawduct-hook`, SessionStart/Stop gate machinery) → full Critic + PR review. (user — continuity half reproduced in a scratch repo; refs and the `.session-base-tree` anatomy verified against the working tree at filing time; the *severity* the filing note attached to that anatomy was overstated and was corrected 2026-07-27 against `gates.py` — see CORRECTION above)
+
 ## Promoted
 
 - **[BKL-5D2C]** Move the backlog out of git to a centralized, agent-friendly issue-tracking service
@@ -2587,6 +2908,134 @@
   Promoted 2026-07-17: Offline code + tests landed 2026-07-17 (commit 8ecd02e, cumulative-Critic 0 blocking). core.resolve_ref wires PFX→canonical alias resolution into get/link; migrate._find_by_key gains a block-id_aliases fallback skip-authority (_AliasIndex) that self-heals a human-deleted id:PFX label so a re-import can't duplicate; reconcile-labels re-derives deleted aliases. In-flight under the Chunk 06 slice (BKL-6M4T) — closes when the slice merges. Follow-ups spun off: BKL-7Q2N (mutator-side PFX resolution), BKL-9J3F (CC5 decoder gaps).
 
 ## Archive
+
+- **[SCN-4H9T]** Session handoff destroys model-authored context and mislabels active work — `/clear` overwrites `.session-handoff.md`, and the parser has no done-predicate, no `views_enabled` awareness, and truncates Context
+  `effort: M · impact: L · area: session-continuity · kind: bug · source: user · added: 2026-07-26 · status: shipped · stage: ready · reviewed: 2026-07-27 · closed-by: session-handoff-continuity · related: CRT-7P5J, SCN-7K4B, BRF-6K2D, BLD-7K3Q, CRT-7B4M · refs: .prawduct/artifacts/build-plan-session-handoff-continuity.md (the governing plan — settles the ownership question that held this at `stage: design`), plugin/lib/briefing.py:921 (`generate_session_handoff`), plugin/lib/briefing.py:993-999 (the unconditional `atomic_write_text` behind the `len(sections) > 2` guard), plugin/lib/briefing.py:355 (`_get_active_work`), plugin/lib/briefing.py:87 (`staleness_scan` — where the done-predicate DOES exist), plugin/lib/briefing.py:227 (`_parse_wip`), plugin/lib/buildplan_refs.py:144 (`_parse_build_plan_status`), plugin/lib/buildplan_refs.py:188 (`current_chunk` = first `- [ ]`), plugin/methodology/building.md:120 (the sole sentence documenting machine ownership), plugin/methodology/reflection.md:63 ("Complete handoff"), .prawduct/learnings-detail.md:852 ("Session-end signals must come AFTER handoff")`
+
+  **Upstream of discodon STH-9FYI** (filed 2026-07-25, never triaged here). Five confirmed defects in one function, verified by running the parser against the prawduct repo's own live plan.
+
+  **(1) `/clear` UNCONDITIONALLY OVERWRITES a model-authored handoff.** `generate_session_handoff` ends in a bare `atomic_write_text` of `.session-handoff.md` — no read, no merge. The only guard is `if len(sections) > 2`, so a model-written handoff survives ONLY when the machine has nothing to say: preserved when it matters least, clobbered in every session with real work. Intermittent, therefore unlearnable.
+
+  **(2) NO FORWARD CHANNEL EXISTS.** All five sources (active-work, `.session-reflected`, critic findings, changed files, commits) are backward-looking machine state. `.session-reflected` is doctrinally backward (what happened, root cause). Meanwhile `methodology/reflection.md:63` tells the model to "Complete handoff", which reads as an action on the file, while the sole sentence documenting machine ownership is `methodology/building.md:120`. The framework instructs the model to do a thing then silently overwrites it. Learnings already carry the rule ("Session-end signals must come AFTER handoff", `learnings-detail.md:852`) with no mechanism to satisfy it.
+
+  **(3) NO DONE-PREDICATE.** `staleness_scan` (`briefing.py:87`, the done-conclusion at ~`:150-157`) correctly concludes "all chunks complete — delete the plan"; `_get_active_work` (`briefing.py:355`, ~`:354-359`) reads the IDENTICAL parse and applies no predicate, so a finished plan is stamped **Task** for the next session.
+
+  **(4) `views_enabled` REPOS ARE SYSTEMATICALLY WRONG** (not in the discodon report). `current_chunk` = first `- [ ]` (`buildplan_refs.py:188`). Where Status is a derived view that only flips at release, this reports the FIRST chunk as current forever. Verified live: prawduct's own plan returned "Chunk 01" with three chunks complete and committed.
+
+  **(5) WIP SECTION SILENTLY VANISHES + CONTEXT TRUNCATED** (not in the discodon report). `description` requires a `# Build Plan` H1; a frontmatter-style plan has none, so `_get_active_work` falls through to `_parse_wip`, returns empty, and the handoff OMITS the work section entirely (verified: returned `{}` on a live 4-chunk plan; briefing reads "Work: none active"). Separately, `context` = `removeprefix` on ONE physical line, so the multi-paragraph Context block — which `building.md` calls "the cross-session handoff" — is truncated at the first newline, and the loop has no `break` so multiple Context lines silently last-wins.
+
+  **Severity: continuity is destroyed silently while the model reports success.**
+
+  **Shipped 2026-07-27 by `session-handoff-continuity` — all five legs closed, across three chunks.**
+  - legs **(1)** unconditional overwrite and **(2)** no forward channel — the mechanism half — shipped in **Chunk 01** (commit `5e5b178`): `.prawduct/.handoff-notes.md` is the model-owned forward channel, the generator emits it first behind a machine marker, and an unmarked (hand-authored) handoff is folded in rather than overwritten;
+  - legs **(3)** no done-predicate, **(4)** `views_enabled` current-chunk, and **(5)** vanishing work section + truncated Context shipped in **Chunk 02** (commit `d43f1b1`) — leg (4) closed by the shared `_git_aware_progress` sweep, not a local patch (see the BLD-7K3Q overlap note below);
+  - the remaining half of leg (2) — the **affordance** work this item deliberately stayed open for — shipped in **Chunk 03** (commit `c85bf79`): `building.md`'s chunk-close write-the-notes step and its two-files-two-owners paragraph, the `reflection.md:63` "Complete handoff" disambiguation, both digests naming the channel, plus two runtime pieces (an *advisory* false-success note when a session did work and left no forward note, and `handoff preview`, which renders what the next session would receive without writing or consuming). Nothing added here can block `/clear`.
+
+  Held open through Chunk 03 on purpose: the bug report's own diagnosis was that the *affordance*, not just the mechanism, is what caused agents to write the wrong file, so closing on the mechanism alone would have closed this item on half of its own analysis.
+
+  **Note the channel shape shipped as an assumption, not an owner ruling.** The plan recorded "a NEW model-owned file consumed into the generated handoff" as a HIGH-impact vetoable assumption, and its "what would raise confidence" was exactly that ruling. It was never overridden and the work built on it — worth knowing if the two-file design is ever revisited.
+
+  Chunks 04 (**CRT-7P5J**) and 05 (**SCN-7K4B**) of the same plan belong to those items, not to this one.
+
+  **The `refs:` line above is pre-fix** — it records the code sites as found and is deliberately left intact as the defect record. It no longer points at the cited code: `plugin/lib/briefing.py:921`, `:993-999` and `:355`, and `plugin/lib/buildplan_refs.py:144` and `:188`, have all moved or been rewritten by Chunks 01–02 (`_git_aware_progress` now lives in `plugin/lib/buildplan_refs.py:200`, applied from `:322`).
+
+  **Stage history.** *Filed* `stage: design`, not `ready`, because the five legs were not uniformly buildable: legs **(3)**, **(4)** and **(5)** are mechanical fixes with obvious shapes (apply `staleness_scan`'s existing done-predicate in `_get_active_work`; adopt the git-derived current-chunk path; relax the H1 requirement and make Context multi-line), while legs **(1)** and **(2)** shared one unsettled design question — **who owns `.session-handoff.md`, and by what contract does model-authored forward-looking content survive a machine regeneration?** The filing note asked that a build plan either settle that contract first or split (3)/(4)/(5) out as a separate mechanical chunk.
+
+  **Advanced to `stage: ready` 2026-07-26.** `.prawduct/artifacts/build-plan-session-handoff-continuity.md` does both: it answers the ownership question (a **new model-owned notes file** consumed into the generated handoff, so the generator keeps sole ownership of `.session-handoff.md` and the two-owners-one-file bug is designed out) in Chunk 01, and it splits the mechanical legs into Chunk 02. That made it buildable; the one caveat carried into the build — the channel shape being a vetoable assumption rather than an owner ruling — is recorded above, and it was never ruled on.
+
+  **Overlap notes (filed as distinct; cross-linked, not merged).**
+  - **BLD-7K3Q** and **CRT-7B4M** were the *same root cause* as leg (4) — `buildplan_refs._parse_build_plan_status` treating the first unchecked box as current on a `views_enabled` branch — at two other consumers (`verify-chunk-refs` and `infer-critic-mode`). **Resolved as prescribed:** BLD-7K3Q is archived `status: shipped · closed-by: session-handoff-continuity`, fixed as the shared sweep it called for (`_git_aware_progress` moved into `buildplan_refs` and applied from `_parse_build_plan_status`), and **leg (4) closed by that same fix** rather than by a third local patch. No sweep remains outstanding here.
+  - **BRF-6K2D** is the adjacent half of leg (3): it makes `staleness_scan`'s delete-nudge merge-aware. This item points the other way — `_get_active_work` doesn't apply the predicate `staleness_scan` already has. Both touch the same two functions and are cheaper done together.
+  - **CRT-7P5J** is a third correctness defect in the *same* `generate_session_handoff` output (it reads the derived critic-findings view instead of composing over resolution facts). Not a duplicate — different source, different fix — but it is the fourth known way this one function emits wrong context, which is itself an argument for treating the handoff generator as one body of work.
+  - **SCN-7K4B** is the granularity axis of the same machinery (chunk-granular continuity has no home for multi-plan programs). Complementary, not overlapping.
+
+  Governance-protected (`plugin/lib/`, session-continuity machinery) → full Critic + PR review. (user — verified against the live repo)
+
+- **[BRF-6K2D]** Session-briefing "delete the plan" nudge isn't merge-aware — fires on develop while the plan's feature branch is unmerged
+  `effort: S · impact: M · area: briefing · source: reflection · added: 2026-07-09 · reviewed: 2026-07-26 · status: shipped · stage: ready · closed-by: session-handoff-continuity · related: STH-3K7M, STH-3R8K, DOC-5T8N, WT-7M4K, COV-7K4N · refs: lib/briefing.py (staleness_scan, _get_other_branch_wip, _get_current_branch), lib/coverage.py (_resolve_base_branch), skills/pr/SKILL.md:142 (the live workaround)`
+
+  The session-briefing / stale-plan nudge recommends deleting build-plan.md when all its chunks are checked complete. But build-plan.md is gitignored/session-local and persists across branch switches, so the nudge can fire while the session is on `develop` even though the plan's feature branch is still unmerged with no PR open. Following it would orphan live, unshipped work. Reported by discodon (2026-06-11, pre-2.3.0). Fix-shape: make the staleness check branch/merge-aware — before recommending deletion, confirm the plan's feature-branch commits are actually reachable from the integration branch (or its PR merged), e.g. `git merge-base --is-ancestor <plan-branch-tip> <base>`; otherwise say "plan complete but branch not yet merged — keep until merged" rather than "delete". Source: discodon reflection sweep 2026-07-09.
+
+  **Salvage annotation (2026-07-19) — VERDICT: STILL-PRESENT; the branch fix still applies
+  near-mechanically.** Captured before the stale branch `feature/gate-friction-batch` was deleted;
+  its work is preserved at tag `archive/gate-friction-batch` (restore with
+  `git branch feature/gate-friction-batch archive/gate-friction-batch`), relevant commit `d7a632f`.
+  `lib/briefing.py:146-170` is the stale-plan scan; both nudges fire unconditionally on plan state
+  alone — `:154-159` ("has all chunks complete — if work is done, delete the plan") and `:160-168`
+  (the no-Status fallback). Nothing between `:151` and `:168` consults branch, base, or merge
+  state. `git grep "delete the plan"` hits only `lib/briefing.py:158` and `:167`. No
+  `_plan_work_possibly_unmerged` or equivalent exists; `lib/briefing.py:40` imports only
+  `buildplan_refs, gates, gitstate` — `coverage` (which owns `_resolve_base_branch`) is not
+  imported. The defect is currently documented as a LIVE WORKAROUND rather than fixed:
+  `skills/pr/SKILL.md:142` — "A non-blocking 'consider deleting idle plan' advisory may surface …
+  ignore it until the release ships." Treated as unshipped as recently as 2026-07-19
+  (`.prawduct/change-log.md:167-168`).
+
+  *Salvageable fix-shape.* Add
+  `lib/briefing.py::_plan_work_possibly_unmerged(project_dir, prawduct_dir) -> (bool, reason)` with
+  two independent sufficient signals: (1) foreign-branch WIP — `_get_other_branch_wip` non-empty (a
+  session-local plan surviving a switch onto the base branch, the exact repro); (2) feature branch
+  ahead of base — resolve base via `coverage._resolve_base_branch`, and if `current_branch != base`
+  run `git merge-base --is-ancestor HEAD <base>`, where rc 1 means unmerged. Fail toward
+  `(False, "")` on every uncertainty, so the change only ADDS a keep-recommendation on positive
+  evidence and never silently suppresses a legitimate delete nudge. In `staleness_scan`, branch
+  both findings: when unmerged, emit "… has all chunks complete but <reason> — keep the plan until
+  it merges (deleting now would orphan unshipped work)". All inside the existing best-effort
+  try/except.
+
+  *Still applies? Yes.* Every dependency survives with the same shape: `_get_other_branch_wip`
+  (`lib/briefing.py:431`), `_get_current_branch` (`:219`), `_parse_wip` (used at `:163`),
+  `coverage._resolve_base_branch` (`lib/coverage.py:56`), target try/except (`:150`, `:169`).
+  Adding `coverage` to briefing's imports is safe — nothing under `lib/` imports `briefing`, so no
+  cycle. Two carry-over caveats: (a) the branch's import line imported `backlog`, which develop has
+  restructured to `from .backlog import legacy as backlog` (`:41`) — **don't clobber it**;
+  (b) `_resolve_base_branch` prefers `origin/<b>` and can be stale (see COV-7K4N) — for this nudge
+  the stale case errs toward "keep", the safe direction, but leave a comment saying so.
+
+  *Test pointers (on the archive tag).* New `tests/test_briefing_merge_aware_plan.py` (105 lines,
+  real git fixtures) — `test_on_base_branch_merged_says_delete`,
+  `test_feature_branch_unmerged_says_keep`, `test_foreign_branch_wip_says_keep`. Develop's `tests/`
+  has only `test_briefing_extraction.py` and `test_briefing_functions.py`.
+
+  **Shipped 2026-07-26 by Chunk 02 of `session-handoff-continuity`** (commit `d43f1b1`) — landed
+  with the done-predicate work exactly as the build plan prescribed
+  (`.prawduct/artifacts/build-plan-session-handoff-continuity.md:255`, acceptance item 6), because
+  it is the adjacent half of the same two functions. Delivered along the salvaged fix-shape above:
+  `plugin/lib/briefing.py::_plan_work_possibly_unmerged` (`:57`) with the two independent
+  sufficient signals — foreign-branch WIP via `_get_other_branch_wip`, and
+  `git merge-base --is-ancestor HEAD <base>` with the base resolved through `_resolve_base_branch`
+  — wired into both nudges in `staleness_scan` (`:221`, `:240`), inside the existing best-effort
+  try/except. Both carry-over caveats were honored: the restructured `backlog` import was not
+  clobbered, and the stale-`origin/<base>` case (COV-7K4N) errs toward "keep" with a comment
+  saying so. Signal 2 fails toward `(False, "")` on every uncertainty, so the change can only ADD
+  a keep-recommendation and never silently suppress a legitimate delete nudge. Coverage landed as
+  `TestDeleteNudgeIsMergeAware` (4 tests) in `tests/test_handoff_parser_correctness.py` rather
+  than the salvage note's proposed `test_briefing_merge_aware_plan.py` — including
+  `test_merged_branch_still_gets_the_delete_nudge`, which pins the direction the fix must not
+  break. Change-log entry: `.prawduct/change-log.md:45`.
+
+  **One leg explicitly descoped, not silently dropped.** The `refs:` line lists
+  `skills/pr/SKILL.md:142 (the live workaround)`, and that note still stands — correctly. It
+  describes the *release-pending* window (work already merged to `develop`, awaiting the batched
+  `develop→main` release), where `current_branch == base`, so `_plan_work_possibly_unmerged`
+  returns `(False, "")` and the delete nudge still fires by design while `/prawduct:pr` says
+  RETAIN the plan for `regen-views`. That is a **different trigger** from this item's
+  unmerged-feature-branch repro and was never in its fix-shape. If the residual advisory noise in
+  that window is worth removing, it needs its own item (the signal would be "plan's scope tag has
+  a release-pending change-log entry"), not a reopen of this one.
+
+- **[BLD-7K3Q]** `verify-chunk-refs` grades the WRONG chunk on a `views_enabled` branch — it reads the first *unchecked* Status item, but checkboxes only flip at release
+  `effort: M · impact: M · area: build-plan · kind: bug · source: critic · added: 2026-07-19 · reviewed: 2026-07-26 · status: shipped · stage: ready · closed-by: session-handoff-continuity · related: BLD-8R3T, BLD-9H2M, VWS-2F9K, CRT-3T6V, SCN-4H9T, CRT-7B4M · refs: lib/buildplan_refs.py:188 (_parse_build_plan_status — "Current chunk = first unchecked item"), lib/buildplan_refs.py:606 (_current_chunk_id_from_status), lib/critic_mode.py:151-158 + :520 (_git_aware_progress — the git-derived path, CRT-7B4M), lib/views.py:1237 (is_views_enabled)`
+
+  Surfaced by the Chunk 03 Critic review of `skills-cutover-awareness`. `verify-chunk-refs` resolves "which chunk is current" from the build-plan `## Status` checkboxes: `lib/buildplan_refs.py:188` takes the first `- [ ]` item, and `:606` `_current_chunk_id_from_status` extracts its id. On a `views_enabled` repo the Status checkboxes are a **derived view** that only flips at release, so on a feature branch *every* chunk stays unchecked and Chunk 01 remains "current" for the entire branch.
+
+  Consequence: chunks 02..N are never ref-verified while the gate reports success. It fails **silently and green** — the worst shape for a gate whose whole job is catching drift.
+
+  Observed live on this branch: `verify-chunk-refs` returned `ok: chunk 01` while `infer-critic-mode` correctly resolved Chunk 03.
+
+  Fix-shape: `lib/critic_mode.py` already solved exactly this (CRT-7B4M) — `_git_aware_progress` (`:520`) derives `(complete, current_chunk_id)` from commits against the base when `views_enabled` is set, falling back to `buildplan_refs._current_chunk_id_from_status` otherwise (`:151-158`). Give `buildplan_refs` the same git-derived path so the two agree on "current chunk" by construction. Note the current import direction — `critic_mode` imports `buildplan_refs`, not the reverse — so the shared derivation needs a home that doesn't create a cycle (extract into `buildplan_refs` and have `critic_mode` call it, per the STH-2K8R canonical-homes note in `lib/critic_mode.py:62`). Sibling non-broadening drift lives in **VWS-2F9K**. Governance-protected (gate logic) → full Critic + PR review. (critic — skills-cutover-awareness)
+
+  **Shipped 2026-07-26 by Chunk 02 of `session-handoff-continuity`** (commit `d43f1b1`), as the build plan prescribed — `.prawduct/artifacts/build-plan-session-handoff-continuity.md` names this item as closing with that chunk. Fixed as a **sweep, not a local patch**, exactly along the fix-shape above: `_git_aware_progress` moved out of `lib/critic_mode.py` into `plugin/lib/buildplan_refs.py` (now `:200`) beside the rest of the Status parsing, and `_parse_build_plan_status` applies it (`:322`), so `verify-chunk-refs`, mode inference, the session handoff and the stop-hook gate are correct by construction rather than each carrying their own derivation. Four functions now take `project_dir` instead of `prawduct_dir` — resolving "current" reads git, so the call sites say so. The same root cause at the handoff consumer was leg (4) of **SCN-4H9T**; **CRT-7B4M** was the first, single-consumer fix this sweep generalised. Regression coverage for the failing case (all boxes `[ ]`, chunks committed) is in `tests/test_build_plan_resolution.py`. Note the `refs:` line above records the *pre-fix* code sites as filed — the live homes are `plugin/lib/buildplan_refs.py`.
 
 - **[DOC-2R7M]** Post-relayout stale references in durable PLANNING artifacts — the release plan names `lib/backlog/**` at the pre-relayout path and points v3.2.0 at the wrong branch; the repoint build plan instructs `python3 bin/prawduct-hook`, which no longer exists
   `effort: S · impact: M · area: docs · kind: bug · source: critic · added: 2026-07-21 · reviewed: 2026-07-23 · status: shipped · stage: ready · closed-by: feature/backlog-service-relayout · related: DOC-7K4V, DOC-2W9P, BKL-3W6K, BKL-6M4T, BLD-6P8T · refs: .prawduct/artifacts/release-plan-backlog-service-golive.md (lines 26, 38, 84, 117, 187 — the five `lib/backlog/**` mentions; lines 22–39 — the branch guidance), .prawduct/artifacts/build-plan-backlog-skill-repoint.md (lines 46, 86, 118, 136 — `python3 bin/prawduct-hook backlog …`), plugin/bin/prawduct-hook (the post-relocation path)`
