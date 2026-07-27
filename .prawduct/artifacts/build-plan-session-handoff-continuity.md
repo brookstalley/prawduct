@@ -138,7 +138,45 @@ recorded; the second reason was reached for, which is exactly what
 `learnings.md`'s "a rationale you reached for" rule names. Corrected at its origin in `views.py`,
 where it had been wrong since it was written.
 
-Chunk 03 is next.
+**Chunk 03 complete** (2026-07-27; `c85bf79` + `90397b6` + `1eba8e7` + `807412a`) — the affordance
+half. Writing forward notes is now chunk-close step 7 in `building.md`, the safe-to-`/clear` signal
+names it, and the one sentence describing the `/clear` hook is a two-files-two-owners paragraph;
+`reflection.md`'s "Complete handoff" (which read as an action on the generated file) is gone. Both
+digests carry the rule, and **every agent-facing guide naming `.session-handoff.md` must now also
+name `.handoff-notes.md`** — a structural pin (`tests/preferences/test_handoff_prose.py`), not a
+verb list, because a detector keyed on which words read as instructions drifts with the convention.
+Budget paid in place: `building.md` 4591 → 4595 against an unchanged 4600 ceiling, funded by in-file
+redundancy. **Closes SCN-4H9T** (all five legs, across three chunks).
+
+`[DECISION: the chunk's declared Type was corrected doc-only → code, and two acceptance criteria
+added rather than the mechanism cut | because the Status line and the plan's own `governed_by`
+disposition both named a false-success check that no other chunk owned — 04 is CRT-7P5J, 05 is
+design-only — so shipping prose alone would have silently dropped a requirement the frontmatter had
+already made | user reviewed and accepted]` Both runtime halves landed: the handoff states its own
+absence when a session did work and left no note (silent when the note is *unreadable*, when a
+hand-authored handoff was rescued, and when there is no diff — each a deliberate discrimination),
+and `handoff preview` renders what the next session would receive through the same function `/clear`
+uses, without writing it or consuming the notes.
+
+Critic: `cumulative` 0 blocking / 8 warnings / 11 notes, then `verify-resolutions` confirming all
+eight fixed at 0 blocking / 2 warnings / 3 notes — those five also resolved. Two of the eight were
+**Chunk 02's** code, not this chunk's: the git-derived progress reading walked only chunk-shaped
+Status items, so a plan with every chunk committed and an unchecked plain to-do beside them read as
+COMPLETE (strictly worse than the checkbox reading it promises never to be worse than, entering by
+an incomplete *domain* rather than the wrong signal); and `buildplan_refs` eager-imported the heavy
+`lib.views` on the SessionStart/Stop path, the opposite of the call the same bundle had made in
+`ledger.py`. Both fixed and pinned.
+
+**Owner ruling recorded during this chunk, larger than the plan** (`MET-8K4R`): prawduct ships only
+**constitutional, inviolable** norms; anything user- or project-variable belongs in the product's
+own preferences, reached via suggested defaults hoisted at onboard. One store cannot govern both —
+the plugin is read-only and never placed into a repo, so a shipped *mutable* norm store is either
+uneditable by the product or is the file-sync engine retired in M4. The handoff-pair contract is
+therefore recorded in `project-preferences.md` as a **candidate awaiting ratification**, not
+promoted here: ratification is the owner's, never a builder's. The constitutional-vs-default test
+is explicitly open and is discovery-shaped.
+
+Chunk 04 is next.
 
 Plan written 2026-07-26 on `feature/session-handoff-continuity` (off develop). Parents:
 **SCN-4H9T** (the upstream triage of discodon's STH-9FYI — five defects, all reproduced against
