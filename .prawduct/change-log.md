@@ -27,10 +27,12 @@ all.
 **The split is by matcher, not by parsing the event payload** — the matcher already carries the one
 fact needed. `startup|clear` runs the boundary; `resume|compact|fork` runs
 `clear --session-start --brief-only`, which is orientation only. `--brief-only` is orthogonal to
-`--session-start` rather than replacing it, because `--session-start` keeps meaning "a genuine hook
-invocation, so sweep the critic-active marker" — which both paths want, and which is what rescues an
-operator from a crashed Critic. The three orientation-only hooks (banner, digest, build-index) gained
-`fork` for the same reason.
+`--session-start` rather than replacing it: `--session-start` keeps meaning "a genuine hook
+invocation" (as opposed to a reviewer subagent's bare `clear`, which the CRT-3X9D guard refuses), so
+the boundary is `--session-start` *without* `--brief-only`. The three orientation-only hooks (banner,
+digest, build-index) gained `fork` for the same reason. (The first draft of this paragraph justified
+the flag by "so sweep the critic-active marker — which both paths want"; the review below reversed
+that, and the sentence is corrected here rather than left to contradict its own entry.)
 
 **Two contiguous regions, not six scattered guards.** All 17 statement blocks in `cmd_clear` were
 enumerated and assigned to a column before editing (the plan's instruction, and the inventory table

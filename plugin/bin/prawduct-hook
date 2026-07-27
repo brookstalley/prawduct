@@ -841,8 +841,9 @@ def cmd_clear(project_dir: Path, argv: list[str] | None = None) -> int:
                 "    rm .prawduct/.critic-active        # then retry\n"
                 "  or override this one invocation:\n"
                 "    prawduct-hook clear --force\n"
-                "  (The marker also auto-expires after 30 min and is swept at the next real "
-                "session start.)",
+                "  (The marker also auto-expires after 30 min, or is swept at the next session "
+                "BOUNDARY — a fresh start or /clear. Resuming, forking or compacting this session "
+                "does NOT sweep it: a review may still be running in the session those continue.)",
                 file=sys.stderr,
             )
             return 2
@@ -1123,7 +1124,9 @@ def cmd_critic_begin(project_dir: Path, argv: list[str]) -> int:
 def cmd_critic_end(project_dir: Path) -> int:
     """Clear the critic-active marker at the end of a review. Idempotent — exit 0
     whether or not a marker was present (a crashed review's marker also expires
-    by TTL and is swept at the next session start)."""
+    by TTL, and is swept at the next session BOUNDARY — `startup`/`clear` only,
+    never a resume/compact/fork, which may be continuing the session a reviewer
+    is still running in)."""
     prawduct_dir = get_prawduct_dir(project_dir)
     _critic_marker().clear_marker(prawduct_dir)
     return 0

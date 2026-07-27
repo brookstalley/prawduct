@@ -187,7 +187,10 @@ session that receives no governance context at all is the same defect one level 
 for fork to be left uncovered]`
 
 `--brief-only` is orthogonal to `--session-start` rather than replacing it: `--session-start` keeps
-meaning "a genuine hook invocation, so sweep the critic-active marker", which both paths want.
+meaning "a genuine hook invocation" — as opposed to a reviewer subagent's bare `clear`, which the
+CRT-3X9D guard refuses — so the boundary is `--session-start` *without* `--brief-only`. (This
+sentence originally ended "so sweep the critic-active marker, which both paths want"; the review
+reversed that — see the struck DECISION below.)
 
 ~~`[DECISION: the critic-active marker sweep stays on the orientation path | because a review is
 dispatched by a process, so an in-flight review dies with the session that died; a marker outliving a

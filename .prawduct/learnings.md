@@ -123,6 +123,29 @@ here would have meant "fixing" correct code. The contaminated run is not waste: 
 defect end-to-end on shipped code, which is stronger evidence than the simulation that motivated the
 plan. Relates to Root Cause Discipline (#16) and Validate Before Propagating (#15).
 
+## A review finding is about a CLAIM, not a file — resolve it by grepping the claim's wording, and never truncate the recommendation you are acting on
+
+Four consecutive review rounds on one chunk found the previous round's fix incomplete in the same
+direction: the named instance fixed, the class missed. A guard, then a docstring one module over while
+the docstring *inside the function being changed* still stated the reversed rule, then a renamed
+heading that orphaned six cross-references, then two more surfaces still promising a behavior three of
+five sources no longer perform. The mechanical cause of the last one is exact and embarrassing: I
+printed the findings with `recommendation[:400]`, and that finding's closing instruction — "check
+these two other sites while you are there" — sat past the cut, so I acted on a truncated instruction
+and then reported the finding closed. This is the `head`-in-a-completeness-pipeline rule
+([[Instance 8]]) applied to review findings rather than to greps: **a finding read through a
+truncation must not be reported as resolved.** Two rules: (1) read each finding's recommendation in
+FULL before acting, and re-read it before claiming closure — the tail is where reviewers put the
+"while you're in there" sites; (2) resolve by **grepping the claim's distinctive wording across the
+repo** (prose, docstrings, skill instructions, operator-facing message strings, plans, change-log),
+not by editing the files the finding lists. On the round that finally worked, the claim-grep found
+**two sites the reviewer's own enumeration had not included** — so the mechanical sweep is strictly
+stronger than following the finding's file list, and it is the move that scales when the same claim
+was copied. Corollary for the change-log specifically: an entry authored inside an unreleased bundle
+is not append-only history — if a later commit in the same bundle reverses its claim, fix the sentence
+(with a note that it was corrected), because with `views_enabled` it derives release-notes and the
+contradiction ships. Relates to Living Documentation (#3) and Validate Before Propagating (#15).
+
 ## Verifying an inventory against the code cannot catch a wrong CATEGORY — the check confirms the frame it was built from
 
 Splitting `cmd_clear` into boundary vs. orientation, I sorted its 17 statements by *does it destroy
