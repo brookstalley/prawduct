@@ -333,7 +333,7 @@ views_enabled: true
 # field holds only the current in-progress plan (absent/empty -> the gates
 # fall back to artifacts/build-plan.md).
 
-active_build_plan: artifacts/build-plan-session-boundary-events.md
+active_build_plan: null
 
 # =============================================================================
 # COVERAGE EVIDENCE (opt-in, v1.4+)
@@ -519,6 +519,12 @@ scope_rollups:
   roi-batch-2:
     chunks: ["01", "02", "03", "04", "05", "06", "07", "08", "09"]
     releases: ["v2.0.5"]
+  session-boundary-events:
+    chunks: ["01"]
+    releases: ["v3.1.2"]
+  session-handoff-continuity:
+    chunks: ["01", "02", "03"]
+    releases: ["v3.1.2"]
   single-owner-shared-checks:
     chunks: ["01"]
     releases: ["v2.1.8"]

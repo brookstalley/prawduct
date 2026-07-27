@@ -74,9 +74,9 @@ is the single decision the rest of the plan hangs from.
      `Context:` BLOCK below — from `Context:` to the end of this section — is author-curated and
      regen never touches it. -->
 
-- [ ] Chunk 01: The forward channel — a model-owned notes file, and a generator that stops destroying
-- [ ] Chunk 02: Parser correctness — done-predicate, views_enabled, missing H1, truncated Context
-- [ ] Chunk 03: Proactive close — write-at-chunk-close, the documentation surfaces, the soft signal
+- [x] Chunk 01: The forward channel — a model-owned notes file, and a generator that stops destroying
+- [x] Chunk 02: Parser correctness — done-predicate, views_enabled, missing H1, truncated Context
+- [x] Chunk 03: Proactive close — write-at-chunk-close, the documentation surfaces, the soft signal
 - [ ] Chunk 04: CRT-7P5J — the handoff's Critic summary composes resolution facts
 - [ ] Chunk 05: SCN-7K4B — design only: program-level continuity, advance the item or defer it
 

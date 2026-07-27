@@ -5,7 +5,7 @@
 
 ## 2026-07-27: The Critic's SubagentStop trigger had never fired (CRT-2J8N)
 
-<!-- prawduct: type=fix -->
+<!-- prawduct: type=fix | release=v3.1.2 | status=shipped -->
 
 The `SubagentStop` hook that consolidates Critic partials as each reviewer finishes has never
 fired — not in this repo, not in any product, on any release that shipped it. Its matcher was the
@@ -52,7 +52,7 @@ enforced and the queue has six pending entries, the oldest 17 days old.
 
 ## 2026-07-27: Orientation and boundary become separate acts (session-boundary-events Chunk 01)
 
-<!-- prawduct: type=fix | scope=session-boundary-events | chunks=01 -->
+<!-- prawduct: type=fix | scope=session-boundary-events | chunks=01 | release=v3.1.2 | status=shipped -->
 
 `clear --session-start` was registered on `startup|resume|clear`, so `claude --resume` — a
 *continuation* — ran a full boundary reset: it folded `.handoff-notes.md` into a handoff for a
@@ -161,7 +161,7 @@ boundary still sweeps and consumes all of them.
 
 ## 2026-07-27: The guides stop naming only the file the agent must not write (session-handoff-continuity Chunk 03)
 
-<!-- prawduct: type=feature | scope=session-handoff-continuity | chunks=03 -->
+<!-- prawduct: type=feature | scope=session-handoff-continuity | chunks=03 | release=v3.1.2 | status=shipped -->
 
 Chunk 01 built the forward channel and Chunk 02 made the read path correct. Neither addressed why
 agents wrote `.session-handoff.md` by hand in the first place: it was the only handoff filename the
@@ -257,7 +257,7 @@ honest count; the same shape with a note gets the note instead, and the note is 
 
 ## 2026-07-27: One answer to "which chunk is current," and a handoff that stops lying about the plan (session-handoff-continuity Chunk 02)
 
-<!-- prawduct: type=fix | scope=session-handoff-continuity | chunks=02 -->
+<!-- prawduct: type=fix | scope=session-handoff-continuity | chunks=02 | release=v3.1.2 | status=shipped -->
 
 Four wrong-output defects fed `.session-handoff.md`, every one reproduced against this repo's own
 live plan rather than hypothesized. All four are fixed, and the fix for the widest one is a sweep.
@@ -410,7 +410,7 @@ unfixed code; it now asserts `ok: chunk 04` positively.
 
 ## 2026-07-26: The handoff gets a forward channel, and stops destroying what it finds (session-handoff-continuity Chunk 01)
 
-<!-- prawduct: type=feature | scope=session-handoff-continuity | chunks=01 -->
+<!-- prawduct: type=feature | scope=session-handoff-continuity | chunks=01 | release=v3.1.2 | status=shipped -->
 
 Every source feeding `.session-handoff.md` was backward-looking machine state, so an agent with
 something to tell the next session had nowhere to put it — and wrote the handoff file itself, which

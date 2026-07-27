@@ -78,7 +78,7 @@ firing on every source).
      `Context:` BLOCK below — from `Context:` to the end of this section — is author-curated and
      regen never touches it. -->
 
-- [ ] Chunk 01: Orientation and boundary become separate acts
+- [x] Chunk 01: Orientation and boundary become separate acts
 - [ ] Chunk 02: The handoff carries its vintage
 
 Context: Plan written 2026-07-27 on the back of `session-handoff-continuity` Chunk 03, which fixed
