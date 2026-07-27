@@ -52,6 +52,7 @@ from pathlib import Path
 
 from . import gitstate
 from .core import resolve_build_plan_path
+from .views import _parse_build_plan_frontmatter_scope
 
 LEDGER_BASENAME = ".governance-ledger.jsonl"
 LEDGER_SCHEMA_VERSION = 1
@@ -90,18 +91,19 @@ def _scope_from_plan(prawduct_dir: Path) -> str | None:
     try:
         # Explicit UTF-8, and `UnicodeDecodeError` (a `ValueError`) caught
         # alongside `OSError` — same contract as every other build-plan reader.
-        lines = plan_path.read_text(encoding="utf-8").splitlines()
+        content = plan_path.read_text(encoding="utf-8")
     except (OSError, UnicodeDecodeError):
         return None
-    if lines and lines[0].strip() == "---":
-        for line in lines[1:30]:
-            stripped = line.strip()
-            if stripped == "---":
-                break
-            if stripped.startswith("scope:"):
-                value = stripped[len("scope:"):].strip().strip("\"'")
-                if value:
-                    return value
+    # The canonical frontmatter reader, not a third hand-rolled copy. The copy
+    # this replaced required `---` on line 1, while every real build-plan in the
+    # codebase opens with an HTML comment header — so it disagreed with
+    # `views`/`buildplan_refs` about the scope of exactly the plans this repo
+    # writes. Using the shared reader also brings this read inside the decoding
+    # pin's data-flow view (tests/preferences/test_build_plan_decoding.py),
+    # which an inline parse kept it out of.
+    _present, scope = _parse_build_plan_frontmatter_scope(content)
+    if scope:
+        return scope
     stem = plan_path.stem
     if stem.startswith("build-plan-") and stem != "build-plan-":
         return stem[len("build-plan-"):]

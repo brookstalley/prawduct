@@ -650,9 +650,49 @@ class TestNonUtf8PlanDegrades:
         assert "Traceback" not in proc.stderr, proc.stderr
 
     def test_regen_reports_the_bad_plan_and_keeps_going(self, tmp_path: Path):
-        """One unreadable plan must not take out a multi-plan repo's whole
-        regen — the branch this delta added, which nothing else reaches."""
+        """One unreadable plan must not take out a multi-plan repo's whole regen.
+
+        Asserted POSITIVELY on both halves. `not any("Traceback" in r.summary)`
+        was the first draft and could not fail: summaries are f-strings this
+        module builds, so the needle can never be in that haystack, and an empty
+        result list satisfied it too. Second vacuous negative assertion on this
+        branch — both were negatives over a haystack that cannot contain the
+        needle, which is the shape to distrust.
+        """
         prawduct = tmp_path / ".prawduct"
         self._write_undecodable_plan(tmp_path)
-        results = views._plan_status_results(prawduct, "")
-        assert not any("Traceback" in r.summary for r in results)
+        artifacts = prawduct / "artifacts"
+        (artifacts / "build-plan-readable.md").write_text(
+            "---\nscope: readable\n---\n\n## Status\n\n- [ ] Chunk 01: A\n",
+            encoding="utf-8",
+        )
+        change_log = (
+            "## 2026-07-27: something\n\n"
+            "<!-- prawduct: chunks=01 | scope=readable -->\n"
+        )
+        results = views._plan_status_results(prawduct, change_log)
+        summaries = [r.summary for r in results]
+        # "reports the bad plan" — the degradation names its cause.
+        assert any("unreadable build-plan" in s for s in summaries), summaries
+        # "keeps going" — the readable sibling is still processed. This is what
+        # the `continue` buys, and a one-plan fixture never exercised it.
+        assert any("build-plan-readable.md" in s for s in summaries), summaries
+
+    def test_duplicate_scope_diagnosis_survives_an_unreadable_plan(
+        self, tmp_path: Path
+    ):
+        """`diagnose_scope_plan_coverage` is the twin of `build_scope_to_plan_map`
+        and was the last reader still on the narrow guard — called bare by
+        `prawduct-hook` with no global handler, so one bad file tracebacked out
+        of `regen-views`. Its duplicate-scope branch had no coverage at all,
+        which is how a rename into it could have gone unnoticed."""
+        artifacts = tmp_path / ".prawduct" / "artifacts"
+        artifacts.mkdir(parents=True)
+        self._write_undecodable_plan(tmp_path)
+        for name in ("build-plan-a.md", "build-plan-b.md"):
+            (artifacts / name).write_text(
+                "---\nscope: dup\n---\n\n## Status\n\n- [ ] Chunk 01: A\n",
+                encoding="utf-8",
+            )
+        warnings = views.diagnose_scope_plan_coverage("", artifacts)
+        assert any("duplicate scope=" in w and "build-plan-b.md" in w for w in warnings), warnings

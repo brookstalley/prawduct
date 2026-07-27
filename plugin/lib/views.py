@@ -546,10 +546,11 @@ def build_scope_to_plan_map(artifacts_dir: Path) -> dict[str, Path]:
     result: dict[str, Path] = {}
     if not artifacts_dir.is_dir():
         return result
-    # Named `plan_path` because these ARE build-plan candidates, and that local
-    # is the idiom `tests/preferences/test_build_plan_decoding.py` enforces the
-    # decoding rule through. Under a bare `path` this read was invisible to that
-    # pin and kept the locale-codec/except-set defect a round longer.
+    # Named `plan_path` because these ARE build-plan candidates — consistency
+    # with every other reader, and NOT load-bearing. The decoding rule reaches
+    # this module file-scoped (`tests/preferences/test_build_plan_decoding.py`),
+    # so it no longer depends on a local's name; an earlier idiom-based version
+    # did, and missed this loop and its twin below for one round each.
     for plan_path in sorted(artifacts_dir.glob("*.md")):
         try:
             content = plan_path.read_text(encoding="utf-8")
@@ -618,21 +619,26 @@ def diagnose_scope_plan_coverage(
     warnings: list[str] = []
     if artifacts_dir.is_dir():
         first_seen: dict[str, str] = {}
-        for path in sorted(artifacts_dir.glob("*.md")):
+        for plan_path in sorted(artifacts_dir.glob("*.md")):
             try:
-                content = path.read_text(encoding="utf-8")
-            except OSError:
+                content = plan_path.read_text(encoding="utf-8")
+            except (OSError, UnicodeDecodeError):
+                # A line-for-line twin of `build_scope_to_plan_map` above, and
+                # worse-guarded than it: `prawduct-hook` calls this bare with no
+                # global handler, so one non-UTF-8 file under `artifacts/`
+                # tracebacked out of `regen-views` — across a boundary whose
+                # error model forbids an internal stack trace crossing it.
                 continue
             _present, scope = _parse_build_plan_frontmatter_scope(content)
             if not scope:
                 continue
             if scope in first_seen:
                 warnings.append(
-                    f"duplicate scope={scope!r}: {path.name} also declares it "
+                    f"duplicate scope={scope!r}: {plan_path.name} also declares it "
                     f"(keeping {first_seen[scope]}); one plan is malformed."
                 )
             else:
-                first_seen[scope] = path.name
+                first_seen[scope] = plan_path.name
 
     plan_map = build_scope_to_plan_map(artifacts_dir)
     seen: set[str] = set()
