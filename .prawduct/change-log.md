@@ -102,7 +102,7 @@ STH-2K8R shipped, the stop hook kept calling the non-git-aware resolver, and the
 both closures for seven weeks — it is fixed only here. "Closed by construction via another item" is
 the reasoning pattern that failed, and this is the evidence for it.
 
-41 new tests; suite 2572 → 2611. Two existing tests were updated, not weakened: they passed
+40 new tests; suite 2572 → 2612 (39 through the verify passes, plus the encoding pin). Two existing tests were updated, not weakened: they passed
 `.prawduct/` positionally to functions whose argument is now the project dir. One new test was
 rewritten after the Critic found it passed vacuously — its `"01" not in stdout` assertion was
 satisfied by the empty stdout of a `cannot-verify` exit, so it would have gone green against the

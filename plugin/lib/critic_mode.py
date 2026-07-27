@@ -500,8 +500,14 @@ def _critic_mode_for_chunk(prawduct_dir: Path, chunk_id: str | None) -> str | No
     if not plan_path.is_file():
         return None
     try:
-        content = plan_path.read_text()
-    except OSError:
+        # Explicit UTF-8 with the same except-set as every other build-plan
+        # reader. `infer_mode` reads the plan TWICE — here and through
+        # `buildplan_refs.resolve_chunk_progress` — so a locale codec here made
+        # one function disagree with itself about whether the plan decodes.
+        # `UnicodeDecodeError` is a `ValueError`, so a bare `except OSError`
+        # let it escape past a caller that has no guard.
+        content = plan_path.read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError):
         return None
 
     _found, section_lines = buildplan_refs._chunk_section_lines(content, chunk_id)

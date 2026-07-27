@@ -17,12 +17,16 @@ mirror (``_resolve_build_plan_path``) stays in the hook for its import-light hot
 path; this module is a lib citizen and reaches the canonical resolver in
 ``lib.core`` directly, exactly as ``critic_mode`` and ``views`` do.
 
-Every read of the plan is explicitly UTF-8. The plan is markdown authored by a
-model or a human — em dashes, arrows, box-drawing — and which of its readers can
-decode it must not depend on the operator's locale. Six of these used the locale
-codec while a seventh did not, so two consumers of the SAME file could disagree
-by construction: the gate trigger (``_count_build_plan_chunks``) and the parser
-feeding the handoff sat on opposite sides of that split.
+Every read of the plan — here and in every other module that reads it — is
+explicitly UTF-8, pinned by ``tests/test_handoff_parser_correctness.py``. The
+plan is markdown authored by a model or a human (em dashes, arrows,
+box-drawing), and which of its readers can decode it must not depend on the
+operator's locale. The divergence this rule exists to prevent is not a decode
+failure but a DISAGREEMENT: readers of the same file on different codecs, with
+different except-sets, answering differently about whether it parses. It was
+found three review rounds running — first six of seven reads in this module,
+then two more outside it, one of them inside a function that reads the plan
+twice — which is why the rule is now a pin rather than a convention.
 
 ``_parse_build_plan_status`` was reassigned here from the briefing cluster (it is
 build-plan parsing, not briefing assembly) — that reassignment turns the hook's

@@ -378,6 +378,28 @@ class TestOneCurrentChunkImplementation:
         for name in self.MOVED_OUT_OF_CRITIC_MODE:
             assert name in vars(buildplan_refs)
 
+    def test_every_build_plan_read_names_its_encoding(self):
+        """No module may decode the build plan with the operator's locale.
+
+        Structural, because the convention failed three review rounds running:
+        six of seven reads in `buildplan_refs`, then two more outside it — one
+        inside `infer_mode`, which reads the plan twice and so disagreed with
+        itself. The risk is not a decode failure (PEP 538/540 coerce C/POSIX to
+        UTF-8 on Linux and macOS) but readers of the SAME file answering
+        differently about whether it parses. `plan_path.read_text(` is the
+        idiom every build-plan reader uses, which is what makes this greppable.
+        """
+        offenders = []
+        for path in sorted((REPO_ROOT / "lib").rglob("*.py")):
+            for num, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
+                if "plan_path.read_text()" in line:
+                    offenders.append(f"{path.relative_to(REPO_ROOT).as_posix()}:{num}")
+        assert not offenders, (
+            f"{offenders} decode the build plan with the locale codec; pass "
+            'encoding="utf-8" and catch UnicodeDecodeError (a ValueError) '
+            "alongside OSError, as every other build-plan reader does."
+        )
+
     def test_no_consumer_walks_the_status_section_itself(self):
         """Only ``buildplan_refs`` may consume the Status-section walkers.
 

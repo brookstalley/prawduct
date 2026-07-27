@@ -88,8 +88,10 @@ def _scope_from_plan(prawduct_dir: Path) -> str | None:
     if not plan_path.is_file():
         return None
     try:
-        lines = plan_path.read_text().splitlines()
-    except OSError:
+        # Explicit UTF-8, and `UnicodeDecodeError` (a `ValueError`) caught
+        # alongside `OSError` — same contract as every other build-plan reader.
+        lines = plan_path.read_text(encoding="utf-8").splitlines()
+    except (OSError, UnicodeDecodeError):
         return None
     if lines and lines[0].strip() == "---":
         for line in lines[1:30]:
