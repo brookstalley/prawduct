@@ -20,11 +20,14 @@ written. Safe to `/clear`." The single sentence that used to describe the `/clea
 said "Complete handoff", which reads as an action on the generated file; it now numbers the notes
 step and carries a "forward notes are not a reflection" paragraph. Both digests gain the rule.
 
-**Paid for in place.** `building.md` sat at ~4591 of a 4600-token ceiling that exists to lock a diet
-in. The additions (~135 tokens) were funded by ~145 tokens of in-file redundancy — three Common
-Traps that restated rules stated earlier in the same file, three trailing sentences that restated
-their own bullet, and prose fat in four paragraphs. It now measures 4590: one token below where the
-addition found it. No ceiling raised.
+**Paid for in place.** `building.md` sat at 4591 of a 4600-token ceiling that exists to lock a diet
+in; it now measures **4590** — one token below where the addition found it, ceiling untouched. The
+additions were funded entirely by in-file redundancy: three Common Traps that restated rules stated
+earlier in the same file, three trailing sentences that restated their own bullet, and prose fat in
+four paragraphs. Surviving coverage was checked per trap rather than assumed, and one is thinner
+than the other two — "Ignoring the Critic" now lives only in the Blocking-findings paragraph two
+sections down, with no digest copy. Recorded in the budget test's comment as the first thing to
+restore if the ceiling is ever raised.
 
 **The handoff states its own absence.** When a session did work and left no forward note — and left
 no hand-authored handoff to rescue either — the generated handoff says so, in the position the note
@@ -56,7 +59,32 @@ Chunk 03's declared `Type:` was `doc-only`, but the plan's own Status line and i
 disposition both named a false-success check that no other chunk owned. Corrected to `code` with the
 reasoning recorded, and the two missing acceptance criteria added rather than the mechanism cut.
 
-23 new tests (suite 2623 → 2646, counted not estimated). Verified live through the real `/clear` on
+**Critic (`cumulative`, 33 files): 0 blocking, 8 warnings, 11 notes.** Six distinct warnings, all
+resolved here. Two were Chunk 02 code the bundle review reached first:
+
+- **The git-derived progress reading could be worse than the checkbox reading it promises never to
+  be worse than.** It walked only the *chunk-shaped* Status items, so "no chunk left" meant "nothing
+  left": a plan with every chunk committed and an unchecked plain to-do beside them read as
+  COMPLETE — retiring a live plan and blanking the handoff's work section. Live today on
+  `build-plan-backlog-service.md`. The walk now covers every Status item; an item naming no chunk
+  can never be "committed", so it is done iff its box is checked, which is exactly the checkbox
+  reading applied where git has nothing to say. Two regression tests, both confirmed failing first.
+- **`buildplan_refs` eager-imported `lib.views` (a heavy module) at module scope**, and `briefing`
+  (SessionStart) and `gates` (Stop) both import it at module scope — so every session paid for a
+  parse most never reach. The same bundle had made the *opposite* call in `ledger.py` with a written
+  rationale, and pinned `ledger`/`telemetry` — but not the hotter path where the coupling actually
+  landed. Now lazy, with the pin extended over all three modules.
+
+And four in this chunk's own work: `handoff preview` reported "nothing to hand off" *before* the
+unreadable-note diagnostic, so it disagreed with `/clear` about the one fact worth acting on;
+`building.md` step 7 sanctioned "nothing to add" without saying whether to write the file, which
+would have produced the absence notice on every clean chunk close (it now says to write the line);
+four preference pins had no row in the Enforcement table that calls itself the norm index — three
+of them older than this work, all four now indexed, and the handoff prose pin moved to
+`tests/preferences/` where prose pins live; and `ChunkProgress.git_derived`'s docstring claimed a
+reporting capability with no production consumer, now stated honestly along with the gap it leaves.
+
+30 new tests (suite 2623 → 2653, counted not estimated). Verified live through the real `/clear` on
 a scratch repo, both branches: a session with three commits and no note gets the signal with an
 honest count; the same shape with a note gets the note instead, and the note is consumed.
 

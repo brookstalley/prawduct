@@ -46,7 +46,13 @@ from typing import NamedTuple
 from . import gitstate
 from .core import read_bool_yaml_key, resolve_build_plan_path
 from .coverage import _resolve_base_branch
-from .views import _parse_build_plan_frontmatter_scope
+
+# `lib.views` is a HEAVY_SUBMODULE and is imported lazily, inside the one
+# function that needs it (see `_plan_description_fallback`). Unlike `ledger`'s
+# identical call — where the cost was hypothetical — this module IS the hot
+# path: `briefing` and `gates` both import it at module scope, so a
+# module-scope `from .views import ...` here bills every SessionStart and every
+# Stop for a parse that most of them never use.
 
 
 def _iter_status_section_lines(content: str):
@@ -223,8 +229,8 @@ def _committed_chunk_ids(project_dir: Path, base: str) -> set[str]:
 
 def _git_aware_progress(
     project_dir: Path, content: str, total: int
-) -> tuple[int, str | None] | None:
-    """Git-derived ``(complete, current_chunk_id)``, or ``None`` to use checkboxes.
+) -> tuple[int, str] | None:
+    """Git-derived ``(complete, current_item_text)``, or ``None`` to use checkboxes.
 
     Applies ONLY when the Status checkboxes can't be trusted as the progress
     signal (CRT-7B4M): (a) ``views_enabled`` (checkboxes derive from
@@ -234,15 +240,26 @@ def _git_aware_progress(
     Returns ``None`` whenever any condition fails — the caller then uses the
     checkbox reading.
 
-    A chunk counts as complete when its box is ``[x]`` **or** its id appears in
-    a commit subject since base. The commit signal alone is not enough: on a
-    plan whose earlier chunks shipped in a *prior* release, those boxes ARE
-    flipped and their commits are behind the base, so a commit-only reading
-    resolves "current" back to an already-shipped Chunk 01 — strictly worse than
-    the checkbox fallback this is supposed to never be worse than. The union is
-    what makes the promise true; the same union also keeps a branch whose
-    commits only partly follow the ``Chunk NN`` convention from reading a
-    half-populated set as authoritative.
+    A Status item counts as complete when its box is ``[x]`` **or** it names a
+    chunk whose id appears in a commit subject since base. The commit signal
+    alone is not enough: on a plan whose earlier chunks shipped in a *prior*
+    release, those boxes ARE flipped and their commits are behind the base, so a
+    commit-only reading resolves "current" back to an already-shipped Chunk 01 —
+    strictly worse than the checkbox fallback this is supposed to never be worse
+    than. The union is what makes the promise true; the same union also keeps a
+    branch whose commits only partly follow the ``Chunk NN`` convention from
+    reading a half-populated set as authoritative.
+
+    The walk covers **every** Status item, not just the chunk-shaped ones. A
+    Status section may hold an item that names no chunk (a plain to-do); such an
+    item can never be "committed", so it is done iff its box is checked — which
+    is precisely the checkbox reading, applied to the items git cannot speak to.
+    Walking only the chunk-shaped items instead made "no chunk left" mean
+    "nothing left", so a plan with every chunk committed and an unchecked to-do
+    beside them read as COMPLETE, retiring a live plan and blanking the
+    handoff's work section. That is the same "strictly worse than the checkbox
+    fallback" failure the union above exists to prevent, entering by the other
+    door: not from the wrong signal, but from an incomplete domain.
 
     This is the ONE implementation of git-derived chunk progress. It shipped in
     ``lib.critic_mode`` for the ``infer-critic-mode`` consumer alone; the same
@@ -277,14 +294,15 @@ def _git_aware_progress(
     if not committed:
         return None
 
-    def _done(checked: bool, cid: str) -> bool:
-        return checked or (cid.lstrip("0") or "0") in committed
+    def _done(checked: bool, text: str) -> bool:
+        if checked:
+            return True
+        cid = _chunk_id_from_item_text(text)
+        return cid is not None and (cid.lstrip("0") or "0") in committed
 
-    status_chunks = _status_chunk_states(content)
-    complete = sum(1 for checked, cid in status_chunks if _done(checked, cid))
-    current = next(
-        (cid for checked, cid in status_chunks if not _done(checked, cid)), None
-    )
+    items = list(_iter_status_section_items(content))
+    complete = sum(1 for checked, text in items if _done(checked, text))
+    current = next((text for checked, text in items if not _done(checked, text)), "")
     return complete, current
 
 
@@ -292,8 +310,18 @@ class ChunkProgress(NamedTuple):
     """How far the active build plan has got, and which chunk is current.
 
     ``current_id`` / ``current_text`` are empty-ish (``None`` / ``""``) when the
-    plan has no remaining chunk. ``git_derived`` records which reading answered,
-    so a caller can report *why* rather than guess.
+    plan has no remaining chunk.
+
+    ``git_derived`` records which of the two readings answered. Stated honestly:
+    **no production caller reads it today** — it is asserted by tests and
+    available to a caller that wants to report *why* instead of guessing. The
+    gap it leaves is real and tracked rather than papered over: when the
+    git-derived path bails (absent base branch, git failure, a branch not ahead)
+    the answer silently becomes the checkbox reading, and on a `views_enabled`
+    repo mid-branch that is the reading known to be wrong. Nothing tells anyone.
+    Fixing that means picking the surface that should report it — a diagnostic
+    one, not the hot path, since most `git_derived=False` answers are perfectly
+    normal — which is a design call, not a rename.
     """
 
     total: int
@@ -350,18 +378,15 @@ def _resolve_chunk_progress_from(project_dir: Path, content: str) -> ChunkProgre
             False,
         )
 
-    complete, current_id = git_progress
-    current_text = ""
-    if current_id is not None:
-        current_text = next(
-            (
-                text
-                for _checked, text in items
-                if _chunk_id_from_item_text(text) == current_id
-            ),
-            "",
-        )
-    return ChunkProgress(total, complete, current_id, current_text, total > 0, True)
+    complete, current_text = git_progress
+    return ChunkProgress(
+        total,
+        complete,
+        _chunk_id_from_item_text(current_text),
+        current_text,
+        total > 0,
+        True,
+    )
 
 
 def _plan_description_fallback(plan_path: Path, content: str) -> str:
@@ -375,6 +400,8 @@ def _plan_description_fallback(plan_path: Path, content: str) -> str:
     frontmatter ``scope:``, then to the filename with the conventional
     ``build-plan-`` prefix stripped, so the section can never silently vanish.
     """
+    from .views import _parse_build_plan_frontmatter_scope  # noqa: PLC0415 — heavy; see the module-header note
+
     _present, scope = _parse_build_plan_frontmatter_scope(content)
     if scope:
         return scope

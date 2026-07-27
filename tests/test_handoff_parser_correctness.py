@@ -22,6 +22,7 @@ path.
 
 from __future__ import annotations
 
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -271,6 +272,43 @@ class TestViewsEnabledCurrentChunk:
         status = buildplan_refs._parse_build_plan_status(repo)
         assert "current_chunk" not in status
         assert buildplan_refs.build_plan_is_complete(status) is True
+
+    def test_an_unchecked_non_chunk_item_still_blocks_completion(self, tmp_path: Path):
+        """The git reading must never be *worse* than the checkbox reading.
+
+        A Status section may hold items that name no chunk (a plain to-do). The
+        git-derived walk skips those, so with every chunk committed it reported
+        "no current item" and the plan read as COMPLETE while an unchecked item
+        sat right there — a strictly worse answer than the checkboxes, which is
+        the one thing the derivation promises never to be. Downstream that
+        retires a live plan and blanks the handoff's work section.
+        """
+        repo = _views_repo(tmp_path, committed_chunks=4)
+        plan = repo / ".prawduct" / "artifacts" / "build-plan.md"
+        plan.write_text(
+            plan.read_text(encoding="utf-8").replace(
+                "- [ ] Chunk 04: The Critic summary",
+                "- [ ] Chunk 04: The Critic summary\n- [ ] Retire the shim",
+            ),
+            encoding="utf-8",
+        )
+        status = buildplan_refs._parse_build_plan_status(repo)
+        assert buildplan_refs.build_plan_is_complete(status) is False
+        assert status["current_chunk"] == "Retire the shim"
+
+    def test_a_status_of_only_non_chunk_items_is_not_complete(self, tmp_path: Path):
+        """The degenerate end of the same defect: nothing chunk-shaped to walk,
+        so the git reading returned "0 complete, nothing current" and the
+        done-predicate read that as *finished* with zero work done."""
+        repo = _views_repo(tmp_path, committed_chunks=4)
+        plan = repo / ".prawduct" / "artifacts" / "build-plan.md"
+        content = plan.read_text(encoding="utf-8")
+        for n in range(1, 5):
+            content = re.sub(rf"- \[ \] Chunk 0{n}: .*", f"- [ ] Task {n}", content)
+        plan.write_text(content, encoding="utf-8")
+        status = buildplan_refs._parse_build_plan_status(repo)
+        assert buildplan_refs.build_plan_is_complete(status) is False
+        assert status["current_chunk"] == "Task 1"
 
     def test_a_prior_releases_shipped_chunk_is_never_current(self, tmp_path: Path):
         """A `[x]` chunk shipped in an EARLIER release has no commit on this

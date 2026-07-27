@@ -1071,10 +1071,11 @@ class HandoffResult(NamedTuple):
 class HandoffRender(NamedTuple):
     """The assembled handoff text, and what each input contributed to it.
 
-    ``text`` is ``""`` for the two cases where there is nothing to write:
-    nothing beyond the boilerplate header, and an existing handoff that could
-    not be read (which the writer must leave alone rather than overwrite — the
-    ``rescue_state`` distinguishes them).
+    ``text`` is ``""`` whenever there is nothing to write: no ``.prawduct/``,
+    nothing beyond the boilerplate header, or an existing handoff that could not
+    be read — and the last of those is the one the writer must handle
+    differently (leave the file alone rather than overwrite it), which is why
+    ``rescue_state`` is carried alongside rather than folded into the text.
     """
 
     text: str
@@ -1162,9 +1163,12 @@ def _no_forward_note_section(changed: list[str], commits: list[str]) -> list[str
     and no forward note was left, the handoff says so, in the position the note
     would have occupied.
 
-    Empty when the session changed nothing: there was nothing to hand off, and
-    a notice with no substance behind it only teaches the reader to skip the
-    section.
+    Empty when the session produced no diff. Stated honestly, that is a *limit*
+    rather than a claim that nothing happened — a design or discovery session
+    has plenty to hand off and leaves no files changed. What it does mean is
+    that the handoff for such a session is visibly thin, so it cannot pass for a
+    complete account the way a list of commits can, and a notice fired on every
+    read-only session would only teach the reader to skip the section.
     """
     if not changed and not commits:
         return []
@@ -1392,9 +1396,10 @@ def handoff_cmd(project_dir: Path, argv: list[str]) -> int:
     notes file is never consumed.
 
     Exit codes per ``artifacts/api-contract.md``: 0 for a successful preview,
-    including the truthful "nothing would be written"; 1 when the repo has no
-    ``.prawduct/``; 2 for a usage error. Content goes to stdout so it can be
-    piped; every diagnostic goes to stderr so it cannot be mistaken for content.
+    including the truthful "nothing would be written"; 1 when the preview cannot
+    be produced (no ``.prawduct/``, or the render failed); 2 for a usage error.
+    Content goes to stdout so it can be piped; every diagnostic goes to stderr so
+    it cannot be mistaken for content.
     """
     if argv[:1] != ["preview"] or len(argv) > 1:
         print("Usage: prawduct-hook handoff preview", file=sys.stderr)
@@ -1405,7 +1410,16 @@ def handoff_cmd(project_dir: Path, argv: list[str]) -> int:
         print("handoff: no .prawduct/ in this repo — nothing to preview", file=sys.stderr)
         return 1
 
-    rendered = render_session_handoff(project_dir)
+    try:
+        rendered = render_session_handoff(project_dir)
+    except Exception as exc:  # prawduct:allow prawduct/broad-except -- CLI boundary: the error model forbids a stack trace crossing it
+        # Every reader on the render path degrades internally, so reaching here
+        # means something unanticipated. It still gets an attributed message and
+        # an exit code rather than a traceback, because that is what the caller
+        # can act on — and because a *preview* crashing must not read as
+        # evidence that `/clear` itself is broken.
+        print(f"handoff: could not render the preview ({exc})", file=sys.stderr)
+        return 1
     if rendered.rescue_state == RESCUE_UNREADABLE:
         print(
             "NOTE: .prawduct/.session-handoff.md exists and cannot be read, so /clear "
@@ -1414,6 +1428,20 @@ def handoff_cmd(project_dir: Path, argv: list[str]) -> int:
             file=sys.stderr,
         )
         return 0
+    # Before any verdict about the content: a note that exists and cannot be
+    # read is the one fact the preview must not omit, and it is orthogonal to
+    # whether anything else would be written. Reporting "nothing to hand off"
+    # first made the preview and `/clear` disagree about exactly that — `/clear`
+    # announces the unreadable note, so a preview that swallowed it would send
+    # the agent away reassured about the case most worth acting on.
+    if rendered.notes_state == NOTES_UNREADABLE:
+        print(
+            f"NOTE: .prawduct/{HANDOFF_NOTES_NAME} exists and could not be read (not "
+            "valid UTF-8?) — none of it is in the preview, and none of it would reach "
+            "the next session. It is kept, not consumed; rewrite or remove it.",
+            file=sys.stderr,
+        )
+
     if not rendered.text:
         print(
             "NOTE: nothing to hand off yet — /clear would leave "
@@ -1423,15 +1451,6 @@ def handoff_cmd(project_dir: Path, argv: list[str]) -> int:
         return 0
 
     print(rendered.text, end="")
-    if rendered.notes_state == NOTES_UNREADABLE:
-        # The preview's job is to show what would arrive; a note that cannot be
-        # read would not arrive, and its absence above is otherwise silent.
-        print(
-            f"NOTE: .prawduct/{HANDOFF_NOTES_NAME} exists and could not be read (not "
-            "valid UTF-8?) — none of it is in the preview above, and none of it would "
-            "reach the next session.",
-            file=sys.stderr,
-        )
     return 0
 
 

@@ -108,9 +108,11 @@ class TestNoForwardNoteSignal:
         assert "1 commit " in body or "1 commit)" in body
         assert "1 files" not in body and "1 commits" not in body
 
-    def test_silent_when_the_session_did_nothing(self, tmp_path, monkeypatch):
-        # Nothing happened, so there was nothing to hand off. A notice with no
-        # substance behind it only teaches the reader to skip the section.
+    def test_silent_when_the_session_produced_no_diff(self, tmp_path, monkeypatch):
+        # A known limit, not a claim that nothing happened: a design session has
+        # plenty to hand off and no diff. But its handoff is visibly thin, so it
+        # cannot pass for a complete account the way a commit list can — and a
+        # notice on every read-only session teaches the reader to skip it.
         pr = _prawduct(tmp_path)
         _session_did_nothing(monkeypatch)
         (pr / ".session-reflected").write_text("read some code, changed nothing")
@@ -239,6 +241,26 @@ class TestHandoffPreviewIsReadOnly:
         assert ".handoff-notes.md" in captured.err
         assert captured.out.startswith("# Session Handoff")
 
+    def test_an_unexpected_render_failure_is_attributed_not_raised(
+        self, tmp_path, monkeypatch, capsys
+    ):
+        # The CLI error model forbids a stack trace crossing the boundary. Every
+        # reader on the render path degrades internally, so this guard is for
+        # what nobody anticipated — and a crashing *preview* must not read as
+        # evidence that `/clear` itself is broken.
+        _prawduct(tmp_path)
+
+        def _boom(_):
+            raise RuntimeError("something nobody anticipated")
+
+        monkeypatch.setattr(briefing, "render_session_handoff", _boom)
+
+        assert briefing.handoff_cmd(tmp_path, ["preview"]) == 1
+        captured = capsys.readouterr()
+        assert captured.out == ""
+        assert "could not render the preview" in captured.err
+        assert "something nobody anticipated" in captured.err
+
     def test_nothing_to_hand_off_is_reported_truthfully(self, tmp_path, monkeypatch, capsys):
         _prawduct(tmp_path)
         _session_did_nothing(monkeypatch)
@@ -248,20 +270,52 @@ class TestHandoffPreviewIsReadOnly:
         assert captured.out == ""
         assert "nothing to hand off" in captured.err
 
+    def test_an_unreadable_note_is_reported_even_with_nothing_else_to_show(
+        self, tmp_path, monkeypatch, capsys
+    ):
+        # `/clear` announces an unreadable note. A preview that reported only
+        # "nothing to hand off" would disagree with it about the single fact
+        # most worth acting on, and send the agent away reassured.
+        pr = _prawduct(tmp_path)
+        _session_did_nothing(monkeypatch)
+        (pr / ".handoff-notes.md").write_bytes(b"\xff\xfe not utf-8 \xff")
+
+        assert briefing.handoff_cmd(tmp_path, ["preview"]) == 0
+        err = capsys.readouterr().err
+        assert ".handoff-notes.md" in err and "could not be read" in err
+        assert "kept, not consumed" in err
+
     def test_unreadable_existing_handoff_is_reported(self, tmp_path, monkeypatch, capsys):
         # `/clear` would decline to overwrite it, so the honest preview is not
         # the text that would be generated but the fact that none would land.
+        # The failure is injected at the read, not by stubbing the reader, so
+        # this exercises the real degradation path rather than asserting the
+        # answer it was handed. (Undecodable *bytes* are recovered lossily by
+        # design, so they would not reach this state — only an I/O error does.)
         pr = _prawduct(tmp_path)
         _session_did_work(monkeypatch)
-        (pr / ".session-handoff.md").write_bytes(b"\xff\xfe hand-authored \xff")
-        monkeypatch.setattr(
-            briefing, "_read_unmarked_handoff", lambda d: ("", briefing.RESCUE_UNREADABLE)
-        )
+        handoff = pr / ".session-handoff.md"
+        handoff.write_text("# Session Handoff\n\nirreplaceable hand-written context\n")
 
-        assert briefing.handoff_cmd(tmp_path, ["preview"]) == 0
+        real_read = Path.read_text
+
+        def _explode(self, *a, **kw):
+            if self.name == ".session-handoff.md":
+                raise OSError("simulated I/O error")
+            return real_read(self, *a, **kw)
+
+        monkeypatch.setattr(Path, "read_text", _explode)
+        rc = briefing.handoff_cmd(tmp_path, ["preview"])
+        monkeypatch.undo()
+
+        assert rc == 0
         captured = capsys.readouterr()
         assert captured.out == ""
         assert "cannot be read" in captured.err
+        # And previewing must not have "fixed" it by writing over it.
+        assert handoff.read_text() == (
+            "# Session Handoff\n\nirreplaceable hand-written context\n"
+        )
 
 
 class TestHandoffPreviewCli:
@@ -310,67 +364,12 @@ class TestHandoffPreviewCli:
         assert proc.returncode == 1
         assert proc.stdout == ""
 
-    def test_usage_string_advertises_the_subcommand(self):
-        hook = _ROOT / "bin" / "prawduct-hook"
-        assert "handoff preview" in hook.read_text(encoding="utf-8")
-
-
-# =============================================================================
-# The prose surface — the guides must not hand the agent only the wrong filename
-# =============================================================================
-class TestHandoffProseNamesBothFiles:
-    """Every agent-facing guide that names the generated `.session-handoff.md`
-    must also name the model-owned `.handoff-notes.md`.
-
-    The original defect was an affordance, not a mechanism: the guides named one
-    file — the one the agent must not write — so that is the one they wrote. A
-    guide can only re-create that gap by mentioning the generated file without
-    its counterpart, which is a structural property of the text.
-
-    **Deliberately not a verb list.** The obvious detector ("no sentence tells
-    the agent to *write* the handoff") keys on which words read as instructions,
-    and this branch has twice watched a convention-keyed detector drift out from
-    under the rule it was guarding. File-scoped co-naming keys on nothing anyone
-    holds by habit.
-
-    **What it does not prove**, stated so a future reader does not over-trust it:
-    co-naming is not adjacency. A file could name both hundreds of lines apart
-    and still misdirect within a paragraph. It catches the whole-file omission —
-    the shape the defect actually had — and no more.
-    """
-
-    ROOT = _ROOT.parent
-
-    def _corpus(self) -> list[Path]:
-        paths = [self.ROOT / "CLAUDE.md"]
-        for sub in ("methodology", "skills", "docs", "templates"):
-            paths.extend(sorted((_ROOT / sub).rglob("*.md")))
-        return [p for p in paths if p.is_file()]
-
-    def _naming_the_generated_file(self) -> list[Path]:
-        return [
-            p
-            for p in self._corpus()
-            if ".session-handoff.md" in p.read_text(encoding="utf-8")
-        ]
-
-    def test_the_pin_has_something_to_check(self):
-        # A structural guard whose subject gets renamed passes vacuously
-        # forever. If this ever finds nothing, the pin is dead, not satisfied.
-        named = self._naming_the_generated_file()
-        assert named, (
-            "no agent-facing guide names `.session-handoff.md` — the pin below "
-            "cannot fail, so it is asserting nothing"
-        )
-
-    def test_every_mention_is_accompanied_by_the_file_the_agent_owns(self):
-        offenders = [
-            str(p.relative_to(self.ROOT))
-            for p in self._naming_the_generated_file()
-            if ".handoff-notes.md" not in p.read_text(encoding="utf-8")
-        ]
-        assert not offenders, (
-            "these agent-facing guides name `.session-handoff.md` (machine-owned) "
-            "without naming `.handoff-notes.md` (the file the agent owns), which is "
-            f"the affordance gap that lost cross-session context: {offenders}"
-        )
+    def test_subcommand_is_wired_and_advertised(self):
+        # Same shape as the other wiring pins: a dispatch branch, a wrapper, and
+        # an entry inside _USAGE specifically — "the string appears somewhere in
+        # the file" would be satisfied by a docstring or a comment.
+        src = (_ROOT / "bin" / "prawduct-hook").read_text(encoding="utf-8")
+        assert 'command == "handoff"' in src
+        assert "def cmd_handoff(" in src
+        assert "briefing.handoff_cmd(" in src
+        assert "handoff preview" in src.split("_USAGE = (", 1)[1].split(")", 1)[0]

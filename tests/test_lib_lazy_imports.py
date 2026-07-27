@@ -119,6 +119,25 @@ class TestLazyIsolation:
             "it inherits ledger's module-scope imports"
         )
 
+    @pytest.mark.parametrize("module", ["buildplan_refs", "briefing", "gates"])
+    def test_the_hot_path_does_not_drag_in_heavy(self, module: str):
+        """The SessionStart/Stop path, probed at all three of its modules.
+
+        `buildplan_refs` reaches the same `views` helper `ledger` does, for the
+        same scope fallback — but here the cost is not hypothetical: `briefing`
+        (SessionStart) and `gates` (Stop) both import `buildplan_refs` at module
+        scope, so a module-scope `views` import bills every session for a parse
+        most of them never reach. The `ledger`/`telemetry` probes above were
+        added in the same work that let this land at the *hotter* consumer, so
+        the two importers are probed alongside the module itself rather than
+        trusted to inherit its discipline.
+        """
+        dragged = _clean_import_probe(f"import lib.{module}", HEAVY_SUBMODULES)
+        assert dragged == set(), (
+            f"importing lib.{module} pulled in heavy modules {sorted(dragged)} — "
+            "import them inside the function that needs them"
+        )
+
     def test_accessing_one_flat_name_loads_only_its_owner(self):
         # Touching a core-owned name must not import advisory_store/views/etc.
         dragged = _clean_import_probe(

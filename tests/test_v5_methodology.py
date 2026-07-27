@@ -111,16 +111,20 @@ class TestBuildingMethodology:
         # session-continuity work (2026-07-27) added chunk-close step 7 (write
         # the forward notes) and rewrote the one sentence describing the /clear
         # hook into the two-files-two-owners paragraph, and PAID FOR BOTH the
-        # same way — ~135 tokens of additions against ~145 of trims, all of it
-        # in-file redundancy rather than content: two Common Traps that restated
-        # rules stated earlier in this same file ("Silent requirement dropping"
-        # ↔ Working With Specs' closing line; "Ignoring the Critic" ↔ the
-        # Blocking-findings paragraph; "Pre-existing dismissal" was already gone
-        # on the same grounds), trailing sentences that restated their own
-        # bullet (multi-hop, PBT, verification theater), and prose fat in the
-        # intro, worktree, PR and Critic-timing paragraphs. ~4590 now, one token
-        # BELOW where the addition found it. Headroom is a few words BY DESIGN;
-        # the next addition trims or relocates first.
+        # same way — the additions funded entirely by in-file redundancy rather
+        # than by cutting content: three Common Traps that restated
+        # rules stated earlier in this same file. Surviving coverage checked per
+        # item, not assumed: "Silent requirement dropping" -> Working With
+        # Specs' closing line + the digest + CLAUDE.md's principle roster;
+        # "Pre-existing dismissal" -> the clean-baseline paragraph + the full
+        # digest (NOT the slim one, so a framework session keeps it only in this
+        # file); "Ignoring the Critic" -> the Blocking-findings paragraph two
+        # sections down, and nowhere else — the thinnest of the three, and the
+        # first to restore if the ceiling is ever raised. Plus trailing sentences
+        # restating their own bullet (multi-hop, PBT, verification theater) and
+        # prose fat in the intro, worktree, PR and Critic-timing paragraphs.
+        # 4590 now, one token BELOW where the addition found it. Headroom is a
+        # few words BY DESIGN; the next addition trims or relocates first.
         tokens = estimate_tokens(self.content)
         assert tokens < 4600, f"building.md is ~{tokens} tokens, should be <4600"
 
