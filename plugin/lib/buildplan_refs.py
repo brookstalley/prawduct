@@ -154,8 +154,15 @@ def _count_build_plan_chunks(prawduct_dir: Path) -> tuple[int, int]:
 _CHUNK_COMMIT_RE = re.compile(r"Chunk\s+(\d+)")
 # Conventional-commit scope: `fix(session-boundary-events): … (Chunk 01)`.
 _COMMIT_SCOPE_RE = re.compile(r"^\w+\(([^)]+)\)!?:")
-# The plan's own `scope:` frontmatter key.
-_PLAN_SCOPE_RE = re.compile(r"^scope:\s*(\S+)\s*$", re.MULTILINE)
+# NOTE: the plan's own `scope:` is read through `views._parse_build_plan_frontmatter_scope`,
+# NOT a regex here. A hand-rolled `^scope:\s*(\S+)$` shipped briefly and was wrong in three
+# ways the canonical reader already handles: it kept surrounding quotes (so a legal
+# `scope: "session-boundary-events"` matched no commit scope, `scoped` came back empty, and
+# the filter silently fell through to the unscoped reading — reinstating the very cross-plan
+# contamination it was added to stop), it ignored the documented `null`/`~` opt-out, and it
+# searched the whole document rather than the frontmatter block. This module's docstring
+# already names `views` as the canonical frontmatter reader, and the same bundle deleted
+# `ledger`'s inline copy for exactly this reason (ROB-7T2N).
 
 
 def _commits_ahead_of_base(project_dir: Path, base: str) -> int:
@@ -308,10 +315,14 @@ def _git_aware_progress(
             return None
         if _commits_ahead_of_base(project_dir, base) <= 0:
             return None
-        plan_scope_m = _PLAN_SCOPE_RE.search(content)
-        committed = _committed_chunk_ids(
-            project_dir, base, plan_scope_m.group(1) if plan_scope_m else None
-        )
+        # Canonical reader: strips quotes, honours the `null`/`~` opt-out, and is
+        # bounded to the frontmatter block. Both `(True, None)` (explicit opt-out)
+        # and `(False, None)` (no key) yield None here, which correctly means
+        # "do not scope-filter" — the same unscoped reading as before the filter.
+        from .views import _parse_build_plan_frontmatter_scope  # noqa: PLC0415 — heavy; see the module-header note
+
+        _present, plan_scope = _parse_build_plan_frontmatter_scope(content)
+        committed = _committed_chunk_ids(project_dir, base, plan_scope)
     except (OSError, subprocess.SubprocessError):
         return None
     if not committed:

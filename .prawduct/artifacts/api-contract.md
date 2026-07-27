@@ -54,7 +54,7 @@ in `docs/governance-telemetry.md`.
 
 The CLI groups by responsibility. Every subcommand is read-only unless marked mutating.
 
-- **Hook lifecycle** — `clear` (session reset + briefing, mutating), `build-index`,
+- **Hook lifecycle** — `clear` (orientation always; session reset only at a boundary — `--brief-only` skips it, mutating), `build-index`,
   `user-prompt-submit`, `stop` (session-end gate), `subagent-stop` (consolidate, mutating). Called
   by the harness, not by humans.
 - **Critic data plane** — `critic-begin` (write dispatch manifest, mutating), `critic-consolidate`

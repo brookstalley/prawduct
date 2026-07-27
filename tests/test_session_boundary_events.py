@@ -38,6 +38,7 @@ from __future__ import annotations
 
 import json
 import sys
+from datetime import datetime, timezone
 from pathlib import Path
 
 _ROOT = Path(__file__).resolve().parent.parent / "plugin"
@@ -251,6 +252,54 @@ class TestBoundaryDependentInterpretation:
             "a continuation must NOT sweep the marker — the reviewing process may "
             "still be alive (compact is in-process; fork's parent often is)"
         )
+
+    def test_force_does_not_promote_a_continuation_to_a_boundary(self, tmp_path):
+        """`--force` overrides the GUARDED refusal; it must NOT make a
+        continuation sweep. The three flags used to recombine into a different
+        boolean at each site, and `--session-start --brief-only --force` swept the
+        marker on a continuation — the exact act the design calls a silent
+        governance failure (review R-5)."""
+        prawduct = _seed_session(tmp_path)
+        marker = prawduct / ".critic-active"
+        marker.write_text(json.dumps({"started_at": "2026-07-27T06:00:00Z"}))
+
+        res = run_plugin_hook(
+            "clear", tmp_path, "--session-start", "--brief-only", "--force"
+        )
+        assert res.returncode == 0, res.stderr
+        assert marker.is_file(), (
+            "--force must not promote a continuation to a boundary; forcing a "
+            "sweep on a live session is the failure mode, not an override of it"
+        )
+        # And it is still a continuation in every other respect.
+        assert (prawduct / ".handoff-notes.md").is_file()
+        assert not (prawduct / ".session-handoff.md").is_file()
+
+    def test_force_still_overrides_the_guarded_refusal(self, tmp_path):
+        """The discriminating half — `--force` keeps the job it exists for."""
+        prawduct = _seed_session(tmp_path)
+        marker = prawduct / ".critic-active"
+        marker.write_text(json.dumps({"started_at": "2026-07-27T06:00:00Z"}))
+
+        res = run_plugin_hook("clear", tmp_path, "--force")
+        assert res.returncode == 0, res.stderr
+        assert not marker.is_file(), "a forced bare clear must still sweep"
+
+    def test_bare_clear_still_refuses_while_a_review_is_live(self, tmp_path):
+        """GUARDED, unforced — the CRT-3X9D invariant, unchanged by the refactor.
+
+        The marker must be stamped NOW: the other markers in this module are
+        deliberately hours old, and a marker past the 30-minute TTL is correctly
+        *not* active, so a fixed timestamp would make this test assert the TTL
+        rather than the refusal (it did, on first run).
+        """
+        prawduct = _seed_session(tmp_path)
+        now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        (prawduct / ".critic-active").write_text(json.dumps({"started_at": now}))
+
+        res = run_plugin_hook("clear", tmp_path)
+        assert res.returncode == 2, "a bare clear must refuse during a live review"
+        assert (prawduct / ".handoff-notes.md").is_file(), "and mutate nothing"
 
     def test_boundary_still_sweeps_the_critic_marker(self, tmp_path):
         """The discriminating half — the sweep is not lost, only re-scoped."""

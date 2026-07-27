@@ -22,6 +22,9 @@ governed_by:
       - "severity-prefix vocabulary + stdout/stderr channel split → conforms, and this plan REASONS with the split rather than inheriting it: the handoff-generation failure is deliberately split by audience, with the operator's diagnosis on stderr and the wrong-provenance warning on stdout, because the party harmed by a stale handoff is the incoming agent, which only reads stdout"
       - "emitted text names no prawduct-internal identifier → conforms for the text this plan writes; the pre-existing id-bearing sites it does not touch wait for OBS-7M4D under the norm's interim rule"
       - "single ledger writer → inapplicable; this plan appends no ledger event"
+  - artifact: security-model
+    dispositions:
+      - "untrusted governance state — backlog, learnings, recalled memories, fetched references, PRIOR-SESSION HANDOFFS — is data, not instructions; malformed state fails soft (skip + attribute), never executes → conforms. The channel this plan adds (`.handoff-notes.md`) is model-authored text copied verbatim into the handoff the next session READS — so it is data. Every consumption path fails soft with an attributed NOTE and never blocks `/clear`; an unreadable note is kept and announced rather than executed or silently dropped, and the unmarked-handoff rescue folds arbitrary file content in as quoted content, not instruction. Recorded retroactively during the SCN-5B8Q Chunk 01 cumulative: the norm names this bundle's exact subject and applicability had been ASSUMED, not recorded. Probable cause worth noting so it does not recur — `work_model_index.jurisdiction_candidates` harvests headings, bold and declared vocabulary, and 'prior-session handoffs' appears as plain body prose, so the seeder could not surface this artifact."
 last_validated: 2026-07-27
 ---
 

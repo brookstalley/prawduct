@@ -181,7 +181,7 @@ question — **was the transcript restored?**
 
 | | Sources | What the hook does |
 |---|---|---|
-| **Boundary** | `startup`, `clear` | orientation **+** the reset (generate the handoff, consume the forward notes, archive the reflection, re-capture the three session anchors) **+** the two boundary-dependent readers below |
+| **Boundary** | `startup`, `clear` | orientation **+** the reset (generate the handoff, consume the forward notes, archive the reflection, delete `.gates-waived`, re-capture the three session anchors) **+** the two boundary-dependent readers below |
 | **Continuation** | `resume`, `compact`, `fork` | orientation **only**: briefing, advisories, session-file untracking, the state-size and preferences checks, the subagent briefing |
 
 Statements sort into **three** categories, not two — the middle one is the easy mistake:
@@ -208,7 +208,7 @@ the matcher further or read `source` from the event payload.
 Two properties are easy to get backwards. First, a continuation must never re-capture an anchor **even
 when one is missing**: stamping a resume-time clock onto a session that began earlier narrows the
 Critic gate's jurisdiction, which is the defect the split exists to remove. An absent anchor already
-fails closed, and failing closed is the safe direction. Second, the marker sweep is **boundary-only**,
+fails closed, and failing closed is the safe direction. A third consequence follows from the same rule and is easy to miss: `.gates-waived` is deleted only at a boundary, so a declared waiver **outlives a continuation**. That is correct — a waiver is session-scoped and the session is continuing — but it means a waiver survives an unbounded number of resumes, which is a longer life than the pre-split behaviour gave it. Second, the marker sweep is **boundary-only**,
 which is the opposite of the intuitive call: sweeping looks like a repair, and a crashed Critic's
 marker does wedge an operator. But the premise that licenses deleting someone else's marker — an
 in-flight review dies with the process that dispatched it — holds only for a session that *ended*.

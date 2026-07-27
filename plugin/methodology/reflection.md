@@ -37,7 +37,7 @@ Stop when you reach something you can change. Fixing a shallow cause patches one
 ### Step 4: Capture
 Two targets, two purposes:
 
-- **`.prawduct/.session-reflected`** — the *narrative* of this work cycle. A short entry per reflection; archived to `reflections.md` on next session start.
+- **`.prawduct/.session-reflected`** — the *narrative* of this work cycle. A short entry per reflection; archived to `reflections.md` at the next session boundary (a fresh start or `/clear` — not a resume/compact/fork, which continue this session).
 - **`.prawduct/learnings.md`** — *standing rules* future sessions should follow. Add here only when the cycle produced a durable lesson; most cycles produce a reflection entry and no new learning.
 
 Good learnings have: **context** (one sentence), **what happened**, **why** (root cause), **lesson** (what to do differently), and the **related principle**. Bad learnings are too abstract ("be more careful with tests"), too specific ("in file X line 42 change Y"), or write-only (filed where nobody reads them).
@@ -120,4 +120,4 @@ The corresponding `learnings-detail.md` entry carries the full observation, erro
 
 ## Reflections Archive
 
-Session reflections in `.prawduct/.session-reflected` are automatically archived to `.prawduct/reflections.md` on next session start — an unbounded historical record for framework improvement, NOT loaded into session context.
+Session reflections in `.prawduct/.session-reflected` are automatically archived to `.prawduct/reflections.md` at the next session boundary (a fresh start or `/clear`) — an unbounded historical record for framework improvement, NOT loaded into session context.

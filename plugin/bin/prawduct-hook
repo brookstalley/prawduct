@@ -501,7 +501,9 @@ def _untrack_session_files(project_dir: Path) -> list[str]:
     # all matched paths are confirmed-tracked above, so the batch near-always
     # succeeds atomically; on the rare whole-command failure (e.g. permissions)
     # nothing is reported as untracked — where the old loop would have reported the
-    # paths it got through. Self-healing: the next session start retries the sweep.
+    # paths it got through. Self-healing: every SessionStart retries the sweep —
+    # this is orientation, so a continuation (resume/compact/fork) retries it too,
+    # not only a boundary.
     # Best-effort cleanup must never block session start.
     try:
         rm = subprocess.run(
@@ -625,14 +627,24 @@ def _boundary_close_session(project_dir: Path, prawduct_dir: Path) -> None:
     if reflected.is_file():
         reflection_preserved = False
         try:
-            content = reflected.read_text().strip()
+            # Explicit UTF-8 on every hop. Without `encoding=`, the append used the
+            # operator's locale codec and raised UnicodeEncodeError — a ValueError,
+            # NOT an OSError — which escaped the handler below, and nothing above
+            # catches it (`cmd_clear` calls this unguarded; `main()` has no
+            # top-level handler). That tracebacked out of the SessionStart hook and
+            # took the rest of the boundary AND the whole orientation half with it,
+            # contradicting this design's own promise that `/clear` is never
+            # blocked. The except-set is widened to UnicodeError as well, so a
+            # future codec path cannot re-open the hole.
+            content = reflected.read_text(encoding="utf-8").strip()
             if content:
                 log = prawduct_dir / "reflections.md"
-                separator = "\n\n---\n\n" if log.is_file() and log.read_text().strip() else ""
-                with open(log, "a") as f:
+                prior = log.read_text(encoding="utf-8").strip() if log.is_file() else ""
+                separator = "\n\n---\n\n" if prior else ""
+                with open(log, "a", encoding="utf-8") as f:
                     f.write(f"{separator}{content}\n")
             reflection_preserved = True
-        except (UnicodeDecodeError, OSError) as exc:
+        except (UnicodeError, OSError) as exc:
             # Consumption keys on PRESERVATION, not on "we tried" — the same rule
             # `.handoff-notes.md` already uses, applied to its literal sibling.
             # Previously this swallowed the failure and the deletion loop below
@@ -746,7 +758,11 @@ def cmd_clear(project_dir: Path, argv: list[str] | None = None) -> int:
     read-only and is not orientation:
 
     1. *Destructive boundary acts* — the handoff, consuming the forward notes,
-       archiving the reflection, re-capturing the three session anchors.
+       archiving the reflection, deleting `.gates-waived`, re-capturing the three
+       session anchors. Note the waiver's consequence, which is easy to miss: it
+       clears only here, so a declared waiver OUTLIVES a continuation. Correct — a
+       waiver is session-scoped and the session continues — but a longer life than
+       the pre-split behaviour gave it.
     2. *Boundary-dependent readers* — they destroy nothing but interpret session
        state as a **finished** session's: the critic-active marker sweep (it
        deletes a marker on the theory that its writer's process is gone) and the
@@ -782,9 +798,33 @@ def cmd_clear(project_dir: Path, argv: list[str] | None = None) -> int:
     )
     if rejected is not None:
         return rejected
-    session_start = "--session-start" in argv
     force = "--force" in argv
-    brief_only = "--brief-only" in argv
+
+    # Resolve the INVOCATION KIND once, here, and gate every site on it. The three
+    # flags previously recombined into a different boolean expression at each
+    # decision (`boundary or force` / `elif session_start` / `not brief_only`), so
+    # the local named `boundary` gated neither `_boundary_*` call and the kinds
+    # disagreed at the edges — most visibly, `--session-start --brief-only --force`
+    # swept the critic marker on a CONTINUATION, the act this design classifies as
+    # a silent governance failure. One value means the next statement added below
+    # picks a category instead of inventing a fourth expression.
+    #
+    #   BOUNDARY     a session ended: run everything (destructive acts, the
+    #                boundary-dependent readers, orientation).
+    #   CONTINUATION resume/compact/fork — the transcript survived. Orientation
+    #                only; mutates no session state, so the critic guard has
+    #                nothing to protect and neither sweeps nor refuses.
+    #   GUARDED      a bare `clear`, i.e. what a reviewer subagent can issue.
+    #                Treated as a boundary, but refused while a review is live
+    #                (CRT-3X9D).
+    if "--session-start" in argv:
+        kind = "CONTINUATION" if "--brief-only" in argv else "BOUNDARY"
+    else:
+        kind = "CONTINUATION" if "--brief-only" in argv else "GUARDED"
+    # `--force` is orthogonal: it overrides the GUARDED refusal. It does NOT
+    # promote a continuation to a boundary — forcing a marker sweep on a live
+    # session is the failure mode, not an override of it.
+    brief_only = kind == "CONTINUATION"
     prawduct_dir = get_prawduct_dir(project_dir)
 
     # The plugin is user-scoped, so this SessionStart hook fires in every repo the
@@ -815,15 +855,14 @@ def cmd_clear(project_dir: Path, argv: list[str] | None = None) -> int:
     # asymmetry decides it: sweeping a live marker is a silent governance failure,
     # while not sweeping a dead one costs at most the 30-minute TTL, with `--force`
     # and `rm` as loud, documented overrides.
-    boundary = session_start and not brief_only
-    if boundary or force:
+    if kind == "BOUNDARY" or (kind == "GUARDED" and force):
         try:
             _critic_marker().clear_marker(prawduct_dir)
         except Exception:  # prawduct:allow prawduct/broad-except -- marker sweep must never block session start
             pass
-    elif session_start:
-        # A continuation: mutates no session state, so there is nothing for the
-        # guard to protect — it neither sweeps nor refuses.
+    elif kind == "CONTINUATION":
+        # Mutates no session state, so there is nothing for the guard to protect —
+        # it neither sweeps nor refuses, and --force does not change that.
         pass
     else:
         try:
@@ -1381,7 +1420,8 @@ def cmd_stop(project_dir: Path, stop_input: dict | None = None) -> int:
                 "REFLECTION: Files were modified but no session reflection was captured.\n"
                 "  Append your reflection to .prawduct/.session-reflected. This is a narrative of what\n"
                 "  happened: what changed, what surprised you, what the methodology helped or hindered.\n"
-                "  It gets archived to reflections.md automatically on next session start.\n"
+                "  It gets archived to reflections.md at the next session boundary (a fresh\n"
+                "  start or /clear) — resuming or compacting this session does not.\n"
                 "\n"
                 "  Going forward, reflect at WORK BOUNDARIES — right after Critic passes, after a bug\n"
                 "  fix, after error recovery — not at session end. Writing reflections when the user is\n"
@@ -1395,7 +1435,8 @@ def cmd_stop(project_dir: Path, stop_input: dict | None = None) -> int:
                 "  Escape hatch: if this gate cannot be satisfied this session (rare for reflection —\n"
                 "  it is meant to be cheap), declare a waiver so this gate stops re-firing:\n"
                 "    echo '{\"reflection\": \"reason — be specific\"}' > .prawduct/.gates-waived\n"
-                "  Empty reasons are rejected; the file auto-clears next session. See\n"
+                "  Empty reasons are rejected; the file clears at the next session boundary\n"
+                "  (a fresh start or /clear), so it outlives a resume/compact/fork. See\n"
                 "  `/prawduct:methodology building` (Gate waivers) for when this is appropriate.\n"
             ))
     elif (
@@ -1409,7 +1450,8 @@ def cmd_stop(project_dir: Path, stop_input: dict | None = None) -> int:
         print(
             "\nNOTE: No session reflection captured. Reflection is not required for exploratory work,\n"
             "  but if this session produced useful insights, consider writing them to\n"
-            "  .prawduct/.session-reflected (archived automatically on next session start).\n",
+            "  .prawduct/.session-reflected (archived at the next session boundary — a fresh\n"
+            "  start or /clear, not a resume/compact/fork).\n",
             file=sys.stderr,
         )
 
@@ -1515,7 +1557,8 @@ def cmd_stop(project_dir: Path, stop_input: dict | None = None) -> int:
                 "    rm .prawduct/.critic-active\n"
                 "    rm -rf .prawduct/.critic-partials\n"
                 "    echo '{\"critic\": \"reason — be specific\"}' > .prawduct/.gates-waived\n"
-                "  Empty reasons are rejected; the file auto-clears next session.\n"
+                "  Empty reasons are rejected; the file clears at the next session boundary\n"
+                "  (a fresh start or /clear), so it outlives a resume/compact/fork.\n"
             )
             try:
                 state, missing = _critic_consolidate().pending_state(prawduct_dir)
@@ -1617,7 +1660,8 @@ def cmd_stop(project_dir: Path, stop_input: dict | None = None) -> int:
             "  it depends on a human authoring step or external system — declare a waiver so\n"
             "  this gate stops re-firing every turn:\n"
             "    echo '{\"critic\": \"reason — be specific\"}' > .prawduct/.gates-waived\n"
-            "  Empty reasons are rejected; the file auto-clears next session. See\n"
+            "  Empty reasons are rejected; the file clears at the next session boundary\n"
+                "  (a fresh start or /clear), so it outlives a resume/compact/fork. See\n"
             "  `/prawduct:methodology building` (Gate waivers) for when this is appropriate.\n"
         )
         verdict_status = critic_verdict.get("status", "")
@@ -1781,13 +1825,16 @@ def cmd_stop(project_dir: Path, stop_input: dict | None = None) -> int:
                 "  unavailable and merge is not imminent), declare a waiver so this gate stops\n"
                 "  re-firing every turn:\n"
                 "    echo '{\"pr\": \"reason — be specific\"}' > .prawduct/.gates-waived\n"
-                "  Empty reasons are rejected; the file auto-clears next session. PR review is\n"
+                "  Empty reasons are rejected; the file clears at the next session boundary\n"
+                "  (a fresh start or /clear), so it outlives a resume/compact/fork. PR review is\n"
                 "  the release-readiness gate — waive only when merge will not happen this\n"
                 "  session. See `/prawduct:methodology building` (Gate waivers).\n"
             ))
 
     # Surface any waivers so the agent (and reviewer) can see what was skipped.
-    # Waivers are auto-cleared at next session start so they never carry forward.
+    # Waivers clear at the next session BOUNDARY (a fresh start or /clear), so they
+    # never carry into a new session — but they DO outlive a resume/compact/fork,
+    # which is correct: the waiver is session-scoped and that session continues.
     if waiver_notes:
         print("", file=sys.stderr)
         print("GATE WAIVERS (this session, .gates-waived):", file=sys.stderr)
