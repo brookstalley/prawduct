@@ -1193,13 +1193,30 @@ def cmd_critic_consolidate(project_dir: Path) -> int:
 def cmd_subagent_stop(project_dir: Path, stop_input: dict | None = None) -> int:
     """SubagentStop trigger: consolidate Critic partials as each reviewer finishes.
 
-    Registered for the ``critic-reviewer`` agent type. Runs `critic-consolidate`
-    best-effort — it no-ops until every roster role has reported, then merges
-    exactly once, so firing per-reviewer is safe and idempotent. This hook is
-    ADVISORY: it ALWAYS exits 0 and never blocks the subagent. The enforcing gate
-    is the session-end backstop (cmd_stop) — if this trigger somehow never fires
-    (matcher drift, a harness change), the lingering marker still blocks at
-    session end, so consolidation is event-driven-fast but session-end-guaranteed.
+    Registered for the ``critic-reviewer`` agent type via the SubagentStop
+    matcher ``(^|:)critic-reviewer$``. The matcher must be a REGEX, not the bare
+    name: for SubagentStop, a matcher of only letters/digits/``_``/``-``/spaces/
+    ``,``/``|`` is a literal — a single exact string, or a ``|``/``,``-separated
+    LIST of exact strings — and the runtime ``agent_type`` of a plugin subagent
+    is the plugin-scoped ``prawduct:critic-reviewer``. A bare ``critic-reviewer``
+    matcher is therefore exact-compared against a scoped value and never fires at
+    all (CRT-2J8N — it shipped that way through v3.1.1). The ``(^|:)`` prefix
+    keeps it correct if the plugin is ever loaded unscoped or under another name.
+
+    Which literal class applies is NOT uniform across hook events, so do not read
+    this as a global rule: the SessionStart ``startup|resume|clear|compact|fork``
+    matchers in this same hooks.json are lists of exact strings and are correct.
+    Source: https://code.claude.com/docs/en/hooks (verified 2026-07-27),
+    corroborated against the installed Claude Code 2.1.220 matcher implementation.
+
+    Runs `critic-consolidate` best-effort — it no-ops until every roster role has
+    reported, then merges exactly once, so firing per-reviewer is safe and
+    idempotent. This hook is ADVISORY: it ALWAYS exits 0 and never blocks the
+    subagent. The enforcing gate is the session-end backstop (cmd_stop) — if this
+    trigger somehow never fires (matcher drift, a harness change), the lingering
+    marker still blocks at session end, so consolidation is event-driven-fast but
+    session-end-guaranteed. That backstop is why CRT-2J8N degraded silently
+    rather than losing reviews outright.
 
     ``stop_input`` is the parsed SubagentStop stdin: ``cwd`` locates the project
     (the reviewer's cwd is the project root), ``agent_type`` is the dispatched

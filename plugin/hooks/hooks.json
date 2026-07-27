@@ -78,7 +78,7 @@
     ],
     "SubagentStop": [
       {
-        "matcher": "critic-reviewer",
+        "matcher": "(^|:)critic-reviewer$",
         "hooks": [
           {
             "type": "command",

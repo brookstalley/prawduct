@@ -3,6 +3,53 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-07-27: The Critic's SubagentStop trigger had never fired (CRT-2J8N)
+
+<!-- prawduct: type=fix -->
+
+The `SubagentStop` hook that consolidates Critic partials as each reviewer finishes has never
+fired — not in this repo, not in any product, on any release that shipped it. Its matcher was the
+bare `critic-reviewer`, and for SubagentStop a matcher containing only letters, digits, `_`, `-`,
+spaces, `,` and `|` is a **literal** — one exact string, or a `|`/`,`-separated **list** of exact
+strings; the runtime `agent_type` of a subagent shipped by a plugin is the **plugin-scoped**
+`prawduct:critic-reviewer`. Exact-comparing one to the other can never match. Fixed to
+`(^|:)critic-reviewer$`, which takes the regex path and stays correct if the plugin is ever loaded
+unscoped or under another name.
+
+Which literal class an event uses is **not uniform across hook events**, so this is not a global
+rule: the `startup|resume|clear|compact|fork` SessionStart matchers in the same file are lists of
+exact strings and were always correct. Source: https://code.claude.com/docs/en/hooks (verified
+2026-07-27), corroborated during review against the installed Claude Code 2.1.220 matcher
+implementation.
+
+The user-visible effect was never lost reviews — the session-end backstop still blocked on the
+lingering marker, which is why this degraded quietly instead of failing loudly. What consumers
+actually got was a **documented safety step turned load-bearing**: CLAUDE.md describes running
+`critic-consolidate` before reading `.critic-findings.json` as "an idempotent no-op when the
+`SubagentStop` trigger already landed it." The trigger never landed it, so anyone who skipped that
+step read the *previous* review's findings.
+
+Three things about how it escaped, all worth more than the one-line fix:
+
+- **A guard behind a gate that never opens is not a guard.** `cmd_subagent_stop` carries an
+  `agent_type.endswith("critic-reviewer")` check, and `operator-verification.md` VRF-002 cited that
+  defense as the reason matcher uncertainty was tolerable. But the defense runs *downstream* of the
+  matcher. If the matcher never fires, nothing downstream of it protects anything.
+- **"Not unit-testable" was over-broad.** VRF-002 deferred the whole question to a live check on the
+  grounds that "matcher-anchoring semantics vary by Claude Code version." Delivery does need a live
+  check; whether a matcher *can* match a given `agent_type` is pure static analysis. It is now pinned
+  by `tests/test_critic_reviewer_agent.py::TestSubagentStopMatcherMatchesRuntimeAgentType`, which
+  encodes the documented two-path matcher rule and fails loudly on the bare-name form.
+- **The pre-existing test asserted the wrong contract.** `test_name_is_critic_reviewer` checked that
+  the agent's frontmatter `name` is `critic-reviewer` and commented that this name "is dispatch
+  subagent_type AND the SubagentStop matcher target." The first half is true and the second is false —
+  a true assertion carrying a false implication, which reads as coverage and provides none.
+
+VRF-002 remains pending for the delivery half and is annotated with this outcome. Its own final line
+had named the suspect 17 days earlier — "investigate the matcher string (`prawduct:critic-reviewer`
+vs `critic-reviewer`)" — but `operator_verification_required` is `false`, so the entry was never
+enforced and the queue has six pending entries, the oldest 17 days old.
+
 ## 2026-07-27: Orientation and boundary become separate acts (session-boundary-events Chunk 01)
 
 <!-- prawduct: type=fix | scope=session-boundary-events | chunks=01 -->
