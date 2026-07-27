@@ -65,9 +65,13 @@ is the single decision the rest of the plan hangs from.
 - [ ] Chunk 04: CRT-7P5J — the handoff's Critic summary composes resolution facts
 - [ ] Chunk 05: SCN-7K4B — design only: program-level continuity, advance the item or defer it
 
-Context: **Chunk 01 built** (2026-07-26) — `.prawduct/.handoff-notes.md` is the model-owned forward
+Context: **Chunk 01 complete** (2026-07-26; `5e5b178` + `76f165c`, Critic-clean — 6 warnings
+resolved across two passes, 0 blocking) — `.prawduct/.handoff-notes.md` is the model-owned forward
 channel; the generator emits it first, carries a machine marker, and folds an unmarked
-(hand-authored) handoff in rather than overwriting it. Consumption is transactional. The pair's
+(hand-authored) handoff in rather than overwriting it. Consumption keys on **delivery**, not on "a
+handoff was written" (the Critic's central catch — the proxy deleted an unreadable note whose text
+reached nothing). Degraded paths split by audience: continuity facts to stdout where the incoming
+agent reads them, housekeeping to stderr. The pair's
 contract is recorded in `architecture.md` § "The one model-owned session file" — that is the
 persisted-format enumeration Chunk 01 called for, and the answers are: nothing but the generator
 reads the notes; per-worktree; unconsumed notes survive to the next `/clear`. Chunk 02 is next.
