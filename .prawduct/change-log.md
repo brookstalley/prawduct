@@ -102,7 +102,19 @@ STH-2K8R shipped, the stop hook kept calling the non-git-aware resolver, and the
 both closures for seven weeks — it is fixed only here. "Closed by construction via another item" is
 the reasoning pattern that failed, and this is the evidence for it.
 
-40 new tests; suite 2572 → 2612 (39 through the verify passes, plus the encoding pin). Two existing tests were updated, not weakened: they passed
+The class took three review rounds and two more findings to close, which is the interesting part.
+Round one swept six of seven reads in one module; round two found two more outside it, one inside a
+function that reads the plan *twice* and so disagreed with itself; round three found that only the
+**codec** axis had been swept and the **except-set** axis was still open — `UnicodeDecodeError` is a
+`ValueError`, not an `OSError`, so five readers raised past callers with no guard, turning
+`verify-chunk-refs`' documented `cannot-verify:` exit into a traceback across a boundary whose error
+model forbids one. Each sweep reached exactly as far as the unit being edited, because a boundary
+you are inside is invisible. So the rule is now a **pin** —
+`tests/preferences/test_build_plan_decoding.py`, checking both axes and guarding itself against
+matching nothing — rather than a fourth application of attention. The ~67 other runtime reads are
+ROB-7T2N, deliberately not swept here.
+
+42 new tests; suite 2572 → 2614. Two existing tests were updated, not weakened: they passed
 `.prawduct/` positionally to functions whose argument is now the project dir. One new test was
 rewritten after the Critic found it passed vacuously — its `"01" not in stdout` assertion was
 satisfied by the empty stdout of a `cannot-verify` exit, so it would have gone green against the

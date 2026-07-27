@@ -698,7 +698,7 @@ def validate_chunk_roster(
         if plan_path not in rosters:
             try:
                 plan_content = plan_path.read_text(encoding="utf-8")
-            except OSError:
+            except (OSError, UnicodeDecodeError):
                 continue
             _start, _end, section = extract_status_section(plan_content)
             roster = [
@@ -1086,7 +1086,22 @@ def _plan_status_results(
     results: list[ViewRegenResult] = []
     for plan_path in plan_paths:
         plan_rel = plan_path.relative_to(prawduct_dir).as_posix()
-        plan_content = plan_path.read_text(encoding="utf-8")
+        try:
+            plan_content = plan_path.read_text(encoding="utf-8")
+        except (OSError, UnicodeDecodeError) as exc:
+            # An unreadable plan is one plan's problem, not the whole regen's:
+            # a multi-plan repo must still regenerate its other views. Reported
+            # as a noop naming the cause rather than swallowed, so the operator
+            # learns why a plan's Status did not move.
+            results.append(
+                ViewRegenResult(
+                    name="status",
+                    action="noop",
+                    summary=f"Status ({plan_rel}): unreadable build-plan: {exc}",
+                    path_relative=plan_rel,
+                )
+            )
+            continue
         status_new, status_changes = build_status_view(change_log_content, plan_content)
         if status_new is None:
             results.append(

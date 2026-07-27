@@ -120,7 +120,9 @@ Critic: 2 blocking / 12 warnings resolved, then `verify-resolutions` clean (0 bl
 also fixed here). Three of the four Critic-found defects were instances of one class — a fix landed
 at the instance a review named rather than the class it belonged to — including one in Chunk 01's
 `_read_unmarked_handoff` that Chunk 01's own recorded learning had described. That is now a learning
-in its own right. Chunk 03 is next.
+in its own right — and the class that took longest (a build-plan read decoding with the operator's
+locale, then the matching except-set) is now held by a pin in `tests/preferences/`, not by
+attention. Chunk 03 is next.
 
 Plan written 2026-07-26 on `feature/session-handoff-continuity` (off develop). Parents:
 **SCN-4H9T** (the upstream triage of discodon's STH-9FYI — five defects, all reproduced against

@@ -648,7 +648,7 @@ def _parse_build_plan_chunk_refs(prawduct_dir: Path, chunk_id: str) -> dict:
         return result
     try:
         content = plan_path.read_text(encoding="utf-8")
-    except OSError as exc:
+    except (OSError, UnicodeDecodeError) as exc:
         result["error"] = f"unreadable build-plan: {exc}"
         return result
 
@@ -708,7 +708,7 @@ def _parse_build_plan_chunk_type(
         return None, f"missing build-plan: {plan_path}"
     try:
         content = plan_path.read_text(encoding="utf-8")
-    except OSError as exc:
+    except (OSError, UnicodeDecodeError) as exc:
         return None, f"unreadable build-plan: {exc}"
 
     found, section_lines = _chunk_section_lines(content, chunk_id)
@@ -750,7 +750,7 @@ def _parse_build_plan_chunk_trivial_rationale(
         return None, f"missing build-plan: {plan_path}"
     try:
         content = plan_path.read_text(encoding="utf-8")
-    except OSError as exc:
+    except (OSError, UnicodeDecodeError) as exc:
         return None, f"unreadable build-plan: {exc}"
 
     found, section_lines = _chunk_section_lines(content, chunk_id)
