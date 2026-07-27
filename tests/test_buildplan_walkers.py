@@ -295,9 +295,11 @@ class TestChunkIdFromItemText:
         assert _chunk_id_from_item_text("Chunky monkey business") is None
 
     def test_current_chunk_id_from_h2_status(self, tmp_path: Path):
-        prawduct = tmp_path / ".prawduct"
-        _write_plan(prawduct, PLAN_H2)
-        assert _current_chunk_id_from_status(prawduct) == "1"
+        # Takes the PROJECT dir, not `.prawduct/` — resolving "current" is
+        # git-aware on a views_enabled repo (BLD-7K3Q), so the repo root is
+        # part of the question.
+        _write_plan(tmp_path / ".prawduct", PLAN_H2)
+        assert _current_chunk_id_from_status(tmp_path) == "1"
 
     def test_chunk_ids_in_status_order_h2(self, tmp_path: Path):
         prawduct = tmp_path / ".prawduct"

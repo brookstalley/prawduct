@@ -47,8 +47,10 @@ last_validated: 2026-07-03
 ## Status
 
 <!-- The cross-session handoff. Mark `[x]` when a chunk's "Done when" steps are all
-     satisfied; keep Context current. When `views_enabled`, checkboxes regenerate from
-     tagged change-log entries — update the tag, don't hand-flip. -->
+     satisfied; keep Context current. Context runs from `Context:` to the end of this
+     section, so it may be several paragraphs — the handoff carries it whole. When
+     `views_enabled`, checkboxes regenerate from tagged change-log entries — update the
+     tag, don't hand-flip. -->
 
 - [ ] Chunk 01: Walking skeleton — list page backed by SQLite
 - [ ] Chunk 02: Add and check off items, grouped by store section

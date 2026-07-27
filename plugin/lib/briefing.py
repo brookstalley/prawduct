@@ -40,6 +40,7 @@ from typing import NamedTuple
 
 from . import buildplan_refs, gates, gitstate
 from .backlog import legacy as backlog
+from .coverage import _resolve_base_branch
 from .core import (
     BUILD_PLAN_POINTER_KEY,
     atomic_write_text,
@@ -51,6 +52,62 @@ from .core import (
 # =============================================================================
 # Staleness Scan (v5: content-based artifact freshness)
 # =============================================================================
+
+
+def _plan_work_possibly_unmerged(
+    project_dir: Path, prawduct_dir: Path
+) -> tuple[bool, str]:
+    """Is the completed plan's work plausibly still unmerged? ``(bool, reason)``.
+
+    The build plan is session-local and gitignored, so it survives a branch
+    switch: complete every chunk on a feature branch, check out the base branch,
+    and the staleness scan recommends deleting a plan whose work has not shipped.
+    Following that advice orphans live work — reported from the field.
+
+    Two independent sufficient signals, either one enough:
+
+    1. **Foreign-branch WIP** — ``project-state.yaml`` records work in progress
+       on a branch other than the current one. That is the reported repro
+       exactly: a plan surviving a switch onto the base branch.
+    2. **Branch ahead of base** — the current branch is not the base and
+       ``git merge-base --is-ancestor HEAD <base>`` says HEAD is not reachable
+       from it, i.e. this branch has commits the base does not.
+
+    Fails toward ``(False, "")`` on every uncertainty — no base resolves, git is
+    unavailable, detached HEAD. This may only ADD a keep-recommendation on
+    positive evidence; it must never silently suppress a legitimate delete nudge,
+    because a plan that really is finished and merged should still be cleaned up.
+    """
+    try:
+        current_branch = gitstate.current_branch(project_dir)
+        others = _get_other_branch_wip(prawduct_dir, current_branch or "")
+        if others:
+            return True, (
+                f"{len(others)} other branch(es) still record work in progress"
+            )
+
+        base, _ = _resolve_base_branch(project_dir)
+        if not base or current_branch is None:
+            return False, ""
+        # `base` may be `origin/develop`; compare against the bare branch name
+        # too, so standing ON the base branch is recognized either spelling.
+        if current_branch in (base, base.removeprefix("origin/")):
+            return False, ""
+        proc = subprocess.run(
+            ["git", "merge-base", "--is-ancestor", "HEAD", base],
+            cwd=str(project_dir),
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+        # rc 0 = HEAD is reachable from base (merged). rc 1 = not an ancestor
+        # (unmerged). Any other rc is an error — fail toward "merged" so the
+        # ordinary nudge survives.
+        if proc.returncode == 1:
+            return True, f"its commits are not yet in {base}"
+        return False, ""
+    except (OSError, subprocess.SubprocessError):
+        return False, ""
 
 
 def _extract_dependency_names(dep_file: Path) -> list[str]:
@@ -149,24 +206,44 @@ def staleness_scan(project_dir: Path) -> list[str]:
     build_plan_label = f".prawduct/{build_plan_path.relative_to(prawduct_dir).as_posix()}"
     if build_plan_path.is_file():
         try:
-            status = buildplan_refs._parse_build_plan_status(prawduct_dir)
+            status = buildplan_refs._parse_build_plan_status(project_dir)
             if status.get("current_chunk"):
                 pass  # Active work — not stale
-            elif status.get("_has_status_items"):
+            elif buildplan_refs.build_plan_is_complete(status):
                 # All items checked — work complete
-                findings.append(
-                    f"build plan: {build_plan_label} has all chunks complete — "
-                    "if work is done, delete the plan"
+                unmerged, unmerged_reason = _plan_work_possibly_unmerged(
+                    project_dir, prawduct_dir
                 )
+                if unmerged:
+                    findings.append(
+                        f"build plan: {build_plan_label} has all chunks complete but "
+                        f"{unmerged_reason} — keep the plan until it merges "
+                        "(deleting now would orphan unshipped work)"
+                    )
+                else:
+                    findings.append(
+                        f"build plan: {build_plan_label} has all chunks complete — "
+                        "if work is done, delete the plan"
+                    )
             else:
                 # No Status items — check WIP as fallback for old-style repos
                 current_branch = _get_current_branch(project_dir)
                 wip = _parse_wip(prawduct_dir, branch=current_branch)
                 if not wip.get("description"):
-                    findings.append(
-                        f"build plan: {build_plan_label} exists but no active work — "
-                        "if work is complete, delete the plan"
+                    unmerged, unmerged_reason = _plan_work_possibly_unmerged(
+                        project_dir, prawduct_dir
                     )
+                    if unmerged:
+                        findings.append(
+                            f"build plan: {build_plan_label} exists but no active work, and "
+                            f"{unmerged_reason} — keep the plan until it merges "
+                            "(deleting now would orphan unshipped work)"
+                        )
+                    else:
+                        findings.append(
+                            f"build plan: {build_plan_label} exists but no active work — "
+                            "if work is complete, delete the plan"
+                        )
         except Exception:  # prawduct:allow prawduct/broad-except -- staleness scan is best-effort
             pass
 
@@ -353,17 +430,30 @@ def _parse_all_wip_branches(prawduct_dir: Path) -> dict[str, dict[str, str]]:
         return {}
 
 
-def _get_active_work(prawduct_dir: Path) -> dict[str, str]:
-    """Get active work context, preferring build plan Status over project-state.yaml WIP."""
-    work = buildplan_refs._parse_build_plan_status(prawduct_dir)
-    if work.get("description"):
+def _get_active_work(project_dir: Path) -> dict[str, str]:
+    """Get active work context, preferring build plan Status over project-state.yaml WIP.
+
+    A build plan whose chunks are ALL complete is not active work. Without that
+    predicate a finished plan was reported as the next session's ``**Task**``
+    forever — ``staleness_scan`` read the identical parse and correctly said
+    "all chunks complete", while this function said "in progress" from the same
+    bytes. Both now ask ``buildplan_refs.build_plan_is_complete``.
+    """
+    work = buildplan_refs._parse_build_plan_status(project_dir)
+    if work.get("description") and not buildplan_refs.build_plan_is_complete(work):
         return work
-    return _parse_wip(prawduct_dir)
+    return _parse_wip(gitstate.get_prawduct_dir(project_dir))
 
 
-def _get_work_in_progress(prawduct_dir: Path) -> str:
-    """Format work in progress as a one-line summary for the session briefing."""
-    wip = _get_active_work(prawduct_dir)
+def _get_work_in_progress(project_dir: Path, wip: dict[str, str] | None = None) -> str:
+    """Format work in progress as a one-line summary for the session briefing.
+
+    ``wip`` lets a caller that has already resolved the active work pass it in;
+    resolution reads git on a ``views_enabled`` repo, and the briefing needs the
+    same answer twice.
+    """
+    if wip is None:
+        wip = _get_active_work(project_dir)
     if wip.get("description"):
         parts = [wip["description"]]
         qualifiers = []
@@ -447,10 +537,12 @@ def assemble_session_briefing(project_dir: Path, staleness: list[str]) -> str:
     prawduct_dir = gitstate.get_prawduct_dir(project_dir)
     lines = ["== SESSION BRIEFING =="]
 
-    # Project identity + work in progress (branch-scoped)
+    # Project identity + work in progress (branch-scoped). Resolved once and
+    # reused below — on a views_enabled repo this reads git.
     project_name = _get_product_name(prawduct_dir)
     current_branch = _get_current_branch(project_dir)
-    work_desc = _get_work_in_progress(prawduct_dir)
+    wip = _get_active_work(project_dir)
+    work_desc = _get_work_in_progress(project_dir, wip)
     lines.append(f"Project: {project_name} | Branch: {current_branch} | Work: {work_desc}")
 
     # Dangling build-plan pointer guard (STH-5P2W). A SET pointer that resolves
@@ -476,12 +568,14 @@ def assemble_session_briefing(project_dir: Path, staleness: list[str]) -> str:
     except Exception:  # prawduct:allow prawduct/broad-except -- briefing must never block session start
         pass
 
-    # Work context and current chunk (prefer build plan Status, fall back to WIP)
-    wip = _get_active_work(prawduct_dir)
+    # Work context and current chunk (resolved above; build plan Status
+    # preferred, falling back to WIP)
     if wip.get("current_chunk"):
         lines.append(f"Resume: {wip['current_chunk']}")
     if wip.get("context"):
-        ctx = wip["context"]
+        # The briefing has a token budget, so it takes the first 200 chars of
+        # what may now be a multi-paragraph block. The handoff carries it whole.
+        ctx = " ".join(wip["context"].split())
         if len(ctx) > 200:
             ctx = ctx[:197] + "..."
         lines.append(f"Context: {ctx}")
@@ -1055,7 +1149,7 @@ def generate_session_handoff(project_dir: Path) -> HandoffResult:
         sections.append("")
 
     # 1. Work context (prefer build plan Status, fall back to project-state.yaml WIP)
-    wip = _get_active_work(prawduct_dir)
+    wip = _get_active_work(project_dir)
     if wip.get("description"):
         sections.append("## Work In Progress")
         sections.append(f"**Task**: {wip['description']}")
@@ -1197,7 +1291,7 @@ def _check_previous_session_gates(project_dir: Path) -> list[str]:
     # composed-coverage verdict cmd_stop blocks on (kernel-v3 chunk 04), so
     # the advisory and the blocking gate can never diverge. Advisory tone:
     # one warning line, not the full remedy text.
-    has_build_plan = gates._has_active_build_plan_file(prawduct_dir) or gates._has_build_plan_in_state(prawduct_dir)
+    has_build_plan = gates._has_active_build_plan_file(project_dir) or gates._has_build_plan_in_state(prawduct_dir)
     if has_build_plan and not doc_only and "critic" not in waivers and gitstate.git_has_code_changes(project_dir, status_output):
         verdict = gates.session_review_verdict(project_dir)
         status = verdict.get("status")

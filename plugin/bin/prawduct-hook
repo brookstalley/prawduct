@@ -1208,7 +1208,7 @@ def cmd_stop(project_dir: Path, stop_input: dict | None = None) -> int:
 
     # Determine if there's an active build plan (used by both gates).
     # "Active" means incomplete chunks remain — a completed plan (all [x]) does not count.
-    has_build_plan = _gates()._has_active_build_plan_file(prawduct_dir) or _gates()._has_build_plan_in_state(prawduct_dir)
+    has_build_plan = _gates()._has_active_build_plan_file(project_dir) or _gates()._has_build_plan_in_state(prawduct_dir)
 
     # Gate 1: Reflection
     # - With active build plan: BLOCKING (structured work deserves reflection)
@@ -1294,7 +1294,7 @@ def cmd_stop(project_dir: Path, stop_input: dict | None = None) -> int:
     # trivial-declaration contract is independent.
     trivial_block_reason = ""
     if has_changes and has_build_plan:
-        current_chunk_id = _buildplan_refs()._current_chunk_id_from_status(prawduct_dir)
+        current_chunk_id = _buildplan_refs()._current_chunk_id_from_status(project_dir)
         if current_chunk_id is not None:
             chunk_type, type_error = _buildplan_refs()._parse_build_plan_chunk_type(prawduct_dir, current_chunk_id)
             # v1.5.1 Chunk 04(a): surface typo'd Type values. Pre-fix, the
@@ -2405,7 +2405,7 @@ def cmd_verify_chunk_refs(project_dir: Path, chunk_id: str | None) -> int:
         # One canonical current-chunk resolution (shared with the stop hook and
         # the Critic helper); handles both the "### Chunk NN:" and
         # "## Chunk N (ID) — Name" Status-item forms.
-        chunk_id = _buildplan_refs()._current_chunk_id_from_status(prawduct_dir)
+        chunk_id = _buildplan_refs()._current_chunk_id_from_status(project_dir)
         if chunk_id is None:
             print("ok: no current chunk in Status; nothing to verify")
             return 0

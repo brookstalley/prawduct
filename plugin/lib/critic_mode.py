@@ -8,8 +8,9 @@ honored as a successive override (rationale ``"plan-override: <mode>"``).
 "Current" is normally the first unchecked ``- [ ]`` item, but on a
 ``views_enabled`` feature branch the Status checkboxes are a derived view
 that only flips at release (so "first unchecked" is always Chunk 01) — there
-the current chunk is derived from git instead (CRT-7B4M, see
-:func:`_git_aware_progress`). The methodology has always called this field
+the current chunk is derived from git instead (CRT-7B4M). Both readings live
+in :func:`lib.buildplan_refs._parse_build_plan_status`, which this module
+consumes rather than reimplements. The methodology has always called this field
 a "successive override," and this is where it is read (CRT-3M8Q). Only when neither override fires
 does :func:`infer_mode` walk four inference rules in precedence order and
 return the first that fires:
@@ -71,7 +72,7 @@ import subprocess
 from pathlib import Path
 
 from . import buildplan_refs, gitstate
-from .core import resolve_build_plan_path, read_bool_yaml_key
+from .core import resolve_build_plan_path
 from .coverage import _resolve_base_branch
 
 # Verbose-string mode constant — used to recognize prior findings'
@@ -100,13 +101,6 @@ _BUILD_PLAN_CRITIC_MODE_RE = re.compile(
     r"^[\s\-\*]*\*\*Critic mode:\*\*\s*([A-Za-z][\w\-]*)"
 )
 
-# Candidate base branches probed in order — first one that resolves wins.
-# Mirrors the convention used by ``/pr`` and the cumulative-Critic gate
-# (typically ``main``; ``develop`` for gitflow projects).
-# A commit subject that references a build-plan chunk, e.g. "feat: … (Chunk 03)".
-# Capital-C + digits matches the "Chunk NN" commit convention without
-# false-matching prose like "10-chunk plan" (CRT-7B4M).
-_CHUNK_COMMIT_RE = re.compile(r"Chunk\s+(\d+)")
 
 def infer_mode(
     project_dir: Path | str,
@@ -148,14 +142,16 @@ def infer_mode(
     # only flips at release — so on a pre-release feature branch they never flip
     # and "first unchecked" is always Chunk 01, which would pin every chunk's
     # mode to Chunk 01's declaration. When that's the case, derive progress from
-    # git instead (CRT-7B4M); otherwise use the checkboxes.
+    # git instead (CRT-7B4M); otherwise use the checkboxes. Both live in
+    # ``buildplan_refs`` now, so this module gets the same answer the handoff and
+    # ``verify-chunk-refs`` get, rather than a private copy of it.
     total, checkbox_complete = buildplan_refs._count_build_plan_chunks(prawduct_dir)
-    git_progress = _git_aware_progress(project_dir, prawduct_dir, total)
+    git_progress = buildplan_refs._git_aware_progress(project_dir, total)
     if git_progress is not None:
         complete, current_chunk_id = git_progress
     else:
         complete = checkbox_complete
-        current_chunk_id = buildplan_refs._current_chunk_id_from_status(prawduct_dir)
+        current_chunk_id = buildplan_refs._current_chunk_id_from_status(project_dir)
 
     # Plan-level override: the CURRENT chunk may declare a ``**Critic mode:**``
     # field. Honor it here (above inference, below explicit args) so a
@@ -353,7 +349,7 @@ def _rule_cumulative_fires(
     if not base_branch:
         return ""
 
-    commits_ahead = _commits_ahead_of_base(project_dir, base_branch)
+    commits_ahead = buildplan_refs._commits_ahead_of_base(project_dir, base_branch)
     if commits_ahead < 2:
         return ""
 
@@ -475,83 +471,12 @@ def _commit_resolves(project_dir: Path, sha: str) -> bool:
     return proc.returncode == 0
 
 
-def _commits_ahead_of_base(project_dir: Path, base: str) -> int:
-    """Number of commits on HEAD since merge-base with ``base``. ``-1`` on failure."""
-    proc = subprocess.run(
-        ["git", "rev-list", "--count", f"{base}..HEAD"],
-        cwd=str(project_dir),
-        capture_output=True,
-        text=True,
-        timeout=10,
-    )
-    if proc.returncode != 0:
-        return -1
-    try:
-        return int(proc.stdout.strip())
-    except ValueError:
-        return -1
-
-
-def _committed_chunk_ids(project_dir: Path, base: str) -> set[str]:
-    """Normalized chunk ids referenced in commit subjects on ``base..HEAD``.
-
-    The branch-robust progress signal for CRT-7B4M: when the build-plan Status
-    checkboxes are a non-flipping derived view (``views_enabled`` on a feature
-    branch), git commits are the only record of which chunks are done. Counts
-    distinct chunk numbers (``Chunk <n>`` in a commit subject), leading-zero-
-    normalized to match Status ids. Returns ``set()`` on git failure.
-    """
-    proc = subprocess.run(
-        ["git", "log", "--format=%s", f"{base}..HEAD"],
-        cwd=str(project_dir),
-        capture_output=True,
-        text=True,
-        timeout=10,
-    )
-    if proc.returncode != 0:
-        return set()
-    ids: set[str] = set()
-    for subject in proc.stdout.splitlines():
-        for m in _CHUNK_COMMIT_RE.finditer(subject):
-            ids.add(m.group(1).lstrip("0") or "0")
-    return ids
-
-
-def _git_aware_progress(
-    project_dir: Path, prawduct_dir: Path, total: int
-) -> tuple[int, str | None] | None:
-    """Git-derived ``(complete, current_chunk_id)``, or ``None`` to use checkboxes.
-
-    Applies ONLY when the Status checkboxes can't be trusted as the progress
-    signal (CRT-7B4M): (a) ``views_enabled`` (checkboxes derive from
-    ``status=shipped`` change-log entries and won't flip until release),
-    (b) a base branch resolves and HEAD is ahead of it (a pre-release feature
-    branch), and (c) at least one chunk is referenced by a commit since base.
-    ``complete`` = Status chunks whose id has a commit; ``current_chunk_id`` =
-    the first Status chunk with NO commit (``None`` when all are committed).
-    Returns ``None`` whenever any condition fails — the caller then uses the
-    checkbox count, so behavior on non-views / non-branch / convention-free
-    repos is exactly as before (never worse).
-    """
-    if total <= 0:
-        return None
-    if not read_bool_yaml_key(prawduct_dir / "project-state.yaml", "views_enabled"):
-        return None
-    base, _ = _resolve_base_branch(project_dir)
-    if not base:
-        return None
-    if _commits_ahead_of_base(project_dir, base) <= 0:
-        return None
-    committed = _committed_chunk_ids(project_dir, base)
-    if not committed:
-        return None
-    status_ids = buildplan_refs._chunk_ids_in_status_order(prawduct_dir)
-    complete = sum(1 for cid in status_ids if (cid.lstrip("0") or "0") in committed)
-    current = next(
-        (cid for cid in status_ids if (cid.lstrip("0") or "0") not in committed),
-        None,
-    )
-    return complete, current
+# `_commits_ahead_of_base` / `_committed_chunk_ids` / `_git_aware_progress` moved
+# to lib/buildplan_refs.py — they answer "which chunk is current," which is
+# build-plan Status parsing, and keeping the derivation here made it reachable
+# only by this module's consumer (the defect recurred at two others: BLD-7K3Q,
+# SCN-4H9T). This module now reaches it through `_parse_build_plan_status` like
+# every other consumer.
 
 
 def _critic_mode_for_chunk(prawduct_dir: Path, chunk_id: str | None) -> str | None:
@@ -564,9 +489,9 @@ def _critic_mode_for_chunk(prawduct_dir: Path, chunk_id: str | None) -> str | No
     than honoring a typo as a mode override — same fail-open-to-inference
     posture the methodology's "optional field" contract implies).
 
-    ``chunk_id`` is resolved by the caller — git-aware on a views-enabled
-    feature branch (CRT-7B4M), otherwise the first ``- [ ]`` chunk via
-    ``buildplan_refs._current_chunk_id_from_status``. Section discovery is
+    ``chunk_id`` is resolved by the caller via
+    ``buildplan_refs`` — git-aware on a views-enabled feature branch
+    (CRT-7B4M), otherwise the first ``- [ ]`` chunk. Section discovery is
     the shared ``buildplan_refs._chunk_section_lines`` walker: name-anchored
     on ``### Chunk <id>:`` with leading-zero tolerance, fenced code blocks
     skipped, stop at the next sibling chunk or top-level section.

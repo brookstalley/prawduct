@@ -741,13 +741,17 @@ def _has_build_plan_in_state(prawduct_dir: Path) -> bool:
         return False
 
 
-def _has_active_build_plan_file(prawduct_dir: Path) -> bool:
-    """Return True if build-plan.md has at least one incomplete chunk.
+def _has_active_build_plan_file(project_dir: Path) -> bool:
+    """Return True if the active build plan has at least one incomplete chunk.
 
     A completed plan (all [x]) or a missing file both return False — only an
     in-progress plan with remaining work triggers governance gates.
+
+    Takes ``project_dir``: "incomplete" is git-derived on a ``views_enabled``
+    repo, where the checkboxes only flip at release (see
+    ``buildplan_refs._parse_build_plan_status``).
     """
-    status = buildplan_refs._parse_build_plan_status(prawduct_dir)
+    status = buildplan_refs._parse_build_plan_status(project_dir)
     return bool(status.get("current_chunk"))
 
 

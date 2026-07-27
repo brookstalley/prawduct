@@ -3,6 +3,55 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-07-27: One answer to "which chunk is current," and a handoff that stops lying about the plan (session-handoff-continuity Chunk 02)
+
+<!-- prawduct: type=fix | scope=session-handoff-continuity | chunks=02 -->
+
+Four wrong-output defects fed `.session-handoff.md`, every one reproduced against this repo's own
+live plan rather than hypothesized. All four are fixed, and the fix for the widest one is a sweep.
+
+**"Which chunk is current" had three implementations and now has one.** On a `views_enabled` repo
+the Status checkboxes are a derived view that only flips at release, so mid-branch every box reads
+`- [ ]` and "first unchecked" reports Chunk 01 for the entire branch. CRT-7B4M shipped the
+git-derived answer for `infer-critic-mode` alone; the defect then recurred at `verify-chunk-refs`
+(**BLD-7K3Q** — grading Chunk 01's refs while chunks 02..N went unverified, silently and green)
+and at the handoff. The derivation moved from `lib/critic_mode.py` into `lib/buildplan_refs.py`
+beside the rest of the Status parsing, and `_parse_build_plan_status` now applies it — so every
+consumer, gate and report alike, is correct by construction instead of by a fourth local patch.
+A test pins that only `buildplan_refs` walks the Status section.
+
+`_parse_build_plan_status`, `_current_chunk_id_from_status`, `_has_active_build_plan_file` and
+`_get_active_work` now take the **project dir**, not `.prawduct/`. The wider signature is the
+point: resolving "current" reads git, and every call site should say so. A `.parent` derivation
+would have worked and kept the sweep invisible — which is how a local fix escaped notice twice.
+
+**A finished plan is no longer next session's task.** `staleness_scan` concluded "all chunks
+complete — delete the plan" while `_get_active_work` read the *identical* parse, applied no
+predicate, and stamped that plan as `**Task**`. The done-predicate is now one named function,
+`build_plan_is_complete`, that both call.
+
+**The work section can no longer vanish.** `description` required a `# Build Plan` H1; a
+frontmatter-style plan has none, so it came back empty — and description is the sole key gating
+the handoff's whole Work In Progress section, which is why a live four-chunk plan produced no work
+section at all. Falls back to the frontmatter `scope:`, then the filename.
+
+**Context is a block, not a line.** It was a `removeprefix` on one physical line, truncating the
+multi-paragraph text `building.md` itself calls "the cross-session handoff" (2283 chars on this
+repo's plan; 85 survived). It now runs from `Context:` to the end of the Status section. That also
+dissolves the multiple-`Context:` question rather than answering it: the first opens the block and
+a later one is text inside it, so neither wins and nothing is dropped. `building.md` and the
+build-plan template say so; the budget was paid for in trims, not raised.
+
+**The delete-the-plan nudge is merge-aware** (**BRF-6K2D**, landed here because it is the adjacent
+half of the same two functions). The plan is gitignored and survives a branch switch, so the nudge
+fired on the base branch while the work sat unmerged — following it would orphan live work. Two
+sufficient signals (foreign-branch WIP; HEAD not an ancestor of base), failing toward the ordinary
+nudge on every uncertainty, so this can only ADD a keep-recommendation and never silently suppress
+a legitimate one. A test pins the merged case still getting told to delete.
+
+31 new tests; suite 2572 → 2603. Two existing tests were updated, not weakened: they passed
+`.prawduct/` positionally to functions whose argument is now the project dir.
+
 ## 2026-07-26: The handoff gets a forward channel, and stops destroying what it finds (session-handoff-continuity Chunk 01)
 
 <!-- prawduct: type=feature | scope=session-handoff-continuity | chunks=01 -->

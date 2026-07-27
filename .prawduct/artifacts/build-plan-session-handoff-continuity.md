@@ -74,7 +74,26 @@ reached nothing). Degraded paths split by audience: continuity facts to stdout w
 agent reads them, housekeeping to stderr. The pair's
 contract is recorded in `architecture.md` § "The one model-owned session file" — that is the
 persisted-format enumeration Chunk 01 called for, and the answers are: nothing but the generator
-reads the notes; per-worktree; unconsumed notes survive to the next `/clear`. Chunk 02 is next.
+reads the notes; per-worktree; unconsumed notes survive to the next `/clear`.
+
+**Chunk 02 complete** (2026-07-27) — the read path feeding the handoff is correct at every
+consumer. The git-derived "which chunk is current" derivation moved from `critic_mode` into
+`buildplan_refs._parse_build_plan_status`, so the handoff, `verify-chunk-refs` (**closes
+BLD-7K3Q**) and mode inference share one implementation; four functions took `project_dir` instead
+of `prawduct_dir` because resolving "current" reads git and the call sites should say so. The
+done-predicate is the named `build_plan_is_complete`, shared by `staleness_scan` and
+`_get_active_work`. `description` falls back to frontmatter `scope:` then filename, so the work
+section cannot vanish. Context is a block to the end of the Status section, which dissolves the
+first-wins/last-wins question instead of answering it. **BRF-6K2D landed** with it (merge-aware
+delete nudge). Live re-reproduction on this repo's own plan: description
+`session-handoff-continuity`, current `Chunk 02`, context 2283 chars (was 85), `verify-chunk-refs`
+and `infer-critic-mode` both resolving Chunk 02. Chunk 03 is next.
+
+One fragility found and NOT fixed here (filed, not silently absorbed): the git-derived path keys on
+the `Chunk NN` **commit-subject convention**, so a branch whose commits omit it falls back to the
+checkbox reading — fail-soft and never worse, but load-bearing on a convention nothing enforces.
+The change-log's per-chunk tagged entries are a stronger signal and already written; changing the
+signal is a design decision this chunk deliberately did not make.
 
 Plan written 2026-07-26 on `feature/session-handoff-continuity` (off develop). Parents:
 **SCN-4H9T** (the upstream triage of discodon's STH-9FYI — five defects, all reproduced against
