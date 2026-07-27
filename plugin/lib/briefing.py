@@ -10,9 +10,11 @@ handoff. Plus the previous-session governance check ``cmd_clear`` warns on.
 ``cmd_clear`` itself STAYS in the hook (it is the deliberately-inline hot-path
 SessionStart entry point that orchestrates session-marker hygiene, the advisory
 probe step, and the git baseline; design constraint 1). It reaches these
-functions via the lazy ``_briefing()`` accessor — its five resident call sites
-(``staleness_scan`` / ``assemble_session_briefing`` / ``generate_subagent_briefing``
-/ ``generate_session_handoff`` / ``_check_previous_session_gates``) are each
+functions via the lazy ``_briefing()`` accessor — the hook's five resident call
+sites (``staleness_scan`` / ``assemble_session_briefing`` /
+``generate_subagent_briefing`` / ``_check_previous_session_gates`` in
+``cmd_clear`` itself, and ``generate_session_handoff`` in its boundary helper
+``_boundary_close_session``, which runs only at a real session boundary) are each
 already wrapped in a broad catch, so a ``lib.briefing`` import failure on an
 incomplete plugin install degrades to a skipped briefing (stderr NOTE) and never
 blocks session start — the lib-free hook top level is preserved (the ch.2–6
@@ -34,9 +36,12 @@ from __future__ import annotations
 import json
 import re
 import subprocess
+import sys
 from pathlib import Path
+from typing import NamedTuple
 
 from . import backlog, buildplan_refs, gates, gitstate
+from .coverage import _resolve_base_branch
 from .core import (
     BUILD_PLAN_POINTER_KEY,
     atomic_write_text,
@@ -48,6 +53,69 @@ from .core import (
 # =============================================================================
 # Staleness Scan (v5: content-based artifact freshness)
 # =============================================================================
+
+
+def _plan_work_possibly_unmerged(
+    project_dir: Path, prawduct_dir: Path
+) -> tuple[bool, str]:
+    """Is the completed plan's work plausibly still unmerged? ``(bool, reason)``.
+
+    The build plan is session-local and gitignored, so it survives a branch
+    switch: complete every chunk on a feature branch, check out the base branch,
+    and the staleness scan recommends deleting a plan whose work has not shipped.
+    Following that advice orphans live work — reported from the field.
+
+    Two independent sufficient signals, either one enough:
+
+    1. **Foreign-branch WIP** — ``project-state.yaml`` records work in progress
+       on a branch other than the current one. That is the reported repro
+       exactly: a plan surviving a switch onto the base branch.
+    2. **Branch ahead of base** — the current branch is not the base and
+       ``git merge-base --is-ancestor HEAD <base>`` says HEAD is not reachable
+       from it, i.e. this branch has commits the base does not.
+
+    Signal 1 is checked first and does not need a resolvable branch, so on a
+    detached HEAD every recorded WIP entry counts as foreign and the answer is
+    "keep". That is deliberate — an unidentifiable HEAD is the *worst* moment to
+    recommend deleting a plan — but it means the fail-toward-``(False, "")``
+    posture below describes signal 2 only.
+
+    Signal 2 fails toward ``(False, "")`` on every uncertainty: no base resolves,
+    git unavailable, any return code other than the "not an ancestor" 1. Both
+    signals may only ADD a keep-recommendation on positive evidence; neither may
+    silently suppress a legitimate delete nudge, because a plan that really is
+    finished and merged should still be cleaned up.
+    """
+    try:
+        current_branch = gitstate.current_branch(project_dir)
+        others = _get_other_branch_wip(prawduct_dir, current_branch or "")
+        if others:
+            return True, (
+                f"{len(others)} other branch(es) still record work in progress"
+            )
+
+        base, _ = _resolve_base_branch(project_dir)
+        if not base or current_branch is None:
+            return False, ""
+        # `base` may be `origin/develop`; compare against the bare branch name
+        # too, so standing ON the base branch is recognized either spelling.
+        if current_branch in (base, base.removeprefix("origin/")):
+            return False, ""
+        proc = subprocess.run(
+            ["git", "merge-base", "--is-ancestor", "HEAD", base],
+            cwd=str(project_dir),
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+        # rc 0 = HEAD is reachable from base (merged). rc 1 = not an ancestor
+        # (unmerged). Any other rc is an error — fail toward "merged" so the
+        # ordinary nudge survives.
+        if proc.returncode == 1:
+            return True, f"its commits are not yet in {base}"
+        return False, ""
+    except (OSError, subprocess.SubprocessError):
+        return False, ""
 
 
 def _extract_dependency_names(dep_file: Path) -> list[str]:
@@ -146,24 +214,44 @@ def staleness_scan(project_dir: Path) -> list[str]:
     build_plan_label = f".prawduct/{build_plan_path.relative_to(prawduct_dir).as_posix()}"
     if build_plan_path.is_file():
         try:
-            status = buildplan_refs._parse_build_plan_status(prawduct_dir)
+            status = buildplan_refs._parse_build_plan_status(project_dir)
             if status.get("current_chunk"):
                 pass  # Active work — not stale
-            elif status.get("_has_status_items"):
+            elif buildplan_refs.build_plan_is_complete(status):
                 # All items checked — work complete
-                findings.append(
-                    f"build plan: {build_plan_label} has all chunks complete — "
-                    "if work is done, delete the plan"
+                unmerged, unmerged_reason = _plan_work_possibly_unmerged(
+                    project_dir, prawduct_dir
                 )
+                if unmerged:
+                    findings.append(
+                        f"build plan: {build_plan_label} has all chunks complete but "
+                        f"{unmerged_reason} — keep the plan until it merges "
+                        "(deleting now would orphan unshipped work)"
+                    )
+                else:
+                    findings.append(
+                        f"build plan: {build_plan_label} has all chunks complete — "
+                        "if work is done, delete the plan"
+                    )
             else:
                 # No Status items — check WIP as fallback for old-style repos
                 current_branch = _get_current_branch(project_dir)
                 wip = _parse_wip(prawduct_dir, branch=current_branch)
                 if not wip.get("description"):
-                    findings.append(
-                        f"build plan: {build_plan_label} exists but no active work — "
-                        "if work is complete, delete the plan"
+                    unmerged, unmerged_reason = _plan_work_possibly_unmerged(
+                        project_dir, prawduct_dir
                     )
+                    if unmerged:
+                        findings.append(
+                            f"build plan: {build_plan_label} exists but no active work, and "
+                            f"{unmerged_reason} — keep the plan until it merges "
+                            "(deleting now would orphan unshipped work)"
+                        )
+                    else:
+                        findings.append(
+                            f"build plan: {build_plan_label} exists but no active work — "
+                            "if work is complete, delete the plan"
+                        )
         except Exception:  # prawduct:allow prawduct/broad-except -- staleness scan is best-effort
             pass
 
@@ -356,17 +444,30 @@ def _parse_all_wip_branches(prawduct_dir: Path) -> dict[str, dict[str, str]]:
         return {}
 
 
-def _get_active_work(prawduct_dir: Path) -> dict[str, str]:
-    """Get active work context, preferring build plan Status over project-state.yaml WIP."""
-    work = buildplan_refs._parse_build_plan_status(prawduct_dir)
-    if work.get("description"):
+def _get_active_work(project_dir: Path) -> dict[str, str]:
+    """Get active work context, preferring build plan Status over project-state.yaml WIP.
+
+    A build plan whose chunks are ALL complete is not active work. Without that
+    predicate a finished plan was reported as the next session's ``**Task**``
+    forever — ``staleness_scan`` read the identical parse and correctly said
+    "all chunks complete", while this function said "in progress" from the same
+    bytes. Both now ask ``buildplan_refs.build_plan_is_complete``.
+    """
+    work = buildplan_refs._parse_build_plan_status(project_dir)
+    if work.get("description") and not buildplan_refs.build_plan_is_complete(work):
         return work
-    return _parse_wip(prawduct_dir)
+    return _parse_wip(gitstate.get_prawduct_dir(project_dir))
 
 
-def _get_work_in_progress(prawduct_dir: Path) -> str:
-    """Format work in progress as a one-line summary for the session briefing."""
-    wip = _get_active_work(prawduct_dir)
+def _get_work_in_progress(project_dir: Path, wip: dict[str, str] | None = None) -> str:
+    """Format work in progress as a one-line summary for the session briefing.
+
+    ``wip`` lets a caller that has already resolved the active work pass it in;
+    resolution reads git on a ``views_enabled`` repo, and the briefing needs the
+    same answer twice.
+    """
+    if wip is None:
+        wip = _get_active_work(project_dir)
     if wip.get("description"):
         parts = [wip["description"]]
         qualifiers = []
@@ -450,10 +551,12 @@ def assemble_session_briefing(project_dir: Path, staleness: list[str]) -> str:
     prawduct_dir = gitstate.get_prawduct_dir(project_dir)
     lines = ["== SESSION BRIEFING =="]
 
-    # Project identity + work in progress (branch-scoped)
+    # Project identity + work in progress (branch-scoped). Resolved once and
+    # reused below — on a views_enabled repo this reads git.
     project_name = _get_product_name(prawduct_dir)
     current_branch = _get_current_branch(project_dir)
-    work_desc = _get_work_in_progress(prawduct_dir)
+    wip = _get_active_work(project_dir)
+    work_desc = _get_work_in_progress(project_dir, wip)
     lines.append(f"Project: {project_name} | Branch: {current_branch} | Work: {work_desc}")
 
     # Dangling build-plan pointer guard (STH-5P2W). A SET pointer that resolves
@@ -479,12 +582,14 @@ def assemble_session_briefing(project_dir: Path, staleness: list[str]) -> str:
     except Exception:  # prawduct:allow prawduct/broad-except -- briefing must never block session start
         pass
 
-    # Work context and current chunk (prefer build plan Status, fall back to WIP)
-    wip = _get_active_work(prawduct_dir)
+    # Work context and current chunk (resolved above; build plan Status
+    # preferred, falling back to WIP)
     if wip.get("current_chunk"):
         lines.append(f"Resume: {wip['current_chunk']}")
     if wip.get("context"):
-        ctx = wip["context"]
+        # The briefing has a token budget, so it takes the first 200 chars of
+        # what may now be a multi-paragraph block. The handoff carries it whole.
+        ctx = " ".join(wip["context"].split())
         if len(ctx) > 200:
             ctx = ctx[:197] + "..."
         lines.append(f"Context: {ctx}")
@@ -837,21 +942,240 @@ def _summarize_critic_findings(prawduct_dir: Path) -> str | None:
         return None
 
 
-def generate_session_handoff(project_dir: Path) -> None:
-    """Generate .prawduct/.session-handoff.md with context for the next session.
+# The machine marker. Every generated handoff carries it as its first body
+# line; its absence is how the generator recognises a `.session-handoff.md`
+# that a model or a human wrote by hand, so it can be rescued rather than
+# overwritten. Detection matches the stable PREFIX, never the whole line, so
+# the human-readable tail can be reworded without stranding older files.
+HANDOFF_MARKER_PREFIX = "<!-- prawduct:generated-handoff"
+HANDOFF_MARKER = (
+    f"{HANDOFF_MARKER_PREFIX} — written by the machine at /clear. Do not hand-edit: "
+    "the next /clear regenerates this file. Forward notes for the next session go in "
+    "`.prawduct/.handoff-notes.md`. -->"
+)
 
-    Called during /clear BEFORE session files are deleted. Assembles handoff
-    from: WIP context, session reflection, critic findings, files changed,
-    and commits made during the session.
+# The forward channel: the one file in the handoff pair that a model owns.
+HANDOFF_NOTES_NAME = ".handoff-notes.md"
+
+# What became of the notes file this run. The caller deletes on CARRIED and
+# EMPTY and on nothing else: "absent" has nothing to delete, and the two
+# failure states hold text that never reached the handoff, so unlinking them
+# would destroy the note — the exact loss this channel exists to prevent.
+# Collapsing "unreadable" into "no notes" is what makes that mistake easy, so
+# the states are kept distinct all the way to the deletion site.
+NOTES_ABSENT = "absent"
+NOTES_EMPTY = "empty"
+NOTES_CARRIED = "carried"
+NOTES_UNREADABLE = "unreadable"
+NOTES_UNDELIVERED = "undelivered"
+
+# What became of an existing `.session-handoff.md` the machine did not write.
+# Same reason the notes states exist: "nothing to preserve" and "could not read
+# the thing I am about to overwrite" demand opposite handling, and collapsing
+# them into one empty string is what made the destructive case invisible.
+RESCUE_NONE = "none"
+RESCUE_CARRIED = "carried"
+RESCUE_UNREADABLE = "unreadable"
+
+
+class HandoffResult(NamedTuple):
+    """Outcome of a handoff generation: was it written, and what became of the notes."""
+
+    written: bool
+    notes_state: str
+
+    @property
+    def notes_consumed(self) -> bool:
+        """True when the notes file may be deleted without losing anything."""
+        return self.notes_state in (NOTES_CARRIED, NOTES_EMPTY)
+
+
+class HandoffRender(NamedTuple):
+    """The assembled handoff text, and what each input contributed to it.
+
+    ``text`` is ``""`` whenever there is nothing to write: no ``.prawduct/``,
+    nothing beyond the boilerplate header, or an existing handoff that could not
+    be read — and the last of those is the one the writer must handle
+    differently (leave the file alone rather than overwrite it), which is why
+    ``rescue_state`` is carried alongside rather than folded into the text.
+    """
+
+    text: str
+    notes_state: str
+    rescue_state: str
+
+
+def _read_handoff_notes(prawduct_dir: Path) -> tuple[str, str]:
+    """Read the model-authored forward notes as ``(text, state)``.
+
+    The counterpart to every other handoff source, which is machine state
+    looking backward: this is the only place an agent can leave intent for the
+    next session. Consumed into the handoff and then cleared by `/clear`, so a
+    note never outlives the session boundary it was written for.
+
+    The state is returned rather than inferred from an empty string because
+    "there were no notes" and "the notes could not be read" demand opposite
+    handling at the deletion site.
+    """
+    notes_path = prawduct_dir / HANDOFF_NOTES_NAME
+    if not notes_path.is_file():
+        return "", NOTES_ABSENT
+    try:
+        # Explicit encoding: the notes are markdown written by an agent, and
+        # decodability must not depend on the operator's locale.
+        text = notes_path.read_text(encoding="utf-8").strip()
+    except (UnicodeDecodeError, OSError):
+        return "", NOTES_UNREADABLE
+    return (text, NOTES_CARRIED if text else NOTES_EMPTY)
+
+
+def _read_unmarked_handoff(prawduct_dir: Path) -> tuple[str, str]:
+    """Return ``(body, state)`` for a `.session-handoff.md` the machine did not write.
+
+    A file without :data:`HANDOFF_MARKER_PREFIX` was authored by a model or a
+    human, and overwriting it is exactly the silent context loss this generator
+    exists to prevent — so its body is preserved into the new handoff instead.
+    Belt to the notes channel's braces: the channel is the documented path, this
+    catches the agent who writes the familiar filename out of habit.
+
+    The state is returned rather than inferred from an empty body, for the same
+    reason its sibling :func:`_read_handoff_notes` returns one. A bare ``""``
+    meant three different things here — absent, machine-generated, and
+    *unreadable* — and the caller reads it as "nothing to preserve" and
+    overwrites. So the one failure the net exists to survive destroyed the file
+    silently. Reachable, not exotic: this read had no explicit ``encoding``, so
+    it used the operator's locale, and a single em dash in a model-authored
+    handoff raises ``UnicodeDecodeError`` under ``LC_ALL=C``.
+
+    Undecodable bytes are recovered lossily rather than dropped — replacement
+    characters in a preserved paragraph beat a deleted one. Only a file that
+    cannot be read at all yields :data:`RESCUE_UNREADABLE`, and the caller
+    declines to overwrite on it.
+    """
+    handoff_path = prawduct_dir / ".session-handoff.md"
+    if not handoff_path.is_file():
+        return "", RESCUE_NONE
+    try:
+        existing = handoff_path.read_text(encoding="utf-8")
+    except UnicodeDecodeError:
+        try:
+            existing = handoff_path.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            return "", RESCUE_UNREADABLE
+    except OSError:
+        return "", RESCUE_UNREADABLE
+    if HANDOFF_MARKER_PREFIX in existing:
+        return "", RESCUE_NONE
+    body = existing.strip()
+    # Drop a leading "# Session Handoff" H1 so the rescued body nests cleanly
+    # under its own section heading instead of re-titling the document.
+    lines = body.splitlines()
+    if lines and lines[0].strip().lower() == "# session handoff":
+        body = "\n".join(lines[1:]).strip()
+    return (body, RESCUE_CARRIED if body else RESCUE_NONE)
+
+
+def _no_forward_note_section(changed: list[str], commits: list[str]) -> list[str]:
+    """The handoff's own statement that its forward half is missing.
+
+    Advice fails soft, so nothing here blocks anything — but failing soft is
+    not failing silent. A handoff that lists a session's commits and says
+    nothing else *reads* as a complete account of that session, which is how
+    continuity got lost while the agent reported success. When work happened
+    and no forward note was left, the handoff says so, in the position the note
+    would have occupied.
+
+    Empty when the session produced no diff. Stated honestly, that is a *limit*
+    rather than a claim that nothing happened — a design or discovery session
+    has plenty to hand off and leaves no files changed. What it does mean is
+    that the handoff for such a session is visibly thin, so it cannot pass for a
+    complete account the way a list of commits can, and a notice fired on every
+    read-only session would only teach the reader to skip the section.
+    """
+    if not changed and not commits:
+        return []
+    did = []
+    if changed:
+        did.append(f"{len(changed)} file{'' if len(changed) == 1 else 's'} changed")
+    if commits:
+        did.append(f"{len(commits)} commit{'' if len(commits) == 1 else 's'}")
+    return [
+        "## No Forward Note From The Previous Session",
+        "<!-- the machine can report this absence; it cannot fill it -->",
+        f"That session ({', '.join(did)}) left no `.prawduct/{HANDOFF_NOTES_NAME}`. "
+        "Everything below is machine-derived and backward-looking: a record of what "
+        "happened, not a statement of what to do next or of what the previous agent "
+        "knew and did not write down. Re-derive intent from the build plan rather "
+        "than reading this handoff as complete.",
+        "",
+    ]
+
+
+def render_session_handoff(project_dir: Path) -> HandoffRender:
+    """Assemble the handoff text without writing, deleting, or consuming anything.
+
+    Split out from :func:`generate_session_handoff` so the content can be
+    inspected without causing it. `/clear` is the only other way to see this
+    text, and it is also the act that destroys what it replaces — so until this
+    existed, the check that would prevent the mistake required making it.
+
+    Reads the repo and nothing else: no file is created, modified, or removed
+    here, and the notes file is never consumed. The states it reports are what
+    the writer needs in order to decide both of those.
     """
     prawduct_dir = gitstate.get_prawduct_dir(project_dir)
     if not prawduct_dir.is_dir():
-        return
+        return HandoffRender("", NOTES_ABSENT, RESCUE_NONE)
 
-    sections: list[str] = ["# Session Handoff", ""]
+    sections: list[str] = ["# Session Handoff", "", HANDOFF_MARKER, ""]
+    # Everything above is boilerplate every run emits; content is anything past it.
+    header_len = len(sections)
+
+    # 0. The model's forward notes come first, above every machine section —
+    #    intent for the next session outranks the record of the last one.
+    notes, notes_state = _read_handoff_notes(prawduct_dir)
+    if notes:
+        sections.append("## Notes For The Next Session")
+        sections.append("<!-- written by the previous session's agent, not the machine -->")
+        sections.append(notes)
+        sections.append("")
+
+    # 0b. Preservation net: rescue a handoff the machine did not write.
+    rescued, rescue_state = _read_unmarked_handoff(prawduct_dir)
+    if rescue_state == RESCUE_UNREADABLE:
+        # The one case where NOT writing is the safe move. The file cannot be
+        # read, so it cannot be folded in, so writing would destroy content that
+        # may be the previous agent's only forward context. Rendering stops here
+        # and reports the state; the writer declines and narrates it.
+        return HandoffRender("", notes_state, rescue_state)
+    if rescued:
+        sections.append("## Preserved: Hand-Authored Handoff")
+        sections.append(
+            "<!-- the previous `.session-handoff.md` had no machine marker, so it was "
+            "authored by a model or a human and is preserved here rather than "
+            f"overwritten. Write forward notes to `.prawduct/{HANDOFF_NOTES_NAME}` instead — "
+            "this file is regenerated on every /clear. -->"
+        )
+        sections.append(rescued)
+        sections.append("")
+
+    # What the session actually did. Read here rather than at their own sections
+    # below because the no-forward-note signal is a judgement about the same
+    # facts, and deriving "was this a substantive session" from a second source
+    # would let the two answers drift.
+    changed = gitstate._get_session_changed_files(project_dir)
+    commits = _git_session_commits(project_dir)
+
+    # 0c. The forward channel exists and was not used. Deliberately NOT fired on
+    # NOTES_UNREADABLE: a note WAS left there, and saying otherwise would blame
+    # the agent for the machine's failure to read it — that state has its own
+    # notice at the consumption site. A rescued hand-authored handoff is forward
+    # context too, so it suppresses this as well.
+    if notes_state in (NOTES_ABSENT, NOTES_EMPTY) and not rescued:
+        sections.extend(_no_forward_note_section(changed, commits))
 
     # 1. Work context (prefer build plan Status, fall back to project-state.yaml WIP)
-    wip = _get_active_work(prawduct_dir)
+    wip = _get_active_work(project_dir)
     if wip.get("description"):
         sections.append("## Work In Progress")
         sections.append(f"**Task**: {wip['description']}")
@@ -890,7 +1214,6 @@ def generate_session_handoff(project_dir: Path) -> None:
         sections.append("")
 
     # 4. Files changed during session
-    changed = gitstate._get_session_changed_files(project_dir)
     if changed:
         sections.append("## Files Changed This Session")
         for f in changed[:20]:  # Cap at 20 to keep handoff manageable
@@ -900,7 +1223,6 @@ def generate_session_handoff(project_dir: Path) -> None:
         sections.append("")
 
     # 5. Commits made during session
-    commits = _git_session_commits(project_dir)
     if commits:
         sections.append("## Commits This Session")
         for c in commits[:10]:
@@ -909,16 +1231,149 @@ def generate_session_handoff(project_dir: Path) -> None:
             sections.append(f"- ... and {len(commits) - 10} more")
         sections.append("")
 
-    # Only write if there's actual content beyond the header. Atomic
-    # (STH-8M3V): the next session's briefing reads this file, and a torn
-    # handoff silently loses cross-session context.
-    if len(sections) > 2:
+    # Nothing beyond the boilerplate header means nothing to write — and,
+    # because the rescued body counts as content, that verdict is only reached
+    # when there is no hand-authored context either. Deliberately NOT a guard on
+    # overwriting: preservation happens by folding the old body in above, never
+    # by declining to write.
+    #
+    # Non-empty notes always push past header_len, so an empty render can never
+    # coincide with notes pending — nothing is dropped by returning "".
+    text = "\n".join(sections) + "\n" if len(sections) > header_len else ""
+    return HandoffRender(text, notes_state, rescue_state)
+
+
+def generate_session_handoff(project_dir: Path) -> HandoffResult:
+    """Write .prawduct/.session-handoff.md with context for the next session.
+
+    Called during /clear BEFORE session files are deleted. The content comes
+    from :func:`render_session_handoff` (the model-authored forward notes, any
+    hand-authored handoff being rescued, WIP context, session reflection, critic
+    findings, files changed, and commits made during the session); this function
+    owns only the two things a preview must not do — writing the file, and
+    narrating the failures to the audience that can act on them.
+
+    Reports whether a handoff was written and what became of the notes, so the
+    caller can clear the notes file only once its text is durably in the
+    handoff. A note that was never carried — unreadable, or lost to a failed
+    write — survives for the next `/clear` rather than being dropped.
+    """
+    prawduct_dir = gitstate.get_prawduct_dir(project_dir)
+    if not prawduct_dir.is_dir():
+        return HandoffResult(False, NOTES_ABSENT)
+
+    rendered = render_session_handoff(project_dir)
+    notes_state = rendered.notes_state
+
+    if rendered.rescue_state == RESCUE_UNREADABLE:
+        # The existing handoff could not be read, so it could not be folded in,
+        # so writing would destroy content that may be the previous agent's only
+        # forward context. Say so on stdout — SessionStart shows stdout to the
+        # model, and the incoming agent is the party harmed by a stale handoff.
+        print(
+            "NOTE: .prawduct/.session-handoff.md could not be read, so it was left "
+            "untouched rather than overwritten — anything you read in it is from an "
+            "earlier session, and this session's context is NOT in it. Move or fix "
+            f"that file, then write forward notes to `.prawduct/{HANDOFF_NOTES_NAME}`."
+        )
+        return HandoffResult(
+            False, NOTES_UNDELIVERED if notes_state == NOTES_CARRIED else notes_state
+        )
+
+    if rendered.text:
         try:
-            atomic_write_text(
-                prawduct_dir / ".session-handoff.md", "\n".join(sections) + "\n"
+            # Atomic: the next session's briefing reads this file, and a torn
+            # handoff silently loses cross-session context.
+            atomic_write_text(prawduct_dir / ".session-handoff.md", rendered.text)
+            return HandoffResult(True, notes_state)
+        except Exception as exc:  # prawduct:allow prawduct/broad-except -- handoff write must never block clear
+            # Fails soft, but never silent — degrading gracefully and narrating
+            # false success are not the same thing. This half is the operator's:
+            # a write that failed is theirs to diagnose, so it goes to stderr
+            # with its housekeeping siblings. The agent-facing half (a note that
+            # did not reach the next session) is emitted by the caller on
+            # stdout, which is the channel the incoming agent actually reads.
+            print(
+                f"NOTE: could not write .session-handoff.md ({exc}) — this session's "
+                "context will not reach the next one"
+                + (
+                    f"; {HANDOFF_NOTES_NAME} is kept for the next /clear"
+                    if notes_state == NOTES_CARRIED
+                    else ""
+                ),
+                file=sys.stderr,
             )
-        except Exception:  # prawduct:allow prawduct/broad-except -- handoff write must never block clear
-            pass
+            return HandoffResult(
+                False, NOTES_UNDELIVERED if notes_state == NOTES_CARRIED else notes_state
+            )
+    return HandoffResult(False, notes_state)
+
+
+def handoff_cmd(project_dir: Path, argv: list[str]) -> int:
+    """``prawduct-hook handoff preview`` — what the next session would receive.
+
+    Read-only by construction: it renders through the same function `/clear`
+    does and stops, so the preview is the artifact rather than a description of
+    it, and looking is not the same act as replacing. Nothing is written and the
+    notes file is never consumed.
+
+    Exit codes per ``artifacts/api-contract.md``: 0 for a successful preview,
+    including the truthful "nothing would be written"; 1 when the preview cannot
+    be produced (no ``.prawduct/``, or the render failed); 2 for a usage error.
+    Content goes to stdout so it can be piped; every diagnostic goes to stderr so
+    it cannot be mistaken for content.
+    """
+    if argv[:1] != ["preview"] or len(argv) > 1:
+        print("Usage: prawduct-hook handoff preview", file=sys.stderr)
+        return 2
+
+    prawduct_dir = gitstate.get_prawduct_dir(project_dir)
+    if not prawduct_dir.is_dir():
+        print("handoff: no .prawduct/ in this repo — nothing to preview", file=sys.stderr)
+        return 1
+
+    try:
+        rendered = render_session_handoff(project_dir)
+    except Exception as exc:  # prawduct:allow prawduct/broad-except -- CLI boundary: the error model forbids a stack trace crossing it
+        # Every reader on the render path degrades internally, so reaching here
+        # means something unanticipated. It still gets an attributed message and
+        # an exit code rather than a traceback, because that is what the caller
+        # can act on — and because a *preview* crashing must not read as
+        # evidence that `/clear` itself is broken.
+        print(f"handoff: could not render the preview ({exc})", file=sys.stderr)
+        return 1
+    if rendered.rescue_state == RESCUE_UNREADABLE:
+        print(
+            "NOTE: .prawduct/.session-handoff.md exists and cannot be read, so /clear "
+            "would leave it untouched rather than overwrite it — the next session would "
+            "read an EARLIER session's handoff. Move or fix that file.",
+            file=sys.stderr,
+        )
+        return 0
+    # Before any verdict about the content: a note that exists and cannot be
+    # read is the one fact the preview must not omit, and it is orthogonal to
+    # whether anything else would be written. Reporting "nothing to hand off"
+    # first made the preview and `/clear` disagree about exactly that — `/clear`
+    # announces the unreadable note, so a preview that swallowed it would send
+    # the agent away reassured about the case most worth acting on.
+    if rendered.notes_state == NOTES_UNREADABLE:
+        print(
+            f"NOTE: .prawduct/{HANDOFF_NOTES_NAME} exists and could not be read (not "
+            "valid UTF-8?) — none of it is in the preview, and none of it would reach "
+            "the next session. It is kept, not consumed; rewrite or remove it.",
+            file=sys.stderr,
+        )
+
+    if not rendered.text:
+        print(
+            "NOTE: nothing to hand off yet — /clear would leave "
+            ".prawduct/.session-handoff.md exactly as it is.",
+            file=sys.stderr,
+        )
+        return 0
+
+    print(rendered.text, end="")
+    return 0
 
 
 # =============================================================================

@@ -5,6 +5,26 @@
      be overwritten on next regen. See change-log.md for full per-release
      bodies; this file is a digest. -->
 
+## v3.1.2
+
+### 2026-07-27: The Critic's SubagentStop trigger had never fired (CRT-2J8N)
+
+**Entry:** 2026-07-27: The Critic's SubagentStop trigger had never fired (CRT-2J8N)
+
+### session-boundary-events
+
+**Entry:** 2026-07-27: Orientation and boundary become separate acts (session-boundary-events Chunk 01)
+
+**Chunks shipped:** 01
+
+### session-handoff-continuity
+
+**Entry:** 2026-07-27: The guides stop naming only the file the agent must not write (session-handoff-continuity Chunk 03)
+
+**Chunks shipped:** 01, 02, 03
+
+See `.prawduct/change-log.md` for full details.
+
 ## v3.1.1
 
 ### 2026-07-21: the plugin stopped shipping prawduct's own backlog, learnings, and requirements to every consumer

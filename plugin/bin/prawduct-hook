@@ -419,6 +419,7 @@ _SESSION_GITIGNORED_PATHS = (
     ".prawduct/.critic-findings.json",
     ".prawduct/.critic-partials",
     ".prawduct/.governance-ledger.jsonl",
+    ".prawduct/.handoff-notes.md",
     ".prawduct/.test-evidence.json",
     ".prawduct/.pr-reviews",
     ".prawduct/.session-base-tree",
@@ -500,7 +501,9 @@ def _untrack_session_files(project_dir: Path) -> list[str]:
     # all matched paths are confirmed-tracked above, so the batch near-always
     # succeeds atomically; on the rare whole-command failure (e.g. permissions)
     # nothing is reported as untracked — where the old loop would have reported the
-    # paths it got through. Self-healing: the next session start retries the sweep.
+    # paths it got through. Self-healing: every SessionStart retries the sweep —
+    # this is orientation, so a continuation (resume/compact/fork) retries it too,
+    # not only a boundary.
     # Best-effort cleanup must never block session start.
     try:
         rm = subprocess.run(
@@ -535,117 +538,136 @@ def _untrack_session_files(project_dir: Path) -> list[str]:
 # =============================================================================
 
 
-def cmd_clear(project_dir: Path, argv: list[str] | None = None) -> int:
-    """Reset session state and render the session briefing (plugin runtime: no sync).
+def _consume_handoff_notes(prawduct_dir: Path, briefing, handoff) -> None:
+    """Clear `.handoff-notes.md` iff its text reached the generated handoff.
 
-    Flags (argv): ``--session-start`` marks the genuine SessionStart-hook
-    invocation — it always proceeds and sweeps any critic-active marker.
-    ``--force`` is the operator override for a stale marker. A bare ``clear``
-    (what a reviewer subagent issued in CRT-3X9D) is the guarded path: it refuses
-    while a Critic review is plausibly in progress so an independent reviewer
-    cannot clobber the session it is reviewing.
+    Consumption keys on delivery, never on "a handoff was written" — that is
+    true whenever any *other* section had content, so gating on it would delete
+    an unreadable note whose text reached nothing. Losing a note the agent
+    deliberately wrote is the exact failure the channel exists to prevent, so an
+    undelivered note is kept for the next `/clear`. Unlike `.session-reflected`
+    there is no separate archive: the text is already carried verbatim into
+    `.session-handoff.md`, which is where the next session reads it.
+
+    Audience split, deliberate: an undelivered note is a *continuity* fact and
+    goes to stdout, because this runs at the new session's start and stdout is
+    what reaches the incoming agent — the one whose predecessor's context just
+    went missing. Housekeeping failures the agent can do nothing about stay on
+    stderr with their operator siblings.
     """
-    argv = argv or []
-    rejected = _reject_unknown_args(
-        "clear", argv, {"--session-start", "--force"}
-    )
-    if rejected is not None:
-        return rejected
-    session_start = "--session-start" in argv
-    force = "--force" in argv
-    prawduct_dir = get_prawduct_dir(project_dir)
-
-    # The plugin is user-scoped, so this SessionStart hook fires in every repo the
-    # user opens. A repo that never onboarded has no .prawduct/ — emit nothing and
-    # touch nothing, mirroring cmd_stop (the Stop gate). Skills like
-    # /prawduct:onboard stay available; this only silences the always-on session
-    # briefing and its session-marker side effects in non-Prawduct repos.
-    if not prawduct_dir.is_dir():
-        return 0
-
-    # Critic-active session-mutation guard (CRT-3X9D). cmd_clear is destructive
-    # (it archives/deletes .session-reflected, rewrites .session-start, recaptures
-    # the git baseline). An independent reviewer must never mutate the session it
-    # is reviewing. A genuine new session (--session-start) or an explicit
-    # --force sweeps any marker and proceeds; a bare clear refuses while a review
-    # is plausibly in progress. The check fails OPEN on a lib import error so an
-    # incomplete install never blocks session start (a broken lib also means the
-    # Critic can't run, so there is no review to protect).
-    if session_start or force:
+    if handoff.notes_consumed:
+        notes = prawduct_dir / briefing.HANDOFF_NOTES_NAME
         try:
-            _critic_marker().clear_marker(prawduct_dir)
-        except Exception:  # prawduct:allow prawduct/broad-except -- marker sweep must never block session start
-            pass
-    else:
-        try:
-            active, age_s = _critic_marker().review_active(prawduct_dir)
-        except Exception:  # prawduct:allow prawduct/broad-except -- guard fails open: never block session start on a lib import error
-            active, age_s = (False, None)
-        if active:
-            age_min = int((age_s or 0) // 60)
+            if notes.is_file():
+                notes.unlink()
+        except OSError as exc:
             print(
-                "PRAWDUCT: `clear` refused — a Critic review appears to be in progress "
-                f"(marker .prawduct/.critic-active, started ~{age_min}m ago). Session-mutating "
-                "commands are blocked so an independent reviewer cannot clobber the session it is "
-                "reviewing (CRT-3X9D).\n"
-                "  If the Critic has finished or crashed and this marker is stale, clear it:\n"
-                "    rm .prawduct/.critic-active        # then retry\n"
-                "  or override this one invocation:\n"
-                "    prawduct-hook clear --force\n"
-                "  (The marker also auto-expires after 30 min and is swept at the next real "
-                "session start.)",
+                f"NOTE: could not remove {briefing.HANDOFF_NOTES_NAME} ({exc}) — "
+                "last session's notes may resurface in the next handoff",
                 file=sys.stderr,
             )
-            return 2
+    elif handoff.notes_state == briefing.NOTES_UNREADABLE:
+        # Re-fires every session until someone acts, so it carries the remedy —
+        # a repeating notice with no way to end it is noise, not a signal.
+        print(
+            f"NOTE: .prawduct/{briefing.HANDOFF_NOTES_NAME} could not be read (not valid "
+            "UTF-8?) — the previous session left you a note and its content did NOT reach "
+            "this handoff. The file was kept, not consumed; remove or rewrite it to clear "
+            "this notice."
+        )
+    elif handoff.notes_state == briefing.NOTES_UNDELIVERED:
+        print(
+            f"NOTE: the previous session left a note in .prawduct/{briefing.HANDOFF_NOTES_NAME} "
+            "that could not be written into this handoff. It was kept, not consumed — read it "
+            "directly."
+        )
 
-    # Check previous session's governance gates (warn, never block)
+
+def _boundary_close_session(project_dir: Path, prawduct_dir: Path) -> None:
+    """The first of two session-BOUNDARY regions: end the outgoing session.
+
+    Generates the handoff, consumes the forward notes it carried, archives the
+    reflection, deletes the session-scoped files, and re-stamps the session
+    clock. Every statement here destroys evidence belonging to a session that is
+    OVER, so none of it may run on a continuation (SCN-5B8Q) — a new boundary
+    statement belongs inside this function, which is the point of extracting it.
+    """
+    # Generate handoff BEFORE archiving/deleting session files, then consume the
+    # notes it carried. Both live under one guard because both need lib.briefing,
+    # which an incomplete install may not have — and neither may ever block /clear.
     try:
-        gate_warnings = _briefing()._check_previous_session_gates(project_dir)
-        if gate_warnings:
-            print(
-                f"WARNING: Previous session had unmet governance: {', '.join(gate_warnings)}. "
-                f"Consider addressing before continuing."
-            )
-    except Exception:  # prawduct:allow prawduct/broad-except -- gate check must never block clear
-        pass
+        briefing = _briefing()
+        _consume_handoff_notes(
+            prawduct_dir, briefing, briefing.generate_session_handoff(project_dir)
+        )
+    except Exception as exc:  # prawduct:allow prawduct/broad-except -- handoff must never block clear
+        # Split by audience, not by precedent. The diagnosis is the operator's,
+        # so the exception text goes to stderr with its housekeeping siblings.
+        # But `.session-handoff.md` is NOT in the session-file deletion loop
+        # below, so the PREVIOUS boundary's handoff survives and the incoming
+        # agent reads it as this session's — a wrong-provenance failure the
+        # party harmed by it would otherwise never learn about. That half goes
+        # to stdout, which is the channel SessionStart shows the model.
+        print(
+            f"NOTE: could not generate the session handoff ({exc}) — this session's "
+            "context will not reach the next one",
+            file=sys.stderr,
+        )
+        print(
+            "NOTE: no handoff was generated for this session boundary — any "
+            ".prawduct/.session-handoff.md you read is from an EARLIER session, not "
+            "this one. Treat its contents as stale provenance."
+        )
 
-    # Defensively untrack any session files that were accidentally committed.
-    # Runs every session-start so the cleanup happens in any product repo,
-    # including ones that committed session files before this check existed.
-    try:
-        untracked = _untrack_session_files(project_dir)
-        if untracked:
-            print(
-                "PRAWDUCT: untracked previously-committed session files (kept locally): "
-                + ", ".join(untracked)
-            )
-    except Exception:  # prawduct:allow prawduct/broad-except -- defensive cleanup must never block clear
-        pass
-
-    # Generate handoff BEFORE archiving/deleting session files
-    try:
-        _briefing().generate_session_handoff(project_dir)
-    except Exception:  # prawduct:allow prawduct/broad-except -- handoff must never block clear
-        pass
-
-    # Preserve previous session's reflection before clearing
+    # Preserve previous session's reflection before clearing. `reflection_preserved`
+    # gates the delete below: True when there was nothing to preserve or the archive
+    # succeeded, False only when the archive genuinely failed.
     reflected = prawduct_dir / ".session-reflected"
+    reflection_preserved = True
     if reflected.is_file():
+        reflection_preserved = False
         try:
-            content = reflected.read_text().strip()
+            # Explicit UTF-8 on every hop. Without `encoding=`, the append used the
+            # operator's locale codec and raised UnicodeEncodeError — a ValueError,
+            # NOT an OSError — which escaped the handler below, and nothing above
+            # catches it (`cmd_clear` calls this unguarded; `main()` has no
+            # top-level handler). That tracebacked out of the SessionStart hook and
+            # took the rest of the boundary AND the whole orientation half with it,
+            # contradicting this design's own promise that `/clear` is never
+            # blocked. The except-set is widened to UnicodeError as well, so a
+            # future codec path cannot re-open the hole.
+            content = reflected.read_text(encoding="utf-8").strip()
             if content:
                 log = prawduct_dir / "reflections.md"
-                separator = "\n\n---\n\n" if log.is_file() and log.read_text().strip() else ""
-                with open(log, "a") as f:
+                prior = log.read_text(encoding="utf-8").strip() if log.is_file() else ""
+                separator = "\n\n---\n\n" if prior else ""
+                with open(log, "a", encoding="utf-8") as f:
                     f.write(f"{separator}{content}\n")
-        except (UnicodeDecodeError, OSError):
-            pass  # Corrupted reflection — skip archival, safe to proceed
+            reflection_preserved = True
+        except (UnicodeError, OSError) as exc:
+            # Consumption keys on PRESERVATION, not on "we tried" — the same rule
+            # `.handoff-notes.md` already uses, applied to its literal sibling.
+            # Previously this swallowed the failure and the deletion loop below
+            # unlinked the file three statements later, so a reflection that could
+            # not be archived was destroyed rather than kept: the one silent
+            # permanent-loss path left in the boundary. Keeping it is an
+            # unbounded-but-announced failure, which is the trade architecture.md
+            # already ratifies for this channel.
+            print(
+                f"NOTE: could not archive .session-reflected ({exc}) — keeping the file "
+                "so the reflection is not lost; it will be retried at the next boundary "
+                "(archive or remove it by hand to stop this repeating)",
+                file=sys.stderr,
+            )
 
     # Remove session files. Best-effort per file (STH-8M3V): an OSError here
     # (permissions, transient FS) must not traceback the SessionStart hook —
     # a survivor just carries stale state into the new session, which the
     # NOTE names so the user can remove it by hand.
-    for name in (".session-reflected", ".session-start", ".session-git-baseline", ".session-base-tree", ".gates-waived"):
+    doomed = [".session-start", ".session-git-baseline", ".session-base-tree", ".gates-waived"]
+    if reflection_preserved:
+        doomed.insert(0, ".session-reflected")
+    for name in doomed:
         f = prawduct_dir / name
         try:
             if f.is_file():
@@ -667,6 +689,245 @@ def cmd_clear(project_dir: Path, argv: list[str] | None = None) -> int:
             f"NOTE: could not write .session-start ({exc}) — freshness gates will fail closed this session",
             file=sys.stderr,
         )
+
+
+def _boundary_capture_git_anchors(project_dir: Path, prawduct_dir: Path) -> None:
+    """The second session-BOUNDARY region: anchor the new session in git.
+
+    Re-capturing either anchor on a continuation is what silently NARROWED the
+    session Critic gate's jurisdiction to post-resume work (SCN-5B8Q), so this
+    runs at a boundary only. It deliberately does NOT create a missing anchor on
+    the continuation path: stamping a resume-time clock onto a session that
+    started earlier would narrow the same jurisdiction by a different route, and
+    an absent anchor already has a documented fail-closed degradation.
+    """
+    # Capture git status baseline so session-start state doesn't trigger
+    # spurious stop-hook gates (no sync runs first in the plugin runtime).
+    # Atomic + best-effort (STH-8M3V): a torn/missing baseline makes every
+    # pre-existing dirty file count as session-changed (spurious gates), so
+    # the failure NOTE names that consequence; never block session start.
+    baseline = _gitstate().git_status_output(project_dir)
+    if baseline is not None:
+        try:
+            _core().atomic_write_text(prawduct_dir / ".session-git-baseline", baseline)
+        except (OSError, ImportError) as exc:
+            print(
+                f"NOTE: could not write .session-git-baseline ({exc}) — "
+                "pre-existing dirty files will count as session changes",
+                file=sys.stderr,
+            )
+
+    # Record HEAD's tree at session start (kernel-v3 chunk 04) — the base of
+    # the Stop-hook Critic gate's coverage question (Q2: composed review
+    # coverage must span this tree → the working tree at session end).
+    # HEAD^{tree}, not a working-tree capture: review facts anchor their base
+    # at HEAD's tree (D8), so this is the tree the session's evidence chain
+    # composes from — pre-session dirt rides inside every reviewed diff.
+    # Best-effort: on failure (unborn HEAD, git error) the marker stays
+    # absent and the gate degrades to a HEAD-tree base at session end
+    # (uncommitted-work jurisdiction), which the NOTE names.
+    try:
+        tree_proc = subprocess.run(
+            ["git", "rev-parse", "HEAD^{tree}"],
+            capture_output=True, text=True, cwd=str(project_dir), timeout=10,
+        )
+        if tree_proc.returncode == 0 and tree_proc.stdout.strip():
+            _core().atomic_write_text(
+                prawduct_dir / ".session-base-tree", tree_proc.stdout.strip()
+            )
+        elif baseline is not None:
+            print(
+                "NOTE: could not resolve HEAD^{tree} — the session Critic gate "
+                "will judge uncommitted work only this session",
+                file=sys.stderr,
+            )
+    except (OSError, subprocess.SubprocessError, ImportError) as exc:
+        # Same never-block-session-start posture as the baseline write above.
+        print(
+            f"NOTE: could not write .session-base-tree ({exc}) — the session "
+            "Critic gate will judge uncommitted work only this session",
+            file=sys.stderr,
+        )
+
+
+def cmd_clear(project_dir: Path, argv: list[str] | None = None) -> int:
+    """Orient a session, and at a genuine boundary also reset it (plugin runtime: no sync).
+
+    This entry point does categorically different jobs, and they sort into
+    **three** kinds — the middle one is the easy mistake, because it looks
+    read-only and is not orientation:
+
+    1. *Destructive boundary acts* — the handoff, consuming the forward notes,
+       archiving the reflection, deleting `.gates-waived`, re-capturing the three
+       session anchors. Note the waiver's consequence, which is easy to miss: it
+       clears only here, so a declared waiver OUTLIVES a continuation. Correct — a
+       waiver is session-scoped and the session continues — but a longer life than
+       the pre-split behaviour gave it.
+    2. *Boundary-dependent readers* — they destroy nothing but interpret session
+       state as a **finished** session's: the critic-active marker sweep (it
+       deletes a marker on the theory that its writer's process is gone) and the
+       previous-session gate check. Both are boundary-only for that reason.
+    3. *Orientation* — the briefing, advisories, untracking committed session
+       files, the size/preferences checks, the subagent briefing. Safe on every
+       source.
+
+    Only (3) runs on a continuation. Sorting purely on "does it destroy evidence"
+    puts (2) in the wrong column, which is what the first cut of this split did.
+
+    Flags (argv): ``--session-start`` marks the genuine SessionStart-hook
+    invocation (as opposed to a reviewer subagent's bare ``clear``); it always
+    proceeds. ``--brief-only`` runs orientation only and skips both (1) and (2);
+    it is orthogonal to ``--session-start`` rather than replacing it, so the
+    boundary is ``--session-start`` *without* ``--brief-only``. ``--force`` is
+    the operator override for a stale marker and sweeps it. A bare ``clear``
+    (what a reviewer subagent issued in CRT-3X9D) is the guarded path: it refuses
+    while a Critic review is plausibly in progress so an independent reviewer
+    cannot clobber the session it is reviewing. A continuation neither sweeps nor
+    refuses — it mutates nothing, so the guard has nothing to protect.
+
+    ``--brief-only`` exists because the SessionStart matcher is the only thing
+    that knows whether this invocation ends a session or continues one, and
+    ``startup|resume|clear`` threw that fact away: `resume`, `compact` and `fork`
+    all restore the transcript (verified), so they are continuations that must
+    keep their evidence. hooks.json partitions the five documented sources
+    between the two paths (SCN-5B8Q).
+    """
+    argv = argv or []
+    rejected = _reject_unknown_args(
+        "clear", argv, {"--session-start", "--force", "--brief-only"}
+    )
+    if rejected is not None:
+        return rejected
+    force = "--force" in argv
+
+    # Resolve the INVOCATION KIND once, here, and gate every site on it. The three
+    # flags previously recombined into a different boolean expression at each
+    # decision (`boundary or force` / `elif session_start` / `not brief_only`), so
+    # the local named `boundary` gated neither `_boundary_*` call and the kinds
+    # disagreed at the edges — most visibly, `--session-start --brief-only --force`
+    # swept the critic marker on a CONTINUATION, the act this design classifies as
+    # a silent governance failure. One value means the next statement added below
+    # picks a category instead of inventing a fourth expression.
+    #
+    #   BOUNDARY     a session ended: run everything (destructive acts, the
+    #                boundary-dependent readers, orientation).
+    #   CONTINUATION resume/compact/fork — the transcript survived. Orientation
+    #                only; mutates no session state, so the critic guard has
+    #                nothing to protect and neither sweeps nor refuses.
+    #   GUARDED      a bare `clear`, i.e. what a reviewer subagent can issue.
+    #                Treated as a boundary, but refused while a review is live
+    #                (CRT-3X9D).
+    if "--session-start" in argv:
+        kind = "CONTINUATION" if "--brief-only" in argv else "BOUNDARY"
+    else:
+        kind = "CONTINUATION" if "--brief-only" in argv else "GUARDED"
+    # `--force` is orthogonal: it overrides the GUARDED refusal. It does NOT
+    # promote a continuation to a boundary — forcing a marker sweep on a live
+    # session is the failure mode, not an override of it.
+    brief_only = kind == "CONTINUATION"
+    prawduct_dir = get_prawduct_dir(project_dir)
+
+    # The plugin is user-scoped, so this SessionStart hook fires in every repo the
+    # user opens. A repo that never onboarded has no .prawduct/ — emit nothing and
+    # touch nothing, mirroring cmd_stop (the Stop gate). Skills like
+    # /prawduct:onboard stay available; this only silences the always-on session
+    # briefing and its session-marker side effects in non-Prawduct repos.
+    if not prawduct_dir.is_dir():
+        return 0
+
+    # Critic-active session-mutation guard (CRT-3X9D). cmd_clear is destructive
+    # (it archives/deletes .session-reflected, rewrites .session-start, recaptures
+    # the git baseline). An independent reviewer must never mutate the session it
+    # is reviewing. A genuine session BOUNDARY (--session-start without
+    # --brief-only) or an explicit --force sweeps any marker and proceeds; a bare
+    # clear refuses while a review is plausibly in progress. The check fails OPEN
+    # on a lib import error so an incomplete install never blocks session start (a
+    # broken lib also means the Critic can't run, so there is no review to protect).
+    #
+    # The sweep is BOUNDARY-only, not orientation (SCN-5B8Q review R-1/R-6). What
+    # licenses deleting someone else's marker is that an in-flight review dies with
+    # the process that dispatched it, so a marker outliving its session is stale by
+    # construction. That premise holds for a session that ENDED. It is false for
+    # `compact`, which fires mid-session *in-process*, and often false for `fork`,
+    # whose parent session is frequently still running — sweeping there would
+    # disarm this very guard, and the Stop hook's abandoned-review backstop (which
+    # keys on the marker's presence), while a reviewer is genuinely alive. The
+    # asymmetry decides it: sweeping a live marker is a silent governance failure,
+    # while not sweeping a dead one costs at most the 30-minute TTL, with `--force`
+    # and `rm` as loud, documented overrides.
+    if kind == "BOUNDARY" or (kind == "GUARDED" and force):
+        try:
+            _critic_marker().clear_marker(prawduct_dir)
+        except Exception:  # prawduct:allow prawduct/broad-except -- marker sweep must never block session start
+            pass
+    elif kind == "CONTINUATION":
+        # Mutates no session state, so there is nothing for the guard to protect —
+        # it neither sweeps nor refuses, and --force does not change that.
+        pass
+    else:
+        try:
+            active, age_s = _critic_marker().review_active(prawduct_dir)
+        except Exception:  # prawduct:allow prawduct/broad-except -- guard fails open: never block session start on a lib import error
+            active, age_s = (False, None)
+        if active:
+            age_min = int((age_s or 0) // 60)
+            print(
+                "PRAWDUCT: `clear` refused — a Critic review appears to be in progress "
+                f"(marker .prawduct/.critic-active, started ~{age_min}m ago). Session-mutating "
+                "commands are blocked so an independent reviewer cannot clobber the session it is "
+                "reviewing (CRT-3X9D).\n"
+                "  If the Critic has finished or crashed and this marker is stale, clear it:\n"
+                "    rm .prawduct/.critic-active        # then retry\n"
+                "  or override this one invocation:\n"
+                "    prawduct-hook clear --force\n"
+                "  (The marker also auto-expires after 30 min, or is swept at the next session "
+                "BOUNDARY — a fresh start or /clear. Resuming, forking or compacting this session "
+                "does NOT sweep it: a review may still be running in the session those continue.)",
+                file=sys.stderr,
+            )
+            return 2
+
+    # Check previous session's governance gates (warn, never block).
+    #
+    # BOUNDARY-only (SCN-5B8Q review R-4). This reads `.session-reflected`,
+    # `.gates-waived` and the session-change baseline and interprets them as a
+    # *finished* session's record. On a continuation those files belong to the
+    # session still running, so the check would nag "reflection not captured"
+    # about work that has not reached its close yet — and on `compact`, which can
+    # fire repeatedly, it would do so over and over. Its waiver handling assumes
+    # the same thing: the comment there notes `.gates-waived` is deleted right
+    # after this runs, which is true only on the path that deletes it.
+    #
+    # This is the second member of a category the first cut of the split missed:
+    # statements that destroy nothing but *interpret* session state as belonging
+    # to a previous session. They are not orientation, however read-only they look.
+    if not brief_only:
+        try:
+            gate_warnings = _briefing()._check_previous_session_gates(project_dir)
+            if gate_warnings:
+                print(
+                    f"WARNING: Previous session had unmet governance: {', '.join(gate_warnings)}. "
+                    f"Consider addressing before continuing."
+                )
+        except Exception:  # prawduct:allow prawduct/broad-except -- gate check must never block clear
+            pass
+
+    # Defensively untrack any session files that were accidentally committed.
+    # Runs every session-start so the cleanup happens in any product repo,
+    # including ones that committed session files before this check existed.
+    try:
+        untracked = _untrack_session_files(project_dir)
+        if untracked:
+            print(
+                "PRAWDUCT: untracked previously-committed session files (kept locally): "
+                + ", ".join(untracked)
+            )
+    except Exception:  # prawduct:allow prawduct/broad-except -- defensive cleanup must never block clear
+        pass
+
+    # Session BOUNDARY region 1 of 2 — skipped on a continuation (SCN-5B8Q).
+    if not brief_only:
+        _boundary_close_session(project_dir, prawduct_dir)
 
     # Agent-facing messages go to stdout (SessionStart hooks show stdout to the model).
     # stderr is only visible to the user in the terminal, not to the agent.
@@ -743,51 +1004,25 @@ def cmd_clear(project_dir: Path, argv: list[str] | None = None) -> int:
     except Exception as exc:  # prawduct:allow prawduct/broad-except -- advisory probes must never block session start
         print(f"NOTE: advisory probe step skipped: {exc}", file=sys.stderr)
 
-    # Capture git status baseline so session-start state doesn't trigger
-    # spurious stop-hook gates (no sync runs first in the plugin runtime).
-    # Atomic + best-effort (STH-8M3V): a torn/missing baseline makes every
-    # pre-existing dirty file count as session-changed (spurious gates), so
-    # the failure NOTE names that consequence; never block session start.
-    baseline = _gitstate().git_status_output(project_dir)
-    if baseline is not None:
-        try:
-            _core().atomic_write_text(prawduct_dir / ".session-git-baseline", baseline)
-        except (OSError, ImportError) as exc:
-            print(
-                f"NOTE: could not write .session-git-baseline ({exc}) — "
-                "pre-existing dirty files will count as session changes",
-                file=sys.stderr,
-            )
-
-    # Record HEAD's tree at session start (kernel-v3 chunk 04) — the base of
-    # the Stop-hook Critic gate's coverage question (Q2: composed review
-    # coverage must span this tree → the working tree at session end).
-    # HEAD^{tree}, not a working-tree capture: review facts anchor their base
-    # at HEAD's tree (D8), so this is the tree the session's evidence chain
-    # composes from — pre-session dirt rides inside every reviewed diff.
-    # Best-effort: on failure (unborn HEAD, git error) the marker stays
-    # absent and the gate degrades to a HEAD-tree base at session end
-    # (uncommitted-work jurisdiction), which the NOTE names.
-    try:
-        tree_proc = subprocess.run(
-            ["git", "rev-parse", "HEAD^{tree}"],
-            capture_output=True, text=True, cwd=str(project_dir), timeout=10,
-        )
-        if tree_proc.returncode == 0 and tree_proc.stdout.strip():
-            _core().atomic_write_text(
-                prawduct_dir / ".session-base-tree", tree_proc.stdout.strip()
-            )
-        elif baseline is not None:
-            print(
-                "NOTE: could not resolve HEAD^{tree} — the session Critic gate "
-                "will judge uncommitted work only this session",
-                file=sys.stderr,
-            )
-    except (OSError, subprocess.SubprocessError, ImportError) as exc:
-        # Same never-block-session-start posture as the baseline write above.
+    # Session BOUNDARY region 2 of 2 — skipped on a continuation (SCN-5B8Q).
+    if not brief_only:
+        _boundary_capture_git_anchors(project_dir, prawduct_dir)
+    elif not (prawduct_dir / ".session-base-tree").is_file():
+        # The continuation path never writes an anchor — correct, because stamping
+        # a resume-time clock onto a session that began earlier narrows the very
+        # jurisdiction this split exists to protect. But an ALREADY-absent anchor
+        # then degrades in silence: gates.session_review_verdict falls back to
+        # base_source='head-fallback', which shrinks the session Critic gate to
+        # uncommitted work AND skips the merge-base rescue (that rescue is gated on
+        # base_source == 'marker'). The boundary path announces the same narrowing
+        # when it fails to resolve HEAD^{tree}; the continuation path attempts no
+        # write, so without this there is no notice at all (review R-15). Reaching
+        # it is ordinary now — a mid-cycle worktree entry followed by resume/fork.
         print(
-            f"NOTE: could not write .session-base-tree ({exc}) — the session "
-            "Critic gate will judge uncommitted work only this session",
+            "NOTE: no .prawduct/.session-base-tree and this is a continuation "
+            "(resume/compact/fork), which never writes one — the session Critic gate "
+            "will judge uncommitted work only and skip the merge-base rescue. "
+            "Start the session with /clear in this worktree to anchor it.",
             file=sys.stderr,
         )
 
@@ -928,7 +1163,9 @@ def cmd_critic_begin(project_dir: Path, argv: list[str]) -> int:
 def cmd_critic_end(project_dir: Path) -> int:
     """Clear the critic-active marker at the end of a review. Idempotent — exit 0
     whether or not a marker was present (a crashed review's marker also expires
-    by TTL and is swept at the next session start)."""
+    by TTL, and is swept at the next session BOUNDARY — `startup`/`clear` only,
+    never a resume/compact/fork, which may be continuing the session a reviewer
+    is still running in)."""
     prawduct_dir = get_prawduct_dir(project_dir)
     _critic_marker().clear_marker(prawduct_dir)
     return 0
@@ -956,13 +1193,30 @@ def cmd_critic_consolidate(project_dir: Path) -> int:
 def cmd_subagent_stop(project_dir: Path, stop_input: dict | None = None) -> int:
     """SubagentStop trigger: consolidate Critic partials as each reviewer finishes.
 
-    Registered for the ``critic-reviewer`` agent type. Runs `critic-consolidate`
-    best-effort — it no-ops until every roster role has reported, then merges
-    exactly once, so firing per-reviewer is safe and idempotent. This hook is
-    ADVISORY: it ALWAYS exits 0 and never blocks the subagent. The enforcing gate
-    is the session-end backstop (cmd_stop) — if this trigger somehow never fires
-    (matcher drift, a harness change), the lingering marker still blocks at
-    session end, so consolidation is event-driven-fast but session-end-guaranteed.
+    Registered for the ``critic-reviewer`` agent type via the SubagentStop
+    matcher ``(^|:)critic-reviewer$``. The matcher must be a REGEX, not the bare
+    name: for SubagentStop, a matcher of only letters/digits/``_``/``-``/spaces/
+    ``,``/``|`` is a literal — a single exact string, or a ``|``/``,``-separated
+    LIST of exact strings — and the runtime ``agent_type`` of a plugin subagent
+    is the plugin-scoped ``prawduct:critic-reviewer``. A bare ``critic-reviewer``
+    matcher is therefore exact-compared against a scoped value and never fires at
+    all (CRT-2J8N — it shipped that way through v3.1.1). The ``(^|:)`` prefix
+    keeps it correct if the plugin is ever loaded unscoped or under another name.
+
+    Which literal class applies is NOT uniform across hook events, so do not read
+    this as a global rule: the SessionStart ``startup|resume|clear|compact|fork``
+    matchers in this same hooks.json are lists of exact strings and are correct.
+    Source: https://code.claude.com/docs/en/hooks (verified 2026-07-27),
+    corroborated against the installed Claude Code 2.1.220 matcher implementation.
+
+    Runs `critic-consolidate` best-effort — it no-ops until every roster role has
+    reported, then merges exactly once, so firing per-reviewer is safe and
+    idempotent. This hook is ADVISORY: it ALWAYS exits 0 and never blocks the
+    subagent. The enforcing gate is the session-end backstop (cmd_stop) — if this
+    trigger somehow never fires (matcher drift, a harness change), the lingering
+    marker still blocks at session end, so consolidation is event-driven-fast but
+    session-end-guaranteed. That backstop is why CRT-2J8N degraded silently
+    rather than losing reviews outright.
 
     ``stop_input`` is the parsed SubagentStop stdin: ``cwd`` locates the project
     (the reviewer's cwd is the project root), ``agent_type`` is the dispatched
@@ -1183,7 +1437,8 @@ def cmd_stop(project_dir: Path, stop_input: dict | None = None) -> int:
                 "REFLECTION: Files were modified but no session reflection was captured.\n"
                 "  Append your reflection to .prawduct/.session-reflected. This is a narrative of what\n"
                 "  happened: what changed, what surprised you, what the methodology helped or hindered.\n"
-                "  It gets archived to reflections.md automatically on next session start.\n"
+                "  It gets archived to reflections.md at the next session boundary (a fresh\n"
+                "  start or /clear) — resuming or compacting this session does not.\n"
                 "\n"
                 "  Going forward, reflect at WORK BOUNDARIES — right after Critic passes, after a bug\n"
                 "  fix, after error recovery — not at session end. Writing reflections when the user is\n"
@@ -1197,7 +1452,8 @@ def cmd_stop(project_dir: Path, stop_input: dict | None = None) -> int:
                 "  Escape hatch: if this gate cannot be satisfied this session (rare for reflection —\n"
                 "  it is meant to be cheap), declare a waiver so this gate stops re-firing:\n"
                 "    echo '{\"reflection\": \"reason — be specific\"}' > .prawduct/.gates-waived\n"
-                "  Empty reasons are rejected; the file auto-clears next session. See\n"
+                "  Empty reasons are rejected; the file clears at the next session boundary\n"
+                "  (a fresh start or /clear), so it outlives a resume/compact/fork. See\n"
                 "  `/prawduct:methodology building` (Gate waivers) for when this is appropriate.\n"
             ))
     elif (
@@ -1211,7 +1467,8 @@ def cmd_stop(project_dir: Path, stop_input: dict | None = None) -> int:
         print(
             "\nNOTE: No session reflection captured. Reflection is not required for exploratory work,\n"
             "  but if this session produced useful insights, consider writing them to\n"
-            "  .prawduct/.session-reflected (archived automatically on next session start).\n",
+            "  .prawduct/.session-reflected (archived at the next session boundary — a fresh\n"
+            "  start or /clear, not a resume/compact/fork).\n",
             file=sys.stderr,
         )
 
@@ -1239,7 +1496,7 @@ def cmd_stop(project_dir: Path, stop_input: dict | None = None) -> int:
     # trivial-declaration contract is independent.
     trivial_block_reason = ""
     if has_changes and has_build_plan:
-        current_chunk_id = _buildplan_refs()._current_chunk_id_from_status(prawduct_dir)
+        current_chunk_id = _buildplan_refs()._current_chunk_id_from_status(project_dir)
         if current_chunk_id is not None:
             chunk_type, type_error = _buildplan_refs()._parse_build_plan_chunk_type(prawduct_dir, current_chunk_id)
             # v1.5.1 Chunk 04(a): surface typo'd Type values. Pre-fix, the
@@ -1317,7 +1574,8 @@ def cmd_stop(project_dir: Path, stop_input: dict | None = None) -> int:
                 "    rm .prawduct/.critic-active\n"
                 "    rm -rf .prawduct/.critic-partials\n"
                 "    echo '{\"critic\": \"reason — be specific\"}' > .prawduct/.gates-waived\n"
-                "  Empty reasons are rejected; the file auto-clears next session.\n"
+                "  Empty reasons are rejected; the file clears at the next session boundary\n"
+                "  (a fresh start or /clear), so it outlives a resume/compact/fork.\n"
             )
             try:
                 state, missing = _critic_consolidate().pending_state(prawduct_dir)
@@ -1419,7 +1677,8 @@ def cmd_stop(project_dir: Path, stop_input: dict | None = None) -> int:
             "  it depends on a human authoring step or external system — declare a waiver so\n"
             "  this gate stops re-firing every turn:\n"
             "    echo '{\"critic\": \"reason — be specific\"}' > .prawduct/.gates-waived\n"
-            "  Empty reasons are rejected; the file auto-clears next session. See\n"
+            "  Empty reasons are rejected; the file clears at the next session boundary\n"
+                "  (a fresh start or /clear), so it outlives a resume/compact/fork. See\n"
             "  `/prawduct:methodology building` (Gate waivers) for when this is appropriate.\n"
         )
         verdict_status = critic_verdict.get("status", "")
@@ -1583,13 +1842,16 @@ def cmd_stop(project_dir: Path, stop_input: dict | None = None) -> int:
                 "  unavailable and merge is not imminent), declare a waiver so this gate stops\n"
                 "  re-firing every turn:\n"
                 "    echo '{\"pr\": \"reason — be specific\"}' > .prawduct/.gates-waived\n"
-                "  Empty reasons are rejected; the file auto-clears next session. PR review is\n"
+                "  Empty reasons are rejected; the file clears at the next session boundary\n"
+                "  (a fresh start or /clear), so it outlives a resume/compact/fork. PR review is\n"
                 "  the release-readiness gate — waive only when merge will not happen this\n"
                 "  session. See `/prawduct:methodology building` (Gate waivers).\n"
             ))
 
     # Surface any waivers so the agent (and reviewer) can see what was skipped.
-    # Waivers are auto-cleared at next session start so they never carry forward.
+    # Waivers clear at the next session BOUNDARY (a fresh start or /clear), so they
+    # never carry into a new session — but they DO outlive a resume/compact/fork,
+    # which is correct: the waiver is session-scoped and that session continues.
     if waiver_notes:
         print("", file=sys.stderr)
         print("GATE WAIVERS (this session, .gates-waived):", file=sys.stderr)
@@ -2339,9 +2601,12 @@ def cmd_verify_chunk_refs(project_dir: Path, chunk_id: str | None) -> int:
     ref is missing, or the gate cannot be evaluated. stderr lists each
     missing ref so the Critic can quote it in findings.
 
-    With no ``chunk_id``, reads the current chunk from Status (first unchecked
-    ``- [ ]`` item). If Status has no current chunk (all complete or no
-    Status section), exits 0 — there is nothing to verify.
+    With no ``chunk_id``, resolves the current chunk via
+    ``buildplan_refs._current_chunk_id_from_status`` — the first unchecked
+    ``- [ ]`` item normally, and the git-derived chunk on a ``views_enabled``
+    branch, where the checkboxes only flip at release and "first unchecked"
+    would grade Chunk 01 for the whole branch (BLD-7K3Q). If there is no current
+    chunk (all complete or no Status section), exits 0 — nothing to verify.
     """
     prawduct_dir = get_prawduct_dir(project_dir)
     if chunk_id is None:
@@ -2350,7 +2615,7 @@ def cmd_verify_chunk_refs(project_dir: Path, chunk_id: str | None) -> int:
         # One canonical current-chunk resolution (shared with the stop hook and
         # the Critic helper); handles both the "### Chunk NN:" and
         # "## Chunk N (ID) — Name" Status-item forms.
-        chunk_id = _buildplan_refs()._current_chunk_id_from_status(prawduct_dir)
+        chunk_id = _buildplan_refs()._current_chunk_id_from_status(project_dir)
         if chunk_id is None:
             print("ok: no current chunk in Status; nothing to verify")
             return 0
@@ -2730,6 +2995,27 @@ def cmd_evidence(project_dir: Path, argv: list[str]) -> int:
     from lib import evidence  # noqa: PLC0415 — lazy keeps top-level cheap + lib-free
 
     return evidence.evidence_cmd(project_dir, argv)
+
+
+def cmd_handoff(project_dir: Path, argv: list[str]) -> int:
+    """Preview the session handoff the next session would receive.
+    Thin wrapper — body lives in ``lib.briefing.handoff_cmd``. Read-only: it
+    renders without writing, so checking what `/clear` would produce no longer
+    requires running the one command that destroys what it replaces."""
+    lib_root = _plugin_root()
+    if lib_root not in sys.path:
+        sys.path.insert(0, lib_root)
+    try:
+        from lib import briefing  # noqa: PLC0415 — lazy keeps top-level cheap + lib-free
+    except ImportError:
+        print(
+            "handoff unavailable (could not import the plugin lib/ from "
+            "${CLAUDE_PLUGIN_ROOT})",
+            file=sys.stderr,
+        )
+        return 1
+
+    return briefing.handoff_cmd(project_dir, argv)
 
 
 def cmd_review_stats(project_dir: Path, argv: list[str]) -> int:
@@ -3475,7 +3761,7 @@ def cmd_repo_disable(project_dir: Path, argv: list[str]) -> int:
 
 _USAGE = (
     "Usage: prawduct-hook "
-    "{clear [--session-start|--force]|critic-begin --mode <m>|critic-end|critic-consolidate|"
+    "{clear [--session-start|--force|--brief-only]|critic-begin --mode <m>|critic-end|critic-consolidate|"
     "subagent-stop|"
     "stop|build-index|user-prompt-submit|"
     "jurisdiction [--file <path>|<text...>] [--artifacts-only]|"
@@ -3484,6 +3770,7 @@ _USAGE = (
     "check-cumulative-critic|"
     "verify-chunk-refs [chunk_id]|verify-coverage|"
     "ledger-append --event <kind> [--scope <s>] [--chunk <id>] [--model <id>]|"
+    "handoff preview|"
     "review-stats [--json]|classify-diff-risk [<base>]|"
     "check-operator-verification|accept-operator-verification <rationale>|"
     "verify-operator-verification <vrf-id>|"
@@ -3755,6 +4042,8 @@ def main() -> int:
         return cmd_verify_coverage(project_dir)
     elif command == "ledger-append":
         return cmd_ledger_append(project_dir, sys.argv[2:])
+    elif command == "handoff":
+        return cmd_handoff(project_dir, sys.argv[2:])
     elif command == "review-stats":
         return cmd_review_stats(project_dir, sys.argv[2:])
     elif command == "classify-diff-risk":

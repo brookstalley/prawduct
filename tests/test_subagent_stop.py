@@ -1,15 +1,19 @@
 """Tests for `prawduct-hook subagent-stop` — the event-driven consolidation trigger
 (critic-persistence-redesign Ch.04).
 
-Registered as a `SubagentStop` hook (matcher `critic-reviewer`), this command fires as
-each reviewer subagent finishes and runs `critic-consolidate` best-effort. Its contract:
+Registered as a `SubagentStop` hook (matcher `(^|:)critic-reviewer$`), this command fires
+as each reviewer subagent finishes and runs `critic-consolidate` best-effort. Its contract:
 resolve the project from the payload `cwd`, gate on `agent_type` defensively, delegate to
 the (already exhaustively tested) consolidation core, and — load-bearing — ALWAYS exit 0
 so it never blocks the subagent. The enforcing gate is the session-end backstop.
 
-The hook WIRING (does the harness fire it?) is validated live and recorded in
-`.prawduct/operator-verification.md` — a hook fire is not unit-observable. These tests pin
-the command BODY, which is unit-testable via subprocess with a SubagentStop-shaped stdin.
+Whether the harness ACTUALLY DELIVERS the event is not unit-observable, and is validated
+live via `.prawduct/operator-verification.md`. But "the wiring can only be checked live"
+was over-broad, and that gap is how CRT-2J8N shipped: whether the matcher CAN match the
+runtime `agent_type` is a pure static question, and the bare-name matcher could never match
+the plugin-scoped `prawduct:critic-reviewer`. That half now has a unit pin in
+`tests/test_critic_reviewer_agent.py`. These tests pin the command BODY, which is
+unit-testable via subprocess with a SubagentStop-shaped stdin.
 """
 
 from __future__ import annotations

@@ -17,6 +17,9 @@ restate; product repos receive the full digest (`methodology/session-digest.md`)
   hand-edits. "Done" = `update status=shipped` → `## Archive` (never strikethrough). An
   early-`stage:` item is an undocumented requirement — `pick` routes it to discovery.
 - **Feature-branch medium+ work.** Don't create PRs unless asked — then use `/prawduct:pr`.
+- **Forward notes go in `.prawduct/.handoff-notes.md`** — yours to write (as is
+  `.session-reflected`), at chunk close ("nothing beyond the plan" if true, but write the line, not no file).
+  `.session-handoff.md` is the machine's, regenerated at every `/clear`.
 - **Norms bind; descriptions track** (`/prawduct:methodology norms`) — departures from Direction/preferences
   norms are recorded decisions (amend / ruling / exception), never doc-sync.
 

@@ -6,7 +6,7 @@ Three concerns:
    ``_iter_status_section_lines`` / ``_iter_status_section_items`` (the one
    Status-section reader walk) and ``_chunk_section_lines`` (the one
    chunk-section walk) — plus the helpers built on them
-   (``_count_build_plan_chunks``, ``_chunk_ids_in_status_order``).
+   (``_count_build_plan_chunks``).
 
 2. Consolidation pins: the duplicate bodies deleted from ``lib.critic_mode``
    and ``lib.gates`` must STAY deleted — a consolidated walk must stay
@@ -27,7 +27,6 @@ from pathlib import Path
 from lib import buildplan_refs, critic_mode, gates, gitstate
 from lib.buildplan_refs import (
     _chunk_id_from_item_text,
-    _chunk_ids_in_status_order,
     _chunk_section_lines,
     _count_build_plan_chunks,
     _current_chunk_id_from_status,
@@ -164,19 +163,6 @@ class TestCountAndIds:
     def test_count_missing_plan_is_zero(self, tmp_path: Path):
         assert _count_build_plan_chunks(tmp_path / ".prawduct") == (0, 0)
 
-    def test_chunk_ids_in_status_order(self, tmp_path: Path):
-        prawduct = tmp_path / ".prawduct"
-        _write_plan(prawduct, PLAN)
-        assert _chunk_ids_in_status_order(prawduct) == ["01", "02", "03"]
-
-    def test_non_chunk_items_are_skipped_in_ids(self, tmp_path: Path):
-        prawduct = tmp_path / ".prawduct"
-        _write_plan(
-            prawduct,
-            "## Status\n- [ ] Chunk 01: a\n- [ ] tidy the docs\n- [x] Chunk 02: b\n",
-        )
-        assert _chunk_ids_in_status_order(prawduct) == ["01", "02"]
-
 
 class TestChunkSectionLines:
     def test_leading_zero_tolerance_both_directions(self):
@@ -295,14 +281,11 @@ class TestChunkIdFromItemText:
         assert _chunk_id_from_item_text("Chunky monkey business") is None
 
     def test_current_chunk_id_from_h2_status(self, tmp_path: Path):
-        prawduct = tmp_path / ".prawduct"
-        _write_plan(prawduct, PLAN_H2)
-        assert _current_chunk_id_from_status(prawduct) == "1"
-
-    def test_chunk_ids_in_status_order_h2(self, tmp_path: Path):
-        prawduct = tmp_path / ".prawduct"
-        _write_plan(prawduct, PLAN_H2)
-        assert _chunk_ids_in_status_order(prawduct) == ["1", "2"]
+        # Takes the PROJECT dir, not `.prawduct/` — resolving "current" is
+        # git-aware on a views_enabled repo (BLD-7K3Q), so the repo root is
+        # part of the question.
+        _write_plan(tmp_path / ".prawduct", PLAN_H2)
+        assert _current_chunk_id_from_status(tmp_path) == "1"
 
 
 # ---------------------------------------------------------------------------
@@ -321,7 +304,6 @@ class TestConsolidationPins:
         "_is_metadata_path",
         "_git_head_sha",
         "_current_chunk_id_from_status",
-        "_chunk_ids_in_status_order",
         "_count_build_plan_chunks",
     )
 

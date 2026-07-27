@@ -3,6 +3,549 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-07-27: The Critic's SubagentStop trigger had never fired (CRT-2J8N)
+
+<!-- prawduct: type=fix | release=v3.1.2 | status=shipped -->
+
+The `SubagentStop` hook that consolidates Critic partials as each reviewer finishes has never
+fired — not in this repo, not in any product, on any release that shipped it. Its matcher was the
+bare `critic-reviewer`, and for SubagentStop a matcher containing only letters, digits, `_`, `-`,
+spaces, `,` and `|` is a **literal** — one exact string, or a `|`/`,`-separated **list** of exact
+strings; the runtime `agent_type` of a subagent shipped by a plugin is the **plugin-scoped**
+`prawduct:critic-reviewer`. Exact-comparing one to the other can never match. Fixed to
+`(^|:)critic-reviewer$`, which takes the regex path and stays correct if the plugin is ever loaded
+unscoped or under another name.
+
+Which literal class an event uses is **not uniform across hook events**, so this is not a global
+rule: the `startup|resume|clear|compact|fork` SessionStart matchers in the same file are lists of
+exact strings and were always correct. Source: https://code.claude.com/docs/en/hooks (verified
+2026-07-27), corroborated during review against the installed Claude Code 2.1.220 matcher
+implementation.
+
+The user-visible effect was never lost reviews — the session-end backstop still blocked on the
+lingering marker, which is why this degraded quietly instead of failing loudly. What consumers
+actually got was a **documented safety step turned load-bearing**: CLAUDE.md describes running
+`critic-consolidate` before reading `.critic-findings.json` as "an idempotent no-op when the
+`SubagentStop` trigger already landed it." The trigger never landed it, so anyone who skipped that
+step read the *previous* review's findings.
+
+Three things about how it escaped, all worth more than the one-line fix:
+
+- **A guard behind a gate that never opens is not a guard.** `cmd_subagent_stop` carries an
+  `agent_type.endswith("critic-reviewer")` check, and `operator-verification.md` VRF-002 cited that
+  defense as the reason matcher uncertainty was tolerable. But the defense runs *downstream* of the
+  matcher. If the matcher never fires, nothing downstream of it protects anything.
+- **"Not unit-testable" was over-broad.** VRF-002 deferred the whole question to a live check on the
+  grounds that "matcher-anchoring semantics vary by Claude Code version." Delivery does need a live
+  check; whether a matcher *can* match a given `agent_type` is pure static analysis. It is now pinned
+  by `tests/test_critic_reviewer_agent.py::TestSubagentStopMatcherMatchesRuntimeAgentType`, which
+  encodes the documented two-path matcher rule and fails loudly on the bare-name form.
+- **The pre-existing test asserted the wrong contract.** `test_name_is_critic_reviewer` checked that
+  the agent's frontmatter `name` is `critic-reviewer` and commented that this name "is dispatch
+  subagent_type AND the SubagentStop matcher target." The first half is true and the second is false —
+  a true assertion carrying a false implication, which reads as coverage and provides none.
+
+VRF-002 remains pending for the delivery half and is annotated with this outcome. Its own final line
+had named the suspect 17 days earlier — "investigate the matcher string (`prawduct:critic-reviewer`
+vs `critic-reviewer`)" — but `operator_verification_required` is `false`, so the entry was never
+enforced and the queue has six pending entries, the oldest 17 days old.
+
+## 2026-07-27: Orientation and boundary become separate acts (session-boundary-events Chunk 01)
+
+<!-- prawduct: type=fix | scope=session-boundary-events | chunks=01 | release=v3.1.2 | status=shipped -->
+
+`clear --session-start` was registered on `startup|resume|clear`, so `claude --resume` — a
+*continuation* — ran a full boundary reset: it folded `.handoff-notes.md` into a handoff for a
+session that had not ended, archived `.session-reflected` away mid-session, and re-captured all three
+session anchors, which silently narrowed the session Critic gate's jurisdiction to post-resume work.
+Three chunks of `session-handoff-continuity` fixed what the handoff *said* while the thing driving it
+was wrong the whole time.
+
+**The premise was verified before it was built on, and the verification changed the design.** The
+plan rested on one unexercised assumption — that `--resume` restores the transcript, so a resumed
+session has not lost context. A headless session was given a codeword, resumed by session id, and
+returned it; the assumption holds and the chunk's shape survived. But the same probe, which logged
+the `SessionStart` payload, turned up a **fifth** source the plan never mentioned: `fork`
+(`--fork-session`, `/fork`, `/branch`). It restores the transcript *and* allocates a new session id,
+so the parent session is often still running — making `fork` the source where a boundary reset would
+destroy a **live** session's evidence rather than a finished one's. It had been getting no hook at
+all.
+
+**The split is by matcher, not by parsing the event payload** — the matcher already carries the one
+fact needed. `startup|clear` runs the boundary; `resume|compact|fork` runs
+`clear --session-start --brief-only`, which is orientation only. `--brief-only` is orthogonal to
+`--session-start` rather than replacing it: `--session-start` keeps meaning "a genuine hook
+invocation" (as opposed to a reviewer subagent's bare `clear`, which the CRT-3X9D guard refuses), so
+the boundary is `--session-start` *without* `--brief-only`. The three orientation-only hooks (banner,
+digest, build-index) gained `fork` for the same reason. (The first draft of this paragraph justified
+the flag by "so sweep the critic-active marker — which both paths want"; the review below reversed
+that, and the sentence is corrected here rather than left to contradict its own entry.)
+
+**Two contiguous regions, not six scattered guards.** All 17 statement blocks in `cmd_clear` were
+enumerated and assigned to a column before editing (the plan's instruction, and the inventory table
+proved accurate). The six boundary statements turned out to form exactly two adjacent runs, now
+extracted as `_boundary_close_session` and `_boundary_capture_git_anchors` — named so a future
+boundary statement lands *inside* the guard rather than beside it, which is this branch's recurring
+failure mode. Orientation blocks keep their relative order, because the briefing reads the advisory
+store the probes refresh and the handoff must be generated before the reflection it consumes is
+archived.
+
+`--brief-only` deliberately does **not** create a missing anchor: stamping a resume-time clock onto a
+session that began earlier would narrow the same jurisdiction by another route, and an absent anchor
+already fails closed.
+
+**One test was replaced, not relaxed.** `test_clear_matcher_excludes_compact` identified the clear
+entry by its `clear` token, which now matches both entries. Its successor asserts the invariant it
+was actually protecting and strengthens it: the state-reset entry must exclude `resume` and `fork`
+too, which the original never checked. The headline guard is a **partition property** over a pinned
+roster of all five documented sources — every source covered by exactly one entry — rather than a
+spot-check on one string; a spot-check on `compact` is precisely what let `fork` go unnoticed. The
+roster's honest limit (a local pin of an external fact cannot *discover* a sixth source) is written
+into the test.
+
+**Paid for in place, again.** `building.md`'s "Sessions and Work Cycles" said compaction gets "no
+hooks" — false even before this change, since banner/digest/build-index already fired on `compact`.
+The correction names the boundary/continuation split and all three continuation sources, and cost
+**+1 word** against 3 words of headroom: the new sentence makes half the compaction paragraph
+redundant, which funds it. 4595 → 4596 tokens, ceiling untouched. The handoff notes had predicted
+this addition would need the ceiling raised; it did not.
+
+**The review found a third category the split had missed, and it was the sharp one.** 0 blocking,
+12 warnings — but two findings were reached *independently by two reviewers*, and both said the same
+thing: the first cut sorted statements by *does it destroy evidence*, which is the wrong axis for two
+of them. The critic-active marker sweep and `_check_previous_session_gates` destroy nothing; they
+**interpret session state as belonging to a session that has finished**. Both were wrong on a
+continuation, and both are now boundary-only:
+
+- **The marker sweep.** What licenses deleting someone else's marker is "an in-flight review dies with
+  the process that dispatched it." True for `resume`; false for `compact`, which fires *in-process*;
+  and often false for `fork` — *as this same chunk's own `fork` decision states three paragraphs
+  above the sweep decision that contradicted it.* Sweeping there disarms the CRT-3X9D guard and the
+  Stop hook's abandoned-review backstop while a reviewer is genuinely alive, and compaction previously
+  ran no `clear` hook at all, so the exposure was **new in this bundle**. The asymmetry settles it:
+  sweeping a live marker is a silent governance failure; leaving a dead one costs the 30-minute TTL
+  with two loud overrides.
+- **The previous-session gate check** reads `.session-reflected`/`.gates-waived`/the change baseline
+  and reports them as a completed session's record — so on a continuation it would blame the *running*
+  session for work that has not reached its close, repeatedly under `compact`.
+
+**Cross-plan chunk-id conflation** (also convergent). `_committed_chunk_ids` matched `Chunk NN` in any
+subject on the branch with no scope filter, and this branch carries two plans — so a foreign plan's
+`(Chunk 02)` marked the active plan's chunk 02 done. It was harmless only by coincidence, and
+repointing `active_build_plan` at this plan (which it should have named all along) would have made it
+live: the two-chunk Status would have read COMPLETE with Chunk 02 unbuilt. Now filtered by the
+conventional-commit scope — but only when the filter *matches something*, because scope tags are a
+convention, not a guarantee: this branch's continuity commits say `session-continuity` while the plan
+says `session-handoff-continuity`, and a strict filter would have erased that plan's entire git signal
+and fallen back to all-unchecked boxes. Verified against the real branch: boundary-events now reads
+`complete=1, current=Chunk 02`, and continuity is unchanged at `complete=3, current=Chunk 04`.
+
+**Two silent-degradation paths closed.** Reflection archival swallowed its failure and the deletion
+loop unlinked the file three statements later — destroying a reflection that reached no archive, the
+last silent permanent-loss path in the boundary, and the delivery-keyed rule built for
+`.handoff-notes.md` never applied to its literal sibling. And the continuation path narrowed the Critic
+gate's jurisdiction without saying so when the base-tree anchor is absent (the boundary path announces
+the same narrowing); it now names the consequence and the remedy.
+
+**Claims corrected rather than softened.** "The sweep is the one mutation on the continuation path" was
+a quantifier over-claim falsified by this bundle's own test asserting `.advisories.json` is written
+there — written the same session the learnings say to verify at the quantifier. "The one session file
+you own" was asserted in five places and contradicted by `.session-reflected`, including by the
+architecture section whose own body says "Two files are different" one line below the heading that
+says one — and including in `reflection.md`, the guide about the other file. Dispositions against
+`api-contract.md` and `observability-strategy.md` were missing from both plans and are now recorded.
+
+24 tests added net, suite 2650 → 2673. Re-verified end-to-end after the fixes: a real `claude --resume`
+now preserves a **live** Critic marker, the notes, the reflection and the waivers, while a control
+boundary still sweeps and consumes all of them.
+
+## 2026-07-27: The guides stop naming only the file the agent must not write (session-handoff-continuity Chunk 03)
+
+<!-- prawduct: type=feature | scope=session-handoff-continuity | chunks=03 | release=v3.1.2 | status=shipped -->
+
+Chunk 01 built the forward channel and Chunk 02 made the read path correct. Neither addressed why
+agents wrote `.session-handoff.md` by hand in the first place: it was the only handoff filename the
+methodology named. An affordance, not a missing mechanism — so this chunk is mostly prose, plus the
+two runtime surfaces that let each side of a session boundary see the channel's real state.
+
+**Writing the notes is now a step in chunk close.** `building.md`'s "Session Scope Discipline"
+sequence gains step 7 (append to `.prawduct/.handoff-notes.md`: where you stopped, what you'd do
+next, what would bite them), and the affirmative signal becomes "… build plan updated, handoff notes
+written. Safe to `/clear`." The single sentence that used to describe the `/clear` hook is now a
+**two files, two owners** paragraph naming both files and who owns each. `reflection.md`'s Step 6
+said "Complete handoff", which reads as an action on the generated file; it now numbers the notes
+step and carries a "forward notes are not a reflection" paragraph. Both digests gain the rule.
+
+**Paid for in place.** `building.md` sat at 4591 of a 4600-token ceiling that exists to lock a diet
+in. The trims took it to 4590 — one token below where the addition found it — and the review's
+step-7 fix below then spent 5 more, landing at **4595**, ceiling untouched. The
+additions were funded entirely by in-file redundancy: three Common Traps that restated rules stated
+earlier in the same file, three trailing sentences that restated their own bullet, and prose fat in
+four paragraphs. Surviving coverage was checked per trap rather than assumed, and one is thinner
+than the other two — "Ignoring the Critic" now lives only in the Blocking-findings paragraph two
+sections down, with no digest copy. Recorded in the budget test's comment as the first thing to
+restore if the ceiling is ever raised.
+
+**The handoff states its own absence.** When a session did work and left no forward note — and left
+no hand-authored handoff to rescue either — the generated handoff says so, in the position the note
+would have occupied, and names the file the next agent should write. A handoff that lists a
+session's commits and nothing else *reads* as a complete account of it, which is how continuity was
+lost while the agent reported success. Advisory by construction: it adds a section and can block,
+delay, or alter nothing, per the ratified "authority fails closed; advice fails soft". It stays
+silent in three cases, each a deliberate discrimination rather than an omission — a note that exists
+but could not be *read* (the machine's failure, which already has its own notice, and blaming the
+agent for it would contradict that notice), a rescued hand-authored handoff (forward context did
+arrive, by the wrong route), and a session that changed nothing (a notice with no substance behind
+it only teaches the reader to skip the section).
+
+**`prawduct-hook handoff preview` shows what the next session would receive, without causing it.**
+`generate_session_handoff` split into a pure `render_session_handoff` plus the two things a preview
+must not do — writing the file and narrating failures. Until now the only way to see the handoff was
+`/clear`, which is also the act that destroys what it replaces, so the check that would prevent a
+mistake required making it. Read-only: nothing is written and the notes are never consumed, both
+pinned by mutation-tested assertions. The plan listed this as optional; it was built because the
+absence signal alone reaches only the incoming agent, who can no longer act on it.
+
+**A prose pin, not a fourth grep.** Every agent-facing guide naming `.session-handoff.md` must also
+name `.handoff-notes.md`. Deliberately not a verb list ("no sentence tells the agent to *write* the
+handoff") — that keys on which words read as instructions, and a convention-keyed detector drifts
+with the convention. What it does not prove is recorded in the test: co-naming is not adjacency, so
+it catches the whole-file omission the defect actually had, and no more.
+
+Chunk 03's declared `Type:` was `doc-only`, but the plan's own Status line and its `governed_by`
+disposition both named a false-success check that no other chunk owned. Corrected to `code` with the
+reasoning recorded, and the two missing acceptance criteria added rather than the mechanism cut.
+
+**Critic (`cumulative`, 33 files): 0 blocking, 8 warnings, 11 notes.** Six distinct warnings, all
+resolved here. Two were Chunk 02 code the bundle review reached first:
+
+- **The git-derived progress reading could be worse than the checkbox reading it promises never to
+  be worse than.** It walked only the *chunk-shaped* Status items, so "no chunk left" meant "nothing
+  left": a plan with every chunk committed and an unchecked plain to-do beside them read as
+  COMPLETE — retiring a live plan and blanking the handoff's work section. Live today on
+  `build-plan-backlog-service.md`. The walk now covers every Status item; an item naming no chunk
+  can never be "committed", so it is done iff its box is checked, which is exactly the checkbox
+  reading applied where git has nothing to say. Two regression tests, both confirmed failing first.
+- **`buildplan_refs` eager-imported `lib.views` (a heavy module) at module scope**, and `briefing`
+  (SessionStart) and `gates` (Stop) both import it at module scope — so every session paid for a
+  parse most never reach. The same bundle had made the *opposite* call in `ledger.py` with a written
+  rationale, and pinned `ledger`/`telemetry` — but not the hotter path where the coupling actually
+  landed. Now lazy, with the pin extended over all three modules.
+
+And four in this chunk's own work: `handoff preview` reported "nothing to hand off" *before* the
+unreadable-note diagnostic, so it disagreed with `/clear` about the one fact worth acting on;
+`building.md` step 7 sanctioned "nothing to add" without saying whether to write the file, which
+would have produced the absence notice on every clean chunk close (it now says to write the line);
+four preference pins had no row in the Enforcement table that calls itself the norm index — three
+of them older than this work, all four now indexed, and the handoff prose pin moved to
+`tests/preferences/` where prose pins live; and `ChunkProgress.git_derived`'s docstring claimed a
+reporting capability with no production consumer, now stated honestly along with the gap it leaves.
+
+The `verify-resolutions` pass confirmed all eight fixed and found two more, both in the fix commit's
+own work: the recorded test run predated the tree it vouched for (re-recorded), and the replacement
+`git_derived` docstring traded one unverifiable claim for another — it called the gap "tracked" with
+nothing tracking it (now **SCN-6V3D**, and the word is gone). Its notes also caught that the
+"write the line, not nothing" instruction had landed in `building.md` alone while `reflection.md`
+and the slim digest still said only "write the forward notes" — the branch's signature failure, in
+the fix for the finding that named it — and that the progress fix left a second helper without a
+production caller, so the dead pair and its tests are removed.
+
+27 new tests (suite 2623 → 2650, counted from a recorded run over this tree, not derived).
+Verified live through the real `/clear` on
+a scratch repo, both branches: a session with three commits and no note gets the signal with an
+honest count; the same shape with a note gets the note instead, and the note is consumed.
+
+## 2026-07-27: One answer to "which chunk is current," and a handoff that stops lying about the plan (session-handoff-continuity Chunk 02)
+
+<!-- prawduct: type=fix | scope=session-handoff-continuity | chunks=02 | release=v3.1.2 | status=shipped -->
+
+Four wrong-output defects fed `.session-handoff.md`, every one reproduced against this repo's own
+live plan rather than hypothesized. All four are fixed, and the fix for the widest one is a sweep.
+
+**"Which chunk is current" had three implementations and now has one.** On a `views_enabled` repo
+the Status checkboxes are a derived view that only flips at release, so mid-branch every box reads
+`- [ ]` and "first unchecked" reports Chunk 01 for the entire branch. CRT-7B4M shipped the
+git-derived answer for `infer-critic-mode` alone; the defect then recurred at `verify-chunk-refs`
+(**BLD-7K3Q** — grading Chunk 01's refs while chunks 02..N went unverified, silently and green)
+and at the handoff. The derivation moved from `lib/critic_mode.py` into `lib/buildplan_refs.py`
+beside the rest of the Status parsing, and `_parse_build_plan_status` now applies it — so every
+consumer, gate and report alike, is correct by construction instead of by a fourth local patch.
+A test pins that only `buildplan_refs` walks the Status section.
+
+`_parse_build_plan_status`, `_current_chunk_id_from_status`, `_has_active_build_plan_file` and
+`_get_active_work` now take the **project dir**, not `.prawduct/`. The wider signature is the
+point: resolving "current" reads git, and every call site should say so. A `.parent` derivation
+would have worked and kept the sweep invisible — which is how a local fix escaped notice twice.
+
+**A finished plan is no longer next session's task.** `staleness_scan` concluded "all chunks
+complete — delete the plan" while `_get_active_work` read the *identical* parse, applied no
+predicate, and stamped that plan as `**Task**`. The done-predicate is now one named function,
+`build_plan_is_complete`, that both call.
+
+**The work section can no longer vanish.** `description` required a `# Build Plan` H1; a
+frontmatter-style plan has none, so it came back empty — and description is the sole key gating
+the handoff's whole Work In Progress section, which is why a live four-chunk plan produced no work
+section at all. Falls back to the frontmatter `scope:`, then the filename.
+
+**Context is a block, not a line.** It was a `removeprefix` on one physical line, truncating the
+multi-paragraph text `building.md` itself calls "the cross-session handoff" (2283 chars on this
+repo's plan; 85 survived). It now runs from `Context:` to the end of the Status section. That also
+dissolves the multiple-`Context:` question rather than answering it: the first opens the block and
+a later one is text inside it, so neither wins and nothing is dropped. `building.md` and the
+build-plan template say so; the budget was paid for in trims, not raised.
+
+**The delete-the-plan nudge is merge-aware** (**BRF-6K2D**, landed here because it is the adjacent
+half of the same two functions). The plan is gitignored and survives a branch switch, so the nudge
+fired on the base branch while the work sat unmerged — following it would orphan live work. Two
+sufficient signals (foreign-branch WIP; HEAD not an ancestor of base), failing toward the ordinary
+nudge on every uncertainty, so this can only ADD a keep-recommendation and never silently suppress
+a legitimate one. A test pins the merged case still getting told to delete.
+
+**What the Critic changed, because two of these were regressions in the fix itself.**
+
+*Completion is `[x]` OR committed, never commits alone.* The first cut read only commit subjects
+since base, so a plan whose earlier chunks shipped in a *prior* release — boxes flipped, commits
+behind base — resolved "current" back to an already-shipped Chunk 01. Strictly worse than the
+checkbox fallback the derivation's own docstring promises never to be worse than.
+
+*The gate trigger keeps the checkbox reading.* Routing `_has_active_build_plan_file` through the git
+signal disarmed the blocking reflection and Critic gates the moment a views_enabled branch's last
+chunk was committed — through the entire complete-but-unmerged window, which is when the PR-fix and
+finding-resolution sessions happen. Git answers "which chunk is in flight"; the gate asks "is there
+still governed work", and a chunk's last commit lands before its Critic pass. Recorded as a
+`[DECISION]` in the plan and pinned by `TestGateSemanticsUnchanged`.
+
+*A raising git call no longer collapses the parse.* Every git touchpoint handled a non-zero return
+code and none caught a *raise*, so an absent binary or a timeout fell through to the parser's
+broad-except and returned `{}` — "there is no build plan", blanking the handoff's work section and
+relaxing the gates on a transient hiccup. Guarded inside `_git_aware_progress`, where the promise is
+made, so it degrades to the checkbox reading.
+
+*The precedence has one home.* Moving the three git helpers was not enough while `infer_mode` still
+wrote "try git, else checkboxes" for itself — the composition existed twice, which is the shape that
+let the defect reach three consumers. Both callers now go through `resolve_chunk_progress`.
+
+*And one in Chunk 01's code that this chunk's own learnings had warned about.*
+`_read_unmarked_handoff` returned `""` for three different things — absent, machine-generated, and
+**unreadable** — so a handoff the net could not read was treated as "nothing to preserve" and
+overwritten. Reachable, not exotic: that read carried no `encoding`, so one em dash under `LC_ALL=C`
+destroyed the file the net exists to save. Its sibling three lines above had been hardened for
+exactly this a chunk earlier; the fix had been applied to the instance the Critic named rather than
+to the class. It now returns a state, recovers undecodable bytes lossily, and declines to overwrite
+what it cannot read — announcing on stdout, because the incoming agent is the party harmed.
+
+Relatedly, `cmd_clear`'s generation failure now also speaks to the agent. `.session-handoff.md` is
+not in the session-file deletion loop, so a failed generation leaves the *previous* boundary's
+handoff in place and the next agent reads it as current. The operator got the diagnosis; the party
+harmed by the stale provenance got nothing.
+
+The `verify-resolutions` pass then found the same class twice more, in this very commit: the one
+`read_text` written here carried `encoding="utf-8"` while six siblings in the same module kept the
+locale codec — so the gate trigger and the handoff parser could disagree about whether the plan
+decodes at all — and the test pinning "infer_mode routes through the single owner" asserted only
+that two *other* functions agree, which an `infer_mode` that re-derived would satisfy too. The
+module is swept, and the test now asserts by dependence: redirect the resolver, require the answer
+to move. Confirmed by mutation — reverting `infer_mode` to composing the precedence itself makes it
+fail.
+
+One provenance note the Critic asked be recorded rather than left to inference: **CRT-3D9K** was
+dropped in June as "merged into STH-2K8R, whose consolidation closes this by construction."
+STH-2K8R shipped, the stop hook kept calling the non-git-aware resolver, and the defect survived
+both closures for seven weeks — it is fixed only here. "Closed by construction via another item" is
+the reasoning pattern that failed, and this is the evidence for it.
+
+The class took three review rounds and two more findings to close, which is the interesting part.
+Round one swept six of seven reads in one module; round two found two more outside it, one inside a
+function that reads the plan *twice* and so disagreed with itself; round three found that only the
+**codec** axis had been swept and the **except-set** axis was still open — `UnicodeDecodeError` is a
+`ValueError`, not an `OSError`, so five readers raised past callers with no guard, turning
+`verify-chunk-refs`' documented `cannot-verify:` exit into a traceback across a boundary whose error
+model forbids one. Each sweep reached exactly as far as the unit being edited, because a boundary
+you are inside is invisible. So the rule is now a **pin** —
+`tests/preferences/test_build_plan_decoding.py`, checking both axes and guarding itself against
+matching nothing — rather than a fourth application of attention. The ~67 other runtime reads are
+ROB-7T2N, deliberately not swept here.
+
+**The instrument had to be rebuilt twice before it could see the whole class, and that is the part
+worth recording.** The first pin was a grep on a local-name idiom (`plan_path.read_text(`). It
+asserted *shape* — each read names UTF-8, each guard spells `UnicodeDecodeError` — and could not
+assert the degradation *runs*; adding the behavioral half immediately found a twelfth reader the pin
+was blind to, because that one spelled its local `path`. Widening the pattern to `path.read_text(`
+was tried and rejected: it swept sixteen unrelated file reads and would have made the rule mean
+something else while looking stronger. But renaming the local was not enough either — a
+**thirteenth** reader sat sixty-eight lines below the twelfth, same shape, same file, and the round
+that fixed the twelfth *documented* the blind spot in prose while leaving the sweep it called for
+undone.
+
+So the pin no longer keys on names at all. Two mechanisms, each covering the other's gap:
+file-scoped and exhaustive over the modules whose job IS the plan (`buildplan_refs`, `views`), plus
+AST data-flow for readers outside them — any read whose content reaches a build-plan parser. It sees more
+than the idiom did (16 against 12 at the time of writing — derived by running the collector, not
+maintained by hand, which is the point), and it finds the enclosing `try` however far away it is,
+retiring an exemption the old three-line probe had needed.
+
+Closing the data-flow gap turned up a **third hand-rolled frontmatter parser** in
+`ledger._scope_from_plan` — invisible to the pin precisely because it parsed inline instead of
+calling the canonical reader, so folding it onto the shared reader is what keeps it in coverage.
+It also required `---` on line 1 and so could not read the third of this repo's plans (16 of 48)
+that open with a comment header — though on every one of those the frontmatter `scope:` equals the
+filename stem, which was its fallback, so the divergence is real in principle and zero in practice
+here. Said precisely because the first draft of this paragraph claimed "every real build-plan"
+opens with a comment header and an observable disagreement; neither was true, and the sentence had
+been copied from `views.py`'s docstring, where it was also wrong and is now fixed.
+
+Two vacuous assertions were caught this chunk, both negatives over a haystack that cannot contain
+the needle (`"01" not in stdout` where stdout is empty on the error path; `"Traceback" not in
+summary` where summaries are f-strings this module builds). That is a class, not two accidents, and
+both are now positive assertions verified by mutation.
+
+51 new tests; suite 2572 → 2623 — both figures counted (`git diff 0024630..HEAD -- tests/`), not
+estimated. Earlier drafts of this entry said 41 against a suite delta of 39, then 49 against 46; in
+an entry whose subject is that a durable artifact's claims must match the evidence, that is worth
+admitting rather than quietly correcting. Two existing tests were updated, not weakened: they passed
+`.prawduct/` positionally to functions whose argument is now the project dir. One new test was
+rewritten after the Critic found it passed vacuously — its `"01" not in stdout` assertion was
+satisfied by the empty stdout of a `cannot-verify` exit, so it would have gone green against the
+unfixed code; it now asserts `ok: chunk 04` positively.
+
+## 2026-07-26: The handoff gets a forward channel, and stops destroying what it finds (session-handoff-continuity Chunk 01)
+
+<!-- prawduct: type=feature | scope=session-handoff-continuity | chunks=01 | release=v3.1.2 | status=shipped -->
+
+Every source feeding `.session-handoff.md` was backward-looking machine state, so an agent with
+something to tell the next session had nowhere to put it — and wrote the handoff file itself, which
+`/clear` then overwrote. The overwrite guard was `if len(sections) > 2`: it preserved a
+hand-authored handoff *only when the machine had nothing to say*, so the file survived when it
+mattered least and was clobbered in every session with real work. Intermittent, therefore
+unlearnable.
+
+**The channel.** `.prawduct/.handoff-notes.md` is model-owned — the one session file the model
+writes and the machine reads. The generator consumes it and emits it above every machine section,
+because intent for the next session outranks the record of the last one.
+
+**The preservation net.** Every generated handoff now opens with a machine marker. A
+`.session-handoff.md` *without* it was authored by a model or a human, so its body is folded into
+the new handoff under a labelled section instead of being dropped. Two mechanisms rather than one
+because they fail differently: the channel is the documented path, the net catches the agent who
+reaches for the familiar filename out of habit — which the evidence says is the common case. The
+marker is also what keeps the net from compounding; without it every `/clear` would nest the
+previous handoff inside the next one, unbounded, and a test pins that.
+
+*Two choices worth naming.* **Consumption is transactional** — a note is deleted only once its text
+is durably in the handoff; deleting a note the agent deliberately wrote is the exact loss this
+channel exists to prevent. And notes get **no separate archive** unlike `.session-reflected` →
+`reflections.md`: their text is already carried verbatim into the handoff, and a second growing file
+with no reader is clutter.
+
+**The Critic caught the near-miss in that first claim, and all three reviewers found it
+independently.** The transaction gated on "a handoff was written" — which is true whenever any
+*other* section produced content. Meanwhile the notes reader collapsed absent, empty and
+*unreadable* into one empty string, so an undecodable notes file was deleted with its text carried
+nowhere: unrecoverable, and reachable through the documented happy path. The code asserted the
+invariant in four places and implemented a proxy for it. Fixed at the model rather than the comment
+— the reader now reports a state (`absent` / `empty` / `carried` / `unreadable` / `undelivered`) and
+consumption keys on **delivery**, with `read_text(encoding="utf-8")` so decodability no longer
+depends on the operator's locale. Generalizable: *when a guarantee names a specific event, gate on
+that event, not on a signal that usually co-occurs with it.*
+
+Two follow-ons from the same review. Handoff generation was the **only** failure path in `cmd_clear`
+that stayed silent while every sibling printed a `NOTE:` — an agent who wrote a note, saw `/clear`
+succeed and said "safe to clear" was wrong and nobody was told, which is the same silent-success
+class as the original bug. It now names its consequence on stderr; *fails soft* was never *fails
+silent*. And `active_build_plan` was `null` while the plan's own prose claimed it "deliberately"
+pointed at an artifact that does not exist — so this repo's handoff carried no work section at all,
+the defect class this plan is fixing, reproduced by the plan's own stale text. Repointed.
+
+*Accepted, one-time:* every `.session-handoff.md` that exists today predates the marker, so the
+first `/clear` after this ships preserves one machine-generated handoff as "hand-authored". One
+mislabeled section, self-clearing on the following run. The alternative — sniffing old machine
+handoffs by their headings — is a heuristic that could silently drop a model-authored file that
+happens to use the same headings, i.e. the failure being fixed. Noise once beats loss ever.
+
+One follow-on the resolution pass surfaced: the never-silent diagnostics were routed to the audience
+that cannot act on them. Both were on stderr — which `cmd_clear` itself documents as *user*-visible
+only, "not to the agent" — while their comments named the agent as the reader. Split by audience
+rather than by convention: a note that failed to reach the next session is a continuity fact and
+goes to **stdout**, which SessionStart shows to the incoming agent; a failed write is housekeeping
+and stays on stderr with its siblings. The unreadable-notes notice also gained a remedy line, since
+it re-fires every session until someone acts and a repeating notice with no exit is noise.
+
+`generate_session_handoff` now returns a `HandoffResult(written, notes_state)` so the caller can
+gate consumption on delivery; the write guard moved from a magic `> 2` to a computed header length.
+One test was removed, not weakened: `test_notes_file_in_untrack_set` asserted hook *source text*,
+and `TestSessionGitignoreMirror::test_session_file_sets_match` already asserts set equality between
+`_SESSION_GITIGNORED_PATHS` and `GITIGNORE_ENTRIES` — strictly stronger, and it would catch a
+drifted list that the grep would pass. Both never-silent emission sites the audience split created
+are pinned, including the undelivered-note announcement — reachable through the real CLI on a failed
+write, and the half the incoming agent actually sees. Suite 2550 → 2572.
+
+## 2026-07-21: the backlog service came back, laid out under plugin/ — and took the local-first norm with it
+
+<!-- prawduct: type=feature -->
+
+The v3.1.1 candidate tree was built by an allowlist prune (`fcb4e5f`, 113 insertions /
+16,942 deletions). Two things then happened independently: `feature/backlog-service` reverted that
+prune, and `develop` — which sits *on top of* it — did the relocation properly, moving the plugin
+into `plugin/` as a real directory. Neither branch restored what the prune deleted, so the
+backlog-service feature was simply **not on develop**: 45 files, ~6,100 lines, Chunks 01–06 built,
+plus backlog wiring stripped out of 16 files that survived (`prawduct-hook` lost 30 lines,
+`backlog_probes.py` lost 169).
+
+So this merge is a **restoration plus a relayout**, not a conflict resolution. Git's rename
+detection did the relayout for the 16 surviving files for free — base `bin/prawduct-hook` →
+ours `plugin/bin/prawduct-hook` → theirs modified, merged rename-aware into the right place. Only
+the 45 net-new files landed at old root paths and needed moving; `lib/backlog/` and
+`skills/backlog/` went under `plugin/`, while `tests/`, `documentation/` and `.claude/workflows/`
+stayed at the repo root where they already belonged. `lib/backlog.py` was a rename/rename conflict
+— renamed to `plugin/lib/backlog.py` here and to `lib/backlog/legacy.py` there — and since all
+three blobs were byte-identical, the two moves simply compose to
+`plugin/lib/backlog/legacy.py`. No import changes were needed at all: `tests/conftest.py` already
+puts `plugin/` on `sys.path`. Suite went 1998 → 2550.
+
+**The norm was the real work.** `architecture.md` § Direction carried a ratified steady-state
+local-first norm — "no network, no daemon" — whose own text said any future network surface would
+be "a characteristic flip, not a quiet addition." `lib/backlog/transport.py` drives `gh`. That is
+the flip, and the Critic blocked on it correctly: nothing in `.prawduct/` recorded a decision.
+
+Resolved by owner decision as an **amendment**, not a redesign. Local-first now scopes to
+*governance* coordination, with an opt-in backlog backend permitted a network surface provided it
+stays off by default, degrades to the markdown backend, and carries no governance verdict. Both
+original rationales survive intact — a product that never sets `backlog_service_repo` runs exactly
+the substrate the norm always described, and no gate, evidence fact or review verdict crosses the
+network. `gh` is recorded in `design_decisions.infrastructure_dependencies`, which also re-enables
+two Critic checks that sit dormant while that field is null. **No structural characteristic flips:**
+`gh` owns the credential (`~/.config/gh`) and the adapter never manages a token, so
+`handles_sensitive_data` stays absent.
+
+**A second norm was born, deliberately in-transition.** The owner's concern — a *private* consuming
+repo filing backlog items into prawduct's *public* tracker — is the named 3.2.0 blocker. Verified
+rather than assumed: nothing egresses today (`file-upstream` has zero implementation,
+`/prawduct:report-bug` writes only to a local drop-box and explicitly refuses a remote write when no
+local checkout is reachable, `backlog_service_repo` is the product's own repo). `security-model.md`
+§ Direction now holds that a governed product's content never leaves its own repo and owner,
+`Status: in-transition` against **BKL-7Q4M**. The end state is not prohibition — safe upstream
+filing is a capability prawduct wants; BKL-7Q4M is the requirements work (content minimization,
+redaction, owner preview-and-consent) that earns it. Its interim guard test is provisional and will
+be *replaced* by the redaction-and-consent contract, never weakened.
+
+Three code defects the review caught, each with a regression test **verified to fail against the
+unfixed code**: `_valid_segment` accepted `.`/`..`, which reach `repos/{owner}/{repo}/…` at the
+transport from an attacker-writable `superseded_by` body field; the briefing discarded the snapshot
+warm's result, so a warm that never started still claimed "counts warming" forever with the child's
+stderr on `DEVNULL`; and `import_items`' unexpected-boundary `except` returned a bare error,
+dropping progress and one-shot audit warnings — the third instance of the learning at
+`learnings.md:39`, on the sibling `except` to the two already fixed.
+
+**One correction to the fix commit `f62cae1`:** its message claims the roadmap-wave names are gone
+from shipped prose entirely. Four remain, in `plugin/lib/` docstrings (`migrate.py:487`,
+`snapshot.py:8,16`, `backlog_probes.py:332`). They are norm-*compliant* — `docs/norms.md` puts
+comments and docstrings on the permitted non-emitted side — so they were deliberately left rather
+than churned to make the sentence true retroactively. The claim was still overstated.
+
+Deferred with items filed, not dropped: BKL-3N8Q (relationship/timeline shapes fake-verified only;
+`blocked_by` fails silently so `pick` calls a blocked item ready), BKL-4C9P, GOV-5R8T, BKL-8W2M,
+DOC-7K4V, DOC-2R7M.
+
 ## 2026-07-21: the plugin stopped shipping prawduct's own backlog, learnings, and requirements to every consumer
 
 <!-- prawduct: type=fix | release=v3.1.1 | status=shipped -->

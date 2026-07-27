@@ -88,18 +88,35 @@ def _scope_from_plan(prawduct_dir: Path) -> str | None:
     if not plan_path.is_file():
         return None
     try:
-        lines = plan_path.read_text().splitlines()
-    except OSError:
+        # Explicit UTF-8, and `UnicodeDecodeError` (a `ValueError`) caught
+        # alongside `OSError` — same contract as every other build-plan reader.
+        content = plan_path.read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError):
         return None
-    if lines and lines[0].strip() == "---":
-        for line in lines[1:30]:
-            stripped = line.strip()
-            if stripped == "---":
-                break
-            if stripped.startswith("scope:"):
-                value = stripped[len("scope:"):].strip().strip("\"'")
-                if value:
-                    return value
+    # The canonical frontmatter reader, not a third hand-rolled copy.
+    #
+    # The driver is coverage, not a live bug: the decoding pin's data-flow
+    # mechanism follows content into a known parser, so an inline scan has no
+    # edge to follow and this read would have dropped silently out of the pin's
+    # view (tests/preferences/test_build_plan_decoding.py). Folding onto the
+    # shared reader keeps it visible by construction.
+    #
+    # The copy this replaced required `---` on line 1, so it could not read the
+    # third of this repo's plans that open with a comment header — but on every
+    # such plan today the frontmatter `scope:` equals the filename stem, and the
+    # stem was its fallback, so the divergence is real in principle and zero in
+    # practice here. Stated precisely because the first version of this comment
+    # claimed an observable disagreement that does not exist.
+    # Imported lazily: `lib.views` is a declared HEAVY_SUBMODULE (~34ms), and a
+    # module-scope import here would pull it into `lib.telemetry` too, which
+    # imports `ledger`. Zero cost today — nothing on the SessionStart hot path
+    # reaches either — but the coupling would be invisible to the lazy-import
+    # pin, which probes only `lib` and `lib.core`.
+    from .views import _parse_build_plan_frontmatter_scope  # noqa: PLC0415
+
+    _present, scope = _parse_build_plan_frontmatter_scope(content)
+    if scope:
+        return scope
     stem = plan_path.stem
     if stem.startswith("build-plan-") and stem != "build-plan-":
         return stem[len("build-plan-"):]

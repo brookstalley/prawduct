@@ -74,7 +74,7 @@ processes the harness spawns on lifecycle events, and reviewer subagents the ses
 Claude Code harness (external)
   │  fires lifecycle hooks (python3, one process per event); backgrounds Agent subagents
   ├─ SessionStart  → identity/version banner · guidance digest (injected as context)
-  │                → session reset + briefing · build index
+  │                → briefing (every source) · session reset (boundary sources only) · build index
   ├─ UserPromptSubmit → prompt-time checks
   ├─ Stop          → governance gates (Critic coverage + reflection) + consolidation backstop
   └─ SubagentStop  → (scoped to critic-reviewer) consolidate when all reviewers reported
@@ -170,6 +170,119 @@ the plugin no longer places them.
 | Plugin (distributed) | `plugin/` in the prawduct repo; the plugin root once installed | skills, hooks, methodology, CLI, templates | read-only; never placed into a repo |
 | Framework docs (this repo) | `documentation/` (tracked) | long-form requirements, PRDs, research, and the migration guide — human-facing working docs, framework-repo only (distinct from the plugin-bundled `docs/` reference) | committed to the framework repo |
 | Upstream bug intake (this repo) | `incoming-bugs/` (tracked) | bug reports products file upstream about prawduct itself, via `/prawduct:report-bug`; triaged into the backlog, then archived under `incoming-bugs/archive/` | committed to the framework repo |
+
+### What counts as a session boundary
+
+Session/gate state is scoped to a *session*, so the definition of where one ends is load-bearing for
+every gate that reads it. Claude Code fires `SessionStart` with five sources, and they divide on one
+question — **was the transcript restored?**
+
+| | Sources | What the hook does |
+|---|---|---|
+| **Boundary** | `startup`, `clear` | orientation **+** the reset (generate the handoff, consume the forward notes, archive the reflection, delete `.gates-waived`, re-capture the three session anchors) **+** the two boundary-dependent readers below |
+| **Continuation** | `resume`, `compact`, `fork` | orientation **only**: briefing, advisories, session-file untracking, the state-size and preferences checks, the subagent briefing |
+
+Statements sort into **three** categories, not two — the middle one is the easy mistake:
+
+1. **Destructive boundary acts** — they delete or overwrite session-scoped evidence.
+2. **Boundary-dependent readers** — they destroy nothing, but *interpret* session state as belonging
+   to a session that has **finished**. Two qualify: the critic-active marker sweep (it deletes a
+   marker on the theory that its writer's process is gone) and the previous-session gate check (it
+   reads `.session-reflected`/`.gates-waived`/the change baseline and reports them as a completed
+   session's record). Both are boundary-only. However read-only such a statement looks, it is not
+   orientation — and sorting purely on "does it destroy evidence" puts it in the wrong column, which
+   is exactly what the first cut of this split did.
+3. **Orientation** — everything else: safe on every source, because it neither destroys session
+   evidence nor assumes a boundary just happened.
+
+The split is carried by the hooks.json matcher rather than by parsing the event payload, because the
+matcher already carries the one fact needed. `--brief-only` selects the continuation path; it is
+orthogonal to `--session-start`, which keeps meaning "a genuine hook invocation" (as opposed to a
+reviewer subagent's bare `clear`, which the CRT-3X9D guard refuses). Note the ceiling on that
+mechanism: `--brief-only` distinguishes continuation from boundary and **nothing finer**, so `resume`,
+`compact` and `fork` are indistinguishable to the hook. Anything needing to tell them apart must split
+the matcher further or read `source` from the event payload.
+
+Two properties are easy to get backwards. First, a continuation must never re-capture an anchor **even
+when one is missing**: stamping a resume-time clock onto a session that began earlier narrows the
+Critic gate's jurisdiction, which is the defect the split exists to remove. An absent anchor already
+fails closed, and failing closed is the safe direction. A third consequence follows from the same rule and is easy to miss: `.gates-waived` is deleted only at a boundary, so a declared waiver **outlives a continuation**. That is correct — a waiver is session-scoped and the session is continuing — but it means a waiver survives an unbounded number of resumes, which is a longer life than the pre-split behaviour gave it. Second, the marker sweep is **boundary-only**,
+which is the opposite of the intuitive call: sweeping looks like a repair, and a crashed Critic's
+marker does wedge an operator. But the premise that licenses deleting someone else's marker — an
+in-flight review dies with the process that dispatched it — holds only for a session that *ended*.
+`compact` fires mid-session in-process, and `fork`'s parent is frequently still running, so a marker
+seen there is likely **live**; sweeping it would disarm both this norm's enforcement and the Stop
+hook's abandoned-review backstop, which keys on the marker's presence. Sweeping a live marker is a
+silent governance failure; leaving a dead one costs the 30-minute TTL, with `--force` and `rm` as loud
+overrides. A crashed Critic is rescued by the next real boundary.
+
+`fork` is the source most easily overlooked (it postdates the other four and was missing from this
+plan's first draft). It restores the transcript *and* allocates a new session id, so the parent
+session is frequently still running — making it the source where a boundary reset would destroy a
+**live** session's evidence rather than a finished one's.
+
+### The two model-owned session files
+
+Session/gate state is machine-written by default — the model reads it, code writes it. Models do
+write into `.prawduct/` elsewhere (reviewer subagents emit their own review partials), but those are
+inputs to a machine consolidation step. Two files are different: they are narrative, and the machine
+cannot synthesize them — `.session-reflected` (backward — what happened) and `.handoff-notes.md`
+(forward — what the next session needs to know). The handoff pair's contract, which is the lock-in
+that matters more than either file's format:
+
+| | `.handoff-notes.md` | `.session-handoff.md` |
+|---|---|---|
+| Writer | the model, any time | the machine, at a session **boundary** only (`startup` / `clear` — never on a continuation) |
+| Reader | the handoff generator, and nothing else | the next session (via the briefing pointer) |
+| Lifetime | until *delivered*, then cleared (see below) | until the next boundary regenerates it |
+| Scope | per-worktree, like every session file | per-worktree |
+
+Consumption is transactional and keys on **delivery, not on the handoff having been written**: a
+note is cleared only once its text is in the handoff, so one that was unreadable — or lost to a
+failed write — survives for the next `/clear`. (Gating on "a handoff was written" is the near-miss:
+it is true whenever any *other* section had content, so an unreadable note would be deleted
+undelivered.) Notes get no archive of their own — their text is carried verbatim into the handoff,
+which is where it is read. A generated handoff carries a machine marker; a `.session-handoff.md`
+lacking it was hand-authored, and is folded into the new handoff rather than overwritten. Advice
+fails soft applies throughout: none of this can block `/clear` — but every failure names its
+consequence, because silent degradation is the bug this pair exists to fix. Failures split by
+audience: housekeeping goes to stderr (the operator's), while "a note was left for you and did not
+arrive" goes to stdout, which is the channel the incoming agent reads.
+
+**What "survives" actually means, stated honestly** — the three survival paths differ, and only one
+of them self-clears:
+
+- *Delivered but not unlinked* — the text IS in the handoff; the stale copy is consumed on the next
+  `/clear`. One hop, bounded.
+- *Undelivered* (the handoff write failed) — the note is kept and persists until some later `/clear`
+  writes successfully. Its text is in no handoff meanwhile.
+- *Unreadable* — kept, and **unbounded**: nothing clears it until a human fixes or removes the file,
+  and its text never reaches any handoff.
+
+The last two are announced on stdout every session, which is what keeps them from being silent, but
+neither is bounded by the mechanism and neither is visible *in the handoff*. Preferring an
+unbounded, announced failure over an automatic deletion is the deliberate trade — this channel
+exists because deleting an agent's note is the loss that matters — but the bound is the operator's
+to close, not the code's.
+
+**Both sides of the boundary can see the channel's state.** The failure this pair exists to fix was
+silent in both directions, so two surfaces make it visible, and neither is a gate. *Forward:* when a
+session did work and left no note — and left no hand-authored handoff to rescue either — the
+generated handoff says so, in the position the note would have occupied, because a file listing a
+session's commits and nothing else reads as a complete account of it. It is deliberately not raised
+when a note exists but could not be *read*: that is the machine's failure, has its own notice at the
+consumption site, and blaming the agent for it would contradict that notice. *Backward:* `handoff
+preview` renders through the same function `/clear` does and stops there, so checking what the next
+session would receive is no longer the same act as replacing what is there. The asymmetry is real
+and worth stating: the absence signal reaches the incoming agent, who cannot act on it. What reaches
+the agent who still could — the chunk-close step, the digest line, the preview — is all advisory
+too, by the same norm.
+
+**Known gap in the marker scheme:** it recognises a handoff that was *replaced* (no marker), not one
+that was *appended to* (marker still present) — that text is still overwritten. Closing it needs a
+retained copy or hash to diff against, judged disproportionate against a marker that already
+redirects the writer. Tracked as SCN-2M6P; revisit if the net is observed firing at all, since that
+is evidence agents still reach for the wrong file.
 
 ## Communication Channels
 

@@ -359,9 +359,12 @@ def _parse_build_plan_frontmatter_scope(content: str) -> tuple[bool, str | None]
 
     The frontmatter is the block bounded by ``---`` on its own line. A leading
     HTML comment block (``<!-- ... -->``) and blank lines before the opening
-    ``---`` are tolerated — every real build-plan in the codebase begins with a
-    comment header before the frontmatter, so requiring ``---`` on line 1 would
-    make the field inert in practice.
+    ``---`` are tolerated — a third of this repo's build plans (16 of 48 as of
+    2026-07-27) open with a comment header before the frontmatter, so requiring
+    ``---`` on line 1 would make the field inert for all of them. (This sentence
+    previously read "every real build-plan", which was never true and was
+    copied into three other places before anyone checked it: ``for f in
+    .prawduct/artifacts/build-plan*.md; do head -1 "$f"; done``.)
 
     Returns a ``(present, value)`` tuple. ``present`` distinguishes "the
     ``scope:`` key appears in the frontmatter" from "the key is absent" — a
@@ -546,14 +549,22 @@ def build_scope_to_plan_map(artifacts_dir: Path) -> dict[str, Path]:
     result: dict[str, Path] = {}
     if not artifacts_dir.is_dir():
         return result
-    for path in sorted(artifacts_dir.glob("*.md")):
+    # Named `plan_path` because these ARE build-plan candidates — consistency
+    # with every other reader, and NOT load-bearing. The decoding rule reaches
+    # this module file-scoped (`tests/preferences/test_build_plan_decoding.py`),
+    # so it no longer depends on a local's name; an earlier idiom-based version
+    # did, and missed this loop and its twin below for one round each.
+    for plan_path in sorted(artifacts_dir.glob("*.md")):
         try:
-            content = path.read_text(encoding="utf-8")
-        except OSError:
+            content = plan_path.read_text(encoding="utf-8")
+        except (OSError, UnicodeDecodeError):
+            # One malformed file in artifacts/ must not blind the scope map to
+            # every other plan. `UnicodeDecodeError` is a `ValueError`, so the
+            # narrower `except OSError` here let it escape to `regen-views`.
             continue
         _present, scope = _parse_build_plan_frontmatter_scope(content)
         if scope and scope not in result:
-            result[scope] = path
+            result[scope] = plan_path
     return result
 
 
@@ -611,21 +622,26 @@ def diagnose_scope_plan_coverage(
     warnings: list[str] = []
     if artifacts_dir.is_dir():
         first_seen: dict[str, str] = {}
-        for path in sorted(artifacts_dir.glob("*.md")):
+        for plan_path in sorted(artifacts_dir.glob("*.md")):
             try:
-                content = path.read_text(encoding="utf-8")
-            except OSError:
+                content = plan_path.read_text(encoding="utf-8")
+            except (OSError, UnicodeDecodeError):
+                # A line-for-line twin of `build_scope_to_plan_map` above, and
+                # worse-guarded than it: `prawduct-hook` calls this bare with no
+                # global handler, so one non-UTF-8 file under `artifacts/`
+                # tracebacked out of `regen-views` — across a boundary whose
+                # error model forbids an internal stack trace crossing it.
                 continue
             _present, scope = _parse_build_plan_frontmatter_scope(content)
             if not scope:
                 continue
             if scope in first_seen:
                 warnings.append(
-                    f"duplicate scope={scope!r}: {path.name} also declares it "
+                    f"duplicate scope={scope!r}: {plan_path.name} also declares it "
                     f"(keeping {first_seen[scope]}); one plan is malformed."
                 )
             else:
-                first_seen[scope] = path.name
+                first_seen[scope] = plan_path.name
 
     plan_map = build_scope_to_plan_map(artifacts_dir)
     seen: set[str] = set()
@@ -698,7 +714,7 @@ def validate_chunk_roster(
         if plan_path not in rosters:
             try:
                 plan_content = plan_path.read_text(encoding="utf-8")
-            except OSError:
+            except (OSError, UnicodeDecodeError):
                 continue
             _start, _end, section = extract_status_section(plan_content)
             roster = [
@@ -1086,7 +1102,22 @@ def _plan_status_results(
     results: list[ViewRegenResult] = []
     for plan_path in plan_paths:
         plan_rel = plan_path.relative_to(prawduct_dir).as_posix()
-        plan_content = plan_path.read_text(encoding="utf-8")
+        try:
+            plan_content = plan_path.read_text(encoding="utf-8")
+        except (OSError, UnicodeDecodeError) as exc:
+            # An unreadable plan is one plan's problem, not the whole regen's:
+            # a multi-plan repo must still regenerate its other views. Reported
+            # as a noop naming the cause rather than swallowed, so the operator
+            # learns why a plan's Status did not move.
+            results.append(
+                ViewRegenResult(
+                    name="status",
+                    action="noop",
+                    summary=f"Status ({plan_rel}): unreadable build-plan: {exc}",
+                    path_relative=plan_rel,
+                )
+            )
+            continue
         status_new, status_changes = build_status_view(change_log_content, plan_content)
         if status_new is None:
             results.append(
