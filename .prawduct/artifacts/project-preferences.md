@@ -119,7 +119,7 @@ Pointer rows into the `## Direction` sections of the strategy artifacts. The sta
 **Candidate awaiting the owner's ratification** (listed here rather than omitted, because an
 unassigned rule is exactly what this index exists to prevent): the **handoff pair's contract** —
 `.handoff-notes.md` is written by the model and only by the model, `.session-handoff.md` by the
-machine and only at `/clear`. It lives in `architecture.md` § "The one model-owned session file"
+machine and only at `/clear`. It lives in `architecture.md` § "The two model-owned session files"
 as *descriptive* prose today, so by the authority rule it tracks rather than binds. It is
 norm-shaped (it says who may write which file, and the whole session-continuity defect was two
 writers on one file), and its enforcement already exists in code and in `test_handoff_prose.py`

@@ -433,6 +433,40 @@ class TestGateSemanticsUnchanged:
             "with no scope match the unscoped reading must survive, not vanish"
         )
 
+    def test_scoped_commits_without_chunk_ids_do_not_fall_through(
+        self, tmp_path: Path
+    ):
+        """The window between "no commit carries this scope" and "no scoped commit
+        carries a chunk id". A plan identifiable in the log but with no `(Chunk NN)`
+        subject yet must NOT fall back to the unscoped reading — that re-imports a
+        sibling plan's ids, which is the defect the filter exists to stop. Empty is
+        the truthful answer, and the caller degrades to checkboxes."""
+        repo = tmp_path / "repo"
+        _init_repo(repo, branch="develop")
+        _write_state(repo, "views_enabled: true\nbase_branch: develop\n")
+        _write_plan(
+            repo,
+            "---\nartifact: build-plan\nscope: boundary-events\n---\n\n"
+            "## Status\n\n<!-- views_enabled: true -->\n\n"
+            "- [ ] Chunk 01: Split the acts\n- [ ] Chunk 02: Handoff vintage\n",
+        )
+        _commit(repo, "chore: plan")
+        _git(repo, "checkout", "-b", "feature/x", "--quiet")
+        # This plan IS identifiable — but no chunk has landed under it yet.
+        _commit(repo, "docs(boundary-events): write the plan up")
+        # A sibling plan has landed chunks 01 and 02.
+        _commit(repo, "feat(other-plan): unrelated (Chunk 01)")
+        _commit(repo, "feat(other-plan): unrelated (Chunk 02)")
+
+        status = buildplan_refs._parse_build_plan_status(repo)
+        # `.get` deliberately: under the defect both chunks read complete and the
+        # key disappears entirely, so indexing would fail with a KeyError that
+        # hides what went wrong.
+        assert status.get("current_chunk") == "Chunk 01: Split the acts", (
+            "a scoped-but-chunkless plan must fall to checkboxes, not import a "
+            f"sibling plan's chunk ids (got {status.get('current_chunk')!r})"
+        )
+
     def test_non_views_repo_still_uses_checkboxes(self, tmp_path: Path):
         """The git path is opt-in; a hand-maintained plan is unaffected."""
         repo = tmp_path / "repo"

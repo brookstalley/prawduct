@@ -741,22 +741,33 @@ def _boundary_capture_git_anchors(project_dir: Path, prawduct_dir: Path) -> None
 def cmd_clear(project_dir: Path, argv: list[str] | None = None) -> int:
     """Orient a session, and at a genuine boundary also reset it (plugin runtime: no sync).
 
-    This entry point does two categorically different jobs, and the axis is NOT
-    read-only vs. mutating — orientation refreshes caches and repairs stale
-    markers. It is *orientation* (what a live agent needs: the briefing,
-    advisories, the stale-marker sweep, gate warnings) vs. *destruction of
-    session-scoped evidence* (the handoff, the forward notes, the reflection, the
-    three session anchors).
+    This entry point does categorically different jobs, and they sort into
+    **three** kinds — the middle one is the easy mistake, because it looks
+    read-only and is not orientation:
+
+    1. *Destructive boundary acts* — the handoff, consuming the forward notes,
+       archiving the reflection, re-capturing the three session anchors.
+    2. *Boundary-dependent readers* — they destroy nothing but interpret session
+       state as a **finished** session's: the critic-active marker sweep (it
+       deletes a marker on the theory that its writer's process is gone) and the
+       previous-session gate check. Both are boundary-only for that reason.
+    3. *Orientation* — the briefing, advisories, untracking committed session
+       files, the size/preferences checks, the subagent briefing. Safe on every
+       source.
+
+    Only (3) runs on a continuation. Sorting purely on "does it destroy evidence"
+    puts (2) in the wrong column, which is what the first cut of this split did.
 
     Flags (argv): ``--session-start`` marks the genuine SessionStart-hook
-    invocation — it always proceeds and sweeps any critic-active marker.
-    ``--brief-only`` runs orientation and skips the boundary reset; it is
-    orthogonal to ``--session-start`` rather than replacing it, because
-    ``--session-start`` means "a genuine hook invocation, so sweep the marker",
-    which both paths want. ``--force`` is the operator override for a stale
-    marker. A bare ``clear`` (what a reviewer subagent issued in CRT-3X9D) is the
-    guarded path: it refuses while a Critic review is plausibly in progress so an
-    independent reviewer cannot clobber the session it is reviewing.
+    invocation (as opposed to a reviewer subagent's bare ``clear``); it always
+    proceeds. ``--brief-only`` runs orientation only and skips both (1) and (2);
+    it is orthogonal to ``--session-start`` rather than replacing it, so the
+    boundary is ``--session-start`` *without* ``--brief-only``. ``--force`` is
+    the operator override for a stale marker and sweeps it. A bare ``clear``
+    (what a reviewer subagent issued in CRT-3X9D) is the guarded path: it refuses
+    while a Critic review is plausibly in progress so an independent reviewer
+    cannot clobber the session it is reviewing. A continuation neither sweeps nor
+    refuses — it mutates nothing, so the guard has nothing to protect.
 
     ``--brief-only`` exists because the SessionStart matcher is the only thing
     that knows whether this invocation ends a session or continues one, and

@@ -192,15 +192,21 @@ def _committed_chunk_ids(
     ``scope:`` frontmatter — restricts the count to commits whose
     conventional-commit scope matches.
 
-    The filter is applied **only when it matches something**. Scope tags are a
-    convention, not a guarantee: on this very branch the continuity plan's commits
-    say ``session-continuity`` while its frontmatter says
-    ``session-handoff-continuity``, so a strict filter would silently erase that
-    plan's entire git signal and fall back to all-unchecked boxes — replacing
-    cross-contamination with a different wrong answer. When no commit carries the
-    plan's scope we therefore keep the pre-existing unscoped reading, which is
-    exactly today's behavior; the filter only ever *narrows* a set that was
-    demonstrably about this plan.
+    The filter is applied **only when some commit carries the plan's scope** —
+    that condition, precisely, and not "when the scoped commits yield ids." Scope
+    tags are a convention, not a guarantee: on this very branch the continuity
+    plan's commits say ``session-continuity`` while its frontmatter says
+    ``session-handoff-continuity``, so a strict always-on filter would silently
+    erase that plan's entire git signal and fall back to all-unchecked boxes —
+    replacing cross-contamination with a different wrong answer. When no commit
+    carries the plan's scope we therefore keep the pre-existing unscoped reading.
+
+    The two conditions come apart exactly where the defect lives: a plan whose
+    commits DO carry its scope but that has not landed a ``(Chunk NN)`` subject
+    yet yields an empty id set, and falling through there would re-import a
+    sibling plan's ids. Once this plan is identifiable in the log, its empty id
+    set is the truthful answer — git knows nothing about its chunks — and the
+    caller degrades to the checkbox reading.
 
     Bounding by the plan's own declared chunk ids needs no code here: the caller
     walks Status items and asks whether each item's id is in this set, so an id
@@ -229,9 +235,15 @@ def _committed_chunk_ids(
             s for s in subjects
             if (m := _COMMIT_SCOPE_RE.match(s)) and m.group(1).strip() == plan_scope
         ]
-        scoped_ids = _ids(scoped)
-        if scoped_ids:
-            return scoped_ids
+        # Discriminate on `scoped`, NOT on the ids it yields. Those differ exactly
+        # where the defect lives: a plan whose commits carry the right scope but
+        # has not landed a `(Chunk NN)` subject yet yields no ids, and falling
+        # through would re-import a sibling plan's chunk ids — the very
+        # cross-contamination this filter exists to stop. Returning the empty set
+        # is the truthful answer (git knows nothing about this plan's chunks), and
+        # the caller already degrades to the checkbox reading on an empty set.
+        if scoped:
+            return _ids(scoped)
     return _ids(subjects)
 
 

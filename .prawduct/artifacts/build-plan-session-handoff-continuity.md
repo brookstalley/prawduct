@@ -84,7 +84,7 @@ channel; the generator emits it first, carries a machine marker, and folds an un
 handoff was written" (the Critic's central catch — the proxy deleted an unreadable note whose text
 reached nothing). Degraded paths split by audience: continuity facts to stdout where the incoming
 agent reads them, housekeeping to stderr. The pair's
-contract is recorded in `architecture.md` § "The one model-owned session file" — that is the
+contract is recorded in `architecture.md` § "The two model-owned session files" — that is the
 persisted-format enumeration Chunk 01 called for, and the answers are: nothing but the generator
 reads the notes; per-worktree; unconsumed notes survive to the next `/clear`.
 
@@ -302,7 +302,7 @@ reads it, and when it is cleared. Enumerate before implementing: does anything o
 handoff generator ever read it (the briefing? `/prawduct:pr`?); is it per-worktree or shared;
 what happens to notes written but never consumed because the session ended without `/clear`.
 
-*Enumerated and recorded* in `architecture.md` § "The one model-owned session file": sole reader is
+*Enumerated and recorded* in `architecture.md` § "The two model-owned session files": sole reader is
 the handoff generator (the briefing reads only the generated handoff; `/prawduct:pr` never touches
 it); per-worktree like every session file; unconsumed notes persist to the next `/clear` — at most
 one stale hop, and visible in the handoff when it happens.
@@ -388,7 +388,7 @@ not by refusing to clear | user can veto and ask for a hard gate]`
 1. Chunk-close sequence and the safe-to-`/clear` signal both name the notes step.
 2. No surviving text implies the agent authors `.session-handoff.md`.
 3. `cross-cutting-concerns.md` gains a session-continuity row, all four dimensions filled
-   honestly — Discovery n/a; Artifact `architecture.md` § "The one model-owned session file";
+   honestly — Discovery n/a; Artifact `architecture.md` § "The two model-owned session files";
    Builder the `building.md` chunk-close step this chunk adds; Critic **none today**, stated as
    such rather than left blank. (The surface table named this row and no chunk owned it — a
    Chunk 01 Critic finding under Framework Check 10.)
