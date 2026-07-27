@@ -258,10 +258,14 @@ the probes refresh, and the handoff must be generated before the reflection it c
 
 `[DECISION: `--brief-only` never writes a session anchor, not even when one is absent | because
 "create if missing" would stamp a *resume-time* clock onto a session that started earlier — narrowing
-the Critic gate's jurisdiction, which is the very bug this chunk removes. An absent anchor already has
-a documented degradation (freshness gates fail closed; the base-tree falls back to HEAD's tree), and
-failing closed is the direction this plan committed to. The edge is real but rare — it is the
-mid-cycle worktree entry `building.md` already names | user can ask for create-if-absent]`
+the Critic gate's jurisdiction, which is the very bug this chunk removes. The base-tree falls back to
+HEAD's tree. **Correction (PR review, 2026-07-27): this DECISION originally also claimed "freshness
+gates fail closed" on an absent anchor. That is false — `gates.py:156` returns `True` ("no session
+marker to verify") with the tree-validity clause unreachable on that path, so the freshness gate fails
+OPEN.** The decision stands on its first leg alone (do not stamp a resume-time clock); do NOT read it
+as resting on a safe absent-anchor state, because that state is weaker than this plan assumed. Tracked
+as STH-6D4Q. The edge is real but rare — it is the mid-cycle worktree entry `building.md` already
+names | user can ask for create-if-absent]`
 
 **Done when:**
 1. A simulated resume leaves `.handoff-notes.md`, `.session-reflected`, `.session-start`,
