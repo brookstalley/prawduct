@@ -15,8 +15,18 @@ carries the one fact needed:
     resume|compact|fork     -> clear --session-start --brief-only    (orientation)
 
 `--brief-only` is orthogonal to `--session-start` rather than replacing it:
-`--session-start` keeps meaning "a genuine hook invocation, so sweep the
-critic-active marker", which BOTH paths want.
+`--session-start` keeps meaning "a genuine hook invocation" — as opposed to a
+reviewer subagent's bare `clear`, which the CRT-3X9D guard refuses — so the
+boundary is `--session-start` *without* `--brief-only`.
+
+Statements here sort into THREE kinds, and the middle one is the easy mistake:
+destructive boundary acts; **boundary-dependent readers**, which destroy nothing
+but interpret session state as a *finished* session's (the critic-active marker
+sweep and the previous-session gate check); and orientation, safe on every
+source. Only orientation runs on a continuation. In particular the marker sweep
+is boundary-only: `compact` fires in-process and `fork`'s parent is often still
+running, so a marker seen there is likely LIVE, and sweeping it would disarm the
+guard while a reviewer is working.
 
 The premise was verified empirically before this was built, not reasoned about:
 a headless session was given a codeword, resumed by session id, and returned the

@@ -44,10 +44,14 @@ firing on every source).
   prior transcript. `--fork-session` returned it too. The premise holds and Chunk 01's shape is
   unchanged. The same probe logged the SessionStart payload and confirmed `source: "resume"` fires
   with the **same** session id, so the matcher split is mechanically viable.
-- `[ASSUMPTION: a `.critic-active` marker surviving into a resume is always stale | MED impact]`
+- ~~`[ASSUMPTION: a `.critic-active` marker surviving into a resume is always stale | MED impact]`
   Reasoning: an in-flight review dies with the process that dispatched it, so a marker that outlives
   the session cannot correspond to a live reviewer. If false, sweeping on resume would clear a guard
-  that is still doing its job.
+  that is still doing its job.~~ **FALSIFIED by the Chunk 01 review** — and the assumption's own
+  closing sentence named the consequence correctly. It holds for `resume`, but the matcher that
+  carries `resume` also carries `compact` (which fires mid-session, *in-process*) and `fork` (whose
+  parent session is frequently still running), so on those the marker is likely **live**. The sweep is
+  now boundary-only; see the replacement DECISION in Chunk 01.
 - `[ASSUMPTION: `compact` should receive the orientation half | MED impact | owner can veto]`
   It receives none today. Compaction is the one source where context genuinely *was* just lost, so a
   briefing is arguably most valuable there — but it also fires mid-session, potentially often, and
@@ -98,7 +102,10 @@ Chunk 01's DECISION). Steps 2–4 ran in a scratch git repo wired to the real `h
 genuine `claude --resume`, all six session-scoped files were byte-identical, the handoff was not
 regenerated, the forward notes were not consumed, and a stale `.critic-active` was still swept; a
 control run confirmed a genuine boundary still consumes notes, clears waivers and archives the
-reflection.
+reflection. **(The sweep observation was true of the code as it stood that hour and is no longer what
+ships** — the review made the sweep boundary-only, and the fixed build was re-verified end-to-end: a
+real `claude --resume` now *preserves* a live marker. Recorded rather than deleted, because it is the
+observation that made the reversal findable.)
 
 **One finding worth carrying forward.** The first end-to-end attempt *failed* — and the cause was the
 environment, not the code: the plugin is installed user-scoped from `~/source/prawduct` at `main`,
@@ -120,9 +127,21 @@ SessionStart matcher (`startup|resume|clear`) cannot tell them apart:
 |---|---|
 | render the session briefing | generate `.session-handoff.md` |
 | refresh advisories | consume + delete `.handoff-notes.md` |
-| sweep a stale `.critic-active` marker | archive + delete `.session-reflected` |
-| untrack accidentally-committed session files | delete + recapture `.session-start`, `.session-git-baseline`, `.session-base-tree` |
-| warn on the previous session's unmet gates | delete `.gates-waived` |
+| untrack accidentally-committed session files | archive + delete `.session-reflected` |
+| the state-size and preferences checks | delete + recapture `.session-start`, `.session-git-baseline`, `.session-base-tree` |
+| generate the subagent briefing | delete `.gates-waived` |
+| | **sweep a stale `.critic-active` marker** |
+| | **warn on the previous session's unmet gates** |
+
+**This table's first draft put the last two rows in the LEFT column, and that was the chunk's central
+error** (review R-1/R-4/R-6, found independently by two reviewers). They destroy nothing, so a sort by
+"does it destroy evidence" files them under orientation — but both *interpret* session state as
+belonging to a session that has **finished**, which only a boundary guarantees. The real taxonomy is
+three-way, not two, and the middle category is invisible to the axis this table was built on:
+
+1. **Destructive boundary acts** — the right column's original five rows.
+2. **Boundary-dependent readers** — the two bolded rows. Read-only, and still boundary-only.
+3. **Orientation** — the left column. Safe on every source.
 
 The axis is **not** read-only vs. mutating — orientation refreshes caches and repairs stale markers.
 It is *orientation* vs. *destruction of session-scoped evidence*.
@@ -343,7 +362,11 @@ defect survived is that nobody exercised the real path:
    the transcript is restored. If it is not, stop and revisit Chunk 01's premise.
 2. In a scratch clone: work, resume, and confirm notes/reflection/anchors survive and the briefing
    still renders.
-3. Repeat with a stale `.critic-active` present and confirm resume still clears it.
+3. Repeat with a stale `.critic-active` present and confirm resume **leaves it alone** — and that a
+   real boundary (`startup`/`clear`) still clears it. ~~"confirm resume still clears it"~~ was the
+   original step and is now **backwards**: running it as written would verify the regression as a
+   success. The sweep became boundary-only in the Chunk 01 review, because `compact` fires in-process
+   and `fork`'s parent is often still running, so a marker seen on a continuation is likely live.
 4. Confirm `startup` and `clear` are unchanged by running a real chunk close through them.
 
 ## Governance Checkpoints

@@ -146,6 +146,20 @@ is not append-only history — if a later commit in the same bundle reverses its
 (with a note that it was corrected), because with `views_enabled` it derives release-notes and the
 contradiction ships. Relates to Living Documentation (#3) and Validate Before Propagating (#15).
 
+**Round five sharpened it twice more, and both are mechanical.** (a) **Grep the REVERSED SENTENCE's
+own wording, not the wording of the sites you already found.** I swept `"swept at next session start"`
+— the phrasing of the two sites the previous finding named — when the load-bearing claim was
+`"both paths want"`. The reviewer's one-line refutation: `grep -rn "both paths want" .` returns three
+hits and two were fixed. Right method, wrong claim: the claim to sweep is the *proposition that
+changed*, which you can name from the decision you reversed, not from the files you last edited.
+(b) **Claim sweeps are case-insensitive, always.** The hit I missed was in a test module's docstring
+and read "which **BOTH** paths want" — capitalized for emphasis, so a case-sensitive `grep` skipped
+it, and emphasis-capitalization is exactly the variation a durable-prose sweep will meet. Use `grep
+-rni`, and sweep several *formulations* of the claim, not one string. The two sites that survived to
+round five were the worst two in the bundle: a test module docstring that hands a maintainer written
+license to revert the test back to the defect, and a build plan's Verification Strategy step that
+would have had an operator confirm the regression as a success.
+
 ## Verifying an inventory against the code cannot catch a wrong CATEGORY — the check confirms the frame it was built from
 
 Splitting `cmd_clear` into boundary vs. orientation, I sorted its 17 statements by *does it destroy
