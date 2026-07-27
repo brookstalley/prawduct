@@ -120,9 +120,25 @@ Critic: 2 blocking / 12 warnings resolved, then `verify-resolutions` clean (0 bl
 also fixed here). Three of the four Critic-found defects were instances of one class — a fix landed
 at the instance a review named rather than the class it belonged to — including one in Chunk 01's
 `_read_unmarked_handoff` that Chunk 01's own recorded learning had described. That is now a learning
-in its own right — and the class that took longest (a build-plan read decoding with the operator's
-locale, then the matching except-set) is now held by a pin in `tests/preferences/`, not by
-attention. Chunk 03 is next.
+in its own right.
+
+**Critic: 8 rounds, ending 0 blocking / 0 warning / 1 note (closed).** Two of the first round's
+problems were regressions in the fix itself; the rest were one recurring class — a build-plan read
+decoding with the operator's locale, and the matching except-set. It came back five times, each
+sweep reaching exactly as far as the unit being edited, and twice the *documentation* of the blind
+spot landed instead of the sweep it called for. It is now held by an AST pin
+(`tests/preferences/test_build_plan_decoding.py`) with two mechanisms and no known blind spot, plus
+a behavioral half that asserts the degradation runs. Four things this chunk turned from convention
+into pin: build-plan decoding, the single current-chunk owner, the gate's checkbox reading, and
+`ledger`/`telemetry`'s lazy heavy-module imports.
+
+One correction worth carrying forward rather than burying: a rationale was written into four durable
+places without being checked, and was false. The change it justified was right for a reason already
+recorded; the second reason was reached for, which is exactly what
+`learnings.md`'s "a rationale you reached for" rule names. Corrected at its origin in `views.py`,
+where it had been wrong since it was written.
+
+Chunk 03 is next.
 
 Plan written 2026-07-26 on `feature/session-handoff-continuity` (off develop). Parents:
 **SCN-4H9T** (the upstream triage of discodon's STH-9FYI — five defects, all reproduced against
