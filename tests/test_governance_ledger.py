@@ -226,14 +226,79 @@ class TestLedgerAppendScopeFallback:
         assert r.returncode == 0, r.stderr
         assert _ledger_events(repo)[0]["scope"] is None
 
+    def test_fallback_reads_scope_under_a_comment_header(self, tmp_path):
+        """A third of this repo's plans open with an HTML comment before the
+        frontmatter, and the hand-rolled scan this fallback used to run required
+        `---` on line 1 — so it silently fell through to the filename stem for
+        all of them. The filename here deliberately does NOT match the scope, so
+        the stem fallback cannot satisfy the assertion by accident."""
+        repo = tmp_path / "repo"
+        _init_repo(repo)
+        _commit_file(repo, "app.py", "print(1)\n", "init")
+        _write_findings(repo)
+        self._write_plan(
+            repo,
+            frontmatter_scope="plan-scope",
+            name="build-plan-other.md",
+            header=True,
+        )
+        r = _run_hook(repo, "ledger-append", "--event", "review.critic")
+        assert r.returncode == 0, r.stderr
+        assert _ledger_events(repo)[0]["scope"] == "plan-scope"
+
+    def test_null_scope_falls_through_to_the_filename(self, tmp_path):
+        """`scope: null` is the documented explicit opt-out. The old scan
+        returned any truthy token, so it wrote the literal string "null" into
+        the ledger's scope field."""
+        repo = tmp_path / "repo"
+        _init_repo(repo)
+        _commit_file(repo, "app.py", "print(1)\n", "init")
+        _write_findings(repo)
+        self._write_plan(
+            repo, frontmatter_scope="null", name="build-plan-my-feature.md"
+        )
+        r = _run_hook(repo, "ledger-append", "--event", "review.critic")
+        assert r.returncode == 0, r.stderr
+        assert _ledger_events(repo)[0]["scope"] == "my-feature"
+
+    def test_indented_scope_under_another_key_is_not_read(self, tmp_path):
+        """The old scan compared `line.strip()`, so a `scope:` nested under
+        another frontmatter key matched as if it were top-level."""
+        repo = tmp_path / "repo"
+        _init_repo(repo)
+        _commit_file(repo, "app.py", "print(1)\n", "init")
+        _write_findings(repo)
+        prawduct = repo / ".prawduct"
+        artifacts = prawduct / "artifacts"
+        artifacts.mkdir(parents=True, exist_ok=True)
+        (artifacts / "build-plan-my-feature.md").write_text(
+            "---\nartifact: build-plan\ngoverned_by:\n  scope: nested-not-mine\n---\n\n"
+            "# Plan\n\n## Status\n- [ ] Chunk 01: A\n",
+            encoding="utf-8",
+        )
+        (prawduct / "project-state.yaml").write_text(
+            "active_build_plan: artifacts/build-plan-my-feature.md\n"
+        )
+        r = _run_hook(repo, "ledger-append", "--event", "review.critic")
+        assert r.returncode == 0, r.stderr
+        assert _ledger_events(repo)[0]["scope"] == "my-feature"
+
     @staticmethod
-    def _write_plan(repo: Path, *, frontmatter_scope, name: str = "build-plan-x.md"):
+    def _write_plan(
+        repo: Path,
+        *,
+        frontmatter_scope,
+        name: str = "build-plan-x.md",
+        header: bool = False,
+    ):
         prawduct = repo / ".prawduct"
         artifacts = prawduct / "artifacts"
         artifacts.mkdir(parents=True, exist_ok=True)
         body = "# Plan\n\n## Status\n- [ ] Chunk 01: A\n"
         if frontmatter_scope:
             body = f"---\nartifact: build-plan\nscope: {frontmatter_scope}\n---\n\n{body}"
+        if header:
+            body = f"<!-- Build Plan — {name} -->\n\n{body}"
         (artifacts / name).write_text(body)
         (prawduct / "project-state.yaml").write_text(
             f"active_build_plan: artifacts/{name}\n"

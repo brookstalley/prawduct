@@ -52,7 +52,6 @@ from pathlib import Path
 
 from . import gitstate
 from .core import resolve_build_plan_path
-from .views import _parse_build_plan_frontmatter_scope
 
 LEDGER_BASENAME = ".governance-ledger.jsonl"
 LEDGER_SCHEMA_VERSION = 1
@@ -94,13 +93,27 @@ def _scope_from_plan(prawduct_dir: Path) -> str | None:
         content = plan_path.read_text(encoding="utf-8")
     except (OSError, UnicodeDecodeError):
         return None
-    # The canonical frontmatter reader, not a third hand-rolled copy. The copy
-    # this replaced required `---` on line 1, while every real build-plan in the
-    # codebase opens with an HTML comment header — so it disagreed with
-    # `views`/`buildplan_refs` about the scope of exactly the plans this repo
-    # writes. Using the shared reader also brings this read inside the decoding
-    # pin's data-flow view (tests/preferences/test_build_plan_decoding.py),
-    # which an inline parse kept it out of.
+    # The canonical frontmatter reader, not a third hand-rolled copy.
+    #
+    # The driver is coverage, not a live bug: the decoding pin's data-flow
+    # mechanism follows content into a known parser, so an inline scan has no
+    # edge to follow and this read would have dropped silently out of the pin's
+    # view (tests/preferences/test_build_plan_decoding.py). Folding onto the
+    # shared reader keeps it visible by construction.
+    #
+    # The copy this replaced required `---` on line 1, so it could not read the
+    # third of this repo's plans that open with a comment header — but on every
+    # such plan today the frontmatter `scope:` equals the filename stem, and the
+    # stem was its fallback, so the divergence is real in principle and zero in
+    # practice here. Stated precisely because the first version of this comment
+    # claimed an observable disagreement that does not exist.
+    # Imported lazily: `lib.views` is a declared HEAVY_SUBMODULE (~34ms), and a
+    # module-scope import here would pull it into `lib.telemetry` too, which
+    # imports `ledger`. Zero cost today — nothing on the SessionStart hot path
+    # reaches either — but the coupling would be invisible to the lazy-import
+    # pin, which probes only `lib` and `lib.core`.
+    from .views import _parse_build_plan_frontmatter_scope  # noqa: PLC0415
+
     _present, scope = _parse_build_plan_frontmatter_scope(content)
     if scope:
         return scope

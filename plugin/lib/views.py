@@ -359,9 +359,12 @@ def _parse_build_plan_frontmatter_scope(content: str) -> tuple[bool, str | None]
 
     The frontmatter is the block bounded by ``---`` on its own line. A leading
     HTML comment block (``<!-- ... -->``) and blank lines before the opening
-    ``---`` are tolerated — every real build-plan in the codebase begins with a
-    comment header before the frontmatter, so requiring ``---`` on line 1 would
-    make the field inert in practice.
+    ``---`` are tolerated — a third of this repo's build plans (16 of 48 as of
+    2026-07-27) open with a comment header before the frontmatter, so requiring
+    ``---`` on line 1 would make the field inert for all of them. (This sentence
+    previously read "every real build-plan", which was never true and was
+    copied into three other places before anyone checked it: ``for f in
+    .prawduct/artifacts/build-plan*.md; do head -1 "$f"; done``.)
 
     Returns a ``(present, value)`` tuple. ``present`` distinguishes "the
     ``scope:`` key appears in the frontmatter" from "the key is absent" — a
