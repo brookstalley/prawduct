@@ -98,6 +98,27 @@ class TestLazyIsolation:
             "not eager-import heavy submodules"
         )
 
+    def test_ledger_does_not_drag_in_heavy(self):
+        """`ledger` reaches `views._parse_build_plan_frontmatter_scope` for its
+        scope fallback. A module-scope import there would pull a HEAVY_SUBMODULE
+        into every consumer of `ledger`; the existing probes only cover `lib`
+        and `lib.core`, so the coupling would have re-landed green."""
+        dragged = _clean_import_probe("import lib.ledger", HEAVY_SUBMODULES)
+        assert dragged == set(), (
+            f"importing lib.ledger pulled in heavy modules {sorted(dragged)} — "
+            "import them inside the function that needs them"
+        )
+
+    def test_telemetry_does_not_drag_in_heavy(self):
+        """`telemetry` module-scope-imports `ledger`, so it inherits whatever
+        `ledger` eager-loads. Probed separately because the inheritance is the
+        part nobody looks at."""
+        dragged = _clean_import_probe("import lib.telemetry", HEAVY_SUBMODULES)
+        assert dragged == set(), (
+            f"importing lib.telemetry pulled in heavy modules {sorted(dragged)} — "
+            "it inherits ledger's module-scope imports"
+        )
+
     def test_accessing_one_flat_name_loads_only_its_owner(self):
         # Touching a core-owned name must not import advisory_store/views/etc.
         dragged = _clean_import_probe(

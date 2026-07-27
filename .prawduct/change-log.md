@@ -147,10 +147,10 @@ the needle (`"01" not in stdout` where stdout is empty on the error path; `"Trac
 summary` where summaries are f-strings this module builds). That is a class, not two accidents, and
 both are now positive assertions verified by mutation.
 
-49 new tests; suite 2572 → 2621 — both figures counted (`git diff 0024630..HEAD -- tests/`), not
-estimated. An earlier draft of this entry said 41 against a suite delta of 39, and a later one said
-49 against 46; in an entry whose subject is that a durable artifact's claims must match the
-evidence, that is worth admitting rather than quietly correcting. Two existing tests were updated, not weakened: they passed
+51 new tests; suite 2572 → 2623 — both figures counted (`git diff 0024630..HEAD -- tests/`), not
+estimated. Earlier drafts of this entry said 41 against a suite delta of 39, then 49 against 46; in
+an entry whose subject is that a durable artifact's claims must match the evidence, that is worth
+admitting rather than quietly correcting. Two existing tests were updated, not weakened: they passed
 `.prawduct/` positionally to functions whose argument is now the project dir. One new test was
 rewritten after the Critic found it passed vacuously — its `"01" not in stdout` assertion was
 satisfied by the empty stdout of a `cannot-verify` exit, so it would have gone green against the
