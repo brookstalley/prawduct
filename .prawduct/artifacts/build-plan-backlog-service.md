@@ -578,7 +578,9 @@ tests/
 - **Tests (L1):** MIG-5 (owner-confirmed dispositions; the `import` step receives a concrete cleaned
   set, not a model call; nothing hard-deleted — dispose via status/merge, DM7). **SPIKE-S2 (L4, step 0):**
   body-fidelity, ID aliasing, relationship reconstruction, archive volume/noise, resumability,
-  **batched-vs-N+1 fan-out** (pins `pick`'s PROBE-LAT floor from Chunk 03), **node_id stability across
+  ~~**batched-vs-N+1 fan-out**~~ **fan-out slope** (pins `pick`'s PROBE-LAT floor from Chunk 03;
+  batched-vs-N+1 is **settled — N+1 REST — and this probe could not have answered it**, 2026-07-28),
+  **node_id stability across
   transfer**. **Live dogfood:** the real prawduct migration is the acceptance evidence; **L5 smoke** on
   the two CLI round-trips the slice supports (`file`, `import`+`export` — MCP is W5, not a slice front).
 - **Acceptance criteria:** prawduct's backlog is live on GitHub Issues with every `PFX` ID resolving as

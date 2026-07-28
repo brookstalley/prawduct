@@ -51,8 +51,15 @@ round-trip — and neither is what that question was looking for.
   `plugin/lib/backlog/`. So the claim was confirmable by a grep that returned empty **for the wrong
   reason** — an absence-claim citing a path whose absence produces the same evidence as the claim being
   true. Corrected at seven sites, two of which were line-wrapped and therefore missed by a line-based
-  pass, which is the enumeration failure above recurring inside its own fix. A check now asserts every
-  "no GraphQL in X" claim cites a path that exists.
+  pass, which is the enumeration failure above recurring inside its own fix. Verified once, by hand, at
+  the time of the fix — **no persisted check asserts this**, and the general form (do intra-repo path
+  references resolve?) is already filed as **BLD-6P8T**; a bespoke "no GraphQL in X" probe would be the
+  narrow shape of a guard that item exists to design properly.
+
+  *This bullet said "a check now asserts…" until the review pass caught it. There is no such check —
+  what was added is a learnings rule, which is guidance, not an assertion. Recorded rather than quietly
+  reworded, because the entry teaching "state the command that would falsify it" claimed a falsifying
+  command it had not built, one bullet after teaching it.*
 
 - **A false claim about this mechanism was corrected in three places.** The design docs described the
   fan-out as "a batched-GraphQL round-trip"; **there is no GraphQL anywhere in `plugin/lib/backlog/`** and

@@ -714,7 +714,8 @@ fact, not a repeatable assertion.
   number, never re-issues it — which holds; the migration tests lean only on the no-reuse half.)*
 - **SPIKE-S2** — migration dry-run on discodon (317 open + 1,754-line archive): body-fidelity, ID
   aliasing, relationship reconstruction, archive-as-closed-issues volume/noise, rollback-free resume,
-  **batched-vs-N+1 fan-out** (pins the `pick` floor), **node_id stability across transfer** (ID-4's open
+  ~~**batched-vs-N+1 fan-out**~~ **fan-out slope** (pins the `pick` floor; batched-vs-N+1 itself is
+  **settled — N+1 REST — and was never answerable by this probe**, 2026-07-28), **node_id stability across transfer** (ID-4's open
   fact). Run **prawduct-first** (dogfood) and after the scrub.
 - **SPIKE-S3** — rate limits under load: cold sweep reads/sec; write-heavy grooming confirms core-bound;
   500/hr + 900 pts/min burst under a real creation burst; per-op granularity via `verify-api`.

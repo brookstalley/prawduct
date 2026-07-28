@@ -350,7 +350,11 @@ Pacer budgets (80/min, 500/hr, 900 pts/min) never bind; serial `gh` round-trip l
 governor. (This *corrects* the pre-run forecast that 147 archived items would breach 900/min — that
 conflated total volume with per-minute rate; the ceiling would bind only under parallelized writes.)
 **Still open (not blockers for #1/#3):** MIG-3 relationships not exercised (source has no native graph),
-PROBE-LAT absolute value contaminated by post-burst backoff (shape confirmed batched-not-N+1), ID-4
+PROBE-LAT absolute value contaminated by post-burst backoff ~~(shape confirmed batched-not-N+1)~~
+**— that parenthetical is RETRACTED (2026-07-28): the shape was never confirmed and could not have
+been. The probe varies `limit`, and `pick` applied `limit` only after fanning out over every eligible
+issue, so the reading was flat by construction. The fan-out was N+1 REST throughout; Chunk 05b bounded
+it —**, ID-4
 node_id-across-transfer not run (`--transfer-to` omitted). Chunk stays `[ ]` (release convention); no
 `chunks=05` change-log tag until release (Chunk 09).
 
@@ -648,7 +652,9 @@ re-derivation from memory samples instead of enumerating. **Append to this list 
 | ~~BKL-7Q4M · BKL-9XQ2 · BKL-0QR1 · **BKL-4T9C**~~ | Chunk 08 | **DO NOT FLIP — out of v3.2.0 (deferred 2026-07-28).** Same reasoning as the Chunk 07 row. Note BKL-7Q4M is still marked a **3.2.0 release blocker** in its own body — that designation predates the narrowing and is now stale; reconcile it via `/prawduct:backlog` rather than reading it as a contradiction of this row. |
 
 **Unreleased change-log entries owed `status=shipped | release=v3.2.0`** (verified against the tree
-2026-07-24 — re-grep `scope=v3.2.0-golive` at Chunk 09, since chunks 06–08 will add more):
+2026-07-24 — re-grep `scope=v3.2.0-golive` at Chunk 09, since chunks 05b and 06 will add more; the
+original reason read "chunks 06–08", which the 2026-07-28 narrowing falsified — the re-grep is correct
+either way, but its stated reason was not):
 
 1. Chunk 05 offline prep — *also needs `chunks=05` added*; the tag was deliberately withheld until the
    live half landed (it has, VRF-009), so Chunk 09 adds it rather than minting a second entry.

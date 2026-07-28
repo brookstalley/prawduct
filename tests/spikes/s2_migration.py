@@ -18,7 +18,10 @@ the settled facts the offline suite cannot prove:
      burst throttled, wall-clock), settling the constants NFR §9 S2 leaves open.
   5. **rollback-free resume** — interrupt mid-import, re-run, confirm no duplicates
      (the live CRASH-4).
-  6. **batched-vs-N+1 fan-out** — time ``pick`` at increasing candidate counts to
+  6. **fan-out slope** — time ``pick`` at increasing candidate counts to
+     (*was "batched-vs-N+1"; settled 2026-07-28 as N+1 REST, and this probe could
+     not have answered it before ``pick`` began bounding the fan-out by ``limit``
+     — see ``check_pick_latency``*)
      pin its latency floor (the PROBE-LAT constant that the offline suite marks
      ``target``-grade only).
   7. **node_id stability across transfer** — capture an issue's GraphQL node_id,
