@@ -54,10 +54,11 @@ completing cleanly. Neither blocks authoring the rest of the plan.
 - [ ] Chunk 03: Scrub + grant safety rails (repo-selection/confirm, provisioning, grant narrowing, advisory hold) — built 2026-07-24 (ONB-3F9P full close), `[ ]` until release
 - [ ] Chunk 04: Pacer REST-point metering for the create+close archive stretch (C7) — built 2026-07-24, `[ ]` until release
 - [ ] Chunk 05: SPIKE-S2 live dry-run + MG4 scrub workflow (C1 + C2) — live dry-run run 2026-07-24 (VRF-009, §9 S2 settled), `[ ]` until release
+- [ ] Chunk 05b: `pick` honesty + fan-out cost, ahead of the migration — built 2026-07-28, `[ ]` until release
 - [ ] Chunk 06: The real prawduct migration + VRF-006 (C4) — irreversible, operator-run
-- [ ] Chunk 07: Briefing/gates repoint through the adapter (C5) — scoping audit 2026-07-24 finds all four original done-whens already satisfied; the chunk's real content is now the **advisory lift** (done-when #5, owner decision BKL-7D3V)
-- [ ] Chunk 08: MG5 / upstream filing — file-upstream op, report-bug rewrite, drop-box retirement (splittable 08a/08b)
-- [ ] Chunk 09: Release mechanics — version bump, change-log flip, regen-views, tag; VRF-002/003 post-tag
+- [ ] Chunk 07: Briefing/gates repoint through the adapter (C5) — scoping audit 2026-07-24 finds all four original done-whens already satisfied; the chunk's real content is now the **advisory lift** (done-when #5, owner decision BKL-7D3V) — **DEFERRED out of v3.2.0 2026-07-28** (adds governed surface; waits behind the simplification pass)
+- [ ] Chunk 08: MG5 / upstream filing — file-upstream op, report-bug rewrite, drop-box retirement (splittable 08a/08b) — **DEFERRED out of v3.2.0 2026-07-28** (same reason; the § Direction norm amendment it carries defers with it)
+- [ ] Chunk 09: Release mechanics — version bump, change-log flip, regen-views, tag; VRF-002/003 post-tag — **re-scoped 2026-07-28** to cover Chunks 01–06 only
 
 Context: Plan authored 2026-07-24 from `release-plan-backlog-service-golive.md` + the upstream-filing
 design; `active_build_plan` now points here. **Correction 2026-07-24:** the relayout merge (the old
@@ -72,9 +73,24 @@ meters total REST points (900/min; 5/write, 1/read) across create **and** close 
 passed. **Chunk 05 offline half prepped 2026-07-24** — the MG4 scrub workflow (done-when #2) was already
 complete; the SPIKE-S2 harness is now instrumented to measure the paced `--archive-scope all` burst
 (`Pacer` counters → recorded facts) and its standalone-run import regression fixed, so the operator
-dry-run is turnkey (Critic chunk-mode 0/0/1; suite 2572). Next: **Chunk 05 live half** — the operator
-runs the SPIKE-S2 dry-run on a throwaway repo and records results (settles NFR §9 S2 for real), with the
-Chunk 01 VRFs (operator/live) in parallel; then Chunk 06 (the irreversible real migration).
+dry-run is turnkey (Critic chunk-mode 0/0/1; suite 2572). **Chunk 05 live half landed 2026-07-24** —
+recorded as VRF-009 (`verified`); §9 S2 settled in the negative (the point ceiling is a non-binding
+safety belt under the serial importer, not the governor). See the Chunk 05 body for the tally and the
+three residuals that are explicitly not blockers.
+
+**Correction 2026-07-28:** this paragraph read "Next: **Chunk 05 live half**" for four days after that
+half had landed — the chunk body and `operator-verification.md` (VRF-009 `verified`) both already said
+so. The § Status summary drifted from the chunk bodies it summarizes, which is the same two-trackers
+failure the § below diagnoses, reproduced *inside* the surviving tracker. Next is **Chunk 01** — VRF-005
+/007/008 drained against `samsung-frame-art-loader`, plus the BKL-4W7H `promoted → shipped` flip — then
+**Chunk 06** (the irreversible real migration).
+
+**Release scope narrowed 2026-07-28 (owner decision).** v3.2.0 stops after **Chunk 06**. Chunks 07
+(advisory lift) and 08 (upstream filing) *add* governed surface and are deferred behind a
+deletion-only simplification pass; Chunk 09's release mechanics re-scope to whatever Chunk 06 leaves.
+Rationale: the framework's own open backlog went 50 → 169 items in the 26 days since the
+2026-07-02 efficiency review, ~120 of that from Critic findings on governance machinery. Chunk 06 is
+the one remaining chunk that reduces that load rather than adding to it.
 
 ## Where v3.2.0's state lives — one tracker, and why the other surfaces disagree
 
@@ -340,6 +356,49 @@ node_id-across-transfer not run (`--transfer-to` omitted). Chunk stays `[ ]` (re
 
 ---
 
+### Chunk 05b: `pick` honesty + fan-out cost, ahead of the migration
+
+**Goal:** Fix two `pick` defects that Chunk 06 would otherwise make permanent and universal across the
+whole migrated backlog. Added 2026-07-28, after a pre-Chunk-06 read of the migration path.
+
+**Covers:** the `pick`-path slice of BKL-3N8Q (not the whole item — its foreign-API verification half
+stays open) and the PROBE-LAT N+1 that VRF-009 recorded but did not fix.
+**Depends on:** —  ·  **Type:** code (bugfix)  ·  **Critic mode:** chunk (`plugin/lib/backlog/**` is
+governance-protected → full Critic + `/prawduct:pr`)
+
+**Why it gates Chunk 06.** The importer maps `related:` to **no native edge** — it is carried in the
+issue body (`migrate.py`), and the only native-relationship code in that module is the *export* path.
+So after the migration every item reads back **zero** native dependencies, permanently. Two consequences,
+both of which get worse the moment the backlog is 170 issues instead of a test fixture:
+
+1. **`pick` reported absence of data as a verified all-clear.** `_why` emitted "no open blockers"
+   unconditionally, so post-migration every item would carry a confident all-clear derived from a field
+   the migration guarantees is empty. This is BKL-3N8Q's failure mode — filed there as *occasional*,
+   made *universal and permanent* by the migration.
+2. **The dependency fan-out ran over every eligible issue before `limit` was applied.** One REST read
+   per open ready item on every `pick`, regardless of `--limit`.
+
+**Done when:**
+1. `_why` distinguishes **"no blockers recorded"** (empty read) from **"all N blockers closed"**
+   (verified clear). ✅
+2. The fan-out is taken lazily in rank order and stops at `limit`. Ranking does not depend on blocker
+   state, so the result set is provably unchanged — only the cost differs. ✅
+3. Tests pin both, including that laziness does not under-fill when a top-ranked candidate is blocked. ✅
+4. The four surfaces describing the old mechanism are corrected: the `query` module docstring,
+   `documentation/backlog-service-data-model.md`, `documentation/backlog-service-api-contract.md`, and
+   `build-plan-backlog-service.md` (whose "batched-GraphQL" claim was already false — there is no
+   GraphQL in `lib/backlog/`, as VRF-009 records). ✅
+
+**Deliberately NOT done:** mapping `related:` → native `blocked_by` at import. Most `related:` links are
+"see also", not blocking, so synthesizing native edges from them would manufacture false blockers across
+the entire backlog — strictly worse than recording none. If native blocking relationships are wanted
+post-migration they should be authored deliberately via `link`, not inferred from prose.
+
+**Verification:** suite **2728 passed, 7 skipped** (JUnit-backed, recorded 2026-07-28). Backlog flip owed
+at Chunk 09 — see § Deferred to Chunk 09.
+
+---
+
 ### Chunk 06: The real prawduct migration + VRF-006 (C4) — IRREVERSIBLE, operator-run
 
 **Goal:** Migrate prawduct's own backlog to GitHub Issues, `--archive-scope all`, fully metered. This is
@@ -544,6 +603,24 @@ error vocab (`filing-disabled`, `target-not-pinned`, `self-file`, `approval-mism
    need to know before upgrading, not after.
 6. **Post-tag by construction:** VRF-002, VRF-003 (a new agent type + hook aren't live until the version
    ships) — run immediately after promotion with a rollback plan; do not hold the release for them.
+7. **OWNER RELEASE GATE (stated 2026-07-28) — nothing reaches `main` until the owner has exercised the
+   candidate locally in sibling repos via `--plugin-dir`.** This is a **blocking precondition on the
+   develop→main promotion**, not a post-tag check and not a step Claude can discharge: the owner runs it,
+   the owner clears it. Record the result in `.prawduct/operator-verification.md` as the release's
+   go/no-go evidence, naming which sibling repos were exercised and what was checked.
+
+   *Why it binds here.* This release changes fleet-visible governance — `janitor` becomes
+   `disable-model-invocation: true`, `pr`'s `Bash(gh *)` narrows to `Bash(gh pr *)`, three skills lose
+   their backlog grants, and (Chunk 06) the backlog moves to Issues. Every one of those is invisible in
+   this repo's own suite and only shows up when a *consuming* repo loads the candidate plugin. `--plugin-dir`
+   is the only mechanism that exercises that path before publication.
+
+   *Relation to REL-8P6M.* That item's finding is that the release runbook's Phase 1 has **no
+   releasability gate** — it asks only "is anything unreleased?", never "is everything fit to ship?" This
+   done-when is the owner supplying that missing gate by hand for v3.2.0. **REL-8P6M should generalize it
+   into the runbook** rather than leaving it as a one-release instruction that the next release re-derives
+   or forgets — which is the same expiring-artifact failure REL-8P6M already records against
+   `release-plan-v3.1.2-pruned.md`.
 
 #### Deferred to Chunk 09 — the running enumeration
 
@@ -561,6 +638,7 @@ re-derivation from memory samples instead of enumerating. **Append to this list 
 | BKL-2Q7F · ONB-3F9P · BKL-5N9W · BKL-6J2X | Chunk 03 | → `shipped` |
 | BKL-6X5D part (b) | Chunk 04 | → `shipped` *(part (i) stays deferred — adopter-scale, not pulled in)* |
 | — | Chunk 05 | *(no backlog IDs — C1/C2)* |
+| BKL-3N8Q — **partial, do NOT flip to shipped** | Chunk 05b | Append a note recording that the `pick`-path half (the vacuous "no open blockers" verdict) is fixed, and **narrow the item's remaining scope** to its foreign-API verification half — `list_blocked_by`/`list_sub_issues`/`list_timeline` are still shape-verified against the fake only, which is the half that needs the unrun `verify-api` step. Its `refs:` line-anchors into `query.py` (`:180`, `:368-369`) are stale after this chunk; re-anchor by symbol (`pick`, `_why`, `_blocker_clause`) per this repo's own preference. **Its id is cited by `project-state.yaml design_decisions.infrastructure_dependencies.integration_test_strategy` — do not renumber.** |
 | BKL-6M4T · **BKL-8K2N** | Chunk 06 | → `shipped` — *(BKL-8K2N added 2026-07-28: it was in no flip list and no chunk's `closes` line, while its own body reads **GATES CHUNK 06** and ~95 lines of its work already shipped in `aaf068f`. Nothing would have flipped it. Its remaining half is the progress heartbeat — without it the ~900-issue irreversible run emits nothing for 18–40 min, since `rest_point_waits: 0` means the throttle announcements never fire and the runbook invokes import without `--json`.)* |
 | **BKL-7D3V** · **BKL-6J2X** | Chunk 07 | → `shipped` — the advisory lift (done-when #5) closes the decision item **and** retires the hold it discharges. *(Corrected 2026-07-24: this row read "no backlog IDs" while the traceability table already credited Chunk 07 with closing BKL-7D3V — the two disagreed.)* |
 | BKL-7Q4M · BKL-9XQ2 · BKL-0QR1 · **BKL-4T9C** | Chunk 08 | → `shipped` — BKL-4T9C's git-remote identity resolution is built in 08a |

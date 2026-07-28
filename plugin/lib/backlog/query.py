@@ -9,11 +9,15 @@ window is handled by the caller's bounded settle-retry, ``core.get_item``).
   the caller requests. Applies the **PROV-2** filter: a plain repo issue carrying
   no prawduct marker is out-of-scope (ignored, not malformed).
 - ``pick`` — stage-aware ready-work (Data Model §4): candidates are
-  ``open ∧ stage:ready``, then a **per-candidate fan-out** applies the two
-  predicates that are *not* list filters — "no open blockers" (native
-  dependencies, read live so a cross-repo blocker is judged correctly) and "no
-  **live** claim" (an assignee whose ``claimed_at`` is past the staleness TTL is
-  reap-eligible, not a live claim). Returns ranked candidates each with a *why*.
+  ``open ∧ stage:ready``, then two predicates that are *not* list filters are
+  applied — "no **live** claim" (an assignee whose ``claimed_at`` is past the
+  staleness TTL is reap-eligible, not a live claim), which is free once the item
+  is decoded, and the blocker predicate (native dependencies, read live so a
+  cross-repo blocker is judged correctly), which costs one REST read per issue.
+  The claim predicate and the ranking are therefore resolved first, and the
+  dependency **fan-out is taken lazily down the ranking**, stopping at ``limit``.
+  Returns ranked candidates each with a *why* that distinguishes *no
+  dependencies recorded* from *all recorded dependencies closed*.
 - ``counts`` — per-project rollups derived **on read** (never persisted; the GV2
   briefing snapshot in :mod:`snapshot` is a separate op).
 
@@ -142,10 +146,20 @@ def pick(
 
     Ready-work = ``open ∧ stage:ready ∧ (unassigned ∨ claim past TTL) ∧ all
     blockers closed``. The first two predicates are REST list filters; the
-    assignee/TTL and blocker predicates are applied per candidate (a fan-out —
-    the blocker states are read **live**, so a cross-repo blocker is judged
-    correctly and never picked while open). Candidates rank fresh-unassigned
-    before reap-eligible, then oldest issue first.
+    assignee/TTL predicate is applied per decoded item (cheap, no I/O); the
+    blocker predicate is a per-issue REST fan-out whose states are read **live**,
+    so a cross-repo blocker is judged correctly and never picked while open.
+
+    Candidates rank fresh-unassigned before reap-eligible, then oldest issue
+    first — **and the ranking is computed before the fan-out runs**, so the
+    dependency reads are taken lazily down the ranking and stop once ``limit``
+    is filled. Ranking is independent of blocker state, so the result set is the
+    same either way; the ordering matters only for cost, which is otherwise one
+    REST call per eligible issue on every call regardless of ``limit``.
+
+    A candidate's ``why`` distinguishes *no dependencies recorded* from *all
+    recorded dependencies closed* — see :func:`_blocker_clause` for why that
+    distinction is not cosmetic.
 
     With ``claim=True`` the top candidate is taken atomically via
     :func:`core.claim` (take-and-verify); a lost race returns ``claim_conflict``
@@ -156,7 +170,7 @@ def pick(
     if isinstance(issues, dict):  # an error envelope bubbled up from the fan-out
         return issues
 
-    candidates: list[dict] = []
+    eligible: list[tuple[str, int, dict]] = []
     warnings: list[str] = []
     for issue in issues:
         if not encode.is_prawduct_issue(issue):
@@ -176,6 +190,26 @@ def pick(
         if eligibility is None:
             continue  # a live claim — not ready work
 
+        candidate = dict(item)
+        candidate["reap_eligible"] = eligibility == "reap"
+        eligible.append((eligibility, number, candidate))
+
+    # Rank: prefer genuinely free work over reaping a stale claim, then oldest.
+    eligible.sort(key=lambda e: (e[2]["reap_eligible"], e[1] or 0))
+
+    # Then read dependencies lazily, in rank order, stopping once `limit` is
+    # filled. The ranking key does not depend on blocker state, so filtering
+    # before ranking (the previous shape) and ranking before filtering yield the
+    # identical result set — but this pays one dependency read per *selected*
+    # candidate instead of one per *eligible* one. That difference is the whole
+    # cost of `pick` on a large backlog: the reads are a per-issue REST fan-out,
+    # so the old shape charged the full backlog size on every call no matter how
+    # small the requested limit.
+    candidates: list[dict] = []
+    want = max(0, limit)
+    for eligibility, number, candidate in eligible:
+        if len(candidates) >= want:
+            break
         try:
             blockers = transport.list_blocked_by(owner, repo, number)
         except TransportError as exc:
@@ -183,18 +217,13 @@ def pick(
         except (OSError, json.JSONDecodeError) as exc:  # ERR-6
             log_diag(f"unexpected transport failure on pick fan-out: {type(exc).__name__}")
             return error("unavailable", "the backend request failed unexpectedly")
-        open_blockers = [b["ref"] for b in blockers if b.get("state") != "closed"]
-        if open_blockers:
-            continue
+        if any(b.get("state") != "closed" for b in blockers):
+            continue  # an open blocker — not ready work
 
-        candidate = dict(item)
-        candidate["reap_eligible"] = eligibility == "reap"
-        candidate["why"] = _why(eligibility, item, now, claim_ttl_seconds)
+        candidate["why"] = _why(eligibility, candidate, now, claim_ttl_seconds, blockers)
         candidates.append(candidate)
 
-    # Rank: prefer genuinely free work over reaping a stale claim, then oldest.
-    candidates.sort(key=lambda c: (c["reap_eligible"], c.get("number") or 0))
-    selected = candidates[: max(0, limit)]
+    selected = candidates
 
     if claim and selected:
         from . import core  # local import — query sits above core
@@ -358,12 +387,36 @@ def _claim_eligibility(item: dict, now: datetime, ttl_seconds: int) -> str | Non
     return None
 
 
-def _why(eligibility: str, item: dict, now: datetime, ttl_seconds: int) -> str:
+def _blocker_clause(blockers: list[dict]) -> str:
+    """How the blocker predicate was satisfied — *verified clear* vs *nothing on
+    file*, which are different facts and must not read alike.
+
+    An empty native-dependency read means no dependency was ever recorded, not
+    that the item was checked and found free. The distinction is load-bearing
+    for a backlog migrated out of markdown: `related:` is carried in the issue
+    body and mapped to no native edge, so every migrated item reads back zero
+    dependencies permanently. Phrasing that as "no open blockers" would state a
+    confident all-clear about a field the migration guarantees is empty.
+    """
+    if not blockers:
+        return "no blockers recorded"
+    n = len(blockers)
+    return f"all {n} blocker{'s' if n != 1 else ''} closed"
+
+
+def _why(
+    eligibility: str,
+    item: dict,
+    now: datetime,
+    ttl_seconds: int,
+    blockers: list[dict],
+) -> str:
     """A short, human/agent-readable reason this candidate is ready work."""
+    blocker_clause = _blocker_clause(blockers)
     if eligibility == "reap":
         claimed_at = encode.parse_iso(item.get("claimed_at"))
         age_h = int((now - claimed_at).total_seconds() // 3600) if claimed_at else None
         who = item.get("assignee")
         aged = f"~{age_h}h" if age_h is not None else "past TTL"
-        return f"ready: stage:ready, stale claim by {who} ({aged}), no open blockers"
-    return "ready: stage:ready, unassigned, no open blockers"
+        return f"ready: stage:ready, stale claim by {who} ({aged}), {blocker_clause}"
+    return f"ready: stage:ready, unassigned, {blocker_clause}"

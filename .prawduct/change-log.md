@@ -3,6 +3,45 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-07-28: An empty field read as a clean bill of health, on a field the migration guarantees is empty
+
+<!-- prawduct: type=fix | scope=v3.2.0-golive | chunks=05b -->
+
+Two `pick` defects fixed before the irreversible migration makes them permanent. Both were found by
+reading the migration path to answer a different question — whether relationships survive the
+round-trip — and neither is what that question was looking for.
+
+- **The importer maps `related:` to no native edge, and `pick` reported that silence as an all-clear.**
+  `related:` is carried in the issue body; the only native-relationship code in `migrate.py` is the
+  *export* path. So every migrated item reads back zero native dependencies **permanently** — and
+  `_why` emitted "no open blockers" unconditionally, turning a guaranteed-empty field into a confident
+  verified result on every item in the backlog. The verdict now distinguishes **"no blockers recorded"**
+  from **"all N blockers closed"**. BKL-3N8Q filed this as an occasional silent failure; what the
+  migration actually does is make it universal and permanent, which is a different severity than the
+  one on file.
+
+- **The dependency fan-out was charged against backlog size, not against `limit`.** `limit` was applied
+  at the end, *after* one REST read per eligible issue had already run — so `pick --limit 1` against a
+  170-issue backlog paid 170 reads. Ranking never depended on blocker state, so the reads are now taken
+  lazily down the ranking and stop once the limit is filled; the result set is provably identical and
+  the cost is O(limit + blocked-skipped). A test pins that the laziness does not under-fill when the
+  top-ranked candidate turns out to be blocked.
+
+- **`related:` was deliberately NOT mapped to native `blocked_by`.** Most such links mean "see also",
+  not "blocked by", so synthesizing native edges from them would manufacture false blockers across the
+  whole backlog — strictly worse than recording none.
+
+- **A false claim about this mechanism was corrected in three places.** The design docs described the
+  fan-out as "a batched-GraphQL round-trip"; **there is no GraphQL anywhere in `lib/backlog/`** and
+  never was. VRF-009 had already recorded the correction against the probe that supposedly confirmed
+  it, but the claim still stood in `backlog-service-data-model.md`, the API contract, and
+  `build-plan-backlog-service.md`. A correction recorded in a verification note does not propagate
+  itself to the documents that carry the claim.
+
+- **One test assertion changed rather than being added around.** `test_returns_ready_unassigned_with_a_why`
+  pinned the literal string `"no open blockers"` — it pinned the defect. Updated in place with the
+  reason inline, and the distinction it used to blur is now pinned harder by two dedicated tests.
+
 ## 2026-07-28: An allow-list cannot fence an op the skill can reach through an interpreter
 
 <!-- prawduct: type=fix | scope=v3.2.0-golive -->

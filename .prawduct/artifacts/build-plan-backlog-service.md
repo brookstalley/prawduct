@@ -412,7 +412,10 @@ tests/
 - **Description:** Rescue the `/prawduct:backlog pick` UX in the slice, online and consistent. Build
   `list` (structured field/label filters, sort, paginate — **online off the REST list endpoint**,
   read-your-writes-in-practice), `pick` (ready-work: `open ∧ stage:ready ∧ unassigned` via `list`, then
-  a **per-candidate fan-out** — implemented as a **batched-GraphQL** round-trip — for "no open blockers"
+  a **per-candidate fan-out** — ~~implemented as a **batched-GraphQL** round-trip~~ **never built that
+  way; it is N+1 REST (corrected 2026-07-28, same correction VRF-009 records — there is no GraphQL in
+  `lib/backlog/`). The fan-out is now taken lazily in rank order and stops at `limit`** — for the
+  blocker predicate
   + "claim past TTL"), `link`/`unlink` (native dependencies + sub-issues, so blockers are queryable —
   DM3), `claim`/`unclaim` (atomic take-and-verify + default staleness-TTL reap so `pick` can't starve —
   CC3/M11), `counts` (rollups derived on read), and PROV-2 (`list`/decode ignores non-prawduct issues
