@@ -135,8 +135,8 @@ Applies proportionally — a 2-line helper needs no design review. Prioritize wh
 ## Severity Levels
 
 - **BLOCKING**: Must fix before proceeding (broken tests, dropped requirements, security vulnerabilities, unlisted deps).
-- **WARNING**: Should fix; Critic is confident (missing coverage, scope drift, stale artifacts, design problems).
-- **NOTE**: Genuinely ambiguous; recommend backlog.
+- **WARNING**: True *and* worth the builder's time (missing coverage, scope drift, stale artifacts, design problems). Name the consequence — *who does what wrong because of this?* No answer → NOTE. Confidence is not importance.
+- **NOTE**: Genuinely ambiguous; or record-only prose (change-log, learnings, plan text) that neither ships as a false claim nor misleads someone into a wrong action. Recommend backlog. Rating record prose WARNING turns it into a fix commit, which is how one round manufactures the next — `review-cycle.md`, "The review loop terminates."
 
 ## Review Execution
 

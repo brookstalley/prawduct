@@ -129,8 +129,21 @@ class TestBuildingMethodology:
         # no-forward-note notice on every clean close). That cost 5, paid down
         # from 8 by compressing the same paragraph. 4595 now. Headroom is a few
         # words BY DESIGN; the next addition trims or relocates first.
+        #
+        # 4600 -> 4660 (2026-07-28, OWNER RULING) — the same ruling that raised
+        # review-protocol.md 3530 -> 3620; full rationale lives there, in
+        # TestCriticSkill.test_token_budget. What landed here is the builder's
+        # half of the same rule: once zero blocking findings remain, FILE the
+        # rest rather than fixing them, and re-run the gate instead of
+        # inferring another round from stale output. The two halves are
+        # demand-side (here) and supply-side (the Critic's severity contract);
+        # landing only one leaves the other half of the loop running, which is
+        # why this file could not simply point at review-cycle.md.
+        #
+        # The trim-or-relocate rule above stands — overridden once, on the
+        # record. Headroom is again a few words by design.
         tokens = estimate_tokens(self.content)
-        assert tokens < 4600, f"building.md is ~{tokens} tokens, should be <4600"
+        assert tokens < 4660, f"building.md is ~{tokens} tokens, should be <4660"
 
 
 # =============================================================================
@@ -308,8 +321,29 @@ class TestCriticSkill:
         # diet's own post-diet +10% formula (~3533), so the diet stays locked,
         # with near-zero headroom BY DESIGN: the next addition must trim or
         # relocate, not bump past the formula.
+        #
+        # 3530 -> 3620 (2026-07-28, OWNER RULING). A deliberate departure from
+        # the "trim or relocate, not bump" rule directly above, and from
+        # MET-3Q8V's "stay green without raising budgets" success line. What
+        # was added: the WARNING/NOTE consequence test and the record-only NOTE
+        # default (see review-cycle.md "The review loop terminates").
+        #
+        # Why the ruling went this way rather than trimming. The addition is
+        # NEGATIVE-cost governance: it exists to stop the Critic rating record
+        # prose WARNING, which is what converts a finding into a fix commit and
+        # a fix commit into the next review round. Measured on the session that
+        # produced it -- four review rounds, ~40 min, on a ~40-line code change,
+        # the last round required by no gate. Trimming an existing goal bullet
+        # to fit would have removed a real check to make room for a rule that
+        # removes far more work than it costs. Three compression passes were
+        # attempted first and landed +43 over; the trim-or-relocate rule was
+        # applied before it was overridden, not instead of.
+        #
+        # This does NOT reopen the diet. Headroom is again a few words BY
+        # DESIGN, and the next addition trims or relocates first -- the rule
+        # above stands; it was overridden once, on the record, for this.
         tokens = estimate_tokens(self.content)
-        assert tokens < 3530, f"review-protocol.md is ~{tokens} tokens, should be <3530"
+        assert tokens < 3620, f"review-protocol.md is ~{tokens} tokens, should be <3620"
 
 
 # =============================================================================

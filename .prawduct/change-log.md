@@ -3,6 +3,49 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-07-28: The review loop had no exit condition, and the builder was the only thing that could supply one
+
+<!-- prawduct: type=fix | scope=review-loop-termination -->
+
+Owner escalation: agents in production get trapped for 3–4 review rounds before giving up. Reproduced
+live this session — four rounds and ~40 minutes of review on a ~40-line code change, every finding
+correct, none blocking.
+
+- **The mechanism was not "warnings are too strict."** WARNING and NOTE gate nothing: both the PR gate
+  and the Stop gate require only *coverage* plus *zero unresolved BLOCKING*. The loop ran because
+  `building.md` said warnings "should be addressed," which reads as must-fix — so the agent fixes one,
+  the fix is a commit, the commit outruns coverage, a new pass runs, and that pass reviews **the
+  records just written**. Prose has no passing condition the way a test does, so each round found
+  something true about the previous round's narration.
+
+- **Round 4 was required by nothing.** `is_judgeable_path` already returns False for `change-log.md`,
+  `learnings.md` and plan prose — a commit touching only those needs no new coverage. The gate would
+  have passed. The round ran because the agent inferred "coverage must reach HEAD" from gate output
+  printed *before* those commits and never re-ran the one command that would have said otherwise.
+  **That is the production trap**: a stale gate line, carried forward as a belief.
+
+- **Rounds 2–3 were dragged in by a docstring.** Those fix commits were prose-only except for a
+  comment-only edit to a `.py` file, which is judgeable by extension. That is **COV-3M8Q**, already
+  open — filed, unmeasured, and worth ~13 minutes here.
+
+- **Three rules, split demand-side and supply-side.** Builder (`building.md`): once zero blocking
+  remain, **file the rest rather than fixing them**, and re-run the gate rather than inferring another
+  round. Critic (`review-protocol.md`): WARNING means true **and** worth the builder's time — name the
+  consequence or rate NOTE; record-only prose defaults to NOTE unless it ships as a false claim or
+  misleads someone into a wrong action. Full rule, bars, examples and the diminishing-returns signal
+  live in `review-cycle.md`, which carries no token budget.
+
+- **Both always-loaded files were at 4 tokens of headroom, and the budgets were raised — an owner
+  ruling, not a quiet edit.** `review-protocol.md` 3530 → 3620, `building.md` 4600 → 4660, departing
+  from MET-3Q8V's "stay green without raising budgets" and from the test comments' own "the next
+  addition trims or relocates first." Three compression passes ran first and landed +43 over; trimming
+  to fit would have deleted a real check to make room for a rule that removes far more work than it
+  costs. The rationale is recorded at both assertions. **The trim-or-relocate rule still stands** — it
+  was overridden once, on the record, for this.
+
+- **Not fixed here, deliberately:** COV-3M8Q (comment-only `.py` should be non-judgeable) is the code
+  half and stays open; these are the instruction-half changes the owner scoped first.
+
 ## 2026-07-28: An empty field read as a clean bill of health, on a field the migration guarantees is empty
 
 <!-- prawduct: type=fix | scope=v3.2.0-golive | chunks=05b -->

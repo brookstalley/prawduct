@@ -105,6 +105,54 @@ Every consolidated review appends a **fact** to the shared evidence store (`<git
 4. Every review persists through `critic-consolidate` — a review fact in the store plus the regenerated `.prawduct/.critic-findings.json`. A clean pass records an empty findings array; there is no review without a record.
 5. **If no BLOCKING findings:** chunk complete; proceed.
 
+### The review loop terminates — and the builder is what terminates it
+
+**Once a pass returns zero BLOCKING, remaining WARNING/NOTE findings are FILED, not fixed.**
+`/prawduct:backlog add` them and proceed. This is the exit condition, not a judgment call, and it is
+what keeps step 3's "repeat until" from being unbounded.
+
+Why it has to be a rule. WARNING and NOTE **gate nothing** — the PR gate and the Stop gate both
+require only *coverage* plus *zero unresolved BLOCKING*. But `methodology/building.md` says warnings
+"should be addressed," which reads as must-fix, so an agent fixes them. Each fix is a commit; the
+commit extends HEAD; coverage no longer reaches HEAD; another pass runs; that pass reviews the records
+just written and finds something true about them. Observed live: **four rounds and ~40 minutes of
+review on a ~40-line code change** — every finding correct, none blocking, and the last round required
+by no gate at all.
+
+**Before running another pass to "close coverage," re-run the gate and let it answer.** Never infer
+that coverage is needed from gate output printed *before* your fix commits — that stale line is the
+most reliable way an agent talks itself into a round nothing asked for:
+
+```
+prawduct-hook check-cumulative-critic   # PR path
+```
+
+If it passes, you are done — stop. Record-only surfaces (`change-log.md`, `learnings.md`,
+`.prawduct/artifacts/**` plan prose, product docs) are **non-judgeable**: a commit touching only those
+never needs new coverage, so a fix confined to them cannot mandate another review. Ask
+`coverage_algebra.is_judgeable_path` rather than guessing from the extension — the one trap is that a
+**comment-only edit to a `.py` file still counts as judgeable**, which is how a pure-prose fix commit
+gets pulled back into a full round.
+
+**The reviewer's half of the same rule** (severity contract: `review-protocol.md`). A finding whose
+only subject is a non-judgeable record is a **NOTE** unless it clears one of two bars:
+
+- **It ships** — the inaccuracy reaches consumers as a false claim (release note, `CHANGELOG.md`, a
+  published doc). *A change-log entry asserting a guard that was never built → WARNING: a reader
+  relies on a check that does not exist.*
+- **It misleads into action** — an operator or agent following the record would do the wrong thing.
+  *A measurement table assigning a probe a question it cannot answer → WARNING: the next operator
+  runs it and records a fact it cannot produce.*
+
+Everything else about a record — an imprecise count, a narration that stopped one revision short, a
+phrasing that could be truer — is a NOTE. These findings are **correct**; the bar governs *severity*,
+never *suppression*. File it, name the surface, let the builder dispose of it.
+
+**Diminishing-returns signal.** Round 1 finds defects in the *work*. By round 3 a pass is typically
+finding defects in the *record of round 2* — true, confidently rated, and worth less than the round
+costs. When every finding is about prose written to close the previous pass's findings, that is the
+signal to file and stop, not to write a better paragraph.
+
 **Last chunk of a `Type: cumulative-final` plan — one review, not two.** Commit the chunk, then run `/prawduct:critic cumulative` ONCE: that single review serves as both the chunk's review and the PR-gate evidence. Don't run a separate `final` first — cumulative runs the same 7 goals plus cross-checks over `merge-base...HEAD`, a scope that already contains the chunk's diff, so a preceding `final` re-pays 4-10 minutes for assurance the cumulative re-derives. Mode inference implements the sequencing: with the last chunk's work still uncommitted, `/prawduct:critic` infers `final` (the right mid-chunk look); once committed and clean, it infers `cumulative` — the at-commit review. Post-cumulative fixes take a `verify-resolutions` pass, not a second full one — its fact extends coverage over the fix delta.
 
 ## Final-Mode Cross-Checks
