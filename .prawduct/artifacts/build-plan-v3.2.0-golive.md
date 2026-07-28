@@ -623,6 +623,33 @@ of this release, so depending on them would make Chunk 09 permanently unsatisfia
    this repo's own suite and only shows up when a *consuming* repo loads the candidate plugin. `--plugin-dir`
    is the only mechanism that exercises that path before publication.
 
+8. **OWNER RELEASE GATE (stated 2026-07-28) — "GitHub Issues is working great."** Consumer-facing
+   go-live is blocked until the backlog service is genuinely usable day-to-day, not merely migrated.
+   **Not yet a verifiable criterion — it must be sharpened before it can gate anything** (an
+   unverifiable gate either blocks forever or gets waved through). Candidate acceptance set, owner to
+   confirm: Chunk 01 VRFs drained · Chunk 06 migration + VRF-006 (`get`/`list`/`pick` resolve real PFX
+   ids, counts reconcile, no duplicates on re-run) · the four go-live blockers flipped · **and a
+   dogfood period where `/prawduct:backlog` is the only path used, with no fallback to markdown.**
+
+   **Named tension the acceptance set must resolve: `BKL-2K8V` measured `pick` at ~12.4 s on a
+   209-issue repo, ~6× the NFR §4 floor.** This backlog is 171 items. Chunk 05b bounded the dependency
+   fan-out but that was never the dominant cost — the `_all_issues` paginated full-scan is, and it is
+   **W1-gated** (raw-HTTP fast-path or a scoped query), not slice-native. A 12-second `pick` on every
+   invocation is difficult to reconcile with "working great," and no current chunk addresses it.
+
+9. **OWNER RELEASE GATE (stated 2026-07-28) — "duplicate review and other friction is sorted."**
+   Tracked by **CRT-8N5V** (parent) with **COV-3M8Q** and **GOV-6D4Q**. Also **not yet verifiable** as
+   stated. Candidate criterion: a work cycle of ordinary size completes on **one** review round, with
+   the round count observed rather than asserted.
+
+   **Confidence note — this has recurred once already.** `CRT-4J8W` (shipped 2026-06-10,
+   `gate-soundness ch.05`) was the owner's prior escalation on the same symptom — "review phase ran
+   30+ min wall clock for ~5 min of work" — and named the same "re-review treadmill" mechanism. It was
+   fixed at the gate-chaining level and the failure returned. **A prose-only fix (`67fe565`) should
+   therefore not be treated as discharging this gate**; CRT-8N5V's remaining-scope item 2 (structural
+   enforcement — `critic-begin` refusing a round when the gate already passes with no blocking
+   outstanding) is the part that binds regardless of whether the prose is read.
+
    *Relation to REL-8P6M.* That item's finding is that the release runbook's Phase 1 has **no
    releasability gate** — it asks only "is anything unreleased?", never "is everything fit to ship?" This
    done-when is the owner supplying that missing gate by hand for v3.2.0. **REL-8P6M should generalize it
