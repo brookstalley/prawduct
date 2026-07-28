@@ -746,9 +746,20 @@ def _has_active_build_plan_file(prawduct_dir: Path) -> bool:
 
     A completed plan (all [x]) or a missing file both return False — only an
     in-progress plan with remaining work triggers governance gates.
+
+    Deliberately the **checkbox** reading, not the git-derived current chunk.
+    The two answer different questions: git answers "which chunk is in flight,"
+    which is right for reporting and for ``verify-chunk-refs``; this gate asks
+    "is there still governed work," and a chunk's last commit lands BEFORE its
+    Critic pass and its reflection. Routing this through the git signal made the
+    blocking reflection and Critic gates switch themselves off on a
+    ``views_enabled`` branch the moment the final chunk was committed — through
+    the whole complete-but-unmerged window, which is exactly when the PR-fix and
+    finding-resolution sessions happen. Under ``views_enabled`` a flipped box
+    means *shipped*, so "unflipped" is the right reading of "still governed."
     """
-    status = buildplan_refs._parse_build_plan_status(prawduct_dir)
-    return bool(status.get("current_chunk"))
+    total, complete = buildplan_refs._count_build_plan_chunks(prawduct_dir)
+    return total > 0 and complete < total
 
 
 def _is_trivial_fileset_eligible(project_dir: Path) -> tuple[bool, str]:

@@ -45,7 +45,56 @@ open assumption in `artifacts/build-plan-worktree-compat.md`.
 
 ## VRF-002 — Chunk 04 — SubagentStop fires critic-consolidate for a dispatched critic-reviewer
 
-**Status:** pending
+**Status:** pending — narrowed 2026-07-27; fact 2 is CLOSED and was a real defect
+
+> === 2026-07-27 — FACT 2 RESOLVED BY STATIC ANALYSIS, AND IT WAS BROKEN (CRT-2J8N) ===
+>
+> This entry's own last line said to "investigate the matcher string
+> (`prawduct:critic-reviewer` vs `critic-reviewer`)". That investigation finally ran, and
+> the matcher was wrong from birth: **for `SubagentStop`**, Claude Code evaluates a matcher
+> of only letters, digits, `_`, `-`, spaces, `,` and `|` as a **literal** — a single exact
+> string, or a `|`/`,`-separated **list** of exact strings — and the runtime `agent_type` of a
+> plugin subagent is the **plugin-scoped** `prawduct:critic-reviewer`. The bare
+> `critic-reviewer` matcher could never match, so this hook never fired — in any repo, on any
+> v3.1.1 install. Fixed to `(^|:)critic-reviewer$`.
+>
+> **Scoped to `SubagentStop`, deliberately:** which literal class an event uses is **not
+> uniform across hook events**, so this is not a global rule — the
+> `startup|resume|clear|compact|fork` `SessionStart` matchers in the same `hooks.json` are
+> lists of exact strings and were always correct. Source:
+> https://code.claude.com/docs/en/hooks (verified 2026-07-27), corroborated during review
+> against the installed Claude Code 2.1.220 matcher implementation.
+>
+> **The reasoning error worth keeping:** fact 2 above waves this off with "the command
+> defends with an `agent_type` endswith-check and is no-op-safe regardless." That defense
+> lives *downstream of the matcher* — if the matcher never fires, the defense never runs.
+> A guard behind a gate that never opens is not a guard.
+>
+> **And it was not un-testable.** "Matcher-anchoring semantics vary by Claude Code
+> version" justified deferring the whole of fact 2 to a live check. But whether a matcher
+> *can* match a given `agent_type` is a pure static question, and it is now pinned by
+> `tests/test_critic_reviewer_agent.py::TestSubagentStopMatcherMatchesRuntimeAgentType`,
+> which encodes the documented two-path matcher rule. Only *delivery* — does the harness
+> actually emit the event — still needs the live check below.
+>
+> **Still pending, and now higher value:** run the verification steps below against the
+> fixed matcher. They are correct as far as they go, but they need TWO additions or they
+> can return a false verdict in either direction:
+>
+> 1. **Isolate the harness.** The *installed* plugin's hooks fire in every repo you open,
+>    including a scratch repo built to test a hook change, so a stale copy can fire
+>    alongside the fixed one. Run with `CLAUDE_CONFIG_DIR=<empty dir>` (learnings.md — the
+>    rule earned when exactly this contaminated a hook e2e run and nearly got working code
+>    "debugged").
+> 2. **Attribute the consolidation, do not just observe it.** Three things can consolidate:
+>    this hook, the skill's own explicit `critic-consolidate`, and the session-end backstop.
+>    Nothing currently RECORDS which one fired — so "findings appeared" is consistent with
+>    the hook still being dead. That ambiguity is precisely why this went unnoticed for 17
+>    days, and it bit again during the 2026-07-27 review, where the reviewing agent reported
+>    the trigger "did consolidate without an explicit call" and had no way to know that.
+>    Until a trigger is recorded on the `review.critic` event, this step must be run with the
+>    skill's explicit consolidate call suppressed, or the verdict means nothing.
+
 **Added:** 2026-07-10 (critic-persistence-redesign Chunk 04)
 **Where to verify:** A real Claude Code session in this repo AFTER the plugin is
 updated to a version carrying `agents/critic-reviewer.md` + the `SubagentStop` hook

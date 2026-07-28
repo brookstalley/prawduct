@@ -6,6 +6,88 @@ No size constraint on this file — it's the deep reference, consulted via `/lea
 
 ---
 
+## When a release ships a PRUNED tree, a clean `git apply` is NOT evidence of a sound tree — the shipping code can depend on a symbol the WITHHELD work introduced, which a textual patch tool cannot see: v3.1.2's ship set called `sys.stderr` while `import sys` had arrived in `briefing.py` with the withheld backlog-service work, so `git apply` reported the file applied cleanly and produced a `NameError` in a shipped path (11 test failures). Run the suite against the candidate tree, and diff every shipped file's imports against its `develop` counterpart
+
+v3.1.2 was a pruned promotion: `main`'s tree was built as `v3.1.1` + the diff `e597b21..develop`, withholding the backlog-service subsystem. `git apply --3way` reported three conflicts and applied everything else "cleanly" — including `plugin/lib/briefing.py` and `plugin/bin/prawduct-hook`.
+
+The resulting program was broken. `prawduct-hook handoff preview` raised `NameError: name 'sys' is not defined`, taking 11 tests with it. The ship set added code calling `sys.stderr`, but `import sys` had been added to `briefing.py` by the **withheld** work, in a hunk the ship patch therefore did not carry. Neither side of the patch is wrong; the dependency simply crosses the cut, and a textual tool has no way to notice.
+
+The general shape: **a patch tool verifies textual applicability, not semantic completeness.** Any tree assembled by patching rather than by checking out a reviewed commit needs execution-level validation, because the failure mode is a silent reference to something that no longer exists.
+
+Two checks caught and bounded it here, and both are cheap enough to be standard for pruned releases:
+
+1. **Run the suite against the candidate tree.** It found the defect immediately. This is also the argument for a pruned release being validated as a *tree*, not as a patch review.
+2. **Diff imports per shipped file.** For each Python file the ship set touched, compare module-level imports in the candidate against the same file on `develop`; anything present there and absent here is a candidate for this class. Run across all 23 shipped Python files, it confirmed exactly one instance — which converts "we fixed the bug we found" into "we bounded the class."
+
+The residue is worth recording where the code lives: `main` now carries one line of shipped code that exists in no reviewed commit. It self-resolves at the next release that ships the withheld work, because `main` then takes `develop`'s tree wholesale. Recorded in `artifacts/release-plan-v3.1.2-pruned.md` so the divergence is not later read as an accident.
+
+## When determining what a PREVIOUS release actually shipped, test its CODE against that release's tree — never the change-log's prose or heading presence, which a pruned release leaves behind: v3.1.1's tree carries all ten backlog-service change-log entries whose code it deliberately withheld, so a heading-presence test called them shipped and would have mis-tagged them, silently dropping ten entries from v3.1.2's release notes. This is the runbook's own REL-7D4X rule and it is load-bearing in both directions
+
+The release runbook's step 2 states the rule: an entry is release-pending iff it carries no `release=` tag **and** its code is absent from the previous release's tree. I reached for a cheaper proxy instead — is the entry's heading present in `git show v3.1.1:.prawduct/change-log.md`? — reasoning that the change-log gate guarantees an entry lands with its code, so prose presence implies code presence.
+
+That inference fails across a pruned release. v3.1.1 was itself cut from `v3.1.0`'s tree, and the prune removed the backlog-service **code** while leaving its **change-log entries** in the tree. So all ten entries read as "shipped in v3.1.1" while their code had never reached a consumer. Acting on it would have left ten genuinely-unreleased entries untagged — no release-notes entry, no checkbox flip, and nothing downstream complains.
+
+The code test inverted the answer completely: `v3.1.1` has `plugin/lib/backlog.py` (single module) where `develop` has the `plugin/lib/backlog/` package, and v3.1.1's `backlog_probes.py` has **zero** occurrences of `backlog-service-migration-required`. All ten were release-pending.
+
+Two general points:
+
+- **The runbook already knew.** Its REL-7D4X warning says the boundary "narrows the search, it does NOT define the set" and that a positional sweep drops entries silently. I read that warning, correctly rejected the positional shortcut it names — and then invented a *different* shortcut with the same defect. The lesson is about the class, not the instance: when a document warns that a cheap proxy for X is unsound, the warning is about proxies for X, not about the one proxy it names.
+- **It is load-bearing in both directions.** A pruned release makes prose and code diverge permanently, so prose-based reasoning can both over-claim (an entry looks shipped when it is not) and under-claim. Only the code test is stable across it.
+
+## When work is authored ON TOP OF work you may later need to withhold, the two become inseparable by file — pruning is by commit range, so everything merged in between ships or waits together: v3.1.2's ship and withhold sets overlapped in 11 files including `prawduct-hook` and `briefing.py`, so "ship only the session work" also withheld an unrelated refactor and five skills' prose. Sequence a release-gated subsystem BEHIND independently-shippable work, not before it
+
+The backlog-service subsystem was release-gated on four open safety blockers (BKL-6J2X, BKL-5N9W, BKL-8V3D, BKL-2Q7F) — a chain that routes the whole installed fleet into a migration path able to write 100–250 real issues into a real repo while an agent believes a dry-run guarded it. It merged to `develop` in PRs #137–#139. The session-continuity work then merged **on top of it** in PR #140.
+
+That ordering is what made v3.1.2 expensive. v3.1.1 had pruned *parallel* work — it cut from `v3.1.0`'s tree and applied a small hotfix. Here the work we wanted to ship was authored against the post-relayout codebase, so:
+
+- the two sets overlapped in **11 files**, including `plugin/bin/prawduct-hook` and `plugin/lib/briefing.py`, making a file-level split impossible;
+- the split had to be by commit range (`e597b21..HEAD`), which is coarser than by feature — so an unrelated refactor (PDT-WT9K) and prose in five skills were withheld as collateral;
+- the ship set had a latent dependency on the withheld set (the `import sys` above), which only execution revealed.
+
+**The scheduling rule:** when a subsystem is gated on blockers that are not yet closed, land it *after* the work that must ship independently, or keep it on its own long-lived branch. Merging a release-gated subsystem into the integration branch early converts every subsequent release into tree surgery. The cost is invisible at merge time and paid later, by someone reconstructing which commits belong to which feature.
+
+## When deferring something to a live/operator check, SPLIT it into "can this be true in principle" (static — test it now) and "does the harness actually do it" (live — queue it) — bundling them defers the testable half indefinitely, and that half is where the bug usually is: CRT-2J8N deferred all of "does the SubagentStop matcher fire" as un-unit-testable because *anchoring semantics vary by version*, true of delivery but false of matchability, and the bare-name matcher could never have matched the plugin-scoped `agent_type` on any version
+
+`operator-verification.md` VRF-002 (2026-07-10) listed three integration facts as "unverifiable by code analysis." Fact 2 was whether the `SubagentStop` matcher fires for the dispatched reviewer, justified with "matcher-anchoring semantics vary by Claude Code version."
+
+That justification is true about **delivery** — whether the harness emits the event for this agent, on this version, is genuinely only observable live. It is false about **matchability** — whether a given matcher string *can* equal a given `agent_type` is a pure function of the matcher rule and the two strings, decidable at rest. Bundling the two put the decidable half into a queue for seventeen days, and the decidable half was the broken one: the matcher was `critic-reviewer`, the runtime value `prawduct:critic-reviewer`, and for SubagentStop an all-alphanumeric matcher is compared as a literal.
+
+The split is the general move. Any "we'll have to check that live" should be interrogated for a static residue, because the live queue is slow, human-gated, and — as GOV-2W7Q records — sometimes not enforced at all. Whatever can be pinned now, pin now; send only true harness-behaviour questions to the queue.
+
+Concretely here: `_matcher_matches` in `tests/test_critic_reviewer_agent.py` encodes the documented rule and evaluates the real `hooks.json` matcher against the real scoped agent type. That is the static half, and it fails loudly on the bare-name form. VRF-002 keeps only the delivery half.
+
+## When defense-in-depth is offered as the reason a risk needn't be verified, check the defense is REACHABLE from the failure it is meant to absorb — a guard downstream of the thing that fails never runs, so it buys nothing: `cmd_subagent_stop`'s `agent_type.endswith(...)` check was cited as making matcher uncertainty tolerable, but it sits behind the matcher, and a matcher that never fires never reaches it
+
+VRF-002's fact 2 reads: the matcher's behaviour is uncertain "— the command defends with an `agent_type` endswith-check and is no-op-safe regardless." Both halves of that defense are real. `cmd_subagent_stop` genuinely accepts bare and scoped forms, and `critic-consolidate` genuinely no-ops until the roster is complete. The reasoning is still invalid, because both live **inside the handler**, and the handler only runs if the matcher matched. The uncertainty was about whether the handler would ever be invoked; the mitigation assumed it had been.
+
+The detectable shape is a sentence of the form *"X is uncertain, but that's fine because Y handles it"* where Y executes only on the success path of X. It is self-defeating and findable by reading, which is what makes it review-shaped rather than test-shaped — filed as CRT-6B9M for a Critic protocol clause.
+
+Ask, for any claimed mitigation: **on the failure path I am worried about, does this code execute at all?** Here the answer was no, and no amount of correctness inside the guard could change it.
+
+## A deferral queue whose enforcing gate is disabled is a WRITE-ONLY queue — check the gate is ON at the moment you defer work into it, because the deferral itself feels like diligence: `operator-verification.md` named the CRT-2J8N matcher as the thing to investigate 17 days before it was found, and sat `pending` the whole time behind `operator_verification_required: false`, with 6 of 8 entries in the same state
+
+The process worked right up to the point where it had to be enforced. The Chunk 03 Critic flagged three unverifiable integration facts; a VRF entry was filed; its verification steps were correct and specific, ending with "investigate the matcher string (`prawduct:critic-reviewer` vs `critic-reviewer`) against the installed version." Every step of that is good practice. The entry then sat `pending` for seventeen days because `project-state.yaml` sets `operator_verification_required: false`, so `check-operator-verification` short-circuits to exit 0 and `/prawduct:pr create` Step 2b never blocks.
+
+Filing into an unenforced queue is indistinguishable, from the inside, from handling the risk — that is what makes it dangerous. The act of writing the entry discharges the felt obligation.
+
+There is a second-order lesson recorded in GOV-2W7Q. The gate's default was justified by "Prawduct has no human-facing UI surface to verify pre-merge; product repos that ship visual changes opt in." That rationale is sound for *visual* verification and irrelevant to what the queue actually accumulated: every pending entry is a **live-harness integration** check. The category drifted away from the rationale and the default was never revisited, so nobody was ever asked the real question — does prawduct require live-harness verification before a PR? **When a default is justified by a category, re-read the justification when the contents change category.**
+
+## When a test asserts a VALUE and its comment claims that value feeds a downstream contract, assert the CONTRACT instead — the comment does the reasoning the test never performs, so it reads as coverage while providing none: `test_name_is_critic_reviewer` checked the agent's frontmatter name and commented that the name "is the SubagentStop matcher target", true of dispatch and false of the matcher, and never opened `hooks.json`
+
+The test asserted `name == "critic-reviewer"` — true, and still true after the fix. Its comment said that name "is dispatch subagent_type AND the SubagentStop matcher target." The first conjunct is right; the second is wrong, because the matcher is compared against the plugin-scoped identifier. The test never read `hooks.json`, so it could not have caught the mismatch, yet anyone auditing coverage for "is the matcher contract tested?" would find this and stop looking.
+
+That is the harm: it is not merely absent coverage, it is **coverage-shaped absence**. A comment asserting a downstream relationship is a claim; if it is worth writing, it is worth asserting.
+
+The same session produced a second instance from the opposite direction — an over-match guard using `general-purpose`, `Explore`, `prawduct:pr-reviewer`, none of which contain the agent name, so they fail to match under every candidate matcher including the broken one. The guard ran and asserted nothing discriminating. Both belong to the family TST-9M2X names; the fix in each case is to choose inputs that can distinguish the correct implementation from the plausible wrong one, and — as `test_the_over_match_guard_is_not_vacuous` now does — to pin that the guard itself can fail.
+
+## When a decision defers a SET of findings rather than fixing them, enumerate the set against the filings before calling it done — deferral converts every item into a filing obligation and nothing reconciles the two lists automatically: a "file all ten" call produced six items covering eight, and the two dropped ones were found only because an independent reviewer counted
+
+The owner chose "file rather than fix" for a cumulative's ten warnings. Six backlog items were filed. Mapping findings to items afterwards showed R-1 and R-8 had no home: a finding from the review's *methodology* section had been substituted into the slot where the first theme belonged, and the theme was lost — despite having been discussed in prose and offered as an explicit option in the decision put to the owner.
+
+A fix-decision is self-checking, because unfixed code fails its test. A defer-decision has no such feedback: the finding leaves the review, and only a filing that nobody verifies stands between it and oblivion. The reconciliation is trivial — enumerate the source set, map each element to a filing, name the unmapped — and it takes under a minute against ten findings.
+
+Generalises beyond findings to any "we'll handle these later" batch: deferred requirements, descoped acceptance criteria, follow-ups promised in a PR description. **The list you deferred from is the checklist; walk it.**
+
 ## When a skill/runbook has the model do a read-then-write CLI dance (read X's field, then write with `--if-<field>`), verify the READ actually SURFACES the field the write consumes — a write flag EXISTING in the CLI is not the same as its input being OBTAINABLE from the paired read, and static prose-vs-code review checks only the former; dogfood the handoff live (or write a read-then-feed test), because that gap survives even a clean multi-reviewer review
 
 **Pattern**: The backlog-skill-repoint runbook (`skills/backlog/adapter-mode.md`) told the skill to `get` an item's `updated_at`, then `update <id> --if-updated-at <ts>` for optimistic concurrency. The cumulative Critic's correctness reviewer verified `--if-updated-at` EXISTS in `cli.py` — true — and passed. But the `get` envelope's decoded item (`encode.decode_item`) does NOT expose `updated_at` (keys: area/status/labels/body/id/…), so the instruction was unimplementable: the skill would pass an empty/`?` timestamp and get a spurious exit-4 conflict every time. All three independent Critic reviewers (correctness / design / sustainability) missed it. The Phase-1 pre-verification dogfood — running the actual read-then-write loop against real GitHub Issues — caught it immediately (the CAS rightly rejected the mismatched timestamp with exit 4).

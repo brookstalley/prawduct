@@ -1,20 +1,20 @@
 # Building: Turning Plans Into Working Software
 
-Building is where plans meet reality. Every unit of work follows the same cycle: **understand → plan → build → verify.** What changes is the depth, determined by the work's size and type.
+Every unit of work follows the same cycle: **understand → plan → build → verify.** What changes is the depth — determined by the work's size and type.
 
 ## Sessions and Work Cycles
 
-A **session** is one Claude Code invocation — from the `clear` hook (startup or `/clear`) to the `stop` hook (exit). The git baseline, reflection gate, and Critic gate all scope to the session.
+A **session** is one Claude Code invocation. Only `startup` and `/clear` **begin** one; `resume`, `compact` and `fork` are continuations — the transcript survives, so they brief but reset nothing. The git baseline, reflection gate, and Critic gate all scope to the session.
 
 A **work cycle** is one unit of work with its own governance: understand → plan → build → verify → Critic → reflect. Multiple work cycles can happen within a single session.
 
-**Context compaction** is a context-management event, not a session boundary: no hooks, no baseline reset, no governance checkpoint. Anything that must survive — plans, decisions, rationale, chunk definitions — must be written to a file first.
+**Context compaction** resets nothing and passes no governance checkpoint, so anything that must survive — plans, decisions, rationale, chunk definitions — must be written to a file first.
 
 **`/clear` between work cycles is recommended** (not required): it resets the git baseline so the next cycle's canary only sees its own changes, archives the previous reflection, and starts fresh context.
 
-**Working in a git worktree.** A work cycle composes in a worktree — run it (including `/prawduct:critic` and `/prawduct:pr`) *from the worktree*, where the gates resolve `.prawduct/` state to the worktree. One edge: entering a worktree *mid*-cycle leaves the SessionStart markers in the primary checkout (gate readers fail safe) — launch, or `/clear`, in the worktree to avoid it.
+**Working in a git worktree.** Run the work cycle (including `/prawduct:critic` and `/prawduct:pr`) *from the worktree*, where the gates resolve `.prawduct/` state to it. One edge: entering a worktree *mid*-cycle leaves the SessionStart markers in the primary checkout (gate readers fail safe) — launch, or `/clear`, in the worktree.
 
-The stop hook is a **final safety net**: reflection captured, Critic invoked if code was built against a plan, and advisory **compliance canary** checks run. Per-work-cycle governance (Critic after each chunk, reflection after each significant action) is the methodology's responsibility, not the hook's.
+The stop hook is a **final safety net**: reflection captured, Critic invoked if code was built against a plan, advisory **compliance canary** checks run. Per-work-cycle governance is the methodology's responsibility, not the hook's.
 
 ## Work-Scaled Governance
 
@@ -70,7 +70,7 @@ There is no "pre-existing" exception — tests, broad exceptions, stale artifact
 
 **Read the spec.** Read the chunk's entry in `.prawduct/artifacts/build-plan.md` and any referenced artifacts — what this chunk delivers, its acceptance criteria, its dependencies. Flag ambiguity before building; don't guess silently. Validate that referenced files and components still exist — plans go stale. Run `/prawduct:learnings [chunk focus]` for relevant rules before coding.
 
-**Persist plans immediately.** When scope evolves — new chunks, plan changes, discovered gaps — write the updated plan to `build-plan.md` at once. Conversation context is ephemeral; artifacts persist.
+**Persist plans immediately.** When scope evolves — new chunks, plan changes, discovered gaps — write the updated plan to `build-plan.md` at once.
 
 **Write tests.** Tests come first or alongside implementation, not after. If you can't write the test, you don't understand the requirement well enough to implement it.
 
@@ -93,19 +93,19 @@ Scale to chunk significance. When you can't verify, say so (Principle 5).
 
 **Gate waivers.** When a gate is genuinely N/A, write `.prawduct/.gates-waived` as `{"critic": "reason", "pr": "...", "reflection": "..."}`. String reasons required. Auto-cleared next session. Doc-only edits are skipped automatically.
 
-**In-flight background work auto-defers — don't waive.** When the gate would block only because harness-tracked background work (`Workflow`/`Task`) is still producing the diff, the Stop hook defers and re-arms when it lands — deferred, never skipped. An *untrackable* wait (CI, a remote queue) still blocks.
+**In-flight background work auto-defers — don't waive.** When the gate would block only because harness-tracked background work (`Workflow`/`Task`) is still producing the diff, the Stop hook defers and re-arms when it lands. An *untrackable* wait (CI, a remote queue) still blocks.
 
 **Critic review.** Run `/prawduct:critic` (no args) — the SKILL infers mode from git + build-plan state via `prawduct-hook infer-critic-mode` and records `mode_chosen_by`. Pass an explicit mode (e.g. `/prawduct:critic cumulative`) only to override; report override cases so inference can improve. The Critic runs as a separate agent with restricted tools. See Modes below.
 
 **Resolve findings.** After a **coordinator** review (`final`/`cumulative` at 5+ files), run `prawduct-hook critic-consolidate` before reading `.critic-findings.json` — idempotent when the `SubagentStop` trigger already consolidated (single-pass reviews consolidate themselves). Fix blocking findings before proceeding — `/prawduct:critic verify-resolutions` records the resolution facts that unblock the gates. Address warnings; document disagreements with rationale.
 
-**Reflect — now, not at session end.** Append to `.prawduct/.session-reflected`: what the chunk delivered, what the Critic caught, what surprised you. A paragraph is enough. Add a rule to `learnings.md` only if this cycle produced one. Chunk-boundary reflection makes `/clear` instant later.
+**Reflect — now, not at session end.** Append to `.prawduct/.session-reflected`: what the chunk delivered, what the Critic caught, what surprised you. A paragraph is enough. Add a rule to `learnings.md` only if this cycle produced one.
 
 **Operator verification (F10).** Visual / live-integration chunks: enqueue in `.prawduct/operator-verification.md` and mark `Visual change: yes`. `/prawduct:pr create` blocks on pending entries when `operator_verification_required: true`.
 
 **Verify artifacts are current.** Confirm artifacts reflect the code — the Critic checks bidirectional freshness.
 
-**Update build plan Status.** Mark the chunk `[x]` in `build-plan.md`'s Status section and update the Context line — the cross-session handoff. (When `views_enabled`, Status is a derived view — add a tagged change-log entry and run regen-views instead.)
+**Update build plan Status.** Mark the chunk `[x]` in `build-plan.md`'s Status section and update the Context block — the cross-session handoff. (When `views_enabled`, Status is a derived view — add a tagged change-log entry and run regen-views instead.)
 
 ## Session Scope Discipline
 
@@ -113,11 +113,11 @@ Limit work cycles to 1-3 chunks for medium+ work — Critic quality degrades acr
 
 **Complete required governance at chunk boundaries, then affirmatively signal when `/clear` is safe.** When you've completed 2-3 chunks, or the user switches tasks, complete in order:
 
-1. **Commit** (tests passing). 2. **Critic** (if medium+ and not run yet) — resolve blocking findings. 3. **Persist** pending decisions/plans to artifact files. 4. **Backlog** — file/close affected items via `/prawduct:backlog`. 5. **Update build plan Status** (mark chunks, update Context). 6. **Reflection** — confirm `.prawduct/.session-reflected` has an entry for this chunk; add a synthesis only if a cross-cutting pattern emerged.
+1. **Commit** (tests passing). 2. **Critic** (if medium+ and not run yet) — resolve blocking findings. 3. **Persist** pending decisions/plans to artifact files. 4. **Backlog** — file/close affected items via `/prawduct:backlog`. 5. **Update build plan Status** (mark chunks, update Context). 6. **Reflection** — confirm `.prawduct/.session-reflected` has an entry for this chunk; add a synthesis only if a cross-cutting pattern emerged. 7. **Handoff notes** — append what the *next* session needs to `.prawduct/.handoff-notes.md`: where you stopped, what you'd do next, what would bite them. Write it at the boundary, while you still know it. "Nothing beyond the plan" is a valid answer — but write that line, not nothing: an absent file tells the next session you left none.
 
-End the chunk-complete message with *"Chunk N complete — Critic passed, reflection captured, build plan updated. Safe to `/clear`."* Do NOT signal until steps 1-6 are done; if a step genuinely cannot complete (e.g., the Critic agent failed), say so and flag the gap.
+End the chunk-complete message with *"Chunk N complete — Critic passed, reflection captured, build plan updated, handoff notes written. Safe to `/clear`."* Do NOT signal until steps 1-7 are done; if a step genuinely cannot complete (e.g., the Critic agent failed), say so and flag the gap.
 
-The `/clear` hook auto-generates `.prawduct/.session-handoff.md` from the build plan Status, reflection, Critic findings, and changed files; the next session's briefing surfaces it.
+**Two session files, two owners.** You own `.prawduct/.handoff-notes.md` — forward-looking, written any time. The `/clear` hook owns `.prawduct/.session-handoff.md`, regenerating it from your notes (first), build plan Status, reflection, Critic findings and changed files; the next session's briefing points at it. Never hand-edit the generated one — replacing it buys one rescued hop, appending to it is lost outright. `prawduct-hook handoff preview` shows what the next session would get, without writing.
 
 ## Investigated Changes
 
@@ -169,9 +169,9 @@ Tests are the most important artifact you produce: contracts that define correct
 
 **Test coverage is proportionate.** Every product needs at least: happy path, error handling for likely failures, and edge cases for anything involving money, data, or safety.
 
-**Multi-hop behavior needs multi-hop tests.** When tested behavior depends on a subsequent invocation (accumulators, coordinators, cursors, stateful retries), exercise at least one step beyond the immediate post-state — post-state-only tests miss multi-hop bugs.
+**Multi-hop behavior needs multi-hop tests.** When tested behavior depends on a subsequent invocation (accumulators, coordinators, cursors, stateful retries), exercise at least one step beyond the immediate post-state.
 
-**Test strategies match the domain.** When test-specifications call for property-based tests, use the project's configured PBT library. Don't add them speculatively — proportionality applies to strategies too.
+**Test strategies match the domain.** When test-specifications call for property-based tests, use the project's configured PBT library. Don't add them speculatively.
 
 **Idiomatic tooling, honest coverage.** Use language-native incremental runners to skip re-runs when nothing changed. The framework asserts the *contract* (judged changes land in `.test-evidence.json`'s `changes_referenced`; the rest in `changes_unjudged`, ungated), not a specific verifier. `bin/test-reference-verify` is a **floor**: symbol-grep catches untested new code but can't prove execution. For real coverage, plug in a language-native tool and emit `coverage_level: executed`; `verify-coverage` scales finding language accordingly.
 
@@ -196,7 +196,7 @@ Every consolidated review appends a **fact** to a store shared by all worktrees 
 
 If the mode is missing, unrecognized, or inference cannot make a confident call, run `final` (canonical rule and per-mode table: `skills/critic/review-cycle.md`).
 
-**The Critic takes time.** A `chunk` review takes 1-2 minutes, `final`/`cumulative` 4-10; don't poll for partials — but don't go silent either, or your prompt cache expires and the next turn replays your whole context. Deep-scrub your own changes while it runs — self-review often pre-resolves findings.
+**The Critic takes time** — 1-2 minutes for `chunk`, 4-10 for `final`/`cumulative`. Don't poll for partials; don't go silent either, or your prompt cache expires and the next turn replays your context. Deep-scrub your own changes while it runs — self-review often pre-resolves findings.
 
 **Never write Critic findings yourself.** If the agent is slow, wait. Writing `.critic-findings.json` "based on" expected output is governance fraud. If the agent fails, tell the user and re-invoke.
 
@@ -206,7 +206,7 @@ If the mode is missing, unrecognized, or inference cannot make a confident call,
 
 **Default: wait for the user to ask.** Do not create PRs proactively; only use `/prawduct:pr` when the user explicitly requests it — unless `project-preferences.md` sets `PR creation: automatic`.
 
-`/prawduct:pr` handles the full lifecycle (it detects git state and routes to create, update, merge, or status) and invokes the PR reviewer agent for independent release-readiness assessment of the full changeset — complementing the Critic's per-chunk reviews. Review criteria: the plugin's `skills/pr/review-protocol.md`. After merge, `/prawduct:pr` cleans up the build plan.
+`/prawduct:pr` handles the full lifecycle (it detects git state and routes to create, update, merge, or status) and invokes the PR reviewer agent for independent release-readiness assessment of the full changeset. Review criteria: the plugin's `skills/pr/review-protocol.md`. After merge, `/prawduct:pr` cleans up the build plan.
 
 **Cumulative-Critic gate.** `/prawduct:pr create` calls `prawduct-hook check-cumulative-critic` — composed coverage must span merge-base → HEAD by tree with zero unresolved blocking findings (details: `skills/critic/review-cycle.md`). Land every non-`.md` fix, run `/prawduct:critic cumulative` once, commit verbatim; post-cumulative fixes take a `verify-resolutions` pass, never a second full run. While it runs, do findings-independent prep.
 
@@ -221,17 +221,11 @@ Catch specific exceptions. Broad catches (`except Exception`, empty `catch {}`) 
 
 ## Common Traps
 
-**Silent requirement dropping**: Implementing 9 of 10 requirements and hoping nobody notices.
-
 **Gold plating**: Adding features the spec didn't ask for (Principle 12 — Scope Discipline).
 
 **Test-last**: Tests written to pass against existing implementation document behavior, including bugs.
 
-**Ignoring the Critic**: Dismissing findings without reflection.
-
-**Verification theater / mock-as-implementation**: Claiming verification without exercising the product, or shipping mocks where the data model declares a real integration. Green tests against in-memory stand-ins are not "done."
-
-**"Pre-existing" dismissal**: There is no pre-existing exception. If you found it, it's yours to fix or flag.
+**Verification theater / mock-as-implementation**: Claiming verification without exercising the product, or shipping mocks where the data model declares a real integration.
 
 **Uninvestigated decisions**: Major technology or architectural choices without research — lock-in, pervasiveness, structural impact, and external dependencies warrant investigation.
 

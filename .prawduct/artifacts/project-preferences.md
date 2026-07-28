@@ -76,6 +76,10 @@ This is the product's **norm index** (`docs/norms.md`): each row assigns an enfo
 | Subprocess safety (no `shell=True`) | Test | `tests/preferences/test_subprocess_safety.py` | CI (test) | `shell=True` is a command-injection surface (`security-model.md` supply-chain) |
 | No upstream content egress (norm lives in `security-model.md` § Direction, `in-transition` — BKL-7Q4M) | Test | `tests/preferences/test_no_upstream_content_egress.py` | CI (test) | a private repo filing into prawduct's public tracker crosses a trust boundary irreversibly; the interim rule holds until safe upstream filing is designed |
 | Test location (`test_*.py` only under `tests/`) | Test | `tests/preferences/test_test_location.py` | CI (test) | `testpaths` silently skips misplaced tests |
+| Every build-plan read decodes UTF-8 and guards the same except-set | Test | `tests/preferences/test_build_plan_decoding.py` (file-scoped over the two owning modules + AST data-flow elsewhere) | CI (test) | the risk is readers *disagreeing* about whether a plan parses; held as a convention for five review rounds and lost every one |
+| Agent-facing prose names both handoff files, never only the machine's | Test | `tests/preferences/test_handoff_prose.py` | CI (test) | naming only `.session-handoff.md` is the affordance that made agents write it; co-naming is structural, unlike a verb list |
+| Critic skill structure: both mode names present in the canonical instruction files | Test | `tests/preferences/test_critic_skill_structure.py` | CI (test) | losing the terminology fails safe to `final`, which *masks* the regression by always running the full review |
+| Reviewers run on the session model — no intelligent model switching | Test | `tests/preferences/test_reviewer_model_dispatch_prose.py` | CI (test) | risk-tier→model mapping escalated on almost any declared risk surface; the pin is against re-introduction |
 | Public functions in `lib/` referenced in tests | Critic | Goal 1 (test-coverage adequacy) — the dedicated `test_public_function_coverage` scanner was retired with `tools/lib/` (M4); restore a `lib/`-scoped scanner if drift appears | Critic + janitor | untested public API drifts in silently |
 | Naming (snake_case / PascalCase / UPPER_SNAKE) | Critic *(would be linter; no linter configured — see "Linting" above)* | Reviewer reads diff against this preference | Critic + janitor | readability; no linter configured |
 | Error handling (return-value based; exceptions at boundaries) | Critic | Reviewer judges what counts as a "boundary" per the definition above | Critic + janitor | return-value discipline; exceptions only escape at boundaries |
@@ -111,5 +115,16 @@ Pointer rows into the `## Direction` sections of the strategy artifacts. The sta
 | State-file size threshold is advisory, never a hard block | `nonfunctional-requirements.md` | advisory size-nag | advisory | context-weight cost; fail-soft advice, not authority |
 | Conservative versioning (small feature = patch bump) | `operational-spec.md` | Critic (judgment) | janitor | keep the version number meaningful |
 | Gitflow: develop=integration, main=release; promotion is a separate step | `operational-spec.md` | Session config + release tooling | janitor / doctor | clean release boundary; branch-pinned marketplace |
+
+**Candidate awaiting the owner's ratification** (listed here rather than omitted, because an
+unassigned rule is exactly what this index exists to prevent): the **handoff pair's contract** —
+`.handoff-notes.md` is written by the model and only by the model, `.session-handoff.md` by the
+machine and only at `/clear`. It lives in `architecture.md` § "The two model-owned session files"
+as *descriptive* prose today, so by the authority rule it tracks rather than binds. It is
+norm-shaped (it says who may write which file, and the whole session-continuity defect was two
+writers on one file), and its enforcement already exists in code and in `test_handoff_prose.py`
+above — but promoting it is the owner's call, not a builder's, and it opens a question larger than
+this artifact: whether prawduct should ship **process** norms at all, as ratifiable defaults
+governed products inherit, rather than only product norms. Tracked as MET-8K4R.
 
 **Rule for adding a new preference or norm:** assign a mechanism and an audit home. A code-level rule expressible as "every file/function/config matches pattern X with named exceptions" → write a test; a rule requiring intent → Critic. An architectural norm gets a `## Direction` entry in its home artifact plus a pointer row here. Never leave one unassigned — that's how a preference or a norm silently becomes aspirational — and a named mechanism that does not yet exist is filed as backlog work at the norm's birth (`docs/norms.md`).

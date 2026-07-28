@@ -4,14 +4,31 @@ Extracted from ``bin/prawduct-hook`` (STH-9V4K, Chunk 3) — the build-plan
 parsing cluster: it reads the active build plan's Status section and per-chunk
 sections (file-path refs, ``Type:`` declaration, ``Trivial because:`` rationale)
 and classifies a single file change against the ``Type: trivial`` / doc-only
-file-set bounds. Pure parsing + path inspection — no git mutation, no network.
+file-set bounds. Parsing + path inspection, plus read-only ``git log`` /
+``git rev-list`` queries where "which chunk is current" cannot be answered from
+the file alone — no git mutation, no network.
 
-Depends only on its lib siblings ``gitstate`` (for ``_is_metadata_path``) and
-``core`` (for ``resolve_build_plan_path``) plus the stdlib — a clean DAG node
-(``gitstate`` ← ``buildplan_refs``). The hook's inline build-plan-resolution
+Depends on its lib siblings ``gitstate`` (for ``_is_metadata_path``), ``core``
+(``resolve_build_plan_path``, ``read_bool_yaml_key``), ``coverage``
+(``_resolve_base_branch``) and ``views`` (the canonical frontmatter ``scope:``
+reader) plus the stdlib — still a clean DAG node, since ``coverage`` and
+``views`` each depend only on ``core``. The hook's inline build-plan-resolution
 mirror (``_resolve_build_plan_path``) stays in the hook for its import-light hot
 path; this module is a lib citizen and reaches the canonical resolver in
 ``lib.core`` directly, exactly as ``critic_mode`` and ``views`` do.
+
+Every read of the plan — here and in every other module that reads it — is
+explicitly UTF-8, and every guarded read catches ``UnicodeDecodeError`` beside
+``OSError``. Both axes are pinned by
+``tests/preferences/test_build_plan_decoding.py``. The
+plan is markdown authored by a model or a human (em dashes, arrows,
+box-drawing), and which of its readers can decode it must not depend on the
+operator's locale. The divergence this rule exists to prevent is not a decode
+failure but a DISAGREEMENT: readers of the same file on different codecs, with
+different except-sets, answering differently about whether it parses. It was
+found three review rounds running — first six of seven reads in this module,
+then two more outside it, one of them inside a function that reads the plan
+twice — which is why the rule is now a pin rather than a convention.
 
 ``_parse_build_plan_status`` was reassigned here from the briefing cluster (it is
 build-plan parsing, not briefing assembly) — that reassignment turns the hook's
@@ -22,10 +39,20 @@ hook calls these lazily via ``_buildplan_refs()``, keeping its top level lib-fre
 from __future__ import annotations
 
 import re
+import subprocess
 from pathlib import Path
+from typing import NamedTuple
 
 from . import gitstate
-from .core import resolve_build_plan_path
+from .core import read_bool_yaml_key, resolve_build_plan_path
+from .coverage import _resolve_base_branch
+
+# `lib.views` is a HEAVY_SUBMODULE and is imported lazily, inside the one
+# function that needs it (see `_plan_description_fallback`). Unlike `ledger`'s
+# identical call — where the cost was hypothetical — this module IS the hot
+# path: `briefing` and `gates` both import it at module scope, so a
+# module-scope `from .views import ...` here bills every SessionStart and every
+# Stop for a parse that most of them never use.
 
 
 def _iter_status_section_lines(content: str):
@@ -98,15 +125,18 @@ def _count_build_plan_chunks(prawduct_dir: Path) -> tuple[int, int]:
     Resolves the plan via the ``active_build_plan:`` pointer (falls back to
     ``artifacts/build-plan.md``), so scope-named plans are counted too.
     Returns ``(total, complete)``; ``(0, 0)`` if the plan or its Status section
-    is missing or unreadable. The single canonical implementation — consumed by
-    ``lib.gates`` (end-of-cycle synthesis gate) and ``lib.critic_mode`` (mode
-    inference), which carried near-duplicate copies until STH-2K8R/BLD-6Q1N.
+    is missing or unreadable. The single canonical implementation — both callers
+    are in ``lib.gates`` (the end-of-cycle synthesis gate and its sibling); they
+    and ``lib.critic_mode`` carried near-duplicate copies until STH-2K8R/BLD-6Q1N.
+    ``critic_mode`` no longer calls this at all: it asks
+    :func:`resolve_chunk_progress`, which is the one place the checkbox and
+    git-derived readings are reconciled.
     """
     plan_path = resolve_build_plan_path(prawduct_dir)
     if not plan_path.is_file():
         return 0, 0
     try:
-        content = plan_path.read_text()
+        content = plan_path.read_text(encoding="utf-8")
     except (OSError, UnicodeDecodeError):
         return 0, 0
     total = 0
@@ -118,41 +148,321 @@ def _count_build_plan_chunks(prawduct_dir: Path) -> tuple[int, int]:
     return total, complete
 
 
-def _chunk_ids_in_status_order(prawduct_dir: Path) -> list[str]:
-    """Raw chunk ids (e.g. ``"01"``) in build-plan Status order, both states.
+# A commit subject that references a build-plan chunk, e.g. "feat: … (Chunk 03)".
+# Capital-C + digits matches the "Chunk NN" commit convention without
+# false-matching prose like "10-chunk plan" (CRT-7B4M).
+_CHUNK_COMMIT_RE = re.compile(r"Chunk\s+(\d+)")
+# Conventional-commit scope: `fix(session-boundary-events): … (Chunk 01)`.
+_COMMIT_SCOPE_RE = re.compile(r"^\w+\(([^)]+)\)!?:")
+# NOTE: the plan's own `scope:` is read through `views._parse_build_plan_frontmatter_scope`,
+# NOT a regex here. A hand-rolled `^scope:\s*(\S+)$` shipped briefly and was wrong in three
+# ways the canonical reader already handles: it kept surrounding quotes (so a legal
+# `scope: "session-boundary-events"` matched no commit scope, `scoped` came back empty, and
+# the filter silently fell through to the unscoped reading — reinstating the very cross-plan
+# contamination it was added to stop), it ignored the documented `null`/`~` opt-out, and it
+# searched the whole document rather than the frontmatter block. This module's docstring
+# already names `views` as the canonical frontmatter reader, and the same bundle deleted
+# `ledger`'s inline copy for exactly this reason (ROB-7T2N).
 
-    Returns the ordered ``Chunk <id>:`` ids for ``- [ ]`` and ``- [x]`` items
-    alike, so a git-derived progress count can map to the right current chunk
-    (CRT-7B4M — see ``lib.critic_mode._git_aware_progress``, its consumer).
-    Empty list when the plan or its Status section is missing or unreadable.
+
+def _commits_ahead_of_base(project_dir: Path, base: str) -> int:
+    """Number of commits on HEAD since merge-base with ``base``. ``-1`` on failure."""
+    proc = subprocess.run(
+        ["git", "rev-list", "--count", f"{base}..HEAD"],
+        cwd=str(project_dir),
+        capture_output=True,
+        text=True,
+        timeout=10,
+    )
+    if proc.returncode != 0:
+        return -1
+    try:
+        return int(proc.stdout.strip())
+    except ValueError:
+        return -1
+
+
+def _committed_chunk_ids(
+    project_dir: Path, base: str, plan_scope: str | None = None
+) -> set[str]:
+    """Normalized chunk ids referenced in commit subjects on ``base..HEAD``.
+
+    The branch-robust progress signal for CRT-7B4M: when the build-plan Status
+    checkboxes are a non-flipping derived view (``views_enabled`` on a feature
+    branch), git commits are the only record of which chunks are done. Counts
+    distinct chunk numbers (``Chunk <n>`` in a commit subject), leading-zero-
+    normalized to match Status ids. Returns ``set()`` on git failure.
+
+    **Chunk ids are per-plan, so a branch carrying two plans cross-contaminates**
+    (SCN-5B8Q review R-2/R-7): a foreign plan's ``(Chunk 02)`` would otherwise
+    mark the active plan's chunk 02 complete. ``plan_scope`` — the active plan's
+    ``scope:`` frontmatter — restricts the count to commits whose
+    conventional-commit scope matches.
+
+    The filter is applied **only when some commit carries the plan's scope** —
+    that condition, precisely, and not "when the scoped commits yield ids." Scope
+    tags are a convention, not a guarantee: on this very branch the continuity
+    plan's commits say ``session-continuity`` while its frontmatter says
+    ``session-handoff-continuity``, so a strict always-on filter would silently
+    erase that plan's entire git signal and fall back to all-unchecked boxes —
+    replacing cross-contamination with a different wrong answer. When no commit
+    carries the plan's scope we therefore keep the pre-existing unscoped reading.
+
+    The two conditions come apart exactly where the defect lives: a plan whose
+    commits DO carry its scope but that has not landed a ``(Chunk NN)`` subject
+    yet yields an empty id set, and falling through there would re-import a
+    sibling plan's ids. Once this plan is identifiable in the log, its empty id
+    set is the truthful answer — git knows nothing about its chunks — and the
+    caller degrades to the checkbox reading.
+
+    Bounding by the plan's own declared chunk ids needs no code here: the caller
+    walks Status items and asks whether each item's id is in this set, so an id
+    that belongs to no Status item is never consulted.
     """
+    proc = subprocess.run(
+        ["git", "log", "--format=%s", f"{base}..HEAD"],
+        cwd=str(project_dir),
+        capture_output=True,
+        text=True,
+        timeout=10,
+    )
+    if proc.returncode != 0:
+        return set()
+
+    def _ids(subjects: list[str]) -> set[str]:
+        out: set[str] = set()
+        for subject in subjects:
+            for m in _CHUNK_COMMIT_RE.finditer(subject):
+                out.add(m.group(1).lstrip("0") or "0")
+        return out
+
+    subjects = proc.stdout.splitlines()
+    if plan_scope:
+        scoped = [
+            s for s in subjects
+            if (m := _COMMIT_SCOPE_RE.match(s)) and m.group(1).strip() == plan_scope
+        ]
+        # Discriminate on `scoped`, NOT on the ids it yields. Those differ exactly
+        # where the defect lives: a plan whose commits carry the right scope but
+        # has not landed a `(Chunk NN)` subject yet yields no ids, and falling
+        # through would re-import a sibling plan's chunk ids — the very
+        # cross-contamination this filter exists to stop. Returning the empty set
+        # is the truthful answer (git knows nothing about this plan's chunks), and
+        # the caller already degrades to the checkbox reading on an empty set.
+        if scoped:
+            return _ids(scoped)
+    return _ids(subjects)
+
+
+def _git_aware_progress(
+    project_dir: Path, content: str, total: int
+) -> tuple[int, str] | None:
+    """Git-derived ``(complete, current_item_text)``, or ``None`` to use checkboxes.
+
+    Applies ONLY when the Status checkboxes can't be trusted as the progress
+    signal (CRT-7B4M): (a) ``views_enabled`` (checkboxes derive from
+    ``status=shipped`` change-log entries and won't flip until release),
+    (b) a base branch resolves and HEAD is ahead of it (a pre-release feature
+    branch), and (c) at least one chunk is referenced by a commit since base.
+    Returns ``None`` whenever any condition fails — the caller then uses the
+    checkbox reading.
+
+    A Status item counts as complete when its box is ``[x]`` **or** it names a
+    chunk whose id appears in a commit subject since base. The commit signal
+    alone is not enough: on a plan whose earlier chunks shipped in a *prior*
+    release, those boxes ARE flipped and their commits are behind the base, so a
+    commit-only reading resolves "current" back to an already-shipped Chunk 01 —
+    strictly worse than the checkbox fallback this is supposed to never be worse
+    than. The union is what makes the promise true; the same union also keeps a
+    branch whose commits only partly follow the ``Chunk NN`` convention from
+    reading a half-populated set as authoritative.
+
+    The walk covers **every** Status item, not just the chunk-shaped ones. A
+    Status section may hold an item that names no chunk (a plain to-do); such an
+    item can never be "committed", so it is done iff its box is checked — which
+    is precisely the checkbox reading, applied to the items git cannot speak to.
+    Walking only the chunk-shaped items instead made "no chunk left" mean
+    "nothing left", so a plan with every chunk committed and an unchecked to-do
+    beside them read as COMPLETE, retiring a live plan and blanking the
+    handoff's work section. That is the same "strictly worse than the checkbox
+    fallback" failure the union above exists to prevent, entering by the other
+    door: not from the wrong signal, but from an incomplete domain.
+
+    This is the ONE implementation of git-derived chunk progress. It shipped in
+    ``lib.critic_mode`` for the ``infer-critic-mode`` consumer alone; the same
+    defect then recurred at ``verify-chunk-refs`` (BLD-7K3Q) and at the session
+    handoff, so it now lives here — with the rest of the build-plan Status
+    parsing — and every consumer reaches "which chunk is current" through
+    :func:`resolve_chunk_progress`.
+
+    Every git touchpoint is guarded. ``_resolve_base_branch``, ``rev-list`` and
+    ``git log`` all handle a non-zero return code but none catches a *raise*
+    (absent git binary → ``OSError``; the ``timeout=`` → ``TimeoutExpired``),
+    and the only catch above this is the parser's broad-except, which would
+    return ``{}`` — turning a transient git hiccup into "there is no build
+    plan," blanking the handoff's work section and quietly relaxing gates. The
+    correct degradation is to the checkbox reading, so the promise is kept here,
+    at the function that makes it, rather than at each of its callers.
+    """
+    prawduct_dir = gitstate.get_prawduct_dir(project_dir)
+    if total <= 0:
+        return None
+    if not read_bool_yaml_key(prawduct_dir / "project-state.yaml", "views_enabled"):
+        return None
+    try:
+        base, _ = _resolve_base_branch(project_dir)
+        if not base:
+            return None
+        if _commits_ahead_of_base(project_dir, base) <= 0:
+            return None
+        # Canonical reader: strips quotes, honours the `null`/`~` opt-out, and is
+        # bounded to the frontmatter block. Both `(True, None)` (explicit opt-out)
+        # and `(False, None)` (no key) yield None here, which correctly means
+        # "do not scope-filter" — the same unscoped reading as before the filter.
+        from .views import _parse_build_plan_frontmatter_scope  # noqa: PLC0415 — heavy; see the module-header note
+
+        _present, plan_scope = _parse_build_plan_frontmatter_scope(content)
+        committed = _committed_chunk_ids(project_dir, base, plan_scope)
+    except (OSError, subprocess.SubprocessError):
+        return None
+    if not committed:
+        return None
+
+    def _done(checked: bool, text: str) -> bool:
+        if checked:
+            return True
+        cid = _chunk_id_from_item_text(text)
+        return cid is not None and (cid.lstrip("0") or "0") in committed
+
+    items = list(_iter_status_section_items(content))
+    complete = sum(1 for checked, text in items if _done(checked, text))
+    current = next((text for checked, text in items if not _done(checked, text)), "")
+    return complete, current
+
+
+class ChunkProgress(NamedTuple):
+    """How far the active build plan has got, and which chunk is current.
+
+    ``current_id`` / ``current_text`` are empty-ish (``None`` / ``""``) when the
+    plan has no remaining chunk.
+
+    ``git_derived`` records which of the two readings answered. Stated honestly:
+    **no production caller reads it today** — it is asserted by tests and
+    available to a caller that wants to report *why* instead of guessing. The
+    gap that leaves is named rather than papered over: when the git-derived path
+    bails (absent base branch, git failure, a branch not ahead) the answer
+    silently becomes the checkbox reading, and on a ``views_enabled`` repo
+    mid-branch that is the reading known to be wrong. Nothing tells anyone.
+    Closing it means choosing which surface should report — a deliberately
+    invoked diagnostic, not this hot path, since most ``git_derived=False``
+    answers are perfectly normal — so it is a design call, not a rename.
+    """
+
+    total: int
+    complete: int
+    current_id: str | None
+    current_text: str
+    has_status_items: bool
+    git_derived: bool
+
+
+def resolve_chunk_progress(project_dir: Path) -> ChunkProgress:
+    """The ONE answer to "how far along is the plan, and which chunk is current."
+
+    Two readings exist — the Status checkboxes, and the git-derived one for
+    ``views_enabled`` repos where those checkboxes only flip at release — and the
+    *precedence between them* is what this function owns. Moving the three git
+    helpers into this module was not enough on its own: while `infer_mode` still
+    wrote "try git, else checkboxes" for itself, the composition existed twice,
+    and a third progress signal would make the two diverge again with the
+    consolidation pins still green. That duplication is the exact shape that let
+    the original defect reach three consumers.
+
+    Every consumer — :func:`_parse_build_plan_status` and so the handoff, the
+    briefing, ``verify-chunk-refs``, and ``critic_mode.infer_mode`` — resolves
+    through here.
+    """
+    prawduct_dir = gitstate.get_prawduct_dir(project_dir)
     plan_path = resolve_build_plan_path(prawduct_dir)
     if not plan_path.is_file():
-        return []
+        return ChunkProgress(0, 0, None, "", False, False)
     try:
-        content = plan_path.read_text()
+        content = plan_path.read_text(encoding="utf-8")
     except (OSError, UnicodeDecodeError):
-        return []
-    ids: list[str] = []
-    for _checked, text in _iter_status_section_items(content):
-        cid = _chunk_id_from_item_text(text)
-        if cid:
-            ids.append(cid)
-    return ids
+        return ChunkProgress(0, 0, None, "", False, False)
+    return _resolve_chunk_progress_from(project_dir, content)
 
 
-def _parse_build_plan_status(prawduct_dir: Path) -> dict[str, str]:
-    """Parse work context from build-plan.md Status section.
+def _resolve_chunk_progress_from(project_dir: Path, content: str) -> ChunkProgress:
+    """:func:`resolve_chunk_progress` against already-read plan content — so the
+    parser below resolves progress without re-reading the file it already holds."""
+    items = list(_iter_status_section_items(content))
+    total = len(items)
+    checkbox_complete = sum(1 for checked, _t in items if checked)
+    checkbox_current = next((t for checked, t in items if not checked), "")
+
+    git_progress = _git_aware_progress(project_dir, content, total)
+    if git_progress is None:
+        return ChunkProgress(
+            total,
+            checkbox_complete,
+            _chunk_id_from_item_text(checkbox_current),
+            checkbox_current,
+            total > 0,
+            False,
+        )
+
+    complete, current_text = git_progress
+    return ChunkProgress(
+        total,
+        complete,
+        _chunk_id_from_item_text(current_text),
+        current_text,
+        total > 0,
+        True,
+    )
+
+
+def _plan_description_fallback(plan_path: Path, content: str) -> str:
+    """Name the plan when it carries no ``# Build Plan`` H1.
+
+    The frontmatter-style plans this repo writes open with a ``---`` block and a
+    ``## Requirements Confidence`` heading — no H1 at all. Requiring one made
+    ``description`` empty, and an empty description is not a cosmetic loss: it
+    is the sole key gating the handoff's Work In Progress section, so the whole
+    section vanished from a live four-chunk plan's handoff. Fall back to the
+    frontmatter ``scope:``, then to the filename with the conventional
+    ``build-plan-`` prefix stripped, so the section can never silently vanish.
+    """
+    from .views import _parse_build_plan_frontmatter_scope  # noqa: PLC0415 — heavy; see the module-header note
+
+    _present, scope = _parse_build_plan_frontmatter_scope(content)
+    if scope:
+        return scope
+    return plan_path.stem.removeprefix("build-plan-") or plan_path.stem
+
+
+def _parse_build_plan_status(project_dir: Path) -> dict[str, str]:
+    """Parse work context from the active build plan's Status section.
 
     Returns dict with keys matching _parse_wip output:
     description, size, type, current_chunk, context, governance_level.
     Returns empty dict if no build plan or no Status section.
+
+    Takes ``project_dir`` (not ``.prawduct/``) because ``current_chunk`` is not
+    always answerable from the file: on a ``views_enabled`` repo the checkboxes
+    are a derived view that only flips at release, so mid-branch every box reads
+    ``- [ ]`` and "first unchecked" reports Chunk 01 forever. Resolution goes
+    through :func:`_git_aware_progress`, which needs the repo. The explicit
+    parameter is the point — every caller can see that this reads git, which the
+    three separate local patches of the same defect could not.
     """
+    prawduct_dir = gitstate.get_prawduct_dir(project_dir)
     plan_path = resolve_build_plan_path(prawduct_dir)
     if not plan_path.is_file():
         return {}
     try:
-        content = plan_path.read_text()
+        content = plan_path.read_text(encoding="utf-8")
         result: dict[str, str] = {}
 
         # Extract title from header: "# Build Plan — Title (date)"
@@ -167,6 +477,8 @@ def _parse_build_plan_status(prawduct_dir: Path) -> dict[str, str]:
                 if title:
                     result["description"] = title
                 break
+        if not result.get("description"):
+            result["description"] = _plan_description_fallback(plan_path, content)
 
         # Extract Size and Type from metadata line: **Size**: X | **Type**: Y
         for line in content.splitlines():
@@ -181,26 +493,66 @@ def _parse_build_plan_status(prawduct_dir: Path) -> dict[str, str]:
                         result["governance_level"] = segment.removeprefix("**Governance**:").strip()
                 break
 
-        # Parse Status section for current chunk and context
-        has_any_items = False
-        for stripped in _iter_status_section_lines(content):
-            # Current chunk = first unchecked item
-            if stripped.startswith("- [ ]") and "current_chunk" not in result:
-                has_any_items = True
-                result["current_chunk"] = stripped[5:].strip()
-            elif stripped.startswith("- [x]") or stripped.startswith("- [X]"):
-                has_any_items = True
-            # Context line
-            if stripped.startswith("Context:"):
-                result["context"] = stripped.removeprefix("Context:").strip()
-
-        # Mark whether Status section had items (for staleness detection)
-        if has_any_items:
+        # Which chunk is current — resolved by the one owner of that question,
+        # checkbox-wise or git-wise as the repo demands. Note it can come back
+        # EMPTY on a plan that has items: every chunk done means there is no
+        # current chunk, which is what stops a finished plan being reported as
+        # active work.
+        progress = _resolve_chunk_progress_from(project_dir, content)
+        if progress.current_text:
+            result["current_chunk"] = progress.current_text
+        if progress.has_status_items:
             result["_has_status_items"] = "true"
+
+        # The Context BLOCK runs from the first `Context:` line to the end of the
+        # Status section, not to the end of that physical line. `building.md`
+        # calls Context "the cross-session handoff" and plans write it as several
+        # paragraphs; reading one line truncated it at the first newline. Block
+        # semantics also settle the multiple-`Context:` question by dissolving
+        # it: the FIRST `Context:` opens the block and a later one is simply text
+        # inside it, so neither wins and nothing is dropped.
+        context_lines: list[str] = []
+        in_context = False
+        for stripped in _iter_status_section_lines(content):
+            if (
+                stripped.startswith("- [ ]")
+                or stripped.startswith("- [x]")
+                or stripped.startswith("- [X]")
+            ):
+                # A chunk item after Context ends the block — Context is
+                # conventionally last, but a plan that interleaves them should
+                # not swallow its own checklist into the handoff.
+                in_context = False
+                continue
+            if not in_context and stripped.startswith("Context:"):
+                in_context = True
+                context_lines.append(stripped.removeprefix("Context:").strip())
+                continue
+            if in_context:
+                context_lines.append(stripped)
+
+        context = "\n".join(context_lines).strip()
+        if context:
+            result["context"] = context
 
         return result
     except Exception:  # prawduct:allow prawduct/broad-except -- build plan parsing is best-effort
         return {}
+
+
+def build_plan_is_complete(status: dict[str, str]) -> bool:
+    """Does this parsed Status say the plan's chunks are all done?
+
+    The done-predicate, in one place. A Status section with items but no current
+    chunk means every chunk is complete; that is a *finished* plan, not active
+    work. ``staleness_scan`` had this logic inline and the handoff's
+    ``_get_active_work`` read the identical parse without it, so a completed plan
+    was stamped as the next session's ``**Task**`` — the two now share this.
+
+    A plan with no Status items at all is NOT complete (there is nothing to be
+    complete); callers distinguish that case via ``_has_status_items``.
+    """
+    return bool(status.get("_has_status_items")) and not status.get("current_chunk")
 
 
 _BUILD_PLAN_PATH_RE = re.compile(r"`([^`\s]+)`")
@@ -377,8 +729,8 @@ def _parse_build_plan_chunk_refs(prawduct_dir: Path, chunk_id: str) -> dict:
         result["error"] = f"missing build-plan: {plan_path}"
         return result
     try:
-        content = plan_path.read_text()
-    except OSError as exc:
+        content = plan_path.read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError) as exc:
         result["error"] = f"unreadable build-plan: {exc}"
         return result
 
@@ -437,8 +789,8 @@ def _parse_build_plan_chunk_type(
     if not plan_path.is_file():
         return None, f"missing build-plan: {plan_path}"
     try:
-        content = plan_path.read_text()
-    except OSError as exc:
+        content = plan_path.read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError) as exc:
         return None, f"unreadable build-plan: {exc}"
 
     found, section_lines = _chunk_section_lines(content, chunk_id)
@@ -479,8 +831,8 @@ def _parse_build_plan_chunk_trivial_rationale(
     if not plan_path.is_file():
         return None, f"missing build-plan: {plan_path}"
     try:
-        content = plan_path.read_text()
-    except OSError as exc:
+        content = plan_path.read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError) as exc:
         return None, f"unreadable build-plan: {exc}"
 
     found, section_lines = _chunk_section_lines(content, chunk_id)
@@ -622,16 +974,18 @@ def _classify_trivial_change(
     return None
 
 
-def _current_chunk_id_from_status(prawduct_dir: Path) -> str | None:
-    """Extract the chunk id of the first `- [ ]` item in the build-plan Status
-    section, e.g. ``"03"`` for ``- [ ] Chunk 03: Foo`` and ``"2"`` for
+def _current_chunk_id_from_status(project_dir: Path) -> str | None:
+    """Extract the chunk id of the build-plan Status section's current item,
+    e.g. ``"03"`` for ``- [ ] Chunk 03: Foo`` and ``"2"`` for
     ``- [ ] Chunk 2 (ID) — Foo``. Returns ``None`` if Status is missing, has no
     current chunk (all complete), or the item isn't a recognized chunk form.
 
-    Mirrors the resolution logic in ``cmd_verify_chunk_refs`` so the stop
-    hook and the Critic helper agree on "which chunk is current."
+    Thin id-extractor over :func:`_parse_build_plan_status` — which resolves
+    "current" checkbox-wise or git-wise as the repo demands — so the stop hook,
+    ``verify-chunk-refs``, and mode inference agree on which chunk is current by
+    construction rather than by three parallel patches.
     """
-    status = _parse_build_plan_status(prawduct_dir)
+    status = _parse_build_plan_status(project_dir)
     return _chunk_id_from_item_text(status.get("current_chunk", ""))
 
 

@@ -24,8 +24,21 @@ independent corrections, no one of which has to be perfect:
 
 1. **TTL auto-expiry** — a marker older than :data:`CRITIC_ACTIVE_TTL_SECONDS`
    stops counting as active (and is swept on the next read).
-2. **Session-start sweep** — a genuine new session (``clear --session-start``)
-   deletes any marker before resetting.
+2. **Session-boundary sweep** — a genuine session boundary (``clear
+   --session-start`` *without* ``--brief-only``: only ``startup`` and ``clear``)
+   deletes any marker. What licenses deleting a marker someone else wrote is that
+   a review is dispatched by a process, so an in-flight review dies with the
+   session that died — a marker outliving its session is stale by construction.
+
+   That premise is scoped, and the sweep is scoped to match (SCN-5B8Q): it does
+   **not** fire on continuations. ``compact`` fires mid-session *in-process*, and
+   ``fork``'s parent session is frequently still running, so a marker seen there
+   is very likely **live** — sweeping it would disarm this guard and the Stop
+   hook's abandoned-review backstop while a reviewer is genuinely working. The
+   asymmetry decides it: sweeping a live marker is a silent governance failure,
+   whereas leaving a dead one costs at most the TTL below, with two loud
+   overrides. A crashed Critic is therefore rescued by the next real boundary,
+   not by a resume.
 3. **Explicit override** — the refusal message tells the operator/agent how to
    clear a stale marker (``rm``) or force the one command (``clear --force``).
 
