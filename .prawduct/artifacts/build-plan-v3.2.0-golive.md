@@ -631,11 +631,29 @@ of this release, so depending on them would make Chunk 09 permanently unsatisfia
    ids, counts reconcile, no duplicates on re-run) · the four go-live blockers flipped · **and a
    dogfood period where `/prawduct:backlog` is the only path used, with no fallback to markdown.**
 
-   **Named tension the acceptance set must resolve: `BKL-2K8V` measured `pick` at ~12.4 s on a
-   209-issue repo, ~6× the NFR §4 floor.** This backlog is 171 items. Chunk 05b bounded the dependency
-   fan-out but that was never the dominant cost — the `_all_issues` paginated full-scan is, and it is
-   **W1-gated** (raw-HTTP fast-path or a scoped query), not slice-native. A 12-second `pick` on every
-   invocation is difficult to reconcile with "working great," and no current chunk addresses it.
+   **SHARPENED BY OWNER RULING 2026-07-28 — this gate is FUNCTIONAL COMPLETENESS, not performance.**
+   Verbatim: *"all functional requirements working great. NFRs like performance can lag to a later
+   release. But we cannot be functionally broken for any supported scenario."*
+
+   So the criterion is: **for every supported scenario, no functional requirement is broken, unproven
+   against the real API, or silently wrong.** Two direct consequences:
+
+   - **`BKL-2K8V` (pick ~12.4 s at 209 issues, ~6× the NFR §4 floor) does NOT gate this release.**
+     It is an NFR and explicitly deferred by the ruling. W1 (raw-HTTP fast-path / scoped query) stays
+     out of v3.2.0. Record the number in the release note as a known, accepted characteristic rather
+     than letting a dogfood session rediscover it as a surprise.
+   - **What DOES gate: anything verified only against the in-process fake.** `BKL-3N8Q` records that
+     the relationship/timeline foreign-API shapes are **fake-verified only** and the `verify-api` step
+     has never run. That is precisely the "functionally broken for a supported scenario" case the
+     ruling names — if a real payload shape differs from the fake, `pick` reports blocked items as
+     ready with a confident verdict, and no test in the suite can see it.
+
+   **The acceptance set is therefore a supported-scenario functional audit, not a feature checklist.**
+   Enumerate the scenarios v3.2.0 claims to support — stay-on-markdown (never migrates), migrate
+   markdown→Issues, day-to-day Issues use, onboard a new product, export/backup — and for each, name
+   the functional requirements it depends on and how each is verified (real API vs. fake). Upstream
+   filing is **out of scope**: Chunk 08 is deferred, so it is not a supported scenario in v3.2.0 and
+   the `incoming-bugs/` drop-box remains the path.
 
 9. **OWNER RELEASE GATE (stated 2026-07-28) — "duplicate review and other friction is sorted."**
    Tracked by **CRT-8N5V** (parent) with **COV-3M8Q** and **GOV-6D4Q**. Also **not yet verifiable** as
