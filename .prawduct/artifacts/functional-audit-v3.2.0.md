@@ -11,8 +11,12 @@ mapped each to implementation (`plugin/lib/backlog/`, `plugin/bin/prawduct-hook`
 Grep-absence alone is not evidence — requirement IDs are not always cited in code, and two candidates
 in this audit were dismissed on reading (see § Dismissed).
 
-**Status:** first pass, 2026-07-28. `verify-api` has not run, so every "verified" below means
-*verified against the in-process fake*, not against GitHub.
+**Status:** first pass, 2026-07-28, **with one finding corrected after owner challenge** (F1 — see the
+correction block there; the first draft wrongly claimed the whole adapter was unverified against live
+GitHub). The live-verification record is substantial: VRF-004 (`verified`, 2026-07-17) absorbed the
+`verify-api`/CONTRACT-1 obligation for the core issue shape, and ~200–300 items have been migrated
+live more than once (SPIKE-S2, VRF-009). Read "unverified" below as scoped to the specific reader or
+requirement named, never as a blanket statement.
 
 ---
 
@@ -34,19 +38,40 @@ the fleet**:
 
 ## Findings
 
-### F1 — `verify-api` has never run. The entire adapter is fake-verified. **[BKL-3N8Q, open]**
+### F1 — Three foreign-API *readers* are fake-verified only. **[BKL-3N8Q, open]**
 
-Affects **every** scenario. The L2 contract probe records the real REST/GraphQL shapes that the L1
-fake asserts, and its shape-diff (CONTRACT-1) is the only mechanism that would catch the fake having
-drifted from GitHub. It has not been run.
+> **CORRECTED 2026-07-28, owner challenge.** This finding first read *"`verify-api` has never run; the
+> entire adapter is fake-verified."* **Both halves were false**, and the evidence was already in this
+> repo. VRF-004 states in terms that it *"absorbs the Done-when step-0 `verify-api`/CONTRACT-1
+> obligation"* and is **`verified` (2026-07-17)** against `brookstalley/prawduct-backlog-smoke`,
+> capturing the raw issue shape for the fake. On top of that, ~200–300 items have been migrated live
+> more than once (SPIKE-S2 2026-07-17 ~209 items; VRF-009 2026-07-24 295 items, `fidelity_ok`, 294
+> aliases minted, `resume_created_duplicates: 0`). The error was generalizing BKL-3N8Q's narrow,
+> accurate scope — *relationship/timeline* shapes — into a claim about the whole adapter.
 
-The suite's 2730 passing tests all execute against `tests/fakes/fake_github.py`. If any real payload
-shape differs from the fake, the failure is **silent and confident**: `list_blocked_by` returning an
-unexpected shape makes `pick` report blocked items as ready; `decode_item` drops facets to `None`
-without warning. No test in the suite can see any of it.
+**Live-proven, repeatedly** — not in question: `file`/`get` round-trip with canonical
+`owner/repo#N` ids · the `prawduct` body block (`v: 1`) · `stage:`/`status:` label encoding ·
+`provision` creating namespaced labels without touching pre-existing ones (GV6) · `--json` envelope
+purity and SEC-1 (no token leakage) · issue numbers monotonic and never reused (M6) · `If-None-Match`
+→ `304` · pagination · bulk import at ~300-item scale with fidelity intact · resume idempotency
+(CRASH-4) · the paced create-then-close archive burst.
 
-**This is the single highest-value hour remaining in the release.** Operator-gated (needs a throwaway
-repo and live `gh`).
+**What genuinely remains fake-verified** is BKL-3N8Q's actual scope — three *readers*, none of which
+any migration or round-trip exercises:
+
+| Reader | Why no live run has touched it |
+|---|---|
+| `list_blocked_by` | The importer maps `related:` to **no native edge**, so a migration creates zero dependencies — there is nothing for it to read. VRF-009 recorded `relationships_reconstructed: false` for exactly this reason. |
+| `list_sub_issues` | Same — no migration path creates sub-issues. |
+| `list_timeline` | Migration never reads timelines; `superseded_by` is read from the body block instead (the CC5 gap, F5). |
+
+**Why it still matters despite the narrow scope.** These three sit behind `pick`'s blocker predicate
+and the duplicate-redirect decode — the two places where a wrong shape produces *confidently wrong
+output* rather than an error. `pick` is the single most-used read in day-to-day work (S-C).
+
+**Cost to close is small**, precisely because the scope is small: create two issues in a throwaway
+repo, `link` one `blocked-by` the other, and run `pick` + a timeline read against real GitHub. That
+exercises all three readers in one pass — no migration needed.
 
 ### F2 — GV8 is unmet: three norm-lifecycle signals go dark at cutover
 
@@ -128,8 +153,9 @@ flags is currently `adapter-mode.md` plus the source.
 
 ## Recommended gate-2 acceptance set
 
-1. **`verify-api` runs green** against a throwaway repo, with the shape-diff recorded (F1). ⟵ *the one
-   that actually changes what we know*
+1. **The three relationship/timeline readers exercised live** (F1) — two issues in a throwaway repo,
+   `link` one `blocked-by` the other, then `pick` + a timeline read. Small and self-contained; **no
+   migration required**, which is why it has never happened as a side effect of one.
 2. **Chunk 01 VRFs** drained (VRF-005/007/008).
 3. **Chunk 06** migration + VRF-006: `get`/`list`/`pick` resolve real ids, counts reconcile, a re-run
    creates no duplicates.
