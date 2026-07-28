@@ -159,6 +159,47 @@ Affects S-B and S-C. Observed live: a forked skill burned 23 attempts over 5+ mi
 503s. A hang, not wrong data — but during a paced ~900-issue migration it is the difference between a
 slow run and an apparently-wedged one (compounds with **BKL-8K2N**, the unbuilt progress heartbeat).
 
+### F9 — Cutover is not gated on migration completeness, and a live repo is stranded because of it. **[new]**
+
+Affects **S-B**, and this is the most serious finding in the audit because it is **observed, not
+theorised**: `samsung-frame-art-loader` is in the exact state MG3 says cannot exist.
+
+**The evidence.** `backlog_service_repo` is set — so `post_cutover(state)` is True and every reader
+treats `.prawduct/backlog.md` as frozen history. But that file still holds **9 open items**, and only
+**2** of them (`CUI-WT3K` → #2, `TVW-4Q7M` → #3) carry an `id:PFX` alias on GitHub. The other **7 do
+not exist on GitHub at all** — confirmed twice over: no alias label, and no title match against any of
+the 17 issues at a generous 0.55 similarity cutoff. All 17 issues carry `prawduct` blocks, so the
+other 15 are *different* work filed natively after cutover, not hand-migrated equivalents.
+
+**7 items of live work — including a DNS-rebinding exposure and an unbounded session table — are
+invisible to every reader.** Not lost: the file is intact. But nothing reads it for live state, and
+they never reached the service.
+
+**The hypothesis that had to be excluded first.** The owner proposed the benign reading: perhaps it
+*is* fully migrated and `backlog.md` is stale leftover. That is exactly the shape that would make the
+obvious recovery catastrophic — items re-filed by hand carry a `prawduct` block but **no** `id:PFX`
+alias, so a re-import would not skip them and would mint **7 duplicates** in a store with no delete.
+The title comparison is what ruled it out. **Any recovery procedure must run that comparison first.**
+
+**The structural defect: step 6 has no precondition on step 5.** The runbook does prescribe the check
+— step 5 says *"confirm every hand-minted `PFX` resolves as an `id:PFX` alias… Total issue count =
+every source item"* — but it is a **human eyeball step with no tooling behind it.** `counts` reports
+the GitHub side only; nothing compares it to the source. So a partial import passes unnoticed, and
+then **the moment `backlog_service_repo` is set the evidence goes dark**, because the markdown stops
+being read. The failure conceals itself at exactly the step that should have caught it.
+
+**Recovery for this repo (safe, verified for these specific conditions):** re-run
+`import --repo brookstalley/samsung-frame-art-loader --from .prawduct/backlog.md`. It is idempotent
+and keyed on the alias, so #2 and #3 skip and the 7 are created. **The backfill hazard does not bite
+here** — the skip path reconciles status from markdown, which would reopen anything closed on the
+service since cutover, and both #2 and #3 are `open` on GitHub *and* `open` in markdown (checked).
+Scrub the 7 first if any are stale; that is an owner call.
+
+**Fix-shape (the general defect, not this instance):** make cutover refuse when the source still holds
+items with no alias on the target — a mechanical count comparison at the point `backlog_service_repo`
+is written. This is the same argument BKL-9XQ2 makes about prose-only guards: step 5 is prose in the
+file the operator is following, and it did not bind.
+
 ### F8 — `pick` can hand back an item closed seconds earlier. **[new, VRF-010]**
 
 Affects **S-C**. Immediately after `status --to shipped`, `pick` returned the just-closed item as
