@@ -1089,6 +1089,72 @@ def _reconcile_status(
 # --- export ------------------------------------------------------------------
 
 
+def verify_migration(
+    transport: Transport,
+    *,
+    owner: str,
+    repo: str,
+    content: str,
+    archive_content: str | None = None,
+    archive_scope: str = "all",
+) -> dict:
+    """Is every source item present on the target? The completeness gate.
+
+    **Why this is a command and not a checklist line.** The scrub runbook has
+    always prescribed the comparison — step 5's *"Total issue count = every
+    source item"* — but as a human eyeball step with no tooling behind it.
+    ``counts`` reports the target side only and never sees the source. A partial
+    import therefore passes unnoticed, and then setting ``backlog_service_repo``
+    makes the markdown stop being read, so the failure becomes **invisible at
+    exactly the step that should have caught it**. Observed live: a repo
+    recorded its cutover with 7 of 9 items never imported.
+
+    **Compares the SOURCE set against alias coverage, never issue counts.**
+    Issues filed natively after a cutover carry a ``prawduct`` block but no
+    ``id:PFX`` alias, so a raw count comparison passes while source items are
+    still stranded — which is precisely how the observed repo looked (17 issues,
+    2 aliases, 9 source items). Only the hand-minted ids the import is
+    responsible for carrying across are in scope.
+
+    **Names the stranded ids, never just a count** — a count says something is
+    wrong; the ids say what to re-import.
+
+    Returns ``ok`` when nothing is missing, else a ``conflict`` envelope (exit 4:
+    the two stores disagree — a data inconsistency, not a bad request). Read-only:
+    it creates nothing and reconciles nothing.
+    """
+    seen: dict[str, str] = {}
+    records, _collisions = _records_from_backlog(content, seen)
+    if archive_content is not None:
+        archived, _ = _records_from_backlog(archive_content, seen)
+        if archive_scope == "all":
+            records = records + archived
+    source = [r.pfx for r in records if r.pfx]
+
+    try:
+        aliased: set[str] = set()
+        for _number, pfxs, _labels in core.iter_alias_issues(transport, owner, repo):
+            aliased.update(pfxs)
+    except TransportError as exc:
+        return core.from_transport_error(exc)
+
+    missing = [p for p in source if p not in aliased]
+    data = {
+        "repo": f"{owner}/{repo}",
+        "source_items": len(source),
+        "aliased": len(source) - len(missing),
+        "missing": missing,
+    }
+    if missing:
+        return core.error(
+            "conflict",
+            f"{len(missing)} source item(s) have no issue on {owner}/{repo} — "
+            "the migration is incomplete; re-run import before recording the cutover",
+            details=data,
+        )
+    return core.ok(data)
+
+
 def export_backlog(
     transport: Transport,
     *,

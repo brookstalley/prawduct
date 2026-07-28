@@ -263,9 +263,31 @@ hand-minted `PFX` resolves as an `id:PFX` alias and every disposed item is
 *closed*, not missing. Total issue count = every source item — a dropped or
 merged item is still present, just closed.
 
-**6. Cut over.** Record the switch that makes the migrated repo the live
-backlog — a top-level scalar in `.prawduct/project-state.yaml`, set to the same
-`<target>` bound in Step 0:
+**6. Cut over.** **Gate first — this is the one step that must not be taken on
+trust.** Setting the key below is what makes the markdown stop being read, so
+any item that did not make it across becomes invisible *at the moment you record
+the cutover*. Run:
+
+    prawduct-hook backlog verify-migration --repo <target> \
+      --from .prawduct/backlog.md [--archive <archive>] [--archive-scope all|open]
+
+**Exit 0 — `missing: []` — is the precondition for the rest of this step.** On
+exit 4 it names every source item with no issue on the target: re-run the import
+(idempotent, alias-keyed, so already-migrated items skip rather than duplicate)
+and verify again. Do **not** record the key with a non-empty `missing`.
+
+*Why this is a command and not the eyeball check step 5 already asks for.* Step 5
+has always said "Total issue count = every source item," and it was not enough:
+`samsung-frame-art-loader` recorded its cutover with **7 of 9 items never
+imported**, and nothing noticed until the repo was read months later. A raw issue
+count would not have caught it either — issues filed natively after a cutover
+carry a `prawduct` block but no `id:PFX` alias, so that repo's counts looked
+plausible (17 issues) while 7 source items were stranded. The gate compares the
+**source set against alias coverage**, which is the only comparison that holds.
+
+Then record the switch that makes the migrated repo the live backlog — a
+top-level scalar in `.prawduct/project-state.yaml`, set to the same `<target>`
+bound in Step 0:
 
 ```yaml
 backlog_service_repo: <target>

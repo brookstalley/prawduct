@@ -1350,3 +1350,86 @@ def test_s2_spike_imports_when_run_as_a_script(tmp_path: Path):
         capture_output=True, text=True, timeout=30, cwd=str(tmp_path),
     )
     assert proc.returncode == 0, f"standalone spike run failed:\n{proc.stderr}"
+
+
+# --- verify-migration: the completeness gate (F9) ----------------------------
+
+
+class TestVerifyMigration:
+    """The check that `samsung-frame-art-loader` needed and did not have.
+
+    That repo recorded its cutover with 7 of 9 source items never imported. The
+    runbook *did* prescribe the comparison ("Total issue count = every source
+    item") but only as a human eyeball step, so a partial import passed
+    unnoticed — and the moment `backlog_service_repo` was set the markdown
+    stopped being read, which made the failure invisible at exactly the step
+    that should have caught it."""
+
+    def test_a_complete_migration_verifies_clean(self, fake):
+        result = _import(fake, DISCODON_MINI)
+        assert result["status"] == "ok", result
+        verdict = migrate.verify_migration(
+            fake, owner=OWNER, repo=REPO, content=DISCODON_MINI
+        )
+        assert verdict["status"] == "ok", verdict
+        assert verdict["data"]["missing"] == []
+        assert verdict["data"]["source_items"] == verdict["data"]["aliased"]
+
+    def test_an_unmigrated_source_item_is_named_not_counted(self, fake):
+        """The verdict must name the stranded ids. A count tells the operator
+        something is wrong; only the ids tell them what to re-import."""
+        _import(fake, DISCODON_MINI)
+        extra = DISCODON_MINI + (
+            "\n- **[ZZZ-9999]** never imported\n  `status: open · stage: ready`\n"
+        )
+        verdict = migrate.verify_migration(fake, owner=OWNER, repo=REPO, content=extra)
+        assert verdict["status"] == "error"
+        assert verdict["error"]["code"] == "conflict"
+        assert verdict["error"]["details"]["missing"] == ["ZZZ-9999"]
+
+    def test_it_gates_on_the_source_not_on_issue_count(self, fake):
+        """Issues filed natively after cutover carry a prawduct block but no
+        `id:` alias, so a raw issue-count comparison passes while source items
+        are still stranded — which is exactly how the observed repo looked (17
+        issues, 2 aliases, 9 source items)."""
+        _import(fake, DISCODON_MINI)
+        for i in range(5):
+            core.file_item(
+                fake, owner=OWNER, repo=REPO, title=f"native {i}", body="b", facets={}
+            )
+        extra = DISCODON_MINI + (
+            "\n- **[ZZZ-9999]** stranded\n  `status: open · stage: ready`\n"
+        )
+        verdict = migrate.verify_migration(fake, owner=OWNER, repo=REPO, content=extra)
+        assert verdict["status"] == "error"
+        assert verdict["error"]["details"]["missing"] == ["ZZZ-9999"]
+
+    def test_cli_exit_code_is_non_zero_so_it_can_gate(self, fake, tmp_path):
+        """Step 6 of the runbook must be able to depend on this mechanically."""
+        _import(fake, DISCODON_MINI)
+        src = tmp_path / "backlog.md"
+        src.write_text(
+            DISCODON_MINI
+            + "\n- **[ZZZ-9999]** stranded\n  `status: open · stage: ready`\n",
+            encoding="utf-8",
+        )
+        code = cli.run(
+            str(tmp_path),
+            ["verify-migration", "--repo", f"{OWNER}/{REPO}", "--from", str(src)],
+            transport=fake,
+        )
+        assert code == 4  # conflict — source and target disagree
+
+    def test_an_archive_file_is_included_in_the_source_set(self, fake, tmp_path):
+        """A migration run with --archive must be verifiable the same way, or
+        the check silently passes on a partially-imported archive."""
+        archive = "# Archive\n\n## Archive\n\n- **[ARC-0001]** archived\n  `status: shipped`\n"
+        result = migrate.import_backlog(
+            fake, owner=OWNER, repo=REPO, content=DISCODON_MINI, archive_content=archive
+        )
+        assert result["status"] == "ok", result
+        verdict = migrate.verify_migration(
+            fake, owner=OWNER, repo=REPO, content=DISCODON_MINI, archive_content=archive
+        )
+        assert verdict["status"] == "ok", verdict
+        assert "ARC-0001" not in verdict["data"]["missing"]

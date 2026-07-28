@@ -75,6 +75,9 @@ _HELP = (
     "  restructure-preview --from <backlog.md> [--archive <archive.md>] "
     "--plan <plan.json> --out <preview.md> [--archive-scope all|open]   "
     "(offline before/after review artifact)\n"
+    "  verify-migration --repo owner/repo --from <backlog.md> [--archive <archive.md>] "
+    "[--archive-scope all|open]   (completeness gate — exit 4 names any source item with "
+    "no issue on the target; run before recording the cutover)\n"
     "  export   --repo owner/repo --to <dir>   (full-fidelity dump incl. native graph)\n"
     "  merge    <source-id> --into <target-id> [--repo owner/repo]   (fold A→B, redirect-before-close)\n"
     "global: --json  (machine envelope on stdout; default is human)\n"
@@ -128,6 +131,8 @@ def run(project_dir, argv: list[str], *, transport=None) -> int:
             result = _run_pick(rest, transport)
         elif op == "counts":
             result = _run_counts(rest, transport)
+        elif op == "verify-migration":
+            result = _run_verify_migration(rest, transport)
         elif op == "refresh-counts":
             result = _run_refresh_counts(rest, transport, project_dir)
         elif op == "reconcile-labels":
@@ -154,8 +159,8 @@ def run(project_dir, argv: list[str], *, transport=None) -> int:
                     "validation",
                     f"unknown op {op!r} (expected file|get|status|update|comment|"
                     "list|pick|counts|refresh-counts|claim|unclaim|link|unlink|"
-                    "provision|reconcile-labels|import|restructure-preview|"
-                    "export|merge)",
+                    "provision|reconcile-labels|import|verify-migration|"
+                    "restructure-preview|export|merge)",
                 ),
                 json_mode=json_mode,
                 usage=True,
@@ -392,6 +397,42 @@ def _run_counts(rest: list[str], transport):
     owner, repo = parsed
     transport = _resolve_transport(transport)
     return query.counts(transport, owner=owner, repo=repo)
+
+
+def _run_verify_migration(rest: list[str], transport):
+    from . import migrate  # noqa: PLC0415 — lazy: migration ops only
+
+    flags, _positionals, err = _parse_flags(
+        rest, valued={"repo", "from", "archive", "archive-scope"}
+    )
+    if err:
+        return core.error("validation", err)
+    parsed = ids.parse_repo(flags.get("repo", ""))
+    if parsed is None:
+        return core.error("validation", "verify-migration requires --repo owner/repo")
+    if "from" not in flags:
+        return core.error("validation", "verify-migration requires --from <backlog.md path>")
+    archive_scope, err = _archive_scope_flag(flags)
+    if err:
+        return core.error("validation", err)
+    owner, repo = parsed
+    content, err = _read_source(flags["from"], "--from")
+    if err:
+        return core.error("validation", err)
+    archive_content = None
+    if "archive" in flags:
+        archive_content, err = _read_source(flags["archive"], "--archive")
+        if err:
+            return core.error("validation", err)
+    transport = _resolve_transport(transport)
+    return migrate.verify_migration(
+        transport,
+        owner=owner,
+        repo=repo,
+        content=content,
+        archive_content=archive_content,
+        archive_scope=archive_scope,
+    )
 
 
 def _run_refresh_counts(rest: list[str], transport, project_dir):
