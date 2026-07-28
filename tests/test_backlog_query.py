@@ -228,6 +228,44 @@ class TestPick:
         assert blocked not in picked
         assert len(picked) == 2 and free in picked and blocker in picked
 
+    def test_failed_dependency_read_on_a_selected_candidate_still_errors(self, fake):
+        """The property that must NOT have changed with the lazy fan-out: if the
+        blocker predicate cannot be evaluated for a candidate `pick` is about to
+        return, the call fails rather than returning it as ready. The predicate
+        is never *assumed* for a returned candidate."""
+        _file(fake, title="ready", stage="ready")
+
+        def _boom(*_a, **_kw):
+            raise OSError("dependency endpoint unreachable")
+
+        fake.list_blocked_by = _boom
+        result = query.pick(fake, owner=OWNER, repo=REPO, limit=1, now=NOW)
+        assert result["status"] == "error"
+        assert result["error"]["code"] == "unavailable"
+
+    def test_failed_dependency_read_below_the_limit_does_not_fail_the_call(self, fake):
+        """The deliberate semantics change riding with the lazy fan-out: a
+        dependency read that fails on an issue ranked below what `limit` needed
+        is never taken, so it cannot fail the call. Previously any eligible
+        issue's unreachable dependency failed the whole pick — including issues
+        the caller was never going to see."""
+        first = _file(fake, title="first", stage="ready")
+        for i in range(5):
+            _file(fake, title=f"later-{i}", stage="ready")
+
+        _real = fake.list_blocked_by
+        _first_number = _split(first)[2]
+
+        def _boom_except_first(owner, repo, number):
+            if number != _first_number:
+                raise OSError("dependency endpoint unreachable")
+            return _real(owner, repo, number)
+
+        fake.list_blocked_by = _boom_except_first
+        result = query.pick(fake, owner=OWNER, repo=REPO, limit=1, now=NOW)
+        assert result["status"] == "ok"
+        assert [c["id"] for c in result["data"]["candidates"]] == [first]
+
     def test_ignores_non_ready_stage(self, fake):
         _file(fake, title="idea", stage="idea")
         _file(fake, title="design", stage="design")

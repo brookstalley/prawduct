@@ -426,16 +426,21 @@ tests/
   semantics), §3.2 (claim race — CRASH-6), §3.11 (PROV-2); PRD §8.3 (Q1-structured/M8), §8.2 (CC3/M11),
   §8.7 (GV1).
 - **Deliverables:** `lib/backlog/query.py` (`list`,`pick`,`counts`), `link`/`unlink` + `claim`/`unclaim`
-  in `core.py`, the ready-work batched-GraphQL fan-out, the claim-TTL reap policy, PROV-2 decode filter.
+  in `core.py`, the ready-work ~~batched-GraphQL~~ **N+1-REST** fan-out *(corrected 2026-07-28 — the
+  batched path was specified but never built; see the forward-dependency note below)*, the claim-TTL
+  reap policy, PROV-2 decode filter.
 - **Tests (L1):** §3.8 query-semantics (structured filter/sort/paginate; the **observed** — not
   documented — 404-replication-window-after-create handled via the fake's replication-window mode, an
   L5-owed behavior); `pick` returns ranked candidates + *why* and honors blockers/TTL; CRASH-6 (claim
   double-take race → `claim_conflict`, non-fatal, §3.2); PROV-2 (non-prawduct issues ignored, §3.11).
   **L5 smoke:** one real `list`/`pick` round-trip.
 - **Known forward dependency:** `pick`'s < 2 s latency floor assumes the **batched-GraphQL** fan-out
-  (an N+1-REST-over-`gh` fan-out blows 2 s at 3–5 candidates, NFR §4 open-Q4). This chunk implements the
-  batched path; its measured floor (PROBE-LAT, candidate-parameterized) is **pinned by SPIKE-S2** in
-  Chunk 06 — noted here as a forward dependency, not a gate (correctness holds either way).
+  (an N+1-REST-over-`gh` fan-out blows 2 s at 3–5 candidates, NFR §4 open-Q4). ~~This chunk implements the
+  batched path~~ — **CORRECTED 2026-07-28: it does not, and no chunk ever did.** There is no GraphQL
+  anywhere in `lib/backlog/`; the fan-out shipped as N+1 REST over `gh` from the start, so the < 2 s
+  floor was never on the path this line claims. Its measured floor (PROBE-LAT,
+  candidate-parameterized) is **pinned by SPIKE-S2** in Chunk 06 — noted here as a forward dependency,
+  not a gate (correctness holds either way).
 - **Acceptance criteria:** `prawduct-hook backlog pick` returns the correct ready-work set (blockers
   closed, unclaimed, `stage: ready`) online with no cache, matching the current skill's contract (GV1).
 - **Done when:**
@@ -668,7 +673,7 @@ tests/
     verbatim in `original_*`; the fact stands for what it tested and the real migration adds the plan.)*
   - ✅ **Aliasing (MIG-2):** 208 hand-minted `PFX`→`id:PFX` aliases; **zero new PFX minted** — existing IDs preserved.
   - ✅ **Resume idempotency (CRASH-4):** a full re-import created **0 duplicates** — skip-if-exists on the alias holds live.
-  - ⚠️ **`pick` fan-out (PROBE-LAT):** ~**12.4 s**, **flat** across 1/3/5 candidates → NOT N+1 (fan-out is cheap/batched), but ~**6× the NFR <2 s target**, dominated by the `_all_issues` full-scan over paginated `gh` subprocesses. The <2 s floor needs the raw-HTTP/GraphQL fast-path (W1) or a scoped query, not the `gh`-subprocess path.
+  - ⚠️ **`pick` fan-out (PROBE-LAT):** ~**12.4 s**, **flat** across 1/3/5 candidates, ~**6× the NFR <2 s target**, dominated by the `_all_issues` full-scan over paginated `gh` subprocesses. The <2 s floor needs the raw-HTTP/GraphQL fast-path (W1) or a scoped query, not the `gh`-subprocess path. ~~flat → NOT N+1 (fan-out is cheap/batched)~~ — **RETRACTED 2026-07-28**, matching the identical retraction `operator-verification.md` records against VRF-009's re-run of this probe. The fan-out *was* N+1, and **the probe could not have detected it**: the candidate count is the `limit`, and `limit` was applied only *after* the fan-out had already run over every eligible issue — so varying 1/3/5 varied nothing about the number of blocker reads. Flatness measured the constant full-scan, not a batched fan-out. (Chunk 05b since bounded the fan-out by `limit`, so this probe would finally vary with candidates if re-run.)
   - ⚠️ **`node_id` across `gh issue transfer`: NOT stable** (settles ID-4) — the node_id re-mints on transfer (it encodes the repo). Nothing may key on it as a cross-repo permanent identifier. Transfer is a W3 op → no slice impact, but the fact is pinned.
   - ℹ️ **Relationships:** `reconstructed: false` is **benign for this source** — prawduct's backlog uses soft `related:` (×132) and **zero** native `blocked_by`/`sub-issue` fields; the importer doesn't map `related:`→native (preserved in-body). **MIG-3 native-graph reconstruction is UNPROVEN, not failed** — a source with real sub-issue trees needs a separate test.
   - ℹ️ **Archive volume:** ~117 of ~209 created closed (dropped) — workable.

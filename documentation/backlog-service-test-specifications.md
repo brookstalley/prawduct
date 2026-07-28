@@ -689,12 +689,17 @@ the NFR discipline), and the probe is the gate that promotes it. They are **not*
 
 | Probe | Measures | Target (NFR) | Gate |
 |---|---|---|---|
-| **PROBE-LAT** | p95 latency: CRUD write, online read, warm read, `pick` fan-out | < 2 s write · < 1.5 s online read · < 500 ms warm · `pick` < 2 s iff batched | at build, before "done" |
+| **PROBE-LAT** | p95 latency: CRUD write, online read, warm read, `pick` fan-out | < 2 s write · < 1.5 s online read · < 500 ms warm · `pick` **W1-gated, not slice-native** (settled 2026-07-28) | at build, before "done" |
 | **PROBE-RATE** | which limit each op decrements (creation-vs-edit granularity); core reads/sec sustainable; grooming core-bound; 500/hr + 900 pts/min under a real creation burst | the §3.1/§3.2 rate model | `verify-api` + S3 |
 
-`pick`'s < 2 s floor **assumes** a batched-GraphQL fan-out; on the N+1-REST-over-`gh` path even 3–5
-candidates blow 2 s — so PROBE-LAT for `pick` is **candidate-parameterized** and its constant is what
-S2 pins (§5). PROBE-RATE's creation-vs-edit granularity is `target`-grade (GitHub does not document it —
+~~`pick`'s < 2 s floor **assumes** a batched-GraphQL fan-out~~ — **settled 2026-07-28: the batched path
+was never built** (no GraphQL in `lib/backlog/`), so `pick` runs N+1 REST over `gh`. S2 pinned the
+constant at ~12.4 s / ~209 issues, dominated by the `_all_issues` full-scan rather than the
+per-candidate reads; the < 2 s floor is **W1-gated**, not slice-native. Note the trap this probe fell
+into: it was **candidate-parameterized against a fan-out that ignored the candidate count**, because
+`limit` was applied after the fan-out had already run over every eligible issue — so its flatness was
+read as evidence of batching when it was evidence of nothing. Chunk 05b bounded the fan-out by `limit`,
+which makes the parameterization meaningful for the first time. PROBE-RATE's creation-vs-edit granularity is `target`-grade (GitHub does not document it —
 the probe watches which limit each call actually decrements).
 
 ## 5. Empirical spikes (L4) — one-time proving increments

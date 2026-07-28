@@ -205,6 +205,14 @@ def pick(
     # cost of `pick` on a large backlog: the reads are a per-issue REST fan-out,
     # so the old shape charged the full backlog size on every call no matter how
     # small the requested limit.
+    #
+    # One deliberate semantic change rides along: a dependency read that fails
+    # now surfaces only if `pick` actually needed that candidate. Previously any
+    # eligible issue's unreachable dependency failed the whole call, including
+    # issues ranked far below anything that would be returned. Failing the call
+    # over an item the caller was never going to see is worse than not looking —
+    # the predicate is still never *assumed* for a candidate that is returned,
+    # which is the property that matters.
     candidates: list[dict] = []
     want = max(0, limit)
     for eligibility, number, candidate in eligible:

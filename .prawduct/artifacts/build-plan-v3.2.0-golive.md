@@ -575,7 +575,8 @@ error vocab (`filing-disabled`, `target-not-pinned`, `self-file`, `approval-mism
 **Goal:** Ship v3.2.0. The version bump *is* the release trigger.
 
 **Covers:** ship-list items 13–17.
-**Depends on:** Chunks 01–08
+**Depends on:** Chunks 01–06 + 05b *(re-cut 2026-07-28 from "01–08" — Chunks 07 and 08 are deferred out
+of this release, so depending on them would make Chunk 09 permanently unsatisfiable)*
 **Type:** code (version + change-log) + release ceremony
 
 **Done when:**
@@ -589,9 +590,12 @@ error vocab (`filing-disabled`, `target-not-pinned`, `self-file`, `approval-mism
    surface the version-delta SessionStart banner shows a repo on upgrade, and v3.1.1's headline
    explicitly primed consumers for it ("The GitHub-Issues backlog service is deliberately **not** in
    this release — it ships when it is"). It must state: the service is here; **your backlog does not
-   migrate automatically**; the command to run when you want it; and — per the v2.3.2 precedent for
+   migrate automatically**; the command to run when you want it. ~~and — per the v2.3.2 precedent for
    `stamp-merged` — that agent memory / learnings saying "write to `incoming-bugs/`" are obsolete
-   (Chunk 08 retires the drop-box). Also name the two surfaces that ship unproven-live: MIG-3
+   (Chunk 08 retires the drop-box)~~ — **STRUCK 2026-07-28: Chunk 08 is deferred, so the drop-box is
+   NOT retired in v3.2.0.** Announcing it would be false to the fleet, and would invalidate a path that
+   still works in every consumer's agent memory while its replacement is unbuilt. `incoming-bugs/`
+   remains the upstream path in v3.2.0 — say nothing about it. Also name the two surfaces that ship unproven-live: MIG-3
    relationship reconstruction (in-process test evidence only — neither the SPIKE-S2 source nor
    prawduct's own backlog has a native graph) and ID-4 node_id-across-transfer (VRF-009).
    **Appended 2026-07-28 — three fleet-visible governance changes landed after this list was first
@@ -640,8 +644,8 @@ re-derivation from memory samples instead of enumerating. **Append to this list 
 | — | Chunk 05 | *(no backlog IDs — C1/C2)* |
 | BKL-3N8Q — **partial, do NOT flip to shipped** | Chunk 05b | Append a note recording that the `pick`-path half (the vacuous "no open blockers" verdict) is fixed, and **narrow the item's remaining scope** to its foreign-API verification half — `list_blocked_by`/`list_sub_issues`/`list_timeline` are still shape-verified against the fake only, which is the half that needs the unrun `verify-api` step. Its `refs:` line-anchors into `query.py` (`:180`, `:368-369`) are stale after this chunk; re-anchor by symbol (`pick`, `_why`, `_blocker_clause`) per this repo's own preference. **Its id is cited by `project-state.yaml design_decisions.infrastructure_dependencies.integration_test_strategy` — do not renumber.** |
 | BKL-6M4T · **BKL-8K2N** | Chunk 06 | → `shipped` — *(BKL-8K2N added 2026-07-28: it was in no flip list and no chunk's `closes` line, while its own body reads **GATES CHUNK 06** and ~95 lines of its work already shipped in `aaf068f`. Nothing would have flipped it. Its remaining half is the progress heartbeat — without it the ~900-issue irreversible run emits nothing for 18–40 min, since `rest_point_waits: 0` means the throttle announcements never fire and the runbook invokes import without `--json`.)* |
-| **BKL-7D3V** · **BKL-6J2X** | Chunk 07 | → `shipped` — the advisory lift (done-when #5) closes the decision item **and** retires the hold it discharges. *(Corrected 2026-07-24: this row read "no backlog IDs" while the traceability table already credited Chunk 07 with closing BKL-7D3V — the two disagreed.)* |
-| BKL-7Q4M · BKL-9XQ2 · BKL-0QR1 · **BKL-4T9C** | Chunk 08 | → `shipped` — BKL-4T9C's git-remote identity resolution is built in 08a |
+| ~~**BKL-7D3V** · **BKL-6J2X**~~ | Chunk 07 | **DO NOT FLIP — out of v3.2.0 (deferred 2026-07-28).** The row is kept, not deleted: this enumeration's whole value is that it accumulates, and a deleted row is indistinguishable from one that was never written. It reactivates with Chunk 07 in whatever release carries it. *(Corrected 2026-07-24: this row read "no backlog IDs" while the traceability table already credited Chunk 07 with closing BKL-7D3V — the two disagreed.)* |
+| ~~BKL-7Q4M · BKL-9XQ2 · BKL-0QR1 · **BKL-4T9C**~~ | Chunk 08 | **DO NOT FLIP — out of v3.2.0 (deferred 2026-07-28).** Same reasoning as the Chunk 07 row. Note BKL-7Q4M is still marked a **3.2.0 release blocker** in its own body — that designation predates the narrowing and is now stale; reconcile it via `/prawduct:backlog` rather than reading it as a contradiction of this row. |
 
 **Unreleased change-log entries owed `status=shipped | release=v3.2.0`** (verified against the tree
 2026-07-24 — re-grep `scope=v3.2.0-golive` at Chunk 09, since chunks 06–08 will add more):
@@ -671,13 +675,22 @@ pass (its R-5 / R-23 restated); tracked so the gap is visible to the step that w
 
 ## Critical path & parallelization
 
+*Re-cut 2026-07-28 for the narrowed release (07/08 deferred; 05b added).*
+
 ```
 01 ──┬─► 02 ──┬─► 03 ──┐
-     │        │        ├─► 05 ─► 06 ─► 07 ─► 08 ─► 09
+     │        │        ├─► 05 ─► 05b ─► 06 ─► 09   ← v3.2.0 ends here
      └─► 04 ──┴────────┘
+
+                     (deferred, a later release)  07 ─► 08
 ```
 
-- **Critical path:** `01 → 02 → (03 ∥ 04) → 05 → 06 → 07 → 08 → 09`.
+- **Critical path:** `01 → 02 → (03 ∥ 04) → 05 → 05b → 06 → 09`.
+- **Chunks 07 and 08 are out of v3.2.0** (owner decision 2026-07-28) — both add governed surface and
+  wait behind the deletion-only simplification pass (GOV-6D4Q). They keep their chunk bodies and their
+  Chunk 09 flip rows so a later release can pick them up unchanged.
+- **05b** (the `pick` honesty + fan-out fix) sits between 05 and 06 deliberately: both defects it
+  fixes become permanent and backlog-wide the moment 06 runs.
 - With the B1 discovery already settled, the **real migration (06)** is the long pole, not MG5.
 - **Runs in parallel:** Chunk 04 (Pacer) alongside 02/03; the Chunk 01 VRF-005/007/008 verifications
   (no code — the relayout merge is done) alongside 02.
