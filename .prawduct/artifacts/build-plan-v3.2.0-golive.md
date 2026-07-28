@@ -387,7 +387,7 @@ both of which get worse the moment the backlog is 170 issues instead of a test f
 4. The four surfaces describing the old mechanism are corrected: the `query` module docstring,
    `documentation/backlog-service-data-model.md`, `documentation/backlog-service-api-contract.md`, and
    `build-plan-backlog-service.md` (whose "batched-GraphQL" claim was already false — there is no
-   GraphQL in `lib/backlog/`, as VRF-009 records). ✅
+   GraphQL in `plugin/lib/backlog/`, as VRF-009 records). ✅
 
 **Deliberately NOT done:** mapping `related:` → native `blocked_by` at import. Most `related:` links are
 "see also", not blocking, so synthesizing native edges from them would manufacture false blockers across

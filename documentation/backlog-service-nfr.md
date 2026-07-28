@@ -194,7 +194,7 @@ mirror for speed (the §13-2 adversarial correction; AG5 explicitly "does not ma
 | **CRUD write** (`file`/`update`/`status`/`claim`) | **< 2 s** | **floor** | build probe: N ops, record p95 latency | target |
 | **Online read** (`get`/`list`, cacheless slice) | **< 1.5 s** (one live round-trip) | **floor** | same probe, read path | target — **derived** (a single live read should beat the 2 s write bound; 1.5 s is the observe-target, ratified/renegotiated by the build probe). **Not** the <500 ms figure — no cache in the slice |
 | **Warm cache read** (`get`/`list` hit) | **< 500 ms** | **accel** (needs P1 cache) | cache-hit microbench | target (AG5) — an *accelerated* number, honestly not a slice guarantee |
-| **`pick`** (list-then-fan-out) | **O(limit) × read-latency** on top of the `_all_issues` full-scan, which dominates | **floor** (N+1 REST) | **SETTLED** by S2 — no longer open | **settled 2026-07-28.** The batched-GraphQL path this row assumed was **never built** (no GraphQL exists in `lib/backlog/`); the fan-out is N+1 REST over `gh`. S2 measured ~12.4 s at ~209 issues, ~6× this floor, dominated by the paginated full-scan rather than the per-candidate reads. The < 2 s floor is therefore **W1-gated** (raw-HTTP fast-path or a scoped candidate query), not slice-native. Chunk 05b bounded the fan-out by `limit`, which removes its contribution from the tail but not the full-scan floor |
+| **`pick`** (list-then-fan-out) | **O(limit) × read-latency** on top of the `_all_issues` full-scan, which dominates | **floor** (N+1 REST) | **SETTLED** by S2 — no longer open | **settled 2026-07-28.** The batched-GraphQL path this row assumed was **never built** (no GraphQL exists in `plugin/lib/backlog/`); the fan-out is N+1 REST over `gh`. S2 measured ~12.4 s at ~209 issues, ~6× this floor, dominated by the paginated full-scan rather than the per-candidate reads. The < 2 s floor is therefore **W1-gated** (raw-HTTP fast-path or a scoped candidate query), not slice-native. Chunk 05b bounded the fan-out by `limit`, which removes its contribution from the tail but not the full-scan floor |
 | **Session start / briefing** (GV2) | **network-independent** — reads the local `briefing_counts` file | **floor** | assert **no network call** on the start path; refresh is detached (D6) | target (design-guaranteed; test → §16(5)) |
 | **Decision-driving revalidation** (304) | one conditional round-trip | accel | verify ETag/304 in S1/build (M2) | **verified** (304 costs nothing, authenticated) |
 
@@ -350,5 +350,5 @@ out of scope for this NFR fold.)*
 is inferred, §3.2) + API contract §2 (op surface) · §3.1 three ceilings (core / content / 900-pts-burst /
 search) ↔ API contract §4 `rate_limited` + §6 `unavailable` · §3.2 `search` cache-served ↔ Data Model §6
 (`item_fts`) + API contract §2.2 · §5 ETag ↔ Data Model §6 (`etag` column, M2) · §8 cache-sensitivity ↔
-Security §3/F5 · §4 zero-tokens ↔ G1 (code in the data plane) · §4 `pick` batched fan-out ↔ Data Model §4
-(list-then-fan-out, open-Q4).
+Security §3/F5 · §4 zero-tokens ↔ G1 (code in the data plane) · §4 `pick` **N+1-REST** fan-out ↔ Data Model §4
+(list-then-fan-out; **open-Q4 closed 2026-07-28** — S2 settled batched-vs-N+1 as N+1 REST).

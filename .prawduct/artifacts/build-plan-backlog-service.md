@@ -414,7 +414,7 @@ tests/
   read-your-writes-in-practice), `pick` (ready-work: `open ∧ stage:ready ∧ unassigned` via `list`, then
   a **per-candidate fan-out** — ~~implemented as a **batched-GraphQL** round-trip~~ **never built that
   way; it is N+1 REST (corrected 2026-07-28, same correction VRF-009 records — there is no GraphQL in
-  `lib/backlog/`). The fan-out is now taken lazily in rank order and stops at `limit`** — for the
+  `plugin/lib/backlog/`). The fan-out is now taken lazily in rank order and stops at `limit`** — for the
   blocker predicate
   + "claim past TTL"), `link`/`unlink` (native dependencies + sub-issues, so blockers are queryable —
   DM3), `claim`/`unclaim` (atomic take-and-verify + default staleness-TTL reap so `pick` can't starve —
@@ -437,7 +437,7 @@ tests/
 - **Known forward dependency:** `pick`'s < 2 s latency floor assumes the **batched-GraphQL** fan-out
   (an N+1-REST-over-`gh` fan-out blows 2 s at 3–5 candidates, NFR §4 open-Q4). ~~This chunk implements the
   batched path~~ — **CORRECTED 2026-07-28: it does not, and no chunk ever did.** There is no GraphQL
-  anywhere in `lib/backlog/`; the fan-out shipped as N+1 REST over `gh` from the start, so the < 2 s
+  anywhere in `plugin/lib/backlog/`; the fan-out shipped as N+1 REST over `gh` from the start, so the < 2 s
   floor was never on the path this line claims. Its measured floor (PROBE-LAT,
   candidate-parameterized) is **pinned by SPIKE-S2** in Chunk 06 — noted here as a forward dependency,
   not a gate (correctness holds either way).

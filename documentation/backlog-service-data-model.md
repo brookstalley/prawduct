@@ -171,7 +171,7 @@ are REST *list*-endpoint filters**, served **online, read-your-writes** in one c
 the remaining two predicates are **not** list filters and force a **per-candidate fan-out** (M1):
 - **the blocker predicate** — native dependencies aren't a list parameter → one dependency fetch per
   candidate. **Implemented as N+1 REST, not GraphQL** (corrected 2026-07-28: there is no GraphQL
-  anywhere in `lib/backlog/`; the original "GraphQL sub-connection or N+1 REST" wording left the
+  anywhere in `plugin/lib/backlog/`; the original "GraphQL sub-connection or N+1 REST" wording left the
   cheaper option open and it was never taken). The fetch is therefore taken **lazily in rank order and
   stops at `limit`**, so the cost is O(limit + blocked-skipped), not O(eligible).
 - The candidate's `why` reports **"no blockers recorded"** when the dependency read comes back empty —

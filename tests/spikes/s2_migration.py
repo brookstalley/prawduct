@@ -189,9 +189,22 @@ def check_resume(transport, owner, repo, source, facts) -> None:
 
 
 def check_pick_latency(transport, owner, repo, facts) -> None:
-    """Step 6: time pick's ready-work fan-out. The batched-GraphQL path should stay
-    ~flat as candidates grow; an N+1 path grows linearly (pins the PROBE-LAT floor,
-    NFR §4)."""
+    """Step 6: time pick's ready-work fan-out (pins the PROBE-LAT floor, NFR §4).
+
+    **Read the result carefully — before 2026-07-28 this probe could not detect
+    what it was built to detect.** The original reading was "flat as candidates
+    grow ⇒ the batched path; grows linearly ⇒ N+1". That inference was invalid:
+    the candidate count here IS ``limit``, and ``pick`` applied ``limit`` only
+    *after* fanning out over every eligible issue — so varying 1/3/5 varied
+    nothing about the number of blocker reads. The measured flatness came from
+    the constant ``_all_issues`` full-scan and was recorded across four documents
+    as evidence of a batched fan-out that was never built.
+
+    ``pick`` now bounds the fan-out by ``limit``, so the parameterization is
+    meaningful for the first time and the linear-vs-flat reading is finally
+    sound. The full-scan still dominates the absolute number, so read the
+    *slope*, not the magnitude.
+    """
     for limit in (1, 3, 5):
         start = time.monotonic()
         query.pick(transport, owner=owner, repo=repo, limit=limit)

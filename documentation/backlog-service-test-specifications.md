@@ -693,7 +693,7 @@ the NFR discipline), and the probe is the gate that promotes it. They are **not*
 | **PROBE-RATE** | which limit each op decrements (creation-vs-edit granularity); core reads/sec sustainable; grooming core-bound; 500/hr + 900 pts/min under a real creation burst | the §3.1/§3.2 rate model | `verify-api` + S3 |
 
 ~~`pick`'s < 2 s floor **assumes** a batched-GraphQL fan-out~~ — **settled 2026-07-28: the batched path
-was never built** (no GraphQL in `lib/backlog/`), so `pick` runs N+1 REST over `gh`. S2 pinned the
+was never built** (no GraphQL in `plugin/lib/backlog/`), so `pick` runs N+1 REST over `gh`. S2 pinned the
 constant at ~12.4 s / ~209 issues, dominated by the `_all_issues` full-scan rather than the
 per-candidate reads; the < 2 s floor is **W1-gated**, not slice-native. Note the trap this probe fell
 into: it was **candidate-parameterized against a fan-out that ignored the candidate count**, because

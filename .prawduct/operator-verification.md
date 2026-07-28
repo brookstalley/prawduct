@@ -438,7 +438,7 @@ then the real prawduct backlog") — now done. It does **not** run the real migr
   confirms nothing. Both claims originally recorded here were false** (corrected 2026-07-24 after the
   cumulative Critic review; verified against the code, not conceded):
   - ~~"flat across 1→3→5 candidates confirms the batched-GraphQL path (not N+1)"~~ — **there is no
-    GraphQL anywhere in `lib/backlog/`** (zero matches), and `query.pick` is **exactly the N+1 shape the
+    GraphQL anywhere in `plugin/lib/backlog/`** (zero matches), and `query.pick` is **exactly the N+1 shape the
     claim denied**: it calls `transport.list_blocked_by(owner, repo, number)` once **per candidate issue**
     inside the loop (`query.py:180`).
   - **The probe cannot detect N+1 by construction.** `limit` is applied at

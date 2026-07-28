@@ -31,8 +31,31 @@ round-trip — and neither is what that question was looking for.
   not "blocked by", so synthesizing native edges from them would manufacture false blockers across the
   whole backlog — strictly worse than recording none.
 
+- **The sweep in the bullet below was run as an enumeration and was wrong; it is now run as a query.**
+  The first pass corrected the surfaces encountered while making the code change and marked the
+  done-when ✅. Six more carried the claim, two of them in a file that pass had edited. The second pass
+  — after the Critic rejected the resolution — ran a whitespace-normalized regex over every tracked
+  file and found a **seventh** the enumeration could not have reached: `tests/spikes/s2_migration.py`,
+  the probe's own docstring, instructing the next operator to draw the invalid inference. That one
+  would have regenerated the false conclusion on the next live run.
+
+  The rule this yields: **a completeness claim must state the command that would falsify it and assert
+  that command now returns nothing.** A count of corrected sites is true of any prefix of the real set,
+  which is why "corrected in three places" survived review while being wrong. Nine hits remained on the
+  final run and each is classified rather than assumed: three false positives (a different ETag/GraphQL
+  claim; the correction text itself), three dated 2026-07-16 review-history rows left deliberately, and
+  BKL-2K8V, corrected through `/prawduct:backlog`.
+
+- **The claim's own verifying command did not resolve.** Every site asserted "no GraphQL in
+  `lib/backlog/`" — a pre-relayout path. There is no `lib/backlog/` from the repo root; it is
+  `plugin/lib/backlog/`. So the claim was confirmable by a grep that returned empty **for the wrong
+  reason** — an absence-claim citing a path whose absence produces the same evidence as the claim being
+  true. Corrected at seven sites, two of which were line-wrapped and therefore missed by a line-based
+  pass, which is the enumeration failure above recurring inside its own fix. A check now asserts every
+  "no GraphQL in X" claim cites a path that exists.
+
 - **A false claim about this mechanism was corrected in three places.** The design docs described the
-  fan-out as "a batched-GraphQL round-trip"; **there is no GraphQL anywhere in `lib/backlog/`** and
+  fan-out as "a batched-GraphQL round-trip"; **there is no GraphQL anywhere in `plugin/lib/backlog/`** and
   never was. VRF-009 had already recorded the correction against the probe that supposedly confirmed
   it, but the claim still stood in `backlog-service-data-model.md`, the API contract, and
   `build-plan-backlog-service.md`. A correction recorded in a verification note does not propagate
