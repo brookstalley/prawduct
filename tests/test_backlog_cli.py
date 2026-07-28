@@ -163,6 +163,35 @@ class TestOutputDiscipline:
         assert "pacing: ≥812 REST points" in err
         assert "rest_points_charged" not in err, "the raw pacing dict must not leak"
 
+    def test_cut_path_pacing_reports_the_throttle_breakdown(self, capsys):
+        # The other half of what R-1 said the cut path lacked. This branch renders
+        # only on a run that actually hit a budget — which is the run whose
+        # operator is deciding whether to resume, so it is the one that matters
+        # most and was the one with no coverage in the tree.
+        result = {
+            "status": "error",
+            "error": {
+                "code": "unavailable",
+                "message": "backend failed",
+                "details": {
+                    "pacing": {
+                        "rest_points_charged": 812,
+                        "rest_point_waits": 2,
+                        "rest_point_wait_seconds": 9.4,
+                        "content_creation_waits": 1,
+                        "content_creation_wait_seconds": 30.0,
+                        "rate_limit_pauses": 0,
+                        "rate_limit_paused_seconds": 0.0,
+                    }
+                },
+            },
+        }
+        cli._emit(result, json_mode=False)
+        err = capsys.readouterr().err
+        assert "≥812 REST points" in err, "the floor marker survives the throttled branch too"
+        assert "THROTTLED 3× for 39s total" in err
+        assert "(2 rest-point, 1 content-cap, 0 rate-limit)" in err
+
 
 class TestExitClasses:
     """ERR-1 — each error code maps to a stable non-zero exit class."""
