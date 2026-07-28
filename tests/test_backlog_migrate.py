@@ -1264,6 +1264,54 @@ class TestPacingObservability:
         _import(fake, DISCODON_MINI)
         assert "budget" not in capsys.readouterr().err
 
+    def test_a_long_run_emits_periodic_progress(self, fake, capsys):
+        """The complement of the guard above, and the reason it is not enough.
+
+        VRF-009 settled that under the serial importer NO pacing budget ever
+        binds (`rest_point_waits: 0` and `content_creation_waits: 0`), so every
+        announcement in this class is exception-only and a *healthy* ~900-issue
+        run emits nothing for 18-40 minutes. An operator with no signal is an
+        operator who kills a healthy run. Progress is a different signal from
+        pacing state: it says "alive and here", not "throttled"."""
+        content = "# Backlog\n\n## Open\n\n" + "\n".join(
+            f"- **[ITM-{i:04d}]** item number {i}\n  `status: open · stage: ready`\n"
+            for i in range(1, migrate.PROGRESS_EVERY * 2 + 2)
+        )
+        result = _import(fake, content)
+        assert result["status"] == "ok", result
+        err = capsys.readouterr().err
+        assert "migrating:" in err
+        # Periodic, not per-record: one line per PROGRESS_EVERY records.
+        assert err.count("migrating:") == 2
+        assert "budget" not in err  # still not pacing commentary
+
+    def test_a_short_run_emits_no_progress(self, fake, capsys):
+        """Below one interval there is nothing to reassure anyone about, and a
+        line would be the commentary the sibling guard forbids."""
+        _import(fake, DISCODON_MINI)
+        assert "migrating:" not in capsys.readouterr().err
+
+    def test_progress_goes_to_stderr_so_json_stdout_stays_pure(self, fake, tmp_path, capsys):
+        """SEC-1 / VRF-004 pinned `--json` stdout as parseable JSON and nothing
+        else. A progress line on stdout would break every machine caller."""
+        src = tmp_path / "backlog.md"
+        src.write_text(
+            "# Backlog\n\n## Open\n\n"
+            + "\n".join(
+                f"- **[ITM-{i:04d}]** item number {i}\n  `status: open · stage: ready`\n"
+                for i in range(1, migrate.PROGRESS_EVERY + 2)
+            ),
+            encoding="utf-8",
+        )
+        assert cli.run(
+            str(tmp_path),
+            ["import", "--repo", f"{OWNER}/{REPO}", "--from", str(src), "--json"],
+            transport=fake,
+        ) == 0
+        captured = capsys.readouterr()
+        json.loads(captured.out)  # raises if a progress line leaked onto stdout
+        assert "migrating:" in captured.err
+
     def test_human_mode_import_prints_a_pacing_footer(self, fake, tmp_path, capsys):
         """`migration-scrub.md` invokes import WITHOUT --json, so a JSON-only
         summary would reach every consumer except the operator running the

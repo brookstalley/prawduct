@@ -71,6 +71,42 @@ def _diag(message: str) -> None:
     print(f"backlog: {message}", file=sys.stderr)
 
 
+# Records between progress lines. Count-based rather than time-based so the
+# output is deterministic and testable without injecting a clock; at the serial
+# `gh` rate VRF-009 measured (~40-45 records/min) this lands roughly every
+# 30-40 seconds, which is the cadence the signal is for.
+PROGRESS_EVERY = 25
+
+
+def _emit_progress(done: int, total: int, created: int, skipped: int, collisions: int) -> None:
+    """Periodic "still alive, and here is where" during a long import.
+
+    **Distinct from the pacing announcements, deliberately.** Those are
+    *exception* reporting — they fire only when a budget binds, and
+    ``test_an_unthrottled_run_stays_quiet`` exists to keep them that way,
+    because a line per call buries the one message that matters. But VRF-009
+    settled that under the serial importer no budget ever binds
+    (``rest_point_waits: 0`` **and** ``content_creation_waits: 0``), so on a
+    healthy ~900-issue run every one of those paths stays silent for 18-40
+    minutes. Progress answers a different question — *is it moving* — and an
+    operator with no answer to that is an operator who kills a healthy run
+    mid-migration, which for an irreversible bulk write is the expensive
+    mistake.
+
+    Emits on **stderr**: `--json` stdout is a machine contract (SEC-1 /
+    VRF-004) and a progress line on it would break every caller. Silent for
+    runs shorter than one interval — below that there is nothing to reassure
+    anyone about, and a line would be the commentary the sibling guard forbids.
+    """
+    # `done >= total` suppresses a beat on the final record: the run summary and
+    # the pacing footer print immediately after, so a heartbeat there would be
+    # duplicate noise at the one moment the operator is already being told.
+    if done % PROGRESS_EVERY or done >= total:
+        return
+    tail = f", {collisions} collision(s)" if collisions else ""
+    _diag(f"migrating: {done}/{total} — {created} created, {skipped} skipped{tail}")
+
+
 def run_key(
     content: str, archive_content: str | None = None, plan_text: str | None = None
 ) -> str:
@@ -793,8 +829,9 @@ def import_items(
         warnings.extend(checkpoint.warnings)
 
     alias_index = _AliasIndex(transport, owner, repo)
+    total = len(records)
     try:
-        for record in records:
+        for index, record in enumerate(records):
             # The whole (idempotent) record is retried on a rate-limit pause, so a
             # partial attempt never double-counts: outcomes are applied here, once,
             # only after the record fully lands.
@@ -803,10 +840,15 @@ def import_items(
             )
             if outcome["outcome"] == "collision":
                 collisions.append(outcome["collision"])
-                continue
-            (created if outcome["outcome"] == "created" else skipped).append(outcome["entry"])
-            if checkpoint is not None:
-                checkpoint.mark(outcome["entry"]["key"])
+            else:
+                (created if outcome["outcome"] == "created" else skipped).append(outcome["entry"])
+                if checkpoint is not None:
+                    checkpoint.mark(outcome["entry"]["key"])
+            # Ticks on EVERY record, collisions included — the heartbeat answers
+            # "is it moving", and a collision-heavy stretch is exactly when a
+            # silent gap would read as a hang. (An earlier shape `continue`d past
+            # this and dropped a beat per collision.)
+            _emit_progress(index + 1, total, len(created), len(skipped), len(collisions))
     except TransportError as exc:
         result = core.from_transport_error(exc)
         result["error"]["details"].update(
