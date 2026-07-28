@@ -655,31 +655,41 @@ depending on it would make Chunk 09 permanently unsatisfiable.)*
    Chunk 08 is deferred, so it is not a supported scenario in v3.2.0 and the `incoming-bugs/` drop-box
    remains the path.
 
-   **OWNER RULING 2026-07-28 — HARD CUTOVER. A release does not support both markdown and GitHub
-   Issues.** Verbatim: *"we can't support both markdown and gh in a release... it will be chaos. it's
-   a hard cutover."* This reverses the scenario list above and changes v3.2.0's shape:
+   **OWNER RULING 2026-07-28 — HARD CUTOVER, clarified to MG3's reading.** Verbatim: *"we can't
+   support both markdown and gh in a release... it will be chaos. it's a hard cutover."* Confirmed on
+   the same day to mean **atomic within a project, staged across the fleet** — which is what **MG3**
+   already specifies: *"projects migrate independently; file-based and service backlogs coexist across
+   the portfolio during transition (never within one project)."*
 
-   - **"Stay on markdown" is NOT a supported scenario.** Drop it from the audit. Two hours ago this
-     plan recorded the opposite (BKL-8W2M's permanent migration nag read as a functional break of a
-     supported scenario); under a hard cutover that advisory is *correct behaviour*, not a defect.
-     BKL-8W2M's fix-shape inverts accordingly — re-read it before working it.
-   - **CHUNK 07 RETURNS TO v3.2.0, reversing this morning's deferral.** Its remaining content is the
-     **advisory lift** (BKL-7D3V / BKL-6J2X) — the mechanism that drives the fleet to migrate. A hard
-     cutover *requires* it: with the hold in place, the release ships a cutover it never tells anyone
-     to perform. (Chunk 07's four original repoint done-whens were already satisfied per the
-     2026-07-24 scoping audit, so what returns is small.) **Chunk 08 stays deferred** — upstream
-     filing is unrelated to the cutover.
-   - **This is a BREAKING release for every governed repo.** Every consumer must migrate on upgrade;
-     GitHub has no issue-delete, so per-repo it is one-way. The release note and the fleet advisory
-     must both say so plainly, and the migration runbook stops being an optional path.
+   *(Recorded revision: this block first read the ruling as fleet-wide — every consumer migrating at
+   v3.2.0, stay-on-markdown unsupported, a breaking release. That was an over-reading, corrected within
+   the hour on owner confirmation. It is kept visible because the two readings differ enormously in
+   blast radius, and a later reader deserves to know which one this release is built on.)*
 
-   **OPEN QUESTION — blocks the audit's scenario list, owner to answer.** What happens to a governed
-   repo that *cannot* host GitHub Issues — not on GitHub, a different forge, or local-only? Under a
-   hard cutover with no markdown fallback, such a repo has no supported configuration at all. Either
-   (a) v3.2.0 declares GitHub a hard prerequisite for governance and says so in the release note, or
-   (b) markdown survives as an explicitly-declared terminal state for non-GitHub repos — which is a
-   narrow, *declared* dual-support, materially different from the drifting dual-support the ruling
-   rejects. This is not a detail: it decides whether the release breaks an entire class of consumer.
+   - **"Stay on markdown" REMAINS a supported scenario** for un-migrated repos, and stays in the audit.
+     MG3 binds the plugin's markdown read path — briefing counts plus the markdown-premise advisory
+     probes — to keep working **until the last project cuts over**; retiring it at any single project's
+     cutover, prawduct's own included, is "exactly the silent degradation GV7 exists to prevent."
+   - **BKL-8W2M is NOT inverted — it stays a real gap**, and the clarification sharpens it. MG3 keeps
+     the markdown path alive but declares no **terminal** markdown state, so a repo that will never
+     host GitHub Issues (not on GitHub, another forge, local-only) is nagged forever by
+     `backlog-service-migration-required`. Under MG3 that repo has a supported configuration; what it
+     lacks is a way to *say so*. That is the whole of BKL-8W2M and it is squarely in this gate.
+   - **Chunk 07 stays in v3.2.0** — restored on the fleet-wide reading, but it survives the correction
+     on its own merits: without the advisory lift the release ships a migration capability the fleet is
+     never told about. The sequencing is what the hold was always for — **BKL-6J2X held the advisory
+     because the path was unproven, and Chunk 06 is what proves it**, so lifting it after 06 is the
+     designed order rather than a consequence of the ruling. **Chunk 08 stays deferred.**
+   - **NOT a breaking release.** Consumers migrate on their own schedule. Per *repo* the migration is
+     one-way (GitHub has no issue-delete); across the fleet it is staged, and un-migrated repos keep
+     working.
+
+   **AG4 — OWNER RULING 2026-07-28: lags to a later release.** There is no local write queue
+   (verified: the `queue`/`flush`/`offline` matches in `plugin/lib/backlog/` are a text formatter, the
+   migration checkpoint writer, and the offline review artifact — none is AG4). The NFR doc classifies
+   AG4 under **NFR-A availability/degradation**, so the functional-completeness ruling defers it.
+   **Release-note obligation:** state plainly that in a migrated repo a GitHub outage means no backlog
+   reads or writes — there is no fallback and no queue. Consumers must not discover that during one.
 
 9. **OWNER RELEASE GATE (stated 2026-07-28) — "duplicate review and other friction is sorted."**
    Tracked by **CRT-8N5V** (parent) with **COV-3M8Q** and **GOV-6D4Q**. Also **not yet verifiable** as
@@ -767,11 +777,11 @@ when the hard-cutover ruling returned 07.*
 - **Chunk 08 is out of v3.2.0** (owner decision 2026-07-28) — it adds governed surface and waits behind
   the deletion-only simplification pass (GOV-6D4Q). It keeps its chunk body and its Chunk 09 flip row
   so a later release picks it up unchanged.
-- **Chunk 07 was deferred and then restored the same day.** Under "07/08 add governed surface" the
-  deferral was right; under the hard-cutover ruling it is wrong, because 07's remaining content is the
-  advisory that *tells the fleet to migrate*. A hard cutover that never announces itself is not one.
-  It sits after 06 deliberately: the advisory should start driving migrations only once prawduct's own
-  has proven the path.
+- **Chunk 07 was deferred and then restored the same day.** The deferral was right under "07/08 add
+  governed surface" and wrong once the cutover ruling landed: 07's remaining content is the advisory
+  that tells the fleet a migration path exists, and a release that ships one without announcing it
+  leaves the capability undiscoverable. It sits after 06 by design — **BKL-6J2X held that advisory
+  because the path was unproven, and Chunk 06 is what proves it.**
 - **05b** (the `pick` honesty + fan-out fix) sits between 05 and 06 deliberately: both defects it
   fixes become permanent and backlog-wide the moment 06 runs.
 - With the B1 discovery already settled, the **real migration (06)** is the long pole, not MG5.
