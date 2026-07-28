@@ -346,7 +346,7 @@ node_id-across-transfer not run (`--transfer-to` omitted). Chunk stays `[ ]` (re
 the dogfood and its own acceptance evidence. GitHub has no issue-delete and never reuses numbers (MG1) —
 this is why Chunks 02–05 gate it.
 
-**Covers:** ship-list items 9 (C4), 12 (VRF-006); closes BKL-6M4T.
+**Covers:** ship-list items 9 (C4), 12 (VRF-006); closes BKL-6M4T, BKL-8K2N.
 **Depends on:** Chunk 02, Chunk 04, Chunk 05 (and Chunk 03's safety rails must be live)
 **Type:** code (cutover) + operator verification — **operator runs the live migration**
 **Critic mode:** cumulative (the migration is the keystone act; review the whole trajectory)
@@ -554,7 +554,7 @@ re-derivation from memory samples instead of enumerating. **Append to this list 
 | BKL-2Q7F · ONB-3F9P · BKL-5N9W · BKL-6J2X | Chunk 03 | → `shipped` |
 | BKL-6X5D part (b) | Chunk 04 | → `shipped` *(part (i) stays deferred — adopter-scale, not pulled in)* |
 | — | Chunk 05 | *(no backlog IDs — C1/C2)* |
-| BKL-6M4T | Chunk 06 | → `shipped` |
+| BKL-6M4T · **BKL-8K2N** | Chunk 06 | → `shipped` — *(BKL-8K2N added 2026-07-28: it was in no flip list and no chunk's `closes` line, while its own body reads **GATES CHUNK 06** and ~95 lines of its work already shipped in `aaf068f`. Nothing would have flipped it. Its remaining half is the progress heartbeat — without it the ~900-issue irreversible run emits nothing for 18–40 min, since `rest_point_waits: 0` means the throttle announcements never fire and the runbook invokes import without `--json`.)* |
 | **BKL-7D3V** · **BKL-6J2X** | Chunk 07 | → `shipped` — the advisory lift (done-when #5) closes the decision item **and** retires the hold it discharges. *(Corrected 2026-07-24: this row read "no backlog IDs" while the traceability table already credited Chunk 07 with closing BKL-7D3V — the two disagreed.)* |
 | BKL-7Q4M · BKL-9XQ2 · BKL-0QR1 · **BKL-4T9C** | Chunk 08 | → `shipped` — BKL-4T9C's git-remote identity resolution is built in 08a |
 

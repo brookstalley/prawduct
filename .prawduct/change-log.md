@@ -24,20 +24,40 @@ defect this branch exists to fix — **a claim that outruns the mechanism behind
   version-numbered branch forms plus the multi-dot-path counter-case; the Critic flagged the
   original as untested, and it was.
 
-- **The REST-point meter is a floor, and three surfaces still called it exact.** `_PacingTransport`
-  charges per transport **method** call, so a paged read (`list_labels`) issues several HTTP requests
-  and is charged once. The operator surface already printed `≥N` with a comment explaining why
-  (BKL-3H7W), but `migrate.py`'s class docstring and inline comment, and
-  `documentation/backlog-service-nfr.md` §3.3 and §9, all still said the decorator charges "**every**
-  REST call". Corrected to "every transport method call", each naming the floor property.
+- **The REST-point meter is a floor, and seven surfaces called it exact.** `_PacingTransport` charges
+  per transport **method** call, so a paged read (`list_labels`) issues several HTTP requests and is
+  charged once. The operator surface already printed `≥N` with a comment explaining why (BKL-3H7W);
+  every other surface still said the decorator charges "**every** REST call". All corrected to "every
+  transport method call", each naming the floor property: `plugin/lib/backlog/migrate.py`
+  (`_PacingTransport` docstring, the `import_items` inline comment, the `Pacer` class docstring, and
+  `Pacer.before_points`), `documentation/backlog-service-nfr.md` §3.3 and §9,
+  **`plugin/skills/backlog/migration-scrub.md`** — which ships to every consumer as the operator's
+  runbook for the irreversible migration — and `tests/test_backlog_migrate.py::TestPacingTransport`,
+  whose docstring stated the same false contract.
   **VRF-009's `rest_points_charged: 5360` is annotated rather than altered** — the measurement
   stands, but the undercount falls entirely on the read side, so the real figure is *higher* than
   recorded and the headroom smaller than "296 pts/min against 900" implies. The conclusion survives
   even a 3× read undercount (~644 pts/min); the margin should not be quoted as measured.
 
-Not fixed here, and deliberately: BKL-8K2N's progress heartbeat (Chunk 06's ~900-issue run would emit
-nothing for 18–40 minutes) is already recorded as gating Chunk 06, and the remaining warnings are
-filed rather than folded into an integration commit.
+  *This sweep took two passes, and the reason is the durable lesson.* The first pass corrected the
+  three sites the review named, ran `grep -rn "every.*REST call"`, got one hit, and recorded the
+  sweep as complete — but the claim **wraps across line breaks**, which a line-based grep structurally
+  cannot match. Four surfaces survived, including the shipped runbook. A whitespace-normalized sweep
+  found all of them. Captured in `learnings.md` as *a falsifying query is itself a mechanism and can
+  carry the defect it hunts*.
+
+**Not fixed here, and deliberately.** BKL-8K2N's progress heartbeat — Chunk 06's ~900-issue run would
+emit nothing for 18–40 minutes, since `rest_point_waits: 0` means the throttle announcements never
+fire and `migration-scrub.md` invokes import without `--json` — is real work gating Chunk 06, not an
+integration fixup, and is left to that chunk.
+
+**Not filed, and not deliberate.** An earlier revision of this entry claimed "the remaining warnings
+are filed." That was false: `.prawduct/backlog.md` carries **zero** items added 2026-07-28, and ten of
+the cumulative review's warnings have no backlog item under any date. Three topics have pre-existing
+items (BKL-3H7W, BKL-8K2N, CRT-2P8V); the rest are unrecorded, and so is the BLD-7K3Q residual this
+merge surfaced (the git-derived progress reading is gated on `views_enabled`, which is a proxy for
+"the checkboxes can't be trusted" — a defer-the-flip release convention reproduces the defect in any
+repo without the flag). Recorded here as an owed action rather than a completed one.
 
 ## 2026-07-27: The Critic's SubagentStop trigger had never fired (CRT-2J8N)
 
