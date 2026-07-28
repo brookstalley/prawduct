@@ -188,6 +188,12 @@ the GitHub side only; nothing compares it to the source. So a partial import pas
 then **the moment `backlog_service_repo` is set the evidence goes dark**, because the markdown stops
 being read. The failure conceals itself at exactly the step that should have caught it.
 
+> **RECOVERED 2026-07-28 (VRF-012).** The operator ran the re-import: `7 created, 2 skipped, 0
+> collisions of 9`. The completeness check now returns **9 source items, 9 aliases, 0 missing** — the
+> seven stranded items are #19–#25. **The instance is closed; the defect is not.** Cutover still has
+> no precondition on verification, and the check that caught this is a hand-run script rather than a
+> command. Everything below stands as the record of how it happened.
+
 **Recovery for this repo (safe, verified for these specific conditions):** re-run
 `import --repo brookstalley/samsung-frame-art-loader --from .prawduct/backlog.md`. It is idempotent
 and keyed on the alias, so #2 and #3 skip and the 7 are created. **The backfill hazard does not bite

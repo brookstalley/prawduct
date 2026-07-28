@@ -560,3 +560,45 @@ them ever fires.
 exact count — a paged list costs 1 point regardless of page count. The `≥` in the output says so.
 
 **Follow-ups:** the throwaway now holds 58 issues; owner deletes it (needs `delete_repo` scope).
+
+## VRF-012 — F9 — `samsung-frame-art-loader` stranded-item recovery
+
+**Status:** verified (2026-07-28)
+**Added:** 2026-07-28
+
+**Before.** `backlog_service_repo` set (so `post_cutover` True, markdown read as frozen history) while
+`.prawduct/backlog.md` still held **9 open items**, only **2** of which (`CUI-WT3K` → #2,
+`TVW-4Q7M` → #3) carried an `id:PFX` alias. The other 7 existed nowhere on the service.
+
+**Recovery run (operator, plugin build `wt-prawduct-backlog` @ v3.1.2+branch):**
+
+    prawduct-hook backlog import --repo brookstalley/samsung-frame-art-loader \
+      --from .prawduct/backlog.md
+    → imported 7 created, 2 skipped, 0 collision(s) of 9 source item(s)
+      pacing: ≥126 REST points; no throttling (budgets never bound)
+
+**`2 skipped` is the load-bearing number** — it proves the alias-keyed skip recognised the two
+already-migrated items rather than duplicating them. `9 created` would have meant 7 duplicates in a
+store with no delete. **A recovery re-import must be read on that field, not on success/failure.**
+
+**After — completeness check, the one that should have run at the original cutover:**
+
+    source items in backlog.md : 9
+    issues carrying an id:alias : 9
+    MISSING (source with no alias on target): NONE
+
+All nine resolve: #2, #3 unchanged; `LEG-8H2P`→#19, `SEC-K3V9`→#20, `ARC-7QN2`→#21, `REL-M5X8`→#22,
+`REL-2JH6`→#23, `ARC-B4TD`→#24, `TST-9WFC`→#25, all OPEN. Repo total 24 = 17 prior + 7 new.
+
+**No heartbeat fired, correctly** — 9 records is below `PROGRESS_EVERY` (25), which is the designed
+silence for a short run. Worth stating because an operator primed to watch for it could read the
+absence as a hang.
+
+**`no throttling (budgets never bound)`** — third independent confirmation, after VRF-009 and VRF-011.
+
+**`backlog.md` is now correctly frozen history** and should be left in place: MG3 binds the markdown
+read path until the *last* project cuts over, so deleting it is not the tidy-up it looks like.
+
+**What this does NOT close.** The recovery fixed the instance; the defect that produced it is
+untouched — **cutover (step 6) still has no precondition on verification (step 5)**, and the
+completeness comparison above is a hand-run script, not a command. See functional-audit F9.
