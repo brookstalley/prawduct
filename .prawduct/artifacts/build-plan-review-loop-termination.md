@@ -19,7 +19,7 @@ so the structural half is tracked as remaining scope rather than treated as opti
 
 ## Status
 
-- [x] Chunk 01: The terminating rule, the severity contract, and the budget raise
+- [ ] Chunk 01: The terminating rule, the severity contract, and the budget raise
 
 Context: One chunk, built 2026-07-28. Retrospective plan — the work shipped first and this artifact
 was written when `regen-views --check` failed closed on a change-log entry whose `scope=` had no plan

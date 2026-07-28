@@ -97,6 +97,29 @@ git-tracked — that is the pre-migration backup. After the first import, run
 `prawduct-hook backlog export --repo <target> --to <dir>` for a
 full-fidelity restorable dump (body block + native graph).
 
+**1b. Fix any id that is not a valid PFX — before the import, not after.**
+The accepted shape is deliberately lenient (`ids._PFX_RE` — one letter-led
+segment, a hyphen, one alphanumeric segment: `BKL-7M4Q`, `ARR-FROMBUILD`,
+`ADR-12`, `A-1` all pass). What fails it in practice is a **second hyphen** —
+`[AUD-TIMBRE-CALIB]`, `[MIG-M4-REMOVE]`. Such an item cannot carry an `id:PFX`
+alias, so nothing can key it back to the source. It still imports — under an
+idempotency-only `import-key:<digest>` marker, so it neither duplicates nor
+strands — but it has no permanent identity, every `related:` reference to it
+dangles once the markdown is frozen, and step 6's gate blocks the cutover on it.
+
+**This is cheap now and expensive later**: the digest is over title+body, and
+giving the item a real PFX changes both the key and the title, so renaming it
+*after* an import and re-importing mints a **second** issue rather than adopting
+the first. Rename here, and update every `related:` that names the old id.
+
+Find them — the inverse of the same shape the parser applies. Rewrite each hit's
+marker to a freshly minted PFX for its area:
+
+```sh
+grep -nE '^- \*\*\[[^]]+\]\*\*' .prawduct/backlog.md \
+  | grep -vE '\[[A-Za-z][A-Za-z0-9]*-[A-Za-z0-9]+\]'
+```
+
 **2. Surface candidates.** Read the backlog — before import, the source file;
 after a first import, `prawduct-hook backlog list --repo <target> --json`.
 Propose two candidate sets:
@@ -271,10 +294,33 @@ the cutover*. Run:
     prawduct-hook backlog verify-migration --repo <target> \
       --from .prawduct/backlog.md [--archive <archive>] [--archive-scope all|open]
 
-**Exit 0 — `missing: []` — is the precondition for the rest of this step.** On
-exit 4 it names every source item with no issue on the target: re-run the import
-(idempotent, alias-keyed, so already-migrated items skip rather than duplicate)
-and verify again. Do **not** record the key with a non-empty `missing`.
+**Exit 0 — `missing`, `unaliasable` and `collisions` all empty — is the
+precondition for the rest of this step.** Do **not** record the key while any is
+non-empty. Exit 4 names the items, and the three lists have different remedies:
+
+- **`missing`** — source items with no issue on the target. Re-run the import
+  (idempotent, alias-keyed, so already-migrated items skip rather than
+  duplicate) and verify again.
+- **`unaliasable`** — items whose id is not a valid PFX (step 1b), so no alias
+  can key them. **Do not just re-run the import**: their idempotency key is a
+  digest of title+body, so renaming one to a real PFX changes the key and mints
+  a *second* issue rather than adopting the existing one. Either add the
+  `id:PFX` label to the already-created issue by hand, or rename in the source,
+  re-import, and close the duplicate.
+- **`collisions`** — two source items claim the same PFX. The import drops the
+  second rather than merging two items onto one alias, so it was never created
+  and re-running will not create it. Give each a distinct PFX in the source,
+  then re-import.
+
+`source_items` counts **every** parsed item in scope, not just the aliasable
+ones — so `source_items` exceeding `aliased` with an empty `missing` is exactly
+the `unaliasable`/`collisions` case, not an arithmetic error.
+
+**Pass the same `--archive-scope` you imported with.** The gate derives its
+source set through the importer's own record assembly, so `open` verifies against
+what `open` actually creates — the closed items it skips stay in the git-tracked
+source markdown and are correctly not counted as stranded. Passing a different
+scope than you imported with compares against the wrong set.
 
 *Why this is a command and not the eyeball check step 5 already asks for.* Step 5
 has always said "Total issue count = every source item," and it was not enough:

@@ -1420,6 +1420,127 @@ class TestVerifyMigration:
         )
         assert code == 4  # conflict — source and target disagree
 
+    def test_an_id_that_is_not_a_pfx_is_reported_not_excluded(self, fake):
+        """The gate's own blind spot, found on two live backlogs.
+
+        Alias coverage can only speak for items an alias can key, so building the
+        source set from PFX-bearing records alone puts a hand-written id outside
+        the comparison entirely: the item imports, nothing is `missing`, and a
+        repo one item short of complete reports clean. This is the shape that
+        passed before `unaliasable` existed."""
+        extra = DISCODON_MINI + (
+            "\n- **[AUD-TIMBRE-CALIB]** hand-written id, not a PFX\n"
+            "  `status: open · stage: ready`\n"
+        )
+        result = migrate.import_backlog(fake, owner=OWNER, repo=REPO, content=extra)
+        assert result["status"] == "ok", result
+
+        verdict = migrate.verify_migration(fake, owner=OWNER, repo=REPO, content=extra)
+        assert verdict["status"] == "error", verdict
+        assert verdict["error"]["code"] == "conflict"
+        details = verdict["error"]["details"]
+        assert details["missing"] == []  # every *aliasable* item did make it across
+        assert details["unaliasable"] == ["[AUD-TIMBRE-CALIB] hand-written id, not a PFX"]
+
+    def test_source_items_counts_every_item_not_just_the_aliasable_ones(self, fake):
+        """`source_items` is read as "the complete source set". If it counted only
+        PFX-bearing records it would under-report the source while claiming full
+        coverage — the arithmetic has to be visible."""
+        extra = DISCODON_MINI + (
+            "\n- **[NOT-A-PFX-AT-ALL]** unaliasable\n  `status: open · stage: ready`\n"
+        )
+        migrate.import_backlog(fake, owner=OWNER, repo=REPO, content=extra)
+        details = migrate.verify_migration(
+            fake, owner=OWNER, repo=REPO, content=extra
+        )["error"]["details"]
+        assert details["source_items"] == details["aliased"] + 1
+
+    def test_the_remedy_does_not_tell_you_to_re_import_an_unaliasable_item(self, fake):
+        """Re-import is the right fix for `missing` and the WRONG one here: the
+        idempotency key is a digest of title+body, so giving the item a real PFX
+        changes the key and mints a second issue instead of adopting the first."""
+        extra = DISCODON_MINI + (
+            "\n- **[NOT-A-PFX-AT-ALL]** unaliasable\n  `status: open · stage: ready`\n"
+        )
+        migrate.import_backlog(fake, owner=OWNER, repo=REPO, content=extra)
+        message = migrate.verify_migration(
+            fake, owner=OWNER, repo=REPO, content=extra
+        )["error"]["message"]
+        assert "BEFORE importing" in message
+        assert "re-run import" not in message  # no `missing` items in this run
+
+    def test_a_clean_migration_still_verifies_clean_with_the_new_field(self, fake):
+        """The added field must not turn a good migration into a conflict."""
+        _import(fake, DISCODON_MINI)
+        verdict = migrate.verify_migration(
+            fake, owner=OWNER, repo=REPO, content=DISCODON_MINI
+        )
+        assert verdict["status"] == "ok", verdict
+        assert verdict["data"]["unaliasable"] == []
+
+    def test_archive_scope_open_does_not_strand_the_items_it_deliberately_skips(
+        self, fake
+    ):
+        """The gate's source set must be the importer's create set.
+
+        `--archive-scope open` skips items that would be created closed — by
+        *status*, and in the main `backlog.md` too, not only in a separate
+        `--archive` file. A gate that re-derives the source set by file instead
+        counts every shipped/dropped item as `missing`: ~150 of them on a mature
+        backlog, on a gate whose prescribed remedy is "re-run the import", which
+        cannot ever clear it."""
+        src = DISCODON_MINI + (
+            "\n- **[SHP-0001]** already shipped\n  `status: shipped · stage: ready`\n"
+            "- **[DRP-0002]** dropped long ago\n  `status: dropped · stage: ready`\n"
+        )
+        result = migrate.import_backlog(
+            fake, owner=OWNER, repo=REPO, content=src, archive_scope="open"
+        )
+        assert result["status"] == "ok", result
+
+        verdict = migrate.verify_migration(
+            fake, owner=OWNER, repo=REPO, content=src, archive_scope="open"
+        )
+        assert verdict["status"] == "ok", verdict
+        assert verdict["data"]["missing"] == []
+
+    def test_archive_scope_open_still_catches_a_genuinely_stranded_open_item(
+        self, fake
+    ):
+        """The scope fix must not buy its silence by loosening the gate: an
+        *open* item that never imported is still a conflict under `open`."""
+        src = DISCODON_MINI + (
+            "\n- **[SHP-0001]** already shipped\n  `status: shipped · stage: ready`\n"
+        )
+        migrate.import_backlog(
+            fake, owner=OWNER, repo=REPO, content=src, archive_scope="open"
+        )
+        stranded = src + "\n- **[ZZZ-9999]** open and never imported\n  `status: open`\n"
+        verdict = migrate.verify_migration(
+            fake, owner=OWNER, repo=REPO, content=stranded, archive_scope="open"
+        )
+        assert verdict["status"] == "error"
+        assert verdict["error"]["details"]["missing"] == ["ZZZ-9999"]
+
+    def test_a_duplicate_pfx_collision_is_reported_not_dropped(self, fake):
+        """The one class of un-imported item the gate structurally could not see.
+
+        `collect_records` drops a collided item rather than merging two items
+        onto one alias — so it is never created, and being absent from `records`
+        it left `missing` empty and the gate green."""
+        src = DISCODON_MINI + (
+            "\n- **[DUP-0001]** first claimant\n  `status: open · stage: ready`\n"
+            "- **[DUP-0001]** second claimant, same pfx\n  `status: open · stage: ready`\n"
+        )
+        result = migrate.import_backlog(fake, owner=OWNER, repo=REPO, content=src)
+        assert result["status"] == "ok", result
+
+        verdict = migrate.verify_migration(fake, owner=OWNER, repo=REPO, content=src)
+        assert verdict["status"] == "error", verdict
+        assert verdict["error"]["details"]["missing"] == []  # the second door
+        assert len(verdict["error"]["details"]["collisions"]) == 1
+        assert "DUP-0001" in verdict["error"]["details"]["collisions"][0]
+
     def test_an_archive_file_is_included_in_the_source_set(self, fake, tmp_path):
         """A migration run with --archive must be verifiable the same way, or
         the check silently passes on a partially-imported archive."""

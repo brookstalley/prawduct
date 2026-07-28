@@ -3,6 +3,76 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-07-28: The completeness gate reported 100% coverage on a backlog it could not fully see
+
+<!-- prawduct: type=fix | scope=v3.2.0-golive -->
+
+Two things at once, because the first never got an entry: `10ebfd5` shipped **verify-migration**, the
+F9 completeness gate — `samsung-frame-art-loader` recorded its cutover with 7 of 9 source items never
+imported, and the runbook's step-5 eyeball check ("Total issue count = every source item") could not
+catch it. The gate compares the **source set against alias coverage**, never issue counts: issues
+filed natively after a cutover carry a `prawduct` block but no `id:PFX` alias, so a raw count looked
+plausible (17 issues) while 7 items were stranded. Exit 4, so step 6 gates on it mechanically. That
+commit carried no change-log entry — the same omission `fad1e61` had corrected for the import
+heartbeat one commit earlier.
+
+**And the gate had the same blind spot it was built to close.** It derived the source set as
+`[r.pfx for r in records if r.pfx]`, so an item whose id is not a valid PFX fell *outside the
+comparison entirely* — it imports, nothing lands in `missing`, and a repo one item short of complete
+verifies clean. Found by reconciling two counts that disagreed: `hallucinote` reported 202 source
+items where the parser found 203. Both live backlogs carry exactly one such item today
+(`[AUD-TIMBRE-CALIB]`, `[MIG-M4-REMOVE]`) — so the first real migration would have hit it.
+
+- **`unaliasable` conflicts exactly as `missing` does.** A gate whose completeness claim is scoped to
+  what it happens to be able to key is the failure mode this command exists to end.
+- **`source_items` now counts every parsed item**, not just aliasable ones. It reads as "the complete
+  source set" and previously was not.
+- **The two lists have different remedies, so the message does not merge them.** `missing` re-imports
+  cleanly (alias-keyed, so migrated items skip). `unaliasable` does not: its idempotency key is a
+  digest of title+body, so giving the item a real PFX changes the key *and* the title, and a
+  re-import mints a **second** issue instead of adopting the first. Telling an operator to "re-run
+  import" for both would be wrong for the case that is harder to undo.
+- **The cheap fix is pre-import**, so the runbook gained step **1b** — find non-PFX ids before the
+  import, when the fix is a rename instead of a duplicate to reconcile. The accepted shape
+  (`ids._PFX_RE`) is deliberately lenient — one letter-led segment, a hyphen, one alphanumeric
+  segment — so what actually fails it is a **second hyphen**. The first draft of 1b's grep assumed
+  `[A-Z]{3}-[A-Z0-9]{4}` and flagged a dozen valid ids in both repos; it was run against both before
+  shipping and now mirrors the parser's own regex, returning exactly the one real hit in each.
+- **The tests were checked against the pre-fix code**, where the key one fails with
+  `source_items: 5, aliased: 5, missing: [], status: ok` on a six-item source — the silent pass,
+  reproduced rather than asserted.
+
+**Two more doors into the same failure, both closed by deleting a re-derivation.** The gate had
+hand-rolled its own copy of the importer's record assembly, and the copy had drifted:
+
+- **`--archive-scope open` was filtered by source *file*, where the importer filters by *status*.**
+  So every closed item in the **main** `backlog.md` was skipped by the import and counted as
+  `missing` here — measured on this repo's own backlog: 332 records, 180 kept under `open`, **152
+  false `missing`** (131 `shipped` + 21 `dropped`). Exit 4 is the cutover precondition and the
+  prescribed remedy is "re-run the import", which can never clear it; the escape an operator reaches
+  for next is a re-run under `all`, minting 152 closed issues into a store with no delete. The flag
+  was also silently ignored whenever `--archive` was absent.
+- **Duplicate-PFX collisions were discarded.** `collect_records` drops a collided item rather than
+  merging two items onto one alias, so it is never created — and, absent from `records`, it left
+  `missing` empty and the gate green. The one class of un-imported item the gate structurally could
+  not see.
+
+Both resolve by routing through the `collect_records` → `apply_archive_scope` pair `import_backlog`
+already uses, so the gate's source set **is** the importer's create set rather than a second
+derivation of it that can drift again. The `open` case is now pinned in both directions — the
+skipped items don't strand, and a genuinely un-imported *open* item still conflicts — because a
+scope fix that bought its silence by loosening the gate would be the same defect wearing the fix's
+clothes. `TestVerifyMigration` previously never passed `archive_scope` at all.
+
+Found by the Critic against committed HEAD, independently of (and concurrently with) the builder
+finding the pfx-less exclusion by reconciling a 202-vs-203 count disagreement — three instances of
+one class: *a completeness claim scoped to what the checker happens to be able to see*.
+
+The docstring's new `--archive-scope open` paragraph is bound by
+`TestArchiveScopeWarningTruthfulness`, which requires every literal mentioning that lever to say the
+skipped items remain in the git-tracked source markdown. It caught this one twice — once for
+omitting the clause, once for line-wrapping it across `source` / `markdown`.
+
 ## 2026-07-28: A healthy migration was silent for 18–40 minutes, because every signal it had was exception-only
 
 <!-- prawduct: type=feat | scope=v3.2.0-golive | chunks=05b -->

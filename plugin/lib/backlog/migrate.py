@@ -1113,23 +1113,51 @@ def verify_migration(
     Issues filed natively after a cutover carry a ``prawduct`` block but no
     ``id:PFX`` alias, so a raw count comparison passes while source items are
     still stranded — which is precisely how the observed repo looked (17 issues,
-    2 aliases, 9 source items). Only the hand-minted ids the import is
-    responsible for carrying across are in scope.
+    2 aliases, 9 source items).
 
-    **Names the stranded ids, never just a count** — a count says something is
-    wrong; the ids say what to re-import.
+    **An item whose id is not a valid PFX is reported, not excluded.** Alias
+    coverage can only speak for items an alias can key, so deriving the source
+    set from PFX-bearing records alone would put a hand-written id like
+    ``[AUD-TIMBRE-CALIB]`` *outside the comparison* — it imports (under an
+    idempotency-only ``import-key:`` marker, so it neither duplicates nor
+    strands), the gate compares the remaining items, and a repo one item short
+    of complete reports 100% coverage. That is the same silence this command
+    exists to end, so ``unaliasable`` conflicts exactly as ``missing`` does.
+    Both live backlogs carried one such item when this was written.
 
-    Returns ``ok`` when nothing is missing, else a ``conflict`` envelope (exit 4:
-    the two stores disagree — a data inconsistency, not a bad request). Read-only:
-    it creates nothing and reconciles nothing.
+    **A duplicate-PFX collision is reported too**, for the same reason. Two source
+    items claiming one alias are dropped by :func:`collect_records` rather than
+    merged, so a collided item is never created — and, being absent from
+    ``records``, it would otherwise leave ``missing`` empty and the gate green.
+    That is the F9 failure mode through a second door.
+
+    **The source set is the importer's create set, not a re-derivation of it.**
+    This routes through the same ``collect_records`` → :func:`apply_archive_scope`
+    pair :func:`import_backlog` uses, because the two must not be able to drift.
+    They did: an earlier inline version filtered the MG4b lever by *source file*
+    while the importer filters by *status*, so under ``--archive-scope open``
+    every closed item in the main ``backlog.md`` was skipped by the import and
+    counted as ``missing`` here — a false conflict on the order of 150 items for
+    a mature backlog, on a gate whose prescribed remedy ("re-run the import") can
+    never clear it. Those items are not stranded and must not be reported as
+    though they were: under that lever they stay in the
+    git-tracked source markdown by design, which is the point of choosing it.
+
+    **Names the stranded items, never just a count** — a count says something is
+    wrong; the ids say what to re-import. ``unaliasable`` reports titles rather
+    than ids because a non-PFX marker is not stripped from the title, so the
+    title carries the id the operator has to go find.
+
+    Returns ``ok`` only when every source item is accounted for, else a
+    ``conflict`` envelope (exit 4: the two stores disagree — a data
+    inconsistency, not a bad request). Read-only: it creates nothing and
+    reconciles nothing.
     """
-    seen: dict[str, str] = {}
-    records, _collisions = _records_from_backlog(content, seen)
-    if archive_content is not None:
-        archived, _ = _records_from_backlog(archive_content, seen)
-        if archive_scope == "all":
-            records = records + archived
+    records, collisions = collect_records(content, archive_content)
+    records, _archive_skipped = apply_archive_scope(records, archive_scope)
     source = [r.pfx for r in records if r.pfx]
+    unaliasable = [r.title for r in records if not r.pfx]
+    collided = [f"{c['pfx']} ({c['title']})" for c in collisions]
 
     try:
         aliased: set[str] = set()
@@ -1141,18 +1169,57 @@ def verify_migration(
     missing = [p for p in source if p not in aliased]
     data = {
         "repo": f"{owner}/{repo}",
-        "source_items": len(source),
+        "source_items": len(records),
         "aliased": len(source) - len(missing),
         "missing": missing,
+        "unaliasable": unaliasable,
+        "collisions": collided,
     }
-    if missing:
+    if missing or unaliasable or collided:
         return core.error(
             "conflict",
-            f"{len(missing)} source item(s) have no issue on {owner}/{repo} — "
-            "the migration is incomplete; re-run import before recording the cutover",
+            f"{len(records)} source item(s) in scope, {data['aliased']} verifiably "
+            f"keyed to an issue on {owner}/{repo} — the migration is incomplete; "
+            + _incompleteness_remedy(missing, unaliasable, collided),
             details=data,
         )
     return core.ok(data)
+
+
+def _incompleteness_remedy(
+    missing: list[str], unaliasable: list[str], collided: list[str]
+) -> str:
+    """The operator-facing next step, which differs by *why* an item is absent.
+
+    A ``missing`` item re-imports cleanly — the import is alias-keyed, so already
+    -migrated items skip rather than duplicate. An ``unaliasable`` one does not:
+    its idempotency key is a digest of title+body, and giving it a real PFX
+    changes both the key and the title, so a re-import after the rename **mints a
+    second issue** instead of adopting the first. A ``collided`` one is not an
+    import problem at all — two source items claim one alias, so the source has to
+    be disambiguated before any re-run can help. Saying "re-run import" for all
+    three would be wrong for the two that re-running cannot fix."""
+    parts = []
+    if missing:
+        parts.append(
+            f"re-run import for the {len(missing)} item(s) in `missing` "
+            "(alias-keyed, so migrated items skip rather than duplicate)"
+        )
+    if unaliasable:
+        parts.append(
+            f"the {len(unaliasable)} item(s) in `unaliasable` carry an id that is not "
+            "a valid PFX, so no alias can key them — give each a real PFX in the "
+            "source BEFORE importing; after an import, renaming one and re-importing "
+            "creates a duplicate rather than adopting the existing issue "
+            "(see the scrub runbook, step 6)"
+        )
+    if collided:
+        parts.append(
+            f"the {len(collided)} item(s) in `collisions` share a PFX with an earlier "
+            "item, so the import dropped them rather than merging two items onto one "
+            "alias — give each a distinct PFX in the source, then re-import"
+        )
+    return "; ".join(parts)
 
 
 def export_backlog(
