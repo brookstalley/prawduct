@@ -56,7 +56,7 @@ completing cleanly. Neither blocks authoring the rest of the plan.
 - [ ] Chunk 05: SPIKE-S2 live dry-run + MG4 scrub workflow (C1 + C2) — live dry-run run 2026-07-24 (VRF-009, §9 S2 settled), `[ ]` until release
 - [ ] Chunk 05b: `pick` honesty + fan-out cost, ahead of the migration — built 2026-07-28, `[ ]` until release
 - [ ] Chunk 06: The real prawduct migration + VRF-006 (C4) — irreversible, operator-run
-- [ ] Chunk 07: Briefing/gates repoint through the adapter (C5) — scoping audit 2026-07-24 finds all four original done-whens already satisfied; the chunk's real content is now the **advisory lift** (done-when #5, owner decision BKL-7D3V) — **DEFERRED out of v3.2.0 2026-07-28** (adds governed surface; waits behind the simplification pass)
+- [ ] Chunk 07: Briefing/gates repoint through the adapter (C5) — scoping audit 2026-07-24 finds all four original done-whens already satisfied; the chunk's real content is now the **advisory lift** (done-when #5, owner decision BKL-7D3V) — ~~DEFERRED out of v3.2.0 2026-07-28~~ **BACK IN 2026-07-28 (same day), by the hard-cutover ruling**: the advisory lift is the mechanism that tells the fleet to migrate, and a hard cutover that never announces itself is not a cutover. Deferring it was correct under "07/08 add governed surface"; it is wrong under a hard cutover
 - [ ] Chunk 08: MG5 / upstream filing — file-upstream op, report-bug rewrite, drop-box retirement (splittable 08a/08b) — **DEFERRED out of v3.2.0 2026-07-28** (same reason; the § Direction norm amendment it carries defers with it)
 - [ ] Chunk 09: Release mechanics — version bump, change-log flip, regen-views, tag; VRF-002/003 post-tag — **re-scoped 2026-07-28** to cover Chunks 01–06 only
 
@@ -579,8 +579,9 @@ error vocab (`filing-disabled`, `target-not-pinned`, `self-file`, `approval-mism
 **Goal:** Ship v3.2.0. The version bump *is* the release trigger.
 
 **Covers:** ship-list items 13–17.
-**Depends on:** Chunks 01–06 + 05b *(re-cut 2026-07-28 from "01–08" — Chunks 07 and 08 are deferred out
-of this release, so depending on them would make Chunk 09 permanently unsatisfiable)*
+**Depends on:** Chunks 01–07 + 05b *(re-cut twice on 2026-07-28: "01–08" → "01–06 + 05b" at the
+narrowing, then → "01–07 + 05b" when the hard-cutover ruling returned Chunk 07. Chunk 08 stays out —
+depending on it would make Chunk 09 permanently unsatisfiable.)*
 **Type:** code (version + change-log) + release ceremony
 
 **Done when:**
@@ -649,11 +650,36 @@ of this release, so depending on them would make Chunk 09 permanently unsatisfia
      ready with a confident verdict, and no test in the suite can see it.
 
    **The acceptance set is therefore a supported-scenario functional audit, not a feature checklist.**
-   Enumerate the scenarios v3.2.0 claims to support — stay-on-markdown (never migrates), migrate
-   markdown→Issues, day-to-day Issues use, onboard a new product, export/backup — and for each, name
-   the functional requirements it depends on and how each is verified (real API vs. fake). Upstream
-   filing is **out of scope**: Chunk 08 is deferred, so it is not a supported scenario in v3.2.0 and
-   the `incoming-bugs/` drop-box remains the path.
+   Enumerate the scenarios v3.2.0 claims to support, and for each name the functional requirements it
+   depends on and how each is verified (real API vs. fake). Upstream filing is **out of scope**:
+   Chunk 08 is deferred, so it is not a supported scenario in v3.2.0 and the `incoming-bugs/` drop-box
+   remains the path.
+
+   **OWNER RULING 2026-07-28 — HARD CUTOVER. A release does not support both markdown and GitHub
+   Issues.** Verbatim: *"we can't support both markdown and gh in a release... it will be chaos. it's
+   a hard cutover."* This reverses the scenario list above and changes v3.2.0's shape:
+
+   - **"Stay on markdown" is NOT a supported scenario.** Drop it from the audit. Two hours ago this
+     plan recorded the opposite (BKL-8W2M's permanent migration nag read as a functional break of a
+     supported scenario); under a hard cutover that advisory is *correct behaviour*, not a defect.
+     BKL-8W2M's fix-shape inverts accordingly — re-read it before working it.
+   - **CHUNK 07 RETURNS TO v3.2.0, reversing this morning's deferral.** Its remaining content is the
+     **advisory lift** (BKL-7D3V / BKL-6J2X) — the mechanism that drives the fleet to migrate. A hard
+     cutover *requires* it: with the hold in place, the release ships a cutover it never tells anyone
+     to perform. (Chunk 07's four original repoint done-whens were already satisfied per the
+     2026-07-24 scoping audit, so what returns is small.) **Chunk 08 stays deferred** — upstream
+     filing is unrelated to the cutover.
+   - **This is a BREAKING release for every governed repo.** Every consumer must migrate on upgrade;
+     GitHub has no issue-delete, so per-repo it is one-way. The release note and the fleet advisory
+     must both say so plainly, and the migration runbook stops being an optional path.
+
+   **OPEN QUESTION — blocks the audit's scenario list, owner to answer.** What happens to a governed
+   repo that *cannot* host GitHub Issues — not on GitHub, a different forge, or local-only? Under a
+   hard cutover with no markdown fallback, such a repo has no supported configuration at all. Either
+   (a) v3.2.0 declares GitHub a hard prerequisite for governance and says so in the release note, or
+   (b) markdown survives as an explicitly-declared terminal state for non-GitHub repos — which is a
+   narrow, *declared* dual-support, materially different from the drifting dual-support the ruling
+   rejects. This is not a detail: it decides whether the release breaks an entire class of consumer.
 
 9. **OWNER RELEASE GATE (stated 2026-07-28) — "duplicate review and other friction is sorted."**
    Tracked by **CRT-8N5V** (parent) with **COV-3M8Q** and **GOV-6D4Q**. Also **not yet verifiable** as
@@ -693,7 +719,7 @@ re-derivation from memory samples instead of enumerating. **Append to this list 
 | — | Chunk 05 | *(no backlog IDs — C1/C2)* |
 | BKL-3N8Q — **partial, do NOT flip to shipped** | Chunk 05b | Append a note recording that the `pick`-path half (the vacuous "no open blockers" verdict) is fixed, and **narrow the item's remaining scope** to its foreign-API verification half — `list_blocked_by`/`list_sub_issues`/`list_timeline` are still shape-verified against the fake only, which is the half that needs the unrun `verify-api` step. Its `refs:` line-anchors into `query.py` (`:180`, `:368-369`) are stale after this chunk; re-anchor by symbol (`pick`, `_why`, `_blocker_clause`) per this repo's own preference. **Its id is cited by `project-state.yaml design_decisions.infrastructure_dependencies.integration_test_strategy` — do not renumber.** |
 | BKL-6M4T · **BKL-8K2N** | Chunk 06 | → `shipped` — *(BKL-8K2N added 2026-07-28: it was in no flip list and no chunk's `closes` line, while its own body reads **GATES CHUNK 06** and ~95 lines of its work already shipped in `aaf068f`. Nothing would have flipped it. Its remaining half is the progress heartbeat — without it the ~900-issue irreversible run emits nothing for 18–40 min, since `rest_point_waits: 0` means the throttle announcements never fire and the runbook invokes import without `--json`.)* |
-| ~~**BKL-7D3V** · **BKL-6J2X**~~ | Chunk 07 | **DO NOT FLIP — out of v3.2.0 (deferred 2026-07-28).** The row is kept, not deleted: this enumeration's whole value is that it accumulates, and a deleted row is indistinguishable from one that was never written. It reactivates with Chunk 07 in whatever release carries it. *(Corrected 2026-07-24: this row read "no backlog IDs" while the traceability table already credited Chunk 07 with closing BKL-7D3V — the two disagreed.)* |
+| **BKL-7D3V** · **BKL-6J2X** | Chunk 07 | → `shipped` — **ACTIVE AGAIN (2026-07-28, hard-cutover ruling).** Struck as out-of-release earlier the same day, then restored when the ruling put Chunk 07 back: the advisory lift closes the decision item **and** retires the hold it discharges, and a hard cutover needs that advisory firing. *(Corrected 2026-07-24: this row read "no backlog IDs" while the traceability table already credited Chunk 07 with closing BKL-7D3V.)* |
 | ~~BKL-7Q4M · BKL-9XQ2 · BKL-0QR1 · **BKL-4T9C**~~ | Chunk 08 | **DO NOT FLIP — out of v3.2.0 (deferred 2026-07-28).** Same reasoning as the Chunk 07 row. Note BKL-7Q4M is still marked a **3.2.0 release blocker** in its own body — that designation predates the narrowing and is now stale; reconcile it via `/prawduct:backlog` rather than reading it as a contradiction of this row. |
 
 **Unreleased change-log entries owed `status=shipped | release=v3.2.0`** (verified against the tree
@@ -726,20 +752,26 @@ pass (its R-5 / R-23 restated); tracked so the gap is visible to the step that w
 
 ## Critical path & parallelization
 
-*Re-cut 2026-07-28 for the narrowed release (07/08 deferred; 05b added).*
+*Re-cut twice on 2026-07-28: first for the narrowed release (07/08 deferred; 05b added), then again
+when the hard-cutover ruling returned 07.*
 
 ```
 01 ──┬─► 02 ──┬─► 03 ──┐
-     │        │        ├─► 05 ─► 05b ─► 06 ─► 09   ← v3.2.0 ends here
+     │        │        ├─► 05 ─► 05b ─► 06 ─► 07 ─► 09   ← v3.2.0 ends here
      └─► 04 ──┴────────┘
 
-                     (deferred, a later release)  07 ─► 08
+                                  (deferred, a later release)  08
 ```
 
-- **Critical path:** `01 → 02 → (03 ∥ 04) → 05 → 05b → 06 → 09`.
-- **Chunks 07 and 08 are out of v3.2.0** (owner decision 2026-07-28) — both add governed surface and
-  wait behind the deletion-only simplification pass (GOV-6D4Q). They keep their chunk bodies and their
-  Chunk 09 flip rows so a later release can pick them up unchanged.
+- **Critical path:** `01 → 02 → (03 ∥ 04) → 05 → 05b → 06 → 07 → 09`.
+- **Chunk 08 is out of v3.2.0** (owner decision 2026-07-28) — it adds governed surface and waits behind
+  the deletion-only simplification pass (GOV-6D4Q). It keeps its chunk body and its Chunk 09 flip row
+  so a later release picks it up unchanged.
+- **Chunk 07 was deferred and then restored the same day.** Under "07/08 add governed surface" the
+  deferral was right; under the hard-cutover ruling it is wrong, because 07's remaining content is the
+  advisory that *tells the fleet to migrate*. A hard cutover that never announces itself is not one.
+  It sits after 06 deliberately: the advisory should start driving migrations only once prawduct's own
+  has proven the path.
 - **05b** (the `pick` honesty + fan-out fix) sits between 05 and 06 deliberately: both defects it
   fixes become permanent and backlog-wide the moment 06 runs.
 - With the B1 discovery already settled, the **real migration (06)** is the long pole, not MG5.
