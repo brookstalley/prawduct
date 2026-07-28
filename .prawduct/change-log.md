@@ -3,6 +3,31 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-07-28: A healthy migration was silent for 18–40 minutes, because every signal it had was exception-only
+
+<!-- prawduct: type=feat | scope=v3.2.0-golive | chunks=05b -->
+
+Completes **BKL-8K2N**. `aaf068f` shipped the pacing announcements and the summary footer; VRF-009
+then settled that under the serial importer **no budget ever binds** (`rest_point_waits: 0` **and**
+`content_creation_waits: 0`), so every one of those paths is exception-only and a healthy ~900-issue
+run emits nothing at all. An operator with no signal is an operator who kills a healthy run — and for
+an irreversible bulk write that is the expensive mistake.
+
+- **Progress is a different signal from pacing state** — *is it moving*, not *is it throttled*. So
+  this does not weaken `test_an_unthrottled_run_stays_quiet`; that guard keeps pacing output as
+  exception reporting and still passes unmodified, because the heartbeat carries no budget vocabulary.
+- **stderr only.** `--json` stdout is a machine contract (SEC-1 / VRF-004); a test parses the stdout
+  of a `--json` import that emits progress and fails if a line leaks.
+- **Count-based, not time-based** (`PROGRESS_EVERY = 25`) so output is deterministic without injecting
+  a clock. Silent below one interval, and suppressed on the final record where the summary follows.
+- **Ticks on every record including collisions** — the first shape `continue`d past the emit and
+  dropped a beat per collision, which is exactly the stretch where a silent gap reads as a hang.
+- **Live-proven (VRF-011) at 31 records/min** — below the 40–45 VRF-009 inferred, so a ~900-issue
+  migration is ~29 minutes and beats land every ~48 s. The constant was left alone deliberately; the
+  tuning lever and the shape *not* to take (a first-record special case) are recorded in the VRF.
+- **The reported REST-point figure remains a floor**, not an exact count (BKL-3H7W, still open) — the
+  `≥` in the output says so.
+
 ## 2026-07-28: The review loop had no exit condition, and the builder was the only thing that could supply one
 
 <!-- prawduct: type=fix | scope=review-loop-termination -->
