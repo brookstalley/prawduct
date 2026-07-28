@@ -99,7 +99,7 @@ them *adds* governed surface and a simplification review is open against exactly
 **Four earlier fix commits on this branch shipped production behavior with no change-log entry**
 (the Critic's finding, and it was correct). They are recorded here as one entry rather than four
 backdated ones: a record written after the fact should say so, not impersonate a contemporaneous
-one. Suite 2723 passed / 7 skipped.
+one. Suite 2724 passed / 7 skipped.
 
 ## 2026-07-28: The git-ref carveout was inert for the branch v3.2.0 is about to cut
 

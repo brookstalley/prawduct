@@ -535,6 +535,13 @@ error vocab (`filing-disabled`, `target-not-pinned`, `self-file`, `approval-mism
    (Chunk 08 retires the drop-box). Also name the two surfaces that ship unproven-live: MIG-3
    relationship reconstruction (in-process test evidence only — neither the SPIKE-S2 source nor
    prawduct's own backlog has a native graph) and ID-4 node_id-across-transfer (VRF-009).
+   **Appended 2026-07-28 — three fleet-visible governance changes landed after this list was first
+   enumerated (2026-07-24), and "enumerate, don't sample" binds this list to its own rule:**
+   `janitor` is now `disable-model-invocation: true`, so the model can no longer self-invoke it (a
+   `norm_probes.py` advisory still points its `recommended_action` there — user invocation is
+   unaffected, model-initiated is not); `pr`'s grant narrows `Bash(gh *)` → `Bash(gh pr *)`; and
+   janitor/pr/runbook lose their backlog grants entirely. Consumers who scripted around any of these
+   need to know before upgrading, not after.
 6. **Post-tag by construction:** VRF-002, VRF-003 (a new agent type + hook aren't live until the version
    ships) — run immediately after promotion with a rollback plan; do not hold the release for them.
 
@@ -573,7 +580,12 @@ re-derivation from memory samples instead of enumerating. **Append to this list 
 **One owed entry does NOT exist yet, so the Chunk 09 re-grep cannot recover it.** Commit `aaf068f`
 (BKL-8K2N — pacing observability: run-summary counters + the two blocking-sleep announcements) shipped
 ~95 lines of production code across `plugin/lib/backlog/cli.py` and `plugin/lib/backlog/migrate.py`
-and has **no change-log entry**. A `scope=v3.2.0-golive` re-grep only finds entries that were written,
+and has **no change-log entry**. **It carried two things, and this note used to name only one:** the
+same commit also landed the `security-model.md` § Direction **norm amendment** (destructive-action
+approval moves from the absolute `--apply`/dry-run form to operation-level, owner ruling 2026-07-24).
+The decision itself is properly recorded in the artifact, so the norm-amendment check passes — but the
+release note derives from the *change log*, so authoring the owed entry from a note that named only
+the pacing half would drop a governance change out of the v3.2.0 record entirely. A `scope=v3.2.0-golive` re-grep only finds entries that were written,
 so this one must be *authored* at Chunk 09, not swept up. Raised by the 2026-07-28 verify-resolutions
 pass (its R-5 / R-23 restated); tracked so the gap is visible to the step that would otherwise miss it.
 
