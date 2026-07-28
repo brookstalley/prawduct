@@ -129,6 +129,32 @@ class TestOutputDiscipline:
         assert "error [unavailable]" in err
         assert "restored missing alias label" in err
 
+    def test_error_envelope_details_reach_stderr_as_counts(self, capsys):
+        # The sibling of the warnings case above. A cut mid-import carries how far
+        # it got, and human mode printed none of it — so the operator of an
+        # irreversible ~900-issue migration learned only that it broke, on the very
+        # path the scrub runbook drives (Step 4 invokes import WITHOUT --json).
+        # Counts, not the raw entry lists: the dicts are the wrong thing to show
+        # someone deciding whether to resume.
+        result = {
+            "status": "error",
+            "error": {
+                "code": "unavailable",
+                "message": "backend failed",
+                "details": {
+                    "created": [{"key": "a"}, {"key": "b"}, {"key": "c"}],
+                    "skipped": [{"key": "d"}],
+                    "collisions": [],
+                    "resumable": True,
+                },
+            },
+        }
+        cli._emit(result, json_mode=False)
+        err = capsys.readouterr().err
+        assert "created: 3" in err and "skipped: 1" in err and "collisions: 0" in err
+        assert "resumable: True" in err
+        assert "key" not in err, "entry dicts must not be dumped into the operator's face"
+
 
 class TestExitClasses:
     """ERR-1 — each error code maps to a stable non-zero exit class."""

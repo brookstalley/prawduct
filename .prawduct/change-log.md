@@ -63,6 +63,29 @@ them *adds* governed surface and a simplification review is open against exactly
   standalone-script bootstrap — which nothing reached, because no test imports the spike, so a
   removed bootstrap would have surfaced only when someone reached for it mid-migration.
 
+**Three findings from the cumulative review of the above, resolved in the same pass:**
+
+- **A cut mid-migration told the operator only that it broke.** `cli._emit`'s human error path printed
+  the code and message and dropped `error.details` — `created`/`skipped`/`collisions`/`resumable`/
+  `pacing`, which the envelope has carried all along. `migration-scrub.md` Step 4 drives `import`
+  **without** `--json`, so that was the surface that mattered. Details now print, with lists rendered
+  as counts (entry dicts are the wrong thing to show someone deciding whether to resume). Distinct
+  from BKL-8K2N's progress heartbeat, which remains unbuilt and deferred: this data already existed
+  at the moment it was needed and simply was not printed. Note the direction — `pacing_summary`'s
+  docstring claimed it "rides **every** exit path"; that was true of the envelope and false of the
+  surface, and the fix was to make the surface match rather than to soften the claim.
+
+- **The interpreter fence missed `gh`.** The `pr` skill is model-invocable and held `Bash(gh *)`,
+  which permits `gh issue create` while the skill drives only `gh pr checks|create|list|merge`.
+  Narrowed to `Bash(gh pr *)`. Same class as the `python3` grant one commit earlier — the fix landed
+  at the interpreter the review named, and the defect lived in the class.
+
+- **A comment introduced in the commit above was false.** It claimed the reported
+  `backlog_service_repo` is `None` on a dry run; a dry run reports the *requested* value, which is
+  the point of a dry run and is pinned by an existing test. Corrected, and it now warns the caller
+  that provisioning off this field without checking `applied` writes labels into a real repo whose
+  scaffold was never written.
+
 **Four earlier fix commits on this branch shipped production behavior with no change-log entry**
 (the Critic's finding, and it was correct). They are recorded here as one entry rather than four
 backdated ones: a record written after the fact should say so, not impersonate a contemporaneous

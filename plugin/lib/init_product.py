@@ -292,9 +292,12 @@ def init_product(
         # entries like the tracked-by-default build plan — gate-soundness
         # ch.3). The caller (onboard/doctor) should advise `git add` on these.
         "unignored": unignored,
-        # The day-one Issues backend as it stands in project-state.yaml after this
-        # run (None when no valid --backlog-repo was given, or on a dry run);
-        # onboard reads it to know whether to run the provision step.
+        # The day-one Issues backend. On apply this is read BACK from
+        # project-state.yaml, so it reports what the file holds. On a dry run it is
+        # the requested value — nothing was written, and reporting what *would* be
+        # recorded is the point of a dry run. A caller that provisions off this
+        # field must therefore gate on `applied`: provisioning against a dry run
+        # writes labels into a real repo whose scaffold does not exist.
         "backlog_service_repo": backlog_repo_recorded,
         "warnings": warnings,
     }

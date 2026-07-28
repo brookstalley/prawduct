@@ -811,6 +811,16 @@ def _emit(result: dict, *, json_mode: bool, usage: bool = False) -> int:
     else:
         err = result.get("error", {})
         print(f"error [{err.get('code')}]: {err.get('message')}", file=sys.stderr)
+        # A cut mid-import already KNOWS how far it got — the envelope carries
+        # `created`/`skipped`/`collisions`/`resumable`/`pacing` — and human mode
+        # dropped all of it, so the operator of an irreversible ~900-issue
+        # migration learned only that it broke. The scrub runbook drives this
+        # path without `--json`, so this was the surface that mattered. Lists
+        # render as counts: the entry dicts are the wrong thing to put in front
+        # of someone deciding whether to resume.
+        for key, value in (err.get("details") or {}).items():
+            shown = len(value) if isinstance(value, list) else value
+            print(f"  {key}: {shown}", file=sys.stderr)
         # A resumable error envelope (e.g. import) carries the audit warnings accrued
         # before the cut; surface them like the ok path so they reach the operator.
         for warning in result.get("warnings", []):
