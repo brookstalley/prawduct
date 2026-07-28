@@ -567,6 +567,15 @@ re-derivation from memory samples instead of enumerating. **Append to this list 
 3. Chunk 03 (`chunks=03`)
 4. `verify-chunk-refs` branch-name false-positive fix — a rider fix, correctly carries **no** `chunks=`
 5. Chunk 02 (`chunks=02`)
+6. The 2026-07-28 develop-integration fix entry (git-ref carveout + the REST-point floor sweep) — a
+   rider fix, correctly carries **no** `chunks=`
+
+**One owed entry does NOT exist yet, so the Chunk 09 re-grep cannot recover it.** Commit `aaf068f`
+(BKL-8K2N — pacing observability: run-summary counters + the two blocking-sleep announcements) shipped
+~95 lines of production code across `plugin/lib/backlog/cli.py` and `plugin/lib/backlog/migrate.py`
+and has **no change-log entry**. A `scope=v3.2.0-golive` re-grep only finds entries that were written,
+so this one must be *authored* at Chunk 09, not swept up. Raised by the 2026-07-28 verify-resolutions
+pass (its R-5 / R-23 restated); tracked so the gap is visible to the step that would otherwise miss it.
 
 ---
 

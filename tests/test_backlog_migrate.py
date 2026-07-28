@@ -941,9 +941,13 @@ class TestPacer:
 
 
 class TestPacingTransport:
-    """Every migration REST call is metered against the 900-pts/min budget by
+    """Every transport METHOD call is metered against the 900-pts/min budget by
     name-classification, and an unclassified call fails loud rather than silently
-    escaping the budget (BKL-6X5D part b — the anti-fragility of the seam)."""
+    escaping the budget (BKL-6X5D part b — the anti-fragility of the seam).
+
+    Per method, not per HTTP request: a paged read is charged once, so the metered
+    total is a floor (BKL-3H7W). These tests pin the classification and the
+    fail-loud seam, not an exact request count."""
 
     def test_write_charges_five_read_charges_one(self, fake):
         pacer = migrate.Pacer()

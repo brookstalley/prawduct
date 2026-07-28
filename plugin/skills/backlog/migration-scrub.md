@@ -162,8 +162,11 @@ issues, and name the tradeoff:
      symmetrically:** an archived item is **two** writes, not one — a create, then a
      status reconcile to closed (the create path has no initial-state field).
      **Both writes are metered** — a `_PacingTransport` decorator charges every
-     migration REST call against a 900-points/minute window (5 per write, 1 per
-     read), so the close is inside the meter alongside the create. *(Corrected
+     transport *method* call against a 900-points/minute window (5 per write, 1 per
+     read), so the close is inside the meter alongside the create. The charge is per
+     method, not per HTTP request — a paged read issues several requests and is
+     charged once — so the reported point total is a **floor**, not an exact REST
+     count, and the run summary prints `≥N` (BKL-3H7W). *(Corrected
      2026-07-24: this previously read "Only the create is paced (`Pacer.before_create`
      is the sole paced call), so a large `all` run spends its close writes outside
      the meter" — true when written, made false by the Chunk 04 metering fix, which

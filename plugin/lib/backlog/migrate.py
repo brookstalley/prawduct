@@ -102,10 +102,12 @@ class Pacer:
        budget: **80/min and 500/hr** (exact caps). ``import`` creates one issue per
        item, so a pure-``open`` run is content-bound and paces across the clock via
        :meth:`before_create` (317 creates ≈ 40 min at the cap — NFR §3.3).
-    2. **REST points** (NFR §9) — *every* request spends the **900 points/min** REST
-       burst: 5 points per write, 1 per read (constants above). :meth:`before_points`
+    2. **REST points** (NFR §9) — reads *and* writes both spend the **900 points/min**
+       REST burst: 5 points per write, 1 per read (constants above). :meth:`before_points`
        meters this budget; the :class:`_PacingTransport` decorator charges every
-       migration REST call, so reads **and** writes both count.
+       transport **method** call, so reads **and** writes both count. The charge is per
+       method, not per HTTP request — a paged read is charged once — so the metered
+       total is a **floor** (BKL-3H7W).
 
     For a *pure-create* workload the content cap binds first (80 creates/min × 5 pts
     = 400 pts/min < 900), which is why creation was the only budget modelled
@@ -180,9 +182,10 @@ class Pacer:
         """Block (only if the 900-pts/min REST burst would be breached) until ``cost``
         points of headroom free in the trailing minute, then record the spend. A
         no-op while the window has room — the common case. Called by
-        :class:`_PacingTransport` for every migration REST request (write = 5, read =
+        :class:`_PacingTransport` for every transport **method** call (write = 5, read =
         1), so the create-then-close archive stretch stays inside the burst ceiling —
-        not just the create (BKL-6X5D part b)."""
+        not just the create (BKL-6X5D part b). Per method, not per HTTP request — a
+        paged read is charged once — so ``points_charged`` is a floor (BKL-3H7W)."""
         wait = self._required_points_wait(cost)
         if wait > 0:
             # See before_create: announce before blocking (BKL-8K2N).
