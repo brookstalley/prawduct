@@ -104,15 +104,40 @@ W1 is out of v3.2.0. So a migrated repo permanently loses three governance signa
 declared in the release note? It is a *functional* requirement (governance integration), not an NFR,
 so the functional-completeness ruling does not defer it on its own.
 
-### F3 — GV9 is unmet: post-cutover item references are invisible. **[BKL-4R7V, open]**
+### F3 — GV9 is unmet, but **not silently**, and its "cheap half" does not exist. **[BKL-4R7V, open]**
 
-**GV9** — *"Item references survive the identifier change."* After cutover the canonical id is
-`owner/repo#number`, but every citation-consuming surface recognizes only the markdown-era
-`[PFX-XXXX]` spelling. A post-cutover reference is **not mis-read — it is not seen at all**.
+> **CORRECTED 2026-07-28** after attempting the fix. The recommendation here was *"widen the regexes,
+> it's pure syntax and doesn't need W1 — take it in v3.2.0."* **That work is a no-op.** Every consumer
+> of an id regex is already gated off post-cutover, so widening changes nothing. Verified before
+> writing any code.
 
-Affects S-C. BKL-4R7V notes the cheap half ships independently: widening the regexes is pure syntax
-and does **not** need W1. Only *resolving* `#N` to a live status is W1-gated. **Recommend taking the
-parsing half in v3.2.0.**
+**GV9** — *"Item references survive the identifier change."* Post-cutover the canonical id is
+`owner/repo#number` and no citation surface reads it. But the reason is not a narrow regex:
+
+- **`norm_probes._BACKLOG_ID_RE`** — the "concrete break" BKL-4R7V names — is consumed **only** by
+  `probe_dead_why` (`:426`) and `probe_stalled_transition` (`:473`), and **both `return []` when
+  `post_cutover(state)`**. Widening the pattern feeds a reader that never runs.
+- **Critic C-B1–C-B4** (`review-cycle.md:170`) and **PR R-1/R-2** (`pr/review-protocol.md:50`) both
+  skip post-cutover **and emit a NOTE saying so**.
+- **No code parses `closes:` / `closed-by:`** — they are agent-read prose, and those agents are gated
+  off.
+- **`buildplan_refs` backlog-id verification is unbuilt** (BLD-5V8F). Nothing to widen.
+- **`ids.normalize_id` already handles both spellings** — `owner/repo#42` ✅, `repo#42` ✅, and a PFX
+  token is rejected *loudly* (`unrecognized ID spelling`), never silently mis-resolved.
+
+**This materially changes how F3 should be weighed.** The PR protocol's own prose already reasoned it
+through: *"every item archived at cutover still parses as open, so R-1 would flag items closed months
+ago and R-2 would resolve every `closes:` against frozen history — passing or dangling with equal
+confidence… A stated gap is recoverable; a confident wrong answer is not."* That is the correct call,
+already made and already implemented.
+
+So the post-cutover state is **declared-dark, not silently-blind** — much closer to acceptable than
+this finding first claimed, and it is the same W1-gated restoration as F2 rather than a separate cheap
+fix. **BKL-4R7V's sequencing note ("parsing can ship earlier") is wrong and should be corrected:
+parsing and resolution are not separable, because the parsers only matter once the readers return.**
+
+**Recommendation: fold F3 into the F2/GV8 ruling** — one decision about post-cutover governance
+readers, not two.
 
 ### F4 — No declared terminal-markdown state. **[BKL-8W2M, open]**
 
@@ -181,8 +206,11 @@ flags is currently `adapter-mode.md` plus the source.
 2. **Chunk 01 VRFs** drained (VRF-005/007/008).
 3. **Chunk 06** migration + VRF-006: `get`/`list`/`pick` resolve real ids, counts reconcile, a re-run
    creates no duplicates.
-4. **F3's parsing half** shipped — `owner/repo#number` recognized by the citation surfaces.
-5. **Owner ruling on F2** (GV8 retirement: block, or declare in the release note).
+4. ~~F3's parsing half shipped~~ — **withdrawn 2026-07-28: it is a no-op** (every id consumer is
+   already gated off post-cutover). Folded into item 5.
+5. **Owner ruling on F2 + F3 together** — post-cutover governance readers (3 norm probes, Critic
+   C-B1–C-B4, PR R-1/R-2) are all deliberately dark pending W1, each announcing its own gap. Block the
+   release, or ship with the retirement declared in the release note? **One decision, not two.**
 6. **F4, F5, F6, F7** dispositioned — each either fixed or explicitly accepted with a release-note
    line. None is currently scheduled in any chunk.
 7. **Dogfood period** on prawduct's own migrated backlog with no markdown fallback.
