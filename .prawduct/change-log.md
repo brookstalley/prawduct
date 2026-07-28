@@ -31,20 +31,41 @@ round-trip — and neither is what that question was looking for.
   not "blocked by", so synthesizing native edges from them would manufacture false blockers across the
   whole backlog — strictly worse than recording none.
 
-- **The sweep in the bullet below was run as an enumeration and was wrong; it is now run as a query.**
-  The first pass corrected the surfaces encountered while making the code change and marked the
-  done-when ✅. Six more carried the claim, two of them in a file that pass had edited. The second pass
-  — after the Critic rejected the resolution — ran a whitespace-normalized regex over every tracked
-  file and found a **seventh** the enumeration could not have reached: `tests/spikes/s2_migration.py`,
-  the probe's own docstring, instructing the next operator to draw the invalid inference. That one
-  would have regenerated the false conclusion on the next live run.
+- **The sweep below took three passes, and each pass was disproved by the next.** It is recorded as a
+  sequence rather than a conclusion, because every time it was declared finished it was not.
 
-  The rule this yields: **a completeness claim must state the command that would falsify it and assert
-  that command now returns nothing.** A count of corrected sites is true of any prefix of the real set,
-  which is why "corrected in three places" survived review while being wrong. Nine hits remained on the
-  final run and each is classified rather than assumed: three false positives (a different ETag/GraphQL
-  claim; the correction text itself), three dated 2026-07-16 review-history rows left deliberately, and
-  BKL-2K8V, corrected through `/prawduct:backlog`.
+  1. **Named sites.** The first pass corrected the surfaces encountered while making the code change
+     and marked the done-when ✅. Review rejected it: six more carried the claim, two in a file that
+     pass had edited.
+  2. **Phrase regex.** A whitespace-normalized search over every tracked file found a **seventh** no
+     enumeration could reach — `tests/spikes/s2_migration.py`'s `check_pick_latency` docstring,
+     instructing the next operator to draw the invalid inference. That one would have regenerated the
+     false conclusion on the next live run. This pass was written up as final. It was not.
+  3. **Concept query.** Review caught a site spelling it `batched-vs-N+1`, matching none of the
+     phrasings pass 2 queried. Searching the *concept* found **four more**: this release's own live
+     tracker asserting "shape confirmed batched-not-N+1" as a settled residual, the S2 step lists in
+     two design docs, and the spike's **module** docstring — sitting directly above the function
+     docstring pass 2 had just corrected.
+
+  The rule: **a completeness claim states the command that would falsify it and asserts that command's
+  current result.** A count of corrected sites is true of any prefix of the real set — which is why
+  "corrected in three places" survived review while being wrong, and why an earlier draft of this bullet
+  said "nine hits" while enumerating seven. Counts invite exactly that.
+
+  The command, and its result as of this commit:
+
+  ```
+  # every tracked file, whitespace-normalized; fan-out topic within 260 chars of
+  # batched/graphql/n+1 vocabulary, excluding windows carrying retraction markers
+  → 10 residual hits, 0 asserting the retracted claim
+  ```
+
+  All ten classified, none assumed: **5** in `backlog-service-test-specifications.md` are a *different*
+  GraphQL claim (ETag/304 is REST-only; `MarkedAsDuplicateEvent.canonical`), **2** are `nfr.md`'s dated
+  2026-07-16 C-2 review-history rows left deliberately, **1** is `templates/api-contract.md` listing
+  GraphQL as a generic surface type, **1** is the spike's `node_id` step (a genuine GraphQL id), and
+  **1** is this change's own regression test. `pass 3` is the last pass only in the sense that no pass 4
+  has run — the honest form of that sentence, given passes 1 and 2 each claimed otherwise.
 
 - **The claim's own verifying command did not resolve.** Every site asserted "no GraphQL in
   `lib/backlog/`" — a pre-relayout path. There is no `lib/backlog/` from the repo root; it is
