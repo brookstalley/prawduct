@@ -791,6 +791,43 @@ def _archive_scope_flag(flags: dict) -> tuple[str, str | None]:
     return scope, None
 
 
+def _pacing_line(pacing: dict) -> str:
+    """The pacing footer, shared by the success path and the resumable-cut path.
+
+    ``≥`` is not decoration. The meter charges per transport METHOD call, not per
+    HTTP request, so a paged read (up to 100 requests) is charged once and
+    per-item label reads are undercounted (BKL-3H7W). The number is a **floor**.
+    Printing it bare puts a figure that reads exact in front of the one person
+    sizing an irreversible run — drop the ``≥`` only when BKL-3H7W makes it true.
+
+    Shared rather than duplicated because the cut path needs this MORE than the
+    success path, not less: a run that stopped is exactly where the budget
+    question gets asked, and a second construction is where the ``≥`` goes
+    missing.
+    """
+    throttled = (
+        pacing.get("rest_point_waits", 0)
+        + pacing.get("content_creation_waits", 0)
+        + pacing.get("rate_limit_pauses", 0)
+    )
+    summary = f"≥{pacing.get('rest_points_charged', 0)} REST points"
+    if throttled:
+        waited = (
+            pacing.get("rest_point_wait_seconds", 0.0)
+            + pacing.get("content_creation_wait_seconds", 0.0)
+            + pacing.get("rate_limit_paused_seconds", 0.0)
+        )
+        summary += (
+            f"; THROTTLED {throttled}× for {waited:.0f}s total "
+            f"({pacing.get('rest_point_waits', 0)} rest-point, "
+            f"{pacing.get('content_creation_waits', 0)} content-cap, "
+            f"{pacing.get('rate_limit_pauses', 0)} rate-limit)"
+        )
+    else:
+        summary += "; no throttling (budgets never bound)"
+    return summary
+
+
 def _emit(result: dict, *, json_mode: bool, usage: bool = False) -> int:
     """Print the result in the chosen mode and return the exit code."""
     exit_code = _exit_code(result)
@@ -819,7 +856,10 @@ def _emit(result: dict, *, json_mode: bool, usage: bool = False) -> int:
         # render as counts: the entry dicts are the wrong thing to put in front
         # of someone deciding whether to resume.
         for key, value in (err.get("details") or {}).items():
-            shown = len(value) if isinstance(value, list) else value
+            if key == "pacing" and isinstance(value, dict):
+                shown = _pacing_line(value)
+            else:
+                shown = len(value) if isinstance(value, list) else value
             print(f"  {key}: {shown}", file=sys.stderr)
         # A resumable error envelope (e.g. import) carries the audit warnings accrued
         # before the cut; surface them like the ok path so they reach the operator.
@@ -872,33 +912,7 @@ def _print_human_ok(data) -> None:
         # the irreversible migration (BKL-8K2N).
         pacing = data.get("pacing")
         if pacing:
-            throttled = (
-                pacing.get("rest_point_waits", 0)
-                + pacing.get("content_creation_waits", 0)
-                + pacing.get("rate_limit_pauses", 0)
-            )
-            # "≥" is not decoration. The meter charges per transport METHOD call,
-            # not per HTTP request, so a paged read (up to 100 requests) is charged
-            # once and per-item label reads are undercounted (BKL-3H7W). The number
-            # is a floor. Printing it bare would put a figure that reads exact in
-            # front of the one person sizing an irreversible run — drop the "≥" only
-            # when BKL-3H7W makes it true.
-            summary = f"  pacing: ≥{pacing.get('rest_points_charged', 0)} REST points"
-            if throttled:
-                waited = (
-                    pacing.get("rest_point_wait_seconds", 0.0)
-                    + pacing.get("content_creation_wait_seconds", 0.0)
-                    + pacing.get("rate_limit_paused_seconds", 0.0)
-                )
-                summary += (
-                    f"; THROTTLED {throttled}× for {waited:.0f}s total "
-                    f"({pacing.get('rest_point_waits', 0)} rest-point, "
-                    f"{pacing.get('content_creation_waits', 0)} content-cap, "
-                    f"{pacing.get('rate_limit_pauses', 0)} rate-limit)"
-                )
-            else:
-                summary += "; no throttling (budgets never bound)"
-            print(summary)
+            print(f"  pacing: {_pacing_line(pacing)}")
     elif "dir" in data and "count" in data:
         # An export result (its `items` is a list of id strings, not item dicts).
         print(f"{data.get('repo')}: exported {data.get('count')} item(s) to {data.get('dir')}")

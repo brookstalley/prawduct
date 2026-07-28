@@ -146,6 +146,7 @@ class TestOutputDiscipline:
                     "skipped": [{"key": "d"}],
                     "collisions": [],
                     "resumable": True,
+                    "pacing": {"rest_points_charged": 812},
                 },
             },
         }
@@ -154,6 +155,13 @@ class TestOutputDiscipline:
         assert "created: 3" in err and "skipped: 1" in err and "collisions: 0" in err
         assert "resumable: True" in err
         assert "key" not in err, "entry dicts must not be dumped into the operator's face"
+        # The floor marker matters MORE here than on the ok path, not less: the
+        # meter charges per transport method call, so the figure is a floor
+        # (BKL-3H7W), and a cut is when someone sizes the rest of an irreversible
+        # run off it. A bare 812 reads exact. Pinned because the first version of
+        # this fix printed the raw dict and lost the marker.
+        assert "pacing: ≥812 REST points" in err
+        assert "rest_points_charged" not in err, "the raw pacing dict must not leak"
 
 
 class TestExitClasses:

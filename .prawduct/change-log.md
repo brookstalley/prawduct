@@ -75,6 +75,16 @@ them *adds* governed surface and a simplification review is open against exactly
   docstring claimed it "rides **every** exit path"; that was true of the envelope and false of the
   surface, and the fix was to make the surface match rather than to soften the claim.
 
+  *That fix took two passes, and the second one is the lesson.* The first printed `pacing` through
+  the generic renderer, so the cut path emitted the raw dict — including a bare `rest_points_charged`
+  figure. The success path deliberately prints `≥N`, with a comment stating the `≥` is load-bearing:
+  the meter charges per transport **method** call, so the number is a floor (BKL-3H7W), and printing
+  it bare "would put a figure that reads exact in front of the one person sizing an irreversible
+  run." The fix for a legibility finding therefore reintroduced the exact-reading figure **at the
+  moment the operator most needs to know it is a floor** — the branch's own defect class, in the
+  commit closing it. The footer is now one shared builder used by both paths, because a second
+  construction is precisely where the `≥` went missing, and the test fixture pins the marker.
+
 - **The interpreter fence missed `gh`.** The `pr` skill is model-invocable and held `Bash(gh *)`,
   which permits `gh issue create` while the skill drives only `gh pr checks|create|list|merge`.
   Narrowed to `Bash(gh pr *)`. Same class as the `python3` grant one commit earlier — the fix landed
@@ -89,7 +99,7 @@ them *adds* governed surface and a simplification review is open against exactly
 **Four earlier fix commits on this branch shipped production behavior with no change-log entry**
 (the Critic's finding, and it was correct). They are recorded here as one entry rather than four
 backdated ones: a record written after the fact should say so, not impersonate a contemporaneous
-one. Suite 2722 passed / 7 skipped.
+one. Suite 2723 passed / 7 skipped.
 
 ## 2026-07-28: The git-ref carveout was inert for the branch v3.2.0 is about to cut
 
