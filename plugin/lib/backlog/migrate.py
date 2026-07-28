@@ -787,7 +787,8 @@ def import_backlog(
                 "imported as issues (they remain in the git-tracked source markdown, "
                 "not in the migrated tracker — post-cutover they are outside list and "
                 "add-time dedup; backfilling is possible but re-syncs every item's "
-                "status from the markdown, so see the migration-scrub runbook step 2c)"
+                "status from the markdown, so see the migration-scrub runbook's "
+                "`--archive-scope open` backfill guidance under \"Owner confirms\")"
             ] + result["warnings"]
     return result
 
