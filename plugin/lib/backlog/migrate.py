@@ -325,11 +325,18 @@ def _coerce_seconds(value) -> float | None:
 
 class _PacingTransport:
     """A transparent :class:`~lib.backlog.transport.Transport` decorator that meters
-    **every** REST call routed **through it** against the Pacer's 900-pts/min budget
-    (:meth:`Pacer.before_points`): 5 points per write, 1 per read. Installed on the
-    ``import`` path (:func:`import_items`), whose create-then-close archive stretch is
-    the write burst BKL-6X5D part (b) targets; ``merge``/``export`` are separate,
-    non-bursting ops and use the raw transport.
+    **every transport METHOD call** routed **through it** against the Pacer's
+    900-pts/min budget (:meth:`Pacer.before_points`): 5 points per write, 1 per read.
+
+    The charge is per **method**, not per HTTP request. A paged read (``list_labels``
+    can issue several requests) is charged once, so the metered total is a **floor**,
+    not an exact REST-call count — which is why the operator surface prints ``≥N``
+    (BKL-3H7W). Say "every REST call" and the figure reads as exact to the one person
+    sizing an irreversible run; drop the qualifier only when BKL-3H7W makes it true.
+
+    Installed on the ``import`` path (:func:`import_items`), whose create-then-close
+    archive stretch is the write burst BKL-6X5D part (b) targets; ``merge``/``export``
+    are separate, non-bursting ops and use the raw transport.
 
     Deliberately **not** a ``Transport`` subclass. ``__getattr__`` only fires for
     attributes the instance/class does *not* already define — so proxying via
@@ -770,7 +777,8 @@ def import_items(
     the rest (no rollback, M6)."""
     pacer = pacer or Pacer()
     backoff = backoff or RateLimitBackoff()
-    # Meter every downstream REST call against the 900-pts/min budget. Wrapping the
+    # Meter every downstream transport METHOD call against the 900-pts/min budget
+    # (a floor, not an exact REST count — see _PacingTransport). Wrapping the
     # transport here means the create, the reconcile reads, and the close write (via
     # core.set_status, which receives this wrapper) all count — not just the create.
     transport = _PacingTransport(transport, pacer)

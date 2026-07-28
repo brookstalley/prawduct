@@ -590,6 +590,26 @@ _GIT_REF_PREFIXES = frozenset(
     {"feature", "fix", "hotfix", "release", "bugfix", "support", "origin", "upstream"}
 )
 
+# "Carries an extension" is not "contains a dot". A version-numbered branch —
+# `release/v3.2.0`, `feature/v3.2.0-c02-adapter-safety` — contains dots and is
+# still a ref, so a dot-presence test makes the carveout above inert for exactly
+# the branches a release cuts, and `verify-chunk-refs` then emits a BLOCKING
+# `missing-ref:` for a branch named in plan prose. A file extension is short and
+# alphabetic (`py`, `md`, `tsx`); the trailing dot-part of a version is not
+# (`v3.2.0` -> `0`, `v3.2.0-c02-adapter-safety` -> `0-c02-adapter-safety`). Test
+# the SUFFIX SHAPE so `feature/foo.py` stays checked while `release/v3.2.0` does not.
+_FILE_EXTENSION_RE = re.compile(r"^[A-Za-z][A-Za-z0-9]{0,7}$")
+
+
+def _has_file_extension(segment: str) -> bool:
+    """True when ``segment`` ends in something shaped like a file extension.
+
+    Requires a non-empty stem, so a dotfile (``.hidden``) is not an extension,
+    and an extension-shaped suffix, so ``v3.2.0`` is not one either.
+    """
+    stem, dot, suffix = segment.rpartition(".")
+    return bool(dot) and bool(stem) and bool(_FILE_EXTENSION_RE.match(suffix))
+
 
 def _looks_like_file_path(token: str) -> bool:
     """A backticked token is a precise file-path reference only when it
@@ -617,11 +637,14 @@ def _looks_like_file_path(token: str) -> bool:
     (BLD-4K7P; same form-family as the glob carveout above).
 
     Git branch/ref names (e.g. ``feature/backlog-service-relayout``,
-    ``origin/develop``) also contain ``/`` but name a branch, not a file — a
-    build/release plan legitimately backticks them in prose. An extensionless
+    ``origin/develop``, ``release/v3.2.0``) also contain ``/`` but name a branch,
+    not a file — a build/release plan legitimately backticks them in prose. A
     token whose first segment is a git-flow branch prefix (``_GIT_REF_PREFIXES``)
-    is a ref to skip; a real path keeps its extension (``feature/foo.py`` stays
-    checked), so this does not blind the verifier to genuine missing files."""
+    and whose final segment carries no extension-shaped suffix
+    (:func:`_has_file_extension`) is a ref to skip; a real path keeps its
+    extension (``feature/foo.py`` stays checked), so this does not blind the
+    verifier to genuine missing files. Version-numbered branches are the case a
+    dot-presence test gets wrong — see the note on ``_FILE_EXTENSION_RE``."""
     if "/" not in token:
         return False
     if token.startswith("/") and "/" not in token[1:] and "." not in token:
@@ -633,7 +656,7 @@ def _looks_like_file_path(token: str) -> bool:
     if "://" in token:
         return False
     first, _, rest = token.partition("/")
-    if first in _GIT_REF_PREFIXES and "." not in rest.rsplit("/", 1)[-1]:
+    if first in _GIT_REF_PREFIXES and not _has_file_extension(rest.rsplit("/", 1)[-1]):
         return False
     return True
 

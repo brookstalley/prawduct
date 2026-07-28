@@ -3,6 +3,42 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-07-28: The git-ref carveout was inert for the branch v3.2.0 is about to cut
+
+<!-- prawduct: type=fix | scope=v3.2.0-golive -->
+
+`develop` (v3.1.2) is integrated into the v3.2.0 adapter-safety branch, and the cumulative Critic
+over the merged bundle returned 0 blocking. Two of its warnings are closed here; both are the same
+defect this branch exists to fix — **a claim that outruns the mechanism behind it**.
+
+- **The git-ref carveout never covered a version-numbered branch.** `_looks_like_file_path`
+  (`plugin/lib/buildplan_refs.py`) skipped a backticked git ref only when its final segment
+  contained **no dot at all**. `release/v3.2.0`, `release/v3.1.2` and
+  `feature/v3.2.0-c02-adapter-safety` all carry dots, so every one of them was classified as a file
+  path and drew a **BLOCKING `missing-ref:`** from `verify-chunk-refs` — including the
+  `release/v3.2.0` branch this scope is about to cut, in prose this scope's own plans already
+  contain. The carveout now tests the **suffix shape** rather than the presence of a dot: a file
+  extension is short and alphabetic (`py`, `md`, `tsx`), while a version's trailing dot-part is not
+  (`v3.2.0` → `0`). `feature/foo.py` and `release/notes.v2.md` stay captured, so the widening does
+  not blind the verifier to genuine drift. Pinned by a parametrized regression test over four
+  version-numbered branch forms plus the multi-dot-path counter-case; the Critic flagged the
+  original as untested, and it was.
+
+- **The REST-point meter is a floor, and three surfaces still called it exact.** `_PacingTransport`
+  charges per transport **method** call, so a paged read (`list_labels`) issues several HTTP requests
+  and is charged once. The operator surface already printed `≥N` with a comment explaining why
+  (BKL-3H7W), but `migrate.py`'s class docstring and inline comment, and
+  `documentation/backlog-service-nfr.md` §3.3 and §9, all still said the decorator charges "**every**
+  REST call". Corrected to "every transport method call", each naming the floor property.
+  **VRF-009's `rest_points_charged: 5360` is annotated rather than altered** — the measurement
+  stands, but the undercount falls entirely on the read side, so the real figure is *higher* than
+  recorded and the headroom smaller than "296 pts/min against 900" implies. The conclusion survives
+  even a 3× read undercount (~644 pts/min); the margin should not be quoted as measured.
+
+Not fixed here, and deliberately: BKL-8K2N's progress heartbeat (Chunk 06's ~900-issue run would emit
+nothing for 18–40 minutes) is already recorded as gating Chunk 06, and the remaining warnings are
+filed rather than folded into an integration commit.
+
 ## 2026-07-27: The Critic's SubagentStop trigger had never fired (CRT-2J8N)
 
 <!-- prawduct: type=fix | release=v3.1.2 | status=shipped -->

@@ -487,9 +487,11 @@ class TestVerifyChunkRefsGlobPaths:
 class TestVerifyChunkRefsGitRefs:
     """Git branch/ref names backticked in a build/release plan (`feature/…`,
     `origin/develop`) contain `/` but name a branch, not a file — the parser must
-    skip them, not flag a `missing-ref`. The carveout is extension-gated: a real
-    path that merely starts with a git-flow prefix keeps being captured, so it does
-    not blind the verifier to genuine drift."""
+    skip them, not flag a `missing-ref`. The carveout is gated on the SUFFIX SHAPE
+    of the final segment, not on the presence of a dot: a real path that merely
+    starts with a git-flow prefix keeps being captured (so the carveout does not
+    blind the verifier to genuine drift), while a version-numbered branch is still
+    recognised as a ref."""
 
     def test_feature_branch_name_is_skipped(self, tmp_path: Path):
         # The exact shape that false-positived: a Prerequisites bullet naming a branch.
@@ -513,6 +515,39 @@ class TestVerifyChunkRefsGitRefs:
         project, prawduct = _project_with_chunk(tmp_path, "- touches `feature/gen.py`\n")
         refs = _bpr._parse_build_plan_chunk_refs(prawduct, "01")
         assert [e["ref"] for e in refs["file_paths"]] == ["feature/gen.py"]
+
+    @pytest.mark.parametrize(
+        "branch",
+        [
+            "release/v3.2.0",
+            "release/v3.1.2",
+            "feature/v3.2.0-c02-adapter-safety",
+            "hotfix/v10.0.1",
+        ],
+    )
+    def test_version_numbered_branch_is_skipped(self, tmp_path: Path, branch: str):
+        """A dot in a branch name is not an extension.
+
+        Keying the carveout on "contains no dot" left it inert for every
+        version-numbered branch — precisely the ones a release cuts — so a plan
+        naming its own release branch drew a BLOCKING `missing-ref:`. The gate is
+        the suffix SHAPE, so `v3.2.0` (trailing dot-part `0`) reads as a ref.
+        """
+        project, prawduct = _project_with_chunk(tmp_path, f"- cut from `{branch}`\n")
+        refs = _bpr._parse_build_plan_chunk_refs(prawduct, "01")
+        assert refs["error"] is None
+        assert refs["file_paths"] == []
+        assert _bpr._verify_chunk_refs(project, refs) == []
+
+    def test_multi_dot_path_under_git_prefix_still_captured(self, tmp_path: Path):
+        # The counter-case to the version branches above: a genuine path whose
+        # stem carries dots still ends in an extension-shaped suffix, so it stays
+        # captured rather than being waved through as a ref.
+        project, prawduct = _project_with_chunk(
+            tmp_path, "- edits `release/notes.v2.md`\n"
+        )
+        refs = _bpr._parse_build_plan_chunk_refs(prawduct, "01")
+        assert [e["ref"] for e in refs["file_paths"]] == ["release/notes.v2.md"]
 
 
 class TestVerifyChunkRefsNonPathTokens:

@@ -413,6 +413,13 @@ then the real prawduct backlog") — now done. It does **not** run the real migr
   147 closes = 2,210 write-points, the ~3,150 balance is reads) over `archive_burst_wall_seconds: 1086`
   (~18 min) ≈ **296 pts/min average**. Peak: an archived item = read+create+close ≈ 11 pts over ~3 serial
   round-trips (~1.3s) ≈ **~500 pts/min** — still under 900.
+- **`rest_points_charged` is a FLOOR, not an exact count (BKL-3H7W).** `_PacingTransport` charges per
+  transport *method* call, so a paged read (`list_labels`) issues several HTTP requests and is charged
+  once. The undercount falls entirely on the read side — the ~3,150 read-point balance above is the
+  soft number; the 2,210 write-points (295 creates + 147 closes) are exact. Direction of the error is
+  known: **real usage is higher than measured, so the headroom is smaller than these figures state.**
+  The conclusion survives — even a 3× read undercount lands near ~644 pts/min against the 900 ceiling —
+  but "296 pts/min" should not be quoted as the margin. Re-derive when BKL-3H7W makes the meter exact.
 - **Root cause (I predicted the opposite last session).** I forecast `point_waits > 0`, reasoning that
   147 archived items sit "comfortably over" a ~75-item threshold. That was wrong — it conflated *total
   volume* with *per-minute rate*. Serial `gh` round-trip latency caps the create-then-close rate at
