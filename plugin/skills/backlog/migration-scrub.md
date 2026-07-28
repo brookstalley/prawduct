@@ -29,6 +29,34 @@ the import op consumes a record set, not a model call.
 
 ## Steps
 
+**Precondition. Confirm the running plugin actually HAS the backlog service — before anything else.**
+Every command in this runbook is written as a bare `prawduct-hook backlog …`, which resolves on
+`PATH`. **On a released plugin that resolves to a binary with no `backlog` op at all**, because the
+backlog service was deliberately withheld from the v3.1.1 and v3.1.2 pruned releases. The failure is
+loud (`unknown op`), but the *diagnosis* is not obvious mid-migration, and the same skew is silent in
+the more dangerous direction: a build that has the op but predates this runbook's safety rails will
+run happily and skip the target-binding this runbook exists to enforce.
+
+   - **Check first, in the repo you are about to migrate:**
+
+         prawduct-hook backlog        # must print the backlog usage, not `unknown op`
+         prawduct-hook version        # note it — you will record this
+
+   - **If it prints `unknown op`, or a version older than the one that shipped the service**, stop and
+     re-launch the session against a plugin build that carries it:
+
+         claude <target-repo> --plugin-dir /path/to/prawduct/plugin
+
+     There is no `.prawduct/tools/prawduct-hook` to fall back to — that was the **v1 file-sync**
+     layout, retired in M4. A plugin-governed repo commits the install reference and no framework
+     files, so the *only* lever is which plugin the session loaded.
+
+   - **Record the plugin version and `--plugin-dir` (if used) alongside the other scrub decisions.**
+     Not bookkeeping: when a migration is later found to be incomplete, the first question is *which
+     build ran it*, and a repo that cannot answer that cannot be diagnosed. This is not hypothetical —
+     `samsung-frame-art-loader` was found half-migrated (7 of 9 items never reached GitHub, with the
+     cutover already recorded) and nothing in the repo records which build performed it.
+
 **0. Select and confirm the target repo — the one binding every later step reads.**
 This is the guard that stops a scrub from writing 100–250 real issues into a repo
 nobody chose. Nothing below runs until it is done.
