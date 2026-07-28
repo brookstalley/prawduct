@@ -525,3 +525,38 @@ settle-retry `file` already uses.
   the session token carries `gist`, `read:org`, `repo` only).
 - `BKL-3N8Q` is now fully dischargeable: its `pick`-path half shipped with Chunk 05b, and its
   foreign-API-verification half is this run. Flip via `/prawduct:backlog` at Chunk 09.
+
+## VRF-011 — Chunk 05b / BKL-8K2N — the import progress heartbeat, live
+
+**Status:** verified (2026-07-28, throwaway repo `brookstalley/prawduct-readers-20260728`)
+**Added:** 2026-07-28
+
+**Result.** A 55-record live import emitted exactly the designed signal:
+
+    backlog: migrating: 25/55 — 25 created, 0 skipped
+    backlog: migrating: 50/55 — 50 created, 0 skipped
+    brookstalley/…: imported 55 created, 0 skipped, 0 collision(s) of 55 source item(s)
+      pacing: ≥716 REST points; no throttling (budgets never bound)
+
+Two beats, no beat on the final record (the summary follows immediately), all on stderr.
+
+**Measured throughput: 55 records in 1 min 46 s ≈ 31 records/min** — below the ~40–45/min VRF-009
+inferred. Two consequences worth carrying into Chunk 06:
+
+- **A ~900-issue migration is ~29 minutes** at this rate, inside the 18–40 min estimate but nearer
+  its middle than its floor.
+- **At 31/min, `PROGRESS_EVERY = 25` is a beat roughly every 48 s**, and the *first* beat lands ~48 s
+  in. Judged acceptable and left alone: ~36 beats across a 900-record run is reassurance without
+  becoming the commentary `test_an_unthrottled_run_stays_quiet` exists to forbid. **If an operator
+  reports the startup silence as uncomfortable, lower the constant — do not add a separate
+  first-record special case**, which is a second code path for one line of output.
+
+**`no throttling (budgets never bound)` reproduced VRF-009 exactly** on an independent run — the
+pacing budgets are confirmed non-binding under the serial importer for a second time, which is
+precisely why the heartbeat had to exist: every pacing announcement is exception-only and none of
+them ever fires.
+
+**Caveat inherited from BKL-3H7W (still open):** the `≥716 REST points` figure is a **floor**, not an
+exact count — a paged list costs 1 point regardless of page count. The `≥` in the output says so.
+
+**Follow-ups:** the throwaway now holds 58 issues; owner deletes it (needs `delete_repo` scope).
