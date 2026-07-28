@@ -19,12 +19,15 @@ Covers the highest-risk operations against the transport-seam fake (offline, no
   concrete record set (module-level model-freedom is INV-1's job, not re-tested).
 - **PROBE-RATE** the write-pacer's decisions (deterministic clock, no real sleep).
 - The ``import``/``export``/``merge`` CLI front.
+- The S2 spike's standalone-script bootstrap — the one path no other test
+  reaches, because nothing imports the spike.
 """
 
 from __future__ import annotations
 
 import json
 import re
+import subprocess
 import sys
 from pathlib import Path
 
@@ -1280,3 +1283,22 @@ class TestPacingObservability:
         # not per HTTP request (BKL-3H7W), so an unqualified number would read as
         # precise to the person sizing an irreversible run.
         assert "\u2265" in out
+
+
+def test_s2_spike_imports_when_run_as_a_script(tmp_path: Path):
+    """`python tests/spikes/s2_migration.py` must import outside pytest.
+
+    The spike bootstraps `sys.path` itself, because the root conftest's insert
+    is absent when it runs as a script — and running it as a script IS the
+    point: it drives a live `gh` session against a throwaway repo. Nothing else
+    covers that path, since no test imports the spike, so a removed bootstrap
+    would surface only when someone reached for it mid-migration. Run from an
+    unrelated cwd to pin that the bootstrap resolves from the file's own
+    location, not the caller's. `--help` exits before any `gh` call.
+    """
+    spike = _TESTS_DIR / "spikes" / "s2_migration.py"
+    proc = subprocess.run(
+        [sys.executable, str(spike), "--help"],
+        capture_output=True, text=True, timeout=30, cwd=str(tmp_path),
+    )
+    assert proc.returncode == 0, f"standalone spike run failed:\n{proc.stderr}"

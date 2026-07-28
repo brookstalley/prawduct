@@ -248,6 +248,13 @@ def init_product(
     # distribution line it needs no separate `created`/`edited` entry.
     if apply and backlog_repo_recorded is not None:
         _record_backlog_service_repo(project_dir, backlog_repo_recorded)
+        # Report what the file HOLDS, not what was asked for. The writer no-ops
+        # when the key is already present, so a report derived from the request
+        # disagrees with the tree the moment those two differ — and the caller
+        # uses this field to decide whether to provision against that repo.
+        backlog_repo_recorded = core.read_str_yaml_key(
+            project_dir / ".prawduct" / "project-state.yaml", "backlog_service_repo"
+        )
 
     # .gitignore — session files + the per-repo version marker.
     gitignore = project_dir / ".gitignore"
@@ -285,11 +292,29 @@ def init_product(
         # entries like the tracked-by-default build plan — gate-soundness
         # ch.3). The caller (onboard/doctor) should advise `git add` on these.
         "unignored": unignored,
-        # The recorded day-one Issues backend (None unless a valid --backlog-repo
-        # was given); onboard reads it to know whether to run the provision step.
+        # The day-one Issues backend as it stands in project-state.yaml after this
+        # run (None when no valid --backlog-repo was given, or on a dry run);
+        # onboard reads it to know whether to run the provision step.
         "backlog_service_repo": backlog_repo_recorded,
         "warnings": warnings,
     }
+
+
+def _take_value(argv: list[str], i: int) -> tuple[str, int]:
+    """``(value, index)`` for the value-taking flag at ``argv[i]``.
+
+    A following token starting with ``-`` is the NEXT FLAG, not this flag's
+    value. Consuming it does double damage: it invents a nonsense value AND
+    silently swallows the flag it ate — ``--name --json --apply`` scaffolded a
+    product named ``"--json"`` with JSON output off, so a machine caller got a
+    real repo and could not parse the result. A missing value yields ``""``
+    (never ``None``), which each flag's own validation already rejects loudly;
+    ``None`` would be indistinguishable from the flag being absent, and for
+    ``--backlog-repo`` that silently forfeits the one-shot day-one window.
+    """
+    if i + 1 < len(argv) and not argv[i + 1].startswith("-"):
+        return argv[i + 1], i + 1
+    return "", i
 
 
 def _parse_argv(
@@ -309,13 +334,11 @@ def _parse_argv(
         elif arg == "--json":
             as_json = True
         elif arg == "--name":
-            i += 1
-            name = argv[i] if i < len(argv) else None
+            name, i = _take_value(argv, i)
         elif arg.startswith("--name="):
             name = arg.split("=", 1)[1]
         elif arg == "--backlog-repo":
-            i += 1
-            backlog_repo = argv[i] if i < len(argv) else None
+            backlog_repo, i = _take_value(argv, i)
         elif arg.startswith("--backlog-repo="):
             backlog_repo = arg.split("=", 1)[1]
         elif not arg.startswith("-") and target is None:

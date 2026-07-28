@@ -266,6 +266,34 @@ def test_no_backlog_repo_leaves_scalar_unset(scaffolded: Path):
     assert "backlog_service_repo" not in state
 
 
+def test_value_flags_do_not_swallow_the_next_flag():
+    """A value-taking flag must not consume a following ``-``-prefixed token.
+
+    The pre-fix parser took the next token unconditionally, which did double
+    damage: it invented a nonsense value AND dropped the flag it ate. Both
+    halves are pinned here because the second is the dangerous one — with
+    ``--json`` swallowed, a machine caller got an unparseable result, and with
+    ``--apply`` swallowed a run that was meant to write silently became a
+    dry run (or, worse, the reverse once only one of the two was eaten).
+    """
+    from lib.init_product import _parse_argv
+
+    # `--name` with its value forgotten: the name is empty (caught by run()'s
+    # usage check) and BOTH following flags survive.
+    target, name, backlog_repo, apply, as_json = _parse_argv(
+        ["/t", "--name", "--json", "--apply"]
+    )
+    assert (name, backlog_repo) == ("", None)
+    assert apply is True and as_json is True, "a swallowed flag silently changes the run"
+
+    # Valueless must stay distinguishable from absent: `--backlog-repo` with no
+    # value is a shape error (loud), while omitting it is the markdown-first
+    # path (silent, correct). Collapsing both to None forfeits the one-shot
+    # day-one Issues window with no diagnostic.
+    assert _parse_argv(["/t", "--name", "P", "--apply", "--backlog-repo"])[2] == ""
+    assert _parse_argv(["/t", "--name", "P", "--apply"])[2] is None
+
+
 def test_invalid_backlog_repo_is_usage_error(tmp_path: Path):
     target = tmp_path / "p"
     proc = subprocess.run(

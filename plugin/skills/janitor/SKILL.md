@@ -2,7 +2,13 @@
 description: Periodic codebase maintenance — systematic health check across VCS hygiene, code quality, documentation fitness, test coverage, dependencies, controllability, and more
 argument-hint: "[staleness=Nd] [scope=theme,...] [survey-only]"
 user-invocable: true
-allowed-tools: Bash(git *), Bash(npm *), Bash(python3 *), Bash(prawduct-hook backlog *), Bash(python3 plugin/bin/prawduct-hook backlog *), Read, Write, Edit, Glob, Grep, Agent
+# Human-invoked only. Janitor needs a broad interpreter grant (`Bash(python3 *)`,
+# `Bash(npm *)`) to drive whatever toolchain the product uses — and that grant
+# necessarily subsumes the backlog scrub ops an allow-list is supposed to hold
+# behind a prompt. An allow-list cannot fence an op when the skill legitimately
+# needs the interpreter, so the model-initiated path is closed here instead.
+disable-model-invocation: true
+allowed-tools: Bash(git *), Bash(npm *), Bash(python3 *), Read, Write, Edit, Glob, Grep, Agent
 ---
 
 You are performing periodic codebase maintenance — a systematic health check that surfaces what day-to-day development overlooks. This is not a feature task. Your goal is to find what has drifted, accumulated, or been missed, then fix it through the standard Prawduct build cycle.

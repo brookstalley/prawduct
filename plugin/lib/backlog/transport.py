@@ -135,7 +135,16 @@ def build_env(base: dict | None = None) -> dict:
 
 class Transport:
     """The GitHub operations the adapter uses. ``GhTransport`` and the L1 fake
-    both implement this; core depends only on this surface."""
+    both implement this; core depends only on this surface.
+
+    **Method names are load-bearing.** The pacing decorator classifies every
+    call as a read or a write from its name prefix alone — ``get_``/``list_``
+    read, ``create_``/``update_``/``add_``/``remove_`` write — and *raises* on a
+    name it cannot classify rather than let the call escape the rate budget. So
+    a new method must carry one of those prefixes, or the decorator has to learn
+    it in the same change. A name like ``fetch_labels`` imports cleanly, passes
+    its own unit tests, and then fails at the first paced run.
+    """
 
     def get_authenticated_user(self) -> dict:
         raise NotImplementedError

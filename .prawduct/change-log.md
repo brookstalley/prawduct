@@ -3,6 +3,71 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-07-28: An allow-list cannot fence an op the skill can reach through an interpreter
+
+<!-- prawduct: type=fix | scope=v3.2.0-golive -->
+
+Cumulative-Critic warnings resolved as defects rather than filed as debt, plus the class each one
+turned out to belong to. The dividing line for this pass was **correctness and safety ship now,
+governance bookkeeping waits** — the norm dispositions, the Chunk 05 verify-api step, the runbook's
+chunk-number coupling and ONB-3F9P's status pointer are all deliberately still open, because fixing
+them *adds* governed surface and a simplification review is open against exactly that.
+
+- **The backlog grant narrowing reached three more skills, by deletion.** `janitor`, `pr` and
+  `runbook` each held `Bash(prawduct-hook backlog *)` plus its `python3` twin. All three reach the
+  backlog **through `/prawduct:backlog`** and none invokes the CLI — janitor's own text says so
+  ("Backlog context — through the skill, not the file"). Six dead grants removed, none added; the
+  13-op narrow list was **not** copied into three more files.
+
+- **The real exposure was never the backlog grant.** `janitor` was the only skill that never
+  declared `disable-model-invocation`, and the field is opt-**out**, so it was model-invocable by
+  omission. Its `Bash(python3 *)` — needed to drive whatever toolchain a product uses — semantically
+  permits `python3 plugin/bin/prawduct-hook backlog import`, re-granting the unrecallable ops the
+  allow-list exists to hold behind a prompt. **An allow-list cannot fence an op when the skill
+  legitimately needs the interpreter**, so the model-initiated path is closed at the skill instead.
+  The durable fix is a confirmation gate in the CLI, which binds regardless of caller; it is not
+  built here and is named debt, not a silent omission.
+
+- **`provision`/`reconcile-labels` were misclassified, and the inconsistency was the evidence.**
+  Generalizing the guard immediately caught `onboard` and `doctor` granting both no-prompt. They are
+  additive and idempotent by construction — `reconcile_labels` "corrects drift by adding what is
+  missing, never by removing" — so those grants are correct and the four-op set conflated two risk
+  classes. `IRREVERSIBLE_OPS` (`import`, `merge`) now binds every model-invocable skill; all four
+  still stay out of the backlog skill's own grant. Nothing was loosened.
+
+- **A value-taking flag swallowed the next flag.** `init-product`'s parser took the following token
+  unconditionally, so `--name --json --apply` scaffolded a product named `"--json"` **with JSON
+  output silently off** — a machine caller got a real repo and an unparseable result. The Critic
+  named one instance (a valueless `--backlog-repo` dropped in silence, forfeiting the one-shot
+  day-one Issues window); the defect was the class, and both flags shared it. A missing value now
+  yields `""`, which each flag's own validation already rejects loudly, and stays distinguishable
+  from absent.
+
+- **`init-product` reported its backend from intent, not outcome.** The recorded value came from the
+  request while the writer no-ops when the key is already present — so the report disagreed with the
+  tree the moment they diverged, and the caller uses that field to decide whether to provision.
+  It now reads back what the file holds.
+
+- **The `Transport` method-naming contract left its private docstring.** The pacing decorator
+  classifies reads and writes from the method-name prefix and raises on anything it cannot classify.
+  That constraint bound every implementer and was documented only inside `_PacingTransport`; it now
+  sits on `Transport`, where a method gets added.
+
+- **The "every REST call" sweep had an eighth surface, and its scope was the proxy this time.** The
+  two-pass sweep that produced *"a falsifying query is itself a mechanism and can carry the defect it
+  hunts"* enumerated code, docs and tests — and never looked at the change log's own history, where
+  the original entry still described the meter as exact. Corrected in place. A whitespace-normalized
+  scan of every tracked file now confirms the remaining matches are all records *of* the defect.
+
+- **Two paths had no regression guard and now do:** the flag-swallowing class, and the S2 spike's
+  standalone-script bootstrap — which nothing reached, because no test imports the spike, so a
+  removed bootstrap would have surfaced only when someone reached for it mid-migration.
+
+**Four earlier fix commits on this branch shipped production behavior with no change-log entry**
+(the Critic's finding, and it was correct). They are recorded here as one entry rather than four
+backdated ones: a record written after the fact should say so, not impersonate a contemporaneous
+one. Suite 2722 passed / 7 skipped.
+
 ## 2026-07-28: The git-ref carveout was inert for the branch v3.2.0 is about to cut
 
 <!-- prawduct: type=fix | scope=v3.2.0-golive -->
@@ -584,8 +649,11 @@ burst, which the create-only metering never accounted (BKL-6X5D part b). Its onl
   content-creation window. GitHub's per-request costs (docs, verified 2026-07-24): **5 pts/write**
   (POST/PATCH/PUT/DELETE), **1 pt/read** (GET/HEAD/OPTIONS). `before_points(cost)` blocks only when the
   trailing minute would breach 900, then records the spend; `points_charged` is a run-summary metric.
-- **`_PacingTransport`** — a transparent transport decorator that charges **every** migration REST call
-  by name-classification (`get_`/`list_` = read, `create_`/`update_`/`add_`/`remove_` = write). Wired
+- **`_PacingTransport`** — a transparent transport decorator that charges **every transport method
+  call** by name-classification (`get_`/`list_` = read, `create_`/`update_`/`add_`/`remove_` = write).
+  A paged read is charged once, so the count is a floor, not an exact REST total. *(Corrected
+  2026-07-28: the eighth surface of the "every REST call" overclaim — the two-pass sweep above scoped
+  itself to code, docs and tests and never looked at the change-log's own history.)* Wired
   in `import_items`, so the create, the reconcile reads, **and the close write** (via `core.set_status`,
   which receives the wrapper) all count — not just the create. An unclassified transport method **raises**
   rather than silently escaping the budget, closing the "only paced call" fragility at its root.

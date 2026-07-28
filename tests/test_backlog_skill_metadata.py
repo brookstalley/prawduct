@@ -39,6 +39,15 @@ EVERYDAY_OPS = (
 # degraded anyway.
 SCRUB_ONLY_OPS = ("import", "merge", "provision", "reconcile-labels")
 
+# The subset that is UNRECALLABLE, and therefore the one rail that binds every
+# model-invocable skill rather than just this one. `import` writes 100-250 real
+# issues and GitHub has no ordinary issue-delete; `merge` closes an issue. The
+# other two are additive and idempotent by construction — `reconcile_labels`
+# "corrects drift by adding what is missing, never by removing" — so onboard and
+# doctor grant them no-prompt on purpose: running them IS what those flows are
+# for. They stay out of the backlog skill's own grant regardless (below).
+IRREVERSIBLE_OPS = ("import", "merge")
+
 _INVOCATIONS = ("prawduct-hook backlog", "python3 plugin/bin/prawduct-hook backlog")
 
 
@@ -91,28 +100,82 @@ def test_everyday_ops_granted_in_both_forms():
     )
 
 
-def test_scrub_ops_not_granted():
-    """No granted pattern may MATCH a scrub-op invocation.
+def _model_invocable(skill: Path) -> bool:
+    """Whether the MODEL can invoke this skill without a human naming it.
 
-    This asks the semantic question, not the literal one. The first version
-    checked for the exact strings ``Bash(prawduct-hook backlog import *)`` etc.
-    and was therefore evadable in a way that mattered: a *broader* wildcard —
-    ``Bash(prawduct-hook *)`` — re-grants every withheld op while leaving all
-    three tests in this file green, because none of the exact strings it looks
-    for would appear. Widening a grant is the most natural way this rail gets
-    dismantled ("the prompts are annoying"), so the check has to catch the
-    widening, not one spelling of it. (Cumulative Critic, 2026-07-24.)
+    The frontmatter field is opt-OUT, so an undeclared skill is the permissive
+    case, not the safe one — which is exactly how janitor came to be the only
+    skill that never declared it.
+    """
+    m = re.search(
+        r"^disable-model-invocation:\s*(\S+)\s*$",
+        skill.read_text(encoding="utf-8"),
+        re.MULTILINE,
+    )
+    return not (m and m.group(1).lower() == "true")
+
+
+def test_scrub_ops_not_granted_in_backlog_skill():
+    """The backlog skill withholds all four scrub ops — semantically, not by string.
+
+    Scoped to this skill because it is the general-purpose, model-invocable
+    backlog surface: nothing about *it* justifies a one-shot migration write, so
+    all four stay out and prompt (BKL-5N9W). The narrower cross-skill rail below
+    is the one that binds flows whose whole purpose is a setup write.
     """
     patterns = _granted_patterns()
-    leaked: list[str] = []
-    for op in SCRUB_ONLY_OPS:
-        for inv in _INVOCATIONS:
-            command = f"{inv} {op} --repo owner/repo"
-            for pattern in patterns:
-                if _grant_matches(pattern, command):
-                    leaked.append(f"`Bash({pattern})` permits `{command}`")
+    leaked = [
+        f"`Bash({p})` permits `{inv} {op} --repo owner/repo`"
+        for op in SCRUB_ONLY_OPS
+        for inv in _INVOCATIONS
+        for p in patterns
+        if _grant_matches(p, f"{inv} {op} --repo owner/repo")
+    ]
     assert not leaked, (
         "backlog SKILL.md grants a high-consequence scrub op no-prompt — these must "
         "stay OUT of the grant so they prompt at the migration write (BKL-5N9W):\n  - "
         + "\n  - ".join(leaked)
+    )
+
+
+def test_no_model_invocable_skill_grants_an_irreversible_op():
+    """No skill the model can invoke may permit an UNRECALLABLE op — any spelling.
+
+    This asks the semantic question, not the literal one, and it asks it of
+    every skill rather than one file. Both widenings were paid for. The first
+    version checked exact strings like ``Bash(prawduct-hook backlog import *)``
+    and was evadable by a *broader* wildcard, which re-grants the withheld set
+    while every test here stays green. The second was scoped to the backlog
+    skill alone, and missed janitor's ``Bash(python3 *)`` — a grant nobody reads
+    as a backlog grant, which nonetheless permits ``python3
+    plugin/bin/prawduct-hook backlog import``. The rail is about the OP, so the
+    check has to follow the op wherever it can be reached.
+
+    Scoped to ``IRREVERSIBLE_OPS`` rather than all four: onboard and doctor
+    grant ``provision``/``reconcile-labels`` deliberately, and those are additive
+    and idempotent. Enforcing the full set here would read as a security finding
+    when the real defect is the classification.
+
+    Skills a human must invoke by name are out of scope: the deliberate act the
+    prompt exists to force has already happened.
+    """
+    leaked: list[str] = []
+    for skill in sorted((PLUGIN / "skills").glob("*/SKILL.md")):
+        if not _model_invocable(skill):
+            continue
+        m = re.search(
+            r"^allowed-tools:\s*(.+)$", skill.read_text(encoding="utf-8"), re.MULTILINE
+        )
+        patterns = re.findall(r"Bash\(([^)]*)\)", m.group(1)) if m else []
+        for op in IRREVERSIBLE_OPS:
+            for inv in _INVOCATIONS:
+                command = f"{inv} {op} --repo owner/repo"
+                leaked += [
+                    f"{skill.parent.name}: `Bash({p})` permits `{command}`"
+                    for p in patterns
+                    if _grant_matches(p, command)
+                ]
+    assert not leaked, (
+        "a model-invocable skill permits a high-consequence scrub op no-prompt — these "
+        "must prompt at the migration write (BKL-5N9W):\n  - " + "\n  - ".join(leaked)
     )
