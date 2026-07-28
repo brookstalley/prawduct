@@ -462,3 +462,66 @@ then the real prawduct backlog") — now done. It does **not** run the real migr
 - Owner deletes throwaway `brookstalley/prawduct-s2-dryrun-20260724` (needs `delete_repo` scope).
 - Optional: node_id-transfer probe (second throwaway + `--transfer-to`) to settle ID-4.
 - Optional: clean PROBE-LAT floor — `pick` against a quiescent migrated repo, no preceding burst.
+
+## VRF-010 — Chunk 05b / F1 — the three relationship-timeline readers, live
+
+**Status:** verified (2026-07-28, throwaway repo `brookstalley/prawduct-readers-20260728`)
+**Added:** 2026-07-28 (functional-audit F1 — the readers no migration exercises)
+
+**Why this run existed.** `BKL-3N8Q` records that `list_blocked_by` / `list_sub_issues` /
+`list_timeline` are shape-verified against the in-process fake only. Three live migrations
+(~209 items 2026-07-17, 295 items 2026-07-24) never touched them, and the reason is
+structural rather than an oversight: **the importer maps `related:` to no native edge**, so a
+migration creates zero dependencies and zero sub-issues. Only a purpose-built graph exercises
+these three. Cost: 3 issues, 2 links.
+
+**Result — all three readers work against real GitHub; the fake's shapes match.**
+
+- **`list_blocked_by`** — `link #2 blocked-by #1`, then `pick` returned **only #1** (blocked
+  item correctly excluded). Closing #1 and re-picking returned **#2** with `all 1 blocker
+  closed`. Both directions of the predicate are live-correct. The real payload carries
+  `number`, `state`, `repository.owner.login`, `repository.name` — exactly the keys
+  `GhTransport.list_blocked_by` parses. It also carries `issue_dependencies_summary`
+  (`blocked_by` / `total_blocked_by` / `blocking` / `total_blocking`), which the adapter does
+  not read.
+- **`list_sub_issues`** — `link #2 child #3`; the endpoint returns `{number, state, title}`,
+  parsed correctly.
+- **`list_timeline`** — events observed on #1: `labeled`, `blocking_added`, `closed`.
+
+**MIG-3 is now live-proven, for the first time.** `export` calls all three through the
+transport, and this repo had the native graph SPIKE-S2 and VRF-009 both lacked. The dump is
+correct: `#2 → {blocked_by: [#1], sub_issues: [#3]}`, `#1` and `#3` empty. VRF-009's
+"MIG-3 native-graph reconstruction is UNPROVEN, not failed — a source with real sub-issue
+trees needs a separate test" is **discharged by this run.**
+
+**Chunk 05b's `_blocker_clause` fix is live-proven on both branches** — `no blockers recorded`
+for an item with no dependencies, `all 1 blocker closed` for a verified-clear one.
+
+**NEW FINDING (not a blocker; record before it bites someone) — `pick` can return an item
+closed seconds earlier.** Immediately after `status --to shipped` on #1, `pick` returned #1 as
+ready work. GitHub itself was already correct (`state: closed`, `state_reason: completed`,
+`closed_at` set) and a direct `issues?state=open&labels=stage:ready` query already excluded
+it — so this is **the list-endpoint replication window, not a filter bug**. A re-run seconds
+later was correct. `file` has a bounded settle-retry for the documented 404-after-create
+window; the **close→list** path has no equivalent. Real-workflow shape: an agent closes an
+item, immediately picks its next task, and is handed back the item it just finished. File
+against `BKL-3N8Q`'s family or as its own item; the fix is likely the same bounded
+settle-retry `file` already uses.
+
+**Where to verify:**
+
+    R=you/throwaway
+    prawduct-hook backlog provision --repo $R
+    A=$(prawduct-hook backlog file --repo $R --title A --body x --stage ready --json | jq -r .data.id)
+    B=$(prawduct-hook backlog file --repo $R --title B --body x --stage ready --json | jq -r .data.id)
+    prawduct-hook backlog link $B --edge blocked-by --to $A
+    prawduct-hook backlog pick --repo $R --limit 5 --json   # expect A only
+    prawduct-hook backlog status $A --to shipped
+    sleep 5 && prawduct-hook backlog pick --repo $R --limit 5 --json   # expect B, "all 1 blocker closed"
+    prawduct-hook backlog export --repo $R --to /tmp/x       # expect the native graph in item-*.json
+
+**Follow-ups:**
+- Owner deletes throwaway `brookstalley/prawduct-readers-20260728` (needs `delete_repo` scope;
+  the session token carries `gist`, `read:org`, `repo` only).
+- `BKL-3N8Q` is now fully dischargeable: its `pick`-path half shipped with Chunk 05b, and its
+  foreign-API-verification half is this run. Flip via `/prawduct:backlog` at Chunk 09.

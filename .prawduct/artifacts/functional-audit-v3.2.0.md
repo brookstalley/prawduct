@@ -38,7 +38,17 @@ the fleet**:
 
 ## Findings
 
-### F1 — Three foreign-API *readers* are fake-verified only. **[BKL-3N8Q, open]**
+### F1 — ~~Three foreign-API *readers* are fake-verified only~~ — **CLOSED 2026-07-28 (VRF-010)**
+
+**All three work against real GitHub; the fake's shapes match.** `list_blocked_by` excluded a blocked
+item from `pick` and re-admitted it when the blocker closed; `list_sub_issues` and `list_timeline`
+parse correctly; `export` serialized the real native graph. **MIG-3 is live-proven for the first
+time** — this run had the graph SPIKE-S2 and VRF-009 both lacked, discharging VRF-009's "UNPROVEN,
+not failed." Cost: 3 issues, 2 links. BKL-3N8Q is now fully dischargeable.
+
+One new finding fell out — see **F8**. The original text follows, for the record.
+
+
 
 > **CORRECTED 2026-07-28, owner challenge.** This finding first read *"`verify-api` has never run; the
 > entire adapter is fake-verified."* **Both halves were false**, and the evidence was already in this
@@ -124,6 +134,19 @@ Affects S-B and S-C. Observed live: a forked skill burned 23 attempts over 5+ mi
 503s. A hang, not wrong data — but during a paced ~900-issue migration it is the difference between a
 slow run and an apparently-wedged one (compounds with **BKL-8K2N**, the unbuilt progress heartbeat).
 
+### F8 — `pick` can hand back an item closed seconds earlier. **[new, VRF-010]**
+
+Affects **S-C**. Immediately after `status --to shipped`, `pick` returned the just-closed item as
+ready work. GitHub was already correct (`state: closed`, `closed_at` set) and a direct
+`issues?state=open&labels=stage:ready` query already excluded it — **this is the list-endpoint
+replication window, not a filter bug**, and a re-run seconds later was correct.
+
+Real-workflow shape: an agent closes an item, immediately picks its next task, and is handed back the
+item it just finished. `file` already carries a bounded settle-retry for the documented
+404-after-create window; the **close→list** path has no equivalent. Cheap fix, same mechanism.
+
+Only a live run finds this — the fake has no replication window.
+
 ### F7 — `--help` exits 2. **[BKL-2D8N, open]**
 
 Affects S-C and S-D discoverability. Minor, cheap, and the only source of truth for a subcommand's
@@ -153,9 +176,8 @@ flags is currently `adapter-mode.md` plus the source.
 
 ## Recommended gate-2 acceptance set
 
-1. **The three relationship/timeline readers exercised live** (F1) — two issues in a throwaway repo,
-   `link` one `blocked-by` the other, then `pick` + a timeline read. Small and self-contained; **no
-   migration required**, which is why it has never happened as a side effect of one.
+1. ~~The three relationship/timeline readers exercised live (F1)~~ — **DONE 2026-07-28, VRF-010.**
+   All three verified against real GitHub; MIG-3 live-proven as a bonus. Surfaced F8.
 2. **Chunk 01 VRFs** drained (VRF-005/007/008).
 3. **Chunk 06** migration + VRF-006: `get`/`list`/`pick` resolve real ids, counts reconcile, a re-run
    creates no duplicates.
