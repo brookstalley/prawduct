@@ -168,15 +168,20 @@ which one shared section cannot provide | user can veto — the alternative is o
 4. `.prawduct/artifacts/release-plan-v3.1.2-pruned.md` referenced as the worked example, not
    duplicated (an expiring artifact is not a durable surface — that is REL-8P6M's own reasoning).
 5. `last_verified:` stays `null` — this plan does not exercise the runbook end-to-end.
-   ~~v3.2.0's actual run is what verifies it.~~ **Corrected 2026-07-29 (PR reviewer, W-2): that
-   trigger cannot fire.** v3.2.0 is planned *non-pruned*, so its run takes Phase 2's whole-develop
-   path and never opens `promote-a-pruned-release.md` — naming it as the verifier left a tier-3
-   runbook with a verification trigger that is structurally unreachable, and nothing else tracked
-   the gap (REL-8P6M archives `shipped`; no advisory fires on `last_verified: null`). The real
-   trigger is **the next pruned release, whenever one occurs**, tracked as `REL-3K9P`. What *was*
-   exercised: the whole command set was rehearsed by rebuilding the real v3.1.2 candidate —
-   reproducing its three conflicts and catching a missing `import sys` — so the unverified remainder
-   is the *publish* half, not the procedure.
+   ~~v3.2.0's actual run is what verifies it.~~ **Corrected 2026-07-29 (PR reviewer, W-2): naming a
+   version as the verifier was the wrong shape.** The owner's standing intent is to ship v3.2.0
+   *non-pruned*; on that plan its run takes Phase 2's whole-develop path and never opens
+   `promote-a-pruned-release.md`, so the trigger would never fire. Note the confidence boundary: that
+   is a **plan, not a structural fact** — it rests on an owner decision recorded only in session
+   handoff notes (untracked), and if v3.2.0 ends up withholding any scope it *is* a pruned release and
+   the original trigger fires after all. Either way the defect is the same: a *version* is the wrong
+   kind of trigger for a *promotion shape*. Nothing else tracked the gap either — REL-8P6M archives
+   `shipped`, and `last_verified` turns out to have **no code reader at all** (its only consumer is a
+   model-side review question in `skills/runbook/SKILL.md`), so it is an unread field rather than a
+   missing advisory. The trigger is now stated as a shape — **the next pruned release, whenever one
+   occurs** — tracked as `REL-3K9P`. What *was* exercised: the command set was rehearsed by rebuilding
+   the real v3.1.2 candidate, reproducing its three conflicts and catching a missing `import sys`, so
+   the unverified remainder is the *publish* half, not the procedure.
 6. **`documentation/release-process.md` carries the amended promotion norm.** Chunk 01 corrected its
    two universal content-identity assertions, but that file is a *second active procedure* and this
    chunk adds a whole promotion shape to it — it is in scope here, not incidentally. A norm amendment

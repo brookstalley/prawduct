@@ -30,9 +30,16 @@ written from `git diff`, not from intent.
   **REL-8P6M's own `refs:` listed this exact test**, so it was a declared deliverable the cascade missed.
 
 - **W-2 — FIXED. The pruned runbook's only stated verification trigger could not fire.** Chunk 02's
-  Done-when 5 named "v3.2.0's actual run" as the verifier, but v3.2.0 is planned non-pruned, so it takes
-  Phase 2's whole-develop path and never opens `promote-a-pruned-release.md` — structurally unreachable,
-  not merely unlikely. Nothing else tracked it: REL-8P6M is archived `shipped`, and `last_verified` turns
+  Done-when 5 named "v3.2.0's actual run" as the verifier. The owner's standing intent is to ship v3.2.0
+  non-pruned, and on that plan its run takes Phase 2's whole-develop path and never opens
+  `promote-a-pruned-release.md`. **Confidence boundary, corrected after the delta review:** that is a
+  *plan*, not a structural fact — it rests on an owner decision recorded only in untracked session
+  handoff notes, and if v3.2.0 withholds any scope it *is* pruned and the original trigger fires. An
+  earlier draft of this entry called it "structurally unreachable, not merely unlikely," which hardened
+  an inherited premise into a certainty the tree cannot support (Honest Confidence #5, and the
+  *inherited diagnosis is a hypothesis* rule). The defect stands without the overclaim: a **version** is
+  the wrong kind of trigger for a **promotion shape**. Nothing else tracked it: REL-8P6M is archived
+  `shipped`, and `last_verified` turns
   out to have **no code reader at all** (its only consumer is a model-side review question in
   `skills/runbook/SKILL.md`), so it is an unread field rather than a missing advisory. Done-when 5 now
   carries the struck-through claim plus the correction; **`REL-3K9P`** is filed as the tracker with the
@@ -42,24 +49,39 @@ written from `git diff`, not from intent.
 
 - **NOTE (R-7 provenance) — ACCEPTED, and its residual acted on.** The reviewer judged the closure
   adequate but observed that the confirmation landed *in the same line it certifies*, so the only witness
-  genuinely outside the change is the PR thread. The PR body therefore quotes the amended norm and its
-  `[DECISION: …]` verbatim for owner sign-off. Recording it in the artifact is necessary, not sufficient.
+  genuinely outside the change is the PR thread. **Commitment, not yet a state of the world at the time
+  of writing:** the PR body is to quote the amended norm and its `[DECISION: …]` verbatim for owner
+  sign-off. Recording it in the artifact is necessary, not sufficient.
 
-- **NOTE (CRT-5H2D) — ACCEPTED, verified not latent here.** The reviewer checked rather than trusted:
-  `rev-20260729T194336Z-5753c20e` R-1 does carry a resolution fact, so no unresolved blocking hides
-  behind this PR's green certificate.
+- **NOTE (CRT-5H2D) — ACCEPTED, verified not latent here, and the reviewer's actual ask discharged.**
+  The reviewer checked rather than trusted: `rev-20260729T194336Z-5753c20e` R-1 does carry a resolution
+  fact, so no unresolved blocking hides behind this PR's green certificate. Its *recommendation* was
+  that the PR description say so — and an earlier draft of this entry recorded the verification while
+  dropping the ask, which is the "delivered one half, recorded it as done" shape this same log files as
+  a learning. The PR body therefore names CRT-5H2D and states the masked finding was independently
+  confirmed resolved.
 
 - **NOTE (`type=feat`) — FIXED for this branch, disclosed for the other.** This scope's entry normalized
-  to the canonical `type=feature` (48 now). The remaining `type=feat` at line 1088 belongs to
-  `scope=v3.2.0-golive`, a pre-existing entry outside this branch — left deliberately under Scope
-  Discipline and named here so it is not silently inherited. Inert today; a bucket split if the ledger lands.
+  to the canonical `type=feature` (48 tag lines). Exactly one `type=feat` tag line remains, owned by
+  `scope=v3.2.0-golive` — a pre-existing entry outside this branch, left deliberately under Scope
+  Discipline and named here so it is not silently inherited. Inert today; a bucket split if the ledger
+  lands. (Identified by scope, not by line number: an earlier draft cited "line 1088", which was already
+  wrong at both the parent and this tree — a line number in prose is a decaying figure, the same defect
+  this entry's census discussion is about.)
 
-**Census discipline, third iteration.** Correcting W-1 required correcting the cascade census *again* —
-and the first replacement derivation command was itself blind to W-1, because the residual asserted
-content-identity by *invoking the diff* without ever using the words "content-identical" or "tree-set."
-A detection command that cannot see the defect it exists to detect is the same shape as a test that
-cannot fail. The published command now greps the mechanism (`origin/main origin/develop`) as well as the
-vocabulary, and the document carries the command instead of a number.
+**Census discipline — this fix needed two corrections of its own, caught by a delta review.** Correcting
+W-1 required correcting the cascade census *again*, and that correction was wrong twice more. First, the
+replacement derivation command was blind to W-1: the residual asserted content-identity by *invoking the
+diff*, never using the words "content-identical" or "tree-set," so a census keyed on the vocabulary
+could not see the hit that prompted it — a detection command that cannot see the defect it exists to
+detect, the same shape as a test that cannot fail. Fixed by grepping the mechanism
+(`origin/main origin/develop`) as well as the vocabulary. Second, the published claim cited the **parent**
+tree, where two of the hits *are* the W-1 residual — a census sentence that refuted itself under the
+instruction to re-derive it. Both were found by an explicit delta review of the fix commit, dispatched
+because three consecutive verify passes in this bundle had each found a defect introduced by the previous
+round's fix. It found two more, making it four for four. **The fix for a review finding deserves the same
+adversarial pass as the original work** — the base rate here is not a fluke, and the cheapest way to see
+it is to stop treating "I am fixing a known defect" as a lower-risk activity than writing new code.
 
 ## 2026-07-29: Dispositions — verify pass `rev-20260729T192252Z-599d3307`; the remedy re-entered the defect
 
@@ -321,7 +343,12 @@ grep -rn -i 'content-identical\|tree-set\|origin/main origin/develop' --include=
   | grep -v 'release-plan-v3.1'
 ```
 
-Run at tree `eac2638` it returns 13 hits, all qualified. **The third alternative is load-bearing and was
+**The audit criterion is the point, not the tally** — run it at *your* HEAD and check every hit; a bare
+count is the thing this paragraph exists to stop you trusting. For provenance: at tree `8790d47` (commit
+`c68443d`, which closed W-1) it returned 13 hits, all qualified. Do not cite the parent tree `eac2638`
+for that claim — this entry did, and it was false in the most self-refuting way available: `eac2638` is
+the **pre-fix** tree, where 2 of its 13 hits *are* the W-1 residual, so a reader following the
+instruction would correctly conclude the class was still open. **The third alternative is load-bearing and was
 missing on the first attempt at this very command:** the W-1 residual asserted content-identity by
 *invoking the diff* (`git diff --stat origin/main origin/develop`) without ever using the words
 "content-identical" or "tree-set," so a census keyed on the vocabulary could not see the one hit that
@@ -333,20 +360,22 @@ shapes. Zero survive in that file. Step 17 of the runbook keeps an unqualified-*
 content-identity test on purpose: Phase 2 routes the pruned shape out at steps 14–20, so 17 sits
 inside the whole-develop branch and content-identity is the correct test there.
 
-**Third correction, same defect all three times, and the previous entry named it.** "Both surfaces"
-understated the reach; the second named one residual where there were three and attached it to the
-wrong file; the third declared the class closed in `release-process.md` while a fourth assertion sat
-in the runbook *the census was about* — the one file a census of this amendment could not afford to
-skip. Each census re-counted **inside the file-set the previous correction had touched**, which is the
-scope-narrowed counting failure this same bundle files as a learning, now demonstrated against a
-cascade census three times in one session. The fix is structural, not another recount: the
-document now carries the derivation command instead of a number.
+**Four corrections, same defect every time.** (1) "Both surfaces" understated the reach. (2) The second
+named *one* residual where there were three, and attached it to the wrong file. (3) The third declared
+the class closed in `release-process.md` while a fourth assertion sat in the runbook *the census was
+about* — the one file a census of this amendment could not afford to skip. (4) The fix for (3) published
+a derivation command citing the **pre-fix** tree, where two of the hits are the very residual it claimed
+was gone. **A cascade census is a claim about evidence and has to be re-derived, not written from the
+correction you just made** — which is exactly the failure the amendment itself documents, one level up.
 
-Two corrections deep, and the same defect both times: the first wording said "both surfaces,"
-understating the reach; the second named *one* residual where there are three and attached it to the
-wrong file. **A cascade census is a claim about evidence and has to be re-counted, not written from
-the correction you just made** — which is exactly the failure the amendment itself documents, one
-level up.
+The through-line: (1)–(3) each re-counted **inside the file-set the previous correction had touched** —
+the scope-narrowed counting failure this same bundle files as a learning, demonstrated three times
+against a cascade census in one session. (4) is the next layer: once the count was replaced by a
+command, the *command's inputs* became the thing written from memory instead of measured. Replacing a
+figure with a derivation does not discharge the duty to run it at the tree you cite. The fix is
+structural rather than another recount — the document carries the command, tells the reader to run it at
+their own HEAD, and states the audit criterion (**every hit shape-scoped or descriptive**) so a stale
+tally cannot masquerade as a verdict.
 
 Enforcement: `check-releasability` for scopes (Phase 0, shipped), Chunk 02's partition check for
 paths (Phase 2, pending).

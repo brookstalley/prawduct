@@ -17,16 +17,37 @@ Confirm you're actually in that situation before step 1:
 git fetch origin
 ```
 
-**Is there anything to cut?** Ask this at the level of *scopes*, not the tree:
+**Is there anything to cut?** Ask this at the level of *scopes*, not the tree.
+Substitute the version you intend to cut if you already know it; the literal
+placeholder works here, because at this point you are reading the scope list and
+not grading a plan:
 
 ```
 ./plugin/bin/prawduct-hook check-releasability --release vX.Y.Z
 ```
 
-**Expected:** it names one or more **release-pending scopes** (change-log entries
-tagged `scope=` with no `release=`). That set is the unreleased content, and
-Phase 0 grades it.
-**If it names none:** the last release is out and there's nothing to cut. Stop.
+**Read the scope list, not the exit code.** Two outcomes matter:
+
+- **It names one or more release-pending scopes** — change-log entries tagged
+  `scope=` with no `release=`. That set is the unreleased content. **Proceed.**
+  At this point there is normally no release plan yet, so expect
+  `no-release-plan: … N scope(s) are release-pending …` on **stderr with exit 1**.
+  *That is the correct result here* — you have not written the plan yet, and
+  writing it is Phase 0's job. Do not read this exit 1 as "nothing to cut."
+- **`releasable: no release-pending scopes — nothing to classify`** on stdout,
+  **exit 0** — the last release is out. There is nothing to cut. **Stop.**
+
+If you are **re-entering** this runbook after Phase 0 already sent you to write
+the plan, you'll get `releasable: vX.Y.Z — N release-pending scope(s) …` or
+`not-releasable: …` instead. Both still name the scope list, so both mean
+"there is something to cut" — read them the same way and carry on to Phase 0,
+which is where those two verdicts actually differ.
+
+Note the inversion: the *stop* case is the one that exits 0, and the *proceed*
+case is the one that exits non-zero. Phase 0 step 0 runs this same command for a
+different purpose — to grade a plan that exists by then — and there `no-release-plan:`
+genuinely does mean stop and go write it. Same command, two jobs; only here is a
+missing plan expected.
 
 > **Do not use `git diff origin/main origin/develop` as this test.** It answers
 > "do the trees differ," which stopped being the same question once a promotion
