@@ -271,9 +271,16 @@ F9 completeness gate — `samsung-frame-art-loader` recorded its cutover with 7 
 imported, and the runbook's step-5 eyeball check ("Total issue count = every source item") could not
 catch it. The gate compares the **source set against alias coverage**, never issue counts: issues
 filed natively after a cutover carry a `prawduct` block but no `id:PFX` alias, so a raw count looked
-plausible (17 issues) while 7 items were stranded. Exit 4, so step 6 gates on it mechanically. That
+plausible (17 issues) while 7 items were stranded. That
 commit carried no change-log entry — the same omission `fad1e61` had corrected for the import
 heartbeat one commit earlier.
+
+> **Corrected 2026-07-29.** This paragraph said *"Exit 4, so step 6 gates on it mechanically."* The
+> **command** gates mechanically; **step 6 does not** — it is runbook prose an operator can skip,
+> which is precisely the argument F9 itself makes against human-eyeball steps. Overclaiming a prose
+> step as a mechanical gate is the failure this entry was written to describe, reproduced in the
+> entry describing it. What actually binds: `verify-migration` exits 4, and nothing forces an
+> operator to run it.
 
 **And the gate had the same blind spot it was built to close.** It derived the source set as
 `[r.pfx for r in records if r.pfx]`, so an item whose id is not a valid PFX fell *outside the

@@ -161,6 +161,25 @@ slow run and an apparently-wedged one (compounds with **BKL-8K2N**, the unbuilt 
 
 ### F9 — Cutover is not gated on migration completeness, and a live repo is stranded because of it. **[new]**
 
+> **Disposition recorded 2026-07-29 — ACCEPTED as discharged in a different shape than prescribed.**
+> This finding asks for *"a mechanical count comparison at the point `backlog_service_repo` is
+> written."* There is no code site to attach that to. The scalar has exactly two write paths:
+> `init_product._record_backlog_service_repo`, a day-one scaffold where no source backlog exists to
+> compare and which already **refuses** `--backlog-repo` on an existing repo ("recording
+> `backlog_service_repo` on an existing repo is a cutover… not a re-scaffold"); and the operator
+> hand-editing `project-state.yaml` at scrub step 6. Binding the comparison to the write would mean
+> inventing a `backlog cutover` subcommand that verifies-then-writes.
+>
+> What shipped instead — `verify-migration` as a mechanical gate (exit 4) plus a runbook step that
+> says *"Gate first — this is the one step that must not be taken on trust"* — is a defensible
+> discharge, just not the one sketched here. **The honest residual: the command binds, the step does
+> not.** An operator can skip prose. That gap is real and is not closed by this disposition; the
+> change-log entry that claimed step 6 "gates mechanically" has been corrected rather than left
+> standing.
+>
+> Deliberately not built for v3.2.0. If the `cutover` command is wanted, the honest trigger is *"when
+> a second product cuts over"* — one product's migration does not justify the surface.
+
 Affects **S-B**, and this is the most serious finding in the audit because it is **observed, not
 theorised**: `samsung-frame-art-loader` is in the exact state MG3 says cannot exist.
 
