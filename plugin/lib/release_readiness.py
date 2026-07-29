@@ -181,8 +181,8 @@ def _open_item_ids(backlog_content: str) -> set[str]:
     }
 
 
-def _markdown_backlog_is_authoritative(project_dir: Path) -> bool:
-    """True when ``.prawduct/backlog.md`` is the live backlog.
+def _markdown_backlog_unavailable_reason(project_dir: Path) -> str | None:
+    """``None`` when ``.prawduct/backlog.md`` is the live backlog; else *why* not.
 
     ``data-model.md`` § Direction: once ``backlog_service_repo`` is set the
     markdown is **frozen history**, and every item archived at cutover still
@@ -192,6 +192,14 @@ def _markdown_backlog_is_authoritative(project_dir: Path) -> bool:
     print ``releasable:`` on exactly the stale decision it exists to catch.
     Every other ``lib/`` reader checks this scalar first; this is not an
     exception.
+
+    Returns the *reason* rather than a bool because two unrelated causes land
+    here — a real cutover, and a project-state that would not load — and they
+    need different remedies. Collapsing both into False made the caller state
+    the cutover as fact, so an operator with a corrupt ``project-state.yaml``
+    was told something about their backlog backend that was not true and sent
+    to check a scalar that is unset. A wrong remedy is worse than a bare
+    failure. Both directions still fail CLOSED.
     """
     from . import advisory_store  # noqa: PLC0415 -- lazy: keeps this module's import DAG light
     from . import backlog_probes  # noqa: PLC0415
@@ -199,9 +207,23 @@ def _markdown_backlog_is_authoritative(project_dir: Path) -> bool:
     try:
         state = advisory_store.load_project_state(project_dir)
     except Exception as exc:  # prawduct:allow prawduct/broad-except -- unreadable state must fail CLOSED, and the loader's failure modes are not enumerable here
-        print(f"  (project-state unreadable: {exc})", file=sys.stderr)
-        return False
-    return not backlog_probes.post_cutover(state)
+        return (
+            "unreadable-project-state: cannot determine which backlog is live "
+            f"(project-state did not load: {exc}), so blocker liveness is "
+            "unverifiable."
+        )
+    if backlog_probes.post_cutover(state):
+        return (
+            "cannot-verify-blockers: this repo has cut over to the GitHub Issues "
+            "backlog (`backlog_service_repo` set), so `.prawduct/backlog.md` is "
+            "frozen history and cannot say whether a blocker is still open."
+        )
+    return None
+
+
+def _normalize_version(release: str) -> str:
+    """``3.2.0`` and ``v3.2.0`` name the same release; tags carry the ``v``."""
+    return release if release.startswith("v") else f"v{release}"
 
 
 def _resolve_version(project_dir: Path, release: str | None) -> str | None:
@@ -215,7 +237,7 @@ def _resolve_version(project_dir: Path, release: str | None) -> str | None:
     refusal-to-guess posture as the argv scan in the CLI wrapper.
     """
     if release:
-        return release if release.startswith("v") else f"v{release}"
+        return _normalize_version(release)
     version_file = project_dir / "plugin" / "VERSION"
     try:
         raw = version_file.read_text(encoding="utf-8").strip()
@@ -265,20 +287,34 @@ def check_releasability(project_dir: Path, release: str | None = None) -> int:
     if not pending:
         # Name the denominator: "0 pending" from a change log the parser could
         # not read looks identical to "0 pending" because everything shipped,
-        # and only one of those is a pass.
+        # and only one of those is a pass. Split it further, because `tagged`
+        # alone cannot separate the three causes either: everything already
+        # carries `release=` (normal, or Phase 1 step 3 just ran and emptied the
+        # set out from under a re-run), versus entries that carry no `scope=`
+        # key at all and are therefore invisible to this gate.
         tagged = sum(1 for e in entries if e.tag_line_count > 0)
-        print(
-            f"releasable: no release-pending scopes — nothing to classify "
-            f"({len(entries)} change-log entries scanned, {tagged} tagged)."
-        )
+        detail = f"{len(entries)} change-log entries scanned, {tagged} tagged"
+        if release:
+            asked = _normalize_version(release)
+            stamped = len(scopes_tagged_for(entries, asked))
+            detail += f", {stamped} scope(s) already tagged release={asked}"
+        print(f"releasable: no release-pending scopes — nothing to classify ({detail}).")
         return 0
 
     version = _resolve_version(project_dir, release)
     if version is None:
-        print(
-            "no-version: pass --release vX.Y.Z, or make plugin/VERSION readable.",
-            file=sys.stderr,
+        # The `plugin/VERSION` fallback is prawduct's own layout. This module
+        # ships inside `plugin/` to every product, so telling a product user to
+        # "make plugin/VERSION readable" names a path that cannot exist in their
+        # repo — an instruction they can only fail. Offer it only where the file
+        # is actually the repo's version source. (Generality beyond this message
+        # was declined with reasons in R-13/R-30; this is the misleading half.)
+        hint = (
+            " or make plugin/VERSION readable"
+            if (project_dir / "plugin" / "VERSION").exists()
+            else ""
         )
+        print(f"no-version: pass --release vX.Y.Z{hint}.", file=sys.stderr)
         return 1
 
     plan_path = _find_release_plan(project_dir, version)
@@ -304,11 +340,10 @@ def check_releasability(project_dir: Path, release: str | None = None) -> int:
     withheld_scopes = [s for s, (d, _) in classification.items() if d == WITHHELD]
     open_ids: set[str] = set()
     if withheld_scopes:
-        if not _markdown_backlog_is_authoritative(project_dir):
+        unavailable = _markdown_backlog_unavailable_reason(project_dir)
+        if unavailable is not None:
             print(
-                "cannot-verify-blockers: this repo has cut over to the GitHub Issues "
-                "backlog (`backlog_service_repo` set), so `.prawduct/backlog.md` is "
-                "frozen history and cannot say whether a blocker is still open. "
+                f"{unavailable} "
                 f"{len(withheld_scopes)} scope(s) are withheld behind blockers that "
                 "must be confirmed open by hand before publishing: "
                 f"{', '.join(sorted(withheld_scopes))}.",

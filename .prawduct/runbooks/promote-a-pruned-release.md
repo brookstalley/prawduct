@@ -23,12 +23,15 @@ Confirm you are in that situation:
 **Expected:** `releasable: vX.Y.Z — N release-pending scope(s), M shipping, K withheld` where **K is
 1 or more**, followed by the withheld list.
 
+**Also valid:** `cannot-verify-blockers: …` after this repo has cut over to the GitHub Issues
+backlog. The gate cannot judge blocker liveness from a frozen `backlog.md`, so it refuses rather than
+guessing. You are still in the right document — confirm each withholding blocker is open **by hand**,
+record that confirmation in the release plan beside the classification table, and proceed to step 1.
+
 ## When NOT to use this
 
 - **If `K withheld` is 0:** → `cut-and-publish-a-plugin-release.md` Phase 2.
 - **If Phase 1 is not finished and pushed:** → `cut-and-publish-a-plugin-release.md`, from the top.
-- **If everything withheld is newer than everything shipping:** → `cut-and-publish-a-plugin-release.md`
-  Phase 2, run against the older commit instead of `origin/develop`. Nothing needs pruning.
 
 ## Before you start
 
@@ -119,19 +122,20 @@ amended 2026-07-29). Step 10 is that test.
    > defined` with 11 tests failing. The ship set used `sys.stderr`; `import sys` had been added by
    > the **withheld** work. Steps 7 and 8 exist for exactly that class, and neither is optional.
 
-6. Resolve each conflict:
+6. List the conflicted paths:
 
    ```
    git -C ../prawduct-candidate diff --name-only --diff-filter=U
    ```
 
-   **Expected:** the list from step 5. For each path: keep the ship set's additions, and take the
-   **previous release's** side for anything the withheld work introduced. For this repo's own state
-   files (`.prawduct/backlog.md`, `.prawduct/change-log.md`) resolve so the file describes the tree
-   it ships with, not `develop`'s.
+   **Expected:** the `U` paths from step 5, one per line.
 
-   Record every path and how you resolved it in the release plan. Step 10 checks against that list,
-   so a resolution you did not write down will read there as dropped work.
+   - 6a. Resolve each path in that list: keep the ship set's additions, and take the **previous
+     release's** side for anything the withheld work introduced. For this repo's own state files
+     (`.prawduct/backlog.md`, `.prawduct/change-log.md`), resolve so the file describes the tree it
+     ships with, not `develop`'s.
+   - 6b. Write every resolved path and its resolution into the release plan. Step 10a reads that
+     list — a resolution you did not record will read there as dropped work.
 
 7. Find imports the prune removed from code that still uses them:
 
@@ -144,11 +148,15 @@ amended 2026-07-29). Step 10 is that test.
    done
    ```
 
-   **Expected:** a short list of files, each with the import lines `develop` has and the candidate
-   lacks. Every one must be an import **only the withheld code uses**. Read the candidate's file and
-   confirm it.
-   **If the candidate's own code uses one:** add that import to the candidate by hand and note it in
-   the release plan — it is shipped code that exists in no reviewed commit, so it must be visible.
+   **Expected:** zero or more file paths, each followed by the import lines `develop` has and the
+   candidate lacks.
+
+   - 7a. For each file listed, open the candidate's copy and find whether its own code uses the
+     missing import.
+
+     **If only the withheld code used it:** the prune was correct — nothing to do.
+     **If the candidate's own code uses it:** add that import to the candidate by hand, and record it
+     in the release plan. It is shipped code that exists in no reviewed commit, so it must be visible.
 
 8. Run the suite on the candidate tree:
 
@@ -173,20 +181,25 @@ amended 2026-07-29). Step 10 is that test.
    **Expected:** `[detached HEAD <candidate-sha>] release: vX.Y.Z — <headline>`. Its parent is
    `<prev-tag>`, not `develop` — that single parent is the promotion.
 
-10. Verify the partition — every shipping path that still differs from `develop` is one you
-    deliberately resolved:
+10. List the shipping paths that still differ from `develop`:
 
     ```
     comm -12 <(git diff --name-only <cut-point> origin/develop | sort) \
              <(git diff --name-only <candidate-sha> origin/develop | sort)
     ```
 
-    **Expected:** a short list — this is a shortlist to read, not a pass. For each path,
-    `git diff <candidate-sha> origin/develop -- <path>` and confirm every hunk is either withheld
-    code or a resolution you recorded at step 6.
-    **If a hunk is neither:** it is shipping work the prune silently dropped. Back to step 6.
+    **Expected:** a list of paths, normally under 15. It is a shortlist to read, not a pass.
 
-    > *Why not `git diff --stat origin/develop HEAD` must be empty: that is the whole-develop test.
+    - 10a. Read each path on that list:
+
+      ```
+      git diff <candidate-sha> origin/develop -- <path>
+      ```
+
+      **Expected:** every hunk is withheld code, or a resolution you recorded at step 6b.
+      **If a hunk is neither:** it is shipping work the prune silently dropped → back to step 6a.
+
+    > *This replaces the whole-develop test (`git diff --stat origin/develop HEAD` prints nothing).
     > Here the trees differ by design, so an empty diff would mean the withheld work shipped.*
 
 11. Confirm the candidate carries the bump:
@@ -196,14 +209,15 @@ amended 2026-07-29). Step 10 is that test.
     ```
 
     **Expected:** the new number — not the previous release's.
-    **If not:** the bump never reached `develop`. Fix it at Phase 1 step 7, push, and start again
-    from step 4.
+    **If not:** the bump never reached `develop`. Discard the candidate with
+    `git worktree remove --force ../prawduct-candidate`, fix it at Phase 1 step 7, push, and start
+    again from step 4.
 
 > ⚠️ **IRREVERSIBLE — step 12 publishes to every installed consumer.**
 > **Proceed only if:** step 8 passed, step 10's list held no unexplained hunk, and step 11 printed
 > the new number.
-> **Abort if:** any of those disagrees, or you are unsure → stop. Nothing on `origin` has moved yet.
-> Aborting costs `git worktree remove --force ../prawduct-candidate` and the time to redo steps 4–11.
+> **Abort if:** any of those disagrees, or you are unsure → stop. Nothing on `origin` has moved yet,
+> so aborting costs only the time to redo steps 4–11.
 > **Recovery after this point:** none. Repos that have re-resolved `main` keep what they got.
 > Recovery is forward-only: fix on `develop`, bump the version again, and run the release again.
 

@@ -84,15 +84,47 @@ installed consumer, unrecallably. This phase is the second question (REL-8P6M).*
    **Expected:** `releasable: vX.Y.Z — N release-pending scope(s), M shipping, K withheld`,
    followed by the two lists. **Note `K` — it selects the promotion shape at Phase 2.**
 
-   **If not:** it prints `not-releasable:` (or `no-release-plan:`) and one `ERROR:` line per
-   problem, then stops. Each names its own fix:
+   **Also exit 0, but different:** `releasable: no release-pending scopes — nothing to classify`.
+   This line names no version and yields **no `K`**; read it as `K = 0`. Reaching it *during* a
+   release contradicts this runbook's own entry condition, so treat it as a symptom, not a pass:
+   either Phase 1 already ran (its step 3 stamps `release=`, which empties the pending set), or the
+   entries you expect carry no `scope=` key and are invisible to the gate. Check which before
+   continuing.
 
-   - *unclassified scope(s)* → add a row to the `## Release classification` table in
+   **If not:** it prints one `ERROR:` line per problem, then stops. Find the line you are looking
+   at:
+
+   `unclassified scope(s)`
+   - **Add a row** to the `## Release classification` table in
      `.prawduct/artifacts/release-plan-vX.Y.Z.md`, naming `ships` or `withheld` + an **open**
      blocker id. Create the release plan if it does not exist yet.
-   - *withholding blocker no longer open* → the reason to withhold is gone. Re-take the decision:
-     either it ships now, or a different open blocker withholds it.
-   - *classified scope with nothing release-pending behind it* → a stale table row; delete it.
+
+   `withholding blocker(s) no longer open`
+   - The reason to withhold is gone. **Re-take the decision:** either it ships now, or a different
+     open blocker withholds it.
+
+   `nothing release-pending behind them`
+   - A stale table row. **Delete it.**
+
+   ``scope(s) classified `withheld` whose entries already carry this release's tag``
+   - The table and the change log disagree about what is shipping. **Do NOT delete the row** — that
+     makes the gate pass and ships the very scope the table withheld. Decide which is true and fix
+     the other: drop the `release=` tag, or reclassify the row as `ships`.
+
+   `cannot-verify-blockers:`
+   - This repo has cut over to the GitHub Issues backlog, so `backlog.md` is frozen history and
+     blocker liveness cannot be read from it. **Confirm each withholding blocker is open by hand**
+     and record that confirmation in the release plan beside the classification table. Then proceed
+     — the gate stays red by design and the recorded hand check is what replaces it.
+
+   `no-release-plan:` · `no-change-log:` · `no-version:` · `unreadable-release-plan:` · `no-backlog:`
+   - An input the gate needs is missing or unreadable. **The message names the path** — create or
+     fix it, then re-run. (`no-version:` means neither `--release` nor `plugin/VERSION` resolved;
+     `--release` is authoritative and always worth passing explicitly, since Phase 1 step 7 bumps
+     `VERSION` *after* this phase runs.)
+
+   - Anything else → stop. The `ERROR:` line names its own fix; if it does not, that is a defect in
+     the gate, not in you.
 
    The table is a partition, not a checklist: every release-pending scope appears **exactly once**,
    and nothing appears that is not release-pending. That exactness is the point — a subset would
@@ -154,13 +186,26 @@ installed consumer, unrecallably. This phase is the second question (REL-8P6M).*
    > release-pending scopes it enumerated are the scopes to walk here. Use that
    > output; do not re-derive it from memory.
    >
-   > On v3.2.0, re-grepping `scope=v3.2.0-golive` alone misses **9 statusless
-   > entries across four other scopes** — `coverage-perf` (4), `chunk-refs-gate`
-   > (2), `critic-disposition` (2), `review-loop-termination` (1) — one of which
-   > is the `protected_path_violation` widening, a change to the governance
-   > bounds of every installed repo. Step 10's consumer-facing headline is
-   > derived from **all** shipping scopes, so a scope-narrowed sweep quietly
-   > shortens the release notes as well as the tags.
+   > Count them rather than recalling them — the number moves every time work
+   > merges:
+   >
+   > ```
+   > grep -o '<!-- prawduct:[^>]*-->' .prawduct/change-log.md | grep -v 'release=' \
+   >   | grep -oE 'scope=[A-Za-z0-9._-]+' | sort | uniq -c | sort -rn
+   > ```
+   >
+   > Measured on `feature/rel-8p6m-releasability-gate` @ `1a353d1`, above the
+   > `release=v3.1.2` boundary: **23 release-pending entries across six scopes**,
+   > of which `scope=v3.2.0-golive` is only **7** — so that one grep misses **16
+   > across five other scopes** (`release-readiness` 7, `coverage-perf` 4,
+   > `chunk-refs-gate` 2, `critic-disposition` 2, `review-loop-termination` 1).
+   > One of the missed entries is the `protected_path_violation` widening, a
+   > change to the governance bounds of every installed repo. Step 10's
+   > consumer-facing headline is derived from **all** shipping scopes, so a
+   > scope-narrowed sweep quietly shortens the release notes as well as the tags.
+   >
+   > *(Any figure written here is a measurement of one tree, not a property of
+   > the repo. Re-run the command; do not trust this paragraph's arithmetic.)*
 
    > 🚧 **If this selection rule looks wrong to you, it is — and it is
    > deliberately not being fixed here.** The positional-and-scoped sweep is
@@ -275,10 +320,13 @@ this is a safe place to stop and come back.
 **Two promotion shapes exist, and step 0 already told you which one you are in.** Read `K withheld`
 from its output and take exactly one branch:
 
-**IF `K withheld` is 0** — everything on `develop` ships, so `main`'s tree becomes `develop`'s:
+**IF `K withheld` is 0**, or step 0 printed `no release-pending scopes — nothing to classify` (which
+names no `K`, and means the same thing here) — everything on `develop` ships, so `main`'s tree
+becomes `develop`'s:
 - Continue with step 14 below.
 
-**IF `K withheld` is 1 or more** — `main`'s tree is a deliberately chosen subset of `develop`'s:
+**IF `K withheld` is 1 or more**, or step 0 refused with `cannot-verify-blockers:` and you recorded
+the by-hand blocker check — `main`'s tree is a deliberately chosen subset of `develop`'s:
 - **Stop here.** Go to `.prawduct/runbooks/promote-a-pruned-release.md`, which replaces steps 14–20
   and carries its own `Done when`.
 - Do **not** run step 14. `git read-tree --reset -u origin/develop` at step 15 would publish the

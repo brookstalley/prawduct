@@ -3,6 +3,77 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-07-29: Dispositions — cumulative `rev-20260729T185143Z-b35e7646`, and the census that proved its own point
+
+<!-- prawduct: type=fix | scope=release-readiness | chunks=02,03 -->
+
+1 blocking, 12 warnings, 10 notes. **All 13 blocking/warning FIXED.** The review's cross-cutting
+finding is the one worth keeping, and it is unflattering: three of its findings are the *same*
+failure — **an assertion never checked against the tree** — on a branch that had already shipped
+`fc9b61f` ("two dispositions claimed FIXED were never in the tree") and filed the matching learning
+**in the same commit** as two of the three offences. A filed lesson is a repeated lesson
+(Principle 18).
+
+- **BLOCKING R-1 / R-8 — the archived REL-8P6M disposition claimed a runbook edit that does not
+  exist.** It asserted `"When NOT to use this" carries the matching prohibition`; that section is
+  byte-unchanged. The substance was fine — Phase 0's fail-closed gate supersedes a prose bullet a
+  reader can skim past — so the fix is to *record the descope*, not to write the bullet. Corrected in
+  the archived item, naming the supersession and the fact that the first version claimed an edit.
+- **R-2 — the W-1 census was itself scope-narrowed, which is what W-1 is about.** Filed as 8; I
+  "corrected" it to 9 by recounting **only the four scopes the finding already named** — verifying
+  the figure while inheriting the frame. This branch's own 7 `scope=release-readiness` entries make
+  the real number **16 across five other scopes** (23 release-pending across six, above the
+  `release=v3.1.2` boundary, measured at `1a353d1`). Fixed in all five places, and the runbook now
+  carries the **derivation command** plus an explicit note that any figure written there is a
+  measurement of one tree. A number in prose decays; a command does not.
+- **R-19 — the `plugin/VERSION` fallback NOTE was asserted only negatively.** It is the sole guard
+  against silently grading the wrong release, and the only assertion was `"no --release given" not in
+  combined` — true whether the NOTE fires or is deleted outright. Now asserted positively and
+  **proved by mutation**: deleting the `print(...)` fails exactly the new test and nothing else. Same
+  defect the branch's own new learning describes.
+- **R-10 — the new runbook broke the authoring guide's own `Expected:` contract** ("describes what
+  the reader will see. Nothing else … never a command, never an instruction"). Step 10's `Expected:`
+  had swallowed the entire path-partition verification — the amended norm's whole enforcement — into
+  the one line readers are told they may skim. Split into 6a/7a/10a; the IRREVERSIBLE block loses the
+  command it named (a warning carries hazard information, not actions).
+- **R-11 / R-16 / R-17 — Phase 0's documented outputs did not cover the gate.** The `If not:` list
+  covered three of nine failure classes with no catch-all, omitted the contradiction branch whose
+  remedy is the one a reader must not guess ("do NOT delete the row"), and never mentioned the second
+  exit-0 shape — which names no version and yields **no `K`**, the value Phase 2's routing tells the
+  operator to read. Now a keyed lookup on the literal strings the code emits, with a catch-all, plus
+  a `cannot-verify-blockers` branch so a post-cutover pruned release has a way forward instead of a
+  dead end.
+- **R-18 — `cannot-verify-blockers` asserted a cause it had not established.** The helper collapsed
+  "really cut over" and "project-state would not load" into one `False`, and the caller stated the
+  first as fact — sending an operator to check a scalar that is unset. Now returns the *reason*;
+  the unreadable case gets its own refusal. Verified by mutation.
+- **R-3 / R-9 — the cascade reached the norm but not the procedures.** `documentation/release-process.md`
+  gains a step 0 (the gate) and a step 3 warning pointing at the runbook's selection rules; two more
+  content-identity universals died, one of them in `plugin/skills/pr/SKILL.md` — the **shipped**
+  surface, where it told every product that a release is published by setting `main`'s tree equal to
+  `develop`'s.
+- **R-4 / R-12 — fixed narrowly, on purpose.** The empty-pending pass now names how many scopes
+  already carry `release=<version>`, so a Phase 0 re-run after Phase 1 is distinguishable from a
+  change log the parser could not read. `no-version:` no longer tells a product user to "make
+  plugin/VERSION readable" — a path that cannot exist in their repo. The broader generality question
+  stays declined (R-13/R-30); only the misleading instruction was in scope.
+
+**Also fixed, found by self-review while the Critic ran:** a `When NOT to use this` entry routed the
+"withheld is newest" case to the whole-develop path, which would have dropped the release-prep commit
+and shipped nothing (the version bump is the cache key); step 3 already catches that shape correctly,
+so the entry was removed rather than repaired. Step 11's recovery branch sent the reader back to
+step 4 with the worktree still present. Step 8's `cd` would have repointed steps 9–14.
+
+**ACCEPTED (10 notes), reasons.** R-5/R-6/R-14/R-15/R-22 are craft observations on Chunk 01 code that
+is reviewed, tested and working; acting on them now buys a review round for no behaviour change
+(`learnings.md:270`). R-13 (the procedure lives in two documents) and R-21 (a prawduct-only command in
+every product's CLI) are real and larger than this bundle — both are the change-log-ledger and
+generality conversations already open. R-20 (three unassessed open items) and R-23 (an unfilled
+contract-surface registry) are repo-hygiene items for the janitor, not this chunk. **R-7 is not an
+acceptance — it is an owner question**: the reviewers cleared the norm amendment as legitimate rather
+than laundering, but its provenance is attested only inside the diff, and they recommend one owner
+confirmation at PR time. Raised, not assumed.
+
 ## 2026-07-29: The release sweep is scope-narrowed as well as positional, and the fix is held
 
 <!-- prawduct: type=fix | scope=release-readiness | chunks=03 -->

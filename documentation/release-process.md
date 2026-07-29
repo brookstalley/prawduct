@@ -66,6 +66,12 @@ not ship.** Always bump `version` in `plugin/.claude-plugin/plugin.json` (and `p
 
 When `develop` is ready to release as `vX.Y.Z`:
 
+0. **Confirm it is fit to ship**, not merely that something is unreleased:
+   `./plugin/bin/prawduct-hook check-releasability --release vX.Y.Z`. Every release-pending scope
+   must be classified `ships`, or `withheld` behind a **named open** blocker, in the
+   `## Release classification` table of `.prawduct/artifacts/release-plan-vX.Y.Z.md`. The gate fails
+   closed; its withheld count also selects the promotion shape at step 1. Full branch-by-branch
+   handling is Phase 0 of `.prawduct/runbooks/cut-and-publish-a-plugin-release.md`.
 1. **Merge `develop` → `main`.**
 2. **Bump the version** in `plugin/.claude-plugin/plugin.json` `version` **and** `plugin/VERSION` **and** `pyproject.toml`
    (they mirror each other). This is the release trigger — without it, nothing ships.
@@ -75,7 +81,18 @@ When `develop` is ready to release as `vX.Y.Z`:
    statusless tagged entry IS the release-pending state (no post-merge stamp exists —
    requiring one forced protected-branch repos into bookkeeping-only PRs). A statusless
    entry silently skipped here never flips its checkboxes and never reaches release notes
-   (v2.0.14 shipped 8 of 10 entries that way — REL-2N8K). Enumerate ALL tagged entries
+   (v2.0.14 shipped 8 of 10 entries that way — REL-2N8K).
+
+   > ⚠️ **"Above the boundary" is a search hint, not the set — and neither is any one `scope=`.**
+   > This selection rule is wrong in three ways at once: positional (an entry can merge *below* the
+   > boundary and still be unreleased), scope-narrowed (a release bundle spans several scopes), and
+   > under a **pruned** release it tags withheld work as shipped. It is **deliberately unfixed**
+   > pending the change-log-ledger decision; until then the shipping subset is tagged by hand, once,
+   > across every scope. Do not re-derive the set from this line — the sound per-candidate test, the
+   > scope enumeration command, and the hold all live on Phase 1 step 2 of
+   > `.prawduct/runbooks/cut-and-publish-a-plugin-release.md`. Work from there (REL-7D4X).
+
+   Enumerate ALL tagged entries
    above the prior `release=vX` boundary; also add the `release=vX.Y.Z` tag (the `scope=`
    tag normally already exists from the build):
    ```
@@ -196,8 +213,9 @@ run it **before** clearing the pointer (clearing first makes the fallback resolv
 
 ## `/prawduct:pr` is not the release vehicle
 
-The promotion above is a **manual** tree-set — do **not** drive a `develop`→`main` release with
-`/prawduct:pr`. That skill is shaped for **feature→`develop`** PRs; its Create flow now detects a
+The promotion above is **manual** — a tree-set for the whole-develop shape, a `--3way` apply
+published by ref for the pruned one — and neither is driven with `/prawduct:pr`. Do **not** drive a
+`develop`→`main` release with it. That skill is shaped for **feature→`develop`** PRs; its Create flow now detects a
 release/integration context (current branch is `develop` or `main`) and redirects here instead of
 running its feature-PR gates (REL-8K3M).
 

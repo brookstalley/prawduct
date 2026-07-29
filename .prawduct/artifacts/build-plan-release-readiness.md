@@ -186,11 +186,12 @@ misled by it twice more.
 1. Extend Phase 1 step **2**'s existing REL-7D4X warning with the **scope** dimension (W-1, found by
    the PR reviewer on `feature/v3.2.0-c02-adapter-safety`): the re-derivation instruction
    `re-grep scope=v3.2.0-golive` sees one scope, while a release bundle routinely spans several. On
-   v3.2.0 exactly this would have missed **9 statusless entries across four scopes**
-   (`coverage-perf` 4, `chunk-refs-gate` 2, `critic-disposition` 2, `review-loop-termination` 1).
-   *(Two corrections made while building: this plan and `change-log-ledger-design.md` both said
-   **8** — counted at `c49be89` and at HEAD it is 9; and the warning is attached to step 2, not
-   step 3, since step 2 is where the derivation rule lives.)*
+   v3.2.0 exactly this misses **16 statusless entries across five other scopes** (measured on this
+   branch @ `1a353d1`: 23 release-pending across six scopes, of which `v3.2.0-golive` is 7).
+   *(Corrections made while building: the warning is attached to step **2**, not step 3, since that
+   is where the derivation rule lives; and the figure was wrong twice — filed as 8, "corrected" to 9
+   by recounting only the four scopes the finding already named, which is the same scope-narrowing
+   the finding is about. The runbook now carries the derivation command instead of a fixed number.)*
 2. State that the consumer-facing note list must be derived from **all** shipping scopes — the
    `protected_path_violation` widening is fleet-visible and would have been omitted.
 3. A pointer to `change-log-ledger-design.md` recording *why* (e) is held, so the next reader does

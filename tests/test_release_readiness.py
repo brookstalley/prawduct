@@ -276,6 +276,41 @@ class TestPostCutoverFailsClosed:
         assert "cannot-verify-blockers" in err
         assert "alpha" in err
 
+    def test_unreadable_state_is_NOT_diagnosed_as_a_cutover(
+        self, tmp_path, capsys, monkeypatch
+    ):
+        # Both causes fail closed, but they need different remedies. Told
+        # "this repo has cut over (`backlog_service_repo` set)", an operator
+        # whose project-state merely failed to load goes looking for a scalar
+        # that is unset and finds nothing — a wrong remedy is worse than a bare
+        # failure. The refusal must name the cause it actually established.
+        #
+        # Patched rather than fixtured: `load_project_state` is a column-0
+        # scanner with no YAML parser, and it swallows OSError/UnicodeDecodeError
+        # itself, so no file content reaches this branch. The broad `except` is
+        # there because that loader's failure modes are not enumerable from here
+        # — which is exactly the contract under test.
+        import lib.advisory_store as _store
+
+        def _boom(_dir):
+            raise RuntimeError("state loader exploded")
+
+        monkeypatch.setattr(_store, "load_project_state", _boom)
+        project = _make_project(
+            tmp_path,
+            entries=_entry("A", "alpha"),
+            classification="| alpha | withheld | BKL-6J2X |\n",
+            backlog=_open_item("BKL-6J2X"),
+        )
+        assert release_readiness.check_releasability(project, "v3.2.0") == 1
+        err = capsys.readouterr().err
+        assert "unreadable-project-state" in err
+        assert "state loader exploded" in err, "the cause must reach the operator"
+        assert "backlog_service_repo" not in err, (
+            "the cutover cause was never established, so it must not be asserted"
+        )
+        assert "alpha" in err, "the withheld scopes still need naming"
+
     def test_no_withheld_scope_still_passes_post_cutover(self, tmp_path):
         # Proportionality: a release that withholds nothing needs no blocker
         # liveness check, so cutover must not block it.
@@ -294,6 +329,28 @@ class TestIdempotentAcrossItsOwnRunbook:
     pending set — so a naive orphan check would report every successfully
     classified scope as a stale table row on the second run, and the gate would
     block the release it just approved."""
+
+    def test_the_fully_stamped_rerun_says_WHY_it_is_empty(self, tmp_path, capsys):
+        # The shape the idempotency work above does not reach: Phase 1 stamped
+        # EVERY scope, so `pending` is empty and the gate returns 0 before it
+        # opens a release plan at all — a green line having validated nothing,
+        # and one that names no `K withheld` for Phase 2's routing to read.
+        # It cannot be made to fail (nothing is pending, which is honest), so
+        # the requirement is that its denominator distinguishes the causes:
+        # "everything already shipped in past releases" from "Phase 1 just ran".
+        project = _make_project(
+            tmp_path,
+            entries=_entry("A", "alpha", release="v3.2.0")
+            + _entry("B", "beta", release="v3.2.0"),
+            classification="| alpha | ships | |\n| beta | ships | |\n",
+        )
+        assert release_readiness.check_releasability(project, "v3.2.0") == 0
+        out = capsys.readouterr().out
+        assert "no release-pending scopes" in out
+        assert "2 scope(s) already tagged release=v3.2.0" in out, (
+            "without this the operator cannot tell a re-run after Phase 1 from "
+            "a change log the parser could not read"
+        )
 
     def test_scope_tagged_for_this_release_is_not_an_orphan(self, tmp_path, capsys):
         project = _make_project(
@@ -388,6 +445,22 @@ class TestCliWiring:
         proc = self._run(self._project(tmp_path))
         assert proc.returncode == 0, proc.stderr
         assert "releasable:" in proc.stdout
+
+    def test_the_VERSION_fallback_announces_itself(self, tmp_path):
+        # The fallback is wrong by construction during Phase 0 — VERSION is
+        # bumped later, at Phase 1 step 7 — so the NOTE is the only thing
+        # standing between an operator and a silently misgraded release.
+        # Asserted POSITIVELY on purpose: the sibling test above can only say
+        # the NOTE is absent when --release IS passed, which stays true if the
+        # print is deleted outright. Verified by mutation — dropping the
+        # print(...) in _resolve_version fails this test and nothing else.
+        proc = self._run(self._project(tmp_path))  # no --release
+        assert "no --release given" in proc.stderr
+        assert "v3.1.0" in proc.stderr, "the NOTE must name the version it fell back to"
+        assert "PREVIOUS release" in proc.stderr, (
+            "naming the fallback without saying it is the wrong release is the "
+            "silent-misgrade this NOTE exists to prevent"
+        )
 
     @pytest.mark.parametrize("form", ["--release=v3.2.0", "--release v3.2.0"])
     def test_both_release_forms_are_honoured(self, tmp_path, form):
