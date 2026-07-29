@@ -578,8 +578,8 @@ def _tree_key_fn(project_dir: Path):
                 cache[tree] = None
             else:
                 judgeable = sorted(
-                    f"{blob} {path}"
-                    for blob, path in entries
+                    f"{mode} {object_id} {path}"
+                    for mode, object_id, path in entries
                     if coverage_algebra.is_judgeable_path(path)
                 )
                 cache[tree] = hashlib.sha256(

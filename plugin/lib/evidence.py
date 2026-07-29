@@ -425,10 +425,18 @@ def tree_diff(project_dir: Path, tree_a: str, tree_b: str) -> "list[str] | None"
     return [line for line in out.splitlines() if line.strip()]
 
 
-def tree_entries(project_dir: Path, tree: str) -> "list[tuple[str, str]] | None":
-    """``(blob_sha, path)`` for every file in ``tree``, or ``None`` when the
-    tree cannot be read (missing object, git failure) — never guessed, the
-    same direction as :func:`tree_diff`.
+def tree_entries(project_dir: Path, tree: str) -> "list[tuple[str, str, str]] | None":
+    """``(mode, object_id, path)`` for every entry in ``tree``, or ``None``
+    when the tree cannot be read (missing object, git failure) — never
+    guessed, the same direction as :func:`tree_diff`.
+
+    **Mode is part of the identity, not decoration.** ``git diff`` reports a
+    path whose mode changed even when its blob is byte-identical (``chmod
+    +x``, a file becoming a symlink at 120000, a gitlink at 160000). A caller
+    comparing trees by ``(object_id, path)`` alone would call those trees
+    equal where git calls them different — and for a caller deciding whether
+    a change needs review, that difference is a fail-OPEN. Carrying the mode
+    keeps this function's notion of "same content" no looser than git's.
 
     Lets a caller decide whether two trees agree on some *subset* of their
     content without asking git to diff the pair: equal content over a subset
@@ -444,7 +452,7 @@ def tree_entries(project_dir: Path, tree: str) -> "list[tuple[str, str]] | None"
     rc, out, _err = run_git(project_dir, "ls-tree", "-r", "-z", "--full-tree", tree)
     if rc != 0:
         return None
-    entries: list[tuple[str, str]] = []
+    entries: list[tuple[str, str, str]] = []
     for record in out.split("\0"):
         if not record:
             continue
@@ -454,7 +462,8 @@ def tree_entries(project_dir: Path, tree: str) -> "list[tuple[str, str]] | None"
         fields = meta.split()
         if len(fields) < 3:
             continue
-        entries.append((fields[2], path))
+        mode, _type, object_id = fields[0], fields[1], fields[2]
+        entries.append((mode, object_id, path))
     return entries
 
 

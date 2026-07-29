@@ -493,3 +493,83 @@ class TestEvidenceCli:
         proc = _run_hook(repo, "evidence", "wipe")
         assert proc.returncode == 1
         assert "Usage" in proc.stderr
+
+
+# ---------------------------------------------------------------------------
+# tree_entries — the per-tree half of the free-edge question
+# ---------------------------------------------------------------------------
+
+
+class TestTreeEntries:
+    """Two trees are free-connected iff they agree on every JUDGEABLE entry,
+    which lets a caller key each tree once instead of diffing every pair.
+    That substitution is only sound if this function's notion of "the same
+    entry" is no looser than ``git diff``'s — a looser one grants free edges
+    git itself refuses, which in a review gate is a fail-OPEN.
+    """
+
+    def test_entries_carry_mode_object_id_and_path(self, tmp_path):
+        repo = _make_repo(tmp_path)
+        tree = _git(repo, "rev-parse", "HEAD^{tree}")
+        entries = evidence.tree_entries(repo, tree)
+        assert entries is not None
+        assert [p for _m, _o, p in entries] == ["code.py"]
+        mode, object_id, _path = entries[0]
+        assert mode == "100644"
+        assert object_id and all(c in "0123456789abcdef" for c in object_id)
+
+    def test_mode_only_change_is_not_the_same_tree(self, tmp_path):
+        """``chmod +x`` changes no bytes, but git reports the path as
+        changed. Keying by ``(object_id, path)`` alone would call these trees
+        equal and hand out a free edge that git's own diff refuses."""
+        repo = _make_repo(tmp_path)
+        before = _git(repo, "rev-parse", "HEAD^{tree}")
+        _git(repo, "update-index", "--chmod=+x", "code.py")
+        _git(repo, "commit", "-q", "-m", "chmod")
+        after = _git(repo, "rev-parse", "HEAD^{tree}")
+
+        assert before != after
+        assert evidence.tree_diff(repo, before, after) == ["code.py"]
+        assert evidence.tree_entries(repo, before) != evidence.tree_entries(repo, after)
+
+    def test_unreadable_tree_is_none_never_empty(self, tmp_path):
+        # Empty would read as "a tree with no files", which is a real tree.
+        repo = _make_repo(tmp_path)
+        assert evidence.tree_entries(repo, "0" * 40) is None
+        assert evidence.tree_entries(repo, "") is None
+        assert evidence.tree_entries(repo, "not-a-sha") is None
+
+    def test_paths_needing_quoting_survive(self, tmp_path):
+        """``-z``, because git quotes paths with spaces or non-ASCII bytes in
+        its default output and a quoted path classifies differently from the
+        real one — the trap ``gitstate.parse_porcelain_line`` absorbs."""
+        repo = _make_repo(tmp_path)
+        (repo / "a file.md").write_text("hi\n")
+        _git(repo, "add", "-A")
+        _git(repo, "commit", "-q", "-m", "spaced")
+        tree = _git(repo, "rev-parse", "HEAD^{tree}")
+        entries = evidence.tree_entries(repo, tree)
+        assert "a file.md" in [p for _m, _o, p in entries]
+
+    def test_key_and_diff_agree_on_what_needs_review(self, tmp_path):
+        """The equivalence the optimisation rests on, against real git: a
+        doc-only interval keys equal (free edge), a code change does not."""
+        from lib import gates
+
+        repo = _make_repo(tmp_path)
+        base = _git(repo, "rev-parse", "HEAD^{tree}")
+
+        (repo / "notes.md").write_text("doc\n")  # non-judgeable
+        _git(repo, "add", "-A")
+        _git(repo, "commit", "-q", "-m", "doc")
+        doc_only = _git(repo, "rev-parse", "HEAD^{tree}")
+
+        (repo / "code.py").write_text("x = 2\n")  # judgeable
+        _git(repo, "add", "-A")
+        _git(repo, "commit", "-q", "-m", "code")
+        code_changed = _git(repo, "rev-parse", "HEAD^{tree}")
+
+        key = gates._tree_key_fn(repo)
+        assert key(base) == key(doc_only), "doc-only interval must be a free edge"
+        assert key(doc_only) != key(code_changed), "a code change is never free"
+        assert key("0" * 40) is None, "an unreadable tree joins no class"
