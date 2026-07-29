@@ -198,6 +198,148 @@ class TestCoverageVerdict:
         assert verdict["status"] == "covered"
 
 
+def _trees(contents: "dict[str, dict[str, str]]"):
+    """A ``(diff_fn, key_fn)`` pair over ONE ``tree -> {path: blob}`` table,
+    so both free-edge oracles answer from identical ground truth and any
+    disagreement is the implementation's, not the fixture's. A tree absent
+    from the table is unreadable: ``diff_fn`` -> None, ``key_fn`` -> None."""
+
+    def diff_fn(a, b):
+        ta, tb = contents.get(a), contents.get(b)
+        if ta is None or tb is None:
+            return None
+        return sorted(p for p in set(ta) | set(tb) if ta.get(p) != tb.get(p))
+
+    def key_fn(t):
+        tree = contents.get(t)
+        if tree is None:
+            return None
+        return repr(
+            sorted((p, b) for p, b in tree.items() if ca.is_judgeable_path(p))
+        )
+
+    return diff_fn, key_fn
+
+
+# Each case: (label, facts, base, target, tree contents, expected status)
+_ORACLE_CASES = [
+    (
+        "whole span doc-only",
+        [],
+        "t0",
+        "t1",
+        {"t0": {"lib/a.py": "x", "docs/r.md": "1"},
+         "t1": {"lib/a.py": "x", "docs/r.md": "2"}},
+        "covered",
+    ),
+    (
+        "review then doc-only tail",
+        [_review("r1", "t0", "t1", ["lib/a.py"])],
+        "t0",
+        "t2",
+        {"t0": {"lib/a.py": "x"},
+         "t1": {"lib/a.py": "y"},
+         "t2": {"lib/a.py": "y", "docs/r.md": "1"}},
+        "covered",
+    ),
+    (
+        "judgeable difference is never free",
+        [],
+        "t0",
+        "t1",
+        {"t0": {"lib/a.py": "x"}, "t1": {"lib/a.py": "y"}},
+        "uncovered",
+    ),
+    (
+        "rebase gap does not compose",
+        [_review("r1", "t1", "t2", ["lib/a.py"])],
+        "t0",
+        "t2",
+        {"t0": {"lib/o.py": "x"},
+         "t1": {"lib/o.py": "y"},
+         "t2": {"lib/o.py": "y", "lib/a.py": "z"}},
+        "uncovered",
+    ),
+    (
+        "protected skill prose is judgeable, so not free",
+        [],
+        "t0",
+        "t1",
+        {"t0": {"plugin/skills/critic/SKILL.md": "1"},
+         "t1": {"plugin/skills/critic/SKILL.md": "2"}},
+        "uncovered",
+    ),
+]
+
+
+class TestFreeEdgeOracleEquivalence:
+    """The key-derived oracle is the linear form of the pairwise probe: it
+    must decide every case identically, or it is a different gate wearing the
+    same name. Pairwise stays as the reference implementation."""
+
+    def test_oracles_agree_on_status_and_path(self):
+        for label, facts, base, target, contents, expected in _ORACLE_CASES:
+            diff_fn, key_fn = _trees(contents)
+            pairwise = ca.coverage_verdict(facts, base, target, diff_fn)
+            keyed = ca.coverage_verdict(facts, base, target, diff_fn, key_fn)
+            assert pairwise["status"] == expected, label
+            assert keyed["status"] == pairwise["status"], label
+            assert [s["kind"] for s in keyed.get("path", [])] == [
+                s["kind"] for s in pairwise.get("path", [])
+            ], label
+
+    def test_unreadable_tree_grants_no_free_edge(self):
+        # t1 is absent from the table: ls-tree would have failed. The keyed
+        # form must refuse the free edge exactly as a failed diff does —
+        # speed may never buy a free pass (authority fails closed).
+        diff_fn, key_fn = _trees({"t0": {"docs/r.md": "1"}})
+        verdict = ca.coverage_verdict([], "t0", "t1", diff_fn, key_fn)
+        assert verdict["status"] == "uncovered"
+
+    def test_keyed_free_step_still_carries_files(self):
+        # Attribution is deferred, not dropped: a free step on the RETURNED
+        # path reports its files even though the key never listed them.
+        contents = {
+            "t0": {"lib/a.py": "x"},
+            "t1": {"lib/a.py": "x", "docs/r.md": "1"},
+        }
+        diff_fn, key_fn = _trees(contents)
+        verdict = ca.coverage_verdict([], "t0", "t1", diff_fn, key_fn)
+        assert verdict["status"] == "covered"
+        free = [s for s in verdict["path"] if s["kind"] == "free"]
+        assert free and free[0]["files"] == ["docs/r.md"]
+
+    def test_key_classes_are_transitive(self):
+        # Three trees agreeing on judgeable content form one clique, so the
+        # span composes without any fact and without probing every pair.
+        contents = {
+            "t0": {"lib/a.py": "x", "docs/r.md": "1"},
+            "t1": {"lib/a.py": "x", "docs/r.md": "2"},
+            "t2": {"lib/a.py": "x", "docs/r.md": "3"},
+        }
+        diff_fn, key_fn = _trees(contents)
+        facts = [_review("r1", "t1", "t2", ["docs/r.md"])]  # puts t1/t2 in nodes
+        verdict = ca.coverage_verdict(facts, "t0", "t2", diff_fn, key_fn)
+        assert verdict["status"] == "covered"
+
+    def test_key_form_issues_one_call_per_tree(self):
+        # The defect this replaced was the CALL COUNT, so pin it: keys are
+        # per tree, never per pair.
+        contents = {f"t{i}": {"docs/r.md": str(i)} for i in range(12)}
+        facts = [
+            _review(f"r{i}", f"t{i}", f"t{i + 1}", ["docs/r.md"]) for i in range(11)
+        ]
+        diff_fn, key_fn = _trees(contents)
+        calls = []
+
+        def counting_key_fn(t):
+            calls.append(t)
+            return key_fn(t)
+
+        ca.coverage_verdict(facts, "t0", "t11", diff_fn, counting_key_fn)
+        assert len(calls) == len(set(calls)) <= len(contents)
+
+
 class TestBlockingAndResolutions:
     def test_unresolved_blocker_blocks_with_attribution(self):
         facts = [_review("r1", "t0", "t1", ["lib/a.py"], findings=[BLOCKER])]

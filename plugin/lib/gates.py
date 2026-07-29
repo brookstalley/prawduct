@@ -37,6 +37,7 @@ mirror), plus the stdlib.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import sys
 from pathlib import Path
@@ -552,6 +553,43 @@ def _cached_diff_fn(project_dir: Path):
     return diff_fn
 
 
+def _tree_key_fn(project_dir: Path):
+    """A ``coverage_algebra.KeyFn``: a tree's digest over its JUDGEABLE
+    content, so free-edge connectivity costs one ``git ls-tree`` per tree
+    instead of one ``git diff`` per pair.
+
+    Memoising the pairwise probe was not enough — the *pair count* is the
+    problem, not repeat pairs. Measured on this repo's store (672 facts, 293
+    trees) the pairwise form issued 5,597 ``git diff`` subprocesses and spent
+    316 s of a 318 s verdict inside them; the store is append-only and shared
+    by every worktree of the clone, so that degrades monotonically. Keying
+    each tree once is linear in trees and asks the same question.
+
+    ``None`` when the tree cannot be read, which denies a free edge rather
+    than granting one — the fast path fails in the same direction as the slow
+    one, because this gate is authority and authority fails closed.
+    """
+    cache: dict[str, "str | None"] = {}
+
+    def key_fn(tree: str) -> "str | None":
+        if tree not in cache:
+            entries = evidence.tree_entries(project_dir, tree)
+            if entries is None:
+                cache[tree] = None
+            else:
+                judgeable = sorted(
+                    f"{blob} {path}"
+                    for blob, path in entries
+                    if coverage_algebra.is_judgeable_path(path)
+                )
+                cache[tree] = hashlib.sha256(
+                    "\n".join(judgeable).encode("utf-8", "surrogateescape")
+                ).hexdigest()
+        return cache[tree]
+
+    return key_fn
+
+
 def session_review_verdict(project_dir: Path) -> dict:
     """The Stop-hook Critic gate's question, answered by composition (Q2):
     does composed review coverage span this session's base tree → the current
@@ -618,10 +656,11 @@ def session_review_verdict(project_dir: Path) -> dict:
             }
 
     diff_fn = _cached_diff_fn(project_dir)
+    key_fn = _tree_key_fn(project_dir)
 
-    verdict = coverage_algebra.coverage_verdict(facts, base, target, diff_fn)
+    verdict = coverage_algebra.coverage_verdict(facts, base, target, diff_fn, key_fn)
     if verdict["status"] != "covered" and base_source == "marker":
-        mb_verdict = _merge_base_verdict(project_dir, facts, target, diff_fn)
+        mb_verdict = _merge_base_verdict(project_dir, facts, target, diff_fn, key_fn)
         if mb_verdict is not None and (
             mb_verdict["status"] == "covered"
             or (mb_verdict["status"] == "blocked" and verdict["status"] == "uncovered")
@@ -633,7 +672,7 @@ def session_review_verdict(project_dir: Path) -> dict:
 
 
 def _merge_base_verdict(
-    project_dir: Path, facts: list[dict], target: str, diff_fn
+    project_dir: Path, facts: list[dict], target: str, diff_fn, key_fn=None
 ) -> "dict | None":
     """Coverage of merge-base tree → ``target`` — the session gate's
     unwedging fallback (see :func:`session_review_verdict`). ``None`` when
@@ -642,7 +681,7 @@ def _merge_base_verdict(
     if resolved["status"] != "ok":
         return None
     mb_tree = resolved["tree"]
-    verdict = coverage_algebra.coverage_verdict(facts, mb_tree, target, diff_fn)
+    verdict = coverage_algebra.coverage_verdict(facts, mb_tree, target, diff_fn, key_fn)
     verdict["base"] = mb_tree
     return verdict
 
@@ -937,7 +976,11 @@ def check_cumulative_critic(project_dir: Path) -> int:
         return 1
 
     verdict = coverage_algebra.coverage_verdict(
-        read.get("facts", []), base_tree, head_tree, _cached_diff_fn(project_dir)
+        read.get("facts", []),
+        base_tree,
+        head_tree,
+        _cached_diff_fn(project_dir),
+        _tree_key_fn(project_dir),
     )
 
     if verdict["status"] == "covered":

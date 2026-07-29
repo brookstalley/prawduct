@@ -425,6 +425,39 @@ def tree_diff(project_dir: Path, tree_a: str, tree_b: str) -> "list[str] | None"
     return [line for line in out.splitlines() if line.strip()]
 
 
+def tree_entries(project_dir: Path, tree: str) -> "list[tuple[str, str]] | None":
+    """``(blob_sha, path)`` for every file in ``tree``, or ``None`` when the
+    tree cannot be read (missing object, git failure) — never guessed, the
+    same direction as :func:`tree_diff`.
+
+    Lets a caller decide whether two trees agree on some *subset* of their
+    content without asking git to diff the pair: equal content over a subset
+    is equality of a per-tree value, so n trees cost n calls rather than n².
+
+    ``-z`` because git quotes paths containing spaces or non-ASCII bytes in
+    its default output, and a quoted path classifies differently from the
+    real one — the same trap ``gitstate.parse_porcelain_line`` exists to
+    absorb, met here before it can bite.
+    """
+    if not (isinstance(tree, str) and tree):
+        return None
+    rc, out, _err = run_git(project_dir, "ls-tree", "-r", "-z", "--full-tree", tree)
+    if rc != 0:
+        return None
+    entries: list[tuple[str, str]] = []
+    for record in out.split("\0"):
+        if not record:
+            continue
+        meta, _tab, path = record.partition("\t")
+        if not path:
+            continue
+        fields = meta.split()
+        if len(fields) < 3:
+            continue
+        entries.append((fields[2], path))
+    return entries
+
+
 # ---------------------------------------------------------------------------
 # CLI (``prawduct-hook evidence <status|list>``) — the stable allowlistable
 # surface (R4); skills scope to ``Bash(prawduct-hook evidence*)``.
