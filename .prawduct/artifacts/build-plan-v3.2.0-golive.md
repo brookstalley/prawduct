@@ -59,7 +59,7 @@ completing cleanly. Neither blocks authoring the rest of the plan.
 - [ ] Chunk 06: The real prawduct migration + VRF-006 (C4) — irreversible, operator-run
 - [ ] Chunk 07: Briefing/gates repoint through the adapter (C5) — scoping audit 2026-07-24 finds all four original done-whens already satisfied; the chunk's real content is now the **advisory lift** (done-when #5, owner decision BKL-7D3V) — ~~DEFERRED out of v3.2.0 2026-07-28~~ **BACK IN 2026-07-28 (same day), by the hard-cutover ruling**: the advisory lift is the mechanism that tells the fleet to migrate, and a hard cutover that never announces itself is not a cutover. Deferring it was correct under "07/08 add governed surface"; it is wrong under a hard cutover
 - [ ] Chunk 08: MG5 / upstream filing — file-upstream op, report-bug rewrite, drop-box retirement (splittable 08a/08b) — **DEFERRED out of v3.2.0 2026-07-28** (same reason; the § Direction norm amendment it carries defers with it)
-- [ ] Chunk 09: Release mechanics — version bump, change-log flip, regen-views, tag; VRF-002/003 post-tag — **re-scoped 2026-07-28** to cover Chunks 01–06 only
+- [ ] Chunk 09: Release mechanics — version bump, change-log flip, regen-views, tag; VRF-002/003 post-tag — **re-cut twice on 2026-07-28**: "01–08" → "01–06 + 05b" at the narrowing, then → **"01–07 + 05b"** when the hard-cutover ruling returned Chunk 07 the same day. Chunk 08 stays out (depending on it would make this chunk permanently unsatisfiable). The authority is the chunk body's `Depends on:`
 
 Context: Plan authored 2026-07-24 from `release-plan-backlog-service-golive.md` + the upstream-filing
 design; `active_build_plan` now points here. **Correction 2026-07-24:** the relayout merge (the old
@@ -92,6 +92,17 @@ deletion-only simplification pass; Chunk 09's release mechanics re-scope to what
 Rationale: the framework's own open backlog went 50 → 169 items in the 26 days since the
 2026-07-02 efficiency review, ~120 of that from Critic findings on governance machinery. Chunk 06 is
 the one remaining chunk that reduces that load rather than adding to it.
+
+> **Partially reversed the same day (2026-07-28) by the hard-cutover ruling — read both.** The
+> narrowing above stands for **Chunk 08**, and its rationale stands in full. **Chunk 07 came back
+> in**: under a hard cutover the advisory lift is not added surface, it is the mechanism that tells
+> the fleet a one-way migration exists, and a cutover that never announces itself is not a cutover.
+> So the release ends at **Chunk 07**, not Chunk 06, and Chunk 09 depends on **01–07 + 05b**.
+> Sequencing is unchanged and is what the hold was always for: BKL-6J2X held the advisory because
+> the path was unproven, and Chunk 06 is what proves it, so 07 lands after 06. See § Chunk 07,
+> § Chunk 09 `Depends on:`, and the BKL-7D3V · BKL-6J2X row in § Deferred to Chunk 09 — all three
+> already carry the restored scope; this paragraph and the § Status line were the two summary
+> surfaces the reversal did not reach until 2026-07-29.
 
 ## Where v3.2.0's state lives — one tracker, and why the other surfaces disagree
 
