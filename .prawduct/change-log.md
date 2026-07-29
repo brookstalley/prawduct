@@ -55,6 +55,20 @@ re-flowed pre-existing prose, "proving" a scope shipped in a release tagged **th
 merged**. Adding an *absent-at-the-pre-merge-tag* validity check caught it. Any presence test needs a
 control that fails.
 
+**Phase 0 is now green, and `artifacts/release-plan-v3.2.0.md` is the first plan to carry a
+`## Release classification` table** — the gate's input, which no prior release plan had because the gate
+did not exist. Nine scopes, all `ships`, **0 withheld**: `check-releasability --release v3.2.0` returns
+`releasable` and exit 0. Owner-confirmed non-pruned 2026-07-29, so Phase 2 takes the whole-develop path
+and content-identity is the valid completion test *because* nothing is withheld. The version is a
+**minor** on inherited reasoning rather than a fresh judgment: v3.1.2's plan recorded that the only thing
+holding its number to a patch was the withheld backlog-service subsystem, and that subsystem ships here.
+The subsystem ships **dormant** — verified in code, not asserted: routing is gated on
+`bool(state.get("backlog_service_repo"))`, `init_product` writes it `None`, and `advisory list` reports
+nothing firing, so an upgrading repo sees no backlog behaviour change. Two consequences recorded up front:
+`promote-a-pruned-release.md` is not exercised, so both runbooks keep `last_verified: null` and REL-3K9P
+stays open; and `plugin/VERSION` remains `3.1.2` here — the bump belongs to Phase 1 step 7, never a
+hand-edit at plan time.
+
 ## 2026-07-29: Dispositions — PR review; the entry test outlived the norm it tested
 
 <!-- prawduct: type=fix | scope=release-readiness | chunks=02,03 -->
