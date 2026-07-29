@@ -27,12 +27,20 @@ check "the invariant the model guarantees" while `main`'s tree had deliberately 
 now documents both promotion shapes and names which releases used the pruned one. *Norms bind;
 descriptions track* — so each surface moves in its own register.
 
-**Cascade (corrected): four surfaces, with a fifth owed.** `operational-spec.md` § Direction (the
-norm) and its Release Flow prose; `documentation/release-process.md`, which asserted content-identity
-as universal in two places; and `project-preferences.md:48`, which called the promotion a tree-set.
-The fifth — that file's bare `# MUST be empty (content-identical)` inside the step-1 recipe — is a
-**recorded deferral** owned by Chunk 02's Done-when items 1 and 6, not a gap. The first wording said
-"both surfaces," which understated the reach of the amendment it was documenting.
+**Cascade (corrected twice): four surfaces corrected, three residual assertions deferred.**
+`operational-spec.md` § Direction (the norm) and its Release Flow prose; `documentation/release-process.md`,
+which asserted content-identity as universal in two places; and `project-preferences.md:48`, which
+called the promotion a tree-set. Three universal assertions survive, all in
+`documentation/release-process.md`: `# MUST be empty (content-identical)` in the step-1 recipe
+(line 156), "their *content* stays identical at each release" (142), and "That keeps `main` and
+`develop` content-identical" (170). Those are **recorded deferrals** owned by Chunk 02's Done-when
+items 1 and 6, not gaps.
+
+Two corrections deep, and the same defect both times: the first wording said "both surfaces,"
+understating the reach; the second named *one* residual where there are three and attached it to the
+wrong file. **A cascade census is a claim about evidence and has to be re-counted, not written from
+the correction you just made** — which is exactly the failure the amendment itself documents, one
+level up.
 
 Enforcement: `check-releasability` for scopes (Phase 0, shipped), Chunk 02's partition check for
 paths (Phase 2, pending).

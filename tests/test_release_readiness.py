@@ -335,9 +335,13 @@ class TestIdempotentAcrossItsOwnRunbook:
         )
         assert release_readiness.check_releasability(project, "v3.2.0") == 1
         err = capsys.readouterr().err
-        # The bare phrase is also emitted by the stale-blocker header, so this
-        # fixture would pass without the contradiction branch's inline note.
-        # Assert the full string only that branch can produce.
+        # Assert the full string only the contradiction branch can produce.
+        # A bare "no longer open" would discriminate here only by accident of
+        # the fixture: `alpha` short-circuits before the stale-blocker append
+        # and `beta` ships, so that header cannot fire. Add a third scope
+        # withheld behind a closed blocker and it fires, and the bare phrase
+        # stops distinguishing the branches. Discrimination belongs to the
+        # assertion, not to which scopes the fixture happens to contain.
         assert "BKL-6J2X, which is no longer open" in err
         assert "already tagged release=v3.2.0" in err
 
