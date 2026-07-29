@@ -44,10 +44,18 @@ under it, so an ACCEPT with a reason is the default and this list is where the r
   **BKL-72AS would have survived the release still reading open**. Row added.
 - **R-25 · R-27** — GOV-6J3P and BLD-3M7K **verified resolved against the tree**: the runbook's
   `Bash(prawduct-hook backlog *)` grant is gone (0 matches), and `_GIT_REF_PREFIXES` is present in
-  `buildplan_refs.py`. The `status=shipped` flip itself routes through `/prawduct:backlog` (never a
-  hand-edit) and was **not confirmed landed before this entry was written** — both still read
-  `status: open`. Confirm and complete the flip before the PR; the verification above is the part
-  that is done, and saying otherwise would be the kind of claim this session spent the day removing.
+  `buildplan_refs.py`. Both archived via `/prawduct:backlog` (never a hand-edit) — **179 open · 2
+  promoted · 154 archived**, 335 total unchanged, bodies verbatim.
+
+  Two corrections the skill made, both worth keeping: `closed-by=coverage-perf` for GOV-6J3P was
+  **wrong** and it recorded `v3.2.0-golive` instead. GOV-6J3P was closed by `85753fd` ("an
+  allow-list cannot fence an op reachable through an interpreter"); `coverage-perf` touched no skill
+  grants at all, so the ref I asked for would have been false traceability. And **archiving
+  BLD-3M7K does not close the git-ref false-positive family** — its successor **CRT-2P8V** is live
+  and open (consumer prefixes `feat/`, `chore/`, `wip/`, `dependabot/` still false-block); reverse
+  links were added so archiving the parent cannot hide the remaining gap. GOV-6J3P was also a
+  near-duplicate of the already-archived GOV-5J9Q, same closing commit — a `dedup` sweep over the
+  `governance` area would likely surface more, which is the R-28 pile from a different angle.
 
 **ACCEPTED — won't-fix now, with the reason (19).**
 
