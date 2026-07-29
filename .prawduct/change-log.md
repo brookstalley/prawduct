@@ -3,6 +3,34 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-07-29: The completeness gate counted the items it promised to name
+
+<!-- prawduct: type=fix | scope=backlog-service -->
+
+First application of the new finding-disposition rule: these were headed for the backlog and were
+fixed instead.
+
+`_emit`'s error branch rendered every `details` list as its length. That rule was written for
+`import`'s entry dicts — hundreds of `{key: ...}` records that would bury the error message in front
+of an operator deciding whether to resume — and it was correct for them. It was then applied to
+lists that **are** the payload. `verify-migration`'s `missing` / `unaliasable` / `collisions` are the
+ids that stranded the run, and three shipped surfaces promise names: the docstring ("Names the
+stranded items, never just a count"), the CLI help, and Step 6 of the scrub runbook — **which
+invokes the command without `--json`**, so the operator saw `missing: 3`. For `unaliasable` the
+documented remedy is *give each a real prefix in the source before importing*; that cannot be
+followed against the number 3.
+
+Now the two shapes are discriminated: a list of plain strings is named (capped at 20, then
+`(+N more)`, so one bad run still cannot bury the message), a list of dicts is counted exactly as
+before. Pinned at the **CLI layer**, which is where the gap was — the existing library-level test
+asserted the envelope and passed while the human surface was wrong, and the only CLI-level
+assertion checked the exit code.
+
+Also added the missing `verify-migration` row to the API contract §2.5 — it was the one migration op
+absent from the enumerated surface.
+
+Both gate Chunk 06, the irreversible operator-run migration.
+
 ## 2026-07-29: "File the rest" was a backlog pump, and the framework was doing it to itself
 
 <!-- prawduct: type=fix | scope=critic-disposition -->

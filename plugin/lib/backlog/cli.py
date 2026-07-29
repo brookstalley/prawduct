@@ -833,6 +833,37 @@ def _archive_scope_flag(flags: dict) -> tuple[str, str | None]:
     return scope, None
 
 
+_DETAIL_LIST_CAP = 20
+
+
+def _render_detail_list(value: list) -> str:
+    """Render one error-detail list for human mode.
+
+    Two shapes arrive here and they need opposite treatment.
+
+    A list of **entry dicts** — an interrupted import's `created`/`skipped` —
+    is bookkeeping whose only useful summary is how many; printing them buries
+    the error message under hundreds of lines just as the operator is deciding
+    whether to resume.
+
+    A list of **plain strings is the payload itself.** The completeness gate's
+    `missing`, `unaliasable` and `collisions` name the items that stranded the
+    run, and the documented remedy for each is unactionable without them —
+    "give each a real prefix in the source before importing" cannot be followed
+    against the number 3. Counting those turns a verdict into a figure nobody
+    can act on, and the runbook drives this path without ``--json``, so the
+    named form has no other route to the operator.
+
+    Long lists are capped so one bad run still cannot bury the message.
+    """
+    if not value or not all(isinstance(item, str) for item in value):
+        return str(len(value))
+    if len(value) <= _DETAIL_LIST_CAP:
+        return ", ".join(value)
+    head = ", ".join(value[:_DETAIL_LIST_CAP])
+    return f"{head}, … (+{len(value) - _DETAIL_LIST_CAP} more)"
+
+
 def _pacing_line(pacing: dict) -> str:
     """The pacing footer, shared by the success path and the resumable-cut path.
 
@@ -894,14 +925,14 @@ def _emit(result: dict, *, json_mode: bool, usage: bool = False) -> int:
         # `created`/`skipped`/`collisions`/`resumable`/`pacing` — and human mode
         # dropped all of it, so the operator of an irreversible ~900-issue
         # migration learned only that it broke. The scrub runbook drives this
-        # path without `--json`, so this was the surface that mattered. Lists
-        # render as counts: the entry dicts are the wrong thing to put in front
-        # of someone deciding whether to resume.
+        # path without `--json`, so this is the surface that matters.
         for key, value in (err.get("details") or {}).items():
             if key == "pacing" and isinstance(value, dict):
                 shown = _pacing_line(value)
+            elif isinstance(value, list):
+                shown = _render_detail_list(value)
             else:
-                shown = len(value) if isinstance(value, list) else value
+                shown = value
             print(f"  {key}: {shown}", file=sys.stderr)
         # A resumable error envelope (e.g. import) carries the audit warnings accrued
         # before the cut; surface them like the ok path so they reach the operator.

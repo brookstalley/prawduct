@@ -129,6 +129,48 @@ class TestOutputDiscipline:
         assert "error [unavailable]" in err
         assert "restored missing alias label" in err
 
+    def test_string_details_are_NAMED_not_counted(self, capsys):
+        """The completeness gate's lists ARE the payload, unlike import's entries.
+
+        `missing`/`unaliasable`/`collisions` are the ids that stranded the run,
+        and the documented remedy — give each a real prefix in the SOURCE before
+        importing — cannot be followed against the number 3. The runbook drives
+        this path without `--json`, so the named form has no other route to the
+        operator. Asserted at the CLI layer on purpose: the library-level test
+        passes on the envelope while the human surface says `missing: 3`.
+        """
+        result = {
+            "status": "error",
+            "error": {
+                "code": "conflict",
+                "message": "source and target disagree",
+                "details": {
+                    "missing": ["ADR-0007", "ADR-0009"],
+                    "unaliasable": ["a stranded title"],
+                },
+            },
+        }
+        cli._emit(result, json_mode=False)
+        err = capsys.readouterr().err
+        assert "missing: ADR-0007, ADR-0009" in err
+        assert "unaliasable: a stranded title" in err
+        assert "missing: 2" not in err
+
+    def test_long_string_details_are_capped(self, capsys):
+        result = {
+            "status": "error",
+            "error": {
+                "code": "conflict",
+                "message": "x",
+                "details": {"missing": [f"ID-{n:04d}" for n in range(25)]},
+            },
+        }
+        cli._emit(result, json_mode=False)
+        err = capsys.readouterr().err
+        assert "ID-0000" in err and "ID-0019" in err
+        assert "(+5 more)" in err
+        assert "ID-0024" not in err, "the cap must actually bound the output"
+
     def test_error_envelope_details_reach_stderr_as_counts(self, capsys):
         # The sibling of the warnings case above. A cut mid-import carries how far
         # it got, and human mode printed none of it — so the operator of an
