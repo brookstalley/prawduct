@@ -25,7 +25,14 @@ decision is recorded in the norm itself.
 The descriptive **Release Flow** prose was false in the same way — it called the content-identical
 check "the invariant the model guarantees" while `main`'s tree had deliberately differed twice. It
 now documents both promotion shapes and names which releases used the pruned one. *Norms bind;
-descriptions track* — so both surfaces move, in their own registers.
+descriptions track* — so each surface moves in its own register.
+
+**Cascade (corrected): four surfaces, with a fifth owed.** `operational-spec.md` § Direction (the
+norm) and its Release Flow prose; `documentation/release-process.md`, which asserted content-identity
+as universal in two places; and `project-preferences.md:48`, which called the promotion a tree-set.
+The fifth — that file's bare `# MUST be empty (content-identical)` inside the step-1 recipe — is a
+**recorded deferral** owned by Chunk 02's Done-when items 1 and 6, not a gap. The first wording said
+"both surfaces," which understated the reach of the amendment it was documenting.
 
 Enforcement: `check-releasability` for scopes (Phase 0, shipped), Chunk 02's partition check for
 paths (Phase 2, pending).

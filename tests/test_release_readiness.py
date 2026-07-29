@@ -335,7 +335,10 @@ class TestIdempotentAcrossItsOwnRunbook:
         )
         assert release_readiness.check_releasability(project, "v3.2.0") == 1
         err = capsys.readouterr().err
-        assert "no longer open" in err, "a closed blocker must be named even here"
+        # The bare phrase is also emitted by the stale-blocker header, so this
+        # fixture would pass without the contradiction branch's inline note.
+        # Assert the full string only that branch can produce.
+        assert "BKL-6J2X, which is no longer open" in err
         assert "already tagged release=v3.2.0" in err
 
     def test_scope_tagged_for_a_DIFFERENT_release_is_still_an_orphan(self, tmp_path, capsys):
