@@ -158,8 +158,11 @@ git push origin main
 git tag vX.Y.Z && git push origin vX.Y.Z
 ```
 
-Close any develop→main PR that was opened with a note that the release was promoted directly. The
-empty `git diff origin/develop HEAD` is the content-identical invariant the gitflow model promises.
+Close any develop→main PR that was opened with a note that the release was promoted directly. An
+empty `git diff origin/develop HEAD` confirms a **whole-develop** promotion. It is NOT a universal
+invariant: under a *pruned* promotion `main`'s tree deliberately differs, that check can never pass,
+and the completion test is the partition instead — every path accounted for as shipped or withheld
+(`operational-spec.md` § Direction, amended 2026-07-29).
 
 Note on **step 2 ordering**: the version bump + change-log/CHANGELOG/release-notes updates +
 `active_build_plan` clear are done as a **release-prep commit on `develop`** *before* the promotion
@@ -198,8 +201,9 @@ benign**, not a gate to satisfy:
   means "this gate cannot be satisfied this session," which is false here (the gate is perfectly
   satisfiable in a feature context; it simply isn't the release's gate). The stop hook also stands
   down on its own: release-prep clears `active_build_plan`, so its Critic gate sees no active plan.
-  The operative pre-promotion check remains the empty `git diff --stat origin/develop HEAD`
-  content-identical invariant in step 1's mechanics.
+  The operative pre-promotion check is the one that matches the promotion shape: the empty
+  `git diff --stat origin/develop HEAD` for a whole-develop promotion, or the path partition for a
+  pruned one.
 
 ## Why the checkboxes stay `[ ]` during development
 

@@ -44,7 +44,11 @@ what you declined, not only what you did.**
   The code moved from one prefix (`archive`) to four substrings, but the test still exercised only
   `## Archive`, which `startswith("archive")` excluded too — green on both implementations, so the
   fix was unverified by construction. Now parametrised over `Archive | Resolved | Done | Completed`
-  and **proven by mutation**: restoring the narrow predicate fails all four, plus a struck-item case.
+  and **proven by mutation**: restoring the narrow predicate fails `Resolved`, `Done` and
+  `Completed` plus the struck-item case — **three of the four section words, not four**. `Archive` is
+  excluded by both predicates, which is exactly why a test that exercised only `## Archive` could not
+  detect the difference. (Corrected: the first wording said "all four," overstating the evidence for
+  a claim about evidence.)
   The finding also flagged the fix *itself* as a coupling defect — it reached a **private** symbol
   across a package boundary, so renaming `_is_resolved_section` would silently change blocker
   liveness in every product with a passing suite. Replaced with the backlog module's **public**
@@ -56,9 +60,14 @@ what you declined, not only what you did.**
   own diagnosis naming both valid resolutions and explicitly saying *do not delete the row*. The
   previous test had asserted the wrong wording, pinning the misdiagnosis as intended behaviour; it
   now asserts the correct message and that the orphan wording is **absent**.
-- **NOTES — both fixed.** The corrected docstring still under-enumerated its silent skips (an
-  empty-scope row with a well-formed disposition); and the `--release` form test reaches its verdict
-  through the `no-release-plan` path, which is now stated in the test so its logic is legible.
+- **NOTES — one fixed, one part DECLINED.** The corrected docstring still under-enumerated its
+  silent skips (an empty-scope row with a well-formed disposition) — fixed. For the `--release` form
+  test, the legibility half landed (the test now states that it reaches its verdict through the
+  `no-release-plan` path) and the recommended **end-to-end successful-grade assertion was declined**:
+  it would need a second release-plan fixture to prove what the existing `no-release-plan` message
+  already proves, since that message names the version it looked for. *Recorded as declined rather
+  than folded into "both fixed" — which is the rule this same commit added, and which the next review
+  caught me breaking here.*
 
 ## 2026-07-29: Dispositions — verify pass `rev-20260729T173217Z-5b8a9522`, and a correction to the record
 

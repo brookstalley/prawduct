@@ -322,6 +322,22 @@ class TestIdempotentAcrossItsOwnRunbook:
         )
         assert "nothing release-pending behind them" not in err
 
+    def test_contradiction_also_reports_a_closed_blocker(self, tmp_path, capsys):
+        # Both defects at once. The contradiction branch short-circuits the
+        # stale-blocker check, so without this the remedy "the withholding
+        # stands" would be offered for a blocker that has closed — an
+        # unavailable option, the same wrong-remedy defect the branch fixes.
+        project = _make_project(
+            tmp_path,
+            entries=_entry("A", "alpha", release="v3.2.0") + _entry("B", "beta"),
+            classification="| alpha | withheld | BKL-6J2X |\n| beta | ships | |\n",
+            backlog=_shipped_item("BKL-6J2X"),
+        )
+        assert release_readiness.check_releasability(project, "v3.2.0") == 1
+        err = capsys.readouterr().err
+        assert "no longer open" in err, "a closed blocker must be named even here"
+        assert "already tagged release=v3.2.0" in err
+
     def test_scope_tagged_for_a_DIFFERENT_release_is_still_an_orphan(self, tmp_path, capsys):
         # The exemption is scoped to the release under test — a row left over
         # from an older release is still stale.

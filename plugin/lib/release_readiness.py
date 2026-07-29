@@ -336,9 +336,20 @@ def check_releasability(project_dir: Path, release: str | None = None) -> int:
         # hint (delete the row) makes the gate return 0 and ship the very scope
         # the table withheld. A wrong remedy is worse than a bare failure.
         if disposition == WITHHELD and shipped_now:
+            # Name the blocker's liveness here too. Falling through to the
+            # stale-blocker check is not an option (the `continue` keeps this
+            # scope out of the orphan bucket), but staying silent about a closed
+            # blocker would print a remedy — "the withholding stands" — that is
+            # not actually available, which is the same wrong-remedy defect this
+            # branch exists to fix.
+            blocker_note = (
+                f"{blocker}, which is no longer open"
+                if blocker and blocker not in open_ids
+                else blocker
+            )
             contradictions.append(
-                f"{scope} (withheld behind {blocker}, but its entries are already "
-                f"tagged release={version})"
+                f"{scope} (withheld behind {blocker_note}, but its entries are "
+                f"already tagged release={version})"
             )
             continue
         # The re-run exemption is `ships`-only: Phase 1 stamps `release=` on the

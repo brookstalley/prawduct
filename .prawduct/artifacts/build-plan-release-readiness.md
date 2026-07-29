@@ -160,7 +160,11 @@ replace one. The reader is routed between them explicitly.
    duplicated (an expiring artifact is not a durable surface — that is REL-8P6M's own reasoning).
 5. `last_verified:` stays `null` — this plan does not exercise the runbook end-to-end; v3.2.0's
    actual run is what verifies it.
-6. `/prawduct:critic`, findings resolved.
+6. **`documentation/release-process.md` carries the amended promotion norm.** Chunk 01 corrected its
+   two universal content-identity assertions, but that file is a *second active procedure* and this
+   chunk adds a whole promotion shape to it — it is in scope here, not incidentally. A norm amendment
+   whose cascade stops at one of two procedures has not landed (Principle 13).
+7. `/prawduct:critic`, findings resolved.
 
 ## Chunk 03 — the (e) stopgap and the W-1 note
 
