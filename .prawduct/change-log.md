@@ -44,6 +44,10 @@ recorded as waived so the tree is not overstated). The pass then returned **1 bl
   both were *run*: the whole-file form is documented as deliberately over-including (the safe
   direction, filtered by the per-candidate code test), and the boundary form keys on the tag line
   and reproduces 23 / six scopes / `v3.2.0-golive` 7 at `1a353d1` exactly.
+- **NOTE — the liveness problem pointed the reader the wrong way.** It ended `"Every other check
+  below did run"`, but `problems` is seeded with the `parse_classification` errors, so that one group
+  prints *above* it. Now `"still ran — fix any other problem listed beside this one first"`, matching
+  the wording both runbooks use.
 - **NOTE — `unreadable-project-state:` was absent from the lookup built in the same commit.** The
   R-18 fix minted a reason code; the R-11 fix keyed seven others and missed it, so it fell to the
   catch-all whose promise is "if it names no fix, that is a defect in the gate" — which it was not.
