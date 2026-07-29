@@ -3,6 +3,79 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-07-29: The PR gate was probing an equivalence relation one pair at a time
+
+<!-- prawduct: type=fix | scope=coverage-perf -->
+
+`check-cumulative-critic` took **5 min 12 s** on this branch. Instrumented, **316 s of the 318 s
+verdict** was **5,597 `git diff` subprocesses** inside `coverage_algebra._find_path`, which probed
+free edges *pairwise*: for every dequeued node, a diff to every unvisited node. `_cached_diff_fn`
+memoised repeat pairs only — the pair count was the problem, not repeat pairs. The evidence store is
+append-only, shared by every worktree of the clone, and never pruned, so this degraded monotonically.
+
+It gates `/prawduct:pr create`, so the realistic outcome was not a slow gate but a **waived** one,
+and a waived gate is worse than no gate because it reads as satisfied. Every consuming repo walks
+into this as its store grows; this one is simply first, having run longest.
+
+A free edge `a → b` exists iff no judgeable path differs — iff both trees agree on every judgeable
+`(path, blob)`. That is equality of a value **each tree has on its own**, so it never needed a
+pairwise question. Key each tree once (`git ls-tree -r -z`, digest over judgeable entries): equal
+keys are mutually free-connected, and each key class is a clique. Same store (672 facts, 293 trees),
+same `uncovered` verdict: **5,597 diffs → 294 ls-trees, 316 s → 7.4 s, gate 5 m 12 s → 7.95 s.**
+
+A tree whose key cannot be computed joins no class and gets no free edge — the same direction a
+failed diff already fails in. Speed must not buy a free pass. Free-step file attribution is deferred
+to the steps on a *found* path, so it stays O(path) rather than O(candidates).
+
+`tests/test_coverage_algebra.py` is **unmodified** — it is the behavioural contract and this is an
+optimisation. The pairwise form remains as the reference implementation, and a new equivalence test
+asserts both oracles decide every case identically.
+
+**Pruning the store was rejected as the fix**, and the reasoning matters more than the verdict: 293
+nodes is a trivial graph, pruning buys a linear factor against a quadratic, and the facts are both
+the audit trail and the substance coverage composes from. Deleting evidence to make a gate fast is
+how a fail-open ships. Compaction is FILEd with a trigger (`build-plan-coverage-perf.md`
+§ Compaction) — ~10,000 trees or a warm gate above 5 s.
+
+**Also rejected: splitting `is_judgeable_path`.** The prior session proposed it on the theory that
+the same day's `protected_path_violation` widening had retroactively invalidated accumulated review
+edges. Measured against the live store, **0 edges were lost** — 240 valid review edges under both
+the old root-anchored and the new segment predicate, because reviewers record
+`files_reviewed ⊇ files_changed`. What the widening does do is remove the doc-only *free edge* for
+skills-prose intervals, which is PR-5K8D's intended semantics, not a defect. The pain was the
+five-minute trigger, now gone. Splitting would have rebuilt the CRT-5D8Q deadlock the single
+predicate exists to have ended.
+
+## 2026-07-29: A handoff is prepared and reconciled, never proposed and stacked
+
+<!-- prawduct: type=fix | scope=coverage-perf -->
+
+Two failures in one discipline, both observed here rather than imagined.
+
+**Asking.** A session finished sustained work and asked *"want me to append it to
+`.handoff-notes.md` and stop there?"* That defeats the purpose. The user may have stepped away while
+the work ran, so the question costs them a round-trip and replays a large context into a cold cache
+— the exact cost the handoff exists to prevent. Preparing unasked costs little, and they may simply
+continue in place. The asymmetry is total, so the default is unconditional: **never ask whether to
+prepare a handoff; prepare it, then say `/clear` is safe.**
+
+**Stacking.** Step 7 said *append*, and appending is what produced this repo's own
+`.handoff-notes.md`: three stacked sections, one carrying a hand-written `still applies` comment
+because prose was doing the job reconciliation should have done. The rule is now **reconcile** —
+drop what the batch discharged, correct what moved, keep only what still bites. A second batch in
+one session **rewrites** the first's notes rather than stacking on them, because a stratified file
+makes the reader guess which layer is live, and the layer that reads most current is usually the one
+the later work already closed.
+
+Landed on all three surfaces so consuming products inherit this rather than it being a
+prawduct-local habit: `building.md` (on demand), `session-digest.md` (injected into every product
+session), `session-digest-slim.md` (framework sessions). Rationale lives in the injected digests;
+`building.md` carries the rule alone.
+
+Paid for in place per the trim-or-relocate rule, ending with **more** headroom than it started:
+4655 → 4659 against a `<4660` ceiling, funded by two passages both digests already state verbatim.
+The budget was not raised.
+
 ## 2026-07-29: Skill-only sessions have been skipping the reviewers since the plugin relocation
 
 <!-- prawduct: type=fix | scope=chunk-refs-gate -->
