@@ -3,6 +3,64 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-07-29: Dispositions — PR review; the entry test outlived the norm it tested
+
+<!-- prawduct: type=fix | scope=release-readiness | chunks=02,03 -->
+
+Independent PR reviewer on `feature/rel-8p6m-releasability-gate` → `develop`: **0 blocking, 2 warnings,
+3 notes**, verdict ready-to-create. Both warnings **FIXED** rather than declined — each was a
+completeness failure of this bundle's *declared* scope, not an adjacent improvement. Dispositions below
+written from `git diff`, not from intent.
+
+- **W-1 — FIXED. The norm amendment's cascade stopped one section short of the top of its own primary
+  procedure.** `cut-and-publish-a-plugin-release.md`'s `## When to use this` still gated entry on
+  `git diff --stat origin/main origin/develop` being non-empty, with "it prints nothing → content-identical
+  → nothing to cut. Stop." Two defects. It was a **fourth** universal content-identity assertion, in the
+  document the amendment is *about*, after two censuses had declared the class closed. Worse, the test had
+  lost its discriminating power: after a pruned promotion `main`'s tree differs from `develop`'s
+  permanently and by design, so that diff is non-empty forever (measured: 114 files, 25,757 insertions
+  post-v3.1.2), making "at least one changed file" trivially true and the `Stop` branch **unreachable**.
+  It also could not separate unreleased work from deliberately withheld work — the same
+  *"is there anything unreleased?"* vs *"is everything fit to ship?"* confusion this bundle exists to
+  fix, one level up in the same runbook. Phase 0 does not cover it: Phase 0 grades **fitness**, this
+  section asks **novelty**, and both are load-bearing. The entry test now asks the question at the level
+  of *scopes* — `check-releasability --release vX.Y.Z` names the release-pending set, and none means
+  nothing to cut — with an explicit block telling the reader the tree diff is orientation, never a
+  decision. Verified by running the published command: it names 12 release-pending scopes.
+  **REL-8P6M's own `refs:` listed this exact test**, so it was a declared deliverable the cascade missed.
+
+- **W-2 — FIXED. The pruned runbook's only stated verification trigger could not fire.** Chunk 02's
+  Done-when 5 named "v3.2.0's actual run" as the verifier, but v3.2.0 is planned non-pruned, so it takes
+  Phase 2's whole-develop path and never opens `promote-a-pruned-release.md` — structurally unreachable,
+  not merely unlikely. Nothing else tracked it: REL-8P6M is archived `shipped`, and `last_verified` turns
+  out to have **no code reader at all** (its only consumer is a model-side review question in
+  `skills/runbook/SKILL.md`), so it is an unread field rather than a missing advisory. Done-when 5 now
+  carries the struck-through claim plus the correction; **`REL-3K9P`** is filed as the tracker with the
+  trigger stated as a promotion *shape* rather than a version number; and the runbook itself gained a
+  front-matter pointer and a "you are likely the first to execute this" banner, so a reader meeting
+  `last_verified: null` is not left without the tracker.
+
+- **NOTE (R-7 provenance) — ACCEPTED, and its residual acted on.** The reviewer judged the closure
+  adequate but observed that the confirmation landed *in the same line it certifies*, so the only witness
+  genuinely outside the change is the PR thread. The PR body therefore quotes the amended norm and its
+  `[DECISION: …]` verbatim for owner sign-off. Recording it in the artifact is necessary, not sufficient.
+
+- **NOTE (CRT-5H2D) — ACCEPTED, verified not latent here.** The reviewer checked rather than trusted:
+  `rev-20260729T194336Z-5753c20e` R-1 does carry a resolution fact, so no unresolved blocking hides
+  behind this PR's green certificate.
+
+- **NOTE (`type=feat`) — FIXED for this branch, disclosed for the other.** This scope's entry normalized
+  to the canonical `type=feature` (48 now). The remaining `type=feat` at line 1088 belongs to
+  `scope=v3.2.0-golive`, a pre-existing entry outside this branch — left deliberately under Scope
+  Discipline and named here so it is not silently inherited. Inert today; a bucket split if the ledger lands.
+
+**Census discipline, third iteration.** Correcting W-1 required correcting the cascade census *again* —
+and the first replacement derivation command was itself blind to W-1, because the residual asserted
+content-identity by *invoking the diff* without ever using the words "content-identical" or "tree-set."
+A detection command that cannot see the defect it exists to detect is the same shape as a test that
+cannot fail. The published command now greps the mechanism (`origin/main origin/develop`) as well as the
+vocabulary, and the document carries the command instead of a number.
+
 ## 2026-07-29: Dispositions — verify pass `rev-20260729T192252Z-599d3307`; the remedy re-entered the defect
 
 <!-- prawduct: type=fix | scope=release-readiness | chunks=02,03 -->
@@ -246,14 +304,43 @@ check "the invariant the model guarantees" while `main`'s tree had deliberately 
 now documents both promotion shapes and names which releases used the pruned one. *Norms bind;
 descriptions track* — so each surface moves in its own register.
 
-**Cascade (corrected twice): four surfaces corrected, three residual assertions deferred.**
-`operational-spec.md` § Direction (the norm) and its Release Flow prose; `documentation/release-process.md`,
-which asserted content-identity as universal in two places; and `project-preferences.md:48`, which
-called the promotion a tree-set. Three universal assertions survive, all in
-`documentation/release-process.md`: `# MUST be empty (content-identical)` in the step-1 recipe
-(line 156), "their *content* stays identical at each release" (142), and "That keeps `main` and
-`develop` content-identical" (170). Those are **recorded deferrals** owned by Chunk 02's Done-when
-items 1 and 6, not gaps.
+**Cascade (corrected three times — the class is now closed).** Corrected surfaces:
+`operational-spec.md` § Direction (the norm) and its Release Flow prose; `documentation/release-process.md`;
+`project-preferences.md:48`, which called the promotion a tree-set; the shipped
+`plugin/skills/pr/SKILL.md`; and — found by the PR reviewer, **after** two censuses had already
+declared the count — `runbooks/cut-and-publish-a-plugin-release.md`'s own `## When to use this`
+entry test.
+
+**Do not read a figure here; re-derive it.** Every hit of this command must be either *shape-scoped*
+or *descriptive of the amendment* — an unqualified assertion is a residual:
+
+```
+grep -rn -i 'content-identical\|tree-set\|origin/main origin/develop' --include='*.md' \
+  .prawduct/runbooks/ .prawduct/artifacts/operational-spec.md \
+  .prawduct/artifacts/project-preferences.md documentation/ plugin/skills/ \
+  | grep -v 'release-plan-v3.1'
+```
+
+Run at tree `eac2638` it returns 13 hits, all qualified. **The third alternative is load-bearing and was
+missing on the first attempt at this very command:** the W-1 residual asserted content-identity by
+*invoking the diff* (`git diff --stat origin/main origin/develop`) without ever using the words
+"content-identical" or "tree-set," so a census keyed on the vocabulary could not see the one hit that
+prompted the census — a detection command blind to the defect it exists to detect, which is the same
+shape as a test that cannot fail. Grep the **mechanism**, not the phrasing. The three assertions the previous census
+deferred to Done-when items 1 and 6 (`release-process.md` 142/156/170) were **closed**, not deferred —
+step 1's recipe now reads `# MUST be empty — this shape only`, and the surrounding prose names both
+shapes. Zero survive in that file. Step 17 of the runbook keeps an unqualified-*sounding*
+content-identity test on purpose: Phase 2 routes the pruned shape out at steps 14–20, so 17 sits
+inside the whole-develop branch and content-identity is the correct test there.
+
+**Third correction, same defect all three times, and the previous entry named it.** "Both surfaces"
+understated the reach; the second named one residual where there were three and attached it to the
+wrong file; the third declared the class closed in `release-process.md` while a fourth assertion sat
+in the runbook *the census was about* — the one file a census of this amendment could not afford to
+skip. Each census re-counted **inside the file-set the previous correction had touched**, which is the
+scope-narrowed counting failure this same bundle files as a learning, now demonstrated against a
+cascade census three times in one session. The fix is structural, not another recount: the
+document now carries the derivation command instead of a number.
 
 Two corrections deep, and the same defect both times: the first wording said "both surfaces,"
 understating the reach; the second named *one* residual where there are three and attached it to the
@@ -442,7 +529,7 @@ Done-when anchor when Chunk 02 is built, which is when the pointer has somewhere
 
 ## 2026-07-29: Phase 0 — the release runbook asks whether everything is fit to ship
 
-<!-- prawduct: type=feat | scope=release-readiness | chunks=01 -->
+<!-- prawduct: type=feature | scope=release-readiness | chunks=01 -->
 
 REL-8P6M part (f), the item's highest-value half. The runbook's only precondition was
 `git diff --stat origin/main origin/develop` — *"is there anything to ship?"*, never *"is everything

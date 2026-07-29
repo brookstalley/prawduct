@@ -17,13 +17,29 @@ Confirm you're actually in that situation before step 1:
 git fetch origin
 ```
 
+**Is there anything to cut?** Ask this at the level of *scopes*, not the tree:
+
 ```
-git diff --stat origin/main origin/develop
+./plugin/bin/prawduct-hook check-releasability --release vX.Y.Z
 ```
 
-**Expected:** at least one changed file — that's the unreleased content.
-**If not:** it prints nothing, so `main` and `develop` are already
-content-identical. The last release is out and there's nothing to cut. Stop.
+**Expected:** it names one or more **release-pending scopes** (change-log entries
+tagged `scope=` with no `release=`). That set is the unreleased content, and
+Phase 0 grades it.
+**If it names none:** the last release is out and there's nothing to cut. Stop.
+
+> **Do not use `git diff origin/main origin/develop` as this test.** It answers
+> "do the trees differ," which stopped being the same question once a promotion
+> became a *classified snapshot* rather than a content-identical copy
+> (`operational-spec.md` § Direction). After any pruned release `main`'s tree
+> differs from `develop`'s **permanently and by design**, so that diff is
+> non-empty forever — it is large right now because of v3.1.2 — and it cannot
+> distinguish "unreleased work" from "work deliberately withheld." Run it for
+> orientation if you like; it is not a decision.
+
+Novelty and fitness are separate questions and both are load-bearing: this
+section asks whether there is *anything* to ship, Phase 0 asks whether what
+there is, is *fit* to ship. Neither substitutes for the other.
 
 ## When NOT to use this
 

@@ -2,11 +2,17 @@
 runbook: promote-a-pruned-release
 tier: 3
 owner: prawduct maintainer
-last_verified: null
+last_verified: null       # never executed end-to-end — tracked by REL-3K9P
 verified_by: null
 ---
 
 # Promote a pruned release to `main`
+
+> ⚠️ **This procedure has not been run end-to-end.** Its command set was rehearsed by rebuilding the
+> real v3.1.2 candidate (three conflicts reproduced, a missing `import sys` caught), but the *publish*
+> half is unexercised. You are likely the first person to execute it: expect to correct it as you go,
+> and stamp `last_verified`/`verified_by` when you finish. Tracked as **REL-3K9P** — the trigger is
+> the next pruned release, i.e. this run.
 
 ## When to use this
 
