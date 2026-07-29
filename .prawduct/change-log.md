@@ -5,7 +5,7 @@
 
 ## 2026-07-29: Skill-only sessions have been skipping the reviewers since the plugin relocation
 
-<!-- prawduct: type=fix | scope=governance -->
+<!-- prawduct: type=fix | scope=chunk-refs-gate -->
 
 `protected_path_violation` enforces the governance bounds that keep `skills/`, `methodology/`,
 `templates/` and root `CLAUDE.md` off the `Type: trivial` and PR doc-only fast paths — *"fork-skill
@@ -35,7 +35,7 @@ it silently did not.
 
 ## 2026-07-29: The completeness gate counted the items it promised to name
 
-<!-- prawduct: type=fix | scope=backlog-service -->
+<!-- prawduct: type=fix | scope=v3.2.0-golive -->
 
 First application of the new finding-disposition rule: these were headed for the backlog and were
 fixed instead.
