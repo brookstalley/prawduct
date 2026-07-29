@@ -1325,3 +1325,102 @@ class TestDeterministicCycleEndToEnd:
         assert gates.validate_critic_findings(repo / FINDINGS_REL)
         assert not (repo / PARTIALS_REL).exists()
         assert not (repo / MARKER_REL).is_file()
+
+
+class TestLikelyDuplicateGroups:
+    """A finding count is not a defect count.
+
+    `merge_findings` keys on `(goal, name, files)`, and the coordinator's goal
+    sets are disjoint by construction — each reviewer is told to review ONLY
+    its goals — so two reviewers meeting one defect always produce two findings
+    that no exact key can collapse. Detection is therefore advisory: it reports
+    groups and never drops a finding, because a fuzzily-dropped real finding is
+    invisible in the output and strictly worse than over-counting.
+    """
+
+    @staticmethod
+    def _f(fid, goal, title, files=None):
+        entry = {"fid": fid, "goal": goal, "severity": "note", "title": title}
+        if files:
+            entry["files"] = files
+        return entry
+
+    def test_the_real_cross_goal_duplicate_is_grouped(self):
+        """The pair that prompted this, verbatim from review
+        rev-20260729T230420Z-71b7f129 (similarity 0.44)."""
+        findings = [
+            self._f(
+                "R-7",
+                "Nothing Is Broken",
+                "A clean review's census renders a truncated sentence",
+                ["plugin/lib/dispositions.py"],
+            ),
+            self._f(
+                "R-13",
+                "The Design Is Sound",
+                "A clean review renders a malformed census summary line",
+                ["plugin/lib/dispositions.py", "tests/test_dispositions.py"],
+            ),
+        ]
+        groups = cc.likely_duplicate_groups(findings)
+        assert groups == [["R-7", "R-13"]]
+        assert cc.distinct_finding_count(findings, groups) == 1
+
+    def test_same_goal_is_never_grouped(self):
+        """Same goal means one reviewer, which means deliberately distinct
+        findings — not a merge failure."""
+        findings = [
+            self._f("R-1", "Nothing Is Broken", "The census renders a truncated sentence"),
+            self._f("R-2", "Nothing Is Broken", "The census renders a truncated sentence"),
+        ]
+        assert cc.likely_duplicate_groups(findings) == []
+
+    def test_disjoint_files_are_never_grouped(self):
+        findings = [
+            self._f("R-1", "Nothing Is Broken", "The census renders a truncated line", ["a.py"]),
+            self._f("R-2", "The Design Is Sound", "The census renders a truncated line", ["b.py"]),
+        ]
+        assert cc.likely_duplicate_groups(findings) == []
+
+    def test_unrelated_titles_are_never_grouped(self):
+        findings = [
+            self._f("R-1", "Nothing Is Broken", "Store readers raise on a malformed body"),
+            self._f("R-2", "The Design Is Sound", "Exit codes absent from the contract table"),
+        ]
+        assert cc.likely_duplicate_groups(findings) == []
+
+    def test_grouping_is_transitive_across_three_reviewers(self):
+        """One defect found by all three reviewers is ONE group, not three
+        pairs — otherwise the distinct count over-corrects."""
+        title = "The digest topic roster still omits the norms topic entirely"
+        findings = [
+            self._f("R-1", "Nothing Is Broken", title),
+            self._f("R-2", "The Design Is Sound", title),
+            self._f("R-3", "Everything Is Coherent", title),
+        ]
+        groups = cc.likely_duplicate_groups(findings)
+        assert groups == [["R-1", "R-2", "R-3"]]
+        assert cc.distinct_finding_count(findings, groups) == 1
+
+    def test_nothing_is_dropped_or_reordered(self):
+        """The advisory contract: detection must not mutate the finding list."""
+        findings = [
+            self._f("R-1", "Nothing Is Broken", "A clean review renders a truncated census line"),
+            self._f("R-2", "The Design Is Sound", "A clean review renders a malformed census line"),
+        ]
+        before = [dict(f) for f in findings]
+        cc.likely_duplicate_groups(findings)
+        assert findings == before
+
+    def test_malformed_findings_do_not_raise(self):
+        findings = [
+            "not a dict",
+            {"goal": "g", "title": "t"},          # no fid
+            {"fid": "  ", "goal": "g", "title": "t"},
+            {"fid": "R-1", "goal": "g"},          # no title
+        ]
+        assert cc.likely_duplicate_groups(findings) == []
+
+    def test_distinct_count_with_no_groups_is_the_raw_count(self):
+        findings = [self._f("R-1", "g", "alpha beta gamma"), self._f("R-2", "h", "delta epsilon zeta")]
+        assert cc.distinct_finding_count(findings, []) == 2

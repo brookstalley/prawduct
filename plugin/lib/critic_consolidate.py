@@ -695,6 +695,99 @@ def merge_findings(partials: list[dict]) -> list[dict]:
     return findings
 
 
+# Words that carry no discriminating signal in a finding title. Deliberately
+# short: over-stopping raises the similarity of unrelated titles, which costs
+# precision in the one direction that matters.
+_TITLE_NOISE = frozenset(
+    """a about above after again against all also an and any are as at be been before
+    below between but by can cannot could did do does down during else for from further
+    had has have here how if in into is it its may might must never new no not now of
+    on once one only or out over own same second should so than that the their then
+    there this three through to too two under until up very was were what when where
+    which while who with would""".split()
+)
+
+#: Jaccard overlap of significant title words above which two findings from
+#: DIFFERENT reviewers are reported as probably one defect. Calibrated on this
+#: repo's 254 recorded reviews: the true pair that prompted this sat at 0.44,
+#: and every pair surfaced at 0.4 spot-checked as a genuine duplicate (23 pairs
+#: across 16 of 209 reviews with findings, including one defect found by three
+#: reviewers). Set low deliberately — the output is advisory, so a false
+#: positive costs a hint while a miss costs a silently double-counted finding.
+DUPLICATE_SIMILARITY = 0.4
+
+
+def _title_words(title: str) -> frozenset:
+    words = re.findall(r"[a-z0-9_]+", (title or "").lower())
+    return frozenset(w for w in words if len(w) > 2 and w not in _TITLE_NOISE)
+
+
+def likely_duplicate_groups(findings: list[dict]) -> list[list[str]]:
+    """Groups of ``fid``s that probably describe ONE defect, so a finding count
+    is not mistaken for a defect count.
+
+    **Advisory only — nothing here merges, drops, or reorders a finding.**
+    :func:`merge_findings` keys on ``(goal, name, files)``, and the
+    coordinator's goal sets are *disjoint by construction* (each reviewer is
+    told to review ONLY its goals), so two reviewers meeting the same defect
+    always yield two findings that no exact key can collapse. Collapsing them
+    would take fuzzy matching in the *write* path, and a fuzzily-dropped real
+    finding is invisible in the output — strictly worse than over-counting. So
+    this reports and the builder decides.
+
+    Candidates must come from different goals (hence different reviewers) and
+    have file attributions that are not disjoint; then their significant title
+    words must overlap by :data:`DUPLICATE_SIMILARITY`. Grouping is transitive,
+    so one defect found by all three reviewers reports as a single group.
+    """
+    entries = [
+        (
+            f["fid"],
+            f.get("goal"),
+            frozenset(f.get("files") or []),
+            _title_words(f.get("title") or f.get("summary")),
+        )
+        for f in findings
+        if isinstance(f, dict)
+        and isinstance(f.get("fid"), str)
+        and f["fid"].strip()
+    ]
+    parent = {fid: fid for fid, _goal, _files, _words in entries}
+
+    def find(node: str) -> str:
+        while parent[node] != node:
+            parent[node] = parent[parent[node]]
+            node = parent[node]
+        return node
+
+    for i, (fid_a, goal_a, files_a, words_a) in enumerate(entries):
+        for fid_b, goal_b, files_b, words_b in entries[i + 1 :]:
+            if goal_a == goal_b:
+                continue
+            if files_a and files_b and not (files_a & files_b):
+                continue
+            if not words_a or not words_b:
+                continue
+            if len(words_a & words_b) / len(words_a | words_b) >= DUPLICATE_SIMILARITY:
+                root_a, root_b = find(fid_a), find(fid_b)
+                if root_a != root_b:
+                    parent[root_a] = root_b
+
+    order = [fid for fid, _goal, _files, _words in entries]
+    grouped: dict[str, list[str]] = {}
+    for fid in order:
+        grouped.setdefault(find(fid), []).append(fid)
+    return sorted(
+        (group for group in grouped.values() if len(group) > 1),
+        key=lambda group: order.index(group[0]),
+    )
+
+
+def distinct_finding_count(findings: list[dict], groups: list[list[str]]) -> int:
+    """``findings`` counted with each likely-duplicate group collapsed to one."""
+    return len(findings) - sum(len(group) - 1 for group in groups)
+
+
 def _severity_counts(findings: list[dict]) -> tuple[int, int, int]:
     blocking = sum(1 for f in findings if f["severity"] == "blocking")
     warning = sum(1 for f in findings if f["severity"] == "warning")
@@ -783,6 +876,12 @@ def fact_to_cache_record(fact: dict) -> dict:
             f"across {len(roster)} reviewer(s). {verdict}"
         ),
         "fact_id": fact.get("id"),
+        # Recomputed from the fact's own findings, so this advisory grouping
+        # adds nothing to the persisted schema and keeps no model in the write
+        # path. Additive key: `--json` readers tolerate unknown fields.
+        "likely_duplicate_groups": likely_duplicate_groups(
+            body.get("findings") or []
+        ),
     }
 
 
@@ -1066,34 +1165,62 @@ def consolidate(project_dir: Path) -> int:
         )
         return 1
 
-    # Anchor in the governance ledger (telemetry + v2 gate continuity).
-    models = [p.get("model") for p in partials if p.get("model")]
-    argv = ["--event", "review.critic"]
-    if manifest.get("scope"):
-        argv += ["--scope", manifest["scope"]]
-    if manifest.get("chunk"):
-        argv += ["--chunk", manifest["chunk"]]
-    if models:
-        argv += ["--model", models[0]]
-    rc = ledger.ledger_append(project_dir, argv)
-    if rc != 0:
+    # Anchor in the governance ledger (telemetry + v2 gate continuity), once
+    # per review. The fact append is idempotent by (kind, id), but this ledger
+    # has neither key nor dedupe, and `review-stats` counts its lines — so a
+    # second consolidation racing the first (a reviewer's SubagentStop hook
+    # against the fork's own call) would double-count the review in the very
+    # instrument review proportionality is measured with. Probe, don't assume
+    # the timing: the race is narrow, not impossible.
+    if ledger.review_event_exists(prawduct_dir, review_id):
         print(
-            "critic-consolidate: ledger append failed — leaving the manifest in "
-            "place so consolidation can retry.",
+            f"critic-consolidate: {review_id} is already anchored in the "
+            "ledger — not appending a second event.",
             file=sys.stderr,
         )
-        return 1
+    else:
+        models = [p.get("model") for p in partials if p.get("model")]
+        argv = ["--event", "review.critic"]
+        if manifest.get("scope"):
+            argv += ["--scope", manifest["scope"]]
+        if manifest.get("chunk"):
+            argv += ["--chunk", manifest["chunk"]]
+        if models:
+            argv += ["--model", models[0]]
+        rc = ledger.ledger_append(project_dir, argv)
+        if rc != 0:
+            print(
+                "critic-consolidate: ledger append failed — leaving the manifest "
+                "in place so consolidation can retry.",
+                file=sys.stderr,
+            )
+            return 1
 
     # Persisted + anchored. Clear the critic-active marker and remove the
     # partials so a repeat call (or a straggler SubagentStop) is a clean no-op.
     critic_marker.clear_marker(prawduct_dir)
     remove_partials(prawduct_dir)
 
-    counts = (fact.get("body") or {}).get("counts") or {}
+    fact_body = fact.get("body") or {}
+    counts = fact_body.get("counts") or {}
     res_note = f", {appended_resolutions} resolution fact(s)" if resolutions else ""
+    all_findings = fact_body.get("findings") or []
+    groups = likely_duplicate_groups(all_findings)
+    # A finding count is not a defect count: reviewers hold disjoint goals, so
+    # two of them meeting one defect produce two findings that no exact merge
+    # key can collapse. Say so here rather than let the raw count read as
+    # thoroughness and drive disposition work that is partly duplicated.
+    dupe_note = (
+        f" (~{distinct_finding_count(all_findings, groups)} distinct; "
+        f"{len(groups)} likely-duplicate group(s): "
+        f"{'; '.join('+'.join(g) for g in groups)})"
+        if groups
+        else ""
+    )
     print(
         f"consolidated: {counts.get('blocking', 0)} blocking, "
-        f"{counts.get('warning', 0)} warning, {counts.get('note', 0)} note "
+        f"{counts.get('warning', 0)} warning, {counts.get('note', 0)} note"
+        f"{dupe_note} "
         f"from {len(partials)} reviewer(s) → fact {review_id}{res_note} + "
         f"{findings_path.name} + ledger anchor; marker cleared."
     )

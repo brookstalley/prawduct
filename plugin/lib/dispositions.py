@@ -108,7 +108,10 @@ def _target(fact: dict) -> "tuple[str, str] | None":
 
 
 def disposition_facts(store: dict) -> list[dict]:
-    """Every well-formed disposition fact, in store (append) order."""
+    """Every well-formed disposition fact, in store (append) order.
+
+    The one filter both readers below share, so "well-formed" is decided in a
+    single place rather than re-derived per query."""
     return [
         fact
         for fact in evidence.facts_of_kind(store, KIND)
@@ -121,20 +124,13 @@ def disposition_index(store: dict) -> dict[tuple[str, str], dict]:
 
     Last answer wins, by store order — which is append order, so a changed
     answer supersedes its predecessor without either being edited away."""
-    index: dict[tuple[str, str], dict] = {}
-    for fact in evidence.facts_of_kind(store, KIND):
-        key = _target(fact)
-        if key is not None:
-            index[key] = fact
-    return index
+    return {_target(fact): fact for fact in disposition_facts(store)}
 
 
 def disposition_history(store: dict, review_id: str, fid: str) -> list[dict]:
     """Every disposition recorded for one finding, oldest first."""
     return [
-        fact
-        for fact in evidence.facts_of_kind(store, KIND)
-        if _target(fact) == (review_id, fid)
+        fact for fact in disposition_facts(store) if _target(fact) == (review_id, fid)
     ]
 
 

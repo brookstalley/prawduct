@@ -23,11 +23,50 @@ consolidation step) and discards the wall-clock saving that is the only thing it
 
 **What landed.** One clause in each of the two dispatch surfaces, plus a guardrail test asserting
 both — proved by mutation, since an unpinned instruction is exactly how this silently reverts.
-Concurrency was already safe by construction and needed no code change: reviewers write per-role
-partial files with no shared write target, and `critic-consolidate` no-ops until every role in the
-manifest reports, with an id-idempotent review-fact append that already handles the
-double-consolidate race. Unrelated to the open `critic-begin` in-flight-guard item, which is about
-two *dispatches* colliding; these three reviewers share one manifest and never call `critic-begin`.
+Unrelated to the open `critic-begin` in-flight-guard item, which is about two *dispatches* colliding;
+these three reviewers share one manifest and never call `critic-begin`.
+
+**A correction, and the defect it uncovered.** The first version of this entry claimed concurrency was
+"safe by construction". That is true of the **evidence fact** — per-role partial files with no shared
+write target, and an id-idempotent append — but it was too broad, and the review that checked it found
+where: `ledger.ledger_append` had **no idempotency key and no dedupe**, while `review-stats` counts its
+lines without de-duplicating by review. So one review could anchor two `review.critic` events and be
+counted twice — in the very instrument this plan's success criterion is measured with ("median rounds
+per logical change at or under 2").
+
+Then it reproduced on the review that flagged it: two events for `rev-20260729T233201Z-d91acd9e`, one
+second apart. The cause is broader than concurrency — the Stop hook's self-heal and the Critic SKILL
+*both* call `critic-consolidate` by design, so the double-anchor is deterministic on the single-pass
+path whenever the marker outlives a Stop boundary, not a race at all. Measured across the whole
+ledger: 1 surplus event in 241, so historical over-counting is negligible — the fix matters because
+the instrument is about to be used, not because the history is wrong. `review_event_exists` now probes
+for an existing anchor at the review id before appending, covering both callers.
+
+## 2026-07-29: A finding count was being read as a defect count
+
+<!-- prawduct: type=fix | scope=record-mechanization -->
+
+**Why:** `merge_findings` de-duplicates coordinator findings on `(goal, name, files)` — and the
+coordinator's goal sets are **disjoint by construction**, since each reviewer is instructed to review
+ONLY its own goals. So two reviewers meeting the same defect can never collide on that key, and both
+survive the merge. Observed in this branch's own review: R-7 ("a clean review's census renders a
+truncated sentence") and R-13 ("a clean review renders a malformed census summary line") are one
+defect, counted twice. Across this repo's 254 recorded reviews the signature appears in 16 of the 209
+reviews that have findings — including one defect found by all three reviewers and counted three
+times. Inflated counts read as thoroughness and drive disposition work that is partly duplicated.
+
+**What landed, and what deliberately did not.** Detection is **advisory: nothing is merged, dropped,
+or reordered.** Consolidation now reports "N note (~M distinct; K likely-duplicate group(s): R-7+R-13)"
+and the derived findings view carries the groupings, recomputed from the fact's own findings — so
+there is no persisted-schema change and no model in the write path. Collapsing the findings instead
+would need fuzzy matching in the *write* path, and a fuzzily-dropped real finding is invisible in the
+output: strictly worse than over-counting, and undetectable by the person who would need to notice.
+Candidates must come from different goals and non-disjoint files before title-word overlap is
+considered, grouping is transitive so one defect found three times reports as one group, and the
+threshold (0.4) was calibrated against all 254 stored reviews rather than chosen — the true pair sat
+at 0.44 and every pair it surfaces spot-checked as genuine. Filed as CRT-R4Z2; the backlog item keeps
+the harder half, that a reviewer filing a *meta*-note about another finding is a protocol question,
+not a merge one.
 
 ## 2026-07-29: Dispositions become facts, and the census stops being prose
 

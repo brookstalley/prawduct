@@ -78,8 +78,13 @@ enumeration is recorded in the chunk's own section and is the schema-lock-in che
 Reviewed at `rev-20260729T230420Z-71b7f129` (0 blocking, 9 warning, 16 note; 17 fixed, 8 accepted).
 The three review-cost levers NOT in this plan, deliberately: converge-by-construction round policy
 enforced in critic-begin (filed as CRT-3W6P, child of CRT-8N5V), learnings.md compaction (filed as
-LRN-4K8T), and the backlog.md disease (own in-flight GitHub-Issues migration). Next: Chunk 02
-(subtraction sweep + deterministic record-lint).
+LRN-4K8T), and the backlog.md disease (own in-flight GitHub-Issues migration). **Also amended on this
+branch, outside every chunk's scope:** the Critic's coordinator *dispatch* surfaces
+(`review-protocol.md` step 2, `SKILL.md`'s roster bullet) now require the three reviewers to be
+issued in one message, with a mutation-proved guardrail — Chunk 04 author please note, since that
+chunk changes roster *selection* on the same two files. That fix also exposed and closed a
+deterministic ledger double-anchor (`review_event_exists`). Next: Chunk 02 (subtraction sweep +
+deterministic record-lint).
 
 ## Scaffolding
 
@@ -306,3 +311,11 @@ derived blocks — Chunk 05's subject absorbs it), COV-2P7F (`check-change-log-e
 converges with the ledger follow-on, not this plan), GOV-6D4Q (the 2026-07-02 simplification
 diagnosis whose fix program never ran — this plan is a measured successor on the record layer),
 BLD-5R7K (chunk-progress degradation — adjacent, not covered; stays open).
+
+Opened or advanced by this plan's own work: CRT-8N5V (review-loop exit condition — its enforcement
+leg is now CRT-3W6P, filed rather than absorbed because it changes the Critic *dispatch* path, not
+the record layer), TEL-2B6K (ledger phase 2 — Chunk 01 landed the record half of its part (b); what
+remains is the `gate.blocked`/`probe.fired` kinds plus the join that would let disposition facts
+reach `review-stats`, which reads the ledger and not the evidence store), CRT-R4Z2 (coordinator
+findings double-counted because the merge key cannot collide across disjoint goal sets), LRN-4K8T
+(learnings.md compaction).
