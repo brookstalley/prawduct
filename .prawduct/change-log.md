@@ -3,6 +3,43 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-07-29: Phase 0 — the release runbook asks whether everything is fit to ship
+
+<!-- prawduct: type=feat | scope=release-readiness | chunks=01 -->
+
+REL-8P6M part (f), the item's highest-value half. The runbook's only precondition was
+`git diff --stat origin/main origin/develop` — *"is there anything to ship?"*, never *"is everything
+**fit** to ship?"*. On v3.1.2 those diverged: the check passed, and following Phase 2 literally would
+have published the backlog-service subsystem with all four go-live blockers open. What caught it was
+incidental (enumerating change-log entries happened to surface ten from an unexpected subsystem), not
+any step of the procedure — and the publish is unrecallable, since consumers re-resolve `main` at
+next session start.
+
+**`prawduct-hook check-releasability [--release vX.Y.Z]`** requires every release-pending scope to be
+classified in the release plan's `## Release classification` table as `ships`, or `withheld` behind a
+**named open** blocker. Fails closed on every un-evaluable input — a gate that fails open is
+indistinguishable from the absence it replaces.
+
+**The classification is a partition, not a checklist.** Every release-pending scope appears exactly
+once, and nothing appears that is not release-pending. A subset comparison would satisfy "everything
+listed is real" while still letting an unlisted scope ship unexamined — the v3.1.2 shape exactly.
+Pinned in both directions by `TestPartitionIsExact`, and verified by mutation: neutralising the
+orphan check fails two tests.
+
+**Why a withholding blocker must still be open:** the blocker *is* the justification. If it closed,
+the reason to withhold evaporated and the decision needs re-taking. Shipping on a stale withholding
+and withholding on a stale blocker are the same defect, so the gate names both.
+
+**First real run found pre-existing debt:** 11 release-pending scopes, of which six
+(`skills-cutover-awareness`, `backlog-skill-repoint`, `backlog-service-v1`, `v1.5.1`, `v1.5`, `v1.4`)
+carry `scope=` but no `release=` — work that shipped long ago with no record of which release carried
+it. That is not a false positive; it is why "what did the last release ship?" cannot be answered from
+this file, and Phase 0 documents backfilling via the code test rather than classifying history into
+the release being cut.
+
+Part **(e)** — the Phase 1 sweep's selection rule — remains deliberately **held**; see
+`artifacts/change-log-ledger-design.md` for why rewriting it now would be throwaway work.
+
 ## 2026-07-29: Dispositions — verify-resolutions `rev-20260729T160832Z-6fc768ff`, both findings FIXED
 
 <!-- prawduct: type=fix | scope=coverage-perf -->

@@ -68,6 +68,55 @@ the only way back is another release.
 
 ---
 
+## Phase 0 — Releasability
+
+*"Is there anything to ship?" is not "is everything **fit** to ship?" The check at the top of this
+runbook answers only the first. On v3.1.2 the two diverged, and following Phase 2 literally would
+have published the backlog-service subsystem with all four of its go-live blockers open — to every
+installed consumer, unrecallably. This phase is the second question (REL-8P6M).*
+
+0. Confirm every release-pending scope is accounted for:
+
+   ```
+   ./plugin/bin/prawduct-hook check-releasability --release vX.Y.Z
+   ```
+
+   **Expected:** `releasable: vX.Y.Z — N release-pending scope(s), M shipping, K withheld`,
+   followed by the two lists.
+
+   **If not:** it prints `not-releasable:` (or `no-release-plan:`) and one `ERROR:` line per
+   problem, then stops. Each names its own fix:
+
+   - *unclassified scope(s)* → add a row to the `## Release classification` table in
+     `.prawduct/artifacts/release-plan-vX.Y.Z.md`, naming `ships` or `withheld` + an **open**
+     blocker id. Create the release plan if it does not exist yet.
+   - *withholding blocker no longer open* → the reason to withhold is gone. Re-take the decision:
+     either it ships now, or a different open blocker withholds it.
+   - *classified scope with nothing release-pending behind it* → a stale table row; delete it.
+
+   The table is a partition, not a checklist: every release-pending scope appears **exactly once**,
+   and nothing appears that is not release-pending. That exactness is the point — a subset would
+   satisfy "everything I listed is real" while still letting an unlisted scope ship unexamined,
+   which is the v3.1.2 shape.
+
+   ```markdown
+   ## Release classification
+
+   | Scope | Disposition | Blocker |
+   |---|---|---|
+   | coverage-perf | ships | |
+   | v3.2.0-golive | withheld | BKL-6J2X |
+   ```
+
+   > ⚠️ **A scope with no `release=` tag that in fact shipped long ago will appear here.** That is
+   > not a false positive — it means no record says which release carried it, which is precisely
+   > what makes "what did the last release ship?" unanswerable from this file (REL-7D4X's root, and
+   > the `learnings.md` rule that a previous release's contents are determined from its **code**,
+   > never from change-log prose). Backfill the `release=` tag on those entries using the code test
+   > in Phase 1 step 2, rather than classifying history into the release you are cutting now.
+
+---
+
 ## Phase 1 — Release prep on `develop`
 
 1. List the tagged change-log entries, newest first:

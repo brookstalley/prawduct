@@ -2948,6 +2948,28 @@ def cmd_check_change_log_entry(project_dir: Path) -> int:
     return _coverage().check_change_log_entry(project_dir)
 
 
+def cmd_check_releasability(project_dir: Path, args: list[str] | None = None) -> int:
+    """Phase 0 releasability gate for the release runbook (REL-8P6M part f).
+
+    Answers the question the runbook never asked — *is everything on
+    ``develop`` fit to ship?* — by requiring every release-pending scope to be
+    classified as shipping or withheld behind a named open blocker. Thin
+    wrapper; the body lives in ``lib.release_readiness``, reached lazily so the
+    hook's top level stays lib-free."""
+    release = None
+    argv = list(args or [])
+    if "--release" in argv:
+        idx = argv.index("--release")
+        if idx + 1 < len(argv):
+            release = argv[idx + 1]
+        else:
+            print("usage: prawduct-hook check-releasability [--release vX.Y.Z]", file=sys.stderr)
+            return 1
+    from lib import release_readiness  # noqa: PLC0415 -- lazy, mirrors _coverage()
+
+    return release_readiness.check_releasability(project_dir, release)
+
+
 def cmd_test_status(project_dir: Path) -> int:
     """Report whether ``.test-evidence.json`` covers the current tree. Thin
     wrapper — body lives in ``lib.gates.test_status`` (STH-9V4K ch.6)."""
@@ -3801,7 +3823,8 @@ _USAGE = (
     "review-stats [--json]|classify-diff-risk [<base>]|"
     "check-operator-verification|accept-operator-verification <rationale>|"
     "verify-operator-verification <vrf-id>|"
-    "check-pr-doc-only|check-change-log-entry|regen-views [--check]|stamp-merged|"
+    "check-pr-doc-only|check-change-log-entry|check-releasability [--release vX.Y.Z]|"
+    "regen-views [--check]|stamp-merged|"
     "infer-critic-mode [args]|"
     "resolve-base|version|"
     "evidence {status|list [--kind <k>] [-n <count>]}|advisory <subcmd> [args]|"
@@ -4085,6 +4108,8 @@ def main() -> int:
         return cmd_verify_operator_verification(project_dir, vrf_id)
     elif command == "check-change-log-entry":
         return cmd_check_change_log_entry(project_dir)
+    elif command == "check-releasability":
+        return cmd_check_releasability(project_dir, sys.argv[2:])
     elif command == "check-pr-doc-only":
         return cmd_check_pr_doc_only(project_dir)
     elif command == "stamp-merged":
