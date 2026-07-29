@@ -119,13 +119,31 @@ unsafe. It is preserved below with the reason, because the reason generalizes.**
 > claiming conformance while the code does the opposite is worse than no
 > disposition.
 
-1. **Plugin-root fallback, gated on the plugin-root marker.** A ref that does
-   not resolve at the repo root but does resolve under the repo's own plugin
-   subtree is not missing. **The subtree counts only when
-   `plugin/.claude-plugin/plugin.json` exists** — a governed product may ship
-   its own `plugin/` tree (VS Code extension, Obsidian or WordPress plugin),
-   and resolving refs against that would silently excuse a genuinely missing
-   deliverable in every such repo. Scope by the pattern, not the 17 sites.
+1. **A second ref root, DECLARED by the repo.** A ref that does not resolve at
+   the repo root but does resolve under a root the repo declares
+   (`build_plan_ref_root:` in `project-state.yaml`) is not missing. Scope by
+   the pattern, not the 17 sites.
+
+   **Revised twice, and the second revision is the one that matters.** The
+   plan's original form resolved against `project_dir / "plugin"`
+   unconditionally; that was caught in build and narrowed to require a
+   `plugin/.claude-plugin/plugin.json` marker. **The marker was still wrong** —
+   raised by the owner, checking `../hallucinote`. A governed product that *is*
+   a Claude Code plugin carries exactly that manifest, so the guard admits
+   precisely the repos it was written to exclude. (hallucinote survives only
+   because it puts `.claude-plugin` at its repo root rather than under
+   `plugin/` — a layout accident, not the design working. A fleet survey found
+   no live victim today, which is a fact about one machine, not a property.)
+
+   The defect underneath both cuts is the same one this chunk already withdrew
+   a rule for: **the gate inferring its own permission from filesystem shape.**
+   A repo that ships a plugin, an extension, or a vendored tree has an ordinary
+   layout, not a statement of intent. So the repo declares, the verifier never
+   sniffs, and an absent key — every consuming product today — means the repo
+   root is the only root. Fail-closed by default, and the affordance is
+   available on purpose to any repo that wants it rather than taken silently by
+   this one. A declared root that escapes the repo, is absent, or is not a
+   directory is ignored, not honoured.
 2. **Issue references and anchors are not file paths.** A token containing `#`
    (`owner/repo#12`, `docs/api#usage`) names a location in a tracker or
    document; no source file this verifier is asked about carries one. This is a

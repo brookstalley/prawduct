@@ -336,6 +336,29 @@ views_enabled: true
 active_build_plan: artifacts/build-plan-v3.2.0-golive.md
 
 # =============================================================================
+# BUILD-PLAN REF ROOT (opt-in)
+# =============================================================================
+# A second root that this repo's build-plan file refs may be written relative
+# to, in addition to the repo root. verify-chunk-refs tries the repo root
+# first, then this.
+#
+# Prawduct's plans name plugin files the way the plugin ships them —
+# `lib/gates.py`, `skills/backlog/SKILL.md` — because that is how those paths
+# read from inside the plugin. They resolve from nowhere at the repo root, so
+# without this declaration each one reports as a missing deliverable.
+#
+# This is DECLARED, never inferred. An earlier cut of the verifier sniffed for
+# a `plugin/` directory carrying a plugin manifest and enabled the fallback
+# itself; that silently weakens the gate for every repo whose layout happens to
+# match — a product shipping a plugin, an extension, or a vendored tree is an
+# ordinary layout, not a statement of intent, and a genuinely missing
+# deliverable there would resolve against an unrelated directory and never be
+# reported. Absent (the default everywhere else) means the repo root is the
+# only root.
+
+build_plan_ref_root: plugin
+
+# =============================================================================
 # COVERAGE EVIDENCE (opt-in, v1.4+)
 # =============================================================================
 # When true, the Critic requires every changed file to appear in

@@ -23,10 +23,19 @@ would have converted a silent gate into one blocking 21 refs across seven chunks
 
 - **Plugin-relative shorthand (17 refs, 7 chunks).** A repo that *contains* the plugin
   writes refs the way the plugin ships them (`lib/gates.py`, `skills/backlog/SKILL.md`);
-  those are root-relative nowhere. They now resolve under the repo's own plugin subtree —
-  **gated on `plugin/.claude-plugin/plugin.json`**, so a governed product shipping its own
-  unrelated `plugin/` tree (VS Code extension, Obsidian, WordPress) cannot have a genuinely
-  missing deliverable silently excused against it.
+  those are root-relative nowhere. A repo may now **declare** a second ref root
+  (`build_plan_ref_root:` in `project-state.yaml`); prawduct declares `plugin`. Absent —
+  every consuming product — means the repo root is the only root.
+
+  **This landed wrong twice before it landed right, and the pattern is the finding.** First
+  cut resolved against `project_dir / "plugin"` unconditionally. Narrowed in build to
+  require a `plugin/.claude-plugin/plugin.json` manifest. **That was still wrong**, raised
+  by the owner against a real sibling repo: a governed product that *is* a Claude Code
+  plugin carries exactly that manifest, so the guard admitted the precise population it
+  existed to exclude. Both cuts share one defect — **the gate inferring its own permission
+  from filesystem shape.** Shipping a plugin, an extension, or a vendored tree is an
+  ordinary layout, not a statement of intent. The repo declares; the verifier never sniffs.
+  A declared root that escapes the repo, is absent, or is not a directory is ignored.
 - **Issue references and anchors.** A token carrying `#` (`owner/repo#12`,
   `docs/api#usage`) names a location in a tracker or document, never a source file. That is
   a property of the token's shape and true for every consumer, so it lives in

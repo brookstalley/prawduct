@@ -760,23 +760,24 @@ class TestVerifyChunkRefsForwardRefScope:
 # =============================================================================
 
 
-def _make_plugin_root(project: Path) -> Path:
-    """Mark ``project/plugin`` as a real Claude Code plugin root."""
-    plugin = project / "plugin"
-    (plugin / ".claude-plugin").mkdir(parents=True, exist_ok=True)
-    (plugin / ".claude-plugin" / "plugin.json").write_text('{"name": "x"}\n')
-    return plugin
+def _declare_ref_root(project: Path, name: str = "plugin") -> Path:
+    """Declare an additional build-plan ref root, the way a repo opts in."""
+    state = project / ".prawduct" / "project-state.yaml"
+    state.write_text(state.read_text() + f"\n{_bpr.REF_ROOT_KEY}: {name}\n")
+    root = project / name
+    root.mkdir(parents=True, exist_ok=True)
+    return root
 
 
-class TestVerifyChunkRefsPluginRelative:
-    """A repo that CONTAINS the plugin writes refs the way the plugin ships
-    them, so those resolve under `plugin/` — but only for such a repo."""
+class TestVerifyChunkRefsDeclaredRefRoot:
+    """A repo may DECLARE a second root its plan refs are written relative to.
+    Declared, never inferred — see `test_undeclared_repo_does_NOT_resolve`."""
 
     def test_plugin_relative_ref_resolves(self, tmp_path: Path):
         project, prawduct = _project_with_chunk(
             tmp_path, "- touches `lib/gates.py`\n"
         )
-        plugin = _make_plugin_root(project)
+        plugin = _declare_ref_root(project)
         (plugin / "lib").mkdir()
         (plugin / "lib" / "gates.py").write_text("x = 1\n")
         refs = _bpr._parse_build_plan_chunk_refs(prawduct, "01")
@@ -788,25 +789,55 @@ class TestVerifyChunkRefsPluginRelative:
         project, prawduct = _project_with_chunk(
             tmp_path, "- touches `lib/backlog/`\n"
         )
-        plugin = _make_plugin_root(project)
+        plugin = _declare_ref_root(project)
         (plugin / "lib" / "backlog").mkdir(parents=True)
         refs = _bpr._parse_build_plan_chunk_refs(prawduct, "01")
         assert _bpr._verify_chunk_refs(project, refs) == []
 
-    def test_unmarked_plugin_dir_does_NOT_resolve(self, tmp_path: Path):
+    def test_undeclared_repo_does_NOT_resolve(self, tmp_path: Path):
         """The load-bearing guard for every consuming product.
 
-        A governed product may ship its own `plugin/` tree (VS Code extension,
-        Obsidian/WordPress plugin). Resolving refs against it would silently
-        excuse a genuinely missing deliverable — a gate weakened everywhere to
-        serve one repo. Only a real plugin root counts.
+        A repo with a `plugin/` tree it never declared — a product that ships a
+        Claude Code plugin, a VS Code extension, a vendored bundle — must not
+        get refs resolved against it. Inferring the affordance from layout
+        silently excuses a genuinely missing deliverable, i.e. weakens the gate
+        everywhere its shape happens to match. Absence of the key is the
+        fail-closed default.
         """
         project, prawduct = _project_with_chunk(
             tmp_path, "- touches `lib/gates.py`\n"
         )
-        plugin = project / "plugin"  # NO .claude-plugin/plugin.json marker
-        (plugin / "lib").mkdir(parents=True)
+        plugin = project / "plugin"  # present, and even plugin-shaped...
+        (plugin / ".claude-plugin").mkdir(parents=True)
+        (plugin / ".claude-plugin" / "plugin.json").write_text('{"name": "x"}\n')
+        (plugin / "lib").mkdir()
         (plugin / "lib" / "gates.py").write_text("x = 1\n")
+        # ...but never declared, so it is not a ref root.
+        refs = _bpr._parse_build_plan_chunk_refs(prawduct, "01")
+        missing = _bpr._verify_chunk_refs(project, refs)
+        assert [m["ref"] for m in missing] == ["lib/gates.py"]
+
+    def test_declared_root_escaping_the_repo_is_ignored(self, tmp_path: Path):
+        project, prawduct = _project_with_chunk(
+            tmp_path, "- touches `lib/gates.py`\n"
+        )
+        outside = tmp_path / "outside"
+        (outside / "lib").mkdir(parents=True)
+        (outside / "lib" / "gates.py").write_text("x = 1\n")
+        state = project / ".prawduct" / "project-state.yaml"
+        state.write_text(
+            state.read_text() + f"\n{_bpr.REF_ROOT_KEY}: ../outside\n"
+        )
+        refs = _bpr._parse_build_plan_chunk_refs(prawduct, "01")
+        missing = _bpr._verify_chunk_refs(project, refs)
+        assert [m["ref"] for m in missing] == ["lib/gates.py"]
+
+    def test_declared_root_that_does_not_exist_is_ignored(self, tmp_path: Path):
+        project, prawduct = _project_with_chunk(
+            tmp_path, "- touches `lib/gates.py`\n"
+        )
+        state = project / ".prawduct" / "project-state.yaml"
+        state.write_text(state.read_text() + f"\n{_bpr.REF_ROOT_KEY}: nope\n")
         refs = _bpr._parse_build_plan_chunk_refs(prawduct, "01")
         missing = _bpr._verify_chunk_refs(project, refs)
         assert [m["ref"] for m in missing] == ["lib/gates.py"]
@@ -815,7 +846,7 @@ class TestVerifyChunkRefsPluginRelative:
         project, prawduct = _project_with_chunk(
             tmp_path, "- touches `lib/gates.py`\n"
         )
-        _make_plugin_root(project)
+        _declare_ref_root(project)
         (project / "lib").mkdir()
         (project / "lib" / "gates.py").write_text("x = 1\n")
         refs = _bpr._parse_build_plan_chunk_refs(prawduct, "01")
@@ -825,7 +856,7 @@ class TestVerifyChunkRefsPluginRelative:
         project, prawduct = _project_with_chunk(
             tmp_path, "- touches `lib/nope.py`\n"
         )
-        _make_plugin_root(project)
+        _declare_ref_root(project)
         refs = _bpr._parse_build_plan_chunk_refs(prawduct, "01")
         missing = _bpr._verify_chunk_refs(project, refs)
         assert [m["ref"] for m in missing] == ["lib/nope.py"]
@@ -861,7 +892,7 @@ class TestPathShapedAmbiguityIsReported:
         project, prawduct = _project_with_chunk(
             tmp_path, "- see `brookstalley/prawduct`\n"
         )
-        _make_plugin_root(project)
+        _declare_ref_root(project)
         refs = _bpr._parse_build_plan_chunk_refs(prawduct, "01")
         missing = _bpr._verify_chunk_refs(project, refs)
         assert [m["ref"] for m in missing] == ["brookstalley/prawduct"]

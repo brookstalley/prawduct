@@ -44,7 +44,7 @@ from pathlib import Path
 from typing import NamedTuple
 
 from . import gitstate
-from .core import read_bool_yaml_key, resolve_build_plan_path
+from .core import read_bool_yaml_key, read_str_yaml_key, resolve_build_plan_path
 from .coverage import _resolve_base_branch
 
 # `lib.views` is a HEAVY_SUBMODULE and is imported lazily, inside the one
@@ -1022,30 +1022,42 @@ def _current_chunk_id_from_status(project_dir: Path) -> str | None:
     return _chunk_id_from_item_text(status.get("current_chunk", ""))
 
 
-_PLUGIN_SUBDIR = "plugin"
-# The file that identifies ``plugin/`` as a Claude Code plugin root rather than
-# a directory that merely shares the name. Requiring it is what keeps the
-# fallback below from firing in a governed product that happens to ship a
-# ``plugin/`` tree of its own — a VS Code extension, an Obsidian or WordPress
-# plugin. Without this test the fallback would silently resolve a genuinely
-# missing deliverable against an unrelated directory, i.e. weaken the gate
-# everywhere to serve one repo's convenience.
-_PLUGIN_ROOT_MARKER = Path(".claude-plugin") / "plugin.json"
+REF_ROOT_KEY = "build_plan_ref_root"
 
 
-def _plugin_root(project_dir: Path) -> Path | None:
-    """The repo's own plugin subtree, or ``None`` when it has none.
+def _ref_root(project_dir: Path) -> Path | None:
+    """A second root that this repo's plan refs may be written relative to,
+    declared by the repo — or ``None``, which is the default everywhere.
 
-    A repo that *contains* the plugin (rather than merely being governed by
-    one) writes plan refs the way the plugin ships them — ``lib/gates.py``,
-    ``skills/backlog/SKILL.md`` — because that is how those paths read from
-    inside the plugin. They are root-relative nowhere, so the shorthand an
-    author naturally writes would otherwise report as a missing deliverable.
+    Some repos write plan refs relative to a subdirectory rather than the repo
+    root, because that is how the paths read from inside the thing being built:
+    a repo that *ships* a plugin names ``lib/gates.py`` and
+    ``skills/backlog/SKILL.md``, which resolve from nowhere at the root. Those
+    would otherwise report as missing deliverables.
+
+    **The repo declares this; the verifier never infers it.** Sniffing for a
+    subdirectory that "looks like" such a root — by name, or by a marker file
+    inside it — silently weakens the gate for every repo whose layout happens
+    to match: a genuinely missing deliverable gets resolved against an
+    unrelated directory and never reported. A product that ships a plugin, an
+    extension, or a bundled vendor tree is an ordinary layout, not a signal of
+    intent. So the affordance is opt-in and available to any repo that wants
+    it, and an absent key means the root is the only root, which is both the
+    prior behaviour and the fail-closed one.
+
+    A declared root that escapes the repo, does not exist, or is not a
+    directory is ignored rather than honoured — the same fail-closed posture.
     """
-    root = project_dir / _PLUGIN_SUBDIR
-    if (root / _PLUGIN_ROOT_MARKER).is_file():
-        return root
-    return None
+    prawduct_dir = gitstate.get_prawduct_dir(project_dir)
+    declared = read_str_yaml_key(prawduct_dir / "project-state.yaml", REF_ROOT_KEY)
+    if not declared:
+        return None
+    root = project_dir / declared
+    try:
+        root.resolve().relative_to(project_dir.resolve())
+    except (ValueError, OSError):
+        return None
+    return root if root.is_dir() else None
 
 
 def _verify_chunk_refs(project_dir: Path, refs: dict) -> list[dict]:
@@ -1054,8 +1066,8 @@ def _verify_chunk_refs(project_dir: Path, refs: dict) -> list[dict]:
     Returns a list of ``{"kind", "ref", "line_num", "reason"}`` for missing
     entries. Empty list = all refs resolved.
 
-    A ref resolves at the repo root or, in a repo that carries its own plugin
-    subtree, under that subtree (:func:`_plugin_root`). Anything else is
+    A ref resolves at the repo root or, when the repo declares one, under its
+    additional ref root (:func:`_ref_root`). Anything else is
     reported. **Ambiguity is reported, not excused**: a token that is
     path-shaped but resolves nowhere gets named, even when it looks like it
     might be prose (a repo slug, a placeholder). A gate that guesses "probably
@@ -1065,12 +1077,12 @@ def _verify_chunk_refs(project_dir: Path, refs: dict) -> list[dict]:
     already declines to treat as paths.
     """
     missing: list[dict] = []
-    plugin_root = _plugin_root(project_dir)
+    ref_root = _ref_root(project_dir)
     for entry in refs.get("file_paths", []):
         ref = entry["ref"]
         target = project_dir / ref
         if not target.exists():
-            if plugin_root is not None and (plugin_root / ref).exists():
+            if ref_root is not None and (ref_root / ref).exists():
                 continue
             if gitstate.git_path_is_ignored(project_dir, ref):
                 # BLD-4K7P: an intentionally-gitignored managed path (e.g.
