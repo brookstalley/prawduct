@@ -131,7 +131,10 @@ generality conversations already open. R-20 (three unassessed open items) and R-
 contract-surface registry) are repo-hygiene items for the janitor, not this chunk. **R-7 is not an
 acceptance — it is an owner question**: the reviewers cleared the norm amendment as legitimate rather
 than laundering, but its provenance is attested only inside the diff, and they recommend one owner
-confirmation at PR time. Raised, not assumed.
+confirmation at PR time. Raised, not assumed. **Settled 2026-07-29: the owner confirmed the ruling**
+— so the count above is 9 accepted notes and one discharged question, not 10 accepted. The
+confirmation is recorded in `operational-spec.md`'s `Status:` line and in the norm-amendment entry
+below; neither the norm's text nor its enforcement changed.
 
 ## 2026-07-29: The release sweep is scope-narrowed as well as positional, and the fix is held
 
@@ -228,6 +231,15 @@ The mechanism contradicted its own rationale, and prawduct had already departed 
 ceased. The amendment keeps the why verbatim and narrows the mechanism to the case where it holds.
 Raised by the Critic as a blocking precondition on Chunk 02 rather than edited quietly, and the
 decision is recorded in the norm itself.
+
+**Provenance closed out-of-diff (R-7), 2026-07-29.** The reviewers cleared the amendment as
+legitimate but noted the ruling was attested *only inside the diff that made it* — the change was its
+own only witness. That shape is indistinguishable from laundering on inspection regardless of whether
+the substance is sound, so it was carried to PR time as an owner question rather than assumed. **The
+owner confirmed the ruling explicitly**, and the confirmation is now recorded in the norm's own
+`Status:` line where a future reader meets the norm, not only in this log. The lesson generalizes past
+this norm: *a governance change cannot supply its own authority.* When an agent amends a binding norm
+mid-build, the attestation has to land somewhere the amendment isn't.
 
 The descriptive **Release Flow** prose was false in the same way — it called the content-identical
 check "the invariant the model guarantees" while `main`'s tree had deliberately differed twice. It
