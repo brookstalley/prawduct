@@ -137,14 +137,19 @@ whole-`develop` promotion. This repo has done a **pruned** promotion twice.
 **Constraint:** Phase 2 (whole-develop) stays intact and correct — this **adds** a path, it does not
 replace one. The reader is routed between them explicitly.
 
-> **Undisposed norm — settle this BEFORE starting Chunk 02** (Critic
-> `rev-20260729T170856Z-8a025aec`, warning). `operational-spec.md` § Direction carries a **second**
-> norm this plan did not dispose: the gitflow promotion norm — promotion is *"a separate, deliberate
-> tree-set step"*, rationale *"content-identical to `develop`"*. Parts (a)/(b)/(c) propose replacing
-> exactly that with a `--3way` apply, a push-by-ref, and an explicit finding that content-identity is
-> *meaningless* for a pruned release. That is a norm **amendment**, not an implementation detail, and
-> it needs a recorded `[DECISION: … | user can veto]` engaging the norm's own why — amending a norm
-> to bless one's own code is the laundering tell. Chunk 02 does not begin until this is recorded.
+> **Norm amended — Chunk 02 is unblocked.** `operational-spec.md` § Direction's gitflow promotion
+> norm bound promotion to a *content-identical tree-set*, which parts (a)/(b)/(c) replace. Raised as
+> a blocking precondition (Critic `rev-20260729T170856Z-8a025aec`) rather than edited quietly, and
+> **amended 2026-07-29 by owner ruling** with the decision recorded in the norm itself.
+>
+> The amendment engages the norm's own *why* rather than overriding it: the stated purpose is that a
+> release must not **ship integration WIP**, and content-identity *forces* precisely that whenever
+> `develop` holds unready work — the mechanism contradicted its own rationale, and prawduct had
+> already departed from it twice (v3.1.1, v3.1.2) with nothing recorded. The binding property is now
+> the **partition** — every path shipped or withheld, nothing unaccounted — with content-identity as
+> its special case when nothing is withheld. Chunk 02's part (c) is that norm's enforcement, which is
+> the inverse of laundering: the code conforms to the amended norm, and the norm is stricter about
+> what it actually cares about.
 
 **Done when:**
 1. Both promotion shapes documented, with an explicit selection step naming which to use.

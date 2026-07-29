@@ -101,10 +101,10 @@ def parse_classification(content: str) -> tuple[dict[str, tuple[str, str | None]
     A row with a recognised shape but bad content (unknown disposition,
     duplicate scope, `withheld` with no blocker id) becomes an **error**: a row
     a human wrote and this parser ignored is the silent-omission class the gate
-    exists to prevent. Two cases are skipped rather than reported, because they
-    are table syntax and not data — the header/separator rows, and any line with
-    fewer than two cells (a decorative or truncated row that names no scope, so
-    there is nothing to report about).
+    exists to prevent. Three cases are skipped rather than reported, because
+    they name no scope and so carry nothing to report *about*: the
+    header/separator rows, any line with fewer than two cells, and a row whose
+    scope cell is empty (even when its disposition cell is well-formed).
     """
     classification: dict[str, tuple[str, str | None]] = {}
     errors: list[str] = []
@@ -167,17 +167,17 @@ def _open_item_ids(backlog_content: str) -> set[str]:
     from .backlog import legacy  # noqa: PLC0415 -- lazy: keeps this module's import DAG light
 
     backlog = legacy.parse_backlog(backlog_content)
+    # ``pending_items()`` is the backlog module's PUBLIC "outstanding work"
+    # query: non-struck, non-empty title, and not in a resolved section
+    # (resolved / done / completed / archive, by substring — so a product whose
+    # backlog says `## Resolved` is handled, not just prawduct's `## Archive`).
+    # Deliberately not the private ``_is_resolved_section``: a cross-package
+    # private call would let a rename there silently change blocker liveness in
+    # every product, with a green suite.
     return {
         item.item_id
-        for item in backlog.items
-        if item.item_id
-        and (item.status or "").strip().lower() == "open"
-        # Reuse the backlog module's own predicate rather than matching
-        # "archive": it covers the whole resolved end of the lifecycle
-        # (resolved / done / completed / archive, by substring). A product
-        # whose backlog says `## Resolved` would otherwise get this defect
-        # back, and only prawduct's own `## Archive` heading hid it.
-        and not legacy._is_resolved_section(item.section or "")
+        for item in backlog.pending_items()
+        if item.item_id and (item.status or "").strip().lower() == "open"
     }
 
 
@@ -327,13 +327,23 @@ def check_releasability(project_dir: Path, release: str | None = None) -> int:
     orphans: list[str] = []
 
     already_shipped = scopes_tagged_for(entries, version)
+    contradictions: list[str] = []
     for scope, (disposition, blocker) in classification.items():
-        # The re-run exemption applies to `ships` rows only. A `withheld` scope
-        # carrying this release's tag is a contradiction — it was withheld and
-        # then shipped anyway — so exempting it would let the gate print
-        # `releasable:` while never mentioning the withholding at all: absent
-        # from `pending`, absent from the orphan list, absent from the summary.
-        if scope not in pending and not (disposition == SHIPS and scope in already_shipped):
+        shipped_now = scope in already_shipped
+        # Withheld AND tagged for this release is a contradiction, and it needs
+        # its OWN diagnosis. Left in the orphan bucket it reads "stale table
+        # row?" — false for a scope carrying the release tag, and acting on that
+        # hint (delete the row) makes the gate return 0 and ship the very scope
+        # the table withheld. A wrong remedy is worse than a bare failure.
+        if disposition == WITHHELD and shipped_now:
+            contradictions.append(
+                f"{scope} (withheld behind {blocker}, but its entries are already "
+                f"tagged release={version})"
+            )
+            continue
+        # The re-run exemption is `ships`-only: Phase 1 stamps `release=` on the
+        # shipping set, so those scopes correctly leave `pending`.
+        if scope not in pending and not (disposition == SHIPS and shipped_now):
             orphans.append(scope)
         if disposition == WITHHELD and blocker and blocker not in open_ids:
             stale_blockers.append(f"{scope} (withheld behind {blocker}, which is not open)")
@@ -348,6 +358,14 @@ def check_releasability(project_dir: Path, release: str | None = None) -> int:
         problems.append(
             "withholding blocker(s) no longer open — the reason to withhold is "
             f"gone, so the decision needs re-taking: {'; '.join(stale_blockers)}"
+        )
+    if contradictions:
+        problems.append(
+            "scope(s) classified `withheld` whose entries already carry this "
+            "release's tag — the table and the change log disagree about what is "
+            "shipping. Do NOT delete the row: either the withholding stands (drop "
+            f"the release= tag) or it does not (reclassify as `{SHIPS}`): "
+            f"{'; '.join(sorted(contradictions))}"
         )
     if orphans:
         problems.append(

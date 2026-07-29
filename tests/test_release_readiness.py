@@ -208,11 +208,20 @@ class TestGateBlocks:
         assert "classified twice" in capsys.readouterr().err
 
 
-class TestArchivedBlockerIsNotOpen:
-    def test_archived_item_with_open_status_does_not_count(self, tmp_path, capsys):
-        # The archive move and the status flip are separate edits, so an
-        # archived item can still read `status: open`. Treating it as live is
-        # the same stale-withholding error the gate exists to catch.
+class TestResolvedSectionBlockerIsNotOpen:
+    """The archive move and the status flip are separate edits, so an item in a
+    resolved section can still read `status: open`. Treating it as a live
+    blocker is the stale-withholding error the gate exists to catch.
+
+    Parametrised over ALL FOUR resolved-section words, not just `Archive`: a
+    test that only exercises `## Archive` passes under a naive
+    `startswith("archive")` too, so it could not fail on the narrow predicate it
+    was written to replace — and only prawduct's own heading hid that."""
+
+    @pytest.mark.parametrize("section", ["Archive", "Resolved", "Done", "Completed"])
+    def test_item_in_a_resolved_section_does_not_count_as_open(
+        self, tmp_path, capsys, section
+    ):
         project = _make_project(
             tmp_path,
             entries=_entry("A", "alpha"),
@@ -220,7 +229,23 @@ class TestArchivedBlockerIsNotOpen:
         )
         _write(
             project / ".prawduct" / "backlog.md",
-            "# Backlog\n\n## Open\n\n## Archive\n\n" + _open_item("BKL-6J2X"),
+            f"# Backlog\n\n## Open\n\n## {section}\n\n" + _open_item("BKL-6J2X"),
+        )
+        assert release_readiness.check_releasability(project) == 1
+        assert "no longer open" in capsys.readouterr().err
+
+    def test_a_struck_item_is_not_a_live_blocker(self, tmp_path, capsys):
+        # Comes free with the public pending_items() query; pinned so a future
+        # reimplementation cannot quietly drop it.
+        project = _make_project(
+            tmp_path,
+            entries=_entry("A", "alpha"),
+            classification="| alpha | withheld | BKL-6J2X |\n",
+        )
+        _write(
+            project / ".prawduct" / "backlog.md",
+            "# Backlog\n\n## Open\n\n- **[BKL-6J2X]** ~~struck~~\n"
+            "  `effort: M · impact: L · area: x · status: open`\n\n",
         )
         assert release_readiness.check_releasability(project) == 1
         assert "no longer open" in capsys.readouterr().err
@@ -290,7 +315,12 @@ class TestIdempotentAcrossItsOwnRunbook:
             backlog=_open_item("BKL-6J2X"),
         )
         assert release_readiness.check_releasability(project, "v3.2.0") == 1
-        assert "nothing release-pending behind them" in capsys.readouterr().err
+        err = capsys.readouterr().err
+        assert "the table and the change log disagree" in err
+        assert "Do NOT delete the row" in err, (
+            "the orphan wording's remedy would ship the withheld scope"
+        )
+        assert "nothing release-pending behind them" not in err
 
     def test_scope_tagged_for_a_DIFFERENT_release_is_still_an_orphan(self, tmp_path, capsys):
         # The exemption is scoped to the release under test — a row left over
@@ -342,6 +372,10 @@ class TestCliWiring:
         # graded a DIFFERENT release without saying so.
         proc = self._run(self._project(tmp_path), *form.split(" "))
         combined = proc.stdout + proc.stderr
+        # Reaches the no-release-plan path (the fixture only has a v3.1.0 plan),
+        # which is still a decisive proof that the FLAG was parsed: the message
+        # names the version it looked for.
+        assert "no-release-plan" in combined
         assert "v3.2.0" in combined, "the named release must be the one graded"
         assert "no --release given" not in combined, (
             "falling back to plugin/VERSION means the flag was silently ignored"

@@ -3,6 +3,63 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-07-29: Norm amendment — a promotion is a classified snapshot, not a content-identical copy
+
+<!-- prawduct: type=fix | scope=release-readiness | chunks=01 -->
+
+**Owner ruling, 2026-07-29.** `operational-spec.md` § Direction's gitflow promotion norm bound the
+`develop`→`main` promotion to a *content-identical tree-set*. Amended: `main`'s tree is a
+**deliberately chosen and fully classified** snapshot — every unreleased scope shipped or withheld
+behind a named open blocker, nothing unaccounted — with content-identity as the expected outcome of a
+*whole-develop* promotion rather than the invariant.
+
+**Why this is an amendment and not laundering.** The norm's stated purpose is that a release must not
+**ship integration WIP**. Content-identity was the mechanism chosen to secure it — but when `develop`
+holds unready work, content-identity *forces* shipping exactly the WIP the norm exists to prevent.
+The mechanism contradicted its own rationale, and prawduct had already departed from it **twice**
+(v3.1.1, v3.1.2) with no recorded decision, so the binding text was describing a practice that had
+ceased. The amendment keeps the why verbatim and narrows the mechanism to the case where it holds.
+Raised by the Critic as a blocking precondition on Chunk 02 rather than edited quietly, and the
+decision is recorded in the norm itself.
+
+The descriptive **Release Flow** prose was false in the same way — it called the content-identical
+check "the invariant the model guarantees" while `main`'s tree had deliberately differed twice. It
+now documents both promotion shapes and names which releases used the pruned one. *Norms bind;
+descriptions track* — so both surfaces move, in their own registers.
+
+Enforcement: `check-releasability` for scopes (Phase 0, shipped), Chunk 02's partition check for
+paths (Phase 2, pending).
+
+## 2026-07-29: Dispositions — verify pass `rev-20260729T174606Z-37362188`, and the dropped halves
+
+<!-- prawduct: type=fix | scope=release-readiness | chunks=01 -->
+
+1 blocking, 1 warning, 2 notes. **All FIXED.** The review's cross-cutting observation is the one
+worth keeping: *two of the four previous fixes delivered the code half of their recommendation and
+recorded it as done without noting the dropped half* — the same shape as the false-FIXED finding one
+level down. Both halves are landed here, and the companion rule is now in `learnings.md`: **record
+what you declined, not only what you did.**
+
+- **BLOCKING — the `_is_resolved_section` widening had no test that could fail on the old predicate.**
+  The code moved from one prefix (`archive`) to four substrings, but the test still exercised only
+  `## Archive`, which `startswith("archive")` excluded too — green on both implementations, so the
+  fix was unverified by construction. Now parametrised over `Archive | Resolved | Done | Completed`
+  and **proven by mutation**: restoring the narrow predicate fails all four, plus a struck-item case.
+  The finding also flagged the fix *itself* as a coupling defect — it reached a **private** symbol
+  across a package boundary, so renaming `_is_resolved_section` would silently change blocker
+  liveness in every product with a passing suite. Replaced with the backlog module's **public**
+  `Backlog.pending_items()`, which carries the same semantics plus struck/empty-title handling.
+- **WARNING — the withheld-then-shipped case fired under a message whose remedy re-opened the hole.**
+  It fell into the orphan bucket, printing *"stale table row?"* — false for a scope carrying the
+  release tag, and acting on that hint (delete the row) makes the gate return 0 and **ship the very
+  scope the table withheld**. Worse than a bare failure: a wrong remedy is actionable. It now has its
+  own diagnosis naming both valid resolutions and explicitly saying *do not delete the row*. The
+  previous test had asserted the wrong wording, pinning the misdiagnosis as intended behaviour; it
+  now asserts the correct message and that the orphan wording is **absent**.
+- **NOTES — both fixed.** The corrected docstring still under-enumerated its silent skips (an
+  empty-scope row with a well-formed disposition); and the `--release` form test reaches its verdict
+  through the `no-release-plan` path, which is now stated in the test so its logic is legible.
+
 ## 2026-07-29: Dispositions — verify pass `rev-20260729T173217Z-5b8a9522`, and a correction to the record
 
 <!-- prawduct: type=fix | scope=release-readiness | chunks=01 -->
