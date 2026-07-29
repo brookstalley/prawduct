@@ -128,9 +128,11 @@ one of three dispositions, and **FILE is the narrowest, never the default**:
 **Why the default moved.** The old rule said file the rest, full stop. It bounded the review loop —
 which was the real problem it solved — but it made the backlog the disposal route for every finding a
 thorough reviewer produces, and thorough reviewers produce many. Measured on this framework's own
-repo: **open items went 50 → 169 in 26 days, roughly 120 of that from Critic findings on governance
-machinery** — faster than anyone could action them, which turns the backlog from a work queue into a
-guilt pile and buries the items that mattered. A framework that does this to itself does it to every
+repo: **open items went 50 → 180 in 26 days; 67 were Critic-sourced and 53 of those had never been
+touched since filing** — faster than anyone could action them, which turns the backlog from a work
+queue into a guilt pile and buries the items that mattered. The sharpest tell was compounding: one
+gate accumulated **six** open items, each a facet found by a later review of the same still-unfixed
+mechanism. A framework that does this to itself does it to every
 repo that adopts it, once per build plan.
 
 **"Pre-existing" is not a disposition, and neither is "already filed."** Both are the reflex wearing
@@ -192,12 +194,14 @@ only subject is a non-judgeable record is a **NOTE** unless it clears one of two
 
 Everything else about a record — an imprecise count, a narration that stopped one revision short, a
 phrasing that could be truer — is a NOTE. These findings are **correct**; the bar governs *severity*,
-never *suppression*. File it, name the surface, let the builder dispose of it.
+never *suppression*. Raise it and name the surface; the builder dispositions it.
 
 **Diminishing-returns signal.** Round 1 finds defects in the *work*. By round 3 a pass is typically
 finding defects in the *record of round 2* — true, confidently rated, and worth less than the round
 costs. When every finding is about prose written to close the previous pass's findings, that is the
-signal to file and stop, not to write a better paragraph.
+signal to **stop reviewing** — disposition what you have and end the loop, rather than writing a
+better paragraph for the next pass to find. Stopping is not filing: most of that round's findings
+are ACCEPTs, and saying so takes a clause each.
 
 **Last chunk of a `Type: cumulative-final` plan — one review, not two.** Commit the chunk, then run `/prawduct:critic cumulative` ONCE: that single review serves as both the chunk's review and the PR-gate evidence. Don't run a separate `final` first — cumulative runs the same 7 goals plus cross-checks over `merge-base...HEAD`, a scope that already contains the chunk's diff, so a preceding `final` re-pays 4-10 minutes for assurance the cumulative re-derives. Mode inference implements the sequencing: with the last chunk's work still uncommitted, `/prawduct:critic` infers `final` (the right mid-chunk look); once committed and clean, it infers `cumulative` — the at-commit review. Post-cumulative fixes take a `verify-resolutions` pass, not a second full one — its fact extends coverage over the fix delta.
 

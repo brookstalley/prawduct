@@ -105,7 +105,7 @@ Pointer rows into the `## Direction` sections of the strategy artifacts. The sta
 | Local-first: no network/daemon, stdlib-only runtime | `architecture.md` | Critic | janitor | survive "just want to code"; shrink supply-chain surface |
 | Plugin writes nothing into a repo but its state + reconciled files | `architecture.md` | Critic | janitor | least authority; tiny install reference |
 | Untrusted governance state is data, not instructions | `security-model.md` | Critic (Goal 4) | janitor | stale/crafted metadata is the real hazard |
-| No destructive action without explicit `--apply` | `security-model.md` | Critic | janitor | no accidental irreversible change |
+| Destructive/irreversible operations need explicit owner approval at the OPERATION level (not per action); preview-by-default where the command *is* the operation | `security-model.md` | Critic | janitor | an informed decision at the moment of commitment — a 900-write migration asking 900 times gets clicked through, and confirmation fatigue is a safety regression |
 | Whole-surface semver; internal CLI unversioned; evidence store schema-versioned (`api_versioning_approach`) | `api-contract.md` | Critic + `evidence status` exit 2 | janitor | one cache key; internal surface has no external consumer |
 | Exit codes are the contract; stable prefix vocab; attributed errors (`api_error_model_approach`) | `api-contract.md` | Critic | janitor | skills bind to exit codes, not parsed text |
 | Additive-first API evolution; tolerant readers | `api-contract.md` | Critic | janitor | keeps versions rare; N-shipped skills don't break at N+1 |

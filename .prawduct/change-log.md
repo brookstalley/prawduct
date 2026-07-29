@@ -61,6 +61,45 @@ absent from the enumerated surface.
 
 Both gate Chunk 06, the irreversible operator-run migration.
 
+## 2026-07-29: Dispositions for the prior review's remaining findings
+
+<!-- prawduct: type=fix | scope=critic-disposition -->
+
+The new rule applied to itself. Four warnings from `rev-20260729T130723Z-73406c9a` had left the
+follow-up review with **no disposition anywhere** — which the branch's own new text calls out as not
+allowed, since "already filed" is not a disposition. Recorded here rather than left implicit:
+
+- **`project-preferences.md` norm registry — FIXED.** Its row still read *"No destructive action
+  without explicit `--apply`"*, the pre-amendment form. `security-model.md` § Direction was amended
+  2026-07-24 (owner ruling) to **operation-level** approval, precisely because gating a ~900-write
+  migration per action produces rubber-stamping. The registry is what the janitor and Critic read, so
+  the norm Chunk 06 runs under disagreed with itself. Row rewritten to the amended form. This was the
+  cheapest thing standing between here and the irreversible migration.
+- **Four hand-maintained id grammars — ACCEPTED.** `legacy.ID_RE`, `ids._PFX_RE`,
+  `migrate._ID_MARKER_RE` and the runbook grep encode one shape in four places. All four are
+  currently consistent and pinned by tests that fail if they diverge, so the live risk is bounded;
+  single-sourcing them is a refactor across a parser, an alias minter and a title stripper, carrying
+  more risk right now than the duplication it removes. Revisit when a fifth copy appears — that is
+  the signal the tests stop being enough.
+- **Record-only NOTE default vs. Normative authority over `.prawduct/artifacts/**` — NEEDS AN OWNER
+  RULING, not a disposition I can take.** Two rules in force disagree about whether artifact prose is
+  record-only (so NOTE) or normative (so it can block). It governs Chunk 06. Flagged rather than
+  resolved because picking either arm unilaterally is exactly the norm-laundering the framework
+  forbids.
+- **5 of 10 Direction norms under the active plan's `governed_by:` carry no disposition, and
+  `observability-strategy.md` is absent from that list entirely — OWED, not accepted.** Writing five
+  honest dispositions is real work on the release plan and was not done today. Named here so it is
+  visible at the boundary rather than discovered at the PR gate.
+
+Also corrected in this pass, all self-inflicted by the disposition change itself: `review-cycle.md`
+carried **stale measurements** (50 → 169 / ~120 governance — the figures from the release-narrowing
+rationale, propagated before the real audit ran and never reconciled, in the one copy an adopter
+reads); **two surviving filing-as-default instructions** 40 lines below the new prohibition, one of
+them the old rule intact in the diminishing-returns paragraph; and a `zero filed` claim a later
+commit in the same bundle falsified. `build_plan_ref_root` was documented in
+`templates/project-state.yaml` alongside its sibling opt-ins — it was claimed *available to any repo*
+while being reachable only by reading the source.
+
 ## 2026-07-29: "File the rest" was a backlog pump, and the framework was doing it to itself
 
 <!-- prawduct: type=fix | scope=critic-disposition -->
@@ -97,7 +136,10 @@ default**:
 Plus a smell test: a review that ends in a double-digit filing is not thorough, it is undisposed.
 
 Applied immediately to the cumulative review that prompted this (0 blocking, 12 warnings): the five
-findings headed for the backlog were re-triaged to **four FIX and one ACCEPT — zero filed.**
+findings headed for the backlog were re-triaged to **three FIX, one ACCEPT, and one FILE that names
+its trigger** (`BKL-7V2D`, must close before Chunk 06). *Corrected in place: this line first read
+"four FIX and one ACCEPT — zero filed," which a later commit in the same bundle falsified. A
+zero-filed count was never the goal — a FILE with a real trigger is the rule working, not failing.*
 
 **Why this is urgent rather than tidy:** a framework that pumps its own backlog does it once per
 build plan to every repo that adopts it.
