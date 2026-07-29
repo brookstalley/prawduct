@@ -3,6 +3,72 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-07-29: Phase 0's historical backlog was three scopes, not six — and half the list had never shipped
+
+<!-- prawduct: type=fix | scope=release-readiness -->
+
+`check-releasability` listed **12** release-pending scopes, six of which were believed to be historical
+work that shipped long ago and merely lost its `release=` tag. Determining them dropped the pending set
+to **9**. The correction matters in both directions: three scopes needed the backfill, and three were
+**not historical at all** — they have never shipped, so they are ordinary release-pending work to be
+classified in the v3.2.0 release plan, not tags to repair. Phase 0 was blocked on a premise that was
+half wrong.
+
+**Backfilled (18 entries, 3 scopes).** `scope=v1.4` → `release=v1.4.0` (9), `scope=v1.5` →
+`release=v1.5.0` (5), `scope=v1.5.1` → `release=v1.5.1` (4).
+
+**The derivation rule, because it is not the code test.** No `v1.4.0`/`v1.5.0`/`v1.5.1` tag exists —
+the earliest tag in the repo is `v1.8.1` — so `git show <tag>:<path>` **cannot** be run for these. The
+rule used instead is *chunk membership*: within a scope, some entries are **rollups** carrying both
+`chunks=` and `release=`; a per-chunk entry inherits the release of the unique rollup whose `chunks=`
+enumeration contains it. Every one of the 18 mapped to exactly one rollup, and the applying script
+refuses to write on zero or multiple matches rather than guessing. This is a structural read of the
+ledger's own already-tagged entries, not prose inference — but it is *not* the code test, and the
+distinction is recorded rather than glossed. `scope=v1.4` is why the rule is needed at all: it spans two
+releases (`v1.3.17` for chunks 00–04, `v1.4.0` for 05–14), so no per-scope blanket value would have been
+correct.
+
+**Never shipped (no backfill owed): `skills-cutover-awareness`, `backlog-skill-repoint`,
+`backlog-service-v1`.** All three are the backlog-service programme, withheld by the v3.1.x pruned
+releases — consistent with the backlog advisory being held. Evidence: `plugin/lib/backlog/` absent from
+every tag; two independent needles from the repointed backlog skill absent from `v3.1.0`–`v3.1.2`; the
+cutover work's functional edits to `plugin/skills/pr` and `plugin/skills/janitor` absent from every tag.
+
+**Two ways this determination nearly went wrong, both worth keeping.**
+
+1. **`git tag --contains` is structurally invalid in this repo and returns a confident false negative.**
+   It reported "no release contains this" for all three v3.x scopes — but a `develop`→`main` promotion is
+   a **single-parent** commit, so a `develop` commit is *never* an ancestor of a release tag. The test
+   cannot return a positive answer for any scope, ever. Read as evidence it would have "confirmed" that
+   nothing has ever shipped. Under a promotion model, releases are compared by **tree content**, never
+   by ancestry — which is exactly why the runbook says `git show <prev-tag>:<path>`.
+2. **A `.prawduct/` artifact present in a release tree is not evidence the behaviour shipped.** The first
+   validated needles for `skills-cutover-awareness` hit
+   `.prawduct/artifacts/build-plan-skills-cutover-awareness.md` at `v3.1.1` and `v3.1.2` — which is true
+   and irrelevant: repo state travels with the tree wholesale, while the pruned promotion withheld the
+   scope's functional `plugin/skills/` edits. Testing the *functional* surface reversed the verdict. A
+   pruned release can ship a scope's plan and withhold its code, so presence must be tested on the
+   surface whose absence would matter.
+
+An earlier needle also produced a plain false positive — text that looked scope-introduced but was
+re-flowed pre-existing prose, "proving" a scope shipped in a release tagged **three days before it
+merged**. Adding an *absent-at-the-pre-merge-tag* validity check caught it. Any presence test needs a
+control that fails.
+
+**Phase 0 is now green, and `artifacts/release-plan-v3.2.0.md` is the first plan to carry a
+`## Release classification` table** — the gate's input, which no prior release plan had because the gate
+did not exist. Nine scopes, all `ships`, **0 withheld**: `check-releasability --release v3.2.0` returns
+`releasable` and exit 0. Owner-confirmed non-pruned 2026-07-29, so Phase 2 takes the whole-develop path
+and content-identity is the valid completion test *because* nothing is withheld. The version is a
+**minor** on inherited reasoning rather than a fresh judgment: v3.1.2's plan recorded that the only thing
+holding its number to a patch was the withheld backlog-service subsystem, and that subsystem ships here.
+The subsystem ships **dormant** — verified in code, not asserted: routing is gated on
+`bool(state.get("backlog_service_repo"))`, `init_product` writes it `None`, and `advisory list` reports
+nothing firing, so an upgrading repo sees no backlog behaviour change. Two consequences recorded up front:
+`promote-a-pruned-release.md` is not exercised, so both runbooks keep `last_verified: null` and REL-3K9P
+stays open; and `plugin/VERSION` remains `3.1.2` here — the bump belongs to Phase 1 step 7, never a
+hand-edit at plan time.
+
 ## 2026-07-29: Dispositions — PR review; the entry test outlived the norm it tested
 
 <!-- prawduct: type=fix | scope=release-readiness | chunks=02,03 -->
@@ -6556,7 +6622,7 @@ and independent PR review both clean (0 blocking).
 
 ## 2026-05-23: v1.5.1 Chunk 04 — Three bundled backlog follow-ups
 
-<!-- prawduct: chunks=04 | status=shipped | scope=v1.5.1 -->
+<!-- prawduct: chunks=04 | release=v1.5.1 | status=shipped | scope=v1.5.1 -->
 
 **Why:** Three independent surgical fixes bundled to amortize the per-chunk Critic-pass overhead. Each was filed in the backlog and is too small for its own chunk.
 
@@ -6574,7 +6640,7 @@ and independent PR review both clean (0 blocking).
 
 ## 2026-05-23: v1.5.1 Chunk 03 — Expose `compute-verify-resolutions-scope` as CLI subcommand
 
-<!-- prawduct: chunks=03 | status=shipped | scope=v1.5.1 -->
+<!-- prawduct: chunks=03 | release=v1.5.1 | status=shipped | scope=v1.5.1 -->
 
 **Why:** Defense-in-depth gap surfaced by v1.5 Chunk 02 NOTE. The widening-threshold demotion logic lived inside the stop-hook helper `_compute_verify_resolutions_scope`; the Critic agent computed verify-resolutions scope from SKILL.md prose. If the agent misapplied the prose, it would write a findings file with a wrong `files_reviewed` set and the gate's subset check would accept it (gate enforces only subset, not widening). Two independent computations of the same rule is a drift waiting to happen.
 
@@ -6590,7 +6656,7 @@ Critic SKILL surfaces updated to call the subcommand instead of computing scope 
 
 ## 2026-05-23: v1.5.1 Chunk 02 — Critic `allowed-tools` deny-list (block pytest)
 
-<!-- prawduct: chunks=02 | status=shipped | scope=v1.5.1 -->
+<!-- prawduct: chunks=02 | release=v1.5.1 | status=shipped | scope=v1.5.1 -->
 
 **Why:** Recurring violation of memory rule `feedback_critic_no_test_execution.md` ("Critic should not run tests"). Wave 2 cumulative-Critic invoked pytest despite the prose. Root cause: with `permissions.allow` `Bash(python3:*)` at the project level (settings.local.json), the prose-only restriction is unenforceable.
 
@@ -6608,7 +6674,7 @@ Critic SKILL surfaces updated to call the subcommand instead of computing scope 
 
 ## 2026-05-23: v1.5.1 Chunk 01 — `regen-views` scope-aware Status flipping
 
-<!-- prawduct: chunks=01 | status=shipped | scope=v1.5.1 -->
+<!-- prawduct: chunks=01 | release=v1.5.1 | status=shipped | scope=v1.5.1 -->
 
 **Why:** Active v1.5 bug. `collect_shipped_chunks` unioned every `chunks=` tag across all change-log entries, ignoring `scope=`. v1.4 chunks 05/06/07 share IDs with v1.5 chunks 02/05/06/07; every `regen-views` run would re-flip the wrong checkboxes, so v1.5 chunks were marked `[x]` by hand with an HTML-comment warning telling builders not to run regen. First Tier-1 item in the v1.5.1 backlog-followups plan.
 
@@ -6661,7 +6727,7 @@ Critic SKILL surfaces updated to call the subcommand instead of computing scope 
 
 ## 2026-05-22: Chunk 06 — Methodology + template refresh (inference-first, four-mode table)
 
-<!-- prawduct: chunks=06 | status=shipped | scope=v1.5 -->
+<!-- prawduct: chunks=06 | release=v1.5.0 | status=shipped | scope=v1.5 -->
 
 **Why:** v1.5 Chunks 01–05 landed the proportionality machinery (verify-resolutions mode, no-arg inference, `Type: trivial` with structural enforcement, Critic Goal 3 rationale-vs-diff check, `/pr` trivial fast-path). Prose surfaces still spoke the v1.4 vocabulary: "Each chunk declares `Critic mode: chunk | final`", "fail-safe default if the field is absent", no mention of inference as the canonical path, no mention of `cumulative` or `verify-resolutions` in the per-chunk authoring narrative. This chunk closes the doc gap — narrative now leads with `/critic` (no args) → inference; explicit `Critic mode:` field is reframed as override; all four modes named consistently across methodology, agent SKILL files, and templates.
 
@@ -6696,7 +6762,7 @@ Critic SKILL surfaces updated to call the subcommand instead of computing scope 
 
 ## 2026-05-22: Chunk 05 — Critic protocol for `Type: trivial` + `/pr` trivial fast-path
 
-<!-- prawduct: chunks=05 | status=shipped | scope=v1.5 -->
+<!-- prawduct: chunks=05 | release=v1.5.0 | status=shipped | scope=v1.5 -->
 
 **Why:** v1.5 thread B (Trivial-code fast-path; see plan Motivation lines 30-32) completes here. Chunk 04 landed the `Type: trivial` declaration with two machine-enforced layers (file-set bounds + required rationale presence). Both layers are *structural* — they catch catastrophic-blast-radius classes and empty-claim violations without semantic understanding. The judgment backstop — does the rationale's claim actually fit the diff? — needs the Critic, who reads both. Chunk 05 adds the Critic Goal 3 sub-check that closes that loop, and the parallel PR-boundary fast-path that lets a PR composed entirely of fileset-eligible commits skip the cumulative-Critic + PR-reviewer gates (their per-chunk reviews already provided the relevant scrutiny — re-running them adds latency, not signal).
 
@@ -6728,7 +6794,7 @@ Critic SKILL surfaces updated to call the subcommand instead of computing scope 
 
 ## 2026-05-22: Chunk 04 — `Type: trivial` chunk type + structural enforcement
 
-<!-- prawduct: chunks=04 | status=shipped | scope=v1.5 -->
+<!-- prawduct: chunks=04 | release=v1.5.0 | status=shipped | scope=v1.5 -->
 
 **Why:** v1.5 thread D — proportionality at the chunk-type axis. Some chunks are semantically simple (project-wide renames, type-annotation passes, learnings-only appends) but currently must pay full `code`-type Critic protocol because no lighter type exists. Adding a `trivial` type without structural enforcement would invite over-declaration (the "small change" misclaim pattern), undoing the proportionality the type is meant to enable. This chunk lands the type AND the two enforcement layers that make over-declaration loud (BLOCKING with a named bound), not silent.
 
@@ -6754,7 +6820,7 @@ Critic SKILL surfaces updated to call the subcommand instead of computing scope 
 
 ## 2026-05-22: Chunk 03 — `/critic` no-arg mode inference
 
-<!-- prawduct: chunks=03 | status=shipped | scope=v1.5 -->
+<!-- prawduct: chunks=03 | release=v1.5.0 | status=shipped | scope=v1.5 -->
 
 **Why:** Last piece of v1.5 thread C. With Chunks 01 (`commit_reviewed` anchor) and 02 (`verify-resolutions` mode) shipped, the builder still had to declare `Critic mode:` in every chunk and pass it explicitly to `/critic`. This chunk collapses the four-mode caller burden by inferring mode from git + build-plan state. Explicit args still win — the override path is preserved.
 
@@ -6780,7 +6846,7 @@ Critic SKILL surfaces updated to call the subcommand instead of computing scope 
 
 ## 2026-05-21: Chunk 02 — `/critic verify-resolutions` mode + stop-hook gate awareness
 
-<!-- prawduct: chunks=02 | status=shipped | scope=v1.5 -->
+<!-- prawduct: chunks=02 | release=v1.5.0 | status=shipped | scope=v1.5 -->
 
 **Why:** v1.5 thread C — the "Critic flagged 1-2 BLOCKING findings, builder fixed them, re-review pays full chunk-mode latency to confirm a one-line change" friction motivated this work (backlog entry 2026-05-20). Chunk 01 added the `commit_reviewed` anchor; this chunk lands the mode that uses it.
 
@@ -6852,7 +6918,7 @@ Critic SKILL surfaces updated to call the subcommand instead of computing scope 
 
 ## 2026-05-19: Chunk 13 — F9 learnings lifecycle sentinel tracker
 
-<!-- prawduct: chunks=13 | status=shipped | scope=v1.4 -->
+<!-- prawduct: chunks=13 | release=v1.4.0 | status=shipped | scope=v1.4 -->
 
 **Why:** Learnings accumulate in `.prawduct/learnings.md` faster than they retire. By the time a rule's failure mode is structurally enforced by a test, the rule itself is still consuming active-rules attention; the file grows until grep-for-relevance stops working. F9 closes the lifecycle gap with three signals (confirmations, created, sentinel) that let the audit identify candidates for promotion (advisory), retirement (sentinel-pass entries moved to historical detail), and stale flags (>90 days, single-confirmation entries). The point isn't to automate retirement — it's to surface what's mechanically eligible so the user makes deliberate keep-or-retire calls instead of letting the file drift.
 
@@ -6874,7 +6940,7 @@ Critic SKILL surfaces updated to call the subcommand instead of computing scope 
 
 ## 2026-05-19: Chunk 12 — F5b settings-layout migration command + product-repo dry-run
 
-<!-- prawduct: chunks=12 | status=shipped | scope=v1.4 -->
+<!-- prawduct: chunks=12 | release=v1.4.0 | status=shipped | scope=v1.4 -->
 
 **Why:** Wave 3 closes F5 with the user-facing opt-in pair to F5a's silent auto-commit. F5a quarantines framework-managed drift to single `chore(sync):` markers on every sync; F5b stamps the product as explicitly on the canonical minimal settings.json layout so v1.4.1's planned Critic NOTE on un-stamped repos has a single state bit to read. The chunk is mostly a *signal* operation: for products that have been syncing regularly (the framework template's hook block has been at the canonical minimal shape — single-line `python3 product-hook <event>` dispatches — since v1.3.x), the migration is a no-op file-wise. For older repos with v1/v3 hook markers (`framework-path`, `governance-hook`, `prawduct-statusline`) that normal sync skipped, the migration runs an aggressive `legacy_cleanup=True` pass and strips them. The manifest flag is the contract; the file mutation is the side-effect when applicable.
 
@@ -6896,7 +6962,7 @@ Critic SKILL surfaces updated to call the subcommand instead of computing scope 
 
 ## 2026-05-19: Chunk 11 — F5a sync auto-commit + protected-branch preconditions
 
-<!-- prawduct: chunks=11 | status=shipped | scope=v1.4 -->
+<!-- prawduct: chunks=11 | release=v1.4.0 | status=shipped | scope=v1.4 -->
 
 **Why:** Every framework upgrade left product repos with framework-managed drift co-mingled in unrelated chunk commits — three downstream repos showed banner-rename + product-hook drift mixed with chunk diffs every release, generating Critic NOTEs that the chunk owner had no business addressing. F5a quarantines framework drift to one dated marker commit per upgrade so chunk diffs stop carrying upstream churn. The chunk also lands the precondition-gated safety surface that lets the auto-commit ship default-on without surprising users: WIP, protected branches, and in-progress git ops each block the commit and surface a marker the next session sees.
 
@@ -6924,7 +6990,7 @@ Critic SKILL surfaces updated to call the subcommand instead of computing scope 
 
 ## 2026-05-19: Chunk 10 — F4c migration tooling + fingerprint terminology cleanup
 
-<!-- prawduct: chunks=10 | status=shipped | scope=v1.4 -->
+<!-- prawduct: chunks=10 | release=v1.4.0 | status=shipped | scope=v1.4 -->
 
 **Why:** Wave 3 closer. Chunks 08/09 shipped the F4 schema (`verifier`-discriminated coverage fields) and Critic enforcement (`verify-coverage` BLOCKING per missing file). Chunk 10 closes the loop with a user-facing opt-in path so products can move from "schema dogfooded, enforcement off" to "enforcement on" deliberately — not silently on sync (which would surprise downstream products with sudden BLOCKING findings). Also folds in the v1.5-deprecation signaling for legacy evidence shape and a terminology cleanup of "fingerprint" — the tree-hash mechanism that name referred to was removed pre-v1.4, but the word lingered in 5 spots where it was actively misleading.
 
@@ -6954,7 +7020,7 @@ Critic SKILL surfaces updated to call the subcommand instead of computing scope 
 
 ## 2026-05-19: Chunk 09 — F4b Critic symbol-coverage check + methodology principle
 
-<!-- prawduct: chunks=09 | status=shipped | scope=v1.4 -->
+<!-- prawduct: chunks=09 | release=v1.4.0 | status=shipped | scope=v1.4 -->
 
 **Why:** Chunk 08 shipped the F4a schema (every chunk now emits `verifier` / `tests_executed` / `changes_referenced` / `coverage_level`) but no enforcement read it. F4b closes the loop: when a project opts in via `coverage_required: true`, the Critic's Goal 1 cross-checks the diff against `changes_referenced` and emits BLOCKING per missing file, with language scaled to the declared `coverage_level` — floor (`referenced`) explicitly disclaims execution; `executed` does not. The chunk's other half is the methodology principle in `building.md` that names what the floor doesn't prove, so authors don't treat "verifier reported clean" as "tests cover this change."
 
@@ -6976,7 +7042,7 @@ Critic SKILL surfaces updated to call the subcommand instead of computing scope 
 
 ## 2026-05-19: Chunk 08 — F4a evidence-schema extension + reference floor verifier
 
-<!-- prawduct: chunks=08 | status=shipped | scope=v1.4 -->
+<!-- prawduct: chunks=08 | release=v1.4.0 | status=shipped | scope=v1.4 -->
 
 **Why:** Wave 3 opener. The framework's safety claim "tests passed" is currently falsifiable on untested new code — `.test-evidence.json` records pass/fail counts but never asserts that the tests actually *referenced* the code that changed. F4a closes the schema half of this gap: extend the evidence record with four coverage fields (additive, compat-preserving) and ship a reference verifier so products on Python have a working floor implementation. The Critic enforcement that *uses* this data lands in Chunk 09 (F4b); the migration tooling + fingerprint cleanup lands in Chunk 10 (F4c).
 
@@ -7002,7 +7068,7 @@ Critic SKILL surfaces updated to call the subcommand instead of computing scope 
 
 ## 2026-05-19: Chunk 07 — F1c sync auto-enables derived views for existing repos
 
-<!-- prawduct: chunks=07 | status=shipped | scope=v1.4 -->
+<!-- prawduct: chunks=07 | release=v1.4.0 | status=shipped | scope=v1.4 -->
 
 **Why:** Chunks 05–06 shipped the views pipeline behind `views_enabled: true` with `false` as the template default — products had to opt in via a planned `prawduct-doctor migrate v1.4 --enable-views` migration command. During Chunk 07 planning the user redirected: "all users should get views for free, with no mandatory opt-in. it will be fine." That collapses migration tooling into the sync path (which every existing repo already runs every session) and removes the need for the doctor migration subcommand entirely. The compat shim that matters — untagged legacy entries still render unchanged — already lives in the views.py tag-filtering logic from Chunk 05.
 
@@ -7026,7 +7092,7 @@ Critic SKILL surfaces updated to call the subcommand instead of computing scope 
 
 ## 2026-05-18: Chunk 06 — F1b remaining views (release-notes + scope-rollups + doctor views)
 
-<!-- prawduct: chunks=06 | status=shipped | scope=v1.4 -->
+<!-- prawduct: chunks=06 | release=v1.4.0 | status=shipped | scope=v1.4 -->
 
 **Why:** F1a (Chunk 05) shipped the schema, the parser, and one view (build-plan Status). F1's load-bearing premise — *one canonical store, multiple derived views replacing hand-curated summaries* — needs the remaining two views (release notes, scope rollups) before Chunk 07 can ship migration tooling. The doctor `views` subcommand fills the F1 deliverable for ad-hoc inter-commit regen and gives `/prawduct-doctor` users a one-stop dry-run/refresh surface.
 
@@ -7052,7 +7118,7 @@ Critic SKILL surfaces updated to call the subcommand instead of computing scope 
 
 ## 2026-05-18: Chunk 05 — F1a derived views (work-log schema + Status view)
 
-<!-- prawduct: chunks=05 | status=shipped | scope=v1.4 -->
+<!-- prawduct: chunks=05 | release=v1.4.0 | status=shipped | scope=v1.4 -->
 
 **Why:** F1's load-bearing premise (one canonical store, derived views replacing hand-curated summaries) needs a working derived-view pipeline before the remaining views (release notes, scope) can land in Chunk 06 and migration tooling in Chunk 07. Chunk 05 ships the schema, the parser, the first view (build-plan Status), and the source-of-truth guardrails threaded across Critic + PR-reviewer + methodology surfaces.
 
