@@ -80,6 +80,47 @@ class TestBuildingMethodology:
         assert "Nothing Is Broken" in self.content
         assert "Design Is Sound" in self.content
 
+    def test_handoff_is_prepared_never_proposed(self):
+        """After sustained work the handoff is PREPARED, not proposed.
+
+        Asking "should I write handoff notes?" costs the user a round-trip and,
+        if they stepped away while the work ran, replays a large context into a
+        cold cache — the exact cost the handoff exists to prevent. Preparing
+        unasked costs little and they may continue in place, so the asymmetry
+        makes the default unconditional.
+
+        Pinned on all three surfaces because this must be framework behaviour a
+        consuming product inherits, not a prawduct-local habit: building.md is
+        read on demand, session-digest.md is injected into every product
+        session, and the slim digest is what framework sessions get.
+        """
+        assert "never *ask* whether to prepare a handoff" in self.content
+        digest = read_file("methodology/session-digest.md")
+        slim = read_file("methodology/session-digest-slim.md")
+        assert "never ask whether to prepare" in digest
+        assert "Never ask whether to prepare one" in slim
+        # The why travels with the always-injected surface, not the on-demand one.
+        assert "cold cache" in digest
+
+    def test_handoff_notes_are_reconciled_not_appended(self):
+        """A handoff is reconciled against reality on every write, not grown.
+
+        The failure this pins is second-batch accretion: a session prepares
+        notes, the user keeps going instead of clearing, and the next close
+        stacks a fresh section on top. The reader then has to guess which layer
+        is live — and the layer that reads most current is usually the one the
+        later work already discharged. Observed in this repo's own
+        `.handoff-notes.md`, which carried three stacked sections, one of them
+        annotated with a hand-written "still applies" comment because prose was
+        doing the job the reconciliation should have done.
+        """
+        assert "reconcile" in self.content.lower()
+        assert "Never blind-append" in self.content
+        for surface in ("session-digest.md", "session-digest-slim.md"):
+            assert "never blind-append" in read_file(
+                f"methodology/{surface}"
+            ).lower(), surface
+
     def test_chunk_close_routes_backlog_to_skill(self):
         """The chunk-close sequence routes backlog work through /prawduct:backlog
         (not hand-edits) — workflow wiring, Chunk 09. Guards the routing."""
@@ -142,6 +183,19 @@ class TestBuildingMethodology:
         #
         # The trim-or-relocate rule above stands — overridden once, on the
         # record. Headroom is again a few words by design.
+        #
+        # 2026-07-29 (coverage-perf Chunk 03) added the never-ask-whether-to-
+        # prepare-a-handoff prohibition and PAID FOR IT by the trim-or-relocate
+        # rule, ending BELOW where it started: 4655 -> 4639, headroom 5 -> 21.
+        # The rule landed as a clause on the existing chunk-close header; its
+        # *rationale* (a round-trip, and a cold-cache context replay if the user
+        # stepped away) went to session-digest.md, which is always injected, so
+        # every session carries the why without building.md paying for it. The
+        # funding was step 7's "nothing beyond the plan is a valid answer"
+        # sentence, which both digests already state verbatim — checked, not
+        # assumed: full digest lines 46-52, slim lines 21-23. That makes this a
+        # dedup rather than a cut; a reader who never opens building.md still
+        # gets the guidance, from a surface they cannot skip.
         tokens = estimate_tokens(self.content)
         assert tokens < 4660, f"building.md is ~{tokens} tokens, should be <4660"
 

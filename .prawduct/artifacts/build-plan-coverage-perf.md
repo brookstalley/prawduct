@@ -115,7 +115,16 @@ equivalence/regression tests.
 
 ### Chunk 02 — the key cache, and the predicate fingerprint that guards it
 
-**Type:** code
+**Type:** code — **DEFERRED 2026-07-29, not started.**
+
+Chunk 01 took the gate from 5 min 12 s to 7.95 s; this chunk would take it to roughly
+0.2 s warm. That is a real gain at every session end, fleet-wide — but it is an
+optimisation of an optimisation, and it was never part of the request that opened this
+work. Shipping the 43× and stopping keeps the reviewable diff small and honest
+(Principle 11). **Trigger to pick it up:** a warm `check-cumulative-critic` exceeding
+5 s, which is the same threshold § Compaction watches — by then the store has roughly
+doubled and the linear cost is what is left to attack. The design below is complete
+enough to build from as written; nothing was learned in Chunk 01 that invalidates it.
 
 Trees are immutable, so a key is permanently cacheable — the steady state should be
 O(new trees), not O(all trees).

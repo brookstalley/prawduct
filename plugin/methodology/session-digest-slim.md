@@ -20,6 +20,8 @@ restate; product repos receive the full digest (`methodology/session-digest.md`)
 - **Feature-branch medium+ work.** Don't create PRs unless asked — then use `/prawduct:pr`.
 - **Forward notes go in `.prawduct/.handoff-notes.md`** — yours to write (as is
   `.session-reflected`), at chunk close ("nothing beyond the plan" if true, but write the line, not no file).
+  **Never ask whether to prepare one — prepare it, then say `/clear` is safe.**
+  **Reconcile, never blind-append**: drop what the work discharged, correct what moved, keep what still bites; a second batch rewrites the first's notes, never stacks on them.
   `.session-handoff.md` is the machine's, regenerated at every `/clear`.
 - **Norms bind; descriptions track** (`/prawduct:methodology norms`) — departures from Direction/preferences
   norms are recorded decisions (amend / ruling / exception), never doc-sync.
