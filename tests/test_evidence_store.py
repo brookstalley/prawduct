@@ -601,7 +601,29 @@ class TestStoreGrowthAdvisory:
         ]
         assert evidence.distinct_trees(facts) == {"a", "b", "c"}
 
-    def test_advisory_fires_at_the_documented_trigger(self):
+    def test_advisory_constant_matches_the_documented_trigger(self):
         # The compaction deferral's trigger is ~10,000 trees; the constant and
         # the plan must not drift apart silently.
         assert evidence.TREE_COUNT_ADVISORY == 10_000
+
+    def test_advisory_fires_at_the_threshold_and_not_below(
+        self, tmp_path, capsys, monkeypatch
+    ):
+        # The negative case above ("NOTE:" absent far below the trigger) cannot
+        # catch an inverted comparison — only firing can. Patch the trigger down
+        # rather than writing 10,000 trees; the boundary is the claim worth
+        # pinning, since the advisory fires AT the count (>=), not past it.
+        repo = _make_repo(tmp_path)
+        evidence.append_fact(
+            repo, "review", "rev-growth-2",
+            {"base_tree": "t0", "head_tree": "t1", "files_changed": [],
+             "files_reviewed": [], "mode": "chunk", "findings": []},
+        )
+
+        monkeypatch.setattr(evidence, "TREE_COUNT_ADVISORY", 2)
+        assert evidence._cmd_status(repo) == 0, "advisory never blocks"
+        assert "NOTE: 2 distinct trees" in capsys.readouterr().out
+
+        monkeypatch.setattr(evidence, "TREE_COUNT_ADVISORY", 3)
+        assert evidence._cmd_status(repo) == 0
+        assert "NOTE:" not in capsys.readouterr().out

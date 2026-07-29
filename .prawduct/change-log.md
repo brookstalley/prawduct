@@ -3,6 +3,44 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-07-29: Dispositions — verify-resolutions `rev-20260729T160832Z-6fc768ff`, both findings FIXED
+
+<!-- prawduct: type=fix | scope=coverage-perf -->
+
+0 blocking, 2 warnings, 0 notes over the 12-file delta (`988b3de` → `f4ccea2`) — the commits that
+landed after the cumulative's reviewed tree. The pass verified 10 of the prior 13 warnings **against
+the tree** rather than against the change-log's account of them, which is the point of the mode.
+Both new findings are **FIXED**; neither was filed.
+
+**FIXED (2).**
+
+- **W-1** — the change-log asserted "Recorded at the current tree: 2806 passed", but the stamped
+  evidence anchored tree `5b5063a` (commit `078dbb9`), two commits back. `da8be44` then added
+  `distinct_trees`, `TREE_COUNT_ADVISORY`, and the `_cmd_status` branch — production code in the
+  module every coverage gate composes over — so **the R-20 fix was itself the unstamped slice**. The
+  run had plausibly happened (2806 = 2803 + the three tests that commit added) but a run that is not
+  stamped is not evidence. Re-recorded at the head tree: **2807 passed, 7 skipped** (2806 + the test
+  below). The lesson is narrow and worth keeping: *asserting a number in prose is not recording it.*
+- **W-2** — `test_advisory_fires_at_the_documented_trigger` asserted only
+  `TREE_COUNT_ADVISORY == 10_000`; the one behavioural assertion in the class was the **negative**
+  (`'NOTE:' not in stdout` far below the trigger). Nothing exercised the firing path, so an inverted
+  comparison would have shipped green — R-20's own thesis (a trigger nothing observes) reproduced one
+  level up, in the test written to close R-20. Split into a constant-drift pin
+  (`test_advisory_constant_matches_the_documented_trigger`) and a real boundary test that patches the
+  trigger down rather than writing 10,000 trees, asserting the advisory fires **at** the count
+  (`>=`, not past it) and stays silent below. **Verified by mutation**: inverting `>=` to `>` in
+  `evidence.py:534` fails the new test, and passed before it existed.
+
+**Left open deliberately (1).** The prior review's **R-18** stays unresolved rather than being
+recorded `waived`. The disposition schema admits only `fixed`/`waived`, and the builder's recorded
+posture was *"OWED, not accepted"* — stamping it `waived` would erase that. It gates nothing, so an
+honest open record costs nothing.
+
+**One incidental correction.** The prior pass's **R-4** (`verify-chunk-refs` exiting 1) is a
+stale-binary artifact, not a defect: the PATH `prawduct-hook` resolves to
+`/Users/brookstalley/source/prawduct/plugin/bin/prawduct-hook` — a different checkout at v3.1.1 —
+while this worktree's own binary exits 0. Always invoke `./plugin/bin/prawduct-hook` here.
+
 ## 2026-07-29: Dispositions — cumulative `rev-20260729T150800Z-232232b0`, all 30 findings
 
 <!-- prawduct: type=fix | scope=coverage-perf -->
