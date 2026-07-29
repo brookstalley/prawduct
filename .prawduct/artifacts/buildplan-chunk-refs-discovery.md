@@ -71,8 +71,21 @@ Across all 11 chunks: **50 refs extracted, 21 missing.**
 | Class | Count | Chunks | Fixable by |
 |---|---|---|---|
 | **(a)** plugin-relative shorthand — `lib/gates.py`, `skills/backlog/SKILL.md`, `.claude-plugin/plugin.json` … resolve under `plugin/`, not from the repo root | **17** | 02, 03, 05, 05c, 07, 08, 09 | a plugin-root fallback |
-| **(b)** GitHub repo slugs and issue refs in prose — `brookstalley/prawduct`, `brookstalley/prawduct-s2-dryrun-20260724`, `owner/repo`, `owner/samsung-frame-art-loader#12` | **4** | 02, 05, 05c, 08 | a carveout in `_looks_like_file_path` |
+| **(b)** GitHub repo slugs and issue refs in prose — `brookstalley/prawduct`, `brookstalley/prawduct-s2-dryrun-20260724`, `owner/repo`, `owner/samsung-frame-art-loader#12` | **4** | 02, 05, 05c, 08 | see the correction below |
 | residual | **0** | — | — |
+
+> **Correction, 2026-07-29, from building it.** The "fixable by" cell for class
+> (b) originally read *a carveout in `_looks_like_file_path`*. That is right for
+> exactly one of the four — `owner/…#12`, where the `#` makes it not-a-path by
+> shape, for every consumer of that predicate. It is **wrong for the other
+> three.** A bare `owner/repo` slug is genuinely path-shaped, and the only rules
+> that would exclude it are context heuristics ("resolves nowhere and has no
+> extension") that make the gate **fail open on ambiguity** — the inverse of the
+> `architecture.md` norm, and a reporting loss inflicted on every consuming
+> product to absorb three tokens in this repo's own plan. Those three are prose
+> defects and were fixed as prose: `<owner>/<repo>` for the placeholder,
+> unbackticked text for the two real repositories. The measured *problem* in
+> this table stands; only the prescribed remedy changed.
 
 **Class (b) is new and cannot be fixed by the fallback.** `_looks_like_file_path`
 (`:614-661`) admits any token containing `/` unless it matches one of six

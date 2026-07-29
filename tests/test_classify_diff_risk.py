@@ -30,6 +30,7 @@ if str(ROOT) not in sys.path:
 
 from lib.risk import (  # noqa: E402
     DERIVED_DEFAULT_SURFACES,
+    _boundary_pattern_paths,
     _read_list_yaml_key,
     _surface_matches,
 )
@@ -238,6 +239,24 @@ class TestBoundaryPatternsSurfaces:
         )
         _commit_file(repo, "docs/readme.md", "x\n", "doc change")
         assert _run(repo, "main").stdout.strip() == "standard"
+
+    def test_issue_refs_and_anchors_are_not_surfaces(self, tmp_path):
+        """`_looks_like_file_path` is shared with the build-plan ref verifier.
+
+        Excluding `#`-carrying tokens there changes what THIS module sees as a
+        contract surface, so the behaviour is pinned at this consumer too — a
+        change to a gate's input set is a contract change, not a local edit.
+        """
+        artifacts = tmp_path / ".prawduct" / "artifacts"
+        artifacts.mkdir(parents=True)
+        (artifacts / "boundary-patterns.md").write_text(
+            "Producer: `src/api/contract.py` defines the shape.\n"
+            "Tracker: `owner/repo#12` tracks the rollout.\n"
+            "Anchor: `docs/api#usage` documents it.\n"
+        )
+        assert _boundary_pattern_paths(tmp_path / ".prawduct") == [
+            "src/api/contract.py"
+        ]
 
 
 class TestFailureAsymmetry:

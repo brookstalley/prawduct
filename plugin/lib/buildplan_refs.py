@@ -636,6 +636,14 @@ def _looks_like_file_path(token: str) -> bool:
     ``>``, or ``://`` is a placeholder/URL to skip, not a missing file to flag
     (BLD-4K7P; same form-family as the glob carveout above).
 
+    Issue references and anchors (e.g. ``owner/repo#12``, ``docs/api#usage``)
+    contain ``/`` but the ``#`` names a location in a *tracker or document*,
+    not a file — no source file this verifier could be asked about carries one.
+    Excluding them is a property of the token's shape, so it belongs here
+    rather than at a caller, and it is correct for every consumer: a contract
+    surface with a ``#`` in it is not a path either. Sibling of the URL and
+    placeholder carveouts above.
+
     Git branch/ref names (e.g. ``feature/backlog-service-relayout``,
     ``origin/develop``, ``release/v3.2.0``) also contain ``/`` but name a branch,
     not a file — a build/release plan legitimately backticks them in prose. A
@@ -654,6 +662,8 @@ def _looks_like_file_path(token: str) -> bool:
     if "<" in token or ">" in token:
         return False
     if "://" in token:
+        return False
+    if "#" in token:
         return False
     first, _, rest = token.partition("/")
     if first in _GIT_REF_PREFIXES and not _has_file_extension(rest.rsplit("/", 1)[-1]):
@@ -1012,16 +1022,56 @@ def _current_chunk_id_from_status(project_dir: Path) -> str | None:
     return _chunk_id_from_item_text(status.get("current_chunk", ""))
 
 
+_PLUGIN_SUBDIR = "plugin"
+# The file that identifies ``plugin/`` as a Claude Code plugin root rather than
+# a directory that merely shares the name. Requiring it is what keeps the
+# fallback below from firing in a governed product that happens to ship a
+# ``plugin/`` tree of its own — a VS Code extension, an Obsidian or WordPress
+# plugin. Without this test the fallback would silently resolve a genuinely
+# missing deliverable against an unrelated directory, i.e. weaken the gate
+# everywhere to serve one repo's convenience.
+_PLUGIN_ROOT_MARKER = Path(".claude-plugin") / "plugin.json"
+
+
+def _plugin_root(project_dir: Path) -> Path | None:
+    """The repo's own plugin subtree, or ``None`` when it has none.
+
+    A repo that *contains* the plugin (rather than merely being governed by
+    one) writes plan refs the way the plugin ships them — ``lib/gates.py``,
+    ``skills/backlog/SKILL.md`` — because that is how those paths read from
+    inside the plugin. They are root-relative nowhere, so the shorthand an
+    author naturally writes would otherwise report as a missing deliverable.
+    """
+    root = project_dir / _PLUGIN_SUBDIR
+    if (root / _PLUGIN_ROOT_MARKER).is_file():
+        return root
+    return None
+
+
 def _verify_chunk_refs(project_dir: Path, refs: dict) -> list[dict]:
-    """Verify each file-path ref exists relative to ``project_dir``.
+    """Verify each file-path ref names something that exists.
+
     Returns a list of ``{"kind", "ref", "line_num", "reason"}`` for missing
     entries. Empty list = all refs resolved.
+
+    A ref resolves at the repo root or, in a repo that carries its own plugin
+    subtree, under that subtree (:func:`_plugin_root`). Anything else is
+    reported. **Ambiguity is reported, not excused**: a token that is
+    path-shaped but resolves nowhere gets named, even when it looks like it
+    might be prose (a repo slug, a placeholder). A gate that guesses "probably
+    not a file" fails open on exactly the input it exists to judge; the author
+    disambiguates in the plan instead — placeholders as ``<owner>/<repo>``,
+    real repositories unbackticked or as URLs, both of which this module
+    already declines to treat as paths.
     """
     missing: list[dict] = []
+    plugin_root = _plugin_root(project_dir)
     for entry in refs.get("file_paths", []):
         ref = entry["ref"]
         target = project_dir / ref
         if not target.exists():
+            if plugin_root is not None and (plugin_root / ref).exists():
+                continue
             if gitstate.git_path_is_ignored(project_dir, ref):
                 # BLD-4K7P: an intentionally-gitignored managed path (e.g.
                 # `.prawduct/.bug-inbox`) is a generated/managed file,

@@ -753,3 +753,127 @@ class TestVerifyChunkRefsForwardRefScope:
         assert [e["ref"] for e in refs["file_paths"]] == ["lib/does_not_exist.py"]
         missing = _bpr._verify_chunk_refs(project, refs)
         assert [m["ref"] for m in missing] == ["lib/does_not_exist.py"]
+
+
+# =============================================================================
+# BLD-ZQ2V — plugin-relative shorthand resolves; ambiguity is reported, not excused
+# =============================================================================
+
+
+def _make_plugin_root(project: Path) -> Path:
+    """Mark ``project/plugin`` as a real Claude Code plugin root."""
+    plugin = project / "plugin"
+    (plugin / ".claude-plugin").mkdir(parents=True, exist_ok=True)
+    (plugin / ".claude-plugin" / "plugin.json").write_text('{"name": "x"}\n')
+    return plugin
+
+
+class TestVerifyChunkRefsPluginRelative:
+    """A repo that CONTAINS the plugin writes refs the way the plugin ships
+    them, so those resolve under `plugin/` — but only for such a repo."""
+
+    def test_plugin_relative_ref_resolves(self, tmp_path: Path):
+        project, prawduct = _project_with_chunk(
+            tmp_path, "- touches `lib/gates.py`\n"
+        )
+        plugin = _make_plugin_root(project)
+        (plugin / "lib").mkdir()
+        (plugin / "lib" / "gates.py").write_text("x = 1\n")
+        refs = _bpr._parse_build_plan_chunk_refs(prawduct, "01")
+        assert _bpr._verify_chunk_refs(project, refs) == []
+
+    def test_plugin_relative_directory_ref_resolves(self, tmp_path: Path):
+        # A trailing-slash directory ref has no file extension; it must still
+        # resolve under the plugin subtree rather than being second-guessed.
+        project, prawduct = _project_with_chunk(
+            tmp_path, "- touches `lib/backlog/`\n"
+        )
+        plugin = _make_plugin_root(project)
+        (plugin / "lib" / "backlog").mkdir(parents=True)
+        refs = _bpr._parse_build_plan_chunk_refs(prawduct, "01")
+        assert _bpr._verify_chunk_refs(project, refs) == []
+
+    def test_unmarked_plugin_dir_does_NOT_resolve(self, tmp_path: Path):
+        """The load-bearing guard for every consuming product.
+
+        A governed product may ship its own `plugin/` tree (VS Code extension,
+        Obsidian/WordPress plugin). Resolving refs against it would silently
+        excuse a genuinely missing deliverable — a gate weakened everywhere to
+        serve one repo. Only a real plugin root counts.
+        """
+        project, prawduct = _project_with_chunk(
+            tmp_path, "- touches `lib/gates.py`\n"
+        )
+        plugin = project / "plugin"  # NO .claude-plugin/plugin.json marker
+        (plugin / "lib").mkdir(parents=True)
+        (plugin / "lib" / "gates.py").write_text("x = 1\n")
+        refs = _bpr._parse_build_plan_chunk_refs(prawduct, "01")
+        missing = _bpr._verify_chunk_refs(project, refs)
+        assert [m["ref"] for m in missing] == ["lib/gates.py"]
+
+    def test_root_wins_over_plugin(self, tmp_path: Path):
+        project, prawduct = _project_with_chunk(
+            tmp_path, "- touches `lib/gates.py`\n"
+        )
+        _make_plugin_root(project)
+        (project / "lib").mkdir()
+        (project / "lib" / "gates.py").write_text("x = 1\n")
+        refs = _bpr._parse_build_plan_chunk_refs(prawduct, "01")
+        assert _bpr._verify_chunk_refs(project, refs) == []
+
+    def test_absent_from_both_still_reports(self, tmp_path: Path):
+        project, prawduct = _project_with_chunk(
+            tmp_path, "- touches `lib/nope.py`\n"
+        )
+        _make_plugin_root(project)
+        refs = _bpr._parse_build_plan_chunk_refs(prawduct, "01")
+        missing = _bpr._verify_chunk_refs(project, refs)
+        assert [m["ref"] for m in missing] == ["lib/nope.py"]
+
+
+class TestIssueRefsAreNotFilePaths:
+    """`#` names a location in a tracker or document, never a source file."""
+
+    def test_issue_reference_excluded(self):
+        assert not _bpr._looks_like_file_path("owner/repo#12")
+
+    def test_document_anchor_excluded(self):
+        assert not _bpr._looks_like_file_path("docs/api#usage")
+
+    def test_ordinary_path_still_included(self):
+        assert _bpr._looks_like_file_path("lib/gates.py")
+
+
+class TestPathShapedAmbiguityIsReported:
+    """A gate that guesses "probably prose" fails open on the exact input it
+    exists to judge. A bare `owner/repo` slug is path-shaped and stays checked;
+    the author disambiguates in the plan (`<owner>/<repo>`, or unbackticked).
+
+    These pin the ABSENCE of a fail-open heuristic — if a later change teaches
+    the verifier to skip extension-less refs whose first segment is missing,
+    these fail, which is the point.
+    """
+
+    def test_repo_slug_is_still_path_shaped(self):
+        assert _bpr._looks_like_file_path("brookstalley/prawduct")
+
+    def test_unresolvable_slug_is_reported_not_excused(self, tmp_path: Path):
+        project, prawduct = _project_with_chunk(
+            tmp_path, "- see `brookstalley/prawduct`\n"
+        )
+        _make_plugin_root(project)
+        refs = _bpr._parse_build_plan_chunk_refs(prawduct, "01")
+        missing = _bpr._verify_chunk_refs(project, refs)
+        assert [m["ref"] for m in missing] == ["brookstalley/prawduct"]
+
+    def test_extensionless_ref_under_absent_dir_is_reported(self, tmp_path: Path):
+        project, prawduct = _project_with_chunk(
+            tmp_path, "- touches `docs/design`\n"
+        )
+        refs = _bpr._parse_build_plan_chunk_refs(prawduct, "01")
+        missing = _bpr._verify_chunk_refs(project, refs)
+        assert [m["ref"] for m in missing] == ["docs/design"]
+
+    def test_placeholder_form_is_the_disambiguator(self):
+        # The escape hatch the docstring points authors at, already supported.
+        assert not _bpr._looks_like_file_path("<owner>/<repo>")

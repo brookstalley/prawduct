@@ -12,6 +12,7 @@ governed_by:
   - artifact: architecture
     dispositions:
       - "Authority fails closed; advice fails soft → conforms, and this norm is the reason the owner's ruling is right rather than merely convenient. The gate produces a governance verdict for the chunk under review (authority → blocks on a missing deliverable) and merely informs about every other chunk (advice → a note). Option (i) from the discovery doc — block on every chunk — would have converted advice into authority for chunks nobody is working on, which is the failure this norm names. Recorded because the applicability is an interpretation, not a given."
+      - "Authority fails closed — SECOND application, and it caught a violation in this plan's own Chunk 01 during the build. The originally-planned 'skip a ref that resolves nowhere, has no extension, and whose first segment is absent' rule made the gate go SILENT on ambiguous input, which is precisely the inverse of the norm, and it would have weakened reporting in every consuming product to absorb three tokens in this repo's own plan. Withdrawn and replaced with report-and-let-the-author-disambiguate; the withdrawal and its reasoning are preserved in the Chunk 01 body. The lesson worth carrying: a disposition asserting conformance is worth nothing if it is written before the code and never re-read against it."
       - "Local-first: governance coordination is process-spawn + files + git, no network, no third-party dependencies → conforms. Every change here is stdlib path arithmetic against the working tree; no new dependency, no network, no new persisted format."
       - "The plugin writes nothing into a governed repo except its own `.prawduct/` state … → inapplicable because this plan adds no write path. `verify-chunk-refs` is read-only and stays so."
   - artifact: observability-strategy
@@ -82,50 +83,79 @@ widening coverage in Chunk 02 is safe.
 **Covers:** BLD-ZQ2V parts (a) and (b).
 **Depends on:** —  ·  **Type:** code  ·  **Critic mode:** chunk
 
-**Design decision — the discrimination goes in `_verify_chunk_refs`, NOT in
-`_looks_like_file_path`.** The obvious fix is to teach the shared shape
-predicate about repo slugs. Do not: `plugin/lib/risk.py:55` imports
-`_looks_like_file_path` and applies it at `:117` to `boundary-patterns.md`
-tokens, so changing it silently changes which contract surfaces risk assessment
-sees — a different module, a different job, no test linking them. This is the
-grep-the-predicate's-callers lesson (learnings.md, Chunk 05c) applied before the
-fact rather than after.
+**Design decision — a change to `_looks_like_file_path` is a change to two
+gates.** `plugin/lib/risk.py:55` imports it and applies it at `:117` to
+`boundary-patterns.md` tokens, so editing it changes which contract surfaces
+risk assessment sees — a different module, a different job, no test linking
+them. Found by grepping the predicate's *callers*, which is this branch's own
+Chunk 05c lesson applied before the fact rather than after.
 
-Two further reasons the same way: `_looks_like_file_path` is a *pure shape*
-predicate and `owner/repo` genuinely is path-shaped, so the honest discriminator
-is not shape but context; and the context needed (does this resolve in this
-repo?) is `project_dir`, which `_verify_chunk_refs` already has and the
-predicate does not.
+That does not make the predicate untouchable; it makes the test for touching it
+sharper. **A rule belongs there when it is true of the token's shape for every
+consumer, and nowhere else otherwise.** The `#` rule qualifies — an issue
+reference or anchor is not a file path in *any* caller's world — so it lands
+there and is pinned at both consumers. Repo-slug discrimination does not: it
+needs to know what resolves in a particular repo, which is context, not shape.
+The first instinct was to encode that context as a shape heuristic anyway; the
+withdrawal note above is what came of testing it against the governing norm.
 
 **Done when:**
 
-1. **Plugin-root fallback.** A ref that does not resolve at `project_dir / ref`
-   but does resolve at `project_dir / "plugin" / ref` is not missing. Scope the
-   change by that pattern, not by the 17 current sites — the shorthand is
-   idiomatic across this repo's plans and new ones will be written.
-2. **Non-deliverable skip.** A ref is not a missing deliverable when **all** of:
-   it does not resolve at the repo root; it does not resolve under `plugin/`;
-   its final segment carries no file extension (`_has_file_extension`); and its
-   first segment is not an existing entry at the repo root. That conjunction is
-   what separates `brookstalley/prawduct` and `owner/repo#12` (skip) from
-   `plugin/lib` and `docs/adr` in a repo that has those directories (still
-   checked), and from `lib/gates.py` (extension present → still checked, then
-   resolved by step 1).
-3. **The accepted cost is recorded in the code, not just here:** a genuinely
-   missing extension-less path whose first segment is also absent
-   (`docs/design` in a repo with no `docs/`) is skipped. Bounded deliberately by
-   the extension test — the common deliverable shape keeps its check.
-4. Tests pin each edge: plugin-relative resolves; repo slug and `owner/repo#N`
-   skip; `plugin/lib`-shaped directory ref still checked; `lib/gates.py` still
-   resolves via the fallback; a genuinely missing `plugin/lib/nope.py` still
-   reports.
-5. `risk.py`'s behavior is unchanged — pinned by a test asserting
-   `_looks_like_file_path` still returns `True` for a repo slug, so a later
-   refactor cannot "simplify" the discrimination back into the shared predicate
-   without failing.
+**REVISED DURING BUILD (2026-07-29) — the original done-when 2 was withdrawn as
+unsafe. It is preserved below with the reason, because the reason generalizes.**
 
-**Verification:** the discovery doc's probe, re-run: 21 missing → 0, with
-chunk-scoping still in place and `_looks_like_file_path` untouched.
+> The withdrawn rule: *skip a ref when it resolves nowhere, has no file
+> extension, and its first segment is not an entry in the repo* — the
+> conjunction meant to separate `brookstalley/prawduct` from `plugin/lib`.
+>
+> **Why it was wrong: it makes authority fail open.** The governing norm
+> (`architecture.md` § Direction) is *authority fails closed; advice fails
+> soft* — a gate blocks on incomplete, malformed, or **ambiguous** state. That
+> rule did the reverse: faced with a token it could not classify, it stayed
+> silent. And the silence was not confined to this repo — every consuming
+> product would lose reporting on stale extension-less directory refs
+> (`oldmodule/handlers` after the module is deleted), a real class, to buy a
+> cosmetic win on three tokens in prawduct's own plan. A recorded disposition
+> claiming conformance while the code does the opposite is worse than no
+> disposition.
+
+1. **Plugin-root fallback, gated on the plugin-root marker.** A ref that does
+   not resolve at the repo root but does resolve under the repo's own plugin
+   subtree is not missing. **The subtree counts only when
+   `plugin/.claude-plugin/plugin.json` exists** — a governed product may ship
+   its own `plugin/` tree (VS Code extension, Obsidian or WordPress plugin),
+   and resolving refs against that would silently excuse a genuinely missing
+   deliverable in every such repo. Scope by the pattern, not the 17 sites.
+2. **Issue references and anchors are not file paths.** A token containing `#`
+   (`owner/repo#12`, `docs/api#usage`) names a location in a tracker or
+   document; no source file this verifier is asked about carries one. This is a
+   genuine property of the token's *shape*, so it belongs in
+   `_looks_like_file_path` and is correct for its other consumer — a contract
+   surface with a `#` is not a path either.
+3. **Everything else path-shaped stays checked, including bare `owner/repo`
+   slugs.** The gate reports what it cannot resolve; the *author* disambiguates
+   in the plan. Both escape hatches already exist: `<owner>/<repo>` for
+   placeholders (angle-bracket carveout) and a URL or unbackticked prose for a
+   real repository. Loud and occasionally inconvenient beats silent and
+   weakening, for a gate.
+4. The three offending prose sites in `build-plan-v3.2.0-golive.md` are
+   corrected at source — they were backticking repo slugs as if they were
+   paths, which is the actual defect.
+5. Tests pin each edge, **including the absence of the withdrawn heuristic** so
+   a later "simplification" cannot reintroduce it: plugin-relative file and
+   directory refs resolve; an **unmarked** `plugin/` dir does *not* resolve
+   (the consuming-product guard); root wins over plugin; absent-from-both still
+   reports; `#` tokens excluded; a bare repo slug is still path-shaped and
+   still reported; an extension-less ref under an absent directory is still
+   reported.
+6. `risk.py` shares `_looks_like_file_path`, so its behavior change is pinned
+   at that consumer too (`tests/test_classify_diff_risk.py`) — a change to a
+   gate's input set is a contract change, not a local edit.
+
+**Verification:** the discovery doc's probe, re-run — 21 missing → **0**, with
+chunk-scoping still in place and **no fail-open rule anywhere in the path**. The
+three that the mechanical fixes deliberately do *not* absorb were fixed as
+prose. Suite 2781 passed / 7 skipped (was 2768; +13).
 
 ---
 

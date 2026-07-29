@@ -3,6 +3,55 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-07-29: The ref gate was verifying one file reference for an entire release
+
+<!-- prawduct: type=fix | scope=chunk-refs-gate | chunks=01 -->
+
+**Not part of v3.2.0.** `active_build_plan` stays on the release plan; this is
+`build-plan-chunk-refs-gate.md`, and Chunk 09's change-log flip must not sweep this
+entry up. Shipping it in v3.2.0 is a scope call to take explicitly.
+
+`verify-chunk-refs` resolves "current chunk" as the first *incomplete* Status item. On a
+plan whose checkboxes stay `[ ]` until release, that is Chunk 01 forever — and Chunk 01
+carries exactly **one** ref. Measured against the real gate functions: **50 refs across 11
+chunks, of which the gate inspected 1 and reported green.** That is how a bare
+`artifacts/…` path (for `.prawduct/artifacts/…`) reached a chunk body unflagged; the
+reviewer caught it by reading, and the gate was green throughout.
+
+Two false-positive classes had to go before coverage could widen, or fixing the resolution
+would have converted a silent gate into one blocking 21 refs across seven chunks:
+
+- **Plugin-relative shorthand (17 refs, 7 chunks).** A repo that *contains* the plugin
+  writes refs the way the plugin ships them (`lib/gates.py`, `skills/backlog/SKILL.md`);
+  those are root-relative nowhere. They now resolve under the repo's own plugin subtree —
+  **gated on `plugin/.claude-plugin/plugin.json`**, so a governed product shipping its own
+  unrelated `plugin/` tree (VS Code extension, Obsidian, WordPress) cannot have a genuinely
+  missing deliverable silently excused against it.
+- **Issue references and anchors.** A token carrying `#` (`owner/repo#12`,
+  `docs/api#usage`) names a location in a tracker or document, never a source file. That is
+  a property of the token's shape and true for every consumer, so it lives in
+  `_looks_like_file_path` — shared with `lib/risk.py`, whose behaviour change is pinned at
+  that consumer too.
+
+**A planned third rule was withdrawn during the build, and the reason is the durable part.**
+The plan called for skipping a ref that resolves nowhere, has no file extension, and whose
+first segment is absent — the conjunction meant to excuse a bare `owner/repo` slug. It
+would have made the gate **fail open on ambiguity**, the exact inverse of the governing
+norm (`architecture.md` — *authority fails closed*), and the silence would have been
+inflicted on every consuming product (stale `oldmodule/handlers`-shaped refs stop being
+reported) to absorb three tokens in this repo's own plan. Withdrawn. Ambiguity is reported
+and the *author* disambiguates; both escape hatches already existed — `<owner>/<repo>` for
+placeholders, a URL or unbackticked prose for a real repository. The three offending sites
+were fixed as prose, which is what they actually were.
+
+Tests pin the absence of the withdrawn rule as well as the presence of the new ones, so a
+later "simplification" cannot reintroduce it. Residual across all 11 chunks: **0 missing,
+with no fail-open rule anywhere in the path.** Suite 2781 passed / 7 skipped (was 2768).
+
+Covers **BLD-ZQ2V** parts (a) and (b). Chunk 02 (verify every chunk; block on the one under
+review, warn on the rest) is not built yet, so the gate still inspects only the resolved
+current chunk — the blindness is *survivable* now, not yet *fixed*.
+
 ## 2026-07-28: A hyphen was deciding which backlog items were allowed to have an identity
 
 <!-- prawduct: type=fix | scope=v3.2.0-golive | chunks=05c -->

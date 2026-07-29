@@ -202,7 +202,7 @@ no `backlog_service_repo` read — `context.py`), so the migration guard (pins t
 (pins to a fixed constant, and replaces the egress test) share **no** adapter mechanism. So: BKL-2Q7F's
 adapter-side guard folds into **Chunk 03** (built with the skill step that records the target); the
 upstream target-pin + no-self-file + preview-by-default stay in **Chunk 08** (with the egress-test
-replacement — a `brookstalley/prawduct` literal in `lib/backlog/` before then reddens
+replacement — a "brookstalley/prawduct" literal in `lib/backlog/` before then reddens
 `test_no_upstream_content_egress.py`, which must stay green until Chunk 08). Chunk 02 is now BKL-8V3D
 only. | user can veto the re-scope]**
 
@@ -354,7 +354,7 @@ S2's pacing constants, not just record volume.
 
 **Live half landed 2026-07-24** (done-when #1 + #3 met; recorded as **VRF-009** in
 `operator-verification.md`). Ran `--archive-scope all` against the private throwaway
-`brookstalley/prawduct-s2-dryrun-20260724` — live tally **148 open / 147 closed / 295 total** (exact),
+repo brookstalley/prawduct-s2-dryrun-20260724 — live tally **148 open / 147 closed / 295 total** (exact),
 `fidelity_ok`, 294 aliases minted / 0 new PFX, `resume_created_duplicates: 0`. **§9 S2 settled in the
 negative:** `rest_point_waits: 0` **and** `content_creation_waits: 0` — under the *serial* importer the
 Pacer budgets (80/min, 500/hr, 900 pts/min) never bind; serial `gh` round-trip latency caps the burst at
@@ -631,7 +631,7 @@ error vocab (`filing-disabled`, `target-not-pinned`, `self-file`, `approval-mism
    resolver exists yet** — `lib/gitstate.py` has no `remote get-url` helper, and `lib/backlog/context.py`
    is execution-context only (its sole repo comparison is the Actions-only `GITHUB_REPOSITORY` vs
    `PRAWDUCT_PR_HEAD_REPO` fork check — env-sourced, not git-sourced). Budget a small helper
-   (`git remote get-url origin` → `owner/repo` via `ids.parse_repo`) plus its unresolvable / malformed /
+   (`git remote get-url origin` → `<owner>/<repo>` via `ids.parse_repo`) plus its unresolvable / malformed /
    no-remote cases, all of which must fail **closed**.
 2. **Label-less payload (§2)** — `[prawduct]` title prefix + fixed body sections + the *trimmed*
    `prawduct:` provenance block (`v`/`found_in`/`source-key:` only; the product-name-bearing `source:`
