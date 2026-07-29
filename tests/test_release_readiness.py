@@ -278,6 +278,20 @@ class TestIdempotentAcrossItsOwnRunbook:
         )
         assert release_readiness.check_releasability(project, "v3.2.0") == 0, capsys.readouterr().err
 
+    def test_a_WITHHELD_scope_tagged_for_this_release_is_not_exempt(self, tmp_path, capsys):
+        # Withheld-then-shipped is a contradiction, and the exemption must not
+        # swallow it: the scope would be absent from `pending`, absent from the
+        # orphan list and absent from the withheld summary, so the gate would
+        # print `releasable:` without ever mentioning the withholding.
+        project = _make_project(
+            tmp_path,
+            entries=_entry("A", "alpha", release="v3.2.0") + _entry("B", "beta"),
+            classification="| alpha | withheld | BKL-6J2X |\n| beta | ships | |\n",
+            backlog=_open_item("BKL-6J2X"),
+        )
+        assert release_readiness.check_releasability(project, "v3.2.0") == 1
+        assert "nothing release-pending behind them" in capsys.readouterr().err
+
     def test_scope_tagged_for_a_DIFFERENT_release_is_still_an_orphan(self, tmp_path, capsys):
         # The exemption is scoped to the release under test — a row left over
         # from an older release is still stale.
@@ -307,10 +321,14 @@ class TestCliWiring:
         )
 
     def _project(self, tmp_path: Path) -> Path:
+        # VERSION deliberately DIFFERS from the --release value the tests pass.
+        # With them equal, the pre-fix ignore-and-fall-back path satisfied the
+        # assertion too, so the regression test could not fail on the bug.
         return _make_project(
             tmp_path,
             entries=_entry("A", "alpha"),
             classification="| alpha | ships | |\n",
+            version="3.1.0",
         )
 
     def test_dispatch_reaches_the_gate(self, tmp_path):
@@ -323,7 +341,12 @@ class TestCliWiring:
         # `--release=v3.2.0` previously fell through to plugin/VERSION and
         # graded a DIFFERENT release without saying so.
         proc = self._run(self._project(tmp_path), *form.split(" "))
-        assert "v3.2.0" in (proc.stdout + proc.stderr)
+        combined = proc.stdout + proc.stderr
+        assert "v3.2.0" in combined, "the named release must be the one graded"
+        assert "no --release given" not in combined, (
+            "falling back to plugin/VERSION means the flag was silently ignored"
+        )
+        assert "v3.1.0" not in combined, "v3.1.0 is the fixture's VERSION, not the ask"
 
     @pytest.mark.parametrize("bad", ["v3.2.0", "--relase", "--extra"])
     def test_unknown_tokens_are_usage_errors_not_ignored(self, tmp_path, bad):

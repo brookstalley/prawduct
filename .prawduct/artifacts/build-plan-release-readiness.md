@@ -4,7 +4,9 @@ item: REL-8P6M
 depends_on:
   - .prawduct/runbooks/cut-and-publish-a-plugin-release.md
 governed_by:
-  - .prawduct/artifacts/operational-spec.md        # ## Direction — versioning norm, release posture
+  - .prawduct/artifacts/operational-spec.md        # ## Direction — versioning norm, promotion norm
+  - .prawduct/artifacts/api-contract.md            # exit-code error model for a new CLI subcommand
+  - .prawduct/artifacts/data-model.md              # backlog_service_repo authority over backlog.md
   - .prawduct/artifacts/project-preferences.md     # merge strategy, attribution
 requirements_confidence: High
 ---
@@ -39,7 +41,7 @@ This release tags its shipping subset by hand, once. See Chunk 03. `REL-7D4X` st
   failure it prevents is fleet-wide, so fail-closed is the proportionate posture | HIGH | user can
   override to advisory]`
 - `[ASSUMPTION: "unreleased scope" means a tagged change-log entry carrying no `release=`, which is
-  what `views.collect_release_pending_scopes` already enumerates | LOW]`
+  what `release_readiness.release_pending_scopes` enumerates. NOT `views.collect_release_pending_scopes`, which also includes `status=shipped` scopes so `regen-views` can flip plans regardless of convention — releasability needs the strictly narrower "no `release=` tag" set | LOW]`
 
 ## Governing norms — reconciliation
 
@@ -48,6 +50,17 @@ a patch bump, not a minor-per-feature."* → **inapplicable to this plan**: noth
 version number is chosen. Recorded rather than assumed, since the runbook this plan edits quotes the
 norm at length and an editor could easily disturb it. **Chunk 02 must leave the norm block at
 runbook lines 49–67 byte-identical.**
+
+`api-contract.md` — *recorded decision `api_error_model_approach`: exit codes are the contract, on a
+documented scheme.* → **conforms.** Chunk 01 changed the usage-error path from exit 1 to **exit 2**
+specifically to stop colliding with the gate's own `not-releasable` code, which is that norm applied,
+not vocabulary overlap — so the artifact genuinely governs and its Operations list now names
+`check-releasability`. (Corrected: the first pass waived this as incidental overlap while the bundle
+was in fact conforming to it.)
+
+`data-model.md` — *once `backlog_service_repo` is set, `backlog.md` is frozen history and no reader
+treats it as live.* → **conforms, after a correction.** The first implementation read the markdown
+unconditionally; post-cutover that certifies a closed blocker as open. Now gated, failing closed.
 
 `project-preferences.md` — merge-commit strategy and no-attribution-trailers: **conforms**.
 
@@ -63,8 +76,9 @@ The highest-value half of REL-8P6M. Phase 1 gains a precondition it has never ha
 
 Behaviour — every release-pending scope must be classified, nothing unclassified:
 
-1. Enumerate release-pending scopes via `views.collect_release_pending_scopes`, narrowed to entries
-   carrying no `release=` tag.
+1. Enumerate release-pending scopes via `release_readiness.release_pending_scopes` — entries
+   carrying no `release=` tag. Deliberately a second, narrower definition than
+   `views.collect_release_pending_scopes`; the docstring records why.
 2. Read the classification table from `.prawduct/artifacts/release-plan-<version>.md` (new file per
    release; resolved from `--release`, else the version in `plugin/VERSION`).
 3. Each release-pending scope must appear exactly once, classified `ships` **or**

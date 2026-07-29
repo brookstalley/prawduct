@@ -3,6 +3,50 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-07-29: Dispositions — verify pass `rev-20260729T173217Z-5b8a9522`, and a correction to the record
+
+<!-- prawduct: type=fix | scope=release-readiness | chunks=01 -->
+
+1 blocking, 4 warnings, 3 notes. **The blocking finding was against the dispositions record below,
+and it was right.**
+
+**The correction.** The entry below listed **R-6/R-18** and **R-8/R-17/R-27** under **FIXED**. Neither
+edit was in the tree. The only docstring change in that commit was R-24's example-id swap; I wrote
+the disposition from what I intended to do rather than from what the diff contained. That is worse
+than leaving them open: a dispositions record is the artifact a reader trusts *instead of* re-reading
+30 findings, so one unverifiable claim devalues the other 17 acceptances. Both are now genuinely
+fixed — `parse_classification`'s docstring states which rows error and which are skipped as table
+syntax, and the plan's assumption #3 and Chunk 01 step 1 both name
+`release_readiness.release_pending_scopes`. **The rule earned: verify a disposition against the diff
+before recording it, because "fixed" is a claim about the tree, not about intent.**
+
+**FIXED (4 more).**
+
+- **W-1 — the R-1 regression test could not fail on the pre-fix code.** The fixture's `plugin/VERSION`
+  was the same version the test passed to `--release`, so the old ignore-and-fall-back path satisfied
+  the assertion too. The fixture now uses a *different* VERSION and asserts the fallback NOTE is
+  absent — a regression test that passes on the bug it names is worse than none, because it reports
+  coverage.
+- **W-2 — the R-14 re-run exemption was disposition-blind.** A `withheld` scope stamped with this
+  release's tag was exempt from the orphan check, absent from `pending`, and absent from the withheld
+  summary — so a withheld-then-shipped contradiction printed `releasable:` and was never mentioned.
+  Exemption now applies to `ships` rows only.
+- **W-3 — `_open_item_ids` was narrower than the module it imports.** It matched `archive` where
+  `legacy._is_resolved_section` covers `resolved|done|completed|archive`. It passed only because
+  prawduct's own backlog says `## Archive`; a product using `## Resolved` got R-2's defect back. Now
+  calls the backlog module's own predicate.
+- **W-4 — `api-contract.md` was exercised but not recorded.** The first pass waived it as vocabulary
+  overlap, yet this bundle changed the usage exit code 1→2 *to conform to that artifact's ratified
+  error-model row*. Added to `governed_by:` with a `conforms` disposition, and its Operations list now
+  names `check-releasability`. `data-model.md` added likewise — it was disposed in prose but missing
+  from the frontmatter.
+
+**ACCEPTED (3 notes).** R-21's counter measures tagged entries and prints only on the empty path —
+the denominator it names is the one that matters there. The `broad-except` waiver's fail-closed
+claim is defensive rather than load-bearing (`load_project_state` does not currently raise); the
+waiver stays because the posture should not depend on that staying true. R-10's deferral gains its
+Done-when anchor when Chunk 02 is built, which is when the pointer has somewhere to point.
+
 ## 2026-07-29: Dispositions — cumulative `rev-20260729T170856Z-8a025aec`, all 30 findings
 
 <!-- prawduct: type=fix | scope=release-readiness | chunks=01 -->
@@ -53,8 +97,8 @@
   named the artifact behind the verdict (the glob can match more than one file). Both now printed.
 - **R-24** — a shipped stderr message named a prawduct-internal backlog id as its example; a command
   that ships to every product must not. Now `ABC-1234`.
-- **R-6 / R-18** — `parse_classification`'s docstring over-claimed that malformed rows always become
-  errors; rows with fewer than two cells are skipped. Docstring corrected to match the code.
+- **R-6 / R-18** — ~~Docstring corrected to match the code.~~ **CORRECTED: this claim was false when
+  written; the edit landed in the following commit.** See the verify-pass entry above.
 - **R-25** — `operational-spec.md`'s **gitflow promotion norm** ("a separate, deliberate tree-set
   step", rationale "content-identical to `develop`") was undisposed, and Chunk 02 parts (a)/(b)/(c)
   propose replacing exactly that. Recorded in the plan as a **blocking precondition on Chunk 02**:
@@ -72,7 +116,8 @@
   `views.collect_release_pending_scopes`. Deliberate and documented in the docstring: `regen-views`
   needs `status=shipped` scopes included so it can flip plans regardless of convention, while
   releasability strictly needs "has not shipped", for which the authoritative marker is the absence
-  of `release=`. Assumption #3 in the plan is now accurate about which function is used.
+  of `release=`. ~~Assumption #3 in the plan is now accurate about which function is used.~~
+  **CORRECTED: that edit landed in the following commit, not this one.**
 - **R-10** — `documentation/release-process.md` did not gain Phase 0. Correct as-is: it is the
   narrative overview, and duplicating the gate into a second procedure is how the two drift. Chunk 02
   touches the runbook again and is the right place to add a pointer.
