@@ -3048,6 +3048,49 @@ def cmd_evidence(project_dir: Path, argv: list[str]) -> int:
     return evidence.evidence_cmd(project_dir, argv)
 
 
+def cmd_disposition(project_dir: Path, argv: list[str]) -> int:
+    """Record a finding's ACCEPT/FILE disposition as a fact, so the review
+    census can be derived instead of hand-written. Thin wrapper — body lives in
+    ``lib.dispositions.disposition_cmd``. A state-mutating writer, so an
+    unimportable lib fails CLOSED (exit 1): never report a false success for a
+    fact that was not written."""
+    lib_root = _plugin_root()
+    if lib_root not in sys.path:
+        sys.path.insert(0, lib_root)
+    try:
+        from lib import dispositions  # noqa: PLC0415 — lazy keeps top-level cheap
+    except ImportError:
+        print(
+            "disposition unavailable (could not import the plugin lib/ from "
+            "${CLAUDE_PLUGIN_ROOT}) — nothing was recorded",
+            file=sys.stderr,
+        )
+        return 1
+
+    return dispositions.disposition_cmd(project_dir, argv)
+
+
+def cmd_render_dispositions(project_dir: Path, argv: list[str]) -> int:
+    """Render the disposition census from facts, so a hand-written count cannot
+    drift from what the store records. Thin wrapper — body lives in
+    ``lib.dispositions.render_dispositions_cmd``. Read-only; a census is display
+    prose, never a gate."""
+    lib_root = _plugin_root()
+    if lib_root not in sys.path:
+        sys.path.insert(0, lib_root)
+    try:
+        from lib import dispositions  # noqa: PLC0415 — lazy keeps top-level cheap
+    except ImportError:
+        print(
+            "render-dispositions unavailable (could not import the plugin lib/ "
+            "from ${CLAUDE_PLUGIN_ROOT})",
+            file=sys.stderr,
+        )
+        return 1
+
+    return dispositions.render_dispositions_cmd(project_dir, argv)
+
+
 def cmd_handoff(project_dir: Path, argv: list[str]) -> int:
     """Preview the session handoff the next session would receive.
     Thin wrapper — body lives in ``lib.briefing.handoff_cmd``. Read-only: it
@@ -3857,6 +3900,8 @@ _USAGE = (
     "infer-critic-mode [args]|"
     "resolve-base|version|"
     "evidence {status|list [--kind <k>] [-n <count>]}|advisory <subcmd> [args]|"
+    "disposition <review-id> <fid> {--accept <reason>|--file <backlog-id>} [--owner-ruling <text>]|"
+    "render-dispositions [--review <id>|--scope <s>] [--json]|"
     "coverage-status [--json]|coverage-scaffold [--apply] [--json]|"
     "migrate-plugin [--apply] [--json]|init-product <target> --name <name> [--backlog-repo owner/repo] [--apply] [--json]|"
     "update-gitignore|"
@@ -4150,6 +4195,10 @@ def main() -> int:
         return cmd_infer_critic_mode(project_dir, args)
     elif command == "resolve-base":
         return cmd_resolve_base(project_dir)
+    elif command == "disposition":
+        return cmd_disposition(project_dir, sys.argv[2:])
+    elif command == "render-dispositions":
+        return cmd_render_dispositions(project_dir, sys.argv[2:])
     elif command == "evidence":
         return cmd_evidence(project_dir, sys.argv[2:])
     elif command == "bug-inbox":

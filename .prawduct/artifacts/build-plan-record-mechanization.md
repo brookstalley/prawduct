@@ -35,7 +35,7 @@ governed_by:
     dispositions:
       - "stable severity-prefix vocabulary, stdout/stderr channel split → conforms — new subcommands adopt both"
       - "the ledger has a single writer → conforms — the ledger is untouched; consolidation remains its writer"
-      - "no prawduct-internal identifiers in product-emitted text → conforms — rendered censuses land in .prawduct records and PR bodies, the non-emitted side, matching where finding ids already live"
+      - "no prawduct-internal identifiers in product-emitted text → conforms — rendered censuses land in .prawduct records and PR bodies, the non-emitted side, matching where finding ids already live; the `disposition` CLI's stdout confirmations also name a review id and fid, and those are the product's OWN governance identifiers (the same ones `evidence list` prints and resolution facts join on), not prawduct-internal ones, addressed to the builder who just typed them"
   - artifact: api-contract
     dispositions:
       - "whole-surface semver; persisted data independently schema-versioned → conforms — new subcommands ride the plugin version; disposition facts use the store's schema versioning"
@@ -72,11 +72,14 @@ unknown; Chunk 04's review-stats measurement resolves the threshold.
 - [ ] Chunk 03: Per-mode reviewer payload
 - [ ] Chunk 04: Coordinator roster keyed to judgeable files
 - [ ] Chunk 05: Change-log ledger spike and go/no-go
-Context: Plan authored 2026-07-29 from the ship-day retrospective (v3.2.0 + discodon). Nothing
-built. The three review-cost levers NOT in this plan, deliberately: converge-by-construction round
-policy enforced in critic-begin (different subsystem — file on the backlog), learnings.md compaction
-(content chore, already nagged by the briefing), and the backlog.md disease (own in-flight
-GitHub-Issues migration). Next: Chunk 01.
+Context: Plan authored 2026-07-29 from the ship-day retrospective (v3.2.0 + discodon). **Chunk 01
+complete 2026-07-29** — `disposition` fact kind + `render-dispositions`; step 0's consumer-query
+enumeration is recorded in the chunk's own section and is the schema-lock-in checkpoint's subject.
+Reviewed at `rev-20260729T230420Z-71b7f129` (0 blocking, 9 warning, 16 note; 17 fixed, 8 accepted).
+The three review-cost levers NOT in this plan, deliberately: converge-by-construction round policy
+enforced in critic-begin (filed as CRT-3W6P, child of CRT-8N5V), learnings.md compaction (filed as
+LRN-4K8T), and the backlog.md disease (own in-flight GitHub-Issues migration). Next: Chunk 02
+(subtraction sweep + deterministic record-lint).
 
 ## Scaffolding
 
@@ -122,10 +125,66 @@ record-class findings under 20% of total (from 57%), median rounds per logical c
   0. Consumer-query enumeration for the disposition fact (persisted-format rule,
      `methodology/planning.md`): read every prospective consumer — renderer, review-stats, gates
      (which must remain blocking-resolution-only), next-review context — and record the queries in
-     this chunk's section before designing fields
+     this chunk's section before designing fields — **done 2026-07-29, below**
   1. Acceptance criteria met and tests pass
   2. `/prawduct:critic` run and blocking findings resolved
   3. Committed and chunk marked `[x]` in Status
+
+#### Step 0 — consumer queries for the `disposition` fact (recorded 2026-07-29)
+
+Every prospective consumer was read before fields were designed. The fact is a persisted format, so
+reversal cost — not line count — set the rigor (`methodology/building.md` "Decision Research").
+
+| # | Consumer | Query it must answer | Fields it needs |
+|---|---|---|---|
+| Q1 | `render-dispositions --review <id>` | For review R, every finding with its severity, title, and current disposition — `fixed`/`waived` (resolution facts), `accept`/`file` (disposition facts), or **none** | join `(review_id, fid)`; `action`; `reason`; `backlog_id`; `owner_ruling` |
+| Q2 | `render-dispositions --scope <s>` | Same rolled up across every review of a scope | none new — `scope` already rides the review fact body |
+| Q3 | Gates (`check-cumulative-critic`, Stop) | *Negative query:* does a disposition fact ever affect unresolved-blocking? Must be **no** | none — must stay unreadable to gates |
+| Q4 | `review-stats` (future) | Accept-rate per reviewer role × model × mode — the honest "actionable yield" denominator | none new — `(review_id, fid, action)` joins to the review fact, which already carries roster/model/mode |
+| Q5 | Next-review context (future) | Which findings of the prior review were accepted, so a reviewer is not re-raising a closed question | none new — `action` + `reason` |
+| Q6 | Change-log entry / PR body | The census table as prose, plus a machine form | none new — `--json` renders the same query as Q1 |
+| Q7 | Audit ("who accepted this, when, from where") | Provenance of the disposition | none — the envelope's `actor` + `ts` already answer it |
+| Q8 | The blocking-accept rule | An `--accept` on a BLOCKING finding is refused without an explicit owner ruling | `owner_ruling`, persisted so the ruling survives as the record |
+| Q9 | Completeness | Which findings of a review are **undispositioned** — the gap `review-cycle.md`'s "severity does not exempt" rule asserts but nothing measures | none new — absence is the answer |
+
+**Resulting body** (the join shape deliberately mirrors the resolution fact's, so the two kinds read
+alike):
+
+```
+{"finding": {"review_id": str, "fid": str},
+ "action": "accept" | "file",
+ "reason": str | None,          # required for accept
+ "backlog_id": str | None,      # required for file
+ "owner_ruling": str | None}    # required when the finding is BLOCKING
+```
+
+Deliberately **absent**: the finding's `severity` and `title` (Q1 joins to the review fact for
+`title` anyway, so denormalizing buys nothing — review facts are immutable, so there is no staleness
+argument for copying either); any `*_tree` key (see M4).
+
+**Five mechanism findings that shaped the design** — each from reading the code, not inferring it
+(Principle 24):
+
+- **M1 — a re-disposition cannot reuse the fact id.** `evidence.read_facts` dedupes `(kind, id)`
+  keeping the **first** occurrence, so an append under an existing id is silently discarded. The id
+  therefore carries a per-finding sequence (`disp:<review_id>:<fid>:<n>`), and an unchanged
+  re-disposition is caught by an explicit newest-fact comparison that reports a no-op — never by
+  accidental dedupe. Last-fact-wins resolves by store order, which is append order.
+- **M2 — "disposition" already names two other vocabularies.** Release scope carries
+  `ships`/`withheld` (`release_readiness.py`) and resolution facts carry `fixed`/`waived`
+  (`coverage_algebra._RESOLVING_DISPOSITIONS`). A third `body.disposition` would make one field name
+  mean three things across the store, so this fact's field is **`action`**.
+- **M3 — the gate invariant holds by construction, and a test pins it.** `resolution_index` filters
+  `kind != "resolution"` before reading any body, so a `disposition` fact is structurally incapable
+  of unblocking a BLOCKING finding (Q3). That is the load-bearing safety property of this chunk; it
+  gets an explicit regression test rather than resting on the filter staying put.
+- **M4 — no tree keys in the body.** `evidence.distinct_trees` scans `base_tree`/`head_tree` across
+  *all* facts to drive the store-growth advisory. A disposition is an answer about a finding, not a
+  coverage edge, so carrying a tree would both inflate that advisory and invite a reader to mistake
+  it for one.
+- **M5 — `review-stats` reads the governance ledger, not the evidence store.** Q4 is therefore a
+  future join needing a reader change, not a field change. Recorded so Chunk 04's threshold
+  measurement does not assume dispositions are already visible to it.
 
 ### Chunk 02: Subtraction sweep and deterministic record-lint
 

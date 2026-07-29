@@ -793,14 +793,12 @@ def fact_to_cache_record(fact: dict) -> dict:
 
 def _known_findings_index(store: dict) -> set[tuple[str, str]]:
     """Every ``(review_id, fid)`` recorded in the store — the existence check
-    a resolution must pass before it may weaken a gate."""
-    known: set[tuple[str, str]] = set()
-    for fact in evidence.facts_of_kind(store, "review"):
-        body = fact.get("body") or {}
-        for f in body.get("findings", []):
-            if isinstance(f, dict) and _nonempty_str(f.get("fid")):
-                known.add((fact.get("id"), f["fid"]))
-    return known
+    a resolution must pass before it may weaken a gate.
+
+    The key set of the shared walk (``evidence.findings_index``), which the
+    census consumer needs in its richer per-finding form. One walk, so the
+    gate's notion of "recorded" and the census's cannot drift apart."""
+    return set(evidence.findings_index(store))
 
 
 def dispatch_age_minutes(review_id: str, *, now: datetime | None = None) -> float | None:

@@ -7,6 +7,56 @@
 
 ## Open
 
+- **[CRT-R4Z2]** `merge_findings` dedupes on `(goal, name, files)`, so two reviewers describing the SAME defect under different goals both survive the merge — inflating the finding count that is read as review thoroughness
+  `effort: M · impact: M · area: critic · kind: bug · source: critic · added: 2026-07-29 · status: open · stage: design · related: CRT-4T7M, CRT-8N5V, CRT-3W6P, CRT-4X2N, CRT-2W8J · refs: plugin/lib/critic_consolidate.py:654-695 (`merge_findings` — the `key = (f["goal"], f["name"], tuple(files))` dedupe key at :678 and the docstring at :655-658 that names the key as the contract), plugin/lib/critic_consolidate.py:93 (`COORDINATOR_ROSTER = ("correctness", "design", "sustainability")` — the three reviewers whose goal sets are disjoint by construction), plugin/skills/critic/review-protocol.md:154-156 (the per-role dispatch prompt — "Review ONLY <GOALS>", which guarantees two reviewers seeing the same defect file it under different goals), plugin/lib/critic_consolidate.py `_severity_counts` + `build_fact_body` (where the inflated count becomes the recorded fact)`
+
+  **The defect.** The dedupe key includes `goal`, and the coordinator roster assigns *disjoint* goal sets to the three reviewers. So the one thing that would make two descriptions of the same defect collide — a shared goal — is structurally impossible in exactly the pattern where cross-reviewer duplication is most likely. The `name` and `files` components don't save it either: two reviewers writing independently produce different wording for the same defect, and the same defect is often attributed to different (or no) files. Result: the merge is a **union across reviewers**, not a deduplication of defects.
+
+  **Observed 2026-07-29** in review `rev-20260729T230420Z-71b7f129` (mode `final`, scope `record-mechanization`, chunk 01, coordinator roster, 25 findings / 16 notes):
+  - **R-7** (goal *Nothing Is Broken*, note) *"A clean review's census renders a truncated sentence"* and **R-13** (goal *The Design Is Sound*, note) *"A clean review renders a malformed census summary line"* — the same defect, one malformed census summary line on a clean review, counted twice under two goals.
+  - **R-23** (*Learnings Cross-Check*) is bookkeeping *about* R-20 rather than an independent defect.
+  - **R-25** restates R-1's consequence.
+
+  Honest distinct count was **~13 of 16 notes**.
+
+  **Why it matters.** Finding counts are read as review thoroughness — by the builder deciding how much remediation a chunk needs, and by anyone reading the recorded review fact later. An inflated count drives real disposition workload: each duplicate is a note someone must read, judge, and dispose of. And it bites hardest in precisely the coordinator pattern (5+ changed files in `final`/`cumulative`) that the record-mechanization program is trying to make *cheaper* — mechanizing the record while the count feeding it is inflated mechanizes the wrong number.
+
+  **The tension — why this is `stage: design`, not a key tweak.** The obvious fix (drop `goal` from the key) is unsafe: two genuinely distinct findings can share a `name`/`files` pair, and cross-goal collapsing would then **silently drop** a real defect — a strictly worse failure than over-counting, and one that no reader could detect from the merged output. Any candidate design has to say what happens to the surviving finding's `goal` attribution (a defect seen from two goals is *evidence about both*), whether collapse is a merge (union the recommendations, keep both goals) rather than a discard, and whether the judgment belongs in deterministic code at all — near-duplicate detection over free-text summaries may be a **model-side** consolidation step the coordinator performs *before* writing partials, which would keep `merge_findings` deterministic (kernel-v3 "no model in the write path") while still collapsing duplicates. Note also that the second and third observed classes (R-23 bookkeeping-about-a-finding, R-25 restating a consequence) are **not** dedupe failures at all — they are reviewers filing meta-notes as findings, which points at a protocol/severity fix rather than a merge fix. Requirements pass should decide whether this item covers one problem or two.
+
+- **[CRT-3W6P]** Converge-by-construction re-review policy enforced in `critic-begin` — round 2+ on the same chunk should be verify-resolutions only, and a full re-round should be refused when zero blocking findings remain
+  `effort: M · impact: L · area: critic · kind: feature · source: user · added: 2026-07-29 · status: open · stage: design · related: CRT-8N5V, CRT-4X2N, CRT-4J8W, CRT-9R4K, COV-3M8Q, BKL-9XQ2 · refs: plugin/lib/critic_consolidate.py (`begin_review` — the mode-aware anchor + the "nothing to verify" refusal, the only place a re-round can be refused before work starts), plugin/lib/critic_mode.py (`infer_mode` — the rule ladder that today can return `chunk` for a chunk already reviewed), plugin/skills/critic/review-cycle.md (§ "The review loop terminates — and the builder is what terminates it" — the prose this item would make structural), plugin/skills/critic/review-protocol.md (§ Severity Levels), plugin/methodology/building.md (§ The Build Cycle — "Resolve findings"), plugin/lib/evidence.py + plugin/lib/dispositions.py (where prior-round findings and their dispositions already live, i.e. the facts a refusal would read), CRT-8N5V § "Remaining open scope" items 2 and 3`
+
+  **Carried from the 2026-07-29 ship-day retrospective. Deliberately NOT folded into the record-mechanization build plan** — that plan makes *records* into facts; this changes the Critic *dispatch* path. Different subsystem, so it is filed rather than absorbed (and per CRT-8N5V's own termination rule, filing beats fixing mid-review).
+
+  **The policy.** Two rules, both enforced in `critic-begin` rather than in prose:
+  1. **Round 2+ on the same chunk is `verify-resolutions` only.** A second *full* pass over a chunk re-reviews the records the first pass caused to be written. The only question round 2 exists to answer is "were the named findings resolved?"
+  2. **Refuse a full re-round when zero blocking findings remain.** If the prior review left nothing blocking and the gate would pass, there is no round to run — `critic-begin` should say so and name the remedy, not silently dispatch 4–10 minutes of reviewers.
+
+  **Why structural rather than prose.** This is the enforcement leg that **CRT-8N5V** shipped only the *instruction* half of (commit `67fe565` — `building.md`/`review-protocol.md`/`review-cycle.md` now say "file the rest rather than fixing them" and "re-run the gate rather than infer another round"). CRT-8N5V's own remaining-scope note states the gap plainly: *"All three shipped rules are prose an agent may skip; nothing detects an agent running round N+1 against an already-passing gate."* A guard in `critic-begin` binds regardless of whether the prose was read — and the prose in question lives in the very files a re-review round rewrites, which is the **BKL-9XQ2** argument.
+
+  **Measured cost of not having it** (from CRT-8N5V, observed live 2026-07-28): four rounds, ~40 minutes wall-clock, on a ~40-line change; zero blocking after round 1; round 4 required by nothing.
+
+  **Open design questions — hence `stage: design`, not `ready`.**
+  - **What identifies "the same chunk."** `infer_mode` keys on build-plan state and commit deltas, not on "have I already reviewed this chunk?". The prior-review fact is in the evidence store; the mode inference does not consult it. Deciding whether the round counter lives in the manifest, is derived from evidence facts, or both, is the core design call.
+  - **Refuse (exit 1) vs. warn.** Refusing is consistent with `critic-begin`'s existing posture (it already exits 1 for an empty `chunk` interval and for "nothing to verify"), but a refusal that fires wrongly blocks a legitimate review with no override — so the escape hatch must be designed, not discovered.
+  - **Interaction with CRT-8N5V remaining-scope #3** — *whether `verify-resolutions` should review the delta at all*, or only answer "were the named findings resolved?" Rule 1 above narrows *which mode* round 2 runs; #3 narrows *what that mode looks at*. Rule 1 is much less valuable if `verify-resolutions` still runs Goals 1–3 over everything that changed, so the two should be designed together even if they ship separately.
+  - **Interaction with CRT-6D2N and CRT-7H2W** — both are open bugs in exactly the `begin_review` anchor logic this would extend. Sequence matters: a refusal built on top of an anchor that already mis-scopes (CRT-6D2N: clean commit delta over a dirty tree) would refuse rounds that *should* run.
+
+  Governance-protected (Critic dispatch path) → full Critic + PR review. (user — 2026-07-29 ship-day retrospective)
+
+- **[LRN-4K8T]** learnings.md has regrown to 116KB — third compaction pass, and the size nudge has been firing every session without changing behavior
+  `effort: M · impact: M · area: memory/learnings · kind: chore · source: user · added: 2026-07-29 · status: open · stage: ready · related: MET-6W3J, LRN-9K2P, LRN-7M4D, GOV-6D4Q · refs: .prawduct/learnings.md (116KB as of 2026-07-29), .prawduct/learnings-detail.md (205KB — the destination), plugin/lib/briefing.py (the `> 40000` learnings size nudge and its "compact: keep each …" message — the advisory that has been firing unheeded), plugin/methodology/reflection.md (the When-X-do-Y-because-Z entry format), MET-6W3J (the 2026-06-10 pass: 79.5KB → 32.3KB, 48 of 58 entries)`
+
+  **The ask.** Compact `learnings.md` again: keep each entry's **When-X-do-Y-because-Z rule** in `learnings.md`, move the narrative to `learnings-detail.md` under the same heading. **Never delete** — this is a move, not a prune.
+
+  **Current state.** `learnings.md` is **116KB**, ~2.9x the 40KB advisory threshold. The SessionStart briefing nags about it **every session** (`briefing.py`, `size > 40000` → *"learnings.md is large (NNNKB > 40KB) — compact: keep each …"*), so every session pays both the file's context cost and an advisory line that no one acts on.
+
+  **This is the third pass, and that is the interesting part.** MET-6W3J did this in 2026-06-10 (79.5KB → 32.3KB) and a further compaction ran 2026-07-17 (per **LRN-9K2P**). Nineteen sessions later it is at 116KB — *larger than before the first compaction ever ran*. So the mechanical fix works and does not hold: a one-shot compaction plus a warn-only nudge is not a steady state. Worth deciding, while doing the pass, whether anything should change so the fourth pass is not also owed — the nudge already fires and is already ignored, so "add a nudge" is not the answer this time.
+
+  **Area note:** filed by the owner as `area: governance`; recorded as `area: memory/learnings` to keep it with its siblings (MET-6W3J, LRN-9K2P, LRN-7M4D all sit there) so an `--area` pick finds the family. Retag if the owner prefers the broader tag.
+
+  (user — 2026-07-29 ship-day retrospective)
+
 - **[REL-6Q4M]** `check-releasability` is blind to a release-pending change-log entry that carries no `scope=` — it enumerates *scopes*, so a scopeless entry contributes nothing to enumerate and Phase 0 certifies `releasable` while unclassified work exists
   `effort: S · impact: L · area: release-tooling · kind: fix · source: builder · added: 2026-07-29 · status: open · stage: ready · related: REL-8P6M, REL-7D4X, REL-3B7Q · refs: plugin/lib/release_readiness.py:70-91 (`release_pending_scopes` — the `isinstance(scope, str) and scope` guard at :87 that drops the entry), plugin/lib/release_readiness.py:269-302 (`check_releasability` — `pending` collection at :286; the `if not pending:` comment at :288-294 that *already names* this blindness but still returns 0), .prawduct/runbooks/cut-and-publish-a-plugin-release.md (Phase 0 step 0 — whose output the operator is told to trust as the full list; Phase 1 step 2 — whose scope-walk inherits the same blind spot), .prawduct/artifacts/release-plan-v3.2.0.md (the `## Release classification` table, which cannot express a scopeless entry), .prawduct/change-log.md (the three entries, hand-scoped `scope=backlog-service-v1` during Phase 1 tagging), plugin/lib/views.py:571-596 (`collect_release_pending_scopes` — same guard at :593) and plugin/lib/views.py:788-817 (`_collect_scope_rollups` — same guard at :802), tests/test_release_readiness.py`
 
@@ -231,7 +281,7 @@
   Fix-shape: add the three flips to Chunk 09's list, correct the `project-state.yaml` claim, and record VRF-010 as BKL-3N8Q's discharge evidence in its body now (evidence is not a status change) so the flip at Chunk 09 is mechanical. Per D4, the `status=shipped` call stays explicit and human/agent-made — never inferred from the audit. (critic — `rev-20260728T215801Z-c74ba442`)
 
 - **[CRT-8N5V]** The Critic review loop has no structural exit condition — agents in production get trapped for 3–4 rounds reviewing the records of the previous round
-  `effort: M · impact: L · area: critic · kind: bug · source: user · added: 2026-07-28 · reviewed: 2026-07-28 · status: open · stage: ready · related: COV-3M8Q, GOV-6D4Q, MET-3Q8V, TST-9M4X, CRT-4X2N, CRT-4J8W, CRT-9R4K, BKL-9XQ2 · refs: plugin/lib/coverage_algebra.py:59 (`is_judgeable_path` — the classifier that already exempts change-log.md, learnings.md and .prawduct/artifacts/**), plugin/lib/gates.py:514 (`session_changes_all_non_judgeable`), plugin/skills/critic/review-cycle.md:108 (§ "The review loop terminates — and the builder is what terminates it"), plugin/skills/critic/review-protocol.md:135 (§ Severity Levels), plugin/methodology/building.md:100 (§ The Build Cycle — "Resolve findings"), tests/test_v5_methodology.py:133-146 and :325-346 (the two raised budget assertions and their owner-ruling rationale), commit 67fe565 (the instruction half, already shipped)`
+  `effort: M · impact: L · area: critic · kind: bug · source: user · added: 2026-07-28 · reviewed: 2026-07-29 · status: open · stage: ready · related: COV-3M8Q, GOV-6D4Q, MET-3Q8V, TST-9M4X, CRT-4X2N, CRT-4J8W, CRT-9R4K, BKL-9XQ2, CRT-3W6P · refs: plugin/lib/coverage_algebra.py:59 (`is_judgeable_path` — the classifier that already exempts change-log.md, learnings.md and .prawduct/artifacts/**), plugin/lib/gates.py:514 (`session_changes_all_non_judgeable`), plugin/skills/critic/review-cycle.md:108 (§ "The review loop terminates — and the builder is what terminates it"), plugin/skills/critic/review-protocol.md:135 (§ Severity Levels), plugin/methodology/building.md:100 (§ The Build Cycle — "Resolve findings"), tests/test_v5_methodology.py:133-146 and :325-346 (the two raised budget assertions and their owner-ruling rationale), commit 67fe565 (the instruction half, already shipped)`
 
   **This is the parent requirement for work already partly shipped at `67fe565`** — filed so the remaining scope has a documented parent, not so it can be picked fresh. Read the "Remaining open scope" section at the bottom for what is actually left.
 
@@ -253,7 +303,7 @@
 
   **Remaining open scope — what this item tracks going forward.**
   1. **COV-3M8Q** — comment/docstring-only `.py` should be non-judgeable. Cross-linked, deliberately **not** absorbed.
-  2. **No structural enforcement of the new rules.** All three shipped rules are prose an agent may skip; nothing detects an agent running round N+1 against an already-passing gate. Consider whether `critic-begin` should refuse or warn when the gate passes and no blocking findings are outstanding — that binds regardless of whether the prose was read, and is the same "a prose-only guard sits in the file being rewritten" argument **BKL-9XQ2** makes.
+  2. **No structural enforcement of the new rules.** All three shipped rules are prose an agent may skip; nothing detects an agent running round N+1 against an already-passing gate. Consider whether `critic-begin` should refuse or warn when the gate passes and no blocking findings are outstanding — that binds regardless of whether the prose was read, and is the same "a prose-only guard sits in the file being rewritten" argument **BKL-9XQ2** makes. **2026-07-29: this leg is now carried by CRT-3W6P** (converge-by-construction re-review policy in `critic-begin`), filed from the ship-day retrospective with the design questions enumerated. Item 3 below should be designed alongside it.
   3. **Whether `verify-resolutions` should review the delta at all**, or only answer "were the named findings resolved?" Today it runs Goals 1–3 over everything that changed, which is precisely why record-writing enters its scope. Narrowing it is the deeper fix and needs design before it is built.
 
   **Relationship to GOV-6D4Q:** this is a live, measured instance of the loop GOV-6D4Q exists to break — governance work generating findings, findings becoming work — and is its strongest evidence to date. Distinct from **CRT-4X2N**, which multiplies round *count* through finding granularity (different cause, same symptom) and from **CRT-9R4K**, which reduces the number of scheduled reviews on short plans. Same family as **TST-9M4X**: a signal that carries no information about the property it claims to check. (user — owner escalation, observed and measured live)
@@ -2100,17 +2150,53 @@
   exists. Next step is the open requirements (where the view lives, opt-in posture, version skew),
   not code.
 
-- **[TEL-2B6K]** Governance ledger phase 2 — record gate-block + probe-fire events and finding dispositions
-  `effort: M · impact: M · area: governance/telemetry · source: builder · added: 2026-06-10 · status: open · stage: design · related: TEL-7A4X · refs: lib/ledger.py, lib/telemetry.py, lib/gates.py · reviewed: 2026-06-10`
+- **[TEL-2B6K]** Governance ledger phase 2 — `gate.blocked`/`probe.fired` event kinds, and the missing join that would let disposition facts reach `review-stats`
+  `effort: M · impact: M · area: governance/telemetry · source: builder · added: 2026-06-10 · status: open · stage: design · related: TEL-7A4X, CRT-8N5V · refs: plugin/lib/ledger.py, plugin/lib/telemetry.py (`review_stats` — reads `ledger_path(...)`, i.e. `.prawduct/.governance-ledger.jsonl`; `_top_files`/`_group_stats` derive `actionable` from `finding.get("severity") in _ACTIONABLE`), plugin/lib/gates.py, plugin/lib/dispositions.py (`record`, `census`, `disposition_index` — all over `lib/evidence.py`, the *other* store), plugin/bin/prawduct-hook (`disposition`, `render-dispositions`, `review-stats`) · reviewed: 2026-07-29`
+
+  **Part (b) LANDED 2026-07-29 — scope narrowed to (a) plus a newly-identified join. Item stays open.**
 
   The v2.1.0 ledger records review.critic/review.pr only; proportionality tuning cannot answer "how
   often did each gate block?", "which probes fire and where?", or "were findings acted on or
   ignored?" (actionable-rate is currently severity-presence, not disposition). Phase 2: (a)
   `gate.blocked` / `probe.fired` event kinds (the schema already reserves unknown-kind
   forward-compat; consumers skip unknowns); (b) a lightweight finding-disposition record at
-  resolution time feeding an honest actionable-rate. Design questions: where dispositions get
+  resolution time feeding an honest actionable-rate — **the record half of (b) shipped 2026-07-29**;
+  see below for the reporting half it did not close. Design questions: where dispositions get
   captured (verify-resolutions already walks findings — a natural hook), and volume control for
   gate events. Feeds TEL-7A4X cross-project aggregation. (builder)
+
+  **2026-07-29 advance — the disposition *record* exists.** Part (b)'s "lightweight
+  finding-disposition record at resolution time" landed as the **`disposition` fact kind**:
+  `plugin/lib/dispositions.py` (append-only, re-disposition appends and never edits) with
+  `prawduct-hook disposition` to record one and `prawduct-hook render-dispositions` to derive the
+  census. So the *capture* design question above is answered — dispositions are facts in the shared
+  evidence store, not a ledger event.
+
+  **Remaining scope is now two things, not one.**
+
+  1. **(a) as originally filed** — `gate.blocked` / `probe.fired` event kinds. Untouched. This is
+     still the bulk of the work, and its open design question is still volume control for gate
+     events.
+
+  2. **The join, newly identified and NOT part of the original filing: disposition facts are
+     invisible to actionable-rate reporting.** The two halves landed in **different stores and
+     neither reads the other.** `dispositions.py` writes to the **evidence store**
+     (`<git-common-dir>/prawduct/evidence.jsonl`, via `lib/evidence.py`); `review-stats`
+     (`lib/telemetry.py`) reads the **governance ledger** (`.prawduct/.governance-ledger.jsonl`, via
+     `ledger.ledger_path`) and derives `actionable` from `finding.get("severity") in _ACTIONABLE` —
+     verified 2026-07-29. So the dishonest actionable-rate part (b) existed to fix is **still
+     exactly as dishonest in `review-stats`**: it remains severity-presence, and the disposition
+     facts that could make it honest sit in a store `review-stats` never opens. Part (b) is
+     therefore *half* shipped — the fact exists and `render-dispositions` reports it standalone, but
+     the metric named in this item's own rationale is unchanged.
+
+     **Fix shape (design open).** Either `review-stats` grows an evidence-store read and computes
+     actionable-rate from `dispositions.disposition_index` when a disposition exists (falling back
+     to severity-presence when it does not — most historical findings have none), or the census and
+     review-stats converge into one reporting surface. Deciding *which* is the design call; note
+     that having `review-stats` read two stores with different keying and different lifetimes is the
+     kind of cross-store coupling this repo has been deliberately reducing, so "converge the
+     reports" may be the cheaper answer than "join the stores."
 
 - **[CRT-5Q8W]** Skill prose clarity micro-fixes from the 2026-06-09 review (critic protocol wording, designer-handoff note, backlog pick defaults, framework-checks example)
   `effort: S · impact: S · area: critic · source: builder · added: 2026-06-09 · status: open · stage: ready · closes: PR-3J6W · related: PR-3J6W, CRT-6F2N, MET-3Q8V · refs: skills/critic/review-protocol.md, skills/critic/review-cycle.md, skills/critic/framework-checks.md, skills/critic/SKILL.md, skills/backlog/SKILL.md, skills/pr/SKILL.md · reviewed: 2026-07-03`

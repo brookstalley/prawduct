@@ -3,6 +3,72 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-07-29: The coordinator's three reviewers are now told to run concurrently
+
+<!-- prawduct: type=fix | scope=record-mechanization -->
+
+**Why:** the coordinator pattern dispatches three `critic-reviewer` subagents, and nothing in the
+framework ever said to issue their Agent calls together. `review-protocol.md` step 2 and `SKILL.md`'s
+routing bullet both read as a numbered procedure, and `git log -S` confirms no commit ever added the
+words "parallel" or "concurrent" to the critic skill — so the fan-out was riding the harness's
+ambient "batch independent calls" behaviour rather than an instruction.
+
+That behaviour is outside this framework's control, and it varies. Measured here: this repo's own
+Chunk 01 review fanned out cleanly (partials at 17:14:49, 17:15:37, 17:15:56 — a 67-second spread
+across three ~10-minute reviews), while other sessions were observing serial dispatch consistently
+in the same period. **The defect is nondeterminism, not a fixed 3× regression** — and that is the
+worse failure, because a cost that appears only in some sessions defeats reproduction and never gets
+attributed. Serial dispatch pays the pattern's entire cost (three agents, three context loads, a
+consolidation step) and discards the wall-clock saving that is the only thing it buys.
+
+**What landed.** One clause in each of the two dispatch surfaces, plus a guardrail test asserting
+both — proved by mutation, since an unpinned instruction is exactly how this silently reverts.
+Concurrency was already safe by construction and needed no code change: reviewers write per-role
+partial files with no shared write target, and `critic-consolidate` no-ops until every role in the
+manifest reports, with an id-idempotent review-fact append that already handles the
+double-consolidate race. Unrelated to the open `critic-begin` in-flight-guard item, which is about
+two *dispatches* colliding; these three reviewers share one manifest and never call `critic-begin`.
+
+## 2026-07-29: Dispositions become facts, and the census stops being prose
+
+<!-- prawduct: type=feature | scope=record-mechanization | chunks=01 -->
+
+**Why:** a FIX has left a machine-readable trace since kernel v3 — the resolution fact a verify pass
+records. ACCEPT and FILE left none, so the census of what a review decided lived only in hand-written
+change-log prose. That prose drifts, and correcting it costs review rounds: each correction is a
+commit, commits extend HEAD, and coverage that no longer reaches HEAD buys another pass. On the
+2026-07-29 ship day, 57% of the day's findings targeted hand-authored records rather than shipped
+behaviour.
+
+**What landed.** A new `disposition` fact kind (`plugin/lib/dispositions.py`), written by
+`prawduct-hook disposition <review-id> <fid> --accept "<reason>" | --file <backlog-id>`. It validates
+the finding join before recording anything and refuses to accept a BLOCKING finding without
+`--owner-ruling` — `review-cycle.md`'s severity rule, moved from prose a reader must remember into
+code that answers. `prawduct-hook render-dispositions [--review <id>|--scope <s>] [--json]` derives
+the census, including the count nothing measured before: how many findings are still
+**undispositioned**.
+
+**The case study is the acceptance test.** The cumulative review of this repo's own release-readiness
+work is the census that proved the point: its prose claimed "ACCEPTED (10 notes)" and then, in its own
+closing sentence, "9 accepted notes and one discharged question" — and separately asserted that all
+thirteen blocking/warning findings were *fixed*, when the store recorded one of them as **waived**.
+Three of those errors are arithmetic over data the store already held. Recording that review's ten
+real note dispositions and rendering it now yields 12 fixed, 1 waived, 10 accepted (1 of them
+owner-ruled), 0 undispositioned — derived, so it cannot drift.
+
+**A disposition can never weaken a gate.** The coverage algebra filters on fact kind before reading a
+body, so a BLOCKING finding stays blocking until a verify pass records a real resolution. That is what
+makes it safe for a builder to record dispositions without a reviewer in the loop, and it is pinned by
+a regression test rather than left resting on the filter staying where it is.
+
+**Decisions worth naming.** The fact's field is `action`, not `disposition`: "disposition" already
+names release scope (`ships`/`withheld`) and resolution (`fixed`/`waived`), and a third meaning for
+one field name across one store is how readers get it wrong. A re-disposition appends under a
+sequenced id rather than reusing one, because the store dedupes `(kind, id)` keeping the *first*
+occurrence — reusing an id would make a changed answer silently vanish, and an accept → file → accept
+revert would leave the wrong answer winning. The finding-join walk moved into `evidence.py` so the
+gate's notion of "recorded" and the census's cannot drift into two walks that disagree.
+
 ## 2026-07-29: Phase 0's historical backlog was three scopes, not six — and half the list had never shipped
 
 <!-- prawduct: type=fix | scope=release-readiness | release=v3.2.0 | status=shipped -->

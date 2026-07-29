@@ -59,9 +59,10 @@ The CLI groups by responsibility. Every subcommand is read-only unless marked mu
   by the harness, not by humans.
 - **Critic data plane** — `critic-begin` (write dispatch manifest, mutating), `critic-consolidate`
   (merge partials → evidence fact, mutating), `critic-end`, `evidence status|list`, `ledger-append`
-  (single-writer, mutating), `review-stats`, plus the coverage/mode gate wrappers
-  (`verify-coverage`, `check-cumulative-critic`, `infer-critic-mode`, `classify-diff-risk`,
-  `verify-chunk-refs`).
+  (single-writer, mutating), `review-stats`, `disposition` (append a finding's ACCEPT/FILE
+  disposition fact, mutating), `render-dispositions` (derive the disposition census), plus the
+  coverage/mode gate wrappers (`verify-coverage`, `check-cumulative-critic`, `infer-critic-mode`,
+  `classify-diff-risk`, `verify-chunk-refs`).
 - **Test evidence** — `test-evidence record` (mutating), `test-status` (freshness), `validate-evidence`.
 - **Session handoff** — `handoff preview`: renders the handoff the next session would receive,
   through the same function `clear` uses, without writing it or consuming the forward notes.
@@ -96,6 +97,12 @@ dispatch); state-mutating lifecycle commands (`migrate-plugin`, `init-product`, 
     `audit-learnings --json` → doctor; `repo-disable --json` → repo-disable skill.
   - `review-stats --json` → the cross-project telemetry aggregator, carrying a top-level
     `schema_version` (see Versioning).
+  - `render-dispositions --json` → the disposition census, for a change-log entry, a PR body, or any
+    consumer that would otherwise recount findings by hand. Top-level `schema_version` (the second
+    report to carry one), `reviews[]` (each `review_id`, `ts`, `mode`, `scope`, `chunk`, `rows[]`),
+    and `summary` (`findings`, `by_severity`, `by_state`, `undispositioned`, `owner_ruled`,
+    `conflicts`). Each row: `fid`, `severity`, `goal`, `title`, `state`, `reason`, `backlog_id`,
+    `owner_ruling`, `conflict`.
   - **Hook context channel:** SessionStart digest and UserPromptSubmit emit the Claude Code
     `{"hookSpecificOutput":{"hookEventName":…,"additionalContext":…}}` injection shape.
 
@@ -109,6 +116,7 @@ raised as stack traces across the boundary.** The intended scheme:
 |---|---|---|---|
 | **Harness hook** (`stop`, `clear` refusal) | allow / clean | — | **block** |
 | **CLI gate / query** (`test-status`, `verify-coverage`, `check-*`, `resolve-base`, `bug-inbox`) | satisfied / pass | not satisfied / fail | — |
+| **Stable-tier writer** (`disposition`) | recorded, or an idempotent no-op | **refused** — validation failed, nothing written | **usage error** |
 | **Usage / arg error** (any subcommand) | — | — | **usage error** |
 
 Fail-direction is deliberate and per-purpose:
@@ -176,10 +184,15 @@ Evolution rules we want to hold, so new versions stay rare:
 ## Surface Inventory & Stability Tiers
 
 - **Stable, allowlistable surface** (intended to be depended on, and scoped into skill
-  `allowed-tools`): `evidence status|list`, `review-stats --json`, and the query/gate subcommands
-  skills bind to (`test-status`, `verify-coverage`, `check-*`, `resolve-base`, `coverage-status`,
-  `advisory *`, `infer-critic-mode`). Several of these exist *specifically* to give skills a narrow,
-  stable command to allowlist instead of arbitrary `python3 -c`.
+  `allowed-tools`): `evidence status|list`, `review-stats --json`, `render-dispositions`,
+  `disposition`, and the query/gate subcommands skills bind to (`test-status`, `verify-coverage`,
+  `check-*`, `resolve-base`, `coverage-status`, `advisory *`, `infer-critic-mode`). Several of these
+  exist *specifically* to give skills a narrow, stable command to allowlist instead of arbitrary
+  `python3 -c`. **`disposition` and `render-dispositions` are in this tier for a different reason
+  than the rest:** no skill allowlists them, because their caller is the **main session** — the
+  builder, whom `methodology/building.md` instructs to run them by name. Documented instruction to
+  the builder is the dependency, so their flags, exit codes and `--json` keys are a contract exactly
+  as a skill-bound query's are. `disposition` is the tier's one *writer*.
 - **Internal / lifecycle surface** (called by the harness or by consolidation, not a public
   contract): `clear`, `stop`, `subagent-stop`, `critic-begin`, `critic-consolidate`, `build-index`.
 - **Deprecated:** `stamp-merged` (removal deferred to a major).

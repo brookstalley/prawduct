@@ -80,7 +80,7 @@ semantics]
   exclude below-floor records as malformed (attributed), and surface
   schema-AHEAD records separately so gates **block with the exact remedy** —
   never silently drop them (in-session auto-update skew detection, C9 tier 3).
-- **`kind` namespaces the store** (Q9): `review`, `resolution` now;
+- **`kind` namespaces the store** (Q9): `review`, `resolution`, `disposition` now;
   `test-run`, `pr-review`, `promotion` reserved for later plans. An unknown
   kind under a supported schema (a newer minor added it) stays in the read
   result — consumers filter by the kinds they know (`facts_of_kind`), so a
