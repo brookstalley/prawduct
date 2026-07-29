@@ -9,7 +9,9 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from lib.backlog import BacklogItem, parse_backlog, parse_metadata_bar
+import pytest
+
+from lib.backlog.legacy import BacklogItem, parse_backlog, parse_metadata_bar
 
 
 # A representative structured item with the full v0.3 metadata bar.
@@ -120,6 +122,27 @@ class TestItemParse:
     def test_lenient_legacy_id(self):
         bl = parse_backlog("## Open\n- [A-1] one\n")
         assert bl.items[0].item_id == "A-1"
+
+    @pytest.mark.parametrize(
+        "marker", ["MIG-M4-REMOVE", "AUD-TIMBRE-CALIB", "ENG-9V2K-F", "A-1-2-3"]
+    )
+    def test_multi_segment_id_is_absorbed(self, marker):
+        """An id carrying two or more hyphens is an ordinary hand-minted id, not a
+        malformed one — roughly a fifth of real backlogs have one. Parsing it as
+        unidentified is what strands it: no ``id:`` alias, so nothing keys it back
+        to the source and the import-completeness gate blocks the cutover."""
+        bl = parse_backlog(f"## Open\n- **[{marker}]** one\n")
+        assert bl.items[0].item_id == marker
+
+    @pytest.mark.parametrize(
+        "marker", ["2026-07-28", "-1234", "TODO", "FOO_BAR", "FOO.BAR", "FOO-", "FOO--BAR"]
+    )
+    def test_non_id_bracket_stays_unidentified(self, marker):
+        """The widening to multi-segment ids does not reach these: a bracketed date
+        is the case the leading-letter rule exists to reject, and the rest are not
+        ID-shaped at all. They stay unidentified, so the gate keeps its teeth."""
+        bl = parse_backlog(f"## Open\n- **[{marker}]** one\n")
+        assert bl.items[0].item_id is None
 
 
 class TestSectionsAndStruck:

@@ -45,7 +45,7 @@ Developer preferences for how code is written in this project. Captured during d
 - **Protected branches**: none enforced (direct workflow)
 - **PR creation**: wait_for_user — only create PRs when explicitly asked
 - **PR merge**: wait_for_user — present the PR for user review before merging
-- **PR merge strategy**: merge commit (`gh pr merge --merge`) — preserve each chunk's commit on the integration branch; do not squash. (Matches the `/pr` skill's default; stated explicitly here. The `develop`→`main` release is a tree-set promotion, not a merge, so feature→`develop` granularity doesn't affect it.)
+- **PR merge strategy**: merge commit (`gh pr merge --merge`) — preserve each chunk's commit on the integration branch; do not squash. (Matches the `/pr` skill's default; stated explicitly here. The `develop`→`main` release is a single-parent promotion, not a merge, so feature→`develop` granularity doesn't affect it. The promotion builds `main`'s tree either by tree-set (whole-develop) or by a classified `--3way` apply (pruned) — `operational-spec.md` § Direction, amended 2026-07-29.)
 
 ---
 
@@ -74,6 +74,7 @@ This is the product's **norm index** (`docs/norms.md`): each row assigns an enfo
 | pytest-xdist parallelization config | Test | `tests/preferences/test_parallelization_config.py` | CI (test) | parallel fixture/state isolation must not regress |
 | Sync-only architecture (no `async def`, no `asyncio`) | Test | `tests/preferences/test_sync_only_architecture.py` | CI (test) | CLI tools with deterministic I/O — async adds no value, only surface |
 | Subprocess safety (no `shell=True`) | Test | `tests/preferences/test_subprocess_safety.py` | CI (test) | `shell=True` is a command-injection surface (`security-model.md` supply-chain) |
+| No upstream content egress (norm lives in `security-model.md` § Direction, `in-transition` — BKL-7Q4M) | Test | `tests/preferences/test_no_upstream_content_egress.py` | CI (test) | a private repo filing into prawduct's public tracker crosses a trust boundary irreversibly; the interim rule holds until safe upstream filing is designed |
 | Test location (`test_*.py` only under `tests/`) | Test | `tests/preferences/test_test_location.py` | CI (test) | `testpaths` silently skips misplaced tests |
 | Every build-plan read decodes UTF-8 and guards the same except-set | Test | `tests/preferences/test_build_plan_decoding.py` (file-scoped over the two owning modules + AST data-flow elsewhere) | CI (test) | the risk is readers *disagreeing* about whether a plan parses; held as a convention for five review rounds and lost every one |
 | Agent-facing prose names both handoff files, never only the machine's | Test | `tests/preferences/test_handoff_prose.py` | CI (test) | naming only `.session-handoff.md` is the affordance that made agents write it; co-naming is structural, unlike a verb list |
@@ -104,7 +105,7 @@ Pointer rows into the `## Direction` sections of the strategy artifacts. The sta
 | Local-first: no network/daemon, stdlib-only runtime | `architecture.md` | Critic | janitor | survive "just want to code"; shrink supply-chain surface |
 | Plugin writes nothing into a repo but its state + reconciled files | `architecture.md` | Critic | janitor | least authority; tiny install reference |
 | Untrusted governance state is data, not instructions | `security-model.md` | Critic (Goal 4) | janitor | stale/crafted metadata is the real hazard |
-| No destructive action without explicit `--apply` | `security-model.md` | Critic | janitor | no accidental irreversible change |
+| Destructive/irreversible operations need explicit owner approval at the OPERATION level (not per action); preview-by-default where the command *is* the operation | `security-model.md` | Critic | janitor | an informed decision at the moment of commitment — a 900-write migration asking 900 times gets clicked through, and confirmation fatigue is a safety regression |
 | Whole-surface semver; internal CLI unversioned; evidence store schema-versioned (`api_versioning_approach`) | `api-contract.md` | Critic + `evidence status` exit 2 | janitor | one cache key; internal surface has no external consumer |
 | Exit codes are the contract; stable prefix vocab; attributed errors (`api_error_model_approach`) | `api-contract.md` | Critic | janitor | skills bind to exit codes, not parsed text |
 | Additive-first API evolution; tolerant readers | `api-contract.md` | Critic | janitor | keeps versions rare; N-shipped skills don't break at N+1 |

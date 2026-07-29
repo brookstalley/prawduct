@@ -361,3 +361,244 @@ substitutes for another: a Critic run never dispatches the PR reviewer (steps 6-
 runs the janitor (steps 8-9) — draining on a subset would leave the unexercised readers reading as
 verified. This is the plan's Verification Strategy stated as a drain condition rather than as prose
 alongside one.
+
+## VRF-009 — Chunk 05 — SPIKE-S2 live migration dry-run (paced archive burst + fidelity)
+
+**Status:** verified
+**Run:** 2026-07-24 (SPIKE-S2 live dry-run, `--archive-scope all`)
+**Where run:** private throwaway `brookstalley/prawduct-s2-dryrun-20260724` (created for this run —
+deletion pending; the session `gh` token has `repo` but not `delete_repo` scope, so the owner removes
+it). Invocation:
+`python tests/spikes/s2_migration.py --repo brookstalley/prawduct-s2-dryrun-20260724 --yes --archive-scope all`
+(`--from .prawduct/backlog.md` default; **no** `--archive` file — the full backlog already carries the
+`## Archive` section, so archived items create-then-close from the main source under scope `all`. Passing
+`--archive` at the same file would double-parse; the non-PFX archive item would duplicate).
+
+**This is the SPIKE-S2 that VRF-006 names as the prerequisite** ("first SPIKE-S2 on a throwaway copy,
+then the real prawduct backlog") — now done. It does **not** run the real migration (still VRF-006).
+
+**Settled facts (raw harness output):**
+```json
+{
+  "aliases_minted": 294,
+  "archive_burst_wall_seconds": 1086.422,
+  "archive_scope": "all",
+  "content_creation_wait_seconds": 0.0,
+  "content_creation_waits": 0,
+  "fidelity_ok": true,
+  "new_pfx_minted": [],
+  "node_id_stable_across_transfer": null,
+  "pacer_budgets": {"per_hour_creates": 500, "per_minute_creates": 80, "per_minute_points": 900},
+  "pick_latency_ms_by_candidates": {"1": 25501, "3": 25787, "5": 27778},
+  "relationships_reconstructed": false,
+  "rest_point_wait_seconds": 0.0,
+  "rest_point_waits": 0,
+  "rest_points_charged": 5360,
+  "resume_created_duplicates": 0
+}
+```
+
+**Confirmed live:**
+- **Volume + idempotency:** live tally **148 open / 147 closed / 295 total** — exactly the parser's
+  prediction (148 open + 147 archived→closed). `resume_created_duplicates: 0`; a second full import was a
+  pure no-op (find-or-create skip). No over/under-creation, no duplicates.
+- **Body fidelity (live MIG-1):** `fidelity_ok: true` — every hand-minted PFX item's body survived
+  import→export→diff verbatim.
+- **ID aliasing (live MIG-2):** `aliases_minted: 294` (all 294 PFX source items; the 295th
+  pending/archived item carries no PFX), `new_pfx_minted: []` — no PFX minted on import.
+
+**The §9 S2 pacing result — and a correction to last session's prediction:**
+- `rest_point_waits: 0` **and** `content_creation_waits: 0` — **neither the 900-pts/min REST ceiling nor
+  the 80-creates/min ceiling ever engaged.** `rest_points_charged: 5360` (write=5 / read=1; 295 creates +
+  147 closes = 2,210 write-points, the ~3,150 balance is reads) over `archive_burst_wall_seconds: 1086`
+  (~18 min) ≈ **296 pts/min average**. Peak: an archived item = read+create+close ≈ 11 pts over ~3 serial
+  round-trips (~1.3s) ≈ **~500 pts/min** — still under 900.
+- **`rest_points_charged` is a FLOOR, not an exact count (BKL-3H7W).** `_PacingTransport` charges per
+  transport *method* call, so a paged read (`list_labels`) issues several HTTP requests and is charged
+  once. The undercount falls entirely on the read side — the ~3,150 read-point balance above is the
+  soft number; the 2,210 write-points (295 creates + 147 closes) are exact. Direction of the error is
+  known: **real usage is higher than measured, so the headroom is smaller than these figures state.**
+  The conclusion survives — even a 3× read undercount lands near ~644 pts/min against the 900 ceiling —
+  but "296 pts/min" should not be quoted as the margin. Re-derive when BKL-3H7W makes the meter exact.
+- **Root cause (I predicted the opposite last session).** I forecast `point_waits > 0`, reasoning that
+  147 archived items sit "comfortably over" a ~75-item threshold. That was wrong — it conflated *total
+  volume* with *per-minute rate*. Serial `gh` round-trip latency caps the create-then-close rate at
+  ~40–45 items/min (~500 pts/min) **regardless of total count**, so the 900/min ceiling is never breached
+  no matter how large the archive. **Settled constant for NFR §9 S2: under the serial importer the Pacer
+  budgets (80/min, 500/hr, 900 pts/min) are a non-binding safety belt, not the active governor; wall-clock
+  is latency×call-count (~442 writes + ~3,150 reads ≈ 18 min), not pacing-limited.** The point ceiling
+  would bind only if writes were parallelized/batched — untrue today. Flag this fact if that changes.
+
+**Not exercised by this run (honest gaps, not failures):**
+- **Relationships (live MIG-3):** `relationships_reconstructed: false` — **expected**: the source backlog
+  has no native `blocked_by`/`sub_issues`/parent metadata (only a free-text `related:` field), so there
+  was nothing to reconstruct. MIG-3 stays unproven *live*; the in-process MIG-3 test remains its only
+  evidence until a source with a native graph is migrated.
+- **Pick latency / PROBE-LAT:** `pick_latency_ms_by_candidates` = 25.5s / 25.8s / 27.8s. **This probe
+  confirms nothing. Both claims originally recorded here were false** (corrected 2026-07-24 after the
+  cumulative Critic review; verified against the code, not conceded):
+  - ~~"flat across 1→3→5 candidates confirms the batched-GraphQL path (not N+1)"~~ — **there is no
+    GraphQL anywhere in `plugin/lib/backlog/`** (zero matches), and `query.pick` is **exactly the N+1 shape the
+    claim denied**: it calls `transport.list_blocked_by(owner, repo, number)` once **per candidate issue**
+    inside the loop (`query.py:180`).
+  - **The probe cannot detect N+1 by construction.** `limit` is applied at
+    `candidates[: max(0, limit)]` (`query.py:196`) — *after* the full per-issue fan-out has already run.
+    So varying it 1→3→5 cannot change the number of transport calls, and flatness was **guaranteed**
+    regardless of the underlying shape. A flat result was the only possible outcome; it is not evidence.
+  - The absolute value is *also* contaminated (the picks ran immediately after a 5,360-point burst, so
+    the reads almost certainly ate `RateLimitBackoff` sleeps) — but that was never the main problem.
+  - **Net: NFR §4 PROBE-LAT is entirely unsettled by this run** — neither the absolute floor nor the
+    call-shape. A real answer needs a probe that varies the *candidate-set size* (which drives the
+    fan-out) against a quiescent repo, not `limit`.
+  - **Why this is recorded rather than quietly deleted:** the failure was reading a confirmation into a
+    measurement whose design could not have produced a disconfirmation. That is the same
+    false-reassurance class as BKL-8V3D and the phantom target-pin — a safety/performance claim asserted
+    where nothing checked it — and this instance was authored *by the same session that was hunting that
+    class elsewhere.*
+- **node_id across transfer (ID-4 / step 7):** `null` — not run (`--transfer-to` omitted; needs a second
+  throwaway repo). Genuinely open.
+
+**Follow-ups:**
+- Owner deletes throwaway `brookstalley/prawduct-s2-dryrun-20260724` (needs `delete_repo` scope).
+- Optional: node_id-transfer probe (second throwaway + `--transfer-to`) to settle ID-4.
+- Optional: clean PROBE-LAT floor — `pick` against a quiescent migrated repo, no preceding burst.
+
+## VRF-010 — Chunk 05b / F1 — the three relationship-timeline readers, live
+
+**Status:** verified (2026-07-28, throwaway repo `brookstalley/prawduct-readers-20260728`)
+**Added:** 2026-07-28 (functional-audit F1 — the readers no migration exercises)
+
+**Why this run existed.** `BKL-3N8Q` records that `list_blocked_by` / `list_sub_issues` /
+`list_timeline` are shape-verified against the in-process fake only. Three live migrations
+(~209 items 2026-07-17, 295 items 2026-07-24) never touched them, and the reason is
+structural rather than an oversight: **the importer maps `related:` to no native edge**, so a
+migration creates zero dependencies and zero sub-issues. Only a purpose-built graph exercises
+these three. Cost: 3 issues, 2 links.
+
+**Result — all three readers work against real GitHub; the fake's shapes match.**
+
+- **`list_blocked_by`** — `link #2 blocked-by #1`, then `pick` returned **only #1** (blocked
+  item correctly excluded). Closing #1 and re-picking returned **#2** with `all 1 blocker
+  closed`. Both directions of the predicate are live-correct. The real payload carries
+  `number`, `state`, `repository.owner.login`, `repository.name` — exactly the keys
+  `GhTransport.list_blocked_by` parses. It also carries `issue_dependencies_summary`
+  (`blocked_by` / `total_blocked_by` / `blocking` / `total_blocking`), which the adapter does
+  not read.
+- **`list_sub_issues`** — `link #2 child #3`; the endpoint returns `{number, state, title}`,
+  parsed correctly.
+- **`list_timeline`** — events observed on #1: `labeled`, `blocking_added`, `closed`.
+
+**MIG-3 is now live-proven, for the first time.** `export` calls all three through the
+transport, and this repo had the native graph SPIKE-S2 and VRF-009 both lacked. The dump is
+correct: `#2 → {blocked_by: [#1], sub_issues: [#3]}`, `#1` and `#3` empty. VRF-009's
+"MIG-3 native-graph reconstruction is UNPROVEN, not failed — a source with real sub-issue
+trees needs a separate test" is **discharged by this run.**
+
+**Chunk 05b's `_blocker_clause` fix is live-proven on both branches** — `no blockers recorded`
+for an item with no dependencies, `all 1 blocker closed` for a verified-clear one.
+
+**NEW FINDING (not a blocker; record before it bites someone) — `pick` can return an item
+closed seconds earlier.** Immediately after `status --to shipped` on #1, `pick` returned #1 as
+ready work. GitHub itself was already correct (`state: closed`, `state_reason: completed`,
+`closed_at` set) and a direct `issues?state=open&labels=stage:ready` query already excluded
+it — so this is **the list-endpoint replication window, not a filter bug**. A re-run seconds
+later was correct. `file` has a bounded settle-retry for the documented 404-after-create
+window; the **close→list** path has no equivalent. Real-workflow shape: an agent closes an
+item, immediately picks its next task, and is handed back the item it just finished. File
+against `BKL-3N8Q`'s family or as its own item; the fix is likely the same bounded
+settle-retry `file` already uses.
+
+**Where to verify:**
+
+    R=you/throwaway
+    prawduct-hook backlog provision --repo $R
+    A=$(prawduct-hook backlog file --repo $R --title A --body x --stage ready --json | jq -r .data.id)
+    B=$(prawduct-hook backlog file --repo $R --title B --body x --stage ready --json | jq -r .data.id)
+    prawduct-hook backlog link $B --edge blocked-by --to $A
+    prawduct-hook backlog pick --repo $R --limit 5 --json   # expect A only
+    prawduct-hook backlog status $A --to shipped
+    sleep 5 && prawduct-hook backlog pick --repo $R --limit 5 --json   # expect B, "all 1 blocker closed"
+    prawduct-hook backlog export --repo $R --to /tmp/x       # expect the native graph in item-*.json
+
+**Follow-ups:**
+- Owner deletes throwaway `brookstalley/prawduct-readers-20260728` (needs `delete_repo` scope;
+  the session token carries `gist`, `read:org`, `repo` only).
+- `BKL-3N8Q` is now fully dischargeable: its `pick`-path half shipped with Chunk 05b, and its
+  foreign-API-verification half is this run. Flip via `/prawduct:backlog` at Chunk 09.
+
+## VRF-011 — Chunk 05b / BKL-8K2N — the import progress heartbeat, live
+
+**Status:** verified (2026-07-28, throwaway repo `brookstalley/prawduct-readers-20260728`)
+**Added:** 2026-07-28
+
+**Result.** A 55-record live import emitted exactly the designed signal:
+
+    backlog: migrating: 25/55 — 25 created, 0 skipped
+    backlog: migrating: 50/55 — 50 created, 0 skipped
+    brookstalley/…: imported 55 created, 0 skipped, 0 collision(s) of 55 source item(s)
+      pacing: ≥716 REST points; no throttling (budgets never bound)
+
+Two beats, no beat on the final record (the summary follows immediately), all on stderr.
+
+**Measured throughput: 55 records in 1 min 46 s ≈ 31 records/min** — below the ~40–45/min VRF-009
+inferred. Two consequences worth carrying into Chunk 06:
+
+- **A ~900-issue migration is ~29 minutes** at this rate, inside the 18–40 min estimate but nearer
+  its middle than its floor.
+- **At 31/min, `PROGRESS_EVERY = 25` is a beat roughly every 48 s**, and the *first* beat lands ~48 s
+  in. Judged acceptable and left alone: ~36 beats across a 900-record run is reassurance without
+  becoming the commentary `test_an_unthrottled_run_stays_quiet` exists to forbid. **If an operator
+  reports the startup silence as uncomfortable, lower the constant — do not add a separate
+  first-record special case**, which is a second code path for one line of output.
+
+**`no throttling (budgets never bound)` reproduced VRF-009 exactly** on an independent run — the
+pacing budgets are confirmed non-binding under the serial importer for a second time, which is
+precisely why the heartbeat had to exist: every pacing announcement is exception-only and none of
+them ever fires.
+
+**Caveat inherited from BKL-3H7W (still open):** the `≥716 REST points` figure is a **floor**, not an
+exact count — a paged list costs 1 point regardless of page count. The `≥` in the output says so.
+
+**Follow-ups:** the throwaway now holds 58 issues; owner deletes it (needs `delete_repo` scope).
+
+## VRF-012 — F9 — `samsung-frame-art-loader` stranded-item recovery
+
+**Status:** verified (2026-07-28)
+**Added:** 2026-07-28
+
+**Before.** `backlog_service_repo` set (so `post_cutover` True, markdown read as frozen history) while
+`.prawduct/backlog.md` still held **9 open items**, only **2** of which (`CUI-WT3K` → #2,
+`TVW-4Q7M` → #3) carried an `id:PFX` alias. The other 7 existed nowhere on the service.
+
+**Recovery run (operator, plugin build `wt-prawduct-backlog` @ v3.1.2+branch):**
+
+    prawduct-hook backlog import --repo brookstalley/samsung-frame-art-loader \
+      --from .prawduct/backlog.md
+    → imported 7 created, 2 skipped, 0 collision(s) of 9 source item(s)
+      pacing: ≥126 REST points; no throttling (budgets never bound)
+
+**`2 skipped` is the load-bearing number** — it proves the alias-keyed skip recognised the two
+already-migrated items rather than duplicating them. `9 created` would have meant 7 duplicates in a
+store with no delete. **A recovery re-import must be read on that field, not on success/failure.**
+
+**After — completeness check, the one that should have run at the original cutover:**
+
+    source items in backlog.md : 9
+    issues carrying an id:alias : 9
+    MISSING (source with no alias on target): NONE
+
+All nine resolve: #2, #3 unchanged; `LEG-8H2P`→#19, `SEC-K3V9`→#20, `ARC-7QN2`→#21, `REL-M5X8`→#22,
+`REL-2JH6`→#23, `ARC-B4TD`→#24, `TST-9WFC`→#25, all OPEN. Repo total 24 = 17 prior + 7 new.
+
+**No heartbeat fired, correctly** — 9 records is below `PROGRESS_EVERY` (25), which is the designed
+silence for a short run. Worth stating because an operator primed to watch for it could read the
+absence as a hang.
+
+**`no throttling (budgets never bound)`** — third independent confirmation, after VRF-009 and VRF-011.
+
+**`backlog.md` is now correctly frozen history** and should be left in place: MG3 binds the markdown
+read path until the *last* project cuts over, so deleting it is not the tidy-up it looks like.
+
+**What this does NOT close.** The recovery fixed the instance; the defect that produced it is
+untouched — **cutover (step 6) still has no precondition on verification (step 5)**, and the
+completeness comparison above is a hand-run script, not a command. See functional-audit F9.

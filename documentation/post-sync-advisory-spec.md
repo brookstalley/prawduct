@@ -355,11 +355,30 @@ These are the probes the two features expect this infrastructure to support. The
 | Probe `type` | Triggers when | Recommended action |
 |---|---|---|
 | `legacy-backlog-format` | `.prawduct/backlog.md` exists with >5 items lacking `[PFX-XXXX]` ids | `/backlog migrate` |
+| `backlog-service-migration-required` | `.prawduct/backlog.md` is **structured** (`[PFX-XXXX]` ids) with pending items AND `backlog_service_repo` unset (GV7 — the structured-file sibling of `legacy-backlog-format`; `warn` priority) | `/backlog scrub` |
 | `external-backlog-detected` | A `TODO.md`, `BACKLOG.md`, `ROADMAP.md`, or `IDEAS.md` detected at repo root or `.github/` | `/backlog import <path>` |
 | `legacy-section-schema` | `## Active — next up` / `## Queue` headings present in `.prawduct/backlog.md` (older section schema) | `/backlog migrate --sections` |
 | `backlog-overdue-grooming` | No `/backlog` command run in >90 days AND backlog has >20 open items | `/backlog list` |
+| `backlog-checks-dormant` | `backlog_service_repo` **is set** — the post-cutover mirror of GV7 (GV8): names every backlog check with no Issues-mode path yet. The roster and the count both derive from `lib/backlog_probes.DORMANT_CHECKS` — **do not restate either here**; a second hand-maintained copy is how the advisory ends up confidently naming a stale set. `info` priority, dismissible | none — the checks return with the backlog read-through cache |
 
 See `documentation/backlog-system-requirements.md` §8.2 for resolution conditions and threshold rationale.
+
+**Post-cutover retirement (2026-07-18, amended 2026-07-19):** once a product records
+`backlog_service_repo: owner/repo` in `project-state.yaml` (the backlog-service migration cutover —
+backlog-service API §2.4), every probe whose premise is "the markdown file IS the live backlog"
+returns no candidates: the four markdown probes above (`legacy-backlog-format`,
+`backlog-service-migration-required`, `legacy-section-schema`, `backlog-overdue-grooming`) and the
+norm-probe trio that judges item liveness from the same file (`revisit-due`, `dead-why`,
+`stalled-transition`). `external-backlog-detected` keeps firing — its premise (stray TODO.md files)
+is independent of where the real backlog lives. The shared predicate is
+`backlog_probes.post_cutover`.
+
+**Retirement is not silence (GV8).** Cutover retires those probes' *premises*, not the checks they
+stood for — the norm-probe trio in particular carries norm-exception expiry, and a norm exception
+that stops expiring visibly is a silent norm departure. So exactly one probe runs on the far side of
+the line: `backlog-checks-dormant` fires **when `post_cutover` is true**, naming what is dormant and
+why. Read the two together — the retirement list above says which probes stop, and that probe says
+so out loud rather than leaving the reader a clean bill of health that no longer means anything.
 
 ---
 

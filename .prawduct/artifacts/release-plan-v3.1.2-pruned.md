@@ -1,6 +1,7 @@
 # Release Plan — v3.1.2, Pruned Promotion
 
-**Status:** prep complete on `develop`; Phase 2 (promotion) pending owner go/no-go.
+**Status:** **SHIPPED 2026-07-27.** `origin/main` = `09a2862`, tagged `v3.1.2`, published
+`plugin/VERSION` = `3.1.2`. Owner go/no-go given after the gate table below was verified.
 **Version:** v3.1.2 — patch, per the ratified conservative-versioning norm
 (`operational-spec.md` § Direction). The bundle is a feature (session-handoff continuity) plus
 two fixes, but the subsystem that would have made this a minor is **withheld** (below), so a
@@ -40,6 +41,14 @@ Chunks 01–03.
 `2026-07-21` backlog-service relayout entry plus the ten `2026-07-17`–`2026-07-20`
 backlog-service / skills-cutover / archive-scope entries.
 
+**Collateral: the withheld range also holds improvements that are not backlog-service.** Pruning is
+by commit range, not by feature, so anything that merged between `v3.1.1` and `e597b21` waits —
+notably the `_get_current_branch` → `gitstate.current_branch` refactor (PDT-WT9K, so the
+Critic's visibility print cannot be misled about which tree it resolved) and prose changes in the
+critic / pr / janitor / report-bug / runbook skills and both session digests. None is a regression
+(v3.1.1 consumers never had them either), but do not describe this release as "session-continuity
+only" when asked what a consumer is missing — the honest answer is "everything after PR #139."
+
 > ⚠️ **Do not identify the withheld set by change-log position or by heading presence in the
 > previous release's tree.** Both readings are wrong here. All ten of those entries' *prose* is
 > present in `v3.1.1:.prawduct/change-log.md` while their *code* is not — the v3.1.1 candidate-tree
@@ -63,7 +72,23 @@ impossible; the tree is built by patching instead:
      shipped to consumers; resolve so the file describes the tree it ships with.
 4. **Add `import sys` to `plugin/lib/briefing.py`.** See below — this is the one line of shipped
    code on `main` that exists in no reviewed commit.
-5. Commit the tree on `main`, tag, push.
+5. Commit the tree with `v3.1.1` as its parent, then publish **by ref**:
+   `git push origin <sha>:refs/heads/main`, then `git tag vX.Y.Z <sha> && git push origin vX.Y.Z`.
+
+### Two deviations from the runbook, both deliberate
+
+- **Step 14 (`git checkout main && git pull`) was not run.** `main` was checked out in the sibling
+  worktree `/Users/brookstalley/source/prawduct`, which belongs to its own session, and moving the
+  `main` ref under it would have left that worktree's index inconsistent with its HEAD. Publishing
+  by ref from the scratch worktree touches no other worktree. **Any pruned release should do this**
+  — it is strictly safer than checking `main` out, and it also skips steps 15–16's in-place
+  `read-tree --reset -u`, which the runbook itself flags as destroying anything uncommitted on `main`.
+- **Step 17 (`git diff --stat origin/develop HEAD` must print nothing) does not apply** and was
+  replaced. A pruned promotion leaves a delta by design. The substitute check is a *partition*
+  verification: diff the candidate against `develop` per overlapping file and confirm every
+  difference is either the intended prune resolution or withheld code — i.e. that no shipping work
+  was silently dropped. Run on `plugin/lib/briefing.py`, the one shipped file where the two streams
+  genuinely collide. Post-release the delta is **32 `plugin/` files, +6938/-61**.
 
 ### The one hand-authored line, and the trap it represents
 

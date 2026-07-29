@@ -105,6 +105,106 @@ Every consolidated review appends a **fact** to the shared evidence store (`<git
 4. Every review persists through `critic-consolidate` — a review fact in the store plus the regenerated `.prawduct/.critic-findings.json`. A clean pass records an empty findings array; there is no review without a record.
 5. **If no BLOCKING findings:** chunk complete; proceed.
 
+### The review loop terminates — and the builder is what terminates it
+
+**Once a pass returns zero BLOCKING, the review is over.** That is the exit condition, not a judgment
+call, and it is what keeps step 3's "repeat until" from being unbounded.
+
+**But "the review is over" is not "add it to the backlog."** Every remaining WARNING/NOTE gets exactly
+one of three dispositions, and **FILE is the narrowest, never the default**:
+
+- **ACCEPT** — won't fix. Record the finding and the reason in the change-log entry for the work (or
+  the PR body); no backlog item. This is the **default** for anything that gates nothing and that no
+  one will realistically action. Principle 2 already licenses it: *implemented or explicitly
+  descoped*. An accept is the explicit descope — visible, dated, and attached to the work it came
+  from, where the next reader of that change meets it.
+- **FIX** — take it now. Correct for anything cheap, and for anything touching a gate, a contract, or
+  an operator-facing surface regardless of cost. Closing coverage afterwards costs **one**
+  `verify-resolutions` pass — bounded, and not another full round. A fix confined to non-judgeable
+  surfaces costs nothing at all.
+- **FILE** — only genuinely deferred work that someone will actually do, and the item says what
+  triggers it. No trigger means it is an ACCEPT wearing a backlog id.
+
+**Why the default moved.** The old rule said file the rest, full stop. It bounded the review loop —
+which was the real problem it solved — but it made the backlog the disposal route for every finding a
+thorough reviewer produces, and thorough reviewers produce many. Measured on this framework's own
+repo: **open items went 50 → 180 in 26 days; 67 were Critic-sourced and 53 of those had never been
+touched since filing** — faster than anyone could action them, which turns the backlog from a work
+queue into a guilt pile and buries the items that mattered. The sharpest tell was compounding: one
+gate accumulated **six** open items, each a facet found by a later review of the same still-unfixed
+mechanism. A framework that does this to itself does it to every
+repo that adopts it, once per build plan.
+
+**"Pre-existing" is not a disposition, and neither is "already filed."** Both are the reflex wearing
+a respectable coat: the finding leaves the review dispositioned by nobody. A defect the diff did not
+introduce still gets FIX or ACCEPT — and "ACCEPT: predates this branch, out of its scope, tracked at
+`ID`" is a perfectly good ACCEPT *because it is written down where the next reader meets it*. What is
+not allowed is the silent write-off, or pointing at an open item as though the pointing were the
+work. **If you fix something that has an open item, close the item in the same commit; if you accept
+something that has one, say so on the item.** An existing id is a reason to reconcile, never a reason
+to skip.
+
+**The count is the smell.** A review that ends with a double-digit filing is not thorough, it is
+undisposed. If you are filing more than two or three, you are using the backlog to avoid deciding —
+go back and sort them into ACCEPT and FIX.
+
+**Severity does not exempt.** BLOCKING, WARNING and NOTE all take a disposition; only the bar for
+ACCEPT differs (a NOTE is often a one-clause accept; a BLOCKING cannot be accepted at all without an
+explicit owner decision, since gates compose on it). Exempting NOTE just moves the pump — NOTE was
+the majority of findings in the review that prompted this rule.
+
+**Reviewers: never name the backlog as a finding's destination, at any severity.** The severity
+contract (`review-protocol.md`) no longer says "recommend backlog" anywhere, and reviewers must not
+reintroduce it in prose. Disposition is the builder's call, made once with the whole diff in view;
+a reviewer-suggested destination pre-empts it and reads as a licence to file without deciding. State
+the defect and its consequence, say what a fix would take when that isn't obvious, and stop.
+
+Why it has to be a rule. WARNING and NOTE **gate nothing** — the PR gate and the Stop gate both
+require only *coverage* plus *zero unresolved BLOCKING*. But `methodology/building.md` says warnings
+"should be addressed," which reads as must-fix, so an agent fixes them. Each fix is a commit; the
+commit extends HEAD; coverage no longer reaches HEAD; another pass runs; that pass reviews the records
+just written and finds something true about them. Observed live: **four rounds and ~40 minutes of
+review on a ~40-line code change** — every finding correct, none blocking, and the last round required
+by no gate at all.
+
+**Before running another pass to "close coverage," re-run the gate and let it answer.** Never infer
+that coverage is needed from gate output printed *before* your fix commits — that stale line is the
+most reliable way an agent talks itself into a round nothing asked for:
+
+```
+prawduct-hook check-cumulative-critic   # PR path
+```
+
+If it passes, you are done — stop. Record-only surfaces (`change-log.md`, `learnings.md`,
+`.prawduct/artifacts/**` plan prose, product docs) are **non-judgeable**: a commit touching only those
+never needs new coverage, so a fix confined to them cannot mandate another review. Two traps, both
+in the direction of *more* review than the extension suggests: a **comment-only edit to a `.py` file
+still counts as judgeable**, which is how a pure-prose fix commit gets pulled back into a full
+round; and a `.md` file under `skills/`, `methodology/` or `templates/`, or a root `CLAUDE.md`, is
+**governance-protected and therefore judgeable** — fork-skill prose is behavioural logic here. When
+in doubt assume judgeable and let the gate say otherwise; it is the gate's answer that binds.
+
+**The reviewer's half of the same rule** (severity contract: `review-protocol.md`). A finding whose
+only subject is a non-judgeable record is a **NOTE** unless it clears one of two bars:
+
+- **It ships** — the inaccuracy reaches consumers as a false claim (release note, `CHANGELOG.md`, a
+  published doc). *A change-log entry asserting a guard that was never built → WARNING: a reader
+  relies on a check that does not exist.*
+- **It misleads into action** — an operator or agent following the record would do the wrong thing.
+  *A measurement table assigning a probe a question it cannot answer → WARNING: the next operator
+  runs it and records a fact it cannot produce.*
+
+Everything else about a record — an imprecise count, a narration that stopped one revision short, a
+phrasing that could be truer — is a NOTE. These findings are **correct**; the bar governs *severity*,
+never *suppression*. Raise it and name the surface; the builder dispositions it.
+
+**Diminishing-returns signal.** Round 1 finds defects in the *work*. By round 3 a pass is typically
+finding defects in the *record of round 2* — true, confidently rated, and worth less than the round
+costs. When every finding is about prose written to close the previous pass's findings, that is the
+signal to **stop reviewing** — disposition what you have and end the loop, rather than writing a
+better paragraph for the next pass to find. Stopping is not filing: most of that round's findings
+are ACCEPTs, and saying so takes a clause each.
+
 **Last chunk of a `Type: cumulative-final` plan — one review, not two.** Commit the chunk, then run `/prawduct:critic cumulative` ONCE: that single review serves as both the chunk's review and the PR-gate evidence. Don't run a separate `final` first — cumulative runs the same 7 goals plus cross-checks over `merge-base...HEAD`, a scope that already contains the chunk's diff, so a preceding `final` re-pays 4-10 minutes for assurance the cumulative re-derives. Mode inference implements the sequencing: with the last chunk's work still uncommitted, `/prawduct:critic` infers `final` (the right mid-chunk look); once committed and clean, it infers `cumulative` — the at-commit review. Post-cumulative fixes take a `verify-resolutions` pass, not a second full one — its fact extends coverage over the fix delta.
 
 ## Final-Mode Cross-Checks
@@ -116,6 +216,17 @@ After the goal-based review in `final` mode, run two additional passes that `chu
 Scan your findings against active learnings. If a change reintroduces a pattern `.prawduct/learnings.md` explicitly warns against, escalate severity — tolerating regression undoes the learning. Conversely, if learnings reference patterns the changed code handles correctly, no finding is needed.
 
 ### Backlog Reconciliation
+
+**Check the backend first.** Read the top-level `backlog_service_repo` scalar from
+`.prawduct/project-state.yaml`. If it is **set**, this project's live backlog is GitHub Issues and
+`.prawduct/backlog.md` is frozen history — **skip this walk and all of C-B1–C-B4**, and emit one
+NOTE: "Backlog reconciliation unavailable — this project is on the GitHub Issues backend and these
+checks have no Issues-mode path yet; they return when the backlog read-through cache lands." Do **not** open
+`.prawduct/backlog.md` for live state in that mode: every item archived at cutover still parses as
+open, so the walk would emit confident findings about items closed months ago while missing every
+live Issue. A stated gap is recoverable; a confident wrong answer is not.
+
+If it is **unset** (the markdown backend), run the walk as written below.
 
 Read `.prawduct/backlog.md`. For each open item, check whether this session's changes resolve it — directly or incidentally. For each resolved item, emit a **NOTE**: "Backlog item appears resolved: [item text]. Verify and archive it now, on this branch — `/prawduct:backlog update <id> status=shipped closed-by=<scope>` — so it ships in this PR." Do not change status yourself — the framework never infers status; the builder makes the explicit call.
 

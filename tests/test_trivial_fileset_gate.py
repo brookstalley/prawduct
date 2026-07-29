@@ -132,3 +132,33 @@ class TestProtectedPathsConstant:
         assert _bpr.protected_path_violation("CLAUDE.md") == "claude-md-edited: CLAUDE.md"
         assert _bpr.protected_path_violation("foo/CLAUDE.md") is None
         assert _bpr.protected_path_violation("docs/notes.md") is None
+
+
+class TestProtectedPathsMatchTheSegmentNotTheRoot:
+    """Root-anchored bounds stopped matching when the framework moved under
+    `plugin/`, so every `plugin/skills/**.md` edit read as non-judgeable and a
+    skills-only session skipped the reviewers entirely. The failure mode was
+    silence, which is why no test caught it for the whole relocation.
+    """
+
+    def test_relocated_skill_prose_is_protected(self):
+        assert (
+            _bpr.protected_path_violation("plugin/skills/backlog/SKILL.md")
+            == "skill-file-edited: plugin/skills/backlog/SKILL.md"
+        )
+
+    def test_relocated_methodology_and_templates_are_protected(self):
+        assert _bpr.protected_path_violation("plugin/methodology/building.md")
+        assert _bpr.protected_path_violation("plugin/templates/build-plan.md")
+
+    def test_root_level_still_protected(self):
+        assert _bpr.protected_path_violation("skills/pr/SKILL.md")
+
+    def test_segment_boundary_is_respected(self):
+        # Over-including is the safe direction, but not at the cost of matching
+        # any directory whose NAME merely ends in a protected token.
+        assert _bpr.protected_path_violation("myskills/foo.md") is None
+        assert _bpr.protected_path_violation("src/skillset/a.py") is None
+
+    def test_ordinary_code_is_still_unprotected(self):
+        assert _bpr.protected_path_violation("plugin/lib/core.py") is None

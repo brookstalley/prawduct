@@ -3,7 +3,7 @@ description: Onboard a repo to Prawduct — scaffold a new or existing repo onto
 argument-hint: "[target-path]"
 user-invocable: true
 disable-model-invocation: false
-allowed-tools: Bash(prawduct-hook init-product *), Read, Glob
+allowed-tools: Bash(prawduct-hook init-product *), Bash(prawduct-hook backlog provision *), Bash(python3 plugin/bin/prawduct-hook backlog provision *), Read, Glob
 ---
 
 You are onboarding a repo onto Prawduct under the **plugin** distribution model. Prawduct is installed as a Claude Code plugin (dev-time governance); a product commits only the install *reference* plus its own `.prawduct/` state — no framework files. Onboarding is the same whether the repo is brand-new or an existing codebase, and it operates on the consumer's own repo — there is no framework checkout to call back to.
@@ -26,6 +26,19 @@ Onboarding under the plugin model is plugin-native — there is no file-sync set
 ### B. Existing pre-2.0 file-sync repo (committed `tools/product-hook`, framework `.claude/skills/`, `.prawduct/sync-manifest.json`) → **migrate it**
 
 Have them run **`/prawduct:migrate`** in the target: it commits the install reference, strips the committed framework files, drops the legacy hook wiring, and records `distribution: plugin` — one reversible commit.
+
+### Adopting the GitHub Issues backlog backend at onboard (optional)
+
+**The default backlog backend is the markdown file** — a new repo needs no GitHub, no `gh`, not even a git remote, and the coverage/gates work entirely offline. Only offer this when the owner explicitly wants their backlog on **GitHub Issues from day one** (the alternative, and the common path for an existing repo, is to stay on markdown and migrate later with `/prawduct:backlog scrub`).
+
+When they do want it, onboard **owns provisioning for this entry path** (scrub owns it at migration; doctor owns the reconcile-as-repair) — two steps, in order:
+
+1. **Record the backend** as part of the scaffold — pass the confirmed target to `init-product`:
+   `prawduct-hook init-product <target> --name "<Product Name>" --backlog-repo <owner/repo> --apply`
+   This records `backlog_service_repo: <owner/repo>` (validated shape-only, offline — the repo need not exist on GitHub yet, and the current directory need not be a git repo). The `owner/repo` is **owner-named**, never inferred from the current directory's git remote. On an *already-scaffolded* repo this flag is ignored (recording the backend then is a cutover, `/prawduct:backlog scrub`, not a re-scaffold).
+2. **Provision the label taxonomy** against that repo (needs `gh` authenticated, and the repo to exist on GitHub):
+   `prawduct-hook backlog provision --repo <owner/repo>`
+   Idempotent and collision-free — it creates only the `<facet>:`-namespaced base labels it does not find and never touches the repo's existing labels. If `gh` isn't available or the repo doesn't exist yet, say so and have the owner run this step once it does — the backend is recorded either way; only the labels wait.
 
 ### Either way
 

@@ -229,6 +229,27 @@ build_state:
 # active_build_plan: artifacts/build-plan-my-scope.md
 
 # =============================================================================
+# BUILD-PLAN REF ROOT (opt-in, unset by default)
+# =============================================================================
+# A second root that this repo's build-plan file refs may be written relative
+# to. `verify-chunk-refs` tries the repo root first, then this.
+#
+# Set it when your plans name files the way they read from INSIDE a
+# subdirectory rather than from the repo root — e.g. a repo that ships a
+# plugin, an extension, or a bundled tool, whose plans say `lib/gates.py`
+# meaning `plugin/lib/gates.py`. Without the declaration each such ref reports
+# as a missing deliverable.
+#
+# DECLARED, never inferred: the verifier will not guess this from your layout,
+# because "there is a directory that looks like a plugin root" is an ordinary
+# layout rather than a statement of intent, and guessing would silently resolve
+# a genuinely missing deliverable against an unrelated directory. Unset (the
+# default) means the repo root is the only root. A value that escapes the repo,
+# doesn't exist, or isn't a directory is ignored.
+#
+# build_plan_ref_root: plugin
+
+# =============================================================================
 # DERIVED VIEWS (enabled by default, v1.4+)
 # =============================================================================
 # When true (default), three derived views are regenerated from change-log.md

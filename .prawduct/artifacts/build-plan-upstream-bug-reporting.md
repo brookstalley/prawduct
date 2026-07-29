@@ -8,6 +8,14 @@ last_validated: 2026-06-20
 
 # Build Plan — Upstream Bug Reporting (formalize the `incoming-bugs/` channel)
 
+> **⚠ SUPERSEDED (design) — 2026-07-23.** This plan **shipped** (both chunks built 2026-06-20) and
+> is retained as a historical record. Its durable *requirements* now live in the single requirements
+> doc `documentation/backlog-service-requirements.md` (Upstream bug reporting — XP4–XP7). Its
+> *mechanism* — the `incoming-bugs/` drop-box (`bug-inbox` resolver, `.bug-inbox` pointer, the
+> `untriaged-upstream-reports` probe, and the local-capture fallback) — is being **superseded** by
+> the GitHub-issue upstream-filing path with content minimization + owner approval (owner decision
+> 2026-07-23; tracked by **BKL-7Q4M** / **BKL-9XQ2**). Do not build against the drop-box design here.
+
 **Problem.** Products that consume prawduct discover bugs in *prawduct itself*.
 Today they file reports by hand into the prawduct checkout's gitignored
 `incoming-bugs/` drop-box, and framework sessions triage them by hand. The method

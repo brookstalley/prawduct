@@ -21,9 +21,9 @@ last_validated: null
 - **Versioning is conservative: a small feature is a patch bump, not a minor-per-feature.**
   Why: keeps the version number meaningful rather than inflating it — the plugin semver is the one handle a consumer reads and the auto-update cache key, so it should track real significance. A departure (a minor bump for a small change, or the reverse) is a recorded decision, not a reflex.
   Status: steady-state. Judgment norm — no mechanical size test; audited by the janitor.
-- **Gitflow: `develop` is the integration branch (features branch off it and merge back); `main` is the release surface and only ever holds releases; the `develop`→`main` promotion is a separate, deliberate tree-set step, never a `/prawduct:pr`.**
-  Why: keeping releases on `main` as single-parent promotions (content-identical to `develop`, divergent history) is what lets the branch-pinned marketplace resolve a clean release while feature granularity stays on `develop`; conflating the two would either ship integration WIP or lose the release boundary.
-  Status: steady-state.
+- **Gitflow: `develop` is the integration branch (features branch off it and merge back); `main` is the release surface and only ever holds releases; the `develop`→`main` promotion is a separate, deliberate single-parent step, never a `/prawduct:pr`. `main`'s tree is a *deliberately chosen and fully classified* snapshot of `develop` — every unreleased scope is either shipped or withheld behind a named open blocker, nothing unaccounted. Content-identity with `develop` is the expected outcome of a **whole-develop** promotion, not the invariant.**
+  Why: unchanged, and this amendment serves it more faithfully than the wording it replaces. The purpose is that the branch-pinned marketplace resolves a *clean* release while feature granularity stays on `develop` — "conflating the two would either **ship integration WIP** or lose the release boundary." Content-identity was the mechanism chosen to secure that, but when `develop` holds unready work it *forces* shipping exactly the WIP the norm exists to prevent. The binding property is therefore the **partition** (every path shipped or withheld, verified at Phase 0 for scopes and Phase 2 for paths), with content-identity as its special case when nothing is withheld.
+  Status: steady-state. **Amended 2026-07-29 by owner ruling** — `[DECISION: narrow the promotion mechanism from "content-identical tree-set" to "fully classified snapshot, content-identical when nothing is withheld" | the original mechanism contradicted its own rationale, forcing WIP to ship whenever develop held unready work; prawduct had already departed from it twice (v3.1.1, v3.1.2) with no recorded decision, so the norm was describing a practice that had ceased | user can veto or narrow]`. Prompted by the v3.1.2 near-miss, where following the promotion literally would have published a subsystem with all four of its go-live blockers open. Enforcement is `check-releasability` at Phase 0 (scopes) plus the path partition at step 10 of `runbooks/promote-a-pruned-release.md` — both landed, so the rationale stands on the mechanisms rather than on the item that prompted them. **Owner confirmed the ruling explicitly on 2026-07-29 at PR time**, out-of-diff, when the Critic (R-7) observed that the amendment's provenance was attested only inside the change that made it — an amendment self-certifying its own authority is the shape of laundering even when the substance is sound, so the confirmation is recorded here rather than inferred from the edit.
 
 ## Deployment
 
@@ -48,10 +48,16 @@ Prawduct is a **Claude Code plugin**, and it *is* its own single-plugin, git-bac
 - **`develop` is the integration branch** (features branch off it and merge back); **`main` is the
   release surface** and only ever holds releases.
 - Releases land on `main` as **squash / single-parent** commits (not back-merged into `develop`), so
-  `develop` and `main` accumulate divergent histories while their **content stays identical** — a
-  promotion is a tree-set (`git read-tree`-style) reset to develop's tree plus a single-parent
-  commit, and the content-identical check (`git diff --stat` empty) is the invariant the model
-  guarantees.
+  `develop` and `main` accumulate divergent histories. **Two promotion shapes exist, and the
+  descriptive claim that content is always identical was false for both of the last two releases:**
+  - *Whole-develop* — the tree-set (`git read-tree`-style) reset to develop's tree plus a
+    single-parent commit. Here `git diff --stat origin/main origin/develop` is empty afterwards, and
+    that check is a valid completion test.
+  - *Pruned* — used for **v3.1.1 and v3.1.2**, where only a classified subset shipped. `main`'s tree
+    is deliberately **not** develop's, the content-identical check can never pass, and the completion
+    test is the **partition**: every path in `origin/main..origin/develop` accounted for as shipped or
+    deliberately withheld. The durable procedure is `runbooks/promote-a-pruned-release.md`, selected
+    at Phase 2 by Phase 0's withheld count; `release-plan-v3.1.2-pruned.md` is the worked example.
 - The release checklist: merge to `main`, **bump `version` + the `VERSION` file**, flip the release's
   change-log entries to `status=shipped`, regenerate derived views, tag `vX.Y.Z` on `main`, and
   confirm the version banner. Tags are decorative for delivery (the branch-pinned marketplace

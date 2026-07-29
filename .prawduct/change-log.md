@@ -3,6 +3,1556 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-07-29: Phase 0's historical backlog was three scopes, not six — and half the list had never shipped
+
+<!-- prawduct: type=fix | scope=release-readiness | release=v3.2.0 | status=shipped -->
+
+`check-releasability` listed **12** release-pending scopes, six of which were believed to be historical
+work that shipped long ago and merely lost its `release=` tag. Determining them dropped the pending set
+to **9**. The correction matters in both directions: three scopes needed the backfill, and three were
+**not historical at all** — they have never shipped, so they are ordinary release-pending work to be
+classified in the v3.2.0 release plan, not tags to repair. Phase 0 was blocked on a premise that was
+half wrong.
+
+**Backfilled (18 entries, 3 scopes).** `scope=v1.4` → `release=v1.4.0` (9), `scope=v1.5` →
+`release=v1.5.0` (5), `scope=v1.5.1` → `release=v1.5.1` (4).
+
+**The derivation rule, because it is not the code test.** No `v1.4.0`/`v1.5.0`/`v1.5.1` tag exists —
+the earliest tag in the repo is `v1.8.1` — so `git show <tag>:<path>` **cannot** be run for these. The
+rule used instead is *chunk membership*: within a scope, some entries are **rollups** carrying both
+`chunks=` and `release=`; a per-chunk entry inherits the release of the unique rollup whose `chunks=`
+enumeration contains it. Every one of the 18 mapped to exactly one rollup, and the applying script
+refuses to write on zero or multiple matches rather than guessing. This is a structural read of the
+ledger's own already-tagged entries, not prose inference — but it is *not* the code test, and the
+distinction is recorded rather than glossed. `scope=v1.4` is why the rule is needed at all: it spans two
+releases (`v1.3.17` for chunks 00–04, `v1.4.0` for 05–14), so no per-scope blanket value would have been
+correct.
+
+**Never shipped (no backfill owed): `skills-cutover-awareness`, `backlog-skill-repoint`,
+`backlog-service-v1`.** All three are the backlog-service programme, withheld by the v3.1.x pruned
+releases — consistent with the backlog advisory being held. Evidence: `plugin/lib/backlog/` absent from
+every tag; two independent needles from the repointed backlog skill absent from `v3.1.0`–`v3.1.2`; the
+cutover work's functional edits to `plugin/skills/pr` and `plugin/skills/janitor` absent from every tag.
+
+**Two ways this determination nearly went wrong, both worth keeping.**
+
+1. **`git tag --contains` is structurally invalid in this repo and returns a confident false negative.**
+   It reported "no release contains this" for all three v3.x scopes — but a `develop`→`main` promotion is
+   a **single-parent** commit, so a `develop` commit is *never* an ancestor of a release tag. The test
+   cannot return a positive answer for any scope, ever. Read as evidence it would have "confirmed" that
+   nothing has ever shipped. Under a promotion model, releases are compared by **tree content**, never
+   by ancestry — which is exactly why the runbook says `git show <prev-tag>:<path>`.
+2. **A `.prawduct/` artifact present in a release tree is not evidence the behaviour shipped.** The first
+   validated needles for `skills-cutover-awareness` hit
+   `.prawduct/artifacts/build-plan-skills-cutover-awareness.md` at `v3.1.1` and `v3.1.2` — which is true
+   and irrelevant: repo state travels with the tree wholesale, while the pruned promotion withheld the
+   scope's functional `plugin/skills/` edits. Testing the *functional* surface reversed the verdict. A
+   pruned release can ship a scope's plan and withhold its code, so presence must be tested on the
+   surface whose absence would matter.
+
+An earlier needle also produced a plain false positive — text that looked scope-introduced but was
+re-flowed pre-existing prose, "proving" a scope shipped in a release tagged **three days before it
+merged**. Adding an *absent-at-the-pre-merge-tag* validity check caught it. Any presence test needs a
+control that fails.
+
+**Phase 0 is now green, and `artifacts/release-plan-v3.2.0.md` is the first plan to carry a
+`## Release classification` table** — the gate's input, which no prior release plan had because the gate
+did not exist. Nine scopes, all `ships`, **0 withheld**: `check-releasability --release v3.2.0` returns
+`releasable` and exit 0. Owner-confirmed non-pruned 2026-07-29, so Phase 2 takes the whole-develop path
+and content-identity is the valid completion test *because* nothing is withheld. The version is a
+**minor** on inherited reasoning rather than a fresh judgment: v3.1.2's plan recorded that the only thing
+holding its number to a patch was the withheld backlog-service subsystem, and that subsystem ships here.
+The subsystem ships **dormant** — verified in code, not asserted: routing is gated on
+`bool(state.get("backlog_service_repo"))`, `init_product` writes it `None`, and `advisory list` reports
+nothing firing, so an upgrading repo sees no backlog behaviour change. Two consequences recorded up front:
+`promote-a-pruned-release.md` is not exercised, so both runbooks keep `last_verified: null` and REL-3K9P
+stays open; and `plugin/VERSION` remains `3.1.2` here — the bump belongs to Phase 1 step 7, never a
+hand-edit at plan time.
+
+## 2026-07-29: Dispositions — PR review; the entry test outlived the norm it tested
+
+<!-- prawduct: type=fix | scope=release-readiness | chunks=02,03 | release=v3.2.0 | status=shipped -->
+
+Independent PR reviewer on `feature/rel-8p6m-releasability-gate` → `develop`: **0 blocking, 2 warnings,
+3 notes**, verdict ready-to-create. Both warnings **FIXED** rather than declined — each was a
+completeness failure of this bundle's *declared* scope, not an adjacent improvement. Dispositions below
+written from `git diff`, not from intent.
+
+- **W-1 — FIXED. The norm amendment's cascade stopped one section short of the top of its own primary
+  procedure.** `cut-and-publish-a-plugin-release.md`'s `## When to use this` still gated entry on
+  `git diff --stat origin/main origin/develop` being non-empty, with "it prints nothing → content-identical
+  → nothing to cut. Stop." Two defects. It was a **fourth** universal content-identity assertion, in the
+  document the amendment is *about*, after two censuses had declared the class closed. Worse, the test had
+  lost its discriminating power: after a pruned promotion `main`'s tree differs from `develop`'s
+  permanently and by design, so that diff is non-empty forever (measured: 114 files, 25,757 insertions
+  post-v3.1.2), making "at least one changed file" trivially true and the `Stop` branch **unreachable**.
+  It also could not separate unreleased work from deliberately withheld work — the same
+  *"is there anything unreleased?"* vs *"is everything fit to ship?"* confusion this bundle exists to
+  fix, one level up in the same runbook. Phase 0 does not cover it: Phase 0 grades **fitness**, this
+  section asks **novelty**, and both are load-bearing. The entry test now asks the question at the level
+  of *scopes* — `check-releasability --release vX.Y.Z` names the release-pending set, and none means
+  nothing to cut — with an explicit block telling the reader the tree diff is orientation, never a
+  decision. Verified by running the published command: it names 12 release-pending scopes.
+  **REL-8P6M's own `refs:` listed this exact test**, so it was a declared deliverable the cascade missed.
+
+- **W-2 — FIXED. The pruned runbook's only stated verification trigger could not fire.** Chunk 02's
+  Done-when 5 named "v3.2.0's actual run" as the verifier. The owner's standing intent is to ship v3.2.0
+  non-pruned, and on that plan its run takes Phase 2's whole-develop path and never opens
+  `promote-a-pruned-release.md`. **Confidence boundary, corrected after the delta review:** that is a
+  *plan*, not a structural fact — it rests on an owner decision recorded only in untracked session
+  handoff notes, and if v3.2.0 withholds any scope it *is* pruned and the original trigger fires. An
+  earlier draft of this entry called it "structurally unreachable, not merely unlikely," which hardened
+  an inherited premise into a certainty the tree cannot support (Honest Confidence #5, and the
+  *inherited diagnosis is a hypothesis* rule). The defect stands without the overclaim: a **version** is
+  the wrong kind of trigger for a **promotion shape**. Nothing else tracked it: REL-8P6M is archived
+  `shipped`, and `last_verified` turns
+  out to have **no code reader at all** (its only consumer is a model-side review question in
+  `skills/runbook/SKILL.md`), so it is an unread field rather than a missing advisory. Done-when 5 now
+  carries the struck-through claim plus the correction; **`REL-3K9P`** is filed as the tracker with the
+  trigger stated as a promotion *shape* rather than a version number; and the runbook itself gained a
+  front-matter pointer and a "you are likely the first to execute this" banner, so a reader meeting
+  `last_verified: null` is not left without the tracker.
+
+- **NOTE (R-7 provenance) — ACCEPTED, and its residual acted on.** The reviewer judged the closure
+  adequate but observed that the confirmation landed *in the same line it certifies*, so the only witness
+  genuinely outside the change is the PR thread. **Commitment, not yet a state of the world at the time
+  of writing:** the PR body is to quote the amended norm and its `[DECISION: …]` verbatim for owner
+  sign-off. Recording it in the artifact is necessary, not sufficient.
+
+- **NOTE (CRT-5H2D) — ACCEPTED, verified not latent here, and the reviewer's actual ask discharged.**
+  The reviewer checked rather than trusted: `rev-20260729T194336Z-5753c20e` R-1 does carry a resolution
+  fact, so no unresolved blocking hides behind this PR's green certificate. Its *recommendation* was
+  that the PR description say so — and an earlier draft of this entry recorded the verification while
+  dropping the ask, which is the "delivered one half, recorded it as done" shape this same log files as
+  a learning. The PR body therefore names CRT-5H2D and states the masked finding was independently
+  confirmed resolved.
+
+- **NOTE (`type=feat`) — FIXED for this branch, disclosed for the other.** This scope's entry normalized
+  to the canonical `type=feature` (48 tag lines). Exactly one `type=feat` tag line remains, owned by
+  `scope=v3.2.0-golive` — a pre-existing entry outside this branch, left deliberately under Scope
+  Discipline and named here so it is not silently inherited. Inert today; a bucket split if the ledger
+  lands. (Identified by scope, not by line number: an earlier draft cited "line 1088", which was already
+  wrong at both the parent and this tree — a line number in prose is a decaying figure, the same defect
+  this entry's census discussion is about.)
+
+**Census discipline — this fix needed two corrections of its own, caught by a delta review.** Correcting
+W-1 required correcting the cascade census *again*, and that correction was wrong twice more. First, the
+replacement derivation command was blind to W-1: the residual asserted content-identity by *invoking the
+diff*, never using the words "content-identical" or "tree-set," so a census keyed on the vocabulary
+could not see the hit that prompted it — a detection command that cannot see the defect it exists to
+detect, the same shape as a test that cannot fail. Fixed by grepping the mechanism
+(`origin/main origin/develop`) as well as the vocabulary. Second, the published claim cited the **parent**
+tree, where two of the hits *are* the W-1 residual — a census sentence that refuted itself under the
+instruction to re-derive it. Both were found by an explicit delta review of the fix commit, dispatched
+because three consecutive verify passes in this bundle had each found a defect introduced by the previous
+round's fix. It found two more, making it four for four. **The fix for a review finding deserves the same
+adversarial pass as the original work** — the base rate here is not a fluke, and the cheapest way to see
+it is to stop treating "I am fixing a known defect" as a lower-risk activity than writing new code.
+
+## 2026-07-29: Dispositions — verify pass `rev-20260729T192252Z-599d3307`; the remedy re-entered the defect
+
+<!-- prawduct: type=fix | scope=release-readiness | chunks=02,03 | release=v3.2.0 | status=shipped -->
+
+12 of 13 prior findings verified FIXED against the diff, 1 waived (R-12 — the impossible
+`make plugin/VERSION readable` instruction is gone, but the broader scoped refusal was declined;
+recorded as waived so the tree is not overstated). The pass then returned **1 blocking, 1 warning,
+1 note**, all three of them defects *in the fixes themselves*. **All FIXED.**
+
+- **BLOCKING — the R-17 remedy routed the operator past the check the gate exists to perform.**
+  Giving the post-cutover refusal a way forward ("hand-verify blocker liveness, then proceed") was
+  right; returning early was not. `check_releasability` bailed the moment the backlog was
+  unavailable — *before* `unclassified`, `orphans`, `contradictions` and the table parse errors were
+  ever assembled — so the operator was told the one thing the gate could not verify and nothing
+  about whether every release-pending scope was classified at all. Both runbooks then said to
+  continue. That is the v3.1.2 near-miss re-entered **through its own remedy**, and it would have
+  landed on the first release after the backlog-service cutover, which is precisely the release
+  these runbooks were written for. Now the liveness reason is carried as one problem among the rest
+  and every other check runs; unverifiable liveness is explicitly *not* reported as a closed blocker,
+  because "re-take this decision" is a wrong remedy when the gate never read the backlog.
+
+  **Mutation record, per guard — corrected.** The first version of this entry said "two tests, proved
+  by mutation: restoring the early return fails them." Only one is: restoring the early return kills
+  `test_an_unclassified_scope_is_STILL_named_post_cutover`. The fix touches **three** call sites and
+  each needs its own mutant, which is what a later verify pass found (one guard had no killing test
+  at all). Now, individually verified: restoring the early return kills the unclassified test;
+  dropping the `stale_blockers` guard kills
+  `test_unverifiable_liveness_is_not_reported_as_a_closed_blocker`; dropping the **contradiction
+  branch's** guard kills `test_contradiction_does_not_call_a_blocker_closed_post_cutover`, which did
+  not exist until that pass — its sibling never cuts over, so nothing reached the line. Writing "two
+  tests, proved by mutation" from *one* mutation run that produced three failures is the same act
+  this branch keeps repeating: an aggregate observation recorded as a per-item claim.
+- **WARNING — the command offered as proof did not reproduce the figure it stood under.** The
+  R-2 fix replaced a decaying number with a derivation command, and the command applied no boundary
+  restriction: 12 scopes / 54 entries against the "23 across six" printed two lines below, under a
+  sentence telling the reader to trust the command over the paragraph. Worse on inspection — the
+  boundary-restricted version I then wrote keyed on a bare `release=`, which this file's own prose
+  contains, so it put the boundary inside a paragraph and returned **1**. Both are now correct and
+  both were *run*: the whole-file form is documented as deliberately over-including (the safe
+  direction, filtered by the per-candidate code test), and the boundary form keys on the tag line
+  and reproduces 23 / six scopes / `v3.2.0-golive` 7 at `1a353d1` exactly.
+- **NOTE — the liveness problem pointed the reader the wrong way.** It ended `"Every other check
+  below did run"`, but `problems` is seeded with the `parse_classification` errors, so that one group
+  prints *above* it. Now `"still ran — fix any other problem listed beside this one first"`, matching
+  the wording both runbooks use.
+- **NOTE — `unreadable-project-state:` was absent from the lookup built in the same commit.** The
+  R-18 fix minted a reason code; the R-11 fix keyed seven others and missed it, so it fell to the
+  catch-all whose promise is "if it names no fix, that is a defect in the gate" — which it was not.
+  Keyed, with its remedy. The lead-in also claimed every failure prints an `ERROR:` line; five of
+  the codes are bare stderr lines. Corrected.
+
+**The pattern, stated plainly because it is now three rounds deep.** Every one of these is the same
+act: *writing a sentence that asserts something about the tree without running the thing that would
+check it.* A disposition claiming an edit. A census counted inside its inherited frame. A command
+published as evidence without being executed. The branch filed the learning for this class in the
+same commit as two of the offences, which is Principle 18 in the least flattering way. The rule now
+in `learnings.md` is deliberately mechanical rather than attitudinal, because attitude is what failed:
+**recount the set, not the count — and run the command you are about to publish as proof.**
+
+## 2026-07-29: Dispositions — cumulative `rev-20260729T185143Z-b35e7646`, and the census that proved its own point
+
+<!-- prawduct: type=fix | scope=release-readiness | chunks=02,03 | release=v3.2.0 | status=shipped -->
+
+1 blocking, 12 warnings, 10 notes. **All 13 blocking/warning FIXED.** The review's cross-cutting
+finding is the one worth keeping, and it is unflattering: three of its findings are the *same*
+failure — **an assertion never checked against the tree** — on a branch that had already shipped
+`fc9b61f` ("two dispositions claimed FIXED were never in the tree") and filed the matching learning
+**in the same commit** as two of the three offences. A filed lesson is a repeated lesson
+(Principle 18).
+
+- **BLOCKING R-1 / R-8 — the archived REL-8P6M disposition claimed a runbook edit that does not
+  exist.** It asserted `"When NOT to use this" carries the matching prohibition`; that section is
+  byte-unchanged. The substance was fine — Phase 0's fail-closed gate supersedes a prose bullet a
+  reader can skim past — so the fix is to *record the descope*, not to write the bullet. Corrected in
+  the archived item, naming the supersession and the fact that the first version claimed an edit.
+- **R-2 — the W-1 census was itself scope-narrowed, which is what W-1 is about.** Filed as 8; I
+  "corrected" it to 9 by recounting **only the four scopes the finding already named** — verifying
+  the figure while inheriting the frame. This branch's own 7 `scope=release-readiness` entries make
+  the real number **16 across five other scopes** (23 release-pending across six, above the
+  `release=v3.1.2` boundary, measured at `1a353d1`). Fixed in all five places, and the runbook now
+  carries the **derivation command** plus an explicit note that any figure written there is a
+  measurement of one tree. A number in prose decays; a command does not.
+- **R-19 — the `plugin/VERSION` fallback NOTE was asserted only negatively.** It is the sole guard
+  against silently grading the wrong release, and the only assertion was `"no --release given" not in
+  combined` — true whether the NOTE fires or is deleted outright. Now asserted positively and
+  **proved by mutation**: deleting the `print(...)` fails exactly the new test and nothing else. Same
+  defect the branch's own new learning describes.
+- **R-10 — the new runbook broke the authoring guide's own `Expected:` contract** ("describes what
+  the reader will see. Nothing else … never a command, never an instruction"). Step 10's `Expected:`
+  had swallowed the entire path-partition verification — the amended norm's whole enforcement — into
+  the one line readers are told they may skim. Split into 6a/7a/10a; the IRREVERSIBLE block loses the
+  command it named (a warning carries hazard information, not actions).
+- **R-11 / R-16 / R-17 — Phase 0's documented outputs did not cover the gate.** The `If not:` list
+  covered three of nine failure classes with no catch-all, omitted the contradiction branch whose
+  remedy is the one a reader must not guess ("do NOT delete the row"), and never mentioned the second
+  exit-0 shape — which names no version and yields **no `K`**, the value Phase 2's routing tells the
+  operator to read. Now a keyed lookup on the literal strings the code emits, with a catch-all, plus
+  a `cannot-verify-blockers` branch so a post-cutover pruned release has a way forward instead of a
+  dead end.
+- **R-18 — `cannot-verify-blockers` asserted a cause it had not established.** The helper collapsed
+  "really cut over" and "project-state would not load" into one `False`, and the caller stated the
+  first as fact — sending an operator to check a scalar that is unset. Now returns the *reason*;
+  the unreadable case gets its own refusal. Verified by mutation.
+- **R-3 / R-9 — the cascade reached the norm but not the procedures.** `documentation/release-process.md`
+  gains a step 0 (the gate) and a step 3 warning pointing at the runbook's selection rules; two more
+  content-identity universals died, one of them in `plugin/skills/pr/SKILL.md` — the **shipped**
+  surface, where it told every product that a release is published by setting `main`'s tree equal to
+  `develop`'s.
+- **R-4 / R-12 — fixed narrowly, on purpose.** The empty-pending pass now names how many scopes
+  already carry `release=<version>`, so a Phase 0 re-run after Phase 1 is distinguishable from a
+  change log the parser could not read. `no-version:` no longer tells a product user to "make
+  plugin/VERSION readable" — a path that cannot exist in their repo. The broader generality question
+  stays declined (R-13/R-30); only the misleading instruction was in scope.
+
+**Also fixed, found by self-review while the Critic ran:** a `When NOT to use this` entry routed the
+"withheld is newest" case to the whole-develop path, which would have dropped the release-prep commit
+and shipped nothing (the version bump is the cache key); step 3 already catches that shape correctly,
+so the entry was removed rather than repaired. Step 11's recovery branch sent the reader back to
+step 4 with the worktree still present. Step 8's `cd` would have repointed steps 9–14.
+
+**ACCEPTED (10 notes), reasons.** R-5/R-6/R-14/R-15/R-22 are craft observations on Chunk 01 code that
+is reviewed, tested and working; acting on them now buys a review round for no behaviour change
+(`learnings.md:270`). R-13 (the procedure lives in two documents) and R-21 (a prawduct-only command in
+every product's CLI) are real and larger than this bundle — both are the change-log-ledger and
+generality conversations already open. R-20 (three unassessed open items) and R-23 (an unfilled
+contract-surface registry) are repo-hygiene items for the janitor, not this chunk. **R-7 is not an
+acceptance — it is an owner question**: the reviewers cleared the norm amendment as legitimate rather
+than laundering, but its provenance is attested only inside the diff, and they recommend one owner
+confirmation at PR time. Raised, not assumed. **Settled 2026-07-29: the owner confirmed the ruling**
+— so the count above is 9 accepted notes and one discharged question, not 10 accepted. The
+confirmation is recorded in `operational-spec.md`'s `Status:` line and in the norm-amendment entry
+below; neither the norm's text nor its enforcement changed.
+
+## 2026-07-29: The release sweep is scope-narrowed as well as positional, and the fix is held
+
+<!-- prawduct: type=fix | scope=release-readiness | chunks=03 | release=v3.2.0 | status=shipped -->
+
+REL-7D4X had the release sweep's *positional* defect covered by a warning in Phase 1 step 2. W-1
+(PR #141's reviewer) found the same defect in the other dimension: re-deriving the release-pending
+set from one `scope=` returns a subset that looks complete. The warning now names both.
+
+**The remedy is Phase 0, not another grep.** `check-releasability` already enumerates every
+release-pending scope and fails closed. Step 2 now says to walk *that list* rather than re-derive it
+— retrieval over regeneration, and it makes the two phases load-bearing for each other.
+
+**Corrected while verifying: the figure is 9, not 8.** Both the ledger design and this build plan
+carried "8 statusless entries across four scopes." Counted at PR #141's merge (`c49be89`) and at
+HEAD, it is **9** — `coverage-perf` 4, `chunk-refs-gate` 2, `critic-disposition` 2,
+`review-loop-termination` 1. The runbook carries the verified number and the scope-by-scope
+breakdown, so the next reader can re-count rather than inherit. One of the nine is the
+`protected_path_violation` widening, which changes governance bounds in every installed repo — the
+kind of entry that must reach the release notes, which step 10 derives from all shipping scopes.
+
+**(e) is held, and the runbook now says so where the rule is read.** The sweep keeps its selection
+rule by owner decision 2026-07-29: `change-log-ledger-design.md` would delete the machinery, so
+rewriting it is throwaway. A reader who spots the flaw mid-release would otherwise "fix" it in
+ignorance of a pending decision, so the marker sits next to the rule rather than in an artifact they
+have no reason to open. v3.2.0 tags its shipping subset by hand across every scope, once.
+
+Also corrected: the build plan located this warning at Phase 1 **step 3**; it is attached to step 2,
+where the derivation rule actually lives, and that is where the extension landed.
+
+**The `dead-why` probe caught its own author.** Archiving REL-8P6M turned the gitflow promotion
+norm's `Status:` line into a rationale resting on completed work, and prawduct's norm-lifecycle probe
+fired within the same session — as a *test failure*, because `test_no_norm_lifecycle_advisory_fires_here_today`
+is a tripwire whose re-baseline is the forcing function. The remedy is the one the probe prescribes:
+the norm is re-affirmed and its Why now stands on the two mechanisms that enforce it (Phase 0's gate,
+step 10's partition), not on the backlog id that prompted them. A norm whose rationale points at a
+closed item is a norm nobody can evaluate.
+
+## 2026-07-29: The pruned promotion becomes a procedure instead of an expiring release plan
+
+<!-- prawduct: type=feature | scope=release-readiness | chunks=02 | release=v3.2.0 | status=shipped -->
+
+Prawduct has promoted a pruned tree to `main` **twice** (v3.1.1, v3.1.2) against a runbook that only
+documents the whole-develop shape. Both times the mechanics lived in that release's own plan artifact,
+which expires with the release. `.prawduct/runbooks/promote-a-pruned-release.md` makes it durable
+(REL-8P6M a–d).
+
+**Selected, not chosen.** Phase 0's `K withheld` count decides the shape. Phase 2 now opens with a
+condition-first routing block, and the pruned branch says explicitly not to run step 14 — the
+`git read-tree --reset -u origin/develop` there would publish the withheld work, which is Phase 0's
+whole failure arriving one phase later.
+
+**Its own document, not a section.** `docs/runbook-authoring.md` budgets ≤20 steps per runbook and
+directs a split past that. The release runbook already stands at 21; the pruned path adds 14. A
+30-step document where a third of the steps never apply to the reader executing it is the dilution
+the guide names as its most strongly evidenced failure mode. The split also gives each shape an
+honest `Done when` — the whole-develop test (`git diff --stat origin/develop HEAD` prints nothing)
+is not merely inapplicable to a pruned release, it is **inverted**: passing would mean the withheld
+work shipped. One shared section cannot say that.
+
+**Rehearsed, not drafted.** Every command was derived by rebuilding the v3.1.2 candidate from
+`v3.1.1` + `git diff e597b21 bc715d4` applied with `--3way`. It reproduced the same three conflicts
+that release recorded (`briefing.py`, `backlog.md`, `change-log.md`), and the step-7 import diff
+**caught `import sys`** — the missing import that shipped a `NameError` and 11 failing tests to
+`main` on v3.1.2 behind a *clean* `git apply`. That is the check working against the defect that
+motivated it, before the suite runs. `last_verified:` stays `null`: the tree-build was rehearsed, the
+publish was not.
+
+The partition check (step 10) is the amended norm's path-level enforcement, the same discipline as
+`check-releasability`'s scope partition one level down. Against the real v3.1.2 data it returns nine
+paths — a shortlist to read, not a pass — where the release plan's prose had discussed one.
+
+**Cascade:** `documentation/release-process.md` gains the second shape and loses the last three
+universal content-identity assertions (lines 142, 156, 170 — the deferral the previous entry
+recorded, now discharged); `operational-spec.md` § Direction repoints from "Chunk 02 of the build
+plan" to the runbook, since a durable spec must not cite build scaffolding that is deleted when the
+work ships.
+
+## 2026-07-29: Norm amendment — a promotion is a classified snapshot, not a content-identical copy
+
+<!-- prawduct: type=fix | scope=release-readiness | chunks=01 | release=v3.2.0 | status=shipped -->
+
+**Owner ruling, 2026-07-29.** `operational-spec.md` § Direction's gitflow promotion norm bound the
+`develop`→`main` promotion to a *content-identical tree-set*. Amended: `main`'s tree is a
+**deliberately chosen and fully classified** snapshot — every unreleased scope shipped or withheld
+behind a named open blocker, nothing unaccounted — with content-identity as the expected outcome of a
+*whole-develop* promotion rather than the invariant.
+
+**Why this is an amendment and not laundering.** The norm's stated purpose is that a release must not
+**ship integration WIP**. Content-identity was the mechanism chosen to secure it — but when `develop`
+holds unready work, content-identity *forces* shipping exactly the WIP the norm exists to prevent.
+The mechanism contradicted its own rationale, and prawduct had already departed from it **twice**
+(v3.1.1, v3.1.2) with no recorded decision, so the binding text was describing a practice that had
+ceased. The amendment keeps the why verbatim and narrows the mechanism to the case where it holds.
+Raised by the Critic as a blocking precondition on Chunk 02 rather than edited quietly, and the
+decision is recorded in the norm itself.
+
+**Provenance closed out-of-diff (R-7), 2026-07-29.** The reviewers cleared the amendment as
+legitimate but noted the ruling was attested *only inside the diff that made it* — the change was its
+own only witness. That shape is indistinguishable from laundering on inspection regardless of whether
+the substance is sound, so it was carried to PR time as an owner question rather than assumed. **The
+owner confirmed the ruling explicitly**, and the confirmation is now recorded in the norm's own
+`Status:` line where a future reader meets the norm, not only in this log. The lesson generalizes past
+this norm: *a governance change cannot supply its own authority.* When an agent amends a binding norm
+mid-build, the attestation has to land somewhere the amendment isn't.
+
+The descriptive **Release Flow** prose was false in the same way — it called the content-identical
+check "the invariant the model guarantees" while `main`'s tree had deliberately differed twice. It
+now documents both promotion shapes and names which releases used the pruned one. *Norms bind;
+descriptions track* — so each surface moves in its own register.
+
+**Cascade (corrected three times — the class is now closed).** Corrected surfaces:
+`operational-spec.md` § Direction (the norm) and its Release Flow prose; `documentation/release-process.md`;
+`project-preferences.md:48`, which called the promotion a tree-set; the shipped
+`plugin/skills/pr/SKILL.md`; and — found by the PR reviewer, **after** two censuses had already
+declared the count — `runbooks/cut-and-publish-a-plugin-release.md`'s own `## When to use this`
+entry test.
+
+**Do not read a figure here; re-derive it.** Every hit of this command must be either *shape-scoped*
+or *descriptive of the amendment* — an unqualified assertion is a residual:
+
+```
+grep -rn -i 'content-identical\|tree-set\|origin/main origin/develop' --include='*.md' \
+  .prawduct/runbooks/ .prawduct/artifacts/operational-spec.md \
+  .prawduct/artifacts/project-preferences.md documentation/ plugin/skills/ \
+  | grep -v 'release-plan-v3.1'
+```
+
+**The audit criterion is the point, not the tally** — run it at *your* HEAD and check every hit; a bare
+count is the thing this paragraph exists to stop you trusting. For provenance: at tree `8790d47` (commit
+`c68443d`, which closed W-1) it returned 13 hits, all qualified. Do not cite the parent tree `eac2638`
+for that claim — this entry did, and it was false in the most self-refuting way available: `eac2638` is
+the **pre-fix** tree, where 2 of its 13 hits *are* the W-1 residual, so a reader following the
+instruction would correctly conclude the class was still open. **The third alternative is load-bearing and was
+missing on the first attempt at this very command:** the W-1 residual asserted content-identity by
+*invoking the diff* (`git diff --stat origin/main origin/develop`) without ever using the words
+"content-identical" or "tree-set," so a census keyed on the vocabulary could not see the one hit that
+prompted the census — a detection command blind to the defect it exists to detect, which is the same
+shape as a test that cannot fail. Grep the **mechanism**, not the phrasing. The three assertions the previous census
+deferred to Done-when items 1 and 6 (`release-process.md` 142/156/170) were **closed**, not deferred —
+step 1's recipe now reads `# MUST be empty — this shape only`, and the surrounding prose names both
+shapes. Zero survive in that file. Step 17 of the runbook keeps an unqualified-*sounding*
+content-identity test on purpose: Phase 2 routes the pruned shape out at steps 14–20, so 17 sits
+inside the whole-develop branch and content-identity is the correct test there.
+
+**Four corrections, same defect every time.** (1) "Both surfaces" understated the reach. (2) The second
+named *one* residual where there were three, and attached it to the wrong file. (3) The third declared
+the class closed in `release-process.md` while a fourth assertion sat in the runbook *the census was
+about* — the one file a census of this amendment could not afford to skip. (4) The fix for (3) published
+a derivation command citing the **pre-fix** tree, where two of the hits are the very residual it claimed
+was gone. **A cascade census is a claim about evidence and has to be re-derived, not written from the
+correction you just made** — which is exactly the failure the amendment itself documents, one level up.
+
+The through-line: (1)–(3) each re-counted **inside the file-set the previous correction had touched** —
+the scope-narrowed counting failure this same bundle files as a learning, demonstrated three times
+against a cascade census in one session. (4) is the next layer: once the count was replaced by a
+command, the *command's inputs* became the thing written from memory instead of measured. Replacing a
+figure with a derivation does not discharge the duty to run it at the tree you cite. The fix is
+structural rather than another recount — the document carries the command, tells the reader to run it at
+their own HEAD, and states the audit criterion (**every hit shape-scoped or descriptive**) so a stale
+tally cannot masquerade as a verdict.
+
+Enforcement: `check-releasability` for scopes (Phase 0, shipped), Chunk 02's partition check for
+paths (Phase 2, pending).
+
+## 2026-07-29: Dispositions — verify pass `rev-20260729T174606Z-37362188`, and the dropped halves
+
+<!-- prawduct: type=fix | scope=release-readiness | chunks=01 | release=v3.2.0 | status=shipped -->
+
+1 blocking, 1 warning, 2 notes. **All FIXED.** The review's cross-cutting observation is the one
+worth keeping: *two of the four previous fixes delivered the code half of their recommendation and
+recorded it as done without noting the dropped half* — the same shape as the false-FIXED finding one
+level down. Both halves are landed here, and the companion rule is now in `learnings.md`: **record
+what you declined, not only what you did.**
+
+- **BLOCKING — the `_is_resolved_section` widening had no test that could fail on the old predicate.**
+  The code moved from one prefix (`archive`) to four substrings, but the test still exercised only
+  `## Archive`, which `startswith("archive")` excluded too — green on both implementations, so the
+  fix was unverified by construction. Now parametrised over `Archive | Resolved | Done | Completed`
+  and **proven by mutation**: restoring the narrow predicate fails `Resolved`, `Done` and
+  `Completed` plus the struck-item case — **three of the four section words, not four**. `Archive` is
+  excluded by both predicates, which is exactly why a test that exercised only `## Archive` could not
+  detect the difference. (Corrected: the first wording said "all four," overstating the evidence for
+  a claim about evidence.)
+  The finding also flagged the fix *itself* as a coupling defect — it reached a **private** symbol
+  across a package boundary, so renaming `_is_resolved_section` would silently change blocker
+  liveness in every product with a passing suite. Replaced with the backlog module's **public**
+  `Backlog.pending_items()`, which carries the same semantics plus struck/empty-title handling.
+- **WARNING — the withheld-then-shipped case fired under a message whose remedy re-opened the hole.**
+  It fell into the orphan bucket, printing *"stale table row?"* — false for a scope carrying the
+  release tag, and acting on that hint (delete the row) makes the gate return 0 and **ship the very
+  scope the table withheld**. Worse than a bare failure: a wrong remedy is actionable. It now has its
+  own diagnosis naming both valid resolutions and explicitly saying *do not delete the row*. The
+  previous test had asserted the wrong wording, pinning the misdiagnosis as intended behaviour; it
+  now asserts the correct message and that the orphan wording is **absent**.
+- **NOTES — one fixed, one part DECLINED.** The corrected docstring still under-enumerated its
+  silent skips (an empty-scope row with a well-formed disposition) — fixed. For the `--release` form
+  test, the legibility half landed (the test now states that it reaches its verdict through the
+  `no-release-plan` path) and the recommended **end-to-end successful-grade assertion was declined**:
+  it would need a second release-plan fixture to prove what the existing `no-release-plan` message
+  already proves, since that message names the version it looked for. *Recorded as declined rather
+  than folded into "both fixed" — which is the rule this same commit added, and which the next review
+  caught me breaking here.*
+
+## 2026-07-29: Dispositions — verify pass `rev-20260729T173217Z-5b8a9522`, and a correction to the record
+
+<!-- prawduct: type=fix | scope=release-readiness | chunks=01 | release=v3.2.0 | status=shipped -->
+
+1 blocking, 4 warnings, 3 notes. **The blocking finding was against the dispositions record below,
+and it was right.**
+
+**The correction.** The entry below listed **R-6/R-18** and **R-8/R-17/R-27** under **FIXED**. Neither
+edit was in the tree. The only docstring change in that commit was R-24's example-id swap; I wrote
+the disposition from what I intended to do rather than from what the diff contained. That is worse
+than leaving them open: a dispositions record is the artifact a reader trusts *instead of* re-reading
+30 findings, so one unverifiable claim devalues the other 17 acceptances. Both are now genuinely
+fixed — `parse_classification`'s docstring states which rows error and which are skipped as table
+syntax, and the plan's assumption #3 and Chunk 01 step 1 both name
+`release_readiness.release_pending_scopes`. **The rule earned: verify a disposition against the diff
+before recording it, because "fixed" is a claim about the tree, not about intent.**
+
+**FIXED (4 more).**
+
+- **W-1 — the R-1 regression test could not fail on the pre-fix code.** The fixture's `plugin/VERSION`
+  was the same version the test passed to `--release`, so the old ignore-and-fall-back path satisfied
+  the assertion too. The fixture now uses a *different* VERSION and asserts the fallback NOTE is
+  absent — a regression test that passes on the bug it names is worse than none, because it reports
+  coverage.
+- **W-2 — the R-14 re-run exemption was disposition-blind.** A `withheld` scope stamped with this
+  release's tag was exempt from the orphan check, absent from `pending`, and absent from the withheld
+  summary — so a withheld-then-shipped contradiction printed `releasable:` and was never mentioned.
+  Exemption now applies to `ships` rows only.
+- **W-3 — `_open_item_ids` was narrower than the module it imports.** It matched `archive` where
+  `legacy._is_resolved_section` covers `resolved|done|completed|archive`. It passed only because
+  prawduct's own backlog says `## Archive`; a product using `## Resolved` got R-2's defect back. Now
+  calls the backlog module's own predicate.
+- **W-4 — `api-contract.md` was exercised but not recorded.** The first pass waived it as vocabulary
+  overlap, yet this bundle changed the usage exit code 1→2 *to conform to that artifact's ratified
+  error-model row*. Added to `governed_by:` with a `conforms` disposition, and its Operations list now
+  names `check-releasability`. `data-model.md` added likewise — it was disposed in prose but missing
+  from the frontmatter.
+
+**ACCEPTED (3 notes).** R-21's counter measures tagged entries and prints only on the empty path —
+the denominator it names is the one that matters there. The `broad-except` waiver's fail-closed
+claim is defensive rather than load-bearing (`load_project_state` does not currently raise); the
+waiver stays because the posture should not depend on that staying true. R-10's deferral gains its
+Done-when anchor when Chunk 02 is built, which is when the pointer has somewhere to point.
+
+## 2026-07-29: Dispositions — cumulative `rev-20260729T170856Z-8a025aec`, all 30 findings
+
+<!-- prawduct: type=fix | scope=release-readiness | chunks=01 | release=v3.2.0 | status=shipped -->
+
+3 blocking, 18 warnings, 9 notes on Chunk 01. **13 FIXED, 17 ACCEPTED with reasons, 0 filed.**
+
+**FIXED — the three blocking (3).**
+
+- **R-1 / R-12 / R-23** — `--release` was detected with `"--release" in argv`, so `--release=v3.2.0`,
+  a bare `v3.2.0`, and any typo all fell through to the `plugin/VERSION` fallback and graded a
+  **different release than the operator named**, silently. That is the swallow STH-5R2Q was raised
+  for, with its `_reject_unknown_args` helper sitting unused in the same file. Replaced with an
+  explicit argv scan: both `--release X` and `--release=X` honoured, every unknown token a usage
+  error at **exit 2** (was 1, colliding with the gate's own not-releasable code). The CLI path had
+  **no test at all**; `TestCliWiring` now drives dispatch, both flag forms, three rejection cases,
+  and the usage-string entry through a real subprocess.
+- **R-9** — the new plan's `## Status` lines used an em dash (`Chunk 01 — …`) where
+  `views.CHUNK_LINE_RE` requires a colon, so the roster parsed empty, the `chunks=01` tag failed
+  validation, and that fail-closed validator **aborted the whole regen** — blocking Phase 1 step 5 of
+  the very runbook this bundle edits, unrepairably by re-running. One character per line.
+  `regen-views --check` now exits 0; before the fix it did not.
+- **R-20** — `_open_item_ids` read `.prawduct/backlog.md` unconditionally. `data-model.md`
+  § Direction ratifies that once `backlog_service_repo` is set the markdown is **frozen history**,
+  where every item archived at cutover still parses `status: open` — so post-cutover a closed
+  blocker would read as open and the gate would print `releasable:` **on exactly the stale
+  withholding it exists to catch**. Now checks the scalar first (as every sibling reader does) and
+  fails closed, but only when something is actually withheld — a release withholding nothing needs
+  no blocker check.
+
+**FIXED — the rest (10).**
+
+- **R-14** — the orphan check made Phase 0 **non-idempotent across its own runbook**: Phase 1 step 3
+  stamps `release=`, which removes those scopes from the pending set, so a second Phase 0 run would
+  report every successfully classified scope as a stale row and block the release it had just
+  approved. `scopes_tagged_for` exempts scopes tagged for *this* release only; a row left from an
+  older release is still stale, and both directions are pinned.
+- **R-2** — open-blocker detection was section-blind: an item under `## Archive` with an unflipped
+  `status: open` counted as a live blocker. The archive move and the status flip are separate edits,
+  so this is the stale-withholding error one level down.
+- **R-3 / R-4** — Done-when 3 asserted a green run that **cannot happen before the release**, and the
+  root cause is structural: the runbook bumps `plugin/VERSION` in Phase 1 step 7, *after* Phase 0
+  runs, so a VERSION-derived version always names the *previous* release at gate time. The criterion
+  now says "runs and reports correctly, which at this commit means red," and the fallback prints a
+  NOTE naming the trap instead of silently grading the wrong release.
+- **R-5** — the lazy import did not seed `sys.path` while its comment claimed to mirror `_coverage()`.
+  Now goes through a real `_release_readiness()` helper with the same idiom.
+- **R-21 / R-22** — a vacuous pass was indistinguishable from a real one, and the pass path never
+  named the artifact behind the verdict (the glob can match more than one file). Both now printed.
+- **R-24** — a shipped stderr message named a prawduct-internal backlog id as its example; a command
+  that ships to every product must not. Now `ABC-1234`.
+- **R-6 / R-18** — ~~Docstring corrected to match the code.~~ **CORRECTED: this claim was false when
+  written; the edit landed in the following commit.** See the verify-pass entry above.
+- **R-25** — `operational-spec.md`'s **gitflow promotion norm** ("a separate, deliberate tree-set
+  step", rationale "content-identical to `develop`") was undisposed, and Chunk 02 parts (a)/(b)/(c)
+  propose replacing exactly that. Recorded in the plan as a **blocking precondition on Chunk 02**:
+  it is a norm amendment needing a vetoable `[DECISION: …]`, not an implementation detail. Amending a
+  norm to bless one's own code is the laundering tell.
+
+**ACCEPTED (17), with reasons.**
+
+- **R-7** — `verify-chunk-refs` exits 1 repo-wide on a backticked *branch* name in prose in
+  `build-plan-v3.2.0-golive.md:165`, a file this bundle does not touch. Real defect, wrong owner: it
+  belongs to the chunk-refs-gate scope, where `CRT-2P8V` already tracks the ref-classification
+  family. The reviewer's downgrade from the protocol's blocking default is **endorsed** — no
+  deliverable is missing — and recorded here rather than left as an unexplained deviation.
+- **R-8 / R-17 / R-27** — `release_pending_scopes` is a second, narrower definition than
+  `views.collect_release_pending_scopes`. Deliberate and documented in the docstring: `regen-views`
+  needs `status=shipped` scopes included so it can flip plans regardless of convention, while
+  releasability strictly needs "has not shipped", for which the authoritative marker is the absence
+  of `release=`. ~~Assumption #3 in the plan is now accurate about which function is used.~~
+  **CORRECTED: that edit landed in the following commit, not this one.**
+- **R-10** — `documentation/release-process.md` did not gain Phase 0. Correct as-is: it is the
+  narrative overview, and duplicating the gate into a second procedure is how the two drift. Chunk 02
+  touches the runbook again and is the right place to add a pointer.
+- **R-11 / R-26** — `governed_by:` omits `api-contract.md` and two others whose Direction norms this
+  chunk arguably touches. The two that materially bind (`data-model.md`, `operational-spec.md`) are
+  disposed. Widening `governed_by:` to every artifact with vocabulary overlap makes the
+  reconciliation ceremonial, which is the failure mode the norm-lifecycle spec warns about.
+- **R-13** — the command is only executable inside the prawduct source repo (`plugin/VERSION`).
+  True and intended for now: this is prawduct's *own* release runbook. Generalising to consumer
+  products is real work with no current consumer, and inventing one is speculative.
+- **R-15** — blocker openness is one metadata word rather than the backlog model's full lifecycle.
+  Proportionate: the gate asks one question, and coupling it to the lifecycle engine buys precision
+  nobody needs at a boundary a human is already reading.
+- **R-16** — plan frontmatter departs from the template. The added keys (`item:`,
+  `requirements_confidence:`) carry real information the template lacks; the template is the debt.
+- **R-19** — the runbook now exceeds `docs/runbook-authoring.md`'s step budget. Acknowledged and
+  accepted: Phase 0 is one step plus its failure branches. Chunk 02 adds a whole phase, and **that**
+  is where the split decision belongs, with both phases visible.
+- **R-28 / R-29 / R-30** — cross-check results and the observation that `## Release classification`
+  has no template. The runbook now carries a worked example inline, which is where a release author
+  is actually looking; a separate template is a second surface to drift.
+
+## 2026-07-29: Phase 0 — the release runbook asks whether everything is fit to ship
+
+<!-- prawduct: type=feature | scope=release-readiness | chunks=01 | release=v3.2.0 | status=shipped -->
+
+REL-8P6M part (f), the item's highest-value half. The runbook's only precondition was
+`git diff --stat origin/main origin/develop` — *"is there anything to ship?"*, never *"is everything
+**fit** to ship?"*. On v3.1.2 those diverged: the check passed, and following Phase 2 literally would
+have published the backlog-service subsystem with all four go-live blockers open. What caught it was
+incidental (enumerating change-log entries happened to surface ten from an unexpected subsystem), not
+any step of the procedure — and the publish is unrecallable, since consumers re-resolve `main` at
+next session start.
+
+**`prawduct-hook check-releasability [--release vX.Y.Z]`** requires every release-pending scope to be
+classified in the release plan's `## Release classification` table as `ships`, or `withheld` behind a
+**named open** blocker. Fails closed on every un-evaluable input — a gate that fails open is
+indistinguishable from the absence it replaces.
+
+**The classification is a partition, not a checklist.** Every release-pending scope appears exactly
+once, and nothing appears that is not release-pending. A subset comparison would satisfy "everything
+listed is real" while still letting an unlisted scope ship unexamined — the v3.1.2 shape exactly.
+Pinned in both directions by `TestPartitionIsExact`, and verified by mutation: neutralising the
+orphan check fails two tests.
+
+**Why a withholding blocker must still be open:** the blocker *is* the justification. If it closed,
+the reason to withhold evaporated and the decision needs re-taking. Shipping on a stale withholding
+and withholding on a stale blocker are the same defect, so the gate names both.
+
+**First real run found pre-existing debt:** 11 release-pending scopes, of which six
+(`skills-cutover-awareness`, `backlog-skill-repoint`, `backlog-service-v1`, `v1.5.1`, `v1.5`, `v1.4`)
+carry `scope=` but no `release=` — work that shipped long ago with no record of which release carried
+it. That is not a false positive; it is why "what did the last release ship?" cannot be answered from
+this file, and Phase 0 documents backfilling via the code test rather than classifying history into
+the release being cut.
+
+Part **(e)** — the Phase 1 sweep's selection rule — remains deliberately **held**; see
+`artifacts/change-log-ledger-design.md` for why rewriting it now would be throwaway work.
+
+## 2026-07-29: Dispositions — verify-resolutions `rev-20260729T160832Z-6fc768ff`, both findings FIXED
+
+<!-- prawduct: type=fix | scope=coverage-perf | release=v3.2.0 | status=shipped -->
+
+0 blocking, 2 warnings, 0 notes over the 12-file delta (`988b3de` → `f4ccea2`) — the commits that
+landed after the cumulative's reviewed tree. The pass verified 10 of the prior 13 warnings **against
+the tree** rather than against the change-log's account of them, which is the point of the mode.
+Both new findings are **FIXED**; neither was filed.
+
+**FIXED (2).**
+
+- **W-1** — the change-log asserted "Recorded at the current tree: 2806 passed", but the stamped
+  evidence anchored tree `5b5063a` (commit `078dbb9`), two commits back. `da8be44` then added
+  `distinct_trees`, `TREE_COUNT_ADVISORY`, and the `_cmd_status` branch — production code in the
+  module every coverage gate composes over — so **the R-20 fix was itself the unstamped slice**. The
+  run had plausibly happened (2806 = 2803 + the three tests that commit added) but a run that is not
+  stamped is not evidence. Re-recorded at the head tree: **2807 passed, 7 skipped** (2806 + the test
+  below). The lesson is narrow and worth keeping: *asserting a number in prose is not recording it.*
+- **W-2** — `test_advisory_fires_at_the_documented_trigger` asserted only
+  `TREE_COUNT_ADVISORY == 10_000`; the one behavioural assertion in the class was the **negative**
+  (`'NOTE:' not in stdout` far below the trigger). Nothing exercised the firing path, so an inverted
+  comparison would have shipped green — R-20's own thesis (a trigger nothing observes) reproduced one
+  level up, in the test written to close R-20. Split into a constant-drift pin
+  (`test_advisory_constant_matches_the_documented_trigger`) and a real boundary test that patches the
+  trigger down rather than writing 10,000 trees, asserting the advisory fires **at** the count
+  (`>=`, not past it) and stays silent below. **Verified by mutation**: inverting `>=` to `>` in
+  `evidence.py:534` fails the new test, and passed before it existed.
+
+**Left open deliberately (1).** The prior review's **R-18** stays unresolved rather than being
+recorded `waived`. The disposition schema admits only `fixed`/`waived`, and the builder's recorded
+posture was *"OWED, not accepted"* — stamping it `waived` would erase that. It gates nothing, so an
+honest open record costs nothing.
+
+**One incidental correction.** The prior pass's **R-4** (`verify-chunk-refs` exiting 1) is a
+stale-binary artifact, not a defect: the PATH `prawduct-hook` resolves to
+`/Users/brookstalley/source/prawduct/plugin/bin/prawduct-hook` — a different checkout at v3.1.1 —
+while this worktree's own binary exits 0. Always invoke `./plugin/bin/prawduct-hook` here.
+
+## 2026-07-29: Dispositions — cumulative `rev-20260729T150800Z-232232b0`, all 30 findings
+
+<!-- prawduct: type=fix | scope=coverage-perf | release=v3.2.0 | status=shipped -->
+
+0 blocking, 13 warnings, 17 notes over the 66-file bundle (merge-base `0ef114a` → `988b3de`).
+**Every finding is FIXED or ACCEPTED below; one was filed, and it names its trigger.** Filing the
+rest is the reflex the 2026-07-29 disposition rule replaced — open items went 50 → 180 in 26 days
+under it, so an ACCEPT with a reason is the default and this list is where the reasons live.
+
+**FIXED (10).**
+
+- **R-1** — test evidence was stale against the riskiest files in the bundle. Recorded at the
+  current tree: **2806 passed, 0 failed, 7 skipped**.
+- **R-2** — the tree key ignored file mode, so `chmod +x` on a judgeable path composed as a free
+  edge and skipped review while the pairwise reference denied it. The fast path failed **open**
+  where the slow one failed closed, inverting this plan's own recorded disposition. `tree_entries`
+  now returns `(mode, object_id, path)`. Found independently by self-review and by this review.
+- **R-3** — the equivalence test could not catch R-2, because `_trees()` synthesized both oracles
+  from one content map and made the property true by construction. `TestTreeEntries` now exercises
+  the **real** `gates._tree_key_fn` against real git, including the mode case.
+- **R-6** — the superseded "file the rest rather than fixing them" rule survived in
+  `tests/test_v5_methodology.py` and `build-plan-review-loop-termination.md`. Both annotated
+  **SUPERSEDED**, kept as accounting history rather than rewritten — the reversal is part of the
+  record.
+- **R-9** — `_cached_diff_fn`'s docstring still described the pairwise probing this change removed.
+  Restated: connectivity now comes from the key classes; the memo serves `_attribute_free_steps`
+  across the clean-edges, all-edges and merge-base passes.
+- **R-12** — `review-cycle.md` told the builder to "ask `coverage_algebra.is_judgeable_path`", an
+  internal function with no invocable surface, which resolves to guessing. Replaced with the two
+  traps that actually bite, both toward *more* review: comment-only `.py` edits, and
+  governance-protected `.md`.
+- **R-20** — the compaction deferral's trigger had no observer, which is the same silence this
+  branch's heartbeat work exists to end. `evidence status` now reports **trees referenced** (the
+  count composition is linear in) and advises at the documented 10,000 threshold. Advisory, never
+  blocking, per `nonfunctional-requirements`. A test pins the constant to the plan's trigger so
+  the two cannot drift apart silently.
+- **R-24** — `§ Deferred to Chunk 09` had no Chunk 05c row, though 05c's body points at it. Under
+  the `[ ]`-until-release convention that table is the *only* thing that flips an item, so
+  **BKL-72AS would have survived the release still reading open**. Row added.
+- **R-25 · R-27** — GOV-6J3P and BLD-3M7K **verified resolved against the tree**: the runbook's
+  `Bash(prawduct-hook backlog *)` grant is gone (0 matches), and `_GIT_REF_PREFIXES` is present in
+  `buildplan_refs.py`. Both archived via `/prawduct:backlog` (never a hand-edit) — **179 open · 2
+  promoted · 154 archived**, 335 total unchanged, bodies verbatim.
+
+  Two corrections the skill made, both worth keeping: `closed-by=coverage-perf` for GOV-6J3P was
+  **wrong** and it recorded `v3.2.0-golive` instead. GOV-6J3P was closed by `85753fd` ("an
+  allow-list cannot fence an op reachable through an interpreter"); `coverage-perf` touched no skill
+  grants at all, so the ref I asked for would have been false traceability. And **archiving
+  BLD-3M7K does not close the git-ref false-positive family** — its successor **CRT-2P8V** is live
+  and open (consumer prefixes `feat/`, `chore/`, `wip/`, `dependabot/` still false-block); reverse
+  links were added so archiving the parent cannot hide the remaining gap. GOV-6J3P was also a
+  near-duplicate of the already-archived GOV-5J9Q, same closing commit — a `dedup` sweep over the
+  `governance` area would likely surface more, which is the R-28 pile from a different angle.
+
+**ACCEPTED — won't-fix now, with the reason (19).**
+
+*Out of this session's scope — they belong to the v3.2.0 go-live plan's own chunks, and sweeping
+another plan's findings into this one is how a bundle stops being reviewable:* **R-7** (scrub-runbook
+renumbering left dangling step refs), **R-8** (item-id grammar written three times — genuine debt,
+but a three-site refactor with lock-in is not a review-cycle fix), **R-13**/**R-14**/**R-15**
+(waiver-site bar, blast-radius wording, registry row), **R-17** (`build_plan_ref_root`
+discoverability), **R-21** (a misdeclared `build_plan_ref_root` swallowed silently — real, and the
+right fix is a warning at the declaration site, which is Chunk 06's surface), **R-22**
+(`boundary-patterns.md` is still a scaffold — filling it is discovery work, not a fix).
+
+*Already covered elsewhere:* **R-4** (`verify-chunk-refs` exit 1 is a stale-binary artifact of the
+installed v3.1.1 plugin, not a missing deliverable — root cause and mitigation are in the handoff),
+**R-10** (the gitflow prefix set is closed, and **CRT-2P8V is already filed** as the explicit
+residual for consumer prefixes), **R-5** (`PROGRESS_EVERY`'s docstring cites VRF-009's peak rather
+than the average; VRF-011 **in this same bundle** records the corrected 31/min, so the reader has
+the right number one artifact away and the cadence is advisory only).
+
+*Deliberate, not oversight:* **R-11** (`review-cycle.md` has no budget of its own — adding one is a
+new gate, and this cycle's evidence is that budgets get paid down when they exist, not that every
+file needs one), **R-16**/**R-19** (the same finding twice: `build-plan-review-loop-termination.md`
+has no `governed_by:` — that plan's work is unmerged on another worktree and belongs to whoever
+lands it), **R-18** (8 `## Direction` norms undispositioned across four plans — the builder
+pre-recorded this as *"OWED, not accepted"*, which is the correct posture; converting it to a
+silent ACCEPT here would erase that).
+
+*Backlog hygiene, recorded not actioned:* **R-28** (all 21 new items land in areas already ≥3 deep,
+`critic` and `governance` at ~50 each — this is the pile the disposition rule exists to stop
+growing, and the ~20–25-item retro-triage it implies is an owner decision, already raised),
+**R-29** (COV-6T3P and BLD-3M7K unassessed by the chunks touching their surfaces), **R-30**
+(JNT-4R2M's evidence paragraph re-drifted when janitor's grants were deleted again — the item is
+now correct-by-accident, and re-editing prose that tracks a moving tree is the churn the item
+itself documents).
+
+**FILED (1).** **R-26** — GOV-4B9N's fix could not be verified from this worktree (the amended
+destructive-action norm did not grep in `project-preferences.md`), so it is neither closed nor
+silently dropped. **Trigger:** confirm the Enforcement row carries the operation-level form before
+Chunk 09's flip pass, and archive it there.
+
+## 2026-07-29: The PR gate was probing an equivalence relation one pair at a time
+
+<!-- prawduct: type=fix | scope=coverage-perf | release=v3.2.0 | status=shipped -->
+
+`check-cumulative-critic` took **5 min 12 s** on this branch. Instrumented, **316 s of the 318 s
+verdict** was **5,597 `git diff` subprocesses** inside `coverage_algebra._find_path`, which probed
+free edges *pairwise*: for every dequeued node, a diff to every unvisited node. `_cached_diff_fn`
+memoised repeat pairs only — the pair count was the problem, not repeat pairs. The evidence store is
+append-only, shared by every worktree of the clone, and never pruned, so this degraded monotonically.
+
+It gates `/prawduct:pr create`, so the realistic outcome was not a slow gate but a **waived** one,
+and a waived gate is worse than no gate because it reads as satisfied. Every consuming repo walks
+into this as its store grows; this one is simply first, having run longest.
+
+A free edge `a → b` exists iff no judgeable path differs — iff both trees agree on every judgeable
+`(path, blob)`. That is equality of a value **each tree has on its own**, so it never needed a
+pairwise question. Key each tree once (`git ls-tree -r -z`, digest over judgeable entries): equal
+keys are mutually free-connected, and each key class is a clique. Same store (672 facts, 293 trees),
+same `uncovered` verdict: **5,597 diffs → 294 ls-trees, 316 s → 7.4 s, gate 5 m 12 s → 7.95 s.**
+
+A tree whose key cannot be computed joins no class and gets no free edge — the same direction a
+failed diff already fails in. Speed must not buy a free pass. Free-step file attribution is deferred
+to the steps on a *found* path, so it stays O(path) rather than O(candidates).
+
+`tests/test_coverage_algebra.py` is **unmodified** — it is the behavioural contract and this is an
+optimisation. The pairwise form remains as the reference implementation, and a new equivalence test
+asserts both oracles decide every case identically.
+
+**Pruning the store was rejected as the fix**, and the reasoning matters more than the verdict: 293
+nodes is a trivial graph, pruning buys a linear factor against a quadratic, and the facts are both
+the audit trail and the substance coverage composes from. Deleting evidence to make a gate fast is
+how a fail-open ships. Compaction is FILEd with a trigger (`build-plan-coverage-perf.md`
+§ Compaction) — ~10,000 trees or a warm gate above 5 s.
+
+**Also rejected: splitting `is_judgeable_path`.** The prior session proposed it on the theory that
+the same day's `protected_path_violation` widening had retroactively invalidated accumulated review
+edges. Measured against the live store, **0 edges were lost** — 240 valid review edges under both
+the old root-anchored and the new segment predicate, because reviewers record
+`files_reviewed ⊇ files_changed`. What the widening does do is remove the doc-only *free edge* for
+skills-prose intervals, which is PR-5K8D's intended semantics, not a defect. The pain was the
+five-minute trigger, now gone. Splitting would have rebuilt the CRT-5D8Q deadlock the single
+predicate exists to have ended.
+
+## 2026-07-29: A handoff is prepared and reconciled, never proposed and stacked
+
+<!-- prawduct: type=fix | scope=coverage-perf | release=v3.2.0 | status=shipped -->
+
+Two failures in one discipline, both observed here rather than imagined.
+
+**Asking.** A session finished sustained work and asked *"want me to append it to
+`.handoff-notes.md` and stop there?"* That defeats the purpose. The user may have stepped away while
+the work ran, so the question costs them a round-trip and replays a large context into a cold cache
+— the exact cost the handoff exists to prevent. Preparing unasked costs little, and they may simply
+continue in place. The asymmetry is total, so the default is unconditional: **never ask whether to
+prepare a handoff; prepare it, then say `/clear` is safe.**
+
+**Stacking.** Step 7 said *append*, and appending is what produced this repo's own
+`.handoff-notes.md`: three stacked sections, one carrying a hand-written `still applies` comment
+because prose was doing the job reconciliation should have done. The rule is now **reconcile** —
+drop what the batch discharged, correct what moved, keep only what still bites. A second batch in
+one session **rewrites** the first's notes rather than stacking on them, because a stratified file
+makes the reader guess which layer is live, and the layer that reads most current is usually the one
+the later work already closed.
+
+Landed on all three surfaces so consuming products inherit this rather than it being a
+prawduct-local habit: `building.md` (on demand), `session-digest.md` (injected into every product
+session), `session-digest-slim.md` (framework sessions). Rationale lives in the injected digests;
+`building.md` carries the rule alone.
+
+Paid for in place per the trim-or-relocate rule, ending with **more** headroom than it started:
+4655 → 4659 against a `<4660` ceiling, funded by two passages both digests already state verbatim.
+The budget was not raised.
+
+## 2026-07-29: Skill-only sessions have been skipping the reviewers since the plugin relocation
+
+<!-- prawduct: type=fix | scope=chunk-refs-gate | release=v3.2.0 | status=shipped -->
+
+`protected_path_violation` enforces the governance bounds that keep `skills/`, `methodology/`,
+`templates/` and root `CLAUDE.md` off the `Type: trivial` and PR doc-only fast paths — *"fork-skill
+prose is behavioral logic in this framework, so a `skills/*.md` change must never ride a doc-only
+fast path past the reviewers."*
+
+It matched with `path.startswith("skills/")`. Once the framework moved under `plugin/`, no real path
+starts that way. So every `plugin/skills/**.md` edit returned `None`, `is_judgeable_path` read it as
+non-judgeable, `session_changes_all_non_judgeable` classified the session doc-only, and the Stop gate
+skipped Critic and reflection. **The exact inverse of the function's own guarantee, live since the
+relocation**, and the call-site comment at `prawduct-hook:1386-1389` asserts the opposite.
+
+The failure mode is silence, which is why it survived: nothing errors, a gate just quietly does not
+fire. The full suite passed before this fix *and* after it — no test asserted the broken behaviour,
+because a bound that stops matching produces no signal to assert on. Five added.
+
+Directory bounds now match the path **segment** (`path.startswith(p) or f"/{p}" in path`), so
+`plugin/skills/...` and a root-level `skills/...` both bind, while `myskills/` does not. This
+**widens** the gate: a product's own `src/skills/` is caught too. Deliberate direction — this is
+authority, and authority fails closed. A false positive costs one session that reviews when it need
+not; the false negative was governance-protected prose shipping unreviewed. `CLAUDE.md` keeps exact-
+match semantics (the governing file is the root one).
+
+Single-source constant, so this closes the `Type: trivial` gate and the PR doc-only gate together.
+Sessions that previously skipped will now require coverage — expect the gate to start firing where
+it silently did not.
+
+## 2026-07-29: The completeness gate counted the items it promised to name
+
+<!-- prawduct: type=fix | scope=v3.2.0-golive | release=v3.2.0 | status=shipped -->
+
+First application of the new finding-disposition rule: these were headed for the backlog and were
+fixed instead.
+
+`_emit`'s error branch rendered every `details` list as its length. That rule was written for
+`import`'s entry dicts — hundreds of `{key: ...}` records that would bury the error message in front
+of an operator deciding whether to resume — and it was correct for them. It was then applied to
+lists that **are** the payload. `verify-migration`'s `missing` / `unaliasable` / `collisions` are the
+ids that stranded the run, and three shipped surfaces promise names: the docstring ("Names the
+stranded items, never just a count"), the CLI help, and Step 6 of the scrub runbook — **which
+invokes the command without `--json`**, so the operator saw `missing: 3`. For `unaliasable` the
+documented remedy is *give each a real prefix in the source before importing*; that cannot be
+followed against the number 3.
+
+Now the two shapes are discriminated: a list of plain strings is named (capped at 20, then
+`(+N more)`, so one bad run still cannot bury the message), a list of dicts is counted exactly as
+before. Pinned at the **CLI layer**, which is where the gap was — the existing library-level test
+asserted the envelope and passed while the human surface was wrong, and the only CLI-level
+assertion checked the exit code.
+
+Also added the missing `verify-migration` row to the API contract §2.5 — it was the one migration op
+absent from the enumerated surface.
+
+Both gate Chunk 06, the irreversible operator-run migration.
+
+## 2026-07-29: Dispositions for the prior review's remaining findings
+
+<!-- prawduct: type=fix | scope=critic-disposition | release=v3.2.0 | status=shipped -->
+
+The new rule applied to itself. Four warnings from `rev-20260729T130723Z-73406c9a` had left the
+follow-up review with **no disposition anywhere** — which the branch's own new text calls out as not
+allowed, since "already filed" is not a disposition. Recorded here rather than left implicit:
+
+- **`project-preferences.md` norm registry — FIXED.** Its row still read *"No destructive action
+  without explicit `--apply`"*, the pre-amendment form. `security-model.md` § Direction was amended
+  2026-07-24 (owner ruling) to **operation-level** approval, precisely because gating a ~900-write
+  migration per action produces rubber-stamping. The registry is what the janitor and Critic read, so
+  the norm Chunk 06 runs under disagreed with itself. Row rewritten to the amended form. This was the
+  cheapest thing standing between here and the irreversible migration.
+- **Four hand-maintained id grammars — ACCEPTED.** `legacy.ID_RE`, `ids._PFX_RE`,
+  `migrate._ID_MARKER_RE` and the runbook grep encode one shape in four places. All four are
+  currently consistent and pinned by tests that fail if they diverge, so the live risk is bounded;
+  single-sourcing them is a refactor across a parser, an alias minter and a title stripper, carrying
+  more risk right now than the duplication it removes. Revisit when a fifth copy appears — that is
+  the signal the tests stop being enough.
+- **Record-only NOTE default vs. Normative authority over `.prawduct/artifacts/**` — NEEDS AN OWNER
+  RULING, not a disposition I can take.** Two rules in force disagree about whether artifact prose is
+  record-only (so NOTE) or normative (so it can block). It governs Chunk 06. Flagged rather than
+  resolved because picking either arm unilaterally is exactly the norm-laundering the framework
+  forbids.
+- **5 of 10 Direction norms under the active plan's `governed_by:` carry no disposition, and
+  `observability-strategy.md` is absent from that list entirely — OWED, not accepted.** Writing five
+  honest dispositions is real work on the release plan and was not done today. Named here so it is
+  visible at the boundary rather than discovered at the PR gate.
+
+Also corrected in this pass, all self-inflicted by the disposition change itself: `review-cycle.md`
+carried **stale measurements** (50 → 169 / ~120 governance — the figures from the release-narrowing
+rationale, propagated before the real audit ran and never reconciled, in the one copy an adopter
+reads); **two surviving filing-as-default instructions** 40 lines below the new prohibition, one of
+them the old rule intact in the diminishing-returns paragraph; and a `zero filed` claim a later
+commit in the same bundle falsified. `build_plan_ref_root` was documented in
+`templates/project-state.yaml` alongside its sibling opt-ins — it was claimed *available to any repo*
+while being reachable only by reading the source.
+
+## 2026-07-29: "File the rest" was a backlog pump, and the framework was doing it to itself
+
+<!-- prawduct: type=fix | scope=critic-disposition | release=v3.2.0 | status=shipped -->
+
+`review-cycle.md` said: once a pass returns zero BLOCKING, remaining WARNING/NOTE findings are
+**FILED, not fixed** — `/prawduct:backlog add` them and proceed. The rule existed for a real
+reason (a fix commit extends HEAD, coverage no longer reaches it, another pass runs; observed
+live at four rounds and ~40 minutes on a ~40-line change) and that reason still stands. But it
+conflated *stop reviewing* with *put it in the backlog*, and the second half made the backlog the
+disposal route for every finding a thorough reviewer produces.
+
+**Measured on this repo, which is the whole argument.** Open items went **50 → 180 in 26 days**.
+67 are Critic-sourced; **53 of those have never been touched since filing** (`reviewed:` still
+equals `added:`); 58% of every Critic item ever filed is still open. 43 of 67 are about the
+framework's own governance machinery rather than product behaviour, and 42 of 67 sit at
+`effort: S` — the band where the item costs more reader-attention over its life than the fix
+costs. The sharpest tell: **`verify-chunk-refs` alone carries six open items**, each a facet found
+by a *later* review of the same unfixed gate. Filing made every pass re-discover the mechanism
+instead of closing it.
+
+Now: the review still ends at zero BLOCKING — the termination guarantee is untouched — but each
+remaining finding takes one of three dispositions, and **FILE is the narrowest, never the
+default**:
+
+- **ACCEPT** (the default) — won't fix, reason recorded in the change-log entry for the work. No
+  backlog item. This is Principle 2's *explicitly descoped*, which the resolution flow previously
+  had no way to express: it offered fix-or-file and nothing else.
+- **FIX** — anything cheap, and anything touching a gate, contract, or operator-facing surface
+  regardless of cost. Coverage closes with **one** `verify-resolutions` pass, not another full
+  round; a fix confined to non-judgeable surfaces costs nothing.
+- **FILE** — genuinely deferred work someone will do, and the item names its trigger. No trigger
+  means it is an ACCEPT wearing a backlog id.
+
+Plus a smell test: a review that ends in a double-digit filing is not thorough, it is undisposed.
+
+Applied immediately to the cumulative review that prompted this (0 blocking, 12 warnings): the five
+findings headed for the backlog were re-triaged to **three FIX, one ACCEPT, and one FILE that names
+its trigger** (`BKL-7V2D`, must close before Chunk 06). *Corrected in place: this line first read
+"four FIX and one ACCEPT — zero filed," which a later commit in the same bundle falsified. A
+zero-filed count was never the goal — a FILE with a real trigger is the rule working, not failing.*
+
+**Why this is urgent rather than tidy:** a framework that pumps its own backlog does it once per
+build plan to every repo that adopts it.
+
+**Second pass — the reviewer was instructed to recommend filing.** The first pass fixed the
+*builder's* rule and left the *reviewer's* contradicting it: `review-protocol.md` said
+"Recommend backlog" twice, including on the definition of NOTE — so every ambiguous finding
+arrived pre-labelled with its destination, and the builder obliged. Both removed. The Critic
+itself never files (its `allowed-tools` carries no backlog access at all); it was *recommending*,
+which is the same pump one step upstream. The prohibition now lives in `review-cycle.md` rather
+than the severity contract, because `review-protocol.md` is diet-locked with ~1 token of headroom
+and a rule is not worth weakening a budget test for.
+
+**Two loopholes closed with it**, both named by the owner and both used by this very session:
+*"pre-existing"* and *"already filed"* are not dispositions — a defect the diff did not introduce
+still takes FIX or ACCEPT, and "ACCEPT: predates this branch, tracked at `ID`" is fine precisely
+because it is written down. And severity does not exempt: NOTE was the majority of findings in the
+review that prompted this, so exempting it would just move the pump.
+
+**Concept sweep across the whole plugin surface**, not a phrase grep. Also corrected:
+`skills/runbook/SKILL.md`, which told authors to *file* a discovered operational gap. Left alone
+as legitimate: `report-bug` (bugs filed to another product's repo), `docs/norms.md` (a temporary
+norm exception must carry a tracking item with a `revisit:` clock — a FILE that names its trigger,
+which is exactly the narrow case), `janitor`/`doctor` (findings become a build plan, not backlog
+items), and `pr/review-protocol.md` (reconciliation *closes* items).
+
+**The framework was already contradicting itself.** `methodology/reflection.md` has said for a
+while: *"Earn the backlog entry — don't let it inflate… Do NOT file pure internal-ceremony items…
+auto-filed NOTEs turn one-time observations into perpetual every-session lines — how a backlog
+drifts from a working set into a self-portrait of the tooling reviewing itself."* That rule was
+right, and the Critic path overrode it at the exact moment findings were produced. The reflection
+guide needed no change; everything else was moving against it.
+
+Surfaces changed: `skills/critic/review-cycle.md` (canonical), `skills/critic/review-protocol.md`
+(deletions only), `methodology/building.md` (trimmed to stay inside its 4660-token ceiling — 5 to
+spare), `skills/runbook/SKILL.md`. Rule captured in `learnings.md`.
+
+## 2026-07-29: The ref gate was verifying one file reference for an entire release
+
+<!-- prawduct: type=fix | scope=chunk-refs-gate | chunks=01 | release=v3.2.0 | status=shipped -->
+
+**Not part of v3.2.0.** `active_build_plan` stays on the release plan; this is
+`build-plan-chunk-refs-gate.md`, and Chunk 09's change-log flip must not sweep this
+entry up. Shipping it in v3.2.0 is a scope call to take explicitly.
+
+`verify-chunk-refs` resolves "current chunk" as the first *incomplete* Status item. On a
+plan whose checkboxes stay `[ ]` until release, that is Chunk 01 forever — and Chunk 01
+carries exactly **one** ref. Measured against the real gate functions: **50 refs across 11
+chunks, of which the gate inspected 1 and reported green.** That is how a bare
+`artifacts/…` path (for `.prawduct/artifacts/…`) reached a chunk body unflagged; the
+reviewer caught it by reading, and the gate was green throughout.
+
+Two false-positive classes had to go before coverage could widen, or fixing the resolution
+would have converted a silent gate into one blocking 21 refs across seven chunks:
+
+- **Plugin-relative shorthand (17 refs, 7 chunks).** A repo that *contains* the plugin
+  writes refs the way the plugin ships them (`lib/gates.py`, `skills/backlog/SKILL.md`);
+  those are root-relative nowhere. A repo may now **declare** a second ref root
+  (`build_plan_ref_root:` in `project-state.yaml`); prawduct declares `plugin`. Absent —
+  every consuming product — means the repo root is the only root.
+
+  **This landed wrong twice before it landed right, and the pattern is the finding.** First
+  cut resolved against `project_dir / "plugin"` unconditionally. Narrowed in build to
+  require a `plugin/.claude-plugin/plugin.json` manifest. **That was still wrong**, raised
+  by the owner against a real sibling repo: a governed product that *is* a Claude Code
+  plugin carries exactly that manifest, so the guard admitted the precise population it
+  existed to exclude. Both cuts share one defect — **the gate inferring its own permission
+  from filesystem shape.** Shipping a plugin, an extension, or a vendored tree is an
+  ordinary layout, not a statement of intent. The repo declares; the verifier never sniffs.
+  A declared root that escapes the repo, is absent, or is not a directory is ignored.
+- **Issue references and anchors.** A token carrying `#` (`owner/repo#12`,
+  `docs/api#usage`) names a location in a tracker or document, never a source file. That is
+  a property of the token's shape and true for every consumer, so it lives in
+  `_looks_like_file_path` — shared with `lib/risk.py`, whose behaviour change is pinned at
+  that consumer too.
+
+**A planned third rule was withdrawn during the build, and the reason is the durable part.**
+The plan called for skipping a ref that resolves nowhere, has no file extension, and whose
+first segment is absent — the conjunction meant to excuse a bare `owner/repo` slug. It
+would have made the gate **fail open on ambiguity**, the exact inverse of the governing
+norm (`architecture.md` — *authority fails closed*), and the silence would have been
+inflicted on every consuming product (stale `oldmodule/handlers`-shaped refs stop being
+reported) to absorb three tokens in this repo's own plan. Withdrawn. Ambiguity is reported
+and the *author* disambiguates; both escape hatches already existed — `<owner>/<repo>` for
+placeholders, a URL or unbackticked prose for a real repository. The three offending sites
+were fixed as prose, which is what they actually were.
+
+Tests pin the absence of the withdrawn rule as well as the presence of the new ones, so a
+later "simplification" cannot reintroduce it. Residual across all 11 chunks: **0 missing,
+with no fail-open rule anywhere in the path.** Suite 2781 passed / 7 skipped (was 2768).
+
+Covers **BLD-ZQ2V** parts (a) and (b). Chunk 02 (verify every chunk; block on the one under
+review, warn on the rest) is not built yet, so the gate still inspects only the resolved
+current chunk — the blindness is *survivable* now, not yet *fixed*.
+
+## 2026-07-28: A hyphen was deciding which backlog items were allowed to have an identity
+
+<!-- prawduct: type=fix | scope=v3.2.0-golive | chunks=05c | release=v3.2.0 | status=shipped -->
+
+The gate shipped one commit earlier (`7565787`) made *unaliasable* an exit-4 conflict. That was right,
+and it immediately collided with a decision already on the record: `migration-scrub-decisions.md`
+decision 4 (2026-07-18) accepts `MIG-M4-REMOVE` as *import as-is, no alias*, and decision 5 sets
+`--archive-scope all` so it does import. **Chunk 06 could satisfy the decision or the gate, not both.**
+
+The cause was a one-hyphen assumption baked into the id shape (`[A-Za-z][A-Za-z0-9]*-[A-Za-z0-9]+`) in
+**four** places. An id like `MIG-M4-REMOVE` matched none of them, so it parsed as unidentified, minted no
+`id:` alias, and tripped the gate. All four widen to `(-[A-Za-z0-9]+)+`:
+
+- `legacy.ID_RE` — parses the `[PFX]` marker out of the bullet.
+- `ids._PFX_RE` — backs `is_pfx`, which gates alias minting.
+- `migrate._ID_MARKER_RE` — strips the marker from the imported title. **The one that fails loudest if
+  left behind**: widen the parser without it and the item gets its alias while its title still reads
+  `[MIG-M4-REMOVE] Remove the shim`. Three-of-four is worse than none-of-four.
+- The step-1b grep in `skills/backlog/migration-scrub.md`.
+
+**Not an edge case.** Four such ids across three of fourteen local products (~21%), one each: prawduct
+`MIG-M4-REMOVE`, hallucinote `AUD-TIMBRE-CALIB`, scriob/scriob2 `ENG-9V2K-F`. The only already-migrated
+repo, `samsung-frame-art-loader`, carries none across the last six revisions of its backlog — so
+widening is a strict no-op there and no live repo needs a manual fix.
+
+**Widening beat every alternative because the others unwind recorded decisions.** Renaming in source
+contradicts decision 4 and `MIG-M4-REMOVE` is referenced in ~12 places including two shipped docstrings;
+`--archive-scope open` contradicts decision 5 and drops 121 archive items. Widening leaves decision 4
+true as written.
+
+- **A remedy in the runbook could never have worked.** Step 6 told operators that for `unaliasable` they
+  could "add the `id:PFX` label to the already-created issue by hand." `verify_migration` derives
+  `unaliasable` at `migrate.py:1163` from parsing the **source markdown alone** — it never inspects the
+  target — so nothing done to an issue clears that list, for any id, of any shape. The code's own remedy
+  string (`migrate.py:1212-1219`) always said the right thing ("give each a real PFX in the source
+  BEFORE importing"); the runbook prose disagreed with it. Now corrected.
+- **Step 1b's premise was the thing being deleted.** Its text said "what fails in practice is a second
+  hyphen" and gave `[AUD-TIMBRE-CALIB]` and `[MIG-M4-REMOVE]` as the worked examples — both now pass. It
+  is rewritten around the *residual* set: markerless (the most common, and the one its grep structurally
+  cannot find), no hyphen, not letter-led, or containing anything but letters/digits/single hyphens.
+- **The gate keeps its teeth.** A bracketed date stays rejected — that is what the leading-letter rule is
+  for — and a markerless item is still unaliasable, still exit-4. Three existing tests used a
+  multi-hyphen token as their "not a PFX" fixture; each is repointed at `[2026-07-28]` with every
+  assertion unchanged, since the widening invalidated the fixture, not the contract.
+- **Cost, accepted:** the marker slot gets slightly greedier for bracketed non-ids with 2+ hyphens
+  (`[pass-through-cache]`). Single-hyphen ones are already absorbed today, so this widens existing
+  behavior rather than introducing new behavior.
+- **`is_pfx` reaches past the importer — found by the Critic, not by the change's own blast-radius
+  survey.** `core.resolve_ref` gates an alias round-trip on `is_pfx`, and `normalize_id` Form 4 reads
+  the shell spelling `repo-number` by splitting on the last hyphen. So `samsung-frame-art-loader-12`
+  now satisfies **both** grammars where it satisfied one: it costs a label search that used to be zero
+  I/O, and an `id:samsung-frame-art-loader-12` alias would outrank the `owner/repo#12` reading. The
+  precedence rule itself is unchanged and was already documented at that call site — an exact,
+  uniqueness-checked alias beats a guess at a repo name, and the `repo-number` reading stands when no
+  alias exists. What widened is the population reaching it. The `#` spelling stays the I/O-free escape
+  hatch. Pinned three ways in `tests/test_backlog_core.py`.
+
+Verified live against this repo's own backlog: 333 items parse, `MIG-M4-REMOVE` absorbed, **zero**
+unaliasable remaining — Chunk 06's gate now clears — and both greps return zero hits, agreeing with the
+parser. Suite 2768 passed, 7 skipped. Filed as `BKL-72AS` against MIG-2.
+
+Critic (chunk, single-pass): 0 blocking, 3 warnings, 1 note — all resolved in this commit. The
+`resolve_ref` reach above was warning 1 and is the one worth remembering: the change's own survey
+enumerated the four *pattern copies* and stopped there, while the fifth surface was a **consumer**
+whose behavior the pattern silently governs. Warning 3 (a bare `artifacts/…` path that should be
+`.prawduct/artifacts/…`) is fixed; the accompanying note — that `verify-chunk-refs` inspects only
+Chunk 01 for this entire release, because the plan defers every checkbox to release, which is how that
+path reached the plan unflagged — is filed as its own defect rather than patched here.
+
+## 2026-07-28: The completeness gate reported 100% coverage on a backlog it could not fully see
+
+<!-- prawduct: type=fix | scope=v3.2.0-golive | release=v3.2.0 | status=shipped -->
+
+Two things at once, because the first never got an entry: `10ebfd5` shipped **verify-migration**, the
+F9 completeness gate — `samsung-frame-art-loader` recorded its cutover with 7 of 9 source items never
+imported, and the runbook's step-5 eyeball check ("Total issue count = every source item") could not
+catch it. The gate compares the **source set against alias coverage**, never issue counts: issues
+filed natively after a cutover carry a `prawduct` block but no `id:PFX` alias, so a raw count looked
+plausible (17 issues) while 7 items were stranded. That
+commit carried no change-log entry — the same omission `fad1e61` had corrected for the import
+heartbeat one commit earlier.
+
+> **Corrected 2026-07-29.** This paragraph said *"Exit 4, so step 6 gates on it mechanically."* The
+> **command** gates mechanically; **step 6 does not** — it is runbook prose an operator can skip,
+> which is precisely the argument F9 itself makes against human-eyeball steps. Overclaiming a prose
+> step as a mechanical gate is the failure this entry was written to describe, reproduced in the
+> entry describing it. What actually binds: `verify-migration` exits 4, and nothing forces an
+> operator to run it.
+
+**And the gate had the same blind spot it was built to close.** It derived the source set as
+`[r.pfx for r in records if r.pfx]`, so an item whose id is not a valid PFX fell *outside the
+comparison entirely* — it imports, nothing lands in `missing`, and a repo one item short of complete
+verifies clean. Found by reconciling two counts that disagreed: `hallucinote` reported 202 source
+items where the parser found 203. Both live backlogs carry exactly one such item today
+(`[AUD-TIMBRE-CALIB]`, `[MIG-M4-REMOVE]`) — so the first real migration would have hit it.
+
+- **`unaliasable` conflicts exactly as `missing` does.** A gate whose completeness claim is scoped to
+  what it happens to be able to key is the failure mode this command exists to end.
+- **`source_items` now counts every parsed item**, not just aliasable ones. It reads as "the complete
+  source set" and previously was not.
+- **The two lists have different remedies, so the message does not merge them.** `missing` re-imports
+  cleanly (alias-keyed, so migrated items skip). `unaliasable` does not: its idempotency key is a
+  digest of title+body, so giving the item a real PFX changes the key *and* the title, and a
+  re-import mints a **second** issue instead of adopting the first. Telling an operator to "re-run
+  import" for both would be wrong for the case that is harder to undo.
+- **The cheap fix is pre-import**, so the runbook gained step **1b** — find non-PFX ids before the
+  import, when the fix is a rename instead of a duplicate to reconcile. The accepted shape
+  (`ids._PFX_RE`) is deliberately lenient — one letter-led segment, a hyphen, one alphanumeric
+  segment — so what actually fails it is a **second hyphen**. The first draft of 1b's grep assumed
+  `[A-Z]{3}-[A-Z0-9]{4}` and flagged a dozen valid ids in both repos; it was run against both before
+  shipping and now mirrors the parser's own regex, returning exactly the one real hit in each.
+- **The tests were checked against the pre-fix code**, where the key one fails with
+  `source_items: 5, aliased: 5, missing: [], status: ok` on a six-item source — the silent pass,
+  reproduced rather than asserted.
+
+**Two more doors into the same failure, both closed by deleting a re-derivation.** The gate had
+hand-rolled its own copy of the importer's record assembly, and the copy had drifted:
+
+- **`--archive-scope open` was filtered by source *file*, where the importer filters by *status*.**
+  So every closed item in the **main** `backlog.md` was skipped by the import and counted as
+  `missing` here — measured on this repo's own backlog: 332 records, 180 kept under `open`, **152
+  false `missing`** (131 `shipped` + 21 `dropped`). Exit 4 is the cutover precondition and the
+  prescribed remedy is "re-run the import", which can never clear it; the escape an operator reaches
+  for next is a re-run under `all`, minting 152 closed issues into a store with no delete. The flag
+  was also silently ignored whenever `--archive` was absent.
+- **Duplicate-PFX collisions were discarded.** `collect_records` drops a collided item rather than
+  merging two items onto one alias, so it is never created — and, absent from `records`, it left
+  `missing` empty and the gate green. The one class of un-imported item the gate structurally could
+  not see.
+
+Both resolve by routing through the `collect_records` → `apply_archive_scope` pair `import_backlog`
+already uses, so the gate's source set **is** the importer's create set rather than a second
+derivation of it that can drift again. The `open` case is now pinned in both directions — the
+skipped items don't strand, and a genuinely un-imported *open* item still conflicts — because a
+scope fix that bought its silence by loosening the gate would be the same defect wearing the fix's
+clothes. `TestVerifyMigration` previously never passed `archive_scope` at all.
+
+Found by the Critic against committed HEAD, independently of (and concurrently with) the builder
+finding the pfx-less exclusion by reconciling a 202-vs-203 count disagreement — three instances of
+one class: *a completeness claim scoped to what the checker happens to be able to see*.
+
+The docstring's new `--archive-scope open` paragraph is bound by
+`TestArchiveScopeWarningTruthfulness`, which requires every literal mentioning that lever to say the
+skipped items remain in the git-tracked source markdown. It caught this one twice — once for
+omitting the clause, once for line-wrapping it across `source` / `markdown`.
+
+## 2026-07-28: A healthy migration was silent for 18–40 minutes, because every signal it had was exception-only
+
+<!-- prawduct: type=feat | scope=v3.2.0-golive | chunks=05b | release=v3.2.0 | status=shipped -->
+
+Completes **BKL-8K2N**. `aaf068f` shipped the pacing announcements and the summary footer; VRF-009
+then settled that under the serial importer **no budget ever binds** (`rest_point_waits: 0` **and**
+`content_creation_waits: 0`), so every one of those paths is exception-only and a healthy ~900-issue
+run emits nothing at all. An operator with no signal is an operator who kills a healthy run — and for
+an irreversible bulk write that is the expensive mistake.
+
+- **Progress is a different signal from pacing state** — *is it moving*, not *is it throttled*. So
+  this does not weaken `test_an_unthrottled_run_stays_quiet`; that guard keeps pacing output as
+  exception reporting and still passes unmodified, because the heartbeat carries no budget vocabulary.
+- **stderr only.** `--json` stdout is a machine contract (SEC-1 / VRF-004); a test parses the stdout
+  of a `--json` import that emits progress and fails if a line leaks.
+- **Count-based, not time-based** (`PROGRESS_EVERY = 25`) so output is deterministic without injecting
+  a clock. Silent below one interval, and suppressed on the final record where the summary follows.
+- **Ticks on every record including collisions** — the first shape `continue`d past the emit and
+  dropped a beat per collision, which is exactly the stretch where a silent gap reads as a hang.
+- **Live-proven (VRF-011) at 31 records/min** — below the 40–45 VRF-009 inferred, so a ~900-issue
+  migration is ~29 minutes and beats land every ~48 s. The constant was left alone deliberately; the
+  tuning lever and the shape *not* to take (a first-record special case) are recorded in the VRF.
+- **The reported REST-point figure remains a floor**, not an exact count (BKL-3H7W, still open) — the
+  `≥` in the output says so.
+
+## 2026-07-28: The review loop had no exit condition, and the builder was the only thing that could supply one
+
+<!-- prawduct: type=fix | scope=review-loop-termination | release=v3.2.0 | status=shipped -->
+
+Owner escalation: agents in production get trapped for 3–4 review rounds before giving up. Reproduced
+live this session — four rounds and ~40 minutes of review on a ~40-line code change, every finding
+correct, none blocking.
+
+- **The mechanism was not "warnings are too strict."** WARNING and NOTE gate nothing: both the PR gate
+  and the Stop gate require only *coverage* plus *zero unresolved BLOCKING*. The loop ran because
+  `building.md` said warnings "should be addressed," which reads as must-fix — so the agent fixes one,
+  the fix is a commit, the commit outruns coverage, a new pass runs, and that pass reviews **the
+  records just written**. Prose has no passing condition the way a test does, so each round found
+  something true about the previous round's narration.
+
+- **Round 4 was required by nothing.** `is_judgeable_path` already returns False for `change-log.md`,
+  `learnings.md` and plan prose — a commit touching only those needs no new coverage. The gate would
+  have passed. The round ran because the agent inferred "coverage must reach HEAD" from gate output
+  printed *before* those commits and never re-ran the one command that would have said otherwise.
+  **That is the production trap**: a stale gate line, carried forward as a belief.
+
+- **Rounds 2–3 were dragged in by a docstring.** Those fix commits were prose-only except for a
+  comment-only edit to a `.py` file, which is judgeable by extension. That is **COV-3M8Q**, already
+  open — filed, unmeasured, and worth ~13 minutes here.
+
+- **Three rules, split demand-side and supply-side.** Builder (`building.md`): once zero blocking
+  remain, **file the rest rather than fixing them**, and re-run the gate rather than inferring another
+  round. Critic (`review-protocol.md`): WARNING means true **and** worth the builder's time — name the
+  consequence or rate NOTE; record-only prose defaults to NOTE unless it ships as a false claim or
+  misleads someone into a wrong action. Full rule, bars, examples and the diminishing-returns signal
+  live in `review-cycle.md`, which carries no token budget.
+
+- **Both always-loaded files were at 4 tokens of headroom, and the budgets were raised — an owner
+  ruling, not a quiet edit.** `review-protocol.md` 3530 → 3620, `building.md` 4600 → 4660, departing
+  from MET-3Q8V's "stay green without raising budgets" and from the test comments' own "the next
+  addition trims or relocates first." Three compression passes ran first and landed +43 over; trimming
+  to fit would have deleted a real check to make room for a rule that removes far more work than it
+  costs. The rationale is recorded at both assertions. **The trim-or-relocate rule still stands** — it
+  was overridden once, on the record, for this.
+
+- **Not fixed here, deliberately:** COV-3M8Q (comment-only `.py` should be non-judgeable) is the code
+  half and stays open; these are the instruction-half changes the owner scoped first.
+
+## 2026-07-28: An empty field read as a clean bill of health, on a field the migration guarantees is empty
+
+<!-- prawduct: type=fix | scope=v3.2.0-golive | chunks=05b | release=v3.2.0 | status=shipped -->
+
+Two `pick` defects fixed before the irreversible migration makes them permanent. Both were found by
+reading the migration path to answer a different question — whether relationships survive the
+round-trip — and neither is what that question was looking for.
+
+- **The importer maps `related:` to no native edge, and `pick` reported that silence as an all-clear.**
+  `related:` is carried in the issue body; the only native-relationship code in `migrate.py` is the
+  *export* path. So every migrated item reads back zero native dependencies **permanently** — and
+  `_why` emitted "no open blockers" unconditionally, turning a guaranteed-empty field into a confident
+  verified result on every item in the backlog. The verdict now distinguishes **"no blockers recorded"**
+  from **"all N blockers closed"**. BKL-3N8Q filed this as an occasional silent failure; what the
+  migration actually does is make it universal and permanent, which is a different severity than the
+  one on file.
+
+- **The dependency fan-out was charged against backlog size, not against `limit`.** `limit` was applied
+  at the end, *after* one REST read per eligible issue had already run — so `pick --limit 1` against a
+  170-issue backlog paid 170 reads. Ranking never depended on blocker state, so the reads are now taken
+  lazily down the ranking and stop once the limit is filled; the result set is provably identical and
+  the cost is O(limit + blocked-skipped). A test pins that the laziness does not under-fill when the
+  top-ranked candidate turns out to be blocked.
+
+- **`related:` was deliberately NOT mapped to native `blocked_by`.** Most such links mean "see also",
+  not "blocked by", so synthesizing native edges from them would manufacture false blockers across the
+  whole backlog — strictly worse than recording none.
+
+- **The sweep below took three passes, and each pass was disproved by the next.** It is recorded as a
+  sequence rather than a conclusion, because every time it was declared finished it was not.
+
+  1. **Named sites.** The first pass corrected the surfaces encountered while making the code change
+     and marked the done-when ✅. Review rejected it: six more carried the claim, two in a file that
+     pass had edited.
+  2. **Phrase regex.** A whitespace-normalized search over every tracked file found a **seventh** no
+     enumeration could reach — `tests/spikes/s2_migration.py`'s `check_pick_latency` docstring,
+     instructing the next operator to draw the invalid inference. That one would have regenerated the
+     false conclusion on the next live run. This pass was written up as final. It was not.
+  3. **Concept query.** Review caught a site spelling it `batched-vs-N+1`, matching none of the
+     phrasings pass 2 queried. Searching the *concept* found **four more**: this release's own live
+     tracker asserting "shape confirmed batched-not-N+1" as a settled residual, the S2 step lists in
+     two design docs, and the spike's **module** docstring — sitting directly above the function
+     docstring pass 2 had just corrected.
+
+  The rule: **a completeness claim states the command that would falsify it and asserts that command's
+  current result.** A count of corrected sites is true of any prefix of the real set — which is why
+  "corrected in three places" survived review while being wrong, and why an earlier draft of this bullet
+  said "nine hits" while enumerating seven. Counts invite exactly that.
+
+  The command, and its result as of this commit:
+
+  ```
+  # every tracked file, whitespace-normalized; fan-out topic within 260 chars of
+  # batched/graphql/n+1 vocabulary, excluding windows carrying retraction markers
+  → 10 residual hits, 0 asserting the retracted claim
+  ```
+
+  All ten classified, none assumed: **5** in `backlog-service-test-specifications.md` are a *different*
+  GraphQL claim (ETag/304 is REST-only; `MarkedAsDuplicateEvent.canonical`), **2** are `nfr.md`'s dated
+  2026-07-16 C-2 review-history rows left deliberately, **1** is `templates/api-contract.md` listing
+  GraphQL as a generic surface type, **1** is the spike's `node_id` step (a genuine GraphQL id), and
+  **1** is this change's own regression test. `pass 3` is the last pass only in the sense that no pass 4
+  has run — the honest form of that sentence, given passes 1 and 2 each claimed otherwise.
+
+- **The claim's own verifying command did not resolve.** Every site asserted "no GraphQL in
+  `lib/backlog/`" — a pre-relayout path. There is no `lib/backlog/` from the repo root; it is
+  `plugin/lib/backlog/`. So the claim was confirmable by a grep that returned empty **for the wrong
+  reason** — an absence-claim citing a path whose absence produces the same evidence as the claim being
+  true. Corrected at seven sites, two of which were line-wrapped and therefore missed by a line-based
+  pass, which is the enumeration failure above recurring inside its own fix. Verified once, by hand, at
+  the time of the fix — **no persisted check asserts this**, and the general form (do intra-repo path
+  references resolve?) is already filed as **BLD-6P8T**; a bespoke "no GraphQL in X" probe would be the
+  narrow shape of a guard that item exists to design properly.
+
+  *This bullet said "a check now asserts…" until the review pass caught it. There is no such check —
+  what was added is a learnings rule, which is guidance, not an assertion. Recorded rather than quietly
+  reworded, because the entry teaching "state the command that would falsify it" claimed a falsifying
+  command it had not built, one bullet after teaching it.*
+
+- **A false claim about this mechanism was corrected in three places.** The design docs described the
+  fan-out as "a batched-GraphQL round-trip"; **there is no GraphQL anywhere in `plugin/lib/backlog/`** and
+  never was. VRF-009 had already recorded the correction against the probe that supposedly confirmed
+  it, but the claim still stood in `backlog-service-data-model.md`, the API contract, and
+  `build-plan-backlog-service.md`. A correction recorded in a verification note does not propagate
+  itself to the documents that carry the claim.
+
+- **One test assertion changed rather than being added around.** `test_returns_ready_unassigned_with_a_why`
+  pinned the literal string `"no open blockers"` — it pinned the defect. Updated in place with the
+  reason inline, and the distinction it used to blur is now pinned harder by two dedicated tests.
+
+## 2026-07-28: An allow-list cannot fence an op the skill can reach through an interpreter
+
+<!-- prawduct: type=fix | scope=v3.2.0-golive | release=v3.2.0 | status=shipped -->
+
+Cumulative-Critic warnings resolved as defects rather than filed as debt, plus the class each one
+turned out to belong to. The dividing line for this pass was **correctness and safety ship now,
+governance bookkeeping waits** — the norm dispositions, the Chunk 05 verify-api step, the runbook's
+chunk-number coupling and ONB-3F9P's status pointer are all deliberately still open, because fixing
+them *adds* governed surface and a simplification review is open against exactly that.
+
+- **The backlog grant narrowing reached three more skills, by deletion.** `janitor`, `pr` and
+  `runbook` each held `Bash(prawduct-hook backlog *)` plus its `python3` twin. All three reach the
+  backlog **through `/prawduct:backlog`** and none invokes the CLI — janitor's own text says so
+  ("Backlog context — through the skill, not the file"). Six dead grants removed, none added; the
+  13-op narrow list was **not** copied into three more files.
+
+- **The real exposure was never the backlog grant.** `janitor` was the only skill that never
+  declared `disable-model-invocation`, and the field is opt-**out**, so it was model-invocable by
+  omission. Its `Bash(python3 *)` — needed to drive whatever toolchain a product uses — semantically
+  permits `python3 plugin/bin/prawduct-hook backlog import`, re-granting the unrecallable ops the
+  allow-list exists to hold behind a prompt. **An allow-list cannot fence an op when the skill
+  legitimately needs the interpreter**, so the model-initiated path is closed at the skill instead.
+  The durable fix is a confirmation gate in the CLI, which binds regardless of caller; it is not
+  built here and is named debt, not a silent omission.
+
+- **`provision`/`reconcile-labels` were misclassified, and the inconsistency was the evidence.**
+  Generalizing the guard immediately caught `onboard` and `doctor` granting both no-prompt. They are
+  additive and idempotent by construction — `reconcile_labels` "corrects drift by adding what is
+  missing, never by removing" — so those grants are correct and the four-op set conflated two risk
+  classes. `IRREVERSIBLE_OPS` (`import`, `merge`) now binds every model-invocable skill; all four
+  still stay out of the backlog skill's own grant. Nothing was loosened.
+
+- **A value-taking flag swallowed the next flag.** `init-product`'s parser took the following token
+  unconditionally, so `--name --json --apply` scaffolded a product named `"--json"` **with JSON
+  output silently off** — a machine caller got a real repo and an unparseable result. The Critic
+  named one instance (a valueless `--backlog-repo` dropped in silence, forfeiting the one-shot
+  day-one Issues window); the defect was the class, and both flags shared it. A missing value now
+  yields `""`, which each flag's own validation already rejects loudly, and stays distinguishable
+  from absent.
+
+- **`init-product` reported its backend from intent, not outcome.** The recorded value came from the
+  request while the writer no-ops when the key is already present — so the report disagreed with the
+  tree the moment they diverged, and the caller uses that field to decide whether to provision.
+  It now reads back what the file holds.
+
+- **The `Transport` method-naming contract left its private docstring.** The pacing decorator
+  classifies reads and writes from the method-name prefix and raises on anything it cannot classify.
+  That constraint bound every implementer and was documented only inside `_PacingTransport`; it now
+  sits on `Transport`, where a method gets added.
+
+- **The "every REST call" sweep had an eighth surface, and its scope was the proxy this time.** The
+  two-pass sweep that produced *"a falsifying query is itself a mechanism and can carry the defect it
+  hunts"* enumerated code, docs and tests — and never looked at the change log's own history, where
+  the original entry still described the meter as exact. Corrected in place. A whitespace-normalized
+  scan of every tracked file now confirms the remaining matches are all records *of* the defect.
+
+- **Two paths had no regression guard and now do:** the flag-swallowing class, and the S2 spike's
+  standalone-script bootstrap — which nothing reached, because no test imports the spike, so a
+  removed bootstrap would have surfaced only when someone reached for it mid-migration.
+
+**Three findings from the cumulative review of the above, resolved in the same pass:**
+
+- **A cut mid-migration told the operator only that it broke.** `cli._emit`'s human error path printed
+  the code and message and dropped `error.details` — `created`/`skipped`/`collisions`/`resumable`/
+  `pacing`, which the envelope has carried all along. `migration-scrub.md` Step 4 drives `import`
+  **without** `--json`, so that was the surface that mattered. Details now print, with lists rendered
+  as counts (entry dicts are the wrong thing to show someone deciding whether to resume). Distinct
+  from BKL-8K2N's progress heartbeat, which remains unbuilt and deferred: this data already existed
+  at the moment it was needed and simply was not printed. Note the direction — `pacing_summary`'s
+  docstring claimed it "rides **every** exit path"; that was true of the envelope and false of the
+  surface, and the fix was to make the surface match rather than to soften the claim.
+
+  *That fix took two passes, and the second one is the lesson.* The first printed `pacing` through
+  the generic renderer, so the cut path emitted the raw dict — including a bare `rest_points_charged`
+  figure. The success path deliberately prints `≥N`, with a comment stating the `≥` is load-bearing:
+  the meter charges per transport **method** call, so the number is a floor (BKL-3H7W), and printing
+  it bare "would put a figure that reads exact in front of the one person sizing an irreversible
+  run." The fix for a legibility finding therefore reintroduced the exact-reading figure **at the
+  moment the operator most needs to know it is a floor** — the branch's own defect class, in the
+  commit closing it. The footer is now one shared builder used by both paths, because a second
+  construction is precisely where the `≥` went missing, and the test fixture pins the marker.
+
+- **The interpreter fence missed `gh`.** The `pr` skill is model-invocable and held `Bash(gh *)`,
+  which permits `gh issue create` while the skill drives only `gh pr checks|create|list|merge`.
+  Narrowed to `Bash(gh pr *)`. Same class as the `python3` grant one commit earlier — the fix landed
+  at the interpreter the review named, and the defect lived in the class.
+
+- **A comment introduced in the commit above was false.** It claimed the reported
+  `backlog_service_repo` is `None` on a dry run; a dry run reports the *requested* value, which is
+  the point of a dry run and is pinned by an existing test. Corrected, and it now warns the caller
+  that provisioning off this field without checking `applied` writes labels into a real repo whose
+  scaffold was never written.
+
+**Four earlier fix commits on this branch shipped production behavior with no change-log entry**
+(the Critic's finding, and it was correct). They are recorded here as one entry rather than four
+backdated ones: a record written after the fact should say so, not impersonate a contemporaneous
+one. Suite 2724 passed / 7 skipped.
+
+## 2026-07-28: The git-ref carveout was inert for the branch v3.2.0 is about to cut
+
+<!-- prawduct: type=fix | scope=v3.2.0-golive | release=v3.2.0 | status=shipped -->
+
+`develop` (v3.1.2) is integrated into the v3.2.0 adapter-safety branch, and the cumulative Critic
+over the merged bundle returned 0 blocking. Two of its warnings are closed here; both are the same
+defect this branch exists to fix — **a claim that outruns the mechanism behind it**.
+
+- **The git-ref carveout never covered a version-numbered branch.** `_looks_like_file_path`
+  (`plugin/lib/buildplan_refs.py`) skipped a backticked git ref only when its final segment
+  contained **no dot at all**. `release/v3.2.0`, `release/v3.1.2` and
+  `feature/v3.2.0-c02-adapter-safety` all carry dots, so every one of them was classified as a file
+  path and drew a **BLOCKING `missing-ref:`** from `verify-chunk-refs` — including the
+  `release/v3.2.0` branch this scope is about to cut, in prose this scope's own plans already
+  contain. The carveout now tests the **suffix shape** rather than the presence of a dot: a file
+  extension is short and alphabetic (`py`, `md`, `tsx`), while a version's trailing dot-part is not
+  (`v3.2.0` → `0`). `feature/foo.py` and `release/notes.v2.md` stay captured, so the widening does
+  not blind the verifier to genuine drift. Pinned by a parametrized regression test over four
+  version-numbered branch forms plus the multi-dot-path counter-case; the Critic flagged the
+  original as untested, and it was.
+
+- **The REST-point meter is a floor, and seven surfaces called it exact.** `_PacingTransport` charges
+  per transport **method** call, so a paged read (`list_labels`) issues several HTTP requests and is
+  charged once. The operator surface already printed `≥N` with a comment explaining why (BKL-3H7W);
+  every other surface still said the decorator charges "**every** REST call". All corrected to "every
+  transport method call", each naming the floor property: `plugin/lib/backlog/migrate.py`
+  (`_PacingTransport` docstring, the `import_items` inline comment, the `Pacer` class docstring, and
+  `Pacer.before_points`), `documentation/backlog-service-nfr.md` §3.3 and §9,
+  **`plugin/skills/backlog/migration-scrub.md`** — which ships to every consumer as the operator's
+  runbook for the irreversible migration — and `tests/test_backlog_migrate.py::TestPacingTransport`,
+  whose docstring stated the same false contract.
+  **VRF-009's `rest_points_charged: 5360` is annotated rather than altered** — the measurement
+  stands, but the undercount falls entirely on the read side, so the real figure is *higher* than
+  recorded and the headroom smaller than "296 pts/min against 900" implies. The conclusion survives
+  even a 3× read undercount (~644 pts/min); the margin should not be quoted as measured.
+
+  *This sweep took two passes, and the reason is the durable lesson.* The first pass corrected the
+  three sites the review named, ran `grep -rn "every.*REST call"`, got one hit, and recorded the
+  sweep as complete — but the claim **wraps across line breaks**, which a line-based grep structurally
+  cannot match. Four surfaces survived, including the shipped runbook. A whitespace-normalized sweep
+  found all of them. Captured in `learnings.md` as *a falsifying query is itself a mechanism and can
+  carry the defect it hunts*.
+
+**Not fixed here, and deliberately.** BKL-8K2N's progress heartbeat — Chunk 06's ~900-issue run would
+emit nothing for 18–40 minutes, since `rest_point_waits: 0` means the throttle announcements never
+fire and `migration-scrub.md` invokes import without `--json` — is real work gating Chunk 06, not an
+integration fixup, and is left to that chunk.
+
+**Not filed, and not deliberate.** An earlier revision of this entry claimed "the remaining warnings
+are filed." That was false: `.prawduct/backlog.md` carries **zero** items added 2026-07-28, and ten of
+the cumulative review's warnings have no backlog item under any date. Three topics have pre-existing
+items (BKL-3H7W, BKL-8K2N, CRT-2P8V); the rest are unrecorded, and so is the BLD-7K3Q residual this
+merge surfaced (the git-derived progress reading is gated on `views_enabled`, which is a proxy for
+"the checkboxes can't be trusted" — a defer-the-flip release convention reproduces the defect in any
+repo without the flag). Recorded here as an owed action rather than a completed one.
+
 ## 2026-07-27: The Critic's SubagentStop trigger had never fired (CRT-2J8N)
 
 <!-- prawduct: type=fix | release=v3.1.2 | status=shipped -->
@@ -479,9 +2029,161 @@ drifted list that the grep would pass. Both never-silent emission sites the audi
 are pinned, including the undelivered-note announcement — reachable through the real CLI on a failed
 write, and the half the incoming agent actually sees. Suite 2550 → 2572.
 
+## 2026-07-24: v3.2.0 go-live — Chunk 05 offline prep: SPIKE-S2 harness measures the paced archive burst, and runs standalone again
+
+<!-- prawduct: type=feature | scope=v3.2.0-golive | release=v3.2.0 | status=shipped -->
+
+Prep for Chunk 05's operator dry-run — the **offline half only**. The MG4 scrub *workflow* Chunk 05
+pairs with is already complete (`skills/backlog/migration-scrub.md`; its Step 0 target-bind landed in
+Chunk 03), so the genuine offline gap was the dry-run harness: as written it could not produce the
+paced-burst measurement Chunk 04 deferred to it (NFR §9 S2), and it could not even import.
+
+- **The SPIKE-S2 harness now measures the paced create-then-close burst.** `tests/spikes/s2_migration.py`
+  gains a `--archive-scope {all|open}` lever (default `all` — the volume lever *disabled*, so the run
+  proves the Pacer against the full archive, not a small input), constructs a `migrate.Pacer`, threads it
+  into `import_backlog(..., archive_scope=, pacer=)`, and a new `_record_pacing()` lifts its run-summary
+  counters into the settled facts: `rest_points_charged`, `rest_point_waits` (>0 ⇒ the 900-pts/min burst
+  was hit and paced), `rest_point_wait_seconds`, the content-creation waits, `archive_burst_wall_seconds`,
+  and the budget ceilings in force. Only the import routes through the paced transport (export uses the
+  raw one), so the point total reflects the burst alone. This is what lets the live dry-run *settle* the
+  pacing constants NFR §9 S2 leaves open, rather than recording archive *volume* alone.
+- **The harness runs standalone again (bugfix).** Since the v3.1.1 plugin relocation (GOV-4H7T) moved
+  `lib/` under `plugin/`, a standalone `python tests/spikes/s2_migration.py` died at import with
+  `ModuleNotFoundError: No module named 'lib'`: the script self-inserted the repo root, but the root
+  conftest the suite relies on inserts `plugin/`, and conftest never fires for a script run outside
+  pytest. The relocation updated every collected test's path but missed the one standalone script. Now it
+  mirrors conftest (`_SPIKE_DIR.parent.parent / "plugin"`). One-off — the only standalone script; all
+  other repo-root self-inserts are in pytest-collected files conftest rescues.
+
+**Not Chunk 05 complete** — done-when #1 (the live `--archive-scope all` dry-run on a throwaway repo) and
+#3 (record results to `operator-verification.md`) are operator acts over live `gh`; they remain. This
+entry carries no `chunks=` tag for that reason. Verified: clean import, `--help` exposes the flag,
+invalid `--archive-scope` rejected, no-`--yes` safety refusal (exit 2) intact, `_record_pacing` lifts a
+real Pacer correctly. Offline suite **2572 passed** (the harness is dev-only/L4, not pytest-collected —
+the change alters no CI test). Critic chunk-mode clean (0 blocking / 0 warning / 1 note — the note is the
+known `verify-chunk-refs` main-worktree false-positive, self-resolving at promotion).
+
+## 2026-07-24: v3.2.0 go-live — Chunk 04: Pacer meters total REST points for the create-then-close archive stretch (BKL-6X5D part b)
+
+<!-- prawduct: type=feature | scope=v3.2.0-golive | chunks=04 | release=v3.2.0 | status=shipped -->
+
+The migration Pacer paced only issue *creation* (the 80/min·500/hr content-creation cap), annotated
+"the only paced call." But an `--archive-scope all` run imports each archived item as a **create *and*
+a close** (2 writes + reconcile reads), so at the content cap the archive stretch spends ≈ 80×5
+(creates) + 80×5 (closes) + reads > 900 pts/min — breaching GitHub's **900 REST-points/min** secondary
+burst, which the create-only metering never accounted (BKL-6X5D part b). Its only prior mitigation was
+*incidental* `gh`-subprocess latency, forfeit by the raw-HTTP fast-path.
+
+- **The Pacer gains a second budget** — a **900 pts/min REST-points** window alongside the
+  content-creation window. GitHub's per-request costs (docs, verified 2026-07-24): **5 pts/write**
+  (POST/PATCH/PUT/DELETE), **1 pt/read** (GET/HEAD/OPTIONS). `before_points(cost)` blocks only when the
+  trailing minute would breach 900, then records the spend; `points_charged` is a run-summary metric.
+- **`_PacingTransport`** — a transparent transport decorator that charges **every transport method
+  call** by name-classification (`get_`/`list_` = read, `create_`/`update_`/`add_`/`remove_` = write).
+  A paged read is charged once, so the count is a floor, not an exact REST total. *(Corrected
+  2026-07-28: the eighth surface of the "every REST call" overclaim — the two-pass sweep above scoped
+  itself to code, docs and tests and never looked at the change-log's own history.)* Wired
+  in `import_items`, so the create, the reconcile reads, **and the close write** (via `core.set_status`,
+  which receives the wrapper) all count — not just the create. An unclassified transport method **raises**
+  rather than silently escaping the budget, closing the "only paced call" fragility at its root.
+- **Content-cap pacing is untouched** — `before_create` stays at the create site; the two windows are
+  orthogonal (content-creation vs. REST-points), so a create is charged to each once, no double-count.
+
+**Design confirmation (Done-when 0):** GitHub's point model (900/min; 5/write, 1/read) was verified
+against current docs before building — the fix-shape's constants are correct, so the chunk did not grow.
+**NFR §9 S2 (Done-when 2):** the archive stretch is now inside 900 pts/min *by construction*, proven by
+a deterministic throttle test; the **live burst measurement** is Chunk 05's `--archive-scope all`
+dry-run (S2 is now the live confirmation of the paced burst, not a discovery of whether it breaches) —
+NFR §3.3 + §9 updated to match. **Window quantification (i)** stays deferred (adopter-scale) — not
+pulled in. Eight new tests (Pacer points window, `_PacingTransport` classification + fail-loud,
+create+close metering, throttle-by-construction). Full offline suite **2571 passed**.
+
+**Backlog status flip deferred to release (Chunk 09)** per this release's `[ ]`-until-release
+convention (mirroring Chunks 02/03): BKL-6X5D part (b) is built and verified on
+`feature/v3.2.0-c02-adapter-safety`; the `status=shipped` flip rides the release, not this chunk.
+
+## 2026-07-24: v3.2.0 go-live — Chunk 03: scrub + grant safety rails (BKL-2Q7F · ONB-3F9P · BKL-5N9W · BKL-6J2X)
+
+<!-- prawduct: type=feature | scope=v3.2.0-golive | chunks=03 | release=v3.2.0 | status=shipped -->
+
+The four migration-path safety rails that keep an un-migrated repo from being routed into an
+irreversible, unpinned bulk write:
+
+- **BKL-2Q7F** — `skills/backlog/migration-scrub.md` gained a top-of-runbook **Step 0** that selects
+  and owner-confirms the target `owner/repo` (never inferred from the current git remote — a wrong
+  guess mints 100–250 undeletable GitHub issues), records it, and provisions the label taxonomy against
+  it. The runbook renumbered 0–6 and every one of the six `--repo <owner/repo>` placeholders now binds
+  to the single confirmed `<target>`. Recording the target is *not* the cutover — the
+  `backlog_service_repo` scalar flip stays at Step 6, after the import is verified. Handles the
+  not-a-GitHub-repo (or not-a-git-repo) case: the target is owner-named, so there is simply no default
+  to offer, never a silent fallback to the current remote.
+- **ONB-3F9P** (full close) — provisioning now has exactly one owner per entry path:
+  `init-product --backlog-repo owner/repo` records `backlog_service_repo` for a product adopting the
+  GitHub Issues backend from day one (offline, shape-only via `parse_repo` — no GitHub or even git
+  required to record; malformed → exit 1, no half-scaffold; ignored on a re-scaffold, which would be a
+  cutover); `/prawduct:onboard` provisions the taxonomy at adoption; `/prawduct:doctor` reconciles it
+  as a repair (Health Check #12, post-cutover only). The markdown backend stays the default and needs
+  none of this.
+- **BKL-5N9W** — the wildcard `Bash(prawduct-hook backlog *)` grant in `skills/backlog/SKILL.md`
+  narrowed to the 12 everyday no-prompt ops (both invocation forms; JNT-4R2M dual-form rule). The
+  high-consequence scrub ops (`import`/`merge`/`provision`/`reconcile-labels`) are deliberately out, so
+  they surface a permission prompt — defense-in-depth atop the runbook's owner-confirmation, not the
+  primary guard (CRT-9V4T caveat: a skill `allowed-tools` is a no-prompt allow-list, not a hard cap).
+  Pinned by `tests/test_backlog_skill_metadata.py`.
+- **BKL-6J2X** — the fleet-wide `backlog-service-migration-required` `warn` is **held**: registered but
+  wired to a no-op, so no un-migrated repo is auto-routed to `/prawduct:backlog scrub` until the path is
+  proven end-to-end. The probe's firing logic and its direct-call tests are intact; lifting the hold is
+  a one-line swap in `register()`.
+
+Critic (chunk mode) clean: 0 blocking / 0 warning / 0 note. Full offline suite **2563 passed**.
+
+**Backlog status flips deferred to release (Chunk 09), per this release's `[ ]`-until-release
+convention** (mirroring Chunk 02's BKL-8V3D) — the four items' work is built and verified on
+`feature/v3.2.0-c02-adapter-safety`; their `status=shipped` flip rides the release, not this chunk.
+**Owner decision (2026-07-24):** ONB-3F9P taken to a *full* close rather than split — the onboard
+`--backlog-repo` + provision legs (needing `init_product.py`/`bin` code) were built here, so all three
+provisioning entry paths land together.
+
+## 2026-07-24: verify-chunk-refs no longer false-positives on git branch names in plan prose
+
+<!-- prawduct: type=bugfix | scope=v3.2.0-golive | release=v3.2.0 | status=shipped -->
+
+Surfaced by Chunk 02's Critic review: `prawduct-hook verify-chunk-refs` flagged
+`` `feature/backlog-service-relayout` `` (a git branch name backticked in the go-live plan's
+Prerequisites) as a `missing-ref`, because `_looks_like_file_path` (`plugin/lib/buildplan_refs.py`)
+treats any backticked token containing `/` as a file path. A git ref is the same "contains `/`,
+isn't a file" family as the slash-command / glob / URL carveouts already there. Added a
+`_GIT_REF_PREFIXES` carveout: an extensionless token whose first segment is a git-flow prefix
+(`feature`, `fix`, `hotfix`, `release`, `bugfix`, `support`, `origin`, `upstream`) is a ref to skip —
+extension-gated, so a real path like `feature/gen.py` stays existence-checked and genuine drift is not
+blinded. Fixed the classification rather than de-backticking branch names (a warning on the release's
+PR-gate path, so working around it was not the right call). `TestVerifyChunkRefsGitRefs` covers it.
+Full suite 2554 passed.
+
+## 2026-07-24: v3.2.0 go-live — Chunk 02: the adapter's mutation-safety claim, made honest (BKL-8V3D)
+
+<!-- prawduct: type=bugfix | scope=v3.2.0-golive | chunks=02 | release=v3.2.0 | status=shipped -->
+
+`skills/backlog/adapter-mode.md` told the model that backlog "mutations follow the adapter's own
+`--apply`/dry-run … contracts (you never invent a mutation path)" — but `lib/backlog/` implements no
+such flag. That is not cosmetic: a migration/scrub run could walk a write path *believing a dry-run
+guarded it* (BKL-2Q7F's 100–250-real-issues blast radius). Corrected the claim to name the real
+mechanism — `restructure-preview` is the only preview-before-write; the upstream filing op brings its
+own preview-by-default (Chunk 08) — and added `tests/test_backlog_instruction_surface.py`, a guard that
+fails if any backlog instruction surface names a mutation preview/apply flag the CLI does not parse,
+closing the defect *class* rather than the instance (proven red→green). Full suite 2551 passed.
+
+**Build-time re-scope (recorded in `build-plan-v3.2.0-golive.md` Chunk 02):** the planning-altitude
+"shared adapter guard" keystone did not survive the code — the adapter is stateless about the product's
+own repo, so the migration guard (pins to runtime `backlog_service_repo`) and the file-upstream guard
+(pins to a fixed constant) share no mechanism. BKL-2Q7F's adapter leg moved to Chunk 03 (built with the
+skill step that records the target); the upstream target-pin/no-self-file/preview stay in Chunk 08 (with
+the egress-test replacement). Chunk 02 is BKL-8V3D only.
+
+
 ## 2026-07-21: the backlog service came back, laid out under plugin/ — and took the local-first norm with it
 
-<!-- prawduct: type=feature -->
+<!-- prawduct: type=feature | scope=backlog-service-v1 | release=v3.2.0 | status=shipped -->
 
 The v3.1.1 candidate tree was built by an allowlist prune (`fcb4e5f`, 113 insertions /
 16,942 deletions). Two things then happened independently: `feature/backlog-service` reverted that
@@ -728,7 +2430,7 @@ stamps), and the end-to-end early-check no-op through the real hook.
 
 ## 2026-07-20: `--archive-scope open` stops promising a backup that cannot exist; A1 decided `all`
 
-<!-- prawduct: type=fix -->
+<!-- prawduct: type=fix | scope=backlog-service-v1 | release=v3.2.0 | status=shipped -->
 <!-- Statusless = release-pending once develop→main ships. No scope= tag: a
      doc/claim correction plus one decision record; no build plan, no ## Status. -->
 
@@ -794,7 +2496,7 @@ green. The second half is the one that caught the `cli.py` site the first half m
 
 ## 2026-07-20: Two contradicting conventions adjudicated into norms; the cutover sweep becomes re-greppable (skills-cutover-awareness Chunk 04)
 
-<!-- prawduct: type=feature | scope=skills-cutover-awareness | chunks=04 -->
+<!-- prawduct: type=feature | scope=skills-cutover-awareness | chunks=04 | release=v3.2.0 | status=shipped -->
 
 The residue the inventory found, plus the two conventions Chunks 02–03 left contradicting with
 nothing deciding between them. Both are now `## Direction` norms with owners, because "nothing owns
@@ -859,7 +2561,7 @@ The routing is what's load-bearing, so the routing is now what's pinned.
 
 ## 2026-07-20: Janitor Backlog Health states dormancy; the overlap read is repointed (skills-cutover-awareness Chunk 03)
 
-<!-- prawduct: type=feature | scope=skills-cutover-awareness | chunks=03 -->
+<!-- prawduct: type=feature | scope=skills-cutover-awareness | chunks=03 | release=v3.2.0 | status=shipped -->
 
 The janitor's three backlog touchpoints, split by what each actually does with the data — the
 discriminator this chunk had to sharpen before it could be built:
@@ -888,7 +2590,7 @@ because `Bash(python3 *)` reaches the hook by the self-hosted path) and **BLD-7K
 
 ## 2026-07-20: The PR path stops resolving `closes:` against frozen markdown (skills-cutover-awareness Chunk 02)
 
-<!-- prawduct: type=feature | scope=skills-cutover-awareness | chunks=02 -->
+<!-- prawduct: type=feature | scope=skills-cutover-awareness | chunks=02 | release=v3.2.0 | status=shipped -->
 
 Chunk 01's dormancy contract, copied to the three backlog readers in the PR path. **R-2 is the
 highest-risk reader in the whole inventory**: it is the sole owner of the
@@ -914,7 +2616,7 @@ precondition pinned alongside it.
 
 ## 2026-07-19: Backlog-check dormancy is stated, not silently wrong (skills-cutover-awareness Chunk 01)
 
-<!-- prawduct: type=feature | scope=skills-cutover-awareness | chunks=01 -->
+<!-- prawduct: type=feature | scope=skills-cutover-awareness | chunks=01 | release=v3.2.0 | status=shipped -->
 
 `/prawduct:backlog` routes on `backlog_service_repo`; the other backlog readers do not. The Critic's
 Backlog Reconciliation and C-B1–C-B4 read `.prawduct/backlog.md`, which is frozen history once a
@@ -950,7 +2652,7 @@ compressing Goal 7's close instead. And repointing the stale `active_build_plan`
 chunk-heading guard, which turned out to be a drifted *test* rather than a plan defect (TST-6K3D).
 ## 2026-07-20: `--archive-scope` becomes discoverable, and stops being credited with the rate ceiling (BKL-6X5D part a)
 
-<!-- prawduct: type=fix -->
+<!-- prawduct: type=fix | scope=backlog-service-v1 | release=v3.2.0 | status=shipped -->
 <!-- Statusless = release-pending once develop→main ships. No scope= tag: a
      two-surface fix with no build plan, so there is no ## Status to regenerate. -->
 
@@ -1230,7 +2932,7 @@ than introduced here, and were fixed in place (owner-approved) rather than defer
 
 ## 2026-07-19: /prawduct:backlog skill repointed onto the GitHub-Issues adapter (backlog-skill-repoint)
 
-<!-- prawduct: type=feature | scope=backlog-skill-repoint | chunks=01,02 -->
+<!-- prawduct: type=feature | scope=backlog-skill-repoint | chunks=01,02 | release=v3.2.0 | status=shipped -->
 <!-- Statusless on feature/backlog-skill-repoint = release-pending once develop→main ships. -->
 
 **BKL-3W6K.** The GH-Issues migration built the `prawduct-hook backlog` adapter and repointed the
@@ -1357,7 +3059,7 @@ CRT-4T7M (newly filed), BLD-5J8N, CRT-7H2W, CRT-6W2N. Plan:
 
 ## 2026-07-18: Backlog service — resumable import envelope keeps its audit warnings (backlog-service)
 
-<!-- prawduct: type=bugfix | scope=backlog-service-v1 -->
+<!-- prawduct: type=bugfix | scope=backlog-service-v1 | release=v3.2.0 | status=shipped -->
 <!-- Statusless: bugfix on the importer resume path ahead of the deferred live leg (BKL-6M4T). -->
 
 **BKL-9V2W.** `migrate.import_items`' resumable mid-run error envelope (the
@@ -1379,7 +3081,7 @@ The live-migration audit trail must not lose these.
 
 ## 2026-07-18: Backlog service — owner-feedback gap-fills (backlog-service)
 
-<!-- prawduct: type=feature | scope=backlog-service-v1 -->
+<!-- prawduct: type=feature | scope=backlog-service-v1 | release=v3.2.0 | status=shipped -->
 <!-- Statusless: four PRD/owner-review gaps closed offline ahead of Chunk 06's deferred
      live leg; flips no chunk checkbox (06 stays deferred — BKL-6M4T). -->
 
@@ -1418,7 +3120,7 @@ migration leg stays deferred):
 
 ## 2026-07-17: Backlog service — GitHub Issues as the system-of-record (backlog-service)
 
-<!-- prawduct: type=feature | scope=backlog-service-v1 | chunks=01,02,03,04,05 -->
+<!-- prawduct: type=feature | scope=backlog-service-v1 | chunks=01,02,03,04,05 | release=v3.2.0 | status=shipped -->
 <!-- Statusless on feature/backlog-prd-owner-feedback = release-pending once merged.
      Large subsystem; plan at .prawduct/artifacts/build-plan-backlog-service.md, one
      commit per chunk, per-chunk Critic. Chunk 06's OFFLINE deliverables ride in this
@@ -4920,7 +6622,7 @@ and independent PR review both clean (0 blocking).
 
 ## 2026-05-23: v1.5.1 Chunk 04 — Three bundled backlog follow-ups
 
-<!-- prawduct: chunks=04 | status=shipped | scope=v1.5.1 -->
+<!-- prawduct: chunks=04 | release=v1.5.1 | status=shipped | scope=v1.5.1 -->
 
 **Why:** Three independent surgical fixes bundled to amortize the per-chunk Critic-pass overhead. Each was filed in the backlog and is too small for its own chunk.
 
@@ -4938,7 +6640,7 @@ and independent PR review both clean (0 blocking).
 
 ## 2026-05-23: v1.5.1 Chunk 03 — Expose `compute-verify-resolutions-scope` as CLI subcommand
 
-<!-- prawduct: chunks=03 | status=shipped | scope=v1.5.1 -->
+<!-- prawduct: chunks=03 | release=v1.5.1 | status=shipped | scope=v1.5.1 -->
 
 **Why:** Defense-in-depth gap surfaced by v1.5 Chunk 02 NOTE. The widening-threshold demotion logic lived inside the stop-hook helper `_compute_verify_resolutions_scope`; the Critic agent computed verify-resolutions scope from SKILL.md prose. If the agent misapplied the prose, it would write a findings file with a wrong `files_reviewed` set and the gate's subset check would accept it (gate enforces only subset, not widening). Two independent computations of the same rule is a drift waiting to happen.
 
@@ -4954,7 +6656,7 @@ Critic SKILL surfaces updated to call the subcommand instead of computing scope 
 
 ## 2026-05-23: v1.5.1 Chunk 02 — Critic `allowed-tools` deny-list (block pytest)
 
-<!-- prawduct: chunks=02 | status=shipped | scope=v1.5.1 -->
+<!-- prawduct: chunks=02 | release=v1.5.1 | status=shipped | scope=v1.5.1 -->
 
 **Why:** Recurring violation of memory rule `feedback_critic_no_test_execution.md` ("Critic should not run tests"). Wave 2 cumulative-Critic invoked pytest despite the prose. Root cause: with `permissions.allow` `Bash(python3:*)` at the project level (settings.local.json), the prose-only restriction is unenforceable.
 
@@ -4972,7 +6674,7 @@ Critic SKILL surfaces updated to call the subcommand instead of computing scope 
 
 ## 2026-05-23: v1.5.1 Chunk 01 — `regen-views` scope-aware Status flipping
 
-<!-- prawduct: chunks=01 | status=shipped | scope=v1.5.1 -->
+<!-- prawduct: chunks=01 | release=v1.5.1 | status=shipped | scope=v1.5.1 -->
 
 **Why:** Active v1.5 bug. `collect_shipped_chunks` unioned every `chunks=` tag across all change-log entries, ignoring `scope=`. v1.4 chunks 05/06/07 share IDs with v1.5 chunks 02/05/06/07; every `regen-views` run would re-flip the wrong checkboxes, so v1.5 chunks were marked `[x]` by hand with an HTML-comment warning telling builders not to run regen. First Tier-1 item in the v1.5.1 backlog-followups plan.
 
@@ -5025,7 +6727,7 @@ Critic SKILL surfaces updated to call the subcommand instead of computing scope 
 
 ## 2026-05-22: Chunk 06 — Methodology + template refresh (inference-first, four-mode table)
 
-<!-- prawduct: chunks=06 | status=shipped | scope=v1.5 -->
+<!-- prawduct: chunks=06 | release=v1.5.0 | status=shipped | scope=v1.5 -->
 
 **Why:** v1.5 Chunks 01–05 landed the proportionality machinery (verify-resolutions mode, no-arg inference, `Type: trivial` with structural enforcement, Critic Goal 3 rationale-vs-diff check, `/pr` trivial fast-path). Prose surfaces still spoke the v1.4 vocabulary: "Each chunk declares `Critic mode: chunk | final`", "fail-safe default if the field is absent", no mention of inference as the canonical path, no mention of `cumulative` or `verify-resolutions` in the per-chunk authoring narrative. This chunk closes the doc gap — narrative now leads with `/critic` (no args) → inference; explicit `Critic mode:` field is reframed as override; all four modes named consistently across methodology, agent SKILL files, and templates.
 
@@ -5060,7 +6762,7 @@ Critic SKILL surfaces updated to call the subcommand instead of computing scope 
 
 ## 2026-05-22: Chunk 05 — Critic protocol for `Type: trivial` + `/pr` trivial fast-path
 
-<!-- prawduct: chunks=05 | status=shipped | scope=v1.5 -->
+<!-- prawduct: chunks=05 | release=v1.5.0 | status=shipped | scope=v1.5 -->
 
 **Why:** v1.5 thread B (Trivial-code fast-path; see plan Motivation lines 30-32) completes here. Chunk 04 landed the `Type: trivial` declaration with two machine-enforced layers (file-set bounds + required rationale presence). Both layers are *structural* — they catch catastrophic-blast-radius classes and empty-claim violations without semantic understanding. The judgment backstop — does the rationale's claim actually fit the diff? — needs the Critic, who reads both. Chunk 05 adds the Critic Goal 3 sub-check that closes that loop, and the parallel PR-boundary fast-path that lets a PR composed entirely of fileset-eligible commits skip the cumulative-Critic + PR-reviewer gates (their per-chunk reviews already provided the relevant scrutiny — re-running them adds latency, not signal).
 
@@ -5092,7 +6794,7 @@ Critic SKILL surfaces updated to call the subcommand instead of computing scope 
 
 ## 2026-05-22: Chunk 04 — `Type: trivial` chunk type + structural enforcement
 
-<!-- prawduct: chunks=04 | status=shipped | scope=v1.5 -->
+<!-- prawduct: chunks=04 | release=v1.5.0 | status=shipped | scope=v1.5 -->
 
 **Why:** v1.5 thread D — proportionality at the chunk-type axis. Some chunks are semantically simple (project-wide renames, type-annotation passes, learnings-only appends) but currently must pay full `code`-type Critic protocol because no lighter type exists. Adding a `trivial` type without structural enforcement would invite over-declaration (the "small change" misclaim pattern), undoing the proportionality the type is meant to enable. This chunk lands the type AND the two enforcement layers that make over-declaration loud (BLOCKING with a named bound), not silent.
 
@@ -5118,7 +6820,7 @@ Critic SKILL surfaces updated to call the subcommand instead of computing scope 
 
 ## 2026-05-22: Chunk 03 — `/critic` no-arg mode inference
 
-<!-- prawduct: chunks=03 | status=shipped | scope=v1.5 -->
+<!-- prawduct: chunks=03 | release=v1.5.0 | status=shipped | scope=v1.5 -->
 
 **Why:** Last piece of v1.5 thread C. With Chunks 01 (`commit_reviewed` anchor) and 02 (`verify-resolutions` mode) shipped, the builder still had to declare `Critic mode:` in every chunk and pass it explicitly to `/critic`. This chunk collapses the four-mode caller burden by inferring mode from git + build-plan state. Explicit args still win — the override path is preserved.
 
@@ -5144,7 +6846,7 @@ Critic SKILL surfaces updated to call the subcommand instead of computing scope 
 
 ## 2026-05-21: Chunk 02 — `/critic verify-resolutions` mode + stop-hook gate awareness
 
-<!-- prawduct: chunks=02 | status=shipped | scope=v1.5 -->
+<!-- prawduct: chunks=02 | release=v1.5.0 | status=shipped | scope=v1.5 -->
 
 **Why:** v1.5 thread C — the "Critic flagged 1-2 BLOCKING findings, builder fixed them, re-review pays full chunk-mode latency to confirm a one-line change" friction motivated this work (backlog entry 2026-05-20). Chunk 01 added the `commit_reviewed` anchor; this chunk lands the mode that uses it.
 
@@ -5216,7 +6918,7 @@ Critic SKILL surfaces updated to call the subcommand instead of computing scope 
 
 ## 2026-05-19: Chunk 13 — F9 learnings lifecycle sentinel tracker
 
-<!-- prawduct: chunks=13 | status=shipped | scope=v1.4 -->
+<!-- prawduct: chunks=13 | release=v1.4.0 | status=shipped | scope=v1.4 -->
 
 **Why:** Learnings accumulate in `.prawduct/learnings.md` faster than they retire. By the time a rule's failure mode is structurally enforced by a test, the rule itself is still consuming active-rules attention; the file grows until grep-for-relevance stops working. F9 closes the lifecycle gap with three signals (confirmations, created, sentinel) that let the audit identify candidates for promotion (advisory), retirement (sentinel-pass entries moved to historical detail), and stale flags (>90 days, single-confirmation entries). The point isn't to automate retirement — it's to surface what's mechanically eligible so the user makes deliberate keep-or-retire calls instead of letting the file drift.
 
@@ -5238,7 +6940,7 @@ Critic SKILL surfaces updated to call the subcommand instead of computing scope 
 
 ## 2026-05-19: Chunk 12 — F5b settings-layout migration command + product-repo dry-run
 
-<!-- prawduct: chunks=12 | status=shipped | scope=v1.4 -->
+<!-- prawduct: chunks=12 | release=v1.4.0 | status=shipped | scope=v1.4 -->
 
 **Why:** Wave 3 closes F5 with the user-facing opt-in pair to F5a's silent auto-commit. F5a quarantines framework-managed drift to single `chore(sync):` markers on every sync; F5b stamps the product as explicitly on the canonical minimal settings.json layout so v1.4.1's planned Critic NOTE on un-stamped repos has a single state bit to read. The chunk is mostly a *signal* operation: for products that have been syncing regularly (the framework template's hook block has been at the canonical minimal shape — single-line `python3 product-hook <event>` dispatches — since v1.3.x), the migration is a no-op file-wise. For older repos with v1/v3 hook markers (`framework-path`, `governance-hook`, `prawduct-statusline`) that normal sync skipped, the migration runs an aggressive `legacy_cleanup=True` pass and strips them. The manifest flag is the contract; the file mutation is the side-effect when applicable.
 
@@ -5260,7 +6962,7 @@ Critic SKILL surfaces updated to call the subcommand instead of computing scope 
 
 ## 2026-05-19: Chunk 11 — F5a sync auto-commit + protected-branch preconditions
 
-<!-- prawduct: chunks=11 | status=shipped | scope=v1.4 -->
+<!-- prawduct: chunks=11 | release=v1.4.0 | status=shipped | scope=v1.4 -->
 
 **Why:** Every framework upgrade left product repos with framework-managed drift co-mingled in unrelated chunk commits — three downstream repos showed banner-rename + product-hook drift mixed with chunk diffs every release, generating Critic NOTEs that the chunk owner had no business addressing. F5a quarantines framework drift to one dated marker commit per upgrade so chunk diffs stop carrying upstream churn. The chunk also lands the precondition-gated safety surface that lets the auto-commit ship default-on without surprising users: WIP, protected branches, and in-progress git ops each block the commit and surface a marker the next session sees.
 
@@ -5288,7 +6990,7 @@ Critic SKILL surfaces updated to call the subcommand instead of computing scope 
 
 ## 2026-05-19: Chunk 10 — F4c migration tooling + fingerprint terminology cleanup
 
-<!-- prawduct: chunks=10 | status=shipped | scope=v1.4 -->
+<!-- prawduct: chunks=10 | release=v1.4.0 | status=shipped | scope=v1.4 -->
 
 **Why:** Wave 3 closer. Chunks 08/09 shipped the F4 schema (`verifier`-discriminated coverage fields) and Critic enforcement (`verify-coverage` BLOCKING per missing file). Chunk 10 closes the loop with a user-facing opt-in path so products can move from "schema dogfooded, enforcement off" to "enforcement on" deliberately — not silently on sync (which would surprise downstream products with sudden BLOCKING findings). Also folds in the v1.5-deprecation signaling for legacy evidence shape and a terminology cleanup of "fingerprint" — the tree-hash mechanism that name referred to was removed pre-v1.4, but the word lingered in 5 spots where it was actively misleading.
 
@@ -5318,7 +7020,7 @@ Critic SKILL surfaces updated to call the subcommand instead of computing scope 
 
 ## 2026-05-19: Chunk 09 — F4b Critic symbol-coverage check + methodology principle
 
-<!-- prawduct: chunks=09 | status=shipped | scope=v1.4 -->
+<!-- prawduct: chunks=09 | release=v1.4.0 | status=shipped | scope=v1.4 -->
 
 **Why:** Chunk 08 shipped the F4a schema (every chunk now emits `verifier` / `tests_executed` / `changes_referenced` / `coverage_level`) but no enforcement read it. F4b closes the loop: when a project opts in via `coverage_required: true`, the Critic's Goal 1 cross-checks the diff against `changes_referenced` and emits BLOCKING per missing file, with language scaled to the declared `coverage_level` — floor (`referenced`) explicitly disclaims execution; `executed` does not. The chunk's other half is the methodology principle in `building.md` that names what the floor doesn't prove, so authors don't treat "verifier reported clean" as "tests cover this change."
 
@@ -5340,7 +7042,7 @@ Critic SKILL surfaces updated to call the subcommand instead of computing scope 
 
 ## 2026-05-19: Chunk 08 — F4a evidence-schema extension + reference floor verifier
 
-<!-- prawduct: chunks=08 | status=shipped | scope=v1.4 -->
+<!-- prawduct: chunks=08 | release=v1.4.0 | status=shipped | scope=v1.4 -->
 
 **Why:** Wave 3 opener. The framework's safety claim "tests passed" is currently falsifiable on untested new code — `.test-evidence.json` records pass/fail counts but never asserts that the tests actually *referenced* the code that changed. F4a closes the schema half of this gap: extend the evidence record with four coverage fields (additive, compat-preserving) and ship a reference verifier so products on Python have a working floor implementation. The Critic enforcement that *uses* this data lands in Chunk 09 (F4b); the migration tooling + fingerprint cleanup lands in Chunk 10 (F4c).
 
@@ -5366,7 +7068,7 @@ Critic SKILL surfaces updated to call the subcommand instead of computing scope 
 
 ## 2026-05-19: Chunk 07 — F1c sync auto-enables derived views for existing repos
 
-<!-- prawduct: chunks=07 | status=shipped | scope=v1.4 -->
+<!-- prawduct: chunks=07 | release=v1.4.0 | status=shipped | scope=v1.4 -->
 
 **Why:** Chunks 05–06 shipped the views pipeline behind `views_enabled: true` with `false` as the template default — products had to opt in via a planned `prawduct-doctor migrate v1.4 --enable-views` migration command. During Chunk 07 planning the user redirected: "all users should get views for free, with no mandatory opt-in. it will be fine." That collapses migration tooling into the sync path (which every existing repo already runs every session) and removes the need for the doctor migration subcommand entirely. The compat shim that matters — untagged legacy entries still render unchanged — already lives in the views.py tag-filtering logic from Chunk 05.
 
@@ -5390,7 +7092,7 @@ Critic SKILL surfaces updated to call the subcommand instead of computing scope 
 
 ## 2026-05-18: Chunk 06 — F1b remaining views (release-notes + scope-rollups + doctor views)
 
-<!-- prawduct: chunks=06 | status=shipped | scope=v1.4 -->
+<!-- prawduct: chunks=06 | release=v1.4.0 | status=shipped | scope=v1.4 -->
 
 **Why:** F1a (Chunk 05) shipped the schema, the parser, and one view (build-plan Status). F1's load-bearing premise — *one canonical store, multiple derived views replacing hand-curated summaries* — needs the remaining two views (release notes, scope rollups) before Chunk 07 can ship migration tooling. The doctor `views` subcommand fills the F1 deliverable for ad-hoc inter-commit regen and gives `/prawduct-doctor` users a one-stop dry-run/refresh surface.
 
@@ -5416,7 +7118,7 @@ Critic SKILL surfaces updated to call the subcommand instead of computing scope 
 
 ## 2026-05-18: Chunk 05 — F1a derived views (work-log schema + Status view)
 
-<!-- prawduct: chunks=05 | status=shipped | scope=v1.4 -->
+<!-- prawduct: chunks=05 | release=v1.4.0 | status=shipped | scope=v1.4 -->
 
 **Why:** F1's load-bearing premise (one canonical store, derived views replacing hand-curated summaries) needs a working derived-view pipeline before the remaining views (release notes, scope) can land in Chunk 06 and migration tooling in Chunk 07. Chunk 05 ships the schema, the parser, the first view (build-plan Status), and the source-of-truth guardrails threaded across Critic + PR-reviewer + methodology surfaces.
 

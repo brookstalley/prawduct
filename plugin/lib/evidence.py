@@ -425,10 +425,75 @@ def tree_diff(project_dir: Path, tree_a: str, tree_b: str) -> "list[str] | None"
     return [line for line in out.splitlines() if line.strip()]
 
 
+def tree_entries(project_dir: Path, tree: str) -> "list[tuple[str, str, str]] | None":
+    """``(mode, object_id, path)`` for every entry in ``tree``, or ``None``
+    when the tree cannot be read (missing object, git failure) — never
+    guessed, the same direction as :func:`tree_diff`.
+
+    **Mode is part of the identity, not decoration.** ``git diff`` reports a
+    path whose mode changed even when its blob is byte-identical (``chmod
+    +x``, a file becoming a symlink at 120000, a gitlink at 160000). A caller
+    comparing trees by ``(object_id, path)`` alone would call those trees
+    equal where git calls them different — and for a caller deciding whether
+    a change needs review, that difference is a fail-OPEN. Carrying the mode
+    keeps this function's notion of "same content" no looser than git's.
+
+    Lets a caller decide whether two trees agree on some *subset* of their
+    content without asking git to diff the pair: equal content over a subset
+    is equality of a per-tree value, so n trees cost n calls rather than n².
+
+    ``-z`` because git quotes paths containing spaces or non-ASCII bytes in
+    its default output, and a quoted path classifies differently from the
+    real one — the same trap ``gitstate.parse_porcelain_line`` exists to
+    absorb, met here before it can bite.
+    """
+    if not (isinstance(tree, str) and tree):
+        return None
+    rc, out, _err = run_git(project_dir, "ls-tree", "-r", "-z", "--full-tree", tree)
+    if rc != 0:
+        return None
+    entries: list[tuple[str, str, str]] = []
+    for record in out.split("\0"):
+        if not record:
+            continue
+        meta, _tab, path = record.partition("\t")
+        if not path:
+            continue
+        fields = meta.split()
+        if len(fields) < 3:
+            continue
+        mode, _type, object_id = fields[0], fields[1], fields[2]
+        entries.append((mode, object_id, path))
+    return entries
+
+
 # ---------------------------------------------------------------------------
 # CLI (``prawduct-hook evidence <status|list>``) — the stable allowlistable
 # surface (R4); skills scope to ``Bash(prawduct-hook evidence*)``.
 # ---------------------------------------------------------------------------
+
+# The store is append-only, shared by every worktree of the clone, and never
+# pruned. Composition cost is linear in the number of distinct TREES it
+# mentions (not facts), so that is the number worth watching — and watching it
+# is the whole point: a deferral whose trigger nothing measures fires only if
+# someone happens to notice, which is the same silence the gates exist to end.
+# Advisory, never a block: `nonfunctional-requirements` makes state-file growth
+# something that prompts compaction, not something that stops work.
+TREE_COUNT_ADVISORY = 10_000
+
+
+def distinct_trees(facts: list[dict]) -> set[str]:
+    """Every tree id the store's facts mention, on either side of an edge —
+    the node set coverage composition actually walks."""
+    trees: set[str] = set()
+    for fact in facts:
+        body = fact.get("body") or {}
+        for key in ("base_tree", "head_tree"):
+            value = body.get(key)
+            if isinstance(value, str) and value:
+                trees.add(value)
+    return trees
+
 
 _CLI_USAGE = "Usage: prawduct-hook evidence {status|list [--kind <k>] [-n <count>]}"
 
@@ -464,6 +529,15 @@ def _cmd_status(project_dir: Path) -> int:
         by_kind[fact["kind"]] = by_kind.get(fact["kind"], 0) + 1
     counts = ", ".join(f"{k}={n}" for k, n in sorted(by_kind.items())) or "none"
     print(f"facts: {counts}")
+    trees = distinct_trees(result["facts"])
+    print(f"trees referenced: {len(trees)}")
+    if len(trees) >= TREE_COUNT_ADVISORY:
+        print(
+            f"NOTE: {len(trees)} distinct trees. Coverage composition is linear in this "
+            "count, so the store has reached the size where compaction is worth "
+            "scheduling. Advisory only — nothing is blocked, and a fact may only be "
+            "dropped if no surviving path can traverse it (reachability, not age)."
+        )
     if result["duplicates"]:
         print(f"duplicate appends tolerated: {result['duplicates']}")
     if result["excluded"]:

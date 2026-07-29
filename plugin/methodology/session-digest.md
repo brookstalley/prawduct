@@ -45,9 +45,18 @@ inference as a vetoable assumption. Full model: `methodology/discovery.md` "Cali
 - **Feature-branch medium+ work.** Don't create PRs unless asked — then use `/prawduct:pr`.
 - **Forward notes go in `.prawduct/.handoff-notes.md`** — yours to write (as is
   `.session-reflected`, its backward-looking twin), and the session channel that carries your
-  intent across a `/clear`. Write it at each chunk close, not
-  when the user asks to clear — "nothing beyond the plan" if that is the truth, but write the
-  line rather than no file, which reads to the next session as an omission.
+  intent across a `/clear`. Write it at each chunk close, and **never ask whether to prepare
+  one — prepare it, then say `/clear` is safe.** Asking costs a round-trip and, if the user
+  stepped away, replays a large context into a cold cache: the exact cost the handoff prevents.
+  Preparing unasked costs little, and they may continue in place. "Nothing beyond the plan" if
+  that is the truth, but write the line rather than no file, which reads as an omission.
+  **Read it before rewriting it, and reconcile — never blind-append.** Only `/clear` consumes
+  that file, so a second batch finds the first's notes still sitting there; go straight to a
+  write and you delete live items you never read. Each write drops what the work just discharged,
+  corrects what moved, and keeps only what still bites. When a session runs a second batch,
+  its close REWRITES the first batch's notes rather than stacking a new section on them — a
+  stratified file makes the next reader guess which layer is still live, and the layer that
+  reads most current is usually the one the work already closed.
   `.prawduct/.session-handoff.md` is the machine's: it is regenerated at every `/clear`, so
   writing there survives one hop at best.
 - **No attribution trailers by default.** Don't add `Co-Authored-By`, `Signed-off-by`, or
@@ -59,10 +68,12 @@ inference as a vetoable assumption. Full model: `methodology/discovery.md` "Cali
   settings disallow it), surface it — never silently fall back to `--squash`. Where squash
   or rebase-merge IS configured, branches are single-use: delete after merge, never reuse (a
   reused branch's pre-rewrite merge-base over-counts already-merged work at every review gate).
-- **Backlog goes through `/prawduct:backlog`** — pick/add/update/dedup via the skill, not
-  hand-edits. "Done" = `update status=shipped` → `## Archive` (never strikethrough, never left
-  in `## Open`). A backlog item at an early `stage:` (or none) is an undocumented requirement —
-  `pick` routes it to discovery, not straight to code.
+- **Backlog goes through `/prawduct:backlog`** — pick/add/update via the skill, not hand-edits;
+  it routes to whichever backend `backlog_service_repo` selects. "Done" = `update
+  status=shipped` (on the markdown backend that moves the item to `## Archive` — never
+  strikethrough, never left in `## Open`; on the Issues backend it closes the issue, and
+  `dedup` is not available yet). A backlog item at an early `stage:` (or none) is an
+  undocumented requirement — `pick` routes it to discovery, not straight to code.
 
 ## Principles (apply with judgment, not mechanically)
 

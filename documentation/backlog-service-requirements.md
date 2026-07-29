@@ -1,12 +1,11 @@
 # Backlog Service — Requirements
 
-`status: draft v3 — owner review incorporated 2026-07-14 · added: 2026-07-13 · source: discovery session · stage: requirements`
+`status: draft v3.2 — consolidation pass 2026-07-23: this is now the SINGLE durable requirements doc for the backlog service. It absorbs and retires the predecessor `backlog-system-requirements.md` (its still-live governance/item semantics carried forward as GV10–GV13 + the MG1 foreign-import SHOULD; its markdown-in-git storage/transport decisions dropped as superseded), and folds in the upstream bug-reporting requirements formerly stranded in the shipped `build-plan-upstream-bug-reporting.md` (an ephemeral build plan — drop-box mechanism) and in the BKL-9XQ2 / BKL-7Q4M backlog items (now XP4–XP7). Prior: v3.1 — owner review incorporated 2026-07-14; PRD independent-review pass fed back 2026-07-16 — four requirements discovered during PRD design written back here per Principle 6: CC5 (human-UI-edit drift reconciliation), PV4 (public-submission abuse handling), GV6 (label-taxonomy provisioning + existing-Issues coexistence), MG4 (one-time pre-migration scrub) · added: 2026-07-13 · source: discovery session · stage: requirements`
 
-Predecessor spec for the current git-file system: `documentation/backlog-system-requirements.md` —
-item *semantics* (metadata, stage routing, archive discipline) carry forward; its storage and
-transport decisions are superseded here. Evidence below is from a 2026-07-13 sweep of all 16
-local checkouts of the 8 backlog-bearing projects (prawduct, scriob, discodon, hallucinote,
-cordyceps, trenchant, puzzles, metallm).
+The retired predecessor `documentation/backlog-system-requirements.md` carries a SUPERSEDED banner
+pointing here; git history holds its full original text and the git-file-era rationale. Evidence
+below is from a 2026-07-13 sweep of all 16 local checkouts of the 8 backlog-bearing projects
+(prawduct, scriob, discodon, hallucinote, cordyceps, trenchant, puzzles, metallm).
 
 ## Problem
 
@@ -114,6 +113,13 @@ MUST unless marked SHOULD.
   reaping stays a policy/human call.
 - **CC4** Every mutation records actor identity — which human, or which agent acting for whom, from
   which project/session — kept as per-item history. Git's free audit log gets replaced, not lost.
+- **CC5** The adapter tolerates and reconciles **out-of-band human edits** made directly in the
+  GitHub UI: a collaborator who removes a `stage:` label, closes an issue with no state-reason, or
+  relabels an item must not corrupt the two-axis encoding (DM2). Drift is detected and either
+  self-heals (labels re-derived from open/closed + state-reason where derivable) or is surfaced
+  advisory — never silently mis-decoded. *Distinct from GV3* (item↔ship reconciliation): this is
+  encoding↔direct-edit reconciliation, and it is a first-class feature (the human UI is a supported
+  editing surface), not merely an error path.
 
 ### Truth & freshness
 
@@ -155,6 +161,78 @@ speed. Centralization alone fixes stale *views* (TF1); stale *content* needs TF2
   a nice-to-have that must **not** drive the backend choice — its removal as a hard requirement is
   what reopens plain GitHub Issues (see Pushback 5).
 
+#### Upstream bug reporting — content minimization & safe filing
+
+The sharp case of XP1/XP2 is a *consuming* product filing a bug about **prawduct itself** into
+prawduct's **public** repo: the boundary is (possibly private) consumer repo → public issues, and
+it is **irreversible** — GitHub has no ordinary issue-delete and never reuses numbers. Content
+minimization is **orthogonal to authentication** (PV1/PV3): it governs *what crosses the boundary*,
+not *who may file*. Settled with the owner 2026-07-23. This **supersedes** the `incoming-bugs/`
+drop-box formalized in the retired `build-plan-upstream-bug-reporting.md` (that channel — the
+`bug-inbox` resolver, `.bug-inbox` pointer, `incoming-bugs/` drop-box, the
+`untriaged-upstream-reports` probe, and the local-capture fallback — is **to be removed** (target
+state; it remains the interim supported path until the GitHub-issue path is built, per
+`security-model.md` § Direction), not carried forward). Tracked by **BKL-7Q4M** (content minimization — the artifact `security-model.md`
+§ Direction norm cites it by id) and **BKL-9XQ2** (consent / evidence / label taxonomy).
+
+- **XP4** Content minimization is a **two-layer guarantee, stated honestly**:
+  - *L1 — minimize by construction (soft, agent).* The composing agent **recomposes the report in
+    prawduct's terms** and never echoes product content. Two modes: **synthesize** a minimal generic
+    reproduction (simple code bugs), or **abstract** the scenario with generic placeholders for
+    branch/file/state/identifiers (diagnostic bugs — the common case). Attribution carries the
+    **prawduct version only** (`prawduct-hook version`, sourced not recalled), never product
+    identity, paths, internal ids, or domain terms.
+  - *L2 — owner approves the verbatim payload (hard, human).* The owner reviews the **exact**
+    outbound payload and **explicitly approves** before send — mandatory per report **under the
+    `ask-user` default**; a standing `always-file` preference (XP5) is the owner's *pre-consent* and
+    substitutes for the per-report review, which then falls back to L1 as the operative safeguard. A
+    payload containing a code block triggers an explicit "confirm synthetic / non-proprietary" prompt
+    so the review is active on the actual leak vector, not a rubber-stamp. Where it runs, this is the
+    authoritative guarantee.
+  - *Honest limitation (MUST be stated, not implied):* "no proprietary content" is **not**
+    mechanically enforceable at a prose boundary. The guarantee is best-effort authoring + mandatory
+    human review — **not a redactor**; the design must not claim a filter it cannot back.
+- **XP5** Consent is **per-report** and **adapter-bound** — **there is no install-time opt-in**
+  (owner, 2026-07-23); the per-report gate is the whole mechanism, so a report is never filed without
+  consent. A `project-preferences.md` setting mirroring the PR-merge pattern gives three states:
+  **`ask-user`** (**default** — ask per report; the ask *is* the XP4 L2 verbatim-payload review),
+  **`never-file`** (standing "no"), and **`always-file`** (standing "yes"). A user says **"never ask
+  me"** by moving off the default into either standing state. Honored without exception; the
+  unattended path is load-bearing — where no human is present (Security §1a), `ask-user` means
+  **don't file**, never "file anyway." **Standing consent (`always-file`) waives the per-report L2
+  review**, so for those reports the **L1 recomposition-in-prawduct's-terms is the operative
+  safeguard** — an informed standing choice, not a silent bypass. It binds at the **adapter (data
+  plane)**, not skill prose — retiring the drop-box *is* the prose rewrite, so a prose-only guard is
+  deleted by the same change that creates the risk (the MG4/G1 split; permissions bound *who may
+  call*, not *where the call may send*).
+- **XP6** Filing is **label-less; triage applies labels**. A consumer files as a **non-collaborator**,
+  who cannot set GitHub labels — so category rides in the issue-body template (Component, `Found in:`
+  version) and a title convention, and **prawduct-side triage** applies the taxonomy (the `submitted`
+  / untrusted-until-triaged posture of XP2 and Security §5). Consumers are **never coupled** to
+  prawduct's label taxonomy (GV6 is triage-side). *(Confirm current GitHub non-collaborator label
+  behavior against a throwaway issue at build — load-bearing, do not ship on recall.)*
+- **XP7** The safe path binds at the **adapter, where the guarantee is testable**. The file-upstream
+  op MUST: **pin the target** to the intended public repo (no unconstrained `--repo` owner —
+  BKL-2Q7F); **authenticate** via the session's GitHub identity (no anonymous — gh issues are
+  inherently authenticated); **refuse to execute without a recorded owner-approval** (XP4 L2); and
+  never let prawduct's **own** repo self-file upstream (it routes to its own backlog). This triple is
+  the durable enforcement that **replaces** the interim egress guard
+  (`tests/preferences/test_no_upstream_content_egress.py`), which stays live until a design
+  supersedes it. **Submit-or-nothing:** declining files nothing — there is no local backlog capture
+  of an upstream bug (a captured-but-unsubmitted upstream bug helps no one: prawduct never sees it
+  and it clutters the product). The flow MUST be **fast** — draft → one recomposition → one approve →
+  filed — because a slow flow degrades submit-or-nothing into "nothing" and loses the signal (the
+  real corpus of hallucinote/discodon upstream reports leaks product name, internal ids, and
+  proprietary call chains as *incidental color*: the prawduct signal is cleanly separable, but only
+  recomposition + review separates it).
+
+> **RESOLVED — no consent-at-install (owner decision, 2026-07-23).** BKL-9XQ2's consent-at-install /
+> disclosure leg (1a) is **not** a requirement: there is **no install-time opt-in**. Consent is
+> **per-report** (XP5) and that is the whole mechanism — a report is never filed without consent,
+> given either per-report (the `ask-user` default) or as a standing `always-file` / `never-file`
+> choice ("never ask me"). With 1a resolved, **all upstream-filing legs (XP4–XP7) are now settled as
+> requirements.**
+
 ### Privacy & access
 
 - **PV1** Per-project visibility: a private project's backlog is readable/writable only by its
@@ -165,6 +243,11 @@ speed. Centralization alone fixes stale *views* (TF1); stale *content* needs TF2
   prawduct itself and for any public downstream repo. "Anonymous" means **no prior relationship with
   the repo owner** — requiring the filer to hold a GitHub account (or sign up on a self-hosted page)
   is acceptable friction (owner, 2026-07-14). Private projects need not accept anonymous filing (XP3).
+- **PV4** Public submission surfaces (PV3) carry **abuse handling**: the anonymous-filing path must
+  be rate-limitable and moderatable (spam/abuse triage), and its safety composes with the
+  retro-governance path (`MET-6T4K`) that governs every out-of-band contribution before merge. PV3
+  is per-project opt-in; enabling it depends on this. (Distinct from TF3, which is about *not*
+  mistaking legitimate mass grooming for abuse; PV4 is about actual hostile submission.)
 
 ### Automation enablement
 
@@ -177,7 +260,9 @@ speed. Centralization alone fixes stale *views* (TF1); stale *content* needs TF2
 ### Governance integration (prawduct-side)
 
 - **GV1** `/prawduct:backlog` keeps its UX contract (pick/add/find/list/update/dedup) as a thin
-  wrapper over the service. `pick`'s stage-aware routing and build-plan awareness survive unchanged.
+  wrapper over the service. `pick`'s stage-aware routing and build-plan awareness survive unchanged,
+  including its **default exclusion of in-flight (in-progress) and claimed items** — `pick` surfaces
+  ready, unclaimed work unless explicitly asked otherwise.
 - **GV2** Session briefing reads counts from the local cache (AG4), refreshed asynchronously —
   session start never waits on the network.
 - **GV3** Ship **traceability** replaces ship **atomicity**: closing an item still records
@@ -192,16 +277,144 @@ speed. Centralization alone fixes stale *views* (TF1); stale *content* needs TF2
 - **GV5** Zero-cost provisioning: `/prawduct:onboard` (and `doctor`) provisions a project's
   backlog surface automatically. Eight projects today and there will always be more — per-project
   setup is one command or none.
+- **GV6** Adoption **provisions and reconciles the label taxonomy** and **coexists with a repo's
+  existing Issues**: `/prawduct:onboard`/`doctor` create prawduct's namespaced labels (`stage:`,
+  `status:`, `kind:`, `id:` …) without colliding with labels or issues the repo already uses, keep
+  the taxonomy consistent across repos, and never assume an empty tracker. A repo adopted mid-life
+  already has Issues, labels, and milestones — the adapter treats non-prawduct items as
+  out-of-scope, not as malformed backlog.
+- **GV7** **Migration-required signal + shared read-path longevity.** While a project keeps a live
+  markdown backlog and has not cut over (`backlog_service_repo` unset), a **warn-priority
+  `backlog-service-migration-required` advisory** fires at session start — so a repo that adopts a
+  plugin version past prawduct's own cutover is *told to migrate*, never silently degraded to a zeroed
+  backlog count and lost grooming nudges. It is **distinct from `legacy-backlog-format`** (which nudges
+  a *pre-structured* file toward the structured format): GV7 nudges a *structured* file onto the
+  service, and retires on the same `backlog_service_repo` switch as the other markdown probes. Its
+  prerequisite is MG3's shared read-path invariant — the plugin's markdown parser (today
+  `lib/backlog/legacy.py`) is **retired only when the whole portfolio has migrated**, not at any one
+  project's cutover; retiring it earlier is exactly the silent degradation GV7 exists to prevent.
+- **GV8** **Norm-lifecycle signals survive cutover.** The three norm-lifecycle probes —
+  `revisit-due` (a norm exception or stopgap whose expiry date has passed), `dead-why` (a norm whose
+  stated rationale cites a shipped/dropped item), and `stalled-transition` (a `Status: in-transition`
+  norm whose tracking item has not moved) — must keep firing after a project sets
+  `backlog_service_repo`. Today each guards on `post_cutover` and returns nothing, so **a norm
+  exception stops expiring visibly** — which is precisely the silent-departure failure the norm
+  lifecycle exists to prevent (`docs/norms.md`, "Exceptions expire"). Losing them at cutover was a
+  **side effect of the markdown-premise sweep, not a decision** (owner ruling, 2026-07-19).
+  Three constraints shape the implementation:
+  - **`revisit:` needs a home.** GitHub has no native slot for it, so it is a **block-authoritative,
+    unmirrored** field in the `prawduct:` body block (Data Model §1.2), added under the
+    additive-only-forever rule (§7).
+  - **Probes must not touch the network.** They run at session start, where BLOCK-5/G2 forbid a
+    blocking call, so the restored checks read a **local persisted store with visible age**,
+    background-refreshed (the never-block pattern GV2 established for briefing counts).
+  - **That store is the W1 cache — one persisted format, not a bespoke projection** (owner decision
+    2026-07-19). GV8's readers join the other post-cutover backlog readers (Critic Backlog
+    Reconciliation, PR `R-2`, janitor Backlog Health) behind the same cache rather than each minting
+    its own. **GV8's restoration therefore lands with W1.**
+  **Until W1 lands, degradation must be loud.** A guarded probe returning `[]`, and a skill reading
+  the frozen markdown as if it were live, are both *silent* — the failure GV8 exists to prevent. In
+  the interim every post-cutover backlog reader states plainly that the check is unavailable on the
+  Issues backend. A missing check a reader is told about is recoverable; one it is not told about is
+  the norm-exception hole again, one layer down.
+- **GV9** **Item references survive the identifier change.** After cutover the canonical id is
+  `owner/repo#number` and **no new `PFX-XXXX` is ever minted** (Data Model §5;
+  `lib/backlog/ids.py`) — the `id:PFX` alias exists so *migrated* items' old refs resolve forever,
+  not as a continuing scheme. Every surface that **cites** an item must therefore recognize *both*
+  forms: the PFX alias for migrated items, and `owner/repo#number` / `repo#number` for everything
+  filed after cutover. Today several recognize only the first — e.g. `lib/norm_probes.py`'s
+  `_BACKLOG_ID_RE` (`\b[A-Z]{2,4}-[A-Z0-9]{4}\b`), the Critic's C-B4 dangling-id check, PR review
+  `R-2`'s `closes: PFX-XXXX` reconciliation, `closes:`/`closed-by:` in backlog metadata and
+  change-log tags, and the deferred build-plan backlog-id verification
+  (`lib/buildplan_refs.py`). A citation surface that recognizes only PFX does not error on a
+  post-cutover reference — it **fails to see it**, which is the same silent degradation GV7 and GV8
+  exist to prevent, one layer down: a dangling-id check that cannot parse the id reports a clean
+  pass.
+  - **Recognition is additive** (API contract: additive-first evolution). PFX matching is never
+    narrowed or replaced; the native form is accepted *alongside* it, because both remain valid
+    forever in any repo that migrated.
+  - **Recognizing is not resolving.** Parsing a reference is local and cheap; answering "is
+    `owner/repo#123` still open?" is a backlog read and therefore lands with the W1 cache under GV8.
+    The parse-side work can ship well before the resolve-side, and should — a surface that can *see*
+    a post-cutover reference but must say "status unavailable" is strictly better than one that
+    silently treats it as absent.
+- **GV10** **Backlog hygiene at chunk close is the *primary* reconciliation, not only the safety
+  net.** When a work-cycle chunk concludes, the agent updates the items it affected based on **what
+  actually shipped** (shipped / partly / unaffected / obsolete) — because the agent knows and the
+  framework cannot infer it (the D4 rationale). This is the front-line contract; GV3's janitor
+  sweep, the Critic Backlog Reconciliation, and PR `R-2` are its **backstops**, not its replacement.
+  The change-log/release-prep pass performs the same reconciliation at release. *(Carried forward
+  from the retired predecessor §5.2–5.3; the base doc kept only the backstops.)*
+- **GV11** **The methodology routes agents *to* the skill — the backlog is wired into the work
+  cycle, not beside it.** The governance surfaces name `/prawduct:backlog` at the moments it is
+  needed: building (chunk close → `update`), reflection (→ `add`), planning/discovery (→ `pick`,
+  with early-stage or unspecified items routed to discovery, **not** code), and the session digest
+  carries the pointer for already-onboarded repos. Without this wiring agents hand-edit the store
+  and the skill is bypassed — the root cause the structured backlog exists to fix. *(Carried forward
+  from predecessor §0/§0.3 — the meta-driver of the whole rework; GV1 preserved the skill's UX but
+  not the routing to it.)*
+- **GV12** **The Critic/PR nudge suite survives, advisory (NOTE-level) and never hard-gate.** The
+  checks that surface neglected backlog hygiene: **C-B1** (item missing required metadata), **C-B2**
+  (no dedup search before a new item), **C-B3** (a change touches an area with open items but ran no
+  hygiene step), **C-B4** (dangling item id — recognizing *both* the `PFX-XXXX` alias and
+  `owner/repo#number`, per GV9), plus PR **R-1** (branch work appears to resolve an open item) and
+  **R-2** (a `closes:` disagreement). Service-side advisory validation (DM1/AG3) covers C-B1/C-B2
+  for service-written items; the **diff-side** nudge still matters for out-of-band human edits
+  (CC5). **Invariant:** the framework **routes and flags, it never hard-gates**, and it **never
+  pattern-matches `Closes PFX` text to auto-change an item's status** — status changes are always
+  explicit (D4/D13). *(Base named only C-B4/R-2, incidentally, inside GV9.)*
+- **GV13** **Activity-based grooming nudge survives cutover.** A `backlog-overdue-grooming` advisory
+  fires when a project's backlog has not been groomed in >90 days **and** carries >20 open items —
+  the self-surfacing nudge against the #1 stale-content pain. Like the GV8 norm-lifecycle probes it
+  reads the **local persisted store with visible age** (never blocking at session start,
+  background-refreshed) and lands with the same W1 cache. *(Carried forward from predecessor §8.2;
+  GV8 restored the three norm-lifecycle probes but not this activity probe.)*
 
 ### Migration & exit
 
 - **MG1** One-shot importer for existing `backlog.md` (+ `backlog-archive.md`): IDs, metadata bars,
   bodies, and sections preserved verbatim. Existing IDs stay valid — change-logs, learnings, and
   commit messages cite them.
+  - **(SHOULD) Foreign-backlog on-ramp.** A new adopter whose prior backlog is a plain file
+    (`TODO.md`/`BACKLOG.md`/`ROADMAP.md`) SHOULD have a supported on-ramp: an explicit `import <path>`
+    (**never** auto-import), a detect-and-advise signal at adoption (an `external-backlog-detected`
+    posture), and a `doctor` candidate-file report. **Descoped from MUST (owner, 2026-07-23)** — real
+    but low-frequency now the portfolio is GitHub-native; the MUST importer above covers prawduct's
+    own structured `backlog.md`, and GV6 covers coexistence with a repo's existing Issues. *(Carried
+    forward, descoped, from predecessor §4.3/§8.2–8.4.)*
 - **MG2** Full-fidelity export to plain files, scriptable, at any time. The backlog is never
   hostage to a vendor or a server; export doubles as backup.
 - **MG3** Per-project adoption: projects migrate independently; file-based and service backlogs
-  coexist across the portfolio during transition (never within one project).
+  coexist across the portfolio during transition (never within one project). Because the adapter
+  ships in the **shared plugin**, portfolio coexistence binds the plugin's **markdown read path**
+  (briefing counts + the markdown-premise advisory probes) to keep working for every un-migrated repo
+  until the *last* project cuts over — no single project's cutover (prawduct's own included) may
+  retire it (GV7).
+- **MG4** Migration supports a **one-time pre-migration scrub** so stale, obsolete, and duplicate
+  items are *not* carried into the new store (garbage-in-garbage-out would re-seed the #1
+  stale-content pain the project exists to kill — the moment you touch every item is the moment to
+  groom). The scrub: (a) grooms live items (close dead-premise / already-shipped, merge duplicates);
+  (b) decides **archive scope** as an **explicit owner-confirmed choice surfaced at scrub time**, not
+  a silent default — `open` (migrate only the live/open set as issues; the historical archive stays in
+  the **git-tracked source markdown**, minting no closed issue per ancient item) or `all` (import the
+  full archive as closed issues, the pre-scrub behavior). *(Corrected 2026-07-20: this read "stays as
+  the MG2 export file." The export dumps the **migrated repo** and runs after import, so it can never
+  hold what `open` excluded; the git-tracked source file is the actual preservation mechanism. The
+  consequence the owner must hear at scrub time — skipped items are git history, not searchable
+  backlog, because the skill stops reading the source file after cutover — is stated with the lever
+  in `skills/backlog/migration-scrub.md` step 2c.)* The importer honors the chosen scope through an
+  `--archive-scope` selector (AG1 — a deterministic lever, not a model inference). `open` also
+  **reduces the total write volume** of a large migration (fewer creates) — but the write-*rate*
+  ceiling is enforced by the Pacer, **not** by this lever; crediting the archive window as the
+  rate-budget keeper is the mis-attribution **BKL-6X5D** was filed to correct (NF3). A quantified *recent-shipped
+  window* between the two poles (migrate the last N months of archive, drop older) is the adopter-scale
+  refinement tracked by **BKL-6X5D** — its window is deliberately not yet quantified; (c) **disposes, never hard-deletes**
+  (DM7) — scrubbed items are closed/dropped-with-reason in the file backlog (git preserves them) or
+  live in the export; (d) is **model-assisted, human-confirmed** (candidates surfaced via TF2
+  stale-verification + Q3 similarity; the owner confirms dispositions; deterministic import then runs
+  on the cleaned set, AG1). prawduct's own backlog runs the scrub for real (dogfood); adopters get an
+  **optional advisory pre-scan** (flag likely-stale/dup candidates, skippable — we can surface but
+  not groom their data).
 
 ### Non-functional
 
@@ -329,6 +542,8 @@ story. Full agent reports available on request; what matters for the decision:
   tightest: 80 writes/min, 10 semantic searches/min — sweeps must pace). **One real gap: no public
   API for issue attachments** (workaround: release assets or orphan branch, both API-supported).
   Privacy: issues inherit repo visibility — the only candidate where PV1 is structural, free.
+  *(Correction, verified 2026-07-16: the write cap is 80 content-creations/min **and ~500/hr** — a
+  secondary limit; migration especially must pace across time, not just per-minute.)*
 - **Linear** — best-in-class agent ecosystem (official hosted MCP, agents as non-seat teammates,
   OpenAI's Symphony uses it as an agent control plane). **Per-seat, not per-workspace** (Basic
   $10/user/mo, verified 2026-06): one workspace holds all teams/projects with unlimited issues on

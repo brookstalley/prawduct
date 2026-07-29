@@ -32,7 +32,10 @@ behavioral logic here — PR-5K8D — so protection overrides the doc carveout).
   looser). A malformed body yields no edge for the same reason.
 - The caller's ``diff_fn`` contributes **free edges**: an interval whose
   entire diff is non-judgeable needs no review (the doc-only allowance,
-  computed — never stored).
+  computed — never stored). "No judgeable path differs" is equality of a
+  value each tree has alone, so a caller that supplies ``key_fn`` (a tree →
+  judgeable-content digest) gets the same relation from *n* keys instead of
+  *n²* diffs; the pairwise form remains as the reference implementation.
 
 **Verdict.** ``covered`` — a path exists using only free edges and facts
 with zero unresolved blockers; ``blocked`` — every path carries a fact with
@@ -52,6 +55,7 @@ from . import buildplan_refs
 from .gitstate import METADATA_PREFIXES
 
 DiffFn = Callable[[str, str], "list[str] | None"]
+KeyFn = Callable[[str], "str | None"]
 
 _RESOLVING_DISPOSITIONS = frozenset({"fixed", "waived"})
 
@@ -189,6 +193,55 @@ def _free_edge_files(diff_fn: DiffFn, src: str, dst: str) -> "list[str] | None":
     return files
 
 
+def _free_classes(nodes: "set[str]", key_fn: KeyFn) -> dict[str, list[str]]:
+    """Free-edge adjacency derived from per-tree keys instead of pairwise
+    probing — the linear form of the same relation.
+
+    A free edge ``a → b`` exists iff the interval's diff holds no judgeable
+    path, i.e. iff ``a`` and ``b`` agree on every judgeable ``(path, blob)``.
+    That is equality of a value each tree has on its own, so a caller that
+    can key a tree by its judgeable content turns *n²* diffs into *n* keys:
+    equal keys ⇒ mutually free-connected, and each key class is a clique.
+
+    A tree whose key cannot be computed (``None`` — unreadable object, git
+    failure) joins no class and so gets no free edge, matching
+    :func:`_free_edge_files`'s refusal to grant one on a failed diff. Speed
+    must never buy a free pass; the fast path fails in the same direction as
+    the slow one.
+    """
+    classes: dict[str, list[str]] = {}
+    for node in nodes:
+        key = key_fn(node)
+        if key is None:
+            continue
+        classes.setdefault(key, []).append(node)
+    adjacency: dict[str, list[str]] = {}
+    for members in classes.values():
+        if len(members) < 2:
+            continue
+        for member in members:
+            adjacency[member] = [o for o in members if o != member]
+    return adjacency
+
+
+def _attribute_free_steps(path: list[dict], diff_fn: DiffFn) -> list[dict]:
+    """Fill in the ``files`` a ``free`` step reports, for the steps on a
+    *found* path only.
+
+    Key-derived free edges know an interval is free without having listed
+    its files, and the verdict's path carries that list for attribution. The
+    diff is therefore deferred to here — O(path length) calls rather than one
+    per candidate examined, which is the whole point of the key form. An
+    unavailable diff degrades to ``[]``: the key already established the
+    interval is free, so attribution detail may be missing but the verdict
+    may not change.
+    """
+    for step in path:
+        if step.get("kind") == "free" and "files" not in step:
+            step["files"] = diff_fn(step["src"], step["dst"]) or []
+    return path
+
+
 # ---------------------------------------------------------------------------
 # The verdict (Q1/Q2)
 # ---------------------------------------------------------------------------
@@ -199,6 +252,7 @@ def coverage_verdict(
     base_tree: str,
     target_tree: str,
     diff_fn: DiffFn,
+    key_fn: "KeyFn | None" = None,
 ) -> dict:
     """Does composed coverage span ``base_tree → target_tree`` with zero
     unresolved blocking findings?
@@ -232,11 +286,11 @@ def coverage_verdict(
         e for e in edges if not unresolved_blocking(e["fact"], resolved)
     ]
 
-    path = _find_path(clean_edges, base_tree, target_tree, diff_fn)
+    path = _find_path(clean_edges, base_tree, target_tree, diff_fn, key_fn)
     if path is not None:
         return {"status": "covered", "path": path}
 
-    path = _find_path(edges, base_tree, target_tree, diff_fn)
+    path = _find_path(edges, base_tree, target_tree, diff_fn, key_fn)
     if path is not None:
         unresolved = []
         for step in path:
@@ -267,12 +321,23 @@ def coverage_verdict(
 
 
 def _find_path(
-    edges: list[dict], src: str, dst: str, diff_fn: DiffFn
+    edges: list[dict],
+    src: str,
+    dst: str,
+    diff_fn: DiffFn,
+    key_fn: "KeyFn | None" = None,
 ) -> "list[dict] | None":
-    """BFS from ``src`` to ``dst`` over review edges plus lazily-probed free
-    edges between known nodes. Nodes are the trees the evidence mentions plus
-    the two endpoints — free edges between *unknown* trees can't help because
-    nothing connects them to anything."""
+    """BFS from ``src`` to ``dst`` over review edges plus free edges between
+    known nodes. Nodes are the trees the evidence mentions plus the two
+    endpoints — free edges between *unknown* trees can't help because nothing
+    connects them to anything.
+
+    Free edges come from ``key_fn`` when one is supplied (``_free_classes`` —
+    *n* keys, the form every gate uses) and from pairwise ``diff_fn`` probing
+    otherwise (*n²* diffs, retained as the reference implementation the
+    injected-table tests exercise). The two agree by construction: both
+    decide "no judgeable path differs", one per tree and one per pair.
+    """
     nodes = {src, dst}
     adjacency: dict[str, list[dict]] = {}
     for edge in edges:
@@ -287,17 +352,28 @@ def _find_path(
             }
         )
 
+    free_adjacency = _free_classes(nodes, key_fn) if key_fn is not None else None
+
     visited = {src}
     queue: deque[tuple[str, list[dict]]] = deque([(src, [])])
     probed: set[tuple[str, str]] = set()
     while queue:
         node, path = queue.popleft()
         if node == dst:
-            return path
+            return _attribute_free_steps(path, diff_fn)
         for step in adjacency.get(node, []):
             if step["dst"] not in visited:
                 visited.add(step["dst"])
                 queue.append((step["dst"], path + [step]))
+        if free_adjacency is not None:
+            for other in free_adjacency.get(node, ()):
+                if other in visited:
+                    continue
+                visited.add(other)
+                queue.append(
+                    (other, path + [{"kind": "free", "src": node, "dst": other}])
+                )
+            continue
         for other in nodes:
             if other in visited or (node, other) in probed:
                 continue

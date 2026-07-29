@@ -23,7 +23,7 @@ The Critic reviews changes against principles and specifications as a **separate
 
 **Default:** mode missing, unrecognized, or inference unconfident → `final` (canonical rule: `review-cycle.md`). Never silently downgrade.
 
-**Chunk type axis.** Chunks declare `Type:` (orthogonal to mode). `Type: designer-handoff` → output "Review skipped — Type: designer-handoff", exit clean (no findings file). Other types adjust per-goal protocol — see `review-cycle.md` "Per-Chunk Type Protocol Selector." Missing/unrecognized → `code` (full protocol).
+**Chunk type axis.** Chunks declare `Type:` (orthogonal to mode). `Type: designer-handoff` → output "Review skipped — Type: designer-handoff", exit clean (no findings file). Other types adjust per-goal protocol (`review-cycle.md` "Per-Chunk Type Protocol Selector"). Missing/unrecognized → `code`.
 
 ## Signals That Guide Your Review
 
@@ -88,7 +88,7 @@ downgrade.
 ### 4. Everything Is Coherent
 - Artifacts are consistent with each other and with code.
 - **Bidirectional freshness** (descriptive content only — norms follow Normative authority above): code matches artifacts AND artifacts still describe code (model fields, architecture components). Stale artifact → **WARNING**.
-- **Norms**: `project-preferences.md` rows and Direction statements bind — unrecorded departure → **BLOCKING** via Goal 3; never "fix" divergence by artifact edit.
+- **Norms**: `project-preferences.md` rows and Direction statements bind — unrecorded departure → **BLOCKING** via Goal 3; never fix divergence by artifact edit.
 - **Infrastructure coherence**: `infrastructure_dependencies` declared but code uses in-memory only → **WARNING**. Mocks must be documented, not silently substituted.
 - **README and top-level docs**: read the project's README and `docs/` when features change. Removed/renamed features or wrong setup → **WARNING**. Actively misleading instructions (wrong commands, deleted config refs) → **BLOCKING**.
 - **Documentation drift**: Comments, type annotations, or API docs that contradict the code they describe → **WARNING**. Same defect when a *product* durable artifact (comment, docstring, long-lived spec) rides its meaning on an ephemeral build id — a chunk number, build-plan, or work-cycle name — which dangles once the plan is deleted (Principle 13) → **WARNING**; build-cycle bookkeeping that records the work (e.g. change-log `chunks=`, backlog `closed-by:`, operator-verification) is exempt.
@@ -116,9 +116,9 @@ downgrade.
 - **Simplification**: Could the same result be achieved with less complexity? Unnecessary abstractions, premature generalization, dead code paths, over-engineering for hypothetical requirements. → **WARNING** if simpler approach exists. **Unnecessary backwards compatibility** is a common variant: migration paths, fallbacks, or compatibility shims with no existing deployment to migrate → **WARNING**.
 - **Deduplication**: Duplicated logic that should be extracted. Copy-paste patterns across files. Near-identical implementations that vary only in superficial ways. → **WARNING** for meaningful duplication.
 - **Idiomatic language usage**: Non-idiomatic code that ignores language best practices (e.g., `for i in range(len(items))` vs `for item in items`) → **WARNING**. Check `project-preferences.md` for declared conventions.
-- **Unmodeled state-based problems**: When correctness depends on multiple parts of the code agreeing which discrete condition the system is in (phase, mode, lifecycle stage, UI view, workflow step) but state is reconstructed from interdependent booleans / scattered order-of-events conditionals rather than a single-source-of-truth model. Mechanism (enum, class, reducer, schema, type) is implementation choice — flag absence of the *model*. **BLOCKING** when invalid combos are reachable, double-transitions possible, or persisted state can diverge. **WARNING** when 3+ interdependent state signals lack a SoT and transition logic spans multiple call sites. **NOTE** borderline (two signals, localized) — recommend backlog. Enumerate the conditions you observed.
+- **Unmodeled state-based problems**: When correctness depends on multiple parts of the code agreeing which discrete condition the system is in (phase, mode, lifecycle stage, UI view, workflow step) but state is reconstructed from interdependent booleans / scattered order-of-events conditionals rather than a single-source-of-truth model. Mechanism (enum, class, reducer, schema, type) is implementation choice — flag absence of the *model*. **BLOCKING** when invalid combos are reachable, double-transitions possible, or persisted state can diverge. **WARNING** when 3+ interdependent state signals lack a SoT and transition logic spans multiple call sites. **NOTE** borderline (two signals, localized). Enumerate the conditions you observed.
 
-This goal applies proportionally — a 2-line helper doesn't need design review. Focus on patterns that will compound: a leaked abstraction others will depend on, coupling that will spread, complexity that will accumulate.
+Applies proportionally — a 2-line helper needs no design review. Prioritize what compounds: leaked abstractions others build on, spreading coupling, accumulating complexity.
 
 ## Framework-Specific Checks
 
@@ -130,13 +130,13 @@ This goal applies proportionally — a 2-line helper doesn't need design review.
 
 ### Learnings Cross-Check and Backlog Reconciliation
 
-**`final`/`cumulative` only.** See `review-cycle.md`: scan findings against `.prawduct/learnings.md` (escalate when a change reintroduces a warned-against pattern) and against Direction statements of the plan's `governed_by:` artifacts, then walk `.prawduct/backlog.md`, emitting **NOTE** findings for items resolved.
+**`final`/`cumulative` only.** See `review-cycle.md`: scan findings against `.prawduct/learnings.md` (escalate when a change reintroduces a warned-against pattern) and against Direction statements of the plan's `governed_by:` artifacts, then reconcile the backlog **per `review-cycle.md`** (read `backlog_service_repo` first; when set, skip the walk for its "unavailable" NOTE), emitting **NOTE** findings for items resolved.
 
 ## Severity Levels
 
 - **BLOCKING**: Must fix before proceeding (broken tests, dropped requirements, security vulnerabilities, unlisted deps).
-- **WARNING**: Should fix; Critic is confident (missing coverage, scope drift, stale artifacts, design problems).
-- **NOTE**: Genuinely ambiguous; recommend backlog.
+- **WARNING**: True *and* worth the builder's time (missing coverage, scope drift, stale artifacts, design problems). Name the consequence — *who does what wrong because of this?* No answer → NOTE. Confidence is not importance.
+- **NOTE**: Genuinely ambiguous; or record-only prose (change-log, learnings, plan text) that neither ships as a false claim nor misleads someone into a wrong action. Rating record prose WARNING turns it into a fix commit, which is how one round manufactures the next — `review-cycle.md`, "The review loop terminates."
 
 ## Review Execution
 

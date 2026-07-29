@@ -17,7 +17,7 @@ backlog_format_version: 2
 # Last full backlog grooming (stamped by /prawduct:backlog list/pick/groom).
 # Timestamp, not a count — counts are always re-derived (D14). Resolves the
 # backlog-overdue-grooming advisory.
-backlog_last_groomed_at: 2026-07-18
+backlog_last_groomed_at: 2026-07-29
 
 # Distribution model. `plugin` = this repo is governed by the Prawduct plugin
 # (v2.0.0), not file-sync. Set in Chunk 13 when the repo cut over to dogfood its
@@ -122,6 +122,18 @@ design_decisions:
     rationale: "exit codes are the stable, allowlist-friendly signal skills bind to; failures are caught, attributed, and turned into an exit code + prefixed note, never raised across the boundary"
     detailed_in: artifacts/api-contract.md
     date: 2026-07-17
+  infrastructure_dependencies:
+    services:
+      - name: "GitHub Issues REST API"
+        client: "the `gh` CLI, driven as a subprocess (list-form args, never a shell)"
+        scope: "opt-in per product — reached only when `backlog_service_repo` is set; unset means the markdown backend and zero network calls"
+        credential: "`gh` owns it (`~/.config/gh`); the adapter never reads, stores, or forwards a token, and redacts token-shaped patterns from all surfaced output (SEC-1)"
+        egress_boundary: "lib/backlog/transport.py is the sole egress site; subprocess use is confined there by design"
+    mock_boundary: "tests/fakes/fake_github.py implements the transport seam for the offline suite"
+    integration_test_strategy: "offline suite runs entirely against the fake; live `gh` coverage is the L5 smoke set queued in build-plan-backlog-service.md, deferred by owner decision to an owner-run session. The relationship/timeline shapes (`list_blocked_by`, `list_sub_issues`, `list_timeline`) are fake-verified only until those run — tracked as BKL-3N8Q."
+    status: active
+    rationale: "declared at the backlog-service cutover alongside the architecture.md local-first amendment; recording it re-enables the Critic's infrastructure-coherence and real-dependency checks, which sit dormant while the field is null"
+    date: 2026-07-21
 
 # =============================================================================
 # OPEN QUESTIONS
@@ -324,6 +336,29 @@ views_enabled: true
 active_build_plan: null
 
 # =============================================================================
+# BUILD-PLAN REF ROOT (opt-in)
+# =============================================================================
+# A second root that this repo's build-plan file refs may be written relative
+# to, in addition to the repo root. verify-chunk-refs tries the repo root
+# first, then this.
+#
+# Prawduct's plans name plugin files the way the plugin ships them —
+# `lib/gates.py`, `skills/backlog/SKILL.md` — because that is how those paths
+# read from inside the plugin. They resolve from nowhere at the repo root, so
+# without this declaration each one reports as a missing deliverable.
+#
+# This is DECLARED, never inferred. An earlier cut of the verifier sniffed for
+# a `plugin/` directory carrying a plugin manifest and enabled the fallback
+# itself; that silently weakens the gate for every repo whose layout happens to
+# match — a product shipping a plugin, an extension, or a vendored tree is an
+# ordinary layout, not a statement of intent, and a genuinely missing
+# deliverable there would resolve against an unrelated directory and never be
+# reported. Absent (the default everywhere else) means the repo root is the
+# only root.
+
+build_plan_ref_root: plugin
+
+# =============================================================================
 # COVERAGE EVIDENCE (opt-in, v1.4+)
 # =============================================================================
 # When true, the Critic requires every changed file to appear in
@@ -402,18 +437,33 @@ scope_rollups:
   backlog-rework:
     chunks: ["01", "02", "03", "04", "05", "06", "07", "08", "09", "10"]
     releases: ["v2.0.15"]
+  backlog-service-v1:
+    chunks: ["01", "02", "03", "04", "05"]
+    releases: ["v3.2.0"]
   backlog-ship-in-pr:
     chunks: ["01"]
     releases: ["v2.1.6"]
+  backlog-skill-repoint:
+    chunks: ["01", "02"]
+    releases: ["v3.2.0"]
   changelog-fail-loud:
     chunks: ["01"]
     releases: ["v2.3.0"]
   changelog-lifecycle:
     chunks: ["01", "02", "03"]
     releases: ["v2.1.1"]
+  chunk-refs-gate:
+    chunks: ["01"]
+    releases: ["v3.2.0"]
   cleanup-batch:
     chunks: ["01", "02", "03", "04", "05", "06"]
     releases: ["v2.0.5"]
+  coverage-perf:
+    chunks: []
+    releases: ["v3.2.0"]
+  critic-disposition:
+    chunks: []
+    releases: ["v3.2.0"]
   critic-empty-files-tolerance:
     chunks: ["01"]
     releases: ["v2.3.3"]
@@ -480,6 +530,9 @@ scope_rollups:
   regen-views-null-plan:
     chunks: ["01"]
     releases: ["v2.2.1"]
+  release-readiness:
+    chunks: ["01", "02", "03"]
+    releases: ["v3.2.0"]
   release-tooling:
     chunks: ["01", "02", "03", "04", "05"]
     releases: ["v2.0.6"]
@@ -489,6 +542,9 @@ scope_rollups:
   review-fixes:
     chunks: ["1", "2", "3", "4"]
     releases: ["v2.1.0"]
+  review-loop-termination:
+    chunks: []
+    releases: ["v3.2.0"]
   review-proportionality:
     chunks: ["01", "02", "03", "04", "05"]
     releases: ["v2.1.0"]
@@ -519,6 +575,9 @@ scope_rollups:
   single-pr-bookkeeping:
     chunks: ["01", "02"]
     releases: ["v2.3.2"]
+  skills-cutover-awareness:
+    chunks: ["01", "02", "03", "04"]
+    releases: ["v3.2.0"]
   stop-gate-defer:
     chunks: ["01"]
     releases: ["v2.2.2"]
@@ -561,6 +620,9 @@ scope_rollups:
   v2.0.0:
     chunks: ["1", "10", "11", "12", "13", "14", "2", "3", "4", "5", "6", "7", "8", "9"]
     releases: ["v2.0.0"]
+  v3.2.0-golive:
+    chunks: ["02", "03", "04", "05b", "05c"]
+    releases: ["v3.2.0"]
   work-model:
     chunks: ["1", "2", "3"]
     releases: ["v2.0.13"]

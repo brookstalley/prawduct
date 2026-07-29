@@ -6,6 +6,87 @@ No size constraint on this file — it's the deep reference, consulted via `/lea
 
 ---
 
+## The fix for a review finding needs the same adversarial pass as the original work — dispatch a delta review of the fix commit, because "I am correcting a known defect" feels like lower-risk work than writing new code and the verification reflex relaxes exactly where the last round proved it shouldn't
+
+The release-readiness bundle produced a clean measurement of this. One Critic cumulative (1 blocking / 12 warnings / 10 notes) → three verify passes, **each of which found a defect introduced by the previous round's fix** → clean. An independent PR reviewer then read the resulting tree and found W-1, a defect the bundle had itself created and *twice declared closed*. The fix for W-1 was then delta-reviewed and contained **2 BLOCKING plus 3 warnings**. Four rounds, four times the correction carried a new defect.
+
+The critical procedural fact: warnings do not block PR creation, and the PR skill's flow permits going straight to `gh pr create` once blocking findings are clear. Had that path been taken, both BLOCKING defects would have shipped into a runbook a human executes at the next release — including an entry-condition check whose "stop" branch was unreachable and whose "proceed" branch exits non-zero while its "stop" branch exits zero.
+
+**Why the reflex relaxes.** Writing a correction produces the felt experience of having verified something. The frame is already established by the finding, the edit is small and local, and the author is reasoning from "I now know what was wrong" — which is knowledge about the *past* state, not about the edit just made. So the same scrutiny that would attend new code is not applied, precisely in the round where the previous round demonstrated it was needed.
+
+**Mechanics.** After committing fixes, spawn one review scoped to *exactly that commit* — `git show <sha>` — and tell it two things: the measured base rate, and to assume more defects remain regardless of how confident the diff's prose sounds. Don't give it a general brief; give it the fix's own claims to re-execute:
+
+- run every command the fix publishes, verbatim, and compare real output (and **stream and exit code**) to what the surrounding prose promises;
+- check every cited tree, commit, line number and count *at the tree named* — not at HEAD, and not at the tree the author had in mind;
+- open every cross-reference, including ids the fix forward-references into other files;
+- ask whether any premise was inherited from the finding rather than measured in the tree.
+
+This is minutes, not another full cumulative. `/prawduct:critic verify-resolutions` is the Critic-side equivalent and extends coverage over the delta at delta cost.
+
+**The three traps that recurred**, worth naming because each looks like diligence:
+
+1. **A detection command blind to its own defect.** The replacement census grepped the *vocabulary* (`content-identical`, `tree-set`) while the residual asserted the same thing by *invoking the mechanism* (`git diff --stat origin/main origin/develop`) — so the command written to prove the class was closed could not see the one hit that prompted it. Same shape as a test that cannot fail. Grep the mechanism, not the phrasing.
+2. **A claim measured at the pre-fix tree.** "Run at tree `eac2638` it returns 13 hits, all qualified" — `eac2638` was the *parent*, where two of the hits *are* the residual. The count happened to be 13 at both trees, so the number looked right. Self-refuting under the paragraph's own instruction to re-derive. Replacing a figure with a derivation does not discharge the duty to run it at the tree you cite.
+3. **An inherited premise hardened into certainty.** "v3.2.0 is planned non-pruned" came from a reviewer's parenthetical and an owner decision recorded only in *untracked* handoff notes; it was escalated to "structurally unreachable, not merely unlikely." No `release-plan-v3.2.0*.md` existed and no tracked artifact stated the promotion shape. The underlying defect survived without the overclaim — a *version* is the wrong kind of trigger for a *promotion shape* — which is the tell: when a finding is real, the overclaim is load-bearing for nothing and should be dropped.
+
+Discovered 2026-07-29, release-readiness (PR #143; Critic cumulative `rev-20260729T185143Z` → verify passes `rev-…192252Z`/`rev-…194336Z`/`rev-…195906Z` → independent PR review → delta review of `c68443d`). Relates to Validate Before Propagating (#15), Root Cause Discipline (#16), Honest Confidence (#5).
+
+## A governance change cannot supply its own authority — when an agent amends a binding norm mid-build, land the owner's confirmation somewhere the amendment isn't, because a change that is its own only witness is indistinguishable from laundering however sound the substance
+
+`operational-spec.md` § Direction's gitflow promotion norm bound `develop`→`main` to a *content-identical tree-set*. That mechanism blocked Chunk 02, and it was genuinely wrong: the norm's stated purpose is that a release must not **ship integration WIP**, and content-identity *forces* precisely that whenever `develop` holds unready work. prawduct had already departed from it twice (v3.1.1, v3.1.2) with nothing recorded, so the binding text described a practice that had ceased. The amendment narrowed the mechanism to a *fully classified partition* — every unreleased scope shipped or withheld behind a named blocker — landing **stricter** about what the norm actually protects.
+
+Every element of that justification was true and well-argued. The Critic still cleared it only as *"legitimate rather than laundering"* while flagging (R-7) that the ruling's provenance existed **only inside the diff that made it** — the edit recorded itself as "Amended 2026-07-29 by owner ruling," and that claim was its own sole evidence.
+
+That is the whole defect, and it is structural rather than a matter of degree. An inspector reading the change sees the norm's new text and, as its only support, the same commit asserting that authority was granted. **A laundered amendment produces a byte-identical artifact.** Soundness is not observable from inside the change, so a reviewer cannot distinguish the two cases and correctly declines to — the finding is not "this is suspicious," it is "this is unfalsifiable from here."
+
+The trap is that arguing the amendment well *feels* like discharging the burden, and the quality of the argument is inversely related to noticing what's missing: the reasoning is right there in the diff, so the record seems complete. It isn't. The argument establishes that the amendment *should* be granted; it cannot establish that it *was*.
+
+**Mechanics.** Raise it as a blocking precondition rather than editing quietly (here: Critic R-25). Carry it to the next human checkpoint — PR time — as an explicit owner question, with the consequences of a veto spelled out concretely (which chunks lose their premise, which files revert), because a question that hides its cost isn't a real choice. Record the answer in the norm's own `Status:` line, as a vetoable `[DECISION: … | user can veto or narrow]`, where a future reader meets the norm — the change-log is a log, not a place anyone consults before applying a rule. Until confirmed, the honest count is "N accepted notes and **one open question**," not N+1 accepted; here the census had to be corrected from 10-accepted to 9-accepted-plus-1-discharged.
+
+**Residual worth knowing.** The closure's own rule is "land the attestation somewhere the amendment isn't," and the confirmation landed in the same sentence of the same line it certifies. The only witness genuinely outside the change is the PR thread — so the PR body must quote the amended norm and its `[DECISION]` verbatim for owner sign-off. Recording it in the artifact is necessary and not sufficient.
+
+Discovered 2026-07-29, release-readiness (Critic cumulative `rev-20260729T185143Z` R-7; discharged at PR time in `1a8bcc5`). Relates to Reasoned Decisions (#4), Honest Confidence (#5), Challenge Gently/Defer Gracefully (#23), and the norm lifecycle (`/prawduct:methodology norms` — amendment vs. ruling vs. exception).
+
+## When a release ships a PRUNED tree, a clean `git apply` is NOT evidence of a sound tree — the shipping code can depend on a symbol the WITHHELD work introduced, which a textual patch tool cannot see: v3.1.2's ship set called `sys.stderr` while `import sys` had arrived in `briefing.py` with the withheld backlog-service work, so `git apply` reported the file applied cleanly and produced a `NameError` in a shipped path (11 test failures). Run the suite against the candidate tree, and diff every shipped file's imports against its `develop` counterpart
+
+v3.1.2 was a pruned promotion: `main`'s tree was built as `v3.1.1` + the diff `e597b21..develop`, withholding the backlog-service subsystem. `git apply --3way` reported three conflicts and applied everything else "cleanly" — including `plugin/lib/briefing.py` and `plugin/bin/prawduct-hook`.
+
+The resulting program was broken. `prawduct-hook handoff preview` raised `NameError: name 'sys' is not defined`, taking 11 tests with it. The ship set added code calling `sys.stderr`, but `import sys` had been added to `briefing.py` by the **withheld** work, in a hunk the ship patch therefore did not carry. Neither side of the patch is wrong; the dependency simply crosses the cut, and a textual tool has no way to notice.
+
+The general shape: **a patch tool verifies textual applicability, not semantic completeness.** Any tree assembled by patching rather than by checking out a reviewed commit needs execution-level validation, because the failure mode is a silent reference to something that no longer exists.
+
+Two checks caught and bounded it here, and both are cheap enough to be standard for pruned releases:
+
+1. **Run the suite against the candidate tree.** It found the defect immediately. This is also the argument for a pruned release being validated as a *tree*, not as a patch review.
+2. **Diff imports per shipped file.** For each Python file the ship set touched, compare module-level imports in the candidate against the same file on `develop`; anything present there and absent here is a candidate for this class. Run across all 23 shipped Python files, it confirmed exactly one instance — which converts "we fixed the bug we found" into "we bounded the class."
+
+The residue is worth recording where the code lives: `main` now carries one line of shipped code that exists in no reviewed commit. It self-resolves at the next release that ships the withheld work, because `main` then takes `develop`'s tree wholesale. Recorded in `artifacts/release-plan-v3.1.2-pruned.md` so the divergence is not later read as an accident.
+
+## When determining what a PREVIOUS release actually shipped, test its CODE against that release's tree — never the change-log's prose or heading presence, which a pruned release leaves behind: v3.1.1's tree carries all ten backlog-service change-log entries whose code it deliberately withheld, so a heading-presence test called them shipped and would have mis-tagged them, silently dropping ten entries from v3.1.2's release notes. This is the runbook's own REL-7D4X rule and it is load-bearing in both directions
+
+The release runbook's step 2 states the rule: an entry is release-pending iff it carries no `release=` tag **and** its code is absent from the previous release's tree. I reached for a cheaper proxy instead — is the entry's heading present in `git show v3.1.1:.prawduct/change-log.md`? — reasoning that the change-log gate guarantees an entry lands with its code, so prose presence implies code presence.
+
+That inference fails across a pruned release. v3.1.1 was itself cut from `v3.1.0`'s tree, and the prune removed the backlog-service **code** while leaving its **change-log entries** in the tree. So all ten entries read as "shipped in v3.1.1" while their code had never reached a consumer. Acting on it would have left ten genuinely-unreleased entries untagged — no release-notes entry, no checkbox flip, and nothing downstream complains.
+
+The code test inverted the answer completely: `v3.1.1` has `plugin/lib/backlog.py` (single module) where `develop` has the `plugin/lib/backlog/` package, and v3.1.1's `backlog_probes.py` has **zero** occurrences of `backlog-service-migration-required`. All ten were release-pending.
+
+Two general points:
+
+- **The runbook already knew.** Its REL-7D4X warning says the boundary "narrows the search, it does NOT define the set" and that a positional sweep drops entries silently. I read that warning, correctly rejected the positional shortcut it names — and then invented a *different* shortcut with the same defect. The lesson is about the class, not the instance: when a document warns that a cheap proxy for X is unsound, the warning is about proxies for X, not about the one proxy it names.
+- **It is load-bearing in both directions.** A pruned release makes prose and code diverge permanently, so prose-based reasoning can both over-claim (an entry looks shipped when it is not) and under-claim. Only the code test is stable across it.
+
+## When work is authored ON TOP OF work you may later need to withhold, the two become inseparable by file — pruning is by commit range, so everything merged in between ships or waits together: v3.1.2's ship and withhold sets overlapped in 11 files including `prawduct-hook` and `briefing.py`, so "ship only the session work" also withheld an unrelated refactor and five skills' prose. Sequence a release-gated subsystem BEHIND independently-shippable work, not before it
+
+The backlog-service subsystem was release-gated on four open safety blockers (BKL-6J2X, BKL-5N9W, BKL-8V3D, BKL-2Q7F) — a chain that routes the whole installed fleet into a migration path able to write 100–250 real issues into a real repo while an agent believes a dry-run guarded it. It merged to `develop` in PRs #137–#139. The session-continuity work then merged **on top of it** in PR #140.
+
+That ordering is what made v3.1.2 expensive. v3.1.1 had pruned *parallel* work — it cut from `v3.1.0`'s tree and applied a small hotfix. Here the work we wanted to ship was authored against the post-relayout codebase, so:
+
+- the two sets overlapped in **11 files**, including `plugin/bin/prawduct-hook` and `plugin/lib/briefing.py`, making a file-level split impossible;
+- the split had to be by commit range (`e597b21..HEAD`), which is coarser than by feature — so an unrelated refactor (PDT-WT9K) and prose in five skills were withheld as collateral;
+- the ship set had a latent dependency on the withheld set (the `import sys` above), which only execution revealed.
+
+**The scheduling rule:** when a subsystem is gated on blockers that are not yet closed, land it *after* the work that must ship independently, or keep it on its own long-lived branch. Merging a release-gated subsystem into the integration branch early converts every subsequent release into tree surgery. The cost is invisible at merge time and paid later, by someone reconstructing which commits belong to which feature.
+
 ## When deferring something to a live/operator check, SPLIT it into "can this be true in principle" (static — test it now) and "does the harness actually do it" (live — queue it) — bundling them defers the testable half indefinitely, and that half is where the bug usually is: CRT-2J8N deferred all of "does the SubagentStop matcher fire" as un-unit-testable because *anchoring semantics vary by version*, true of delivery but false of matchability, and the bare-name matcher could never have matched the plugin-scoped `agent_type` on any version
 
 `operator-verification.md` VRF-002 (2026-07-10) listed three integration facts as "unverifiable by code analysis." Fact 2 was whether the `SubagentStop` matcher fires for the dispatched reviewer, justified with "matcher-anchoring semantics vary by Claude Code version."
@@ -678,6 +759,40 @@ The plugin's defaults reach onboarded products only through **canonical carriers
 
 ## When building from a review/audit artifact, verify each cited gap and fix-instruction against HEAD before planning — the artifact's file-state claims aged the moment it was written
 
+**Instance (2026-07-28, v3.2.0 Chunk 05c / BKL-72AS) — the inherited-`file:line` facet, where the
+claim was never true rather than stale.** Resuming from a prior session's analysis, two of its
+load-bearing details were wrong, and the *shape* of the error is the lesson.
+
+(1) It enumerated three copies of the id-shape regex and named `migrate.py:585` as the third. 585
+is a **consumer** of `is_pfx`; the real third copy was `_ID_MARKER_RE` at `migrate.py:67`. Shipping
+the widening without it would have been worse than not shipping it — the parser would mint the alias
+while the title kept its `[MIG-M4-REMOVE]` marker, so every affected item imports with a malformed
+title. The enumeration had been done by reasoning about *which modules matter* instead of grepping
+the character-class fragment; one `grep -rn "A-Za-z0-9" --include="*.py" --include="*.md"` found all
+four in seconds. **Enumerate a shared shape by its bytes, never by recalling its consumers.**
+
+(2) It explained the blocked escape hatch as "`core.py:933` filters `id_aliases()` through
+`is_pfx`." I filed that into a backlog item and a build plan **before** resolving it. The path was
+wrong (`plugin/lib/core.py` is 386 lines; the real site is `plugin/lib/backlog/core.py:933`) and so
+was the mechanism — that filter governs alias *read-back*. The actual reason is stronger:
+`verify_migration` derives `unaliasable` at `migrate.py:1163` from the **source parse alone** and
+never reads the target, so no issue-side action clears it for any id of any shape. Verifying it also
+turned up a second, larger defect: the runbook's step-6 remedy told operators to hand-add an
+`id:PFX` label — which can never clear the exit-4 — and had been contradicting the code's own remedy
+string (`migrate.py:1212-1219`) all along.
+
+**Why it survived:** a `file:line` reads as evidence that someone opened the file. Precision is not
+provenance. The claim was doing real decision work — it was the argument for why widening beat the
+alternatives — so an unverified premise was carrying the decision. This is the inverse of the known
+"delegated verification inherits your frame" trap: here I inherited *someone else's* frame, and its
+specificity is what made it credible. Both resolve to the same discipline — the premise is the thing
+you must check yourself, whichever direction it arrived from. Self-review before the Critic caught
+the same wrong mechanism a third time, already written into a durable source comment in `ids.py`.
+
+Relates to [[Correcting a false claim is authoring a new claim — verify the replacement and the
+artifacts it cites, because the fixing mood generates claims faster than the checking reflex fires]],
+Validate Before Propagating (#15), and Retrieval Over Generation (#24).
+
 Full context (2026-07-02, gate-noise / GOV-7T2M, Wave 1 Plan A of the efficiency-review fix
 program): The parent artifact `framework-efficiency-review-2026-07-02.md` carried two claims
 that were wrong by build time. (1) "residual gap: review protocols still let reviewers eyeball
@@ -1024,3 +1139,27 @@ robustness claim (never raises / always returns / idempotent), make it literally
 claimed-safe path]]. Discovered BRF-7Q4M banner load provenance (2026-07-19). Relates to Honest
 Confidence (#5), Root Cause Discipline (#16), Independent Review (#14) — self-review reliably
 re-walks the happy path.
+
+## When a durable plan asserts VCS state ("the code lives on branch X, not develop", "resuming means landing Y", an ahead/behind count), re-derive it from git before acting on or copying it — plan prose about branches and merges is a snapshot that expires the instant the next merge lands, so run `gh pr view` / `git merge-base --is-ancestor` / compare tree hashes first; a since-merged "land this branch" step is a no-op a plain merge performs silently, and the check costs under a minute
+
+Authoring `build-plan-v3.2.0-golive.md` (2026-07-24), I trusted the release plan's
+"⚠️ First: the code lives on `feature/backlog-service-relayout`, not `develop`" section — a section
+written 2026-07-21 and *self-consciously* written to be durable ("the document someone opens six weeks
+from now"). It was falsified within two days: **PR #137 merged relayout → develop on 2026-07-23.** On
+that stale premise I wrote a "Chunk 01: land the relayout branch → develop" step plus a whole
+Prerequisites block. Had we run `/prawduct:pr` on it, it would have merged **nothing**: relayout was an
+*ancestor* of develop (`git merge-base --is-ancestor` → yes), and develop's `plugin/lib/backlog` tree
+was **byte-identical** (`e25f555`) to relayout's — the code was already there. Three sub-minute checks
+each catch it before a line of plan prose is written: `gh pr view 137` (state MERGED), `git merge-base
+--is-ancestor <branch> origin/develop` (yes ⇒ a merge is a no-op), and comparing
+`git rev-parse origin/develop:<path>` to the branch's (identical ⇒ code already landed). The tell is a
+plan step of the shape "merge/land branch X" or "the code is on X, not Y" — a claim about VCS state,
+which is exactly the class that expires on the next merge. Distinct from
+[[A red version/release-hygiene test on a feature branch is often a branch-STALENESS symptom, not a doc
+defect — check distance from the integration branch before patching the changelog]]: that one is *your
+current branch* being stale versus integration; this one is *a plan's prose about branch state* being
+stale, and it bites when you copy that prose forward into a new artifact. Kin to the coverage-claim
+falsification family ([[Before writing any sentence of the shape "X now covers/catches/handles Y" or
+"there is no Y", run the one query that would falsify it]]) — same reflex, applied to VCS-state claims —
+and to Validate Before Propagating (#15) and Living Documentation (#3, the release plan's own section
+should have been annotated the moment #137 landed).
