@@ -254,9 +254,28 @@ keep receiving Chunk 01 for this entire release — `infer_mode` will infer the
 mode from a chunk shipped in a prior release, and the handoff will describe it
 as the work in progress.
 
+**The stop gate's use is worse than the other two, and was found while building
+Chunk 01.** `prawduct-hook:1499` does not verify refs — it reads the resolved
+chunk's declared **`Type:`**, which selects the `trivial` file-set bounds and the
+`designer-handoff` review bypass. So for this entire release the stop hook has
+been reading *Chunk 01's* Type to govern whatever chunk was actually built. Had
+Chunk 01 declared `designer-handoff` — the one Type that bypasses Critic
+enforcement entirely — every chunk of v3.2.0 would have shipped with the review
+gate silently disabled.
+
+It did not, because Chunk 01 declares `operator verification (no code change in
+this chunk)`, which is not a recognized value, so the parser falls back to
+`code` and the gate stayed armed. **The release was protected by a fail-safe
+default and an unrecognized string, not by the mechanism working.** That is a
+governance hole, and it upgrades this residual from "cheap severity mislabel" to
+"a bypass Type on the wrong chunk disables review for a whole release."
+
 This is recorded rather than fixed because fixing it is direction (1) — the
 working-diff resolver the ruling made optional — and because scoping it in here
-would exceed what was asked. It is **not** a silent drop (Principle 2).
+would exceed what was asked. It is **not** a silent drop (Principle 2). But it
+is the strongest argument yet that the next fix must be structural: the severity
+of a wrong answer is not uniform across the three consumers, and the worst of
+them is not the one this plan touches.
 
 **It is also the exact shape learnings.md warns about:** *"A fix lands at the
 instance a review named; the defect lives in the class."* The cited instance is
