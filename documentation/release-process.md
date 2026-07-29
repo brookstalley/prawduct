@@ -66,6 +66,12 @@ not ship.** Always bump `version` in `plugin/.claude-plugin/plugin.json` (and `p
 
 When `develop` is ready to release as `vX.Y.Z`:
 
+0. **Confirm it is fit to ship**, not merely that something is unreleased:
+   `./plugin/bin/prawduct-hook check-releasability --release vX.Y.Z`. Every release-pending scope
+   must be classified `ships`, or `withheld` behind a **named open** blocker, in the
+   `## Release classification` table of `.prawduct/artifacts/release-plan-vX.Y.Z.md`. The gate fails
+   closed; its withheld count also selects the promotion shape at step 1. Full branch-by-branch
+   handling is Phase 0 of `.prawduct/runbooks/cut-and-publish-a-plugin-release.md`.
 1. **Merge `develop` → `main`.**
 2. **Bump the version** in `plugin/.claude-plugin/plugin.json` `version` **and** `plugin/VERSION` **and** `pyproject.toml`
    (they mirror each other). This is the release trigger — without it, nothing ships.
@@ -75,7 +81,18 @@ When `develop` is ready to release as `vX.Y.Z`:
    statusless tagged entry IS the release-pending state (no post-merge stamp exists —
    requiring one forced protected-branch repos into bookkeeping-only PRs). A statusless
    entry silently skipped here never flips its checkboxes and never reaches release notes
-   (v2.0.14 shipped 8 of 10 entries that way — REL-2N8K). Enumerate ALL tagged entries
+   (v2.0.14 shipped 8 of 10 entries that way — REL-2N8K).
+
+   > ⚠️ **"Above the boundary" is a search hint, not the set — and neither is any one `scope=`.**
+   > This selection rule is wrong in three ways at once: positional (an entry can merge *below* the
+   > boundary and still be unreleased), scope-narrowed (a release bundle spans several scopes), and
+   > under a **pruned** release it tags withheld work as shipped. It is **deliberately unfixed**
+   > pending the change-log-ledger decision; until then the shipping subset is tagged by hand, once,
+   > across every scope. Do not re-derive the set from this line — the sound per-candidate test, the
+   > scope enumeration command, and the hold all live on Phase 1 step 2 of
+   > `.prawduct/runbooks/cut-and-publish-a-plugin-release.md`. Work from there (REL-7D4X).
+
+   Enumerate ALL tagged entries
    above the prior `release=vX` boundary; also add the `release=vX.Y.Z` tag (the `scope=`
    tag normally already exists from the build):
    ```
@@ -139,32 +156,51 @@ format, but the output is correct. Run `regen-views --check` before tagging; it 
 ## Step 1 mechanics — promoting when `develop` and `main` have diverged
 
 Because releases land on `main` as **squash/single-parent** commits (not back-merged into
-`develop`), `develop` and `main` accumulate divergent histories even though their *content* stays
-identical at each release. Consequence: a `develop` → `main` PR will report **"merge conflict
-cannot be cleanly created"** once more than one release has passed — the conflicts are bookkeeping
-artifacts (same final content reached by different commits), not real disagreements. Do **not**
-resolve this by back-merging `main` into `develop` (it pollutes `develop` with the squash commits
-and is the "no back-merge" rule's whole point).
+`develop`), `develop` and `main` accumulate divergent histories. Consequence: a `develop` → `main`
+PR will report **"merge conflict cannot be cleanly created"** once more than one release has passed
+— the conflicts are bookkeeping artifacts, not real disagreements. Do **not** resolve this by
+back-merging `main` into `develop` (it pollutes `develop` with the squash commits and is the
+"no back-merge" rule's whole point). Promote directly to `main` instead, and close any develop→main
+PR that was opened with a note saying so.
 
-Instead, promote by setting `main`'s tree equal to `develop`'s and committing directly to `main`
-(the practice used for v2.0.0 / v2.0.1 / v2.0.4):
+**Two promotion shapes exist**, and which one applies is decided by Phase 0 of
+`.prawduct/runbooks/cut-and-publish-a-plugin-release.md`, not by preference: if any release-pending
+scope is classified `withheld`, the promotion is pruned. `main`'s tree is a *deliberately chosen and
+fully classified* snapshot of `develop` — every path shipped or withheld behind a named open
+blocker, nothing unaccounted (`operational-spec.md` § Direction, amended 2026-07-29). Content
+identity is the expected **outcome** of the whole-develop shape, not the rule both shapes obey.
+
+**Whole-develop** — nothing withheld. `main`'s tree is set equal to `develop`'s and committed
+directly (the practice used for v2.0.0 / v2.0.1 / v2.0.4):
 
 ```sh
 git checkout main && git pull
 git read-tree --reset -u origin/develop      # main's index+worktree := develop's tree
 git commit -m "release: vX.Y.Z — <headline>" # single-parent commit on main, develop's tree
-git diff --stat origin/develop HEAD          # MUST be empty (content-identical)
+git diff --stat origin/develop HEAD          # MUST be empty — this shape only, see below
 git push origin main
 git tag vX.Y.Z && git push origin vX.Y.Z
 ```
 
-Close any develop→main PR that was opened with a note that the release was promoted directly. The
-empty `git diff origin/develop HEAD` is the content-identical invariant the gitflow model promises.
+**Pruned** — used for **v3.1.1 and v3.1.2**. The candidate is built as the previous release's tree
+plus `git diff <cut-point>..develop` applied with `--3way`, published by ref
+(`git push origin <sha>:refs/heads/main`) rather than by checking `main` out. `main`'s tree
+deliberately differs from `develop`'s, so the content-identity line above **can never pass and must
+not be used** — an empty diff there would mean the withheld work shipped. Its completion test is the
+**partition**: every path in `origin/main..origin/develop` accounted for as shipped or deliberately
+withheld. Two further checks are mandatory and are not optional hygiene — on the v3.1.2 candidate a
+*clean* `git apply` produced a `NameError` in a shipped path and 11 failing tests, because the ship
+set depended on an import the withheld set had added: run the suite on the candidate tree, and diff
+each shipped Python file's imports against its `develop` counterpart.
+
+The executable procedure is `.prawduct/runbooks/promote-a-pruned-release.md`; the worked example is
+`.prawduct/artifacts/release-plan-v3.1.2-pruned.md`.
 
 Note on **step 2 ordering**: the version bump + change-log/CHANGELOG/release-notes updates +
 `active_build_plan` clear are done as a **release-prep commit on `develop`** *before* the promotion
-above (so `main` inherits them in the tree-set), not as edits on `main` after the merge. That keeps
-`main` and `develop` content-identical. Since REL-4T8N, `regen-views` (step 4) resolves each
+above, not as edits on `main` after the merge. That puts the release bookkeeping inside the promoted
+tree under **either** shape — the whole-develop tree-set inherits it, and the pruned candidate picks
+it up because the release-prep commit is the tip of the ship-set range. Since REL-4T8N, `regen-views` (step 4) resolves each
 scope-tagged plan from the change-log rather than the single `active_build_plan` pointer, so for a
 **scope-tagged** plan you may run `regen-views` either before or after clearing the pointer. The
 pointer's fallback still matters when **no** scope-tagged plan resolves — a single unscoped plan
@@ -177,8 +213,9 @@ run it **before** clearing the pointer (clearing first makes the fallback resolv
 
 ## `/prawduct:pr` is not the release vehicle
 
-The promotion above is a **manual** tree-set — do **not** drive a `develop`→`main` release with
-`/prawduct:pr`. That skill is shaped for **feature→`develop`** PRs; its Create flow now detects a
+The promotion above is **manual** — a tree-set for the whole-develop shape, a `--3way` apply
+published by ref for the pruned one — and neither is driven with `/prawduct:pr`. Do **not** drive a
+`develop`→`main` release with it. That skill is shaped for **feature→`develop`** PRs; its Create flow now detects a
 release/integration context (current branch is `develop` or `main`) and redirects here instead of
 running its feature-PR gates (REL-8K3M).
 
@@ -198,8 +235,9 @@ benign**, not a gate to satisfy:
   means "this gate cannot be satisfied this session," which is false here (the gate is perfectly
   satisfiable in a feature context; it simply isn't the release's gate). The stop hook also stands
   down on its own: release-prep clears `active_build_plan`, so its Critic gate sees no active plan.
-  The operative pre-promotion check remains the empty `git diff --stat origin/develop HEAD`
-  content-identical invariant in step 1's mechanics.
+  The operative pre-promotion check is the one that matches the promotion shape: the empty
+  `git diff --stat origin/develop HEAD` for a whole-develop promotion, or the path partition for a
+  pruned one.
 
 ## Why the checkboxes stay `[ ]` during development
 

@@ -6,6 +6,47 @@ No size constraint on this file — it's the deep reference, consulted via `/lea
 
 ---
 
+## The fix for a review finding needs the same adversarial pass as the original work — dispatch a delta review of the fix commit, because "I am correcting a known defect" feels like lower-risk work than writing new code and the verification reflex relaxes exactly where the last round proved it shouldn't
+
+The release-readiness bundle produced a clean measurement of this. One Critic cumulative (1 blocking / 12 warnings / 10 notes) → three verify passes, **each of which found a defect introduced by the previous round's fix** → clean. An independent PR reviewer then read the resulting tree and found W-1, a defect the bundle had itself created and *twice declared closed*. The fix for W-1 was then delta-reviewed and contained **2 BLOCKING plus 3 warnings**. Four rounds, four times the correction carried a new defect.
+
+The critical procedural fact: warnings do not block PR creation, and the PR skill's flow permits going straight to `gh pr create` once blocking findings are clear. Had that path been taken, both BLOCKING defects would have shipped into a runbook a human executes at the next release — including an entry-condition check whose "stop" branch was unreachable and whose "proceed" branch exits non-zero while its "stop" branch exits zero.
+
+**Why the reflex relaxes.** Writing a correction produces the felt experience of having verified something. The frame is already established by the finding, the edit is small and local, and the author is reasoning from "I now know what was wrong" — which is knowledge about the *past* state, not about the edit just made. So the same scrutiny that would attend new code is not applied, precisely in the round where the previous round demonstrated it was needed.
+
+**Mechanics.** After committing fixes, spawn one review scoped to *exactly that commit* — `git show <sha>` — and tell it two things: the measured base rate, and to assume more defects remain regardless of how confident the diff's prose sounds. Don't give it a general brief; give it the fix's own claims to re-execute:
+
+- run every command the fix publishes, verbatim, and compare real output (and **stream and exit code**) to what the surrounding prose promises;
+- check every cited tree, commit, line number and count *at the tree named* — not at HEAD, and not at the tree the author had in mind;
+- open every cross-reference, including ids the fix forward-references into other files;
+- ask whether any premise was inherited from the finding rather than measured in the tree.
+
+This is minutes, not another full cumulative. `/prawduct:critic verify-resolutions` is the Critic-side equivalent and extends coverage over the delta at delta cost.
+
+**The three traps that recurred**, worth naming because each looks like diligence:
+
+1. **A detection command blind to its own defect.** The replacement census grepped the *vocabulary* (`content-identical`, `tree-set`) while the residual asserted the same thing by *invoking the mechanism* (`git diff --stat origin/main origin/develop`) — so the command written to prove the class was closed could not see the one hit that prompted it. Same shape as a test that cannot fail. Grep the mechanism, not the phrasing.
+2. **A claim measured at the pre-fix tree.** "Run at tree `eac2638` it returns 13 hits, all qualified" — `eac2638` was the *parent*, where two of the hits *are* the residual. The count happened to be 13 at both trees, so the number looked right. Self-refuting under the paragraph's own instruction to re-derive. Replacing a figure with a derivation does not discharge the duty to run it at the tree you cite.
+3. **An inherited premise hardened into certainty.** "v3.2.0 is planned non-pruned" came from a reviewer's parenthetical and an owner decision recorded only in *untracked* handoff notes; it was escalated to "structurally unreachable, not merely unlikely." No `release-plan-v3.2.0*.md` existed and no tracked artifact stated the promotion shape. The underlying defect survived without the overclaim — a *version* is the wrong kind of trigger for a *promotion shape* — which is the tell: when a finding is real, the overclaim is load-bearing for nothing and should be dropped.
+
+Discovered 2026-07-29, release-readiness (PR #143; Critic cumulative `rev-20260729T185143Z` → verify passes `rev-…192252Z`/`rev-…194336Z`/`rev-…195906Z` → independent PR review → delta review of `c68443d`). Relates to Validate Before Propagating (#15), Root Cause Discipline (#16), Honest Confidence (#5).
+
+## A governance change cannot supply its own authority — when an agent amends a binding norm mid-build, land the owner's confirmation somewhere the amendment isn't, because a change that is its own only witness is indistinguishable from laundering however sound the substance
+
+`operational-spec.md` § Direction's gitflow promotion norm bound `develop`→`main` to a *content-identical tree-set*. That mechanism blocked Chunk 02, and it was genuinely wrong: the norm's stated purpose is that a release must not **ship integration WIP**, and content-identity *forces* precisely that whenever `develop` holds unready work. prawduct had already departed from it twice (v3.1.1, v3.1.2) with nothing recorded, so the binding text described a practice that had ceased. The amendment narrowed the mechanism to a *fully classified partition* — every unreleased scope shipped or withheld behind a named blocker — landing **stricter** about what the norm actually protects.
+
+Every element of that justification was true and well-argued. The Critic still cleared it only as *"legitimate rather than laundering"* while flagging (R-7) that the ruling's provenance existed **only inside the diff that made it** — the edit recorded itself as "Amended 2026-07-29 by owner ruling," and that claim was its own sole evidence.
+
+That is the whole defect, and it is structural rather than a matter of degree. An inspector reading the change sees the norm's new text and, as its only support, the same commit asserting that authority was granted. **A laundered amendment produces a byte-identical artifact.** Soundness is not observable from inside the change, so a reviewer cannot distinguish the two cases and correctly declines to — the finding is not "this is suspicious," it is "this is unfalsifiable from here."
+
+The trap is that arguing the amendment well *feels* like discharging the burden, and the quality of the argument is inversely related to noticing what's missing: the reasoning is right there in the diff, so the record seems complete. It isn't. The argument establishes that the amendment *should* be granted; it cannot establish that it *was*.
+
+**Mechanics.** Raise it as a blocking precondition rather than editing quietly (here: Critic R-25). Carry it to the next human checkpoint — PR time — as an explicit owner question, with the consequences of a veto spelled out concretely (which chunks lose their premise, which files revert), because a question that hides its cost isn't a real choice. Record the answer in the norm's own `Status:` line, as a vetoable `[DECISION: … | user can veto or narrow]`, where a future reader meets the norm — the change-log is a log, not a place anyone consults before applying a rule. Until confirmed, the honest count is "N accepted notes and **one open question**," not N+1 accepted; here the census had to be corrected from 10-accepted to 9-accepted-plus-1-discharged.
+
+**Residual worth knowing.** The closure's own rule is "land the attestation somewhere the amendment isn't," and the confirmation landed in the same sentence of the same line it certifies. The only witness genuinely outside the change is the PR thread — so the PR body must quote the amended norm and its `[DECISION]` verbatim for owner sign-off. Recording it in the artifact is necessary and not sufficient.
+
+Discovered 2026-07-29, release-readiness (Critic cumulative `rev-20260729T185143Z` R-7; discharged at PR time in `1a8bcc5`). Relates to Reasoned Decisions (#4), Honest Confidence (#5), Challenge Gently/Defer Gracefully (#23), and the norm lifecycle (`/prawduct:methodology norms` — amendment vs. ruling vs. exception).
+
 ## When a release ships a PRUNED tree, a clean `git apply` is NOT evidence of a sound tree — the shipping code can depend on a symbol the WITHHELD work introduced, which a textual patch tool cannot see: v3.1.2's ship set called `sys.stderr` while `import sys` had arrived in `briefing.py` with the withheld backlog-service work, so `git apply` reported the file applied cleanly and produced a `NameError` in a shipped path (11 test failures). Run the suite against the candidate tree, and diff every shipped file's imports against its `develop` counterpart
 
 v3.1.2 was a pruned promotion: `main`'s tree was built as `v3.1.1` + the diff `e597b21..develop`, withholding the backlog-service subsystem. `git apply --3way` reported three conflicts and applied everything else "cleanly" — including `plugin/lib/briefing.py` and `plugin/bin/prawduct-hook`.

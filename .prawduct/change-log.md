@@ -3,6 +3,596 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-07-29: Dispositions — PR review; the entry test outlived the norm it tested
+
+<!-- prawduct: type=fix | scope=release-readiness | chunks=02,03 -->
+
+Independent PR reviewer on `feature/rel-8p6m-releasability-gate` → `develop`: **0 blocking, 2 warnings,
+3 notes**, verdict ready-to-create. Both warnings **FIXED** rather than declined — each was a
+completeness failure of this bundle's *declared* scope, not an adjacent improvement. Dispositions below
+written from `git diff`, not from intent.
+
+- **W-1 — FIXED. The norm amendment's cascade stopped one section short of the top of its own primary
+  procedure.** `cut-and-publish-a-plugin-release.md`'s `## When to use this` still gated entry on
+  `git diff --stat origin/main origin/develop` being non-empty, with "it prints nothing → content-identical
+  → nothing to cut. Stop." Two defects. It was a **fourth** universal content-identity assertion, in the
+  document the amendment is *about*, after two censuses had declared the class closed. Worse, the test had
+  lost its discriminating power: after a pruned promotion `main`'s tree differs from `develop`'s
+  permanently and by design, so that diff is non-empty forever (measured: 114 files, 25,757 insertions
+  post-v3.1.2), making "at least one changed file" trivially true and the `Stop` branch **unreachable**.
+  It also could not separate unreleased work from deliberately withheld work — the same
+  *"is there anything unreleased?"* vs *"is everything fit to ship?"* confusion this bundle exists to
+  fix, one level up in the same runbook. Phase 0 does not cover it: Phase 0 grades **fitness**, this
+  section asks **novelty**, and both are load-bearing. The entry test now asks the question at the level
+  of *scopes* — `check-releasability --release vX.Y.Z` names the release-pending set, and none means
+  nothing to cut — with an explicit block telling the reader the tree diff is orientation, never a
+  decision. Verified by running the published command: it names 12 release-pending scopes.
+  **REL-8P6M's own `refs:` listed this exact test**, so it was a declared deliverable the cascade missed.
+
+- **W-2 — FIXED. The pruned runbook's only stated verification trigger could not fire.** Chunk 02's
+  Done-when 5 named "v3.2.0's actual run" as the verifier. The owner's standing intent is to ship v3.2.0
+  non-pruned, and on that plan its run takes Phase 2's whole-develop path and never opens
+  `promote-a-pruned-release.md`. **Confidence boundary, corrected after the delta review:** that is a
+  *plan*, not a structural fact — it rests on an owner decision recorded only in untracked session
+  handoff notes, and if v3.2.0 withholds any scope it *is* pruned and the original trigger fires. An
+  earlier draft of this entry called it "structurally unreachable, not merely unlikely," which hardened
+  an inherited premise into a certainty the tree cannot support (Honest Confidence #5, and the
+  *inherited diagnosis is a hypothesis* rule). The defect stands without the overclaim: a **version** is
+  the wrong kind of trigger for a **promotion shape**. Nothing else tracked it: REL-8P6M is archived
+  `shipped`, and `last_verified` turns
+  out to have **no code reader at all** (its only consumer is a model-side review question in
+  `skills/runbook/SKILL.md`), so it is an unread field rather than a missing advisory. Done-when 5 now
+  carries the struck-through claim plus the correction; **`REL-3K9P`** is filed as the tracker with the
+  trigger stated as a promotion *shape* rather than a version number; and the runbook itself gained a
+  front-matter pointer and a "you are likely the first to execute this" banner, so a reader meeting
+  `last_verified: null` is not left without the tracker.
+
+- **NOTE (R-7 provenance) — ACCEPTED, and its residual acted on.** The reviewer judged the closure
+  adequate but observed that the confirmation landed *in the same line it certifies*, so the only witness
+  genuinely outside the change is the PR thread. **Commitment, not yet a state of the world at the time
+  of writing:** the PR body is to quote the amended norm and its `[DECISION: …]` verbatim for owner
+  sign-off. Recording it in the artifact is necessary, not sufficient.
+
+- **NOTE (CRT-5H2D) — ACCEPTED, verified not latent here, and the reviewer's actual ask discharged.**
+  The reviewer checked rather than trusted: `rev-20260729T194336Z-5753c20e` R-1 does carry a resolution
+  fact, so no unresolved blocking hides behind this PR's green certificate. Its *recommendation* was
+  that the PR description say so — and an earlier draft of this entry recorded the verification while
+  dropping the ask, which is the "delivered one half, recorded it as done" shape this same log files as
+  a learning. The PR body therefore names CRT-5H2D and states the masked finding was independently
+  confirmed resolved.
+
+- **NOTE (`type=feat`) — FIXED for this branch, disclosed for the other.** This scope's entry normalized
+  to the canonical `type=feature` (48 tag lines). Exactly one `type=feat` tag line remains, owned by
+  `scope=v3.2.0-golive` — a pre-existing entry outside this branch, left deliberately under Scope
+  Discipline and named here so it is not silently inherited. Inert today; a bucket split if the ledger
+  lands. (Identified by scope, not by line number: an earlier draft cited "line 1088", which was already
+  wrong at both the parent and this tree — a line number in prose is a decaying figure, the same defect
+  this entry's census discussion is about.)
+
+**Census discipline — this fix needed two corrections of its own, caught by a delta review.** Correcting
+W-1 required correcting the cascade census *again*, and that correction was wrong twice more. First, the
+replacement derivation command was blind to W-1: the residual asserted content-identity by *invoking the
+diff*, never using the words "content-identical" or "tree-set," so a census keyed on the vocabulary
+could not see the hit that prompted it — a detection command that cannot see the defect it exists to
+detect, the same shape as a test that cannot fail. Fixed by grepping the mechanism
+(`origin/main origin/develop`) as well as the vocabulary. Second, the published claim cited the **parent**
+tree, where two of the hits *are* the W-1 residual — a census sentence that refuted itself under the
+instruction to re-derive it. Both were found by an explicit delta review of the fix commit, dispatched
+because three consecutive verify passes in this bundle had each found a defect introduced by the previous
+round's fix. It found two more, making it four for four. **The fix for a review finding deserves the same
+adversarial pass as the original work** — the base rate here is not a fluke, and the cheapest way to see
+it is to stop treating "I am fixing a known defect" as a lower-risk activity than writing new code.
+
+## 2026-07-29: Dispositions — verify pass `rev-20260729T192252Z-599d3307`; the remedy re-entered the defect
+
+<!-- prawduct: type=fix | scope=release-readiness | chunks=02,03 -->
+
+12 of 13 prior findings verified FIXED against the diff, 1 waived (R-12 — the impossible
+`make plugin/VERSION readable` instruction is gone, but the broader scoped refusal was declined;
+recorded as waived so the tree is not overstated). The pass then returned **1 blocking, 1 warning,
+1 note**, all three of them defects *in the fixes themselves*. **All FIXED.**
+
+- **BLOCKING — the R-17 remedy routed the operator past the check the gate exists to perform.**
+  Giving the post-cutover refusal a way forward ("hand-verify blocker liveness, then proceed") was
+  right; returning early was not. `check_releasability` bailed the moment the backlog was
+  unavailable — *before* `unclassified`, `orphans`, `contradictions` and the table parse errors were
+  ever assembled — so the operator was told the one thing the gate could not verify and nothing
+  about whether every release-pending scope was classified at all. Both runbooks then said to
+  continue. That is the v3.1.2 near-miss re-entered **through its own remedy**, and it would have
+  landed on the first release after the backlog-service cutover, which is precisely the release
+  these runbooks were written for. Now the liveness reason is carried as one problem among the rest
+  and every other check runs; unverifiable liveness is explicitly *not* reported as a closed blocker,
+  because "re-take this decision" is a wrong remedy when the gate never read the backlog.
+
+  **Mutation record, per guard — corrected.** The first version of this entry said "two tests, proved
+  by mutation: restoring the early return fails them." Only one is: restoring the early return kills
+  `test_an_unclassified_scope_is_STILL_named_post_cutover`. The fix touches **three** call sites and
+  each needs its own mutant, which is what a later verify pass found (one guard had no killing test
+  at all). Now, individually verified: restoring the early return kills the unclassified test;
+  dropping the `stale_blockers` guard kills
+  `test_unverifiable_liveness_is_not_reported_as_a_closed_blocker`; dropping the **contradiction
+  branch's** guard kills `test_contradiction_does_not_call_a_blocker_closed_post_cutover`, which did
+  not exist until that pass — its sibling never cuts over, so nothing reached the line. Writing "two
+  tests, proved by mutation" from *one* mutation run that produced three failures is the same act
+  this branch keeps repeating: an aggregate observation recorded as a per-item claim.
+- **WARNING — the command offered as proof did not reproduce the figure it stood under.** The
+  R-2 fix replaced a decaying number with a derivation command, and the command applied no boundary
+  restriction: 12 scopes / 54 entries against the "23 across six" printed two lines below, under a
+  sentence telling the reader to trust the command over the paragraph. Worse on inspection — the
+  boundary-restricted version I then wrote keyed on a bare `release=`, which this file's own prose
+  contains, so it put the boundary inside a paragraph and returned **1**. Both are now correct and
+  both were *run*: the whole-file form is documented as deliberately over-including (the safe
+  direction, filtered by the per-candidate code test), and the boundary form keys on the tag line
+  and reproduces 23 / six scopes / `v3.2.0-golive` 7 at `1a353d1` exactly.
+- **NOTE — the liveness problem pointed the reader the wrong way.** It ended `"Every other check
+  below did run"`, but `problems` is seeded with the `parse_classification` errors, so that one group
+  prints *above* it. Now `"still ran — fix any other problem listed beside this one first"`, matching
+  the wording both runbooks use.
+- **NOTE — `unreadable-project-state:` was absent from the lookup built in the same commit.** The
+  R-18 fix minted a reason code; the R-11 fix keyed seven others and missed it, so it fell to the
+  catch-all whose promise is "if it names no fix, that is a defect in the gate" — which it was not.
+  Keyed, with its remedy. The lead-in also claimed every failure prints an `ERROR:` line; five of
+  the codes are bare stderr lines. Corrected.
+
+**The pattern, stated plainly because it is now three rounds deep.** Every one of these is the same
+act: *writing a sentence that asserts something about the tree without running the thing that would
+check it.* A disposition claiming an edit. A census counted inside its inherited frame. A command
+published as evidence without being executed. The branch filed the learning for this class in the
+same commit as two of the offences, which is Principle 18 in the least flattering way. The rule now
+in `learnings.md` is deliberately mechanical rather than attitudinal, because attitude is what failed:
+**recount the set, not the count — and run the command you are about to publish as proof.**
+
+## 2026-07-29: Dispositions — cumulative `rev-20260729T185143Z-b35e7646`, and the census that proved its own point
+
+<!-- prawduct: type=fix | scope=release-readiness | chunks=02,03 -->
+
+1 blocking, 12 warnings, 10 notes. **All 13 blocking/warning FIXED.** The review's cross-cutting
+finding is the one worth keeping, and it is unflattering: three of its findings are the *same*
+failure — **an assertion never checked against the tree** — on a branch that had already shipped
+`fc9b61f` ("two dispositions claimed FIXED were never in the tree") and filed the matching learning
+**in the same commit** as two of the three offences. A filed lesson is a repeated lesson
+(Principle 18).
+
+- **BLOCKING R-1 / R-8 — the archived REL-8P6M disposition claimed a runbook edit that does not
+  exist.** It asserted `"When NOT to use this" carries the matching prohibition`; that section is
+  byte-unchanged. The substance was fine — Phase 0's fail-closed gate supersedes a prose bullet a
+  reader can skim past — so the fix is to *record the descope*, not to write the bullet. Corrected in
+  the archived item, naming the supersession and the fact that the first version claimed an edit.
+- **R-2 — the W-1 census was itself scope-narrowed, which is what W-1 is about.** Filed as 8; I
+  "corrected" it to 9 by recounting **only the four scopes the finding already named** — verifying
+  the figure while inheriting the frame. This branch's own 7 `scope=release-readiness` entries make
+  the real number **16 across five other scopes** (23 release-pending across six, above the
+  `release=v3.1.2` boundary, measured at `1a353d1`). Fixed in all five places, and the runbook now
+  carries the **derivation command** plus an explicit note that any figure written there is a
+  measurement of one tree. A number in prose decays; a command does not.
+- **R-19 — the `plugin/VERSION` fallback NOTE was asserted only negatively.** It is the sole guard
+  against silently grading the wrong release, and the only assertion was `"no --release given" not in
+  combined` — true whether the NOTE fires or is deleted outright. Now asserted positively and
+  **proved by mutation**: deleting the `print(...)` fails exactly the new test and nothing else. Same
+  defect the branch's own new learning describes.
+- **R-10 — the new runbook broke the authoring guide's own `Expected:` contract** ("describes what
+  the reader will see. Nothing else … never a command, never an instruction"). Step 10's `Expected:`
+  had swallowed the entire path-partition verification — the amended norm's whole enforcement — into
+  the one line readers are told they may skim. Split into 6a/7a/10a; the IRREVERSIBLE block loses the
+  command it named (a warning carries hazard information, not actions).
+- **R-11 / R-16 / R-17 — Phase 0's documented outputs did not cover the gate.** The `If not:` list
+  covered three of nine failure classes with no catch-all, omitted the contradiction branch whose
+  remedy is the one a reader must not guess ("do NOT delete the row"), and never mentioned the second
+  exit-0 shape — which names no version and yields **no `K`**, the value Phase 2's routing tells the
+  operator to read. Now a keyed lookup on the literal strings the code emits, with a catch-all, plus
+  a `cannot-verify-blockers` branch so a post-cutover pruned release has a way forward instead of a
+  dead end.
+- **R-18 — `cannot-verify-blockers` asserted a cause it had not established.** The helper collapsed
+  "really cut over" and "project-state would not load" into one `False`, and the caller stated the
+  first as fact — sending an operator to check a scalar that is unset. Now returns the *reason*;
+  the unreadable case gets its own refusal. Verified by mutation.
+- **R-3 / R-9 — the cascade reached the norm but not the procedures.** `documentation/release-process.md`
+  gains a step 0 (the gate) and a step 3 warning pointing at the runbook's selection rules; two more
+  content-identity universals died, one of them in `plugin/skills/pr/SKILL.md` — the **shipped**
+  surface, where it told every product that a release is published by setting `main`'s tree equal to
+  `develop`'s.
+- **R-4 / R-12 — fixed narrowly, on purpose.** The empty-pending pass now names how many scopes
+  already carry `release=<version>`, so a Phase 0 re-run after Phase 1 is distinguishable from a
+  change log the parser could not read. `no-version:` no longer tells a product user to "make
+  plugin/VERSION readable" — a path that cannot exist in their repo. The broader generality question
+  stays declined (R-13/R-30); only the misleading instruction was in scope.
+
+**Also fixed, found by self-review while the Critic ran:** a `When NOT to use this` entry routed the
+"withheld is newest" case to the whole-develop path, which would have dropped the release-prep commit
+and shipped nothing (the version bump is the cache key); step 3 already catches that shape correctly,
+so the entry was removed rather than repaired. Step 11's recovery branch sent the reader back to
+step 4 with the worktree still present. Step 8's `cd` would have repointed steps 9–14.
+
+**ACCEPTED (10 notes), reasons.** R-5/R-6/R-14/R-15/R-22 are craft observations on Chunk 01 code that
+is reviewed, tested and working; acting on them now buys a review round for no behaviour change
+(`learnings.md:270`). R-13 (the procedure lives in two documents) and R-21 (a prawduct-only command in
+every product's CLI) are real and larger than this bundle — both are the change-log-ledger and
+generality conversations already open. R-20 (three unassessed open items) and R-23 (an unfilled
+contract-surface registry) are repo-hygiene items for the janitor, not this chunk. **R-7 is not an
+acceptance — it is an owner question**: the reviewers cleared the norm amendment as legitimate rather
+than laundering, but its provenance is attested only inside the diff, and they recommend one owner
+confirmation at PR time. Raised, not assumed. **Settled 2026-07-29: the owner confirmed the ruling**
+— so the count above is 9 accepted notes and one discharged question, not 10 accepted. The
+confirmation is recorded in `operational-spec.md`'s `Status:` line and in the norm-amendment entry
+below; neither the norm's text nor its enforcement changed.
+
+## 2026-07-29: The release sweep is scope-narrowed as well as positional, and the fix is held
+
+<!-- prawduct: type=fix | scope=release-readiness | chunks=03 -->
+
+REL-7D4X had the release sweep's *positional* defect covered by a warning in Phase 1 step 2. W-1
+(PR #141's reviewer) found the same defect in the other dimension: re-deriving the release-pending
+set from one `scope=` returns a subset that looks complete. The warning now names both.
+
+**The remedy is Phase 0, not another grep.** `check-releasability` already enumerates every
+release-pending scope and fails closed. Step 2 now says to walk *that list* rather than re-derive it
+— retrieval over regeneration, and it makes the two phases load-bearing for each other.
+
+**Corrected while verifying: the figure is 9, not 8.** Both the ledger design and this build plan
+carried "8 statusless entries across four scopes." Counted at PR #141's merge (`c49be89`) and at
+HEAD, it is **9** — `coverage-perf` 4, `chunk-refs-gate` 2, `critic-disposition` 2,
+`review-loop-termination` 1. The runbook carries the verified number and the scope-by-scope
+breakdown, so the next reader can re-count rather than inherit. One of the nine is the
+`protected_path_violation` widening, which changes governance bounds in every installed repo — the
+kind of entry that must reach the release notes, which step 10 derives from all shipping scopes.
+
+**(e) is held, and the runbook now says so where the rule is read.** The sweep keeps its selection
+rule by owner decision 2026-07-29: `change-log-ledger-design.md` would delete the machinery, so
+rewriting it is throwaway. A reader who spots the flaw mid-release would otherwise "fix" it in
+ignorance of a pending decision, so the marker sits next to the rule rather than in an artifact they
+have no reason to open. v3.2.0 tags its shipping subset by hand across every scope, once.
+
+Also corrected: the build plan located this warning at Phase 1 **step 3**; it is attached to step 2,
+where the derivation rule actually lives, and that is where the extension landed.
+
+**The `dead-why` probe caught its own author.** Archiving REL-8P6M turned the gitflow promotion
+norm's `Status:` line into a rationale resting on completed work, and prawduct's norm-lifecycle probe
+fired within the same session — as a *test failure*, because `test_no_norm_lifecycle_advisory_fires_here_today`
+is a tripwire whose re-baseline is the forcing function. The remedy is the one the probe prescribes:
+the norm is re-affirmed and its Why now stands on the two mechanisms that enforce it (Phase 0's gate,
+step 10's partition), not on the backlog id that prompted them. A norm whose rationale points at a
+closed item is a norm nobody can evaluate.
+
+## 2026-07-29: The pruned promotion becomes a procedure instead of an expiring release plan
+
+<!-- prawduct: type=feature | scope=release-readiness | chunks=02 -->
+
+Prawduct has promoted a pruned tree to `main` **twice** (v3.1.1, v3.1.2) against a runbook that only
+documents the whole-develop shape. Both times the mechanics lived in that release's own plan artifact,
+which expires with the release. `.prawduct/runbooks/promote-a-pruned-release.md` makes it durable
+(REL-8P6M a–d).
+
+**Selected, not chosen.** Phase 0's `K withheld` count decides the shape. Phase 2 now opens with a
+condition-first routing block, and the pruned branch says explicitly not to run step 14 — the
+`git read-tree --reset -u origin/develop` there would publish the withheld work, which is Phase 0's
+whole failure arriving one phase later.
+
+**Its own document, not a section.** `docs/runbook-authoring.md` budgets ≤20 steps per runbook and
+directs a split past that. The release runbook already stands at 21; the pruned path adds 14. A
+30-step document where a third of the steps never apply to the reader executing it is the dilution
+the guide names as its most strongly evidenced failure mode. The split also gives each shape an
+honest `Done when` — the whole-develop test (`git diff --stat origin/develop HEAD` prints nothing)
+is not merely inapplicable to a pruned release, it is **inverted**: passing would mean the withheld
+work shipped. One shared section cannot say that.
+
+**Rehearsed, not drafted.** Every command was derived by rebuilding the v3.1.2 candidate from
+`v3.1.1` + `git diff e597b21 bc715d4` applied with `--3way`. It reproduced the same three conflicts
+that release recorded (`briefing.py`, `backlog.md`, `change-log.md`), and the step-7 import diff
+**caught `import sys`** — the missing import that shipped a `NameError` and 11 failing tests to
+`main` on v3.1.2 behind a *clean* `git apply`. That is the check working against the defect that
+motivated it, before the suite runs. `last_verified:` stays `null`: the tree-build was rehearsed, the
+publish was not.
+
+The partition check (step 10) is the amended norm's path-level enforcement, the same discipline as
+`check-releasability`'s scope partition one level down. Against the real v3.1.2 data it returns nine
+paths — a shortlist to read, not a pass — where the release plan's prose had discussed one.
+
+**Cascade:** `documentation/release-process.md` gains the second shape and loses the last three
+universal content-identity assertions (lines 142, 156, 170 — the deferral the previous entry
+recorded, now discharged); `operational-spec.md` § Direction repoints from "Chunk 02 of the build
+plan" to the runbook, since a durable spec must not cite build scaffolding that is deleted when the
+work ships.
+
+## 2026-07-29: Norm amendment — a promotion is a classified snapshot, not a content-identical copy
+
+<!-- prawduct: type=fix | scope=release-readiness | chunks=01 -->
+
+**Owner ruling, 2026-07-29.** `operational-spec.md` § Direction's gitflow promotion norm bound the
+`develop`→`main` promotion to a *content-identical tree-set*. Amended: `main`'s tree is a
+**deliberately chosen and fully classified** snapshot — every unreleased scope shipped or withheld
+behind a named open blocker, nothing unaccounted — with content-identity as the expected outcome of a
+*whole-develop* promotion rather than the invariant.
+
+**Why this is an amendment and not laundering.** The norm's stated purpose is that a release must not
+**ship integration WIP**. Content-identity was the mechanism chosen to secure it — but when `develop`
+holds unready work, content-identity *forces* shipping exactly the WIP the norm exists to prevent.
+The mechanism contradicted its own rationale, and prawduct had already departed from it **twice**
+(v3.1.1, v3.1.2) with no recorded decision, so the binding text was describing a practice that had
+ceased. The amendment keeps the why verbatim and narrows the mechanism to the case where it holds.
+Raised by the Critic as a blocking precondition on Chunk 02 rather than edited quietly, and the
+decision is recorded in the norm itself.
+
+**Provenance closed out-of-diff (R-7), 2026-07-29.** The reviewers cleared the amendment as
+legitimate but noted the ruling was attested *only inside the diff that made it* — the change was its
+own only witness. That shape is indistinguishable from laundering on inspection regardless of whether
+the substance is sound, so it was carried to PR time as an owner question rather than assumed. **The
+owner confirmed the ruling explicitly**, and the confirmation is now recorded in the norm's own
+`Status:` line where a future reader meets the norm, not only in this log. The lesson generalizes past
+this norm: *a governance change cannot supply its own authority.* When an agent amends a binding norm
+mid-build, the attestation has to land somewhere the amendment isn't.
+
+The descriptive **Release Flow** prose was false in the same way — it called the content-identical
+check "the invariant the model guarantees" while `main`'s tree had deliberately differed twice. It
+now documents both promotion shapes and names which releases used the pruned one. *Norms bind;
+descriptions track* — so each surface moves in its own register.
+
+**Cascade (corrected three times — the class is now closed).** Corrected surfaces:
+`operational-spec.md` § Direction (the norm) and its Release Flow prose; `documentation/release-process.md`;
+`project-preferences.md:48`, which called the promotion a tree-set; the shipped
+`plugin/skills/pr/SKILL.md`; and — found by the PR reviewer, **after** two censuses had already
+declared the count — `runbooks/cut-and-publish-a-plugin-release.md`'s own `## When to use this`
+entry test.
+
+**Do not read a figure here; re-derive it.** Every hit of this command must be either *shape-scoped*
+or *descriptive of the amendment* — an unqualified assertion is a residual:
+
+```
+grep -rn -i 'content-identical\|tree-set\|origin/main origin/develop' --include='*.md' \
+  .prawduct/runbooks/ .prawduct/artifacts/operational-spec.md \
+  .prawduct/artifacts/project-preferences.md documentation/ plugin/skills/ \
+  | grep -v 'release-plan-v3.1'
+```
+
+**The audit criterion is the point, not the tally** — run it at *your* HEAD and check every hit; a bare
+count is the thing this paragraph exists to stop you trusting. For provenance: at tree `8790d47` (commit
+`c68443d`, which closed W-1) it returned 13 hits, all qualified. Do not cite the parent tree `eac2638`
+for that claim — this entry did, and it was false in the most self-refuting way available: `eac2638` is
+the **pre-fix** tree, where 2 of its 13 hits *are* the W-1 residual, so a reader following the
+instruction would correctly conclude the class was still open. **The third alternative is load-bearing and was
+missing on the first attempt at this very command:** the W-1 residual asserted content-identity by
+*invoking the diff* (`git diff --stat origin/main origin/develop`) without ever using the words
+"content-identical" or "tree-set," so a census keyed on the vocabulary could not see the one hit that
+prompted the census — a detection command blind to the defect it exists to detect, which is the same
+shape as a test that cannot fail. Grep the **mechanism**, not the phrasing. The three assertions the previous census
+deferred to Done-when items 1 and 6 (`release-process.md` 142/156/170) were **closed**, not deferred —
+step 1's recipe now reads `# MUST be empty — this shape only`, and the surrounding prose names both
+shapes. Zero survive in that file. Step 17 of the runbook keeps an unqualified-*sounding*
+content-identity test on purpose: Phase 2 routes the pruned shape out at steps 14–20, so 17 sits
+inside the whole-develop branch and content-identity is the correct test there.
+
+**Four corrections, same defect every time.** (1) "Both surfaces" understated the reach. (2) The second
+named *one* residual where there were three, and attached it to the wrong file. (3) The third declared
+the class closed in `release-process.md` while a fourth assertion sat in the runbook *the census was
+about* — the one file a census of this amendment could not afford to skip. (4) The fix for (3) published
+a derivation command citing the **pre-fix** tree, where two of the hits are the very residual it claimed
+was gone. **A cascade census is a claim about evidence and has to be re-derived, not written from the
+correction you just made** — which is exactly the failure the amendment itself documents, one level up.
+
+The through-line: (1)–(3) each re-counted **inside the file-set the previous correction had touched** —
+the scope-narrowed counting failure this same bundle files as a learning, demonstrated three times
+against a cascade census in one session. (4) is the next layer: once the count was replaced by a
+command, the *command's inputs* became the thing written from memory instead of measured. Replacing a
+figure with a derivation does not discharge the duty to run it at the tree you cite. The fix is
+structural rather than another recount — the document carries the command, tells the reader to run it at
+their own HEAD, and states the audit criterion (**every hit shape-scoped or descriptive**) so a stale
+tally cannot masquerade as a verdict.
+
+Enforcement: `check-releasability` for scopes (Phase 0, shipped), Chunk 02's partition check for
+paths (Phase 2, pending).
+
+## 2026-07-29: Dispositions — verify pass `rev-20260729T174606Z-37362188`, and the dropped halves
+
+<!-- prawduct: type=fix | scope=release-readiness | chunks=01 -->
+
+1 blocking, 1 warning, 2 notes. **All FIXED.** The review's cross-cutting observation is the one
+worth keeping: *two of the four previous fixes delivered the code half of their recommendation and
+recorded it as done without noting the dropped half* — the same shape as the false-FIXED finding one
+level down. Both halves are landed here, and the companion rule is now in `learnings.md`: **record
+what you declined, not only what you did.**
+
+- **BLOCKING — the `_is_resolved_section` widening had no test that could fail on the old predicate.**
+  The code moved from one prefix (`archive`) to four substrings, but the test still exercised only
+  `## Archive`, which `startswith("archive")` excluded too — green on both implementations, so the
+  fix was unverified by construction. Now parametrised over `Archive | Resolved | Done | Completed`
+  and **proven by mutation**: restoring the narrow predicate fails `Resolved`, `Done` and
+  `Completed` plus the struck-item case — **three of the four section words, not four**. `Archive` is
+  excluded by both predicates, which is exactly why a test that exercised only `## Archive` could not
+  detect the difference. (Corrected: the first wording said "all four," overstating the evidence for
+  a claim about evidence.)
+  The finding also flagged the fix *itself* as a coupling defect — it reached a **private** symbol
+  across a package boundary, so renaming `_is_resolved_section` would silently change blocker
+  liveness in every product with a passing suite. Replaced with the backlog module's **public**
+  `Backlog.pending_items()`, which carries the same semantics plus struck/empty-title handling.
+- **WARNING — the withheld-then-shipped case fired under a message whose remedy re-opened the hole.**
+  It fell into the orphan bucket, printing *"stale table row?"* — false for a scope carrying the
+  release tag, and acting on that hint (delete the row) makes the gate return 0 and **ship the very
+  scope the table withheld**. Worse than a bare failure: a wrong remedy is actionable. It now has its
+  own diagnosis naming both valid resolutions and explicitly saying *do not delete the row*. The
+  previous test had asserted the wrong wording, pinning the misdiagnosis as intended behaviour; it
+  now asserts the correct message and that the orphan wording is **absent**.
+- **NOTES — one fixed, one part DECLINED.** The corrected docstring still under-enumerated its
+  silent skips (an empty-scope row with a well-formed disposition) — fixed. For the `--release` form
+  test, the legibility half landed (the test now states that it reaches its verdict through the
+  `no-release-plan` path) and the recommended **end-to-end successful-grade assertion was declined**:
+  it would need a second release-plan fixture to prove what the existing `no-release-plan` message
+  already proves, since that message names the version it looked for. *Recorded as declined rather
+  than folded into "both fixed" — which is the rule this same commit added, and which the next review
+  caught me breaking here.*
+
+## 2026-07-29: Dispositions — verify pass `rev-20260729T173217Z-5b8a9522`, and a correction to the record
+
+<!-- prawduct: type=fix | scope=release-readiness | chunks=01 -->
+
+1 blocking, 4 warnings, 3 notes. **The blocking finding was against the dispositions record below,
+and it was right.**
+
+**The correction.** The entry below listed **R-6/R-18** and **R-8/R-17/R-27** under **FIXED**. Neither
+edit was in the tree. The only docstring change in that commit was R-24's example-id swap; I wrote
+the disposition from what I intended to do rather than from what the diff contained. That is worse
+than leaving them open: a dispositions record is the artifact a reader trusts *instead of* re-reading
+30 findings, so one unverifiable claim devalues the other 17 acceptances. Both are now genuinely
+fixed — `parse_classification`'s docstring states which rows error and which are skipped as table
+syntax, and the plan's assumption #3 and Chunk 01 step 1 both name
+`release_readiness.release_pending_scopes`. **The rule earned: verify a disposition against the diff
+before recording it, because "fixed" is a claim about the tree, not about intent.**
+
+**FIXED (4 more).**
+
+- **W-1 — the R-1 regression test could not fail on the pre-fix code.** The fixture's `plugin/VERSION`
+  was the same version the test passed to `--release`, so the old ignore-and-fall-back path satisfied
+  the assertion too. The fixture now uses a *different* VERSION and asserts the fallback NOTE is
+  absent — a regression test that passes on the bug it names is worse than none, because it reports
+  coverage.
+- **W-2 — the R-14 re-run exemption was disposition-blind.** A `withheld` scope stamped with this
+  release's tag was exempt from the orphan check, absent from `pending`, and absent from the withheld
+  summary — so a withheld-then-shipped contradiction printed `releasable:` and was never mentioned.
+  Exemption now applies to `ships` rows only.
+- **W-3 — `_open_item_ids` was narrower than the module it imports.** It matched `archive` where
+  `legacy._is_resolved_section` covers `resolved|done|completed|archive`. It passed only because
+  prawduct's own backlog says `## Archive`; a product using `## Resolved` got R-2's defect back. Now
+  calls the backlog module's own predicate.
+- **W-4 — `api-contract.md` was exercised but not recorded.** The first pass waived it as vocabulary
+  overlap, yet this bundle changed the usage exit code 1→2 *to conform to that artifact's ratified
+  error-model row*. Added to `governed_by:` with a `conforms` disposition, and its Operations list now
+  names `check-releasability`. `data-model.md` added likewise — it was disposed in prose but missing
+  from the frontmatter.
+
+**ACCEPTED (3 notes).** R-21's counter measures tagged entries and prints only on the empty path —
+the denominator it names is the one that matters there. The `broad-except` waiver's fail-closed
+claim is defensive rather than load-bearing (`load_project_state` does not currently raise); the
+waiver stays because the posture should not depend on that staying true. R-10's deferral gains its
+Done-when anchor when Chunk 02 is built, which is when the pointer has somewhere to point.
+
+## 2026-07-29: Dispositions — cumulative `rev-20260729T170856Z-8a025aec`, all 30 findings
+
+<!-- prawduct: type=fix | scope=release-readiness | chunks=01 -->
+
+3 blocking, 18 warnings, 9 notes on Chunk 01. **13 FIXED, 17 ACCEPTED with reasons, 0 filed.**
+
+**FIXED — the three blocking (3).**
+
+- **R-1 / R-12 / R-23** — `--release` was detected with `"--release" in argv`, so `--release=v3.2.0`,
+  a bare `v3.2.0`, and any typo all fell through to the `plugin/VERSION` fallback and graded a
+  **different release than the operator named**, silently. That is the swallow STH-5R2Q was raised
+  for, with its `_reject_unknown_args` helper sitting unused in the same file. Replaced with an
+  explicit argv scan: both `--release X` and `--release=X` honoured, every unknown token a usage
+  error at **exit 2** (was 1, colliding with the gate's own not-releasable code). The CLI path had
+  **no test at all**; `TestCliWiring` now drives dispatch, both flag forms, three rejection cases,
+  and the usage-string entry through a real subprocess.
+- **R-9** — the new plan's `## Status` lines used an em dash (`Chunk 01 — …`) where
+  `views.CHUNK_LINE_RE` requires a colon, so the roster parsed empty, the `chunks=01` tag failed
+  validation, and that fail-closed validator **aborted the whole regen** — blocking Phase 1 step 5 of
+  the very runbook this bundle edits, unrepairably by re-running. One character per line.
+  `regen-views --check` now exits 0; before the fix it did not.
+- **R-20** — `_open_item_ids` read `.prawduct/backlog.md` unconditionally. `data-model.md`
+  § Direction ratifies that once `backlog_service_repo` is set the markdown is **frozen history**,
+  where every item archived at cutover still parses `status: open` — so post-cutover a closed
+  blocker would read as open and the gate would print `releasable:` **on exactly the stale
+  withholding it exists to catch**. Now checks the scalar first (as every sibling reader does) and
+  fails closed, but only when something is actually withheld — a release withholding nothing needs
+  no blocker check.
+
+**FIXED — the rest (10).**
+
+- **R-14** — the orphan check made Phase 0 **non-idempotent across its own runbook**: Phase 1 step 3
+  stamps `release=`, which removes those scopes from the pending set, so a second Phase 0 run would
+  report every successfully classified scope as a stale row and block the release it had just
+  approved. `scopes_tagged_for` exempts scopes tagged for *this* release only; a row left from an
+  older release is still stale, and both directions are pinned.
+- **R-2** — open-blocker detection was section-blind: an item under `## Archive` with an unflipped
+  `status: open` counted as a live blocker. The archive move and the status flip are separate edits,
+  so this is the stale-withholding error one level down.
+- **R-3 / R-4** — Done-when 3 asserted a green run that **cannot happen before the release**, and the
+  root cause is structural: the runbook bumps `plugin/VERSION` in Phase 1 step 7, *after* Phase 0
+  runs, so a VERSION-derived version always names the *previous* release at gate time. The criterion
+  now says "runs and reports correctly, which at this commit means red," and the fallback prints a
+  NOTE naming the trap instead of silently grading the wrong release.
+- **R-5** — the lazy import did not seed `sys.path` while its comment claimed to mirror `_coverage()`.
+  Now goes through a real `_release_readiness()` helper with the same idiom.
+- **R-21 / R-22** — a vacuous pass was indistinguishable from a real one, and the pass path never
+  named the artifact behind the verdict (the glob can match more than one file). Both now printed.
+- **R-24** — a shipped stderr message named a prawduct-internal backlog id as its example; a command
+  that ships to every product must not. Now `ABC-1234`.
+- **R-6 / R-18** — ~~Docstring corrected to match the code.~~ **CORRECTED: this claim was false when
+  written; the edit landed in the following commit.** See the verify-pass entry above.
+- **R-25** — `operational-spec.md`'s **gitflow promotion norm** ("a separate, deliberate tree-set
+  step", rationale "content-identical to `develop`") was undisposed, and Chunk 02 parts (a)/(b)/(c)
+  propose replacing exactly that. Recorded in the plan as a **blocking precondition on Chunk 02**:
+  it is a norm amendment needing a vetoable `[DECISION: …]`, not an implementation detail. Amending a
+  norm to bless one's own code is the laundering tell.
+
+**ACCEPTED (17), with reasons.**
+
+- **R-7** — `verify-chunk-refs` exits 1 repo-wide on a backticked *branch* name in prose in
+  `build-plan-v3.2.0-golive.md:165`, a file this bundle does not touch. Real defect, wrong owner: it
+  belongs to the chunk-refs-gate scope, where `CRT-2P8V` already tracks the ref-classification
+  family. The reviewer's downgrade from the protocol's blocking default is **endorsed** — no
+  deliverable is missing — and recorded here rather than left as an unexplained deviation.
+- **R-8 / R-17 / R-27** — `release_pending_scopes` is a second, narrower definition than
+  `views.collect_release_pending_scopes`. Deliberate and documented in the docstring: `regen-views`
+  needs `status=shipped` scopes included so it can flip plans regardless of convention, while
+  releasability strictly needs "has not shipped", for which the authoritative marker is the absence
+  of `release=`. ~~Assumption #3 in the plan is now accurate about which function is used.~~
+  **CORRECTED: that edit landed in the following commit, not this one.**
+- **R-10** — `documentation/release-process.md` did not gain Phase 0. Correct as-is: it is the
+  narrative overview, and duplicating the gate into a second procedure is how the two drift. Chunk 02
+  touches the runbook again and is the right place to add a pointer.
+- **R-11 / R-26** — `governed_by:` omits `api-contract.md` and two others whose Direction norms this
+  chunk arguably touches. The two that materially bind (`data-model.md`, `operational-spec.md`) are
+  disposed. Widening `governed_by:` to every artifact with vocabulary overlap makes the
+  reconciliation ceremonial, which is the failure mode the norm-lifecycle spec warns about.
+- **R-13** — the command is only executable inside the prawduct source repo (`plugin/VERSION`).
+  True and intended for now: this is prawduct's *own* release runbook. Generalising to consumer
+  products is real work with no current consumer, and inventing one is speculative.
+- **R-15** — blocker openness is one metadata word rather than the backlog model's full lifecycle.
+  Proportionate: the gate asks one question, and coupling it to the lifecycle engine buys precision
+  nobody needs at a boundary a human is already reading.
+- **R-16** — plan frontmatter departs from the template. The added keys (`item:`,
+  `requirements_confidence:`) carry real information the template lacks; the template is the debt.
+- **R-19** — the runbook now exceeds `docs/runbook-authoring.md`'s step budget. Acknowledged and
+  accepted: Phase 0 is one step plus its failure branches. Chunk 02 adds a whole phase, and **that**
+  is where the split decision belongs, with both phases visible.
+- **R-28 / R-29 / R-30** — cross-check results and the observation that `## Release classification`
+  has no template. The runbook now carries a worked example inline, which is where a release author
+  is actually looking; a separate template is a second surface to drift.
+
+## 2026-07-29: Phase 0 — the release runbook asks whether everything is fit to ship
+
+<!-- prawduct: type=feature | scope=release-readiness | chunks=01 -->
+
+REL-8P6M part (f), the item's highest-value half. The runbook's only precondition was
+`git diff --stat origin/main origin/develop` — *"is there anything to ship?"*, never *"is everything
+**fit** to ship?"*. On v3.1.2 those diverged: the check passed, and following Phase 2 literally would
+have published the backlog-service subsystem with all four go-live blockers open. What caught it was
+incidental (enumerating change-log entries happened to surface ten from an unexpected subsystem), not
+any step of the procedure — and the publish is unrecallable, since consumers re-resolve `main` at
+next session start.
+
+**`prawduct-hook check-releasability [--release vX.Y.Z]`** requires every release-pending scope to be
+classified in the release plan's `## Release classification` table as `ships`, or `withheld` behind a
+**named open** blocker. Fails closed on every un-evaluable input — a gate that fails open is
+indistinguishable from the absence it replaces.
+
+**The classification is a partition, not a checklist.** Every release-pending scope appears exactly
+once, and nothing appears that is not release-pending. A subset comparison would satisfy "everything
+listed is real" while still letting an unlisted scope ship unexamined — the v3.1.2 shape exactly.
+Pinned in both directions by `TestPartitionIsExact`, and verified by mutation: neutralising the
+orphan check fails two tests.
+
+**Why a withholding blocker must still be open:** the blocker *is* the justification. If it closed,
+the reason to withhold evaporated and the decision needs re-taking. Shipping on a stale withholding
+and withholding on a stale blocker are the same defect, so the gate names both.
+
+**First real run found pre-existing debt:** 11 release-pending scopes, of which six
+(`skills-cutover-awareness`, `backlog-skill-repoint`, `backlog-service-v1`, `v1.5.1`, `v1.5`, `v1.4`)
+carry `scope=` but no `release=` — work that shipped long ago with no record of which release carried
+it. That is not a false positive; it is why "what did the last release ship?" cannot be answered from
+this file, and Phase 0 documents backfilling via the code test rather than classifying history into
+the release being cut.
+
+Part **(e)** — the Phase 1 sweep's selection rule — remains deliberately **held**; see
+`artifacts/change-log-ledger-design.md` for why rewriting it now would be throwaway work.
+
 ## 2026-07-29: Dispositions — verify-resolutions `rev-20260729T160832Z-6fc768ff`, both findings FIXED
 
 <!-- prawduct: type=fix | scope=coverage-perf -->

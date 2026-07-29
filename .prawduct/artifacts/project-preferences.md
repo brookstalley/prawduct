@@ -45,7 +45,7 @@ Developer preferences for how code is written in this project. Captured during d
 - **Protected branches**: none enforced (direct workflow)
 - **PR creation**: wait_for_user — only create PRs when explicitly asked
 - **PR merge**: wait_for_user — present the PR for user review before merging
-- **PR merge strategy**: merge commit (`gh pr merge --merge`) — preserve each chunk's commit on the integration branch; do not squash. (Matches the `/pr` skill's default; stated explicitly here. The `develop`→`main` release is a tree-set promotion, not a merge, so feature→`develop` granularity doesn't affect it.)
+- **PR merge strategy**: merge commit (`gh pr merge --merge`) — preserve each chunk's commit on the integration branch; do not squash. (Matches the `/pr` skill's default; stated explicitly here. The `develop`→`main` release is a single-parent promotion, not a merge, so feature→`develop` granularity doesn't affect it. The promotion builds `main`'s tree either by tree-set (whole-develop) or by a classified `--3way` apply (pruned) — `operational-spec.md` § Direction, amended 2026-07-29.)
 
 ---
 
