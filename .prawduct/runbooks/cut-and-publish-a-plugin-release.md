@@ -91,8 +91,9 @@ installed consumer, unrecallably. This phase is the second question (REL-8P6M).*
    entries you expect carry no `scope=` key and are invisible to the gate. Check which before
    continuing.
 
-   **If not:** it prints one `ERROR:` line per problem, then stops. Find the line you are looking
-   at:
+   **If not:** it stops, printing either a `not-releasable:` header plus one `ERROR:` line per
+   problem, or — when an input it needs is missing outright — a single bare `<reason-code>:` line.
+   Find the line you are looking at:
 
    `unclassified scope(s)`
    - **Add a row** to the `## Release classification` table in
@@ -115,7 +116,14 @@ installed consumer, unrecallably. This phase is the second question (REL-8P6M).*
    - This repo has cut over to the GitHub Issues backlog, so `backlog.md` is frozen history and
      blocker liveness cannot be read from it. **Confirm each withholding blocker is open by hand**
      and record that confirmation in the release plan beside the classification table. Then proceed
-     — the gate stays red by design and the recorded hand check is what replaces it.
+     — the gate stays red by design and the recorded hand check is what replaces it. **Blocker
+     liveness is the only thing it withholds**: every other check still ran, so fix any other
+     `ERROR:` line printed beside this one before proceeding.
+
+   `unreadable-project-state:`
+   - The gate cannot tell which backlog is live, so it cannot judge blocker liveness either.
+     **Fix or restore `.prawduct/project-state.yaml`**, then re-run. (This is not the cutover case —
+     the message says so precisely because the two need different remedies.)
 
    `no-release-plan:` · `no-change-log:` · `no-version:` · `unreadable-release-plan:` · `no-backlog:`
    - An input the gate needs is missing or unreadable. **The message names the path** — create or
@@ -187,17 +195,35 @@ installed consumer, unrecallably. This phase is the second question (REL-8P6M).*
    > output; do not re-derive it from memory.
    >
    > Count them rather than recalling them — the number moves every time work
-   > merges:
+   > merges. This enumerates every scope with a statusless entry, **whole file,
+   > no boundary restriction**:
    >
    > ```
    > grep -o '<!-- prawduct:[^>]*-->' .prawduct/change-log.md | grep -v 'release=' \
    >   | grep -oE 'scope=[A-Za-z0-9._-]+' | sort | uniq -c | sort -rn
    > ```
    >
-   > Measured on `feature/rel-8p6m-releasability-gate` @ `1a353d1`, above the
-   > `release=v3.1.2` boundary: **23 release-pending entries across six scopes**,
-   > of which `scope=v3.2.0-golive` is only **7** — so that one grep misses **16
-   > across five other scopes** (`release-readiness` 7, `coverage-perf` 4,
+   > It deliberately **over**-includes: entries below the step-2 boundary land in
+   > it too, and the per-candidate code test above is what filters them. Over-
+   > inclusion is the safe direction here — the failure being prevented is a
+   > scope you never looked at.
+   >
+   > To reproduce the figures below, restrict it to the boundary first:
+   >
+   > ```
+   > sed -n "1,$(( $(grep -n '<!-- prawduct:.*release=' .prawduct/change-log.md | head -1 | cut -d: -f1) - 1 ))p" \
+   >   .prawduct/change-log.md | grep -o '<!-- prawduct:[^>]*-->' | grep -v 'release=' \
+   >   | grep -oE 'scope=[A-Za-z0-9._-]+' | sort | uniq -c | sort -rn
+   > ```
+   >
+   > *(The boundary pattern must be the **tag line** `<!-- prawduct:.*release=`, not a
+   > bare `release=` — this file's own prose contains that string, and a bare match
+   > lands the boundary in a paragraph near the top and returns almost nothing.)*
+   >
+   > Measured that way on `feature/rel-8p6m-releasability-gate` @ `1a353d1`:
+   > **23 release-pending entries across six scopes**, of which
+   > `scope=v3.2.0-golive` is only **7** — so that one grep misses **16 across
+   > five other scopes** (`release-readiness` 7, `coverage-perf` 4,
    > `chunk-refs-gate` 2, `critic-disposition` 2, `review-loop-termination` 1).
    > One of the missed entries is the `protected_path_violation` widening, a
    > change to the governance bounds of every installed repo. Step 10's
@@ -205,7 +231,7 @@ installed consumer, unrecallably. This phase is the second question (REL-8P6M).*
    > scope-narrowed sweep quietly shortens the release notes as well as the tags.
    >
    > *(Any figure written here is a measurement of one tree, not a property of
-   > the repo. Re-run the command; do not trust this paragraph's arithmetic.)*
+   > the repo. Re-run the commands rather than citing this paragraph.)*
 
    > 🚧 **If this selection rule looks wrong to you, it is — and it is
    > deliberately not being fixed here.** The positional-and-scoped sweep is

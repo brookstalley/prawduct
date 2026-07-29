@@ -3,6 +3,50 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-07-29: Dispositions — verify pass `rev-20260729T192252Z-599d3307`; the remedy re-entered the defect
+
+<!-- prawduct: type=fix | scope=release-readiness | chunks=02,03 -->
+
+12 of 13 prior findings verified FIXED against the diff, 1 waived (R-12 — the impossible
+`make plugin/VERSION readable` instruction is gone, but the broader scoped refusal was declined;
+recorded as waived so the tree is not overstated). The pass then returned **1 blocking, 1 warning,
+1 note**, all three of them defects *in the fixes themselves*. **All FIXED.**
+
+- **BLOCKING — the R-17 remedy routed the operator past the check the gate exists to perform.**
+  Giving the post-cutover refusal a way forward ("hand-verify blocker liveness, then proceed") was
+  right; returning early was not. `check_releasability` bailed the moment the backlog was
+  unavailable — *before* `unclassified`, `orphans`, `contradictions` and the table parse errors were
+  ever assembled — so the operator was told the one thing the gate could not verify and nothing
+  about whether every release-pending scope was classified at all. Both runbooks then said to
+  continue. That is the v3.1.2 near-miss re-entered **through its own remedy**, and it would have
+  landed on the first release after the backlog-service cutover, which is precisely the release
+  these runbooks were written for. Now the liveness reason is carried as one problem among the rest
+  and every other check runs; unverifiable liveness is explicitly *not* reported as a closed blocker,
+  because "re-take this decision" is a wrong remedy when the gate never read the backlog. Two tests,
+  proved by mutation: restoring the early return fails them.
+- **WARNING — the command offered as proof did not reproduce the figure it stood under.** The
+  R-2 fix replaced a decaying number with a derivation command, and the command applied no boundary
+  restriction: 12 scopes / 54 entries against the "23 across six" printed two lines below, under a
+  sentence telling the reader to trust the command over the paragraph. Worse on inspection — the
+  boundary-restricted version I then wrote keyed on a bare `release=`, which this file's own prose
+  contains, so it put the boundary inside a paragraph and returned **1**. Both are now correct and
+  both were *run*: the whole-file form is documented as deliberately over-including (the safe
+  direction, filtered by the per-candidate code test), and the boundary form keys on the tag line
+  and reproduces 23 / six scopes / `v3.2.0-golive` 7 at `1a353d1` exactly.
+- **NOTE — `unreadable-project-state:` was absent from the lookup built in the same commit.** The
+  R-18 fix minted a reason code; the R-11 fix keyed seven others and missed it, so it fell to the
+  catch-all whose promise is "if it names no fix, that is a defect in the gate" — which it was not.
+  Keyed, with its remedy. The lead-in also claimed every failure prints an `ERROR:` line; five of
+  the codes are bare stderr lines. Corrected.
+
+**The pattern, stated plainly because it is now three rounds deep.** Every one of these is the same
+act: *writing a sentence that asserts something about the tree without running the thing that would
+check it.* A disposition claiming an edit. A census counted inside its inherited frame. A command
+published as evidence without being executed. The branch filed the learning for this class in the
+same commit as two of the offences, which is Principle 18 in the least flattering way. The rule now
+in `learnings.md` is deliberately mechanical rather than attitudinal, because attitude is what failed:
+**recount the set, not the count — and run the command you are about to publish as proof.**
+
 ## 2026-07-29: Dispositions — cumulative `rev-20260729T185143Z-b35e7646`, and the census that proved its own point
 
 <!-- prawduct: type=fix | scope=release-readiness | chunks=02,03 -->

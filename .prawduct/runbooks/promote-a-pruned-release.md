@@ -28,6 +28,10 @@ backlog. The gate cannot judge blocker liveness from a frozen `backlog.md`, so i
 guessing. You are still in the right document — confirm each withholding blocker is open **by hand**,
 record that confirmation in the release plan beside the classification table, and proceed to step 1.
 
+**Blocker liveness is the only check that refusal withholds.** Every other one still ran, so any
+other `ERROR:` line printed beside it is a real problem and must be fixed first — an unclassified
+scope in particular, which is the thing Phase 0 exists to catch.
+
 ## When NOT to use this
 
 - **If `K withheld` is 0:** → `cut-and-publish-a-plugin-release.md` Phase 2.

@@ -339,17 +339,18 @@ def check_releasability(project_dir: Path, release: str | None = None) -> int:
     # a release that withholds nothing needs no backlog read at all.
     withheld_scopes = [s for s, (d, _) in classification.items() if d == WITHHELD]
     open_ids: set[str] = set()
+    # Blocker liveness is the ONLY sub-verdict a frozen backlog can withhold.
+    # Returning here instead would report the one thing the gate could not check
+    # and stay silent about the thing it exists to check — whether every
+    # release-pending scope is classified at all. The runbooks tell the operator
+    # to hand-verify liveness and continue, so a bare refusal would route them
+    # past an unclassified scope on the way to an unrecallable publish: the
+    # v3.1.2 near-miss this module was built for, re-entered through its own
+    # remedy. Carry the reason as a problem and let every other check run.
+    liveness_unverifiable: str | None = None
     if withheld_scopes:
-        unavailable = _markdown_backlog_unavailable_reason(project_dir)
-        if unavailable is not None:
-            print(
-                f"{unavailable} "
-                f"{len(withheld_scopes)} scope(s) are withheld behind blockers that "
-                "must be confirmed open by hand before publishing: "
-                f"{', '.join(sorted(withheld_scopes))}.",
-                file=sys.stderr,
-            )
-            return 1
+        liveness_unverifiable = _markdown_backlog_unavailable_reason(project_dir)
+    if withheld_scopes and liveness_unverifiable is None:
         try:
             backlog_content = (project_dir / _BACKLOG_REL_PATH).read_text(encoding="utf-8")
         except OSError as exc:
@@ -379,7 +380,7 @@ def check_releasability(project_dir: Path, release: str | None = None) -> int:
             # branch exists to fix.
             blocker_note = (
                 f"{blocker}, which is no longer open"
-                if blocker and blocker not in open_ids
+                if blocker and liveness_unverifiable is None and blocker not in open_ids
                 else blocker
             )
             contradictions.append(
@@ -391,10 +392,24 @@ def check_releasability(project_dir: Path, release: str | None = None) -> int:
         # shipping set, so those scopes correctly leave `pending`.
         if scope not in pending and not (disposition == SHIPS and shipped_now):
             orphans.append(scope)
-        if disposition == WITHHELD and blocker and blocker not in open_ids:
+        # Unverifiable liveness is NOT a closed blocker. Claiming "not open" from
+        # an unread backlog would be a wrong remedy — re-take a decision that may
+        # be perfectly sound — so the liveness problem below says so once instead.
+        if (
+            disposition == WITHHELD
+            and blocker
+            and liveness_unverifiable is None
+            and blocker not in open_ids
+        ):
             stale_blockers.append(f"{scope} (withheld behind {blocker}, which is not open)")
 
     problems = list(errors)
+    if liveness_unverifiable is not None:
+        problems.append(
+            f"{liveness_unverifiable} {len(withheld_scopes)} scope(s) are withheld "
+            "behind blockers that must be confirmed open by hand before publishing: "
+            f"{', '.join(sorted(withheld_scopes))}. Every other check below did run."
+        )
     if unclassified:
         problems.append(
             "unclassified scope(s) — name the release each ships in, or the open "

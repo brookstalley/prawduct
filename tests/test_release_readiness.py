@@ -311,6 +311,46 @@ class TestPostCutoverFailsClosed:
         )
         assert "alpha" in err, "the withheld scopes still need naming"
 
+    def test_an_unclassified_scope_is_STILL_named_post_cutover(self, tmp_path, capsys):
+        # The runbooks tell the operator to hand-verify blocker liveness and
+        # continue. If the refusal returned before the other checks ran, that
+        # instruction would route them past an unclassified scope on the way to
+        # an unrecallable publish — the exact v3.1.2 near-miss this gate exists
+        # for, re-entered through its own remedy. The frozen backlog withholds
+        # blocker LIVENESS and nothing else.
+        project = _make_project(
+            tmp_path,
+            entries=_entry("A", "alpha") + _entry("B", "unclassified-scope"),
+            classification="| alpha | withheld | BKL-6J2X |\n",
+            backlog=_open_item("BKL-6J2X"),
+        )
+        self._cut_over(project)
+        assert release_readiness.check_releasability(project, "v3.2.0") == 1
+        err = capsys.readouterr().err
+        assert "cannot-verify-blockers" in err, "the liveness refusal still stands"
+        assert "unclassified-scope" in err, (
+            "the check the gate exists to perform must survive the one it cannot"
+        )
+
+    def test_unverifiable_liveness_is_not_reported_as_a_closed_blocker(
+        self, tmp_path, capsys
+    ):
+        # An unread backlog yields an empty open-id set, so a naive check reads
+        # every blocker as closed and tells the operator to re-take a decision
+        # that may be perfectly sound — a wrong remedy, worse than a bare failure.
+        project = _make_project(
+            tmp_path,
+            entries=_entry("A", "alpha"),
+            classification="| alpha | withheld | BKL-6J2X |\n",
+            backlog=_open_item("BKL-6J2X"),
+        )
+        self._cut_over(project)
+        assert release_readiness.check_releasability(project, "v3.2.0") == 1
+        err = capsys.readouterr().err
+        assert "which is not open" not in err, (
+            "liveness was unverifiable, so 'not open' is a claim the gate cannot make"
+        )
+
     def test_no_withheld_scope_still_passes_post_cutover(self, tmp_path):
         # Proportionality: a release that withholds nothing needs no blocker
         # liveness check, so cutover must not block it.
