@@ -50,7 +50,9 @@ inference as a vetoable assumption. Full model: `methodology/discovery.md` "Cali
   stepped away, replays a large context into a cold cache: the exact cost the handoff prevents.
   Preparing unasked costs little, and they may continue in place. "Nothing beyond the plan" if
   that is the truth, but write the line rather than no file, which reads as an omission.
-  **Reconcile it, never blind-append.** Each write drops what the work just discharged,
+  **Read it before rewriting it, and reconcile — never blind-append.** Only `/clear` consumes
+  that file, so a second batch finds the first's notes still sitting there; go straight to a
+  write and you delete live items you never read. Each write drops what the work just discharged,
   corrects what moved, and keeps only what still bites. When a session runs a second batch,
   its close REWRITES the first batch's notes rather than stacking a new section on them — a
   stratified file makes the next reader guess which layer is still live, and the layer that

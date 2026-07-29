@@ -121,6 +121,23 @@ class TestBuildingMethodology:
                 f"methodology/{surface}"
             ).lower(), surface
 
+    def test_handoff_notes_are_read_before_being_rewritten(self):
+        """Reconciling requires READING first, and that had to be said.
+
+        Only `/clear` consumes `.handoff-notes.md`, so within one session a
+        second batch finds the first batch's notes still on disk. An agent
+        told to "reconcile" but not to read goes straight to a write and
+        deletes live items it never saw — the same loss the channel exists to
+        prevent, arriving by the door the fix opened. The instruction to write
+        these notes long predated any instruction to read them.
+        """
+        assert "read `.prawduct/.handoff-notes.md` before rewriting it" in self.content
+        for surface in ("session-digest.md", "session-digest-slim.md"):
+            content = read_file(f"methodology/{surface}")
+            assert "before rewriting it" in content, surface
+            # The why belongs on the injected surfaces, not the on-demand one.
+            assert "/clear` consumes" in content, surface
+
     def test_chunk_close_routes_backlog_to_skill(self):
         """The chunk-close sequence routes backlog work through /prawduct:backlog
         (not hand-edits) — workflow wiring, Chunk 09. Guards the routing."""
