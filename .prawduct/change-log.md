@@ -3,6 +3,49 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-07-29: "File the rest" was a backlog pump, and the framework was doing it to itself
+
+<!-- prawduct: type=fix | scope=critic-disposition -->
+
+`review-cycle.md` said: once a pass returns zero BLOCKING, remaining WARNING/NOTE findings are
+**FILED, not fixed** — `/prawduct:backlog add` them and proceed. The rule existed for a real
+reason (a fix commit extends HEAD, coverage no longer reaches it, another pass runs; observed
+live at four rounds and ~40 minutes on a ~40-line change) and that reason still stands. But it
+conflated *stop reviewing* with *put it in the backlog*, and the second half made the backlog the
+disposal route for every finding a thorough reviewer produces.
+
+**Measured on this repo, which is the whole argument.** Open items went **50 → 180 in 26 days**.
+67 are Critic-sourced; **53 of those have never been touched since filing** (`reviewed:` still
+equals `added:`); 58% of every Critic item ever filed is still open. 43 of 67 are about the
+framework's own governance machinery rather than product behaviour, and 42 of 67 sit at
+`effort: S` — the band where the item costs more reader-attention over its life than the fix
+costs. The sharpest tell: **`verify-chunk-refs` alone carries six open items**, each a facet found
+by a *later* review of the same unfixed gate. Filing made every pass re-discover the mechanism
+instead of closing it.
+
+Now: the review still ends at zero BLOCKING — the termination guarantee is untouched — but each
+remaining finding takes one of three dispositions, and **FILE is the narrowest, never the
+default**:
+
+- **ACCEPT** (the default) — won't fix, reason recorded in the change-log entry for the work. No
+  backlog item. This is Principle 2's *explicitly descoped*, which the resolution flow previously
+  had no way to express: it offered fix-or-file and nothing else.
+- **FIX** — anything cheap, and anything touching a gate, contract, or operator-facing surface
+  regardless of cost. Coverage closes with **one** `verify-resolutions` pass, not another full
+  round; a fix confined to non-judgeable surfaces costs nothing.
+- **FILE** — genuinely deferred work someone will do, and the item names its trigger. No trigger
+  means it is an ACCEPT wearing a backlog id.
+
+Plus a smell test: a review that ends in a double-digit filing is not thorough, it is undisposed.
+
+Applied immediately to the cumulative review that prompted this (0 blocking, 12 warnings): the five
+findings headed for the backlog were re-triaged to **four FIX and one ACCEPT — zero filed.**
+
+**Why this is urgent rather than tidy:** a framework that pumps its own backlog does it once per
+build plan to every repo that adopts it. Surfaces changed: `skills/critic/review-cycle.md`
+(canonical) and `methodology/building.md` (trimmed to stay inside its 4660-token ceiling — 5 to
+spare). Rule captured in `learnings.md`.
+
 ## 2026-07-29: The ref gate was verifying one file reference for an entire release
 
 <!-- prawduct: type=fix | scope=chunk-refs-gate | chunks=01 -->

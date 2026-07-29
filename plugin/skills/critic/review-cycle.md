@@ -107,9 +107,35 @@ Every consolidated review appends a **fact** to the shared evidence store (`<git
 
 ### The review loop terminates — and the builder is what terminates it
 
-**Once a pass returns zero BLOCKING, remaining WARNING/NOTE findings are FILED, not fixed.**
-`/prawduct:backlog add` them and proceed. This is the exit condition, not a judgment call, and it is
-what keeps step 3's "repeat until" from being unbounded.
+**Once a pass returns zero BLOCKING, the review is over.** That is the exit condition, not a judgment
+call, and it is what keeps step 3's "repeat until" from being unbounded.
+
+**But "the review is over" is not "add it to the backlog."** Every remaining WARNING/NOTE gets exactly
+one of three dispositions, and **FILE is the narrowest, never the default**:
+
+- **ACCEPT** — won't fix. Record the finding and the reason in the change-log entry for the work (or
+  the PR body); no backlog item. This is the **default** for anything that gates nothing and that no
+  one will realistically action. Principle 2 already licenses it: *implemented or explicitly
+  descoped*. An accept is the explicit descope — visible, dated, and attached to the work it came
+  from, where the next reader of that change meets it.
+- **FIX** — take it now. Correct for anything cheap, and for anything touching a gate, a contract, or
+  an operator-facing surface regardless of cost. Closing coverage afterwards costs **one**
+  `verify-resolutions` pass — bounded, and not another full round. A fix confined to non-judgeable
+  surfaces costs nothing at all.
+- **FILE** — only genuinely deferred work that someone will actually do, and the item says what
+  triggers it. No trigger means it is an ACCEPT wearing a backlog id.
+
+**Why the default moved.** The old rule said file the rest, full stop. It bounded the review loop —
+which was the real problem it solved — but it made the backlog the disposal route for every finding a
+thorough reviewer produces, and thorough reviewers produce many. Measured on this framework's own
+repo: **open items went 50 → 169 in 26 days, roughly 120 of that from Critic findings on governance
+machinery** — faster than anyone could action them, which turns the backlog from a work queue into a
+guilt pile and buries the items that mattered. A framework that does this to itself does it to every
+repo that adopts it, once per build plan.
+
+**The count is the smell.** A review that ends with a double-digit filing is not thorough, it is
+undisposed. If you are filing more than two or three, you are using the backlog to avoid deciding —
+go back and sort them into ACCEPT and FIX.
 
 Why it has to be a rule. WARNING and NOTE **gate nothing** — the PR gate and the Stop gate both
 require only *coverage* plus *zero unresolved BLOCKING*. But `methodology/building.md` says warnings
