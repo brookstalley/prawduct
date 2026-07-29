@@ -3,6 +3,43 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-07-29: The release sweep is scope-narrowed as well as positional, and the fix is held
+
+<!-- prawduct: type=fix | scope=release-readiness | chunks=03 -->
+
+REL-7D4X had the release sweep's *positional* defect covered by a warning in Phase 1 step 2. W-1
+(PR #141's reviewer) found the same defect in the other dimension: re-deriving the release-pending
+set from one `scope=` returns a subset that looks complete. The warning now names both.
+
+**The remedy is Phase 0, not another grep.** `check-releasability` already enumerates every
+release-pending scope and fails closed. Step 2 now says to walk *that list* rather than re-derive it
+— retrieval over regeneration, and it makes the two phases load-bearing for each other.
+
+**Corrected while verifying: the figure is 9, not 8.** Both the ledger design and this build plan
+carried "8 statusless entries across four scopes." Counted at PR #141's merge (`c49be89`) and at
+HEAD, it is **9** — `coverage-perf` 4, `chunk-refs-gate` 2, `critic-disposition` 2,
+`review-loop-termination` 1. The runbook carries the verified number and the scope-by-scope
+breakdown, so the next reader can re-count rather than inherit. One of the nine is the
+`protected_path_violation` widening, which changes governance bounds in every installed repo — the
+kind of entry that must reach the release notes, which step 10 derives from all shipping scopes.
+
+**(e) is held, and the runbook now says so where the rule is read.** The sweep keeps its selection
+rule by owner decision 2026-07-29: `change-log-ledger-design.md` would delete the machinery, so
+rewriting it is throwaway. A reader who spots the flaw mid-release would otherwise "fix" it in
+ignorance of a pending decision, so the marker sits next to the rule rather than in an artifact they
+have no reason to open. v3.2.0 tags its shipping subset by hand across every scope, once.
+
+Also corrected: the build plan located this warning at Phase 1 **step 3**; it is attached to step 2,
+where the derivation rule actually lives, and that is where the extension landed.
+
+**The `dead-why` probe caught its own author.** Archiving REL-8P6M turned the gitflow promotion
+norm's `Status:` line into a rationale resting on completed work, and prawduct's norm-lifecycle probe
+fired within the same session — as a *test failure*, because `test_no_norm_lifecycle_advisory_fires_here_today`
+is a tripwire whose re-baseline is the forcing function. The remedy is the one the probe prescribes:
+the norm is re-affirmed and its Why now stands on the two mechanisms that enforce it (Phase 0's gate,
+step 10's partition), not on the backlog id that prompted them. A norm whose rationale points at a
+closed item is a norm nobody can evaluate.
+
 ## 2026-07-29: The pruned promotion becomes a procedure instead of an expiring release plan
 
 <!-- prawduct: type=feature | scope=release-readiness | chunks=02 -->

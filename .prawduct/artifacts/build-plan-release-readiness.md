@@ -183,18 +183,22 @@ Part (e) is held, so the sweep keeps its positional selection rule — but the *
 misled by it twice more.
 
 **Deliverable:**
-1. Extend Phase 1 step 3's existing REL-7D4X warning with the **scope** dimension (W-1, found by the
-   PR reviewer on `feature/v3.2.0-c02-adapter-safety`): the re-derivation instruction
+1. Extend Phase 1 step **2**'s existing REL-7D4X warning with the **scope** dimension (W-1, found by
+   the PR reviewer on `feature/v3.2.0-c02-adapter-safety`): the re-derivation instruction
    `re-grep scope=v3.2.0-golive` sees one scope, while a release bundle routinely spans several. On
-   v3.2.0 exactly this would have missed **8 statusless entries across four scopes**
-   (`chunk-refs-gate`, `coverage-perf`, `critic-disposition`, `review-loop-termination`).
+   v3.2.0 exactly this would have missed **9 statusless entries across four scopes**
+   (`coverage-perf` 4, `chunk-refs-gate` 2, `critic-disposition` 2, `review-loop-termination` 1).
+   *(Two corrections made while building: this plan and `change-log-ledger-design.md` both said
+   **8** — counted at `c49be89` and at HEAD it is 9; and the warning is attached to step 2, not
+   step 3, since step 2 is where the derivation rule lives.)*
 2. State that the consumer-facing note list must be derived from **all** shipping scopes — the
    `protected_path_violation` widening is fleet-visible and would have been omitted.
 3. A pointer to `change-log-ledger-design.md` recording *why* (e) is held, so the next reader does
    not "fix" the sweep in ignorance of the pending decision.
 
 **Done when:**
-1. The warning names the scope dimension and the four scopes, with the count.
+1. The warning names the scope dimension and the four scopes, with the count, and points the reader
+   at Phase 0's already-computed list rather than at a fresh grep.
 2. `REL-8P6M` updated via `/prawduct:backlog` — parts a/b/c/d/f closed, **(e) explicitly retained**
    with its trigger, so archiving the item does not silently drop it.
 3. `/prawduct:critic`, findings resolved.

@@ -59,14 +59,17 @@ amended 2026-07-29). Step 10 is that test.
 
 ## Steps
 
-1. Find the cut point — the newest commit that delivered **withheld** work:
+1. Find the cut point — the newest commit that delivered **withheld** work. Step 0 named the withheld
+   scopes; the boundary between them and the ship set is normally a PR merge, since feature work
+   arrives that way:
 
    ```
-   git log --oneline <prev-tag>..origin/develop
+   git log --oneline --merges <prev-tag>..origin/develop
    ```
 
-   **Expected:** one sha you can name. It is normally a PR merge commit, since feature work arrives
-   that way and the boundary falls between two of them. Record it in the release plan.
+   **Expected:** one sha you can name, and the PR title beside it belongs to withheld work. Record it
+   in the release plan. (Full history, if the boundary is not a merge:
+   `git log --oneline <prev-tag>..origin/develop`.)
 
 2. Confirm nothing withheld would ship — read the range **after** the cut point:
 
@@ -135,7 +138,7 @@ amended 2026-07-29). Step 10 is that test.
    ```
    git diff --name-only <cut-point> origin/develop -- '*.py' | while read -r f; do
      [ -f "../prawduct-candidate/$f" ] || continue
-     m=$(comm -23 <(git show "origin/develop:$f" | grep -E '^ *(import|from) ' | sort -u) \
+     m=$(comm -23 <(git show "origin/develop:$f" 2>/dev/null | grep -E '^ *(import|from) ' | sort -u) \
                   <(grep -E '^ *(import|from) ' "../prawduct-candidate/$f" | sort -u))
      [ -n "$m" ] && printf '%s\n%s\n' "$f" "$m"
    done
@@ -150,8 +153,11 @@ amended 2026-07-29). Step 10 is that test.
 8. Run the suite on the candidate tree:
 
    ```
-   cd ../prawduct-candidate && python3 -m pytest -q
+   (cd ../prawduct-candidate && python3 -m pytest -q)
    ```
+
+   > *In a subshell on purpose: steps 9–14 all address the candidate as
+   > `../prawduct-candidate`, and a bare `cd` here would silently repoint every one of them.*
 
    **Expected:** `NNNN passed`, and **fewer than `develop`'s count** — the withheld subsystem's own
    tests do not exist in this tree. On v3.1.2: 2131 passed, 1 skipped, against 2683 on `develop`.

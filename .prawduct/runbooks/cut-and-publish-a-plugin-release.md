@@ -147,6 +147,29 @@ installed consumer, unrecallably. This phase is the second question (REL-8P6M).*
    > and apply it. Entries predating the tag convention (roughly pre-2026-06)
    > are untagged but shipped — the code test is what separates them.
 
+   > ⚠️ **The set also spans SCOPES — narrowing the sweep to one `scope=` drops
+   > the rest just as silently.** A release bundle routinely carries several, so
+   > re-deriving the set with `grep 'scope=<the-one-you-remember>'` returns a
+   > subset that looks complete. **Step 0 already printed the full list** — the
+   > release-pending scopes it enumerated are the scopes to walk here. Use that
+   > output; do not re-derive it from memory.
+   >
+   > On v3.2.0, re-grepping `scope=v3.2.0-golive` alone misses **9 statusless
+   > entries across four other scopes** — `coverage-perf` (4), `chunk-refs-gate`
+   > (2), `critic-disposition` (2), `review-loop-termination` (1) — one of which
+   > is the `protected_path_violation` widening, a change to the governance
+   > bounds of every installed repo. Step 10's consumer-facing headline is
+   > derived from **all** shipping scopes, so a scope-narrowed sweep quietly
+   > shortens the release notes as well as the tags.
+
+   > 🚧 **If this selection rule looks wrong to you, it is — and it is
+   > deliberately not being fixed here.** The positional-and-scoped sweep is
+   > REL-8P6M (e), **held** by owner decision 2026-07-29:
+   > `artifacts/change-log-ledger-design.md` proposes deleting this machinery
+   > outright, so rewriting the rule now is throwaway work. Until that decision
+   > is taken, this release tags its shipping subset **by hand across every
+   > scope, once**. `REL-7D4X` stays open with it.
+
 3. Append ` | release=vX.Y.Z | status=shipped` to every tag line that passed the
    step-2 test, keeping the keys already there and the ` | ` separator:
 

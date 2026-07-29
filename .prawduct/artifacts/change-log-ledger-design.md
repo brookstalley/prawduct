@@ -43,8 +43,10 @@ Measured on `feature/v3.2.0-c02-adapter-safety` @ `7db9eca`, 2026-07-29:
 - `REL-8P6M` (e) — the same sweep tags the **wrong subset**: under a pruned release it marks withheld
   work as shipped.
 - **W-1**, filed by the PR reviewer on this very branch — the sweep is **scope-narrowed**: its
-  re-derivation instruction is `re-grep scope=v3.2.0-golive`, which cannot see the 8 statusless
-  entries under four other scopes on the same branch.
+  re-derivation instruction is `re-grep scope=v3.2.0-golive`, which cannot see the **9** statusless
+  entries under four other scopes on the same branch. *(Corrected from 8, 2026-07-29: recounted at
+  `c49be89` and at HEAD — `coverage-perf` 4, `chunk-refs-gate` 2, `critic-disposition` 2,
+  `review-loop-termination` 1.)*
 - `VWS-4T9P` / `VWS-2W6H` / `VWS-2F9K` — `regen-views` plan discovery globs non-recursively,
   mis-classifies design artifacts as build plans, and still keys on one of two accepted chunk-heading
   forms.
