@@ -3,6 +3,98 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-07-29: Dispositions — cumulative `rev-20260729T170856Z-8a025aec`, all 30 findings
+
+<!-- prawduct: type=fix | scope=release-readiness | chunks=01 -->
+
+3 blocking, 18 warnings, 9 notes on Chunk 01. **13 FIXED, 17 ACCEPTED with reasons, 0 filed.**
+
+**FIXED — the three blocking (3).**
+
+- **R-1 / R-12 / R-23** — `--release` was detected with `"--release" in argv`, so `--release=v3.2.0`,
+  a bare `v3.2.0`, and any typo all fell through to the `plugin/VERSION` fallback and graded a
+  **different release than the operator named**, silently. That is the swallow STH-5R2Q was raised
+  for, with its `_reject_unknown_args` helper sitting unused in the same file. Replaced with an
+  explicit argv scan: both `--release X` and `--release=X` honoured, every unknown token a usage
+  error at **exit 2** (was 1, colliding with the gate's own not-releasable code). The CLI path had
+  **no test at all**; `TestCliWiring` now drives dispatch, both flag forms, three rejection cases,
+  and the usage-string entry through a real subprocess.
+- **R-9** — the new plan's `## Status` lines used an em dash (`Chunk 01 — …`) where
+  `views.CHUNK_LINE_RE` requires a colon, so the roster parsed empty, the `chunks=01` tag failed
+  validation, and that fail-closed validator **aborted the whole regen** — blocking Phase 1 step 5 of
+  the very runbook this bundle edits, unrepairably by re-running. One character per line.
+  `regen-views --check` now exits 0; before the fix it did not.
+- **R-20** — `_open_item_ids` read `.prawduct/backlog.md` unconditionally. `data-model.md`
+  § Direction ratifies that once `backlog_service_repo` is set the markdown is **frozen history**,
+  where every item archived at cutover still parses `status: open` — so post-cutover a closed
+  blocker would read as open and the gate would print `releasable:` **on exactly the stale
+  withholding it exists to catch**. Now checks the scalar first (as every sibling reader does) and
+  fails closed, but only when something is actually withheld — a release withholding nothing needs
+  no blocker check.
+
+**FIXED — the rest (10).**
+
+- **R-14** — the orphan check made Phase 0 **non-idempotent across its own runbook**: Phase 1 step 3
+  stamps `release=`, which removes those scopes from the pending set, so a second Phase 0 run would
+  report every successfully classified scope as a stale row and block the release it had just
+  approved. `scopes_tagged_for` exempts scopes tagged for *this* release only; a row left from an
+  older release is still stale, and both directions are pinned.
+- **R-2** — open-blocker detection was section-blind: an item under `## Archive` with an unflipped
+  `status: open` counted as a live blocker. The archive move and the status flip are separate edits,
+  so this is the stale-withholding error one level down.
+- **R-3 / R-4** — Done-when 3 asserted a green run that **cannot happen before the release**, and the
+  root cause is structural: the runbook bumps `plugin/VERSION` in Phase 1 step 7, *after* Phase 0
+  runs, so a VERSION-derived version always names the *previous* release at gate time. The criterion
+  now says "runs and reports correctly, which at this commit means red," and the fallback prints a
+  NOTE naming the trap instead of silently grading the wrong release.
+- **R-5** — the lazy import did not seed `sys.path` while its comment claimed to mirror `_coverage()`.
+  Now goes through a real `_release_readiness()` helper with the same idiom.
+- **R-21 / R-22** — a vacuous pass was indistinguishable from a real one, and the pass path never
+  named the artifact behind the verdict (the glob can match more than one file). Both now printed.
+- **R-24** — a shipped stderr message named a prawduct-internal backlog id as its example; a command
+  that ships to every product must not. Now `ABC-1234`.
+- **R-6 / R-18** — `parse_classification`'s docstring over-claimed that malformed rows always become
+  errors; rows with fewer than two cells are skipped. Docstring corrected to match the code.
+- **R-25** — `operational-spec.md`'s **gitflow promotion norm** ("a separate, deliberate tree-set
+  step", rationale "content-identical to `develop`") was undisposed, and Chunk 02 parts (a)/(b)/(c)
+  propose replacing exactly that. Recorded in the plan as a **blocking precondition on Chunk 02**:
+  it is a norm amendment needing a vetoable `[DECISION: …]`, not an implementation detail. Amending a
+  norm to bless one's own code is the laundering tell.
+
+**ACCEPTED (17), with reasons.**
+
+- **R-7** — `verify-chunk-refs` exits 1 repo-wide on a backticked *branch* name in prose in
+  `build-plan-v3.2.0-golive.md:165`, a file this bundle does not touch. Real defect, wrong owner: it
+  belongs to the chunk-refs-gate scope, where `CRT-2P8V` already tracks the ref-classification
+  family. The reviewer's downgrade from the protocol's blocking default is **endorsed** — no
+  deliverable is missing — and recorded here rather than left as an unexplained deviation.
+- **R-8 / R-17 / R-27** — `release_pending_scopes` is a second, narrower definition than
+  `views.collect_release_pending_scopes`. Deliberate and documented in the docstring: `regen-views`
+  needs `status=shipped` scopes included so it can flip plans regardless of convention, while
+  releasability strictly needs "has not shipped", for which the authoritative marker is the absence
+  of `release=`. Assumption #3 in the plan is now accurate about which function is used.
+- **R-10** — `documentation/release-process.md` did not gain Phase 0. Correct as-is: it is the
+  narrative overview, and duplicating the gate into a second procedure is how the two drift. Chunk 02
+  touches the runbook again and is the right place to add a pointer.
+- **R-11 / R-26** — `governed_by:` omits `api-contract.md` and two others whose Direction norms this
+  chunk arguably touches. The two that materially bind (`data-model.md`, `operational-spec.md`) are
+  disposed. Widening `governed_by:` to every artifact with vocabulary overlap makes the
+  reconciliation ceremonial, which is the failure mode the norm-lifecycle spec warns about.
+- **R-13** — the command is only executable inside the prawduct source repo (`plugin/VERSION`).
+  True and intended for now: this is prawduct's *own* release runbook. Generalising to consumer
+  products is real work with no current consumer, and inventing one is speculative.
+- **R-15** — blocker openness is one metadata word rather than the backlog model's full lifecycle.
+  Proportionate: the gate asks one question, and coupling it to the lifecycle engine buys precision
+  nobody needs at a boundary a human is already reading.
+- **R-16** — plan frontmatter departs from the template. The added keys (`item:`,
+  `requirements_confidence:`) carry real information the template lacks; the template is the debt.
+- **R-19** — the runbook now exceeds `docs/runbook-authoring.md`'s step budget. Acknowledged and
+  accepted: Phase 0 is one step plus its failure branches. Chunk 02 adds a whole phase, and **that**
+  is where the split decision belongs, with both phases visible.
+- **R-28 / R-29 / R-30** — cross-check results and the observation that `## Release classification`
+  has no template. The runbook now carries a worked example inline, which is where a release author
+  is actually looking; a separate template is a second surface to drift.
+
 ## 2026-07-29: Phase 0 — the release runbook asks whether everything is fit to ship
 
 <!-- prawduct: type=feat | scope=release-readiness | chunks=01 -->

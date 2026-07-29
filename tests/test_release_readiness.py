@@ -208,6 +208,139 @@ class TestGateBlocks:
         assert "classified twice" in capsys.readouterr().err
 
 
+class TestArchivedBlockerIsNotOpen:
+    def test_archived_item_with_open_status_does_not_count(self, tmp_path, capsys):
+        # The archive move and the status flip are separate edits, so an
+        # archived item can still read `status: open`. Treating it as live is
+        # the same stale-withholding error the gate exists to catch.
+        project = _make_project(
+            tmp_path,
+            entries=_entry("A", "alpha"),
+            classification="| alpha | withheld | BKL-6J2X |\n",
+        )
+        _write(
+            project / ".prawduct" / "backlog.md",
+            "# Backlog\n\n## Open\n\n## Archive\n\n" + _open_item("BKL-6J2X"),
+        )
+        assert release_readiness.check_releasability(project) == 1
+        assert "no longer open" in capsys.readouterr().err
+
+
+class TestPostCutoverFailsClosed:
+    """`data-model.md` § Direction: once `backlog_service_repo` is set the
+    markdown is frozen history and every item archived at cutover still parses
+    as open. Reading it anyway would make a closed blocker look open — the gate
+    certifying the exact staleness it exists to catch."""
+
+    def _cut_over(self, project: Path) -> None:
+        _write(
+            project / ".prawduct" / "project-state.yaml",
+            "backlog_service_repo: acme/backlog\n",
+        )
+
+    def test_withheld_scope_blocks_post_cutover(self, tmp_path, capsys):
+        project = _make_project(
+            tmp_path,
+            entries=_entry("A", "alpha"),
+            classification="| alpha | withheld | BKL-6J2X |\n",
+            backlog=_open_item("BKL-6J2X"),
+        )
+        self._cut_over(project)
+        assert release_readiness.check_releasability(project) == 1
+        err = capsys.readouterr().err
+        assert "cannot-verify-blockers" in err
+        assert "alpha" in err
+
+    def test_no_withheld_scope_still_passes_post_cutover(self, tmp_path):
+        # Proportionality: a release that withholds nothing needs no blocker
+        # liveness check, so cutover must not block it.
+        project = _make_project(
+            tmp_path,
+            entries=_entry("A", "alpha"),
+            classification="| alpha | ships | |\n",
+        )
+        self._cut_over(project)
+        assert release_readiness.check_releasability(project) == 0
+
+
+class TestIdempotentAcrossItsOwnRunbook:
+    """Phase 0 must survive being re-run after Phase 1. Phase 1 step 3 stamps
+    `release=` on the shipping entries, which removes those scopes from the
+    pending set — so a naive orphan check would report every successfully
+    classified scope as a stale table row on the second run, and the gate would
+    block the release it just approved."""
+
+    def test_scope_tagged_for_this_release_is_not_an_orphan(self, tmp_path, capsys):
+        project = _make_project(
+            tmp_path,
+            entries=_entry("A", "alpha", release="v3.2.0") + _entry("B", "beta"),
+            classification="| alpha | ships | |\n| beta | ships | |\n",
+        )
+        assert release_readiness.check_releasability(project, "v3.2.0") == 0, capsys.readouterr().err
+
+    def test_scope_tagged_for_a_DIFFERENT_release_is_still_an_orphan(self, tmp_path, capsys):
+        # The exemption is scoped to the release under test — a row left over
+        # from an older release is still stale.
+        project = _make_project(
+            tmp_path,
+            entries=_entry("A", "alpha", release="v3.1.0") + _entry("B", "beta"),
+            classification="| alpha | ships | |\n| beta | ships | |\n",
+        )
+        assert release_readiness.check_releasability(project, "v3.2.0") == 1
+        assert "nothing release-pending behind them" in capsys.readouterr().err
+
+
+class TestCliWiring:
+    """R-1: the dispatch, `--release` parsing and usage string had no test at
+    all, and the parse silently graded a different release than the operator
+    named."""
+
+    def _run(self, project: Path, *args: str):
+        import subprocess
+
+        return subprocess.run(
+            [sys.executable, str(ROOT / "bin" / "prawduct-hook"), "check-releasability", *args],
+            cwd=str(project),
+            capture_output=True,
+            text=True,
+            timeout=60,
+        )
+
+    def _project(self, tmp_path: Path) -> Path:
+        return _make_project(
+            tmp_path,
+            entries=_entry("A", "alpha"),
+            classification="| alpha | ships | |\n",
+        )
+
+    def test_dispatch_reaches_the_gate(self, tmp_path):
+        proc = self._run(self._project(tmp_path))
+        assert proc.returncode == 0, proc.stderr
+        assert "releasable:" in proc.stdout
+
+    @pytest.mark.parametrize("form", ["--release=v3.2.0", "--release v3.2.0"])
+    def test_both_release_forms_are_honoured(self, tmp_path, form):
+        # `--release=v3.2.0` previously fell through to plugin/VERSION and
+        # graded a DIFFERENT release without saying so.
+        proc = self._run(self._project(tmp_path), *form.split(" "))
+        assert "v3.2.0" in (proc.stdout + proc.stderr)
+
+    @pytest.mark.parametrize("bad", ["v3.2.0", "--relase", "--extra"])
+    def test_unknown_tokens_are_usage_errors_not_ignored(self, tmp_path, bad):
+        proc = self._run(self._project(tmp_path), bad)
+        assert proc.returncode == 2, f"{bad!r} must be a usage error, not silently ignored"
+        assert "unknown argument" in proc.stderr
+
+    def test_release_without_a_value_is_a_usage_error(self, tmp_path):
+        proc = self._run(self._project(tmp_path), "--release")
+        assert proc.returncode == 2
+        assert "requires a version argument" in proc.stderr
+
+    def test_command_is_listed_in_usage(self):
+        text = (ROOT / "bin" / "prawduct-hook").read_text(encoding="utf-8")
+        assert "check-releasability" in text.split("_USAGE")[1][:4000]
+
+
 class TestPartitionIsExact:
     """The gate's whole claim is that the classification PARTITIONS the
     release-pending set. A subset comparison satisfies "every classified scope

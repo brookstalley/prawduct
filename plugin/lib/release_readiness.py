@@ -47,6 +47,26 @@ _NEXT_HEADING_RE = re.compile(r"^#{1,6}\s+")
 _ITEM_ID_RE = re.compile(r"\b([A-Z]{2,4}-[A-Z0-9]{4})\b")
 
 
+def scopes_tagged_for(entries: list, version: str) -> set[str]:
+    """Scopes already tagged ``release=<version>``.
+
+    Phase 0 must survive being re-run *after* Phase 1. Phase 1 step 3 stamps
+    ``release=vX.Y.Z`` on the shipping entries, which removes those scopes from
+    the release-pending set — so a second Phase 0 run would see the
+    classification table referencing scopes that are no longer pending and
+    report every one as a stale orphan. A scope tagged for *this* release is
+    the successful outcome of the classification, not an orphan.
+    """
+    tagged: set[str] = set()
+    for entry in entries:
+        if entry.tags.get("release") != version:
+            continue
+        scope = entry.tags.get("scope")
+        if isinstance(scope, str) and scope:
+            tagged.add(scope)
+    return tagged
+
+
 def release_pending_scopes(entries: list) -> list[str]:
     """Scopes with at least one tagged change-log entry carrying no ``release=``.
 
@@ -76,7 +96,7 @@ def parse_classification(content: str) -> tuple[dict[str, tuple[str, str | None]
 
     Returns ``(classification, errors)`` where classification maps
     ``scope -> (disposition, blocker_id_or_None)``. Rows are markdown table
-    rows: ``| scope | ships |  |`` or ``| scope | withheld | BKL-6J2X |``.
+    rows: ``| scope | ships |  |`` or ``| scope | withheld | ABC-1234 |``.
 
     Malformed rows become errors rather than being skipped: a row a human
     wrote and this parser ignored is exactly the silent-omission class the
@@ -122,7 +142,7 @@ def parse_classification(content: str) -> tuple[dict[str, tuple[str, str | None]
             if not match:
                 errors.append(
                     f"scope `{scope}`: `{WITHHELD}` requires a blocker item id "
-                    "(e.g. `BKL-6J2X`) — a withholding with no named blocker is "
+                    "(e.g. `ABC-1234`) — a withholding with no named blocker is "
                     "an unrecorded decision"
                 )
                 continue
@@ -133,18 +153,58 @@ def parse_classification(content: str) -> tuple[dict[str, tuple[str, str | None]
 
 
 def _open_item_ids(backlog_content: str) -> set[str]:
-    """Ids of backlog items whose status is ``open``."""
+    """Ids of backlog items that are live and ``status: open``.
+
+    Section-aware on purpose: an item under ``## Archive`` can still carry
+    ``status: open`` in its metadata bar (the archive move and the status flip
+    are separate edits), and treating an archived item as a live blocker is the
+    same stale-withholding error this gate exists to catch.
+    """
     from .backlog import legacy  # noqa: PLC0415 -- lazy: keeps this module's import DAG light
 
     backlog = legacy.parse_backlog(backlog_content)
     return {
         item.item_id
         for item in backlog.items
-        if item.item_id and (item.status or "").strip().lower() == "open"
+        if item.item_id
+        and (item.status or "").strip().lower() == "open"
+        and not (item.section or "").strip().lower().startswith("archive")
     }
 
 
+def _markdown_backlog_is_authoritative(project_dir: Path) -> bool:
+    """True when ``.prawduct/backlog.md`` is the live backlog.
+
+    ``data-model.md`` § Direction: once ``backlog_service_repo`` is set the
+    markdown is **frozen history**, and every item archived at cutover still
+    parses as ``status: open``. Reading it post-cutover would make
+    :func:`_open_item_ids` return the whole frozen roster, so a withholding
+    blocker that has since closed would still look open and the gate would
+    print ``releasable:`` on exactly the stale decision it exists to catch.
+    Every other ``lib/`` reader checks this scalar first; this is not an
+    exception.
+    """
+    from . import advisory_store  # noqa: PLC0415 -- lazy: keeps this module's import DAG light
+    from . import backlog_probes  # noqa: PLC0415
+
+    try:
+        state = advisory_store.load_project_state(project_dir)
+    except Exception as exc:  # prawduct:allow prawduct/broad-except -- unreadable state must fail CLOSED, and the loader's failure modes are not enumerable here
+        print(f"  (project-state unreadable: {exc})", file=sys.stderr)
+        return False
+    return not backlog_probes.post_cutover(state)
+
+
 def _resolve_version(project_dir: Path, release: str | None) -> str | None:
+    """The release under test.
+
+    ``--release`` is authoritative. The ``plugin/VERSION`` fallback exists for
+    ad-hoc mid-cycle checks and is **wrong by construction during Phase 0**:
+    the runbook bumps ``VERSION`` in Phase 1 step 7, *after* this gate runs, so
+    at gate time the file still names the PREVIOUS release. The fallback says
+    so out loud rather than quietly grading the wrong release — the same
+    refusal-to-guess posture as the argv scan in the CLI wrapper.
+    """
     if release:
         return release if release.startswith("v") else f"v{release}"
     version_file = project_dir / "plugin" / "VERSION"
@@ -152,7 +212,15 @@ def _resolve_version(project_dir: Path, release: str | None) -> str | None:
         raw = version_file.read_text(encoding="utf-8").strip()
     except OSError:
         return None
-    return f"v{raw}" if raw else None
+    if not raw:
+        return None
+    print(
+        f"NOTE: no --release given, falling back to plugin/VERSION (v{raw}). During "
+        "Phase 0 that is the PREVIOUS release — VERSION is bumped later, in Phase 1 "
+        "step 7. Pass --release vX.Y.Z to grade the release you are cutting.",
+        file=sys.stderr,
+    )
+    return f"v{raw}"
 
 
 def _find_release_plan(project_dir: Path, version: str) -> Path | None:
@@ -183,9 +251,17 @@ def check_releasability(project_dir: Path, release: str | None = None) -> int:
         print(f"no-change-log: cannot read {_CHANGE_LOG_REL_PATH}: {exc}", file=sys.stderr)
         return 1
 
-    pending = release_pending_scopes(views.parse_change_log(change_log_content))
+    entries = views.parse_change_log(change_log_content)
+    pending = release_pending_scopes(entries)
     if not pending:
-        print("releasable: no release-pending scopes — nothing to classify.")
+        # Name the denominator: "0 pending" from a change log the parser could
+        # not read looks identical to "0 pending" because everything shipped,
+        # and only one of those is a pass.
+        tagged = sum(1 for e in entries if e.tag_line_count > 0)
+        print(
+            f"releasable: no release-pending scopes — nothing to classify "
+            f"({len(entries)} change-log entries scanned, {tagged} tagged)."
+        )
         return 0
 
     version = _resolve_version(project_dir, release)
@@ -214,19 +290,36 @@ def check_releasability(project_dir: Path, release: str | None = None) -> int:
 
     classification, errors = parse_classification(plan_content)
 
-    try:
-        backlog_content = (project_dir / _BACKLOG_REL_PATH).read_text(encoding="utf-8")
-    except OSError as exc:
-        print(f"no-backlog: cannot read {_BACKLOG_REL_PATH}: {exc}", file=sys.stderr)
-        return 1
-    open_ids = _open_item_ids(backlog_content)
+    # Blocker liveness is only consulted when something is actually withheld —
+    # a release that withholds nothing needs no backlog read at all.
+    withheld_scopes = [s for s, (d, _) in classification.items() if d == WITHHELD]
+    open_ids: set[str] = set()
+    if withheld_scopes:
+        if not _markdown_backlog_is_authoritative(project_dir):
+            print(
+                "cannot-verify-blockers: this repo has cut over to the GitHub Issues "
+                "backlog (`backlog_service_repo` set), so `.prawduct/backlog.md` is "
+                "frozen history and cannot say whether a blocker is still open. "
+                f"{len(withheld_scopes)} scope(s) are withheld behind blockers that "
+                "must be confirmed open by hand before publishing: "
+                f"{', '.join(sorted(withheld_scopes))}.",
+                file=sys.stderr,
+            )
+            return 1
+        try:
+            backlog_content = (project_dir / _BACKLOG_REL_PATH).read_text(encoding="utf-8")
+        except OSError as exc:
+            print(f"no-backlog: cannot read {_BACKLOG_REL_PATH}: {exc}", file=sys.stderr)
+            return 1
+        open_ids = _open_item_ids(backlog_content)
 
     unclassified = [s for s in pending if s not in classification]
     stale_blockers: list[str] = []
     orphans: list[str] = []
 
+    already_shipped = scopes_tagged_for(entries, version)
     for scope, (disposition, blocker) in classification.items():
-        if scope not in pending:
+        if scope not in pending and scope not in already_shipped:
             orphans.append(scope)
         if disposition == WITHHELD and blocker and blocker not in open_ids:
             stale_blockers.append(f"{scope} (withheld behind {blocker}, which is not open)")
@@ -269,6 +362,9 @@ def check_releasability(project_dir: Path, release: str | None = None) -> int:
         f"releasable: {version} — {len(pending)} release-pending scope(s), "
         f"{len(shipping)} shipping, {len(withheld)} withheld."
     )
+    # Name the artifact the verdict came from: the glob can match more than one
+    # file, and a pass that doesn't say which table it read is unauditable.
+    print(f"  classification: {plan_path}")
     if shipping:
         print(f"  shipping: {', '.join(shipping)}")
     if withheld:

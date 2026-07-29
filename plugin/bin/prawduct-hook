@@ -137,6 +137,18 @@ def _coverage():
     return coverage
 
 
+def _release_readiness():
+    """Lazy-import the Phase 0 releasability gate (lib/release_readiness).
+    Same lazy idiom as _coverage() — seeds sys.path so the hook's top level
+    stays lib-free."""
+    lib_root = _plugin_root()
+    if lib_root not in sys.path:
+        sys.path.insert(0, lib_root)
+    from lib import release_readiness  # noqa: PLC0415 — lazy keeps top-level cheap + lib-free
+
+    return release_readiness
+
+
 def _gates():
     """Lazy-import the session-end gate helpers + evidence/critic validators
     (lib/gates). Same lazy idiom as _gitstate(). cmd_stop (the inline hot-path
@@ -2956,18 +2968,35 @@ def cmd_check_releasability(project_dir: Path, args: list[str] | None = None) ->
     classified as shipping or withheld behind a named open blocker. Thin
     wrapper; the body lives in ``lib.release_readiness``, reached lazily so the
     hook's top level stays lib-free."""
+    usage = "usage: prawduct-hook check-releasability [--release vX.Y.Z]"
     release = None
     argv = list(args or [])
-    if "--release" in argv:
-        idx = argv.index("--release")
-        if idx + 1 < len(argv):
-            release = argv[idx + 1]
-        else:
-            print("usage: prawduct-hook check-releasability [--release vX.Y.Z]", file=sys.stderr)
-            return 1
-    from lib import release_readiness  # noqa: PLC0415 -- lazy, mirrors _coverage()
-
-    return release_readiness.check_releasability(project_dir, release)
+    i = 0
+    # Explicit scan rather than ``"--release" in argv``: that pattern silently
+    # discards every token it doesn't recognize, so a typo or a bare positional
+    # would fall through to the plugin/VERSION fallback and grade a DIFFERENT
+    # release than the operator named — the same swallow STH-5R2Q fixed for
+    # flag-only subcommands. Unknown tokens are usage errors (exit 2), never
+    # ignored, because this gate's whole job is to refuse to guess.
+    while i < len(argv):
+        token = argv[i]
+        if token == "--release":
+            if i + 1 >= len(argv):
+                print(f"{usage}\n--release requires a version argument", file=sys.stderr)
+                return 2
+            release = argv[i + 1]
+            i += 2
+            continue
+        if token.startswith("--release="):
+            release = token.split("=", 1)[1]
+            if not release:
+                print(f"{usage}\n--release requires a version argument", file=sys.stderr)
+                return 2
+            i += 1
+            continue
+        print(f"unknown argument: {token}\n{usage}", file=sys.stderr)
+        return 2
+    return _release_readiness().check_releasability(project_dir, release)
 
 
 def cmd_test_status(project_dir: Path) -> int:

@@ -85,7 +85,14 @@ stale withholding is the same class of error as silently withholding on a stale 
    empty release-pending set passes.
 2. A mutation check on the partition logic — flipping the unclassified test to a subset comparison
    must fail a test (the W-1 lesson: a gate whose firing path is untested ships green).
-3. `./plugin/bin/prawduct-hook check-releasability` runs green against this repo's real state.
+3. `./plugin/bin/prawduct-hook check-releasability --release v3.2.0` runs and reports **correctly**
+   against this repo's real state — which at this commit means **red**, and that is the criterion.
+   A green run is impossible before the release: it requires `release-plan-v3.2.0.md` with a
+   classification table, which the v3.2.0 release itself authors. The structural reason is worth
+   recording, because it also shaped the fallback's behaviour: the runbook bumps `plugin/VERSION` in
+   **Phase 1 step 7**, *after* Phase 0 runs, so a `VERSION`-derived version always names the
+   *previous* release at gate time. `--release` is therefore authoritative, and the fallback says so
+   on stderr rather than silently grading the wrong release.
 4. Runbook: new **Phase 0 — Releasability** ahead of Phase 1, with the command, expected output, and
    the "if not" branch.
 5. `/prawduct:critic`, findings resolved.
@@ -115,6 +122,15 @@ whole-`develop` promotion. This repo has done a **pruned** promotion twice.
 
 **Constraint:** Phase 2 (whole-develop) stays intact and correct — this **adds** a path, it does not
 replace one. The reader is routed between them explicitly.
+
+> **Undisposed norm — settle this BEFORE starting Chunk 02** (Critic
+> `rev-20260729T170856Z-8a025aec`, warning). `operational-spec.md` § Direction carries a **second**
+> norm this plan did not dispose: the gitflow promotion norm — promotion is *"a separate, deliberate
+> tree-set step"*, rationale *"content-identical to `develop`"*. Parts (a)/(b)/(c) propose replacing
+> exactly that with a `--3way` apply, a push-by-ref, and an explicit finding that content-identity is
+> *meaningless* for a pruned release. That is a norm **amendment**, not an implementation detail, and
+> it needs a recorded `[DECISION: … | user can veto]` engaging the norm's own why — amending a norm
+> to bless one's own code is the laundering tell. Chunk 02 does not begin until this is recorded.
 
 **Done when:**
 1. Both promotion shapes documented, with an explicit selection step naming which to use.
@@ -157,6 +173,6 @@ misled by it twice more.
 
 <!-- Derived view — regen-views owns this section. Do not hand-edit. -->
 
-- [ ] Chunk 01 — releasability gate (f)
-- [ ] Chunk 02 — pruned-promotion path (a, b, c, d)
-- [ ] Chunk 03 — (e) stopgap and W-1 note
+- [ ] Chunk 01: releasability gate (f)
+- [ ] Chunk 02: pruned-promotion path (a, b, c, d)
+- [ ] Chunk 03: (e) stopgap and W-1 note
