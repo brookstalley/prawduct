@@ -64,7 +64,11 @@ CHECKPOINT_SCHEMA_VERSION = 1
 _STORE_SUBDIR = "prawduct"
 _CHECKPOINT_BASENAME = "backlog-import.json"
 
-_ID_MARKER_RE = re.compile(r"^\s*\[[A-Za-z][A-Za-z0-9]*-[A-Za-z0-9]+\]\s*")
+# The leading ``[PFX]`` marker, stripped from the title (the id lives in the alias).
+# Must accept exactly what ``legacy.ID_RE`` accepts, multi-segment ids included: if
+# this is narrower, an id it fails to recognize is parsed and aliased upstream but
+# left embedded in the title, so the issue reads ``[MIG-M4-REMOVE] Remove the shim``.
+_ID_MARKER_RE = re.compile(r"^\s*\[[A-Za-z][A-Za-z0-9]*(?:-[A-Za-z0-9]+)+\]\s*")
 
 
 def _diag(message: str) -> None:

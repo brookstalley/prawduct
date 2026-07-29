@@ -718,6 +718,40 @@ The plugin's defaults reach onboarded products only through **canonical carriers
 
 ## When building from a review/audit artifact, verify each cited gap and fix-instruction against HEAD before planning — the artifact's file-state claims aged the moment it was written
 
+**Instance (2026-07-28, v3.2.0 Chunk 05c / BKL-72AS) — the inherited-`file:line` facet, where the
+claim was never true rather than stale.** Resuming from a prior session's analysis, two of its
+load-bearing details were wrong, and the *shape* of the error is the lesson.
+
+(1) It enumerated three copies of the id-shape regex and named `migrate.py:585` as the third. 585
+is a **consumer** of `is_pfx`; the real third copy was `_ID_MARKER_RE` at `migrate.py:67`. Shipping
+the widening without it would have been worse than not shipping it — the parser would mint the alias
+while the title kept its `[MIG-M4-REMOVE]` marker, so every affected item imports with a malformed
+title. The enumeration had been done by reasoning about *which modules matter* instead of grepping
+the character-class fragment; one `grep -rn "A-Za-z0-9" --include="*.py" --include="*.md"` found all
+four in seconds. **Enumerate a shared shape by its bytes, never by recalling its consumers.**
+
+(2) It explained the blocked escape hatch as "`core.py:933` filters `id_aliases()` through
+`is_pfx`." I filed that into a backlog item and a build plan **before** resolving it. The path was
+wrong (`plugin/lib/core.py` is 386 lines; the real site is `plugin/lib/backlog/core.py:933`) and so
+was the mechanism — that filter governs alias *read-back*. The actual reason is stronger:
+`verify_migration` derives `unaliasable` at `migrate.py:1163` from the **source parse alone** and
+never reads the target, so no issue-side action clears it for any id of any shape. Verifying it also
+turned up a second, larger defect: the runbook's step-6 remedy told operators to hand-add an
+`id:PFX` label — which can never clear the exit-4 — and had been contradicting the code's own remedy
+string (`migrate.py:1212-1219`) all along.
+
+**Why it survived:** a `file:line` reads as evidence that someone opened the file. Precision is not
+provenance. The claim was doing real decision work — it was the argument for why widening beat the
+alternatives — so an unverified premise was carrying the decision. This is the inverse of the known
+"delegated verification inherits your frame" trap: here I inherited *someone else's* frame, and its
+specificity is what made it credible. Both resolve to the same discipline — the premise is the thing
+you must check yourself, whichever direction it arrived from. Self-review before the Critic caught
+the same wrong mechanism a third time, already written into a durable source comment in `ids.py`.
+
+Relates to [[Correcting a false claim is authoring a new claim — verify the replacement and the
+artifacts it cites, because the fixing mood generates claims faster than the checking reflex fires]],
+Validate Before Propagating (#15), and Retrieval Over Generation (#24).
+
 Full context (2026-07-02, gate-noise / GOV-7T2M, Wave 1 Plan A of the efficiency-review fix
 program): The parent artifact `framework-efficiency-review-2026-07-02.md` carried two claims
 that were wrong by build time. (1) "residual gap: review protocols still let reviewers eyeball

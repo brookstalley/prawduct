@@ -208,6 +208,57 @@ class TestMultiPrefixAbsorption:
         # Only the first claimant was imported — the alias resolves to one item.
         assert len(_alias_issues(fake, "DUP-0001")) == 1
 
+    def test_multi_segment_id_gets_an_alias_and_a_clean_title(self, fake):
+        """An id with two or more hyphens is absorbed like any other hand-minted id.
+
+        Both halves matter and they live in different modules: the parser has to
+        recognize the id (else no alias keys the item back to the source, and the
+        completeness gate blocks the cutover), and the title's marker-strip has to
+        recognize the same shape (else the id is aliased but left embedded, and the
+        issue reads ``[MIG-M4-REMOVE] Remove the shim``). A widening that lands in
+        one and not the other is worse than neither."""
+        content = (
+            "## Open\n\n"
+            "- **[MIG-M4-REMOVE]** Remove the shim\n"
+            "  `effort: S · impact: M · area: core · status: open`\n"
+        )
+        result = _import(fake, content)
+        assert result["status"] == "ok", result
+        assert [c["pfx"] for c in result["data"]["created"]] == ["MIG-M4-REMOVE"]
+
+        issues = _alias_issues(fake, "MIG-M4-REMOVE")
+        assert len(issues) == 1
+        assert issues[0]["title"] == "Remove the shim"
+
+    def test_multi_segment_id_satisfies_the_completeness_gate(self, fake):
+        """The end the widening exists to serve: such an item no longer lands in
+        ``unaliasable``, so ``verify-migration`` returns ok instead of exit-4.
+
+        ``unaliasable`` is derived from parsing the source alone — nothing done to
+        the target can clear it — so the source-side shape is the whole fix."""
+        content = (
+            "## Open\n\n"
+            "- **[MIG-M4-REMOVE]** Remove the shim\n"
+            "  `effort: S · impact: M · area: core · status: open`\n"
+        )
+        assert _import(fake, content)["status"] == "ok"
+        verified = migrate.verify_migration(fake, owner=OWNER, repo=REPO, content=content)
+        assert verified["status"] == "ok", verified
+        assert verified["data"]["unaliasable"] == []
+        assert verified["data"]["missing"] == []
+        assert verified["data"]["aliased"] == 1
+
+    def test_markerless_item_still_blocks_the_completeness_gate(self, fake):
+        """The widening must not cost the gate its teeth: an item with no id at all
+        is still unaliasable, still exit-4. This is the residual class step 1b of the
+        scrub runbook hunts, and the one its grep cannot find."""
+        content = "## Open\n\n- A bare legacy item with no id\n  `area: core · status: open`\n"
+        assert _import(fake, content)["status"] == "ok"
+        verified = migrate.verify_migration(fake, owner=OWNER, repo=REPO, content=content)
+        assert verified["status"] == "error", verified
+        assert verified["error"]["code"] == "conflict"
+        assert verified["error"]["details"]["unaliasable"] == ["A bare legacy item with no id"]
+
     def test_id_less_item_keyed_on_import_marker_not_duplicated(self, fake):
         content = "## Open\n\n- A bare legacy item with no id\n  `area: core · status: open`\n"
         first = _import(fake, content)
@@ -1421,15 +1472,20 @@ class TestVerifyMigration:
         assert code == 4  # conflict — source and target disagree
 
     def test_an_id_that_is_not_a_pfx_is_reported_not_excluded(self, fake):
-        """The gate's own blind spot, found on two live backlogs.
+        """The gate's own blind spot.
 
         Alias coverage can only speak for items an alias can key, so building the
         source set from PFX-bearing records alone puts a hand-written id outside
         the comparison entirely: the item imports, nothing is `missing`, and a
         repo one item short of complete reports clean. This is the shape that
-        passed before `unaliasable` existed."""
+        passed before `unaliasable` existed.
+
+        The two ids that originally exercised this (`AUD-TIMBRE-CALIB`,
+        `MIG-M4-REMOVE`) are now absorbed as ordinary multi-segment ids, so the
+        case is pinned here with a bracketed *date* — still not an id, and the
+        reason the accepted shape insists on a leading letter."""
         extra = DISCODON_MINI + (
-            "\n- **[AUD-TIMBRE-CALIB]** hand-written id, not a PFX\n"
+            "\n- **[2026-07-28]** hand-written id, not a PFX\n"
             "  `status: open · stage: ready`\n"
         )
         result = migrate.import_backlog(fake, owner=OWNER, repo=REPO, content=extra)
@@ -1440,14 +1496,14 @@ class TestVerifyMigration:
         assert verdict["error"]["code"] == "conflict"
         details = verdict["error"]["details"]
         assert details["missing"] == []  # every *aliasable* item did make it across
-        assert details["unaliasable"] == ["[AUD-TIMBRE-CALIB] hand-written id, not a PFX"]
+        assert details["unaliasable"] == ["[2026-07-28] hand-written id, not a PFX"]
 
     def test_source_items_counts_every_item_not_just_the_aliasable_ones(self, fake):
         """`source_items` is read as "the complete source set". If it counted only
         PFX-bearing records it would under-report the source while claiming full
         coverage — the arithmetic has to be visible."""
         extra = DISCODON_MINI + (
-            "\n- **[NOT-A-PFX-AT-ALL]** unaliasable\n  `status: open · stage: ready`\n"
+            "\n- **[2026-07-28]** unaliasable\n  `status: open · stage: ready`\n"
         )
         migrate.import_backlog(fake, owner=OWNER, repo=REPO, content=extra)
         details = migrate.verify_migration(
@@ -1460,7 +1516,7 @@ class TestVerifyMigration:
         idempotency key is a digest of title+body, so giving the item a real PFX
         changes the key and mints a second issue instead of adopting the first."""
         extra = DISCODON_MINI + (
-            "\n- **[NOT-A-PFX-AT-ALL]** unaliasable\n  `status: open · stage: ready`\n"
+            "\n- **[2026-07-28]** unaliasable\n  `status: open · stage: ready`\n"
         )
         migrate.import_backlog(fake, owner=OWNER, repo=REPO, content=extra)
         message = migrate.verify_migration(

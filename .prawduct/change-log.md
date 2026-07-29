@@ -3,6 +3,75 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-07-28: A hyphen was deciding which backlog items were allowed to have an identity
+
+<!-- prawduct: type=fix | scope=v3.2.0-golive | chunks=05c -->
+
+The gate shipped one commit earlier (`7565787`) made *unaliasable* an exit-4 conflict. That was right,
+and it immediately collided with a decision already on the record: `migration-scrub-decisions.md`
+decision 4 (2026-07-18) accepts `MIG-M4-REMOVE` as *import as-is, no alias*, and decision 5 sets
+`--archive-scope all` so it does import. **Chunk 06 could satisfy the decision or the gate, not both.**
+
+The cause was a one-hyphen assumption baked into the id shape (`[A-Za-z][A-Za-z0-9]*-[A-Za-z0-9]+`) in
+**four** places. An id like `MIG-M4-REMOVE` matched none of them, so it parsed as unidentified, minted no
+`id:` alias, and tripped the gate. All four widen to `(-[A-Za-z0-9]+)+`:
+
+- `legacy.ID_RE` — parses the `[PFX]` marker out of the bullet.
+- `ids._PFX_RE` — backs `is_pfx`, which gates alias minting.
+- `migrate._ID_MARKER_RE` — strips the marker from the imported title. **The one that fails loudest if
+  left behind**: widen the parser without it and the item gets its alias while its title still reads
+  `[MIG-M4-REMOVE] Remove the shim`. Three-of-four is worse than none-of-four.
+- The step-1b grep in `skills/backlog/migration-scrub.md`.
+
+**Not an edge case.** Four such ids across three of fourteen local products (~21%), one each: prawduct
+`MIG-M4-REMOVE`, hallucinote `AUD-TIMBRE-CALIB`, scriob/scriob2 `ENG-9V2K-F`. The only already-migrated
+repo, `samsung-frame-art-loader`, carries none across the last six revisions of its backlog — so
+widening is a strict no-op there and no live repo needs a manual fix.
+
+**Widening beat every alternative because the others unwind recorded decisions.** Renaming in source
+contradicts decision 4 and `MIG-M4-REMOVE` is referenced in ~12 places including two shipped docstrings;
+`--archive-scope open` contradicts decision 5 and drops 121 archive items. Widening leaves decision 4
+true as written.
+
+- **A remedy in the runbook could never have worked.** Step 6 told operators that for `unaliasable` they
+  could "add the `id:PFX` label to the already-created issue by hand." `verify_migration` derives
+  `unaliasable` at `migrate.py:1163` from parsing the **source markdown alone** — it never inspects the
+  target — so nothing done to an issue clears that list, for any id, of any shape. The code's own remedy
+  string (`migrate.py:1212-1219`) always said the right thing ("give each a real PFX in the source
+  BEFORE importing"); the runbook prose disagreed with it. Now corrected.
+- **Step 1b's premise was the thing being deleted.** Its text said "what fails in practice is a second
+  hyphen" and gave `[AUD-TIMBRE-CALIB]` and `[MIG-M4-REMOVE]` as the worked examples — both now pass. It
+  is rewritten around the *residual* set: markerless (the most common, and the one its grep structurally
+  cannot find), no hyphen, not letter-led, or containing anything but letters/digits/single hyphens.
+- **The gate keeps its teeth.** A bracketed date stays rejected — that is what the leading-letter rule is
+  for — and a markerless item is still unaliasable, still exit-4. Three existing tests used a
+  multi-hyphen token as their "not a PFX" fixture; each is repointed at `[2026-07-28]` with every
+  assertion unchanged, since the widening invalidated the fixture, not the contract.
+- **Cost, accepted:** the marker slot gets slightly greedier for bracketed non-ids with 2+ hyphens
+  (`[pass-through-cache]`). Single-hyphen ones are already absorbed today, so this widens existing
+  behavior rather than introducing new behavior.
+- **`is_pfx` reaches past the importer — found by the Critic, not by the change's own blast-radius
+  survey.** `core.resolve_ref` gates an alias round-trip on `is_pfx`, and `normalize_id` Form 4 reads
+  the shell spelling `repo-number` by splitting on the last hyphen. So `samsung-frame-art-loader-12`
+  now satisfies **both** grammars where it satisfied one: it costs a label search that used to be zero
+  I/O, and an `id:samsung-frame-art-loader-12` alias would outrank the `owner/repo#12` reading. The
+  precedence rule itself is unchanged and was already documented at that call site — an exact,
+  uniqueness-checked alias beats a guess at a repo name, and the `repo-number` reading stands when no
+  alias exists. What widened is the population reaching it. The `#` spelling stays the I/O-free escape
+  hatch. Pinned three ways in `tests/test_backlog_core.py`.
+
+Verified live against this repo's own backlog: 333 items parse, `MIG-M4-REMOVE` absorbed, **zero**
+unaliasable remaining — Chunk 06's gate now clears — and both greps return zero hits, agreeing with the
+parser. Suite 2768 passed, 7 skipped. Filed as `BKL-72AS` against MIG-2.
+
+Critic (chunk, single-pass): 0 blocking, 3 warnings, 1 note — all resolved in this commit. The
+`resolve_ref` reach above was warning 1 and is the one worth remembering: the change's own survey
+enumerated the four *pattern copies* and stopped there, while the fifth surface was a **consumer**
+whose behavior the pattern silently governs. Warning 3 (a bare `artifacts/…` path that should be
+`.prawduct/artifacts/…`) is fixed; the accompanying note — that `verify-chunk-refs` inspects only
+Chunk 01 for this entire release, because the plan defers every checkbox to release, which is how that
+path reached the plan unflagged — is filed as its own defect rather than patched here.
+
 ## 2026-07-28: The completeness gate reported 100% coverage on a backlog it could not fully see
 
 <!-- prawduct: type=fix | scope=v3.2.0-golive -->

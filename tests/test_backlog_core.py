@@ -277,6 +277,42 @@ class TestDigitSuffixPfxDisambiguation:
         assert nid.canonical == f"{OWNER}/ADR#12"
         assert not any(c[0] == "list_issues" for c in fake.calls)
 
+    # A multi-segment repo name (``samsung-frame-art-loader-12``) reads BOTH ways:
+    # as ``repo-number`` (Form 4 splits on the last hyphen) and, since ids became
+    # multi-segment, as a PFX. It therefore joins the same alias-if-exists
+    # precedence the single-hyphen spelling has always had — a larger population
+    # on that path, not a new rule. Pinned in both directions.
+    MULTI = "samsung-frame-art-loader-12"
+
+    def test_multi_segment_repo_number_reading_stands_when_no_alias_exists(self, fake):
+        nid = core.resolve_ref(
+            fake, self.MULTI, default_owner=OWNER, default_repo=(OWNER, REPO)
+        )
+        assert nid.ok
+        assert nid.canonical == f"{OWNER}/samsung-frame-art-loader#12"
+
+    def test_multi_segment_alias_wins_when_one_exists(self, fake):
+        number = _seed_item(fake, labels=[ids.alias_label(self.MULTI)])
+        nid = core.resolve_ref(
+            fake, self.MULTI, default_owner=OWNER, default_repo=(OWNER, REPO)
+        )
+        assert nid.ok
+        assert nid.canonical == f"{OWNER}/{REPO}#{number}"
+
+    def test_multi_segment_hash_spelling_still_skips_the_alias_path(self, fake):
+        """The `#` escape hatch has to stay free of I/O for the widened class too."""
+        _seed_item(fake, labels=[ids.alias_label(self.MULTI)])  # bait alias
+        fake.calls.clear()
+        nid = core.resolve_ref(
+            fake,
+            "samsung-frame-art-loader#12",
+            default_owner=OWNER,
+            default_repo=(OWNER, REPO),
+        )
+        assert nid.ok
+        assert nid.canonical == f"{OWNER}/samsung-frame-art-loader#12"
+        assert not any(c[0] == "list_issues" for c in fake.calls)
+
 
 class TestMutatorsByPfxAlias:
     """BKL-7Q2N / MG1 — every single-id mutator (not just get/link) resolves a bare

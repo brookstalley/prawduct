@@ -98,27 +98,56 @@ git-tracked — that is the pre-migration backup. After the first import, run
 full-fidelity restorable dump (body block + native graph).
 
 **1b. Fix any id that is not a valid PFX — before the import, not after.**
-The accepted shape is deliberately lenient (`ids._PFX_RE` — one letter-led
-segment, a hyphen, one alphanumeric segment: `BKL-7M4Q`, `ARR-FROMBUILD`,
-`ADR-12`, `A-1` all pass). What fails it in practice is a **second hyphen** —
-`[AUD-TIMBRE-CALIB]`, `[MIG-M4-REMOVE]`. Such an item cannot carry an `id:PFX`
-alias, so nothing can key it back to the source. It still imports — under an
-idempotency-only `import-key:<digest>` marker, so it neither duplicates nor
-strands — but it has no permanent identity, every `related:` reference to it
-dangles once the markdown is frozen, and step 6's gate blocks the cutover on it.
+The accepted shape is deliberately lenient (`ids._PFX_RE` — a letter-led segment
+followed by one or more `-`-joined alphanumeric segments: `BKL-7M4Q`,
+`ARR-FROMBUILD`, `ADR-12`, `A-1`, `MIG-M4-REMOVE`, `AUD-TIMBRE-CALIB` all pass).
+Multi-segment ids are ordinary, not exotic — about a fifth of real backlogs carry
+one — so they are absorbed rather than rejected.
+
+What still fails, and is what this step hunts:
+
+- **No marker at all** — a bullet with no `[...]`. The most common residual case.
+- **No hyphen** — `[TODO]`, `[BKL]`.
+- **Not letter-led** — `[2026-07-28]`, `[-1234]`. Deliberate: it keeps a bracketed
+  date from being adopted as an id.
+- **Anything but letters, digits and single interior hyphens** — `[FOO_BAR]`,
+  `[FOO.BAR]`, `[a b-1]`, `[FOO-]`, `[FOO--BAR]`.
+
+Such an item cannot carry an `id:PFX` alias, so nothing can key it back to the
+source. It still imports — under an idempotency-only `import-key:<digest>` marker,
+so it neither duplicates nor strands — but it has no permanent identity, every
+`related:` reference to it dangles once the markdown is frozen, and step 6's gate
+blocks the cutover on it.
 
 **This is cheap now and expensive later**: the digest is over title+body, and
 giving the item a real PFX changes both the key and the title, so renaming it
 *after* an import and re-importing mints a **second** issue rather than adopting
 the first. Rename here, and update every `related:` that names the old id.
 
-Find them — the inverse of the same shape the parser applies. Rewrite each hit's
-marker to a freshly minted PFX for its area:
+Find the marked ones — the inverse of the same shape the parser applies. Rewrite
+each hit's marker to a freshly minted PFX for its area:
 
 ```sh
 grep -nE '^- \*\*\[[^]]+\]\*\*' .prawduct/backlog.md \
-  | grep -vE '\[[A-Za-z][A-Za-z0-9]*-[A-Za-z0-9]+\]'
+  | grep -vE '\[[A-Za-z][A-Za-z0-9]*(-[A-Za-z0-9]+)+\]'
 ```
+
+**That grep is a first pass, not the whole step** — it only inspects bullets whose
+marker is **bold** (`- **[…]**`), so a markerless bullet and a valid-but-unbolded
+one (`- [A-1] one` parses fine) both escape it. This second pass takes every
+column-0 bullet and flags any that does not *begin* with a well-formed marker,
+bolded or not — so it catches the markerless class the first grep cannot see:
+
+```sh
+grep -nE '^- ' .prawduct/backlog.md \
+  | grep -vE '^[0-9]+:- (\*\*)?\[[A-Za-z][A-Za-z0-9]*(-[A-Za-z0-9]+)+\](\*\*)?'
+```
+
+It over-flags slightly by design — the parser finds a marker anywhere in the title
+and skips fenced code blocks, while this is anchored and literal. Over-flagging is
+the safe direction for a step whose output a human reads. **`verify-migration`
+(step 6) is the authority**; these two greps only make the fixes cheap while they
+are still renames.
 
 **2. Surface candidates.** Read the backlog — before import, the source file;
 after a first import, `prawduct-hook backlog list --repo <target> --json`.
@@ -304,9 +333,11 @@ non-empty. Exit 4 names the items, and the three lists have different remedies:
 - **`unaliasable`** — items whose id is not a valid PFX (step 1b), so no alias
   can key them. **Do not just re-run the import**: their idempotency key is a
   digest of title+body, so renaming one to a real PFX changes the key and mints
-  a *second* issue rather than adopting the existing one. Either add the
-  `id:PFX` label to the already-created issue by hand, or rename in the source,
-  re-import, and close the duplicate.
+  a *second* issue rather than adopting the existing one. **The only fix is in
+  the source markdown**: rename, re-import, close the duplicate. Nothing done to
+  the target issue can clear this list — the gate derives `unaliasable` from
+  parsing the source alone and never inspects the target for it, so hand-adding
+  an `id:PFX` label to the created issue leaves the exit-4 unchanged.
 - **`collisions`** — two source items claim the same PFX. The import drops the
   second rather than merging two items onto one alias, so it was never created
   and re-running will not create it. Give each a distinct PFX in the source,

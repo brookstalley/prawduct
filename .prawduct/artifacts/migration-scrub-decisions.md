@@ -21,6 +21,19 @@ before it is acted on.
    hard-deleted).
 4. **MIG-M4-REMOVE: import as-is** (content-digest idempotency key, no alias; `get` won't
    resolve it — accepted for shipped history).
+
+   **Consequences superseded 2026-07-28 (v3.2.0 Chunk 05c / BKL-72AS); the decision itself stands.**
+   "Import as-is, do not rename" is unchanged — and is now the *cheaper* option rather than the
+   accepted-cost one. What no longer holds is the parenthetical: the id-shape regexes only ever
+   accepted a single hyphen, which is why this item could not carry an alias. They now accept
+   multi-segment ids, so `MIG-M4-REMOVE` imports **with** a permanent `id:MIG-M4-REMOVE` alias,
+   keyed on that alias rather than a content digest, and `get` **does** resolve it.
+
+   *Why this had to change rather than stay accepted:* commit `7565787` (07-28) made an unaliasable
+   item an exit-4 conflict in `verify-migration`. Under the original consequences this decision and
+   that gate could not both be satisfied — the decision said "import it with no alias," the gate said
+   "no alias, stop." Widening the shape was the only remedy that did not require unwinding this
+   decision or decision 5. Verified live: the source now parses with zero unaliasable items.
 5. **`--archive-scope`: `all`** (owner, **2026-07-20** — release-plan decision A1). The full
    archive imports as closed issues.
 
