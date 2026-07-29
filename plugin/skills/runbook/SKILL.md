@@ -211,6 +211,9 @@ it look more thorough.
 
 Authoring runbooks is documentation work: no Critic gate unless it accompanies code changes. But if
 you *discover* an operational gap while writing one — no backup exists, no rollback path exists,
-an alert fires with nothing behind it — that is a finding. File it with `/prawduct:backlog add`
-rather than papering over it with prose. A runbook that documents a procedure nobody can actually
-perform is worse than no runbook.
+an alert fires with nothing behind it — that is a finding. Root-cause it and **fix it, or accept it
+as won't-fix with the reason recorded**; file only when it is deferred work with a named trigger
+(`skills/critic/review-cycle.md`, "The review loop terminates"). What you may not do is paper over
+it with prose — or file it and call that dealing with it. A runbook that documents a procedure
+nobody can actually perform is worse than no runbook, and an item in a backlog nobody drains is the
+same failure with a tracking number.

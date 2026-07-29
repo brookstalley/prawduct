@@ -133,9 +133,29 @@ machinery** — faster than anyone could action them, which turns the backlog fr
 guilt pile and buries the items that mattered. A framework that does this to itself does it to every
 repo that adopts it, once per build plan.
 
+**"Pre-existing" is not a disposition, and neither is "already filed."** Both are the reflex wearing
+a respectable coat: the finding leaves the review dispositioned by nobody. A defect the diff did not
+introduce still gets FIX or ACCEPT — and "ACCEPT: predates this branch, out of its scope, tracked at
+`ID`" is a perfectly good ACCEPT *because it is written down where the next reader meets it*. What is
+not allowed is the silent write-off, or pointing at an open item as though the pointing were the
+work. **If you fix something that has an open item, close the item in the same commit; if you accept
+something that has one, say so on the item.** An existing id is a reason to reconcile, never a reason
+to skip.
+
 **The count is the smell.** A review that ends with a double-digit filing is not thorough, it is
 undisposed. If you are filing more than two or three, you are using the backlog to avoid deciding —
 go back and sort them into ACCEPT and FIX.
+
+**Severity does not exempt.** BLOCKING, WARNING and NOTE all take a disposition; only the bar for
+ACCEPT differs (a NOTE is often a one-clause accept; a BLOCKING cannot be accepted at all without an
+explicit owner decision, since gates compose on it). Exempting NOTE just moves the pump — NOTE was
+the majority of findings in the review that prompted this rule.
+
+**Reviewers: never name the backlog as a finding's destination, at any severity.** The severity
+contract (`review-protocol.md`) no longer says "recommend backlog" anywhere, and reviewers must not
+reintroduce it in prose. Disposition is the builder's call, made once with the whole diff in view;
+a reviewer-suggested destination pre-empts it and reads as a licence to file without deciding. State
+the defect and its consequence, say what a fix would take when that isn't obvious, and stop.
 
 Why it has to be a rule. WARNING and NOTE **gate nothing** — the PR gate and the Stop gate both
 require only *coverage* plus *zero unresolved BLOCKING*. But `methodology/building.md` says warnings

@@ -42,9 +42,40 @@ Applied immediately to the cumulative review that prompted this (0 blocking, 12 
 findings headed for the backlog were re-triaged to **four FIX and one ACCEPT — zero filed.**
 
 **Why this is urgent rather than tidy:** a framework that pumps its own backlog does it once per
-build plan to every repo that adopts it. Surfaces changed: `skills/critic/review-cycle.md`
-(canonical) and `methodology/building.md` (trimmed to stay inside its 4660-token ceiling — 5 to
-spare). Rule captured in `learnings.md`.
+build plan to every repo that adopts it.
+
+**Second pass — the reviewer was instructed to recommend filing.** The first pass fixed the
+*builder's* rule and left the *reviewer's* contradicting it: `review-protocol.md` said
+"Recommend backlog" twice, including on the definition of NOTE — so every ambiguous finding
+arrived pre-labelled with its destination, and the builder obliged. Both removed. The Critic
+itself never files (its `allowed-tools` carries no backlog access at all); it was *recommending*,
+which is the same pump one step upstream. The prohibition now lives in `review-cycle.md` rather
+than the severity contract, because `review-protocol.md` is diet-locked with ~1 token of headroom
+and a rule is not worth weakening a budget test for.
+
+**Two loopholes closed with it**, both named by the owner and both used by this very session:
+*"pre-existing"* and *"already filed"* are not dispositions — a defect the diff did not introduce
+still takes FIX or ACCEPT, and "ACCEPT: predates this branch, tracked at `ID`" is fine precisely
+because it is written down. And severity does not exempt: NOTE was the majority of findings in the
+review that prompted this, so exempting it would just move the pump.
+
+**Concept sweep across the whole plugin surface**, not a phrase grep. Also corrected:
+`skills/runbook/SKILL.md`, which told authors to *file* a discovered operational gap. Left alone
+as legitimate: `report-bug` (bugs filed to another product's repo), `docs/norms.md` (a temporary
+norm exception must carry a tracking item with a `revisit:` clock — a FILE that names its trigger,
+which is exactly the narrow case), `janitor`/`doctor` (findings become a build plan, not backlog
+items), and `pr/review-protocol.md` (reconciliation *closes* items).
+
+**The framework was already contradicting itself.** `methodology/reflection.md` has said for a
+while: *"Earn the backlog entry — don't let it inflate… Do NOT file pure internal-ceremony items…
+auto-filed NOTEs turn one-time observations into perpetual every-session lines — how a backlog
+drifts from a working set into a self-portrait of the tooling reviewing itself."* That rule was
+right, and the Critic path overrode it at the exact moment findings were produced. The reflection
+guide needed no change; everything else was moving against it.
+
+Surfaces changed: `skills/critic/review-cycle.md` (canonical), `skills/critic/review-protocol.md`
+(deletions only), `methodology/building.md` (trimmed to stay inside its 4660-token ceiling — 5 to
+spare), `skills/runbook/SKILL.md`. Rule captured in `learnings.md`.
 
 ## 2026-07-29: The ref gate was verifying one file reference for an entire release
 
