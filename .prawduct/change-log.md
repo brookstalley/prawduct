@@ -22,8 +22,19 @@ recorded as waived so the tree is not overstated). The pass then returned **1 bl
   landed on the first release after the backlog-service cutover, which is precisely the release
   these runbooks were written for. Now the liveness reason is carried as one problem among the rest
   and every other check runs; unverifiable liveness is explicitly *not* reported as a closed blocker,
-  because "re-take this decision" is a wrong remedy when the gate never read the backlog. Two tests,
-  proved by mutation: restoring the early return fails them.
+  because "re-take this decision" is a wrong remedy when the gate never read the backlog.
+
+  **Mutation record, per guard — corrected.** The first version of this entry said "two tests, proved
+  by mutation: restoring the early return fails them." Only one is: restoring the early return kills
+  `test_an_unclassified_scope_is_STILL_named_post_cutover`. The fix touches **three** call sites and
+  each needs its own mutant, which is what a later verify pass found (one guard had no killing test
+  at all). Now, individually verified: restoring the early return kills the unclassified test;
+  dropping the `stale_blockers` guard kills
+  `test_unverifiable_liveness_is_not_reported_as_a_closed_blocker`; dropping the **contradiction
+  branch's** guard kills `test_contradiction_does_not_call_a_blocker_closed_post_cutover`, which did
+  not exist until that pass — its sibling never cuts over, so nothing reached the line. Writing "two
+  tests, proved by mutation" from *one* mutation run that produced three failures is the same act
+  this branch keeps repeating: an aggregate observation recorded as a per-item claim.
 - **WARNING — the command offered as proof did not reproduce the figure it stood under.** The
   R-2 fix replaced a decaying number with a derivation command, and the command applied no boundary
   restriction: 12 scopes / 54 entries against the "23 across six" printed two lines below, under a

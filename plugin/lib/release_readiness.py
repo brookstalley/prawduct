@@ -408,7 +408,8 @@ def check_releasability(project_dir: Path, release: str | None = None) -> int:
         problems.append(
             f"{liveness_unverifiable} {len(withheld_scopes)} scope(s) are withheld "
             "behind blockers that must be confirmed open by hand before publishing: "
-            f"{', '.join(sorted(withheld_scopes))}. Every other check below did run."
+            f"{', '.join(sorted(withheld_scopes))}. Every other check still ran — "
+            "fix any other problem listed beside this one first."
         )
     if unclassified:
         problems.append(

@@ -351,6 +351,32 @@ class TestPostCutoverFailsClosed:
             "liveness was unverifiable, so 'not open' is a claim the gate cannot make"
         )
 
+    def test_contradiction_does_not_call_a_blocker_closed_post_cutover(
+        self, tmp_path, capsys
+    ):
+        # The contradiction branch names blocker liveness inline, on its own
+        # `open_ids` read. Post-cutover that set is empty because the backlog was
+        # never opened — so without the guard this prints "no longer open" about
+        # a blocker whose state is simply unknown, which is the wrong-remedy
+        # defect the branch was written to eliminate, re-entered one line down.
+        # The sibling contradiction test above never cuts over, so it cannot
+        # reach this.
+        # `beta` keeps the pending set non-empty — with every entry tagged the
+        # gate returns early and never reaches the contradiction branch at all.
+        project = _make_project(
+            tmp_path,
+            entries=_entry("A", "alpha", release="v3.2.0") + _entry("B", "beta"),
+            classification="| alpha | withheld | BKL-6J2X |\n| beta | ships | |\n",
+            backlog=_shipped_item("BKL-6J2X"),
+        )
+        self._cut_over(project)
+        assert release_readiness.check_releasability(project, "v3.2.0") == 1
+        err = capsys.readouterr().err
+        assert "already tagged release=v3.2.0" in err, "the contradiction still fires"
+        assert "no longer open" not in err, (
+            "liveness was unverifiable, so the contradiction must not claim it"
+        )
+
     def test_no_withheld_scope_still_passes_post_cutover(self, tmp_path):
         # Proportionality: a release that withholds nothing needs no blocker
         # liveness check, so cutover must not block it.
