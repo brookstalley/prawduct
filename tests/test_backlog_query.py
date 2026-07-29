@@ -164,7 +164,107 @@ class TestPick:
         cand = result["data"]["candidates"][0]
         assert cand["stage"] == "ready"
         assert cand["reap_eligible"] is False
-        assert "unassigned" in cand["why"] and "no open blockers" in cand["why"]
+        # "no open blockers" → "no blockers recorded": the old wording reported an
+        # empty dependency read as a verified all-clear. Not a relaxed assertion —
+        # the distinction it used to blur is now pinned by the two tests below.
+        assert "unassigned" in cand["why"] and "no blockers recorded" in cand["why"]
+
+    def test_why_says_recorded_not_clear_when_no_dependencies_exist(self, fake):
+        """An empty native-dependency read is *absence of data*, never a clean
+        bill of health.
+
+        The markdown→Issues importer carries `related:` in the body and maps
+        **nothing** to native `blocked_by`, so every migrated item reads back
+        zero dependencies forever. A `why` that says "no open blockers" turns
+        that guaranteed silence into a confident all-clear across an entire
+        migrated backlog."""
+        _file(fake, title="ready", stage="ready")
+        cand = query.pick(fake, owner=OWNER, repo=REPO, now=NOW)["data"]["candidates"][0]
+        assert "no blockers recorded" in cand["why"]
+        assert "no open blockers" not in cand["why"]
+
+    def test_why_distinguishes_a_genuinely_cleared_blocker(self, fake):
+        """The other side of the same contract: when dependencies *were*
+        recorded and are now closed, that IS a verified all-clear and must read
+        differently from the no-data case above."""
+        candidate = _file(fake, title="was blocked", stage="ready")
+        blocker = _file(fake, title="blocker", stage="ready")
+        core.link(fake, id_raw=candidate, edge="blocked-by", target_raw=blocker)
+        core.set_status(fake, id_raw=blocker, target="shipped")
+
+        picked = query.pick(fake, owner=OWNER, repo=REPO, limit=5, now=NOW)["data"]["candidates"]
+        cleared = next(c for c in picked if c["id"] == candidate)
+        assert "1 blocker closed" in cleared["why"]
+        assert "no blockers recorded" not in cleared["why"]
+
+    def test_dependency_fanout_is_bounded_by_limit_not_by_backlog_size(self, fake):
+        """PROBE-LAT / the N+1: `pick` must not pay one dependency read per
+        *eligible* item when it was asked for one candidate.
+
+        The fan-out used to run over every eligible issue before `limit` was
+        applied, so a 170-item migrated backlog cost 170 REST calls on every
+        pick regardless of `--limit`. Ranking does not depend on blocker state,
+        so the reads can be taken lazily in rank order."""
+        for i in range(12):
+            _file(fake, title=f"ready-{i}", stage="ready")
+
+        fake.calls.clear()
+        result = query.pick(fake, owner=OWNER, repo=REPO, limit=1, now=NOW)
+        assert result["data"]["count"] == 1
+
+        fanout = [c for c in fake.calls if c[0] == "list_blocked_by"]
+        assert len(fanout) == 1, f"expected one dependency read for limit=1, got {len(fanout)}"
+
+    def test_fanout_still_walks_past_blocked_candidates_to_fill_the_limit(self, fake):
+        """The laziness must not under-fill: if the top-ranked candidate is
+        blocked, `pick` keeps reading down the ranking until `limit` is met."""
+        blocked = _file(fake, title="blocked-and-first", stage="ready")
+        blocker = _file(fake, title="the blocker", stage="ready")
+        core.link(fake, id_raw=blocked, edge="blocked-by", target_raw=blocker)
+        free = _file(fake, title="free", stage="ready")
+
+        result = query.pick(fake, owner=OWNER, repo=REPO, limit=2, now=NOW)
+        picked = [c["id"] for c in result["data"]["candidates"]]
+        assert blocked not in picked
+        assert len(picked) == 2 and free in picked and blocker in picked
+
+    def test_failed_dependency_read_on_a_selected_candidate_still_errors(self, fake):
+        """The property that must NOT have changed with the lazy fan-out: if the
+        blocker predicate cannot be evaluated for a candidate `pick` is about to
+        return, the call fails rather than returning it as ready. The predicate
+        is never *assumed* for a returned candidate."""
+        _file(fake, title="ready", stage="ready")
+
+        def _boom(*_a, **_kw):
+            raise OSError("dependency endpoint unreachable")
+
+        fake.list_blocked_by = _boom
+        result = query.pick(fake, owner=OWNER, repo=REPO, limit=1, now=NOW)
+        assert result["status"] == "error"
+        assert result["error"]["code"] == "unavailable"
+
+    def test_failed_dependency_read_below_the_limit_does_not_fail_the_call(self, fake):
+        """The deliberate semantics change riding with the lazy fan-out: a
+        dependency read that fails on an issue ranked below what `limit` needed
+        is never taken, so it cannot fail the call. Previously any eligible
+        issue's unreachable dependency failed the whole pick — including issues
+        the caller was never going to see."""
+        first = _file(fake, title="first", stage="ready")
+        for i in range(5):
+            _file(fake, title=f"later-{i}", stage="ready")
+
+        _real = fake.list_blocked_by
+        _first_number = _split(first)[2]
+
+        def _boom_except_first(owner, repo, number):
+            if number != _first_number:
+                raise OSError("dependency endpoint unreachable")
+            return _real(owner, repo, number)
+
+        fake.list_blocked_by = _boom_except_first
+        result = query.pick(fake, owner=OWNER, repo=REPO, limit=1, now=NOW)
+        assert result["status"] == "ok"
+        assert [c["id"] for c in result["data"]["candidates"]] == [first]
 
     def test_ignores_non_ready_stage(self, fake):
         _file(fake, title="idea", stage="idea")

@@ -169,8 +169,15 @@ derivable" claim).
 **Ready-work query (the `pick` engine)** = `state=open AND stage:ready AND unassigned` — **these three
 are REST *list*-endpoint filters**, served **online, read-your-writes** in one call (M8 stands). But
 the remaining two predicates are **not** list filters and force a **per-candidate fan-out** (M1):
-- **"no open blockers"** — native dependencies aren't a list parameter → one dependency fetch per
-  candidate (GraphQL sub-connection or N+1 REST).
+- **the blocker predicate** — native dependencies aren't a list parameter → one dependency fetch per
+  candidate. **Implemented as N+1 REST, not GraphQL** (corrected 2026-07-28: there is no GraphQL
+  anywhere in `plugin/lib/backlog/`; the original "GraphQL sub-connection or N+1 REST" wording left the
+  cheaper option open and it was never taken). The fetch is therefore taken **lazily in rank order and
+  stops at `limit`**, so the cost is O(limit + blocked-skipped), not O(eligible).
+- The candidate's `why` reports **"no blockers recorded"** when the dependency read comes back empty —
+  *not* "no open blockers". An empty read is absence of data, and for any backlog migrated out of
+  markdown it is empty **by construction**: `related:` is carried in the issue body and mapped to no
+  native edge, so an all-clear phrasing would assert a verified result about a permanently empty field.
 - **"claim past TTL"** — `claimed_at` (block / assignment event) isn't list-range-filterable → per-item
   check on the reaping path.
 

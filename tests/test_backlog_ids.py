@@ -135,11 +135,42 @@ class TestPfxAliases:
     """The PFX-alias machinery (D4/DM4/§5): a hand-minted ``PFX-XXXX`` ↔ its
     permanent ``id:PFX-XXXX`` alias label. No new PFX is ever minted."""
 
-    @pytest.mark.parametrize("pfx", ["BKL-7M4Q", "ADR-12", "A-1", "DIS-0001", "P00-2001"])
+    @pytest.mark.parametrize(
+        "pfx",
+        [
+            "BKL-7M4Q",
+            "ADR-12",
+            "A-1",
+            "DIS-0001",
+            "P00-2001",
+            # Multi-segment ids are ordinary hand-minted ids (~21% of real backlogs
+            # carry one). ``is_pfx`` gates alias minting, so rejecting them here is
+            # what leaves an item with no permanent identity at all.
+            "MIG-M4-REMOVE",
+            "AUD-TIMBRE-CALIB",
+            "ENG-9V2K-F",
+        ],
+    )
     def test_wellformed_pfx_accepted(self, pfx):
         assert ids.is_pfx(pfx)
 
-    @pytest.mark.parametrize("token", ["", None, "nodash", "-1234", "BKL", "  ", "a b-1"])
+    @pytest.mark.parametrize(
+        "token",
+        [
+            "",
+            None,
+            "nodash",
+            "-1234",
+            "BKL",
+            "  ",
+            "a b-1",
+            # A bracketed date is exactly what the leading-letter rule keeps out —
+            # multi-segment acceptance must not reach it.
+            "2026-07-28",
+            "FOO-",
+            "FOO--BAR",
+        ],
+    )
     def test_malformed_pfx_rejected(self, token):
         assert not ids.is_pfx(token)
 

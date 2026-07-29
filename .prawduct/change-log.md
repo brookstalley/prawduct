@@ -3,6 +3,900 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-07-29: Dispositions — verify-resolutions `rev-20260729T160832Z-6fc768ff`, both findings FIXED
+
+<!-- prawduct: type=fix | scope=coverage-perf -->
+
+0 blocking, 2 warnings, 0 notes over the 12-file delta (`988b3de` → `f4ccea2`) — the commits that
+landed after the cumulative's reviewed tree. The pass verified 10 of the prior 13 warnings **against
+the tree** rather than against the change-log's account of them, which is the point of the mode.
+Both new findings are **FIXED**; neither was filed.
+
+**FIXED (2).**
+
+- **W-1** — the change-log asserted "Recorded at the current tree: 2806 passed", but the stamped
+  evidence anchored tree `5b5063a` (commit `078dbb9`), two commits back. `da8be44` then added
+  `distinct_trees`, `TREE_COUNT_ADVISORY`, and the `_cmd_status` branch — production code in the
+  module every coverage gate composes over — so **the R-20 fix was itself the unstamped slice**. The
+  run had plausibly happened (2806 = 2803 + the three tests that commit added) but a run that is not
+  stamped is not evidence. Re-recorded at the head tree: **2807 passed, 7 skipped** (2806 + the test
+  below). The lesson is narrow and worth keeping: *asserting a number in prose is not recording it.*
+- **W-2** — `test_advisory_fires_at_the_documented_trigger` asserted only
+  `TREE_COUNT_ADVISORY == 10_000`; the one behavioural assertion in the class was the **negative**
+  (`'NOTE:' not in stdout` far below the trigger). Nothing exercised the firing path, so an inverted
+  comparison would have shipped green — R-20's own thesis (a trigger nothing observes) reproduced one
+  level up, in the test written to close R-20. Split into a constant-drift pin
+  (`test_advisory_constant_matches_the_documented_trigger`) and a real boundary test that patches the
+  trigger down rather than writing 10,000 trees, asserting the advisory fires **at** the count
+  (`>=`, not past it) and stays silent below. **Verified by mutation**: inverting `>=` to `>` in
+  `evidence.py:534` fails the new test, and passed before it existed.
+
+**Left open deliberately (1).** The prior review's **R-18** stays unresolved rather than being
+recorded `waived`. The disposition schema admits only `fixed`/`waived`, and the builder's recorded
+posture was *"OWED, not accepted"* — stamping it `waived` would erase that. It gates nothing, so an
+honest open record costs nothing.
+
+**One incidental correction.** The prior pass's **R-4** (`verify-chunk-refs` exiting 1) is a
+stale-binary artifact, not a defect: the PATH `prawduct-hook` resolves to
+`/Users/brookstalley/source/prawduct/plugin/bin/prawduct-hook` — a different checkout at v3.1.1 —
+while this worktree's own binary exits 0. Always invoke `./plugin/bin/prawduct-hook` here.
+
+## 2026-07-29: Dispositions — cumulative `rev-20260729T150800Z-232232b0`, all 30 findings
+
+<!-- prawduct: type=fix | scope=coverage-perf -->
+
+0 blocking, 13 warnings, 17 notes over the 66-file bundle (merge-base `0ef114a` → `988b3de`).
+**Every finding is FIXED or ACCEPTED below; one was filed, and it names its trigger.** Filing the
+rest is the reflex the 2026-07-29 disposition rule replaced — open items went 50 → 180 in 26 days
+under it, so an ACCEPT with a reason is the default and this list is where the reasons live.
+
+**FIXED (10).**
+
+- **R-1** — test evidence was stale against the riskiest files in the bundle. Recorded at the
+  current tree: **2806 passed, 0 failed, 7 skipped**.
+- **R-2** — the tree key ignored file mode, so `chmod +x` on a judgeable path composed as a free
+  edge and skipped review while the pairwise reference denied it. The fast path failed **open**
+  where the slow one failed closed, inverting this plan's own recorded disposition. `tree_entries`
+  now returns `(mode, object_id, path)`. Found independently by self-review and by this review.
+- **R-3** — the equivalence test could not catch R-2, because `_trees()` synthesized both oracles
+  from one content map and made the property true by construction. `TestTreeEntries` now exercises
+  the **real** `gates._tree_key_fn` against real git, including the mode case.
+- **R-6** — the superseded "file the rest rather than fixing them" rule survived in
+  `tests/test_v5_methodology.py` and `build-plan-review-loop-termination.md`. Both annotated
+  **SUPERSEDED**, kept as accounting history rather than rewritten — the reversal is part of the
+  record.
+- **R-9** — `_cached_diff_fn`'s docstring still described the pairwise probing this change removed.
+  Restated: connectivity now comes from the key classes; the memo serves `_attribute_free_steps`
+  across the clean-edges, all-edges and merge-base passes.
+- **R-12** — `review-cycle.md` told the builder to "ask `coverage_algebra.is_judgeable_path`", an
+  internal function with no invocable surface, which resolves to guessing. Replaced with the two
+  traps that actually bite, both toward *more* review: comment-only `.py` edits, and
+  governance-protected `.md`.
+- **R-20** — the compaction deferral's trigger had no observer, which is the same silence this
+  branch's heartbeat work exists to end. `evidence status` now reports **trees referenced** (the
+  count composition is linear in) and advises at the documented 10,000 threshold. Advisory, never
+  blocking, per `nonfunctional-requirements`. A test pins the constant to the plan's trigger so
+  the two cannot drift apart silently.
+- **R-24** — `§ Deferred to Chunk 09` had no Chunk 05c row, though 05c's body points at it. Under
+  the `[ ]`-until-release convention that table is the *only* thing that flips an item, so
+  **BKL-72AS would have survived the release still reading open**. Row added.
+- **R-25 · R-27** — GOV-6J3P and BLD-3M7K **verified resolved against the tree**: the runbook's
+  `Bash(prawduct-hook backlog *)` grant is gone (0 matches), and `_GIT_REF_PREFIXES` is present in
+  `buildplan_refs.py`. Both archived via `/prawduct:backlog` (never a hand-edit) — **179 open · 2
+  promoted · 154 archived**, 335 total unchanged, bodies verbatim.
+
+  Two corrections the skill made, both worth keeping: `closed-by=coverage-perf` for GOV-6J3P was
+  **wrong** and it recorded `v3.2.0-golive` instead. GOV-6J3P was closed by `85753fd` ("an
+  allow-list cannot fence an op reachable through an interpreter"); `coverage-perf` touched no skill
+  grants at all, so the ref I asked for would have been false traceability. And **archiving
+  BLD-3M7K does not close the git-ref false-positive family** — its successor **CRT-2P8V** is live
+  and open (consumer prefixes `feat/`, `chore/`, `wip/`, `dependabot/` still false-block); reverse
+  links were added so archiving the parent cannot hide the remaining gap. GOV-6J3P was also a
+  near-duplicate of the already-archived GOV-5J9Q, same closing commit — a `dedup` sweep over the
+  `governance` area would likely surface more, which is the R-28 pile from a different angle.
+
+**ACCEPTED — won't-fix now, with the reason (19).**
+
+*Out of this session's scope — they belong to the v3.2.0 go-live plan's own chunks, and sweeping
+another plan's findings into this one is how a bundle stops being reviewable:* **R-7** (scrub-runbook
+renumbering left dangling step refs), **R-8** (item-id grammar written three times — genuine debt,
+but a three-site refactor with lock-in is not a review-cycle fix), **R-13**/**R-14**/**R-15**
+(waiver-site bar, blast-radius wording, registry row), **R-17** (`build_plan_ref_root`
+discoverability), **R-21** (a misdeclared `build_plan_ref_root` swallowed silently — real, and the
+right fix is a warning at the declaration site, which is Chunk 06's surface), **R-22**
+(`boundary-patterns.md` is still a scaffold — filling it is discovery work, not a fix).
+
+*Already covered elsewhere:* **R-4** (`verify-chunk-refs` exit 1 is a stale-binary artifact of the
+installed v3.1.1 plugin, not a missing deliverable — root cause and mitigation are in the handoff),
+**R-10** (the gitflow prefix set is closed, and **CRT-2P8V is already filed** as the explicit
+residual for consumer prefixes), **R-5** (`PROGRESS_EVERY`'s docstring cites VRF-009's peak rather
+than the average; VRF-011 **in this same bundle** records the corrected 31/min, so the reader has
+the right number one artifact away and the cadence is advisory only).
+
+*Deliberate, not oversight:* **R-11** (`review-cycle.md` has no budget of its own — adding one is a
+new gate, and this cycle's evidence is that budgets get paid down when they exist, not that every
+file needs one), **R-16**/**R-19** (the same finding twice: `build-plan-review-loop-termination.md`
+has no `governed_by:` — that plan's work is unmerged on another worktree and belongs to whoever
+lands it), **R-18** (8 `## Direction` norms undispositioned across four plans — the builder
+pre-recorded this as *"OWED, not accepted"*, which is the correct posture; converting it to a
+silent ACCEPT here would erase that).
+
+*Backlog hygiene, recorded not actioned:* **R-28** (all 21 new items land in areas already ≥3 deep,
+`critic` and `governance` at ~50 each — this is the pile the disposition rule exists to stop
+growing, and the ~20–25-item retro-triage it implies is an owner decision, already raised),
+**R-29** (COV-6T3P and BLD-3M7K unassessed by the chunks touching their surfaces), **R-30**
+(JNT-4R2M's evidence paragraph re-drifted when janitor's grants were deleted again — the item is
+now correct-by-accident, and re-editing prose that tracks a moving tree is the churn the item
+itself documents).
+
+**FILED (1).** **R-26** — GOV-4B9N's fix could not be verified from this worktree (the amended
+destructive-action norm did not grep in `project-preferences.md`), so it is neither closed nor
+silently dropped. **Trigger:** confirm the Enforcement row carries the operation-level form before
+Chunk 09's flip pass, and archive it there.
+
+## 2026-07-29: The PR gate was probing an equivalence relation one pair at a time
+
+<!-- prawduct: type=fix | scope=coverage-perf -->
+
+`check-cumulative-critic` took **5 min 12 s** on this branch. Instrumented, **316 s of the 318 s
+verdict** was **5,597 `git diff` subprocesses** inside `coverage_algebra._find_path`, which probed
+free edges *pairwise*: for every dequeued node, a diff to every unvisited node. `_cached_diff_fn`
+memoised repeat pairs only — the pair count was the problem, not repeat pairs. The evidence store is
+append-only, shared by every worktree of the clone, and never pruned, so this degraded monotonically.
+
+It gates `/prawduct:pr create`, so the realistic outcome was not a slow gate but a **waived** one,
+and a waived gate is worse than no gate because it reads as satisfied. Every consuming repo walks
+into this as its store grows; this one is simply first, having run longest.
+
+A free edge `a → b` exists iff no judgeable path differs — iff both trees agree on every judgeable
+`(path, blob)`. That is equality of a value **each tree has on its own**, so it never needed a
+pairwise question. Key each tree once (`git ls-tree -r -z`, digest over judgeable entries): equal
+keys are mutually free-connected, and each key class is a clique. Same store (672 facts, 293 trees),
+same `uncovered` verdict: **5,597 diffs → 294 ls-trees, 316 s → 7.4 s, gate 5 m 12 s → 7.95 s.**
+
+A tree whose key cannot be computed joins no class and gets no free edge — the same direction a
+failed diff already fails in. Speed must not buy a free pass. Free-step file attribution is deferred
+to the steps on a *found* path, so it stays O(path) rather than O(candidates).
+
+`tests/test_coverage_algebra.py` is **unmodified** — it is the behavioural contract and this is an
+optimisation. The pairwise form remains as the reference implementation, and a new equivalence test
+asserts both oracles decide every case identically.
+
+**Pruning the store was rejected as the fix**, and the reasoning matters more than the verdict: 293
+nodes is a trivial graph, pruning buys a linear factor against a quadratic, and the facts are both
+the audit trail and the substance coverage composes from. Deleting evidence to make a gate fast is
+how a fail-open ships. Compaction is FILEd with a trigger (`build-plan-coverage-perf.md`
+§ Compaction) — ~10,000 trees or a warm gate above 5 s.
+
+**Also rejected: splitting `is_judgeable_path`.** The prior session proposed it on the theory that
+the same day's `protected_path_violation` widening had retroactively invalidated accumulated review
+edges. Measured against the live store, **0 edges were lost** — 240 valid review edges under both
+the old root-anchored and the new segment predicate, because reviewers record
+`files_reviewed ⊇ files_changed`. What the widening does do is remove the doc-only *free edge* for
+skills-prose intervals, which is PR-5K8D's intended semantics, not a defect. The pain was the
+five-minute trigger, now gone. Splitting would have rebuilt the CRT-5D8Q deadlock the single
+predicate exists to have ended.
+
+## 2026-07-29: A handoff is prepared and reconciled, never proposed and stacked
+
+<!-- prawduct: type=fix | scope=coverage-perf -->
+
+Two failures in one discipline, both observed here rather than imagined.
+
+**Asking.** A session finished sustained work and asked *"want me to append it to
+`.handoff-notes.md` and stop there?"* That defeats the purpose. The user may have stepped away while
+the work ran, so the question costs them a round-trip and replays a large context into a cold cache
+— the exact cost the handoff exists to prevent. Preparing unasked costs little, and they may simply
+continue in place. The asymmetry is total, so the default is unconditional: **never ask whether to
+prepare a handoff; prepare it, then say `/clear` is safe.**
+
+**Stacking.** Step 7 said *append*, and appending is what produced this repo's own
+`.handoff-notes.md`: three stacked sections, one carrying a hand-written `still applies` comment
+because prose was doing the job reconciliation should have done. The rule is now **reconcile** —
+drop what the batch discharged, correct what moved, keep only what still bites. A second batch in
+one session **rewrites** the first's notes rather than stacking on them, because a stratified file
+makes the reader guess which layer is live, and the layer that reads most current is usually the one
+the later work already closed.
+
+Landed on all three surfaces so consuming products inherit this rather than it being a
+prawduct-local habit: `building.md` (on demand), `session-digest.md` (injected into every product
+session), `session-digest-slim.md` (framework sessions). Rationale lives in the injected digests;
+`building.md` carries the rule alone.
+
+Paid for in place per the trim-or-relocate rule, ending with **more** headroom than it started:
+4655 → 4659 against a `<4660` ceiling, funded by two passages both digests already state verbatim.
+The budget was not raised.
+
+## 2026-07-29: Skill-only sessions have been skipping the reviewers since the plugin relocation
+
+<!-- prawduct: type=fix | scope=chunk-refs-gate -->
+
+`protected_path_violation` enforces the governance bounds that keep `skills/`, `methodology/`,
+`templates/` and root `CLAUDE.md` off the `Type: trivial` and PR doc-only fast paths — *"fork-skill
+prose is behavioral logic in this framework, so a `skills/*.md` change must never ride a doc-only
+fast path past the reviewers."*
+
+It matched with `path.startswith("skills/")`. Once the framework moved under `plugin/`, no real path
+starts that way. So every `plugin/skills/**.md` edit returned `None`, `is_judgeable_path` read it as
+non-judgeable, `session_changes_all_non_judgeable` classified the session doc-only, and the Stop gate
+skipped Critic and reflection. **The exact inverse of the function's own guarantee, live since the
+relocation**, and the call-site comment at `prawduct-hook:1386-1389` asserts the opposite.
+
+The failure mode is silence, which is why it survived: nothing errors, a gate just quietly does not
+fire. The full suite passed before this fix *and* after it — no test asserted the broken behaviour,
+because a bound that stops matching produces no signal to assert on. Five added.
+
+Directory bounds now match the path **segment** (`path.startswith(p) or f"/{p}" in path`), so
+`plugin/skills/...` and a root-level `skills/...` both bind, while `myskills/` does not. This
+**widens** the gate: a product's own `src/skills/` is caught too. Deliberate direction — this is
+authority, and authority fails closed. A false positive costs one session that reviews when it need
+not; the false negative was governance-protected prose shipping unreviewed. `CLAUDE.md` keeps exact-
+match semantics (the governing file is the root one).
+
+Single-source constant, so this closes the `Type: trivial` gate and the PR doc-only gate together.
+Sessions that previously skipped will now require coverage — expect the gate to start firing where
+it silently did not.
+
+## 2026-07-29: The completeness gate counted the items it promised to name
+
+<!-- prawduct: type=fix | scope=v3.2.0-golive -->
+
+First application of the new finding-disposition rule: these were headed for the backlog and were
+fixed instead.
+
+`_emit`'s error branch rendered every `details` list as its length. That rule was written for
+`import`'s entry dicts — hundreds of `{key: ...}` records that would bury the error message in front
+of an operator deciding whether to resume — and it was correct for them. It was then applied to
+lists that **are** the payload. `verify-migration`'s `missing` / `unaliasable` / `collisions` are the
+ids that stranded the run, and three shipped surfaces promise names: the docstring ("Names the
+stranded items, never just a count"), the CLI help, and Step 6 of the scrub runbook — **which
+invokes the command without `--json`**, so the operator saw `missing: 3`. For `unaliasable` the
+documented remedy is *give each a real prefix in the source before importing*; that cannot be
+followed against the number 3.
+
+Now the two shapes are discriminated: a list of plain strings is named (capped at 20, then
+`(+N more)`, so one bad run still cannot bury the message), a list of dicts is counted exactly as
+before. Pinned at the **CLI layer**, which is where the gap was — the existing library-level test
+asserted the envelope and passed while the human surface was wrong, and the only CLI-level
+assertion checked the exit code.
+
+Also added the missing `verify-migration` row to the API contract §2.5 — it was the one migration op
+absent from the enumerated surface.
+
+Both gate Chunk 06, the irreversible operator-run migration.
+
+## 2026-07-29: Dispositions for the prior review's remaining findings
+
+<!-- prawduct: type=fix | scope=critic-disposition -->
+
+The new rule applied to itself. Four warnings from `rev-20260729T130723Z-73406c9a` had left the
+follow-up review with **no disposition anywhere** — which the branch's own new text calls out as not
+allowed, since "already filed" is not a disposition. Recorded here rather than left implicit:
+
+- **`project-preferences.md` norm registry — FIXED.** Its row still read *"No destructive action
+  without explicit `--apply`"*, the pre-amendment form. `security-model.md` § Direction was amended
+  2026-07-24 (owner ruling) to **operation-level** approval, precisely because gating a ~900-write
+  migration per action produces rubber-stamping. The registry is what the janitor and Critic read, so
+  the norm Chunk 06 runs under disagreed with itself. Row rewritten to the amended form. This was the
+  cheapest thing standing between here and the irreversible migration.
+- **Four hand-maintained id grammars — ACCEPTED.** `legacy.ID_RE`, `ids._PFX_RE`,
+  `migrate._ID_MARKER_RE` and the runbook grep encode one shape in four places. All four are
+  currently consistent and pinned by tests that fail if they diverge, so the live risk is bounded;
+  single-sourcing them is a refactor across a parser, an alias minter and a title stripper, carrying
+  more risk right now than the duplication it removes. Revisit when a fifth copy appears — that is
+  the signal the tests stop being enough.
+- **Record-only NOTE default vs. Normative authority over `.prawduct/artifacts/**` — NEEDS AN OWNER
+  RULING, not a disposition I can take.** Two rules in force disagree about whether artifact prose is
+  record-only (so NOTE) or normative (so it can block). It governs Chunk 06. Flagged rather than
+  resolved because picking either arm unilaterally is exactly the norm-laundering the framework
+  forbids.
+- **5 of 10 Direction norms under the active plan's `governed_by:` carry no disposition, and
+  `observability-strategy.md` is absent from that list entirely — OWED, not accepted.** Writing five
+  honest dispositions is real work on the release plan and was not done today. Named here so it is
+  visible at the boundary rather than discovered at the PR gate.
+
+Also corrected in this pass, all self-inflicted by the disposition change itself: `review-cycle.md`
+carried **stale measurements** (50 → 169 / ~120 governance — the figures from the release-narrowing
+rationale, propagated before the real audit ran and never reconciled, in the one copy an adopter
+reads); **two surviving filing-as-default instructions** 40 lines below the new prohibition, one of
+them the old rule intact in the diminishing-returns paragraph; and a `zero filed` claim a later
+commit in the same bundle falsified. `build_plan_ref_root` was documented in
+`templates/project-state.yaml` alongside its sibling opt-ins — it was claimed *available to any repo*
+while being reachable only by reading the source.
+
+## 2026-07-29: "File the rest" was a backlog pump, and the framework was doing it to itself
+
+<!-- prawduct: type=fix | scope=critic-disposition -->
+
+`review-cycle.md` said: once a pass returns zero BLOCKING, remaining WARNING/NOTE findings are
+**FILED, not fixed** — `/prawduct:backlog add` them and proceed. The rule existed for a real
+reason (a fix commit extends HEAD, coverage no longer reaches it, another pass runs; observed
+live at four rounds and ~40 minutes on a ~40-line change) and that reason still stands. But it
+conflated *stop reviewing* with *put it in the backlog*, and the second half made the backlog the
+disposal route for every finding a thorough reviewer produces.
+
+**Measured on this repo, which is the whole argument.** Open items went **50 → 180 in 26 days**.
+67 are Critic-sourced; **53 of those have never been touched since filing** (`reviewed:` still
+equals `added:`); 58% of every Critic item ever filed is still open. 43 of 67 are about the
+framework's own governance machinery rather than product behaviour, and 42 of 67 sit at
+`effort: S` — the band where the item costs more reader-attention over its life than the fix
+costs. The sharpest tell: **`verify-chunk-refs` alone carries six open items**, each a facet found
+by a *later* review of the same unfixed gate. Filing made every pass re-discover the mechanism
+instead of closing it.
+
+Now: the review still ends at zero BLOCKING — the termination guarantee is untouched — but each
+remaining finding takes one of three dispositions, and **FILE is the narrowest, never the
+default**:
+
+- **ACCEPT** (the default) — won't fix, reason recorded in the change-log entry for the work. No
+  backlog item. This is Principle 2's *explicitly descoped*, which the resolution flow previously
+  had no way to express: it offered fix-or-file and nothing else.
+- **FIX** — anything cheap, and anything touching a gate, contract, or operator-facing surface
+  regardless of cost. Coverage closes with **one** `verify-resolutions` pass, not another full
+  round; a fix confined to non-judgeable surfaces costs nothing.
+- **FILE** — genuinely deferred work someone will do, and the item names its trigger. No trigger
+  means it is an ACCEPT wearing a backlog id.
+
+Plus a smell test: a review that ends in a double-digit filing is not thorough, it is undisposed.
+
+Applied immediately to the cumulative review that prompted this (0 blocking, 12 warnings): the five
+findings headed for the backlog were re-triaged to **three FIX, one ACCEPT, and one FILE that names
+its trigger** (`BKL-7V2D`, must close before Chunk 06). *Corrected in place: this line first read
+"four FIX and one ACCEPT — zero filed," which a later commit in the same bundle falsified. A
+zero-filed count was never the goal — a FILE with a real trigger is the rule working, not failing.*
+
+**Why this is urgent rather than tidy:** a framework that pumps its own backlog does it once per
+build plan to every repo that adopts it.
+
+**Second pass — the reviewer was instructed to recommend filing.** The first pass fixed the
+*builder's* rule and left the *reviewer's* contradicting it: `review-protocol.md` said
+"Recommend backlog" twice, including on the definition of NOTE — so every ambiguous finding
+arrived pre-labelled with its destination, and the builder obliged. Both removed. The Critic
+itself never files (its `allowed-tools` carries no backlog access at all); it was *recommending*,
+which is the same pump one step upstream. The prohibition now lives in `review-cycle.md` rather
+than the severity contract, because `review-protocol.md` is diet-locked with ~1 token of headroom
+and a rule is not worth weakening a budget test for.
+
+**Two loopholes closed with it**, both named by the owner and both used by this very session:
+*"pre-existing"* and *"already filed"* are not dispositions — a defect the diff did not introduce
+still takes FIX or ACCEPT, and "ACCEPT: predates this branch, tracked at `ID`" is fine precisely
+because it is written down. And severity does not exempt: NOTE was the majority of findings in the
+review that prompted this, so exempting it would just move the pump.
+
+**Concept sweep across the whole plugin surface**, not a phrase grep. Also corrected:
+`skills/runbook/SKILL.md`, which told authors to *file* a discovered operational gap. Left alone
+as legitimate: `report-bug` (bugs filed to another product's repo), `docs/norms.md` (a temporary
+norm exception must carry a tracking item with a `revisit:` clock — a FILE that names its trigger,
+which is exactly the narrow case), `janitor`/`doctor` (findings become a build plan, not backlog
+items), and `pr/review-protocol.md` (reconciliation *closes* items).
+
+**The framework was already contradicting itself.** `methodology/reflection.md` has said for a
+while: *"Earn the backlog entry — don't let it inflate… Do NOT file pure internal-ceremony items…
+auto-filed NOTEs turn one-time observations into perpetual every-session lines — how a backlog
+drifts from a working set into a self-portrait of the tooling reviewing itself."* That rule was
+right, and the Critic path overrode it at the exact moment findings were produced. The reflection
+guide needed no change; everything else was moving against it.
+
+Surfaces changed: `skills/critic/review-cycle.md` (canonical), `skills/critic/review-protocol.md`
+(deletions only), `methodology/building.md` (trimmed to stay inside its 4660-token ceiling — 5 to
+spare), `skills/runbook/SKILL.md`. Rule captured in `learnings.md`.
+
+## 2026-07-29: The ref gate was verifying one file reference for an entire release
+
+<!-- prawduct: type=fix | scope=chunk-refs-gate | chunks=01 -->
+
+**Not part of v3.2.0.** `active_build_plan` stays on the release plan; this is
+`build-plan-chunk-refs-gate.md`, and Chunk 09's change-log flip must not sweep this
+entry up. Shipping it in v3.2.0 is a scope call to take explicitly.
+
+`verify-chunk-refs` resolves "current chunk" as the first *incomplete* Status item. On a
+plan whose checkboxes stay `[ ]` until release, that is Chunk 01 forever — and Chunk 01
+carries exactly **one** ref. Measured against the real gate functions: **50 refs across 11
+chunks, of which the gate inspected 1 and reported green.** That is how a bare
+`artifacts/…` path (for `.prawduct/artifacts/…`) reached a chunk body unflagged; the
+reviewer caught it by reading, and the gate was green throughout.
+
+Two false-positive classes had to go before coverage could widen, or fixing the resolution
+would have converted a silent gate into one blocking 21 refs across seven chunks:
+
+- **Plugin-relative shorthand (17 refs, 7 chunks).** A repo that *contains* the plugin
+  writes refs the way the plugin ships them (`lib/gates.py`, `skills/backlog/SKILL.md`);
+  those are root-relative nowhere. A repo may now **declare** a second ref root
+  (`build_plan_ref_root:` in `project-state.yaml`); prawduct declares `plugin`. Absent —
+  every consuming product — means the repo root is the only root.
+
+  **This landed wrong twice before it landed right, and the pattern is the finding.** First
+  cut resolved against `project_dir / "plugin"` unconditionally. Narrowed in build to
+  require a `plugin/.claude-plugin/plugin.json` manifest. **That was still wrong**, raised
+  by the owner against a real sibling repo: a governed product that *is* a Claude Code
+  plugin carries exactly that manifest, so the guard admitted the precise population it
+  existed to exclude. Both cuts share one defect — **the gate inferring its own permission
+  from filesystem shape.** Shipping a plugin, an extension, or a vendored tree is an
+  ordinary layout, not a statement of intent. The repo declares; the verifier never sniffs.
+  A declared root that escapes the repo, is absent, or is not a directory is ignored.
+- **Issue references and anchors.** A token carrying `#` (`owner/repo#12`,
+  `docs/api#usage`) names a location in a tracker or document, never a source file. That is
+  a property of the token's shape and true for every consumer, so it lives in
+  `_looks_like_file_path` — shared with `lib/risk.py`, whose behaviour change is pinned at
+  that consumer too.
+
+**A planned third rule was withdrawn during the build, and the reason is the durable part.**
+The plan called for skipping a ref that resolves nowhere, has no file extension, and whose
+first segment is absent — the conjunction meant to excuse a bare `owner/repo` slug. It
+would have made the gate **fail open on ambiguity**, the exact inverse of the governing
+norm (`architecture.md` — *authority fails closed*), and the silence would have been
+inflicted on every consuming product (stale `oldmodule/handlers`-shaped refs stop being
+reported) to absorb three tokens in this repo's own plan. Withdrawn. Ambiguity is reported
+and the *author* disambiguates; both escape hatches already existed — `<owner>/<repo>` for
+placeholders, a URL or unbackticked prose for a real repository. The three offending sites
+were fixed as prose, which is what they actually were.
+
+Tests pin the absence of the withdrawn rule as well as the presence of the new ones, so a
+later "simplification" cannot reintroduce it. Residual across all 11 chunks: **0 missing,
+with no fail-open rule anywhere in the path.** Suite 2781 passed / 7 skipped (was 2768).
+
+Covers **BLD-ZQ2V** parts (a) and (b). Chunk 02 (verify every chunk; block on the one under
+review, warn on the rest) is not built yet, so the gate still inspects only the resolved
+current chunk — the blindness is *survivable* now, not yet *fixed*.
+
+## 2026-07-28: A hyphen was deciding which backlog items were allowed to have an identity
+
+<!-- prawduct: type=fix | scope=v3.2.0-golive | chunks=05c -->
+
+The gate shipped one commit earlier (`7565787`) made *unaliasable* an exit-4 conflict. That was right,
+and it immediately collided with a decision already on the record: `migration-scrub-decisions.md`
+decision 4 (2026-07-18) accepts `MIG-M4-REMOVE` as *import as-is, no alias*, and decision 5 sets
+`--archive-scope all` so it does import. **Chunk 06 could satisfy the decision or the gate, not both.**
+
+The cause was a one-hyphen assumption baked into the id shape (`[A-Za-z][A-Za-z0-9]*-[A-Za-z0-9]+`) in
+**four** places. An id like `MIG-M4-REMOVE` matched none of them, so it parsed as unidentified, minted no
+`id:` alias, and tripped the gate. All four widen to `(-[A-Za-z0-9]+)+`:
+
+- `legacy.ID_RE` — parses the `[PFX]` marker out of the bullet.
+- `ids._PFX_RE` — backs `is_pfx`, which gates alias minting.
+- `migrate._ID_MARKER_RE` — strips the marker from the imported title. **The one that fails loudest if
+  left behind**: widen the parser without it and the item gets its alias while its title still reads
+  `[MIG-M4-REMOVE] Remove the shim`. Three-of-four is worse than none-of-four.
+- The step-1b grep in `skills/backlog/migration-scrub.md`.
+
+**Not an edge case.** Four such ids across three of fourteen local products (~21%), one each: prawduct
+`MIG-M4-REMOVE`, hallucinote `AUD-TIMBRE-CALIB`, scriob/scriob2 `ENG-9V2K-F`. The only already-migrated
+repo, `samsung-frame-art-loader`, carries none across the last six revisions of its backlog — so
+widening is a strict no-op there and no live repo needs a manual fix.
+
+**Widening beat every alternative because the others unwind recorded decisions.** Renaming in source
+contradicts decision 4 and `MIG-M4-REMOVE` is referenced in ~12 places including two shipped docstrings;
+`--archive-scope open` contradicts decision 5 and drops 121 archive items. Widening leaves decision 4
+true as written.
+
+- **A remedy in the runbook could never have worked.** Step 6 told operators that for `unaliasable` they
+  could "add the `id:PFX` label to the already-created issue by hand." `verify_migration` derives
+  `unaliasable` at `migrate.py:1163` from parsing the **source markdown alone** — it never inspects the
+  target — so nothing done to an issue clears that list, for any id, of any shape. The code's own remedy
+  string (`migrate.py:1212-1219`) always said the right thing ("give each a real PFX in the source
+  BEFORE importing"); the runbook prose disagreed with it. Now corrected.
+- **Step 1b's premise was the thing being deleted.** Its text said "what fails in practice is a second
+  hyphen" and gave `[AUD-TIMBRE-CALIB]` and `[MIG-M4-REMOVE]` as the worked examples — both now pass. It
+  is rewritten around the *residual* set: markerless (the most common, and the one its grep structurally
+  cannot find), no hyphen, not letter-led, or containing anything but letters/digits/single hyphens.
+- **The gate keeps its teeth.** A bracketed date stays rejected — that is what the leading-letter rule is
+  for — and a markerless item is still unaliasable, still exit-4. Three existing tests used a
+  multi-hyphen token as their "not a PFX" fixture; each is repointed at `[2026-07-28]` with every
+  assertion unchanged, since the widening invalidated the fixture, not the contract.
+- **Cost, accepted:** the marker slot gets slightly greedier for bracketed non-ids with 2+ hyphens
+  (`[pass-through-cache]`). Single-hyphen ones are already absorbed today, so this widens existing
+  behavior rather than introducing new behavior.
+- **`is_pfx` reaches past the importer — found by the Critic, not by the change's own blast-radius
+  survey.** `core.resolve_ref` gates an alias round-trip on `is_pfx`, and `normalize_id` Form 4 reads
+  the shell spelling `repo-number` by splitting on the last hyphen. So `samsung-frame-art-loader-12`
+  now satisfies **both** grammars where it satisfied one: it costs a label search that used to be zero
+  I/O, and an `id:samsung-frame-art-loader-12` alias would outrank the `owner/repo#12` reading. The
+  precedence rule itself is unchanged and was already documented at that call site — an exact,
+  uniqueness-checked alias beats a guess at a repo name, and the `repo-number` reading stands when no
+  alias exists. What widened is the population reaching it. The `#` spelling stays the I/O-free escape
+  hatch. Pinned three ways in `tests/test_backlog_core.py`.
+
+Verified live against this repo's own backlog: 333 items parse, `MIG-M4-REMOVE` absorbed, **zero**
+unaliasable remaining — Chunk 06's gate now clears — and both greps return zero hits, agreeing with the
+parser. Suite 2768 passed, 7 skipped. Filed as `BKL-72AS` against MIG-2.
+
+Critic (chunk, single-pass): 0 blocking, 3 warnings, 1 note — all resolved in this commit. The
+`resolve_ref` reach above was warning 1 and is the one worth remembering: the change's own survey
+enumerated the four *pattern copies* and stopped there, while the fifth surface was a **consumer**
+whose behavior the pattern silently governs. Warning 3 (a bare `artifacts/…` path that should be
+`.prawduct/artifacts/…`) is fixed; the accompanying note — that `verify-chunk-refs` inspects only
+Chunk 01 for this entire release, because the plan defers every checkbox to release, which is how that
+path reached the plan unflagged — is filed as its own defect rather than patched here.
+
+## 2026-07-28: The completeness gate reported 100% coverage on a backlog it could not fully see
+
+<!-- prawduct: type=fix | scope=v3.2.0-golive -->
+
+Two things at once, because the first never got an entry: `10ebfd5` shipped **verify-migration**, the
+F9 completeness gate — `samsung-frame-art-loader` recorded its cutover with 7 of 9 source items never
+imported, and the runbook's step-5 eyeball check ("Total issue count = every source item") could not
+catch it. The gate compares the **source set against alias coverage**, never issue counts: issues
+filed natively after a cutover carry a `prawduct` block but no `id:PFX` alias, so a raw count looked
+plausible (17 issues) while 7 items were stranded. That
+commit carried no change-log entry — the same omission `fad1e61` had corrected for the import
+heartbeat one commit earlier.
+
+> **Corrected 2026-07-29.** This paragraph said *"Exit 4, so step 6 gates on it mechanically."* The
+> **command** gates mechanically; **step 6 does not** — it is runbook prose an operator can skip,
+> which is precisely the argument F9 itself makes against human-eyeball steps. Overclaiming a prose
+> step as a mechanical gate is the failure this entry was written to describe, reproduced in the
+> entry describing it. What actually binds: `verify-migration` exits 4, and nothing forces an
+> operator to run it.
+
+**And the gate had the same blind spot it was built to close.** It derived the source set as
+`[r.pfx for r in records if r.pfx]`, so an item whose id is not a valid PFX fell *outside the
+comparison entirely* — it imports, nothing lands in `missing`, and a repo one item short of complete
+verifies clean. Found by reconciling two counts that disagreed: `hallucinote` reported 202 source
+items where the parser found 203. Both live backlogs carry exactly one such item today
+(`[AUD-TIMBRE-CALIB]`, `[MIG-M4-REMOVE]`) — so the first real migration would have hit it.
+
+- **`unaliasable` conflicts exactly as `missing` does.** A gate whose completeness claim is scoped to
+  what it happens to be able to key is the failure mode this command exists to end.
+- **`source_items` now counts every parsed item**, not just aliasable ones. It reads as "the complete
+  source set" and previously was not.
+- **The two lists have different remedies, so the message does not merge them.** `missing` re-imports
+  cleanly (alias-keyed, so migrated items skip). `unaliasable` does not: its idempotency key is a
+  digest of title+body, so giving the item a real PFX changes the key *and* the title, and a
+  re-import mints a **second** issue instead of adopting the first. Telling an operator to "re-run
+  import" for both would be wrong for the case that is harder to undo.
+- **The cheap fix is pre-import**, so the runbook gained step **1b** — find non-PFX ids before the
+  import, when the fix is a rename instead of a duplicate to reconcile. The accepted shape
+  (`ids._PFX_RE`) is deliberately lenient — one letter-led segment, a hyphen, one alphanumeric
+  segment — so what actually fails it is a **second hyphen**. The first draft of 1b's grep assumed
+  `[A-Z]{3}-[A-Z0-9]{4}` and flagged a dozen valid ids in both repos; it was run against both before
+  shipping and now mirrors the parser's own regex, returning exactly the one real hit in each.
+- **The tests were checked against the pre-fix code**, where the key one fails with
+  `source_items: 5, aliased: 5, missing: [], status: ok` on a six-item source — the silent pass,
+  reproduced rather than asserted.
+
+**Two more doors into the same failure, both closed by deleting a re-derivation.** The gate had
+hand-rolled its own copy of the importer's record assembly, and the copy had drifted:
+
+- **`--archive-scope open` was filtered by source *file*, where the importer filters by *status*.**
+  So every closed item in the **main** `backlog.md` was skipped by the import and counted as
+  `missing` here — measured on this repo's own backlog: 332 records, 180 kept under `open`, **152
+  false `missing`** (131 `shipped` + 21 `dropped`). Exit 4 is the cutover precondition and the
+  prescribed remedy is "re-run the import", which can never clear it; the escape an operator reaches
+  for next is a re-run under `all`, minting 152 closed issues into a store with no delete. The flag
+  was also silently ignored whenever `--archive` was absent.
+- **Duplicate-PFX collisions were discarded.** `collect_records` drops a collided item rather than
+  merging two items onto one alias, so it is never created — and, absent from `records`, it left
+  `missing` empty and the gate green. The one class of un-imported item the gate structurally could
+  not see.
+
+Both resolve by routing through the `collect_records` → `apply_archive_scope` pair `import_backlog`
+already uses, so the gate's source set **is** the importer's create set rather than a second
+derivation of it that can drift again. The `open` case is now pinned in both directions — the
+skipped items don't strand, and a genuinely un-imported *open* item still conflicts — because a
+scope fix that bought its silence by loosening the gate would be the same defect wearing the fix's
+clothes. `TestVerifyMigration` previously never passed `archive_scope` at all.
+
+Found by the Critic against committed HEAD, independently of (and concurrently with) the builder
+finding the pfx-less exclusion by reconciling a 202-vs-203 count disagreement — three instances of
+one class: *a completeness claim scoped to what the checker happens to be able to see*.
+
+The docstring's new `--archive-scope open` paragraph is bound by
+`TestArchiveScopeWarningTruthfulness`, which requires every literal mentioning that lever to say the
+skipped items remain in the git-tracked source markdown. It caught this one twice — once for
+omitting the clause, once for line-wrapping it across `source` / `markdown`.
+
+## 2026-07-28: A healthy migration was silent for 18–40 minutes, because every signal it had was exception-only
+
+<!-- prawduct: type=feat | scope=v3.2.0-golive | chunks=05b -->
+
+Completes **BKL-8K2N**. `aaf068f` shipped the pacing announcements and the summary footer; VRF-009
+then settled that under the serial importer **no budget ever binds** (`rest_point_waits: 0` **and**
+`content_creation_waits: 0`), so every one of those paths is exception-only and a healthy ~900-issue
+run emits nothing at all. An operator with no signal is an operator who kills a healthy run — and for
+an irreversible bulk write that is the expensive mistake.
+
+- **Progress is a different signal from pacing state** — *is it moving*, not *is it throttled*. So
+  this does not weaken `test_an_unthrottled_run_stays_quiet`; that guard keeps pacing output as
+  exception reporting and still passes unmodified, because the heartbeat carries no budget vocabulary.
+- **stderr only.** `--json` stdout is a machine contract (SEC-1 / VRF-004); a test parses the stdout
+  of a `--json` import that emits progress and fails if a line leaks.
+- **Count-based, not time-based** (`PROGRESS_EVERY = 25`) so output is deterministic without injecting
+  a clock. Silent below one interval, and suppressed on the final record where the summary follows.
+- **Ticks on every record including collisions** — the first shape `continue`d past the emit and
+  dropped a beat per collision, which is exactly the stretch where a silent gap reads as a hang.
+- **Live-proven (VRF-011) at 31 records/min** — below the 40–45 VRF-009 inferred, so a ~900-issue
+  migration is ~29 minutes and beats land every ~48 s. The constant was left alone deliberately; the
+  tuning lever and the shape *not* to take (a first-record special case) are recorded in the VRF.
+- **The reported REST-point figure remains a floor**, not an exact count (BKL-3H7W, still open) — the
+  `≥` in the output says so.
+
+## 2026-07-28: The review loop had no exit condition, and the builder was the only thing that could supply one
+
+<!-- prawduct: type=fix | scope=review-loop-termination -->
+
+Owner escalation: agents in production get trapped for 3–4 review rounds before giving up. Reproduced
+live this session — four rounds and ~40 minutes of review on a ~40-line code change, every finding
+correct, none blocking.
+
+- **The mechanism was not "warnings are too strict."** WARNING and NOTE gate nothing: both the PR gate
+  and the Stop gate require only *coverage* plus *zero unresolved BLOCKING*. The loop ran because
+  `building.md` said warnings "should be addressed," which reads as must-fix — so the agent fixes one,
+  the fix is a commit, the commit outruns coverage, a new pass runs, and that pass reviews **the
+  records just written**. Prose has no passing condition the way a test does, so each round found
+  something true about the previous round's narration.
+
+- **Round 4 was required by nothing.** `is_judgeable_path` already returns False for `change-log.md`,
+  `learnings.md` and plan prose — a commit touching only those needs no new coverage. The gate would
+  have passed. The round ran because the agent inferred "coverage must reach HEAD" from gate output
+  printed *before* those commits and never re-ran the one command that would have said otherwise.
+  **That is the production trap**: a stale gate line, carried forward as a belief.
+
+- **Rounds 2–3 were dragged in by a docstring.** Those fix commits were prose-only except for a
+  comment-only edit to a `.py` file, which is judgeable by extension. That is **COV-3M8Q**, already
+  open — filed, unmeasured, and worth ~13 minutes here.
+
+- **Three rules, split demand-side and supply-side.** Builder (`building.md`): once zero blocking
+  remain, **file the rest rather than fixing them**, and re-run the gate rather than inferring another
+  round. Critic (`review-protocol.md`): WARNING means true **and** worth the builder's time — name the
+  consequence or rate NOTE; record-only prose defaults to NOTE unless it ships as a false claim or
+  misleads someone into a wrong action. Full rule, bars, examples and the diminishing-returns signal
+  live in `review-cycle.md`, which carries no token budget.
+
+- **Both always-loaded files were at 4 tokens of headroom, and the budgets were raised — an owner
+  ruling, not a quiet edit.** `review-protocol.md` 3530 → 3620, `building.md` 4600 → 4660, departing
+  from MET-3Q8V's "stay green without raising budgets" and from the test comments' own "the next
+  addition trims or relocates first." Three compression passes ran first and landed +43 over; trimming
+  to fit would have deleted a real check to make room for a rule that removes far more work than it
+  costs. The rationale is recorded at both assertions. **The trim-or-relocate rule still stands** — it
+  was overridden once, on the record, for this.
+
+- **Not fixed here, deliberately:** COV-3M8Q (comment-only `.py` should be non-judgeable) is the code
+  half and stays open; these are the instruction-half changes the owner scoped first.
+
+## 2026-07-28: An empty field read as a clean bill of health, on a field the migration guarantees is empty
+
+<!-- prawduct: type=fix | scope=v3.2.0-golive | chunks=05b -->
+
+Two `pick` defects fixed before the irreversible migration makes them permanent. Both were found by
+reading the migration path to answer a different question — whether relationships survive the
+round-trip — and neither is what that question was looking for.
+
+- **The importer maps `related:` to no native edge, and `pick` reported that silence as an all-clear.**
+  `related:` is carried in the issue body; the only native-relationship code in `migrate.py` is the
+  *export* path. So every migrated item reads back zero native dependencies **permanently** — and
+  `_why` emitted "no open blockers" unconditionally, turning a guaranteed-empty field into a confident
+  verified result on every item in the backlog. The verdict now distinguishes **"no blockers recorded"**
+  from **"all N blockers closed"**. BKL-3N8Q filed this as an occasional silent failure; what the
+  migration actually does is make it universal and permanent, which is a different severity than the
+  one on file.
+
+- **The dependency fan-out was charged against backlog size, not against `limit`.** `limit` was applied
+  at the end, *after* one REST read per eligible issue had already run — so `pick --limit 1` against a
+  170-issue backlog paid 170 reads. Ranking never depended on blocker state, so the reads are now taken
+  lazily down the ranking and stop once the limit is filled; the result set is provably identical and
+  the cost is O(limit + blocked-skipped). A test pins that the laziness does not under-fill when the
+  top-ranked candidate turns out to be blocked.
+
+- **`related:` was deliberately NOT mapped to native `blocked_by`.** Most such links mean "see also",
+  not "blocked by", so synthesizing native edges from them would manufacture false blockers across the
+  whole backlog — strictly worse than recording none.
+
+- **The sweep below took three passes, and each pass was disproved by the next.** It is recorded as a
+  sequence rather than a conclusion, because every time it was declared finished it was not.
+
+  1. **Named sites.** The first pass corrected the surfaces encountered while making the code change
+     and marked the done-when ✅. Review rejected it: six more carried the claim, two in a file that
+     pass had edited.
+  2. **Phrase regex.** A whitespace-normalized search over every tracked file found a **seventh** no
+     enumeration could reach — `tests/spikes/s2_migration.py`'s `check_pick_latency` docstring,
+     instructing the next operator to draw the invalid inference. That one would have regenerated the
+     false conclusion on the next live run. This pass was written up as final. It was not.
+  3. **Concept query.** Review caught a site spelling it `batched-vs-N+1`, matching none of the
+     phrasings pass 2 queried. Searching the *concept* found **four more**: this release's own live
+     tracker asserting "shape confirmed batched-not-N+1" as a settled residual, the S2 step lists in
+     two design docs, and the spike's **module** docstring — sitting directly above the function
+     docstring pass 2 had just corrected.
+
+  The rule: **a completeness claim states the command that would falsify it and asserts that command's
+  current result.** A count of corrected sites is true of any prefix of the real set — which is why
+  "corrected in three places" survived review while being wrong, and why an earlier draft of this bullet
+  said "nine hits" while enumerating seven. Counts invite exactly that.
+
+  The command, and its result as of this commit:
+
+  ```
+  # every tracked file, whitespace-normalized; fan-out topic within 260 chars of
+  # batched/graphql/n+1 vocabulary, excluding windows carrying retraction markers
+  → 10 residual hits, 0 asserting the retracted claim
+  ```
+
+  All ten classified, none assumed: **5** in `backlog-service-test-specifications.md` are a *different*
+  GraphQL claim (ETag/304 is REST-only; `MarkedAsDuplicateEvent.canonical`), **2** are `nfr.md`'s dated
+  2026-07-16 C-2 review-history rows left deliberately, **1** is `templates/api-contract.md` listing
+  GraphQL as a generic surface type, **1** is the spike's `node_id` step (a genuine GraphQL id), and
+  **1** is this change's own regression test. `pass 3` is the last pass only in the sense that no pass 4
+  has run — the honest form of that sentence, given passes 1 and 2 each claimed otherwise.
+
+- **The claim's own verifying command did not resolve.** Every site asserted "no GraphQL in
+  `lib/backlog/`" — a pre-relayout path. There is no `lib/backlog/` from the repo root; it is
+  `plugin/lib/backlog/`. So the claim was confirmable by a grep that returned empty **for the wrong
+  reason** — an absence-claim citing a path whose absence produces the same evidence as the claim being
+  true. Corrected at seven sites, two of which were line-wrapped and therefore missed by a line-based
+  pass, which is the enumeration failure above recurring inside its own fix. Verified once, by hand, at
+  the time of the fix — **no persisted check asserts this**, and the general form (do intra-repo path
+  references resolve?) is already filed as **BLD-6P8T**; a bespoke "no GraphQL in X" probe would be the
+  narrow shape of a guard that item exists to design properly.
+
+  *This bullet said "a check now asserts…" until the review pass caught it. There is no such check —
+  what was added is a learnings rule, which is guidance, not an assertion. Recorded rather than quietly
+  reworded, because the entry teaching "state the command that would falsify it" claimed a falsifying
+  command it had not built, one bullet after teaching it.*
+
+- **A false claim about this mechanism was corrected in three places.** The design docs described the
+  fan-out as "a batched-GraphQL round-trip"; **there is no GraphQL anywhere in `plugin/lib/backlog/`** and
+  never was. VRF-009 had already recorded the correction against the probe that supposedly confirmed
+  it, but the claim still stood in `backlog-service-data-model.md`, the API contract, and
+  `build-plan-backlog-service.md`. A correction recorded in a verification note does not propagate
+  itself to the documents that carry the claim.
+
+- **One test assertion changed rather than being added around.** `test_returns_ready_unassigned_with_a_why`
+  pinned the literal string `"no open blockers"` — it pinned the defect. Updated in place with the
+  reason inline, and the distinction it used to blur is now pinned harder by two dedicated tests.
+
+## 2026-07-28: An allow-list cannot fence an op the skill can reach through an interpreter
+
+<!-- prawduct: type=fix | scope=v3.2.0-golive -->
+
+Cumulative-Critic warnings resolved as defects rather than filed as debt, plus the class each one
+turned out to belong to. The dividing line for this pass was **correctness and safety ship now,
+governance bookkeeping waits** — the norm dispositions, the Chunk 05 verify-api step, the runbook's
+chunk-number coupling and ONB-3F9P's status pointer are all deliberately still open, because fixing
+them *adds* governed surface and a simplification review is open against exactly that.
+
+- **The backlog grant narrowing reached three more skills, by deletion.** `janitor`, `pr` and
+  `runbook` each held `Bash(prawduct-hook backlog *)` plus its `python3` twin. All three reach the
+  backlog **through `/prawduct:backlog`** and none invokes the CLI — janitor's own text says so
+  ("Backlog context — through the skill, not the file"). Six dead grants removed, none added; the
+  13-op narrow list was **not** copied into three more files.
+
+- **The real exposure was never the backlog grant.** `janitor` was the only skill that never
+  declared `disable-model-invocation`, and the field is opt-**out**, so it was model-invocable by
+  omission. Its `Bash(python3 *)` — needed to drive whatever toolchain a product uses — semantically
+  permits `python3 plugin/bin/prawduct-hook backlog import`, re-granting the unrecallable ops the
+  allow-list exists to hold behind a prompt. **An allow-list cannot fence an op when the skill
+  legitimately needs the interpreter**, so the model-initiated path is closed at the skill instead.
+  The durable fix is a confirmation gate in the CLI, which binds regardless of caller; it is not
+  built here and is named debt, not a silent omission.
+
+- **`provision`/`reconcile-labels` were misclassified, and the inconsistency was the evidence.**
+  Generalizing the guard immediately caught `onboard` and `doctor` granting both no-prompt. They are
+  additive and idempotent by construction — `reconcile_labels` "corrects drift by adding what is
+  missing, never by removing" — so those grants are correct and the four-op set conflated two risk
+  classes. `IRREVERSIBLE_OPS` (`import`, `merge`) now binds every model-invocable skill; all four
+  still stay out of the backlog skill's own grant. Nothing was loosened.
+
+- **A value-taking flag swallowed the next flag.** `init-product`'s parser took the following token
+  unconditionally, so `--name --json --apply` scaffolded a product named `"--json"` **with JSON
+  output silently off** — a machine caller got a real repo and an unparseable result. The Critic
+  named one instance (a valueless `--backlog-repo` dropped in silence, forfeiting the one-shot
+  day-one Issues window); the defect was the class, and both flags shared it. A missing value now
+  yields `""`, which each flag's own validation already rejects loudly, and stays distinguishable
+  from absent.
+
+- **`init-product` reported its backend from intent, not outcome.** The recorded value came from the
+  request while the writer no-ops when the key is already present — so the report disagreed with the
+  tree the moment they diverged, and the caller uses that field to decide whether to provision.
+  It now reads back what the file holds.
+
+- **The `Transport` method-naming contract left its private docstring.** The pacing decorator
+  classifies reads and writes from the method-name prefix and raises on anything it cannot classify.
+  That constraint bound every implementer and was documented only inside `_PacingTransport`; it now
+  sits on `Transport`, where a method gets added.
+
+- **The "every REST call" sweep had an eighth surface, and its scope was the proxy this time.** The
+  two-pass sweep that produced *"a falsifying query is itself a mechanism and can carry the defect it
+  hunts"* enumerated code, docs and tests — and never looked at the change log's own history, where
+  the original entry still described the meter as exact. Corrected in place. A whitespace-normalized
+  scan of every tracked file now confirms the remaining matches are all records *of* the defect.
+
+- **Two paths had no regression guard and now do:** the flag-swallowing class, and the S2 spike's
+  standalone-script bootstrap — which nothing reached, because no test imports the spike, so a
+  removed bootstrap would have surfaced only when someone reached for it mid-migration.
+
+**Three findings from the cumulative review of the above, resolved in the same pass:**
+
+- **A cut mid-migration told the operator only that it broke.** `cli._emit`'s human error path printed
+  the code and message and dropped `error.details` — `created`/`skipped`/`collisions`/`resumable`/
+  `pacing`, which the envelope has carried all along. `migration-scrub.md` Step 4 drives `import`
+  **without** `--json`, so that was the surface that mattered. Details now print, with lists rendered
+  as counts (entry dicts are the wrong thing to show someone deciding whether to resume). Distinct
+  from BKL-8K2N's progress heartbeat, which remains unbuilt and deferred: this data already existed
+  at the moment it was needed and simply was not printed. Note the direction — `pacing_summary`'s
+  docstring claimed it "rides **every** exit path"; that was true of the envelope and false of the
+  surface, and the fix was to make the surface match rather than to soften the claim.
+
+  *That fix took two passes, and the second one is the lesson.* The first printed `pacing` through
+  the generic renderer, so the cut path emitted the raw dict — including a bare `rest_points_charged`
+  figure. The success path deliberately prints `≥N`, with a comment stating the `≥` is load-bearing:
+  the meter charges per transport **method** call, so the number is a floor (BKL-3H7W), and printing
+  it bare "would put a figure that reads exact in front of the one person sizing an irreversible
+  run." The fix for a legibility finding therefore reintroduced the exact-reading figure **at the
+  moment the operator most needs to know it is a floor** — the branch's own defect class, in the
+  commit closing it. The footer is now one shared builder used by both paths, because a second
+  construction is precisely where the `≥` went missing, and the test fixture pins the marker.
+
+- **The interpreter fence missed `gh`.** The `pr` skill is model-invocable and held `Bash(gh *)`,
+  which permits `gh issue create` while the skill drives only `gh pr checks|create|list|merge`.
+  Narrowed to `Bash(gh pr *)`. Same class as the `python3` grant one commit earlier — the fix landed
+  at the interpreter the review named, and the defect lived in the class.
+
+- **A comment introduced in the commit above was false.** It claimed the reported
+  `backlog_service_repo` is `None` on a dry run; a dry run reports the *requested* value, which is
+  the point of a dry run and is pinned by an existing test. Corrected, and it now warns the caller
+  that provisioning off this field without checking `applied` writes labels into a real repo whose
+  scaffold was never written.
+
+**Four earlier fix commits on this branch shipped production behavior with no change-log entry**
+(the Critic's finding, and it was correct). They are recorded here as one entry rather than four
+backdated ones: a record written after the fact should say so, not impersonate a contemporaneous
+one. Suite 2724 passed / 7 skipped.
+
+## 2026-07-28: The git-ref carveout was inert for the branch v3.2.0 is about to cut
+
+<!-- prawduct: type=fix | scope=v3.2.0-golive -->
+
+`develop` (v3.1.2) is integrated into the v3.2.0 adapter-safety branch, and the cumulative Critic
+over the merged bundle returned 0 blocking. Two of its warnings are closed here; both are the same
+defect this branch exists to fix — **a claim that outruns the mechanism behind it**.
+
+- **The git-ref carveout never covered a version-numbered branch.** `_looks_like_file_path`
+  (`plugin/lib/buildplan_refs.py`) skipped a backticked git ref only when its final segment
+  contained **no dot at all**. `release/v3.2.0`, `release/v3.1.2` and
+  `feature/v3.2.0-c02-adapter-safety` all carry dots, so every one of them was classified as a file
+  path and drew a **BLOCKING `missing-ref:`** from `verify-chunk-refs` — including the
+  `release/v3.2.0` branch this scope is about to cut, in prose this scope's own plans already
+  contain. The carveout now tests the **suffix shape** rather than the presence of a dot: a file
+  extension is short and alphabetic (`py`, `md`, `tsx`), while a version's trailing dot-part is not
+  (`v3.2.0` → `0`). `feature/foo.py` and `release/notes.v2.md` stay captured, so the widening does
+  not blind the verifier to genuine drift. Pinned by a parametrized regression test over four
+  version-numbered branch forms plus the multi-dot-path counter-case; the Critic flagged the
+  original as untested, and it was.
+
+- **The REST-point meter is a floor, and seven surfaces called it exact.** `_PacingTransport` charges
+  per transport **method** call, so a paged read (`list_labels`) issues several HTTP requests and is
+  charged once. The operator surface already printed `≥N` with a comment explaining why (BKL-3H7W);
+  every other surface still said the decorator charges "**every** REST call". All corrected to "every
+  transport method call", each naming the floor property: `plugin/lib/backlog/migrate.py`
+  (`_PacingTransport` docstring, the `import_items` inline comment, the `Pacer` class docstring, and
+  `Pacer.before_points`), `documentation/backlog-service-nfr.md` §3.3 and §9,
+  **`plugin/skills/backlog/migration-scrub.md`** — which ships to every consumer as the operator's
+  runbook for the irreversible migration — and `tests/test_backlog_migrate.py::TestPacingTransport`,
+  whose docstring stated the same false contract.
+  **VRF-009's `rest_points_charged: 5360` is annotated rather than altered** — the measurement
+  stands, but the undercount falls entirely on the read side, so the real figure is *higher* than
+  recorded and the headroom smaller than "296 pts/min against 900" implies. The conclusion survives
+  even a 3× read undercount (~644 pts/min); the margin should not be quoted as measured.
+
+  *This sweep took two passes, and the reason is the durable lesson.* The first pass corrected the
+  three sites the review named, ran `grep -rn "every.*REST call"`, got one hit, and recorded the
+  sweep as complete — but the claim **wraps across line breaks**, which a line-based grep structurally
+  cannot match. Four surfaces survived, including the shipped runbook. A whitespace-normalized sweep
+  found all of them. Captured in `learnings.md` as *a falsifying query is itself a mechanism and can
+  carry the defect it hunts*.
+
+**Not fixed here, and deliberately.** BKL-8K2N's progress heartbeat — Chunk 06's ~900-issue run would
+emit nothing for 18–40 minutes, since `rest_point_waits: 0` means the throttle announcements never
+fire and `migration-scrub.md` invokes import without `--json` — is real work gating Chunk 06, not an
+integration fixup, and is left to that chunk.
+
+**Not filed, and not deliberate.** An earlier revision of this entry claimed "the remaining warnings
+are filed." That was false: `.prawduct/backlog.md` carries **zero** items added 2026-07-28, and ten of
+the cumulative review's warnings have no backlog item under any date. Three topics have pre-existing
+items (BKL-3H7W, BKL-8K2N, CRT-2P8V); the rest are unrecorded, and so is the BLD-7K3Q residual this
+merge surfaced (the git-derived progress reading is gated on `views_enabled`, which is a proxy for
+"the checkboxes can't be trusted" — a defer-the-flip release convention reproduces the defect in any
+repo without the flag). Recorded here as an owed action rather than a completed one.
+
 ## 2026-07-27: The Critic's SubagentStop trigger had never fired (CRT-2J8N)
 
 <!-- prawduct: type=fix | release=v3.1.2 | status=shipped -->
@@ -478,6 +1372,158 @@ and `TestSessionGitignoreMirror::test_session_file_sets_match` already asserts s
 drifted list that the grep would pass. Both never-silent emission sites the audience split created
 are pinned, including the undelivered-note announcement — reachable through the real CLI on a failed
 write, and the half the incoming agent actually sees. Suite 2550 → 2572.
+
+## 2026-07-24: v3.2.0 go-live — Chunk 05 offline prep: SPIKE-S2 harness measures the paced archive burst, and runs standalone again
+
+<!-- prawduct: type=feature | scope=v3.2.0-golive -->
+
+Prep for Chunk 05's operator dry-run — the **offline half only**. The MG4 scrub *workflow* Chunk 05
+pairs with is already complete (`skills/backlog/migration-scrub.md`; its Step 0 target-bind landed in
+Chunk 03), so the genuine offline gap was the dry-run harness: as written it could not produce the
+paced-burst measurement Chunk 04 deferred to it (NFR §9 S2), and it could not even import.
+
+- **The SPIKE-S2 harness now measures the paced create-then-close burst.** `tests/spikes/s2_migration.py`
+  gains a `--archive-scope {all|open}` lever (default `all` — the volume lever *disabled*, so the run
+  proves the Pacer against the full archive, not a small input), constructs a `migrate.Pacer`, threads it
+  into `import_backlog(..., archive_scope=, pacer=)`, and a new `_record_pacing()` lifts its run-summary
+  counters into the settled facts: `rest_points_charged`, `rest_point_waits` (>0 ⇒ the 900-pts/min burst
+  was hit and paced), `rest_point_wait_seconds`, the content-creation waits, `archive_burst_wall_seconds`,
+  and the budget ceilings in force. Only the import routes through the paced transport (export uses the
+  raw one), so the point total reflects the burst alone. This is what lets the live dry-run *settle* the
+  pacing constants NFR §9 S2 leaves open, rather than recording archive *volume* alone.
+- **The harness runs standalone again (bugfix).** Since the v3.1.1 plugin relocation (GOV-4H7T) moved
+  `lib/` under `plugin/`, a standalone `python tests/spikes/s2_migration.py` died at import with
+  `ModuleNotFoundError: No module named 'lib'`: the script self-inserted the repo root, but the root
+  conftest the suite relies on inserts `plugin/`, and conftest never fires for a script run outside
+  pytest. The relocation updated every collected test's path but missed the one standalone script. Now it
+  mirrors conftest (`_SPIKE_DIR.parent.parent / "plugin"`). One-off — the only standalone script; all
+  other repo-root self-inserts are in pytest-collected files conftest rescues.
+
+**Not Chunk 05 complete** — done-when #1 (the live `--archive-scope all` dry-run on a throwaway repo) and
+#3 (record results to `operator-verification.md`) are operator acts over live `gh`; they remain. This
+entry carries no `chunks=` tag for that reason. Verified: clean import, `--help` exposes the flag,
+invalid `--archive-scope` rejected, no-`--yes` safety refusal (exit 2) intact, `_record_pacing` lifts a
+real Pacer correctly. Offline suite **2572 passed** (the harness is dev-only/L4, not pytest-collected —
+the change alters no CI test). Critic chunk-mode clean (0 blocking / 0 warning / 1 note — the note is the
+known `verify-chunk-refs` main-worktree false-positive, self-resolving at promotion).
+
+## 2026-07-24: v3.2.0 go-live — Chunk 04: Pacer meters total REST points for the create-then-close archive stretch (BKL-6X5D part b)
+
+<!-- prawduct: type=feature | scope=v3.2.0-golive | chunks=04 -->
+
+The migration Pacer paced only issue *creation* (the 80/min·500/hr content-creation cap), annotated
+"the only paced call." But an `--archive-scope all` run imports each archived item as a **create *and*
+a close** (2 writes + reconcile reads), so at the content cap the archive stretch spends ≈ 80×5
+(creates) + 80×5 (closes) + reads > 900 pts/min — breaching GitHub's **900 REST-points/min** secondary
+burst, which the create-only metering never accounted (BKL-6X5D part b). Its only prior mitigation was
+*incidental* `gh`-subprocess latency, forfeit by the raw-HTTP fast-path.
+
+- **The Pacer gains a second budget** — a **900 pts/min REST-points** window alongside the
+  content-creation window. GitHub's per-request costs (docs, verified 2026-07-24): **5 pts/write**
+  (POST/PATCH/PUT/DELETE), **1 pt/read** (GET/HEAD/OPTIONS). `before_points(cost)` blocks only when the
+  trailing minute would breach 900, then records the spend; `points_charged` is a run-summary metric.
+- **`_PacingTransport`** — a transparent transport decorator that charges **every transport method
+  call** by name-classification (`get_`/`list_` = read, `create_`/`update_`/`add_`/`remove_` = write).
+  A paged read is charged once, so the count is a floor, not an exact REST total. *(Corrected
+  2026-07-28: the eighth surface of the "every REST call" overclaim — the two-pass sweep above scoped
+  itself to code, docs and tests and never looked at the change-log's own history.)* Wired
+  in `import_items`, so the create, the reconcile reads, **and the close write** (via `core.set_status`,
+  which receives the wrapper) all count — not just the create. An unclassified transport method **raises**
+  rather than silently escaping the budget, closing the "only paced call" fragility at its root.
+- **Content-cap pacing is untouched** — `before_create` stays at the create site; the two windows are
+  orthogonal (content-creation vs. REST-points), so a create is charged to each once, no double-count.
+
+**Design confirmation (Done-when 0):** GitHub's point model (900/min; 5/write, 1/read) was verified
+against current docs before building — the fix-shape's constants are correct, so the chunk did not grow.
+**NFR §9 S2 (Done-when 2):** the archive stretch is now inside 900 pts/min *by construction*, proven by
+a deterministic throttle test; the **live burst measurement** is Chunk 05's `--archive-scope all`
+dry-run (S2 is now the live confirmation of the paced burst, not a discovery of whether it breaches) —
+NFR §3.3 + §9 updated to match. **Window quantification (i)** stays deferred (adopter-scale) — not
+pulled in. Eight new tests (Pacer points window, `_PacingTransport` classification + fail-loud,
+create+close metering, throttle-by-construction). Full offline suite **2571 passed**.
+
+**Backlog status flip deferred to release (Chunk 09)** per this release's `[ ]`-until-release
+convention (mirroring Chunks 02/03): BKL-6X5D part (b) is built and verified on
+`feature/v3.2.0-c02-adapter-safety`; the `status=shipped` flip rides the release, not this chunk.
+
+## 2026-07-24: v3.2.0 go-live — Chunk 03: scrub + grant safety rails (BKL-2Q7F · ONB-3F9P · BKL-5N9W · BKL-6J2X)
+
+<!-- prawduct: type=feature | scope=v3.2.0-golive | chunks=03 -->
+
+The four migration-path safety rails that keep an un-migrated repo from being routed into an
+irreversible, unpinned bulk write:
+
+- **BKL-2Q7F** — `skills/backlog/migration-scrub.md` gained a top-of-runbook **Step 0** that selects
+  and owner-confirms the target `owner/repo` (never inferred from the current git remote — a wrong
+  guess mints 100–250 undeletable GitHub issues), records it, and provisions the label taxonomy against
+  it. The runbook renumbered 0–6 and every one of the six `--repo <owner/repo>` placeholders now binds
+  to the single confirmed `<target>`. Recording the target is *not* the cutover — the
+  `backlog_service_repo` scalar flip stays at Step 6, after the import is verified. Handles the
+  not-a-GitHub-repo (or not-a-git-repo) case: the target is owner-named, so there is simply no default
+  to offer, never a silent fallback to the current remote.
+- **ONB-3F9P** (full close) — provisioning now has exactly one owner per entry path:
+  `init-product --backlog-repo owner/repo` records `backlog_service_repo` for a product adopting the
+  GitHub Issues backend from day one (offline, shape-only via `parse_repo` — no GitHub or even git
+  required to record; malformed → exit 1, no half-scaffold; ignored on a re-scaffold, which would be a
+  cutover); `/prawduct:onboard` provisions the taxonomy at adoption; `/prawduct:doctor` reconciles it
+  as a repair (Health Check #12, post-cutover only). The markdown backend stays the default and needs
+  none of this.
+- **BKL-5N9W** — the wildcard `Bash(prawduct-hook backlog *)` grant in `skills/backlog/SKILL.md`
+  narrowed to the 12 everyday no-prompt ops (both invocation forms; JNT-4R2M dual-form rule). The
+  high-consequence scrub ops (`import`/`merge`/`provision`/`reconcile-labels`) are deliberately out, so
+  they surface a permission prompt — defense-in-depth atop the runbook's owner-confirmation, not the
+  primary guard (CRT-9V4T caveat: a skill `allowed-tools` is a no-prompt allow-list, not a hard cap).
+  Pinned by `tests/test_backlog_skill_metadata.py`.
+- **BKL-6J2X** — the fleet-wide `backlog-service-migration-required` `warn` is **held**: registered but
+  wired to a no-op, so no un-migrated repo is auto-routed to `/prawduct:backlog scrub` until the path is
+  proven end-to-end. The probe's firing logic and its direct-call tests are intact; lifting the hold is
+  a one-line swap in `register()`.
+
+Critic (chunk mode) clean: 0 blocking / 0 warning / 0 note. Full offline suite **2563 passed**.
+
+**Backlog status flips deferred to release (Chunk 09), per this release's `[ ]`-until-release
+convention** (mirroring Chunk 02's BKL-8V3D) — the four items' work is built and verified on
+`feature/v3.2.0-c02-adapter-safety`; their `status=shipped` flip rides the release, not this chunk.
+**Owner decision (2026-07-24):** ONB-3F9P taken to a *full* close rather than split — the onboard
+`--backlog-repo` + provision legs (needing `init_product.py`/`bin` code) were built here, so all three
+provisioning entry paths land together.
+
+## 2026-07-24: verify-chunk-refs no longer false-positives on git branch names in plan prose
+
+<!-- prawduct: type=bugfix | scope=v3.2.0-golive -->
+
+Surfaced by Chunk 02's Critic review: `prawduct-hook verify-chunk-refs` flagged
+`` `feature/backlog-service-relayout` `` (a git branch name backticked in the go-live plan's
+Prerequisites) as a `missing-ref`, because `_looks_like_file_path` (`plugin/lib/buildplan_refs.py`)
+treats any backticked token containing `/` as a file path. A git ref is the same "contains `/`,
+isn't a file" family as the slash-command / glob / URL carveouts already there. Added a
+`_GIT_REF_PREFIXES` carveout: an extensionless token whose first segment is a git-flow prefix
+(`feature`, `fix`, `hotfix`, `release`, `bugfix`, `support`, `origin`, `upstream`) is a ref to skip —
+extension-gated, so a real path like `feature/gen.py` stays existence-checked and genuine drift is not
+blinded. Fixed the classification rather than de-backticking branch names (a warning on the release's
+PR-gate path, so working around it was not the right call). `TestVerifyChunkRefsGitRefs` covers it.
+Full suite 2554 passed.
+
+## 2026-07-24: v3.2.0 go-live — Chunk 02: the adapter's mutation-safety claim, made honest (BKL-8V3D)
+
+<!-- prawduct: type=bugfix | scope=v3.2.0-golive | chunks=02 -->
+
+`skills/backlog/adapter-mode.md` told the model that backlog "mutations follow the adapter's own
+`--apply`/dry-run … contracts (you never invent a mutation path)" — but `lib/backlog/` implements no
+such flag. That is not cosmetic: a migration/scrub run could walk a write path *believing a dry-run
+guarded it* (BKL-2Q7F's 100–250-real-issues blast radius). Corrected the claim to name the real
+mechanism — `restructure-preview` is the only preview-before-write; the upstream filing op brings its
+own preview-by-default (Chunk 08) — and added `tests/test_backlog_instruction_surface.py`, a guard that
+fails if any backlog instruction surface names a mutation preview/apply flag the CLI does not parse,
+closing the defect *class* rather than the instance (proven red→green). Full suite 2551 passed.
+
+**Build-time re-scope (recorded in `build-plan-v3.2.0-golive.md` Chunk 02):** the planning-altitude
+"shared adapter guard" keystone did not survive the code — the adapter is stateless about the product's
+own repo, so the migration guard (pins to runtime `backlog_service_repo`) and the file-upstream guard
+(pins to a fixed constant) share no mechanism. BKL-2Q7F's adapter leg moved to Chunk 03 (built with the
+skill step that records the target); the upstream target-pin/no-self-file/preview stay in Chunk 08 (with
+the egress-test replacement). Chunk 02 is BKL-8V3D only.
+
 
 ## 2026-07-21: the backlog service came back, laid out under plugin/ — and took the local-first norm with it
 

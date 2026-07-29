@@ -92,8 +92,12 @@ When you need one item's full detail (a direct "show me PFX-XXXX", or before an 
 Same envelope + exit discipline as reads. Render by the **operation you invoked** (you know which
 one you ran) — never sniff the envelope for "which key is present," which is how a shared-key result
 type shadows another. Two write-specific notes: a write can return exit **5 (auth)** when withheld
-under an untrusted CI trigger (SEC-5) — surface it plainly, don't retry-loop; and mutations follow
-the adapter's own `--apply`/dry-run and crash-safety contracts (you never invent a mutation path).
+under an untrusted CI trigger (SEC-5) — surface it plainly, don't retry-loop; and **you never invent a
+mutation path** — the adapter exposes exactly the ops in the usage table, each with its own crash-safety
+contract (idempotent/resumable `import`, redirect-before-close `merge`). No generic preview-or-apply flag
+sits over those mutations: the only preview-before-write is `restructure-preview` (the deterministic
+before/after a bulk `import` would produce, approved in aggregate), and the upstream filing op adds its
+own preview-by-default when it ships.
 
 ### Status vocabulary bridge
 The markdown skill's statuses are **not** the adapter's. Map before calling `status --to`:

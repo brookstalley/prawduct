@@ -718,6 +718,40 @@ The plugin's defaults reach onboarded products only through **canonical carriers
 
 ## When building from a review/audit artifact, verify each cited gap and fix-instruction against HEAD before planning — the artifact's file-state claims aged the moment it was written
 
+**Instance (2026-07-28, v3.2.0 Chunk 05c / BKL-72AS) — the inherited-`file:line` facet, where the
+claim was never true rather than stale.** Resuming from a prior session's analysis, two of its
+load-bearing details were wrong, and the *shape* of the error is the lesson.
+
+(1) It enumerated three copies of the id-shape regex and named `migrate.py:585` as the third. 585
+is a **consumer** of `is_pfx`; the real third copy was `_ID_MARKER_RE` at `migrate.py:67`. Shipping
+the widening without it would have been worse than not shipping it — the parser would mint the alias
+while the title kept its `[MIG-M4-REMOVE]` marker, so every affected item imports with a malformed
+title. The enumeration had been done by reasoning about *which modules matter* instead of grepping
+the character-class fragment; one `grep -rn "A-Za-z0-9" --include="*.py" --include="*.md"` found all
+four in seconds. **Enumerate a shared shape by its bytes, never by recalling its consumers.**
+
+(2) It explained the blocked escape hatch as "`core.py:933` filters `id_aliases()` through
+`is_pfx`." I filed that into a backlog item and a build plan **before** resolving it. The path was
+wrong (`plugin/lib/core.py` is 386 lines; the real site is `plugin/lib/backlog/core.py:933`) and so
+was the mechanism — that filter governs alias *read-back*. The actual reason is stronger:
+`verify_migration` derives `unaliasable` at `migrate.py:1163` from the **source parse alone** and
+never reads the target, so no issue-side action clears it for any id of any shape. Verifying it also
+turned up a second, larger defect: the runbook's step-6 remedy told operators to hand-add an
+`id:PFX` label — which can never clear the exit-4 — and had been contradicting the code's own remedy
+string (`migrate.py:1212-1219`) all along.
+
+**Why it survived:** a `file:line` reads as evidence that someone opened the file. Precision is not
+provenance. The claim was doing real decision work — it was the argument for why widening beat the
+alternatives — so an unverified premise was carrying the decision. This is the inverse of the known
+"delegated verification inherits your frame" trap: here I inherited *someone else's* frame, and its
+specificity is what made it credible. Both resolve to the same discipline — the premise is the thing
+you must check yourself, whichever direction it arrived from. Self-review before the Critic caught
+the same wrong mechanism a third time, already written into a durable source comment in `ids.py`.
+
+Relates to [[Correcting a false claim is authoring a new claim — verify the replacement and the
+artifacts it cites, because the fixing mood generates claims faster than the checking reflex fires]],
+Validate Before Propagating (#15), and Retrieval Over Generation (#24).
+
 Full context (2026-07-02, gate-noise / GOV-7T2M, Wave 1 Plan A of the efficiency-review fix
 program): The parent artifact `framework-efficiency-review-2026-07-02.md` carried two claims
 that were wrong by build time. (1) "residual gap: review protocols still let reviewers eyeball
@@ -1064,3 +1098,27 @@ robustness claim (never raises / always returns / idempotent), make it literally
 claimed-safe path]]. Discovered BRF-7Q4M banner load provenance (2026-07-19). Relates to Honest
 Confidence (#5), Root Cause Discipline (#16), Independent Review (#14) — self-review reliably
 re-walks the happy path.
+
+## When a durable plan asserts VCS state ("the code lives on branch X, not develop", "resuming means landing Y", an ahead/behind count), re-derive it from git before acting on or copying it — plan prose about branches and merges is a snapshot that expires the instant the next merge lands, so run `gh pr view` / `git merge-base --is-ancestor` / compare tree hashes first; a since-merged "land this branch" step is a no-op a plain merge performs silently, and the check costs under a minute
+
+Authoring `build-plan-v3.2.0-golive.md` (2026-07-24), I trusted the release plan's
+"⚠️ First: the code lives on `feature/backlog-service-relayout`, not `develop`" section — a section
+written 2026-07-21 and *self-consciously* written to be durable ("the document someone opens six weeks
+from now"). It was falsified within two days: **PR #137 merged relayout → develop on 2026-07-23.** On
+that stale premise I wrote a "Chunk 01: land the relayout branch → develop" step plus a whole
+Prerequisites block. Had we run `/prawduct:pr` on it, it would have merged **nothing**: relayout was an
+*ancestor* of develop (`git merge-base --is-ancestor` → yes), and develop's `plugin/lib/backlog` tree
+was **byte-identical** (`e25f555`) to relayout's — the code was already there. Three sub-minute checks
+each catch it before a line of plan prose is written: `gh pr view 137` (state MERGED), `git merge-base
+--is-ancestor <branch> origin/develop` (yes ⇒ a merge is a no-op), and comparing
+`git rev-parse origin/develop:<path>` to the branch's (identical ⇒ code already landed). The tell is a
+plan step of the shape "merge/land branch X" or "the code is on X, not Y" — a claim about VCS state,
+which is exactly the class that expires on the next merge. Distinct from
+[[A red version/release-hygiene test on a feature branch is often a branch-STALENESS symptom, not a doc
+defect — check distance from the integration branch before patching the changelog]]: that one is *your
+current branch* being stale versus integration; this one is *a plan's prose about branch state* being
+stale, and it bites when you copy that prose forward into a new artifact. Kin to the coverage-claim
+falsification family ([[Before writing any sentence of the shape "X now covers/catches/handles Y" or
+"there is no Y", run the one query that would falsify it]]) — same reflex, applied to VCS-state claims —
+and to Validate Before Propagating (#15) and Living Documentation (#3, the release plan's own section
+should have been annotated the moment #137 landed).

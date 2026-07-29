@@ -64,11 +64,51 @@ CHECKPOINT_SCHEMA_VERSION = 1
 _STORE_SUBDIR = "prawduct"
 _CHECKPOINT_BASENAME = "backlog-import.json"
 
-_ID_MARKER_RE = re.compile(r"^\s*\[[A-Za-z][A-Za-z0-9]*-[A-Za-z0-9]+\]\s*")
+# The leading ``[PFX]`` marker, stripped from the title (the id lives in the alias).
+# Must accept exactly what ``legacy.ID_RE`` accepts, multi-segment ids included: if
+# this is narrower, an id it fails to recognize is parsed and aliased upstream but
+# left embedded in the title, so the issue reads ``[MIG-M4-REMOVE] Remove the shim``.
+_ID_MARKER_RE = re.compile(r"^\s*\[[A-Za-z][A-Za-z0-9]*(?:-[A-Za-z0-9]+)+\]\s*")
 
 
 def _diag(message: str) -> None:
     print(f"backlog: {message}", file=sys.stderr)
+
+
+# Records between progress lines. Count-based rather than time-based so the
+# output is deterministic and testable without injecting a clock; at the serial
+# `gh` rate VRF-009 measured (~40-45 records/min) this lands roughly every
+# 30-40 seconds, which is the cadence the signal is for.
+PROGRESS_EVERY = 25
+
+
+def _emit_progress(done: int, total: int, created: int, skipped: int, collisions: int) -> None:
+    """Periodic "still alive, and here is where" during a long import.
+
+    **Distinct from the pacing announcements, deliberately.** Those are
+    *exception* reporting — they fire only when a budget binds, and
+    ``test_an_unthrottled_run_stays_quiet`` exists to keep them that way,
+    because a line per call buries the one message that matters. But VRF-009
+    settled that under the serial importer no budget ever binds
+    (``rest_point_waits: 0`` **and** ``content_creation_waits: 0``), so on a
+    healthy ~900-issue run every one of those paths stays silent for 18-40
+    minutes. Progress answers a different question — *is it moving* — and an
+    operator with no answer to that is an operator who kills a healthy run
+    mid-migration, which for an irreversible bulk write is the expensive
+    mistake.
+
+    Emits on **stderr**: `--json` stdout is a machine contract (SEC-1 /
+    VRF-004) and a progress line on it would break every caller. Silent for
+    runs shorter than one interval — below that there is nothing to reassure
+    anyone about, and a line would be the commentary the sibling guard forbids.
+    """
+    # `done >= total` suppresses a beat on the final record: the run summary and
+    # the pacing footer print immediately after, so a heartbeat there would be
+    # duplicate noise at the one moment the operator is already being told.
+    if done % PROGRESS_EVERY or done >= total:
+        return
+    tail = f", {collisions} collision(s)" if collisions else ""
+    _diag(f"migrating: {done}/{total} — {created} created, {skipped} skipped{tail}")
 
 
 def run_key(
@@ -85,44 +125,81 @@ def run_key(
     return hashlib.sha256(payload.encode()).hexdigest()[:12]
 
 
-# --- write-pacing (NFR §3 — the content-creation budget) ---------------------
+# --- write-pacing (NFR §3/§9 — the content-creation and REST-points budgets) --
+
+# GitHub's per-request REST-point costs for the 900-pts/min secondary rate limit
+# (docs.github.com "Rate limits for the REST API", verified 2026-07-24): a write
+# (POST/PATCH/PUT/DELETE) is 5 points, a read (GET/HEAD/OPTIONS) is 1.
+_REST_WRITE_POINTS = 5
+_REST_READ_POINTS = 1
 
 
 class Pacer:
-    """Content-creation write-pacing (NFR §3): the **scarce** budget is issue/
-    comment *creation* — **80/min and 500/hr** (exact caps). ``import`` creates one
-    issue per item, so it is content-bound and must pace across the clock (317
-    creates ≈ 40 min at the cap — NFR §3.3). Reads and non-creation edits spend the
-    abundant core budget and are **not** paced here; the 900 pts/min REST burst
-    (~180 writes/min) is looser than the 80/min content cap for a pure-create
-    workload, so the content cap binds first.
+    """Proactive write-pacing for a migration run, holding it under **both** of
+    GitHub's secondary rate limits:
+
+    1. **Content creation** (NFR §3) — issue/comment *creation* is the scarce
+       budget: **80/min and 500/hr** (exact caps). ``import`` creates one issue per
+       item, so a pure-``open`` run is content-bound and paces across the clock via
+       :meth:`before_create` (317 creates ≈ 40 min at the cap — NFR §3.3).
+    2. **REST points** (NFR §9) — reads *and* writes both spend the **900 points/min**
+       REST burst: 5 points per write, 1 per read (constants above). :meth:`before_points`
+       meters this budget; the :class:`_PacingTransport` decorator charges every
+       transport **method** call, so reads **and** writes both count. The charge is per
+       method, not per HTTP request — a paged read is charged once — so the metered
+       total is a **floor** (BKL-3H7W).
+
+    For a *pure-create* workload the content cap binds first (80 creates/min × 5 pts
+    = 400 pts/min < 900), which is why creation was the only budget modelled
+    originally. But ``--archive-scope all`` imports each archived item as a **create
+    *and* a close** (2 writes + the reconcile reads), so at the content cap the
+    archive stretch would spend ≈ 80×5 (creates) + 80×5 (closes) + reads > 900
+    pts/min — the REST-points budget binds there, and metering only the create would
+    breach it (BKL-6X5D part b). Both budgets are enforced together; the effective
+    rate is whichever binds.
 
     Deterministic and injectable: ``now()`` (a monotonic clock) and ``sleep(s)``
     are seams, so the L1 suite runs instantly (small fixtures never hit a cap) and
-    an L3 PROBE-RATE test asserts the pacing *decisions* without wall-clock waits.
-    Conservative defaults until S3 measures the real constants (NFR §3.5)."""
+    the PROBE-RATE tests assert the pacing *decisions* without wall-clock waits.
+    Conservative defaults until S2/S3 measure the real constants (NFR §3.5/§9)."""
 
     def __init__(
         self,
         *,
         per_minute: int = 80,
         per_hour: int = 500,
+        per_minute_points: int = 900,
         now=None,
         sleep=None,
     ) -> None:
         self.per_minute = per_minute
         self.per_hour = per_hour
+        self.per_minute_points = per_minute_points
         self._now = now or time.monotonic
         self._sleep = sleep or time.sleep
         self._events: "deque[float]" = deque()  # creation timestamps (monotonic)
+        self._point_events: "deque[tuple[float, int]]" = deque()  # (timestamp, cost)
         self.waits = 0
         self.total_waited = 0.0
+        self.point_waits = 0
+        self.total_point_waited = 0.0
+        self.points_charged = 0  # total REST points this run has spent (run summary)
 
     def before_create(self) -> None:
-        """Block (only if a cap is hit) until a creation slot is free, then record
-        the creation. A no-op while under both caps — the common case."""
+        """Block (only if a cap is hit) until a *content-creation* slot is free, then
+        record the creation. A no-op while under both the 80/min and 500/hr caps —
+        the common case. (The create's REST-point cost is metered separately, at the
+        transport, by :meth:`before_points`.)"""
         wait = self._required_wait()
         if wait > 0:
+            # Announce BEFORE sleeping. A silent block is indistinguishable from a
+            # wedged process, and on the irreversible migration the operator's only
+            # alternative reading is "kill it" — the one response that turns a
+            # self-resolving pause into a half-done import (BKL-8K2N).
+            _diag(
+                f"paced: content-creation budget reached "
+                f"({self.per_minute}/min, {self.per_hour}/hr) — resuming in {wait:.0f}s"
+            )
             self._sleep(wait)
             self.waits += 1
             self.total_waited += wait
@@ -140,6 +217,46 @@ class Pacer:
         if len(self._events) >= self.per_hour:
             waits.append(3600 - (now - self._events[0]))
         return max(waits)
+
+    def before_points(self, cost: int) -> None:
+        """Block (only if the 900-pts/min REST burst would be breached) until ``cost``
+        points of headroom free in the trailing minute, then record the spend. A
+        no-op while the window has room — the common case. Called by
+        :class:`_PacingTransport` for every transport **method** call (write = 5, read =
+        1), so the create-then-close archive stretch stays inside the burst ceiling —
+        not just the create (BKL-6X5D part b). Per method, not per HTTP request — a
+        paged read is charged once — so ``points_charged`` is a floor (BKL-3H7W)."""
+        wait = self._required_points_wait(cost)
+        if wait > 0:
+            # See before_create: announce before blocking (BKL-8K2N).
+            _diag(
+                f"paced: rest-point budget reached ({self.per_minute_points} pts/min; "
+                f"{self.points_charged} charged so far) — resuming in {wait:.0f}s"
+            )
+            self._sleep(wait)
+            self.point_waits += 1
+            self.total_point_waited += wait
+        self._point_events.append((self._now(), cost))
+        self.points_charged += cost
+
+    def _required_points_wait(self, cost: int) -> float:
+        now = self._now()
+        while self._point_events and now - self._point_events[0][0] > 60:
+            self._point_events.popleft()  # prune anything older than the minute window
+        used = sum(c for _, c in self._point_events)
+        if used + cost <= self.per_minute_points:
+            return 0.0
+        # Free (used + cost - ceiling) points: the oldest in-window spends age out of
+        # the 60s window first, so wait just past the newest spend we must shed.
+        need_to_free = used + cost - self.per_minute_points
+        freed = 0
+        wait = 0.0
+        for ts, spent in self._point_events:
+            freed += spent
+            wait = 60 - (now - ts)
+            if freed >= need_to_free:
+                break
+        return max(0.0, wait)
 
 
 class RateLimitBackoff:
@@ -189,9 +306,53 @@ class RateLimitBackoff:
 
     def pause(self, attempt: int, details: dict | None = None) -> None:
         wait = self.wait_seconds(attempt, details)
+        # A REACTIVE pause means GitHub already pushed back — strictly more alarming
+        # than the Pacer's proactive waits, and the one an operator most needs to see
+        # rather than infer from a stalled terminal (BKL-8K2N). Name the server's
+        # Retry-After when it gave one, so "why this long?" is answered in the line.
+        served = _coerce_seconds((details or {}).get("retry_after"))
+        because = (
+            f"server Retry-After: {served:.0f}s"
+            if served is not None
+            else "exponential backoff"
+        )
+        _diag(
+            f"rate-limited by GitHub — pausing {wait:.0f}s before retry "
+            f"{attempt + 1}/{self.max_retries} ({because})"
+        )
         self._sleep(wait)
         self.pauses += 1
         self.total_paused += wait
+
+
+def pacing_summary(pacer: "Pacer", backoff: "RateLimitBackoff") -> dict:
+    """The run's pacing telemetry, for the import envelope (BKL-8K2N).
+
+    ``import_items`` has always *constructed* a Pacer, so the run was paced — but
+    the counters were never surfaced, and the SPIKE-S2 harness was the only reader
+    in the tree. That left the operator of an irreversible ~900-issue migration
+    unable to answer "was I throttled, and where did the budget stand?" after the
+    fact. This is that answer, and it rides **every** exit path — success and both
+    resumable cuts — because a run that stopped is exactly when the question gets
+    asked.
+
+    Names match the SPIKE-S2 recorded-facts vocabulary so a dry-run and a real run
+    are read side by side without a translation step.
+    """
+    return {
+        "rest_points_charged": pacer.points_charged,
+        "rest_point_waits": pacer.point_waits,
+        "rest_point_wait_seconds": round(pacer.total_point_waited, 3),
+        "content_creation_waits": pacer.waits,
+        "content_creation_wait_seconds": round(pacer.total_waited, 3),
+        "rate_limit_pauses": backoff.pauses,
+        "rate_limit_paused_seconds": round(backoff.total_paused, 3),
+        "budgets": {
+            "per_minute_creates": pacer.per_minute,
+            "per_hour_creates": pacer.per_hour,
+            "per_minute_points": pacer.per_minute_points,
+        },
+    }
 
 
 def _coerce_seconds(value) -> float | None:
@@ -203,6 +364,63 @@ def _coerce_seconds(value) -> float | None:
         return max(0.0, float(value))
     except (TypeError, ValueError):
         return None
+
+
+class _PacingTransport:
+    """A transparent :class:`~lib.backlog.transport.Transport` decorator that meters
+    **every transport METHOD call** routed **through it** against the Pacer's
+    900-pts/min budget (:meth:`Pacer.before_points`): 5 points per write, 1 per read.
+
+    The charge is per **method**, not per HTTP request. A paged read (``list_labels``
+    can issue several requests) is charged once, so the metered total is a **floor**,
+    not an exact REST-call count — which is why the operator surface prints ``≥N``
+    (BKL-3H7W). Say "every REST call" and the figure reads as exact to the one person
+    sizing an irreversible run; drop the qualifier only when BKL-3H7W makes it true.
+
+    Installed on the ``import`` path (:func:`import_items`), whose create-then-close
+    archive stretch is the write burst BKL-6X5D part (b) targets; ``merge``/``export``
+    are separate, non-bursting ops and use the raw transport.
+
+    Deliberately **not** a ``Transport`` subclass. ``__getattr__`` only fires for
+    attributes the instance/class does *not* already define — so proxying via
+    ``__getattr__`` requires that the wrapped methods be absent here. That is also
+    what makes the metering **non-fragile**: a call is metered by classifying its
+    *name* (``get_``/``list_`` = read, ``create_``/``update_``/``add_``/``remove_`` =
+    write), and any transport method that fits neither prefix raises rather than
+    silently escaping the budget — closing the "only paced call" gap (BKL-6X5D b).
+
+    Because the migration passes *this* wrapper into ``core.set_status`` (the shared
+    close/reconcile path), that path's reads and the close write are metered too,
+    with no change to ``core``'s signatures."""
+
+    _READ_PREFIXES = ("get_", "list_")
+    _WRITE_PREFIXES = ("create_", "update_", "add_", "remove_")
+
+    def __init__(self, transport: Transport, pacer: "Pacer") -> None:
+        self._transport = transport
+        self._pacer = pacer
+
+    def _cost(self, name: str) -> int:
+        if name.startswith(self._READ_PREFIXES):
+            return _REST_READ_POINTS
+        if name.startswith(self._WRITE_PREFIXES):
+            return _REST_WRITE_POINTS
+        raise AssertionError(
+            f"_PacingTransport: unclassified transport method {name!r} — classify it "
+            "as read/write so its REST-point cost is metered (do not bypass the budget)"
+        )
+
+    def __getattr__(self, name: str):
+        attr = getattr(self._transport, name)
+        if name.startswith("_") or not callable(attr):
+            return attr
+        cost = self._cost(name)
+
+        def paced(*args, **kwargs):
+            self._pacer.before_points(cost)
+            return attr(*args, **kwargs)
+
+        return paced
 
 
 # --- durable checkpoint (resumable import accelerator) -----------------------
@@ -573,7 +791,8 @@ def import_backlog(
                 "imported as issues (they remain in the git-tracked source markdown, "
                 "not in the migrated tracker — post-cutover they are outside list and "
                 "add-time dedup; backfilling is possible but re-syncs every item's "
-                "status from the markdown, so see the migration-scrub runbook step 2c)"
+                "status from the markdown, so see the migration-scrub runbook's "
+                "`--archive-scope open` backfill guidance under \"Owner confirms\")"
             ] + result["warnings"]
     return result
 
@@ -602,6 +821,11 @@ def import_items(
     the rest (no rollback, M6)."""
     pacer = pacer or Pacer()
     backoff = backoff or RateLimitBackoff()
+    # Meter every downstream transport METHOD call against the 900-pts/min budget
+    # (a floor, not an exact REST count — see _PacingTransport). Wrapping the
+    # transport here means the create, the reconcile reads, and the close write (via
+    # core.set_status, which receives this wrapper) all count — not just the create.
+    transport = _PacingTransport(transport, pacer)
     collisions = list(collisions or [])
     created: list[dict] = []
     skipped: list[dict] = []
@@ -610,8 +834,9 @@ def import_items(
         warnings.extend(checkpoint.warnings)
 
     alias_index = _AliasIndex(transport, owner, repo)
+    total = len(records)
     try:
-        for record in records:
+        for index, record in enumerate(records):
             # The whole (idempotent) record is retried on a rate-limit pause, so a
             # partial attempt never double-counts: outcomes are applied here, once,
             # only after the record fully lands.
@@ -620,14 +845,25 @@ def import_items(
             )
             if outcome["outcome"] == "collision":
                 collisions.append(outcome["collision"])
-                continue
-            (created if outcome["outcome"] == "created" else skipped).append(outcome["entry"])
-            if checkpoint is not None:
-                checkpoint.mark(outcome["entry"]["key"])
+            else:
+                (created if outcome["outcome"] == "created" else skipped).append(outcome["entry"])
+                if checkpoint is not None:
+                    checkpoint.mark(outcome["entry"]["key"])
+            # Ticks on EVERY record, collisions included — the heartbeat answers
+            # "is it moving", and a collision-heavy stretch is exactly when a
+            # silent gap would read as a hang. (An earlier shape `continue`d past
+            # this and dropped a beat per collision.)
+            _emit_progress(index + 1, total, len(created), len(skipped), len(collisions))
     except TransportError as exc:
         result = core.from_transport_error(exc)
         result["error"]["details"].update(
-            {"created": created, "skipped": skipped, "collisions": collisions, "resumable": True}
+            {
+                "created": created,
+                "skipped": skipped,
+                "collisions": collisions,
+                "resumable": True,
+                "pacing": pacing_summary(pacer, backoff),
+            }
         )
         # Carry the audit warnings accrued before the cut (checkpoint notes + per-record
         # self-heal lines). A self-heal line from an already-completed record can't be
@@ -651,6 +887,7 @@ def import_items(
                 "skipped": skipped,
                 "collisions": collisions,
                 "resumable": True,
+                "pacing": pacing_summary(pacer, backoff),
             },
         )
         result["warnings"] = warnings
@@ -664,6 +901,7 @@ def import_items(
         "skipped": skipped,
         "collisions": collisions,
         "total_source": len(records),
+        "pacing": pacing_summary(pacer, backoff),
     }
     return core.ok(data, warnings)
 
@@ -829,7 +1067,8 @@ def _create_item(
     # The body↔block framing is the one in encode (shared with `file`), so the
     # importer's fresh block attaches identically — export round-trips depend on it.
     body = encode.compose_body(record.body, record.block)
-    pacer.before_create()  # content budget (80/min, 500/hr) — the only paced call
+    pacer.before_create()  # content-creation budget (80/min, 500/hr); the create's
+    # 5-pt REST cost — like every other call — is metered by _PacingTransport below.
     return transport.create_issue(owner, repo, title=record.title, body=body, labels=all_labels)
 
 
@@ -852,6 +1091,139 @@ def _reconcile_status(
 
 
 # --- export ------------------------------------------------------------------
+
+
+def verify_migration(
+    transport: Transport,
+    *,
+    owner: str,
+    repo: str,
+    content: str,
+    archive_content: str | None = None,
+    archive_scope: str = "all",
+) -> dict:
+    """Is every source item present on the target? The completeness gate.
+
+    **Why this is a command and not a checklist line.** The scrub runbook has
+    always prescribed the comparison — step 5's *"Total issue count = every
+    source item"* — but as a human eyeball step with no tooling behind it.
+    ``counts`` reports the target side only and never sees the source. A partial
+    import therefore passes unnoticed, and then setting ``backlog_service_repo``
+    makes the markdown stop being read, so the failure becomes **invisible at
+    exactly the step that should have caught it**. Observed live: a repo
+    recorded its cutover with 7 of 9 items never imported.
+
+    **Compares the SOURCE set against alias coverage, never issue counts.**
+    Issues filed natively after a cutover carry a ``prawduct`` block but no
+    ``id:PFX`` alias, so a raw count comparison passes while source items are
+    still stranded — which is precisely how the observed repo looked (17 issues,
+    2 aliases, 9 source items).
+
+    **An item whose id is not a valid PFX is reported, not excluded.** Alias
+    coverage can only speak for items an alias can key, so deriving the source
+    set from PFX-bearing records alone would put a hand-written id like
+    ``[AUD-TIMBRE-CALIB]`` *outside the comparison* — it imports (under an
+    idempotency-only ``import-key:`` marker, so it neither duplicates nor
+    strands), the gate compares the remaining items, and a repo one item short
+    of complete reports 100% coverage. That is the same silence this command
+    exists to end, so ``unaliasable`` conflicts exactly as ``missing`` does.
+    Both live backlogs carried one such item when this was written.
+
+    **A duplicate-PFX collision is reported too**, for the same reason. Two source
+    items claiming one alias are dropped by :func:`collect_records` rather than
+    merged, so a collided item is never created — and, being absent from
+    ``records``, it would otherwise leave ``missing`` empty and the gate green.
+    That is the F9 failure mode through a second door.
+
+    **The source set is the importer's create set, not a re-derivation of it.**
+    This routes through the same ``collect_records`` → :func:`apply_archive_scope`
+    pair :func:`import_backlog` uses, because the two must not be able to drift.
+    They did: an earlier inline version filtered the MG4b lever by *source file*
+    while the importer filters by *status*, so under ``--archive-scope open``
+    every closed item in the main ``backlog.md`` was skipped by the import and
+    counted as ``missing`` here — a false conflict on the order of 150 items for
+    a mature backlog, on a gate whose prescribed remedy ("re-run the import") can
+    never clear it. Those items are not stranded and must not be reported as
+    though they were: under that lever they stay in the
+    git-tracked source markdown by design, which is the point of choosing it.
+
+    **Names the stranded items, never just a count** — a count says something is
+    wrong; the ids say what to re-import. ``unaliasable`` reports titles rather
+    than ids because a non-PFX marker is not stripped from the title, so the
+    title carries the id the operator has to go find.
+
+    Returns ``ok`` only when every source item is accounted for, else a
+    ``conflict`` envelope (exit 4: the two stores disagree — a data
+    inconsistency, not a bad request). Read-only: it creates nothing and
+    reconciles nothing.
+    """
+    records, collisions = collect_records(content, archive_content)
+    records, _archive_skipped = apply_archive_scope(records, archive_scope)
+    source = [r.pfx for r in records if r.pfx]
+    unaliasable = [r.title for r in records if not r.pfx]
+    collided = [f"{c['pfx']} ({c['title']})" for c in collisions]
+
+    try:
+        aliased: set[str] = set()
+        for _number, pfxs, _labels in core.iter_alias_issues(transport, owner, repo):
+            aliased.update(pfxs)
+    except TransportError as exc:
+        return core.from_transport_error(exc)
+
+    missing = [p for p in source if p not in aliased]
+    data = {
+        "repo": f"{owner}/{repo}",
+        "source_items": len(records),
+        "aliased": len(source) - len(missing),
+        "missing": missing,
+        "unaliasable": unaliasable,
+        "collisions": collided,
+    }
+    if missing or unaliasable or collided:
+        return core.error(
+            "conflict",
+            f"{len(records)} source item(s) in scope, {data['aliased']} verifiably "
+            f"keyed to an issue on {owner}/{repo} — the migration is incomplete; "
+            + _incompleteness_remedy(missing, unaliasable, collided),
+            details=data,
+        )
+    return core.ok(data)
+
+
+def _incompleteness_remedy(
+    missing: list[str], unaliasable: list[str], collided: list[str]
+) -> str:
+    """The operator-facing next step, which differs by *why* an item is absent.
+
+    A ``missing`` item re-imports cleanly — the import is alias-keyed, so already
+    -migrated items skip rather than duplicate. An ``unaliasable`` one does not:
+    its idempotency key is a digest of title+body, and giving it a real PFX
+    changes both the key and the title, so a re-import after the rename **mints a
+    second issue** instead of adopting the first. A ``collided`` one is not an
+    import problem at all — two source items claim one alias, so the source has to
+    be disambiguated before any re-run can help. Saying "re-run import" for all
+    three would be wrong for the two that re-running cannot fix."""
+    parts = []
+    if missing:
+        parts.append(
+            f"re-run import for the {len(missing)} item(s) in `missing` "
+            "(alias-keyed, so migrated items skip rather than duplicate)"
+        )
+    if unaliasable:
+        parts.append(
+            f"the {len(unaliasable)} item(s) in `unaliasable` carry an id that is not "
+            "a valid PFX, so no alias can key them — give each a real PFX in the "
+            "source BEFORE importing; after an import, renaming one and re-importing "
+            "creates a duplicate rather than adopting the existing issue "
+            "(see the scrub runbook, step 6)"
+        )
+    if collided:
+        parts.append(
+            f"the {len(collided)} item(s) in `collisions` share a PFX with an earlier "
+            "item, so the import dropped them rather than merging two items onto one "
+            "alias — give each a distinct PFX in the source, then re-import"
+        )
+    return "; ".join(parts)
 
 
 def export_backlog(

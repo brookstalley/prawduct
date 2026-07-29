@@ -129,6 +129,111 @@ class TestOutputDiscipline:
         assert "error [unavailable]" in err
         assert "restored missing alias label" in err
 
+    def test_string_details_are_NAMED_not_counted(self, capsys):
+        """The completeness gate's lists ARE the payload, unlike import's entries.
+
+        `missing`/`unaliasable`/`collisions` are the ids that stranded the run,
+        and the documented remedy — give each a real prefix in the SOURCE before
+        importing — cannot be followed against the number 3. The runbook drives
+        this path without `--json`, so the named form has no other route to the
+        operator. Asserted at the CLI layer on purpose: the library-level test
+        passes on the envelope while the human surface says `missing: 3`.
+        """
+        result = {
+            "status": "error",
+            "error": {
+                "code": "conflict",
+                "message": "source and target disagree",
+                "details": {
+                    "missing": ["ADR-0007", "ADR-0009"],
+                    "unaliasable": ["a stranded title"],
+                },
+            },
+        }
+        cli._emit(result, json_mode=False)
+        err = capsys.readouterr().err
+        assert "missing: ADR-0007, ADR-0009" in err
+        assert "unaliasable: a stranded title" in err
+        assert "missing: 2" not in err
+
+    def test_long_string_details_are_capped(self, capsys):
+        result = {
+            "status": "error",
+            "error": {
+                "code": "conflict",
+                "message": "x",
+                "details": {"missing": [f"ID-{n:04d}" for n in range(25)]},
+            },
+        }
+        cli._emit(result, json_mode=False)
+        err = capsys.readouterr().err
+        assert "ID-0000" in err and "ID-0019" in err
+        assert "(+5 more)" in err
+        assert "ID-0024" not in err, "the cap must actually bound the output"
+
+    def test_error_envelope_details_reach_stderr_as_counts(self, capsys):
+        # The sibling of the warnings case above. A cut mid-import carries how far
+        # it got, and human mode printed none of it — so the operator of an
+        # irreversible ~900-issue migration learned only that it broke, on the very
+        # path the scrub runbook drives (Step 4 invokes import WITHOUT --json).
+        # Counts, not the raw entry lists: the dicts are the wrong thing to show
+        # someone deciding whether to resume.
+        result = {
+            "status": "error",
+            "error": {
+                "code": "unavailable",
+                "message": "backend failed",
+                "details": {
+                    "created": [{"key": "a"}, {"key": "b"}, {"key": "c"}],
+                    "skipped": [{"key": "d"}],
+                    "collisions": [],
+                    "resumable": True,
+                    "pacing": {"rest_points_charged": 812},
+                },
+            },
+        }
+        cli._emit(result, json_mode=False)
+        err = capsys.readouterr().err
+        assert "created: 3" in err and "skipped: 1" in err and "collisions: 0" in err
+        assert "resumable: True" in err
+        assert "key" not in err, "entry dicts must not be dumped into the operator's face"
+        # The floor marker matters MORE here than on the ok path, not less: the
+        # meter charges per transport method call, so the figure is a floor
+        # (BKL-3H7W), and a cut is when someone sizes the rest of an irreversible
+        # run off it. A bare 812 reads exact. Pinned because the first version of
+        # this fix printed the raw dict and lost the marker.
+        assert "pacing: ≥812 REST points" in err
+        assert "rest_points_charged" not in err, "the raw pacing dict must not leak"
+
+    def test_cut_path_pacing_reports_the_throttle_breakdown(self, capsys):
+        # The other half of what R-1 said the cut path lacked. This branch renders
+        # only on a run that actually hit a budget — which is the run whose
+        # operator is deciding whether to resume, so it is the one that matters
+        # most and was the one with no coverage in the tree.
+        result = {
+            "status": "error",
+            "error": {
+                "code": "unavailable",
+                "message": "backend failed",
+                "details": {
+                    "pacing": {
+                        "rest_points_charged": 812,
+                        "rest_point_waits": 2,
+                        "rest_point_wait_seconds": 9.4,
+                        "content_creation_waits": 1,
+                        "content_creation_wait_seconds": 30.0,
+                        "rate_limit_pauses": 0,
+                        "rate_limit_paused_seconds": 0.0,
+                    }
+                },
+            },
+        }
+        cli._emit(result, json_mode=False)
+        err = capsys.readouterr().err
+        assert "≥812 REST points" in err, "the floor marker survives the throttled branch too"
+        assert "THROTTLED 3× for 39s total" in err
+        assert "(2 rest-point, 1 content-cap, 0 rate-limit)" in err
+
 
 class TestExitClasses:
     """ERR-1 — each error code maps to a stable non-zero exit class."""

@@ -44,7 +44,7 @@ from pathlib import Path
 from typing import NamedTuple
 
 from . import gitstate
-from .core import read_bool_yaml_key, resolve_build_plan_path
+from .core import read_bool_yaml_key, read_str_yaml_key, resolve_build_plan_path
 from .coverage import _resolve_base_branch
 
 # `lib.views` is a HEAVY_SUBMODULE and is imported lazily, inside the one
@@ -581,6 +581,35 @@ _BUILD_PLAN_TRIVIAL_RATIONALE_RE = re.compile(
     r"^[\s\-\*]*\*\*Trivial because:\*\*\s*(.*)$"
 )
 
+# Git branch/ref names (`feature/backlog-service-relayout`, `origin/develop`) are
+# backticked identifiers that contain `/` but name a branch, not a file — the same
+# "contains `/`, isn't a path" family as the slash-command / URL carveouts in
+# `_looks_like_file_path`. A token whose first segment is one of these prefixes and
+# whose final segment carries no extension is a ref to skip, not a missing file.
+_GIT_REF_PREFIXES = frozenset(
+    {"feature", "fix", "hotfix", "release", "bugfix", "support", "origin", "upstream"}
+)
+
+# "Carries an extension" is not "contains a dot". A version-numbered branch —
+# `release/v3.2.0`, `feature/v3.2.0-c02-adapter-safety` — contains dots and is
+# still a ref, so a dot-presence test makes the carveout above inert for exactly
+# the branches a release cuts, and `verify-chunk-refs` then emits a BLOCKING
+# `missing-ref:` for a branch named in plan prose. A file extension is short and
+# alphabetic (`py`, `md`, `tsx`); the trailing dot-part of a version is not
+# (`v3.2.0` -> `0`, `v3.2.0-c02-adapter-safety` -> `0-c02-adapter-safety`). Test
+# the SUFFIX SHAPE so `feature/foo.py` stays checked while `release/v3.2.0` does not.
+_FILE_EXTENSION_RE = re.compile(r"^[A-Za-z][A-Za-z0-9]{0,7}$")
+
+
+def _has_file_extension(segment: str) -> bool:
+    """True when ``segment`` ends in something shaped like a file extension.
+
+    Requires a non-empty stem, so a dotfile (``.hidden``) is not an extension,
+    and an extension-shaped suffix, so ``v3.2.0`` is not one either.
+    """
+    stem, dot, suffix = segment.rpartition(".")
+    return bool(dot) and bool(stem) and bool(_FILE_EXTENSION_RE.match(suffix))
+
 
 def _looks_like_file_path(token: str) -> bool:
     """A backticked token is a precise file-path reference only when it
@@ -605,7 +634,25 @@ def _looks_like_file_path(token: str) -> bool:
     ``<inbox>/<kebab-slug>.md``) and URLs (e.g. ``https://example.com/x``) also
     contain ``/`` but are not literal on-disk paths — a token carrying ``<``,
     ``>``, or ``://`` is a placeholder/URL to skip, not a missing file to flag
-    (BLD-4K7P; same form-family as the glob carveout above)."""
+    (BLD-4K7P; same form-family as the glob carveout above).
+
+    Issue references and anchors (e.g. ``owner/repo#12``, ``docs/api#usage``)
+    contain ``/`` but the ``#`` names a location in a *tracker or document*,
+    not a file — no source file this verifier could be asked about carries one.
+    Excluding them is a property of the token's shape, so it belongs here
+    rather than at a caller, and it is correct for every consumer: a contract
+    surface with a ``#`` in it is not a path either. Sibling of the URL and
+    placeholder carveouts above.
+
+    Git branch/ref names (e.g. ``feature/backlog-service-relayout``,
+    ``origin/develop``, ``release/v3.2.0``) also contain ``/`` but name a branch,
+    not a file — a build/release plan legitimately backticks them in prose. A
+    token whose first segment is a git-flow branch prefix (``_GIT_REF_PREFIXES``)
+    and whose final segment carries no extension-shaped suffix
+    (:func:`_has_file_extension`) is a ref to skip; a real path keeps its
+    extension (``feature/foo.py`` stays checked), so this does not blind the
+    verifier to genuine missing files. Version-numbered branches are the case a
+    dot-presence test gets wrong — see the note on ``_FILE_EXTENSION_RE``."""
     if "/" not in token:
         return False
     if token.startswith("/") and "/" not in token[1:] and "." not in token:
@@ -615,6 +662,11 @@ def _looks_like_file_path(token: str) -> bool:
     if "<" in token or ">" in token:
         return False
     if "://" in token:
+        return False
+    if "#" in token:
+        return False
+    first, _, rest = token.partition("/")
+    if first in _GIT_REF_PREFIXES and not _has_file_extension(rest.rsplit("/", 1)[-1]):
         return False
     return True
 
@@ -891,9 +943,26 @@ def protected_path_violation(path: str) -> str | None:
     Shared by the ``Type: trivial`` gate (via ``_classify_trivial_change``)
     and the PR-boundary doc-only gate (``lib/coverage.py``, PR-5K8D): fork-
     skill prose is behavioral logic in this framework, so a ``skills/*.md``
-    change must never ride a doc-only fast path past the reviewers."""
+    change must never ride a doc-only fast path past the reviewers.
+
+    **Directory bounds match the path SEGMENT, not a root anchor.** They were
+    root-anchored, which silently stopped matching the moment a repo kept its
+    skills anywhere but the top level: every ``plugin/skills/**.md`` edit read
+    as non-judgeable, so a skills-only session was classified doc-only and
+    skipped the reviewers entirely — the precise inverse of what this function
+    exists to guarantee, and invisible because the failure is silence.
+
+    A segment match over-includes rather than under-includes (a product's own
+    ``src/skills/`` is caught too). That is the deliberate direction: this is
+    authority, and authority fails closed. The cost of a false positive is one
+    session that reviews when it need not; the cost of the false negative was
+    governance-protected prose shipping unreviewed. The leading ``/`` in the
+    containment test keeps ``myskills/`` from matching ``skills/``."""
     for protected, is_exact, reason_label in _TRIVIAL_PROTECTED_PATHS:
-        matched = path == protected if is_exact else path.startswith(protected)
+        if is_exact:
+            matched = path == protected
+        else:
+            matched = path.startswith(protected) or f"/{protected}" in path
         if matched:
             return f"{reason_label}: {path}"
     return None
@@ -970,16 +1039,68 @@ def _current_chunk_id_from_status(project_dir: Path) -> str | None:
     return _chunk_id_from_item_text(status.get("current_chunk", ""))
 
 
+REF_ROOT_KEY = "build_plan_ref_root"
+
+
+def _ref_root(project_dir: Path) -> Path | None:
+    """A second root that this repo's plan refs may be written relative to,
+    declared by the repo — or ``None``, which is the default everywhere.
+
+    Some repos write plan refs relative to a subdirectory rather than the repo
+    root, because that is how the paths read from inside the thing being built:
+    a repo that *ships* a plugin names ``lib/gates.py`` and
+    ``skills/backlog/SKILL.md``, which resolve from nowhere at the root. Those
+    would otherwise report as missing deliverables.
+
+    **The repo declares this; the verifier never infers it.** Sniffing for a
+    subdirectory that "looks like" such a root — by name, or by a marker file
+    inside it — silently weakens the gate for every repo whose layout happens
+    to match: a genuinely missing deliverable gets resolved against an
+    unrelated directory and never reported. A product that ships a plugin, an
+    extension, or a bundled vendor tree is an ordinary layout, not a signal of
+    intent. So the affordance is opt-in and available to any repo that wants
+    it, and an absent key means the root is the only root, which is both the
+    prior behaviour and the fail-closed one.
+
+    A declared root that escapes the repo, does not exist, or is not a
+    directory is ignored rather than honoured — the same fail-closed posture.
+    """
+    prawduct_dir = gitstate.get_prawduct_dir(project_dir)
+    declared = read_str_yaml_key(prawduct_dir / "project-state.yaml", REF_ROOT_KEY)
+    if not declared:
+        return None
+    root = project_dir / declared
+    try:
+        root.resolve().relative_to(project_dir.resolve())
+    except (ValueError, OSError):
+        return None
+    return root if root.is_dir() else None
+
+
 def _verify_chunk_refs(project_dir: Path, refs: dict) -> list[dict]:
-    """Verify each file-path ref exists relative to ``project_dir``.
+    """Verify each file-path ref names something that exists.
+
     Returns a list of ``{"kind", "ref", "line_num", "reason"}`` for missing
     entries. Empty list = all refs resolved.
+
+    A ref resolves at the repo root or, when the repo declares one, under its
+    additional ref root (:func:`_ref_root`). Anything else is
+    reported. **Ambiguity is reported, not excused**: a token that is
+    path-shaped but resolves nowhere gets named, even when it looks like it
+    might be prose (a repo slug, a placeholder). A gate that guesses "probably
+    not a file" fails open on exactly the input it exists to judge; the author
+    disambiguates in the plan instead — placeholders as ``<owner>/<repo>``,
+    real repositories unbackticked or as URLs, both of which this module
+    already declines to treat as paths.
     """
     missing: list[dict] = []
+    ref_root = _ref_root(project_dir)
     for entry in refs.get("file_paths", []):
         ref = entry["ref"]
         target = project_dir / ref
         if not target.exists():
+            if ref_root is not None and (ref_root / ref).exists():
+                continue
             if gitstate.git_path_is_ignored(project_dir, ref):
                 # BLD-4K7P: an intentionally-gitignored managed path (e.g.
                 # `.prawduct/.bug-inbox`) is a generated/managed file,

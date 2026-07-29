@@ -17,7 +17,7 @@ backlog_format_version: 2
 # Last full backlog grooming (stamped by /prawduct:backlog list/pick/groom).
 # Timestamp, not a count — counts are always re-derived (D14). Resolves the
 # backlog-overdue-grooming advisory.
-backlog_last_groomed_at: 2026-07-18
+backlog_last_groomed_at: 2026-07-29
 
 # Distribution model. `plugin` = this repo is governed by the Prawduct plugin
 # (v2.0.0), not file-sync. Set in Chunk 13 when the repo cut over to dogfood its
@@ -333,7 +333,30 @@ views_enabled: true
 # field holds only the current in-progress plan (absent/empty -> the gates
 # fall back to artifacts/build-plan.md).
 
-active_build_plan: null
+active_build_plan: artifacts/build-plan-v3.2.0-golive.md
+
+# =============================================================================
+# BUILD-PLAN REF ROOT (opt-in)
+# =============================================================================
+# A second root that this repo's build-plan file refs may be written relative
+# to, in addition to the repo root. verify-chunk-refs tries the repo root
+# first, then this.
+#
+# Prawduct's plans name plugin files the way the plugin ships them —
+# `lib/gates.py`, `skills/backlog/SKILL.md` — because that is how those paths
+# read from inside the plugin. They resolve from nowhere at the repo root, so
+# without this declaration each one reports as a missing deliverable.
+#
+# This is DECLARED, never inferred. An earlier cut of the verifier sniffed for
+# a `plugin/` directory carrying a plugin manifest and enabled the fallback
+# itself; that silently weakens the gate for every repo whose layout happens to
+# match — a product shipping a plugin, an extension, or a vendored tree is an
+# ordinary layout, not a statement of intent, and a genuinely missing
+# deliverable there would resolve against an unrelated directory and never be
+# reported. Absent (the default everywhere else) means the repo root is the
+# only root.
+
+build_plan_ref_root: plugin
 
 # =============================================================================
 # COVERAGE EVIDENCE (opt-in, v1.4+)

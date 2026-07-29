@@ -3806,7 +3806,7 @@ _USAGE = (
     "resolve-base|version|"
     "evidence {status|list [--kind <k>] [-n <count>]}|advisory <subcmd> [args]|"
     "coverage-status [--json]|coverage-scaffold [--apply] [--json]|"
-    "migrate-plugin [--apply] [--json]|init-product <target> --name <name> [--apply] [--json]|"
+    "migrate-plugin [--apply] [--json]|init-product <target> --name <name> [--backlog-repo owner/repo] [--apply] [--json]|"
     "update-gitignore|"
     "audit-learnings [--apply] [--json]|repo-disable [--local] [--apply] [--json]}"
 )

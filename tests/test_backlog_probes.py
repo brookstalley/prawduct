@@ -212,13 +212,17 @@ class TestMigrationRequiredProbe:
     def test_no_backlog_file(self, tmp_path):
         assert bp.probe_migration_required(ProjectState({}), _cb(tmp_path)) == []
 
-    def test_surfaced_through_registered_roster(self, tmp_path):
+    def test_held_out_of_live_roster(self, tmp_path):
+        # BKL-6J2X: the advisory is registered but **held** — a structured,
+        # un-migrated backlog that WOULD trip the probe (asserted directly, below)
+        # must NOT surface the nudge through the live roster, so no repo is routed
+        # to `/prawduct:backlog scrub` before the migration path is proven.
         _write_backlog(tmp_path, _structured_backlog(2))
+        # The underlying probe still fires when called directly — held, not broken.
+        assert bp.probe_migration_required(ProjectState({}), _cb(tmp_path))
         bp.register()
         cands = run_all_probes(ProjectState({}), make_codebase(tmp_path))
-        nudge = [c for c in cands if c.type == "backlog-service-migration-required"]
-        assert nudge and nudge[0].recommended_action == "/prawduct:backlog scrub"
-        assert nudge[0].feature == "backlog" and nudge[0].probe_version == bp.PROBE_VERSION
+        assert not [c for c in cands if c.type == "backlog-service-migration-required"]
 
 
 class TestChecksDormantProbe:

@@ -171,11 +171,20 @@ def parse_repo(spec: str) -> tuple[str, str] | None:
 
 ALIAS_FACET = "id"
 
-# A hand-minted prefix id: a letter, then letters/digits, ``-``, then 1+ alnum
-# (e.g. ``BKL-7M4Q``, ``ADR-12``, ``A-1``). Deliberately lenient — the same reason
-# ``legacy.ID_RE`` is: the importer absorbs whatever ID-shaped token a source used
-# across its 27–58 hand-minted prefixes (MIG-2) rather than minting a new scheme.
-_PFX_RE = re.compile(r"[A-Za-z][A-Za-z0-9]*-[A-Za-z0-9]+")
+# A hand-minted prefix id: a letter, then letters/digits, then **one or more**
+# ``-``-joined alnum segments (e.g. ``BKL-7M4Q``, ``ADR-12``, ``A-1``,
+# ``MIG-M4-REMOVE``). Deliberately lenient — the same reason ``legacy.ID_RE`` is:
+# the importer absorbs whatever ID-shaped token a source used across its 27–58
+# hand-minted prefixes (MIG-2) rather than minting a new scheme.
+#
+# Multi-segment ids are not an edge case: ~21% of surveyed backlogs carry one.
+# Rejecting an id here is load-bearing twice over — this gates alias *minting* at
+# import (a rejected id gets **no** ``id:`` alias), and it filters the block's
+# ``id_aliases`` again on read-back (``core.iter_alias_issues``), so an id this
+# rejects cannot be recognized on the target either. There is also no repair after
+# the fact: the completeness gate derives ``unaliasable`` from the **source parse
+# alone** (``migrate.verify_migration``), so the shape has to be right up front.
+_PFX_RE = re.compile(r"[A-Za-z][A-Za-z0-9]*(?:-[A-Za-z0-9]+)+")
 
 
 def is_pfx(token: str | None) -> bool:

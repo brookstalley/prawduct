@@ -12,11 +12,16 @@ the settled facts the offline suite cannot prove:
      alias; no new PFX is minted (the live MIG-2).
   3. **relationship reconstruction** — native deps/sub-issues survive the round-trip
      (the live MIG-3).
-  4. **archive volume / noise** — how many closed issues the archive import creates,
-     and whether the volume is workable.
+  4. **archive volume + paced-burst constants** — how many closed issues the archive
+     import creates, and — under ``--archive-scope all`` — the real REST-point pacing
+     the create-then-close stretch incurs (points charged, how often the 900-pts/min
+     burst throttled, wall-clock), settling the constants NFR §9 S2 leaves open.
   5. **rollback-free resume** — interrupt mid-import, re-run, confirm no duplicates
      (the live CRASH-4).
-  6. **batched-vs-N+1 fan-out** — time ``pick`` at increasing candidate counts to
+  6. **fan-out slope** — time ``pick`` at increasing candidate counts to
+     (*was "batched-vs-N+1"; settled 2026-07-28 as N+1 REST, and this probe could
+     not have answered it before ``pick`` began bounding the fan-out by ``limit``
+     — see ``check_pick_latency``*)
      pin its latency floor (the PROBE-LAT constant that the offline suite marks
      ``target``-grade only).
   7. **node_id stability across transfer** — capture an issue's GraphQL node_id,
@@ -36,7 +41,7 @@ issues you care about.
 Usage:
     python tests/spikes/s2_migration.py --repo <throwaway-owner/repo> --yes \
         [--from .prawduct/backlog.md] [--archive <archive.md>] \
-        [--transfer-to <other-owner/repo>]
+        [--archive-scope {all|open}] [--transfer-to <other-owner/repo>]
 """
 
 from __future__ import annotations
@@ -50,9 +55,13 @@ import time
 from pathlib import Path
 
 _SPIKE_DIR = Path(__file__).resolve().parent
-_REPO_ROOT = _SPIKE_DIR.parent.parent
-if str(_REPO_ROOT) not in sys.path:
-    sys.path.insert(0, str(_REPO_ROOT))
+# The plugin lives in plugin/, not at the repo root (v3.1.1, GOV-4H7T) — mirror the
+# root conftest's insert so a standalone `python tests/spikes/s2_migration.py` run
+# (this script is dev-only, never run under pytest, so conftest does not fire for it)
+# resolves `lib.backlog` the same way the suite does.
+_PLUGIN_ROOT = _SPIKE_DIR.parent.parent / "plugin"
+if str(_PLUGIN_ROOT) not in sys.path:
+    sys.path.insert(0, str(_PLUGIN_ROOT))
 
 from lib.backlog import ids, legacy, migrate, query  # noqa: E402
 from lib.backlog.transport import GhTransport, build_env  # noqa: E402
@@ -69,6 +78,18 @@ def _facts() -> dict:
         "resume_created_duplicates": None,
         "pick_latency_ms_by_candidates": {},
         "node_id_stable_across_transfer": None,
+        # Paced create-then-close archive burst (NFR §9 S2). Surfaced from the Pacer
+        # that meters the `--archive-scope all` import: point_waits > 0 means the
+        # 900-pts/min REST burst was actually hit and paced; 0 means the stretch
+        # stayed under the ceiling on its own.
+        "archive_scope": None,
+        "archive_burst_wall_seconds": None,
+        "rest_points_charged": None,
+        "rest_point_waits": None,
+        "rest_point_wait_seconds": None,
+        "content_creation_waits": None,
+        "content_creation_wait_seconds": None,
+        "pacer_budgets": None,
     }
 
 
@@ -79,17 +100,46 @@ def _split_repo(slug: str) -> tuple[str, str]:
     return owner, repo
 
 
-def check_fidelity_and_aliases(transport, owner, repo, source, archive, facts) -> None:
-    """Steps 1–3: import → export → diff bodies/IDs/sections; confirm aliases and
-    the native graph survived."""
+def _record_pacing(pacer, facts) -> None:
+    """Lift the Pacer's run-summary counters into the settled facts. These are the
+    real create-then-close pacing constants NFR §9 S2 leaves for the live run to
+    settle: total REST points the burst spent, how often each budget throttled, and
+    the budget ceilings in force (so the recorded fact is self-describing)."""
+    facts["rest_points_charged"] = pacer.points_charged
+    facts["rest_point_waits"] = pacer.point_waits
+    facts["rest_point_wait_seconds"] = round(pacer.total_point_waited, 3)
+    facts["content_creation_waits"] = pacer.waits
+    facts["content_creation_wait_seconds"] = round(pacer.total_waited, 3)
+    facts["pacer_budgets"] = {
+        "per_minute_creates": pacer.per_minute,
+        "per_hour_creates": pacer.per_hour,
+        "per_minute_points": pacer.per_minute_points,
+    }
+
+
+def check_fidelity_and_aliases(
+    transport, owner, repo, source, archive, archive_scope, pacer, facts
+) -> None:
+    """Steps 1–4: import → export → diff bodies/IDs/sections; confirm aliases and the
+    native graph survived. The import here is the create-then-close **archive burst**
+    (under the chosen ``archive_scope``), metered by ``pacer`` — its wall-clock and the
+    Pacer's point counters are the paced-burst facts NFR §9 S2 settles. Only the import
+    routes through the paced transport (export uses the raw one), so ``points_charged``
+    reflects the burst alone."""
+    facts["archive_scope"] = archive_scope
     src = legacy.parse_backlog(Path(source).read_text())
+    burst_start = time.monotonic()
     result = migrate.import_backlog(
         transport,
         owner=owner,
         repo=repo,
         content=Path(source).read_text(),
         archive_content=Path(archive).read_text() if archive else None,
+        archive_scope=archive_scope,
+        pacer=pacer,
     )
+    facts["archive_burst_wall_seconds"] = round(time.monotonic() - burst_start, 3)
+    _record_pacing(pacer, facts)
     if result["status"] != "ok":
         facts["fidelity_ok"] = False
         print(f"  import failed: {result['error']}")
@@ -142,9 +192,22 @@ def check_resume(transport, owner, repo, source, facts) -> None:
 
 
 def check_pick_latency(transport, owner, repo, facts) -> None:
-    """Step 6: time pick's ready-work fan-out. The batched-GraphQL path should stay
-    ~flat as candidates grow; an N+1 path grows linearly (pins the PROBE-LAT floor,
-    NFR §4)."""
+    """Step 6: time pick's ready-work fan-out (pins the PROBE-LAT floor, NFR §4).
+
+    **Read the result carefully — before 2026-07-28 this probe could not detect
+    what it was built to detect.** The original reading was "flat as candidates
+    grow ⇒ the batched path; grows linearly ⇒ N+1". That inference was invalid:
+    the candidate count here IS ``limit``, and ``pick`` applied ``limit`` only
+    *after* fanning out over every eligible issue — so varying 1/3/5 varied
+    nothing about the number of blocker reads. The measured flatness came from
+    the constant ``_all_issues`` full-scan and was recorded across four documents
+    as evidence of a batched fan-out that was never built.
+
+    ``pick`` now bounds the fan-out by ``limit``, so the parameterization is
+    meaningful for the first time and the linear-vs-flat reading is finally
+    sound. The full-scan still dominates the absolute number, so read the
+    *slope*, not the magnitude.
+    """
     for limit in (1, 3, 5):
         start = time.monotonic()
         query.pick(transport, owner=owner, repo=repo, limit=limit)
@@ -188,6 +251,15 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--repo", required=True, help="throwaway owner/repo — issues WILL be created")
     ap.add_argument("--from", dest="source", default=".prawduct/backlog.md")
     ap.add_argument("--archive", default=None)
+    ap.add_argument(
+        "--archive-scope",
+        dest="archive_scope",
+        choices=("all", "open"),
+        default="all",
+        help="MG4b archive-volume lever: 'all' (default) imports the full historical "
+        "archive as closed issues — the paced create-then-close burst this dry-run "
+        "measures; 'open' migrates only the live set",
+    )
     ap.add_argument("--transfer-to", dest="transfer_to", default=None)
     ap.add_argument("--yes", action="store_true", help="confirm: this mutates a real repo")
     args = ap.parse_args(argv)
@@ -200,10 +272,16 @@ def main(argv: list[str] | None = None) -> int:
     owner, repo = _split_repo(args.repo)
     transport = GhTransport()
     facts = _facts()
+    pacer = migrate.Pacer()  # meters the archive burst; counters land in the facts
 
-    print(f"SPIKE-S2 against {args.repo} (from {args.source}) — live gh\n")
-    print("1-3. fidelity + aliases + relationships …")
-    check_fidelity_and_aliases(transport, owner, repo, args.source, args.archive, facts)
+    print(
+        f"SPIKE-S2 against {args.repo} (from {args.source}, "
+        f"archive-scope={args.archive_scope}) — live gh\n"
+    )
+    print("1-4. fidelity + aliases + relationships + paced archive burst …")
+    check_fidelity_and_aliases(
+        transport, owner, repo, args.source, args.archive, args.archive_scope, pacer, facts
+    )
     print("5. resume convergence …")
     check_resume(transport, owner, repo, args.source, facts)
     print("6. pick latency by candidates …")

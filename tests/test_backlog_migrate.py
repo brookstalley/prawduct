@@ -19,12 +19,15 @@ Covers the highest-risk operations against the transport-seam fake (offline, no
   concrete record set (module-level model-freedom is INV-1's job, not re-tested).
 - **PROBE-RATE** the write-pacer's decisions (deterministic clock, no real sleep).
 - The ``import``/``export``/``merge`` CLI front.
+- The S2 spike's standalone-script bootstrap — the one path no other test
+  reaches, because nothing imports the spike.
 """
 
 from __future__ import annotations
 
 import json
 import re
+import subprocess
 import sys
 from pathlib import Path
 
@@ -37,6 +40,7 @@ for _p in (str(_REPO_ROOT), str(_TESTS_DIR)):
 import pytest  # noqa: E402
 
 from lib.backlog import cli, core, encode, ids, legacy, migrate  # noqa: E402
+from lib.backlog.transport import TransportError  # noqa: E402
 from fakes.fake_github import FakeGitHub  # noqa: E402
 from fixtures.backlog_fixtures import DISCODON_MINI, multi_prefix_backlog  # noqa: E402
 
@@ -99,6 +103,34 @@ def _file(fake, *, title="t", body="b"):
 
 def _alias_issues(fake, pfx: str) -> list[dict]:
     return fake.list_issues(OWNER, REPO, state="all", labels=[ids.alias_label(pfx)])
+
+
+def _fake_clock():
+    """A deterministic (now, sleep) pair: ``now()`` reads a virtual clock that only
+    advances when ``sleep(s)`` is called, so pacing decisions are asserted with no
+    wall-clock wait. Returns ``(state, now, sleep)`` — ``state['slept']`` records the
+    sleeps."""
+    state = {"t": 0.0, "slept": []}
+    return (
+        state,
+        lambda: state["t"],
+        lambda s: (state["slept"].append(s), state.__setitem__("t", state["t"] + s)),
+    )
+
+
+def _archive_heavy_backlog(n: int) -> str:
+    """A backlog whose items all sit in the ``## Archive`` section (``status:
+    shipped``), so each import is a **create *and* a close** — the create-then-close
+    stretch BKL-6X5D part (b) meters against the 900-pts/min REST burst."""
+    lines = ["# Backlog — archive-heavy", "", "## Archive", ""]
+    for i in range(1, n + 1):
+        lines += [
+            f"- **[ARC-{i:04d}]** Archived item {i}",
+            "  `effort: S · impact: S · area: core · source: builder · "
+            "added: 2026-01-01 · status: shipped`",
+            "",
+        ]
+    return "\n".join(lines)
 
 
 # --- MIG-1: import→export round-trip fidelity --------------------------------
@@ -175,6 +207,57 @@ class TestMultiPrefixAbsorption:
         assert result["data"]["collisions"][0]["pfx"] == "DUP-0001"
         # Only the first claimant was imported — the alias resolves to one item.
         assert len(_alias_issues(fake, "DUP-0001")) == 1
+
+    def test_multi_segment_id_gets_an_alias_and_a_clean_title(self, fake):
+        """An id with two or more hyphens is absorbed like any other hand-minted id.
+
+        Both halves matter and they live in different modules: the parser has to
+        recognize the id (else no alias keys the item back to the source, and the
+        completeness gate blocks the cutover), and the title's marker-strip has to
+        recognize the same shape (else the id is aliased but left embedded, and the
+        issue reads ``[MIG-M4-REMOVE] Remove the shim``). A widening that lands in
+        one and not the other is worse than neither."""
+        content = (
+            "## Open\n\n"
+            "- **[MIG-M4-REMOVE]** Remove the shim\n"
+            "  `effort: S · impact: M · area: core · status: open`\n"
+        )
+        result = _import(fake, content)
+        assert result["status"] == "ok", result
+        assert [c["pfx"] for c in result["data"]["created"]] == ["MIG-M4-REMOVE"]
+
+        issues = _alias_issues(fake, "MIG-M4-REMOVE")
+        assert len(issues) == 1
+        assert issues[0]["title"] == "Remove the shim"
+
+    def test_multi_segment_id_satisfies_the_completeness_gate(self, fake):
+        """The end the widening exists to serve: such an item no longer lands in
+        ``unaliasable``, so ``verify-migration`` returns ok instead of exit-4.
+
+        ``unaliasable`` is derived from parsing the source alone — nothing done to
+        the target can clear it — so the source-side shape is the whole fix."""
+        content = (
+            "## Open\n\n"
+            "- **[MIG-M4-REMOVE]** Remove the shim\n"
+            "  `effort: S · impact: M · area: core · status: open`\n"
+        )
+        assert _import(fake, content)["status"] == "ok"
+        verified = migrate.verify_migration(fake, owner=OWNER, repo=REPO, content=content)
+        assert verified["status"] == "ok", verified
+        assert verified["data"]["unaliasable"] == []
+        assert verified["data"]["missing"] == []
+        assert verified["data"]["aliased"] == 1
+
+    def test_markerless_item_still_blocks_the_completeness_gate(self, fake):
+        """The widening must not cost the gate its teeth: an item with no id at all
+        is still unaliasable, still exit-4. This is the residual class step 1b of the
+        scrub runbook hunts, and the one its grep cannot find."""
+        content = "## Open\n\n- A bare legacy item with no id\n  `area: core · status: open`\n"
+        assert _import(fake, content)["status"] == "ok"
+        verified = migrate.verify_migration(fake, owner=OWNER, repo=REPO, content=content)
+        assert verified["status"] == "error", verified
+        assert verified["error"]["code"] == "conflict"
+        assert verified["error"]["details"]["unaliasable"] == ["A bare legacy item with no id"]
 
     def test_id_less_item_keyed_on_import_marker_not_duplicated(self, fake):
         content = "## Open\n\n- A bare legacy item with no id\n  `area: core · status: open`\n"
@@ -830,12 +913,7 @@ class TestScrubDataPlaneBoundary:
 
 class TestPacer:
     def _clock(self):
-        state = {"t": 0.0, "slept": []}
-        return (
-            state,
-            lambda: state["t"],
-            lambda s: (state["slept"].append(s), state.__setitem__("t", state["t"] + s)),
-        )
+        return _fake_clock()
 
     def test_under_the_cap_never_waits(self):
         state, now, sleep = self._clock()
@@ -878,6 +956,120 @@ class TestPacer:
         pacer = CountingPacer()
         _import(fake, DISCODON_MINI, pacer=pacer)
         assert pacer.calls == len(_DIS_PFXS)  # one paced create per source item
+
+    # --- REST-points budget (900/min) — BKL-6X5D part (b) --------------------
+
+    def test_points_under_the_cap_never_waits(self):
+        state, now, sleep = self._clock()
+        pacer = migrate.Pacer(per_minute_points=900, now=now, sleep=sleep)
+        for _ in range(100):  # 100 reads = 100 pts, well under 900
+            pacer.before_points(migrate._REST_READ_POINTS)
+        assert pacer.point_waits == 0
+        assert state["slept"] == []
+        assert pacer.points_charged == 100
+
+    def test_points_cap_paces_writes(self):
+        state, now, sleep = self._clock()
+        # Ceiling 10 pts/min → two 5-pt writes fill the window; the third must wait.
+        pacer = migrate.Pacer(per_minute_points=10, now=now, sleep=sleep)
+        pacer.before_points(migrate._REST_WRITE_POINTS)  # t=0
+        pacer.before_points(migrate._REST_WRITE_POINTS)  # t=0 — window now 10/10
+        assert pacer.point_waits == 0
+        pacer.before_points(migrate._REST_WRITE_POINTS)  # waits ~60s for a slot
+        assert pacer.point_waits == 1
+        assert state["slept"] and abs(state["slept"][0] - 60) < 1e-6
+        assert pacer.points_charged == 15
+
+    def test_points_cap_counts_reads_and_writes_together(self):
+        state, now, sleep = self._clock()
+        # Ceiling 6 → a write (5) + a read (1) fills it; the next read must wait.
+        # This is the create-then-close insight: it is the SUM of read+write points,
+        # not creates alone, that binds (BKL-6X5D part b).
+        pacer = migrate.Pacer(per_minute_points=6, now=now, sleep=sleep)
+        pacer.before_points(migrate._REST_WRITE_POINTS)  # 5
+        pacer.before_points(migrate._REST_READ_POINTS)   # +1 = 6/6
+        assert pacer.point_waits == 0
+        pacer.before_points(migrate._REST_READ_POINTS)   # 7th point — must wait
+        assert pacer.point_waits == 1
+        assert abs(state["slept"][0] - 60) < 1e-6
+
+
+class TestPacingTransport:
+    """Every transport METHOD call is metered against the 900-pts/min budget by
+    name-classification, and an unclassified call fails loud rather than silently
+    escaping the budget (BKL-6X5D part b — the anti-fragility of the seam).
+
+    Per method, not per HTTP request: a paged read is charged once, so the metered
+    total is a floor (BKL-3H7W). These tests pin the classification and the
+    fail-loud seam, not an exact request count."""
+
+    def test_write_charges_five_read_charges_one(self, fake):
+        pacer = migrate.Pacer()
+        wrapped = migrate._PacingTransport(fake, pacer)
+        wrapped.create_label(OWNER, REPO, name="x", color="ededed", description="")
+        assert pacer.points_charged == migrate._REST_WRITE_POINTS  # a write = 5
+        wrapped.list_labels(OWNER, REPO)
+        assert pacer.points_charged == migrate._REST_WRITE_POINTS + migrate._REST_READ_POINTS
+
+    def test_delegates_args_and_return_value_unchanged(self, fake):
+        pacer = migrate.Pacer()
+        wrapped = migrate._PacingTransport(fake, pacer)
+        issue = wrapped.create_issue(OWNER, REPO, title="t", body="b", labels=[])
+        # The wrapper is transparent: it returns the transport's own result verbatim.
+        assert wrapped.get_issue(OWNER, REPO, issue["number"])["number"] == issue["number"]
+
+    def test_unclassified_method_raises_rather_than_bypassing(self, fake):
+        pacer = migrate.Pacer()
+        wrapped = migrate._PacingTransport(fake, pacer)
+        fake.frobnicate = lambda: None  # a method fitting neither read nor write prefix
+        with pytest.raises(AssertionError, match="unclassified"):
+            _ = wrapped.frobnicate
+
+    def test_every_transport_method_classifies(self, fake):
+        """Metering is keyed on the method-name verb, and an unclassified name raises
+        only at *call* time — i.e. mid-migration. This pins the classification at test
+        time instead: every public Transport method must resolve to a known read or
+        write cost, so a future method with a novel verb fails here, not in a live run."""
+        import inspect
+
+        from lib.backlog import transport as transport_mod
+
+        wrapped = migrate._PacingTransport(fake, migrate.Pacer())
+        methods = [
+            name
+            for name, _ in inspect.getmembers(
+                transport_mod.Transport, predicate=inspect.isfunction
+            )
+            if not name.startswith("_")
+        ]
+        assert methods, "expected to enumerate the Transport surface"
+        for name in methods:
+            cost = wrapped._cost(name)  # raises AssertionError if the verb is unknown
+            assert cost in (migrate._REST_READ_POINTS, migrate._REST_WRITE_POINTS)
+
+    def test_import_meters_create_and_close_not_just_create(self, fake):
+        """The create-then-close stretch is fully metered: points are charged for the
+        closes and reconcile reads, not only the creates (BKL-6X5D part b — the old
+        bug metered 'only the create')."""
+        _seed_labels(fake, DISCODON_MINI)
+        pacer = migrate.Pacer()  # real caps; DISCODON_MINI is tiny, so no waits
+        _import(fake, DISCODON_MINI, pacer=pacer)
+        creates_only = len(_DIS_PFXS) * migrate._REST_WRITE_POINTS
+        # DIS-0004 (shipped) and DIS-0005 (dropped) each add a close write — so the
+        # metered points must exceed creates-alone by at least those two closes.
+        assert pacer.points_charged >= creates_only + 2 * migrate._REST_WRITE_POINTS
+
+    def test_archive_stretch_throttles_on_the_points_ceiling(self, fake):
+        """S2 by construction: an all-scope import whose create+close point rate
+        breaches the ceiling throttles on the REST-points budget — the burst is held
+        inside the ceiling, asserted as a decision (no wall clock)."""
+        content = _archive_heavy_backlog(n=6)
+        _seed_labels(fake, content)
+        state, now, sleep = _fake_clock()
+        # A deliberately tight ceiling so a few create+close items breach it.
+        pacer = migrate.Pacer(per_minute_points=25, now=now, sleep=sleep)
+        assert _import(fake, content, pacer=pacer)["status"] == "ok"
+        assert pacer.point_waits > 0  # the points budget bound and throttled the run
 
 
 # --- BKL-3K9N: reactive rate-limit backoff (pause-and-resume, never a hard-stop)
@@ -1027,3 +1219,394 @@ class TestMigrateCli:
         b = _file(fake, title="keep")
         assert cli.run("/x", ["merge", a, "--into", b], transport=fake) == 0
         assert "superseded-by" in capsys.readouterr().out
+
+
+class TestPacingObservability:
+    """A ~900-issue irreversible migration must be legible WHILE it runs and AFTER
+    it stops (BKL-8K2N).
+
+    `import_items` already constructs a default `Pacer`, so pacing was never absent
+    — but every counter it accumulated was dropped on the floor (the SPIKE-S2
+    harness was the only reader in the tree), and both blocking sleeps were silent.
+    Together that meant an operator watching a paused run could not distinguish
+    "waiting out a rate budget" from "wedged", and could not say afterward where the
+    budget stood. For an act GitHub cannot undo, that is the observability that
+    matters most.
+    """
+
+    _KEYS = {
+        "rest_points_charged",
+        "rest_point_waits",
+        "rest_point_wait_seconds",
+        "content_creation_waits",
+        "content_creation_wait_seconds",
+        "rate_limit_pauses",
+        "rate_limit_paused_seconds",
+        "budgets",
+    }
+
+    def test_run_summary_carries_pacing_telemetry(self, fake):
+        result = _import(fake, DISCODON_MINI)
+        assert result["status"] == "ok"
+        pacing = result["data"]["pacing"]
+        assert set(pacing) >= self._KEYS
+        # Charged points prove the meter ran; the wait counters are the operator's
+        # answer to "was I throttled, and for how long?"
+        assert pacing["rest_points_charged"] > 0
+        assert pacing["rest_point_waits"] == 0
+        assert pacing["content_creation_waits"] == 0
+        assert pacing["rate_limit_pauses"] == 0
+        assert pacing["budgets"]["per_minute_points"] == 900
+
+    def test_pacing_telemetry_survives_a_resumable_cut(self, fake):
+        """The cut path is where telemetry matters MOST — a run that stopped is
+        exactly when someone asks "how far did it get, and was it throttled?".
+        Reporting only on the success path would describe only the runs that never
+        had a problem."""
+        _seed_labels(fake, DISCODON_MINI)
+        original = fake.create_issue
+        calls = {"n": 0}
+
+        def failing_create(*a, **kw):
+            calls["n"] += 1
+            if calls["n"] > 1:
+                raise TransportError("unavailable", "backend down")
+            return original(*a, **kw)
+
+        fake.create_issue = failing_create
+        result = _import(fake, DISCODON_MINI)
+        assert result["status"] == "error"
+        assert result["error"]["details"]["resumable"] is True
+        pacing = result["error"]["details"]["pacing"]
+        assert set(pacing) >= self._KEYS
+        assert pacing["rest_points_charged"] > 0
+
+    def test_a_points_throttle_announces_itself(self, capsys):
+        """A silent sleep is indistinguishable from a hang."""
+        _state, now, sleep = _fake_clock()
+        pacer = migrate.Pacer(per_minute_points=10, now=now, sleep=sleep)
+        pacer.before_points(8)
+        capsys.readouterr()  # under budget — nothing to announce
+        pacer.before_points(8)  # breaches 10/min → must block AND say so
+        err = capsys.readouterr().err
+        assert "rest-point budget" in err
+        assert "resuming in" in err
+
+    def test_a_content_cap_throttle_announces_itself(self, capsys):
+        _state, now, sleep = _fake_clock()
+        pacer = migrate.Pacer(per_minute=1, per_hour=1000, now=now, sleep=sleep)
+        pacer.before_create()
+        capsys.readouterr()
+        pacer.before_create()
+        err = capsys.readouterr().err
+        assert "content-creation budget" in err
+        assert "resuming in" in err
+
+    def test_a_rate_limit_pause_announces_itself(self, capsys):
+        backoff = migrate.RateLimitBackoff(sleep=lambda s: None)
+        backoff.pause(0, {"retry_after": 30})
+        err = capsys.readouterr().err
+        assert "rate-limited" in err
+        assert "30" in err
+
+    def test_an_unthrottled_run_stays_quiet(self, fake, capsys):
+        """Pacing output must be exception reporting, not a running commentary — a
+        line per call would bury the one message that matters."""
+        _import(fake, DISCODON_MINI)
+        assert "budget" not in capsys.readouterr().err
+
+    def test_a_long_run_emits_periodic_progress(self, fake, capsys):
+        """The complement of the guard above, and the reason it is not enough.
+
+        VRF-009 settled that under the serial importer NO pacing budget ever
+        binds (`rest_point_waits: 0` and `content_creation_waits: 0`), so every
+        announcement in this class is exception-only and a *healthy* ~900-issue
+        run emits nothing for 18-40 minutes. An operator with no signal is an
+        operator who kills a healthy run. Progress is a different signal from
+        pacing state: it says "alive and here", not "throttled"."""
+        content = "# Backlog\n\n## Open\n\n" + "\n".join(
+            f"- **[ITM-{i:04d}]** item number {i}\n  `status: open · stage: ready`\n"
+            for i in range(1, migrate.PROGRESS_EVERY * 2 + 2)
+        )
+        result = _import(fake, content)
+        assert result["status"] == "ok", result
+        err = capsys.readouterr().err
+        assert "migrating:" in err
+        # Periodic, not per-record: one line per PROGRESS_EVERY records.
+        assert err.count("migrating:") == 2
+        assert "budget" not in err  # still not pacing commentary
+
+    def test_a_short_run_emits_no_progress(self, fake, capsys):
+        """Below one interval there is nothing to reassure anyone about, and a
+        line would be the commentary the sibling guard forbids."""
+        _import(fake, DISCODON_MINI)
+        assert "migrating:" not in capsys.readouterr().err
+
+    def test_progress_goes_to_stderr_so_json_stdout_stays_pure(self, fake, tmp_path, capsys):
+        """SEC-1 / VRF-004 pinned `--json` stdout as parseable JSON and nothing
+        else. A progress line on stdout would break every machine caller."""
+        src = tmp_path / "backlog.md"
+        src.write_text(
+            "# Backlog\n\n## Open\n\n"
+            + "\n".join(
+                f"- **[ITM-{i:04d}]** item number {i}\n  `status: open · stage: ready`\n"
+                for i in range(1, migrate.PROGRESS_EVERY + 2)
+            ),
+            encoding="utf-8",
+        )
+        assert cli.run(
+            str(tmp_path),
+            ["import", "--repo", f"{OWNER}/{REPO}", "--from", str(src), "--json"],
+            transport=fake,
+        ) == 0
+        captured = capsys.readouterr()
+        json.loads(captured.out)  # raises if a progress line leaked onto stdout
+        assert "migrating:" in captured.err
+
+    def test_human_mode_import_prints_a_pacing_footer(self, fake, tmp_path, capsys):
+        """`migration-scrub.md` invokes import WITHOUT --json, so a JSON-only
+        summary would reach every consumer except the operator running the
+        irreversible migration."""
+        src = tmp_path / "backlog.md"
+        src.write_text(DISCODON_MINI, encoding="utf-8")
+        assert cli.run(
+            str(tmp_path),
+            ["import", "--repo", f"{OWNER}/{REPO}", "--from", str(src)],
+            transport=fake,
+        ) == 0
+        out = capsys.readouterr().out
+        assert "pacing:" in out
+        assert "REST points" in out
+        assert "no throttling" in out
+        # A floor, not an exact figure: the meter charges per transport method call,
+        # not per HTTP request (BKL-3H7W), so an unqualified number would read as
+        # precise to the person sizing an irreversible run.
+        assert "\u2265" in out
+
+
+def test_s2_spike_imports_when_run_as_a_script(tmp_path: Path):
+    """`python tests/spikes/s2_migration.py` must import outside pytest.
+
+    The spike bootstraps `sys.path` itself, because the root conftest's insert
+    is absent when it runs as a script — and running it as a script IS the
+    point: it drives a live `gh` session against a throwaway repo. Nothing else
+    covers that path, since no test imports the spike, so a removed bootstrap
+    would surface only when someone reached for it mid-migration. Run from an
+    unrelated cwd to pin that the bootstrap resolves from the file's own
+    location, not the caller's. `--help` exits before any `gh` call.
+    """
+    spike = _TESTS_DIR / "spikes" / "s2_migration.py"
+    proc = subprocess.run(
+        [sys.executable, str(spike), "--help"],
+        capture_output=True, text=True, timeout=30, cwd=str(tmp_path),
+    )
+    assert proc.returncode == 0, f"standalone spike run failed:\n{proc.stderr}"
+
+
+# --- verify-migration: the completeness gate (F9) ----------------------------
+
+
+class TestVerifyMigration:
+    """The check that `samsung-frame-art-loader` needed and did not have.
+
+    That repo recorded its cutover with 7 of 9 source items never imported. The
+    runbook *did* prescribe the comparison ("Total issue count = every source
+    item") but only as a human eyeball step, so a partial import passed
+    unnoticed — and the moment `backlog_service_repo` was set the markdown
+    stopped being read, which made the failure invisible at exactly the step
+    that should have caught it."""
+
+    def test_a_complete_migration_verifies_clean(self, fake):
+        result = _import(fake, DISCODON_MINI)
+        assert result["status"] == "ok", result
+        verdict = migrate.verify_migration(
+            fake, owner=OWNER, repo=REPO, content=DISCODON_MINI
+        )
+        assert verdict["status"] == "ok", verdict
+        assert verdict["data"]["missing"] == []
+        assert verdict["data"]["source_items"] == verdict["data"]["aliased"]
+
+    def test_an_unmigrated_source_item_is_named_not_counted(self, fake):
+        """The verdict must name the stranded ids. A count tells the operator
+        something is wrong; only the ids tell them what to re-import."""
+        _import(fake, DISCODON_MINI)
+        extra = DISCODON_MINI + (
+            "\n- **[ZZZ-9999]** never imported\n  `status: open · stage: ready`\n"
+        )
+        verdict = migrate.verify_migration(fake, owner=OWNER, repo=REPO, content=extra)
+        assert verdict["status"] == "error"
+        assert verdict["error"]["code"] == "conflict"
+        assert verdict["error"]["details"]["missing"] == ["ZZZ-9999"]
+
+    def test_it_gates_on_the_source_not_on_issue_count(self, fake):
+        """Issues filed natively after cutover carry a prawduct block but no
+        `id:` alias, so a raw issue-count comparison passes while source items
+        are still stranded — which is exactly how the observed repo looked (17
+        issues, 2 aliases, 9 source items)."""
+        _import(fake, DISCODON_MINI)
+        for i in range(5):
+            core.file_item(
+                fake, owner=OWNER, repo=REPO, title=f"native {i}", body="b", facets={}
+            )
+        extra = DISCODON_MINI + (
+            "\n- **[ZZZ-9999]** stranded\n  `status: open · stage: ready`\n"
+        )
+        verdict = migrate.verify_migration(fake, owner=OWNER, repo=REPO, content=extra)
+        assert verdict["status"] == "error"
+        assert verdict["error"]["details"]["missing"] == ["ZZZ-9999"]
+
+    def test_cli_exit_code_is_non_zero_so_it_can_gate(self, fake, tmp_path):
+        """Step 6 of the runbook must be able to depend on this mechanically."""
+        _import(fake, DISCODON_MINI)
+        src = tmp_path / "backlog.md"
+        src.write_text(
+            DISCODON_MINI
+            + "\n- **[ZZZ-9999]** stranded\n  `status: open · stage: ready`\n",
+            encoding="utf-8",
+        )
+        code = cli.run(
+            str(tmp_path),
+            ["verify-migration", "--repo", f"{OWNER}/{REPO}", "--from", str(src)],
+            transport=fake,
+        )
+        assert code == 4  # conflict — source and target disagree
+
+    def test_an_id_that_is_not_a_pfx_is_reported_not_excluded(self, fake):
+        """The gate's own blind spot.
+
+        Alias coverage can only speak for items an alias can key, so building the
+        source set from PFX-bearing records alone puts a hand-written id outside
+        the comparison entirely: the item imports, nothing is `missing`, and a
+        repo one item short of complete reports clean. This is the shape that
+        passed before `unaliasable` existed.
+
+        The two ids that originally exercised this (`AUD-TIMBRE-CALIB`,
+        `MIG-M4-REMOVE`) are now absorbed as ordinary multi-segment ids, so the
+        case is pinned here with a bracketed *date* — still not an id, and the
+        reason the accepted shape insists on a leading letter."""
+        extra = DISCODON_MINI + (
+            "\n- **[2026-07-28]** hand-written id, not a PFX\n"
+            "  `status: open · stage: ready`\n"
+        )
+        result = migrate.import_backlog(fake, owner=OWNER, repo=REPO, content=extra)
+        assert result["status"] == "ok", result
+
+        verdict = migrate.verify_migration(fake, owner=OWNER, repo=REPO, content=extra)
+        assert verdict["status"] == "error", verdict
+        assert verdict["error"]["code"] == "conflict"
+        details = verdict["error"]["details"]
+        assert details["missing"] == []  # every *aliasable* item did make it across
+        assert details["unaliasable"] == ["[2026-07-28] hand-written id, not a PFX"]
+
+    def test_source_items_counts_every_item_not_just_the_aliasable_ones(self, fake):
+        """`source_items` is read as "the complete source set". If it counted only
+        PFX-bearing records it would under-report the source while claiming full
+        coverage — the arithmetic has to be visible."""
+        extra = DISCODON_MINI + (
+            "\n- **[2026-07-28]** unaliasable\n  `status: open · stage: ready`\n"
+        )
+        migrate.import_backlog(fake, owner=OWNER, repo=REPO, content=extra)
+        details = migrate.verify_migration(
+            fake, owner=OWNER, repo=REPO, content=extra
+        )["error"]["details"]
+        assert details["source_items"] == details["aliased"] + 1
+
+    def test_the_remedy_does_not_tell_you_to_re_import_an_unaliasable_item(self, fake):
+        """Re-import is the right fix for `missing` and the WRONG one here: the
+        idempotency key is a digest of title+body, so giving the item a real PFX
+        changes the key and mints a second issue instead of adopting the first."""
+        extra = DISCODON_MINI + (
+            "\n- **[2026-07-28]** unaliasable\n  `status: open · stage: ready`\n"
+        )
+        migrate.import_backlog(fake, owner=OWNER, repo=REPO, content=extra)
+        message = migrate.verify_migration(
+            fake, owner=OWNER, repo=REPO, content=extra
+        )["error"]["message"]
+        assert "BEFORE importing" in message
+        assert "re-run import" not in message  # no `missing` items in this run
+
+    def test_a_clean_migration_still_verifies_clean_with_the_new_field(self, fake):
+        """The added field must not turn a good migration into a conflict."""
+        _import(fake, DISCODON_MINI)
+        verdict = migrate.verify_migration(
+            fake, owner=OWNER, repo=REPO, content=DISCODON_MINI
+        )
+        assert verdict["status"] == "ok", verdict
+        assert verdict["data"]["unaliasable"] == []
+
+    def test_archive_scope_open_does_not_strand_the_items_it_deliberately_skips(
+        self, fake
+    ):
+        """The gate's source set must be the importer's create set.
+
+        `--archive-scope open` skips items that would be created closed — by
+        *status*, and in the main `backlog.md` too, not only in a separate
+        `--archive` file. A gate that re-derives the source set by file instead
+        counts every shipped/dropped item as `missing`: ~150 of them on a mature
+        backlog, on a gate whose prescribed remedy is "re-run the import", which
+        cannot ever clear it."""
+        src = DISCODON_MINI + (
+            "\n- **[SHP-0001]** already shipped\n  `status: shipped · stage: ready`\n"
+            "- **[DRP-0002]** dropped long ago\n  `status: dropped · stage: ready`\n"
+        )
+        result = migrate.import_backlog(
+            fake, owner=OWNER, repo=REPO, content=src, archive_scope="open"
+        )
+        assert result["status"] == "ok", result
+
+        verdict = migrate.verify_migration(
+            fake, owner=OWNER, repo=REPO, content=src, archive_scope="open"
+        )
+        assert verdict["status"] == "ok", verdict
+        assert verdict["data"]["missing"] == []
+
+    def test_archive_scope_open_still_catches_a_genuinely_stranded_open_item(
+        self, fake
+    ):
+        """The scope fix must not buy its silence by loosening the gate: an
+        *open* item that never imported is still a conflict under `open`."""
+        src = DISCODON_MINI + (
+            "\n- **[SHP-0001]** already shipped\n  `status: shipped · stage: ready`\n"
+        )
+        migrate.import_backlog(
+            fake, owner=OWNER, repo=REPO, content=src, archive_scope="open"
+        )
+        stranded = src + "\n- **[ZZZ-9999]** open and never imported\n  `status: open`\n"
+        verdict = migrate.verify_migration(
+            fake, owner=OWNER, repo=REPO, content=stranded, archive_scope="open"
+        )
+        assert verdict["status"] == "error"
+        assert verdict["error"]["details"]["missing"] == ["ZZZ-9999"]
+
+    def test_a_duplicate_pfx_collision_is_reported_not_dropped(self, fake):
+        """The one class of un-imported item the gate structurally could not see.
+
+        `collect_records` drops a collided item rather than merging two items
+        onto one alias — so it is never created, and being absent from `records`
+        it left `missing` empty and the gate green."""
+        src = DISCODON_MINI + (
+            "\n- **[DUP-0001]** first claimant\n  `status: open · stage: ready`\n"
+            "- **[DUP-0001]** second claimant, same pfx\n  `status: open · stage: ready`\n"
+        )
+        result = migrate.import_backlog(fake, owner=OWNER, repo=REPO, content=src)
+        assert result["status"] == "ok", result
+
+        verdict = migrate.verify_migration(fake, owner=OWNER, repo=REPO, content=src)
+        assert verdict["status"] == "error", verdict
+        assert verdict["error"]["details"]["missing"] == []  # the second door
+        assert len(verdict["error"]["details"]["collisions"]) == 1
+        assert "DUP-0001" in verdict["error"]["details"]["collisions"][0]
+
+    def test_an_archive_file_is_included_in_the_source_set(self, fake, tmp_path):
+        """A migration run with --archive must be verifiable the same way, or
+        the check silently passes on a partially-imported archive."""
+        archive = "# Archive\n\n## Archive\n\n- **[ARC-0001]** archived\n  `status: shipped`\n"
+        result = migrate.import_backlog(
+            fake, owner=OWNER, repo=REPO, content=DISCODON_MINI, archive_content=archive
+        )
+        assert result["status"] == "ok", result
+        verdict = migrate.verify_migration(
+            fake, owner=OWNER, repo=REPO, content=DISCODON_MINI, archive_content=archive
+        )
+        assert verdict["status"] == "ok", verdict
+        assert "ARC-0001" not in verdict["data"]["missing"]

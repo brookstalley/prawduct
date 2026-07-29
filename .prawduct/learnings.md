@@ -4,6 +4,18 @@ Active rules from this project's development. Surfaced via the `/learnings [topi
 
 ---
 
+## Before recording a probe's result as a settled fact, state what a FAILING run would have looked like — if you cannot describe the observation that would have falsified it, the probe measured nothing and the "fact" is an artifact of the measurement: SPIKE-S2 timed `pick` at 1/3/5 candidates and read flat latency as proof of a batched fan-out, but the candidate count IS `limit` and `limit` was applied only AFTER the fan-out ran over every eligible issue, so varying it varied nothing; the flatness measured the constant full-scan and the invalid inference was cited as settled across four documents plus the probe's own docstring. Same discipline as a discriminating regression test, applied to live measurement
+
+## A review ending is not a filing event — dispose every non-blocking finding as FIX or ACCEPT, and treat FILE as the narrow case that must name its trigger, because "file the rest" is a disposal route and thorough reviewers produce many findings. An ACCEPT is Principle 2's *explicit descope*: the reason recorded in the change-log entry for that work, where the next reader of the change meets it — not a backlog id nobody will action. Measured on this repo when the rule was still "file the rest": open items **50 → 180 in 26 days**, 67 of them Critic-sourced, **53 of those never touched since filing**, 58% of all Critic items ever filed still open, and 42 of 67 sitting at `effort: S` — the band where filing costs more reader-attention over its lifetime than the fix costs. The compounding tell is the sharpest signal: **`verify-chunk-refs` alone accumulated SIX open items**, each a facet found by a *later* review of the same still-unfixed gate — filing made every pass re-discover the mechanism instead of closing it, so the backlog grew while the defect stayed. A double-digit filing count is not thoroughness, it is undisposed review. Framework-specific corollary: a framework that does this to itself does it once per build plan to every repo that adopts it. Relates to Principle 2 and [[When a scope narrowing is recorded, it is a CASCADE, not an annotation]]
+
+## A completeness claim states the COMMAND that would falsify it and asserts that command now returns nothing — never a count of sites fixed, which is true of any prefix of the real set: "corrected in three places" passed review while six surfaces still carried the claim, two in a file that pass had edited, and the re-run found a seventh (a probe docstring) no enumeration could have reached. Corollaries, each learned by the sweep failing again at the next level: run it **whitespace-normalized** (a line-based pass misses wrapped occurrences), and query the **CONCEPT, not the phrasings you already found to be wrong** — a regex built from the known-bad spellings is another enumeration wearing a query's clothes. Three passes here: named-sites → 7 more; phrase-regex → 4 more (including one asserting the retracted claim in the live tracker, and the probe's own step list)
+
+## Widening a predicate takes TWO searches, and grepping the pattern is only the first: the pattern text finds its DUPLICATE COPIES, never the CALLERS that branch on the predicate it backs. Chunk 05c widened an id-shape regex; `grep -rn "A-Za-z0-9"` correctly found all four copies (and caught a third the inherited plan had missed), so the survey felt complete and stopped. It was blind by construction to `core.resolve_ref`, which gates an alias round-trip on `is_pfx` — the Critic found it. `grep -rn "is_pfx"` takes seconds and was never run. The consequence was cost plus a widened ambiguity class, not a break, but nothing about the method would have caught a break either. So: grep the *shape* for copies, then grep the *predicate's name* for branches, and treat a survey that ran only the first as incomplete regardless of how clean it looked. Generalizes past regexes to any shared predicate — a validator, a feature flag, a type guard. Relates to [[A completeness claim states the COMMAND that would falsify it and asserts that command now returns nothing]] (same enumeration-wearing-a-query's-clothes failure, one level up: a correct query against the wrong axis) and Root Cause Discipline (#16)
+
+## An absence-claim must cite a path that RESOLVES, or its verifying command returns empty for the wrong reason — the missing directory produces the same evidence as the claim being true: seven sites asserted "no GraphQL in `lib/backlog/`" after the tree became `plugin/lib/backlog/`, so the grep that "confirmed" it was confirming only its own bad path
+
+## When a scope narrowing is recorded (a chunk deferred, work cut from a release), it is a CASCADE, not an annotation — the summary describes, but the bodies INSTRUCT, and they compute against the fact you just changed: recording "v3.2.0 stops after Chunk 06" in § Status left Chunk 09 owing six backlog flips for deferred work, announcing a drop-box retirement that was no longer happening, and declaring `Depends on: Chunks 01–08`. Following it literally would have marked unbuilt work shipped. The edit is not done until every section naming that chunk has been opened
+
 ## When a release ships a PRUNED tree, a clean `git apply` is NOT evidence of a sound tree — the shipping code can depend on a symbol the WITHHELD work introduced, which a textual patch tool cannot see: v3.1.2's ship set called `sys.stderr` while `import sys` had arrived in `briefing.py` with the withheld backlog-service work, so `git apply` reported the file applied cleanly and produced a `NameError` in a shipped path (11 test failures). Run the suite against the candidate tree, and diff every shipped file's imports against its `develop` counterpart
 
 ## When determining what a PREVIOUS release actually shipped, test its CODE against that release's tree — never the change-log's prose or heading presence, which a pruned release leaves behind: v3.1.1's tree carries all ten backlog-service change-log entries whose code it deliberately withheld, so a heading-presence test called them shipped and would have mis-tagged them, silently dropping ten entries from v3.1.2's release notes. This is the runbook's own REL-7D4X rule and it is load-bearing in both directions
@@ -98,7 +110,7 @@ act of writing the claim changes the set the claim quantifies over, no enumerati
 say "a run of" and describe the shape, or pin the set to a closed predicate ("the rounds preceding
 this one") that writing cannot move. Counting harder is the wrong response; the set is the problem.
 
-## When building from a review/audit artifact, verify each cited gap and fix-instruction against HEAD before planning — the artifact's file-state claims aged the moment it was written
+## When building from a review/audit artifact, verify each cited gap and fix-instruction against HEAD before planning — the artifact's file-state claims aged the moment it was written, and some were never true. A `file:line` you did not personally resolve is a claim, not a citation: its precision reads as evidence of having been read, which is exactly why it survives into your own durable artifacts unchecked. Resolve every inherited ref (does the path exist? does that line say this?) before it becomes an argument you build on — an inherited premise gets the same falsification query as one you wrote from memory. See learnings-detail.md for the v3.2.0 Chunk 05c instance.
 
 ## When a backlog item's `refs:` names several surfaces, treat them as candidates and let the mechanism pick the surface — implement only where the condition can actually manifest (and grep for existing coverage first), because mechanically touching every listed ref adds dead or duplicative surfaces the item never needed. STH-3R8K listed SessionStart `digest.py`/`banner.py` alongside the Stop hook, but SessionStart runs in the launch dir *before* any mid-cycle worktree move, so it provably cannot observe the redirect — the Stop path was the only load-bearing surface, and a SessionStart line would have duplicated BRF-6K2D. Descope the dead surfaces explicitly in the item note (Principle 2 — a deliberate scope call, not a silent drop). Relates to Scope Discipline (#12) and [[When building from a review/audit artifact, verify each cited gap and fix-instruction against HEAD before planning]].
 
@@ -475,6 +487,14 @@ observed fact — including into CRT-3F7M's title.
 
 Auditing the runbook guide/skill/template (2026-07-20), I argued from the text that the template should be inverted — minimal default, optional sections in a library — because a form-shaped template pulls authors into filling it in and "deletion is the weaker operation." Two subagents then authored real runbooks from the *unmodified* material and both deleted correctly and for the right reasons (blast radius, duration, authorization, maintenance, prerequisites, phases, irreversible block — each against its include-test), with one reporting the guide "stopped me from writing a bloated runbook, which is what I would otherwise have produced." The recommendation was refuted by the artifact it was about. The trials also produced findings no amount of reading would have: that ~150 of 1,277 lines carried all the binding instruction, that the worked example outperformed everything after it, and that a documented procedure contradicted itself in a way only a deriving reader would hit. So: for any material whose purpose is to *make an agent produce something*, the audit is a usage trial, and reading is only how you form hypotheses to test. Run the trial before writing recommendations, not after — otherwise the write-up is sunk cost arguing against the evidence. Corollary, learned the same session: an audit's deliverable is ranked findings, not a work program; ~7 verified small defects became a 5-chunk plan with 12 new rules before the owner cut it back to the defects. Relates to Proportional Effort (#11 — which the methodology states for artifacts and rigor but not for the size of a response to a finding), Retrieval Over Generation (#24), and Honest Confidence (#5).
 
+## A falsifying query is itself a mechanism and can carry the defect it hunts — when proving a claim is ABSENT from a tree, normalize the text before searching, because line structure is not semantic structure
+
+Fixing a "prose asserts a property the code lacks" finding (the REST-point meter charges per transport *method*, not per HTTP request, so its total is a floor), I corrected the sites the review named, ran `grep -rn "every.*REST call" plugin/`, got one hit — my own corrective comment quoting the phrase — and recorded the sweep as complete in a change-log entry. Four sites survived, because the claim **wraps across line breaks** (`charges every\n       migration REST call`) and a line-based grep structurally cannot match it. One of the survivors was `skills/backlog/migration-scrub.md`, which ships to every consumer and is the operator's runbook for an irreversible ~900-issue migration. The reviewer's own grep missed a fifth site for the same reason. Replacing it with a whitespace-normalized sweep (`" ".join(text.split())`, then regex) found every one. The general form: **a negative result is only as strong as the query's ability to represent the claim**, and the default text tools represent *lines*, while prose claims are sentences that wrap, hyphenate, and get reflowed by formatters. So: to prove absence, flatten first; and treat "my grep found nothing" as evidence about the grep until you have shown the query matches a known-positive. Sharpest form of the tell — I wrote a comment warning that a mechanism overclaims what it measures, and in the same commit used a verification method that overclaimed what it checked. Discovered 2026-07-28 (v3.2.0 develop-integration, verify-resolutions warning). Relates to [[A fix lands at the instance a review named; the defect lives in the class]], [[When a guarantee names a specific event, gate on THAT event]], Honest Confidence (#5), Validate Before Propagating (#15).
+
+## In an append-heavy file, a union merge is safe only when neither side RELOCATED an entry — a moved item reads as "absent here, present there," which is exactly the shape a union is built to merge
+
+Integrating `develop` into a 40-commits-stale feature branch produced four conflicts, all append-collisions in `.prawduct/` markdown, zero in code. Three were straight unions. The fourth was not: `develop` had marked BLD-7K3Q `status: shipped` and **moved it into the archive section**, while the feature branch still carried it `open` at its original position. Git presents that as "our side has content, their side is empty" — indistinguishable from an ordinary one-sided append — so a mechanical union would have resurrected finished work as a live duplicate item, in the file that decides what gets worked on next. The check that caught it costs one command: for each item the union would keep, ask whether the *other* side has that id anywhere else in the file, not just at the conflict anchor. So: before unioning a conflict in a newest-first ledger (backlog, change-log, learnings), diff the **id sets** of both whole files, not the hunks — an id present on both sides at different offsets is a relocation, and relocation is the one case union gets wrong. Corollary: a resolution that drops a side also drops any evidence that accumulated only there (here, a recurrence note whose residual was still live), so read what you are discarding rather than only what you are keeping — merge resolution is a place evidence evaporates with no diff to show for it. Discovered 2026-07-28 (v3.2.0 develop-integration). Relates to Coherent Artifacts (#13), Validate Before Propagating (#15).
+
 ## When a guarantee names a specific event, gate on THAT event — a signal that usually co-occurs with it passes every test you think to write, because you wrote them believing the proxy
 
 Session-handoff Chunk 01 introduced `.handoff-notes.md`, a model-authored note consumed into the generated handoff and then deleted. The stated guarantee — written into the docstring, the call-site comment, `architecture.md` and the change-log — was "a note is deleted only once its text is durably in the handoff." The code gated the delete on `handoff_written`, which is true whenever *any* section produced content, while the notes reader collapsed absent / empty / **unreadable** into one empty string. So an undecodable note was deleted with its text carried nowhere — unrecoverable, through the documented happy path — and the chunk's own test walked that exact path while asserting nothing about the notes file. All three Critic reviewers found it independently, which is the tell: convergence from unrelated lenses means it was never subtle, the author was reading their own comment instead of the code. So: when you write "only after X," find the expression that *is* X and gate on it; if X isn't representable, that absence is the finding — make it representable (here, the reader returning a state rather than a string whose emptiness meant three different things). Corollary: an invariant asserted in N prose locations is N places that will keep asserting it after the code stops honoring it, so the prose count is a risk multiplier, not evidence. Discovered session-handoff-continuity Chunk 01 (2026-07-26, Critic warning ×3). Relates to [[A test that asserts a SUBSTRING of prose stops being a contract the moment someone writes a longer sentence containing it]], Tests Are Contracts (#1), Independent Review (#14).
@@ -490,3 +510,88 @@ Three instances in one bundle, which is why this is a rule and not an anecdote. 
 ## A CLI on `$PATH` is a different checkout from the worktree you are editing — an interactive command's exit code is not verification evidence for a change to that command
 
 The Chunk 02 Critic coordinator traced a lead that did not reproduce: it ran `prawduct-hook verify-chunk-refs` and got the pre-fix answer, because bare `prawduct-hook` resolved to the *installed plugin* (`~/source/prawduct`, on `main`) while the fix lived in the feature worktree. It corrected itself in the review, and the hazard generalizes past that one command: in any repo whose own tool is installed globally — a plugin, a CLI, an editable package — the shell reaches for the installed copy while you are reading the edited one, and the two agree just often enough to be trusted. The tell is a live check that disagrees with a passing test suite, and the instinct to believe the CLI. So: invoke the artifact under test by explicit path (`python3 plugin/bin/tool`, `./bin/tool`) whenever the change IS the tool, and say which copy ran when citing the output as evidence. This also bites the dogfooding case in the other direction — this repo's own `/clear` hook ran the installed `main` build all session, so Chunk 01's shipped forward-channel code was not the code that processed the notes file. Discovered session-handoff-continuity Chunk 02 (2026-07-27, Critic note). Relates to Honest Confidence (#5) and Validate Before Propagating (#15).
+
+## When a durable plan asserts VCS state ("the code lives on branch X, not develop", "resuming means landing Y", an ahead/behind count), re-derive it from git before acting on or copying it — plan prose about branches and merges is a snapshot that expires the instant the next merge lands, so run `gh pr view` / `git merge-base --is-ancestor` / compare tree hashes first; a since-merged "land this branch" step is a no-op a plain merge performs silently, and the check costs under a minute
+
+## When you relocate importable code behind a conftest sys.path shim, standalone/non-collected scripts do NOT get the shim — grep for `__main__` scripts that self-insert the old root and fix each, because conftest only fires under pytest
+
+Confirmed 2026-07-24 (SPIKE-S2 harness, v3.2.0 Chunk 05). The v3.1.1 relocation moved `lib/` under
+`plugin/` (GOV-4H7T) and updated `tests/conftest.py` to insert `plugin/` — which silently rescues every
+pytest-*collected* test whose own `parent.parent` self-insert now points at the wrong root (the insert
+became "harmless redundant"). But `tests/spikes/s2_migration.py` runs *outside* pytest (dev-only,
+operator-run), where conftest never fires, so its stale self-insert was load-bearing and left the script
+dead on `import` (`ModuleNotFoundError: No module named 'lib'`) for a full minor version — undetected
+because no CI test imports it. Lesson: a conftest path shim makes collected tests lie about whether their
+own path setup is correct; when you move importable code, the collected suite passing proves nothing about
+standalone scripts. Grep for `if __name__ == "__main__"` files (and `bin/` entrypoints) that compute a
+root and `sys.path.insert` it, and fix each to the new layout. Relates to "no pre-existing exception" (a
+found breakage is yours to fix or flag) and Honest Confidence (#5 — green collected tests are not coverage
+of uncollected code).
+
+## Before predicting a per-minute rate ceiling will engage, check whether serial round-trip latency already caps throughput below it — a rate ceiling is bounded by requests/min = 60 / round-trip-seconds, so it never binds on TOTAL volume no matter how large; it binds only when you issue requests concurrently/batched faster than one round-trip drains
+
+Confirmed 2026-07-24 (SPIKE-S2 live dry-run, v3.2.0 Chunk 05 → VRF-009). I forecast the `--archive-scope
+all` burst (147 archived items, create-then-close) would breach the Pacer's 900-pts/min ceiling
+(`rest_point_waits > 0`) because 147 sits "comfortably over" a ~75-item threshold I invented. The live run
+reported `rest_point_waits: 0` and `content_creation_waits: 0` — *neither* ceiling engaged. The error was
+conflating **total volume** with **per-minute rate**: the serial `gh` importer does ~1.3s per archived
+item (~11 pts: read+create+close), so peak ≈ ~500 pts/min — under 900 regardless of total count. 5,360 pts
+over ~18 min = ~296 pts/min average. There is no total-count threshold for a rate ceiling under serial
+I/O; the ceiling would bind only under parallelized writes. So the settled NFR §9 S2 fact is the opposite
+of the forecast: the Pacer budgets are a non-binding safety belt for the serial importer, and wall-clock
+is latency×call-count, not pacing-limited. General rule for any "will we hit the rate limit?" question:
+compute the achievable request rate from the round-trip time first (it's the ceiling on the ceiling); a
+plausible volume-based argument is not a rate argument. Relates to Honest Confidence (#5), Root Cause
+Discipline (#16), and Retrieval Over Generation (#24 — the spike is the cheapest check that changes the
+recorded constant).
+
+## When a release has two documents tracking its state, one is already wrong — designate a single live
+tracker and demote the other to a decision record; and author each build chunk from the TREE, never
+from the upstream plan, because a plan derived from a plan describes intent the code may have overtaken
+
+Confirmed 2026-07-24 (v3.2.0 pre-ship audit). One root cause, two symptoms, both found in one sitting.
+**Symptom A — plan-vs-plan.** `release-plan-backlog-service-golive.md` and `build-plan-v3.2.0-golive.md`
+both tracked v3.2.0 state. By day four, 11 of the release plan's 21 ship-list rows were stale, four of
+its five `blocker` rows were built, and the two documents *directly contradicted each other on the
+critical path*: the release plan said the long pole was a discovery spike that had been settled the day
+before, while the build plan said the long pole was the migration. Nobody was misled only because the
+build plan happened to be the one being read — that is luck, not a control. **Symptom B —
+plan-vs-tree.** Two chunks (05's MG4 scrub workflow, 07's briefing repoint) were authored from the
+release plan rather than from the code, and BOTH were already fully built when finally read against the
+tree; each was minutes away from being re-authored. **The shared cause is derivation from a document
+instead of from reality.** Two rules follow. (1) Exactly one artifact holds live release state; every
+other release-adjacent doc is explicitly demoted to a decision record, keeps only what nothing else
+records (owner decisions, ratified rationale, sequencing rules), and says so at the top — re-ticking a
+stale tracker just restarts the drift clock. (2) A build chunk's step 0 is a scoping read against the
+tree; "the plan says this is unbuilt" is a hypothesis, not a finding. Note the asymmetry that makes this
+cheap to act on: reading the tree first costs minutes and the failure it prevents is building something
+twice, or worse, "fixing" working code to match a stale description. Relates to Living Documentation
+(#3), Validate Before Propagating (#15 — a plan is an intermediate output), Coherent Artifacts (#13),
+and Retrieval Over Generation (#24).
+
+## When a guard test pins a safety claim, assert the PROPERTY, not one spelling of it — a test that
+matches a literal (an exact flag token, an exact grant string, a substring anywhere in a file) passes
+for every rewording of the same defect, so write the check to answer the question the property asks
+and verify it red against a DIFFERENT phrasing than the one that prompted it
+
+Confirmed 2026-07-24 (v3.2.0 cumulative Critic — three instances surfaced in a single review, two of
+them in guards written days earlier specifically to prevent the class). **(a)** BKL-8V3D's guard scanned
+for the flag tokens `--apply`/`--dry-run` in backlog instruction surfaces. The very branch that shipped it
+introduced a *mechanism* claim — "the primary guard is the adapter's target-pin", a thing that exists
+nowhere in the code — and the guard could not see it, because it was hunting flags. **(b)** BKL-5N9W's
+grant test asserted the absence of exact strings like `Bash(prawduct-hook backlog import *)`; a
+**broader** wildcard, `Bash(prawduct-hook *)`, re-granted every withheld high-consequence op with all
+three tests green. Widening is the most natural way that rail ever gets dismantled, and the test was
+blind to precisely that. **(c)** My first fix for (a) used a "backing token must appear in the adapter
+source" check — which passed, because the token appeared in a *docstring*, reproducing one level up the
+whole-file-substring flaw I was fixing. The shared shape: **the property is semantic ("does any granted
+pattern permit this command?", "is this named mechanism implemented?") and the test asked a lexical
+question instead.** Two rules. (1) Write the check as the property's own question — expand grant patterns
+and test whether they *match*; resolve claimed mechanisms against an explicit allowlist of what exists
+(an allowlist fails safe; a source-scan heuristic fails open, and unknown-is-unbacked forces a deliberate
+review when something real ships). (2) **Verify red against a different phrasing than the one that
+prompted the guard** — re-running the original defect only proves the test remembers its origin story. A
+line-wide negation filter I wrote also swallowed the exact claim it targeted, because the offending line
+contained an unrelated "not"; only injecting a *variant* exposed it. Relates to Tests Are Contracts (#1),
+Honest Confidence (#5), and the false-reassuring-claim-in-an-instruction-surface class BKL-8V3D named.
+

@@ -41,9 +41,15 @@ ITEM_RE = re.compile(r"^- (.+)$")
 
 # An item ID ``[PFX-XXXX]``. Lenient on purpose: the canonical form is 2–3 upper
 # letters + ``-`` + 4 base36 chars, but legacy/hand-written items use looser ids
-# (e.g. ``[A-1]``), and we want to surface whatever ID-shaped token is present
-# rather than silently treat the item as unidentified.
-ID_RE = re.compile(r"\[([A-Za-z][A-Za-z0-9]*-[A-Za-z0-9]+)\]")
+# (e.g. ``[A-1]``, ``[MIG-M4-REMOVE]``), and we want to surface whatever ID-shaped
+# token is present rather than silently treat the item as unidentified.
+#
+# **Two or more hyphens are ordinary.** Hand-minted ids segment (``AUD-TIMBRE-CALIB``)
+# often enough that ~21% of surveyed products carried one, and a one-hyphen shape
+# denied every one of them an identity: no ``id:`` alias, so nothing keys the item
+# back to the source. The leading ``[A-Za-z]`` is what still keeps date-shaped
+# brackets (``[2026-07-28]``) out.
+ID_RE = re.compile(r"\[([A-Za-z][A-Za-z0-9]*(?:-[A-Za-z0-9]+)+)\]")
 
 # A metadata bar: a backtick-wrapped line of ``·``-separated ``key: value`` pairs.
 METADATA_BAR_RE = re.compile(r"^`(.+)`$")

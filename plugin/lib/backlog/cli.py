@@ -75,6 +75,10 @@ _HELP = (
     "  restructure-preview --from <backlog.md> [--archive <archive.md>] "
     "--plan <plan.json> --out <preview.md> [--archive-scope all|open]   "
     "(offline before/after review artifact)\n"
+    "  verify-migration --repo owner/repo --from <backlog.md> [--archive <archive.md>] "
+    "[--archive-scope all|open]   (completeness gate — exit 4 names any source item with "
+    "no issue on the target, and any whose id is not a valid PFX so no alias can key it; "
+    "run before recording the cutover)\n"
     "  export   --repo owner/repo --to <dir>   (full-fidelity dump incl. native graph)\n"
     "  merge    <source-id> --into <target-id> [--repo owner/repo]   (fold A→B, redirect-before-close)\n"
     "global: --json  (machine envelope on stdout; default is human)\n"
@@ -128,6 +132,8 @@ def run(project_dir, argv: list[str], *, transport=None) -> int:
             result = _run_pick(rest, transport)
         elif op == "counts":
             result = _run_counts(rest, transport)
+        elif op == "verify-migration":
+            result = _run_verify_migration(rest, transport)
         elif op == "refresh-counts":
             result = _run_refresh_counts(rest, transport, project_dir)
         elif op == "reconcile-labels":
@@ -154,8 +160,8 @@ def run(project_dir, argv: list[str], *, transport=None) -> int:
                     "validation",
                     f"unknown op {op!r} (expected file|get|status|update|comment|"
                     "list|pick|counts|refresh-counts|claim|unclaim|link|unlink|"
-                    "provision|reconcile-labels|import|restructure-preview|"
-                    "export|merge)",
+                    "provision|reconcile-labels|import|verify-migration|"
+                    "restructure-preview|export|merge)",
                 ),
                 json_mode=json_mode,
                 usage=True,
@@ -392,6 +398,42 @@ def _run_counts(rest: list[str], transport):
     owner, repo = parsed
     transport = _resolve_transport(transport)
     return query.counts(transport, owner=owner, repo=repo)
+
+
+def _run_verify_migration(rest: list[str], transport):
+    from . import migrate  # noqa: PLC0415 — lazy: migration ops only
+
+    flags, _positionals, err = _parse_flags(
+        rest, valued={"repo", "from", "archive", "archive-scope"}
+    )
+    if err:
+        return core.error("validation", err)
+    parsed = ids.parse_repo(flags.get("repo", ""))
+    if parsed is None:
+        return core.error("validation", "verify-migration requires --repo owner/repo")
+    if "from" not in flags:
+        return core.error("validation", "verify-migration requires --from <backlog.md path>")
+    archive_scope, err = _archive_scope_flag(flags)
+    if err:
+        return core.error("validation", err)
+    owner, repo = parsed
+    content, err = _read_source(flags["from"], "--from")
+    if err:
+        return core.error("validation", err)
+    archive_content = None
+    if "archive" in flags:
+        archive_content, err = _read_source(flags["archive"], "--archive")
+        if err:
+            return core.error("validation", err)
+    transport = _resolve_transport(transport)
+    return migrate.verify_migration(
+        transport,
+        owner=owner,
+        repo=repo,
+        content=content,
+        archive_content=archive_content,
+        archive_scope=archive_scope,
+    )
 
 
 def _run_refresh_counts(rest: list[str], transport, project_dir):
@@ -791,6 +833,74 @@ def _archive_scope_flag(flags: dict) -> tuple[str, str | None]:
     return scope, None
 
 
+_DETAIL_LIST_CAP = 20
+
+
+def _render_detail_list(value: list) -> str:
+    """Render one error-detail list for human mode.
+
+    Two shapes arrive here and they need opposite treatment.
+
+    A list of **entry dicts** — an interrupted import's `created`/`skipped` —
+    is bookkeeping whose only useful summary is how many; printing them buries
+    the error message under hundreds of lines just as the operator is deciding
+    whether to resume.
+
+    A list of **plain strings is the payload itself.** The completeness gate's
+    `missing`, `unaliasable` and `collisions` name the items that stranded the
+    run, and the documented remedy for each is unactionable without them —
+    "give each a real prefix in the source before importing" cannot be followed
+    against the number 3. Counting those turns a verdict into a figure nobody
+    can act on, and the runbook drives this path without ``--json``, so the
+    named form has no other route to the operator.
+
+    Long lists are capped so one bad run still cannot bury the message.
+    """
+    if not value or not all(isinstance(item, str) for item in value):
+        return str(len(value))
+    if len(value) <= _DETAIL_LIST_CAP:
+        return ", ".join(value)
+    head = ", ".join(value[:_DETAIL_LIST_CAP])
+    return f"{head}, … (+{len(value) - _DETAIL_LIST_CAP} more)"
+
+
+def _pacing_line(pacing: dict) -> str:
+    """The pacing footer, shared by the success path and the resumable-cut path.
+
+    ``≥`` is not decoration. The meter charges per transport METHOD call, not per
+    HTTP request, so a paged read (up to 100 requests) is charged once and
+    per-item label reads are undercounted (BKL-3H7W). The number is a **floor**.
+    Printing it bare puts a figure that reads exact in front of the one person
+    sizing an irreversible run — drop the ``≥`` only when BKL-3H7W makes it true.
+
+    Shared rather than duplicated because the cut path needs this MORE than the
+    success path, not less: a run that stopped is exactly where the budget
+    question gets asked, and a second construction is where the ``≥`` goes
+    missing.
+    """
+    throttled = (
+        pacing.get("rest_point_waits", 0)
+        + pacing.get("content_creation_waits", 0)
+        + pacing.get("rate_limit_pauses", 0)
+    )
+    summary = f"≥{pacing.get('rest_points_charged', 0)} REST points"
+    if throttled:
+        waited = (
+            pacing.get("rest_point_wait_seconds", 0.0)
+            + pacing.get("content_creation_wait_seconds", 0.0)
+            + pacing.get("rate_limit_paused_seconds", 0.0)
+        )
+        summary += (
+            f"; THROTTLED {throttled}× for {waited:.0f}s total "
+            f"({pacing.get('rest_point_waits', 0)} rest-point, "
+            f"{pacing.get('content_creation_waits', 0)} content-cap, "
+            f"{pacing.get('rate_limit_pauses', 0)} rate-limit)"
+        )
+    else:
+        summary += "; no throttling (budgets never bound)"
+    return summary
+
+
 def _emit(result: dict, *, json_mode: bool, usage: bool = False) -> int:
     """Print the result in the chosen mode and return the exit code."""
     exit_code = _exit_code(result)
@@ -811,6 +921,19 @@ def _emit(result: dict, *, json_mode: bool, usage: bool = False) -> int:
     else:
         err = result.get("error", {})
         print(f"error [{err.get('code')}]: {err.get('message')}", file=sys.stderr)
+        # A cut mid-import already KNOWS how far it got — the envelope carries
+        # `created`/`skipped`/`collisions`/`resumable`/`pacing` — and human mode
+        # dropped all of it, so the operator of an irreversible ~900-issue
+        # migration learned only that it broke. The scrub runbook drives this
+        # path without `--json`, so this is the surface that matters.
+        for key, value in (err.get("details") or {}).items():
+            if key == "pacing" and isinstance(value, dict):
+                shown = _pacing_line(value)
+            elif isinstance(value, list):
+                shown = _render_detail_list(value)
+            else:
+                shown = value
+            print(f"  {key}: {shown}", file=sys.stderr)
         # A resumable error envelope (e.g. import) carries the audit warnings accrued
         # before the cut; surface them like the ok path so they reach the operator.
         for warning in result.get("warnings", []):
@@ -855,6 +978,14 @@ def _print_human_ok(data) -> None:
         if "restructured" in data:
             line += f" ({data['restructured']} restructured by plan)"
         print(line)
+        # The pacing footer is the operator's after-the-fact answer to "was this run
+        # throttled, and where did the budget stand?" — printed in HUMAN mode because
+        # that is how `migration-scrub.md` actually invokes import (no --json), so a
+        # JSON-only summary would reach every consumer except the one person running
+        # the irreversible migration (BKL-8K2N).
+        pacing = data.get("pacing")
+        if pacing:
+            print(f"  pacing: {_pacing_line(pacing)}")
     elif "dir" in data and "count" in data:
         # An export result (its `items` is a list of id strings, not item dicts).
         print(f"{data.get('repo')}: exported {data.get('count')} item(s) to {data.get('dir')}")
