@@ -3,6 +3,91 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-07-29: Dispositions — cumulative `rev-20260729T150800Z-232232b0`, all 30 findings
+
+<!-- prawduct: type=fix | scope=coverage-perf -->
+
+0 blocking, 13 warnings, 17 notes over the 66-file bundle (merge-base `0ef114a` → `988b3de`).
+**Every finding is FIXED or ACCEPTED below; one was filed, and it names its trigger.** Filing the
+rest is the reflex the 2026-07-29 disposition rule replaced — open items went 50 → 180 in 26 days
+under it, so an ACCEPT with a reason is the default and this list is where the reasons live.
+
+**FIXED (10).**
+
+- **R-1** — test evidence was stale against the riskiest files in the bundle. Recorded at the
+  current tree: **2806 passed, 0 failed, 7 skipped**.
+- **R-2** — the tree key ignored file mode, so `chmod +x` on a judgeable path composed as a free
+  edge and skipped review while the pairwise reference denied it. The fast path failed **open**
+  where the slow one failed closed, inverting this plan's own recorded disposition. `tree_entries`
+  now returns `(mode, object_id, path)`. Found independently by self-review and by this review.
+- **R-3** — the equivalence test could not catch R-2, because `_trees()` synthesized both oracles
+  from one content map and made the property true by construction. `TestTreeEntries` now exercises
+  the **real** `gates._tree_key_fn` against real git, including the mode case.
+- **R-6** — the superseded "file the rest rather than fixing them" rule survived in
+  `tests/test_v5_methodology.py` and `build-plan-review-loop-termination.md`. Both annotated
+  **SUPERSEDED**, kept as accounting history rather than rewritten — the reversal is part of the
+  record.
+- **R-9** — `_cached_diff_fn`'s docstring still described the pairwise probing this change removed.
+  Restated: connectivity now comes from the key classes; the memo serves `_attribute_free_steps`
+  across the clean-edges, all-edges and merge-base passes.
+- **R-12** — `review-cycle.md` told the builder to "ask `coverage_algebra.is_judgeable_path`", an
+  internal function with no invocable surface, which resolves to guessing. Replaced with the two
+  traps that actually bite, both toward *more* review: comment-only `.py` edits, and
+  governance-protected `.md`.
+- **R-20** — the compaction deferral's trigger had no observer, which is the same silence this
+  branch's heartbeat work exists to end. `evidence status` now reports **trees referenced** (the
+  count composition is linear in) and advises at the documented 10,000 threshold. Advisory, never
+  blocking, per `nonfunctional-requirements`. A test pins the constant to the plan's trigger so
+  the two cannot drift apart silently.
+- **R-24** — `§ Deferred to Chunk 09` had no Chunk 05c row, though 05c's body points at it. Under
+  the `[ ]`-until-release convention that table is the *only* thing that flips an item, so
+  **BKL-72AS would have survived the release still reading open**. Row added.
+- **R-25 · R-27** — GOV-6J3P and BLD-3M7K **verified resolved against the tree**: the runbook's
+  `Bash(prawduct-hook backlog *)` grant is gone (0 matches), and `_GIT_REF_PREFIXES` is present in
+  `buildplan_refs.py`. The `status=shipped` flip itself routes through `/prawduct:backlog` (never a
+  hand-edit) and was **not confirmed landed before this entry was written** — both still read
+  `status: open`. Confirm and complete the flip before the PR; the verification above is the part
+  that is done, and saying otherwise would be the kind of claim this session spent the day removing.
+
+**ACCEPTED — won't-fix now, with the reason (19).**
+
+*Out of this session's scope — they belong to the v3.2.0 go-live plan's own chunks, and sweeping
+another plan's findings into this one is how a bundle stops being reviewable:* **R-7** (scrub-runbook
+renumbering left dangling step refs), **R-8** (item-id grammar written three times — genuine debt,
+but a three-site refactor with lock-in is not a review-cycle fix), **R-13**/**R-14**/**R-15**
+(waiver-site bar, blast-radius wording, registry row), **R-17** (`build_plan_ref_root`
+discoverability), **R-21** (a misdeclared `build_plan_ref_root` swallowed silently — real, and the
+right fix is a warning at the declaration site, which is Chunk 06's surface), **R-22**
+(`boundary-patterns.md` is still a scaffold — filling it is discovery work, not a fix).
+
+*Already covered elsewhere:* **R-4** (`verify-chunk-refs` exit 1 is a stale-binary artifact of the
+installed v3.1.1 plugin, not a missing deliverable — root cause and mitigation are in the handoff),
+**R-10** (the gitflow prefix set is closed, and **CRT-2P8V is already filed** as the explicit
+residual for consumer prefixes), **R-5** (`PROGRESS_EVERY`'s docstring cites VRF-009's peak rather
+than the average; VRF-011 **in this same bundle** records the corrected 31/min, so the reader has
+the right number one artifact away and the cadence is advisory only).
+
+*Deliberate, not oversight:* **R-11** (`review-cycle.md` has no budget of its own — adding one is a
+new gate, and this cycle's evidence is that budgets get paid down when they exist, not that every
+file needs one), **R-16**/**R-19** (the same finding twice: `build-plan-review-loop-termination.md`
+has no `governed_by:` — that plan's work is unmerged on another worktree and belongs to whoever
+lands it), **R-18** (8 `## Direction` norms undispositioned across four plans — the builder
+pre-recorded this as *"OWED, not accepted"*, which is the correct posture; converting it to a
+silent ACCEPT here would erase that).
+
+*Backlog hygiene, recorded not actioned:* **R-28** (all 21 new items land in areas already ≥3 deep,
+`critic` and `governance` at ~50 each — this is the pile the disposition rule exists to stop
+growing, and the ~20–25-item retro-triage it implies is an owner decision, already raised),
+**R-29** (COV-6T3P and BLD-3M7K unassessed by the chunks touching their surfaces), **R-30**
+(JNT-4R2M's evidence paragraph re-drifted when janitor's grants were deleted again — the item is
+now correct-by-accident, and re-editing prose that tracks a moving tree is the churn the item
+itself documents).
+
+**FILED (1).** **R-26** — GOV-4B9N's fix could not be verified from this worktree (the amended
+destructive-action norm did not grep in `project-preferences.md`), so it is neither closed nor
+silently dropped. **Trigger:** confirm the Enforcement row carries the operation-level form before
+Chunk 09's flip pass, and archive it there.
+
 ## 2026-07-29: The PR gate was probing an equivalence relation one pair at a time
 
 <!-- prawduct: type=fix | scope=coverage-perf -->

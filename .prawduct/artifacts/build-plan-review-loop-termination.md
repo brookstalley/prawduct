@@ -43,6 +43,11 @@ correct, none blocking, the last round required by no gate at all.
 **Done when:**
 1. `methodology/building.md` — once zero blocking remain, **file the rest rather than fixing them**;
    re-run the gate rather than infer another round from stale output. ✅
+   **SUPERSEDED 2026-07-29** — the filing-as-default half was reversed within the week. The shipped
+   text is now "fix, accept, or file; never file by default", with ACCEPT the default and FILE
+   requiring a named trigger (`skills/critic/review-cycle.md`). Filing-as-default took open items
+   from 50 → 180 in 26 days. The re-run-the-gate half of this line still stands. Recorded rather
+   than rewritten: this plan is the history of what shipped, and the reversal is part of it.
 2. `skills/critic/review-protocol.md` — WARNING means true **and** worth the builder's time; name the
    consequence or rate NOTE. Record-only prose defaults to NOTE unless it ships as a false claim or
    misleads someone into a wrong action. ✅

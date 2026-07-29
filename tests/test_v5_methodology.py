@@ -193,7 +193,13 @@ class TestBuildingMethodology:
         # TestCriticSkill.test_token_budget. What landed here is the builder's
         # half of the same rule: once zero blocking findings remain, FILE the
         # rest rather than fixing them, and re-run the gate instead of
-        # inferring another round from stale output. The two halves are
+        # inferring another round from stale output.
+        #   SUPERSEDED 2026-07-29 — filing-as-default was reversed the same
+        #   week it landed. building.md now reads "fix, accept, or file; never
+        #   file by default" and review-cycle.md makes FILE the narrowest
+        #   disposition, requiring a named trigger. Kept as the budget's
+        #   accounting history, NOT as guidance: open items went 50 -> 180 in
+        #   26 days under the rule this paragraph records. The two halves are
         # demand-side (here) and supply-side (the Critic's severity contract);
         # landing only one leaves the other half of the loop running, which is
         # why this file could not simply point at review-cycle.md.

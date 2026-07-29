@@ -472,6 +472,29 @@ def tree_entries(project_dir: Path, tree: str) -> "list[tuple[str, str, str]] | 
 # surface (R4); skills scope to ``Bash(prawduct-hook evidence*)``.
 # ---------------------------------------------------------------------------
 
+# The store is append-only, shared by every worktree of the clone, and never
+# pruned. Composition cost is linear in the number of distinct TREES it
+# mentions (not facts), so that is the number worth watching — and watching it
+# is the whole point: a deferral whose trigger nothing measures fires only if
+# someone happens to notice, which is the same silence the gates exist to end.
+# Advisory, never a block: `nonfunctional-requirements` makes state-file growth
+# something that prompts compaction, not something that stops work.
+TREE_COUNT_ADVISORY = 10_000
+
+
+def distinct_trees(facts: list[dict]) -> set[str]:
+    """Every tree id the store's facts mention, on either side of an edge —
+    the node set coverage composition actually walks."""
+    trees: set[str] = set()
+    for fact in facts:
+        body = fact.get("body") or {}
+        for key in ("base_tree", "head_tree"):
+            value = body.get(key)
+            if isinstance(value, str) and value:
+                trees.add(value)
+    return trees
+
+
 _CLI_USAGE = "Usage: prawduct-hook evidence {status|list [--kind <k>] [-n <count>]}"
 
 
@@ -506,6 +529,15 @@ def _cmd_status(project_dir: Path) -> int:
         by_kind[fact["kind"]] = by_kind.get(fact["kind"], 0) + 1
     counts = ", ".join(f"{k}={n}" for k, n in sorted(by_kind.items())) or "none"
     print(f"facts: {counts}")
+    trees = distinct_trees(result["facts"])
+    print(f"trees referenced: {len(trees)}")
+    if len(trees) >= TREE_COUNT_ADVISORY:
+        print(
+            f"NOTE: {len(trees)} distinct trees. Coverage composition is linear in this "
+            "count, so the store has reached the size where compaction is worth "
+            "scheduling. Advisory only — nothing is blocked, and a fact may only be "
+            "dropped if no surviving path can traverse it (reachability, not age)."
+        )
     if result["duplicates"]:
         print(f"duplicate appends tolerated: {result['duplicates']}")
     if result["excluded"]:

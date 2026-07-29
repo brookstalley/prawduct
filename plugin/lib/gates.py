@@ -536,12 +536,17 @@ def session_changes_all_non_judgeable(
 
 def _cached_diff_fn(project_dir: Path):
     """A ``coverage_algebra.DiffFn`` that memoizes ``evidence.tree_diff`` per
-    gate invocation. The BFS probes free edges pairwise across every tree the
-    store mentions, and a gate may run two searches (clean-edges pass, then
-    all-edges) plus the merge-base fallback — without the memo each repeat
-    probe is a fresh ``git diff`` subprocess (Critic ch.04 warning; same
-    one-capture discipline as STH-6Q9D). Cache scope is one verdict call, so
-    staleness cannot leak across gates."""
+    gate invocation.
+
+    Free-edge *connectivity* no longer comes from here — every production call
+    site pairs this with :func:`_tree_key_fn`, so the BFS groups trees by key
+    and this function is reached only by ``_attribute_free_steps``, filling in
+    the file list for the free steps on a path already found. What the memo
+    still buys is the repetition across passes: a gate may run the clean-edges
+    search, then the all-edges search, then the merge-base fallback, and the
+    same interval can be attributed in more than one of them. Cache scope is
+    one verdict call, so staleness cannot leak across gates (same one-capture
+    discipline as STH-6Q9D)."""
     cache: dict[tuple[str, str], "list[str] | None"] = {}
 
     def diff_fn(a: str, b: str) -> "list[str] | None":

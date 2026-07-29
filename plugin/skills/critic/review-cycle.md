@@ -177,10 +177,12 @@ prawduct-hook check-cumulative-critic   # PR path
 
 If it passes, you are done — stop. Record-only surfaces (`change-log.md`, `learnings.md`,
 `.prawduct/artifacts/**` plan prose, product docs) are **non-judgeable**: a commit touching only those
-never needs new coverage, so a fix confined to them cannot mandate another review. Ask
-`coverage_algebra.is_judgeable_path` rather than guessing from the extension — the one trap is that a
-**comment-only edit to a `.py` file still counts as judgeable**, which is how a pure-prose fix commit
-gets pulled back into a full round.
+never needs new coverage, so a fix confined to them cannot mandate another review. Two traps, both
+in the direction of *more* review than the extension suggests: a **comment-only edit to a `.py` file
+still counts as judgeable**, which is how a pure-prose fix commit gets pulled back into a full
+round; and a `.md` file under `skills/`, `methodology/` or `templates/`, or a root `CLAUDE.md`, is
+**governance-protected and therefore judgeable** — fork-skill prose is behavioural logic here. When
+in doubt assume judgeable and let the gate say otherwise; it is the gate's answer that binds.
 
 **The reviewer's half of the same rule** (severity contract: `review-protocol.md`). A finding whose
 only subject is a non-judgeable record is a **NOTE** unless it clears one of two bars:

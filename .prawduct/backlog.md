@@ -813,11 +813,6 @@
 
   `.prawduct/runbooks/cut-and-publish-a-plugin-release.md` Phase 1 steps 2–3 say to find the topmost tag line carrying `release=` and flip everything *above* it. That is the exact method `release-plan-v3.1.1-hotfix.md` proves wrong: `2026-07-14: Stale remote-base diagnostics` sits below the v3.1.0 boundary and is genuinely unreleased, so a positional sweep silently drops it. The sound test is per-candidate — an entry is release-pending iff it carries no `release=` tag AND its code is absent from the prior release's tree. Same root cause as REL-2N8K. The runbook is otherwise sound and was used for v3.1.1; it is also `last_verified: null`. (user — v3.1.1 release fold-in)
 
-- **[GOV-6J3P]** `skills/runbook/SKILL.md` grants `Bash(prawduct-hook backlog *)` it never uses
-  `effort: S · impact: S · area: governance · kind: fix · source: user · added: 2026-07-21 · reviewed: 2026-07-21 · status: open · stage: ready · related: BKL-5N9W, JNT-4R2M, CRT-2M5P, GOV-4H7T · refs: skills/runbook/SKILL.md:6 (allowed-tools — both invocation forms), skills/runbook/SKILL.md:214 (the only backlog use — `/prawduct:backlog add`), skills/backlog/SKILL.md:7 (the grant the slash-command invocation carries instead)`
-
-  The frontmatter grants both `Bash(prawduct-hook backlog *)` and `Bash(python3 bin/prawduct-hook backlog *)`, but the skill's only backlog use is "File it with `/prawduct:backlog add`" (line 214) — a slash-command invocation that loads the backlog skill with its own `allowed-tools` and needs no Bash grant from this file. On `develop` the grant resolves so it is not a live defect, but it is an unnecessary wildcard grant of the same shape as one of the five v3.2.0 blockers. v3.1.1 strips it as a partial take; removing it at source stops the re-patch every release. (user — v3.1.1 release fold-in)
-
 - **[CRT-6D2N]** `critic-begin` anchors verify-resolutions to committed HEAD whenever *any* commit landed since the prior review — so a clean commit delta over a dirty tree exits 1 with "nothing to verify" and leaves judgeable uncommitted work unreviewed
   `effort: S · impact: M · area: critic · kind: bug · source: user · added: 2026-07-20 · reviewed: 2026-07-20 · status: open · stage: ready · related: CRT-7H2W, CRT-4J8W, CRT-8H3R · refs: lib/critic_consolidate.py (`begin_review` — the verify-resolutions intent-aware anchor branch keyed on `critic_mode._committed_files_since`, and the `not delta and not actionable` "nothing to verify" refusal a few lines below it; ~:324-338 and ~:382-389 as of 2026-07-20, anchored by symbol because the fix moves both), lib/critic_mode.py (`_committed_files_since`), tests/test_critic_consolidate.py, bin/prawduct-hook (critic-begin), skills/critic/SKILL.md`
 
@@ -2588,20 +2583,6 @@
   early-detection loss is explicitly accepted by the user. Gated behind A's accumulated data OR an
   explicit user accept-the-tradeoff decision. (user)
 
-- **[BLD-3M7K]** `verify-chunk-refs` over-matches git-ref tokens (origin/-prefixed and branch-like slash tokens) in build-plan prose, producing false missing-ref positives
-  `effort: S · impact: S · area: critic · source: critic · added: 2026-06-21 · reviewed: 2026-07-19 · status: open · stage: idea · related: BLD-4K7P, BLD-2R9X, BLD-8F2Q, BLD-6T4R · refs: lib/buildplan_refs.py (_looks_like_file_path)`
-
-  Follow-up to BLD-4K7P. Surfaced 2026-06-21 by the hook-cli-robustness cumulative Critic: the
-  plan's own prose backticked `origin/develop` and `origin/` while describing the REL-7P3X fix;
-  `_looks_like_file_path` treats any backticked slash-token without `<>`/`://`/glob as a file path,
-  so git refs flag as missing. Same false-positive family the BLD-4K7P fix (placeholders, URLs,
-  gitignored) does NOT cover, and PR #99's cumulative saw it too. Workaround in place: de-backtick
-  git refs in plan prose (the gate correctly checks file paths; a git ref isn't one). Open question:
-  a general fix is hard — branch-like tokens (feature/x) are indistinguishable from real paths
-  (feature/x), so an origin/-prefix-only heuristic risks false-negatives on real missing paths.
-  Decide whether the narrow origin/ exclusion is worth it or the convention (don't backtick git
-  refs) suffices. (critic)
-
 <!-- Fix program from the framework efficiency review (owner-accepted 2026-07-02).
      Parent requirement doc: .prawduct/artifacts/framework-efficiency-review-2026-07-02.md
      READ IT IN FULL before planning any item below — it carries the evidence these one-liners cannot.
@@ -3386,6 +3367,25 @@
   Promoted 2026-07-17: Offline code + tests landed 2026-07-17 (commit 8ecd02e, cumulative-Critic 0 blocking). core.resolve_ref wires PFX→canonical alias resolution into get/link; migrate._find_by_key gains a block-id_aliases fallback skip-authority (_AliasIndex) that self-heals a human-deleted id:PFX label so a re-import can't duplicate; reconcile-labels re-derives deleted aliases. In-flight under the Chunk 06 slice (BKL-6M4T) — closes when the slice merges. Follow-ups spun off: BKL-7Q2N (mutator-side PFX resolution), BKL-9J3F (CC5 decoder gaps).
 
 ## Archive
+
+- **[GOV-6J3P]** `skills/runbook/SKILL.md` grants `Bash(prawduct-hook backlog *)` it never uses
+  `effort: S · impact: S · area: governance · kind: fix · source: user · added: 2026-07-21 · reviewed: 2026-07-29 · status: shipped · closed-by: v3.2.0-golive · stage: ready · related: GOV-5J9Q, BKL-5N9W, JNT-4R2M, CRT-2M5P, GOV-4H7T · refs: skills/runbook/SKILL.md:6 (allowed-tools — both invocation forms), skills/runbook/SKILL.md:214 (the only backlog use — `/prawduct:backlog add`), skills/backlog/SKILL.md:7 (the grant the slash-command invocation carries instead)`
+
+  The frontmatter grants both `Bash(prawduct-hook backlog *)` and `Bash(python3 bin/prawduct-hook backlog *)`, but the skill's only backlog use is "File it with `/prawduct:backlog add`" (line 214) — a slash-command invocation that loads the backlog skill with its own `allowed-tools` and needs no Bash grant from this file. On `develop` the grant resolves so it is not a live defect, but it is an unnecessary wildcard grant of the same shape as one of the five v3.2.0 blockers. v3.1.1 strips it as a partial take; removing it at source stops the re-patch every release. (user — v3.1.1 release fold-in)
+
+- **[BLD-3M7K]** `verify-chunk-refs` over-matches git-ref tokens (origin/-prefixed and branch-like slash tokens) in build-plan prose, producing false missing-ref positives
+  `effort: S · impact: S · area: critic · source: critic · added: 2026-06-21 · reviewed: 2026-07-29 · status: shipped · closed-by: v3.2.0-golive · stage: idea · related: CRT-2P8V, BLD-4K7P, BLD-2R9X, BLD-8F2Q, BLD-6T4R · refs: lib/buildplan_refs.py (_looks_like_file_path)`
+
+  Follow-up to BLD-4K7P. Surfaced 2026-06-21 by the hook-cli-robustness cumulative Critic: the
+  plan's own prose backticked `origin/develop` and `origin/` while describing the REL-7P3X fix;
+  `_looks_like_file_path` treats any backticked slash-token without `<>`/`://`/glob as a file path,
+  so git refs flag as missing. Same false-positive family the BLD-4K7P fix (placeholders, URLs,
+  gitignored) does NOT cover, and PR #99's cumulative saw it too. Workaround in place: de-backtick
+  git refs in plan prose (the gate correctly checks file paths; a git ref isn't one). Open question:
+  a general fix is hard — branch-like tokens (feature/x) are indistinguishable from real paths
+  (feature/x), so an origin/-prefix-only heuristic risks false-negatives on real missing paths.
+  Decide whether the narrow origin/ exclusion is worth it or the convention (don't backtick git
+  refs) suffices. (critic)
 
 - **[GOV-5J9Q]** BKL-5N9W's wildcard-grant narrowing is incomplete — `janitor`, `pr`, and `runbook` SKILL.md still carry `Bash(prawduct-hook backlog *)` while delegating to `/prawduct:backlog` anyway
   `effort: S · impact: M · area: governance · kind: bug · source: critic · added: 2026-07-24 · reviewed: 2026-07-28 · status: shipped · closed-by: v3.2.0-golive · stage: ready · related: BKL-5N9W, JNT-4R2M, CRT-2M5P, CRT-9V4T · refs: plugin/skills/janitor/SKILL.md:5 (wildcard grant, both invocation forms), plugin/skills/pr/SKILL.md:6, plugin/skills/runbook/SKILL.md:6, plugin/skills/backlog/SKILL.md (the narrowed grant BKL-5N9W shipped), plugin/skills/janitor/SKILL.md:176 + :289 ("through the skill, not the file"), plugin/skills/pr/SKILL.md:68 + :79`

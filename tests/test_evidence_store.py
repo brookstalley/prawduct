@@ -573,3 +573,35 @@ class TestTreeEntries:
         assert key(base) == key(doc_only), "doc-only interval must be a free edge"
         assert key(doc_only) != key(code_changed), "a code change is never free"
         assert key("0" * 40) is None, "an unreadable tree joins no class"
+
+
+class TestStoreGrowthAdvisory:
+    """The store never shrinks and composition is linear in distinct TREES,
+    so that count is the one worth surfacing. Advisory, never blocking —
+    state-file growth prompts compaction, it does not stop work."""
+
+    def test_status_reports_tree_count(self, tmp_path):
+        repo = _make_repo(tmp_path)
+        evidence.append_fact(
+            repo, "review", "rev-growth-1",
+            {"base_tree": "t0", "head_tree": "t1", "files_changed": [],
+             "files_reviewed": [], "mode": "chunk", "findings": []},
+        )
+        proc = _run_hook(repo, "evidence", "status")
+        assert proc.returncode == 0
+        assert "trees referenced: 2" in proc.stdout
+        assert "NOTE:" not in proc.stdout  # far below the advisory threshold
+
+    def test_distinct_trees_counts_both_edge_ends_once(self):
+        facts = [
+            {"kind": "review", "body": {"base_tree": "a", "head_tree": "b"}},
+            {"kind": "review", "body": {"base_tree": "b", "head_tree": "c"}},
+            {"kind": "resolution", "body": {"finding": {}}},
+            {"kind": "review", "body": {"base_tree": "", "head_tree": None}},
+        ]
+        assert evidence.distinct_trees(facts) == {"a", "b", "c"}
+
+    def test_advisory_fires_at_the_documented_trigger(self):
+        # The compaction deferral's trigger is ~10,000 trees; the constant and
+        # the plan must not drift apart silently.
+        assert evidence.TREE_COUNT_ADVISORY == 10_000
