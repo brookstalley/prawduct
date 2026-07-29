@@ -5,6 +5,58 @@
      be overwritten on next regen. See change-log.md for full per-release
      bodies; this file is a digest. -->
 
+## v3.2.0
+
+### release-readiness
+
+**Entry:** 2026-07-29: Phase 0's historical backlog was three scopes, not six — and half the list had never shipped
+
+**Chunks shipped:** 01, 02, 03
+
+### coverage-perf
+
+**Entry:** 2026-07-29: Dispositions — verify-resolutions `rev-20260729T160832Z-6fc768ff`, both findings FIXED
+
+### chunk-refs-gate
+
+**Entry:** 2026-07-29: Skill-only sessions have been skipping the reviewers since the plugin relocation
+
+**Chunks shipped:** 01
+
+### v3.2.0-golive
+
+**Entry:** 2026-07-29: The completeness gate counted the items it promised to name
+
+**Chunks shipped:** 02, 03, 04, 05b, 05c
+
+### critic-disposition
+
+**Entry:** 2026-07-29: Dispositions for the prior review's remaining findings
+
+### review-loop-termination
+
+**Entry:** 2026-07-28: The review loop had no exit condition, and the builder was the only thing that could supply one
+
+### backlog-service-v1
+
+**Entry:** 2026-07-21: the backlog service came back, laid out under plugin/ — and took the local-first norm with it
+
+**Chunks shipped:** 01, 02, 03, 04, 05
+
+### skills-cutover-awareness
+
+**Entry:** 2026-07-20: Two contradicting conventions adjudicated into norms; the cutover sweep becomes re-greppable (skills-cutover-awareness Chunk 04)
+
+**Chunks shipped:** 01, 02, 03, 04
+
+### backlog-skill-repoint
+
+**Entry:** 2026-07-19: /prawduct:backlog skill repointed onto the GitHub-Issues adapter (backlog-skill-repoint)
+
+**Chunks shipped:** 01, 02
+
+See `.prawduct/change-log.md` for full details.
+
 ## v3.1.2
 
 ### 2026-07-27: The Critic's SubagentStop trigger had never fired (CRT-2J8N)

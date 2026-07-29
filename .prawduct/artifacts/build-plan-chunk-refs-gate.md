@@ -62,7 +62,7 @@ decision to take explicitly — see § Open assumptions.
 
 ## Status
 
-- [ ] Chunk 01: stop the two false-positive classes — the gate's blast radius, before it can fire
+- [x] Chunk 01: stop the two false-positive classes — the gate's blast radius, before it can fire
 - [ ] Chunk 02: verify every chunk; block on the one under review, warn on the rest
 - [ ] Chunk 03: BLD-5R7K — announce the degraded reading, document the precondition
 

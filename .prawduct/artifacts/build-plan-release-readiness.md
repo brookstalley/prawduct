@@ -223,6 +223,6 @@ misled by it twice more.
 
 <!-- Derived view — regen-views owns this section. Do not hand-edit. -->
 
-- [ ] Chunk 01: releasability gate (f)
-- [ ] Chunk 02: pruned-promotion path (a, b, c, d)
-- [ ] Chunk 03: (e) stopgap and W-1 note
+- [x] Chunk 01: releasability gate (f)
+- [x] Chunk 02: pruned-promotion path (a, b, c, d)
+- [x] Chunk 03: (e) stopgap and W-1 note

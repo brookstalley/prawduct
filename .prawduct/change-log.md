@@ -5,7 +5,7 @@
 
 ## 2026-07-29: Phase 0's historical backlog was three scopes, not six — and half the list had never shipped
 
-<!-- prawduct: type=fix | scope=release-readiness -->
+<!-- prawduct: type=fix | scope=release-readiness | release=v3.2.0 | status=shipped -->
 
 `check-releasability` listed **12** release-pending scopes, six of which were believed to be historical
 work that shipped long ago and merely lost its `release=` tag. Determining them dropped the pending set
@@ -71,7 +71,7 @@ hand-edit at plan time.
 
 ## 2026-07-29: Dispositions — PR review; the entry test outlived the norm it tested
 
-<!-- prawduct: type=fix | scope=release-readiness | chunks=02,03 -->
+<!-- prawduct: type=fix | scope=release-readiness | chunks=02,03 | release=v3.2.0 | status=shipped -->
 
 Independent PR reviewer on `feature/rel-8p6m-releasability-gate` → `develop`: **0 blocking, 2 warnings,
 3 notes**, verdict ready-to-create. Both warnings **FIXED** rather than declined — each was a
@@ -151,7 +151,7 @@ it is to stop treating "I am fixing a known defect" as a lower-risk activity tha
 
 ## 2026-07-29: Dispositions — verify pass `rev-20260729T192252Z-599d3307`; the remedy re-entered the defect
 
-<!-- prawduct: type=fix | scope=release-readiness | chunks=02,03 -->
+<!-- prawduct: type=fix | scope=release-readiness | chunks=02,03 | release=v3.2.0 | status=shipped -->
 
 12 of 13 prior findings verified FIXED against the diff, 1 waived (R-12 — the impossible
 `make plugin/VERSION readable` instruction is gone, but the broader scoped refusal was declined;
@@ -210,7 +210,7 @@ in `learnings.md` is deliberately mechanical rather than attitudinal, because at
 
 ## 2026-07-29: Dispositions — cumulative `rev-20260729T185143Z-b35e7646`, and the census that proved its own point
 
-<!-- prawduct: type=fix | scope=release-readiness | chunks=02,03 -->
+<!-- prawduct: type=fix | scope=release-readiness | chunks=02,03 | release=v3.2.0 | status=shipped -->
 
 1 blocking, 12 warnings, 10 notes. **All 13 blocking/warning FIXED.** The review's cross-cutting
 finding is the one worth keeping, and it is unflattering: three of its findings are the *same*
@@ -284,7 +284,7 @@ below; neither the norm's text nor its enforcement changed.
 
 ## 2026-07-29: The release sweep is scope-narrowed as well as positional, and the fix is held
 
-<!-- prawduct: type=fix | scope=release-readiness | chunks=03 -->
+<!-- prawduct: type=fix | scope=release-readiness | chunks=03 | release=v3.2.0 | status=shipped -->
 
 REL-7D4X had the release sweep's *positional* defect covered by a warning in Phase 1 step 2. W-1
 (PR #141's reviewer) found the same defect in the other dimension: re-deriving the release-pending
@@ -321,7 +321,7 @@ closed item is a norm nobody can evaluate.
 
 ## 2026-07-29: The pruned promotion becomes a procedure instead of an expiring release plan
 
-<!-- prawduct: type=feature | scope=release-readiness | chunks=02 -->
+<!-- prawduct: type=feature | scope=release-readiness | chunks=02 | release=v3.2.0 | status=shipped -->
 
 Prawduct has promoted a pruned tree to `main` **twice** (v3.1.1, v3.1.2) against a runbook that only
 documents the whole-develop shape. Both times the mechanics lived in that release's own plan artifact,
@@ -361,7 +361,7 @@ work ships.
 
 ## 2026-07-29: Norm amendment — a promotion is a classified snapshot, not a content-identical copy
 
-<!-- prawduct: type=fix | scope=release-readiness | chunks=01 -->
+<!-- prawduct: type=fix | scope=release-readiness | chunks=01 | release=v3.2.0 | status=shipped -->
 
 **Owner ruling, 2026-07-29.** `operational-spec.md` § Direction's gitflow promotion norm bound the
 `develop`→`main` promotion to a *content-identical tree-set*. Amended: `main`'s tree is a
@@ -448,7 +448,7 @@ paths (Phase 2, pending).
 
 ## 2026-07-29: Dispositions — verify pass `rev-20260729T174606Z-37362188`, and the dropped halves
 
-<!-- prawduct: type=fix | scope=release-readiness | chunks=01 -->
+<!-- prawduct: type=fix | scope=release-readiness | chunks=01 | release=v3.2.0 | status=shipped -->
 
 1 blocking, 1 warning, 2 notes. **All FIXED.** The review's cross-cutting observation is the one
 worth keeping: *two of the four previous fixes delivered the code half of their recommendation and
@@ -487,7 +487,7 @@ what you declined, not only what you did.**
 
 ## 2026-07-29: Dispositions — verify pass `rev-20260729T173217Z-5b8a9522`, and a correction to the record
 
-<!-- prawduct: type=fix | scope=release-readiness | chunks=01 -->
+<!-- prawduct: type=fix | scope=release-readiness | chunks=01 | release=v3.2.0 | status=shipped -->
 
 1 blocking, 4 warnings, 3 notes. **The blocking finding was against the dispositions record below,
 and it was right.**
@@ -531,7 +531,7 @@ Done-when anchor when Chunk 02 is built, which is when the pointer has somewhere
 
 ## 2026-07-29: Dispositions — cumulative `rev-20260729T170856Z-8a025aec`, all 30 findings
 
-<!-- prawduct: type=fix | scope=release-readiness | chunks=01 -->
+<!-- prawduct: type=fix | scope=release-readiness | chunks=01 | release=v3.2.0 | status=shipped -->
 
 3 blocking, 18 warnings, 9 notes on Chunk 01. **13 FIXED, 17 ACCEPTED with reasons, 0 filed.**
 
@@ -624,7 +624,7 @@ Done-when anchor when Chunk 02 is built, which is when the pointer has somewhere
 
 ## 2026-07-29: Phase 0 — the release runbook asks whether everything is fit to ship
 
-<!-- prawduct: type=feature | scope=release-readiness | chunks=01 -->
+<!-- prawduct: type=feature | scope=release-readiness | chunks=01 | release=v3.2.0 | status=shipped -->
 
 REL-8P6M part (f), the item's highest-value half. The runbook's only precondition was
 `git diff --stat origin/main origin/develop` — *"is there anything to ship?"*, never *"is everything
@@ -661,7 +661,7 @@ Part **(e)** — the Phase 1 sweep's selection rule — remains deliberately **h
 
 ## 2026-07-29: Dispositions — verify-resolutions `rev-20260729T160832Z-6fc768ff`, both findings FIXED
 
-<!-- prawduct: type=fix | scope=coverage-perf -->
+<!-- prawduct: type=fix | scope=coverage-perf | release=v3.2.0 | status=shipped -->
 
 0 blocking, 2 warnings, 0 notes over the 12-file delta (`988b3de` → `f4ccea2`) — the commits that
 landed after the cumulative's reviewed tree. The pass verified 10 of the prior 13 warnings **against
@@ -699,7 +699,7 @@ while this worktree's own binary exits 0. Always invoke `./plugin/bin/prawduct-h
 
 ## 2026-07-29: Dispositions — cumulative `rev-20260729T150800Z-232232b0`, all 30 findings
 
-<!-- prawduct: type=fix | scope=coverage-perf -->
+<!-- prawduct: type=fix | scope=coverage-perf | release=v3.2.0 | status=shipped -->
 
 0 blocking, 13 warnings, 17 notes over the 66-file bundle (merge-base `0ef114a` → `988b3de`).
 **Every finding is FIXED or ACCEPTED below; one was filed, and it names its trigger.** Filing the
@@ -792,7 +792,7 @@ Chunk 09's flip pass, and archive it there.
 
 ## 2026-07-29: The PR gate was probing an equivalence relation one pair at a time
 
-<!-- prawduct: type=fix | scope=coverage-perf -->
+<!-- prawduct: type=fix | scope=coverage-perf | release=v3.2.0 | status=shipped -->
 
 `check-cumulative-critic` took **5 min 12 s** on this branch. Instrumented, **316 s of the 318 s
 verdict** was **5,597 `git diff` subprocesses** inside `coverage_algebra._find_path`, which probed
@@ -835,7 +835,7 @@ predicate exists to have ended.
 
 ## 2026-07-29: A handoff is prepared and reconciled, never proposed and stacked
 
-<!-- prawduct: type=fix | scope=coverage-perf -->
+<!-- prawduct: type=fix | scope=coverage-perf | release=v3.2.0 | status=shipped -->
 
 Two failures in one discipline, both observed here rather than imagined.
 
@@ -865,7 +865,7 @@ The budget was not raised.
 
 ## 2026-07-29: Skill-only sessions have been skipping the reviewers since the plugin relocation
 
-<!-- prawduct: type=fix | scope=chunk-refs-gate -->
+<!-- prawduct: type=fix | scope=chunk-refs-gate | release=v3.2.0 | status=shipped -->
 
 `protected_path_violation` enforces the governance bounds that keep `skills/`, `methodology/`,
 `templates/` and root `CLAUDE.md` off the `Type: trivial` and PR doc-only fast paths — *"fork-skill
@@ -895,7 +895,7 @@ it silently did not.
 
 ## 2026-07-29: The completeness gate counted the items it promised to name
 
-<!-- prawduct: type=fix | scope=v3.2.0-golive -->
+<!-- prawduct: type=fix | scope=v3.2.0-golive | release=v3.2.0 | status=shipped -->
 
 First application of the new finding-disposition rule: these were headed for the backlog and were
 fixed instead.
@@ -923,7 +923,7 @@ Both gate Chunk 06, the irreversible operator-run migration.
 
 ## 2026-07-29: Dispositions for the prior review's remaining findings
 
-<!-- prawduct: type=fix | scope=critic-disposition -->
+<!-- prawduct: type=fix | scope=critic-disposition | release=v3.2.0 | status=shipped -->
 
 The new rule applied to itself. Four warnings from `rev-20260729T130723Z-73406c9a` had left the
 follow-up review with **no disposition anywhere** — which the branch's own new text calls out as not
@@ -962,7 +962,7 @@ while being reachable only by reading the source.
 
 ## 2026-07-29: "File the rest" was a backlog pump, and the framework was doing it to itself
 
-<!-- prawduct: type=fix | scope=critic-disposition -->
+<!-- prawduct: type=fix | scope=critic-disposition | release=v3.2.0 | status=shipped -->
 
 `review-cycle.md` said: once a pass returns zero BLOCKING, remaining WARNING/NOTE findings are
 **FILED, not fixed** — `/prawduct:backlog add` them and proceed. The rule existed for a real
@@ -1039,7 +1039,7 @@ spare), `skills/runbook/SKILL.md`. Rule captured in `learnings.md`.
 
 ## 2026-07-29: The ref gate was verifying one file reference for an entire release
 
-<!-- prawduct: type=fix | scope=chunk-refs-gate | chunks=01 -->
+<!-- prawduct: type=fix | scope=chunk-refs-gate | chunks=01 | release=v3.2.0 | status=shipped -->
 
 **Not part of v3.2.0.** `active_build_plan` stays on the release plan; this is
 `build-plan-chunk-refs-gate.md`, and Chunk 09's change-log flip must not sweep this
@@ -1097,7 +1097,7 @@ current chunk — the blindness is *survivable* now, not yet *fixed*.
 
 ## 2026-07-28: A hyphen was deciding which backlog items were allowed to have an identity
 
-<!-- prawduct: type=fix | scope=v3.2.0-golive | chunks=05c -->
+<!-- prawduct: type=fix | scope=v3.2.0-golive | chunks=05c | release=v3.2.0 | status=shipped -->
 
 The gate shipped one commit earlier (`7565787`) made *unaliasable* an exit-4 conflict. That was right,
 and it immediately collided with a decision already on the record: `migration-scrub-decisions.md`
@@ -1166,7 +1166,7 @@ path reached the plan unflagged — is filed as its own defect rather than patch
 
 ## 2026-07-28: The completeness gate reported 100% coverage on a backlog it could not fully see
 
-<!-- prawduct: type=fix | scope=v3.2.0-golive -->
+<!-- prawduct: type=fix | scope=v3.2.0-golive | release=v3.2.0 | status=shipped -->
 
 Two things at once, because the first never got an entry: `10ebfd5` shipped **verify-migration**, the
 F9 completeness gate — `samsung-frame-art-loader` recorded its cutover with 7 of 9 source items never
@@ -1243,7 +1243,7 @@ omitting the clause, once for line-wrapping it across `source` / `markdown`.
 
 ## 2026-07-28: A healthy migration was silent for 18–40 minutes, because every signal it had was exception-only
 
-<!-- prawduct: type=feat | scope=v3.2.0-golive | chunks=05b -->
+<!-- prawduct: type=feat | scope=v3.2.0-golive | chunks=05b | release=v3.2.0 | status=shipped -->
 
 Completes **BKL-8K2N**. `aaf068f` shipped the pacing announcements and the summary footer; VRF-009
 then settled that under the serial importer **no budget ever binds** (`rest_point_waits: 0` **and**
@@ -1268,7 +1268,7 @@ an irreversible bulk write that is the expensive mistake.
 
 ## 2026-07-28: The review loop had no exit condition, and the builder was the only thing that could supply one
 
-<!-- prawduct: type=fix | scope=review-loop-termination -->
+<!-- prawduct: type=fix | scope=review-loop-termination | release=v3.2.0 | status=shipped -->
 
 Owner escalation: agents in production get trapped for 3–4 review rounds before giving up. Reproduced
 live this session — four rounds and ~40 minutes of review on a ~40-line code change, every finding
@@ -1311,7 +1311,7 @@ correct, none blocking.
 
 ## 2026-07-28: An empty field read as a clean bill of health, on a field the migration guarantees is empty
 
-<!-- prawduct: type=fix | scope=v3.2.0-golive | chunks=05b -->
+<!-- prawduct: type=fix | scope=v3.2.0-golive | chunks=05b | release=v3.2.0 | status=shipped -->
 
 Two `pick` defects fixed before the irreversible migration makes them permanent. Both were found by
 reading the migration path to answer a different question — whether relationships survive the
@@ -1401,7 +1401,7 @@ round-trip — and neither is what that question was looking for.
 
 ## 2026-07-28: An allow-list cannot fence an op the skill can reach through an interpreter
 
-<!-- prawduct: type=fix | scope=v3.2.0-golive -->
+<!-- prawduct: type=fix | scope=v3.2.0-golive | release=v3.2.0 | status=shipped -->
 
 Cumulative-Critic warnings resolved as defects rather than filed as debt, plus the class each one
 turned out to belong to. The dividing line for this pass was **correctness and safety ship now,
@@ -1499,7 +1499,7 @@ one. Suite 2724 passed / 7 skipped.
 
 ## 2026-07-28: The git-ref carveout was inert for the branch v3.2.0 is about to cut
 
-<!-- prawduct: type=fix | scope=v3.2.0-golive -->
+<!-- prawduct: type=fix | scope=v3.2.0-golive | release=v3.2.0 | status=shipped -->
 
 `develop` (v3.1.2) is integrated into the v3.2.0 adapter-safety branch, and the cumulative Critic
 over the merged bundle returned 0 blocking. Two of its warnings are closed here; both are the same
@@ -2031,7 +2031,7 @@ write, and the half the incoming agent actually sees. Suite 2550 → 2572.
 
 ## 2026-07-24: v3.2.0 go-live — Chunk 05 offline prep: SPIKE-S2 harness measures the paced archive burst, and runs standalone again
 
-<!-- prawduct: type=feature | scope=v3.2.0-golive -->
+<!-- prawduct: type=feature | scope=v3.2.0-golive | release=v3.2.0 | status=shipped -->
 
 Prep for Chunk 05's operator dry-run — the **offline half only**. The MG4 scrub *workflow* Chunk 05
 pairs with is already complete (`skills/backlog/migration-scrub.md`; its Step 0 target-bind landed in
@@ -2065,7 +2065,7 @@ known `verify-chunk-refs` main-worktree false-positive, self-resolving at promot
 
 ## 2026-07-24: v3.2.0 go-live — Chunk 04: Pacer meters total REST points for the create-then-close archive stretch (BKL-6X5D part b)
 
-<!-- prawduct: type=feature | scope=v3.2.0-golive | chunks=04 -->
+<!-- prawduct: type=feature | scope=v3.2.0-golive | chunks=04 | release=v3.2.0 | status=shipped -->
 
 The migration Pacer paced only issue *creation* (the 80/min·500/hr content-creation cap), annotated
 "the only paced call." But an `--archive-scope all` run imports each archived item as a **create *and*
@@ -2104,7 +2104,7 @@ convention (mirroring Chunks 02/03): BKL-6X5D part (b) is built and verified on
 
 ## 2026-07-24: v3.2.0 go-live — Chunk 03: scrub + grant safety rails (BKL-2Q7F · ONB-3F9P · BKL-5N9W · BKL-6J2X)
 
-<!-- prawduct: type=feature | scope=v3.2.0-golive | chunks=03 -->
+<!-- prawduct: type=feature | scope=v3.2.0-golive | chunks=03 | release=v3.2.0 | status=shipped -->
 
 The four migration-path safety rails that keep an un-migrated repo from being routed into an
 irreversible, unpinned bulk write:
@@ -2146,7 +2146,7 @@ provisioning entry paths land together.
 
 ## 2026-07-24: verify-chunk-refs no longer false-positives on git branch names in plan prose
 
-<!-- prawduct: type=bugfix | scope=v3.2.0-golive -->
+<!-- prawduct: type=bugfix | scope=v3.2.0-golive | release=v3.2.0 | status=shipped -->
 
 Surfaced by Chunk 02's Critic review: `prawduct-hook verify-chunk-refs` flagged
 `` `feature/backlog-service-relayout` `` (a git branch name backticked in the go-live plan's
@@ -2162,7 +2162,7 @@ Full suite 2554 passed.
 
 ## 2026-07-24: v3.2.0 go-live — Chunk 02: the adapter's mutation-safety claim, made honest (BKL-8V3D)
 
-<!-- prawduct: type=bugfix | scope=v3.2.0-golive | chunks=02 -->
+<!-- prawduct: type=bugfix | scope=v3.2.0-golive | chunks=02 | release=v3.2.0 | status=shipped -->
 
 `skills/backlog/adapter-mode.md` told the model that backlog "mutations follow the adapter's own
 `--apply`/dry-run … contracts (you never invent a mutation path)" — but `lib/backlog/` implements no
@@ -2183,7 +2183,7 @@ the egress-test replacement). Chunk 02 is BKL-8V3D only.
 
 ## 2026-07-21: the backlog service came back, laid out under plugin/ — and took the local-first norm with it
 
-<!-- prawduct: type=feature -->
+<!-- prawduct: type=feature | scope=backlog-service-v1 | release=v3.2.0 | status=shipped -->
 
 The v3.1.1 candidate tree was built by an allowlist prune (`fcb4e5f`, 113 insertions /
 16,942 deletions). Two things then happened independently: `feature/backlog-service` reverted that
@@ -2430,7 +2430,7 @@ stamps), and the end-to-end early-check no-op through the real hook.
 
 ## 2026-07-20: `--archive-scope open` stops promising a backup that cannot exist; A1 decided `all`
 
-<!-- prawduct: type=fix -->
+<!-- prawduct: type=fix | scope=backlog-service-v1 | release=v3.2.0 | status=shipped -->
 <!-- Statusless = release-pending once develop→main ships. No scope= tag: a
      doc/claim correction plus one decision record; no build plan, no ## Status. -->
 
@@ -2496,7 +2496,7 @@ green. The second half is the one that caught the `cli.py` site the first half m
 
 ## 2026-07-20: Two contradicting conventions adjudicated into norms; the cutover sweep becomes re-greppable (skills-cutover-awareness Chunk 04)
 
-<!-- prawduct: type=feature | scope=skills-cutover-awareness | chunks=04 -->
+<!-- prawduct: type=feature | scope=skills-cutover-awareness | chunks=04 | release=v3.2.0 | status=shipped -->
 
 The residue the inventory found, plus the two conventions Chunks 02–03 left contradicting with
 nothing deciding between them. Both are now `## Direction` norms with owners, because "nothing owns
@@ -2561,7 +2561,7 @@ The routing is what's load-bearing, so the routing is now what's pinned.
 
 ## 2026-07-20: Janitor Backlog Health states dormancy; the overlap read is repointed (skills-cutover-awareness Chunk 03)
 
-<!-- prawduct: type=feature | scope=skills-cutover-awareness | chunks=03 -->
+<!-- prawduct: type=feature | scope=skills-cutover-awareness | chunks=03 | release=v3.2.0 | status=shipped -->
 
 The janitor's three backlog touchpoints, split by what each actually does with the data — the
 discriminator this chunk had to sharpen before it could be built:
@@ -2590,7 +2590,7 @@ because `Bash(python3 *)` reaches the hook by the self-hosted path) and **BLD-7K
 
 ## 2026-07-20: The PR path stops resolving `closes:` against frozen markdown (skills-cutover-awareness Chunk 02)
 
-<!-- prawduct: type=feature | scope=skills-cutover-awareness | chunks=02 -->
+<!-- prawduct: type=feature | scope=skills-cutover-awareness | chunks=02 | release=v3.2.0 | status=shipped -->
 
 Chunk 01's dormancy contract, copied to the three backlog readers in the PR path. **R-2 is the
 highest-risk reader in the whole inventory**: it is the sole owner of the
@@ -2616,7 +2616,7 @@ precondition pinned alongside it.
 
 ## 2026-07-19: Backlog-check dormancy is stated, not silently wrong (skills-cutover-awareness Chunk 01)
 
-<!-- prawduct: type=feature | scope=skills-cutover-awareness | chunks=01 -->
+<!-- prawduct: type=feature | scope=skills-cutover-awareness | chunks=01 | release=v3.2.0 | status=shipped -->
 
 `/prawduct:backlog` routes on `backlog_service_repo`; the other backlog readers do not. The Critic's
 Backlog Reconciliation and C-B1–C-B4 read `.prawduct/backlog.md`, which is frozen history once a
@@ -2652,7 +2652,7 @@ compressing Goal 7's close instead. And repointing the stale `active_build_plan`
 chunk-heading guard, which turned out to be a drifted *test* rather than a plan defect (TST-6K3D).
 ## 2026-07-20: `--archive-scope` becomes discoverable, and stops being credited with the rate ceiling (BKL-6X5D part a)
 
-<!-- prawduct: type=fix -->
+<!-- prawduct: type=fix | scope=backlog-service-v1 | release=v3.2.0 | status=shipped -->
 <!-- Statusless = release-pending once develop→main ships. No scope= tag: a
      two-surface fix with no build plan, so there is no ## Status to regenerate. -->
 
@@ -2932,7 +2932,7 @@ than introduced here, and were fixed in place (owner-approved) rather than defer
 
 ## 2026-07-19: /prawduct:backlog skill repointed onto the GitHub-Issues adapter (backlog-skill-repoint)
 
-<!-- prawduct: type=feature | scope=backlog-skill-repoint | chunks=01,02 -->
+<!-- prawduct: type=feature | scope=backlog-skill-repoint | chunks=01,02 | release=v3.2.0 | status=shipped -->
 <!-- Statusless on feature/backlog-skill-repoint = release-pending once develop→main ships. -->
 
 **BKL-3W6K.** The GH-Issues migration built the `prawduct-hook backlog` adapter and repointed the
@@ -3059,7 +3059,7 @@ CRT-4T7M (newly filed), BLD-5J8N, CRT-7H2W, CRT-6W2N. Plan:
 
 ## 2026-07-18: Backlog service — resumable import envelope keeps its audit warnings (backlog-service)
 
-<!-- prawduct: type=bugfix | scope=backlog-service-v1 -->
+<!-- prawduct: type=bugfix | scope=backlog-service-v1 | release=v3.2.0 | status=shipped -->
 <!-- Statusless: bugfix on the importer resume path ahead of the deferred live leg (BKL-6M4T). -->
 
 **BKL-9V2W.** `migrate.import_items`' resumable mid-run error envelope (the
@@ -3081,7 +3081,7 @@ The live-migration audit trail must not lose these.
 
 ## 2026-07-18: Backlog service — owner-feedback gap-fills (backlog-service)
 
-<!-- prawduct: type=feature | scope=backlog-service-v1 -->
+<!-- prawduct: type=feature | scope=backlog-service-v1 | release=v3.2.0 | status=shipped -->
 <!-- Statusless: four PRD/owner-review gaps closed offline ahead of Chunk 06's deferred
      live leg; flips no chunk checkbox (06 stays deferred — BKL-6M4T). -->
 
@@ -3120,7 +3120,7 @@ migration leg stays deferred):
 
 ## 2026-07-17: Backlog service — GitHub Issues as the system-of-record (backlog-service)
 
-<!-- prawduct: type=feature | scope=backlog-service-v1 | chunks=01,02,03,04,05 -->
+<!-- prawduct: type=feature | scope=backlog-service-v1 | chunks=01,02,03,04,05 | release=v3.2.0 | status=shipped -->
 <!-- Statusless on feature/backlog-prd-owner-feedback = release-pending once merged.
      Large subsystem; plan at .prawduct/artifacts/build-plan-backlog-service.md, one
      commit per chunk, per-chunk Critic. Chunk 06's OFFLINE deliverables ride in this

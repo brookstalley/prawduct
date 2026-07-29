@@ -333,7 +333,7 @@ views_enabled: true
 # field holds only the current in-progress plan (absent/empty -> the gates
 # fall back to artifacts/build-plan.md).
 
-active_build_plan: artifacts/build-plan-v3.2.0-golive.md
+active_build_plan: null
 
 # =============================================================================
 # BUILD-PLAN REF ROOT (opt-in)
@@ -437,18 +437,33 @@ scope_rollups:
   backlog-rework:
     chunks: ["01", "02", "03", "04", "05", "06", "07", "08", "09", "10"]
     releases: ["v2.0.15"]
+  backlog-service-v1:
+    chunks: ["01", "02", "03", "04", "05"]
+    releases: ["v3.2.0"]
   backlog-ship-in-pr:
     chunks: ["01"]
     releases: ["v2.1.6"]
+  backlog-skill-repoint:
+    chunks: ["01", "02"]
+    releases: ["v3.2.0"]
   changelog-fail-loud:
     chunks: ["01"]
     releases: ["v2.3.0"]
   changelog-lifecycle:
     chunks: ["01", "02", "03"]
     releases: ["v2.1.1"]
+  chunk-refs-gate:
+    chunks: ["01"]
+    releases: ["v3.2.0"]
   cleanup-batch:
     chunks: ["01", "02", "03", "04", "05", "06"]
     releases: ["v2.0.5"]
+  coverage-perf:
+    chunks: []
+    releases: ["v3.2.0"]
+  critic-disposition:
+    chunks: []
+    releases: ["v3.2.0"]
   critic-empty-files-tolerance:
     chunks: ["01"]
     releases: ["v2.3.3"]
@@ -515,6 +530,9 @@ scope_rollups:
   regen-views-null-plan:
     chunks: ["01"]
     releases: ["v2.2.1"]
+  release-readiness:
+    chunks: ["01", "02", "03"]
+    releases: ["v3.2.0"]
   release-tooling:
     chunks: ["01", "02", "03", "04", "05"]
     releases: ["v2.0.6"]
@@ -524,6 +542,9 @@ scope_rollups:
   review-fixes:
     chunks: ["1", "2", "3", "4"]
     releases: ["v2.1.0"]
+  review-loop-termination:
+    chunks: []
+    releases: ["v3.2.0"]
   review-proportionality:
     chunks: ["01", "02", "03", "04", "05"]
     releases: ["v2.1.0"]
@@ -554,6 +575,9 @@ scope_rollups:
   single-pr-bookkeeping:
     chunks: ["01", "02"]
     releases: ["v2.3.2"]
+  skills-cutover-awareness:
+    chunks: ["01", "02", "03", "04"]
+    releases: ["v3.2.0"]
   stop-gate-defer:
     chunks: ["01"]
     releases: ["v2.2.2"]
@@ -596,6 +620,9 @@ scope_rollups:
   v2.0.0:
     chunks: ["1", "10", "11", "12", "13", "14", "2", "3", "4", "5", "6", "7", "8", "9"]
     releases: ["v2.0.0"]
+  v3.2.0-golive:
+    chunks: ["02", "03", "04", "05b", "05c"]
+    releases: ["v3.2.0"]
   work-model:
     chunks: ["1", "2", "3"]
     releases: ["v2.0.13"]

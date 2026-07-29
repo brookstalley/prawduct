@@ -95,21 +95,21 @@ test. The drifted guard is filed separately.
 
 ## Status
 
-- [ ] Chunk 01: Consolidated dormant-checks advisory + Critic surfaces (keystone) — built 2026-07-19,
+- [x] Chunk 01: Consolidated dormant-checks advisory + Critic surfaces (keystone) — built 2026-07-19,
       commit 590a8f4. `backlog-checks-dormant` probe (`info`, dismissible) fires post-cutover naming
       all seven dormant checks; the backend precondition landed in both `review-cycle.md` and
       `review-protocol.md`. Done-when 3 confirmed: `agents/critic-reviewer.md`'s `Read` grant reaches
       `.prawduct/project-state.yaml` — no new tool grant, the assumption held. Critic bundle pass
       0 blocking / 8 warning / 11 note → verify-resolutions 0/3/1; fixes in 922af15, abb4b20;
       change-log + regenerated views in 2b93295.
-- [ ] Chunk 02: PR reviewer R-1 / R-2 — built 2026-07-19, commit ef34dfc. Re-typed `doc-only` → `code`
+- [x] Chunk 02: PR reviewer R-1 / R-2 — built 2026-07-19, commit ef34dfc. Re-typed `doc-only` → `code`
       at build (`tests/test_pr_reviewer.py` pinned the old behavior). Critic chunk 0/1/2 →
       verify-resolutions 0/0/1.
-- [ ] Chunk 03: Janitor Backlog Health — built 2026-07-19, commit ad8d8d9. All seven checks emit one
+- [x] Chunk 03: Janitor Backlog Health — built 2026-07-19, commit ad8d8d9. All seven checks emit one
       "unavailable" line rather than the section being omitted (an absent section reads as a clean
       bill of health); Step 1's overlap read repointed to `/prawduct:backlog list`. Critic chunk 0/1/2
       → verify-resolutions 0/1/1 → 0/0/3.
-- [ ] Chunk 04: Name-and-prose coherence sweep — built 2026-07-19, commit 2a0b1cf. The two deferred
+- [x] Chunk 04: Name-and-prose coherence sweep — built 2026-07-19, commit 2a0b1cf. The two deferred
       adjudications became `## Direction` norms with owners and enforcement rows, because in each case
       the defect was *no owner*, not a wrong rule. The no-internal-ids norm is born `Status:
       in-transition` tracking **OBS-7M4D** — five in-scope sites fixed here, six residual outside the

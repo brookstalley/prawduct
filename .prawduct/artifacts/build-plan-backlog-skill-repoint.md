@@ -51,8 +51,8 @@ non-interactive) are owned and stable, and the adapter surface was read directly
 
 ## Status
 
-- [ ] Chunk 01: Dual-mode dispatch scaffold + read ops (summary/list/get)
-- [ ] Chunk 02: Write ops + deferred find/dedup + cutover-aware edge messaging
+- [x] Chunk 01: Dual-mode dispatch scaffold + read ops (summary/list/get)
+- [x] Chunk 02: Write ops + deferred find/dedup + cutover-aware edge messaging
 Context: **Phase 0 COMPLETE, PR-ready.** Chunks 01-02 built + verified (suite green 2396; write-op
 flags + the `promoted→in-progress` status bridge confirmed against `encode.py`). Cumulative Critic
 (3 reviewers, coordinator): 0 blocking / 0 warning / 7 note — the two actionable notes (summary menu

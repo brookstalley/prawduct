@@ -113,11 +113,11 @@ rulings. The roadmap stays Medium by design until each layer's workload justifie
 
 ## Status
 
-- [ ] Chunk 01: Walking skeleton — package + `legacy.py` move, `gh` transport seam + fake, `file`, `get`, minimal `provision`, one real round-trip
-- [ ] Chunk 02: Two-axis status + decoder + self-healing reconciliation (the CC1/M5 keystone)
-- [ ] Chunk 03: Query & ready-work — `link`/`unlink`, `list`, `pick`, `claim`/`unclaim`, `counts`
-- [ ] Chunk 04: Governance surface — `refresh-counts`, `reconcile-labels`, never-block floor, unattended security *(built 2026-07-17; `[ ]` until release per the views convention)*
-- [ ] Chunk 05: Importer + alias machinery + minimal `merge` + `export` (mechanism, fixture-proven)
+- [x] Chunk 01: Walking skeleton — package + `legacy.py` move, `gh` transport seam + fake, `file`, `get`, minimal `provision`, one real round-trip
+- [x] Chunk 02: Two-axis status + decoder + self-healing reconciliation (the CC1/M5 keystone)
+- [x] Chunk 03: Query & ready-work — `link`/`unlink`, `list`, `pick`, `claim`/`unclaim`, `counts`
+- [x] Chunk 04: Governance surface — `refresh-counts`, `reconcile-labels`, never-block floor, unattended security *(built 2026-07-17; `[ ]` until release per the views convention)*
+- [x] Chunk 05: Importer + alias machinery + minimal `merge` + `export` (mechanism, fixture-proven)
 - [ ] Chunk 06: SPIKE-S2 dry-run + MG4 scrub + prawduct-first real migration (dogfood, cumulative-final)
 - [ ] Roadmap (post-slice, lower resolution): W1 cache+sync · W2 search+dedup · Wv verify+grooming · W3 cross-project+automation · W4 attachments · W5 MCP · W6 App identity + offline queue · Wg GV3 janitor
 Context: Draft v2 authored 2026-07-16 (v1 + two independent reviews folded; the 3 peer-doc coherence
