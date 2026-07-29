@@ -3,6 +3,36 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-07-29: Skill-only sessions have been skipping the reviewers since the plugin relocation
+
+<!-- prawduct: type=fix | scope=governance -->
+
+`protected_path_violation` enforces the governance bounds that keep `skills/`, `methodology/`,
+`templates/` and root `CLAUDE.md` off the `Type: trivial` and PR doc-only fast paths — *"fork-skill
+prose is behavioral logic in this framework, so a `skills/*.md` change must never ride a doc-only
+fast path past the reviewers."*
+
+It matched with `path.startswith("skills/")`. Once the framework moved under `plugin/`, no real path
+starts that way. So every `plugin/skills/**.md` edit returned `None`, `is_judgeable_path` read it as
+non-judgeable, `session_changes_all_non_judgeable` classified the session doc-only, and the Stop gate
+skipped Critic and reflection. **The exact inverse of the function's own guarantee, live since the
+relocation**, and the call-site comment at `prawduct-hook:1386-1389` asserts the opposite.
+
+The failure mode is silence, which is why it survived: nothing errors, a gate just quietly does not
+fire. The full suite passed before this fix *and* after it — no test asserted the broken behaviour,
+because a bound that stops matching produces no signal to assert on. Five added.
+
+Directory bounds now match the path **segment** (`path.startswith(p) or f"/{p}" in path`), so
+`plugin/skills/...` and a root-level `skills/...` both bind, while `myskills/` does not. This
+**widens** the gate: a product's own `src/skills/` is caught too. Deliberate direction — this is
+authority, and authority fails closed. A false positive costs one session that reviews when it need
+not; the false negative was governance-protected prose shipping unreviewed. `CLAUDE.md` keeps exact-
+match semantics (the governing file is the root one).
+
+Single-source constant, so this closes the `Type: trivial` gate and the PR doc-only gate together.
+Sessions that previously skipped will now require coverage — expect the gate to start firing where
+it silently did not.
+
 ## 2026-07-29: The completeness gate counted the items it promised to name
 
 <!-- prawduct: type=fix | scope=backlog-service -->

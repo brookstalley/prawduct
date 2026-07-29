@@ -943,9 +943,26 @@ def protected_path_violation(path: str) -> str | None:
     Shared by the ``Type: trivial`` gate (via ``_classify_trivial_change``)
     and the PR-boundary doc-only gate (``lib/coverage.py``, PR-5K8D): fork-
     skill prose is behavioral logic in this framework, so a ``skills/*.md``
-    change must never ride a doc-only fast path past the reviewers."""
+    change must never ride a doc-only fast path past the reviewers.
+
+    **Directory bounds match the path SEGMENT, not a root anchor.** They were
+    root-anchored, which silently stopped matching the moment a repo kept its
+    skills anywhere but the top level: every ``plugin/skills/**.md`` edit read
+    as non-judgeable, so a skills-only session was classified doc-only and
+    skipped the reviewers entirely — the precise inverse of what this function
+    exists to guarantee, and invisible because the failure is silence.
+
+    A segment match over-includes rather than under-includes (a product's own
+    ``src/skills/`` is caught too). That is the deliberate direction: this is
+    authority, and authority fails closed. The cost of a false positive is one
+    session that reviews when it need not; the cost of the false negative was
+    governance-protected prose shipping unreviewed. The leading ``/`` in the
+    containment test keeps ``myskills/`` from matching ``skills/``."""
     for protected, is_exact, reason_label in _TRIVIAL_PROTECTED_PATHS:
-        matched = path == protected if is_exact else path.startswith(protected)
+        if is_exact:
+            matched = path == protected
+        else:
+            matched = path.startswith(protected) or f"/{protected}" in path
         if matched:
             return f"{reason_label}: {path}"
     return None
