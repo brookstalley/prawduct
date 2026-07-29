@@ -137,6 +137,15 @@ whole-`develop` promotion. This repo has done a **pruned** promotion twice.
 **Constraint:** Phase 2 (whole-develop) stays intact and correct — this **adds** a path, it does not
 replace one. The reader is routed between them explicitly.
 
+`[DECISION: the alternate lives in its own runbook, .prawduct/runbooks/promote-a-pruned-release.md,
+rather than as a Phase 2-alternate section inside the existing file | the runbook budget in
+docs/runbook-authoring.md is ≤20 steps per document and says "more than that, split it and give each
+part its own entry condition"; the release runbook already stands at 21 (steps 0–20) and the pruned
+path needs ~14 more, which would land a 30-step document where a third of the steps never apply to
+the reader executing it — the guide names that dilution as its single most strongly evidenced failure
+mode. The split also gives each shape an honest `Done when`, which Done-when item 2 requires and
+which one shared section cannot provide | user can veto — the alternative is one long document]`
+
 > **Norm amended — Chunk 02 is unblocked.** `operational-spec.md` § Direction's gitflow promotion
 > norm bound promotion to a *content-identical tree-set*, which parts (a)/(b)/(c) replace. Raised as
 > a blocking precondition (Critic `rev-20260729T170856Z-8a025aec`) rather than edited quietly, and

@@ -23,7 +23,7 @@ last_validated: null
   Status: steady-state. Judgment norm — no mechanical size test; audited by the janitor.
 - **Gitflow: `develop` is the integration branch (features branch off it and merge back); `main` is the release surface and only ever holds releases; the `develop`→`main` promotion is a separate, deliberate single-parent step, never a `/prawduct:pr`. `main`'s tree is a *deliberately chosen and fully classified* snapshot of `develop` — every unreleased scope is either shipped or withheld behind a named open blocker, nothing unaccounted. Content-identity with `develop` is the expected outcome of a **whole-develop** promotion, not the invariant.**
   Why: unchanged, and this amendment serves it more faithfully than the wording it replaces. The purpose is that the branch-pinned marketplace resolves a *clean* release while feature granularity stays on `develop` — "conflating the two would either **ship integration WIP** or lose the release boundary." Content-identity was the mechanism chosen to secure that, but when `develop` holds unready work it *forces* shipping exactly the WIP the norm exists to prevent. The binding property is therefore the **partition** (every path shipped or withheld, verified at Phase 0 for scopes and Phase 2 for paths), with content-identity as its special case when nothing is withheld.
-  Status: steady-state. **Amended 2026-07-29 by owner ruling** — `[DECISION: narrow the promotion mechanism from "content-identical tree-set" to "fully classified snapshot, content-identical when nothing is withheld" | the original mechanism contradicted its own rationale, forcing WIP to ship whenever develop held unready work; prawduct had already departed from it twice (v3.1.1, v3.1.2) with no recorded decision, so the norm was describing a practice that had ceased | user can veto or narrow]`. Prompted by REL-8P6M and the v3.1.2 near-miss; the enforcement is `check-releasability` (scopes) plus Chunk 02's partition check (paths).
+  Status: steady-state. **Amended 2026-07-29 by owner ruling** — `[DECISION: narrow the promotion mechanism from "content-identical tree-set" to "fully classified snapshot, content-identical when nothing is withheld" | the original mechanism contradicted its own rationale, forcing WIP to ship whenever develop held unready work; prawduct had already departed from it twice (v3.1.1, v3.1.2) with no recorded decision, so the norm was describing a practice that had ceased | user can veto or narrow]`. Prompted by REL-8P6M and the v3.1.2 near-miss; the enforcement is `check-releasability` at Phase 0 (scopes) plus the path partition at step 10 of `runbooks/promote-a-pruned-release.md`.
 
 ## Deployment
 
@@ -56,8 +56,8 @@ Prawduct is a **Claude Code plugin**, and it *is* its own single-plugin, git-bac
   - *Pruned* — used for **v3.1.1 and v3.1.2**, where only a classified subset shipped. `main`'s tree
     is deliberately **not** develop's, the content-identical check can never pass, and the completion
     test is the **partition**: every path in `origin/main..origin/develop` accounted for as shipped or
-    deliberately withheld. Mechanics: `release-plan-v3.1.2-pruned.md`; the durable procedure is
-    Chunk 02 of `build-plan-release-readiness.md` (REL-8P6M a–d).
+    deliberately withheld. The durable procedure is `runbooks/promote-a-pruned-release.md`, selected
+    at Phase 2 by Phase 0's withheld count; `release-plan-v3.1.2-pruned.md` is the worked example.
 - The release checklist: merge to `main`, **bump `version` + the `VERSION` file**, flip the release's
   change-log entries to `status=shipped`, regenerate derived views, tag `vX.Y.Z` on `main`, and
   confirm the version banner. Tags are decorative for delivery (the branch-pinned marketplace

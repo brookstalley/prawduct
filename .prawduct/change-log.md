@@ -3,6 +3,46 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-07-29: The pruned promotion becomes a procedure instead of an expiring release plan
+
+<!-- prawduct: type=feature | scope=release-readiness | chunks=02 -->
+
+Prawduct has promoted a pruned tree to `main` **twice** (v3.1.1, v3.1.2) against a runbook that only
+documents the whole-develop shape. Both times the mechanics lived in that release's own plan artifact,
+which expires with the release. `.prawduct/runbooks/promote-a-pruned-release.md` makes it durable
+(REL-8P6M a–d).
+
+**Selected, not chosen.** Phase 0's `K withheld` count decides the shape. Phase 2 now opens with a
+condition-first routing block, and the pruned branch says explicitly not to run step 14 — the
+`git read-tree --reset -u origin/develop` there would publish the withheld work, which is Phase 0's
+whole failure arriving one phase later.
+
+**Its own document, not a section.** `docs/runbook-authoring.md` budgets ≤20 steps per runbook and
+directs a split past that. The release runbook already stands at 21; the pruned path adds 14. A
+30-step document where a third of the steps never apply to the reader executing it is the dilution
+the guide names as its most strongly evidenced failure mode. The split also gives each shape an
+honest `Done when` — the whole-develop test (`git diff --stat origin/develop HEAD` prints nothing)
+is not merely inapplicable to a pruned release, it is **inverted**: passing would mean the withheld
+work shipped. One shared section cannot say that.
+
+**Rehearsed, not drafted.** Every command was derived by rebuilding the v3.1.2 candidate from
+`v3.1.1` + `git diff e597b21 bc715d4` applied with `--3way`. It reproduced the same three conflicts
+that release recorded (`briefing.py`, `backlog.md`, `change-log.md`), and the step-7 import diff
+**caught `import sys`** — the missing import that shipped a `NameError` and 11 failing tests to
+`main` on v3.1.2 behind a *clean* `git apply`. That is the check working against the defect that
+motivated it, before the suite runs. `last_verified:` stays `null`: the tree-build was rehearsed, the
+publish was not.
+
+The partition check (step 10) is the amended norm's path-level enforcement, the same discipline as
+`check-releasability`'s scope partition one level down. Against the real v3.1.2 data it returns nine
+paths — a shortlist to read, not a pass — where the release plan's prose had discussed one.
+
+**Cascade:** `documentation/release-process.md` gains the second shape and loses the last three
+universal content-identity assertions (lines 142, 156, 170 — the deferral the previous entry
+recorded, now discharged); `operational-spec.md` § Direction repoints from "Chunk 02 of the build
+plan" to the runbook, since a durable spec must not cite build scaffolding that is deleted when the
+work ships.
+
 ## 2026-07-29: Norm amendment — a promotion is a classified snapshot, not a content-identical copy
 
 <!-- prawduct: type=fix | scope=release-readiness | chunks=01 -->

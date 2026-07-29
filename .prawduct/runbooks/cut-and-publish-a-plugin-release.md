@@ -82,7 +82,7 @@ installed consumer, unrecallably. This phase is the second question (REL-8P6M).*
    ```
 
    **Expected:** `releasable: vX.Y.Z — N release-pending scope(s), M shipping, K withheld`,
-   followed by the two lists.
+   followed by the two lists. **Note `K` — it selects the promotion shape at Phase 2.**
 
    **If not:** it prints `not-releasable:` (or `no-release-plan:`) and one `ERROR:` line per
    problem, then stops. Each names its own fix:
@@ -249,6 +249,18 @@ this is a safe place to stop and come back.
 
 ## Phase 2 — Promote `develop` to `main`
 
+**Two promotion shapes exist, and step 0 already told you which one you are in.** Read `K withheld`
+from its output and take exactly one branch:
+
+**IF `K withheld` is 0** — everything on `develop` ships, so `main`'s tree becomes `develop`'s:
+- Continue with step 14 below.
+
+**IF `K withheld` is 1 or more** — `main`'s tree is a deliberately chosen subset of `develop`'s:
+- **Stop here.** Go to `.prawduct/runbooks/promote-a-pruned-release.md`, which replaces steps 14–20
+  and carries its own `Done when`.
+- Do **not** run step 14. `git read-tree --reset -u origin/develop` at step 15 would publish the
+  withheld work — that is the whole failure Phase 0 exists to prevent, arriving one phase later.
+
 14. Switch to the release surface and bring it up to date:
 
     ```
@@ -330,6 +342,10 @@ this is a safe place to stop and come back.
 ---
 
 ## Done when
+
+*These are the **whole-develop** tests. A pruned promotion left this document at Phase 2 and has its
+own `Done when`: the content-identity check below can never pass there, and if it did pass it would
+mean the withheld work shipped.*
 
 - After `git fetch origin`, `git diff --stat origin/main origin/develop` prints
   nothing.
