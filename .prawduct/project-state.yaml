@@ -401,7 +401,7 @@ api_versioning_decided: "plugin-semver + evidence-schema-version; CLI internal, 
 # The ratified norms live in `## Direction` sections across the strategy
 # artifacts, indexed in artifacts/project-preferences.md section Enforcement.
 
-norm_registry_ratified: "2026-07-17 — 20 Direction norms across the 7 strategy artifacts; preferences Enforcement index carries the norm columns (Audit home / Why)"
+norm_registry_ratified: "2026-07-17 — ratified; 26 Direction norms across the 7 strategy artifacts as of 2026-07-30 (architecture 6, data-model 6, security-model 3, observability-strategy 3, nonfunctional-requirements 3, api-contract 3, operational-spec 2); preferences Enforcement index carries the norm columns (Audit home / Why)"
 
 # =============================================================================
 # DEPRECATED TERMS

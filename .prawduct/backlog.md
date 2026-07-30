@@ -66,15 +66,27 @@
   by the proportionality norm that is supposed to govern it: it can never be retired on evidence,
   only defended on principle. Whatever survives this item must emit a ledger fact.
 
-  **Acceptance**
-  - [ ] Checks 1 and 3 removed, with the Critic surface confirmed to cover the judgment (no silent loss).
-  - [ ] Check 2's manifest table covers Swift, C#, C.
-  - [ ] ruff configured for prawduct itself, and the Enforcement table's Linter row no longer reads `(none configured)`.
-  - [ ] Checks 1 and 3 removed **after** ruff lands, with the covering surface named for each (no silent loss).
-  - [ ] Check 2's manifest table covers Swift, C#, C.
-  - [ ] Surviving canary findings emit a ledger fact so yield is queryable.
-  - [ ] `discovery.md` makes the toolchain question ecosystem-driven, so the requirement exists for Goal 2 to enforce.
-  - [ ] No language's *syntax* is encoded anywhere in prawduct.
+  **Acceptance** (ordered — 1 gates 2)
+  1. - [ ] **Complete the violation inventory first.** The `architecture.md` Retroactivity line is
+     declared partial: `compliance.py`, `bin/test-reference-verify` (`_PY_SYMBOL_RE`,
+     `_is_python_file`) and `gitstate.py` (`_PRODUCT_CODE_SUFFIXES`) are confirmed, and the sweep must
+     establish whether more exist before any site is called compliant.
+  2. - [ ] ruff configured for prawduct itself; the Enforcement table's Linter row no longer reads
+     `(none configured for prawduct)`.
+  3. - [ ] Checks 1 and 3 removed **after** ruff lands, each with its covering surface named, so
+     nothing is silently lost (ruff `E722`/`BLE001` for the bare-except judgment; Critic Goal 1 for
+     test adequacy).
+  4. - [ ] `test-reference-verify` no longer passes silently on non-Python: it reports **unchecked**
+     for a language it cannot analyse, so a BLOCKING Goal 1 gate can never read as satisfied by
+     having skipped everything. This is the norm's "reported unchecked, never silently passed"
+     clause, and it is the highest-severity item here.
+  5. - [ ] Check 2's manifest table covers `Package.swift`, `*.csproj`/`*.sln`, `CMakeLists.txt`.
+  6. - [ ] Surviving canary findings emit a ledger fact, so the proportionality norm's yield query has
+     something to read.
+  7. - [ ] `discovery.md` asks, per ecosystem present, which checker is standard — so a requirement
+     exists for Goal 2 to enforce.
+  8. - [ ] No language's *syntax* is encoded anywhere in prawduct (suffix matching is fine; patterns
+     matching a language's grammar are not).
 
   **Scope-out:** prawduct writing any product code, config, or tooling — including `ruff.toml` in a
   governed repo (the main agent writes it, prompted by a requirement and a Critic finding); running

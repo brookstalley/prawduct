@@ -3,6 +3,56 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-07-30: Prawduct is written in Python and must never be specific to Python — four norms recorded
+
+<!-- prawduct: type=docs | scope=record-mechanization -->
+
+**Consumer-visible in one place, so it leads:** two architectural norms now bind every adopting repo,
+and one of them constrains what prawduct may ever do to yours. **Prawduct guides and reviews; it never
+implements.** It writes no product code, no config, and no tooling — a best practice enters as a
+*requirement* captured at discovery, Claude Code implements it, and an unimplemented requirement is
+already a blocking Goal 2 finding. An iOS product whose requirements name SwiftLint and which ships
+without `.swiftlint.yml` is caught by machinery that exists today; a large repo adopting prawduct with
+no checker configured *should* take a blocking finding. The corollary binds the framework's own
+appetite: prawduct never re-implements what an ecosystem's tooling already owns — a bare-except check
+belongs to ruff or clippy, not to a prawduct gate.
+
+**And the constraint that was never written down.** Prawduct governs Swift, Rust, C#, C and TypeScript
+products, routinely polyglot inside one repo, at roughly 20x this repo's size — where a five-minute
+cost here is fifteen there. None of that was in any governing artifact, and its absence had already
+shaped three separate design answers in one session before the owner named it. Now: **gates dispatch
+per *file*, never per repo**, no gate may assume the governed product shares the runtime's language,
+and **a language with no populated rules is reported *unchecked*, never silently passed** — the clause
+that matters most, because a silent no-op and a clean pass are indistinguishable at the output, which
+is exactly how Python-specificity stayed invisible.
+
+**The retroactivity sweep found a live defect, and it is worse than the one that started this.**
+`bin/test-reference-verify` skips any non-Python file — and it feeds `verify-coverage`, a **BLOCKING**
+Goal 1 check, which therefore reads as satisfied on a Swift or Rust repo by having inspected nothing.
+`gitstate.py`'s `_PRODUCT_CODE_SUFFIXES` omits `.cs`. The root cause of the whole class is one empty
+cell: the Enforcement table's Linter row reads `(none configured for prawduct)`, so the framework named
+the right tool, declined to adopt it, and hand-rolled a worse one in `compliance.py`. **LNG-5W8R**
+carries the migration, ordered so ruff lands before the duplicate checks are deleted — otherwise the
+check is simply lost. The inventory is recorded as *partial by declaration*: an earlier revision
+claimed `compliance.py` held every violation, which was false.
+
+**Two governance norms, both owner-driven.** The review-cost norm is **amended**: unit-cost joins
+run-count as a declared lever, scoped to reviewer *payload*. The original conflated the reviewer's
+model tier (deliberately fixed — that pin is preserved untouched) with its payload, which was never
+examined and is the larger term; one sound clause and one unexamined clause rode inside a single `Why:`
+for months, and the unexamined one foreclosed the optimization most wanted. And **proportionality now
+ratchets both ways**: a control that fires repeatedly and never produces a blocking finding is removed
+by default, and a new control must **emit its yield observably** — born `in-transition`, because the
+query does not exist yet. `compliance_canary` is the worked example: its findings are printed to the
+briefing and never persisted, so it can never be retired on evidence, only defended on principle.
+
+**Also:** six historical artifacts (v1.5.1, v1.5.2, both v2.0.0 plans, the M4 filesync retirement, a
+dated performance audit) moved to `.prawduct/archive/` — `norm_probes` globs and regex-scans every
+`artifacts/*.md` on each session sync, against an NFR that forbids noticeable session-start delay. The
+24 unversioned build plans with zero filename referrers were deliberately **not** moved: they track
+completion by *scope* name, so a zero filename count is a weak signal, and establishing their real
+status is what Chunk 02's record-lint is for.
+
 ## 2026-07-29: A self-contradicting security model, a tightened FILE bar, and a coverage relaxation that was built and reverted
 
 <!-- prawduct: type=fix | scope=record-mechanization -->
