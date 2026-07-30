@@ -339,24 +339,38 @@ review makes the branch PR-ready.
 - After Chunk 03: measure — payload delta from guardrail tests, and a spot-check that a chunk-mode
   review now lands near its 1–2 minute target.
 
-  **Baseline recorded 2026-07-30**, from `duration_seconds` on this repo's own review facts. It is
-  worse than the plan assumed, and the shape of it confirms the amendment's payload clause:
+  **Baseline recorded 2026-07-30, and RESTATED the same day over the full population.** The first
+  cut hand-picked seven recent rows; a review then asked which population they came from, and the
+  answer was "no rule" — so the query is now stated and the whole store answers it.
 
-  | mode | files | duration | target |
-  |---|---|---|---|
-  | verify-resolutions | 3 | 460s | 1–2 min |
-  | verify-resolutions | 4 | 380s | 1–2 min |
-  | verify-resolutions | 8 | 330s | 1–2 min |
-  | verify-resolutions | 13 | 540s | 1–2 min |
-  | verify-resolutions | 15 | 620s | 1–2 min |
-  | cumulative | 9 | 1080s | 4–10 min |
-  | cumulative | 31 | 900s | 4–10 min |
+  **Population: every review fact in `<git-common-dir>/prawduct/evidence.jsonl` carrying a
+  `duration_seconds` — 267 facts, all scopes, no date or scope filter.** Re-run exactly that after
+  Chunk 03; the per-mode medians below are the comparison.
 
-  **verify-resolutions runs 4–8× over target, and file count barely predicts it** — a 3-file pass
-  took 460s while an 8-file pass took 330s, and the 31-file cumulative was *faster* than the 9-file
-  one. Diff size is not the driver; payload is. That is the amended norm's unit-cost clause showing
-  up in data, and it means Chunk 03's per-mode distillation is the lever with evidence behind it —
-  not run-count, which Chunk 02 already cut. Re-measure the same query after Chunk 03 ships.
+  | mode | n | median | target | over target | r(files changed, seconds) |
+  |---|---|---|---|---|---|
+  | `chunk` | 30 | 300s | 1–2 min | **30/30 (100%)** | +0.25 |
+  | `verify-resolutions` | 155 | 300s | 1–2 min | **148/155 (95%)** | +0.51 |
+  | `final` | 33 | 360s | 4–10 min | 5/33 (15%) | +0.37 |
+  | `cumulative` | 49 | 900s | 4–10 min | 34/49 (69%) | +0.31 |
+
+  **The two modes Chunk 03 targets miss their target essentially always** — `chunk` in every single
+  recorded run, `verify-resolutions` in 95% of 155 — while `final`, which loads the same protocol for
+  more than twice the goals, sits *inside* its target 85% of the time. A payload that is roughly
+  right for seven goals is roughly 3× too expensive for three.
+
+  **One claim from the first cut is withdrawn.** It read "file count barely predicts it," inferred
+  from a 3-file pass at 460s next to an 8-file pass at 330s. Across 155 facts r = **+0.51** — a
+  moderate relationship, not a null one, and the ≤5-file runs (n=96, median 240s) really are faster
+  than the ≥12-file ones (n=16, median 420s). Two adjacent rows were never evidence for a
+  correlation; the full population is, and it says diff size matters.
+
+  **The conclusion survives the correction, on a better statistic — the floor.** Those 96
+  smallest verify-resolutions reviews, with five or fewer changed files and often a one-line fix to
+  confirm, still take a **median 240s against a 60–120s target**. That floor cannot be diff size,
+  because there is barely any diff; it is what the reviewer loads before reading a single changed
+  line. Distillation attacks exactly that, which is why Chunk 03 is the lever and run-count (already
+  cut by Chunk 02) is not.
 - After Chunk 05 (cumulative): full-bundle review; verify the success metrics section of
   Verification Strategy has its baseline recorded so the next working day can be compared.
 
