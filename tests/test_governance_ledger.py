@@ -514,14 +514,20 @@ class TestFindingsSchemaAdditions:
 class TestReviewAnchorIdempotency:
     """One review must anchor exactly one ledger event.
 
-    Two consolidations of a single review are reachable by design, not by
-    accident: the Stop hook's self-heal runs `critic-consolidate` whenever the
-    marker is set with complete partials, and the Critic SKILL also instructs
-    the single-pass reviewer to run it. The evidence fact survives that via
-    `(kind, id)` first-wins dedupe, but this ledger has no key and no dedupe,
-    and `review-stats` counts its lines — so a second anchor double-counts the
+    The evidence fact survives a second consolidation via `(kind, id)`
+    first-wins dedupe, but this ledger has no key and no dedupe, and
+    `review-stats` counts its lines — so a second anchor double-counts the
     review in the instrument review proportionality is judged by. Observed live
     2026-07-29: one fact anchored two `review.critic` events a second apart.
+
+    Two paths reach a second consolidation, and the probe treats them
+    differently. A **replay** — the same manifest and partials re-materializing
+    after success, or a crash between the fact append and `remove_partials` —
+    is closed outright. An **overlap**, two consolidations running past the
+    manifest check at once, is only narrowed: the probe is read-then-write with
+    no lock. Not a sequential two-caller story: a successful consolidation
+    deletes the manifest the Stop-hook self-heal needs, so that path is a
+    no-op. A maintainer seeing this recur should look for the lock.
     """
 
     def test_probe_finds_an_existing_anchor_by_fact_id(self, tmp_path):

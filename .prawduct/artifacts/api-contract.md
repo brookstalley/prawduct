@@ -116,7 +116,7 @@ raised as stack traces across the boundary.** The intended scheme:
 |---|---|---|---|
 | **Harness hook** (`stop`, `clear` refusal) | allow / clean | — | **block** |
 | **CLI gate / query** (`test-status`, `verify-coverage`, `check-*`, `resolve-base`, `bug-inbox`) | satisfied / pass | not satisfied / fail | — |
-| **Stable-tier writer** (`disposition`) | recorded, or an idempotent no-op | **refused** — validation failed, nothing written | **usage error** |
+| **State-mutating writer** (e.g. `disposition`) | written, or an idempotent no-op | **refused** — validation failed, nothing written | **usage error** |
 | **Usage / arg error** (any subcommand) | — | — | **usage error** |
 
 Fail-direction is deliberate and per-purpose:

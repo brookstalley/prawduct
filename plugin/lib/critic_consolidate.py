@@ -1168,10 +1168,12 @@ def consolidate(project_dir: Path) -> int:
     # Anchor in the governance ledger (telemetry + v2 gate continuity), once
     # per review. The fact append is idempotent by (kind, id), but this ledger
     # has neither key nor dedupe, and `review-stats` counts its lines — so a
-    # second consolidation racing the first (a reviewer's SubagentStop hook
-    # against the fork's own call) would double-count the review in the very
-    # instrument review proportionality is measured with. Probe, don't assume
-    # the timing: the race is narrow, not impossible.
+    # second consolidation would double-count the review in the very instrument
+    # review proportionality is measured with. Two paths reach one: a REPLAY
+    # (this manifest and its partials re-materializing after success, or a
+    # crash between the fact append and remove_partials), which the probe
+    # closes; and an OVERLAP past the manifest check, which it only narrows —
+    # read-then-write, no lock.
     if ledger.review_event_exists(prawduct_dir, review_id):
         print(
             f"critic-consolidate: {review_id} is already anchored in the "
