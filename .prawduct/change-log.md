@@ -20,6 +20,20 @@ complete, and `SKILL.md` step 2 routes by the mode it just resolved: `chunk`/`ve
 for the two fast modes drops from ~10,500 tokens (`review-protocol.md` plus the `review-cycle.md` it
 pointed at eight times) to ~1,875 — an **83% cut**, against an acceptance bar of "at least half."
 
+**The first cut of that routing did nothing, and the review proved it on itself.** `SKILL.md`'s
+header is the first instruction in the skill body, and it said to read `review-protocol.md` "(read
+this first)" without mentioning `goals-1-3.md` at all — so an agent obeyed the header, loaded the
+whole 10,519-token predecessor payload, and only then reached step 2's routing twenty-six lines
+below. The reviewer demonstrated it by doing exactly that during a goals-1-3 mode review. The split
+was correct on disk and **inert on the instruction path**, and every guardrail stayed green because
+all of them measure file sizes rather than reading order. Four leaks closed: the header now routes by
+mode and states that the read follows mode resolution; the designer-handoff skip line is inlined
+rather than fetched; step 7 cites "your step-2 protocol file" instead of `review-protocol.md`; and
+the per-mode scope line marks its detail pointer `final`/`cumulative`-only. Two new guardrails read
+*instructions* rather than sizes — the header may not order a read before the routing, and no step
+that runs in every mode may cite a final-only file unconditionally — both mutation-proved by
+restoring the original defect.
+
 **Self-contained means the pointers had to be paid off, not followed.** The record-lint severity
 table, the chunk-`Type:` protocol selector, the normative-authority preamble and the partial schema
 (including the `resolutions` arm) are now inlined, because each was a read into `review-cycle.md` at
@@ -38,8 +52,15 @@ to that file that added a rule and left it smaller.
 obvious objection to the split; it is policed rather than tolerated. The no-dropped-check guardrail
 counts severity verdicts directionally — adding a check to `review-protocol.md`'s goals 1–3 without
 adding it to `goals-1-3.md` fails the suite — so the copies cannot drift in the direction that
-matters, which is a check the chunk-mode reviewer never sees. Deleting goals 1–3 from the protocol
-and having `final` read both files was considered and rejected: it re-splits the seven-goal payload to
+matters, which is a check the chunk-mode reviewer never sees. **That claim was false as first
+shipped, and the review caught it.** The count compared the *whole* of `goals-1-3.md` against a
+protocol *slice*, so the inlined record-lint table, the normative-authority preamble and the severity
+legend all padded the left-hand side — leaving room for **two unmirrored WARNING checks**, and WARNING
+is the modal severity there. Slack in a drift detector is indistinguishable from the drift it watches
+for. Both sides are now sliced goal-section to goal-section (12/19/2 against 11/19/2), and the fix is
+proved in both directions: the old form passes when an unmirrored WARNING is added to the protocol,
+the new form fails. Deleting goals 1–3 from the protocol and having `final` read both files was
+considered and rejected: it re-splits the seven-goal payload to
 fix what the invariant already closes. Four more guardrails pin the rest — the ≥50% payload cut, the
 2000-token ceiling, self-containment (no line may send the reviewer to another protocol file, and the
 one line naming them is the prohibition), and a regrowth check that fails if final-mode content

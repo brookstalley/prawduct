@@ -537,13 +537,28 @@ class TestCriticGoals13:
         if the anchor list below starts needing maintenance every time a goal
         changes — that would mean the coupling had become the cost.
         """
-        i = self.protocol.index("### 1. Nothing Is Broken")
-        j = self.protocol.index("### 4. Everything Is Coherent")
-        goals = self.protocol[i:j]
+        goals = self.protocol[
+            self.protocol.index("### 1. Nothing Is Broken"):
+            self.protocol.index("### 4. Everything Is Coherent")
+        ]
+        # Compare goal section to goal section. Counting the WHOLE of
+        # goals-1-3.md against a protocol *slice* silently bought slack: the
+        # inlined record-lint table, the normative-authority preamble and the
+        # `## Severity` legend all carry verdicts of their own and have no
+        # counterpart inside the slice, which left room for two unmirrored
+        # WARNING checks — and WARNING is the modal severity here. Slack in a
+        # drift detector is indistinguishable from the drift it is watching for.
+        mine = self.content[
+            self.content.index("## 1. Nothing Is Broken"):
+            self.content.index("## Severity")
+        ]
         for sev in ("BLOCKING", "WARNING", "NOTE"):
             src = goals.count(f"**{sev}**")
-            got = self.content.count(f"**{sev}**")
-            assert got >= src, f"goals-1-3.md has {got} {sev} verdicts, protocol goals 1-3 have {src}"
+            got = mine.count(f"**{sev}**")
+            assert got >= src, (
+                f"goals-1-3.md's goal sections carry {got} {sev} verdicts against the "
+                f"protocol's {src} — a check was added to one copy and not the other"
+            )
         for anchor in (
             "test-status", "verify-coverage", "missing-coverage:", "pre-existing",
             "exact-match", "property-based", "injection", "hardcoded secrets",
@@ -595,6 +610,44 @@ class TestCriticSkillRoutesByMode:
         assert "review-protocol.md" in line
         for mode in ("chunk", "verify-resolutions", "final", "cumulative"):
             assert mode in line, f"SKILL step 2 does not route {mode}"
+
+    def test_header_does_not_order_a_read_before_the_routing(self):
+        """The header is the FIRST instruction in the skill body, so it beats
+        step 2 on reading order — an agent obeys it before it knows its mode.
+
+        It used to say `review-protocol.md` "(read this first)" and not mention
+        `goals-1-3.md` at all, which meant a chunk-mode review loaded the entire
+        10,519-token predecessor payload before step 2 told it not to. The split
+        was correct on disk and inert on the instruction path, and every
+        size-measuring guardrail stayed green through it. So: the header must
+        name the fast-mode file, must not order any file read first, and must
+        say the read happens after the mode is resolved.
+        """
+        header = self.content.split("## Structural Constraints", 1)[0]
+        assert "goals-1-3.md" in header, "the header omits the fast-mode protocol file"
+        assert "read this first" not in header.lower(), (
+            "the header orders a protocol read before step 1 resolves the mode"
+        )
+        assert "after step 1" in header.lower() or "only after" in header.lower(), (
+            "the header must state that the protocol read follows mode resolution"
+        )
+
+    def test_fast_path_steps_never_send_the_reviewer_to_a_final_only_file(self):
+        """Steps 1-7 run in EVERY mode, so a bare citation there is a read a
+        chunk-mode reviewer will make. Each of the three that existed —
+        the designer-handoff skip line, the roster's "Review Execution", and the
+        partial schema — is carried in goals-1-3.md already. Mentions that
+        explicitly scope themselves to `final`/`cumulative` are fine; naked
+        directives are not."""
+        steps = self.content.split("## Getting Started", 1)[1]
+        offenders = []
+        for ln in steps.split("\n"):
+            if "review-protocol.md" not in ln and "review-cycle.md" not in ln:
+                continue
+            if "goals-1-3.md" in ln or "final" in ln or "step-2 protocol file" in ln:
+                continue  # routed, or scoped to the modes that do read it
+            offenders.append(ln.strip()[:120])
+        assert not offenders, f"fast-path steps cite a final-only file unconditionally: {offenders}"
 
     def test_review_cycle_table_records_the_routing(self):
         """`review-cycle.md` owns per-mode behavior, so the routing is recorded

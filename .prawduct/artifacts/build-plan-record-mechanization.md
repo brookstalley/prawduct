@@ -128,6 +128,11 @@ things Chunk 04's author should know, all on files that chunk also edits:
 - **The `≤80 lines` target was missed at 125**, deliberately — self-containment required inlining four
   former pointer-chases, and trimming to 80 would have deleted checks. The real acceptance criterion
   (halve the payload, no follow-the-pointer reads) is met and guardrailed.
+- **The guardrails landed in `tests/test_v5_methodology.py`, not the declared `tests/preferences/`.**
+  They sit beside `review-protocol.md`'s own `test_token_budget`, so the budget rules for both halves
+  of the same protocol are read and edited together; splitting them across directories is how one gets
+  raised without the other. Deliverable met, path changed, recorded here because the review rightly
+  asked why this divergence was the one not written down.
 
 **Observed, not built — for Chunk 04's roster work.** The coordinator's **correctness** reviewer runs
 exactly goals 1-3 and still reads the full `review-protocol.md` (its agent definition points there).
