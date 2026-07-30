@@ -5,7 +5,7 @@
 
 ## 2026-07-30: The third learnings compaction, and the first one built to be the last
 
-<!-- prawduct: type=fix | status=shipped -->
+<!-- prawduct: type=fix -->
 <!-- No build plan: LRN-4K8T is a stage:ready chore whose ask was specified, and the two
      controls are small additions to shipped mechanisms. Proportional effort warranted no
      plan, so no scope=/chunks=. -->
