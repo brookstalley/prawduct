@@ -16,8 +16,8 @@ consumer migration, C9 tier 1).
      "actor": {"session": ..., "worktree": ..., "plugin": ...}, "body": {...}}
 
 ``schema`` rides on every record so readers can reject-or-skip explicitly
-(C7); ``kind`` namespaces the store (``review``/``resolution`` now;
-``test-run``/``pr-review``/``promotion`` reserved for later constituent
+(C7); ``kind`` namespaces the store (``review``/``resolution``/``disposition``
+now; ``test-run``/``pr-review``/``promotion`` reserved for later constituent
 plans); ``id`` is fixed at dispatch time so consolidation is idempotent
 (CRT-4B7X) and readers dedupe. ``actor`` answers the debugging question
 ("who wrote this, when, from where, under which plugin") — Q7.
@@ -60,7 +60,13 @@ SUPPORTED_SCHEMAS = frozenset({1})
 # SUPPORTED schema are kept in the facts list (a newer minor may add kinds —
 # Q9 forward-compat); gate consumers filter by the kinds they know, so an
 # unknown kind can never satisfy a gate, only coexist.
-KNOWN_KINDS = frozenset({"review", "resolution"})
+#
+# ``disposition`` records the builder's ACCEPT/FILE answer to a finding that
+# was never fixed (``dispositions.py``). It is deliberately a separate kind
+# from ``resolution``: only ``resolution`` facts with a resolving disposition
+# can unblock a BLOCKING finding, and the coverage algebra filters on kind
+# before reading any body — so no disposition can ever weaken a gate.
+KNOWN_KINDS = frozenset({"review", "resolution", "disposition"})
 
 STORE_SUBDIR = "prawduct"
 STORE_BASENAME = "evidence.jsonl"
@@ -329,6 +335,37 @@ def facts_of_kind(read_result: dict, kind: str) -> list[dict]:
     """Filter a ``read_facts`` result to one kind — the consumer-side filter
     that makes unknown future kinds harmless (they can coexist, never satisfy)."""
     return [f for f in read_result.get("facts", []) if f.get("kind") == kind]
+
+
+def findings_index(read_result: dict) -> dict[tuple[str, str], dict]:
+    """``(review_id, fid)`` → the finding entry its review fact recorded.
+
+    The one walk over recorded findings, shared by every consumer that joins
+    on a finding: the existence check a resolution must pass before it may
+    weaken a gate (``critic_consolidate``) needs only the key set, while a
+    census needs each finding's severity and title (``dispositions``). Keeping
+    the richer structure here stops the two from drifting into separate walks
+    that disagree about what "recorded" means.
+
+    Findings without a usable ``fid`` are skipped — nothing can join to them,
+    which is exactly why the writer always assigns one.
+    """
+    index: dict[tuple[str, str], dict] = {}
+    for fact in facts_of_kind(read_result, "review"):
+        review_id = fact.get("id")
+        if not isinstance(review_id, str) or not review_id:
+            continue
+        body = fact.get("body") or {}
+        findings = body.get("findings")
+        if not isinstance(findings, list):
+            continue
+        for finding in findings:
+            if not isinstance(finding, dict):
+                continue
+            fid = finding.get("fid")
+            if isinstance(fid, str) and fid.strip():
+                index[(review_id, fid)] = finding
+    return index
 
 
 def has_fact(project_dir: Path, kind: str, fact_id: str) -> bool:

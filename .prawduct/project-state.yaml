@@ -116,7 +116,7 @@ design_decisions:
     detailed_in: artifacts/api-contract.md
     date: 2026-07-17
   api_error_model_approach:
-    scheme: "exit codes are the contract on a documented scheme (harness hook 0=allow/2=block; CLI gate 0=pass/1=fail; usage error 2; unevaluable advisory gate fails open, unevaluable writer fails closed) plus a stable message-prefix vocabulary (CRITICAL/WARNING/NOTE/BLOCKED)"
+    scheme: "exit codes are the contract on a documented scheme (harness hook 0=allow/2=block; CLI gate 0=pass/1=fail; state-mutating writer 0=written-or-idempotent-no-op/1=refused-nothing-written; usage error 2; unevaluable advisory gate fails open, unevaluable writer fails closed) plus a stable message-prefix vocabulary (CRITICAL/WARNING/NOTE/BLOCKED)"
     channels: "stdout is agent-facing (composed into model context); stderr is user/diagnostics; no internal stack trace crosses the boundary"
     status: active
     rationale: "exit codes are the stable, allowlist-friendly signal skills bind to; failures are caught, attributed, and turned into an exit code + prefixed note, never raised across the boundary"
@@ -333,7 +333,7 @@ views_enabled: true
 # field holds only the current in-progress plan (absent/empty -> the gates
 # fall back to artifacts/build-plan.md).
 
-active_build_plan: null
+active_build_plan: artifacts/build-plan-record-mechanization.md
 
 # =============================================================================
 # BUILD-PLAN REF ROOT (opt-in)
@@ -527,6 +527,9 @@ scope_rollups:
   prose-diet:
     chunks: ["01", "02", "03"]
     releases: ["v2.3.0"]
+  record-mechanization:
+    chunks: ["01"]
+    releases: ["v3.2.1"]
   regen-views-null-plan:
     chunks: ["01"]
     releases: ["v2.2.1"]

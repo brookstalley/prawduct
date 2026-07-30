@@ -1,9 +1,19 @@
 # Release Plan — v3.2.0, Whole-Develop Promotion
 
-**Status:** **NOT YET SHIPPED — this is the plan, authored 2026-07-29.** Phase 0 of
-`runbooks/cut-and-publish-a-plugin-release.md` reads the classification table below; nothing here is
-evidence that a release happened. The status line flips at publish, with the tag and `plugin/VERSION`
-recorded like v3.1.2's.
+**Status:** **SHIPPED 2026-07-29.** `origin/main` = `9d344cf`, tagged `v3.2.0`, published
+`plugin/VERSION` = `3.2.0`. Single-parent promotion off `09a2862` (v3.1.2). Owner go/no-go given after
+the gate table below was verified: Phase 0 `releasable` with **0 withheld**, step 17 content-identity
+empty, step 18 carrying the bump. Both `Done when` tests pass — `git diff --stat origin/main
+origin/develop` prints nothing, and `refs/tags/v3.2.0` resolves to `9d344cf`.
+
+> **Deviation from the runbook, recorded.** Step 14 (`git checkout main && git pull`) **cannot run in a
+> multi-worktree checkout** — `main` was held by `/Users/brookstalley/source/prawduct` (the fleet-wide
+> plugin checkout) and git refused with *"'main' is already used by worktree at …"*. The promotion was
+> done instead in a **detached temporary worktree** at `origin/main`: `read-tree --reset -u
+> origin/develop`, commit, then `git push origin HEAD:main`. The resulting commit is identical in shape
+> to what the runbook produces — single parent `09a2862`, tree equal to `develop`'s — and this route has
+> the added property of not mutating the live plugin checkout mid-promotion. The runbook should carry
+> this branch; filed rather than patched here, since Phase 2 is REL-7D4X-adjacent territory.
 
 **Version:** v3.2.0 — **minor**, and the reasoning is inherited rather than invented. v3.1.2's own plan
 recorded: *"The bundle is a feature … plus two fixes, but the subsystem that would have made this a minor

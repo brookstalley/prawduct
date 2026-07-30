@@ -5,6 +5,16 @@
      be overwritten on next regen. See change-log.md for full per-release
      bodies; this file is a digest. -->
 
+## v3.2.1
+
+**Entry:** 2026-07-29: The coordinator's three reviewers are now told to run concurrently
+
+**Chunks shipped:** 01
+
+**Scope:** record-mechanization
+
+See `.prawduct/change-log.md` for full details.
+
 ## v3.2.0
 
 ### release-readiness

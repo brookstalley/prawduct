@@ -170,3 +170,31 @@ class TestExplicitModeArgContract:
         argument-carrying invocation."""
         allowed = _extract_allowed_tools(_PLUGIN_CRITIC_SKILL.read_text())
         assert "Bash(prawduct-hook infer-critic-mode *)" in allowed
+
+
+_PLUGIN_REVIEW_PROTOCOL = REPO_ROOT / "skills" / "critic" / "review-protocol.md"
+
+
+class TestCoordinatorDispatchIsConcurrent:
+    """The three coordinator reviewers must be dispatched in one message.
+
+    They are independent by construction — disjoint goals, per-role partial
+    files, and the protocol forbids resuming to aggregate — so serial dispatch
+    pays the pattern's whole cost (three agents, three context loads, a
+    consolidation step) and discards the wall-clock saving that is the only
+    thing it buys.
+
+    This was never specified: the framework relied on the harness's ambient
+    "batch independent calls" behaviour, which is outside its control and has
+    been observed to differ between sessions. An unpinned instruction is how it
+    silently reverts, so both dispatch surfaces are asserted.
+    """
+
+    def test_review_protocol_step_2_demands_one_message(self):
+        content = _PLUGIN_REVIEW_PROTOCOL.read_text()
+        assert "ONE message" in content
+        assert "concurrently" in content
+
+    def test_skill_routing_bullet_demands_one_message(self):
+        content = _PLUGIN_CRITIC_SKILL.read_text()
+        assert "in a single message so they run concurrently" in content

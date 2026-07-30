@@ -88,7 +88,7 @@ An absent file is the empty store.
 | Field | Type | Purpose |
 |-------|------|---------|
 | `schema` | int | Envelope schema version (guards forward-compat; a record from a newer plugin is surfaced, never silently dropped) |
-| `kind` | string | Fact namespace — `review`, `resolution` today; `test-run`, `pr-review`, `promotion` reserved (intended) |
+| `kind` | string | Fact namespace — `review`, `resolution`, `disposition` today; `test-run`, `pr-review`, `promotion` reserved (intended) |
 | `id` | string | Idempotency key, fixed at dispatch — re-running consolidation never double-appends |
 | `ts` | string | ISO-8601 UTC |
 | `actor` | object | `{session, worktree, plugin}` — provenance: which session, which worktree, which plugin version wrote it |
@@ -101,6 +101,19 @@ An absent file is the empty store.
   `disposition` (`fixed` | `waived`), the `verified_by` review that attests it, the `at_tree` it was
   verified against, and a `rationale` (required for `waived`). A resolution may only originate from a
   `verify-resolutions` review and must reference a finding already in the store (fail-closed).
+- **Disposition fact `body`** — the builder's answer to a finding that was *not* fixed: the target
+  (`{review_id, fid}`), an `action` (`accept` | `file`), a `reason` (accept) or `backlog_id` (file),
+  and an `owner_ruling` (required to accept a BLOCKING finding). Field named `action`, not
+  `disposition`, because that word already carries two other vocabularies here — release scope
+  (`ships`/`withheld`) and resolution (`fixed`/`waived`). **A disposition never resolves anything:**
+  gate composition filters on `kind` before reading a body, so a BLOCKING finding stays blocking until
+  a real resolution lands. Written by the builder via `prawduct-hook disposition` (validated join, no
+  reviewer in the loop); a changed answer is a newer fact under a sequenced id, and last-recorded
+  wins. **Droppability:** a disposition sits on no coverage path, so the store's reachability rule
+  cannot speak to it — a disposition fact is droppable exactly when the review fact it targets is,
+  and never on its own. Compaction that violated this would silently un-answer a finding; the
+  sequenced id defends against it by stepping past ids already present rather than counting
+  surviving history.
 
 **Tree-keying (the load-bearing idea).** Facts reference git *tree SHAs*, captured via a temporary
 index that never touches the session's working tree or real index. Because a verbatim commit

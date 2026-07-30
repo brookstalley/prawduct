@@ -59,9 +59,10 @@ The CLI groups by responsibility. Every subcommand is read-only unless marked mu
   by the harness, not by humans.
 - **Critic data plane** — `critic-begin` (write dispatch manifest, mutating), `critic-consolidate`
   (merge partials → evidence fact, mutating), `critic-end`, `evidence status|list`, `ledger-append`
-  (single-writer, mutating), `review-stats`, plus the coverage/mode gate wrappers
-  (`verify-coverage`, `check-cumulative-critic`, `infer-critic-mode`, `classify-diff-risk`,
-  `verify-chunk-refs`).
+  (single-writer, mutating), `review-stats`, `disposition` (append a finding's ACCEPT/FILE
+  disposition fact, mutating), `render-dispositions` (derive the disposition census), plus the
+  coverage/mode gate wrappers (`verify-coverage`, `check-cumulative-critic`, `infer-critic-mode`,
+  `classify-diff-risk`, `verify-chunk-refs`).
 - **Test evidence** — `test-evidence record` (mutating), `test-status` (freshness), `validate-evidence`.
 - **Session handoff** — `handoff preview`: renders the handoff the next session would receive,
   through the same function `clear` uses, without writing it or consuming the forward notes.
@@ -96,6 +97,12 @@ dispatch); state-mutating lifecycle commands (`migrate-plugin`, `init-product`, 
     `audit-learnings --json` → doctor; `repo-disable --json` → repo-disable skill.
   - `review-stats --json` → the cross-project telemetry aggregator, carrying a top-level
     `schema_version` (see Versioning).
+  - `render-dispositions --json` → the disposition census, for a change-log entry, a PR body, or any
+    consumer that would otherwise recount findings by hand. Top-level `schema_version` (the second
+    report to carry one), `reviews[]` (each `review_id`, `ts`, `mode`, `scope`, `chunk`, `rows[]`),
+    and `summary` (`findings`, `by_severity`, `by_state`, `undispositioned`, `owner_ruled`,
+    `conflicts`). Each row: `fid`, `severity`, `goal`, `title`, `state`, `reason`, `backlog_id`,
+    `owner_ruling`, `conflict`.
   - **Hook context channel:** SessionStart digest and UserPromptSubmit emit the Claude Code
     `{"hookSpecificOutput":{"hookEventName":…,"additionalContext":…}}` injection shape.
 
@@ -109,6 +116,7 @@ raised as stack traces across the boundary.** The intended scheme:
 |---|---|---|---|
 | **Harness hook** (`stop`, `clear` refusal) | allow / clean | — | **block** |
 | **CLI gate / query** (`test-status`, `verify-coverage`, `check-*`, `resolve-base`, `bug-inbox`) | satisfied / pass | not satisfied / fail | — |
+| **State-mutating writer** (e.g. `disposition`) | written, or an idempotent no-op | **refused** — validation failed, nothing written | **usage error** |
 | **Usage / arg error** (any subcommand) | — | — | **usage error** |
 
 Fail-direction is deliberate and per-purpose:
@@ -176,10 +184,15 @@ Evolution rules we want to hold, so new versions stay rare:
 ## Surface Inventory & Stability Tiers
 
 - **Stable, allowlistable surface** (intended to be depended on, and scoped into skill
-  `allowed-tools`): `evidence status|list`, `review-stats --json`, and the query/gate subcommands
-  skills bind to (`test-status`, `verify-coverage`, `check-*`, `resolve-base`, `coverage-status`,
-  `advisory *`, `infer-critic-mode`). Several of these exist *specifically* to give skills a narrow,
-  stable command to allowlist instead of arbitrary `python3 -c`.
+  `allowed-tools`): `evidence status|list`, `review-stats --json`, `render-dispositions`,
+  `disposition`, and the query/gate subcommands skills bind to (`test-status`, `verify-coverage`,
+  `check-*`, `resolve-base`, `coverage-status`, `advisory *`, `infer-critic-mode`). Several of these
+  exist *specifically* to give skills a narrow, stable command to allowlist instead of arbitrary
+  `python3 -c`. **`disposition` and `render-dispositions` are in this tier for a different reason
+  than the rest:** no skill allowlists them, because their caller is the **main session** — the
+  builder, whom `methodology/building.md` instructs to run them by name. Documented instruction to
+  the builder is the dependency, so their flags, exit codes and `--json` keys are a contract exactly
+  as a skill-bound query's are. `disposition` is the tier's one *writer*.
 - **Internal / lifecycle surface** (called by the harness or by consolidation, not a public
   contract): `clear`, `stop`, `subagent-stop`, `critic-begin`, `critic-consolidate`, `build-index`.
 - **Deprecated:** `stamp-merged` (removal deferred to a major).
@@ -218,9 +231,16 @@ Per `security-model.md` — the API-boundary specifics:
 
 - **Decoupled async completion:** the Critic review is an async, multi-process operation whose
   completion is *not* a held-open call — reviewers write partials and consolidation runs from
-  whichever of three idempotent triggers fires first (see `architecture.md`). This is the
-  "202 + status resource" analogue for a local CLI.
-- **Idempotency:** fact-append and consolidation are idempotent under identity fixed at dispatch, so
-  the multi-trigger race collapses to exactly one result.
+  whichever of three triggers fires first (see `architecture.md` for which, and for the per-output
+  limits of their idempotency). This is the "202 + status resource" analogue for a local CLI.
+- **Idempotency, per output — not "exactly once" across the board:** the **review fact** collapses to
+  one by `(kind, id)` first-wins dedupe under identity fixed at dispatch. The **ledger anchor** is
+  weaker: `ledger.review_event_exists` closes the *replay* path (a re-materialized same-id manifest,
+  or a crash between the fact append and `remove_partials`) but only *narrows* the *overlap* path,
+  because the probe is read-then-write with no lock. So the multi-trigger race collapses to one
+  result for the fact, and to one result on the replay path for the ledger — a concurrent overlap can
+  still double-anchor. Observed live 2026-07-29 (one fact, two `review.critic` events a second
+  apart); residual tracked at CRT-8L3Q, whose trigger is a second duplicated `review.fact_id`. Do not
+  read this row as licence to close that item.
 - **Correlation handle:** facts and ledger events carry the git tree/commit SHA + scope/chunk/actor,
   the local analogue of a request/trace id (ties to `observability-strategy.md`).
