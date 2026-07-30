@@ -3,6 +3,42 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-07-29: A self-contradicting security model, a tightened FILE bar, and a coverage relaxation that was built and reverted
+
+<!-- prawduct: type=fix | scope=record-mechanization -->
+
+**Consumer-visible in one place, so it leads:** the **FILE disposition bar is tighter**. Filing a
+review finding now requires the work to be **large** (a chunk's worth or more) **and** not responsibly
+absorbable into the current work — own design, own review, or orthogonal. Deep context on a small
+problem is a FIX signal. Owner-requested; it binds every review in every adopting repo, which is why
+it is here and not only in the skill. Measured motive: this repo's own open items went 50 → 180 in 26
+days, 67 Critic-sourced, 53 never touched since filing. It also closes an exhaustiveness gap — the old
+three dispositions left a large, non-orthogonal item someone will actually do fitting none of them.
+
+**`security-model.md` contradicted itself.** § Direction was amended 2026-07-24 away from the absolute
+"`--apply` on everything" form toward **operation-level** approval; § Abuse Prevention eighty lines
+below still asserted the absolute form as a *live control*, unchanged since the artifact was authored
+and present at v3.2.0. Worse, `project-preferences.md`'s registry row points its rationale home *at
+that file*, so a reader following the pointer landed in the contradiction. Norms bind, descriptions
+track — this is the description catching up, not a norm change. Discharges GOV-4B9N, which is archived
+with both closure handles so each clause stays traceable.
+
+**And a fix that was built, reviewed, and reverted — recorded because the reasoning is the value.**
+Two review rounds this session were spent on a **comment** and a **docstring**: `is_judgeable_path`
+classifies by path with no content inspection, so any `.py` edit is judgeable and costs a full pass. An
+AST-equality relaxation was built to make behaviour-neutral edits free. The Critic returned **10
+blocking findings** and refuted the premise; all three reviewers found the decisive one independently.
+**Comments are semantically load-bearing here:** `waivers.py`'s `prawduct:allow` source-comment pragma
+is acted on by `compliance.py`, so adding a waiver to an existing `except Exception:` suppresses a
+compliance check with a byte-identical AST — the relaxation would have made that a free edge needing
+**no review**, precisely where Goal 3 obliges a reviewer to judge the waiver. AST equality proves the
+*parser* sees the same program, not that the *system* behaves the same. `gates.py` and
+`coverage_algebra.py` are byte-identical to `develop` again (verified three ways by the reviewer), and
+the ruling is now recorded in `is_judgeable_path`'s own docstring, because reading the mechanism
+carefully was not enough to prevent this — the objection was filed at `COV-3M8Q` and never surfaced
+where the work happens. The goal remains ratified: the sound route is to make review **cheap**, not
+skippable.
+
 ## 2026-07-29: The coordinator's three reviewers are now told to run concurrently
 
 <!-- prawduct: type=fix | scope=record-mechanization | release=v3.2.1 | status=shipped -->
