@@ -71,7 +71,7 @@ unknown; Chunk 04's review-stats measurement resolves the threshold.
 ## Status
 
 - [x] Chunk 01: Disposition facts and the census renderer
-- [x] Chunk 02: Subtraction sweep and deterministic record-lint
+- [ ] Chunk 02: Subtraction sweep and deterministic record-lint
 - [ ] Chunk 03: Per-mode reviewer payload
 - [ ] Chunk 04: Coordinator roster keyed to judgeable files
 - [ ] Chunk 05: Change-log ledger spike and go/no-go
@@ -91,15 +91,30 @@ so it is not "exactly once" — and concurrent dispatch made overlap more reacha
 additionally grew an advisory duplicate-finding grouping path (CRT-R4Z2's reporting half) that Chunk
 04/05 authors will meet in the same file.
 
-**Chunk 02 complete 2026-07-30** — `record_lint.py` + `verify-records`, wired into `critic-begin`'s
-manifest and carried into the review fact. Two spec corrections, both recorded above: the
-subtraction's deletion set was **empty** (the tripwire is the whole deliverable), and the
-observable-yield obligation was ruled into the *fact*, not the ledger. Chunk 04's author should
-know the protocol surface moved: `verify-chunk-refs` is no longer a reviewer instruction (it runs at
-dispatch and rides `record_lint`), its `allowed-tools` grant is retired with a test pinning the
-retirement, and the review-protocol token budget was held at 3620 rather than bumped — headroom is
-5 tokens, so Chunk 03's payload work has none to spend there. Next: Chunk 03 (per-mode reviewer
-payload).
+**Chunk 02 built 2026-07-30** (checkbox stays `[ ]` — `views_enabled: true`, so Status is a derived
+view that `regen-views` regenerates from the change-log tag at release). `record_lint.py` +
+`verify-records`, wired into `critic-begin`'s manifest and carried into the review fact.
+
+**Three checks shipped, and two were built then deleted.** `dangling-ref` and `unknown-backlog-id`
+measured **0 true positives** on the 40-file branch that introduced them — `dangling-ref`'s only
+three hits were prose that is path-shaped and not a path. Removing them is the proportionality norm
+working as designed rather than an omission, and the reason is recorded at the mechanism
+(`record_lint.CHECKS`) so a future author argues with the measurement. What survives:
+`chunk-ref-missing` (a *move* — a reviewer instruction deleted, net-negative cost),
+`governed-by-gap` (the demonstrated yield: **22 gaps across 8 plans**, where GOV-8C3W estimated "a
+four-line sweep"), and `suite-total-claim` (the subtraction's tripwire).
+
+Two spec corrections, both recorded above: the subtraction's deletion set was **empty**, and the
+observable-yield obligation was ruled into the *fact*, not the ledger.
+
+**Chunk 04's author should know the protocol surface moved:** `verify-chunk-refs` is no longer a
+reviewer instruction (it runs at dispatch and rides `record_lint`), its `allowed-tools` grant is
+retired with a test pinning the retirement, and the review-protocol token budget was **held at 3620
+rather than bumped** — headroom is 5 tokens, so Chunk 03's payload work has none to spend there.
+The `cumulative` review of the first cut (`rev-20260730T111810Z-8d2cf430`) is where the trim came
+from; it also caught the check grading the *wrong chunk* (Status names the first unchecked box, so a
+finished chunk's review graded the next one) and an unguarded decode that would have aborted every
+review dispatch on one non-UTF-8 `.md`. Next: Chunk 03 (per-mode reviewer payload).
 
 ## Scaffolding
 

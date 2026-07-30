@@ -1318,7 +1318,7 @@ class TestRecordLintInManifest:
     def test_manifest_carries_a_record_lint_block(self, tmp_path):
         _repo, manifest, _res = self._dispatch(tmp_path)
         lint = manifest["record_lint"]
-        assert set(lint) == {"records", "findings", "unchecked", "counts"}
+        assert set(lint) == {"records", "chunk_graded", "findings", "unchecked", "counts"}
         # Every check is present with an explicit tally, so a zero is visibly a
         # zero rather than a key a consumer has to interpret.
         assert set(lint["counts"]) == set(record_lint.CHECKS)

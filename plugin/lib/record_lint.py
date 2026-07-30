@@ -51,11 +51,27 @@ from .core import read_str_yaml_key, resolve_build_plan_path
 #: tell "ran and found nothing" from "never ran" (see ``unchecked`` below).
 CHECKS = (
     "chunk-ref-missing",
-    "dangling-ref",
-    "unknown-backlog-id",
     "governed-by-gap",
     "suite-total-claim",
 )
+
+# Two checks were built, measured, and REMOVED before this shipped — recorded
+# here because the removal is the norm working, not an omission to be helpfully
+# restored (`nonfunctional-requirements.md` § Direction: a control that fires
+# and catches nothing is removed by default).
+#
+# - **dangling-ref** (every backticked `file`/`file:line` citation in a changed
+#   record resolves). On the 40-file branch that introduced it: 3 findings, 0
+#   true positives. Every hit was prose that is path-SHAPED and not a path —
+#   `backlog.md:307/311/315`, `parents/exist_ok` — because a multi-line citation
+#   keeps its slashes past `_ref_path_part`, which strips only a trailing `:N`.
+#   Chunk deliverables, the citations that actually gate anything, are covered
+#   by `chunk-ref-missing` below.
+# - **unknown-backlog-id** (ids cited in a record exist). 0 findings, and on the
+#   Issues backend it could only ever report `unchecked`.
+#
+# Re-adding either needs evidence that the class costs review rounds — which the
+# `record_lint` counts now in every review fact can supply, and argument cannot.
 
 #: History, not live assertion — an archived record is excluded from every check.
 _ARCHIVE_MARKERS = ("/archive/", "archive/")
@@ -69,8 +85,6 @@ _ARCHIVE_MARKERS = ("/archive/", "archive/")
 #: Measured against the real repo before it was borrowed: a locally-defined
 #: "anything between backticks" pattern produced 46 findings on this branch, 44
 #: of them prose. One grammar, one home.
-_BACKTICKED_RE = buildplan_refs._BUILD_PLAN_PATH_RE
-_NEW_QUALIFIER_RE = buildplan_refs._BUILD_PLAN_NEW_QUALIFIER_RE
 
 #: An id-shaped token. The generator's documented format is ``PFX-XXXX`` with a
 #: 4-char base36 suffix (``templates/backlog.md``), and requiring the suffix to
@@ -90,10 +104,14 @@ _BACKLOG_ID_RE = re.compile(r"(?<![\w-])([A-Z]{2,4})-(?=[A-Z0-9]{4}(?![\w-]))([A
 #: framing. A two-digit count is nearly always a scoped or delta count
 #: (``+14 tests``, ``28 tests``), which is a different claim and not this one's
 #: business. A leading ``+``/``-``/``.``/``/`` blocks the first arm so a delta or
-#: a version fragment never reads as a total.
+#: a version fragment never reads as a total. The second arm exists only for a
+#: two-digit suite claim ("full suite 99 passing"), which the first arm's digit
+#: floor would miss; a bare "total" was deliberately dropped from it, because
+#: "a total of 25 backlog items" is not a test claim, and a tripwire that fires
+#: on prose like that gets ignored — which costs more than the claim it catches.
 _SUITE_TOTAL_RE = re.compile(
     r"(?<![\w.+/-])\d{3,6}\s*(?:tests?|passing|green|pass(?:ed|es|ing)?)\b"
-    r"|(?:full suite|suite total|whole suite|total(?:ling)?)\W{0,16}\d{2,6}",
+    r"|(?:full|whole|entire) suite\W{0,12}\d{2,6}",
     re.IGNORECASE,
 )
 
@@ -114,8 +132,13 @@ _LIST_ITEM_RE = re.compile(r"^(\s*)-\s+\S")
 #: matchers change — they are the same six characters of markdown.
 _HEADING_RE = re.compile(r"^(#{1,6})\s+(.*\S)\s*$")
 
-#: A build plan by filename. The `governed_by:` check reads plans only.
-_BUILD_PLAN_RE = re.compile(r"(^|/)build-plan[^/]*\.md$")
+#: A build plan by filename. The `governed_by:` check reads plans only. Two
+#: conventions are live and `core.resolve_build_plan_path` documents both: the
+#: `build-plan-<scope>.md` prefix form, and the scope-named `<scope>-plan.md`
+#: suffix form (`artifacts/v1.6.0-foo-plan.md`). Matching only the prefix form
+#: would skip a scope-named plan silently — and silently is the whole problem,
+#: since a plan that is never read reports zero gaps exactly like a complete one.
+_BUILD_PLAN_RE = re.compile(r"(^|/)(?:build-plan[^/]*|[^/]*-plan)\.md$")
 
 
 # ---------------------------------------------------------------------------
@@ -144,15 +167,30 @@ def records_in(paths: "list[str] | None") -> list[str]:
 # ---------------------------------------------------------------------------
 
 
+_DIFF_HEADER_RE = re.compile(r"^diff --git a/(?:.*) b/(.+)$")
+_HUNK_RE = re.compile(r"^@@+ .*?\+(\d+)(?:,\d+)? @@")
+
+
 def _added_lines(
-    project_dir: Path, base_tree: str, head_tree: str, path: str
-) -> "list[tuple[int, str]] | None":
-    """``[(line_num, text), ...]`` for lines ``path`` ADDED between two trees.
+    project_dir: Path, base_tree: str, head_tree: str, paths: list[str]
+) -> "dict[str, list[tuple[int, str]]] | None":
+    """``{path: [(line_num, text), ...]}`` for the lines each path ADDED between
+    two trees.
 
     ``None`` when the diff cannot be computed — the caller reports the check
     ``unchecked`` rather than treating an unreadable diff as an empty one.
-    ``--unified=0`` means no context lines, so every ``+`` line in the output is
+    ``--unified=0`` means no context lines, so inside a hunk every ``+`` line is
     genuinely added and the hunk header carries its new-file line number.
+
+    **One git call for every path, not one per path.** At consumer scale a
+    change can touch hundreds of records, and a subprocess each would make this
+    control's cost scale with the number of files rather than with the diff —
+    the exact shape the language-agnosticism norms were written to prevent
+    (`architecture.md` § Direction).
+
+    A path absent from the result changed in a way this parser saw no added
+    lines for (a pure deletion, a mode change); the caller reads a missing key
+    as "nothing added", which is correct and distinct from the ``None`` above.
     """
     rc, out, _err = evidence.run_git(
         project_dir,
@@ -163,28 +201,35 @@ def _added_lines(
         base_tree,
         head_tree,
         "--",
-        path,
+        *paths,
     )
     if rc != 0:
         return None
-    added: list[tuple[int, str]] = []
+    by_path: dict[str, list[tuple[int, str]]] = {}
+    current: "list[tuple[int, str]] | None" = None
+    in_hunk = False
     line_num = 0
     for raw in out.splitlines():
-        if raw.startswith("@@"):
-            # @@ -a,b +c,d @@ — `c` is the first new-file line of the hunk.
-            head = raw.split("@@")[1] if "@@" in raw[2:] else ""
-            plus = [tok for tok in head.split() if tok.startswith("+")]
-            if not plus:
-                continue
-            start = plus[0][1:].split(",")[0]
-            line_num = int(start) if start.isdigit() else 0
+        header = _DIFF_HEADER_RE.match(raw)
+        if header:
+            current = by_path.setdefault(header.group(1), [])
+            in_hunk = False
             continue
-        if raw.startswith("+++") or raw.startswith("---"):
+        hunk = _HUNK_RE.match(raw)
+        if hunk:
+            in_hunk = True
+            line_num = int(hunk.group(1))
+            continue
+        # Everything before the first hunk is file metadata (`--- a/x`,
+        # `+++ b/x`, `new file mode …`). Gating on `in_hunk` rather than
+        # prefix-matching `+++` is what keeps a genuinely added line whose text
+        # begins with `++` from being mistaken for a header.
+        if not in_hunk or current is None:
             continue
         if raw.startswith("+"):
-            added.append((line_num, raw[1:]))
+            current.append((line_num, raw[1:]))
             line_num += 1
-    return added
+    return by_path
 
 
 # ---------------------------------------------------------------------------
@@ -194,92 +239,6 @@ def _added_lines(
 
 def _finding(check: str, path: str, line: "int | None", detail: str) -> dict:
     return {"check": check, "path": path, "line": line, "detail": detail}
-
-
-def _forward_refs(added: "list[tuple[int, str]]", whole_file: "str | None") -> set[str]:
-    """Paths declared with the ``new `path`` qualifier — a file the record says
-    is being created, not one it claims already exists.
-
-    Collected over the whole file for a build plan (a chunk declares ``new`` on
-    its Deliverables line and names the same path again in a Done-when step,
-    often outside the added set) and over the added lines otherwise. Same
-    exemption ``_parse_build_plan_chunk_refs`` applies, for the same reason.
-    """
-    sources = [text for _, text in added]
-    if whole_file is not None:
-        sources = whole_file.splitlines()
-    return {
-        buildplan_refs._ref_path_part(m.group(1))
-        for line in sources
-        for m in _NEW_QUALIFIER_RE.finditer(line)
-    }
-
-
-def _check_dangling_refs(
-    project_dir: Path,
-    path: str,
-    added: "list[tuple[int, str]]",
-    ref_root: "Path | None",
-    exempt: "set[str]",
-) -> list[dict]:
-    """Backticked file / ``file:line`` citations on added lines that resolve
-    nowhere. Resolution rules are ``buildplan_refs``' — repo root, the repo's
-    declared second ref root, and an intentionally-gitignored managed path all
-    count as resolved.
-
-    ``exempt`` holds paths another check already owns: a ``new `path``
-    forward declaration, and anything ``chunk-ref-missing`` has reported."""
-    findings: list[dict] = []
-    seen: set[str] = set()
-    for line_num, text in added:
-        for match in _BACKTICKED_RE.finditer(text):
-            ref = buildplan_refs._ref_path_part(match.group(1).strip())
-            if not buildplan_refs._looks_like_file_path(ref):
-                continue
-            if ref in seen or ref in exempt:
-                continue
-            if (project_dir / ref).exists():
-                seen.add(ref)
-                continue
-            if ref_root is not None and (ref_root / ref).exists():
-                seen.add(ref)
-                continue
-            if gitstate.git_path_is_ignored(project_dir, ref):
-                seen.add(ref)
-                continue
-            seen.add(ref)
-            findings.append(
-                _finding("dangling-ref", path, line_num, f"`{ref}` does not exist")
-            )
-    return findings
-
-
-def _check_backlog_ids(
-    path: str, added: "list[tuple[int, str]]", known_ids: "set[str]"
-) -> list[dict]:
-    """Backlog ids cited on added lines that the authoritative backlog does not
-    contain. Only called when the backlog is readable — routing lives in
-    :func:`_backlog_ids`."""
-    findings: list[dict] = []
-    seen: set[str] = set()
-    for line_num, text in added:
-        for match in _BACKLOG_ID_RE.finditer(text):
-            prefix, suffix = match.group(1), match.group(2)
-            if suffix.isalpha() or suffix.isdigit():
-                continue  # not this generator's shape — see _BACKLOG_ID_RE
-            item_id = f"{prefix}-{suffix}"
-            if item_id in known_ids or item_id in seen:
-                continue
-            seen.add(item_id)
-            findings.append(
-                _finding(
-                    "unknown-backlog-id",
-                    path,
-                    line_num,
-                    f"{item_id} is not in the backlog",
-                )
-            )
-    return findings
 
 
 def _check_suite_totals(path: str, added: "list[tuple[int, str]]") -> list[dict]:
@@ -386,7 +345,35 @@ def _parse_governed_by(text: str) -> list[dict]:
     return entries
 
 
-def _check_governed_by(prawduct_dir: Path, plan_rel: str, text: str) -> list[dict]:
+def _resolve_artifact(project_dir: Path, prawduct_dir: Path, name: str) -> "Path | None":
+    """Locate the artifact a ``governed_by:`` entry names, or ``None``.
+
+    ``.prawduct/artifacts/<name>.md`` is the canonical home and is tried first.
+    It is not the only one: this repo keeps several governing artifacts under
+    ``documentation/``, and a product may put them anywhere it likes. Rather
+    than hardcode a second directory — which would be a guess about layout, the
+    thing ``buildplan_refs._ref_root`` is explicit about never doing — fall back
+    to asking git for a tracked file with that basename. One extra call, only on
+    the non-canonical path, and it is layout- and language-neutral.
+    """
+    canonical = prawduct_dir / "artifacts" / f"{name}.md"
+    if canonical.is_file():
+        return canonical
+    rc, out, _err = evidence.run_git(
+        project_dir, "ls-files", "--", f"{name}.md", f"*/{name}.md"
+    )
+    if rc != 0:
+        return None
+    for line in out.splitlines():
+        candidate = project_dir / line.strip()
+        if line.strip() and candidate.is_file():
+            return candidate
+    return None
+
+
+def _check_governed_by(
+    project_dir: Path, prawduct_dir: Path, plan_rel: str, text: str
+) -> list[dict]:
     """A plan's ``governed_by:`` block against each cited artifact's actual
     ``## Direction`` norm count — the GOV-8C3W mechanical enumeration.
 
@@ -394,13 +381,30 @@ def _check_governed_by(prawduct_dir: Path, plan_rel: str, text: str) -> list[dic
     artifact has norms is legitimate (a plan may split a norm's limbs); leaving
     a norm unaddressed is the defect, and "inapplicable, because —" is a
     perfectly good disposition, so there is never a reason to be short.
+
+    A ``governed_by:`` entry naming an artifact that does not exist is reported
+    here rather than left to ``dangling-ref``: the name is a bare token, not a
+    backticked path, so the citation scanner never sees it — and a plan claiming
+    governance by a file nobody can read is the worse defect of the two, because
+    it reads as *more* governed than an omission would.
     """
     findings: list[dict] = []
     for entry in _parse_governed_by(text):
         artifact = entry["artifact"]
-        artifact_text = _read_text(prawduct_dir / "artifacts" / f"{artifact}.md")
+        resolved = _resolve_artifact(project_dir, prawduct_dir, artifact)
+        artifact_text = _read_text(resolved) if resolved is not None else None
         if artifact_text is None:
-            continue  # a citation to a nonexistent artifact is dangling-ref's job
+            findings.append(
+                _finding(
+                    "governed-by-gap",
+                    plan_rel,
+                    entry["line"],
+                    f"`governed_by:` cites {artifact!r}, but no readable "
+                    f"{artifact}.md exists in the repo — the plan claims "
+                    "governance by a file no reader can check",
+                )
+            )
+            continue
         norms = direction_norm_count(artifact_text)
         if not norms:
             continue  # no ratified norms to dispose of
@@ -419,9 +423,9 @@ def _check_governed_by(prawduct_dir: Path, plan_rel: str, text: str) -> list[dic
 
 
 def _check_chunk_refs(
-    project_dir: Path, prawduct_dir: Path
-) -> "tuple[list[dict], str | None, set[str]]":
-    """The current chunk's declared deliverables, existence-checked.
+    project_dir: Path, prawduct_dir: Path, chunk_id: "str | None"
+) -> "tuple[list[dict], str | None, str | None]":
+    """The reviewed chunk's declared deliverables, existence-checked.
 
     Delegates wholly to ``buildplan_refs`` — the same parse and the same
     resolution ``verify-chunk-refs`` performs, computed here so it rides the
@@ -429,24 +433,32 @@ def _check_chunk_refs(
     chunk section that cannot be located is the ``cannot-verify:`` case and
     returns an ``unchecked`` reason, never an empty pass.
 
-    Unlike the line-scoped checks this reads the *current chunk* regardless of
-    whether the plan changed: a chunk's deliverables must exist by the time its
-    review runs, whether or not the plan file moved in the same diff.
+    Unlike the suite-total tripwire this runs whether or not the plan changed:
+    a chunk's deliverables must exist by the time its review runs, whether or
+    not the plan file moved in the same diff.
 
-    The third return value is the set of missing paths, so the line-scoped
-    ``dangling-ref`` check can stay quiet about them. Adding a chunk section
-    otherwise reports one absent file twice — once as a deliverable and once as
-    a citation — and a control that double-counts is the one nobody trusts.
+    **Whose chunk.** ``chunk_id`` comes from the dispatch manifest. Falling back
+    to the build plan's Status is a last resort and is *reported as an
+    assumption*, because Status resolves "current" to the first unchecked box —
+    so the instant a chunk is marked ``[x]``, "current" is the next, unbuilt
+    chunk, and grading it produces a confident answer about the wrong subject.
+
+    The third return value is the chunk actually graded (``None`` when none
+    was), so a zero count in the result can be read as an answer about a named
+    chunk rather than an answer about nothing.
     """
-    chunk_id = buildplan_refs._current_chunk_id_from_status(project_dir)
+    assumed = False
     if chunk_id is None:
-        return [], None, set()  # no current chunk — nothing declared to check
+        chunk_id = buildplan_refs._current_chunk_id_from_status(project_dir)
+        assumed = chunk_id is not None
+    if chunk_id is None:
+        return [], None, None  # no chunk in scope — nothing declared to check
     refs = buildplan_refs._parse_build_plan_chunk_refs(prawduct_dir, chunk_id)
     if refs["error"]:
         return [], (
-            f"chunk-ref-missing unchecked — {refs['error']}; the chunk's "
+            f"chunk-ref-missing unchecked — {refs['error']}; chunk {chunk_id}'s "
             "deliverable check did not run"
-        ), set()
+        ), None
     missing = buildplan_refs._verify_chunk_refs(project_dir, refs)
     findings = [
         _finding(
@@ -457,34 +469,15 @@ def _check_chunk_refs(
         )
         for entry in missing
     ]
-    return findings, None, {entry["ref"] for entry in missing}
-
-
-def _backlog_ids(prawduct_dir: Path) -> "tuple[set[str] | None, str | None]":
-    """``(ids, unchecked_reason)`` for the authoritative backlog.
-
-    Routes on ``backlog_service_repo`` (``data-model.md`` § Direction). On the
-    Issues backend ``.prawduct/backlog.md`` is frozen history — every item
-    archived at cutover still parses as present, so an existence check against
-    it would pass and dangle with equal confidence. Stating the gap is
-    recoverable; a confident wrong answer is not.
-    """
-    service = read_str_yaml_key(prawduct_dir / "project-state.yaml", "backlog_service_repo")
-    if service:
-        return None, (
-            f"backlog ids unchecked — this repo's live backlog is GitHub Issues "
-            f"({service}) and .prawduct/backlog.md is frozen history, which would "
-            "resolve every id with equal confidence"
+    gap = None
+    if assumed:
+        gap = (
+            f"chunk-ref-missing graded chunk {chunk_id}, inferred from build-plan "
+            "Status because the dispatch carried no chunk — Status names the first "
+            "UNCHECKED chunk, so this may be the next chunk rather than the "
+            "reviewed one"
         )
-    text = _read_text(prawduct_dir / "backlog.md")
-    if text is None:
-        return None, "backlog ids unchecked — .prawduct/backlog.md is missing or unreadable"
-    ids: set[str] = set()
-    for match in _BACKLOG_ID_RE.finditer(text):
-        ids.add(f"{match.group(1)}-{match.group(2)}")
-    if not ids:
-        return None, "backlog ids unchecked — .prawduct/backlog.md contains no item ids"
-    return ids, None
+    return findings, gap, chunk_id
 
 
 # ---------------------------------------------------------------------------
@@ -498,78 +491,106 @@ def lint_records(
     paths: "list[str] | None",
     base_tree: str,
     head_tree: str,
+    chunk_id: "str | None" = None,
 ) -> dict:
     """Run every check over the record subset of ``paths``.
 
-    Returns ``{"records": [...], "findings": [...], "unchecked": [...],
-    "counts": {check: n}}``. ``findings`` is advisory — it never gates.
-    ``unchecked`` names each check that could not run and why, so an unrun
-    check is never mistaken for a clean one.
+    Returns ``{"records", "chunk_graded", "findings", "unchecked", "counts"}``.
+    ``findings`` is advisory — it never gates. ``unchecked`` names each check
+    that could not run and why, so an unrun check is never mistaken for a clean
+    one, and ``chunk_graded`` names whose deliverables were checked so a zero
+    count is never mistaken for an answer about a different chunk.
+
+    ``chunk_id`` should be the reviewed chunk from the dispatch manifest. It is
+    NOT inferred by default, because the build-plan Status resolves "current" to
+    the first *unchecked* box — which, the moment a chunk is marked ``[x]``, is
+    the NEXT chunk. A review of chunk 02 was silently graded against chunk 03's
+    unbuilt deliverables exactly that way.
     """
     records = records_in(paths)
     findings: list[dict] = []
     unchecked: list[str] = []
 
     # Chunk deliverables are checked whether or not a RECORD changed — a
-    # code-only diff still has a current chunk whose declared outputs must
+    # code-only diff still has a reviewed chunk whose declared outputs must
     # exist by review time.
-    chunk_findings, chunk_gap, chunk_missing = _check_chunk_refs(project_dir, prawduct_dir)
+    chunk_findings, chunk_gap, chunk_graded = _check_chunk_refs(
+        project_dir, prawduct_dir, chunk_id
+    )
     findings.extend(chunk_findings)
     if chunk_gap:
         unchecked.append(chunk_gap)
 
-    if not records:
-        return {
-            "records": [],
-            "findings": findings,
-            "unchecked": unchecked,
-            "counts": _count(findings),
-        }
-
-    ref_root = buildplan_refs._ref_root(project_dir)
-    known_ids, backlog_gap = _backlog_ids(prawduct_dir)
-    if backlog_gap:
-        unchecked.append(backlog_gap)
-
-    undiffable: list[str] = []
-    for rel in records:
-        added = _added_lines(project_dir, base_tree, head_tree, rel)
-        if added is None:
-            undiffable.append(rel)
-            continue
-        whole = _read_text(project_dir / rel) if _BUILD_PLAN_RE.search(rel) else None
-        findings.extend(
-            _check_dangling_refs(
-                project_dir,
-                rel,
-                added,
-                ref_root,
-                _forward_refs(added, whole) | chunk_missing,
+    added_by_path: dict = {}
+    if records:
+        diffed = _added_lines(project_dir, base_tree, head_tree, records)
+        if diffed is None:
+            unchecked.append(
+                "suite-total-claim unchecked — git could not read the diff "
+                f"{base_tree[:12]}..{head_tree[:12]} over the changed records"
             )
-        )
-        findings.extend(_check_suite_totals(rel, added))
-        if known_ids is not None:
-            findings.extend(_check_backlog_ids(rel, added, known_ids))
-    if undiffable:
-        unchecked.append(
-            "line-scoped checks unchecked on "
-            f"{', '.join(sorted(undiffable))} — git could not diff "
-            f"{base_tree[:12]}..{head_tree[:12]} for those paths"
-        )
+        else:
+            added_by_path = diffed
+    for rel in records:
+        added = added_by_path.get(rel)
+        if added:
+            findings.extend(_check_suite_totals(rel, added))
 
     for rel in _plans_to_check(prawduct_dir, records):
         text = _read_text(project_dir / rel)
         if text is None:
             unchecked.append(f"governed-by-gap unchecked on {rel} — unreadable")
             continue
-        findings.extend(_check_governed_by(prawduct_dir, rel, text))
+        findings.extend(_check_governed_by(project_dir, prawduct_dir, rel, text))
 
     return {
         "records": records,
+        "chunk_graded": chunk_graded,
         "findings": findings,
         "unchecked": unchecked,
         "counts": _count(findings),
     }
+
+
+def lint_records_safe(
+    project_dir: Path,
+    prawduct_dir: Path,
+    paths: "list[str] | None",
+    base_tree: str,
+    head_tree: str,
+    chunk_id: "str | None" = None,
+) -> dict:
+    """:func:`lint_records`, but a crash degrades to a reported ``unchecked``
+    instead of taking the caller down with it.
+
+    **This is the only form the review-dispatch path may call.** Record-lint is
+    *advice*, and `architecture.md` § Direction says advice fails soft — but
+    ``critic-begin`` had no handler between this module and ``main()``, so a
+    single unreadable byte in one changed ``.md`` would abort every review
+    dispatch in every consuming repo with a raw traceback. That inverts two
+    recorded dispositions at once (advice fails soft; errors are attributed,
+    never stack traces across the boundary), and it fails in the worst
+    direction: an advisory check taking out the authority path it advises.
+
+    The failure is *reported*, never swallowed — the reason lands in
+    ``unchecked``, which is the same "this did not run" channel every other
+    non-answer uses.
+    """
+    try:
+        return lint_records(
+            project_dir, prawduct_dir, paths, base_tree, head_tree, chunk_id
+        )
+    except Exception as exc:  # prawduct:allow prawduct/broad-except -- advice must never abort review dispatch; reported as unchecked, never swallowed
+        return {
+            "records": records_in(paths),
+            "chunk_graded": chunk_id,
+            "findings": [],
+            "unchecked": [
+                f"record-lint did not run — {type(exc).__name__}: {exc}. The "
+                "review proceeds; no record check was performed."
+            ],
+            "counts": _count([]),
+        }
 
 
 def _count(findings: list[dict]) -> dict:

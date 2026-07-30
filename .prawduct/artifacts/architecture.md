@@ -120,7 +120,12 @@ The flagship multi-process flow, and the clearest expression of invariant 1.
   *temporary* index (never touching the session's real index or working tree), derives the review
   interval and reviewer roster from git + mode in code, and writes the dispatch manifest and the
   active-review marker. The manifest is the contract: it names the exact tree interval and roster a
-  review will attest.
+  review will attest. It also carries `record_lint` — the deterministic record checks (`lib/record_lint.py`)
+  answered here so no reviewer re-derives them. Those checks are **advice**: they never gate, they
+  never reach a review's severity counts, and their per-check counts ride into the review fact so the
+  control's own yield is a query rather than an argument. Cost is proportional to the diff, not the
+  repo: line-scoped checks read one `git diff --unified=0` over the changed records and see only
+  added lines.
 - **Reviewers write partials (model judgment as content).** Single-pass: the fork writes one
   partial. Coordinator: each worker writes exactly its own `<role>.json` and nothing else. Every
   partial is schema-validated.

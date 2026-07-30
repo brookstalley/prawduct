@@ -11,18 +11,25 @@ The claims pinned here are the design's load-bearing ones:
   in ``unchecked`` with a reason. Silence-as-pass is the failure mode the
   per-language dispatch norm exists to prevent, and this control must not
   reproduce it.
-* **The real 2026-07-29 defects are caught.** The GOV-8C3W under-disposition
-  (an artifact carrying three ``## Direction`` norms against a plan disposing
-  of one) and a dangling ``file:line`` citation are the fixtures, because they
-  are the findings that actually bought review rounds.
+* **The real 2026-07-29 defect is caught.** The GOV-8C3W under-disposition — an
+  artifact carrying three ``## Direction`` norms against a plan disposing of
+  one — is the fixture, because it is the finding that actually bought review
+  rounds.
+* **The right chunk is graded.** Build-plan Status resolves "current" to the
+  first *unchecked* box, so a finished chunk's review silently grades the NEXT
+  chunk's unbuilt deliverables. The dispatched chunk wins; an inference is
+  reported as one.
 * **Advice, never authority.** ``lint_records`` returns findings; nothing here
-  gates, and a lint finding cannot change a review's verdict.
+  gates, and a lint finding cannot change a review's verdict. ``_safe`` extends
+  that to crashes: advice must never take down the dispatch it advises.
 
 Real git repos, sterile config, mirroring ``test_dispositions.py``.
 """
 
 from __future__ import annotations
 
+import json
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -32,6 +39,25 @@ HOOK = ROOT / "bin" / "prawduct-hook"
 
 sys.path.insert(0, str(ROOT))
 from lib import record_lint  # noqa: E402
+
+
+def _run_hook(repo: Path, *args: str) -> subprocess.CompletedProcess:
+    home = repo.parent / "_home"
+    home.mkdir(exist_ok=True)
+    return subprocess.run(
+        ["python3", str(HOOK), *args],
+        cwd=str(repo),
+        capture_output=True,
+        text=True,
+        timeout=30,
+        env={
+            "HOME": str(home),
+            "CLAUDE_PROJECT_DIR": str(repo),
+            "CLAUDE_PLUGIN_ROOT": str(ROOT),
+            "PATH": os.environ.get("PATH", "/usr/bin:/bin"),
+            "PYTHONDONTWRITEBYTECODE": "1",
+        },
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -144,6 +170,57 @@ class TestAddedLineScoping:
         assert found[0]["path"] == ".prawduct/change-log.md"
         assert found[0]["line"] > 0
 
+    def test_many_records_are_attributed_correctly_from_one_diff(self, tmp_path):
+        """Added lines come from a SINGLE `git diff` over every record — a
+        subprocess per file would make this control's cost scale with file count
+        rather than with the diff. Each finding must still land on its own file
+        and line."""
+        repo = _make_repo(tmp_path)
+        arts = repo / ".prawduct" / "artifacts"
+        for name in ("a", "b", "c"):
+            (arts / f"{name}.md").write_text("seed\n")
+        base = _commit(repo, "seed")
+        (arts / "a.md").write_text("seed\n1812 tests pass.\n")
+        (arts / "b.md").write_text("seed\nnothing numeric here\n")
+        (arts / "c.md").write_text("seed\nfiller\nfull suite 849 green\n")
+        head = _commit(repo, "add")
+
+        paths = [f".prawduct/artifacts/{n}.md" for n in ("a", "b", "c")]
+        found = _checks(_lint(repo, paths, base, head), "suite-total-claim")
+        assert {(f["path"], f["line"]) for f in found} == {
+            (".prawduct/artifacts/a.md", 2),
+            (".prawduct/artifacts/c.md", 3),
+        }
+
+    def test_an_added_line_starting_with_plusplus_is_not_a_header(self, tmp_path):
+        """`+++ b/x` is file metadata; `++foo` as content produces the same
+        three leading `+` in the diff. Hunk-gating tells them apart."""
+        repo = _make_repo(tmp_path)
+        doc = repo / ".prawduct" / "artifacts" / "notes.md"
+        doc.write_text("seed\n")
+        base = _commit(repo, "seed")
+        doc.write_text("seed\n++ and then 1812 tests pass\n")
+        head = _commit(repo, "add")
+
+        found = _checks(_lint(repo, [".prawduct/artifacts/notes.md"], base, head), "suite-total-claim")
+        assert [f["line"] for f in found] == [2]
+
+    def test_a_diff_that_cannot_be_decoded_reports_unchecked(self, tmp_path):
+        """`git diff` output carries file CONTENT, and `text=True` decodes it
+        strictly — one non-UTF-8 byte in any consumer's changed `.md` used to
+        raise straight through `critic-begin`. It must degrade to a reported
+        non-answer, never a traceback and never a clean pass."""
+        repo = _make_repo(tmp_path)
+        doc = repo / ".prawduct" / "artifacts" / "notes.md"
+        doc.write_text("seed\n")
+        base = _commit(repo, "seed")
+        doc.write_bytes("seed\nlatin1: caf\xe9\n".encode("latin-1"))
+        head = _commit(repo, "add")
+
+        result = _lint(repo, [".prawduct/artifacts/notes.md"], base, head)
+        assert _checks(result, "suite-total-claim") == []
+        assert any("could not read the diff" in r for r in result["unchecked"])
+
     def test_line_numbers_point_at_the_added_line(self, tmp_path):
         repo = _make_repo(tmp_path)
         doc = repo / ".prawduct" / "artifacts" / "notes.md"
@@ -195,117 +272,22 @@ class TestSuiteTotalClaim:
             "0 blocking, 3 warning, 2 note across 1 reviewer(s).",
             "Released as v3.2.1 with 2 fixes.",
             "~30 tests in `test_views.py` target `parse_change_log` directly.",
+            "A total of 25 backlog items were triaged this session.",
+            "The migration moved 295 items in total.",
         ):
             assert not self._fires(tmp_path, text), f"unexpected finding for {text!r}"
 
 
 # ---------------------------------------------------------------------------
-# dangling-ref
-# ---------------------------------------------------------------------------
-
-
-class TestDanglingRef:
-    def test_missing_path_is_reported(self, tmp_path):
-        repo = _make_repo(tmp_path)
-        doc = repo / ".prawduct" / "artifacts" / "notes.md"
-        doc.write_text("seed\n")
-        base = _commit(repo, "seed")
-        doc.write_text("seed\nSee `plugin/lib/nope.py:42` for the mechanism.\n")
-        head = _commit(repo, "add")
-
-        found = _checks(_lint(repo, [".prawduct/artifacts/notes.md"], base, head), "dangling-ref")
-        assert len(found) == 1
-        assert "plugin/lib/nope.py" in found[0]["detail"]
-        assert ":42" not in found[0]["detail"], "the line suffix is stripped before the check"
-
-    def test_existing_path_is_quiet(self, tmp_path):
-        repo = _make_repo(tmp_path)
-        (repo / "plugin" / "lib").mkdir(parents=True)
-        (repo / "plugin" / "lib" / "real.py").write_text("x = 1\n")
-        doc = repo / ".prawduct" / "artifacts" / "notes.md"
-        doc.write_text("seed\n")
-        base = _commit(repo, "seed")
-        doc.write_text("seed\nSee `plugin/lib/real.py:7`.\n")
-        head = _commit(repo, "add")
-
-        assert _checks(_lint(repo, [".prawduct/artifacts/notes.md"], base, head), "dangling-ref") == []
-
-    def test_non_path_tokens_are_not_treated_as_paths(self, tmp_path):
-        """The carveouts `buildplan_refs` already earned apply here rather than
-        being re-litigated: slash-commands, globs, URLs, placeholders, anchors,
-        and git refs are not missing files."""
-        repo = _make_repo(tmp_path)
-        doc = repo / ".prawduct" / "artifacts" / "notes.md"
-        doc.write_text("seed\n")
-        base = _commit(repo, "seed")
-        doc.write_text(
-            "seed\nRun `/prawduct:critic`, glob `docs/*.md`, fetch `https://x.test/y`, "
-            "write `<inbox>/<slug>.md`, cut `release/v3.2.0`, link `owner/repo#12`.\n"
-        )
-        head = _commit(repo, "add")
-
-        assert _checks(_lint(repo, [".prawduct/artifacts/notes.md"], base, head), "dangling-ref") == []
-
-    def test_backticked_prose_is_not_a_path(self, tmp_path):
-        """A backticked span containing whitespace is a command or a metadata
-        bar, never a path. Without this the backlog's `·`-separated `refs:` bars
-        produced 44 false findings on one branch — the ceremony ratchet this
-        whole control exists to reverse."""
-        repo = _make_repo(tmp_path)
-        doc = repo / ".prawduct" / "artifacts" / "notes.md"
-        doc.write_text("seed\n")
-        base = _commit(repo, "seed")
-        doc.write_text(
-            "seed\nRun `python -m pytest tests/ -q`; bar reads "
-            "`effort: M · area: critic · refs: plugin/lib/gates.py (the gate)`.\n"
-        )
-        head = _commit(repo, "add")
-
-        assert _checks(_lint(repo, [".prawduct/artifacts/notes.md"], base, head), "dangling-ref") == []
-
-    def test_new_qualifier_exempts_a_deliverable_the_plan_creates(self, tmp_path):
-        """`new `path`` in a plan declares a file the work CREATES. Flagging it
-        would make every plan report its own deliverables as dangling until the
-        chunk that builds them lands — and the exemption spans the file, because
-        a plan names the same path again in a Done-when step."""
-        repo = _make_repo(tmp_path)
-        plan = repo / ".prawduct" / "artifacts" / "build-plan-demo.md"
-        plan.write_text("# Plan\n\nseed\n")
-        base = _commit(repo, "seed")
-        plan.write_text(
-            "# Plan\n\nseed\n"
-            "- **Deliverables:** new `plugin/lib/future.py`\n"
-            "- **Done when:** `plugin/lib/future.py` has tests\n"
-        )
-        head = _commit(repo, "add")
-
-        assert _checks(_lint(repo, [".prawduct/artifacts/build-plan-demo.md"], base, head), "dangling-ref") == []
-
-    def test_new_qualifier_does_not_exempt_an_unrelated_path(self, tmp_path):
-        repo = _make_repo(tmp_path)
-        plan = repo / ".prawduct" / "artifacts" / "build-plan-demo.md"
-        plan.write_text("# Plan\n\nseed\n")
-        base = _commit(repo, "seed")
-        plan.write_text(
-            "# Plan\n\nseed\n"
-            "- **Deliverables:** new `plugin/lib/future.py`\n"
-            "- **Consumes:** `plugin/lib/absent.py`\n"
-        )
-        head = _commit(repo, "add")
-
-        found = _checks(_lint(repo, [".prawduct/artifacts/build-plan-demo.md"], base, head), "dangling-ref")
-        assert [f["detail"] for f in found] == ["`plugin/lib/absent.py` does not exist"]
-
-
-# ---------------------------------------------------------------------------
-# unknown-backlog-id
+# chunk-ref-missing — the deliverable check, moved from a reviewer instruction
 # ---------------------------------------------------------------------------
 
 
 class TestChunkRefs:
-    """The chunk-deliverable check moved from a reviewer instruction
-    (`verify-chunk-refs`, run by hand) to dispatch, so the answer rides the
-    manifest. It reads the CURRENT chunk whether or not the plan changed."""
+    """`verify-chunk-refs` used to be an instruction a reviewer ran by hand.
+    It now runs at dispatch and the answer rides the manifest — which means
+    getting the SUBJECT right is load-bearing, since there is no longer a
+    reviewer re-deriving it."""
 
     def _repo_with_plan(self, tmp_path, plan: str, name: str):
         repo = _make_repo(tmp_path, name=name)
@@ -323,7 +305,7 @@ class TestChunkRefs:
         assert "src/never.py" in found[0]["detail"]
 
     def test_it_runs_even_when_no_record_changed(self, tmp_path):
-        """A code-only diff still has a current chunk whose declared outputs
+        """A code-only diff still has a reviewed chunk whose declared outputs
         must exist by review time."""
         plan = (
             "# Plan\n\n## Status\n\n- [ ] Chunk 01: do it\n\n"
@@ -334,27 +316,13 @@ class TestChunkRefs:
         assert result["records"] == []
         assert [f["check"] for f in result["findings"]] == ["chunk-ref-missing"]
 
-    def test_a_missing_path_is_reported_once_not_twice(self, tmp_path):
-        """Adding a chunk section names its deliverable on an added line too,
-        so both checks can see the same absent file. It is reported ONCE — a
-        control that double-counts is the one nobody trusts."""
-        repo = _make_repo(tmp_path, name="dedupe")
-        base = _tree(repo)
-        (repo / ".prawduct" / "artifacts" / "build-plan.md").write_text(
-            "# Plan\n\n## Status\n\n- [ ] Chunk 01: do it\n\n"
-            "### Chunk 01: do it\n\n- **Deliverables:** `src/never.py`\n"
-        )
-        head = _commit(repo, "plan")
-
-        result = _lint(repo, [".prawduct/artifacts/build-plan.md"], base, head)
-        assert [f["check"] for f in result["findings"]] == ["chunk-ref-missing"]
-
     def test_unparseable_plan_reports_unchecked_never_clean(self, tmp_path):
         plan = "# Plan\n\n## Status\n\n- [ ] Chunk 01: do it\n\nNo chunk section here.\n"
         repo, head = self._repo_with_plan(tmp_path, plan, "unparseable")
         result = _lint(repo, [], head, head)
         assert _checks(result, "chunk-ref-missing") == []
         assert any("chunk-ref-missing unchecked" in r for r in result["unchecked"])
+        assert result["chunk_graded"] is None
 
     def test_no_current_chunk_is_quiet(self, tmp_path):
         plan = "# Plan\n\n## Status\n\n- [x] Chunk 01: done\n"
@@ -362,61 +330,48 @@ class TestChunkRefs:
         result = _lint(repo, [], head, head)
         assert result["findings"] == []
         assert result["unchecked"] == []
+        assert result["chunk_graded"] is None
 
-
-class TestUnknownBacklogId:
-    def test_unknown_id_is_reported(self, tmp_path):
-        repo = _make_repo(tmp_path)
-        doc = repo / ".prawduct" / "artifacts" / "notes.md"
-        doc.write_text("seed\n")
-        base = _commit(repo, "seed")
-        doc.write_text("seed\nTracked by ZZZ-9Q1K.\n")
-        head = _commit(repo, "add")
-
-        found = _checks(_lint(repo, [".prawduct/artifacts/notes.md"], base, head), "unknown-backlog-id")
-        assert [f["detail"] for f in found] == ["ZZZ-9Q1K is not in the backlog"]
-
-    def test_known_id_is_quiet(self, tmp_path):
-        repo = _make_repo(tmp_path)
-        doc = repo / ".prawduct" / "artifacts" / "notes.md"
-        doc.write_text("seed\n")
-        base = _commit(repo, "seed")
-        doc.write_text("seed\nTracked by GOV-8C3W and CRT-3X9D.\n")
-        head = _commit(repo, "add")
-
-        assert _checks(_lint(repo, [".prawduct/artifacts/notes.md"], base, head), "unknown-backlog-id") == []
-
-    def test_standards_references_are_not_backlog_ids(self, tmp_path):
-        """`ISO-8601`, `RFC-7807` and the template's own `ABC-1234` placeholder
-        are id-SHAPED but carry an all-alpha or all-digit suffix, which this
-        generator never produces."""
-        repo = _make_repo(tmp_path)
-        doc = repo / ".prawduct" / "artifacts" / "notes.md"
-        doc.write_text("seed\n")
-        base = _commit(repo, "seed")
-        doc.write_text("seed\nTimestamps are ISO-8601; errors follow RFC-7807; ids look like ABC-1234.\n")
-        head = _commit(repo, "add")
-
-        assert _checks(_lint(repo, [".prawduct/artifacts/notes.md"], base, head), "unknown-backlog-id") == []
-
-    def test_issues_backend_reports_unchecked_never_passes(self, tmp_path):
-        """On the Issues backend `backlog.md` is frozen history — every archived
-        item still parses as present, so an existence check would pass and
-        dangle with equal confidence. The gap is STATED."""
-        repo = _make_repo(tmp_path)
-        (repo / ".prawduct" / "project-state.yaml").write_text(
-            "project_name: t\nbacklog_service_repo: owner/repo\n"
+    def test_the_dispatched_chunk_wins_over_build_plan_status(self, tmp_path):
+        """The defect this closes: Status resolves "current" to the first
+        UNCHECKED box, so the moment chunk 02 is marked `[x]` the check silently
+        grades chunk 03's unbuilt deliverables and reports a confident zero.
+        The manifest's chunk is the subject; Status is not."""
+        plan = (
+            "# Plan\n\n## Status\n\n- [x] Chunk 02: done\n- [ ] Chunk 03: next\n\n"
+            "### Chunk 02: done\n\n- **Deliverables:** `src/built.py`\n\n"
+            "### Chunk 03: next\n\n- **Deliverables:** `src/not_yet.py`\n"
         )
-        doc = repo / ".prawduct" / "artifacts" / "notes.md"
-        doc.write_text("seed\n")
-        base = _commit(repo, "seed")
-        doc.write_text("seed\nTracked by ZZZ-9Q1K.\n")
-        head = _commit(repo, "add")
+        repo, _base = self._repo_with_plan(tmp_path, plan, "wrongchunk")
+        (repo / "src").mkdir()
+        (repo / "src" / "built.py").write_text("x = 1\n")
+        head = _commit(repo, "build 02")
 
-        result = _lint(repo, [".prawduct/artifacts/notes.md"], base, head)
-        assert _checks(result, "unknown-backlog-id") == []
-        assert any("owner/repo" in reason for reason in result["unchecked"])
-        assert any("frozen history" in reason for reason in result["unchecked"])
+        graded_02 = record_lint.lint_records(
+            repo, repo / ".prawduct", [], head, head, chunk_id="02"
+        )
+        assert graded_02["chunk_graded"] == "02"
+        assert graded_02["findings"] == [], "02's declared deliverable exists"
+
+        inferred = _lint(repo, [], head, head)
+        assert inferred["chunk_graded"] == "03", "Status points at the NEXT chunk"
+        assert [f["check"] for f in inferred["findings"]] == ["chunk-ref-missing"]
+
+    def test_an_inferred_chunk_is_reported_as_an_assumption(self, tmp_path):
+        """Inference is allowed but never silent — a zero from the wrong chunk
+        reads exactly like a zero from the right one."""
+        plan = (
+            "# Plan\n\n## Status\n\n- [ ] Chunk 01: do it\n\n"
+            "### Chunk 01: do it\n\n- **Deliverables:** `src/never.py`\n"
+        )
+        repo, head = self._repo_with_plan(tmp_path, plan, "inferred")
+        result = _lint(repo, [], head, head)
+        assert any("inferred from build-plan Status" in r for r in result["unchecked"])
+
+        named = record_lint.lint_records(
+            repo, repo / ".prawduct", [], head, head, chunk_id="01"
+        )
+        assert named["unchecked"] == [], "no assumption to report when told"
 
 
 # ---------------------------------------------------------------------------
@@ -486,6 +441,40 @@ class TestGovernedByGap:
         """Splitting a norm's limbs across two dispositions is legitimate; only
         leaving one unaddressed is the defect."""
         assert _checks(self._run(tmp_path, 5, "over"), "governed-by-gap") == []
+
+    def test_a_cited_artifact_that_does_not_exist_is_reported(self, tmp_path):
+        """A `governed_by:` name is a bare token, not a backticked path, so the
+        citation scanner never sees it. A plan governed by a file nobody can
+        read reads as MORE governed than an omission would."""
+        repo = _make_repo(tmp_path, name="ghostartifact")
+        arts = repo / ".prawduct" / "artifacts"
+        base = _tree(repo)
+        (arts / "build-plan-demo.md").write_text(_plan(2, artifact="no-such-artifact"))
+        head = _commit(repo, "add plan")
+
+        found = _checks(_lint(repo, [".prawduct/artifacts/build-plan-demo.md"], base, head), "governed-by-gap")
+        assert len(found) == 1
+        assert "no-such-artifact" in found[0]["detail"]
+
+    def test_an_artifact_outside_the_canonical_dir_still_resolves(self, tmp_path):
+        """`.prawduct/artifacts/` is the canonical home, not the only one — this
+        repo keeps several governing artifacts under `documentation/`. Guessing
+        a second directory would be a guess about layout; asking git for a
+        tracked basename is neither layout- nor language-specific. Without this
+        the check cried wolf on a plan whose artifact was merely elsewhere."""
+        repo = _make_repo(tmp_path, name="noncanonical")
+        (repo / "documentation").mkdir()
+        (repo / "documentation" / "service-contract.md").write_text(THREE_NORM_ARTIFACT)
+        base = _commit(repo, "seed elsewhere")
+        (repo / ".prawduct" / "artifacts" / "build-plan-demo.md").write_text(
+            _plan(1, artifact="service-contract")
+        )
+        head = _commit(repo, "add plan")
+
+        found = _checks(_lint(repo, [".prawduct/artifacts/build-plan-demo.md"], base, head), "governed-by-gap")
+        assert len(found) == 1, "resolved, then graded on its norm count"
+        assert "carries 3" in found[0]["detail"]
+        assert "no readable" not in found[0]["detail"]
 
     def test_artifact_without_direction_section_is_skipped(self, tmp_path):
         repo = _make_repo(tmp_path, name="nodirection")
@@ -598,35 +587,48 @@ class TestGovernedByParsing:
 
 
 class TestUncheckedReporting:
-    def test_undiffable_path_reports_unchecked(self, tmp_path):
+    def test_undiffable_interval_reports_unchecked(self, tmp_path):
         repo = _make_repo(tmp_path)
         head = _tree(repo)
         result = _lint(repo, [".prawduct/artifacts/notes.md"], "0" * 40, head)
         assert result["findings"] == []
-        assert any("could not diff" in reason for reason in result["unchecked"])
+        assert any("could not read the diff" in reason for reason in result["unchecked"])
 
-    def test_missing_backlog_reports_unchecked(self, tmp_path):
-        repo = _make_repo(tmp_path)
-        (repo / ".prawduct" / "backlog.md").unlink()
-        doc = repo / ".prawduct" / "artifacts" / "notes.md"
-        doc.write_text("seed\n")
-        base = _commit(repo, "seed")
-        doc.write_text("seed\nTracked by ZZZ-9Q1K.\n")
-        head = _commit(repo, "add")
-
-        result = _lint(repo, [".prawduct/artifacts/notes.md"], base, head)
-        assert _checks(result, "unknown-backlog-id") == []
-        assert any("backlog ids unchecked" in reason for reason in result["unchecked"])
-
-    def test_no_records_means_no_work_and_no_unchecked(self, tmp_path):
+    def test_no_records_means_no_line_scoped_work(self, tmp_path):
         repo = _make_repo(tmp_path)
         result = _lint(repo, ["plugin/lib/gates.py"], _tree(repo), _tree(repo))
         assert result == {
             "records": [],
+            "chunk_graded": None,
             "findings": [],
             "unchecked": [],
             "counts": {check: 0 for check in record_lint.CHECKS},
         }
+
+    def test_a_crash_degrades_to_unchecked_never_taking_dispatch_down(self, tmp_path, monkeypatch):
+        """`lint_records_safe` is the only form the dispatch path may call.
+        Advice failing hard on the authority path it advises is the inversion
+        this guards — measured against a real crash, not a mocked return."""
+        repo = _make_repo(tmp_path)
+
+        def boom(*_a, **_k):
+            raise RuntimeError("git exploded")
+
+        monkeypatch.setattr(record_lint, "_check_chunk_refs", boom)
+        result = record_lint.lint_records_safe(
+            repo, repo / ".prawduct", ["a.md"], _tree(repo), _tree(repo), "02"
+        )
+        assert result["findings"] == []
+        assert result["counts"] == {check: 0 for check in record_lint.CHECKS}
+        assert any("record-lint did not run" in r for r in result["unchecked"])
+        assert any("git exploded" in r for r in result["unchecked"]), "the cause is named"
+
+    def test_safe_is_transparent_when_nothing_throws(self, tmp_path):
+        repo = _make_repo(tmp_path)
+        head = _tree(repo)
+        assert record_lint.lint_records_safe(
+            repo, repo / ".prawduct", [], head, head
+        ) == record_lint.lint_records(repo, repo / ".prawduct", [], head, head)
 
 
 # ---------------------------------------------------------------------------
@@ -645,19 +647,106 @@ class TestResultShape:
 
         result = _lint(repo, [".prawduct/artifacts/notes.md"], base, head)
         assert set(result["counts"]) == set(record_lint.CHECKS)
-        assert result["counts"]["dangling-ref"] == 1
-        assert result["counts"]["unknown-backlog-id"] == 1
         assert result["counts"]["suite-total-claim"] == 1
         assert result["counts"]["governed-by-gap"] == 0
+        assert result["counts"]["chunk-ref-missing"] == 0
         assert result["records"] == [".prawduct/artifacts/notes.md"]
+
+    def test_retired_checks_are_absent_from_the_contract(self):
+        """`dangling-ref` and `unknown-backlog-id` were measured at zero true
+        positives and removed. Their absence is a decision, and a consumer
+        reading `counts` must not find a key that never fills."""
+        assert "dangling-ref" not in record_lint.CHECKS
+        assert "unknown-backlog-id" not in record_lint.CHECKS
 
     def test_format_findings_names_location_and_unchecked(self, tmp_path):
         result = {
             "findings": [
-                {"check": "dangling-ref", "path": "a.md", "line": 7, "detail": "`x/y.py` does not exist"}
+                {"check": "governed-by-gap", "path": "a.md", "line": 7, "detail": "short 2 of 3"}
             ],
-            "unchecked": ["backlog ids unchecked — reason"],
+            "unchecked": ["chunk-ref-missing unchecked — reason"],
         }
         lines = record_lint.format_findings(result)
-        assert lines[0] == "dangling-ref: a.md:7: `x/y.py` does not exist"
-        assert lines[1] == "unchecked: backlog ids unchecked — reason"
+        assert lines[0] == "governed-by-gap: a.md:7: short 2 of 3"
+        assert lines[1] == "unchecked: chunk-ref-missing unchecked — reason"
+
+
+# ---------------------------------------------------------------------------
+# The `verify-records` CLI — the by-hand form of what critic-begin computes
+# ---------------------------------------------------------------------------
+
+
+class TestVerifyRecordsCLI:
+    """`Exposed API: prawduct-hook-cli`, and `api-contract.md` records a
+    three-way exit contract plus a `--json`-equals-the-manifest-block claim.
+    Both are pinned here, because a contract nothing exercises is a sentence."""
+
+    def _repo(self, tmp_path, name="cli"):
+        repo = _make_repo(tmp_path, name=name)
+        (repo / ".prawduct" / "artifacts" / "build-plan.md").write_text(
+            "# Plan\n\n## Status\n\n- [ ] Chunk 01: do it\n\n"
+            "### Chunk 01: do it\n\n- **Deliverables:** `src/never.py`\n"
+        )
+        _commit(repo, "plan")
+        _git(repo, "branch", "-M", "main")
+        _git(repo, "checkout", "-q", "-b", "work")
+        (repo / ".prawduct" / "artifacts" / "notes.md").write_text(
+            "# Notes\n\n1812 tests pass.\n"
+        )
+        _commit(repo, "work")
+        return repo
+
+    def test_findings_exit_zero_because_the_lint_is_advice(self, tmp_path):
+        """Exit 0 WITH findings is the contract: record-lint advises the builder
+        and gates nothing. Exit 1 is reserved for could-not-run, so a failure to
+        check is never confusable with a clean check."""
+        result = _run_hook(self._repo(tmp_path, "advice"), "verify-records")
+        assert result.returncode == 0, result.stderr
+        assert "suite-total-claim" in result.stdout
+        assert "chunk-ref-missing" in result.stdout
+
+    def test_an_unresolvable_interval_exits_one(self, tmp_path):
+        result = _run_hook(self._repo(tmp_path, "badbase"), "verify-records",
+                           "--base", "definitely-not-a-ref")
+        assert result.returncode == 1
+        assert "cannot resolve" in result.stderr
+
+    def test_json_is_the_manifest_record_lint_block_verbatim(self, tmp_path):
+        """`api-contract.md` says the `--json` shape IS the manifest's
+        `record_lint` block — which is what makes either surface readable by one
+        consumer. Compared field-for-field against the library call the manifest
+        stores, not eyeballed."""
+        repo = self._repo(tmp_path, "jsonshape")
+        result = _run_hook(repo, "verify-records", "--json")
+        assert result.returncode == 0, result.stderr
+        payload = json.loads(result.stdout)
+
+        base = _git(repo, "rev-parse", "main^{tree}")
+        head = _git(repo, "rev-parse", "HEAD^{tree}")
+        changed = _git(repo, "diff", "--name-only", base, head).splitlines()
+        direct = record_lint.lint_records_safe(
+            repo, repo / ".prawduct", changed, base, head, None
+        )
+        assert payload == direct
+
+    def test_chunk_flag_names_the_subject(self, tmp_path):
+        repo = self._repo(tmp_path, "chunkflag")
+        result = _run_hook(repo, "verify-records", "--chunk", "01", "--json")
+        assert result.returncode == 0, result.stderr
+        assert json.loads(result.stdout)["chunk_graded"] == "01"
+
+    def test_summary_line_names_the_chunk_it_graded(self, tmp_path):
+        """A zero count is only meaningful once the reader knows whose
+        deliverables were counted."""
+        result = _run_hook(self._repo(tmp_path, "subject"), "verify-records",
+                           "--chunk", "01")
+        assert result.returncode == 0, result.stderr
+        assert "deliverables of chunk 01" in result.stdout
+
+    def test_outside_an_onboarded_repo_it_is_a_clean_no_op(self, tmp_path):
+        bare = tmp_path / "bare"
+        bare.mkdir()
+        _git(bare, "init", "-q")
+        result = _run_hook(bare, "verify-records")
+        assert result.returncode == 0, result.stderr
+        assert "not an onboarded repo" in result.stdout

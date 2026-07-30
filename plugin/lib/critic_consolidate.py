@@ -420,8 +420,8 @@ def begin_review(
     # nothing downstream gates on it. A lint that cannot run reports itself
     # ``unchecked`` rather than empty — see ``record_lint``.
     from . import record_lint  # noqa: PLC0415 — lazy; keeps the import graph flat
-    lint = record_lint.lint_records(
-        project_dir, prawduct_dir, files_changed, base_tree, head_tree
+    lint = record_lint.lint_records_safe(
+        project_dir, prawduct_dir, files_changed, base_tree, head_tree, chunk
     )
 
     manifest = {

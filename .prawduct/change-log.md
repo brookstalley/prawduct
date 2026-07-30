@@ -14,13 +14,23 @@ times. None of those need judgment, and each correction is a commit, and a commi
 is how a record defect buys a review round.
 
 **`prawduct-hook critic-begin` now answers them in code**, before any reviewer starts. New
-`lib/record_lint.py` runs five deterministic checks over the changed records and writes the result into
+`lib/record_lint.py` runs three deterministic checks over the changed records and writes the result into
 the dispatch manifest as `record_lint`; `review-protocol.md` tells reviewers to read it and not
-re-derive it. The checks: the current chunk's **declared deliverables** exist, backticked `file` /
-`file:line` **citations** resolve, cited **backlog ids** exist, a plan's **`governed_by:`** block covers
-every `## Direction` norm of each cited artifact (the GOV-8C3W mechanical enumeration), and no
-**suite-total test claim** lands in durable prose. `prawduct-hook verify-records [--base] [--head]
-[--json]` is the by-hand form, and its `--json` is the manifest block verbatim.
+re-derive it. The checks: the reviewed chunk's **declared deliverables** exist, a plan's
+**`governed_by:`** block covers every `## Direction` norm of each cited artifact (the GOV-8C3W
+mechanical enumeration), and no **suite-total test claim** lands in durable prose.
+`prawduct-hook verify-records [--base] [--head] [--chunk] [--json]` is the by-hand form, and its
+`--json` is the manifest block verbatim.
+
+**Three checks, not five — two were built, measured, and deleted before shipping.** `dangling-ref`
+(every backticked citation resolves) and `unknown-backlog-id` produced **0 true positives** on the
+40-file branch that introduced them; `dangling-ref`'s only three hits were prose that is path-shaped
+and not a path, because a multi-line citation like `backlog.md:307/311/315` keeps its slashes. By this
+repo's own proportionality norm a control that fires and catches nothing is removed by default, so
+they were — and the measurement is recorded at the mechanism (`record_lint.CHECKS`), not just here, so
+a future author argues with data rather than restoring what looks like an oversight. What survives has
+demonstrated yield: `governed-by-gap` found **22 gaps across 8 plans**, where GOV-8C3W estimated "a
+four-line sweep."
 
 **Cost is proportional to the diff, never the repo** — the constraint the 2026-07-29 language-agnosticism
 norms exist to enforce, at consumer scale. Line-scoped checks read only the lines a change *added*, so a
@@ -28,10 +38,21 @@ change-log with years of history reports on the entry just written and nothing e
 40-file branch takes 1.4s. Classification is by suffix (`.md`, archive excluded), so nothing here parses a
 language or grows a per-language table.
 
-**A check that cannot run says so.** Every result carries an `unchecked` list naming the checks that did
-not run and why — an unresolvable diff, or a backlog on the Issues backend where `backlog.md` is frozen
-history and an existence check would resolve every id with equal confidence. Silence-as-pass is the exact
-failure mode the per-language dispatch norm was written against, and this control does not reproduce it.
+**A check that cannot run says so, and one of them is BLOCKING.** Every result carries an `unchecked`
+list naming the checks that did not run and why. A `chunk-ref-missing unchecked` entry is the old
+`verify-chunk-refs` `cannot-verify:` exit and keeps that severity, because a deliverable check that
+could not run is indistinguishable from one that passed — the habituation BLD-5J8N paid for. The result
+also names `chunk_graded`, since a zero count only means something once you know whose deliverables were
+counted: build-plan Status resolves "current" to the first *unchecked* box, so the moment a chunk is
+ticked the naive reading grades the **next**, unbuilt chunk and reports a confident zero. The dispatched
+chunk is now the subject and an inferred one is reported as an assumption.
+
+**And the lint can no longer take down the review it advises.** `git diff` output carries file content
+and `text=True` decodes strictly, so one non-UTF-8 byte in any consumer's changed `.md` would have
+aborted every review dispatch with a raw traceback — an advisory check killing the authority path,
+inverting two recorded dispositions at once. `run_git` now converts that to a normal read failure for
+every caller, and `lint_records_safe` is the only form the dispatch path may call: a crash becomes a
+reported `unchecked`, never a silent pass and never a dead dispatch.
 
 **Advice, never authority.** Findings ride the manifest for the builder; nothing gates on them, they never
 reach a review's severity counts, and `verify-records` exits 0 with findings and 1 only when it could not
@@ -58,15 +79,17 @@ ones that prompted them.
 
 **One shared-classifier fix, found by running the new lint against the real branch:** `refs/tags/v3.2.1` and
 its siblings are the git *ref namespace*, not paths, so `refs` joins `_GIT_REF_PREFIXES` — extension-gated as
-the rest are, so a real path under refs/ carrying a file extension stays checked. The first draft of the citation scanner used its own
-"anything between backticks" pattern and produced 46 findings on this branch, 44 of them the backlog's
-`·`-separated metadata bars; borrowing `buildplan_refs`' whitespace-free grammar instead of restating it took
-that to 2. One grammar, one home.
+the rest are, so a real path under refs/ carrying a file extension stays checked. `record_lint` also
+recognises both live plan-naming conventions (`build-plan-<scope>.md` and the scope-named
+`<scope>-plan.md`); matching only the first would have skipped a scope-named plan silently, and a plan
+never read reports zero gaps exactly like a complete one.
 
-**Tests:** new `tests/test_record_lint.py` and `tests/preferences/test_no_suite_total_claims.py`, plus
-`TestRecordLintInManifest` in `tests/test_critic_consolidate.py` (manifest carries it, findings don't gate,
-the fact carries the yield, an older manifest without the block still builds) and `refs/` cases in
-`tests/test_build_plan_resolution.py`.
+**Tests:** new `tests/test_record_lint.py` (including the `verify-records` CLI contract — exit 0 with
+findings, exit 1 on could-not-run, `--json` compared field-for-field against the manifest block) and
+`tests/preferences/test_no_suite_total_claims.py`, plus `TestRecordLintInManifest` in
+`tests/test_critic_consolidate.py` (manifest carries it, findings don't gate, the fact carries the yield,
+an older manifest without the block still builds), `verify-records` rows in `TestFlagOnlyArgRejection`,
+and `refs/` cases in `tests/test_build_plan_resolution.py`.
 
 ## 2026-07-30: Prawduct is written in Python and must never be specific to Python — four norms recorded and one amended
 

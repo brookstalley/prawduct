@@ -288,25 +288,36 @@ archive excluded) and writes the result into the dispatch manifest as `record_li
 re-derive any of it, and do not recount anything it counted — re-deriving a machine-checked number
 is how a record defect buys a review round, which is the cost this exists to remove.
 
-Line-scoped checks read only the lines a change **added**, so a change-log with years of history in
-it reports on the entry just written and nothing else. Severity per check:
+The suite-total tripwire reads only the lines a change **added**, so a change-log with years of
+history in it reports on the entry just written and nothing else. Severity per check:
 
 | `check` | Means | Severity |
 |---|---|---|
-| `chunk-ref-missing` | A deliverable the current chunk *declares* does not exist | **BLOCKING** |
-| `dangling-ref` | A backticked `file` / `file:line` citation resolves nowhere | **WARNING** |
-| `governed-by-gap` | A plan disposes of fewer norms than the cited artifact's `## Direction` carries | **WARNING** (Goal 2 — the paperwork arm below) |
-| `unknown-backlog-id` | An id cited in a record is not in the backlog | **NOTE** |
+| `chunk-ref-missing` | A deliverable the reviewed chunk *declares* does not exist | **BLOCKING** |
+| `governed-by-gap` | A plan disposes of fewer norms than the cited artifact's `## Direction` carries, or cites an artifact that does not exist | **WARNING** (Goal 2 — the paperwork arm below) |
 | `suite-total-claim` | A suite-total test claim in durable prose — the store already records pass/fail per tree | **NOTE** |
 
-**`unchecked` is not a pass.** Each entry names a check that could **not run** and why (an
-unresolvable diff, a backlog on the Issues backend where `backlog.md` is frozen history). Say so in
-your summary. A check that stays silent when it could not run is indistinguishable from one that
-found nothing, which is the failure mode the per-language dispatch norm exists to prevent.
+**Under the coordinator pattern, whoever holds Goal 2 raises every one of these** — including the
+`suite-total-claim` NOTE, which would otherwise sit in Goal 4. The manifest is named in Goal 2 and
+only that reviewer reads it, so splitting the findings by their natural goal loses them.
+
+**`unchecked` is not a pass, and one entry is BLOCKING.** Each entry names a check that could **not
+run** and why. A `chunk-ref-missing unchecked` line is the old `verify-chunk-refs` `cannot-verify:`
+exit and keeps its severity — **BLOCKING**, because a deliverable check that could not run is
+indistinguishable from one that passed, and habituation to that silence is what BLD-5J8N cost.
+Every other `unchecked` entry is a **NOTE** you must still state in your summary. Two entries name
+an *assumption* rather than a failure: record-lint graded a chunk inferred from build-plan Status
+(Status names the first UNCHECKED chunk, so it may be the next one), or the whole pass crashed and
+the review proceeded without it. Both mean **no answer**, not a clean one.
+
+**`chunk_graded`** names whose deliverables were checked. A zero count is an answer about that
+chunk; if it is `null`, nothing was checked at all.
 
 Record-lint is **advice**: it reports to the builder and gates nothing. Its findings are yours to
 raise at the severities above, and its per-check counts ride into the review fact so the control's
-own yield stays measurable.
+own yield stays measurable — which is also how a check that never catches anything gets retired.
+Two checks (`dangling-ref`, `unknown-backlog-id`) were built, measured at zero true positives, and
+removed before this shipped.
 
 ### Governing-Artifact Reconciliation
 

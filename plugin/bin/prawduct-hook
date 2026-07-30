@@ -2694,12 +2694,17 @@ def cmd_verify_chunk_refs(project_dir: Path, chunk_id: str | None) -> int:
 def cmd_verify_records(project_dir: Path, argv: list[str]) -> int:
     """Run the deterministic record-lint checks over changed governance records.
 
-    Usage: verify-records [--base <tree-ish>] [--head <tree-ish>] [--json]
+    Usage: verify-records [--base <tree-ish>] [--head <tree-ish>] [--chunk <id>] [--json]
 
     Defaults to the same interval the Critic reviews (the repo's base branch
     through the working tree), so running it by hand answers the same question
     ``critic-begin`` embeds in its dispatch manifest. Findings go to stdout in
     ``<check>: <path>:<line>: <detail>`` form.
+
+    ``--chunk`` names whose declared deliverables to check. Without it the chunk
+    is inferred from build-plan Status and the inference is REPORTED, because
+    Status names the first *unchecked* chunk — which is the next one, not the
+    finished one, the moment a box is ticked.
 
     **Advice, not authority — so exit 0 on findings.** Record-lint reports to
     the builder; the review gates keep composing over facts, and a lint finding
@@ -2716,7 +2721,7 @@ def cmd_verify_records(project_dir: Path, argv: list[str]) -> int:
             as_json = True
             i += 1
             continue
-        if arg not in ("--base", "--head"):
+        if arg not in ("--base", "--head", "--chunk"):
             print(f"verify-records: unknown argument {arg!r}", file=sys.stderr)
             return 2
         if i + 1 >= len(argv):
@@ -2785,8 +2790,8 @@ def cmd_verify_records(project_dir: Path, argv: list[str]) -> int:
         return 1
 
     record_lint = _record_lint()
-    result = record_lint.lint_records(
-        project_dir, prawduct_dir, changed, base_tree, head_tree
+    result = record_lint.lint_records_safe(
+        project_dir, prawduct_dir, changed, base_tree, head_tree, opts.get("chunk")
     )
     if as_json:
         print(json.dumps(result, indent=2))
@@ -2794,8 +2799,11 @@ def cmd_verify_records(project_dir: Path, argv: list[str]) -> int:
     for line in record_lint.format_findings(result):
         print(line)
     total = len(result["findings"])
+    graded = result.get("chunk_graded")
+    subject = f"chunk {graded}" if graded else "no chunk in scope"
     print(
-        f"ok: {len(result['records'])} record(s) linted, {total} finding(s) "
+        f"ok: {len(result['records'])} record(s) linted, deliverables of {subject}, "
+        f"{total} finding(s) "
         f"({', '.join(f'{k}={v}' for k, v in result['counts'].items())})"
     )
     return 0
@@ -4032,7 +4040,8 @@ _USAGE = (
     "test-status|validate-evidence|"
     "test-evidence record [--from-junit <r>|--from-counts passed=N failed=M skipped=K|--no-rerun] [-- pytest args]|"
     "check-cumulative-critic|"
-    "verify-chunk-refs [chunk_id]|verify-records [--base <t>] [--head <t>] [--json]|verify-coverage|"
+    "verify-chunk-refs [chunk_id]|"
+    "verify-records [--base <t>] [--head <t>] [--chunk <id>] [--json]|verify-coverage|"
     "ledger-append --event <kind> [--scope <s>] [--chunk <id>] [--model <id>]|"
     "handoff preview|"
     "review-stats [--json]|classify-diff-risk [<base>]|"
