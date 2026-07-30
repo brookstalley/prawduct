@@ -1,7 +1,9 @@
 # Release Plan — v3.2.1, Whole-Develop Promotion
 
-**Status:** **NOT YET SHIPPED — plan authored 2026-07-29.** Phase 0 of
-`runbooks/cut-and-publish-a-plugin-release.md` reads the classification table below.
+**Status:** **SHIPPED 2026-07-29.** `origin/main` = `42683ae`, tagged `v3.2.1`, `plugin/VERSION`
+3.2.1, single-parent off `9d344cf`, tree content-identical to `origin/develop`. Both of the runbook's
+whole-develop `Done when` tests pass: `git diff --stat origin/main origin/develop` prints nothing, and
+`refs/tags/v3.2.1` resolves to `42683ae`.
 
 **Version:** v3.2.1 — **patch**, and the call is recorded rather than reflexive because the tier is
 genuinely close. The ratified norm (`operational-spec.md` `## Direction`, 2026-07-17) is
