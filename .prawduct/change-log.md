@@ -54,6 +54,18 @@ inverting two recorded dispositions at once. `run_git` now converts that to a no
 every caller, and `lint_records_safe` is the only form the dispatch path may call: a crash becomes a
 reported `unchecked`, never a silent pass and never a dead dispatch.
 
+**Nor can it name the wrong file, or grade the wrong chunk.** Two attribution defects, both silent by
+construction. `core.quotepath` defaults on, so git C-quotes the `diff --git` header for any non-ASCII
+pathname; the header parser then missed it and attached that record's added lines to the **previous**
+file — a finding naming a record that never contained the text, indistinguishable from a true one.
+The flag is off now, pinned by a `café.md` regression test, and the *mechanism* is closed rather than
+the one trigger: a `diff --git` line the parser cannot read drops its file instead of inheriting the
+last one, because `"` and `\` in a pathname stay C-quoted whatever `core.quotepath` says. Separately,
+`/prawduct:critic` now says to pass `--chunk` whenever a review covers a chunk's build. Without it the
+chunk is inferred from build-plan Status, which names the first *unchecked* box — so on a
+`views_enabled` plan it grades the chunk just finished only by coincidence, and everywhere else it
+grades the next one and reports a confident zero about work nobody has done.
+
 **Advice, never authority.** Findings ride the manifest for the builder; nothing gates on them, they never
 reach a review's severity counts, and `verify-records` exits 0 with findings and 1 only when it could not
 run. What they *do* is get recorded: per-check counts travel from the manifest into the review **fact**,

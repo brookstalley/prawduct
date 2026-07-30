@@ -191,6 +191,13 @@ def _added_lines(
     )
     if rc != 0:
         return None
+    return _parse_diff(out)
+
+
+def _parse_diff(out: str) -> "dict[str, list[tuple[int, str]]]":
+    """The `git diff --unified=0` parser, split from its subprocess so the
+    header edge cases can be exercised as text — a pathname holding `"` cannot
+    be committed on every platform this test suite runs on."""
     by_path: dict[str, list[tuple[int, str]]] = {}
     current: "list[tuple[int, str]] | None" = None
     in_hunk = False
@@ -199,6 +206,18 @@ def _added_lines(
         header = _DIFF_HEADER_RE.match(raw)
         if header:
             current = by_path.setdefault(header.group(1), [])
+            in_hunk = False
+            continue
+        if raw.startswith("diff --git "):
+            # A header the regex could not parse. `core.quotepath=false` above
+            # covers non-ASCII names, but git still C-quotes a pathname holding
+            # `"` or `\`, and that quoting is not disableable. Dropping the file
+            # loses one file's findings; leaving `current` alone would attach its
+            # added lines to the PREVIOUS file, and a finding naming a record
+            # that never contained the text is indistinguishable from a true one.
+            # Silence beats a confident lie. (Content lines cannot reach here —
+            # inside a hunk every line carries a `+`/`-`/space prefix.)
+            current = None
             in_hunk = False
             continue
         hunk = _HUNK_RE.match(raw)
@@ -369,10 +388,10 @@ def _check_governed_by(
     perfectly good disposition, so there is never a reason to be short.
 
     A ``governed_by:`` entry naming an artifact that does not exist is reported
-    here rather than left to ``dangling-ref``: the name is a bare token, not a
-    backticked path, so the citation scanner never sees it — and a plan claiming
-    governance by a file nobody can read is the worse defect of the two, because
-    it reads as *more* governed than an omission would.
+    here rather than treated as somebody else's problem: the name is a bare
+    token, not a backticked path, so nothing that scans for path-shaped text
+    would ever see it — and a plan claiming governance by a file nobody can read
+    is the worse defect, because it reads as *more* governed than an omission.
     """
     findings: list[dict] = []
     for entry in _parse_governed_by(text):

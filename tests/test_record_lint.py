@@ -232,6 +232,54 @@ class TestAddedLineScoping:
         found = _checks(_lint(repo, [".prawduct/artifacts/notes.md"], base, head), "suite-total-claim")
         assert [f["line"] for f in found] == [4]
 
+    def test_a_non_ascii_pathname_is_attributed_to_itself(self, tmp_path):
+        """`core.quotepath` defaults on, and git then C-quotes the whole
+        `diff --git` header for a non-ASCII name. Without the flag the header
+        parser misses it and this record's added line lands on the PREVIOUS
+        file's findings — a finding naming a record that never held the text.
+
+        The two files and their order are the whole test: `a.md` sorts first and
+        adds nothing lintable, so a misattributed `café.md` line surfaces as a
+        finding against `a.md` rather than as no finding at all."""
+        repo = _make_repo(tmp_path)
+        arts = repo / ".prawduct" / "artifacts"
+        (arts / "a.md").write_text("seed\n")
+        (arts / "café.md").write_text("seed\n")
+        base = _commit(repo, "seed")
+        (arts / "a.md").write_text("seed\nnothing numeric here\n")
+        (arts / "café.md").write_text("seed\n1812 tests pass.\n")
+        head = _commit(repo, "add")
+
+        paths = [".prawduct/artifacts/a.md", ".prawduct/artifacts/café.md"]
+        found = _checks(_lint(repo, paths, base, head), "suite-total-claim")
+        assert [(f["path"], f["line"]) for f in found] == [
+            (".prawduct/artifacts/café.md", 2)
+        ]
+
+    def test_an_unparseable_header_drops_its_file_rather_than_misattributing(self):
+        """Pathnames holding `"` or `\\` stay C-quoted whatever `core.quotepath`
+        says, so the header parser can still meet a line it cannot read. When it
+        does, the file is dropped: losing one file's findings is recoverable,
+        while attaching its lines to the previous file produces a confident
+        finding against a record that never contained the text.
+
+        Parsed at the unit rather than through a repo because git will not let a
+        pathname with a quote in it exist on every platform this runs on."""
+        diff = (
+            'diff --git a/one.md b/one.md\n'
+            "--- a/one.md\n"
+            "+++ b/one.md\n"
+            "@@ -1,0 +2 @@\n"
+            "+belongs to one\n"
+            'diff --git "a/we\\"ird.md" "b/we\\"ird.md"\n'
+            '--- "a/we\\"ird.md"\n'
+            '+++ "b/we\\"ird.md"\n'
+            "@@ -1,0 +2 @@\n"
+            "+must not land on one.md\n"
+        )
+        by_path = record_lint._parse_diff(diff)
+        assert by_path == {"one.md": [(2, "belongs to one")]}
+
 
 # ---------------------------------------------------------------------------
 # suite-total-claim — the subtraction tripwire

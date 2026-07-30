@@ -156,6 +156,12 @@ class TestArchitectureStalenessIgnoresGitignoredDirs:
         if gitignore:
             (tmp_path / ".gitignore").write_text(gitignore)
         subprocess.run(["git", "init", "-q"], cwd=str(tmp_path), check=True, timeout=15)
+        # `git check-ignore` consults the INDEX, not just the ignore rules, so a
+        # repo with an empty index cannot tell "tracked" from "untracked and
+        # unignored" — and every case below turns on that distinction. `add -A`
+        # honours .gitignore, so the ignored fixtures stay out of the index and
+        # stay ignored; only the dirs a case means to track land there.
+        subprocess.run(["git", "add", "-A"], cwd=str(tmp_path), check=True, timeout=15)
         return tmp_path
 
     def _arch_finding(self, repo):
@@ -171,6 +177,19 @@ class TestArchitectureStalenessIgnoresGitignoredDirs:
     def test_a_gitignored_dir_is_not_reported(self, tmp_path):
         repo = self._repo(tmp_path, ["scratchpad"], gitignore="scratchpad/\n")
         assert self._arch_finding(repo) == []
+
+    def test_a_tracked_dir_matching_an_ignore_rule_is_still_reported(self, tmp_path):
+        """Tracking wins over the ignore rule, and the finding must follow it.
+
+        `git check-ignore` does not report a path already in the index, so a
+        directory somebody committed and *later* added an ignore rule for stays
+        tracked — it is still real source, and architecture.md still owes it a
+        mention. This is the boundary the filter must not overreach past: the
+        rule alone is not the question, the rule plus the index is."""
+        repo = self._repo(tmp_path, ["engine"])
+        (repo / ".gitignore").write_text("engine/\n")
+        found = self._arch_finding(repo)
+        assert len(found) == 1 and "engine" in found[0]
 
     def test_ignored_and_tracked_dirs_are_separated(self, tmp_path):
         """Mixed case — the ignored one drops out, the real one survives, so

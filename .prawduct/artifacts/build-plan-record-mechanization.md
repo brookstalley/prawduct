@@ -116,6 +116,13 @@ from; it also caught the check grading the *wrong chunk* (Status names the first
 finished chunk's review graded the next one) and an unguarded decode that would have aborted every
 review dispatch on one non-UTF-8 `.md`. Next: Chunk 03 (per-mode reviewer payload).
 
+**Second amendment outside every chunk's scope, 2026-07-30:** the architecture-staleness probe in
+`plugin/lib/briefing.py` now skips git-ignored directories, via a new batched
+`gitstate.git_paths_ignored`. Declared in the commit and the change-log, and recorded here because
+`gitstate.py` is the subject of its own live plan (`build-plan-hot-path-git-batching.md`) whose
+author now meets a subprocess-batching helper that plan does not mention. Neither Chunk 03 nor 04
+touches either file.
+
 ## Scaffolding
 
 Existing plugin codebase — no scaffold. Tests: `python -m pytest tests/ -q` (pip + pyproject per
