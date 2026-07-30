@@ -53,6 +53,7 @@ CHECKS = (
     "chunk-ref-missing",
     "governed-by-gap",
     "suite-total-claim",
+    "learnings-entry-shape",
 )
 
 # Two checks were built, measured, and REMOVED before this shipped — recorded
@@ -268,6 +269,84 @@ def _check_suite_totals(path: str, added: "list[tuple[int, str]]") -> list[dict]
                 "reads it",
             )
         )
+    return findings
+
+
+#: `learnings.md` holds the RULE; `learnings-detail.md` holds the narrative.
+#: A rule longer than this is carrying its evidence, which belongs in detail.
+#: Sized against the corpus after the 2026-07-30 compaction, not invented:
+#: median heading 181 chars, p90 429. So this flags the tail, not the norm.
+_LEARNINGS_RULE_MAX = 400
+
+_LEARNINGS_REL = "learnings.md"
+
+
+def _first_heading_line(text: "str | None") -> int:
+    """1-indexed line of the first ``## `` entry, or 0 if there is none.
+
+    Everything above it is the file's own preamble — prose by design, and not a
+    finding. Without this the check reports the header paragraph that explains
+    the format as a violation of the format.
+    """
+    if not text:
+        return 0
+    for i, line in enumerate(text.splitlines(), start=1):
+        if line.startswith("## "):
+            return i
+    return 0
+
+
+def _check_learnings_shape(
+    path: str, added: "list[tuple[int, str]]", text: "str | None" = None
+) -> list[dict]:
+    """Keep `learnings.md` a rule index rather than a second detail file.
+
+    **Why this exists at all.** Compaction ran twice (2026-06-10, 2026-07-17) and
+    the file regrew past its starting size both times, because a sweep is a
+    one-time subtraction against a continuous addition. The 2026-07-30 pass took
+    it 121KB -> 34KB; without something that fires per entry, the third sweep is
+    already scheduled.
+
+    **Why it checks the heading and not just the body.** The rule has always been
+    "keep the rule here, move the narrative to detail" — so narrative migrated
+    into the `##` heading, where the sweep never looked. On the eve of this pass
+    the longest "rule" was 1,921 characters, a paragraph wearing a heading. A
+    control that watches one channel relocates the content it was meant to stop.
+
+    Added lines only, so existing entries are grandfathered and the check costs
+    nothing until someone writes a new learning — which is the moment the
+    guidance is actually actionable.
+    """
+    findings: list[dict] = []
+    preamble_end = _first_heading_line(text)
+    for line_num, line in added:
+        if preamble_end and line_num < preamble_end:
+            continue  # the file's own header prose, not an entry body
+        stripped = line.strip()
+        if stripped.startswith("## "):
+            rule = stripped[3:].strip()
+            if len(rule) > _LEARNINGS_RULE_MAX:
+                findings.append(
+                    _finding(
+                        "learnings-entry-shape",
+                        path,
+                        line_num,
+                        f"learnings rule is {len(rule)} chars (>{_LEARNINGS_RULE_MAX}) — "
+                        "the heading carries the When-X-do-Y-because-Z rule; move the "
+                        "evidence to learnings-detail.md under the same heading",
+                    )
+                )
+        elif stripped and not stripped.startswith(("#", "---", "<!--", "[[")):
+            findings.append(
+                _finding(
+                    "learnings-entry-shape",
+                    path,
+                    line_num,
+                    "narrative body added to learnings.md — this file is the rule "
+                    "index; the body belongs in learnings-detail.md under the same "
+                    "heading (a move, never a deletion)",
+                )
+            )
     return findings
 
 
@@ -531,8 +610,9 @@ def lint_records(
         diffed = _added_lines(project_dir, base_tree, head_tree, records)
         if diffed is None:
             unchecked.append(
-                "suite-total-claim unchecked — git could not read the diff "
-                f"{base_tree[:12]}..{head_tree[:12]} over the changed records"
+                "suite-total-claim, learnings-entry-shape unchecked — git could "
+                f"not read the diff {base_tree[:12]}..{head_tree[:12]} over the "
+                "changed records"
             )
         else:
             added_by_path = diffed
@@ -540,6 +620,12 @@ def lint_records(
         added = added_by_path.get(rel)
         if added:
             findings.extend(_check_suite_totals(rel, added))
+            if Path(rel).name == _LEARNINGS_REL:
+                findings.extend(
+                    _check_learnings_shape(
+                        rel, added, _read_text(project_dir / rel)
+                    )
+                )
 
     for rel in _plans_to_check(prawduct_dir, records):
         text = _read_text(project_dir / rel)

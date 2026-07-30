@@ -3,6 +3,61 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-07-30: The third learnings compaction, and the first one built to be the last
+
+<!-- prawduct: type=fix | status=shipped -->
+<!-- No build plan: LRN-4K8T is a stage:ready chore whose ask was specified, and the two
+     controls are small additions to shipped mechanisms. Proportional effort warranted no
+     plan, so no scope=/chunks=. -->
+
+**`learnings.md` 121KB → 34KB, with all 156 rules kept and nothing deleted.** Every narrative body
+moved to `learnings-detail.md` under the same heading — 41 entries created there, 11 merged into
+existing ones, 1 already present verbatim — verified by a conservation check that refuses to write
+unless every moved byte is found in the destination.
+
+**The interesting part is why there had to be a third pass.** Compaction ran in June (79.5KB →
+32.3KB) and again in July, and the file came back **larger than before the first one**. The rule has
+always been "keep the rule in `learnings.md`, move the narrative to detail" — so the narrative moved
+into the `##` heading, which is where the rule lives and where no sweep ever looked. On the eve of
+this pass the longest "rule" was **1,921 characters**: a paragraph wearing a heading. Two sweeps had
+taught the file's authors exactly one thing, and the content relocated to the channel that wasn't
+being measured. The same shape as this branch's other two failures — a guardrail that measured file
+sizes could not see an inert instruction, and a test that pinned a constant could not see the repo
+move out from under it.
+
+So this pass bounds **both** channels: bodies moved, and the four indefensible headings (713–1,921
+chars) split at the point where the rule ends and the evidence begins, with every removed tail
+appended to that entry's detail body. Median rule is now 181 chars, max 898, and there is 6KB of
+headroom rather than the 3KB that moving bodies alone would have left — roughly ten new entries
+before the advisory fires again, which is how the last two passes ended.
+
+**`record_lint` gains `learnings-entry-shape`**, the per-entry half a one-time sweep structurally
+cannot provide: an added `learnings.md` heading over 400 characters is carrying its evidence, and an
+added narrative line belongs in detail. Added lines only, so the 19 over-long rules left standing
+are grandfathered and cost nothing until someone edits them — which is the moment the guidance is
+actionable. Measured yield on the pre-compaction file: **20 over-long rules and 285 narrative
+lines**. The threshold is sized against the corpus (median 181, p90 429), not invented. The file's
+own preamble is excluded, because a check that reports the paragraph explaining the format as a
+violation of the format is a check nobody keeps.
+
+**Budgeted files now record their actual size in a table a test owns** (`LAST_MEASURED_TOKENS`).
+Five figures written into durable records in one session were wrong, and the sharpest one was
+structural rather than careless: a budget-accounting comment took its *starting* number from the
+previous entry's *ending* number, which two earlier chunks had already invalidated by editing the
+file without updating it — a stale tally propagating into a fresh tally that was then wrong for a
+second reason. This is `suite-total-claim`'s rule applied one level in: **do not keep a prose copy of
+a figure a mechanism can own.** The narratives stay, because they record *why* an edit was
+affordable and no test can carry that; the reading moves to one place where drift fails loudly and
+the failure message hands you the number to write.
+
+**Deliberately not added: another rule about verifying figures.** `learnings.md` already carries it,
+filed 2026-07-29 — *"write the derivation command into the document instead of the figure"* and
+*"when you correct an inherited number, recount the SET and not just the count."* Both were violated
+the following day by the author who had read them. The gap was never authorship; a 121KB file
+consulted by topic lookup cannot fire on a rule you do not know to look up. Making it loadable is
+this entry's contribution to that problem, and a third restatement would have been the one-way
+ratchet the proportionality norm exists to stop.
+
 ## 2026-07-30: Review depth is a risk question, and the file count was answering a different one
 
 <!-- prawduct: type=fix | scope=record-mechanization | chunks=04 -->

@@ -808,3 +808,69 @@ class TestVerifyRecordsCLI:
         result = _run_hook(bare, "verify-records")
         assert result.returncode == 0, result.stderr
         assert "not an onboarded repo" in result.stdout
+
+
+class TestLearningsEntryShape:
+    """`learnings.md` is the rule index; the narrative lives in detail.
+
+    Two prior compactions (2026-06-10, 2026-07-17) each returned the file to a
+    size larger than before, because a one-time sweep cannot hold a line against
+    continuous addition. This check is the per-entry half.
+    """
+
+    def _findings(self, tmp_path, added: str, name: str = "learnings.md"):
+        repo = _make_repo(tmp_path, name=f"r{abs(hash(added + name)) % 100000}")
+        doc = repo / ".prawduct" / name
+        doc.write_text("# Learnings\n\n---\n")
+        base = _commit(repo, "seed")
+        doc.write_text(f"# Learnings\n\n---\n{added}\n")
+        head = _commit(repo, "add")
+        return _checks(_lint(repo, [f".prawduct/{name}"], base, head),
+                       "learnings-entry-shape")
+
+    def test_fires_on_an_over_long_rule(self, tmp_path):
+        rule = "When X happens do Y because Z, " + ("and here is the evidence " * 20)
+        assert len(rule) > 400
+        assert self._findings(tmp_path, f"## {rule}")
+
+    def test_quiet_on_a_normal_rule(self, tmp_path):
+        rule = ("When a review ends with zero blocking, dispose every remaining "
+                "finding as FIX or ACCEPT because filing by default turns the "
+                "backlog into a guilt pile")
+        assert len(rule) < 400
+        assert not self._findings(tmp_path, f"## {rule}")
+
+    def test_fires_on_a_narrative_body(self, tmp_path):
+        """The channel the sweep was built for."""
+        entry = "## When X do Y because Z\n\nHere is a paragraph of narrative evidence."
+        assert self._findings(tmp_path, entry)
+
+    def test_quiet_on_structural_lines(self, tmp_path):
+        """Separators, comments and wiki-links are not narrative."""
+        for line in ("---", "<!-- a note -->", "[[another-rule]]", "# Learnings"):
+            assert not self._findings(tmp_path, line), line
+
+    def test_does_not_apply_to_the_detail_file(self, tmp_path):
+        """`learnings-detail.md` is explicitly unbounded — it is the destination."""
+        entry = "## When X do Y\n\nA long narrative body belongs here."
+        assert not self._findings(tmp_path, entry, name="learnings-detail.md")
+
+    def test_quiet_on_the_files_own_preamble(self, tmp_path):
+        """The header paragraph explains the format; it is not a violation of it.
+
+        Without the preamble boundary the check reports line 3 of the real
+        `learnings.md` — the sentence describing what the file is for.
+        """
+        repo = _make_repo(tmp_path, name="rpreamble")
+        doc = repo / ".prawduct" / "learnings.md"
+        doc.write_text("# Learnings\n\n---\n\n## When X do Y because Z\n")
+        base = _commit(repo, "seed")
+        doc.write_text(
+            "# Learnings\n\nActive rules from this project's development, surfaced "
+            "by topic.\n\n---\n\n## When X do Y because Z\n"
+        )
+        head = _commit(repo, "add preamble prose")
+        assert not _checks(
+            _lint(repo, [".prawduct/learnings.md"], base, head),
+            "learnings-entry-shape",
+        )

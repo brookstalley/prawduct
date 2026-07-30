@@ -24,6 +24,46 @@ def estimate_tokens(text: str) -> int:
     return int(len(text.split()) * 1.3)
 
 
+#: The ACTUAL token count of each budgeted file, as last measured. The per-file
+#: `test_token_budget` assertions are *ceilings*; this is the reading, and one
+#: test below pins it.
+#:
+#: **Why a table instead of a number in the accounting prose.** Each budgeted
+#: file carries a comment narrating what an edit cost and what paid for it, and
+#: those narratives kept going stale: on 2026-07-30 a single chunk shipped a
+#: post-trim figure that was 4 tokens off, then took its *starting* figure from
+#: the previous entry's ending figure — which two earlier chunks had already
+#: invalidated by editing the file without updating it. A stale tally propagated
+#: into a fresh tally that was wrong for a second reason.
+#:
+#: This is `record_lint`'s `suite-total-claim` rule applied one level in: do not
+#: keep a prose copy of a figure a mechanism can own. The narratives stay (they
+#: record *why* an edit was affordable, which no test can); the current reading
+#: lives here, where a wrong number fails instead of misleading.
+LAST_MEASURED_TOKENS = {
+    "methodology/building.md": 4652,
+    "skills/critic/review-protocol.md": 3614,
+    "skills/critic/goals-1-3.md": 1875,
+}
+
+
+@pytest.mark.parametrize("rel_path", sorted(LAST_MEASURED_TOKENS))
+def test_recorded_token_count_matches_the_file(rel_path):
+    """A budgeted file's recorded size is the file's actual size.
+
+    Fails the moment a budgeted file changes without its reading being updated,
+    and the message carries the number to write — so the figure is never
+    re-derived by hand, copied from an adjacent line, or predicted.
+    """
+    actual = estimate_tokens(read_file(rel_path))
+    expected = LAST_MEASURED_TOKENS[rel_path]
+    assert actual == expected, (
+        f"{rel_path} is ~{actual} tokens; LAST_MEASURED_TOKENS says {expected}. "
+        f"Update the entry to {actual} (and say in that file's budget comment "
+        f"what paid for the change — the ceiling is not a budget to spend)."
+    )
+
+
 # =============================================================================
 # building.md
 # =============================================================================
