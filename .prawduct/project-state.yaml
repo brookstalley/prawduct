@@ -371,7 +371,8 @@ build_plan_ref_root: plugin
 # and `_derive_roster` cannot tell "no surface matched, so this is low risk"
 # from "this repo never declared any" — so an undeclared repo conservatively
 # keeps the older file-count rule instead. The values below are exactly
-# `risk.DERIVED_DEFAULT_SURFACES`, so declaring them changes no verdict; it
+# `risk.DERIVED_DEFAULT_SURFACES`, so declaring them changes no verdict on any
+# diff that git can evaluate (see the two exceptions below); it
 # makes the opt-in explicit and keeps the 2026-07-30 roster replay describing
 # the rule that actually runs here.
 #

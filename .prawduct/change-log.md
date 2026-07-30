@@ -85,9 +85,11 @@ discoverable. `tests/spikes/roster_rule_replay.py` commits the replay, so every 
 recomputable rather than asserted.
 
 Two budget notes, both paid under trim-or-relocate rather than by raising a ceiling. `building.md`
-restated the rule on two lines for 15 tokens against 3 of headroom, funded by dropping the
-cache-warming clause that `critic_consolidate._CACHE_WARM_DIRECTIVE` already emits verbatim into the
-output a caller reads *while waiting* (4657 → 4648). `review-protocol.md` had to gloss "risk surface",
+first restated the rule and then stopped restating it: the review found the restatement false for
+every undeclared product, so those surfaces now defer to the roster the manifest derived instead of
+naming a threshold that is no longer universal. It also dropped the cache-warming clause that
+`critic_consolidate._CACHE_WARM_DIRECTIVE` already emits verbatim into the output a caller reads
+*while waiting* — net 4657 → 4652, headroom 8. `review-protocol.md` had to gloss "risk surface",
 a term the roster bullets made load-bearing with no definition anywhere in the Critic docs; the full
 definition went to `review-cycle.md`, which owns the roster table and is off the chunk-mode payload
 path, leaving a one-clause pointer here (3572 → 3614, headroom 48 → 6).
