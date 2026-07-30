@@ -331,6 +331,25 @@ review makes the branch PR-ready.
   plan's one irreversible decision; confirm before anything builds on it.
 - After Chunk 03: measure — payload delta from guardrail tests, and a spot-check that a chunk-mode
   review now lands near its 1–2 minute target.
+
+  **Baseline recorded 2026-07-30**, from `duration_seconds` on this repo's own review facts. It is
+  worse than the plan assumed, and the shape of it confirms the amendment's payload clause:
+
+  | mode | files | duration | target |
+  |---|---|---|---|
+  | verify-resolutions | 3 | 460s | 1–2 min |
+  | verify-resolutions | 4 | 380s | 1–2 min |
+  | verify-resolutions | 8 | 330s | 1–2 min |
+  | verify-resolutions | 13 | 540s | 1–2 min |
+  | verify-resolutions | 15 | 620s | 1–2 min |
+  | cumulative | 9 | 1080s | 4–10 min |
+  | cumulative | 31 | 900s | 4–10 min |
+
+  **verify-resolutions runs 4–8× over target, and file count barely predicts it** — a 3-file pass
+  took 460s while an 8-file pass took 330s, and the 31-file cumulative was *faster* than the 9-file
+  one. Diff size is not the driver; payload is. That is the amended norm's unit-cost clause showing
+  up in data, and it means Chunk 03's per-mode distillation is the lever with evidence behind it —
+  not run-count, which Chunk 02 already cut. Re-measure the same query after Chunk 03 ships.
 - After Chunk 05 (cumulative): full-bundle review; verify the success metrics section of
   Verification Strategy has its baseline recorded so the next working day can be compared.
 
