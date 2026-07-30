@@ -62,8 +62,11 @@ Targets we want to hold:
   below. Channel 2 is therefore an **accepted, recorded residual** — bounded by the observation that
   it is largely an artifact of this framework repo, whose product *is* text — and not a solved
   problem. A design that silently covers only channel 1 is unsound; one that covers channel 1 and
-  declares channel 2 is the bar. Owner-set, 2026-07-29; see the ruling in `coverage_algebra.py`,
-  which this target and that docstring must continue to state identically.
+  declares channel 2 is the bar. Owner-set, 2026-07-29. The authoritative statement of the two
+  channels is the ruling in `is_judgeable_path`'s docstring (`coverage_algebra.py`), which a reader
+  hits at the mechanism; this target restates the *consequence* for the budget and is deliberately
+  not a duplicate of that text — if the two ever disagree about how many channels exist or what they
+  are, the docstring governs.
 - **A review's cost is fixed context-establishment, not diff size.** A 2-file review and a 20-file
   review cost about the same. That observation stands — but context-establishment *is* the payload,
   and payload is a per-mode design variable, so the conclusion once drawn from it ("the lever is how

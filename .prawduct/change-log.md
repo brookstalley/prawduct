@@ -3,7 +3,7 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
-## 2026-07-30: Prawduct is written in Python and must never be specific to Python — four norms recorded
+## 2026-07-30: Prawduct is written in Python and must never be specific to Python — four norms recorded and one amended
 
 <!-- prawduct: type=docs | scope=record-mechanization -->
 
@@ -45,6 +45,16 @@ ratchets both ways**: a control that fires repeatedly and never produces a block
 by default, and a new control must **emit its yield observably** — born `in-transition`, because the
 query does not exist yet. `compliance_canary` is the worked example: its findings are printed to the
 briefing and never persisted, so it can never be retired on evidence, only defended on principle.
+
+**A fifth normative edit, called out separately because it touches the plugin-trust argument.**
+`architecture.md`'s least-authority norm — *"the plugin writes nothing into a governed repo except…"* —
+now names **`CLAUDE.md`** in its reconciled-files carve-out alongside `.gitignore` and
+`.claude/settings*.json`. This **authorizes no new write**: `init_product.py` has created-or-anchored
+`CLAUDE.md`, and `migrate_plugin.py` has edited it in place, since before the norm was ratified — the
+enumeration was simply incomplete, which left the norm reading as though it prohibited prawduct's own
+installer. The `never framework files` limit is untouched, and the amendment carries a vetoable
+`[DECISION: …]` block on the norm's own entry. Flagged here because a `steady-state` norm was widened,
+and the change-log is where that decision is visible enough to be vetoed.
 
 **Also:** six historical artifacts (v1.5.1, v1.5.2, both v2.0.0 plans, the M4 filesync retirement, a
 dated performance audit) moved to `.prawduct/archive/` — `norm_probes` globs and regex-scans every
