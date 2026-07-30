@@ -6,6 +6,7 @@ are internally consistent and reflect v5 concepts.
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 import pytest
@@ -611,43 +612,77 @@ class TestCriticSkillRoutesByMode:
         for mode in ("chunk", "verify-resolutions", "final", "cumulative"):
             assert mode in line, f"SKILL step 2 does not route {mode}"
 
-    def test_header_does_not_order_a_read_before_the_routing(self):
+    def test_header_scopes_every_final_only_file_it_names(self):
         """The header is the FIRST instruction in the skill body, so it beats
         step 2 on reading order — an agent obeys it before it knows its mode.
 
         It used to say `review-protocol.md` "(read this first)" and not mention
-        `goals-1-3.md` at all, which meant a chunk-mode review loaded the entire
+        `goals-1-3.md` at all, so a chunk-mode review loaded the entire
         10,519-token predecessor payload before step 2 told it not to. The split
         was correct on disk and inert on the instruction path, and every
-        size-measuring guardrail stayed green through it. So: the header must
-        name the fast-mode file, must not order any file read first, and must
-        say the read happens after the mode is resolved.
-        """
+        size-measuring guardrail stayed green through it.
+
+        Asserting the class, not that one instance: pinning the literal string
+        "read this first" would pass the moment someone reworded the directive.
+        Every header bullet naming a final-only file must scope itself to the
+        modes that read it, which no rewording escapes."""
         header = self.content.split("## Structural Constraints", 1)[0]
         assert "goals-1-3.md" in header, "the header omits the fast-mode protocol file"
-        assert "read this first" not in header.lower(), (
-            "the header orders a protocol read before step 1 resolves the mode"
-        )
         assert "after step 1" in header.lower() or "only after" in header.lower(), (
             "the header must state that the protocol read follows mode resolution"
         )
+        # The file-list BULLETS are the routing; the surrounding prose is not
+        # (one line names `review-cycle.md` as an example of resolving a bare
+        # sibling path, which is a rule about where files live, not an
+        # instruction to read one).
+        unscoped = [
+            ln.strip()[:110] for ln in header.split("\n")
+            if ln.lstrip().startswith("- ")
+            and any(f in ln for f in ("review-protocol.md", "review-cycle.md", "framework-checks.md"))
+            and not any(m in ln for m in ("final", "cumulative"))
+        ]
+        assert not unscoped, f"header lists a final-only file without scoping it: {unscoped}"
+
+    def test_the_single_pass_bullet_never_cites_a_final_only_file(self):
+        """The single-pass roster bullet is the fast path's write-up
+        instruction, and everything it needs is in goals-1-3.md.
+
+        This is its own test because a line-level check cannot police it: the
+        bullet permanently contains the words "small `final`/`cumulative`" (it
+        describes when small final reviews go single-pass), so any rule that
+        excuses a line for mentioning `final` excuses THIS line unconditionally
+        — and it is the exact line that carried the `(schema: review-protocol.md
+        …)` pointer a blocking round was spent removing. Zero citations here."""
+        bullet = next(
+            ln for ln in self.content.split("\n")
+            if 'Roster `["reviewer"]`' in ln
+        )
+        for cited in ("review-protocol.md", "review-cycle.md"):
+            assert cited not in bullet, (
+                f"the single-pass bullet cites {cited} — that read is the payload "
+                f"the split removed, and goals-1-3.md already carries it"
+            )
 
     def test_fast_path_steps_never_send_the_reviewer_to_a_final_only_file(self):
-        """Steps 1-7 run in EVERY mode, so a bare citation there is a read a
-        chunk-mode reviewer will make. Each of the three that existed —
-        the designer-handoff skip line, the roster's "Review Execution", and the
-        partial schema — is carried in goals-1-3.md already. Mentions that
-        explicitly scope themselves to `final`/`cumulative` are fine; naked
-        directives are not."""
+        """Steps 1-7 run in EVERY mode, so an unqualified citation there is a
+        read a chunk-mode reviewer will make.
+
+        Judged per *clause*, not per line: a qualifier anywhere on a long line
+        used to excuse a citation elsewhere on it. The coordinator bullet is
+        exempt by construction — the coordinator pattern only exists in
+        `final`/`cumulative`, so its reader has already loaded that file."""
         steps = self.content.split("## Getting Started", 1)[1]
         offenders = []
         for ln in steps.split("\n"):
-            if "review-protocol.md" not in ln and "review-cycle.md" not in ln:
+            if "(coordinator)" in ln:
                 continue
-            if "goals-1-3.md" in ln or "final" in ln or "step-2 protocol file" in ln:
-                continue  # routed, or scoped to the modes that do read it
-            offenders.append(ln.strip()[:120])
-        assert not offenders, f"fast-path steps cite a final-only file unconditionally: {offenders}"
+            for clause in re.split(r"(?<=\.)\s|[;()]", ln):
+                if "review-protocol.md" not in clause and "review-cycle.md" not in clause:
+                    continue
+                if any(q in clause for q in ("final", "cumulative", "goals-1-3.md")):
+                    continue
+                offenders.append(clause.strip()[:110])
+        assert not offenders, f"fast-path steps cite a final-only file unqualified: {offenders}"
 
     def test_review_cycle_table_records_the_routing(self):
         """`review-cycle.md` owns per-mode behavior, so the routing is recorded

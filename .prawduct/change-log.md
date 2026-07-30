@@ -29,10 +29,24 @@ was correct on disk and **inert on the instruction path**, and every guardrail s
 all of them measure file sizes rather than reading order. Four leaks closed: the header now routes by
 mode and states that the read follows mode resolution; the designer-handoff skip line is inlined
 rather than fetched; step 7 cites "your step-2 protocol file" instead of `review-protocol.md`; and
-the per-mode scope line marks its detail pointer `final`/`cumulative`-only. Two new guardrails read
-*instructions* rather than sizes — the header may not order a read before the routing, and no step
-that runs in every mode may cite a final-only file unconditionally — both mutation-proved by
-restoring the original defect.
+the per-mode scope line marks its detail pointer `final`/`cumulative`-only. Three new guardrails read
+*instructions* rather than sizes: every header bullet naming a final-only file must scope itself to
+the modes that read it, no step running in every mode may cite one unqualified, and the single-pass
+roster bullet may not cite one at all.
+
+**The first cut of those guardrails had the same shape of hole, and the next round found it.** The
+fast-path check excused any *line* containing "final" — and the single-pass roster bullet permanently
+contains "small `final`/`cumulative`", because that is when a small final review goes single-pass. So
+the one line that had carried half the defect was excluded unconditionally, and restoring its
+`(schema: review-protocol.md …)` pointer left the suite green. "Mutation-proved" was therefore true
+of one leak and not the other. Now judged per *clause* rather than per line, with the single-pass
+bullet pinned by its own zero-tolerance test; the coordinator bullet stays exempt by construction,
+since that roster only exists in `final`/`cumulative`. The header check was generalised in the same
+pass — it asserted the literal string "read this first", which any rewording would have escaped.
+
+**Not yet observed in a live review.** The reviewer that verified this fix was running on a cached
+pre-fix skill body, so it followed the old ordering and could not measure the new one. The payload
+cut is proved on disk and by guardrail; the first review in a fresh session is the measurement.
 
 **Self-contained means the pointers had to be paid off, not followed.** The record-lint severity
 table, the chunk-`Type:` protocol selector, the normative-authority preamble and the partial schema
