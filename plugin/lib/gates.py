@@ -37,7 +37,6 @@ mirror), plus the stdlib.
 
 from __future__ import annotations
 
-import ast
 import hashlib
 import json
 import sys
@@ -559,77 +558,10 @@ def _cached_diff_fn(project_dir: Path):
     return diff_fn
 
 
-def _strip_docstrings(tree: "ast.AST") -> None:
-    """Remove docstring statements in place, so a block that has one and a
-    block that does not normalize alike. (A block whose *only* statement was a
-    docstring is left with an empty body — technically not valid AST, but it is
-    only ever dumped, and it compares unequal to a ``pass`` body, which fails
-    in the safe direction.)"""
-    for node in ast.walk(tree):
-        if not isinstance(
-            node, (ast.Module, ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)
-        ):
-            continue
-        body = getattr(node, "body", None)
-        if not body:
-            continue
-        first = body[0]
-        if (
-            isinstance(first, ast.Expr)
-            and isinstance(first.value, ast.Constant)
-            and isinstance(first.value.value, str)
-        ):
-            del body[0]
-
-
-def _python_semantic_id(project_dir: Path, object_id: str, cache: dict) -> "str | None":
-    """A digest of a Python blob's AST with docstrings stripped, or ``None``
-    when it cannot be computed.
-
-    **Why content is inspected here when :func:`is_judgeable_path` deliberately
-    refuses to.** They answer different questions. Judgeability asks *does this
-    path carry behaviour* — a property of the path, and content-hashing it for
-    FRESHNESS is a recorded do-not-reintroduce. This asks *did this blob's
-    behaviour change*, and an identical AST is a **proof**, not a heuristic:
-    the only things two blobs with the same AST can differ by are comments,
-    formatting, and docstrings. Docstrings carry no behaviour in this repo —
-    nothing reads ``__doc__`` and no doctests run — which is an assumption
-    about this codebase and is pinned by a test.
-
-    **Relax-only and fails closed.** ``None`` sends the caller back to the blob
-    id, which is *stricter* (different blobs → different keys → no free edge).
-    Cached on ``object_id`` because blobs are content-addressed and immutable,
-    so one parse serves every tree that contains it.
-    """
-    if object_id in cache:
-        return cache[object_id]
-    result: "str | None" = None
-    rc, source, _err = evidence.run_git(project_dir, "cat-file", "blob", object_id)
-    if rc == 0:
-        try:
-            parsed = ast.parse(source)
-            _strip_docstrings(parsed)
-            result = hashlib.sha256(
-                ast.dump(parsed).encode("utf-8", "surrogateescape")
-            ).hexdigest()
-        except (SyntaxError, ValueError, RecursionError, MemoryError):
-            result = None
-    cache[object_id] = result
-    return result
-
-
-def _tree_key_fn(project_dir: Path, *, semantic_python: bool = False):
+def _tree_key_fn(project_dir: Path):
     """A ``coverage_algebra.KeyFn``: a tree's digest over its JUDGEABLE
     content, so free-edge connectivity costs one ``git ls-tree`` per tree
     instead of one ``git diff`` per pair.
-
-    With ``semantic_python``, a judgeable ``.py`` path is keyed by its
-    normalized AST instead of its blob id, so a comment- or docstring-only
-    edit leaves the key unchanged and the interval stays free. That costs a
-    ``git cat-file`` per distinct blob, which is why it is **off by default**
-    and used only on the failure path — the whole point of keying trees was to
-    stop issuing a subprocess per pair, and this must not reintroduce one per
-    file. See :func:`cumulative_critic_verdict`.
 
     Memoising the pairwise probe was not enough — the *pair count* is the
     problem, not repeat pairs. Measured on this repo's store (672 facts, 293
@@ -643,14 +575,6 @@ def _tree_key_fn(project_dir: Path, *, semantic_python: bool = False):
     one, because this gate is authority and authority fails closed.
     """
     cache: dict[str, "str | None"] = {}
-    blob_cache: dict[str, "str | None"] = {}
-
-    def _identity(mode: str, object_id: str, path: str) -> str:
-        if semantic_python and path.endswith(".py"):
-            semantic = _python_semantic_id(project_dir, object_id, blob_cache)
-            if semantic is not None:
-                return f"{mode} ast:{semantic} {path}"
-        return f"{mode} {object_id} {path}"
 
     def key_fn(tree: str) -> "str | None":
         if tree not in cache:
@@ -659,7 +583,7 @@ def _tree_key_fn(project_dir: Path, *, semantic_python: bool = False):
                 cache[tree] = None
             else:
                 judgeable = sorted(
-                    _identity(mode, object_id, path)
+                    f"{mode} {object_id} {path}"
                     for mode, object_id, path in entries
                     if coverage_algebra.is_judgeable_path(path)
                 )
@@ -748,29 +672,6 @@ def session_review_verdict(project_dir: Path) -> dict:
         ):
             verdict = mb_verdict
             base, base_source = mb_verdict["base"], "merge-base-fallback"
-
-    # Second tier, only when the answer would otherwise be "go review again":
-    # re-key Python by normalized AST, so an interval whose only `.py` changes
-    # are comments, formatting or docstrings stays free. Measured cost of NOT
-    # doing this: a comment-only edit to one module and a docstring-only edit
-    # to another each bought a full verify-resolutions pass, ~5-8 minutes, and
-    # neither pass found a blocking finding.
-    #
-    # Deliberately lazy and deliberately last. Keying trees exists to avoid a
-    # subprocess per pair, so paying a `cat-file` per distinct blob is only
-    # justified against the cost of a review round. And it can only ever turn
-    # `uncovered` into `covered`: relaxing which intervals are free adds edges
-    # to the graph, never removes them, so a `blocked` verdict (unresolved
-    # BLOCKING findings on the path) is left strictly alone.
-    if verdict["status"] == "uncovered":
-        semantic_key_fn = _tree_key_fn(project_dir, semantic_python=True)
-        relaxed = coverage_algebra.coverage_verdict(
-            facts, base, target, diff_fn, semantic_key_fn
-        )
-        if relaxed["status"] == "covered":
-            verdict = relaxed
-            verdict["free_edges_relaxed"] = "python-ast"
-
     verdict.update({"base": base, "target": target, "base_source": base_source})
     return verdict
 
@@ -1079,30 +980,13 @@ def check_cumulative_critic(project_dir: Path) -> int:
         print(f"no-head: cannot resolve HEAD^{{tree}} ({err}).", file=sys.stderr)
         return 1
 
-    diff_fn = _cached_diff_fn(project_dir)
     verdict = coverage_algebra.coverage_verdict(
         read.get("facts", []),
         base_tree,
         head_tree,
-        diff_fn,
+        _cached_diff_fn(project_dir),
         _tree_key_fn(project_dir),
     )
-
-    # Same lazy second tier as the session gate: only when the answer would
-    # otherwise be "go review again", re-key Python by normalized AST so an
-    # interval whose only `.py` changes cannot affect behaviour stays free.
-    # Relax-only by construction — it adds free edges, so it can turn
-    # `uncovered` into `covered` and never touches a `blocked` verdict.
-    if verdict["status"] == "uncovered":
-        relaxed = coverage_algebra.coverage_verdict(
-            read.get("facts", []),
-            base_tree,
-            head_tree,
-            diff_fn,
-            _tree_key_fn(project_dir, semantic_python=True),
-        )
-        if relaxed["status"] == "covered":
-            verdict = relaxed
 
     if verdict["status"] == "covered":
         steps = verdict.get("path", [])

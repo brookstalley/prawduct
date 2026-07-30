@@ -124,13 +124,14 @@ one of three dispositions, and **FILE is the narrowest, never the default**:
   `verify-resolutions` pass — bounded, and not another full round. A fix confined to non-judgeable
   surfaces costs nothing at all.
 - **FILE** — only genuinely deferred work that someone will actually do, and the item says what
-  triggers it. No trigger means it is an ACCEPT wearing a backlog id. **Three tests, and it must pass
-  all of them:** the work is a *new feature* or otherwise **orthogonal** to what you are building, and
-  it is **large** — a chunk's worth, not an hour's. Filing something small that you have the context to
-  fix *right now* is the worst option available: you pay the filing cost, the reader pays the triage
-  cost, the next agent pays the re-derivation cost, and the item sits unactioned because whoever picks
-  it up has none of what you currently have in your head. **Deep context on a small problem is a FIX
-  signal, not a filing signal.**
+  triggers it. No trigger means it is an ACCEPT wearing a backlog id. **Two tests, and it must pass
+  both:** the work is **large** — a chunk's worth or more, not an hour's — **and** you cannot
+  responsibly do it inside the current work, because it needs its own design, its own review, or it is
+  orthogonal to what you are building. Filing something small that you have the context to fix *right
+  now* is the worst option available: you pay the filing cost, the reader pays the triage cost, the next
+  agent pays the re-derivation cost, and the item then sits unactioned because whoever picks it up has
+  none of what you currently have in your head. **Deep context on a small problem is a FIX signal, not
+  a filing signal.** (Owner-requested rule, 2026-07-29.)
 
 ### Record the disposition; render the census
 

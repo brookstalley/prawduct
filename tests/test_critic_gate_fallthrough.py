@@ -24,7 +24,6 @@ from __future__ import annotations
 
 import json
 import subprocess
-import sys
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -32,9 +31,6 @@ import pytest
 
 ROOT = Path(__file__).resolve().parent.parent / "plugin"
 HOOK = ROOT / "bin" / "prawduct-hook"
-
-sys.path.insert(0, str(ROOT))
-from lib import gates  # noqa: E402
 
 # The empirical diff is a non-`.md` code file. This keeps the gate's *other*
 # carveout — `gates.session_changes_all_non_judgeable` (a fully non-judgeable
@@ -254,91 +250,3 @@ class TestSynthesisAdvisoryAcceptsCumulative:
         ok, reason = _critic_session_satisfies_gate(repo)
         assert not ok, f"{mode!r} must trip the synthesis advisory"
         assert "/prawduct:critic final" in reason
-
-
-class TestBehaviourNeutralPythonStaysFree:
-    """A `.py` change that cannot alter behaviour must not cost a review pass.
-
-    `is_judgeable_path` classifies by path with deliberately no content
-    inspection, so every `.py` file is judgeable regardless of what changed in
-    it. Measured on this repo 2026-07-29: a comment-only edit to one module and
-    a docstring-only edit to another each bought a full `verify-resolutions`
-    pass (~5-8 min), and neither pass returned a blocking finding.
-
-    The relaxation is keyed on an *identical normalized AST*, which is a proof
-    rather than a heuristic — the only things two blobs with the same AST can
-    differ by are comments, formatting and docstrings. It runs only on the
-    failure path and can only add free edges, so it can turn `uncovered` into
-    `covered` and can never mask a `blocked` verdict.
-    """
-
-    def test_comment_and_docstring_changes_share_a_semantic_id(self):
-        import ast as _ast
-        import hashlib as _h
-
-        def sid(src: str) -> str:
-            tree = _ast.parse(src)
-            gates._strip_docstrings(tree)
-            return _h.sha256(_ast.dump(tree).encode()).hexdigest()
-
-        base = '"""Doc A."""\ndef f(x):\n    # one comment\n    return x + 1\n'
-        prose_only = '"""Doc B, entirely rewritten."""\ndef f(x):\n    # a different comment\n    return x + 1\n'
-        logic = '"""Doc A."""\ndef f(x):\n    # one comment\n    return x + 2\n'
-
-        assert sid(base) == sid(prose_only), "prose-only edits must be behaviour-neutral"
-        assert sid(base) != sid(logic), "a logic change must NEVER be neutral"
-
-    def test_docstring_presence_normalizes_with_absence(self):
-        """Adding or removing a docstring is neutral, not just editing one."""
-        import ast as _ast
-        import hashlib as _h
-
-        def sid(src: str) -> str:
-            tree = _ast.parse(src)
-            gates._strip_docstrings(tree)
-            return _h.sha256(_ast.dump(tree).encode()).hexdigest()
-
-        with_doc = 'def f():\n    """Explain."""\n    return 1\n'
-        without = "def f():\n    return 1\n"
-        assert sid(with_doc) == sid(without)
-
-    def test_unparseable_or_unreadable_blob_fails_closed(self, tmp_path):
-        """`None` sends the caller back to the blob id, which is STRICTER —
-        speed and relaxation must never buy a free pass."""
-        cache: dict = {}
-        # A bogus object id: `cat-file` fails, so no semantic id is produced.
-        assert gates._python_semantic_id(tmp_path, "0" * 40, cache) is None
-        assert cache["0" * 40] is None
-
-    def test_the_repo_assumption_docstrings_carry_no_behaviour(self):
-        """The relaxation ignores docstrings, which is only sound because
-        nothing here reads `__doc__` and no doctests run. If that changes, this
-        test fails and the relaxation must be narrowed to comments only."""
-        import ast as _ast
-
-        # Check the MECHANISM, not the phrasing: a grep for "__doc__" matches
-        # prose *about* the assumption (including this module's own), which is
-        # the same wording-vs-claim trap that made this fix necessary. Real
-        # attribute access and real imports live in the AST; comments and
-        # string contents do not.
-        root = Path(__file__).resolve().parent.parent
-        offenders = []
-        for sub in ("plugin", "tests"):
-            for path in (root / sub).rglob("*.py"):
-                try:
-                    tree = _ast.parse(path.read_text(encoding="utf-8", errors="replace"))
-                except SyntaxError:
-                    continue
-                for node in _ast.walk(tree):
-                    if isinstance(node, _ast.Attribute) and node.attr == "__doc__":
-                        offenders.append(f"{path.relative_to(root)}: reads __doc__")
-                    elif isinstance(node, _ast.Import):
-                        if any(a.name.split(".")[0] == "doctest" for a in node.names):
-                            offenders.append(f"{path.relative_to(root)}: imports doctest")
-                    elif isinstance(node, _ast.ImportFrom):
-                        if (node.module or "").split(".")[0] == "doctest":
-                            offenders.append(f"{path.relative_to(root)}: imports doctest")
-        assert not offenders, (
-            "docstrings may now carry behaviour — "
-            f"{offenders}. Narrow the AST relaxation to comments only."
-        )
