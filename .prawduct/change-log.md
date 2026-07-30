@@ -5,7 +5,7 @@
 
 ## 2026-07-30: The third learnings compaction, and the first one built to be the last
 
-<!-- prawduct: type=fix -->
+<!-- prawduct: type=fix | release=v3.2.2 | status=shipped -->
 <!-- No build plan: LRN-4K8T is a stage:ready chore whose ask was specified, and the two
      controls are small additions to shipped mechanisms. Proportional effort warranted no
      plan, so no scope=/chunks=. -->
@@ -75,7 +75,7 @@ act, and this session's own count of wrong figures is the evidence for it.
 
 ## 2026-07-30: Review depth is a risk question, and the file count was answering a different one
 
-<!-- prawduct: type=fix | scope=record-mechanization | chunks=04 -->
+<!-- prawduct: type=fix | scope=record-mechanization | chunks=04 | release=v3.2.2 | status=shipped -->
 
 **The chunk set out to raise a threshold and the data said not to.** The plan proposed keying the
 coordinator roster to *judgeable* changed files at a threshold of 12, on the intuition that record
@@ -166,7 +166,7 @@ path, leaving a one-clause pointer here (3572 → 3614, headroom 48 → 6).
 
 ## 2026-07-30: A three-goal review stops paying a seven-goal reading fee
 
-<!-- prawduct: type=feature | scope=record-mechanization | chunks=03 -->
+<!-- prawduct: type=feature | scope=record-mechanization | chunks=03 | release=v3.2.2 | status=shipped -->
 
 **Why, measured over all 267 review facts carrying a duration:** `chunk` mode missed its 1–2 minute
 target in **30 of 30** recorded runs and `verify-resolutions` in **148 of 155**, while `final` — which
@@ -263,7 +263,7 @@ single-pass roster for the modes it serves.
 
 ## 2026-07-30: The Critic stops re-deriving what a machine can count — record-lint at dispatch
 
-<!-- prawduct: type=feature | scope=record-mechanization | chunks=02 -->
+<!-- prawduct: type=feature | scope=record-mechanization | chunks=02 | release=v3.2.2 | status=shipped -->
 
 **Why:** on 2026-07-29, 57% of the day's 151 Critic findings targeted hand-authored governance
 *records* rather than shipped behavior — a dangling `file:line` citation, a backlog id that no longer
@@ -374,7 +374,7 @@ and `refs/` cases in `tests/test_build_plan_resolution.py`.
 
 ## 2026-07-30: Prawduct is written in Python and must never be specific to Python — four norms recorded and one amended
 
-<!-- prawduct: type=docs | scope=record-mechanization -->
+<!-- prawduct: type=docs | scope=record-mechanization | release=v3.2.2 | status=shipped -->
 
 **Consumer-visible in one place, so it leads:** two architectural norms now bind every adopting repo,
 and one of them constrains what prawduct may ever do to yours. **Prawduct guides and reviews; it never
@@ -434,7 +434,7 @@ status is what Chunk 02's record-lint is for.
 
 ## 2026-07-29: A self-contradicting security model, a tightened FILE bar, and a coverage relaxation that was built and reverted
 
-<!-- prawduct: type=fix | scope=record-mechanization -->
+<!-- prawduct: type=fix | scope=record-mechanization | release=v3.2.2 | status=shipped -->
 
 **Consumer-visible in one place, so it leads:** the **FILE disposition bar is tighter**. Filing a
 review finding now requires the work to be **large** (a chunk's worth or more) **and** not responsibly

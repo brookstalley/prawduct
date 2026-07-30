@@ -5,6 +5,20 @@
      be overwritten on next regen. See change-log.md for full per-release
      bodies; this file is a digest. -->
 
+## v3.2.2
+
+### 2026-07-30: The third learnings compaction, and the first one built to be the last
+
+**Entry:** 2026-07-30: The third learnings compaction, and the first one built to be the last
+
+### record-mechanization
+
+**Entry:** 2026-07-30: Review depth is a risk question, and the file count was answering a different one
+
+**Chunks shipped:** 02, 03, 04
+
+See `.prawduct/change-log.md` for full details.
+
 ## v3.2.1
 
 **Entry:** 2026-07-29: The coordinator's three reviewers are now told to run concurrently

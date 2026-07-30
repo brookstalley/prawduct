@@ -568,8 +568,8 @@ scope_rollups:
     chunks: ["01", "02", "03"]
     releases: ["v2.3.0"]
   record-mechanization:
-    chunks: ["01"]
-    releases: ["v3.2.1"]
+    chunks: ["01", "02", "03", "04"]
+    releases: ["v3.2.1", "v3.2.2"]
   regen-views-null-plan:
     chunks: ["01"]
     releases: ["v2.2.1"]
