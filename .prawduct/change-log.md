@@ -12,8 +12,7 @@ review finding now requires the work to be **large** (a chunk's worth or more) *
 absorbable into the current work — own design, own review, or orthogonal. Deep context on a small
 problem is a FIX signal. Owner-requested; it binds every review in every adopting repo, which is why
 it is here and not only in the skill. Measured motive: this repo's own open items went 50 → 180 in 26
-days, 67 Critic-sourced, 53 never touched since filing. It also closes an exhaustiveness gap — the old
-three dispositions left a large, non-orthogonal item someone will actually do fitting none of them.
+days, 67 Critic-sourced, 53 never touched since filing.
 
 **`security-model.md` contradicted itself.** § Direction was amended 2026-07-24 away from the absolute
 "`--apply` on everything" form toward **operation-level** approval; § Abuse Prevention eighty lines
@@ -27,14 +26,18 @@ with both closure handles so each clause stays traceable.
 Two review rounds this session were spent on a **comment** and a **docstring**: `is_judgeable_path`
 classifies by path with no content inspection, so any `.py` edit is judgeable and costs a full pass. An
 AST-equality relaxation was built to make behaviour-neutral edits free. The Critic returned **10
-blocking findings** and refuted the premise; all three reviewers found the decisive one independently.
+blocking findings** (recorded verbatim: "10 blocking, 22 warning, 12 note across 3 reviewer(s)") and
+refuted the premise; five separate findings cite the pragma, though per-reviewer attribution is not
+recoverable once partials are cleared, so independent convergence is consistent with the record rather
+than proven by it.
 **Comments are semantically load-bearing here:** `waivers.py`'s `prawduct:allow` source-comment pragma
 is acted on by `compliance.py`, so adding a waiver to an existing `except Exception:` suppresses a
 compliance check with a byte-identical AST — the relaxation would have made that a free edge needing
 **no review**, precisely where Goal 3 obliges a reviewer to judge the waiver. AST equality proves the
-*parser* sees the same program, not that the *system* behaves the same. `gates.py` and
-`coverage_algebra.py` are byte-identical to `develop` again (verified three ways by the reviewer), and
-the ruling is now recorded in `is_judgeable_path`'s own docstring, because reading the mechanism
+*parser* sees the same program, not that the *system* behaves the same. `gates.py` is byte-identical to
+`develop` again (same blob, verified by the reviewer) and `coverage_algebra.py` differs by exactly the
++18-line ruling docstring and nothing else, with zero residue of the mechanism anywhere. The ruling is
+recorded in `is_judgeable_path`'s own docstring because reading the mechanism
 carefully was not enough to prevent this — the objection was filed at `COV-3M8Q` and never surfaced
 where the work happens. The goal remains ratified: the sound route is to make review **cheap**, not
 skippable.
