@@ -67,7 +67,7 @@ unknown; Chunk 04's review-stats measurement resolves the threshold.
 
 ## Status
 
-- [ ] Chunk 01: Disposition facts and the census renderer
+- [x] Chunk 01: Disposition facts and the census renderer
 - [ ] Chunk 02: Subtraction sweep and deterministic record-lint
 - [ ] Chunk 03: Per-mode reviewer payload
 - [ ] Chunk 04: Coordinator roster keyed to judgeable files

@@ -5,7 +5,7 @@
 
 ## 2026-07-29: The coordinator's three reviewers are now told to run concurrently
 
-<!-- prawduct: type=fix | scope=record-mechanization -->
+<!-- prawduct: type=fix | scope=record-mechanization | release=v3.2.1 | status=shipped -->
 
 **Why:** the coordinator pattern dispatches three `critic-reviewer` subagents, and nothing in the
 framework ever said to issue their Agent calls together. `review-protocol.md` step 2 and `SKILL.md`'s
@@ -64,7 +64,7 @@ be relied on, not because the history is wrong.
 
 ## 2026-07-29: A finding count was being read as a defect count
 
-<!-- prawduct: type=fix | scope=record-mechanization -->
+<!-- prawduct: type=fix | scope=record-mechanization | release=v3.2.1 | status=shipped -->
 
 **Why:** `merge_findings` de-duplicates coordinator findings on `(goal, name, files)` — and the
 coordinator's goal sets are **disjoint by construction**, since each reviewer is instructed to review
@@ -96,7 +96,7 @@ so rather than implying a consumer exists.
 
 ## 2026-07-29: Dispositions become facts, and the census stops being prose
 
-<!-- prawduct: type=feature | scope=record-mechanization | chunks=01 -->
+<!-- prawduct: type=feature | scope=record-mechanization | chunks=01 | release=v3.2.1 | status=shipped -->
 
 **Why:** a FIX has left a machine-readable trace since kernel v3 — the resolution fact a verify pass
 records. ACCEPT and FILE left none, so the census of what a review decided lived only in hand-written

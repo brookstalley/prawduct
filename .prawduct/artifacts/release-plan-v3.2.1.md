@@ -72,6 +72,15 @@ worktree off `origin/develop` and lands with `git push origin HEAD:develop`, whi
 because the prep commit is a descendant of `origin/develop`. Nothing in the other worktree is read or
 written; its local ref simply becomes behind.
 
+**Phase 1 step 11 (`active_build_plan: null`) is NOT performed — deviation, with reasoning.** The
+runbook nulls the pointer unconditionally, which is right when a release retires a completed plan.
+This release ships **Chunk 01 of 5**; Chunks 02–05 are unbuilt and the plan file is retained. Nulling
+the pointer would strand the next session with no resume target, and `/prawduct:pr`'s own gitflow rule
+says the opposite for this case ("**RETAIN** both the plan file and the `active_build_plan` pointer"
+when the base is `develop`). The runbook step has no conditional for a mid-plan release — a genuine
+gap in it, recorded here rather than silently followed or silently ignored. A "consider deleting idle
+plan" advisory may surface until the plan completes; that is expected.
+
 **Phase 2 step 14's `git checkout main` is skipped, exactly as v3.2.0 recorded.** The promotion uses a
 detached temporary worktree at `origin/main` with `read-tree --reset -u origin/develop`, then
 `git push origin HEAD:main` — identical commit shape (single parent, `develop`'s tree), and it does not
