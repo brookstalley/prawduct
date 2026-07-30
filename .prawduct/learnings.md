@@ -627,3 +627,34 @@ line-wide negation filter I wrote also swallowed the exact claim it targeted, be
 contained an unrelated "not"; only injecting a *variant* exposed it. Relates to Tests Are Contracts (#1),
 Honest Confidence (#5), and the false-reassuring-claim-in-an-instruction-surface class BKL-8V3D named.
 
+
+## When the deliverable is INSTRUCTIONS, at least one guardrail must model the READER — tests that
+measure the artifact (size, budget, "the right words are present") all pass while the instruction has
+no effect, because none of them read the file in the order an agent reads it
+
+Confirmed 2026-07-30 (record-mechanization Chunk 03). A per-mode payload split gave `chunk` and
+`verify-resolutions` reviewers a self-contained `goals-1-3.md` and routed them there at step 2 of the
+Critic skill — an 83% token cut, six guardrails, every one mutation-proved. It did **nothing**.
+`SKILL.md`'s header is the first instruction in the skill body and it said to read
+`review-protocol.md` "(read this first)", twenty-six lines above the routing, without naming
+`goals-1-3.md` at all. Agents obeyed the header, loaded the full 10,519-token predecessor payload, and
+only then reached the instruction telling them not to. The reviewer that caught it did so by *doing*
+it and reporting its own token spend as the evidence.
+
+Every guardrail stayed green because every guardrail measured **file sizes**. "The bytes are correct"
+and "the behavior is correct" are different claims for an instruction file, and size-shaped tests only
+ever prove the first. The reader-shaped questions are: what is read *first*, what is read
+*unconditionally*, and does an earlier directive outrank a later one? Write at least one test that
+asks those — assert reading ORDER and unconditional citations, not just presence and budget.
+
+Two riders, both paid for in the same work cycle. **(a)** The first cut of those reader-shaped tests
+had the same disease one level up: the fast-path check excused any *line* containing "final", and the
+single-pass roster bullet permanently contains "small `final`/`cumulative`" — so the one line that had
+carried half the defect was excluded unconditionally, and "mutation-proved" was true of one leak and
+false of the other. Judge the **citation in its own clause**, never the line it sits on. **(b)** A
+reviewer running on a cached pre-fix skill body cannot measure the fix: the acceptance evidence for an
+instruction change has to come from a **fresh session**, and a same-session reading proves nothing.
+
+Instance of [assert the PROPERTY, not one spelling of it](#when-a-guard-test-pins-a-safety-claim) —
+the header test I first wrote pinned the literal string "read this first", which any rewording would
+have walked past. Relates to Tests Are Contracts (#1) and Honest Confidence (#5).

@@ -134,6 +134,16 @@ things Chunk 04's author should know, all on files that chunk also edits:
   raised without the other. Deliverable met, path changed, recorded here because the review rightly
   asked why this divergence was the one not written down.
 
+**The acceptance criterion is proved on disk and by guardrail, NOT yet in a live review.** The first
+cut of the routing was inert: `SKILL.md`'s header ordered `review-protocol.md` "(read this first)"
+twenty-six lines above step 2, so a reviewer obeyed the header and loaded the full 10,519-token
+predecessor payload before reaching the instruction telling it not to. A review caught this by doing
+it and reporting its own token spend. Every guardrail stayed green — **all of them measured file
+sizes; none read the instructions in the order an agent reads them.** Three instruction-order
+guardrails now exist. But the reviewer that verified the fix was itself running on a cached pre-fix
+skill body, so **the first `chunk`/`verify-resolutions` review in a fresh session is the measurement**
+— take it before treating the wall-clock baseline above as re-measurable.
+
 **Observed, not built — for Chunk 04's roster work.** The coordinator's **correctness** reviewer runs
 exactly goals 1-3 and still reads the full `review-protocol.md` (its agent definition points there).
 Pointing it at `goals-1-3.md` would extend this chunk's saving to the coordinator path, but this
@@ -361,7 +371,11 @@ review makes the branch PR-ready.
 - After Chunk 01: schema lock-in review — the disposition fact's consumer queries and fields are the
   plan's one irreversible decision; confirm before anything builds on it.
 - After Chunk 03: measure — payload delta from guardrail tests, and a spot-check that a chunk-mode
-  review now lands near its 1–2 minute target.
+  review now lands near its 1–2 minute target. **The spot-check must come from a FRESH session**: a
+  fork carrying a cached pre-fix skill body follows the old routing, so a same-session reading proves
+  nothing about the new one. Re-run the population query below and compare the `chunk` and
+  `verify-resolutions` medians; the durations recorded on 2026-07-30 after Chunk 03 shipped are all
+  pre-fix reads and must be excluded from the comparison.
 
   **Baseline recorded 2026-07-30, and RESTATED the same day over the full population.** The first
   cut hand-picked seven recent rows; a review then asked which population they came from, and the
