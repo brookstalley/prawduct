@@ -509,3 +509,67 @@ class TestFindingsSchemaAdditions:
     def test_finding_without_files_still_valid(self):
         finding = {"goal": "g", "severity": "warning", "summary": "s"}
         assert self._validate(self._valid(findings=[finding]))
+
+
+class TestReviewAnchorIdempotency:
+    """One review must anchor exactly one ledger event.
+
+    The evidence fact survives a second consolidation via `(kind, id)`
+    first-wins dedupe, but this ledger has no key and no dedupe, and
+    `review-stats` counts its lines — so a second anchor double-counts the
+    review in the instrument review proportionality is judged by. Observed live
+    2026-07-29: one fact anchored two `review.critic` events a second apart.
+
+    Two paths reach a second consolidation, and the probe treats them
+    differently. A **replay** — the same manifest and partials re-materializing
+    after success, or a crash between the fact append and `remove_partials` —
+    is closed outright. An **overlap**, two consolidations running past the
+    manifest check at once, is only narrowed: the probe is read-then-write with
+    no lock. Not a sequential two-caller story: a successful consolidation
+    deletes the manifest the Stop-hook self-heal needs, so that path is a
+    no-op. A maintainer seeing this recur should look for the lock.
+    """
+
+    def test_probe_finds_an_existing_anchor_by_fact_id(self, tmp_path):
+        from lib import ledger
+
+        repo = tmp_path / "repo"
+        repo.mkdir()
+        _init_repo(repo)
+        _commit_file(repo, "app.py", "x = 1\n", "c1")
+        _write_findings(repo, fact_id="rev-abc123")
+        assert _run_hook(
+            repo, "ledger-append", "--event", "review.critic"
+        ).returncode == 0
+
+        prawduct = repo / ".prawduct"
+        assert ledger.review_event_exists(prawduct, "rev-abc123") is True
+        assert ledger.review_event_exists(prawduct, "rev-nope") is False
+        # A non-string / empty id is never a match rather than an error.
+        assert ledger.review_event_exists(prawduct, "") is False
+        assert ledger.review_event_exists(prawduct, None) is False
+
+    def test_probe_is_false_on_an_absent_ledger(self, tmp_path):
+        from lib import ledger
+
+        repo = tmp_path / "repo"
+        repo.mkdir()
+        _init_repo(repo)
+        assert ledger.review_event_exists(repo / ".prawduct", "rev-abc123") is False
+
+    def test_probe_ignores_events_without_the_fact_id(self, tmp_path):
+        """Older events carry no `review.fact_id`; they must not match, and must
+        not stop the scan from reaching an event that does."""
+        from lib import ledger
+
+        repo = tmp_path / "repo"
+        repo.mkdir()
+        _init_repo(repo)
+        _commit_file(repo, "app.py", "x = 1\n", "c1")
+        _write_findings(repo, fact_id="rev-first")
+        assert _run_hook(repo, "ledger-append", "--event", "review.critic").returncode == 0
+        _write_findings(repo)  # no fact_id at all
+        assert _run_hook(repo, "ledger-append", "--event", "review.critic").returncode == 0
+
+        prawduct = repo / ".prawduct"
+        assert ledger.review_event_exists(prawduct, "rev-first") is True

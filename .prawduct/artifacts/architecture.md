@@ -119,8 +119,13 @@ The flagship multi-process flow, and the clearest expression of invariant 1.
 
 **Why consolidation is decoupled from dispatch.** The harness backgrounds dispatched subagents, so
 the coordinator cannot reliably resume to aggregate. Instead, consolidation runs from three
-independent, idempotent triggers — the per-reviewer `SubagentStop` hook, the single-pass fork
-inline, and the Stop-hook backstop — so the review lands exactly once regardless of which fires.
+independent triggers — the per-reviewer `SubagentStop` hook, the single-pass fork
+inline, and the Stop-hook backstop — so the review lands regardless of which fires. **"Exactly once"
+holds for the review *fact*, not for every output:** the fact is idempotent by `(kind, id)`, while the
+governance-ledger anchor is replay-closed by `ledger.review_event_exists` and merely overlap-narrowed
+(read-then-write, no lock). A concurrent overlap can still anchor twice — observed live 2026-07-29 —
+and mandating concurrent coordinator dispatch made that path more reachable, not less. Residual:
+CRT-8L3Q.
 
 ## Worktree & Distribution Model
 

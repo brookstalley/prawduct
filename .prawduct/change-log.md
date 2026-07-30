@@ -3,6 +3,152 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-07-29: The coordinator's three reviewers are now told to run concurrently
+
+<!-- prawduct: type=fix | scope=record-mechanization -->
+
+**Why:** the coordinator pattern dispatches three `critic-reviewer` subagents, and nothing in the
+framework ever said to issue their Agent calls together. `review-protocol.md` step 2 and `SKILL.md`'s
+routing bullet both read as a numbered procedure, and `git log -S` confirms no commit ever added the
+words "parallel" or "concurrent" to the critic skill — so the fan-out was riding the harness's
+ambient "batch independent calls" behaviour rather than an instruction.
+
+That behaviour is outside this framework's control, and it varies. Measured here: this repo's own
+Chunk 01 review fanned out cleanly (partials at 17:14:49, 17:15:37, 17:15:56 — a 67-second spread
+across three ~10-minute reviews), while other sessions were observing serial dispatch consistently
+in the same period. **The defect is nondeterminism, not a fixed 3× regression** — and that is the
+worse failure, because a cost that appears only in some sessions defeats reproduction and never gets
+attributed. Serial dispatch pays the pattern's entire cost (three agents, three context loads, a
+consolidation step) and discards the wall-clock saving that is the only thing it buys.
+
+**What landed.** One clause in each of the two dispatch surfaces, plus a guardrail test asserting
+both — proved by mutation, since an unpinned instruction is exactly how this silently reverts.
+Unrelated to the open `critic-begin` in-flight-guard item, which is about two *dispatches* colliding;
+these three reviewers share one manifest and never call `critic-begin`.
+
+**A correction, and the defect it uncovered.** The first version of this entry claimed concurrency was
+"safe by construction". That is true of the **evidence fact** — per-role partial files with no shared
+write target, and an id-idempotent append — but it was too broad, and the review that checked it found
+where: `ledger.ledger_append` had **no idempotency key and no dedupe**, while `review-stats` counts its
+lines without de-duplicating by review. So one review could anchor two `review.critic` events and be
+counted twice — in the very instrument this plan's success criterion is measured with ("median rounds
+per logical change at or under 2").
+
+Then it reproduced on the review that flagged it: two events for `rev-20260729T233201Z-d91acd9e`, one
+second apart.
+
+**The first diagnosis of *why* was wrong, and the next review caught that too.** It claimed two
+callers by design — the Stop hook's self-heal and the Critic SKILL — made the double-anchor
+deterministic. But a successful consolidation ends in `remove_partials()`, which deletes the manifest,
+and the self-heal needs a manifest to act, so the sequential two-caller path is a **no-op**, not a
+double-anchor. (Two events one second apart were never a Stop boundary either.) The two reachable
+paths are **replay** — the same manifest and partials re-materializing after success, or a crash
+between the fact append and `remove_partials` — and **overlap**, two consolidations running past the
+manifest check at once.
+
+`review_event_exists` probes for an existing anchor before appending. That **closes replay
+completely** and **narrows overlap** from the whole consolidate body to the microseconds between
+probe and append — it is read-then-write with no lock, so "exactly once" is not what it buys, and
+mandating concurrent reviewer dispatch made overlap *more* reachable rather than less. Recorded
+precisely so a maintainer who sees it recur looks for the lock instead of hunting a third caller.
+Measured, and stated carefully because the obvious framing is wrong: of the 143 `review.*` ledger
+events carrying a `review.fact_id`, 142 are distinct — **exactly one surplus**
+(`rev-20260729T233201Z-d91acd9e`, still on disk and still inflating `review-stats`). A further **140 events carry no
+`fact_id`, and that is permanent rather than a historical tail**: 100 are `review.critic` events from
+before the field existed (clean cutover 2026-07-13, no interleaving), but the other 40 are
+`review.pr` events, whose payload has no such field at all — ten of them post-date the cutover, and
+the count grows by one with every PR review. So a total-minus-distinct subtraction is unsafe
+*permanently*, not just for the backlog; "N events for M reviews" never reads this ledger correctly,
+which is why the follow-up item's trigger is keyed on duplicated ids. The fix matters because the instrument is about to
+be relied on, not because the history is wrong.
+
+## 2026-07-29: A finding count was being read as a defect count
+
+<!-- prawduct: type=fix | scope=record-mechanization -->
+
+**Why:** `merge_findings` de-duplicates coordinator findings on `(goal, name, files)` — and the
+coordinator's goal sets are **disjoint by construction**, since each reviewer is instructed to review
+ONLY its own goals. So two reviewers meeting the same defect can never collide on that key, and both
+survive the merge. Observed in this branch's own review: R-7 ("a clean review's census renders a
+truncated sentence") and R-13 ("a clean review renders a malformed census summary line") are one
+defect, counted twice. Across this repo's 254 recorded reviews the signature appears in 16 of the 209
+reviews that have findings — including one defect found by all three reviewers and counted three
+times. Inflated counts read as thoroughness and drive disposition work that is partly duplicated.
+
+**What landed, and what deliberately did not.** Detection is **advisory: nothing is merged, dropped,
+or reordered.** Consolidation now reports "N note (~M distinct; K likely-duplicate group(s): R-7+R-13)"
+and the derived findings view carries the groupings, recomputed from the fact's own findings — so
+there is no persisted-schema change and no model in the write path. Collapsing the findings instead
+would need fuzzy matching in the *write* path, and a fuzzily-dropped real finding is invisible in the
+output: strictly worse than over-counting, and undetectable by the person who would need to notice.
+Candidates must come from different goals and non-disjoint files before title-word overlap is
+considered, grouping is transitive so one defect found three times reports as one group, and the
+threshold (0.4) was calibrated against all 254 stored reviews rather than chosen — the true pair sat
+at 0.44 and every pair it surfaces spot-checked as genuine. Filed as CRT-R4Z2; the backlog item keeps
+the harder half, that a reviewer filing a *meta*-note about another finding is a protocol question,
+not a merge one.
+
+**Honest limit on the derived-view key.** `likely_duplicate_groups` in `.critic-findings.json` has **no
+programmatic reader today** — it is there for a human reading the JSON, and for the census/briefing
+surface to pick up later. It is asserted by a test (always present, empty when nothing looks
+duplicated) so it cannot silently stop being written, but nothing consumes it yet, and this entry says
+so rather than implying a consumer exists.
+
+## 2026-07-29: Dispositions become facts, and the census stops being prose
+
+<!-- prawduct: type=feature | scope=record-mechanization | chunks=01 -->
+
+**Why:** a FIX has left a machine-readable trace since kernel v3 — the resolution fact a verify pass
+records. ACCEPT and FILE left none, so the census of what a review decided lived only in hand-written
+change-log prose. That prose drifts, and correcting it costs review rounds: each correction is a
+commit, commits extend HEAD, and coverage that no longer reaches HEAD buys another pass. On the
+2026-07-29 ship day, 57% of the day's findings targeted hand-authored records rather than shipped
+behaviour.
+
+**What landed.** A new `disposition` fact kind (`plugin/lib/dispositions.py`), written by
+`prawduct-hook disposition <review-id> <fid> --accept "<reason>" | --file <backlog-id>`. It validates
+the finding join before recording anything and refuses to accept a BLOCKING finding without
+`--owner-ruling` — `review-cycle.md`'s severity rule, moved from prose a reader must remember into
+code that answers. `prawduct-hook render-dispositions [--review <id>|--scope <s>] [--json]` derives
+the census, including the count nothing measured before: how many findings are still
+**undispositioned**.
+
+**The case study is the acceptance test.** The cumulative review of this repo's own release-readiness
+work is the census that proved the point: its prose claimed "ACCEPTED (10 notes)" and then, in its own
+closing sentence, "9 accepted notes and one discharged question" — and separately asserted that all
+thirteen blocking/warning findings were *fixed*, when the store recorded one of them as **waived**.
+Three of those errors are arithmetic over data the store already held. Recording that review's ten
+real note dispositions and rendering it now yields 12 fixed, 1 waived, 10 accepted (1 of them
+owner-ruled), 0 undispositioned — derived, so it cannot drift.
+
+**A disposition can never weaken a gate.** The coverage algebra filters on fact kind before reading a
+body, so a BLOCKING finding stays blocking until a verify pass records a real resolution. That is what
+makes it safe for a builder to record dispositions without a reviewer in the loop, and it is pinned by
+a regression test rather than left resting on the filter staying where it is.
+
+**This chunk's own dispositions** — rendered from facts by the command this chunk adds, not counted by
+hand. (Distinct from the case-study census above, which is the release-readiness review's.) Chunk 01's
+own review `rev-20260729T230420Z-71b7f129`: **25 findings (9 warning, 16 note) — 17 fixed, 8 accepted,
+0 undispositioned.** The eight ACCEPTs, each with its reason recorded as a fact: R-4 (the real-store
+integration fixture is deliberately transcribed, keeping the suite deterministic — and both reviewers
+recomputed it as correct), R-5 (nothing renders from the stored disposition, so a read-back would add
+a store read per call without changing a decision), R-6 (the branches carrying consequence are pinned;
+the rest is defensive coverage with no behaviour behind it), R-14 (`fixed`/`waived` are *verified*
+resolutions with different authority, so they cannot share a writer — `census()` unions them in one
+place), R-15 (Chunk 03 owns the payload measurement; distilling now would pre-empt its before/after),
+R-16 (Chunk 02 makes record accuracy a mechanized concern — the point to register it is when the
+mechanism exists), R-21 (a gate on undispositioned findings would be a new authority this chunk did not
+scope; Chunk 02's record-lint is the forcing function), R-25 (the plan artifact is a non-judgeable
+record surface, and the verify pass covers the interval containing it).
+
+**Decisions worth naming.** The fact's field is `action`, not `disposition`: "disposition" already
+names release scope (`ships`/`withheld`) and resolution (`fixed`/`waived`), and a third meaning for
+one field name across one store is how readers get it wrong. A re-disposition appends under a
+sequenced id rather than reusing one, because the store dedupes `(kind, id)` keeping the *first*
+occurrence — reusing an id would make a changed answer silently vanish, and an accept → file → accept
+revert would leave the wrong answer winning. The finding-join walk moved into `evidence.py` so the
+gate's notion of "recorded" and the census's cannot drift into two walks that disagree.
+
 ## 2026-07-29: Phase 0's historical backlog was three scopes, not six — and half the list had never shipped
 
 <!-- prawduct: type=fix | scope=release-readiness | release=v3.2.0 | status=shipped -->

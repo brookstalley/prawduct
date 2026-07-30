@@ -113,8 +113,9 @@ call, and it is what keeps step 3's "repeat until" from being unbounded.
 **But "the review is over" is not "add it to the backlog."** Every remaining WARNING/NOTE gets exactly
 one of three dispositions, and **FILE is the narrowest, never the default**:
 
-- **ACCEPT** — won't fix. Record the finding and the reason in the change-log entry for the work (or
-  the PR body); no backlog item. This is the **default** for anything that gates nothing and that no
+- **ACCEPT** — won't fix. Record the disposition and its reason as a *fact* (`prawduct-hook
+  disposition … --accept`, below) and render it into the change-log entry for the work or the PR body;
+  no backlog item. This is the **default** for anything that gates nothing and that no
   one will realistically action. Principle 2 already licenses it: *implemented or explicitly
   descoped*. An accept is the explicit descope — visible, dated, and attached to the work it came
   from, where the next reader of that change meets it.
@@ -124,6 +125,41 @@ one of three dispositions, and **FILE is the narrowest, never the default**:
   surfaces costs nothing at all.
 - **FILE** — only genuinely deferred work that someone will actually do, and the item says what
   triggers it. No trigger means it is an ACCEPT wearing a backlog id.
+
+### Record the disposition; render the census
+
+**A disposition is a fact, not a sentence you write.** FIX already left a machine-readable trace — the
+resolution fact a `verify-resolutions` pass records. ACCEPT and FILE now do too:
+
+```
+prawduct-hook disposition <review-id> <fid> --accept "<reason>"      # won't fix, reason recorded
+prawduct-hook disposition <review-id> <fid> --file <backlog-id>      # deferred, item carries the work
+```
+
+The command validates that the finding exists before it records anything, and refuses to accept a
+BLOCKING finding without `--owner-ruling "<text>"` — the severity rule below, enforced in code rather
+than remembered. Re-dispositioning appends a newer fact; the older one stays as history, and an
+identical re-run is a reported no-op. **A disposition never satisfies a gate**: a BLOCKING finding
+stays blocking until a verify pass records a real resolution, so recording one costs you nothing and
+protects nothing you shouldn't want protected.
+
+**Then render the census — never author it:**
+
+```
+prawduct-hook render-dispositions [--review <id>|--scope <s>] [--json]
+```
+
+Paste the rendered table into the change-log entry or PR body. It reports each finding's state
+(`fixed`, `waived`, `accepted`, `filed`) and — the number nothing measured before — how many findings
+are still **undispositioned**.
+
+**Why this stopped being prose.** Hand-written censuses drift, and their corrections re-enter review.
+Measured on this framework's own repo in a single day: one census asserted a count of accepted notes
+and then contradicted itself in its own closing sentence, another asserted every blocking and warning
+finding was *fixed* when the store recorded one of them as *waived*, and a third was corrected three
+times — each correction a commit, and commits extend HEAD, which is how a record defect buys a review
+round. Arithmetic over facts the store already holds does not need a reviewer to check it. Counting
+is the machine's job; deciding is yours.
 
 **Why the default moved.** The old rule said file the rest, full stop. It bounded the review loop —
 which was the real problem it solved — but it made the backlog the disposal route for every finding a

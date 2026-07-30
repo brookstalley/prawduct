@@ -293,6 +293,40 @@ def _resolve_base(project_dir: Path) -> tuple[str | None, str]:
         return None, "base resolution failed"
 
 
+def review_event_exists(prawduct_dir: Path, fact_id: str) -> bool:
+    """True if a ``review.*`` event already anchors this evidence fact.
+
+    The idempotency probe the anchor lacked. The evidence fact survives a
+    second consolidation by ``(kind, id)`` first-wins dedupe, but this ledger
+    has no key and no dedupe, so the same review could anchor twice and be
+    counted twice by ``review-stats`` — inflating the exact instrument review
+    proportionality is judged on. Observed live 2026-07-29: one fact anchored
+    two ``review.critic`` events a second apart.
+
+    **Two reachable paths, and this closes one of them.** A *replay* — the same
+    manifest and partials re-materializing after a success, or a crash between
+    the fact append and ``remove_partials`` — is closed completely: the probe
+    sees the earlier anchor. An *overlap*, two consolidations running past the
+    manifest check at once, is only narrowed: this is read-then-write with no
+    lock, so both callers can probe before either appends. The window shrinks
+    from the whole consolidate body to the microseconds between probe and
+    append. Not "exactly once" — and note that requiring the three coordinator
+    reviewers to dispatch concurrently made overlap *more* reachable, not less.
+    A maintainer who sees this recur should look for the lock, not a third
+    caller.
+
+    Cheap because it stops at the first match and reviews anchor near the tail;
+    unparseable lines are skipped by the shared reader rather than trusted.
+    """
+    if not isinstance(fact_id, str) or not fact_id:
+        return False
+    for _lineno, event in iter_events_newest_first(prawduct_dir):
+        review = event.get("review")
+        if isinstance(review, dict) and review.get("fact_id") == fact_id:
+            return True
+    return False
+
+
 def iter_events_newest_first(prawduct_dir: Path):
     """Yield ``(line_number, event_dict)`` newest-first, skipping unparseable
     lines and non-dict events with one stderr note each — a corrupt line must
