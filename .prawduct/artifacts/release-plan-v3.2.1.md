@@ -48,9 +48,11 @@ installed repo through the Critic's review data plane:
    read-then-write with no lock, and mandating concurrent dispatch made overlap more reachable. Stated
    precisely so a maintainer who sees it recur looks for the lock rather than a third caller.
    Historical impact: of the 143 `review.*` events carrying a `fact_id`, 142 are distinct — one
-   surplus (`rev-20260729T233201Z-d91acd9e`), still on disk. A further 140 events predate the field
-   and are invisible to the probe, so the follow-up item's trigger (CRT-8L3Q) is keyed on *duplicated
-   ids*, never on a total-minus-distinct subtraction.
+   surplus (`rev-20260729T233201Z-d91acd9e`), still on disk. A further 140 events carry no `fact_id`
+   — 100 `review.critic` events predating the field, plus 40 `review.pr` events whose payload has no
+   such field at all, so that blind spot is permanent and grows with every PR review. The follow-up
+   item's trigger (CRT-8L3Q) is therefore keyed on *duplicated ids*, never on a
+   total-minus-distinct subtraction.
 
 **Also shipping — additive, and inert unless invoked.** The `disposition` fact kind plus
 `prawduct-hook disposition` / `render-dispositions`: a review's ACCEPT/FILE answers become facts so its

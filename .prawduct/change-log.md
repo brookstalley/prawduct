@@ -53,10 +53,13 @@ mandating concurrent reviewer dispatch made overlap *more* reachable rather than
 precisely so a maintainer who sees it recur looks for the lock instead of hunting a third caller.
 Measured, and stated carefully because the obvious framing is wrong: of the 143 `review.*` ledger
 events carrying a `review.fact_id`, 142 are distinct — **exactly one surplus**
-(`rev-20260729T233201Z-d91acd9e`, still on disk and still inflating `review-stats`). A further **140
-events predate the `fact_id` field entirely**, so they are invisible both to the probe and to any
-total-minus-distinct subtraction; "N events for M reviews" is not a safe way to read this ledger, which
-is why the follow-up item's trigger is keyed on duplicated ids. The fix matters because the instrument is about to
+(`rev-20260729T233201Z-d91acd9e`, still on disk and still inflating `review-stats`). A further **140 events carry no
+`fact_id`, and that is permanent rather than a historical tail**: 100 are `review.critic` events from
+before the field existed (clean cutover 2026-07-13, no interleaving), but the other 40 are
+`review.pr` events, whose payload has no such field at all — ten of them post-date the cutover, and
+the count grows by one with every PR review. So a total-minus-distinct subtraction is unsafe
+*permanently*, not just for the backlog; "N events for M reviews" never reads this ledger correctly,
+which is why the follow-up item's trigger is keyed on duplicated ids. The fix matters because the instrument is about to
 be relied on, not because the history is wrong.
 
 ## 2026-07-29: A finding count was being read as a defect count

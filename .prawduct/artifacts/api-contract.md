@@ -231,9 +231,16 @@ Per `security-model.md` — the API-boundary specifics:
 
 - **Decoupled async completion:** the Critic review is an async, multi-process operation whose
   completion is *not* a held-open call — reviewers write partials and consolidation runs from
-  whichever of three idempotent triggers fires first (see `architecture.md`). This is the
-  "202 + status resource" analogue for a local CLI.
-- **Idempotency:** fact-append and consolidation are idempotent under identity fixed at dispatch, so
-  the multi-trigger race collapses to exactly one result.
+  whichever of three triggers fires first (see `architecture.md` for which, and for the per-output
+  limits of their idempotency). This is the "202 + status resource" analogue for a local CLI.
+- **Idempotency, per output — not "exactly once" across the board:** the **review fact** collapses to
+  one by `(kind, id)` first-wins dedupe under identity fixed at dispatch. The **ledger anchor** is
+  weaker: `ledger.review_event_exists` closes the *replay* path (a re-materialized same-id manifest,
+  or a crash between the fact append and `remove_partials`) but only *narrows* the *overlap* path,
+  because the probe is read-then-write with no lock. So the multi-trigger race collapses to one
+  result for the fact, and to one result on the replay path for the ledger — a concurrent overlap can
+  still double-anchor. Observed live 2026-07-29 (one fact, two `review.critic` events a second
+  apart); residual tracked at CRT-8L3Q, whose trigger is a second duplicated `review.fact_id`. Do not
+  read this row as licence to close that item.
 - **Correlation handle:** facts and ledger events carry the git tree/commit SHA + scope/chunk/actor,
   the local analogue of a request/trace id (ties to `observability-strategy.md`).
