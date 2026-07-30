@@ -3,6 +3,474 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-07-30: The third learnings compaction, and the first one built to be the last
+
+<!-- prawduct: type=fix -->
+<!-- No build plan: LRN-4K8T is a stage:ready chore whose ask was specified, and the two
+     controls are small additions to shipped mechanisms. Proportional effort warranted no
+     plan, so no scope=/chunks=. -->
+
+**`learnings.md` 121KB → 34KB, with all 156 rules kept and nothing deleted.** Every narrative body
+moved to `learnings-detail.md` under the same heading — 41 entries created there, 11 merged into
+existing ones, 1 already present verbatim — verified by a conservation check that refuses to write
+unless every moved byte is found in the destination.
+
+**The interesting part is why there had to be a third pass.** Compaction ran in June (79.5KB →
+32.3KB) and again in July, and the file came back **larger than before the first one**. The rule has
+always been "keep the rule in `learnings.md`, move the narrative to detail" — so the narrative moved
+into the `##` heading, which is where the rule lives and where no sweep ever looked. On the eve of
+this pass the longest "rule" was **1,921 characters**: a paragraph wearing a heading. Two sweeps had
+taught the file's authors exactly one thing, and the content relocated to the channel that wasn't
+being measured. The same shape as this branch's other two failures — a guardrail that measured file
+sizes could not see an inert instruction, and a test that pinned a constant could not see the repo
+move out from under it.
+
+So this pass bounds **both** channels: bodies moved, and the four indefensible headings (713–1,921
+chars) split at the point where the rule ends and the evidence begins, with every removed tail
+appended to that entry's detail body. Median rule is now 181 chars, max 898, and there is 6KB of
+headroom rather than the 3KB that moving bodies alone would have left — roughly ten new entries
+before the advisory fires again, which is how the last two passes ended.
+
+**`record_lint` gains `learnings-entry-shape`**, the per-entry half a one-time sweep structurally
+cannot provide: an added `learnings.md` heading over 400 characters is carrying its evidence, and an
+added narrative line belongs in detail. Added lines only, so the over-long rules left standing
+are grandfathered and cost nothing until someone edits them — which is the moment the guidance is
+actionable. Measured yield on the pre-compaction file: **20 over-long rules and 285 narrative
+lines**. The threshold is set so a rule carrying its evidence trips it and an ordinary rule does not — 16 of
+156 headings were above the line at the compaction. No percentile relation is claimed, deliberately:
+four attempts to state one shipped a wrong number, each while correcting the last. The file's
+own preamble is excluded, because a check that reports the paragraph explaining the format as a
+violation of the format is a check nobody keeps.
+
+**Budgeted files now record their actual size in a table a test owns** (`LAST_MEASURED_TOKENS`).
+Five figures written into durable records in one session were wrong, and the sharpest one was
+structural rather than careless: a budget-accounting comment took its *starting* number from the
+previous entry's *ending* number, which two earlier chunks had already invalidated by editing the
+file without updating it — a stale tally propagating into a fresh tally that was then wrong for a
+second reason. This is `suite-total-claim`'s rule applied one level in: **do not keep a prose copy of
+a figure a mechanism can own.** The narratives stay, because they record *why* an edit was
+affordable and no test can carry that; the reading moves to one place where drift fails loudly and
+the failure message hands you the number to write.
+
+**Reversed on 2026-07-30, on owner request — see the amendment note below.** The paragraph that
+follows was written before that decision changed, and is kept because its reasoning still holds for
+why the rule was placed where it was rather than restated in `learnings.md`.
+
+**Deliberately not added: another rule about verifying figures.** `learnings.md` already carries it,
+filed 2026-07-29 — *"write the derivation command into the document instead of the figure"* and
+*"when you correct an inherited number, recount the SET and not just the count."* Both were violated
+the following day by the author who had read them. The gap was never authorship; a 121KB file
+consulted by topic lookup cannot fire on a rule you do not know to look up. Making it loadable is
+this entry's contribution to that problem, and a third restatement would have been the one-way
+ratchet the proportionality norm exists to stop.
+
+**Amendment, same day, on owner observation.** `learnings.md` is project-scoped — an onboarded
+product inherits none of it — so the rules cited above reach nobody but this repo. One line
+therefore landed in `plugin/methodology/session-digest.md`, injected into every product session and
+the only inherited surface guaranteed to be in context at the moment of writing: prefer an
+invariant to a tally, and where a number is genuinely essential, compute it as you write it and let
+a mechanism own it where one can. The reasoning above is unchanged — a *restatement* in
+`learnings.md` would have been the ratchet; an inherited rule where there was none is a different
+act, and this session's own count of wrong figures is the evidence for it.
+
+## 2026-07-30: Review depth is a risk question, and the file count was answering a different one
+
+<!-- prawduct: type=fix | scope=record-mechanization | chunks=04 -->
+
+**The chunk set out to raise a threshold and the data said not to.** The plan proposed keying the
+coordinator roster to *judgeable* changed files at a threshold of 12, on the intuition that record
+files inflate the count so routine diffs pay triple review. Its own spec required validating that
+against history first. Replaying all 82 `final`/`cumulative` review facts in the evidence store — 35
+blocking findings — scored each candidate by the blockers it would have sent to a single reviewer:
+
+| rule | coordinator share | blockers demoted |
+|---|---|---|
+| previous: total files ≥ 5 | 80% | 2 (6%) |
+| **proposed: judgeable ≥ 12** | 40% | **19 (54%)** |
+| judgeable ≥ 5 | 56% | 19 (54%) |
+| **shipped: risk surface OR judgeable ≥ 12** | 78% | 1 (3%) |
+
+**The intuition was backwards.** The slice the proposal targeted — 5+ files, under 5 judgeable — is
+20 reviews carrying 17 blocking findings, **13 of them pointing at code rather than records**. Those
+are not record-padded trivia; they are small, high-consequence governance diffs. The sharpest is the
+AST free-edge relaxation: 3 judgeable files, 5 total, and the coordinator returned **10 blocking
+findings**, including *"the gate can now relax itself with no way to detect it."* Every
+judgeable-count rule reviews that one single-pass.
+
+Underneath sits a conflation worth naming, because it will recur.
+`coverage_algebra.is_judgeable_path` answers *"does this change need review **coverage**"* — a gate
+question, and the reason it is THE predicate there. It does not answer *"how much review **depth**
+does this deserve."* Record-heavy diffs *are* governance diffs, and governance diffs are where the
+blockers are: reviews touching the gate kernel yield 0.96 blocking findings each against 0.22 for
+everything else, a 4.4× discriminator no size cut approaches.
+
+**So the roster now asks a risk question first.** `final`/`cumulative` goes coordinator when the diff
+touches a risk surface, or when it changes 12+ judgeable files; otherwise single-pass. Size survives
+only as an escalator at the one threshold the replay clears: 5–11 judgeable files touching no risk
+surface is 13 historical coordinator reviews with **zero** blocking findings. Measured as reviews
+that *ran* coordinator and would now run single-pass, the change moves **8 reviews carrying 0
+blocking and 27 warning findings** — a deliberately small saving, recorded as small rather than
+dressed up. The honest finding is that **this repo's coordinator dispatch rate was approximately
+correct**, and roster selection is not where review cost lives.
+
+**A prerequisite bug, silent for nine days.** `risk.py`'s derived-default surfaces (`skills/`,
+`lib/gates*`, `bin/*hook*`) were never re-anchored when the plugin moved under `plugin/` at
+`c6b8131` (2026-07-21). None of the three matches a `plugin/`-prefixed path and no `risk_surfaces:`
+key is declared, so the invariant since the restructure is: **a diff containing no pre-restructure
+root-layout path cannot classify `escalate`**, gate-kernel changes included. The boundary is visible
+in the store. The last `escalate`, `rev-20260721T143005Z-975cbd6f`, matched only because the
+restructure was still in flight and its diff still listed root paths being deleted; every review
+after it went `standard` — 95 consecutive, 24 of them `final`/`cumulative`, ending only when this
+chunk's fix landed. It survived because the 2026-07-14 `reviewer-session-model`
+patch had removed the verdict's only consumer, leaving it telemetry-only with nothing downstream to
+fail. The surfaces are now generated from one list of shapes across both packaging layouts, so a
+shape added later cannot land in only one.
+
+**The test that should have caught it was green the whole time**: it pinned
+`DERIVED_DEFAULT_SURFACES` to its literal value, which stayed true while the repository moved out
+from under it. Its replacement asserts that `plugin/lib/gates.py`, `plugin/bin/prawduct-hook` and
+`plugin/skills/critic/SKILL.md` — paths whose existence it verifies — each match a surface. Same
+lesson as Chunk 03's inert routing, from the opposite direction: a guardrail that measures the
+artifact cannot see that the artifact no longer describes the world.
+
+**Standing note for any restore of reviewer tiering (REL-5K8M).** Re-anchored, these surfaces match
+~77% of this repo's reviews and near-100% before the restructure — the same breadth behind the
+over-escalation the 2026-07-14 directive was reacting to. Harmless while the roster is not model
+selection; reconnect this verdict to model choice without narrowing the list first and the original
+complaint returns. Recorded at the mechanism in `risk.py`.
+
+**The review caught the rule shipping wider than its evidence, and that is the shape of the fix.**
+Every figure above came from *this* repo's store, where the declared surfaces match 77% of reviews. An
+onboarded product is the opposite case: the derived defaults are framework-shaped, the
+`project-state.yaml` template ships no `risk_surfaces:`, and the `boundary-patterns.md` template
+writes its examples inside HTML comments and unbackticked — so `_boundary_pattern_paths` yields
+nothing and the risk predicate would never fire. The rule would have collapsed to `judgeable ≥ 12`
+alone — the rejected row, at 54% of blockers demoted — while *replacing* a rule that gave that product
+a coordinator at 5 files. So the risk-keyed rule now applies only where there is a risk signal: a repo
+declaring no surfaces keeps the previous file-count escalator unchanged, because "no surface matched"
+and "this repo never had a signal to give" are indistinguishable at the match site and defaulting the
+second to a cheaper review is the unsafe direction. This repo opts in by declaring `risk_surfaces:` in
+its own `project-state.yaml`; the product template gains a commented stanza so the knob is
+discoverable. `tests/spikes/roster_rule_replay.py` commits the replay, so every number here is
+recomputable rather than asserted.
+
+Two budget notes, both paid under trim-or-relocate rather than by raising a ceiling. `building.md`
+first restated the rule and then stopped restating it: the review found the restatement false for
+every undeclared product, so those surfaces now defer to the roster the manifest derived instead of
+naming a threshold that is no longer universal. It also dropped the cache-warming clause that
+`critic_consolidate._CACHE_WARM_DIRECTIVE` already emits verbatim into the output a caller reads
+*while waiting* — net 4657 → 4652, headroom 8. `review-protocol.md` had to gloss "risk surface",
+a term the roster bullets made load-bearing with no definition anywhere in the Critic docs; the full
+definition went to `review-cycle.md`, which owns the roster table and is off the chunk-mode payload
+path, leaving a one-clause pointer here (3572 → 3614, headroom 48 → 6).
+
+## 2026-07-30: A three-goal review stops paying a seven-goal reading fee
+
+<!-- prawduct: type=feature | scope=record-mechanization | chunks=03 -->
+
+**Why, measured over all 267 review facts carrying a duration:** `chunk` mode missed its 1–2 minute
+target in **30 of 30** recorded runs and `verify-resolutions` in **148 of 155**, while `final` — which
+loads the same protocol to run more than twice the goals — sat *inside* its target 85% of the time.
+The tell is the floor: the 96 smallest verify runs, five or fewer changed files and often a one-line
+fix to confirm, still took a **median 240s against a 60–120s target**. That is not diff size, because
+there is barely any diff. It is what the reviewer loads before reading a single changed line.
+
+**Those two modes now read one file.** New `plugin/skills/critic/goals-1-3.md` carries goals 1–3
+complete, and `SKILL.md` step 2 routes by the mode it just resolved: `chunk`/`verify-resolutions` →
+`goals-1-3.md` and **nothing else**; `final`/`cumulative` → `review-protocol.md` as before. Payload
+for the two fast modes drops from ~10,500 tokens (`review-protocol.md` plus the `review-cycle.md` it
+pointed at eight times) to ~1,875 — an **83% cut**, against an acceptance bar of "at least half."
+
+**The first cut of that routing did nothing, and the review proved it on itself.** `SKILL.md`'s
+header is the first instruction in the skill body, and it said to read `review-protocol.md` "(read
+this first)" without mentioning `goals-1-3.md` at all — so an agent obeyed the header, loaded the
+whole 10,519-token predecessor payload, and only then reached step 2's routing twenty-six lines
+below. The reviewer demonstrated it by doing exactly that during a goals-1-3 mode review. The split
+was correct on disk and **inert on the instruction path**, and every guardrail stayed green because
+all of them measure file sizes rather than reading order. Four leaks closed: the header now routes by
+mode and states that the read follows mode resolution; the designer-handoff skip line is inlined
+rather than fetched; step 7 cites "your step-2 protocol file" instead of `review-protocol.md`; and
+the per-mode scope line marks its detail pointer `final`/`cumulative`-only. Three new guardrails read
+*instructions* rather than sizes: every header bullet naming a final-only file must scope itself to
+the modes that read it, no step running in every mode may cite one unqualified, and the single-pass
+roster bullet may not cite one at all.
+
+**The first cut of those guardrails had the same shape of hole, and the next round found it.** The
+fast-path check excused any *line* containing "final" — and the single-pass roster bullet permanently
+contains "small `final`/`cumulative`", because that is when a small final review goes single-pass. So
+the one line that had carried half the defect was excluded unconditionally, and restoring its
+`(schema: review-protocol.md …)` pointer left the suite green. "Mutation-proved" was therefore true
+of one leak and not the other. Now judged per *clause* rather than per line, with the single-pass
+bullet pinned by its own zero-tolerance test. The header check was generalised in the same pass — it
+asserted the literal string "read this first", which any rewording would have escaped.
+
+**And then the exemption that was left "because it is load-bearing" was deleted too.** The coordinator
+bullet was skipped wholesale, legitimately: that roster exists only in `final`/`cumulative`, but its
+citation clause carried no `final`/`cumulative` of its own, so the check would have flagged it. A
+whole-line skip still excuses anything later appended to that line — the same shape as the defect
+being fixed, one level down. Qualifying the prose instead (`the final/cumulative "Coordinator Pattern"
+in review-protocol.md`) let the skip go entirely, proved by appending a naked schema pointer to that
+line: previously excused, now caught. **There are no line-level exemptions left in the fast-path
+guard.** The header check's bullets-only scope is a deliberate trade — header prose legitimately names
+`review-cycle.md` as a path-resolution example — and the reason sits in the test rather than waiting
+to be rediscovered.
+
+**Not yet observed in a live review.** The reviewer that verified this fix was running on a cached
+pre-fix skill body, so it followed the old ordering and could not measure the new one. The payload
+cut is proved on disk and by guardrail. The measurement needs a **genuinely new Claude Code
+invocation — not merely a new fork**: on 2026-07-30 *every* fork launched after the fix still received
+the stale body, so the cached skill payload survives a fresh fork within a session. (Stated as the
+invariant rather than a tally — the count rose on each of the next three reviews, and a number here
+would have gone stale exactly the way the ones this branch already corrected did.)
+
+**Self-contained means the pointers had to be paid off, not followed.** The record-lint severity
+table, the chunk-`Type:` protocol selector, the normative-authority preamble and the partial schema
+(including the `resolutions` arm) are now inlined, because each was a read into `review-cycle.md` at
+review time. That is also why the file is 125 lines against the plan's ≤80: the line estimate did not
+price self-containment, and closing the gap would have meant deleting checks — which is exactly what
+the trim-or-relocate rule on `review-protocol.md`'s budget exists to forbid. Checks kept, target
+missed, recorded at the mechanism rather than quietly restated.
+
+**The routing paid for itself in the file it routes away from.** `review-protocol.md` now serves
+`final`/`cumulative` only, so its chunk-mode restatements went — the mode bullets, the goal preamble's
+"chunk mode runs 1-3 only", the framework-checks skip note, the single-pass roster's mode list. The
+ceiling held at 3620 and headroom went from **5 tokens to 48**: this is the second consecutive change
+to that file that added a rule and left it smaller.
+
+**Goals 1–3 now exist in two files, and the test is what makes that safe.** The duplication is the
+obvious objection to the split; it is policed rather than tolerated. The no-dropped-check guardrail
+counts severity verdicts directionally — adding a check to `review-protocol.md`'s goals 1–3 without
+adding it to `goals-1-3.md` fails the suite — so the copies cannot drift in the direction that
+matters, which is a check the chunk-mode reviewer never sees. **That claim was false as first
+shipped, and the review caught it.** The count compared the *whole* of `goals-1-3.md` against a
+protocol *slice*, so the inlined record-lint table, the normative-authority preamble and the severity
+legend all padded the left-hand side — leaving room for **two unmirrored WARNING checks**, and WARNING
+is the modal severity there. Slack in a drift detector is indistinguishable from the drift it watches
+for. Both sides are now sliced goal-section to goal-section (12/19/2 against 11/19/2), and the fix is
+proved in both directions: the old form passes when an unmirrored WARNING is added to the protocol,
+the new form fails. Deleting goals 1–3 from the protocol and having `final` read both files was
+considered and rejected: it re-splits the seven-goal payload to
+fix what the invariant already closes. Four more guardrails pin the rest — the ≥50% payload cut, the
+2000-token ceiling, self-containment (no line may send the reviewer to another protocol file, and the
+one line naming them is the prohibition), and a regrowth check that fails if final-mode content
+reappears. All mutation-proved.
+
+**One test moved rather than weakened.** `test_chunk_and_verify_still_single_pass` asserted that
+invariant by finding both mode names in `review-protocol.md`'s Review Execution section — a file those
+modes no longer open, so the rule was pinned where its own audience could not see it. It is now
+asserted at both ends: `goals-1-3.md` tells its reviewer directly, and the protocol still describes the
+single-pass roster for the modes it serves.
+
+## 2026-07-30: The Critic stops re-deriving what a machine can count — record-lint at dispatch
+
+<!-- prawduct: type=feature | scope=record-mechanization | chunks=02 -->
+
+**Why:** on 2026-07-29, 57% of the day's 151 Critic findings targeted hand-authored governance
+*records* rather than shipped behavior — a dangling `file:line` citation, a backlog id that no longer
+exists, a `governed_by:` block disposing of one of an artifact's three norms, a census corrected three
+times. None of those need judgment, and each correction is a commit, and a commit extends HEAD, which
+is how a record defect buys a review round.
+
+**`prawduct-hook critic-begin` now answers them in code**, before any reviewer starts. New
+`lib/record_lint.py` runs three deterministic checks over the changed records and writes the result into
+the dispatch manifest as `record_lint`; `review-protocol.md` tells reviewers to read it and not
+re-derive it. The checks: the reviewed chunk's **declared deliverables** exist, a plan's
+**`governed_by:`** block covers every `## Direction` norm of each cited artifact (the GOV-8C3W
+mechanical enumeration), and no **suite-total test claim** lands in durable prose.
+`prawduct-hook verify-records [--base] [--head] [--chunk] [--json]` is the by-hand form, and its
+`--json` is the manifest block verbatim.
+
+**Three checks, not five — two were built, measured, and deleted before shipping.** `dangling-ref`
+(every backticked citation resolves) and `unknown-backlog-id` produced **0 true positives** on the
+40-file branch that introduced them; `dangling-ref`'s only three hits were prose that is path-shaped
+and not a path, because a multi-line citation like `backlog.md:307/311/315` keeps its slashes. By this
+repo's own proportionality norm a control that fires and catches nothing is removed by default, so
+they were — and the measurement is recorded at the mechanism (`record_lint.CHECKS`), not just here, so
+a future author argues with data rather than restoring what looks like an oversight. What survives has
+demonstrated yield: `governed-by-gap` found **22 gaps across 8 plans**, where GOV-8C3W estimated "a
+four-line sweep."
+
+**Cost is proportional to the diff, never the repo** — the constraint the 2026-07-29 language-agnosticism
+norms exist to enforce, at consumer scale. Line-scoped checks read only the lines a change *added*, so a
+change-log with years of history reports on the entry just written and nothing else. A full run over this
+40-file branch takes 1.4s. Classification is by suffix (`.md`, archive excluded), so nothing here parses a
+language or grows a per-language table.
+
+**A check that cannot run says so, and one of them is BLOCKING.** Every result carries an `unchecked`
+list naming the checks that did not run and why. A `chunk-ref-missing unchecked` entry is the old
+`verify-chunk-refs` `cannot-verify:` exit and keeps that severity, because a deliverable check that
+could not run is indistinguishable from one that passed — the habituation BLD-5J8N paid for. The result
+also names `chunk_graded`, since a zero count only means something once you know whose deliverables were
+counted: build-plan Status resolves "current" to the first *unchecked* box, so the moment a chunk is
+ticked the naive reading grades the **next**, unbuilt chunk and reports a confident zero. The dispatched
+chunk is now the subject and an inferred one is reported as an assumption.
+
+**And the lint can no longer take down the review it advises.** `git diff` output carries file content
+and `text=True` decodes strictly, so one non-UTF-8 byte in any consumer's changed `.md` would have
+aborted every review dispatch with a raw traceback — an advisory check killing the authority path,
+inverting two recorded dispositions at once. `run_git` now converts that to a normal read failure for
+every caller, and `lint_records_safe` is the only form the dispatch path may call: a crash becomes a
+reported `unchecked`, never a silent pass and never a dead dispatch.
+
+**Nor can it name the wrong file, or grade the wrong chunk.** Two attribution defects, both silent by
+construction. `core.quotepath` defaults on, so git C-quotes the `diff --git` header for any non-ASCII
+pathname; the header parser then missed it and attached that record's added lines to the **previous**
+file — a finding naming a record that never contained the text, indistinguishable from a true one.
+The flag is off now, pinned by a `café.md` regression test, and the *mechanism* is closed rather than
+the one trigger: a `diff --git` line the parser cannot read drops its file instead of inheriting the
+last one, because `"` and `\` in a pathname stay C-quoted whatever `core.quotepath` says. Separately,
+`/prawduct:critic` now says to pass `--chunk` whenever a review covers a chunk's build. Without it the
+chunk is inferred from build-plan Status, which names the first *unchecked* box — so on a
+`views_enabled` plan it grades the chunk just finished only by coincidence, and everywhere else it
+grades the next one and reports a confident zero about work nobody has done.
+
+**Advice, never authority.** Findings ride the manifest for the builder; nothing gates on them, they never
+reach a review's severity counts, and `verify-records` exits 0 with findings and 1 only when it could not
+run. What they *do* is get recorded: per-check counts travel from the manifest into the review **fact**,
+so this control's own yield is a query over the evidence store rather than an argument — the observable-yield
+obligation that `nonfunctional-requirements.md` § Direction attaches to any control born after 2026-07-29.
+A ledger fact per finding was considered and rejected: the ledger has a single writer, and trading one norm
+for another is not compliance. The yield *query* remains the janitor's Norm Health sweep.
+
+**Two subtractions.** `verify-chunk-refs` is no longer a reviewer instruction — the check runs at dispatch,
+so the protocol bullet and the `allowed-tools` grant both go, with a test pinning the retirement so a future
+re-add argues with a decision instead of restoring what looks like an oversight. The review-protocol token
+ceiling was **held at 3620, not bumped**: the new bullet is shorter than the instruction it replaced. An
+opportunistic trim of Goal 4's `**Norms**` bullet was attempted to buy room and reverted — funding an overrun
+by shortening an unrelated governance rule is what the ceiling exists to prevent, and the guard test caught it.
+
+**The suite-total sweep found nothing to delete, which is the finding.** The plan assumed counts would be
+removed "from every surface that demands or exhibits them." `grep -rnE '[0-9]{3,6} *(tests?|passing|green)'
+plugin --include='*.md'` returned empty before the sweep, and no template, methodology step or skill
+instruction ever *asked* for a count. The habit lives in agents, not in an instruction — so there was nothing
+to subtract and the whole value is the tripwire. Both halves are pinned by
+`tests/preferences/test_no_suite_total_claims.py`, each mutation-proved against phrasings different from the
+ones that prompted them.
+
+**One shared-classifier fix, found by running the new lint against the real branch:** `refs/tags/v3.2.1` and
+its siblings are the git *ref namespace*, not paths, so `refs` joins `_GIT_REF_PREFIXES` — extension-gated as
+the rest are, so a real path under refs/ carrying a file extension stays checked. `record_lint` also
+recognises both live plan-naming conventions (`build-plan-<scope>.md` and the scope-named
+`<scope>-plan.md`); matching only the first would have skipped a scope-named plan silently, and a plan
+never read reports zero gaps exactly like a complete one.
+
+**Adjacent, consumer-facing, and found by asking why one advisory never cleared:** the session
+briefing's architecture-staleness probe walked every directory under `source_root` and reported any
+name absent from `architecture.md` — without consulting git. So it reported `node_modules` to every
+JS product, `target/` to every Rust one, and any local scratch directory to everybody, permanently,
+with no remedy but documenting something that should not be documented. A permanent advisory is a
+silenced one. It now skips git-**ignored** directories, batched into one `check-ignore` call and only
+when there is something to ask about, so the session-start hot path pays nothing on a clean repo. No
+language list is involved: git decides, per repo, from that repo's own ignore rules — a Zig project
+ignoring `zig-out/` or a WASM one ignoring `pkg/` is handled without prawduct knowing either exists.
+A tracked, unmentioned directory is still reported, which is the counter-case the tests pin.
+
+**Tests:** new `tests/test_record_lint.py` (including the `verify-records` CLI contract — exit 0 with
+findings, exit 1 on could-not-run, `--json` compared field-for-field against the manifest block) and
+`tests/preferences/test_no_suite_total_claims.py`, plus `TestRecordLintInManifest` in
+`tests/test_critic_consolidate.py` (manifest carries it, findings don't gate, the fact carries the yield,
+an older manifest without the block still builds), `verify-records` rows in `TestFlagOnlyArgRejection`,
+and `refs/` cases in `tests/test_build_plan_resolution.py`.
+
+## 2026-07-30: Prawduct is written in Python and must never be specific to Python — four norms recorded and one amended
+
+<!-- prawduct: type=docs | scope=record-mechanization -->
+
+**Consumer-visible in one place, so it leads:** two architectural norms now bind every adopting repo,
+and one of them constrains what prawduct may ever do to yours. **Prawduct guides and reviews; it never
+implements.** It writes no product code, no config, and no tooling — a best practice enters as a
+*requirement* captured at discovery, Claude Code implements it, and an unimplemented requirement is
+already a blocking Goal 2 finding. An iOS product whose requirements name SwiftLint and which ships
+without `.swiftlint.yml` is caught by machinery that exists today; a large repo adopting prawduct with
+no checker configured *should* take a blocking finding. The corollary binds the framework's own
+appetite: prawduct never re-implements what an ecosystem's tooling already owns — a bare-except check
+belongs to ruff or clippy, not to a prawduct gate.
+
+**And the constraint that was never written down.** Prawduct governs Swift, Rust, C#, C and TypeScript
+products, routinely polyglot inside one repo, at roughly 20x this repo's size — where a five-minute
+cost here is fifteen there. None of that was in any governing artifact, and its absence had already
+shaped three separate design answers in one session before the owner named it. Now: **gates dispatch
+per *file*, never per repo**, no gate may assume the governed product shares the runtime's language,
+and **a language with no populated rules is reported *unchecked*, never silently passed** — the clause
+that matters most, because a silent no-op and a clean pass are indistinguishable at the output, which
+is exactly how Python-specificity stayed invisible.
+
+**The retroactivity sweep found a live defect, and it is worse than the one that started this.**
+`bin/test-reference-verify` skips any non-Python file — and it feeds `verify-coverage`, a **BLOCKING**
+Goal 1 check, which therefore reads as satisfied on a Swift or Rust repo by having inspected nothing.
+`gitstate.py`'s `_PRODUCT_CODE_SUFFIXES` omits `.cs`. The root cause of the whole class is one empty
+cell: the Enforcement table's Linter row reads `(none configured for prawduct)`, so the framework named
+the right tool, declined to adopt it, and hand-rolled a worse one in `compliance.py`. **LNG-5W8R**
+carries the migration, ordered so ruff lands before the duplicate checks are deleted — otherwise the
+check is simply lost. The inventory is recorded as *partial by declaration*: an earlier revision
+claimed `compliance.py` held every violation, which was false.
+
+**Two governance norms, both owner-driven.** The review-cost norm is **amended**: unit-cost joins
+run-count as a declared lever, scoped to reviewer *payload*. The original conflated the reviewer's
+model tier (deliberately fixed — that pin is preserved untouched) with its payload, which was never
+examined and is the larger term; one sound clause and one unexamined clause rode inside a single `Why:`
+for months, and the unexamined one foreclosed the optimization most wanted. And **proportionality now
+ratchets both ways**: a control that fires repeatedly and never produces a blocking finding is removed
+by default, and a new control must **emit its yield observably** — born `in-transition`, because the
+query does not exist yet. `compliance_canary` is the worked example: its findings are printed to the
+briefing and never persisted, so it can never be retired on evidence, only defended on principle.
+
+**A fifth normative edit, called out separately because it touches the plugin-trust argument.**
+`architecture.md`'s least-authority norm — *"the plugin writes nothing into a governed repo except…"* —
+now names **`CLAUDE.md`** in its reconciled-files carve-out alongside `.gitignore` and
+`.claude/settings*.json`. This **authorizes no new write**: `init_product.py` has created-or-anchored
+`CLAUDE.md`, and `migrate_plugin.py` has edited it in place, since before the norm was ratified — the
+enumeration was simply incomplete, which left the norm reading as though it prohibited prawduct's own
+installer. The `never framework files` limit is untouched, and the amendment carries a vetoable
+`[DECISION: …]` block on the norm's own entry. Flagged here because a `steady-state` norm was widened,
+and the change-log is where that decision is visible enough to be vetoed.
+
+**Also:** six historical artifacts (v1.5.1, v1.5.2, both v2.0.0 plans, the M4 filesync retirement, a
+dated performance audit) moved to `.prawduct/archive/` — `norm_probes` globs and regex-scans every
+`artifacts/*.md` on each session sync, against an NFR that forbids noticeable session-start delay. The
+24 unversioned build plans with zero filename referrers were deliberately **not** moved: they track
+completion by *scope* name, so a zero filename count is a weak signal, and establishing their real
+status is what Chunk 02's record-lint is for.
+
+## 2026-07-29: A self-contradicting security model, a tightened FILE bar, and a coverage relaxation that was built and reverted
+
+<!-- prawduct: type=fix | scope=record-mechanization -->
+
+**Consumer-visible in one place, so it leads:** the **FILE disposition bar is tighter**. Filing a
+review finding now requires the work to be **large** (a chunk's worth or more) **and** not responsibly
+absorbable into the current work — own design, own review, or orthogonal. Deep context on a small
+problem is a FIX signal. Owner-requested; it binds every review in every adopting repo, which is why
+it is here and not only in the skill. Measured motive: this repo's own open items went 50 → 180 in 26
+days, 67 Critic-sourced, 53 never touched since filing.
+
+**`security-model.md` contradicted itself.** § Direction was amended 2026-07-24 away from the absolute
+"`--apply` on everything" form toward **operation-level** approval; § Abuse Prevention eighty lines
+below still asserted the absolute form as a *live control*, unchanged since the artifact was authored
+and present at v3.2.0. Worse, `project-preferences.md`'s registry row points its rationale home *at
+that file*, so a reader following the pointer landed in the contradiction. Norms bind, descriptions
+track — this is the description catching up, not a norm change. Discharges GOV-4B9N, which is archived
+with both closure handles so each clause stays traceable.
+
+**And a fix that was built, reviewed, and reverted — recorded because the reasoning is the value.**
+Two review rounds this session were spent on a **comment** and a **docstring**: `is_judgeable_path`
+classifies by path with no content inspection, so any `.py` edit is judgeable and costs a full pass. An
+AST-equality relaxation was built to make behaviour-neutral edits free. The Critic returned **10
+blocking findings** (recorded verbatim: "10 blocking, 22 warning, 12 note across 3 reviewer(s)") and
+refuted the premise; five separate findings cite the pragma, though per-reviewer attribution is not
+recoverable once partials are cleared, so independent convergence is consistent with the record rather
+than proven by it.
+**Comments are semantically load-bearing here:** `waivers.py`'s `prawduct:allow` source-comment pragma
+is acted on by `compliance.py`, so adding a waiver to an existing `except Exception:` suppresses a
+compliance check with a byte-identical AST — the relaxation would have made that a free edge needing
+**no review**, precisely where Goal 3 obliges a reviewer to judge the waiver. AST equality proves the
+*parser* sees the same program, not that the *system* behaves the same. `gates.py` is byte-identical to
+`develop` again (same blob, verified by the reviewer) and `coverage_algebra.py` differs by exactly the
++18-line ruling docstring and nothing else, with zero residue of the mechanism anywhere. The ruling is
+recorded in `is_judgeable_path`'s own docstring because reading the mechanism
+carefully was not enough to prevent this — the objection was filed at `COV-3M8Q` and never surfaced
+where the work happens. The goal remains ratified: the sound route is to make review **cheap**, not
+skippable.
+
 ## 2026-07-29: The coordinator's three reviewers are now told to run concurrently
 
 <!-- prawduct: type=fix | scope=record-mechanization | release=v3.2.1 | status=shipped -->

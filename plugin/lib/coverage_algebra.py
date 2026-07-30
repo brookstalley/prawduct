@@ -68,6 +68,24 @@ def is_judgeable_path(path: str) -> bool:
     (fork-skill prose is behavioral logic); everything else — code, config,
     data — is judgeable. Deliberately no size or content inspection: paths
     classify, contents don't (do-not-reintroduce: content-hash freshness).
+
+    **Ruled 2026-07-29, after building the exception and reverting it: content
+    equivalence cannot relax this, and "the change is only a comment" is not a
+    safe exception in THIS repo.** The attempt keyed Python by normalized AST so
+    a comment- or docstring-only edit would stay a free edge and cost no review
+    pass. It is unsound here for a repo-specific reason no amount of narrowing
+    fixes: ``waivers.py`` defines the ``prawduct:allow`` **source-comment**
+    pragma and ``compliance.py`` acts on it, so adding
+    ``# prawduct:allow prawduct/broad-except -- looks fine`` to an existing
+    ``except Exception:`` suppresses a compliance check while leaving the AST
+    byte-identical — exactly where ``skills/critic/review-protocol.md`` Goal 3
+    obliges a reviewer to judge that waiver. A second channel compounds it:
+    tests assert over ``.py`` prose, so docstring edits can break them. AST
+    equality proves the *parser* sees the same program, not that the *system*
+    behaves the same, and here source is read as text. The failure direction is
+    the fatal one — a wrongly granted free edge ships unreviewed code. Prior
+    art and the standing item: ``COV-3M8Q``. The sound way to stop paying for
+    behaviour-neutral edits is to make review *cheap*, not skippable.
     """
     if any(path.startswith(p) for p in METADATA_PREFIXES):
         return False

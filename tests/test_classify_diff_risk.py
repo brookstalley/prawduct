@@ -9,8 +9,13 @@ unverifiable diff must never silently get the cheap reviewer.
 Resolution order pinned here: an explicit `risk_surfaces:` list in
 project-state.yaml is EXCLUSIVE (derived defaults stop applying; an empty
 list is a deliberate opt-out); without it, the derived defaults (`skills/`,
-`lib/gates*`, `bin/*hook*`) plus literal backticked paths from
+`lib/gates*`, `bin/*hook*`, each also in its `plugin/`-prefixed form so both
+packaging layouts match) plus literal backticked paths from
 boundary-patterns.md apply.
+
+The declaration ALSO gates the Critic's risk-keyed roster: a repo that declares
+nothing keeps the older file-count rule, because `no surface matched` and `this
+repo never had a signal` are indistinguishable at the match site.
 
 Real git repos, sterile env (HOME outside the repo — pyc-cache learning),
 mirroring tests/test_governance_ledger.py.
@@ -111,7 +116,64 @@ class TestSurfaceMatching:
         assert not _surface_matches("src/api/contract.pyc", "src/api/contract.py")
 
     def test_derived_defaults_are_framework_governance_paths(self):
-        assert DERIVED_DEFAULT_SURFACES == ("skills/", "lib/gates*", "bin/*hook*")
+        for shape in ("skills/", "lib/gates*", "bin/*hook*"):
+            assert shape in DERIVED_DEFAULT_SURFACES
+
+    def test_derived_defaults_match_this_repos_real_governance_paths(self):
+        """The regression that a literal-tuple assertion could not see.
+
+        The predecessor pinned ``DERIVED_DEFAULT_SURFACES`` to its exact value
+        and stayed green through ``c6b8131`` (2026-07-21), which moved the
+        framework's machinery under ``plugin/`` and left every one of those
+        root-anchored patterns matching nothing. Twenty-one consecutive reviews
+        classified ``standard`` — gate-kernel changes included — with no test
+        failing, because the constant was still equal to itself.
+
+        So this asserts against paths that EXIST in this repo. It fails if the
+        layout moves again, which is the whole point.
+        """
+        repo_root = Path(__file__).resolve().parent.parent
+        for real in (
+            "plugin/lib/gates.py",
+            "plugin/bin/prawduct-hook",
+            "plugin/skills/critic/SKILL.md",
+        ):
+            assert (repo_root / real).exists(), (
+                f"{real} no longer exists — re-anchor this test on the real path"
+            )
+            assert any(
+                _surface_matches(real, surface)
+                for surface in DERIVED_DEFAULT_SURFACES
+            ), f"{real} matches no derived risk surface — the tier verdict is dead"
+
+    def test_derived_defaults_cover_both_packaging_layouts(self):
+        """A product repo carries these at the root; the framework packages its
+        own under ``plugin/``. Both must match, or one layout silently loses
+        its risk classification."""
+        for root_form, plugin_form in (
+            ("skills/critic/SKILL.md", "plugin/skills/critic/SKILL.md"),
+            ("lib/gates.py", "plugin/lib/gates.py"),
+            ("bin/prawduct-hook", "plugin/bin/prawduct-hook"),
+        ):
+            for path in (root_form, plugin_form):
+                assert any(
+                    _surface_matches(path, s) for s in DERIVED_DEFAULT_SURFACES
+                ), f"{path} matches no derived risk surface"
+
+    def test_derived_defaults_do_not_over_match(self):
+        """Breadth is the failure mode on the other side: the surfaces already
+        match ~77% of this repo's reviews, which is the over-escalation the
+        2026-07-14 directive was reacting to. Ordinary paths must stay out."""
+        for path in (
+            "plugin/lib/gitstate.py",
+            "plugin/methodology/building.md",
+            "docs/skills-overview.md",
+            "myskills/x.md",
+            ".prawduct/backlog.md",
+        ):
+            assert not any(
+                _surface_matches(path, s) for s in DERIVED_DEFAULT_SURFACES
+            ), f"{path} unexpectedly matched a derived risk surface"
 
 
 class TestRiskSurfacesYamlList:

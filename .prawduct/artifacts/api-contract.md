@@ -62,7 +62,8 @@ The CLI groups by responsibility. Every subcommand is read-only unless marked mu
   (single-writer, mutating), `review-stats`, `disposition` (append a finding's ACCEPT/FILE
   disposition fact, mutating), `render-dispositions` (derive the disposition census), plus the
   coverage/mode gate wrappers (`verify-coverage`, `check-cumulative-critic`, `infer-critic-mode`,
-  `classify-diff-risk`, `verify-chunk-refs`).
+  `classify-diff-risk`, `verify-chunk-refs`), plus `verify-records` (the deterministic record
+  checks, read-only and advisory — `critic-begin` runs the same pass into the manifest).
 - **Test evidence** — `test-evidence record` (mutating), `test-status` (freshness), `validate-evidence`.
 - **Session handoff** — `handoff preview`: renders the handoff the next session would receive,
   through the same function `clear` uses, without writing it or consuming the forward notes.
@@ -116,6 +117,7 @@ raised as stack traces across the boundary.** The intended scheme:
 |---|---|---|---|
 | **Harness hook** (`stop`, `clear` refusal) | allow / clean | — | **block** |
 | **CLI gate / query** (`test-status`, `verify-coverage`, `check-*`, `resolve-base`, `bug-inbox`) | satisfied / pass | not satisfied / fail | — |
+| **CLI advisory report** (`verify-records`) | ran — findings, if any, are on stdout | **could not run** (unresolvable interval, unreadable state) | usage error |
 | **State-mutating writer** (e.g. `disposition`) | written, or an idempotent no-op | **refused** — validation failed, nothing written | **usage error** |
 | **Usage / arg error** (any subcommand) | — | — | **usage error** |
 
@@ -126,6 +128,10 @@ Fail-direction is deliberate and per-purpose:
 - **Unevaluable *writer*** (a state-mutating command whose lib failed to import) → **fail-closed,
   exit 1**: never report a false success. `regen-views` escalates to **2** for
   validation/IO errors (nothing written).
+- **Advisory report** (`verify-records`) → **exit 0 even with findings**, because it advises the
+  builder and gates nothing; **exit 1 only when it could not run.** Findings are not a failure
+  state, but an unrun check must never read as a clean one — inside a single run, the same rule
+  appears per check as the `unchecked` list rather than a silently absent result.
 - **Special sentinels** (documented, not general): `critic-begin` **2** = scope-widened;
   `evidence status` **2** = schema-ahead records present (gates can't be trusted until update).
 
@@ -193,6 +199,11 @@ Evolution rules we want to hold, so new versions stay rare:
   builder, whom `methodology/building.md` instructs to run them by name. Documented instruction to
   the builder is the dependency, so their flags, exit codes and `--json` keys are a contract exactly
   as a skill-bound query's are. `disposition` is the tier's one *writer*.
+  **`verify-records` joins on a third footing:** its real caller is `critic-begin`, which computes
+  the same result into the dispatch manifest, so the CLI exists as the *by-hand* form — a builder
+  answering the record checks before dispatch rather than paying a review round to be told. Its
+  `--json` shape is the manifest's `record_lint` block verbatim, which is what makes it a contract:
+  a consumer reading either surface reads the same keys.
 - **Internal / lifecycle surface** (called by the harness or by consolidation, not a public
   contract): `clear`, `stop`, `subagent-stop`, `critic-begin`, `critic-consolidate`, `build-index`.
 - **Deprecated:** `stamp-merged` (removal deferred to a major).

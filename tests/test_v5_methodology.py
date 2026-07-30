@@ -6,6 +6,7 @@ are internally consistent and reflect v5 concepts.
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 import pytest
@@ -21,6 +22,46 @@ def read_file(rel_path: str) -> str:
 
 def estimate_tokens(text: str) -> int:
     return int(len(text.split()) * 1.3)
+
+
+#: The ACTUAL token count of each budgeted file, as last measured. The per-file
+#: `test_token_budget` assertions are *ceilings*; this is the reading, and one
+#: test below pins it.
+#:
+#: **Why a table instead of a number in the accounting prose.** Each budgeted
+#: file carries a comment narrating what an edit cost and what paid for it, and
+#: those narratives kept going stale: on 2026-07-30 a single chunk shipped a
+#: post-trim figure that was 4 tokens off, then took its *starting* figure from
+#: the previous entry's ending figure — which two earlier chunks had already
+#: invalidated by editing the file without updating it. A stale tally propagated
+#: into a fresh tally that was wrong for a second reason.
+#:
+#: This is `record_lint`'s `suite-total-claim` rule applied one level in: do not
+#: keep a prose copy of a figure a mechanism can own. The narratives stay (they
+#: record *why* an edit was affordable, which no test can); the current reading
+#: lives here, where a wrong number fails instead of misleading.
+LAST_MEASURED_TOKENS = {
+    "methodology/building.md": 4652,
+    "skills/critic/review-protocol.md": 3616,
+    "skills/critic/goals-1-3.md": 1901,
+}
+
+
+@pytest.mark.parametrize("rel_path", sorted(LAST_MEASURED_TOKENS))
+def test_recorded_token_count_matches_the_file(rel_path):
+    """A budgeted file's recorded size is the file's actual size.
+
+    Fails the moment a budgeted file changes without its reading being updated,
+    and the message carries the number to write — so the figure is never
+    re-derived by hand, copied from an adjacent line, or predicted.
+    """
+    actual = estimate_tokens(read_file(rel_path))
+    expected = LAST_MEASURED_TOKENS[rel_path]
+    assert actual == expected, (
+        f"{rel_path} is ~{actual} tokens; LAST_MEASURED_TOKENS says {expected}. "
+        f"Update the entry to {actual} (and say in that file's budget comment "
+        f"what paid for the change — the ceiling is not a budget to spend)."
+    )
 
 
 # =============================================================================
@@ -219,6 +260,34 @@ class TestBuildingMethodology:
         # assumed: full digest lines 46-52, slim lines 21-23. That makes this a
         # dedup rather than a cut; a reader who never opens building.md still
         # gets the guidance, from a surface they cannot skip.
+        #
+        # 2026-07-30 (record-mechanization Chunk 04) restated the coordinator
+        # roster rule on two lines — it is no longer a file count but "a risk
+        # surface, or 12+ judgeable files". Measured chain, every figure from
+        # estimate_tokens rather than from the line above it:
+        # 4657 at branch HEAD (headroom 3) -> 4672 on the first wording, OVER
+        # -> 4669 after tightening both restatements -> 4648 after the trim
+        # below. Headroom 3 -> 12 at that point; a later commit in the same
+        # branch removed the restatements entirely (they were false for any
+        # undeclared product), landing where LAST_MEASURED_TOKENS records.
+        # **That table is the current reading — this narrative is history and
+        # must not be read as a live figure.**
+        #
+        # Note for the next editor: the 2026-07-29 entry above ends at "4639,
+        # headroom 21", and this change did NOT start there — Chunks 02-03 of
+        # record-mechanization edited this file without updating that figure.
+        # The first draft of this note inherited 4639 and its arithmetic did
+        # not close. **Measure the file; do not read the previous entry's
+        # ending number as your starting one.**
+        # PAID FOR by the trim-or-relocate rule, not a raise. The
+        # funding was the cache-warming clause of "The Critic takes time"
+        # ("don't go silent either, or your prompt cache expires…"), which
+        # `critic_consolidate._CACHE_WARM_DIRECTIVE` emits verbatim into the
+        # consolidate no-op the caller reads WHILE waiting — checked, not
+        # assumed. So the guidance now reaches the reader from the runtime at
+        # the moment it applies, instead of from a guide read hours earlier;
+        # a relocate whose destination already existed. 4669 -> 4648,
+        # headroom 21 -> 12.
         tokens = estimate_tokens(self.content)
         assert tokens < 4660, f"building.md is ~{tokens} tokens, should be <4660"
 
@@ -419,8 +488,298 @@ class TestCriticSkill:
         # This does NOT reopen the diet. Headroom is again a few words BY
         # DESIGN, and the next addition trims or relocates first -- the rule
         # above stands; it was overridden once, on the record, for this.
+        #
+        # 2026-07-30: the record-lint bullet landed and the ceiling did NOT
+        # move -- the rule above was applied, not overridden a second time. It
+        # paid for itself: the `verify-chunk-refs` instruction was DELETED,
+        # because that check now runs at dispatch and rides the manifest's
+        # `record_lint`, so a reviewer executing it by hand is duplicated work.
+        # No check was removed to make room -- one moved into code, and the
+        # bullet that replaced it is shorter than the one it replaced.
+        #
+        # An opportunistic trim was ATTEMPTED and reverted: compressing Goal
+        # 4's `**Norms**` bullet to a pointer (it restates the
+        # Normative-authority preamble) broke test_project_preferences_blocking
+        # above, which contracts on one LINE carrying both
+        # "project-preferences" and "blocking". Reverted rather than
+        # re-plumbed: funding a budget overrun by shortening an unrelated
+        # governance rule is the move the paragraph above forbids, and the
+        # test caught it doing exactly that.
+        #
+        # 2026-07-30 (record-mechanization Chunk 04): the roster bullets now name
+        # a *risk surface*, a term this file had no definition for, so a reader
+        # met a load-bearing term with nowhere to resolve it. The full
+        # definition went to review-cycle.md — which owns the roster table and
+        # is not on the chunk-mode payload path — and this file kept a
+        # one-clause gloss plus the pointer. First wording overran (3623 of
+        # 3620); trimmed to the gloss rather than funded by a raise. 3572 ->
+        # 3614, headroom 48 -> 6.
         tokens = estimate_tokens(self.content)
         assert tokens < 3620, f"review-protocol.md is ~{tokens} tokens, should be <3620"
+
+
+# =============================================================================
+# goals-1-3.md — the chunk / verify-resolutions payload
+# =============================================================================
+
+
+class TestCriticGoals13:
+    """`chunk` and `verify-resolutions` read this file INSTEAD of
+    review-protocol.md + review-cycle.md.
+
+    Why the split exists, measured over all 267 review facts carrying a
+    duration: `chunk` missed its 1-2 min target in 30 of 30 recorded runs and
+    `verify-resolutions` in 148 of 155, while `final` — loading the same
+    protocol for more than twice the goals — sat INSIDE its target 85% of the
+    time. The 96 smallest verify runs (<=5 changed files) still took a median
+    240s, so the floor is not diff size; it is what gets loaded before a single
+    changed line is read.
+    """
+
+    @pytest.fixture(autouse=True)
+    def load(self):
+        self.content = read_file("skills/critic/goals-1-3.md")
+        self.protocol = read_file("skills/critic/review-protocol.md")
+
+    def test_payload_at_most_half_the_full_protocol(self):
+        """The chunk's acceptance criterion, pinned: measured payload for these
+        modes drops by at least half.
+
+        Compared against what these modes loaded BEFORE — review-protocol.md
+        plus review-cycle.md, which the protocol pointed at eight times, so a
+        reviewer following its pointers read both. SKILL.md is common to every
+        mode and cancels out of the comparison."""
+        cycle = read_file("skills/critic/review-cycle.md")
+        before = estimate_tokens(self.protocol) + estimate_tokens(cycle)
+        after = estimate_tokens(self.content)
+        assert after * 2 <= before, (
+            f"goals-1-3.md is ~{after} tokens against a ~{before}-token predecessor "
+            f"({100 * after // before}%) — the split must at least halve the payload"
+        )
+
+    def test_token_budget(self):
+        # Ceiling 2000. The plan targeted "<=80 lines" and this landed at 125;
+        # the gap is entirely SELF-CONTAINMENT, which is the other half of the
+        # same acceptance criterion. The line estimate did not account for
+        # inlining the record-lint severity table, the chunk-`Type:` protocol
+        # selector, the normative-authority preamble and the partial schema --
+        # every one of which was a pointer-chase into review-cycle.md, and
+        # pointer-chases are the payload this file removes. Hitting 80 lines
+        # would have meant deleting checks, which the trim-or-relocate rule on
+        # review-protocol.md's own budget exists to forbid. Checks kept, target
+        # missed, recorded here rather than quietly restated.
+        #
+        # Headroom is ~125 tokens BY DESIGN, and the rule is the same one
+        # review-protocol.md carries: the next addition trims or relocates, it
+        # does not bump. A check that belongs to goals 1-3 arriving here is
+        # funded by compressing prose in this file, never by dropping a check.
+        # 2026-07-30: +26 for `learnings-entry-shape`'s severity, which the
+        # check shipped without — a reviewer told to "raise them at the
+        # severities given there" met a finding class with no verdict, and all
+        # three coordinator reviewers found it independently. Paid from
+        # headroom rather than a trim: the file is 99 under its ceiling and the
+        # alternative was a check that cannot be graded. 1875 -> 1901.
+        tokens = estimate_tokens(self.content)
+        assert tokens < 2000, f"goals-1-3.md is ~{tokens} tokens, should be <2000"
+
+    def test_is_self_contained(self):
+        """No follow-the-pointer reads at review time — the acceptance criterion
+        the line count was traded for. A reviewer in these modes reads this file
+        and stops.
+
+        The rule is about *directives*, not the strings: the file names the two
+        protocol files precisely once, to forbid opening them, and a concrete
+        prohibition instructs better than "don't read the others." So every line
+        mentioning one must be that prohibition — which also means a future edit
+        cannot smuggle a read-directive back in under the same filename."""
+        pointers = ("review-protocol.md", "review-cycle.md", "framework-checks.md")
+        offenders = [
+            ln for ln in self.content.split("\n")
+            if any(p in ln for p in pointers) and "do not open" not in ln
+        ]
+        assert not offenders, f"goals-1-3.md sends the reviewer elsewhere: {offenders}"
+
+    def test_no_check_from_goals_1_3_was_dropped(self):
+        """The distillation must lose no check. Every check in the protocol is
+        severity-mapped, so a dropped one shows up as a missing verdict — this
+        counts them rather than trusting the prose, and anchors the named checks
+        that a recount alone would not catch.
+
+        **This test is also what makes the duplication safe.** Goals 1-3 now
+        exist in two files, which is real duplication and the obvious objection
+        to the split. It is deliberate and policed rather than tolerated: the
+        count invariant below is directional (`got >= src`), so adding a check
+        to review-protocol.md's goals 1-3 without adding it here FAILS — the two
+        copies cannot drift apart in the direction that matters, which is a
+        check the chunk-mode reviewer never sees.
+
+        The alternative considered and rejected: delete goals 1-3 from
+        review-protocol.md and have `final`/`cumulative` read both files. That
+        removes the duplication outright, but it re-splits the seven-goal
+        payload across two files to fix a problem this test already closes, and
+        the plan scopes `final`/`cumulative` to keep the full protocol. Revisit
+        if the anchor list below starts needing maintenance every time a goal
+        changes — that would mean the coupling had become the cost.
+        """
+        goals = self.protocol[
+            self.protocol.index("### 1. Nothing Is Broken"):
+            self.protocol.index("### 4. Everything Is Coherent")
+        ]
+        # Compare goal section to goal section. Counting the WHOLE of
+        # goals-1-3.md against a protocol *slice* silently bought slack: the
+        # inlined record-lint table, the normative-authority preamble and the
+        # `## Severity` legend all carry verdicts of their own and have no
+        # counterpart inside the slice, which left room for two unmirrored
+        # WARNING checks — and WARNING is the modal severity here. Slack in a
+        # drift detector is indistinguishable from the drift it is watching for.
+        mine = self.content[
+            self.content.index("## 1. Nothing Is Broken"):
+            self.content.index("## Severity")
+        ]
+        for sev in ("BLOCKING", "WARNING", "NOTE"):
+            src = goals.count(f"**{sev}**")
+            got = mine.count(f"**{sev}**")
+            assert got >= src, (
+                f"goals-1-3.md's goal sections carry {got} {sev} verdicts against the "
+                f"protocol's {src} — a check was added to one copy and not the other"
+            )
+        for anchor in (
+            "test-status", "verify-coverage", "missing-coverage:", "pre-existing",
+            "exact-match", "property-based", "injection", "hardcoded secrets",
+            "trust boundaries", "explicitly descoped", "observable behavior",
+            "Requirements Confidence", "record_lint", "project-preferences.md",
+            "accessibility", "infrastructure_dependencies", "Foreign API",
+            "Exposed API", "api_error_model_approach", "operator-verification",
+            "unlisted dependencies", "undocumented architectural", "broad exception",
+            "prawduct:allow", "Trivial because",
+        ):
+            assert anchor.lower() in self.content.lower(), f"goals-1-3.md dropped check anchor {anchor!r}"
+
+    def test_carries_what_the_pointers_used_to_fetch(self):
+        """Self-containment is only real if the inlined content is here. These
+        are the four pointer-chases the old payload forced."""
+        assert "chunk-ref-missing" in self.content and "governed-by-gap" in self.content
+        assert "unchecked" in self.content            # record-lint's not-a-pass rule
+        assert "designer-handoff" in self.content     # the chunk `Type:` selector
+        assert "Normative authority" in self.content  # Goal 3's binding preamble
+        assert '"resolutions"' in self.content        # the verify-resolutions schema arm
+
+    def test_never_runs_anything(self):
+        """The no-execution rule is load-bearing and must survive distillation."""
+        lower = self.content.lower()
+        assert "never run tests" in lower or "do not run tests" in lower
+
+    def test_does_not_carry_the_final_only_payload(self):
+        """The split is only worth its cost if the seven-goal content is gone —
+        a copy that regrew into the full protocol would pass every test above."""
+        for absent in (
+            "Everything Is Coherent", "Decisions Were Deliberate",
+            "The Design Is Sound", "Coordinator Pattern",
+            "Framework-Specific Checks", "Backlog Reconciliation",
+        ):
+            assert absent not in self.content, f"goals-1-3.md regrew {absent!r} — that is final-mode payload"
+
+
+class TestCriticSkillRoutesByMode:
+    """SKILL.md step 2 selects the payload; without this the new file exists and
+    nothing reads it."""
+
+    @pytest.fixture(autouse=True)
+    def load(self):
+        self.content = read_file("skills/critic/SKILL.md")
+
+    def test_step_2_names_both_payloads(self):
+        line = next(ln for ln in self.content.split("\n") if ln.startswith("2. "))
+        assert "goals-1-3.md" in line
+        assert "review-protocol.md" in line
+        for mode in ("chunk", "verify-resolutions", "final", "cumulative"):
+            assert mode in line, f"SKILL step 2 does not route {mode}"
+
+    def test_header_scopes_every_final_only_file_it_names(self):
+        """The header is the FIRST instruction in the skill body, so it beats
+        step 2 on reading order — an agent obeys it before it knows its mode.
+
+        It used to say `review-protocol.md` "(read this first)" and not mention
+        `goals-1-3.md` at all, so a chunk-mode review loaded the entire
+        10,519-token predecessor payload before step 2 told it not to. The split
+        was correct on disk and inert on the instruction path, and every
+        size-measuring guardrail stayed green through it.
+
+        Asserting the class, not that one instance: pinning the literal string
+        "read this first" would pass the moment someone reworded the directive.
+        Every header bullet naming a final-only file must scope itself to the
+        modes that read it, which no rewording escapes."""
+        header = self.content.split("## Structural Constraints", 1)[0]
+        assert "goals-1-3.md" in header, "the header omits the fast-mode protocol file"
+        assert "after step 1" in header.lower() or "only after" in header.lower(), (
+            "the header must state that the protocol read follows mode resolution"
+        )
+        # The file-list BULLETS are the routing; the surrounding prose is not
+        # (one line names `review-cycle.md` as an example of resolving a bare
+        # sibling path, which is a rule about where files live, not an
+        # instruction to read one).
+        unscoped = [
+            ln.strip()[:110] for ln in header.split("\n")
+            if ln.lstrip().startswith("- ")
+            and any(f in ln for f in ("review-protocol.md", "review-cycle.md", "framework-checks.md"))
+            and not any(m in ln for m in ("final", "cumulative"))
+        ]
+        assert not unscoped, f"header lists a final-only file without scoping it: {unscoped}"
+
+    def test_the_single_pass_bullet_never_cites_a_final_only_file(self):
+        """The single-pass roster bullet is the fast path's write-up
+        instruction, and everything it needs is in goals-1-3.md.
+
+        This is its own test because a line-level check cannot police it: the
+        bullet permanently contains the words "small `final`/`cumulative`" (it
+        describes when small final reviews go single-pass), so any rule that
+        excuses a line for mentioning `final` excuses THIS line unconditionally
+        — and it is the exact line that carried the `(schema: review-protocol.md
+        …)` pointer a blocking round was spent removing. Zero citations here."""
+        bullet = next(
+            ln for ln in self.content.split("\n")
+            if 'Roster `["reviewer"]`' in ln
+        )
+        for cited in ("review-protocol.md", "review-cycle.md"):
+            assert cited not in bullet, (
+                f"the single-pass bullet cites {cited} — that read is the payload "
+                f"the split removed, and goals-1-3.md already carries it"
+            )
+
+    def test_fast_path_steps_never_send_the_reviewer_to_a_final_only_file(self):
+        """Steps 1-7 run in EVERY mode, so an unqualified citation there is a
+        read a chunk-mode reviewer will make.
+
+        Judged per *clause*, not per line: a qualifier anywhere on a long line
+        used to excuse a citation elsewhere on it.
+
+        **No line-level exemptions.** The coordinator bullet used to be skipped
+        wholesale — legitimate in itself (that roster only exists in
+        `final`/`cumulative`) but an escape hatch excusing anything later
+        appended to that line, which is the same shape as the defect this test
+        was written to catch. Its prose now qualifies its own citation
+        (`the final/cumulative "Coordinator Pattern" in review-protocol.md`), so
+        the skip was deleted rather than documented."""
+        steps = self.content.split("## Getting Started", 1)[1]
+        offenders = []
+        for ln in steps.split("\n"):
+            for clause in re.split(r"(?<=\.)\s|[;()]", ln):
+                if "review-protocol.md" not in clause and "review-cycle.md" not in clause:
+                    continue
+                if any(q in clause for q in ("final", "cumulative", "goals-1-3.md")):
+                    continue
+                offenders.append(clause.strip()[:110])
+        assert not offenders, f"fast-path steps cite a final-only file unqualified: {offenders}"
+
+    def test_review_cycle_table_records_the_routing(self):
+        """`review-cycle.md` owns per-mode behavior, so the routing is recorded
+        there too — a reader who checks the mode table must not learn a
+        different answer from the one SKILL.md acts on."""
+        cycle = read_file("skills/critic/review-cycle.md")
+        row = next((ln for ln in cycle.split("\n") if "Protocol read" in ln), None)
+        assert row is not None, "review-cycle.md's per-mode table has no protocol-read row"
+        assert row.count("goals-1-3.md") == 2, "chunk and verify-resolutions both read goals-1-3.md"
+        assert row.count("review-protocol.md") == 2, "final and cumulative both read review-protocol.md"
 
 
 # =============================================================================

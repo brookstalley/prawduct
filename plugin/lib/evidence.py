@@ -398,6 +398,14 @@ def run_git(project_dir: Path, *args: str, env: dict | None = None) -> tuple[int
         )
     except (OSError, subprocess.SubprocessError) as exc:
         return 1, "", str(exc)
+    except UnicodeDecodeError as exc:
+        # `text=True` decodes strictly, so a command whose output carries file
+        # CONTENT (a diff) raises on the first non-UTF-8 byte in any consuming
+        # repo — a binary blob, a latin-1 doc. Every caller here already treats
+        # a nonzero return as "could not read this", which is the honest answer
+        # and the fail-soft one; letting the exception escape instead takes down
+        # whichever gate happened to ask. Reported, never silent.
+        return 1, "", f"output is not valid UTF-8: {exc}"
     return proc.returncode, proc.stdout.strip(), proc.stderr.strip()
 
 

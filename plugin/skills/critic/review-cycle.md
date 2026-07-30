@@ -35,12 +35,22 @@ See `methodology/planning.md` "Critic Mode Per Chunk" for the authoring heuristi
 
 | Aspect | `chunk` | `final` | `cumulative` | `verify-resolutions` |
 |---|---|---|---|---|
+| **Protocol read** (SKILL step 2 — exactly one, and nothing else) | `goals-1-3.md` | `review-protocol.md` | `review-protocol.md` | `goals-1-3.md` |
 | **Goals run** | 1, 2, 3 | All 7 goals | All 7 goals | 1, 2, 3 |
 | **Goals skipped** | 4-7; Learnings Cross-Check; Backlog Reconciliation; Framework-Specific Checks (7-10); README/top-level docs scan | None | None | Same as `chunk` |
 | **Review interval** (derived by `critic-begin`, recorded in the manifest) | HEAD's tree → captured working tree (the uncommitted diff) | Same as `chunk` | Merge-base tree → HEAD's tree (base branch from `prawduct-hook resolve-base`) — the committed PR bundle | Prior review fact's tree → captured working tree (see "Verify-resolutions anchoring and demotion") |
-| **Execution** (roster derived by `critic-begin`) | Always single-pass | Single-pass under 5 changed files; coordinator at 5+ | Single-pass under 5 changed files; coordinator at 5+ | Always single-pass |
+| **Execution** (roster derived by `critic-begin`) | Always single-pass | Coordinator when a risk surface is touched or 12+ judgeable files change; else single-pass | Coordinator when a risk surface is touched or 12+ judgeable files change; else single-pass | Always single-pass |
 | **Target wall-clock** | 1-2 min | 4-10 min | 4-10 min | 1-2 min |
 | **When invoked** | Between chunks of a multi-chunk plan, before committing | End of work cycle (last chunk), non-chunked medium+ work, or any time the right answer is unclear | Before opening a PR (gated by `/prawduct:pr create`). Catches cross-chunk integration cracks. | After fixing prior BLOCKING/WARNING findings — its resolution facts unblock the same evidence, and its review fact extends coverage over the fix delta. Demotes to `chunk`/`final` when no usable prior fact exists or scope widens past the threshold. |
+
+**Risk surface** = a changed path matching this repo's `risk_surfaces:` in `project-state.yaml` — the
+same predicate `prawduct-hook classify-diff-risk` reports as the review tier (`lib/risk.py`). A repo that declares none is
+never reviewed *less* than before: the framework-shaped derived defaults (`skills/`, `lib/gates*`,
+`bin/*hook*`, plus contract paths in `boundary-patterns.md`) still escalate, and below that the older
+rule stands (coordinator at 5+ changed files). Declaring the list is what opts a repo into the
+judgeable-12 threshold — because "no surface matched" and "this repo never had a risk signal" are
+indistinguishable at the match site, and defaulting the second to a cheaper review is the unsafe
+direction.
 
 **Two-form rule for the `mode` value:**
 - **Caller-side** (in `$ARGUMENTS`, build plan field `Critic mode:`, slash-command argument, `critic-begin --mode`): the short token — `chunk`, `final`, `cumulative`, or `verify-resolutions`.
@@ -124,7 +134,14 @@ one of three dispositions, and **FILE is the narrowest, never the default**:
   `verify-resolutions` pass — bounded, and not another full round. A fix confined to non-judgeable
   surfaces costs nothing at all.
 - **FILE** — only genuinely deferred work that someone will actually do, and the item says what
-  triggers it. No trigger means it is an ACCEPT wearing a backlog id.
+  triggers it. No trigger means it is an ACCEPT wearing a backlog id. **Two tests, and it must pass
+  both:** the work is **large** — a chunk's worth or more, not an hour's — **and** you cannot
+  responsibly do it inside the current work, because it needs its own design, its own review, or it is
+  orthogonal to what you are building. Filing something small that you have the context to fix *right
+  now* is the worst option available: you pay the filing cost, the reader pays the triage cost, the next
+  agent pays the re-derivation cost, and the item then sits unactioned because whoever picks it up has
+  none of what you currently have in your head. **Deep context on a small problem is a FIX signal, not
+  a filing signal.** (Owner-requested rule, 2026-07-29.)
 
 ### Record the disposition; render the census
 
@@ -273,6 +290,45 @@ Read `.prawduct/backlog.md`. For each open item, check whether this session's ch
 - **C-B4 — dangling ID:** a build plan / change-log / chunk body references `PFX-XXXX` with no such item → NOTE (typo or not-yet-filed forward reference).
 
 These flag; they never adjudicate whether an item "really" closed (the builder's call) and never block.
+
+### Record-Lint — the checks the machine already ran
+
+`prawduct-hook critic-begin` runs a deterministic pass over the changed **records** (markdown; the
+archive excluded) and writes the result into the dispatch manifest as `record_lint`. Read it. Do not
+re-derive any of it, and do not recount anything it counted — re-deriving a machine-checked number
+is how a record defect buys a review round, which is the cost this exists to remove.
+
+The suite-total tripwire reads only the lines a change **added**, so a change-log with years of
+history in it reports on the entry just written and nothing else. Severity per check:
+
+| `check` | Means | Severity |
+|---|---|---|
+| `chunk-ref-missing` | A deliverable the reviewed chunk *declares* does not exist | **BLOCKING** |
+| `governed-by-gap` | A plan disposes of fewer norms than the cited artifact's `## Direction` carries, or cites an artifact that does not exist | **WARNING** (Goal 2 — the paperwork arm below) |
+| `suite-total-claim` | A suite-total test claim in durable prose — the store already records pass/fail per tree | **NOTE** |
+| `learnings-entry-shape` | A `learnings.md` entry carrying its evidence (rule over 400 chars) or a narrative body — both belong in `learnings-detail.md` | **NOTE** |
+
+**Under the coordinator pattern, whoever holds Goal 2 raises every one of these** — including the
+`suite-total-claim` NOTE, which would otherwise sit in Goal 4. The manifest is named in Goal 2 and
+only that reviewer reads it, so splitting the findings by their natural goal loses them.
+
+**`unchecked` is not a pass, and one entry is BLOCKING.** Each entry names a check that could **not
+run** and why. A `chunk-ref-missing unchecked` line is the old `verify-chunk-refs` `cannot-verify:`
+exit and keeps its severity — **BLOCKING**, because a deliverable check that could not run is
+indistinguishable from one that passed, and habituation to that silence is what BLD-5J8N cost.
+Every other `unchecked` entry is a **NOTE** you must still state in your summary. Two entries name
+an *assumption* rather than a failure: record-lint graded a chunk inferred from build-plan Status
+(Status names the first UNCHECKED chunk, so it may be the next one), or the whole pass crashed and
+the review proceeded without it. Both mean **no answer**, not a clean one.
+
+**`chunk_graded`** names whose deliverables were checked. A zero count is an answer about that
+chunk; if it is `null`, nothing was checked at all.
+
+Record-lint is **advice**: it reports to the builder and gates nothing. Its findings are yours to
+raise at the severities above, and its per-check counts ride into the review fact so the control's
+own yield stays measurable — which is also how a check that never catches anything gets retired.
+Two checks (`dangling-ref`, `unknown-backlog-id`) were built, measured at zero true positives, and
+removed before this shipped.
 
 ### Governing-Artifact Reconciliation
 

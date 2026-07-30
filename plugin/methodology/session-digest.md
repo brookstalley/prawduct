@@ -27,6 +27,11 @@ inference as a vetoable assumption. Full model: `methodology/discovery.md` "Cali
   never anchor its meaning to an ephemeral build id (a chunk like "chunk 03", a build-plan or
   work-cycle name) — they're deleted when the work ships, so it dangles; carry the *why* inline.
   Exception: bookkeeping that records the work (e.g. change-log `chunks=`, backlog `closed-by:`, PR/commit text).
+- **Prefer an invariant to a tally in durable prose.** "Every fork launched after the fix" cannot
+  go stale; "three forks" went stale inside one branch. When a number is genuinely essential:
+  compute it as you write it, never copy one from an adjacent line or an earlier entry, re-check it
+  if you edit again — and where a mechanism can own the figure (a test, a lint), let it, keeping the
+  prose for the *why*.
 - **Never silently drop a requirement — or silently *invent* one.** Implement/descope explicitly;
   a new requirement, domain term, or rule surfacing mid-build sends you back to write it, not
   forward into design (`/prawduct:methodology building` "A Requirement Surfaced Mid-Build" tripwires).
@@ -35,9 +40,9 @@ inference as a vetoable assumption. Full model: `methodology/discovery.md` "Cali
   exception), never doc-drift to sync; amending a norm to match your own code is the tell.
 - **Invoke the Critic (`/prawduct:critic`) after medium+ work.** Never write Critic findings
   yourself — the independence is the whole value. After a coordinator review (`final`/
-  `cumulative` at 5+ changed files), run `prawduct-hook critic-consolidate` before reading the
-  findings (idempotent no-op if the SubagentStop trigger already landed them — never read a
-  stale file).
+  `cumulative` given a three-reviewer roster), run `prawduct-hook
+  critic-consolidate` before reading the findings (idempotent no-op if the SubagentStop
+  trigger already landed them — never read a stale file).
 - **Catch specific exceptions.** Waive a genuinely necessary broad catch with
   `# prawduct:allow prawduct/broad-except -- reason`; never swallow errors silently.
   (`prawduct:allow <scope>/<rule-id> -- reason` is the general intentional-waiver

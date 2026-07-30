@@ -1209,6 +1209,20 @@ class TestFlagOnlyArgRejection:
         result = _run_in(repo, "clear", "--session-start")
         assert result.returncode == 0, result.stderr
 
+    def test_verify_records_rejects_unknown_flag(self, tmp_path):
+        repo = tmp_path / "r"
+        (repo / ".prawduct").mkdir(parents=True)
+        result = _run_in(repo, "verify-records", "--bogus")
+        assert result.returncode == 2
+        assert "unknown argument" in result.stderr
+
+    def test_verify_records_rejects_a_flag_missing_its_value(self, tmp_path):
+        repo = tmp_path / "r"
+        (repo / ".prawduct").mkdir(parents=True)
+        result = _run_in(repo, "verify-records", "--base")
+        assert result.returncode == 2
+        assert "requires a value" in result.stderr
+
 
 class TestNoBareSkillShadowing:
     """A bare `.claude/skills/<name>/` in this framework repo would double-load as
