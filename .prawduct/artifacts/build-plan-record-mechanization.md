@@ -61,7 +61,7 @@ enumerated before fields are designed (Chunk 01 step 0), and two tuning values a
 
 **Open assumptions / unknowns:**
 - [ASSUMPTION: disposition facts extend evidence.jsonl rather than a new store — same lifetime, same sharing, same schema machinery | HIGH impact | user can override]
-- [ASSUMPTION: the coordinator threshold moves from 5 changed files to 12 *judgeable* files | MED impact | user can correct the number; Chunk 04 validates it against review-stats history before locking]
+- [~~ASSUMPTION: the coordinator threshold moves from 5 changed files to 12 *judgeable* files~~ — **FALSIFIED 2026-07-30** by the validation it called for. Judgeable-count keying demotes 54% of historical blocking findings; the shipped rule is risk-surface-first with judgeable ≥ 12 as a secondary escalator, and repos declaring no risk surfaces keep the 5-file rule unchanged. See Chunk 04.]
 - [ASSUMPTION: suite-total test counts in durable prose are deleted outright, not lint-verified — nothing consumes them; the evidence store already holds pass/fail per tree | MED impact | user can override] — **resolved 2026-07-30, and the premise was half wrong.** The deletion set on the plugin surface was **empty**: `grep -rnE '[0-9]{3,6} *(tests?|passing|green)' plugin --include='*.md'` returned nothing before the sweep, and no template, methodology step or skill instruction ever *demanded* a count. The habit lives in agents, not in an instruction, so there was nothing to delete and the whole value is in the tripwire. Both halves are now pinned by `tests/preferences/test_no_suite_total_claims.py` (exhibit side and demand side, each mutation-proved).
 - [ASSUMPTION: the change-log ledger is spiked here and implemented in a follow-on plan, since it is a plugin-wide breaking change needing its own migrate path and release | HIGH impact | user can override — pulling implementation into this plan roughly doubles it]
 
@@ -73,7 +73,7 @@ unknown; Chunk 04's review-stats measurement resolves the threshold.
 - [x] Chunk 01: Disposition facts and the census renderer
 - [ ] Chunk 02: Subtraction sweep and deterministic record-lint
 - [ ] Chunk 03: Per-mode reviewer payload
-- [ ] Chunk 04: Coordinator roster keyed to judgeable files
+- [ ] Chunk 04: Coordinator roster keyed to risk surface
 - [ ] Chunk 05: Change-log ledger spike and go/no-go
 Context: Plan authored 2026-07-29 from the ship-day retrospective (v3.2.0 + discodon). **Chunk 01
 complete 2026-07-29** — `disposition` fact kind + `render-dispositions`; step 0's consumer-query
@@ -313,21 +313,91 @@ argument for copying either); any `*_tree` key (see M4).
   2. `/prawduct:critic` run and blocking findings resolved
   3. Committed and chunk marked `[x]` in Status
 
-### Chunk 04: Coordinator roster keyed to judgeable files
+### Chunk 04: Coordinator roster keyed to risk surface
 
-- **Description:** The coordinator pattern (three subagents) currently fires at 5+ changed files —
-  counting non-judgeable record files, so routine medium diffs pay triple review. Key the roster
-  rule to *judgeable* changed files and raise the threshold to 12 (validated against review-stats
-  history before locking — if the data says a different knee, use it and record why). Manifest
-  telemetry (`roster_chosen_by`) already exists to observe the change.
+**Descoped 2026-07-30 by the validation step this chunk's own spec required.** The original spec —
+"key the roster rule to *judgeable* changed files and raise the threshold to 12 … validated against
+review-stats history before locking — if the data says a different knee, use it and record why" —
+was falsified by that validation. The replay is recorded below; the rule that ships is the one the
+data supports.
+
+**[DECISION: judgeable-count keying rejected]** Replaying all 82 `final`/`cumulative` review facts in
+the evidence store (35 blocking, 505 warning findings), scoring each candidate rule by the historical
+blocking findings it would have sent to a single reviewer:
+
+| rule | coordinator share | blockers demoted |
+|---|---|---|
+| current: total ≥ 5 | 80% | 2 (6%) |
+| **spec as written: judgeable ≥ 12** | 40% | **19 (54%)** |
+| judgeable ≥ 5 (count fix only) | 56% | 19 (54%) |
+| **risk-surface OR judgeable ≥ 12** | 78% | 1 (3%) |
+| gate-kernel OR judgeable ≥ 12 | 52% | 8 (23%) |
+
+**Recomputable:** `python3 tests/spikes/roster_rule_replay.py` regenerates every row above from this
+clone's evidence store.
+
+*"Demoted" scores every rule identically — blocking findings in reviews the rule would send
+single-pass — which is what makes the rows comparable. It is an upper bound on loss: a single
+reviewer still covers all 7 goals and may have found the same defect. It is the right risk proxy
+because deeper per-goal coverage is the only thing the roster choice buys.*
+
+**The actual change is smaller than R3's row suggests.** Measured as reviews that *ran* coordinator
+and would now run single-pass: **8 reviews, carrying 0 blocking and 27 warning findings.** R3's one
+scored blocker sits in a review that already ran single-pass and found it anyway — so the shipped
+rule demotes no review that a coordinator's depth is known to have been needed for.
+
+**Why the premise was wrong.** The spec assumed record files inflate the count, so a record-heavy
+diff is a small diff paying triple. The slice it targeted — total ≥ 5, judgeable < 5 — is **20
+reviews carrying 17 blocking findings, 13 of which point at code rather than records**. Those are not
+record-padded trivia; they are small, high-consequence governance diffs. The sharpest case is the AST
+free-edge relaxation (3 judgeable files, 5 total), where the coordinator returned **10 blocking
+findings**, including *"the gate can now relax itself with no way to detect it."* Every
+judgeable-count rule sends that review single-pass.
+
+The conflation underneath: `coverage_algebra.is_judgeable_path` answers *"does this change need
+review coverage"* — a gate question, and the reason it is THE predicate there. It does not answer
+*"how much review depth does this change deserve."* A record-heavy diff **is** a governance diff, and
+governance diffs are where the blockers are: reviews touching the gate kernel yield 0.96 blocking per
+review against 0.22 for everything else, a 4.4× discriminator. No size cut comes close — blocker-
+bearing and clean reviews overlap across 0–206 and 0–60 judgeable files respectively.
+
+**What the data does support.** One band is safely demotable: 5–11 judgeable files is 13 coordinator
+reviews with **zero** blocking findings. Keying to risk surface with that band as the only demotion
+is the rule that ships. It is deliberately a small saving (8 of 82 dispatches, median 420s each) —
+recorded as such rather than dressed up, because the honest finding is that **this repo's coordinator
+dispatch rate is approximately correct** and the review-cost lever is not roster selection. The
+levers that did pay are Chunk 03's payload cut and the round policy filed as CRT-3W6P.
+
 - **Depends on:** Chunk 03
 - **Artifacts consumed:** `nonfunctional-requirements.md`
-- **Deliverables:** roster derivation edit in `critic-begin` (`plugin/lib/` locus found at build
-  time), edits to `review-protocol.md` and `review-cycle.md` tables, tests
-- **Tests:** unit — roster selection across the boundary, judgeable-only counting; regression —
-  single-pass path unchanged
-- **Acceptance criteria:** a 10-file diff of which 6 are records reviews single-pass; review-stats
-  shows the expected roster mix on replayed history
+- **Deliverables:** re-anchored risk surfaces in `plugin/lib/risk.py` (see below), roster derivation
+  edit in `plugin/lib/critic_consolidate.py` (`_derive_roster`), edits to `review-protocol.md` and
+  `review-cycle.md` tables, tests
+- **Tests:** unit — roster selection across the boundary, risk-surface intersection, judgeable-count
+  escalator; regression — `chunk`/`verify-resolutions` single-pass path unchanged; the risk-surface
+  anchoring regression pinned
+- **Acceptance criteria:** a diff touching no risk surface with 5–11 judgeable files reviews
+  single-pass; a diff touching `plugin/lib/gates.py` reviews coordinator at any size; replayed
+  history reproduces the R3 row above
+
+**The prerequisite bug this chunk had to fix first.** `risk.py`'s derived-default surfaces
+(`skills/`, `lib/gates*`, `bin/*hook*`) were never re-anchored when the plugin moved into `plugin/`
+at `c6b8131` (2026-07-21). None of the three matches a `plugin/`-prefixed path and no
+`risk_surfaces:` key is declared, so the invariant since the restructure is that **a diff carrying no
+pre-restructure root-layout path cannot classify `escalate`**, gate-kernel changes included. The last
+`escalate`, `rev-20260721T143005Z-975cbd6f`, matched only because the restructure was still in flight
+and its diff listed the root paths being deleted; every review after it went `standard` — 95
+consecutive, 24 of them `final`/`cumulative`, ending only when this chunk's fix landed. It went unnoticed because the
+2026-07-14 `reviewer-session-model` patch (user directive: prawduct was escalating to fable far too
+often) removed the verdict's only consumer; the tier has been telemetry-only since, so nothing
+downstream was watching when it broke. Blast radius today is nil, which is exactly why it survived.
+
+**A consequence for any future restore of tiering (REL-5K8M).** Re-anchored, the derived surfaces
+match 77% of this repo's reviews — and near-100% before the restructure. That breadth is the same
+root cause as the over-escalation the July directive was reacting to. It is harmless here because
+the roster is not model selection, but a tiering restore that reconnects this verdict to model
+choice reproduces the original complaint unless the surface list is narrowed first. Recorded at the
+mechanism in `risk.py`.
 - **Done when:**
   1. Acceptance criteria met and tests pass
   2. `/prawduct:critic` run and blocking findings resolved
@@ -429,3 +499,12 @@ remains is the `gate.blocked`/`probe.fired` kinds plus the join that would let d
 reach `review-stats`, which reads the ledger and not the evidence store), CRT-R4Z2 (coordinator
 findings double-counted because the merge key cannot collide across disjoint goal sets), LRN-4K8T
 (learnings.md compaction).
+
+Closed by this plan's work: **CRT-2W8J** (coordinator roster counts non-judgeable files) — archived
+`status: shipped · closed-by: record-mechanization` on 2026-07-30. Chunk 04 **falsified** it: the
+82-review replay showed its proposed fix (key the roster to judgeable count) would demote 54% of
+historical blocking findings, so the diagnosis was right and the prescription harmful. It is recorded
+as closed rather than open precisely so nobody implements it; the item's own archive note carries the
+replay evidence and the `is_judgeable_path` coverage-vs-depth conflation to avoid re-introducing. One
+residue stays unanswered and is called out there: its secondary ask about `critic_mode._rule_final_fires`'
+no-plan `>= 5` heuristic, which this plan did not touch and the roster replay does not answer.

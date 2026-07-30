@@ -220,6 +220,30 @@ class TestBuildingMethodology:
         # assumed: full digest lines 46-52, slim lines 21-23. That makes this a
         # dedup rather than a cut; a reader who never opens building.md still
         # gets the guidance, from a surface they cannot skip.
+        #
+        # 2026-07-30 (record-mechanization Chunk 04) restated the coordinator
+        # roster rule on two lines — it is no longer a file count but "a risk
+        # surface, or 12+ judgeable files". Measured chain, every figure from
+        # estimate_tokens rather than from the line above it:
+        # 4657 at branch HEAD (headroom 3) -> 4672 on the first wording, OVER
+        # -> 4669 after tightening both restatements -> 4648 after the trim
+        # below. Headroom 3 -> 12.
+        #
+        # Note for the next editor: the 2026-07-29 entry above ends at "4639,
+        # headroom 21", and this change did NOT start there — Chunks 02-03 of
+        # record-mechanization edited this file without updating that figure.
+        # The first draft of this note inherited 4639 and its arithmetic did
+        # not close. **Measure the file; do not read the previous entry's
+        # ending number as your starting one.**
+        # PAID FOR by the trim-or-relocate rule, not a raise. The
+        # funding was the cache-warming clause of "The Critic takes time"
+        # ("don't go silent either, or your prompt cache expires…"), which
+        # `critic_consolidate._CACHE_WARM_DIRECTIVE` emits verbatim into the
+        # consolidate no-op the caller reads WHILE waiting — checked, not
+        # assumed. So the guidance now reaches the reader from the runtime at
+        # the moment it applies, instead of from a guide read hours earlier;
+        # a relocate whose destination already existed. 4669 -> 4648,
+        # headroom 21 -> 12.
         tokens = estimate_tokens(self.content)
         assert tokens < 4660, f"building.md is ~{tokens} tokens, should be <4660"
 
@@ -437,6 +461,15 @@ class TestCriticSkill:
         # re-plumbed: funding a budget overrun by shortening an unrelated
         # governance rule is the move the paragraph above forbids, and the
         # test caught it doing exactly that.
+        #
+        # 2026-07-30 (record-mechanization Chunk 04): the roster bullets now name
+        # a *risk surface*, a term this file had no definition for, so a reader
+        # met a load-bearing term with nowhere to resolve it. The full
+        # definition went to review-cycle.md — which owns the roster table and
+        # is not on the chunk-mode payload path — and this file kept a
+        # one-clause gloss plus the pointer. First wording overran (3623 of
+        # 3620); trimmed to the gloss rather than funded by a raise. 3572 ->
+        # 3614, headroom 48 -> 6.
         tokens = estimate_tokens(self.content)
         assert tokens < 3620, f"review-protocol.md is ~{tokens} tokens, should be <3620"
 

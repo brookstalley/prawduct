@@ -140,8 +140,8 @@ Applies proportionally — a 2-line helper needs no design review. Prioritize wh
 
 The roster in the code-written dispatch manifest (`.prawduct/.critic-partials/manifest.json`, written by `critic-begin`) picks the path:
 
-- **Roster `["reviewer"]` — single-pass**: under 5 changed files. The fork reviews inline, writes its one partial, and runs `critic-consolidate` itself; no subagents.
-- **Roster `correctness`/`design`/`sustainability` — coordinator pattern** (below): `final`/`cumulative` at 5+ changed files.
+- **Roster `["reviewer"]` — single-pass**: no risk surface touched and under 12 judgeable files. The fork reviews inline, writes its one partial, and runs `critic-consolidate` itself; no subagents.
+- **Roster `correctness`/`design`/`sustainability` — coordinator pattern** (below): `final`/`cumulative` when the diff touches a risk surface or changes 12+ judgeable files. (*Risk surface* = a path matching the repo's `risk_surfaces:`; declaring none keeps the older 5+ files rule — `review-cycle.md`.)
 
 ### Coordinator Pattern
 

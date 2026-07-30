@@ -22,7 +22,9 @@ planned restore of tiering (change-log ``reviewer-session-model``).
    derived defaults below do not apply (an explicitly empty list is a
    deliberate "this product has no risk surfaces" opt-out).
 2. Else derived defaults — paths matching ``skills/``, ``lib/gates*``,
-   ``bin/*hook*`` — plus literal backticked contract-file paths parsed from
+   ``bin/*hook*``, each also in its ``plugin/``-prefixed form so both packaging
+   layouts match (see :data:`DERIVED_DEFAULT_SURFACES`) — plus literal
+   backticked contract-file paths parsed from
    ``.prawduct/artifacts/boundary-patterns.md`` when present.
 
 **Pattern semantics**: a surface ending in ``/`` is a directory prefix;
@@ -58,7 +60,34 @@ from .buildplan_refs import _looks_like_file_path
 # purpose — the governance machinery itself (skills, gates, the hook) is where
 # a missed defect costs the most; products with different hot spots declare
 # `risk_surfaces:` and these defaults stop applying entirely.
-DERIVED_DEFAULT_SURFACES = ("skills/", "lib/gates*", "bin/*hook*")
+#
+# **Two packaging layouts, both live.** A product repo carries these shapes at
+# its root; the framework repo packages its own machinery under ``plugin/``
+# (moved there by ``c6b8131``, 2026-07-21). The forms are therefore GENERATED
+# from one list of shapes rather than written out, so a shape added later cannot
+# land in only one layout.
+#
+# Do not flatten this back to literals. The 2026-07-21 restructure left
+# root-only patterns in place, and the invariant that followed is: **a diff
+# containing no pre-restructure root-layout path could not classify
+# ``escalate``**, gate-kernel changes included — because none of ``skills/``,
+# ``lib/gates*``, ``bin/*hook*`` matches a ``plugin/``-prefixed path. The
+# boundary is visible in the evidence store: the last ``escalate`` matched only
+# because the restructure's own diff still listed the root paths it was
+# deleting, and every review after it went ``standard``. Nothing caught it: the
+# verdict's only consumer
+# had been removed on 2026-07-14 (``reviewer-session-model``), so the tier has
+# been telemetry-only since and no gate could go wrong out loud. The test that
+# should have caught it pinned this tuple's literal value, which stayed true
+# while the repo's layout moved out from under it — so the regression test that
+# replaced it asserts against THIS repo's real paths instead.
+_FRAMEWORK_SURFACE_SHAPES = ("skills/", "lib/gates*", "bin/*hook*")
+_PACKAGING_PREFIXES = ("", "plugin/")
+DERIVED_DEFAULT_SURFACES = tuple(
+    f"{prefix}{shape}"
+    for shape in _FRAMEWORK_SURFACE_SHAPES
+    for prefix in _PACKAGING_PREFIXES
+)
 
 _BACKTICK_RE = re.compile(r"`([^`]+)`")
 
@@ -123,6 +152,92 @@ def _surface_matches(path: str, surface: str) -> bool:
     if surface.endswith("/"):
         return path.startswith(surface)
     return fnmatch(path, surface)
+
+
+#: Provenance labels for :func:`resolve_surfaces` — also the stderr text, so a
+#: caller can tell a declared opt-in from the framework defaults.
+SOURCE_DECLARED = "declared risk_surfaces"
+SOURCE_DERIVED = "derived defaults"
+
+
+def resolve_surfaces(prawduct_dir: Path) -> tuple[list[str], str]:
+    """The risk surfaces in force plus their provenance — resolution order
+    steps 1-2 of the module docstring, in ONE place so every consumer answers
+    "is this a risk surface" identically.
+
+    A ``risk_surfaces:`` key is exclusive when present (declared-empty is a
+    deliberate opt-out and returns ``[]``); otherwise the derived defaults plus
+    the product's documented contract paths.
+    """
+    declared = _read_list_yaml_key(prawduct_dir / "project-state.yaml", "risk_surfaces")
+    if declared is not None:
+        return list(declared), SOURCE_DECLARED
+    return (
+        [*DERIVED_DEFAULT_SURFACES, *_boundary_pattern_paths(prawduct_dir)],
+        SOURCE_DERIVED,
+    )
+
+
+def has_product_risk_declaration(prawduct_dir: Path) -> bool:
+    """True when THIS REPO has said where its risk concentrates — a non-empty
+    ``risk_surfaces:`` list, or contract paths documented in
+    ``boundary-patterns.md``.
+
+    The derived defaults deliberately do NOT count. They are framework-shaped
+    (``skills/``, ``lib/gates*``, ``bin/*hook*``), so in an onboarded product
+    they describe the *plugin's* hot spots and typically match nothing in the
+    product's own tree — and an as-scaffolded product declares neither key: the
+    `project-state.yaml` template has no ``risk_surfaces:`` and the
+    `boundary-patterns.md` template writes its examples inside HTML comments,
+    unbackticked, so :func:`_boundary_pattern_paths` yields zero.
+
+    So any consumer deciding on "no risk surface matched" MUST distinguish
+    *"this diff is low-risk"* from *"this repo never had a risk signal to
+    give"* — they look identical at the match site and mean opposite things.
+    :func:`critic_consolidate._derive_roster` is the caller that cares.
+
+    An explicit ``risk_surfaces: []`` reads as no signal here, not as an opt-in
+    to risk-keyed behaviour. That is the safe direction: the empty list turns
+    the risk predicate off permanently, and a consumer that treated it as a
+    declaration would fall through to whatever its no-risk branch does.
+    """
+    declared = _read_list_yaml_key(prawduct_dir / "project-state.yaml", "risk_surfaces")
+    if declared:
+        return True
+    return bool(_boundary_pattern_paths(prawduct_dir))
+
+
+def surface_matches(
+    paths: "list[str]", surfaces: "list[str]"
+) -> list[tuple[str, str]]:
+    """Every ``(path, surface)`` pair where a reviewed path lands on a risk
+    surface. Empty means the scope touches no declared risk."""
+    return [
+        (path, surface)
+        for path in paths
+        for surface in surfaces
+        if _surface_matches(path, surface)
+    ]
+
+
+def paths_touch_risk_surface(prawduct_dir: Path, paths: "list[str]") -> tuple[bool, str]:
+    """``(touched, rationale)`` for a set of already-known paths — the
+    pure-path entry point used by roster derivation, which has its diff in
+    hand and must not shell out to git again.
+
+    Distinct from :func:`classify_diff_risk`, which derives the scope from git
+    and owns the fail-open/closed asymmetry: there is no git call here, so
+    there is no unverifiable-diff case to fail closed on.
+    """
+    surfaces, source = resolve_surfaces(prawduct_dir)
+    if not surfaces:
+        return False, f"no risk surfaces ({source})"
+    matches = surface_matches(paths, surfaces)
+    if not matches:
+        return False, f"no risk-surface paths ({source})"
+    path, surface = matches[0]
+    more = f" (+{len(matches) - 1} more)" if len(matches) > 1 else ""
+    return True, f"{path} matched risk surface {surface}{more} ({source})"
 
 
 def _git_lines(project_dir: Path, *args: str) -> list[str] | None:
@@ -198,16 +313,8 @@ def classify_diff_risk(project_dir: Path, argv: list[str]) -> int:
         base_arg = arg
 
     prawduct_dir = gitstate.get_prawduct_dir(project_dir)
-    declared = _read_list_yaml_key(prawduct_dir / "project-state.yaml", "risk_surfaces")
-    if declared is not None:
-        surfaces = list(declared)
-        source = "declared risk_surfaces"
-    else:
-        surfaces = [
-            *DERIVED_DEFAULT_SURFACES,
-            *_boundary_pattern_paths(prawduct_dir),
-        ]
-        source = "derived defaults"
+    surfaces, source = resolve_surfaces(prawduct_dir)
+    declared = surfaces if source == SOURCE_DECLARED else None
 
     if not surfaces:
         # Declared-empty opt-out: nothing can ever match, so the diff doesn't
@@ -246,12 +353,7 @@ def classify_diff_risk(project_dir: Path, argv: list[str]) -> int:
             print("standard")
         return 0
 
-    matches = [
-        (path, surface)
-        for path in paths
-        for surface in surfaces
-        if _surface_matches(path, surface)
-    ]
+    matches = surface_matches(paths, surfaces)
     if matches:
         for path, surface in matches:
             print(f"risk: {path} matched {surface}", file=sys.stderr)

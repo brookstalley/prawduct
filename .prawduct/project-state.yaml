@@ -359,6 +359,44 @@ active_build_plan: artifacts/build-plan-record-mechanization.md
 build_plan_ref_root: plugin
 
 # =============================================================================
+# RISK SURFACES
+# =============================================================================
+# Where a missed defect costs the most. Two consumers read this:
+# `prawduct-hook classify-diff-risk` (the review `tier`, telemetry-only today)
+# and the Critic's ROSTER derivation — a diff touching one of these gets the
+# three-reviewer coordinator at any size.
+#
+# Declaring the list is what opts this repo into the risk-keyed roster rule.
+# Without it, `lib/risk.py`'s framework-shaped *derived defaults* would apply,
+# and `_derive_roster` cannot tell "no surface matched, so this is low risk"
+# from "this repo never declared any" — so an undeclared repo conservatively
+# keeps the older file-count rule instead. The values below are exactly
+# `risk.DERIVED_DEFAULT_SURFACES`, so declaring them changes no verdict; it
+# makes the opt-in explicit and keeps the 2026-07-30 roster replay describing
+# the rule that actually runs here.
+#
+# Two things declaring DOES change, both deliberate. (1) `classify-diff-risk`
+# keys its failure asymmetry on declaration: with surfaces declared and the diff
+# unevaluable (git failure) the verdict now fails CLOSED to `escalate`, where an
+# undeclared repo failed open to `standard`. That is the safe direction and the
+# reason the asymmetry exists. (2) A declared list is EXCLUSIVE, so backticked
+# contract paths in artifacts/boundary-patterns.md no longer contribute — today
+# that subtracts nothing because the file is still the unfilled template, but
+# anyone who fills it must add those paths here too or they will not count.
+#
+# Both packaging layouts are listed because the evidence store spans the
+# `plugin/` restructure (`c6b8131`, 2026-07-21): pre-restructure facts carry
+# root-relative paths, and dropping those forms would silently change how
+# historical reviews replay.
+risk_surfaces:
+  - skills/
+  - plugin/skills/
+  - lib/gates*
+  - plugin/lib/gates*
+  - bin/*hook*
+  - plugin/bin/*hook*
+
+# =============================================================================
 # COVERAGE EVIDENCE (opt-in, v1.4+)
 # =============================================================================
 # When true, the Critic requires every changed file to appear in

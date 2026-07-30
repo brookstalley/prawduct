@@ -97,7 +97,7 @@ Scale to chunk significance. When you can't verify, say so (Principle 5).
 
 **Critic review.** Run `/prawduct:critic` (no args) — the SKILL infers mode from git + build-plan state via `prawduct-hook infer-critic-mode` and records `mode_chosen_by`. Pass an explicit mode (e.g. `/prawduct:critic cumulative`) only to override; report override cases so inference can improve. The Critic runs as a separate agent with restricted tools. See Modes below.
 
-**Resolve findings.** After a **coordinator** review (`final`/`cumulative` at 5+ files), run `prawduct-hook critic-consolidate` before reading `.critic-findings.json` — idempotent when the `SubagentStop` trigger already consolidated (single-pass reviews consolidate themselves). Fix blocking findings before proceeding — `/prawduct:critic verify-resolutions` records the resolution facts that unblock the gates. **Once zero blocking remain the review is over — then fix, accept, or file; never file by default** (`skills/critic/review-cycle.md`). Accept (won't-fix, reasoned) is the default; filing everything turns the backlog into a guilt pile. **Record it as a fact (`prawduct-hook disposition <review-id> <fid> --accept "<reason>"|--file <id>`), then `render-dispositions` into the entry — never hand-count.** Re-run the gate, don't infer a round from stale output. Document disagreements with rationale.
+**Resolve findings.** After a **coordinator** review (`final`/`cumulative` given a three-reviewer roster), run `prawduct-hook critic-consolidate` before reading `.critic-findings.json` — idempotent when the `SubagentStop` trigger already consolidated (single-pass reviews consolidate themselves). Fix blocking findings before proceeding — `/prawduct:critic verify-resolutions` records the resolution facts that unblock the gates. **Once zero blocking remain the review is over — then fix, accept, or file; never file by default** (`skills/critic/review-cycle.md`). Accept (won't-fix, reasoned) is the default; filing everything turns the backlog into a guilt pile. **Record it as a fact (`prawduct-hook disposition <review-id> <fid> --accept "<reason>"|--file <id>`), then `render-dispositions` into the entry — never hand-count.** Re-run the gate, don't infer a round from stale output. Document disagreements with rationale.
 
 **Reflect — now, not at session end.** Append to `.prawduct/.session-reflected`: what the chunk delivered, what the Critic caught, what surprised you. A paragraph is enough. Add a rule to `learnings.md` only if this cycle produced one.
 
@@ -179,7 +179,7 @@ Tests are the most important artifact you produce: contracts that define correct
 
 After medium+ work, invoke the Critic as a separate agent. It reasons from signals (files changed, work type/size) through seven prioritized goals: **Nothing Is Broken**, **Nothing Is Missing**, **Nothing Is Unintended**, **Everything Is Coherent**, **Decisions Were Deliberate**, **The System Can Be Understood**, **The Design Is Sound** (definitions: `skills/critic/review-protocol.md`).
 
-In `final` mode the Critic also cross-checks learnings and reconciles the backlog. `final`/`cumulative` reviews at 5+ changed files use a coordinator pattern — parallel subagents for correctness (goals 1-3), design (4, 7), and sustainability (5-6).
+In `final` mode the Critic also cross-checks learnings and reconciles the backlog. `final`/`cumulative` reviews may use a coordinator pattern — parallel subagents for correctness (goals 1-3), design (4, 7), and sustainability (5-6). The roster rule, which depends on whether the repo declares `risk_surfaces:`, is in `skills/critic/review-cycle.md`.
 
 ### The evidence model
 
@@ -196,7 +196,7 @@ Every consolidated review appends a **fact** to a store shared by all worktrees 
 
 If the mode is missing, unrecognized, or inference cannot make a confident call, run `final` (canonical rule and per-mode table: `skills/critic/review-cycle.md`).
 
-**The Critic takes time** — 1-2 minutes for `chunk`, 4-10 for `final`/`cumulative`. Don't poll for partials; don't go silent either, or your prompt cache expires and the next turn replays your context. Deep-scrub your own changes while it runs — self-review often pre-resolves findings.
+**The Critic takes time** — 1-2 minutes for `chunk`, 4-10 for `final`/`cumulative`. Don't poll for partials. Deep-scrub your own changes while it runs — self-review often pre-resolves findings.
 
 **Never write Critic findings yourself.** If the agent is slow, wait. Writing `.critic-findings.json` "based on" expected output is governance fraud. If the agent fails, tell the user and re-invoke.
 

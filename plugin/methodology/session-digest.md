@@ -35,9 +35,9 @@ inference as a vetoable assumption. Full model: `methodology/discovery.md` "Cali
   exception), never doc-drift to sync; amending a norm to match your own code is the tell.
 - **Invoke the Critic (`/prawduct:critic`) after medium+ work.** Never write Critic findings
   yourself — the independence is the whole value. After a coordinator review (`final`/
-  `cumulative` at 5+ changed files), run `prawduct-hook critic-consolidate` before reading the
-  findings (idempotent no-op if the SubagentStop trigger already landed them — never read a
-  stale file).
+  `cumulative` given a three-reviewer roster), run `prawduct-hook
+  critic-consolidate` before reading the findings (idempotent no-op if the SubagentStop
+  trigger already landed them — never read a stale file).
 - **Catch specific exceptions.** Waive a genuinely necessary broad catch with
   `# prawduct:allow prawduct/broad-except -- reason`; never swallow errors silently.
   (`prawduct:allow <scope>/<rule-id> -- reason` is the general intentional-waiver

@@ -39,9 +39,15 @@ See `methodology/planning.md` "Critic Mode Per Chunk" for the authoring heuristi
 | **Goals run** | 1, 2, 3 | All 7 goals | All 7 goals | 1, 2, 3 |
 | **Goals skipped** | 4-7; Learnings Cross-Check; Backlog Reconciliation; Framework-Specific Checks (7-10); README/top-level docs scan | None | None | Same as `chunk` |
 | **Review interval** (derived by `critic-begin`, recorded in the manifest) | HEAD's tree → captured working tree (the uncommitted diff) | Same as `chunk` | Merge-base tree → HEAD's tree (base branch from `prawduct-hook resolve-base`) — the committed PR bundle | Prior review fact's tree → captured working tree (see "Verify-resolutions anchoring and demotion") |
-| **Execution** (roster derived by `critic-begin`) | Always single-pass | Single-pass under 5 changed files; coordinator at 5+ | Single-pass under 5 changed files; coordinator at 5+ | Always single-pass |
+| **Execution** (roster derived by `critic-begin`) | Always single-pass | Coordinator when a risk surface is touched or 12+ judgeable files change; else single-pass | Coordinator when a risk surface is touched or 12+ judgeable files change; else single-pass | Always single-pass |
 | **Target wall-clock** | 1-2 min | 4-10 min | 4-10 min | 1-2 min |
 | **When invoked** | Between chunks of a multi-chunk plan, before committing | End of work cycle (last chunk), non-chunked medium+ work, or any time the right answer is unclear | Before opening a PR (gated by `/prawduct:pr create`). Catches cross-chunk integration cracks. | After fixing prior BLOCKING/WARNING findings — its resolution facts unblock the same evidence, and its review fact extends coverage over the fix delta. Demotes to `chunk`/`final` when no usable prior fact exists or scope widens past the threshold. |
+
+**Risk surface** = a changed path matching this repo's `risk_surfaces:` in `project-state.yaml` — the
+same predicate `prawduct-hook classify-diff-risk` reports as the review tier (`lib/risk.py`). A repo
+that declares none keeps the older rule instead (coordinator at 5+ changed files): "no surface
+matched" and "this repo never had a risk signal" are indistinguishable at the match site, and
+defaulting the second to a cheaper review is the unsafe direction. Declaring the list is the opt-in.
 
 **Two-form rule for the `mode` value:**
 - **Caller-side** (in `$ARGUMENTS`, build plan field `Critic mode:`, slash-command argument, `critic-begin --mode`): the short token — `chunk`, `final`, `cumulative`, or `verify-resolutions`.

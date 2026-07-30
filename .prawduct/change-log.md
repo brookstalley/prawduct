@@ -3,6 +3,95 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-07-30: Review depth is a risk question, and the file count was answering a different one
+
+<!-- prawduct: type=fix | scope=record-mechanization | chunks=04 -->
+
+**The chunk set out to raise a threshold and the data said not to.** The plan proposed keying the
+coordinator roster to *judgeable* changed files at a threshold of 12, on the intuition that record
+files inflate the count so routine diffs pay triple review. Its own spec required validating that
+against history first. Replaying all 82 `final`/`cumulative` review facts in the evidence store — 35
+blocking findings — scored each candidate by the blockers it would have sent to a single reviewer:
+
+| rule | coordinator share | blockers demoted |
+|---|---|---|
+| previous: total files ≥ 5 | 80% | 2 (6%) |
+| **proposed: judgeable ≥ 12** | 40% | **19 (54%)** |
+| judgeable ≥ 5 | 56% | 19 (54%) |
+| **shipped: risk surface OR judgeable ≥ 12** | 78% | 1 (3%) |
+
+**The intuition was backwards.** The slice the proposal targeted — 5+ files, under 5 judgeable — is
+20 reviews carrying 17 blocking findings, **13 of them pointing at code rather than records**. Those
+are not record-padded trivia; they are small, high-consequence governance diffs. The sharpest is the
+AST free-edge relaxation: 3 judgeable files, 5 total, and the coordinator returned **10 blocking
+findings**, including *"the gate can now relax itself with no way to detect it."* Every
+judgeable-count rule reviews that one single-pass.
+
+Underneath sits a conflation worth naming, because it will recur.
+`coverage_algebra.is_judgeable_path` answers *"does this change need review **coverage**"* — a gate
+question, and the reason it is THE predicate there. It does not answer *"how much review **depth**
+does this deserve."* Record-heavy diffs *are* governance diffs, and governance diffs are where the
+blockers are: reviews touching the gate kernel yield 0.96 blocking findings each against 0.22 for
+everything else, a 4.4× discriminator no size cut approaches.
+
+**So the roster now asks a risk question first.** `final`/`cumulative` goes coordinator when the diff
+touches a risk surface, or when it changes 12+ judgeable files; otherwise single-pass. Size survives
+only as an escalator at the one threshold the replay clears: 5–11 judgeable files touching no risk
+surface is 13 historical coordinator reviews with **zero** blocking findings. Measured as reviews
+that *ran* coordinator and would now run single-pass, the change moves **8 reviews carrying 0
+blocking and 27 warning findings** — a deliberately small saving, recorded as small rather than
+dressed up. The honest finding is that **this repo's coordinator dispatch rate was approximately
+correct**, and roster selection is not where review cost lives.
+
+**A prerequisite bug, silent for nine days.** `risk.py`'s derived-default surfaces (`skills/`,
+`lib/gates*`, `bin/*hook*`) were never re-anchored when the plugin moved under `plugin/` at
+`c6b8131` (2026-07-21). None of the three matches a `plugin/`-prefixed path and no `risk_surfaces:`
+key is declared, so the invariant since the restructure is: **a diff containing no pre-restructure
+root-layout path cannot classify `escalate`**, gate-kernel changes included. The boundary is visible
+in the store. The last `escalate`, `rev-20260721T143005Z-975cbd6f`, matched only because the
+restructure was still in flight and its diff still listed root paths being deleted; every review
+after it went `standard` — 95 consecutive, 24 of them `final`/`cumulative`, ending only when this
+chunk's fix landed. It survived because the 2026-07-14 `reviewer-session-model`
+patch had removed the verdict's only consumer, leaving it telemetry-only with nothing downstream to
+fail. The surfaces are now generated from one list of shapes across both packaging layouts, so a
+shape added later cannot land in only one.
+
+**The test that should have caught it was green the whole time**: it pinned
+`DERIVED_DEFAULT_SURFACES` to its literal value, which stayed true while the repository moved out
+from under it. Its replacement asserts that `plugin/lib/gates.py`, `plugin/bin/prawduct-hook` and
+`plugin/skills/critic/SKILL.md` — paths whose existence it verifies — each match a surface. Same
+lesson as Chunk 03's inert routing, from the opposite direction: a guardrail that measures the
+artifact cannot see that the artifact no longer describes the world.
+
+**Standing note for any restore of reviewer tiering (REL-5K8M).** Re-anchored, these surfaces match
+~77% of this repo's reviews and near-100% before the restructure — the same breadth behind the
+over-escalation the 2026-07-14 directive was reacting to. Harmless while the roster is not model
+selection; reconnect this verdict to model choice without narrowing the list first and the original
+complaint returns. Recorded at the mechanism in `risk.py`.
+
+**The review caught the rule shipping wider than its evidence, and that is the shape of the fix.**
+Every figure above came from *this* repo's store, where the declared surfaces match 77% of reviews. An
+onboarded product is the opposite case: the derived defaults are framework-shaped, the
+`project-state.yaml` template ships no `risk_surfaces:`, and the `boundary-patterns.md` template
+writes its examples inside HTML comments and unbackticked — so `_boundary_pattern_paths` yields
+nothing and the risk predicate would never fire. The rule would have collapsed to `judgeable ≥ 12`
+alone — the rejected row, at 54% of blockers demoted — while *replacing* a rule that gave that product
+a coordinator at 5 files. So the risk-keyed rule now applies only where there is a risk signal: a repo
+declaring no surfaces keeps the previous file-count escalator unchanged, because "no surface matched"
+and "this repo never had a signal to give" are indistinguishable at the match site and defaulting the
+second to a cheaper review is the unsafe direction. This repo opts in by declaring `risk_surfaces:` in
+its own `project-state.yaml`; the product template gains a commented stanza so the knob is
+discoverable. `tests/spikes/roster_rule_replay.py` commits the replay, so every number here is
+recomputable rather than asserted.
+
+Two budget notes, both paid under trim-or-relocate rather than by raising a ceiling. `building.md`
+restated the rule on two lines for 15 tokens against 3 of headroom, funded by dropping the
+cache-warming clause that `critic_consolidate._CACHE_WARM_DIRECTIVE` already emits verbatim into the
+output a caller reads *while waiting* (4657 → 4648). `review-protocol.md` had to gloss "risk surface",
+a term the roster bullets made load-bearing with no definition anywhere in the Critic docs; the full
+definition went to `review-cycle.md`, which owns the roster table and is off the chunk-mode payload
+path, leaving a one-clause pointer here (3572 → 3614, headroom 48 → 6).
+
 ## 2026-07-30: A three-goal review stops paying a seven-goal reading fee
 
 <!-- prawduct: type=feature | scope=record-mechanization | chunks=03 -->
