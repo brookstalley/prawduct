@@ -44,8 +44,8 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
-from . import buildplan_refs, evidence, gitstate
-from .core import read_str_yaml_key, resolve_build_plan_path
+from . import buildplan_refs, evidence
+from .core import resolve_build_plan_path
 
 #: Every check this module can run, in manifest order. Named so a consumer can
 #: tell "ran and found nothing" from "never ran" (see ``unchecked`` below).
@@ -76,26 +76,6 @@ CHECKS = (
 #: History, not live assertion — an archived record is excluded from every check.
 _ARCHIVE_MARKERS = ("/archive/", "archive/")
 
-#: Backticked-token extraction, reduction, and path judgment are ALL borrowed
-#: from the build-plan ref parser rather than restated, so every carveout it has
-#: earned applies here too: no whitespace inside the span (which is what keeps a
-#: backticked command — ``python -m pytest tests/ -q`` — and the backlog's
-#: ``·``-separated metadata bars from reading as paths), plus globs, URLs, git
-#: refs, angle-bracket placeholders, anchors and ``path:line`` suffixes.
-#: Measured against the real repo before it was borrowed: a locally-defined
-#: "anything between backticks" pattern produced 46 findings on this branch, 44
-#: of them prose. One grammar, one home.
-
-#: An id-shaped token. The generator's documented format is ``PFX-XXXX`` with a
-#: 4-char base36 suffix (``templates/backlog.md``), and requiring the suffix to
-#: mix letters and digits is what keeps ``ISO-8601``, ``RFC-7807`` and the
-#: template's own ``ABC-1234`` placeholder out of the results. That is stricter
-#: than the documented format allows in principle: an all-letter or all-digit
-#: suffix is legal and would be missed here. It is the right direction for an
-#: advisory check — all 342 ids in this repo's backlog satisfy it, a missed
-#: dangling id costs one silent advisory, and a false positive costs noise on
-#: every review, which is the ceremony ratchet this whole plan exists to reverse.
-_BACKLOG_ID_RE = re.compile(r"(?<![\w-])([A-Z]{2,4})-(?=[A-Z0-9]{4}(?![\w-]))([A-Z0-9]{4})")
 
 #: A suite-total test claim in durable prose — the subtraction's tripwire. The
 #: evidence store already records pass/fail per tree (``test-evidence record``),
@@ -111,7 +91,7 @@ _BACKLOG_ID_RE = re.compile(r"(?<![\w-])([A-Z]{2,4})-(?=[A-Z0-9]{4}(?![\w-]))([A
 #: on prose like that gets ignored — which costs more than the claim it catches.
 _SUITE_TOTAL_RE = re.compile(
     r"(?<![\w.+/-])\d{3,6}\s*(?:tests?|passing|green|pass(?:ed|es|ing)?)\b"
-    r"|(?:full|whole|entire) suite\W{0,12}\d{2,6}",
+    r"|(?:(?:full|whole|entire) suite|suite total)\W{0,12}\d{2,6}",
     re.IGNORECASE,
 )
 
@@ -194,6 +174,12 @@ def _added_lines(
     """
     rc, out, _err = evidence.run_git(
         project_dir,
+        # `core.quotepath` defaults on, so git C-quotes any non-ASCII pathname in
+        # the `diff --git` header (`"a/caf\303\251.md"`). The header parser would
+        # then miss it and attach that file's added lines to the PREVIOUS file —
+        # wrong attribution, silently. Turning it off is a one-flag fix and keeps
+        # this working for any repo whose records aren't named in ASCII.
+        "-c", "core.quotepath=false",
         "diff",
         "--unified=0",
         "--no-color",
@@ -583,11 +569,22 @@ def lint_records_safe(
     except Exception as exc:  # prawduct:allow prawduct/broad-except -- advice must never abort review dispatch; reported as unchecked, never swallowed
         return {
             "records": records_in(paths),
-            "chunk_graded": chunk_id,
+            # NOT `chunk_id`: nothing was graded, and the contract says a null
+            # `chunk_graded` means exactly that. Echoing the requested chunk here
+            # would pair a named subject with zero counts — the shape a clean
+            # result has.
+            "chunk_graded": None,
             "findings": [],
+            # The `chunk-ref-missing unchecked` prefix is load-bearing:
+            # `review-cycle.md` grades that string BLOCKING, inheriting the
+            # retired `cannot-verify:` bar. A crash takes the deliverable check
+            # down with everything else, so it must reach the reviewer at the
+            # deliverable check's severity — not as a generic NOTE, which is the
+            # BLD-5J8N habituation arriving by a new route.
             "unchecked": [
-                f"record-lint did not run — {type(exc).__name__}: {exc}. The "
-                "review proceeds; no record check was performed."
+                f"chunk-ref-missing unchecked — record-lint did not run at all "
+                f"({type(exc).__name__}: {exc}). The review proceeds; NO record "
+                "check was performed, including the deliverable check."
             ],
             "counts": _count([]),
         }

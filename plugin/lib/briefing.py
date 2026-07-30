@@ -179,11 +179,29 @@ def staleness_scan(project_dir: Path) -> list[str]:
             arch_content = arch_path.read_text()
             src_dir = project_dir / source_root
             if src_dir.is_dir():
-                unmentioned = []
-                for d in sorted(src_dir.iterdir()):
-                    if d.is_dir() and not d.name.startswith((".", "__")):
-                        if d.name not in arch_content:
-                            unmentioned.append(d.name)
+                candidates = [
+                    d.name
+                    for d in sorted(src_dir.iterdir())
+                    if d.is_dir()
+                    and not d.name.startswith((".", "__"))
+                    and d.name not in arch_content
+                ]
+                # A git-IGNORED directory is not architecture — it is scratch,
+                # build output, or vendored dependencies, and architecture.md is
+                # right not to name it. Without this the probe reported
+                # `node_modules` to every JS product, `target` to every Rust one,
+                # and any local scratch dir to everybody, forever: a permanent
+                # advisory whose only remedy is documenting something that should
+                # not be documented. Batched into ONE `check-ignore` call, and
+                # only when there is something to ask about, so the session-start
+                # hot path pays nothing on a clean repo.
+                relative = [f"{source_root.rstrip('/')}/{name}" for name in candidates]
+                ignored = gitstate.git_paths_ignored(project_dir, relative)
+                unmentioned = [
+                    name
+                    for name, rel in zip(candidates, relative)
+                    if rel not in ignored
+                ]
                 if unmentioned:
                     findings.append(
                         f"architecture: {', '.join(unmentioned[:3])} in {source_root}/ not in architecture.md"

@@ -48,3 +48,9 @@ incoming-bugs/
 # Repo-local agent scratch — never part of the distributed plugin (Principle 10).
 # Kept out of plugin/ so it is not distributed; this rule also stops it being committed at all.
 .claude/workflows/
+
+# Repo-root scratch dir. Ignored rather than deleted so it stops tripping the
+# session briefing's architecture-staleness probe, which walks every directory
+# under `source_root: "."` and reports any that architecture.md does not name —
+# a recurring false advisory on a directory that is deliberately not architecture.
+scratchpad/

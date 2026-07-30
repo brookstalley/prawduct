@@ -1182,10 +1182,14 @@ def cmd_critic_begin(project_dir: Path, argv: list[str]) -> int:
         for line in lint_lines:
             print(f"  {line}")
     elif lint.get("records"):
+        # The clause list is DERIVED, never restated. A hand-written one went out
+        # naming two checks the same commit deleted — a clean report vouching for
+        # work nobody did, which is precisely the silence-as-pass this module
+        # exists to refuse, relocated from the library into its own report line.
+        ran = ", ".join(_record_lint().CHECKS)
         print(
             f"PRAWDUCT: record-lint clean across {len(lint['records'])} changed "
-            "record(s) — refs resolve, backlog ids exist, `governed_by:` blocks "
-            "are complete, no suite-total claims."
+            f"record(s) — checks run: {ran}."
         )
 
     siblings = [

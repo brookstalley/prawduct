@@ -129,3 +129,62 @@ class TestBriefingImportDegradation:
         assert (prawduct / ".session-start").is_file()
         # ...while the briefing-dependent artifact is skipped (the degraded path was taken).
         assert not (prawduct / ".subagent-briefing.md").is_file()
+
+
+class TestArchitectureStalenessIgnoresGitignoredDirs:
+    """A git-IGNORED directory is not architecture — it is scratch, build output,
+    or vendored dependencies, and `architecture.md` is right not to name it.
+
+    Before this, the probe walked every directory under `source_root` and
+    reported any name absent from `architecture.md`. With `source_root: "."`
+    that meant `node_modules` to every JS product, `target` to every Rust one,
+    and any local scratch dir to everybody — a permanent advisory whose only
+    remedy was documenting something that should not be documented. A permanent
+    advisory is a silenced one.
+    """
+
+    def _repo(self, tmp_path, dirs, gitignore=""):
+        import subprocess
+
+        prawduct = tmp_path / ".prawduct" / "artifacts"
+        prawduct.mkdir(parents=True)
+        (tmp_path / ".prawduct" / "project-state.yaml").write_text('source_root: "."\n')
+        (prawduct / "architecture.md").write_text("# Architecture\n\nThe plugin lives in plugin/.\n")
+        for name in dirs:
+            (tmp_path / name).mkdir()
+            (tmp_path / name / "f.txt").write_text("x\n")
+        if gitignore:
+            (tmp_path / ".gitignore").write_text(gitignore)
+        subprocess.run(["git", "init", "-q"], cwd=str(tmp_path), check=True, timeout=15)
+        return tmp_path
+
+    def _arch_finding(self, repo):
+        return [f for f in briefing.staleness_scan(repo) if f.startswith("architecture:")]
+
+    def test_an_unmentioned_tracked_dir_is_still_reported(self, tmp_path):
+        """The counter-case: the probe must keep doing its job. A real,
+        tracked source directory absent from architecture.md is drift."""
+        repo = self._repo(tmp_path, ["engine"])
+        found = self._arch_finding(repo)
+        assert len(found) == 1 and "engine" in found[0]
+
+    def test_a_gitignored_dir_is_not_reported(self, tmp_path):
+        repo = self._repo(tmp_path, ["scratchpad"], gitignore="scratchpad/\n")
+        assert self._arch_finding(repo) == []
+
+    def test_ignored_and_tracked_dirs_are_separated(self, tmp_path):
+        """Mixed case — the ignored one drops out, the real one survives, so
+        the filter is not just suppressing the whole finding."""
+        repo = self._repo(
+            tmp_path, ["node_modules", "engine"], gitignore="node_modules/\n"
+        )
+        found = self._arch_finding(repo)
+        assert len(found) == 1
+        assert "engine" in found[0]
+        assert "node_modules" not in found[0]
+
+    def test_a_mentioned_dir_never_reaches_the_ignore_check(self, tmp_path):
+        """Naming it in architecture.md resolves it regardless of git state —
+        the ignore filter narrows the finding, it does not replace the match."""
+        repo = self._repo(tmp_path, ["plugin"])
+        assert self._arch_finding(repo) == []

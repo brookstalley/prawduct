@@ -84,6 +84,17 @@ recognises both live plan-naming conventions (`build-plan-<scope>.md` and the sc
 `<scope>-plan.md`); matching only the first would have skipped a scope-named plan silently, and a plan
 never read reports zero gaps exactly like a complete one.
 
+**Adjacent, consumer-facing, and found by asking why one advisory never cleared:** the session
+briefing's architecture-staleness probe walked every directory under `source_root` and reported any
+name absent from `architecture.md` — without consulting git. So it reported `node_modules` to every
+JS product, `target/` to every Rust one, and any local scratch directory to everybody, permanently,
+with no remedy but documenting something that should not be documented. A permanent advisory is a
+silenced one. It now skips git-**ignored** directories, batched into one `check-ignore` call and only
+when there is something to ask about, so the session-start hot path pays nothing on a clean repo. No
+language list is involved: git decides, per repo, from that repo's own ignore rules — a Zig project
+ignoring `zig-out/` or a WASM one ignoring `pkg/` is handled without prawduct knowing either exists.
+A tracked, unmentioned directory is still reported, which is the counter-case the tests pin.
+
 **Tests:** new `tests/test_record_lint.py` (including the `verify-records` CLI contract — exit 0 with
 findings, exit 1 on could-not-run, `--json` compared field-for-field against the manifest block) and
 `tests/preferences/test_no_suite_total_claims.py`, plus `TestRecordLintInManifest` in
