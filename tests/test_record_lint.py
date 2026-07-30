@@ -874,3 +874,34 @@ class TestLearningsEntryShape:
             _lint(repo, [".prawduct/learnings.md"], base, head),
             "learnings-entry-shape",
         )
+
+
+class TestEveryCheckCarriesASeverity:
+    """`CHECKS` and the reviewer-facing severity surfaces cannot drift apart.
+
+    A check that fires with no documented severity leaves the Goal-2 reviewer —
+    told to "raise them at the severities given there" — to invent one or drop
+    the finding. `learnings-entry-shape` shipped in exactly that state and all
+    three coordinator reviewers found it independently, which is the signal that
+    nothing pinned the relationship.
+    """
+
+    SURFACES = (
+        "plugin/skills/critic/review-cycle.md",
+        "plugin/skills/critic/goals-1-3.md",
+        ".prawduct/cross-cutting-concerns.md",
+    )
+
+    def test_every_check_name_appears_on_every_reviewer_surface(self):
+        import sys
+        root = Path(__file__).resolve().parent.parent
+        sys.path.insert(0, str(root / "plugin"))
+        from lib.record_lint import CHECKS
+
+        for rel in self.SURFACES:
+            text = (root / rel).read_text()
+            missing = [c for c in CHECKS if c not in text]
+            assert not missing, (
+                f"{rel} documents no severity for {missing} — a reviewer meets "
+                "the finding with no verdict. Add a row, or remove the check."
+            )

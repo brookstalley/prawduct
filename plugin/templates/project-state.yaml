@@ -258,9 +258,12 @@ build_state:
 # roster derivation, which gives a diff touching any of them the deeper
 # three-reviewer review at any size.
 #
-# **Declaring this opts you into the risk-keyed roster.** Leave it unset and
-# reviews keep the older file-count rule (a coordinator at 5+ changed files),
-# which is the conservative default — prawduct will not silently review your
+# **Declaring this opts you into the risk-keyed roster.** Leave it unset and you
+# are never reviewed less than before: prawduct's framework-shaped defaults
+# (`skills/`, `lib/gates*`, `bin/*hook*`, plus any contract paths you list in
+# boundary-patterns.md) still escalate, and below those the older file-count rule
+# stands (a coordinator at 5+ changed files). Declaring your own surfaces is what
+# raises the size threshold to 12 judgeable files — prawduct will not review your
 # high-risk changes more cheaply just because they are small.
 #
 # Pattern semantics: a trailing `/` is a directory prefix; anything else is an

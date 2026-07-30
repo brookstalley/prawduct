@@ -33,10 +33,10 @@ before the advisory fires again, which is how the last two passes ended.
 
 **`record_lint` gains `learnings-entry-shape`**, the per-entry half a one-time sweep structurally
 cannot provide: an added `learnings.md` heading over 400 characters is carrying its evidence, and an
-added narrative line belongs in detail. Added lines only, so the 19 over-long rules left standing
+added narrative line belongs in detail. Added lines only, so the over-long rules left standing
 are grandfathered and cost nothing until someone edits them — which is the moment the guidance is
 actionable. Measured yield on the pre-compaction file: **20 over-long rules and 285 narrative
-lines**. The threshold is sized against the corpus (median 181, p90 429), not invented. The file's
+lines**. The threshold is sized against the corpus (median 181, p90 433), not invented. The file's
 own preamble is excluded, because a check that reports the paragraph explaining the format as a
 violation of the format is a check nobody keeps.
 

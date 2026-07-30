@@ -333,8 +333,12 @@ blocking findings it would have sent to a single reviewer:
 | **risk-surface OR judgeable ≥ 12** | 78% | 1 (3%) |
 | gate-kernel OR judgeable ≥ 12 | 52% | 8 (23%) |
 
-**Recomputable:** `python3 tests/spikes/roster_rule_replay.py` regenerates every row above from this
-clone's evidence store.
+**Recomputable — and the table is a dated snapshot, not a standing fact.** `python3
+tests/spikes/roster_rule_replay.py` regenerates every row from this clone's evidence store. The
+figures above were taken 2026-07-30 over 82 `final`/`cumulative` facts carrying 35 blocking
+findings; the store is append-only, so every later review shifts them (this chunk's own reviews
+already did). **The invariant the decision rests on is the ordering of the rows, which no
+single review changes — read the script's output for current values, never these.**
 
 *"Demoted" scores every rule identically — blocking findings in reviews the rule would send
 single-pass — which is what makes the rows comparable. It is an upper bound on loss: a single

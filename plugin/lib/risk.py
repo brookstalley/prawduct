@@ -202,8 +202,14 @@ def has_product_risk_declaration(prawduct_dir: Path) -> bool:
     declaration would fall through to whatever its no-risk branch does.
     """
     declared = _read_list_yaml_key(prawduct_dir / "project-state.yaml", "risk_surfaces")
-    if declared:
-        return True
+    if declared is not None:
+        # A present key is EXCLUSIVE in :func:`resolve_surfaces`, so it must be
+        # exclusive here too. Falling through to boundary-patterns on a declared
+        # -empty list returns "has a signal" for a repo whose surface set is
+        # `[]` — the predicate can then never fire, and the conservative
+        # fallback is skipped, leaving judgeable-volume alone: the rule the
+        # replay rejected, reached by accident rather than by decision.
+        return bool(declared)
     return bool(_boundary_pattern_paths(prawduct_dir))
 
 

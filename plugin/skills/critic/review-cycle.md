@@ -44,10 +44,13 @@ See `methodology/planning.md` "Critic Mode Per Chunk" for the authoring heuristi
 | **When invoked** | Between chunks of a multi-chunk plan, before committing | End of work cycle (last chunk), non-chunked medium+ work, or any time the right answer is unclear | Before opening a PR (gated by `/prawduct:pr create`). Catches cross-chunk integration cracks. | After fixing prior BLOCKING/WARNING findings — its resolution facts unblock the same evidence, and its review fact extends coverage over the fix delta. Demotes to `chunk`/`final` when no usable prior fact exists or scope widens past the threshold. |
 
 **Risk surface** = a changed path matching this repo's `risk_surfaces:` in `project-state.yaml` — the
-same predicate `prawduct-hook classify-diff-risk` reports as the review tier (`lib/risk.py`). A repo
-that declares none keeps the older rule instead (coordinator at 5+ changed files): "no surface
-matched" and "this repo never had a risk signal" are indistinguishable at the match site, and
-defaulting the second to a cheaper review is the unsafe direction. Declaring the list is the opt-in.
+same predicate `prawduct-hook classify-diff-risk` reports as the review tier (`lib/risk.py`). A repo that declares none is
+never reviewed *less* than before: the framework-shaped derived defaults (`skills/`, `lib/gates*`,
+`bin/*hook*`, plus contract paths in `boundary-patterns.md`) still escalate, and below that the older
+rule stands (coordinator at 5+ changed files). Declaring the list is what opts a repo into the
+judgeable-12 threshold — because "no surface matched" and "this repo never had a risk signal" are
+indistinguishable at the match site, and defaulting the second to a cheaper review is the unsafe
+direction.
 
 **Two-form rule for the `mode` value:**
 - **Caller-side** (in `$ARGUMENTS`, build plan field `Critic mode:`, slash-command argument, `critic-begin --mode`): the short token — `chunk`, `final`, `cumulative`, or `verify-resolutions`.
@@ -303,6 +306,7 @@ history in it reports on the entry just written and nothing else. Severity per c
 | `chunk-ref-missing` | A deliverable the reviewed chunk *declares* does not exist | **BLOCKING** |
 | `governed-by-gap` | A plan disposes of fewer norms than the cited artifact's `## Direction` carries, or cites an artifact that does not exist | **WARNING** (Goal 2 — the paperwork arm below) |
 | `suite-total-claim` | A suite-total test claim in durable prose — the store already records pass/fail per tree | **NOTE** |
+| `learnings-entry-shape` | A `learnings.md` entry carrying its evidence (rule over 400 chars) or a narrative body — both belong in `learnings-detail.md` | **NOTE** |
 
 **Under the coordinator pattern, whoever holds Goal 2 raises every one of these** — including the
 `suite-total-claim` NOTE, which would otherwise sit in Goal 4. The manifest is named in Goal 2 and

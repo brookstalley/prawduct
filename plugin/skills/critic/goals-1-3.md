@@ -38,7 +38,8 @@ not recount what it counted; re-deriving a machine-checked number is how a recor
 review round. `chunk-ref-missing` (a deliverable the reviewed chunk declares does not exist) →
 **BLOCKING**. `governed-by-gap` (a plan disposes of fewer norms than a cited artifact's `## Direction`
 carries, or cites an artifact that does not exist) → **WARNING** under Goal 2. `suite-total-claim` (a
-suite-total test count in durable prose) → **NOTE**. **`unchecked` is not a pass**: each entry names a
+suite-total test count in durable prose) → **NOTE**. `learnings-entry-shape` (a `learnings.md`
+rule over 400 chars, or a narrative body — both belong in the detail file) → **NOTE**. **`unchecked` is not a pass**: each entry names a
 check that could not run. A `chunk-ref-missing` entry is **BLOCKING** — a deliverable check that could
 not run is indistinguishable from one that passed. Every other entry is a **NOTE** you must still
 state in your summary. `chunk_graded` names whose deliverables were checked; `null` means none were.

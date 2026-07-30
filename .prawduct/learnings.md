@@ -187,6 +187,7 @@ Active rules from this project's development. Surfaced via the `/learnings [topi
 ## Denormalized state drifts without mechanical validation
 
 ## Coherence cascades require checking summaries, not just primary locations
+<!-- prawduct-learning: confirmations=2; created=2026-01-30 -->
 
 ## Escape hatches in classification create silent failures
 
@@ -207,6 +208,7 @@ Active rules from this project's development. Surfaced via the `/learnings [topi
 ## Shared "answer" state and personal "nag" state belong in separate stores
 
 ## Framework ownership follows the write strategy, not just registry membership
+<!-- prawduct-learning: confirmations=1; created=2026-05-19; sentinel=tests/test_prawduct_sync.py::TestAutoCommitSafety::test_user_authored_place_once_edits_treated_as_wip -->
 
 ## A leftover marker is not an in-progress signal — and a test using the canonical marker leaves the real-world branch untested
 
@@ -217,6 +219,7 @@ Active rules from this project's development. Surfaced via the `/learnings [topi
 ## Verify the platform's copy/packaging boundary before duplicating a shared bundled file — a prior "duplicate into each consumer" choice may be an unverified-constraint workaround
 
 ## A plugin skill with unparseable YAML frontmatter loads with ALL metadata silently dropped — validate it in CI
+<!-- prawduct-learning: confirmations=1; created=2026-06-02; sentinel=tests/test_plugin_manifest.py::TestAllPluginSkillFrontmatter -->
 
 ## Dogfooding the generator on its own output masks output-relative bugs the real consumer would hit
 

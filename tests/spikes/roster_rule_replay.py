@@ -45,6 +45,19 @@ from lib import coverage_algebra as ca  # noqa: E402
 from lib import critic_consolidate as cc  # noqa: E402
 
 
+#: The gate kernel — the row the plan's table scores as an alternative to the
+#: shipped rule. Named by module rather than by risk surface, because that row
+#: asks a narrower question than `risk_surfaces:` does.
+_KERNEL = (
+    "gates.py", "coverage_algebra.py", "critic_consolidate.py",
+    "evidence.py", "ledger.py", "risk.py", "coverage.py",
+)
+
+
+def _touches_kernel(files: "list[str]") -> bool:
+    return any(f.endswith(k) for f in files for k in _KERNEL)
+
+
 def _store() -> Path:
     common = subprocess.check_output(
         ["git", "rev-parse", "--git-common-dir"], cwd=REPO, text=True
@@ -71,10 +84,12 @@ def _reviews(store: Path):
                 (f.get("severity") or "").lower() for f in (body.get("findings") or [])
             )
             # Production derives the roster from files_CHANGED
-            # (critic_consolidate.begin_review), so score the same list. The two
-            # are element-identical across all 82 final/cumulative facts today
-            # but diverge in 160 of 276 facts overall, so the equivalence is a
-            # property of the current data, not of the schema.
+            # (critic_consolidate.begin_review), so score the same list. They are
+            # element-identical across every final/cumulative fact measured so
+            # far and divergent in a majority of verify-resolutions facts, so the
+            # equivalence is a property of the data rather than of the schema —
+            # which is why this reads what production reads instead of relying
+            # on it.
             files = body.get("files_changed") or body.get("files_reviewed") or []
             yield {
                 "files": files,
@@ -104,6 +119,8 @@ def main() -> int:
         "total files >= 5 (pre-2026-07-30)": lambda r: r["n"] >= cc.COORDINATOR_FILE_THRESHOLD,
         "judgeable >= 12 (rejected)": lambda r: r["nj"] >= cc.COORDINATOR_JUDGEABLE_THRESHOLD,
         "judgeable >= 5 (rejected)": lambda r: r["nj"] >= 5,
+        "gate-kernel OR judgeable >= 12": lambda r: _touches_kernel(r["files"])
+        or r["nj"] >= cc.COORDINATOR_JUDGEABLE_THRESHOLD,
         "SHIPPED (_derive_roster)": lambda r: len(
             cc._derive_roster("final", r["files"], prawduct_dir)[0]
         ) == 3,

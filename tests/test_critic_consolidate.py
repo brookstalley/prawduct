@@ -1199,6 +1199,23 @@ class TestRosterKeyedToRiskSurface:
         (prawduct_dir / "project-state.yaml").write_text("risk_surfaces: []\n")
 
         assert risk_mod.has_product_risk_declaration(prawduct_dir) is False
+
+        # …and it stays False even with a FILLED boundary-patterns.md. A present
+        # `risk_surfaces:` key is exclusive in resolve_surfaces, so if this fell
+        # through to boundary paths the repo would report "has a signal" while
+        # its surface set is empty — the predicate could never fire, the
+        # conservative fallback would be skipped, and judgeable-volume alone
+        # would decide. That is the rejected rule reached by accident.
+        (prawduct_dir / "artifacts").mkdir(exist_ok=True)
+        (prawduct_dir / "artifacts" / "boundary-patterns.md").write_text(
+            "The shared contract is `src/api/contract.py`.\n"
+        )
+        assert risk_mod.has_product_risk_declaration(prawduct_dir) is False
+        roster_again, why_again = cc._derive_roster(
+            "final", [f"src/m{i}.py" for i in range(6)], prawduct_dir
+        )
+        assert roster_again == ["correctness", "design", "sustainability"], why_again
+        assert "prior rule retained" in why_again
         # …while resolve_surfaces still treats it as an exclusive declaration.
         surfaces, source = risk_mod.resolve_surfaces(prawduct_dir)
         assert surfaces == [] and source == risk_mod.SOURCE_DECLARED

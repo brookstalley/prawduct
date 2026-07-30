@@ -275,7 +275,7 @@ def _check_suite_totals(path: str, added: "list[tuple[int, str]]") -> list[dict]
 #: `learnings.md` holds the RULE; `learnings-detail.md` holds the narrative.
 #: A rule longer than this is carrying its evidence, which belongs in detail.
 #: Sized against the corpus after the 2026-07-30 compaction, not invented:
-#: median heading 181 chars, p90 429. So this flags the tail, not the norm.
+#: median heading 181 chars, p90 433. So this flags the tail, not the norm.
 _LEARNINGS_RULE_MAX = 400
 
 _LEARNINGS_REL = "learnings.md"

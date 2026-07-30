@@ -42,8 +42,8 @@ def estimate_tokens(text: str) -> int:
 #: lives here, where a wrong number fails instead of misleading.
 LAST_MEASURED_TOKENS = {
     "methodology/building.md": 4652,
-    "skills/critic/review-protocol.md": 3614,
-    "skills/critic/goals-1-3.md": 1875,
+    "skills/critic/review-protocol.md": 3616,
+    "skills/critic/goals-1-3.md": 1901,
 }
 
 
@@ -569,6 +569,12 @@ class TestCriticGoals13:
         # review-protocol.md carries: the next addition trims or relocates, it
         # does not bump. A check that belongs to goals 1-3 arriving here is
         # funded by compressing prose in this file, never by dropping a check.
+        # 2026-07-30: +26 for `learnings-entry-shape`'s severity, which the
+        # check shipped without — a reviewer told to "raise them at the
+        # severities given there" met a finding class with no verdict, and all
+        # three coordinator reviewers found it independently. Paid from
+        # headroom rather than a trim: the file is 99 under its ceiling and the
+        # alternative was a check that cannot be graded. 1875 -> 1901.
         tokens = estimate_tokens(self.content)
         assert tokens < 2000, f"goals-1-3.md is ~{tokens} tokens, should be <2000"
 
