@@ -36,7 +36,9 @@ cannot provide: an added `learnings.md` heading over 400 characters is carrying 
 added narrative line belongs in detail. Added lines only, so the over-long rules left standing
 are grandfathered and cost nothing until someone edits them — which is the moment the guidance is
 actionable. Measured yield on the pre-compaction file: **20 over-long rules and 285 narrative
-lines**. The threshold is sized against the corpus (median 181, p90 433), not invented. The file's
+lines**. The threshold is sized above the corpus's p90 rather than invented; the percentile itself is
+deliberately not quoted here, because it moves with every entry edited and two attempts to state it
+shipped a wrong number. The file's
 own preamble is excluded, because a check that reports the paragraph explaining the format as a
 violation of the format is a check nobody keeps.
 
@@ -50,6 +52,10 @@ a figure a mechanism can own.** The narratives stay, because they record *why* a
 affordable and no test can carry that; the reading moves to one place where drift fails loudly and
 the failure message hands you the number to write.
 
+**Reversed on 2026-07-30, on owner request — see the amendment note below.** The paragraph that
+follows was written before that decision changed, and is kept because its reasoning still holds for
+why the rule was placed where it was rather than restated in `learnings.md`.
+
 **Deliberately not added: another rule about verifying figures.** `learnings.md` already carries it,
 filed 2026-07-29 — *"write the derivation command into the document instead of the figure"* and
 *"when you correct an inherited number, recount the SET and not just the count."* Both were violated
@@ -57,6 +63,15 @@ the following day by the author who had read them. The gap was never authorship;
 consulted by topic lookup cannot fire on a rule you do not know to look up. Making it loadable is
 this entry's contribution to that problem, and a third restatement would have been the one-way
 ratchet the proportionality norm exists to stop.
+
+**Amendment, same day, on owner observation.** `learnings.md` is project-scoped — an onboarded
+product inherits none of it — so the rules cited above reach nobody but this repo. One line
+therefore landed in `plugin/methodology/session-digest.md`, injected into every product session and
+the only inherited surface guaranteed to be in context at the moment of writing: prefer an
+invariant to a tally, and where a number is genuinely essential, compute it as you write it and let
+a mechanism own it where one can. The reasoning above is unchanged — a *restatement* in
+`learnings.md` would have been the ratchet; an inherited rule where there was none is a different
+act, and this session's own count of wrong figures is the evidence for it.
 
 ## 2026-07-30: Review depth is a risk question, and the file count was answering a different one
 

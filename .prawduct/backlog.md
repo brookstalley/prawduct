@@ -7,14 +7,24 @@
 
 ## Open
 
-- **[CRT-2D7X]** A BLOCKING-severity Critic check is structurally unrunnable — `verify-coverage` is mandated by Goal 1 and granted by neither the skill nor the reviewer agent
+- **[CRT-2D7X]** A BLOCKING-severity Critic check is ungranted on both paths and structurally unrunnable on one — `verify-coverage` is mandated by Goal 1, absent from the skill's allow-list, and absent entirely from the reviewer agent's `tools`
   `effort: S · impact: M · area: critic · kind: bug · source: critic · added: 2026-07-30 · status: open · stage: design · related: CRT-3X9D, CRT-5W3P · refs: plugin/skills/critic/review-protocol.md:63 and plugin/skills/critic/goals-1-3.md:58 (§ Symbol coverage — "run `prawduct-hook verify-coverage`", graded **BLOCKING per missing file**, "must not be softened"), plugin/skills/critic/goals-1-3.md:19 (the newly-mandatory pre-review step — "Run `prawduct-hook test-status` and `prawduct-hook verify-coverage` (Goal 1). Nothing else executes."), plugin/skills/critic/SKILL.md:6 (`allowed-tools` — grants `test-status`, `infer-critic-mode`, `resolve-base`, `classify-diff-risk`, `critic-begin`, `critic-consolidate`, `critic-end`, `evidence`; **no `verify-coverage`**), plugin/agents/critic-reviewer.md:4 (`tools` — read-only file/search/git + `Write`; **no `prawduct-hook` at all**), tests/test_critic_skill_metadata.py:79 (`test_verify_chunk_refs_grant_is_retired` — the converse direction, pinned), .prawduct/cross-cutting-concerns.md:36 (the row recording the `verify-chunk-refs` grant retirement — the first instance of this class)`
 
   **Verified against the tree 2026-07-30.** `goals-1-3.md:19` makes `verify-coverage` a mandatory pre-review step and `:58` grades its output **BLOCKING per missing file**, with the wording explicitly not to be softened. Neither surface that would run it can: `SKILL.md`'s `allowed-tools` enumerates eight `prawduct-hook` subcommands and `verify-coverage` is not among them, and `critic-reviewer.md`'s `tools` list — which, unlike a skill's `allowed-tools`, **genuinely binds** a dispatched subagent — carries no `prawduct-hook` entry whatsoever. So on the coordinator path the check can never run, and on the single-pass fork path it is not granted either.
 
   **Why this is a design call and not a typo.** The two fixes point opposite ways. *Granting* the command widens a surface that was deliberately restricted to no-execution (**CRT-3X9D**) — `verify-coverage` reads evidence rather than running a suite, so it is arguably in-posture, but that is exactly the argument that must be made explicitly rather than assumed. *Demoting* the instruction keeps the surface narrow but removes a BLOCKING check from Goal 1, which is a real loss of coverage. Record the reasoning either way.
 
-  **This is the second instance, so the fix wants the general form.** The bundle that surfaced it added `test_verify_chunk_refs_grant_is_retired` — pinning that a *retired* command is absent — while leaving the converse unpinned. Whatever lands should assert that **every command an instruction surface mandates is present in the grant lists**, so a third instance is impossible rather than merely unlikely. (critic — `rev-20260730T200123Z-1a9cce53`)
+  **Narrowed by observation, 2026-07-30, hours after filing.** A single-pass Critic fork *did* run
+`verify-coverage` successfully (exit 0, "skipped: coverage_required is false") despite its absence
+from `SKILL.md`'s `allowed-tools` — consistent with that file's own caveat that frontmatter
+enforcement is not reliable. So the fork path is **ungranted but not blocked**, while the
+`critic-reviewer` subagent path — whose `tools:` list has no `prawduct-hook` entry at all — is
+**structurally blocked**, and that is the coordinator path every `final`/`cumulative` review takes
+at scale. The defect is real and the severity is unchanged; the mechanism is narrower than filed,
+and a fix that only edits `SKILL.md` would close the half that was never broken. Recorded because
+an unnarrowed claim sends the next picker to verify the wrong surface.
+
+**This is the second instance, so the fix wants the general form.** The bundle that surfaced it added `test_verify_chunk_refs_grant_is_retired` — pinning that a *retired* command is absent — while leaving the converse unpinned. Whatever lands should assert that **every command an instruction surface mandates is present in the grant lists**, so a third instance is impossible rather than merely unlikely. (critic — `rev-20260730T200123Z-1a9cce53`)
 
 - **[CRT-5W3P]** The two fastest-growing reviewer payload files carry no token budget — `SKILL.md` +16% and `review-cycle.md` +14% in the bundle that ratified payload as a P0 wall-clock lever
   `effort: S · impact: M · area: critic · kind: test-gap · source: critic · added: 2026-07-30 · status: open · stage: ready · related: CRT-2D7X, CRT-4J8W · refs: tests/test_v5_methodology.py:43-50 (`LAST_MEASURED_TOKENS` — the drift-detection table added this session; currently `methodology/building.md` 4652, `skills/critic/review-protocol.md` 3616, `skills/critic/goals-1-3.md` 1901), tests/test_v5_methodology.py:187 and :453 (the two `test_token_budget` ceilings), plugin/skills/critic/SKILL.md (**unbudgeted** — 10,761 → 12,525 bytes on this branch, +16.4%), plugin/skills/critic/review-cycle.md (**unbudgeted** — 31,537 → 36,088 bytes, +14.4%)`

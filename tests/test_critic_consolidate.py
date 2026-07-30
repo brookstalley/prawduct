@@ -1226,6 +1226,41 @@ class TestRosterKeyedToRiskSurface:
         assert roster == ["correctness", "design", "sustainability"], why
         assert "prior rule retained" in why
 
+    def test_a_documented_contract_surface_is_not_consent_to_less_review(self, tmp_path):
+        """`boundary-patterns.md` escalates but can never relax.
+
+        `discovery.md` asks every contract-bearing product to fill that file. If
+        those paths counted as a risk declaration, merely documenting your API
+        would opt you into the 12-judgeable threshold and skip the conservative
+        fallback — so a 6-file diff touching no contract path would go from
+        coordinator to single-pass, silently, while four instruction surfaces
+        promise an undeclared repo is never reviewed less than before.
+
+        Escalating is a safe inference from a documented contract; relaxing is
+        not. The paths still feed resolve_surfaces, so they still escalate.
+        """
+        prawduct_dir = tmp_path / ".prawduct"
+        (prawduct_dir / "artifacts").mkdir(parents=True, exist_ok=True)
+        (prawduct_dir / "artifacts" / "boundary-patterns.md").write_text(
+            "The shared shape is `src/api/contract.py`.\n"
+        )
+        import sys
+        sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "plugin"))
+        from lib import risk as risk_mod
+
+        assert risk_mod.has_product_risk_declaration(prawduct_dir) is False
+        roster, why = cc._derive_roster(
+            "final", [f"src/m{i}.py" for i in range(6)], prawduct_dir
+        )
+        assert roster == ["correctness", "design", "sustainability"], why
+        assert "prior rule retained" in why
+
+        # …but the documented contract path still ESCALATES at any size.
+        hot, why_hot = cc._derive_roster(
+            "final", ["src/api/contract.py"], prawduct_dir
+        )
+        assert hot == ["correctness", "design", "sustainability"], why_hot
+
     def test_declaring_surfaces_opts_into_the_risk_keyed_rule(self, tmp_path):
         """The same 6-file diff reviews single-pass once the repo has said where
         its risk lives — the saving is bought by the declaration, not assumed."""

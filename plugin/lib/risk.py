@@ -201,16 +201,21 @@ def has_product_risk_declaration(prawduct_dir: Path) -> bool:
     the risk predicate off permanently, and a consumer that treated it as a
     declaration would fall through to whatever its no-risk branch does.
     """
+    # Only the explicit key. Absent -> None -> False; declared-empty -> [] ->
+    # False (a present key is EXCLUSIVE in :func:`resolve_surfaces`, so it must
+    # be exclusive here); a non-empty list -> True.
+    #
+    # A filled `boundary-patterns.md` deliberately does NOT count, though it
+    # still feeds :func:`resolve_surfaces` and can still ESCALATE. Those paths
+    # are a product documenting its contract surfaces — `discovery.md` asks
+    # every contract-bearing product to write them — which says nothing about
+    # how much review depth it wants. Counting them as consent let a repo that
+    # had merely documented its API skip the conservative fallback and be
+    # reviewed *less* than before, silently, while every instruction surface
+    # promised the opposite. Escalating is a safe inference from a documented
+    # contract; relaxing is not.
     declared = _read_list_yaml_key(prawduct_dir / "project-state.yaml", "risk_surfaces")
-    if declared is not None:
-        # A present key is EXCLUSIVE in :func:`resolve_surfaces`, so it must be
-        # exclusive here too. Falling through to boundary-patterns on a declared
-        # -empty list returns "has a signal" for a repo whose surface set is
-        # `[]` — the predicate can then never fire, and the conservative
-        # fallback is skipped, leaving judgeable-volume alone: the rule the
-        # replay rejected, reached by accident rather than by decision.
-        return bool(declared)
-    return bool(_boundary_pattern_paths(prawduct_dir))
+    return bool(declared)
 
 
 def surface_matches(

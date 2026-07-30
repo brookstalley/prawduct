@@ -95,7 +95,8 @@ additionally grew an advisory duplicate-finding grouping path (CRT-R4Z2's report
 view that `regen-views` regenerates from the change-log tag at release). `record_lint.py` +
 `verify-records`, wired into `critic-begin`'s manifest and carried into the review fact.
 
-**Three checks shipped, and two were built then deleted.** `dangling-ref` and `unknown-backlog-id`
+**Three checks shipped in this chunk, two were built then deleted, and a fourth
+(`learnings-entry-shape`) was added later on this branch outside every chunk's scope.** `dangling-ref` and `unknown-backlog-id`
 measured **0 true positives** on the 40-file branch that introduced them — `dangling-ref`'s only
 three hits were prose that is path-shaped and not a path. Removing them is the proportionality norm
 working as designed rather than an omission, and the reason is recorded at the mechanism
