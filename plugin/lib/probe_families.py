@@ -42,6 +42,7 @@ def register_all() -> None:
     from .upstream_probes import register as register_upstream
     from .api_versioning_probes import register as register_api_versioning
     from .gitignore_probes import register as register_gitignore
+    from .install_reference_probes import register as register_install_reference
     from .norm_probes import register as register_norm
     from .coverage_probes import register as register_coverage
     from .stale_base_probes import register as register_stale_base
@@ -50,6 +51,7 @@ def register_all() -> None:
     register_upstream()  # upstream-bug-reporting receiving-side probe
     register_api_versioning()  # api-design versioning-undecided migration nudge
     register_gitignore()  # session-file .gitignore contract-drift nudge
+    register_install_reference()  # committed install-reference (ref/autoUpdate) drift nudge
     register_norm()  # norm-lifecycle time-domain probes (docs/norms.md § Enforcement)
     register_coverage()  # structural-coverage strategy-class artifact probe
     register_stale_base()  # stale remote-base / unpromoted-release-prep nudge (COV-7K4N)

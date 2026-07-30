@@ -168,6 +168,57 @@ def claude_anchor_pending(project_dir: Path) -> bool:
     return block is not None or ANCHOR_SENTINEL not in content
 
 
+def install_reference_drift(project_dir: str | Path) -> dict:
+    """Report how a repo's committed install reference departs from the contract.
+
+    The contract is :data:`INSTALL_REFERENCE` itself — read, never transcribed —
+    so this check cannot outlive a change to the value prawduct writes (the same
+    single-source property :func:`lib.core.gitignore_contract_drift` gives the
+    ``.gitignore`` contract).
+
+    Scope is deliberately narrow: it answers "does the *present* entry disagree
+    with the contract", not "is an entry present at all." A repo with no
+    ``extraKnownMarketplaces.prawduct`` entry reports ``present: False`` and no
+    drift — that absence is `/prawduct:doctor` Health Check #1's finding, and a
+    probe firing on it would nag every repo that has not onboarded yet.
+
+    Returns ``{"present": bool, "drifted": [{"field", "expected", "actual"}, ...]}``.
+    Unreadable or malformed settings report ``present: False`` — an unparseable
+    file is not evidence of drift, and guessing at one is how a nudge earns its
+    dismissal.
+    """
+    path = Path(project_dir) / ".claude" / "settings.json"
+    if not path.is_file():
+        return {"present": False, "drifted": []}
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {"present": False, "drifted": []}
+    if not isinstance(data, dict):
+        return {"present": False, "drifted": []}
+
+    entry = data.get("extraKnownMarketplaces")
+    entry = entry.get("prawduct") if isinstance(entry, dict) else None
+    if not isinstance(entry, dict):
+        return {"present": False, "drifted": []}
+
+    contract = INSTALL_REFERENCE["extraKnownMarketplaces"]["prawduct"]
+    drifted: list[dict] = []
+
+    expected_ref = contract["source"]["ref"]
+    source = entry.get("source")
+    actual_ref = source.get("ref") if isinstance(source, dict) else None
+    if actual_ref != expected_ref:
+        drifted.append({"field": "source.ref", "expected": expected_ref, "actual": actual_ref})
+
+    expected_auto = contract["autoUpdate"]
+    actual_auto = entry.get("autoUpdate")
+    if actual_auto != expected_auto:
+        drifted.append({"field": "autoUpdate", "expected": expected_auto, "actual": actual_auto})
+
+    return {"present": True, "drifted": drifted}
+
+
 # =============================================================================
 # Edit-in-place transforms (each returns True iff it changed the file)
 # =============================================================================
