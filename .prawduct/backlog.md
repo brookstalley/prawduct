@@ -7,6 +7,80 @@
 
 ## Open
 
+- **[LNG-5W8R]** Uplevel the compliance canary: retire the two checks that re-implement a linter, extend the one factual table, and make what remains measurable — prawduct should judge whether the right tools are applied, not re-derive their rules per language
+  `effort: M · impact: L · area: compliance · kind: task · source: owner · added: 2026-07-29 · reviewed: 2026-07-29 · status: open · stage: ready · related: COV-3M8Q · refs: plugin/lib/compliance.py (`compliance_canary` and its four checks; `_check_broad_exceptions`; `_is_test_file`; `_is_dependency_file`), plugin/bin/prawduct-hook (`_compliance`, the stop-hook call site), plugin/skills/critic/review-protocol.md (the broad-exception WARNING that already owns this judgment), .prawduct/artifacts/project-preferences.md (Enforcement: "Error handling" is already assigned to Critic)`
+  <!-- refs are NAME-anchored, not line-anchored, per the CRT-R4Z2 convention. -->
+
+  Tracking item for both `architecture.md` § Direction norms born 2026-07-29 (per-file language
+  dispatch, and delegation to native tooling), each `Status: in-transition`.
+
+  **Inventory, 2026-07-29** (verified by reading, not inherited). `gates.py` and `coverage_algebra.py`
+  carry **no language literals at all** — the coverage/free-edge machinery is path-based and already
+  compliant. `compliance.py` holds every violation, across four checks with different characters:
+
+  | # | Check | Language dependency | Behaviour off Python/JS |
+  |---|---|---|---|
+  | 1 | source changed, no tests | `_is_test_file` | **false positive** — `FooTests.swift` unrecognized, nags every session |
+  | 2 | dep file changed, manifest didn't | `_is_dependency_file` | fail-open (silent miss) |
+  | 3 | broad exception handling | `patterns` dict | fail-open (silent miss) |
+  | 4 | reason-less waiver pragma | none | correct |
+
+  **Disposition — retire two, keep two.**
+  - **Check 3 → delete, do not extend.** It re-implements what ruff (`E722`/`BLE001`), clippy,
+    SwiftLint, Roslyn analyzers and clang-tidy already do properly, and the *judgment* half is
+    already owned twice over: `review-protocol.md` makes it a WARNING including whether a waiver's
+    reason is genuine, and the preferences Enforcement table assigns "Error handling" to **Critic**.
+    Its Python refinement (skip if the block re-raises or logs within 3 lines) is judgment
+    approximated by an arbitrary window, and for Rust the concept does not map at all — no
+    exceptions; the analogue is `unwrap()`/`expect()`, whose acceptability is contextual.
+  - **Check 1 → delete.** Owner: "useless." Critic Goal 1 already covers test-coverage adequacy, and
+    the classifier gap makes it a noise generator on any non-Python/JS repo.
+  - **Check 2 → keep, extend the table.** Purely factual — did `Package.swift` change while
+    `dependency-manifest.md` did not — with no judgment in it. Add `Package.swift`, `*.csproj`/`*.sln`,
+    `CMakeLists.txt`.
+  - **Check 4 → keep.** Mechanical and already language-agnostic.
+
+  **Nothing replaces what is retired, because the machinery already exists.** `discovery.md:186`
+  already captures testing/tooling preferences into `project-preferences.md`; the Enforcement table
+  already assigns each preference to Test/Linter/Critic; an unimplemented requirement is already a
+  blocking Goal 2 finding. A repo whose requirements name SwiftLint and which ships without
+  `.swiftlint.yml` is caught today. **Prawduct writes none of it** — the Critic raises the finding,
+  the main agent implements (owner ruling 2026-07-29: prawduct guides and reviews, never implements).
+  A large existing project adopting prawduct with no linter configured *should* take a blocking
+  finding; that is the framework working, not a hostile onboarding.
+
+  **The one real gap is upstream, in discovery.** `discovery.md` says to capture "testing, tooling,
+  code style" preferences generally; it does not say *for each ecosystem present, name its standard
+  checker*. A discovery pass on an iOS app can capture "XCTest" and never surface SwiftLint — and
+  with no captured requirement there is nothing for Goal 2 to block on. Make the toolchain question
+  ecosystem-driven, and the rest of the chain already works.
+
+  **Sequencing — configure ruff for prawduct BEFORE deleting check 3, or the check is simply lost.**
+  The Enforcement table's Linter row reads `(none configured for prawduct)`, which is the root cause
+  of this whole item: the framework named the right tool, declined to adopt it, and hand-rolled a
+  worse one. `E722`/`BLE001` cover what `_check_broad_exceptions` was approximating.
+
+  **The measurability defect, which outlives all four checks.** Canary findings are returned as
+  strings, printed into the session briefing, and **never persisted** — no `CANARY:` text and no
+  canary event kind appears anywhere in `.governance-ledger.jsonl`. So the control cannot be assessed
+  by the proportionality norm that is supposed to govern it: it can never be retired on evidence,
+  only defended on principle. Whatever survives this item must emit a ledger fact.
+
+  **Acceptance**
+  - [ ] Checks 1 and 3 removed, with the Critic surface confirmed to cover the judgment (no silent loss).
+  - [ ] Check 2's manifest table covers Swift, C#, C.
+  - [ ] ruff configured for prawduct itself, and the Enforcement table's Linter row no longer reads `(none configured)`.
+  - [ ] Checks 1 and 3 removed **after** ruff lands, with the covering surface named for each (no silent loss).
+  - [ ] Check 2's manifest table covers Swift, C#, C.
+  - [ ] Surviving canary findings emit a ledger fact so yield is queryable.
+  - [ ] `discovery.md` makes the toolchain question ecosystem-driven, so the requirement exists for Goal 2 to enforce.
+  - [ ] No language's *syntax* is encoded anywhere in prawduct.
+
+  **Scope-out:** prawduct writing any product code, config, or tooling — including `ruff.toml` in a
+  governed repo (the main agent writes it, prompted by a requirement and a Critic finding); running
+  any linter (O(repo), and the no-execution reviewer invariant forbids it); writing a parser or
+  syntax-pattern table for any language.
+
 - **[CRT-8L3Q]** The ledger anchor's residual **overlap** window needs a **lock**, not just a probe — `review_event_exists` is read-then-write, so two consolidations can both probe before either appends
   `effort: M · impact: M · area: critic · kind: bug · source: critic · added: 2026-07-29 · reviewed: 2026-07-29 · status: open · stage: ready · related: CRT-6Q2N, CRT-4B7X, TEL-6P2D · refs: plugin/lib/critic_consolidate.py (`consolidate` — the manifest-existence gate, and the anchor probe with the comment naming both paths), plugin/lib/ledger.py (`review_event_exists` — the probe, whose docstring already records this exact residual), plugin/lib/telemetry.py (`aggregate_review_stats` — one row per event, `events_total: len(rows)`, no dedupe by `review.fact_id`), .prawduct/artifacts/release-plan-v3.2.1.md (where the residual is disclosed) · revisit: a SECOND surplus review event appears in the ledger — i.e. any duplicated `review.fact_id` other than the known `rev-20260729T233201Z-d91acd9e``
   <!-- refs are NAME-anchored, not line-anchored, per the convention CRT-R4Z2 sets: the probe landed
