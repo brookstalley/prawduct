@@ -413,6 +413,17 @@ def begin_review(
     roster, roster_chosen_by = _derive_roster(mode_token, files_changed)
     review_id = mint_review_id()
 
+    # Machine-verified record checks, computed HERE so the reviewers are told
+    # the answers rather than re-deriving them (record-class findings were 57%
+    # of one day's review output on 2026-07-29, and none of them needed
+    # judgment). Advisory: the result rides the manifest for the builder, and
+    # nothing downstream gates on it. A lint that cannot run reports itself
+    # ``unchecked`` rather than empty — see ``record_lint``.
+    from . import record_lint  # noqa: PLC0415 — lazy; keeps the import graph flat
+    lint = record_lint.lint_records(
+        project_dir, prawduct_dir, files_changed, base_tree, head_tree
+    )
+
     manifest = {
         "id": review_id,
         "mode": verbose,
@@ -434,6 +445,7 @@ def begin_review(
         # instead of silent (PDT-WT9K). ``branch`` is None on a detached HEAD.
         "worktree": str(project_dir),
         "branch": gitstate.current_branch(project_dir),
+        "record_lint": lint,
     }
     ok, reason = validate_manifest(manifest)
     if not ok:
@@ -829,6 +841,14 @@ def build_fact_body(manifest: dict, partials: list[dict]) -> dict:
         "scope": manifest.get("scope"),
         "chunk": manifest.get("chunk"),
         "base_reviewed": manifest.get("base_reviewed"),
+        # The record-lint control's YIELD, carried from the dispatch manifest
+        # into the fact so it is queryable rather than printed and forgotten
+        # (`nonfunctional-requirements.md` § Direction — a control born after
+        # 2026-07-29 emits its yield at birth, or it can only ever be defended
+        # on principle instead of retired on evidence). This is data ABOUT the
+        # review, not a finding IN it: it never reaches `counts`, so it cannot
+        # move a verdict, and no gate reads it.
+        "record_lint": manifest.get("record_lint"),
     }
 
 

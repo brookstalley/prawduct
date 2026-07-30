@@ -39,6 +39,7 @@ sys.path.insert(0, str(ROOT))
 from lib import critic_consolidate as cc  # noqa: E402
 from lib import evidence  # noqa: E402
 from lib import gates  # noqa: E402
+from lib import record_lint  # noqa: E402
 
 PARTIALS_REL = ".prawduct/.critic-partials"
 FINDINGS_REL = ".prawduct/.critic-findings.json"
@@ -1291,6 +1292,79 @@ class TestWorktreeVisibility:
         manifest = json.loads((repo / PARTIALS_REL / "manifest.json").read_text())
         assert manifest["branch"] is None
         assert "(detached)" in result.stdout
+
+
+class TestRecordLintInManifest:
+    """Record checks are answered at DISPATCH and carried in the manifest, so a
+    reviewer reads the result instead of re-deriving it — and the control's own
+    yield rides into the review fact, where it can be queried rather than
+    argued about (`nonfunctional-requirements.md` § Direction)."""
+
+    def _dispatch(self, tmp_path, plan: str | None = None):
+        repo = tmp_path / "r"
+        _init_repo(repo)
+        _commit_file(repo, "src/app.py", "x = 1\n", "init")
+        (repo / ".prawduct" / "artifacts").mkdir(parents=True)
+        (repo / ".prawduct" / "project-state.yaml").write_text("project_name: t\n")
+        if plan is not None:
+            (repo / ".prawduct" / "artifacts" / "build-plan.md").write_text(plan)
+        _commit_file(repo, ".prawduct/keep", "", "seed prawduct")
+        (repo / "src/app.py").write_text("x = 2\n")
+        result = _run_begin(repo, "--mode", "chunk")
+        assert result.returncode == 0, f"stderr={result.stderr!r}"
+        manifest = json.loads((repo / PARTIALS_REL / "manifest.json").read_text())
+        return repo, manifest, result
+
+    def test_manifest_carries_a_record_lint_block(self, tmp_path):
+        _repo, manifest, _res = self._dispatch(tmp_path)
+        lint = manifest["record_lint"]
+        assert set(lint) == {"records", "findings", "unchecked", "counts"}
+        # Every check is present with an explicit tally, so a zero is visibly a
+        # zero rather than a key a consumer has to interpret.
+        assert set(lint["counts"]) == set(record_lint.CHECKS)
+
+    def test_a_missing_declared_deliverable_lands_in_the_manifest(self, tmp_path):
+        plan = (
+            "# Plan\n\n## Status\n\n- [ ] Chunk 01: do it\n\n"
+            "### Chunk 01: do it\n\n"
+            "- **Deliverables:** `src/never_built.py`\n"
+        )
+        _repo, manifest, result = self._dispatch(tmp_path, plan)
+        findings = manifest["record_lint"]["findings"]
+        assert [f["check"] for f in findings] == ["chunk-ref-missing"]
+        assert "src/never_built.py" in findings[0]["detail"]
+        # The dispatching agent sees it without opening the manifest.
+        assert "record-lint" in result.stdout
+        assert "src/never_built.py" in result.stdout
+
+    def test_lint_findings_do_not_gate(self, tmp_path):
+        """Advice, not authority: a lint finding never blocks dispatch and never
+        reaches the fact's severity counts."""
+        plan = (
+            "# Plan\n\n## Status\n\n- [ ] Chunk 01: do it\n\n"
+            "### Chunk 01: do it\n\n"
+            "- **Deliverables:** `src/never_built.py`\n"
+        )
+        _repo, manifest, result = self._dispatch(tmp_path, plan)
+        assert result.returncode == 0
+        assert manifest["record_lint"]["findings"], "the finding exists…"
+        body = cc.build_fact_body(manifest, [])
+        assert body["counts"] == {"blocking": 0, "warning": 0, "note": 0}
+        assert body["findings"] == []
+
+    def test_the_fact_carries_the_yield(self, tmp_path):
+        """The observable-yield obligation: a control born after 2026-07-29
+        must leave something queryable behind, not printed output."""
+        _repo, manifest, _res = self._dispatch(tmp_path)
+        body = cc.build_fact_body(manifest, [])
+        assert body["record_lint"] == manifest["record_lint"]
+
+    def test_an_absent_lint_block_does_not_break_the_fact(self, tmp_path):
+        """A manifest written by an older dispatch carries no `record_lint`;
+        the fact records None rather than failing to build."""
+        _repo, manifest, _res = self._dispatch(tmp_path)
+        manifest.pop("record_lint")
+        assert cc.build_fact_body(manifest, [])["record_lint"] is None
 
 
 # ---------------------------------------------------------------------------

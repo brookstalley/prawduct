@@ -68,7 +68,7 @@ downgrade.
 - Every requirement is implemented or explicitly descoped → **BLOCKING** if silently dropped.
 - **Acceptance criteria are observable behavior** ("user can submit form and see confirmation," not "function X exists") → **WARNING** if implementation-only.
 - **Requirements Confidence field present** (`High | Medium | Low`, see `methodology/planning.md`). Missing → **WARNING**. If Medium/Low, plan must list open assumptions and what would resolve them — missing either → **WARNING**.
-- **Build-plan ref drift**: run `prawduct-hook verify-chunk-refs` — both `missing-ref:` (deliverable absent) and `cannot-verify:` (gate couldn't run) exits are **BLOCKING**.
+- **Record checks are machine-answered: read the manifest's `record_lint`, don't re-derive it** (chunk deliverables included). Severities and `unchecked`: `review-cycle.md`.
 - **Behavioral choices**: workflow features configurable via `project-preferences.md` (safe default); hardcoded when two paths reasonable → **WARNING**.
 - For user-visible changes: product verified beyond tests → **WARNING** if no evidence.
 - Error paths have test coverage. Happy path + at least one error case per flow → **WARNING** if missing.

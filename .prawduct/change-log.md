@@ -3,6 +3,71 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-07-30: The Critic stops re-deriving what a machine can count — record-lint at dispatch
+
+<!-- prawduct: type=feature | scope=record-mechanization | chunks=02 -->
+
+**Why:** on 2026-07-29, 57% of the day's 151 Critic findings targeted hand-authored governance
+*records* rather than shipped behavior — a dangling `file:line` citation, a backlog id that no longer
+exists, a `governed_by:` block disposing of one of an artifact's three norms, a census corrected three
+times. None of those need judgment, and each correction is a commit, and a commit extends HEAD, which
+is how a record defect buys a review round.
+
+**`prawduct-hook critic-begin` now answers them in code**, before any reviewer starts. New
+`lib/record_lint.py` runs five deterministic checks over the changed records and writes the result into
+the dispatch manifest as `record_lint`; `review-protocol.md` tells reviewers to read it and not
+re-derive it. The checks: the current chunk's **declared deliverables** exist, backticked `file` /
+`file:line` **citations** resolve, cited **backlog ids** exist, a plan's **`governed_by:`** block covers
+every `## Direction` norm of each cited artifact (the GOV-8C3W mechanical enumeration), and no
+**suite-total test claim** lands in durable prose. `prawduct-hook verify-records [--base] [--head]
+[--json]` is the by-hand form, and its `--json` is the manifest block verbatim.
+
+**Cost is proportional to the diff, never the repo** — the constraint the 2026-07-29 language-agnosticism
+norms exist to enforce, at consumer scale. Line-scoped checks read only the lines a change *added*, so a
+change-log with years of history reports on the entry just written and nothing else. A full run over this
+40-file branch takes 1.4s. Classification is by suffix (`.md`, archive excluded), so nothing here parses a
+language or grows a per-language table.
+
+**A check that cannot run says so.** Every result carries an `unchecked` list naming the checks that did
+not run and why — an unresolvable diff, or a backlog on the Issues backend where `backlog.md` is frozen
+history and an existence check would resolve every id with equal confidence. Silence-as-pass is the exact
+failure mode the per-language dispatch norm was written against, and this control does not reproduce it.
+
+**Advice, never authority.** Findings ride the manifest for the builder; nothing gates on them, they never
+reach a review's severity counts, and `verify-records` exits 0 with findings and 1 only when it could not
+run. What they *do* is get recorded: per-check counts travel from the manifest into the review **fact**,
+so this control's own yield is a query over the evidence store rather than an argument — the observable-yield
+obligation that `nonfunctional-requirements.md` § Direction attaches to any control born after 2026-07-29.
+A ledger fact per finding was considered and rejected: the ledger has a single writer, and trading one norm
+for another is not compliance. The yield *query* remains the janitor's Norm Health sweep.
+
+**Two subtractions.** `verify-chunk-refs` is no longer a reviewer instruction — the check runs at dispatch,
+so the protocol bullet and the `allowed-tools` grant both go, with a test pinning the retirement so a future
+re-add argues with a decision instead of restoring what looks like an oversight. The review-protocol token
+ceiling was **held at 3620, not bumped**: the new bullet is shorter than the instruction it replaced. An
+opportunistic trim of Goal 4's `**Norms**` bullet was attempted to buy room and reverted — funding an overrun
+by shortening an unrelated governance rule is what the ceiling exists to prevent, and the guard test caught it.
+
+**The suite-total sweep found nothing to delete, which is the finding.** The plan assumed counts would be
+removed "from every surface that demands or exhibits them." `grep -rnE '[0-9]{3,6} *(tests?|passing|green)'
+plugin --include='*.md'` returned empty before the sweep, and no template, methodology step or skill
+instruction ever *asked* for a count. The habit lives in agents, not in an instruction — so there was nothing
+to subtract and the whole value is the tripwire. Both halves are pinned by
+`tests/preferences/test_no_suite_total_claims.py`, each mutation-proved against phrasings different from the
+ones that prompted them.
+
+**One shared-classifier fix, found by running the new lint against the real branch:** `refs/tags/v3.2.1` and
+its siblings are the git *ref namespace*, not paths, so `refs` joins `_GIT_REF_PREFIXES` — extension-gated as
+the rest are, so a real path under refs/ carrying a file extension stays checked. The first draft of the citation scanner used its own
+"anything between backticks" pattern and produced 46 findings on this branch, 44 of them the backlog's
+`·`-separated metadata bars; borrowing `buildplan_refs`' whitespace-free grammar instead of restating it took
+that to 2. One grammar, one home.
+
+**Tests:** new `tests/test_record_lint.py` and `tests/preferences/test_no_suite_total_claims.py`, plus
+`TestRecordLintInManifest` in `tests/test_critic_consolidate.py` (manifest carries it, findings don't gate,
+the fact carries the yield, an older manifest without the block still builds) and `refs/` cases in
+`tests/test_build_plan_resolution.py`.
+
 ## 2026-07-30: Prawduct is written in Python and must never be specific to Python — four norms recorded and one amended
 
 <!-- prawduct: type=docs | scope=record-mechanization -->

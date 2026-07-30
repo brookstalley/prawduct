@@ -27,7 +27,7 @@ governed_by:
   - artifact: nonfunctional-requirements
     dispositions:
       - "review wall-clock is P0 — BOTH levers, run-count and per-mode payload (amended 2026-07-29) → conforms — this plan is that norm's implementation arm on both arms: Chunk 02 cuts record-triggered round *count*, Chunk 03 cuts per-mode reviewer *payload*. The disposition previously read 'run-count is the lever' and was updated with the amendment, not around it."
-      - "proportionality ratchets both ways; new controls emit yield observably (born 2026-07-29) → **ruling needed** — record-lint is a new control born after the 2026-07-29 boundary, so the observable-yield obligation attaches to it, and the chunk as written does not say where a lint finding's yield is recorded. Chunk 02 must either emit a ledger fact per lint finding or record why record-lint is exempt. This is NOT the norm's yield-query home (that is the janitor's Norm Health sweep); it is this chunk's own compliance with the norm."
+      - "proportionality ratchets both ways; new controls emit yield observably (born 2026-07-29) → conforms, by a **ruling recorded 2026-07-30** that took neither branch the chunk offered. Record-lint's per-check counts and findings ride the dispatch manifest into the review **fact** (`critic_consolidate.build_fact_body` copies `record_lint` verbatim), so \"how often did this control fire and on what\" is a query over the evidence store — the same store the review yield it is measured against already lives in. A ledger fact per lint finding was rejected on the observability-strategy norm: the ledger has a **single writer** (consolidation), and a second writer would trade one norm for another. Exemption was rejected outright — this control is born inside the boundary. Yield emitted at birth; the yield *query* remains the janitor's Norm Health sweep, deliberately not here."
       - "state-file growth is an advisory, never a hard block → conforms — disposition facts ride evidence.jsonl, which already carries the growth-advisory posture"
   - artifact: security-model
     dispositions:
@@ -62,7 +62,7 @@ enumerated before fields are designed (Chunk 01 step 0), and two tuning values a
 **Open assumptions / unknowns:**
 - [ASSUMPTION: disposition facts extend evidence.jsonl rather than a new store — same lifetime, same sharing, same schema machinery | HIGH impact | user can override]
 - [ASSUMPTION: the coordinator threshold moves from 5 changed files to 12 *judgeable* files | MED impact | user can correct the number; Chunk 04 validates it against review-stats history before locking]
-- [ASSUMPTION: suite-total test counts in durable prose are deleted outright, not lint-verified — nothing consumes them; the evidence store already holds pass/fail per tree | MED impact | user can override]
+- [ASSUMPTION: suite-total test counts in durable prose are deleted outright, not lint-verified — nothing consumes them; the evidence store already holds pass/fail per tree | MED impact | user can override] — **resolved 2026-07-30, and the premise was half wrong.** The deletion set on the plugin surface was **empty**: `grep -rnE '[0-9]{3,6} *(tests?|passing|green)' plugin --include='*.md'` returned nothing before the sweep, and no template, methodology step or skill instruction ever *demanded* a count. The habit lives in agents, not in an instruction, so there was nothing to delete and the whole value is in the tripwire. Both halves are now pinned by `tests/preferences/test_no_suite_total_claims.py` (exhibit side and demand side, each mutation-proved).
 - [ASSUMPTION: the change-log ledger is spiked here and implemented in a follow-on plan, since it is a plugin-wide breaking change needing its own migrate path and release | HIGH impact | user can override — pulling implementation into this plan roughly doubles it]
 
 **What would raise confidence:** Chunk 01 step 0 (consumer-query enumeration) resolves the schema
@@ -71,7 +71,7 @@ unknown; Chunk 04's review-stats measurement resolves the threshold.
 ## Status
 
 - [x] Chunk 01: Disposition facts and the census renderer
-- [ ] Chunk 02: Subtraction sweep and deterministic record-lint
+- [x] Chunk 02: Subtraction sweep and deterministic record-lint
 - [ ] Chunk 03: Per-mode reviewer payload
 - [ ] Chunk 04: Coordinator roster keyed to judgeable files
 - [ ] Chunk 05: Change-log ledger spike and go/no-go
@@ -89,8 +89,17 @@ chunk changes roster *selection* on the same two files. That fix also exposed a 
 `review_event_exists` now closes the replay path and narrows the overlap window, but there is no lock,
 so it is not "exactly once" — and concurrent dispatch made overlap more reachable. `critic_consolidate`
 additionally grew an advisory duplicate-finding grouping path (CRT-R4Z2's reporting half) that Chunk
-04/05 authors will meet in the same file. Next: Chunk 02 (subtraction sweep + deterministic
-record-lint).
+04/05 authors will meet in the same file.
+
+**Chunk 02 complete 2026-07-30** — `record_lint.py` + `verify-records`, wired into `critic-begin`'s
+manifest and carried into the review fact. Two spec corrections, both recorded above: the
+subtraction's deletion set was **empty** (the tripwire is the whole deliverable), and the
+observable-yield obligation was ruled into the *fact*, not the ledger. Chunk 04's author should
+know the protocol surface moved: `verify-chunk-refs` is no longer a reviewer instruction (it runs at
+dispatch and rides `record_lint`), its `allowed-tools` grant is retired with a test pinning the
+retirement, and the review-protocol token budget was held at 3620 rather than bumped — headroom is
+5 tokens, so Chunk 03's payload work has none to spend there. Next: Chunk 03 (per-mode reviewer
+payload).
 
 ## Scaffolding
 

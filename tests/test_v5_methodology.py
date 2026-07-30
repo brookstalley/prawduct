@@ -419,6 +419,23 @@ class TestCriticSkill:
         # This does NOT reopen the diet. Headroom is again a few words BY
         # DESIGN, and the next addition trims or relocates first -- the rule
         # above stands; it was overridden once, on the record, for this.
+        #
+        # 2026-07-30: the record-lint bullet landed and the ceiling did NOT
+        # move -- the rule above was applied, not overridden a second time. It
+        # paid for itself: the `verify-chunk-refs` instruction was DELETED,
+        # because that check now runs at dispatch and rides the manifest's
+        # `record_lint`, so a reviewer executing it by hand is duplicated work.
+        # No check was removed to make room -- one moved into code, and the
+        # bullet that replaced it is shorter than the one it replaced.
+        #
+        # An opportunistic trim was ATTEMPTED and reverted: compressing Goal
+        # 4's `**Norms**` bullet to a pointer (it restates the
+        # Normative-authority preamble) broke test_project_preferences_blocking
+        # above, which contracts on one LINE carrying both
+        # "project-preferences" and "blocking". Reverted rather than
+        # re-plumbed: funding a budget overrun by shortening an unrelated
+        # governance rule is the move the paragraph above forbids, and the
+        # test caught it doing exactly that.
         tokens = estimate_tokens(self.content)
         assert tokens < 3620, f"review-protocol.md is ~{tokens} tokens, should be <3620"
 

@@ -281,6 +281,33 @@ Read `.prawduct/backlog.md`. For each open item, check whether this session's ch
 
 These flag; they never adjudicate whether an item "really" closed (the builder's call) and never block.
 
+### Record-Lint — the checks the machine already ran
+
+`prawduct-hook critic-begin` runs a deterministic pass over the changed **records** (markdown; the
+archive excluded) and writes the result into the dispatch manifest as `record_lint`. Read it. Do not
+re-derive any of it, and do not recount anything it counted — re-deriving a machine-checked number
+is how a record defect buys a review round, which is the cost this exists to remove.
+
+Line-scoped checks read only the lines a change **added**, so a change-log with years of history in
+it reports on the entry just written and nothing else. Severity per check:
+
+| `check` | Means | Severity |
+|---|---|---|
+| `chunk-ref-missing` | A deliverable the current chunk *declares* does not exist | **BLOCKING** |
+| `dangling-ref` | A backticked `file` / `file:line` citation resolves nowhere | **WARNING** |
+| `governed-by-gap` | A plan disposes of fewer norms than the cited artifact's `## Direction` carries | **WARNING** (Goal 2 — the paperwork arm below) |
+| `unknown-backlog-id` | An id cited in a record is not in the backlog | **NOTE** |
+| `suite-total-claim` | A suite-total test claim in durable prose — the store already records pass/fail per tree | **NOTE** |
+
+**`unchecked` is not a pass.** Each entry names a check that could **not run** and why (an
+unresolvable diff, a backlog on the Issues backend where `backlog.md` is frozen history). Say so in
+your summary. A check that stays silent when it could not run is indistinguishable from one that
+found nothing, which is the failure mode the per-language dispatch norm exists to prevent.
+
+Record-lint is **advice**: it reports to the builder and gates nothing. Its findings are yours to
+raise at the severities above, and its per-check counts ride into the review fact so the control's
+own yield stays measurable.
+
 ### Governing-Artifact Reconciliation
 
 When the plan declares `governed_by:`, verify each listed artifact carries a recorded disposition
