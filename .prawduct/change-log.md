@@ -40,13 +40,25 @@ contains "small `final`/`cumulative`", because that is when a small final review
 the one line that had carried half the defect was excluded unconditionally, and restoring its
 `(schema: review-protocol.md …)` pointer left the suite green. "Mutation-proved" was therefore true
 of one leak and not the other. Now judged per *clause* rather than per line, with the single-pass
-bullet pinned by its own zero-tolerance test; the coordinator bullet stays exempt by construction,
-since that roster only exists in `final`/`cumulative`. The header check was generalised in the same
-pass — it asserted the literal string "read this first", which any rewording would have escaped.
+bullet pinned by its own zero-tolerance test. The header check was generalised in the same pass — it
+asserted the literal string "read this first", which any rewording would have escaped.
+
+**And then the exemption that was left "because it is load-bearing" was deleted too.** The coordinator
+bullet was skipped wholesale, legitimately: that roster exists only in `final`/`cumulative`, but its
+citation clause carried no `final`/`cumulative` of its own, so the check would have flagged it. A
+whole-line skip still excuses anything later appended to that line — the same shape as the defect
+being fixed, one level down. Qualifying the prose instead (`the final/cumulative "Coordinator Pattern"
+in review-protocol.md`) let the skip go entirely, proved by appending a naked schema pointer to that
+line: previously excused, now caught. **There are no line-level exemptions left in the fast-path
+guard.** The header check's bullets-only scope is a deliberate trade — header prose legitimately names
+`review-cycle.md` as a path-resolution example — and the reason sits in the test rather than waiting
+to be rediscovered.
 
 **Not yet observed in a live review.** The reviewer that verified this fix was running on a cached
 pre-fix skill body, so it followed the old ordering and could not measure the new one. The payload
-cut is proved on disk and by guardrail; the first review in a fresh session is the measurement.
+cut is proved on disk and by guardrail. The measurement needs a **genuinely new Claude Code
+invocation — not merely a new fork**: three forks launched after the fix on 2026-07-30 all received
+the stale body, so the cached skill payload survives a fresh fork within a session.
 
 **Self-contained means the pointers had to be paid off, not followed.** The record-lint severity
 table, the chunk-`Type:` protocol selector, the normative-authority preamble and the partial schema

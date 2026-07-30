@@ -372,7 +372,7 @@ review makes the branch PR-ready.
   plan's one irreversible decision; confirm before anything builds on it.
 - After Chunk 03: measure — payload delta from guardrail tests, and a spot-check that a chunk-mode
   review now lands near its 1–2 minute target. **The spot-check must come from a genuinely new Claude
-  Code invocation** — not merely a new fork. Confirmed twice on 2026-07-30: forks launched *after* the
+  Code invocation** — not merely a new fork. Confirmed three times on 2026-07-30: forks launched *after* the
   fix still received the pre-fix `SKILL.md` body and followed the old routing, so the stale skill
   payload survives a fresh fork within a session. A same-session reading proves nothing about the new
   routing. Re-run the population query below and compare the `chunk` and
