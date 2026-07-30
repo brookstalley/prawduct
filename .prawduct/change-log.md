@@ -57,8 +57,10 @@ to be rediscovered.
 **Not yet observed in a live review.** The reviewer that verified this fix was running on a cached
 pre-fix skill body, so it followed the old ordering and could not measure the new one. The payload
 cut is proved on disk and by guardrail. The measurement needs a **genuinely new Claude Code
-invocation — not merely a new fork**: three forks launched after the fix on 2026-07-30 all received
-the stale body, so the cached skill payload survives a fresh fork within a session.
+invocation — not merely a new fork**: on 2026-07-30 *every* fork launched after the fix still received
+the stale body, so the cached skill payload survives a fresh fork within a session. (Stated as the
+invariant rather than a tally — the count rose on each of the next three reviews, and a number here
+would have gone stale exactly the way the ones this branch already corrected did.)
 
 **Self-contained means the pointers had to be paid off, not followed.** The record-lint severity
 table, the chunk-`Type:` protocol selector, the normative-authority preamble and the partial schema
