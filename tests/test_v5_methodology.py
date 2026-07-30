@@ -668,14 +668,18 @@ class TestCriticSkillRoutesByMode:
         read a chunk-mode reviewer will make.
 
         Judged per *clause*, not per line: a qualifier anywhere on a long line
-        used to excuse a citation elsewhere on it. The coordinator bullet is
-        exempt by construction — the coordinator pattern only exists in
-        `final`/`cumulative`, so its reader has already loaded that file."""
+        used to excuse a citation elsewhere on it.
+
+        **No line-level exemptions.** The coordinator bullet used to be skipped
+        wholesale — legitimate in itself (that roster only exists in
+        `final`/`cumulative`) but an escape hatch excusing anything later
+        appended to that line, which is the same shape as the defect this test
+        was written to catch. Its prose now qualifies its own citation
+        (`the final/cumulative "Coordinator Pattern" in review-protocol.md`), so
+        the skip was deleted rather than documented."""
         steps = self.content.split("## Getting Started", 1)[1]
         offenders = []
         for ln in steps.split("\n"):
-            if "(coordinator)" in ln:
-                continue
             for clause in re.split(r"(?<=\.)\s|[;()]", ln):
                 if "review-protocol.md" not in clause and "review-cycle.md" not in clause:
                     continue

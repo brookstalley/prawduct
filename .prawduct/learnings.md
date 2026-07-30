@@ -655,6 +655,6 @@ false of the other. Judge the **citation in its own clause**, never the line it 
 reviewer running on a cached pre-fix skill body cannot measure the fix: the acceptance evidence for an
 instruction change has to come from a **fresh session**, and a same-session reading proves nothing.
 
-Instance of [assert the PROPERTY, not one spelling of it](#when-a-guard-test-pins-a-safety-claim) —
-the header test I first wrote pinned the literal string "read this first", which any rewording would
-have walked past. Relates to Tests Are Contracts (#1) and Honest Confidence (#5).
+Instance of the "assert the PROPERTY, not one spelling of it" rule above — the header test I first
+wrote pinned the literal string "read this first", which any rewording would have walked past.
+Relates to Tests Are Contracts (#1) and Honest Confidence (#5).
