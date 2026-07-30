@@ -188,8 +188,15 @@ def has_product_risk_declaration(prawduct_dir: Path) -> bool:
     nothing in the product's own tree. The contract paths are a product
     documenting its API, which says nothing about how much review depth it
     wants — counting them let a repo that had merely written that file be
-    reviewed *less* than before. Both still feed :func:`resolve_surfaces`, so
-    both still ESCALATE; neither can relax anything.
+    reviewed *less* than before.
+
+    **When no key is declared**, both still feed :func:`resolve_surfaces`, so
+    both still ESCALATE even though neither can relax anything. **When the key
+    IS declared it is exclusive**, so neither contributes at all — a filled
+    `boundary-patterns.md` then escalates nothing unless its paths are also
+    listed under ``risk_surfaces:``. That asymmetry is easy to misread in the
+    direction that loses review, so it is stated in both places rather than
+    once.
 
     So any consumer deciding on "no risk surface matched" MUST distinguish
     *"this diff is low-risk"* from *"this repo never had a risk signal to
@@ -205,8 +212,10 @@ def has_product_risk_declaration(prawduct_dir: Path) -> bool:
     # False (a present key is EXCLUSIVE in :func:`resolve_surfaces`, so it must
     # be exclusive here); a non-empty list -> True.
     #
-    # A filled `boundary-patterns.md` deliberately does NOT count, though it
-    # still feeds :func:`resolve_surfaces` and can still ESCALATE. Those paths
+    # A filled `boundary-patterns.md` deliberately does NOT count. It still
+    # feeds :func:`resolve_surfaces` — and so can still ESCALATE — but ONLY
+    # while no `risk_surfaces:` key is declared; a present key is exclusive and
+    # drops those paths entirely. Those paths
     # are a product documenting its contract surfaces — `discovery.md` asks
     # every contract-bearing product to write them — which says nothing about
     # how much review depth it wants. Counting them as consent let a repo that
