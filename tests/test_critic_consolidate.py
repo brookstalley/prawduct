@@ -861,6 +861,14 @@ class TestConsolidateIntegration:
         result = _run_consolidate(repo)
         assert result.returncode == 0, f"stderr={result.stderr!r}"
         assert len(_store_lines(repo)) == 1, "the same review id must never append twice"
+        # ...and the ledger anchor is idempotent too. Without this assertion the
+        # probe in `consolidate` could be deleted and the suite would still pass
+        # green: the fact append is protected by (kind, id) dedupe, the ledger
+        # by nothing. `review-stats` counts these lines, so a second event
+        # double-counts the review in the instrument review proportionality is
+        # measured with.
+        ledger_lines = (repo / LEDGER_REL).read_text().strip().splitlines()
+        assert len(ledger_lines) == 1, "one review must anchor exactly one ledger event"
         # Cache still present, still pointing at the one fact.
         record = json.loads((repo / FINDINGS_REL).read_text())
         assert record["fact_id"] == "rev-test-0001"
@@ -1325,6 +1333,64 @@ class TestDeterministicCycleEndToEnd:
         assert gates.validate_critic_findings(repo / FINDINGS_REL)
         assert not (repo / PARTIALS_REL).exists()
         assert not (repo / MARKER_REL).is_file()
+
+        # The derived view always carries the advisory grouping key, empty when
+        # nothing looks duplicated — a reader can distinguish "no duplicates"
+        # from "this plugin predates the check" without guessing.
+        assert record["likely_duplicate_groups"] == []
+        # With no groups the summary carries no duplicate note and no stray
+        # spacing where the clause would have gone.
+        assert "distinct" not in first.stdout
+        assert "note from" in first.stdout
+
+    def test_consolidate_reports_a_likely_duplicate_group(self, tmp_path):
+        """The user-facing half of the double-counting fix: two reviewers
+        describing ONE defect under different goals both survive the merge (the
+        key cannot collide across disjoint goal sets), so consolidation says so
+        rather than letting the raw count read as two defects."""
+        repo = tmp_path / "r"
+        _init_repo(repo)
+        head = _commit_file(repo, "src/app.py", "x = 1\n", "init")
+        _set_marker(repo)
+        _write_manifest(repo, head)
+
+        same_defect = [
+            {
+                "name": "A clean review's census renders a truncated sentence",
+                "goal": "Nothing Is Broken",
+                "severity": "note",
+                "recommendation": "guard the summary clause",
+                "files": ["src/app.py"],
+            }
+        ]
+        _write_partial(repo, "correctness", head, findings=same_defect)
+        _write_partial(
+            repo,
+            "design",
+            head,
+            findings=[
+                {
+                    "name": "A clean review renders a malformed census summary line",
+                    "goal": "The Design Is Sound",
+                    "severity": "note",
+                    "recommendation": "guard the summary clause",
+                    "files": ["src/app.py"],
+                }
+            ],
+        )
+        _write_partial(repo, "sustainability", head, findings=[])
+
+        result = _run_consolidate(repo)
+        assert result.returncode == 0, f"stderr={result.stderr!r}"
+        # Both findings are kept — advisory detection never drops one.
+        fact = _store_facts(repo, "review")[0]
+        assert len(fact["body"]["findings"]) == 2
+        assert fact["body"]["counts"]["note"] == 2
+        # ...and the count is reported alongside an honest distinct count.
+        assert "~1 distinct" in result.stdout
+        assert "likely-duplicate group(s): R-1+R-2" in result.stdout
+        record = json.loads((repo / FINDINGS_REL).read_text())
+        assert record["likely_duplicate_groups"] == [["R-1", "R-2"]]
 
 
 class TestLikelyDuplicateGroups:

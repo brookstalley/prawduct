@@ -35,12 +35,25 @@ counted twice — in the very instrument this plan's success criterion is measur
 per logical change at or under 2").
 
 Then it reproduced on the review that flagged it: two events for `rev-20260729T233201Z-d91acd9e`, one
-second apart. The cause is broader than concurrency — the Stop hook's self-heal and the Critic SKILL
-*both* call `critic-consolidate` by design, so the double-anchor is deterministic on the single-pass
-path whenever the marker outlives a Stop boundary, not a race at all. Measured across the whole
-ledger: 1 surplus event in 241, so historical over-counting is negligible — the fix matters because
-the instrument is about to be used, not because the history is wrong. `review_event_exists` now probes
-for an existing anchor at the review id before appending, covering both callers.
+second apart.
+
+**The first diagnosis of *why* was wrong, and the next review caught that too.** It claimed two
+callers by design — the Stop hook's self-heal and the Critic SKILL — made the double-anchor
+deterministic. But a successful consolidation ends in `remove_partials()`, which deletes the manifest,
+and the self-heal needs a manifest to act, so the sequential two-caller path is a **no-op**, not a
+double-anchor. (Two events one second apart were never a Stop boundary either.) The two reachable
+paths are **replay** — the same manifest and partials re-materializing after success, or a crash
+between the fact append and `remove_partials` — and **overlap**, two consolidations running past the
+manifest check at once.
+
+`review_event_exists` probes for an existing anchor before appending. That **closes replay
+completely** and **narrows overlap** from the whole consolidate body to the microseconds between
+probe and append — it is read-then-write with no lock, so "exactly once" is not what it buys, and
+mandating concurrent reviewer dispatch made overlap *more* reachable rather than less. Recorded
+precisely so a maintainer who sees it recur looks for the lock instead of hunting a third caller.
+Measured across the whole ledger: 1 surplus event in 241 — and that surplus is still on disk, so the
+instrument reads 242 events for 241 reviews today. The fix matters because the instrument is about to
+be relied on, not because the history is wrong.
 
 ## 2026-07-29: A finding count was being read as a defect count
 
@@ -67,6 +80,12 @@ threshold (0.4) was calibrated against all 254 stored reviews rather than chosen
 at 0.44 and every pair it surfaces spot-checked as genuine. Filed as CRT-R4Z2; the backlog item keeps
 the harder half, that a reviewer filing a *meta*-note about another finding is a protocol question,
 not a merge one.
+
+**Honest limit on the derived-view key.** `likely_duplicate_groups` in `.critic-findings.json` has **no
+programmatic reader today** — it is there for a human reading the JSON, and for the census/briefing
+surface to pick up later. It is asserted by a test (always present, empty when nothing looks
+duplicated) so it cannot silently stop being written, but nothing consumes it yet, and this entry says
+so rather than implying a consumer exists.
 
 ## 2026-07-29: Dispositions become facts, and the census stops being prose
 
@@ -99,6 +118,21 @@ owner-ruled), 0 undispositioned — derived, so it cannot drift.
 body, so a BLOCKING finding stays blocking until a verify pass records a real resolution. That is what
 makes it safe for a builder to record dispositions without a reviewer in the loop, and it is pinned by
 a regression test rather than left resting on the filter staying where it is.
+
+**This chunk's own dispositions** — rendered from facts by the command this chunk adds, not counted by
+hand. (Distinct from the case-study census above, which is the release-readiness review's.) Chunk 01's
+own review `rev-20260729T230420Z-71b7f129`: **25 findings (9 warning, 16 note) — 17 fixed, 8 accepted,
+0 undispositioned.** The eight ACCEPTs, each with its reason recorded as a fact: R-4 (the real-store
+integration fixture is deliberately transcribed, keeping the suite deterministic — and both reviewers
+recomputed it as correct), R-5 (nothing renders from the stored disposition, so a read-back would add
+a store read per call without changing a decision), R-6 (the branches carrying consequence are pinned;
+the rest is defensive coverage with no behaviour behind it), R-14 (`fixed`/`waived` are *verified*
+resolutions with different authority, so they cannot share a writer — `census()` unions them in one
+place), R-15 (Chunk 03 owns the payload measurement; distilling now would pre-empt its before/after),
+R-16 (Chunk 02 makes record accuracy a mechanized concern — the point to register it is when the
+mechanism exists), R-21 (a gate on undispositioned findings would be a new authority this chunk did not
+scope; Chunk 02's record-lint is the forcing function), R-25 (the plan artifact is a non-judgeable
+record surface, and the verify pass covers the interval containing it).
 
 **Decisions worth naming.** The fact's field is `action`, not `disposition`: "disposition" already
 names release scope (`ships`/`withheld`) and resolution (`fixed`/`waived`), and a third meaning for

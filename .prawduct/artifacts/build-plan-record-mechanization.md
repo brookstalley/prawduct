@@ -82,9 +82,12 @@ LRN-4K8T), and the backlog.md disease (own in-flight GitHub-Issues migration). *
 branch, outside every chunk's scope:** the Critic's coordinator *dispatch* surfaces
 (`review-protocol.md` step 2, `SKILL.md`'s roster bullet) now require the three reviewers to be
 issued in one message, with a mutation-proved guardrail — Chunk 04 author please note, since that
-chunk changes roster *selection* on the same two files. That fix also exposed and closed a
-deterministic ledger double-anchor (`review_event_exists`). Next: Chunk 02 (subtraction sweep +
-deterministic record-lint).
+chunk changes roster *selection* on the same two files. That fix also exposed a ledger double-anchor:
+`review_event_exists` now closes the replay path and narrows the overlap window, but there is no lock,
+so it is not "exactly once" — and concurrent dispatch made overlap more reachable. `critic_consolidate`
+additionally grew an advisory duplicate-finding grouping path (CRT-R4Z2's reporting half) that Chunk
+04/05 authors will meet in the same file. Next: Chunk 02 (subtraction sweep + deterministic
+record-lint).
 
 ## Scaffolding
 
