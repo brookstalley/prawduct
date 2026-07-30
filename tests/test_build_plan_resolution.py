@@ -539,6 +539,27 @@ class TestVerifyChunkRefsGitRefs:
         assert refs["file_paths"] == []
         assert _bpr._verify_chunk_refs(project, refs) == []
 
+    @pytest.mark.parametrize(
+        "ref",
+        ["refs/tags/v3.2.1", "refs/heads/develop", "refs/remotes/origin/main"],
+    )
+    def test_full_ref_namespace_is_skipped(self, tmp_path: Path, ref: str):
+        """`refs/…` names the git ref namespace, not a path on disk — a release
+        plan backticks it for the same reason it backticks a branch."""
+        project, prawduct = _project_with_chunk(tmp_path, f"- tag `{ref}`\n")
+        refs = _bpr._parse_build_plan_chunk_refs(prawduct, "01")
+        assert refs["error"] is None
+        assert refs["file_paths"] == []
+        assert _bpr._verify_chunk_refs(project, refs) == []
+
+    def test_extensioned_path_under_refs_still_captured(self, tmp_path: Path):
+        """The carveout is suffix-gated, so it does not blind the verifier: a
+        real file under `refs/` is still captured and still reported missing."""
+        project, prawduct = _project_with_chunk(tmp_path, "- touches `refs/gen.py`\n")
+        refs = _bpr._parse_build_plan_chunk_refs(prawduct, "01")
+        assert [e["ref"] for e in refs["file_paths"]] == ["refs/gen.py"]
+        assert [m["ref"] for m in _bpr._verify_chunk_refs(project, refs)] == ["refs/gen.py"]
+
     def test_multi_dot_path_under_git_prefix_still_captured(self, tmp_path: Path):
         # The counter-case to the version branches above: a genuine path whose
         # stem carries dots still ends in an extension-shaped suffix, so it stays

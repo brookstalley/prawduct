@@ -88,9 +88,70 @@ _VERBOSE_VERIFY_RESOLUTIONS = MODE_TOKEN_TO_VERBOSE["verify-resolutions"]
 
 # Roster config (D8): protocol roles per execution shape. chunk and
 # verify-resolutions are always single-pass; final/cumulative go coordinator
-# at the building.md size heuristic ("5+ files = medium").
+# when the change touches a risk surface, or when it is large in JUDGEABLE
+# files.
+#
+# **Risk first, size second — established by replay, not assumed.** Scoring
+# every candidate rule against all 82 final/cumulative review facts in the
+# evidence store (35 blocking findings) by the blockers it would have sent to a
+# single reviewer:
+#
+#   current: total files >= 5            80% coordinator,  2 blockers demoted
+#   judgeable files >= 12                40% coordinator, 19 blockers demoted
+#   judgeable files >= 5                 56% coordinator, 19 blockers demoted
+#   risk surface OR judgeable >= 12      78% coordinator,  1 blocker  demoted
+#
+# Recomputable: `python3 tests/spikes/roster_rule_replay.py`.
+#
+# That "blockers demoted" column scores every rule the same way — blocking
+# findings in reviews the rule would send single-pass — which is what makes the
+# rows comparable. The ACTUAL change from the previous rule is smaller than its
+# row suggests: 8 reviews move from coordinator to single-pass, and they carried
+# 0 blocking and 27 warning findings between them. R3's single scored blocker
+# sits in a review that already ran single-pass and found it anyway.
+#
+# The intuition this refutes — that record files inflate the count, so a
+# record-heavy diff is a small diff paying triple review — is backwards. The
+# slice it targets (>= 5 files, < 5 judgeable) is 20 reviews carrying 17
+# blocking findings, 13 of which point at CODE. Record-heavy diffs are
+# governance diffs, and governance diffs are where the blockers are: reviews
+# touching the gate kernel yield 0.96 blocking findings each against 0.22 for
+# everything else, a 4.4x discriminator that no size cut approaches (blocker-
+# bearing and clean reviews overlap across 0-206 and 0-60 judgeable files).
+#
+# The conflation to avoid re-introducing: ``coverage_algebra.is_judgeable_path``
+# answers "does this change need review COVERAGE" — a gate question, and THE
+# predicate there. It does not answer "how much review DEPTH does this
+# deserve." Depth is a risk question, so the roster asks a risk predicate.
+#
+# Size is kept only as an escalator, at the one threshold the data supports:
+# 5-11 judgeable files with no risk surface touched is 13 coordinator reviews
+# with ZERO blocking findings, so it demotes; 12+ escalates on volume alone.
 SINGLE_PASS_ROSTER = ("reviewer",)
 COORDINATOR_ROSTER = ("correctness", "design", "sustainability")
+
+# **Scope of that replay, and the fallback it forces.** Every figure above came
+# from THIS repo's evidence store, where the derived risk surfaces match 77% of
+# reviews. An onboarded product is the opposite case: the derived defaults are
+# framework-shaped, the `project-state.yaml` template ships no `risk_surfaces:`,
+# and the `boundary-patterns.md` template yields no parseable paths — so the
+# risk predicate would never fire and the rule would collapse to "judgeable >=
+# 12" ALONE, which is precisely row 2 of the table (54% of blockers demoted),
+# replacing a rule that gave that product a coordinator at 5 files.
+#
+# So the risk-keyed rule applies only where there IS a risk signal. A repo that
+# has declared none keeps the previous file-count escalator unchanged — no
+# behaviour change where there is no evidence to justify one. This repo opts in
+# by declaring `risk_surfaces:` in its own project-state.yaml, which is also
+# what makes the replay above describe the rule that actually runs here.
+
+#: Judgeable-file count at which volume alone buys the coordinator, with no
+#: risk surface touched. Below it the replay shows an empty blocking record.
+COORDINATOR_JUDGEABLE_THRESHOLD = 12
+
+#: The pre-2026-07-30 rule, retained as the conservative fallback for repos that
+#: have declared no risk surfaces. NOT the primary rule any more — see
+#: ``_derive_roster``.
 COORDINATOR_FILE_THRESHOLD = 5
 
 # Background reviewers run for minutes after the dispatching fork returns, so
@@ -178,19 +239,52 @@ def partial_path(prawduct_dir: Path, role: str) -> Path:
 # ---------------------------------------------------------------------------
 
 
-def _derive_roster(mode_token: str, files_changed: list[str]) -> tuple[list[str], str]:
-    """The roster this dispatch requires, plus the rationale (Q7 debugging)."""
+def _derive_roster(
+    mode_token: str, files_changed: list[str], prawduct_dir: Path
+) -> tuple[list[str], str]:
+    """The roster this dispatch requires, plus the rationale (Q7 debugging).
+
+    Risk surface first, judgeable volume second — see the roster config block
+    for the replay that ordered them that way.
+    """
     if mode_token in ("chunk", "verify-resolutions"):
         return list(SINGLE_PASS_ROSTER), f"mode={mode_token} is always single-pass"
-    n = len(files_changed)
-    if n >= COORDINATOR_FILE_THRESHOLD:
+
+    from . import coverage_algebra, risk  # noqa: PLC0415 — lazy; keeps the import graph flat
+
+    touched, why = risk.paths_touch_risk_surface(prawduct_dir, files_changed)
+    if touched:
         return list(COORDINATOR_ROSTER), (
-            f"mode={mode_token}, {n} files changed >= "
-            f"{COORDINATOR_FILE_THRESHOLD} — coordinator"
+            f"mode={mode_token}, risk surface touched: {why} — coordinator"
         )
+
+    nj = len(coverage_algebra.judgeable_files(files_changed))
+    if nj >= COORDINATOR_JUDGEABLE_THRESHOLD:
+        return list(COORDINATOR_ROSTER), (
+            f"mode={mode_token}, no risk surface, {nj} judgeable file(s) >= "
+            f"{COORDINATOR_JUDGEABLE_THRESHOLD} — coordinator"
+        )
+
+    # "No risk surface matched" means low risk only if this repo HAD a signal to
+    # give. With no declaration it means we learned nothing — and falling
+    # through on judgeable volume alone would silently adopt the rule the replay
+    # rejected. Keep the previous escalator until the repo says where its risk
+    # lives.
+    if not risk.has_product_risk_declaration(prawduct_dir):
+        n = len(files_changed)
+        if n >= COORDINATOR_FILE_THRESHOLD:
+            return list(COORDINATOR_ROSTER), (
+                f"mode={mode_token}, no declared risk surfaces, {n} file(s) >= "
+                f"{COORDINATOR_FILE_THRESHOLD} — coordinator (prior rule retained)"
+            )
+        return list(SINGLE_PASS_ROSTER), (
+            f"mode={mode_token}, no declared risk surfaces, {n} file(s) < "
+            f"{COORDINATOR_FILE_THRESHOLD} — single-pass (prior rule retained)"
+        )
+
     return list(SINGLE_PASS_ROSTER), (
-        f"mode={mode_token}, {n} files changed < "
-        f"{COORDINATOR_FILE_THRESHOLD} — single-pass"
+        f"mode={mode_token}, {why}, {nj} judgeable file(s) < "
+        f"{COORDINATOR_JUDGEABLE_THRESHOLD} — single-pass"
     )
 
 
@@ -410,8 +504,19 @@ def begin_review(
     if files_reviewed is None:
         files_reviewed = list(files_changed)
 
-    roster, roster_chosen_by = _derive_roster(mode_token, files_changed)
+    roster, roster_chosen_by = _derive_roster(mode_token, files_changed, prawduct_dir)
     review_id = mint_review_id()
+
+    # Machine-verified record checks, computed HERE so the reviewers are told
+    # the answers rather than re-deriving them (record-class findings were 57%
+    # of one day's review output on 2026-07-29, and none of them needed
+    # judgment). Advisory: the result rides the manifest for the builder, and
+    # nothing downstream gates on it. A lint that cannot run reports itself
+    # ``unchecked`` rather than empty — see ``record_lint``.
+    from . import record_lint  # noqa: PLC0415 — lazy; keeps the import graph flat
+    lint = record_lint.lint_records_safe(
+        project_dir, prawduct_dir, files_changed, base_tree, head_tree, chunk
+    )
 
     manifest = {
         "id": review_id,
@@ -434,6 +539,7 @@ def begin_review(
         # instead of silent (PDT-WT9K). ``branch`` is None on a detached HEAD.
         "worktree": str(project_dir),
         "branch": gitstate.current_branch(project_dir),
+        "record_lint": lint,
     }
     ok, reason = validate_manifest(manifest)
     if not ok:
@@ -829,6 +935,14 @@ def build_fact_body(manifest: dict, partials: list[dict]) -> dict:
         "scope": manifest.get("scope"),
         "chunk": manifest.get("chunk"),
         "base_reviewed": manifest.get("base_reviewed"),
+        # The record-lint control's YIELD, carried from the dispatch manifest
+        # into the fact so it is queryable rather than printed and forgotten
+        # (`nonfunctional-requirements.md` § Direction — a control born after
+        # 2026-07-29 emits its yield at birth, or it can only ever be defended
+        # on principle instead of retired on evidence). This is data ABOUT the
+        # review, not a finding IN it: it never reaches `counts`, so it cannot
+        # move a verdict, and no gate reads it.
+        "record_lint": manifest.get("record_lint"),
     }
 
 

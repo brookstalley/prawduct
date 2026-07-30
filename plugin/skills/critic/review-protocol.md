@@ -14,12 +14,10 @@ The Critic reviews changes against principles and specifications as a **separate
 
 ## Modes
 
-`$ARGUMENTS` selects the mode. See `review-cycle.md` for full per-mode behavior.
+**This file serves `final` and `cumulative`.** `chunk` and `verify-resolutions` read `goals-1-3.md` — self-contained for those two, which is why nothing here restates them. Per-mode behavior: `review-cycle.md`.
 
-- **`chunk`** — Goals 1-3 only, single-pass, scoped to the uncommitted diff. Target 1-2 min.
 - **`final`** — all 7 goals + Learnings Cross-Check + Backlog Reconciliation + Framework-Specific Checks. Coordinator pattern eligible. Target 4-10 min.
-- **`cumulative`** — `final`-mode goals scoped to `merge-base...HEAD` (the full PR bundle). Required by `/prawduct:pr create`. See `review-cycle.md`.
-- **`verify-resolutions`** — Goals 1-3 against the delta since the prior review fact. Target 1-2 min. Demotion rules: `review-cycle.md`.
+- **`cumulative`** — `final`-mode goals scoped to `merge-base...HEAD` (the full PR bundle). Required by `/prawduct:pr create`.
 
 **Default:** mode missing, unrecognized, or inference unconfident → `final` (canonical rule: `review-cycle.md`). Never silently downgrade.
 
@@ -35,7 +33,7 @@ The Critic reviews changes against principles and specifications as a **separate
 
 ## Review Goals
 
-Your goals, in priority order. (`chunk` mode runs 1-3 only.)
+Your goals, in priority order — you run all seven.
 
 **Normative authority** (`${CLAUDE_SKILL_DIR}/../../docs/norms.md`). Direction sections,
 preferences rows, project-state classification, **and unmarked prose recording a decision**
@@ -68,7 +66,7 @@ downgrade.
 - Every requirement is implemented or explicitly descoped → **BLOCKING** if silently dropped.
 - **Acceptance criteria are observable behavior** ("user can submit form and see confirmation," not "function X exists") → **WARNING** if implementation-only.
 - **Requirements Confidence field present** (`High | Medium | Low`, see `methodology/planning.md`). Missing → **WARNING**. If Medium/Low, plan must list open assumptions and what would resolve them — missing either → **WARNING**.
-- **Build-plan ref drift**: run `prawduct-hook verify-chunk-refs` — both `missing-ref:` (deliverable absent) and `cannot-verify:` (gate couldn't run) exits are **BLOCKING**.
+- **Record checks are machine-answered: read the manifest's `record_lint`, don't re-derive it** (chunk deliverables included). Severities and `unchecked`: `review-cycle.md`.
 - **Behavioral choices**: workflow features configurable via `project-preferences.md` (safe default); hardcoded when two paths reasonable → **WARNING**.
 - For user-visible changes: product verified beyond tests → **WARNING** if no evidence.
 - Error paths have test coverage. Happy path + at least one error case per flow → **WARNING** if missing.
@@ -122,7 +120,7 @@ Applies proportionally — a 2-line helper needs no design review. Prioritize wh
 
 ## Framework-Specific Checks
 
-**Applies only in `final` and `cumulative` modes when reviewing framework instruction files, templates, or structural decisions.** `chunk` mode and product builds skip these. Read `framework-checks.md` for the complete definitions:
+**Applies when reviewing framework instruction files, templates, or structural decisions.** Product builds skip these. Read `framework-checks.md` for the complete definitions:
 - **Generality**: Instructions work across product types.
 - **Instruction Clarity**: LLM-facing text is unambiguous and testable.
 - **Cumulative Health**: Total instruction payload stays within budgets.
@@ -142,8 +140,8 @@ Applies proportionally — a 2-line helper needs no design review. Prioritize wh
 
 The roster in the code-written dispatch manifest (`.prawduct/.critic-partials/manifest.json`, written by `critic-begin`) picks the path:
 
-- **Roster `["reviewer"]` — single-pass**: `chunk`, `verify-resolutions`, and `final`/`cumulative` under 5 changed files. The fork reviews inline, writes its one partial, and runs `critic-consolidate` itself; no subagents.
-- **Roster `correctness`/`design`/`sustainability` — coordinator pattern** (below): `final`/`cumulative` at 5+ changed files.
+- **Roster `["reviewer"]` — single-pass**: no risk surface touched and under 12 judgeable files. The fork reviews inline, writes its one partial, and runs `critic-consolidate` itself; no subagents.
+- **Roster `correctness`/`design`/`sustainability` — coordinator pattern** (below): `final`/`cumulative` when the diff touches a risk surface or changes 12+ judgeable files. (*Risk surface* = the repo's `risk_surfaces:` or the framework defaults; an undeclared repo is never reviewed less than before — `review-cycle.md`.)
 
 ### Coordinator Pattern
 

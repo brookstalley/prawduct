@@ -114,6 +114,11 @@ The abuse surface is small and local. The controls that matter:
   governance *verdict* blocks on ambiguity; anything that merely informs degrades quietly. This
   split is itself an abuse-resistance property — you cannot make a gate pass by feeding it garbage;
   garbage makes it block.
-- **No destructive action without an explicit apply step.** State-mutating lifecycle commands
-  (migrate, init, scaffold, repo-disable, learnings-audit) default to a dry run and require an
-  explicit `--apply`; the one destructive migration lands as a single revertible commit.
+- **No destructive or irreversible operation without explicit owner approval at the OPERATION
+  level.** One informed confirmation covering the whole act, naming its blast radius and what cannot
+  be undone — not a per-action gate. Preview-by-default (`--apply` on migrate, init, scaffold,
+  repo-disable, learnings-audit) is the right shape *where the command is the operation*; where one
+  approved operation performs thousands of writes the approval is taken once, up front, and granular
+  steps proceed without re-confirmation. The one destructive migration lands as a single revertible
+  commit. *This control tracks the `## Direction` norm as amended 2026-07-24 — the pre-amendment
+  absolute form is recorded there as history, and must not be restated here as live.*

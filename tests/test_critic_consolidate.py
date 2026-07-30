@@ -39,6 +39,7 @@ sys.path.insert(0, str(ROOT))
 from lib import critic_consolidate as cc  # noqa: E402
 from lib import evidence  # noqa: E402
 from lib import gates  # noqa: E402
+from lib import record_lint  # noqa: E402
 
 PARTIALS_REL = ".prawduct/.critic-partials"
 FINDINGS_REL = ".prawduct/.critic-findings.json"
@@ -1061,16 +1062,257 @@ class TestCriticBeginCLI:
         manifest = json.loads((repo / PARTIALS_REL / "manifest.json").read_text())
         assert manifest["roster"] == ["reviewer"], "1 file < threshold → single-pass"
 
-        # Widen the diff past the threshold — same mode now goes coordinator.
-        for i in range(cc.COORDINATOR_FILE_THRESHOLD):
+        # Widen past the judgeable threshold — same mode now goes coordinator
+        # on volume alone, with no risk surface anywhere in the diff.
+        for i in range(cc.COORDINATOR_JUDGEABLE_THRESHOLD):
             p = repo / f"src/mod_{i}.py"
             p.write_text(f"y = {i}\n")
         result = _run_begin(repo, "--mode", "final", "--tier", "escalate")
         assert result.returncode == 0, f"stderr={result.stderr!r}"
         manifest = json.loads((repo / PARTIALS_REL / "manifest.json").read_text())
         assert manifest["roster"] == ["correctness", "design", "sustainability"]
-        assert str(cc.COORDINATOR_FILE_THRESHOLD) in manifest["roster_chosen_by"]
+        assert str(cc.COORDINATOR_JUDGEABLE_THRESHOLD) in manifest["roster_chosen_by"]
         assert manifest["tier"] == "escalate"
+
+
+class TestRosterKeyedToRiskSurface:
+    """Roster derivation asks a RISK question, not a size question.
+
+    Established by replaying all 82 final/cumulative review facts in the
+    evidence store: keying to judgeable file count at any threshold would have
+    sent 54% of historical blocking findings to a single reviewer, because the
+    record-heavy diffs it demotes are governance diffs — 20 such reviews carried
+    17 blocking findings, 13 pointing at code. See the roster config block in
+    lib/critic_consolidate.py for the full table.
+    """
+
+    def _roster(self, tmp_path, files, mode="final", declare=True):
+        """Roster for ``files``.
+
+        ``declare=True`` writes a `risk_surfaces:` list that the test diffs do
+        NOT match, so the repo has opted into the risk-keyed rule and the
+        risk predicate is genuinely "on but not matched" — the state that
+        exercises the judgeable-volume branch. ``declare=False`` leaves the
+        repo undeclared, which is the product case that keeps the prior rule.
+        """
+        prawduct_dir = tmp_path / ".prawduct"
+        prawduct_dir.mkdir(exist_ok=True)
+        state = prawduct_dir / "project-state.yaml"
+        if declare:
+            state.write_text("risk_surfaces:\n  - untouched/by/these/tests/\n")
+        elif state.exists():
+            state.unlink()
+        return cc._derive_roster(mode, list(files), prawduct_dir)
+
+    def test_risk_surface_forces_coordinator_at_any_size(self, tmp_path):
+        """A one-file gate-kernel change outranks every size rule.
+
+        The live counter-example this rule exists for: the AST free-edge
+        relaxation changed 3 judgeable files (5 total) and the coordinator
+        returned 10 blocking findings, including "the gate can now relax itself
+        with no way to detect it". Every judgeable-count rule reviews it
+        single-pass.
+        """
+        roster, why = self._roster(tmp_path, ["plugin/lib/gates.py"], declare=False)
+        assert roster == ["correctness", "design", "sustainability"], why
+        assert "risk surface" in why
+
+    def test_record_heavy_diff_is_not_demoted_when_it_touches_the_kernel(self, tmp_path):
+        """The exact shape the rejected spec would have demoted: few judgeable
+        files, many records — which is what a governance change looks like."""
+        files = [
+            "plugin/lib/gates.py",
+            "plugin/lib/coverage_algebra.py",
+            ".prawduct/backlog.md",
+            ".prawduct/change-log.md",
+            ".prawduct/artifacts/build-plan-x.md",
+        ]
+        roster, why = self._roster(tmp_path, files, declare=False)
+        assert roster == ["correctness", "design", "sustainability"], why
+
+    def test_no_risk_surface_below_threshold_is_single_pass(self, tmp_path):
+        """The one band the replay clears: 5-11 judgeable files touching no
+        risk surface is 13 historical coordinator reviews with ZERO blocking
+        findings."""
+        files = [f"src/mod_{i}.py" for i in range(8)]
+        roster, why = self._roster(tmp_path, files)
+        assert roster == ["reviewer"], why
+        assert "judgeable" in why
+
+    def test_volume_alone_escalates_at_the_threshold(self, tmp_path):
+        n = cc.COORDINATOR_JUDGEABLE_THRESHOLD
+        below, why_below = self._roster(tmp_path, [f"src/m{i}.py" for i in range(n - 1)])
+        at, why_at = self._roster(tmp_path, [f"src/m{i}.py" for i in range(n)])
+        assert below == ["reviewer"], why_below
+        assert at == ["correctness", "design", "sustainability"], why_at
+
+    def test_records_do_not_count_toward_the_volume_escalator(self, tmp_path):
+        """Judgeability is the right question for the SIZE half — a diff of 30
+        records with no code is not 30 files of review work. It is the wrong
+        question for the RISK half, which is why risk is asked first."""
+        files = [f".prawduct/artifacts/doc-{i}.md" for i in range(30)]
+        roster, why = self._roster(tmp_path, files)
+        assert roster == ["reviewer"], why
+
+    def test_undeclared_repo_keeps_the_prior_file_count_rule(self, tmp_path):
+        """The product case, and the reason the risk-keyed rule is gated.
+
+        An as-scaffolded product declares no `risk_surfaces:` and its
+        boundary-patterns template yields no parseable paths, so the
+        framework-shaped derived defaults match nothing in its tree. If "no
+        surface matched" fell straight through to judgeable volume, the
+        effective product rule would be `judgeable >= 12` alone — the row the
+        replay rejected at 54% of historical blockers demoted — and it would
+        REPLACE a rule that gave that product a coordinator at 5 files.
+
+        So an undeclared repo keeps the prior escalator unchanged.
+        """
+        files = [f"src/mod_{i}.py" for i in range(6)]  # 6 judgeable, < 12
+        roster, why = self._roster(tmp_path, files, declare=False)
+        assert roster == ["correctness", "design", "sustainability"], why
+        assert "prior rule retained" in why
+
+    def test_undeclared_repo_below_the_prior_threshold_is_single_pass(self, tmp_path):
+        roster, why = self._roster(tmp_path, ["src/a.py", "src/b.py"], declare=False)
+        assert roster == ["reviewer"], why
+        assert "prior rule retained" in why
+
+    def test_declared_empty_is_no_signal_not_an_opt_in(self, tmp_path):
+        """Pins a DELIBERATE asymmetry between two readers of one key.
+
+        ``resolve_surfaces`` tests ``declared is not None`` (an empty list is an
+        exclusive opt-out, so no surface ever matches). ``has_product_risk_
+        declaration`` tests truthiness, so ``risk_surfaces: []`` reads as *no
+        signal* and the conservative file-count rule is retained.
+
+        The obvious tidy-up — aligning the two for symmetry — would turn the
+        opt-out into "risk-keyed rule with an empty surface list", i.e.
+        single-pass for every final/cumulative under 12 judgeable files, which
+        is the rejected rule reached by accident. This test is what fails first.
+        """
+        import sys
+        sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "plugin"))
+        from lib import risk as risk_mod
+
+        prawduct_dir = tmp_path / ".prawduct"
+        prawduct_dir.mkdir(exist_ok=True)
+        (prawduct_dir / "project-state.yaml").write_text("risk_surfaces: []\n")
+
+        assert risk_mod.has_product_risk_declaration(prawduct_dir) is False
+
+        # …and it stays False even with a FILLED boundary-patterns.md. A present
+        # `risk_surfaces:` key is exclusive in resolve_surfaces, so if this fell
+        # through to boundary paths the repo would report "has a signal" while
+        # its surface set is empty — the predicate could never fire, the
+        # conservative fallback would be skipped, and judgeable-volume alone
+        # would decide. That is the rejected rule reached by accident.
+        (prawduct_dir / "artifacts").mkdir(exist_ok=True)
+        (prawduct_dir / "artifacts" / "boundary-patterns.md").write_text(
+            "The shared contract is `src/api/contract.py`.\n"
+        )
+        assert risk_mod.has_product_risk_declaration(prawduct_dir) is False
+        roster_again, why_again = cc._derive_roster(
+            "final", [f"src/m{i}.py" for i in range(6)], prawduct_dir
+        )
+        assert roster_again == ["correctness", "design", "sustainability"], why_again
+        assert "prior rule retained" in why_again
+        # …while resolve_surfaces still treats it as an exclusive declaration.
+        surfaces, source = risk_mod.resolve_surfaces(prawduct_dir)
+        assert surfaces == [] and source == risk_mod.SOURCE_DECLARED
+
+        roster, why = cc._derive_roster(
+            "final", [f"src/m{i}.py" for i in range(6)], prawduct_dir
+        )
+        assert roster == ["correctness", "design", "sustainability"], why
+        assert "prior rule retained" in why
+
+    def test_a_documented_contract_surface_is_not_consent_to_less_review(self, tmp_path):
+        """`boundary-patterns.md` escalates but can never relax.
+
+        `discovery.md` asks every contract-bearing product to fill that file. If
+        those paths counted as a risk declaration, merely documenting your API
+        would opt you into the 12-judgeable threshold and skip the conservative
+        fallback — so a 6-file diff touching no contract path would go from
+        coordinator to single-pass, silently, while four instruction surfaces
+        promise an undeclared repo is never reviewed less than before.
+
+        Escalating is a safe inference from a documented contract; relaxing is
+        not. The paths still feed resolve_surfaces, so they still escalate.
+        """
+        prawduct_dir = tmp_path / ".prawduct"
+        (prawduct_dir / "artifacts").mkdir(parents=True, exist_ok=True)
+        (prawduct_dir / "artifacts" / "boundary-patterns.md").write_text(
+            "The shared shape is `src/api/contract.py`.\n"
+        )
+        import sys
+        sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "plugin"))
+        from lib import risk as risk_mod
+
+        assert risk_mod.has_product_risk_declaration(prawduct_dir) is False
+        roster, why = cc._derive_roster(
+            "final", [f"src/m{i}.py" for i in range(6)], prawduct_dir
+        )
+        assert roster == ["correctness", "design", "sustainability"], why
+        assert "prior rule retained" in why
+
+        # …but the documented contract path still ESCALATES at any size.
+        hot, why_hot = cc._derive_roster(
+            "final", ["src/api/contract.py"], prawduct_dir
+        )
+        assert hot == ["correctness", "design", "sustainability"], why_hot
+
+    def test_declaring_surfaces_opts_into_the_risk_keyed_rule(self, tmp_path):
+        """The same 6-file diff reviews single-pass once the repo has said where
+        its risk lives — the saving is bought by the declaration, not assumed."""
+        prawduct_dir = tmp_path / ".prawduct"
+        prawduct_dir.mkdir(exist_ok=True)
+        (prawduct_dir / "project-state.yaml").write_text(
+            "risk_surfaces:\n  - src/payments/\n"
+        )
+        files = [f"src/mod_{i}.py" for i in range(6)]
+        roster, why = cc._derive_roster("final", files, prawduct_dir)
+        assert roster == ["reviewer"], why
+        assert "prior rule retained" not in why
+
+    def test_this_repo_declares_its_surfaces(self):
+        """The framework repo must opt in, or its own replay describes a rule it
+        does not run. Fails if the declaration is dropped from project-state."""
+        import sys
+        repo_root = Path(__file__).resolve().parent.parent
+        sys.path.insert(0, str(repo_root / "plugin"))
+        from lib import risk as risk_mod
+        assert risk_mod.has_product_risk_declaration(repo_root / ".prawduct")
+        surfaces, source = risk_mod.resolve_surfaces(repo_root / ".prawduct")
+        assert source == risk_mod.SOURCE_DECLARED
+        # Declared list must still cover the framework's own machinery, or the
+        # opt-in would silently change which reviews escalate.
+        for real in ("plugin/lib/gates.py", "plugin/bin/prawduct-hook",
+                     "plugin/skills/critic/SKILL.md"):
+            assert risk_mod.surface_matches([real], surfaces), real
+
+    def test_declared_risk_surfaces_override_the_defaults(self, tmp_path):
+        """A product repo's own hot spots decide, per the resolution order."""
+        prawduct_dir = tmp_path / ".prawduct"
+        prawduct_dir.mkdir(exist_ok=True)
+        (prawduct_dir / "project-state.yaml").write_text(
+            "risk_surfaces:\n  - src/payments/\n"
+        )
+        hot, why_hot = cc._derive_roster("final", ["src/payments/charge.py"], prawduct_dir)
+        assert hot == ["correctness", "design", "sustainability"], why_hot
+        # …and the framework defaults stop applying entirely when declared.
+        cold, why_cold = cc._derive_roster("final", ["plugin/lib/gates.py"], prawduct_dir)
+        assert cold == ["reviewer"], why_cold
+
+    def test_single_pass_modes_are_unchanged(self, tmp_path):
+        """Regression: chunk and verify-resolutions never go coordinator, no
+        matter what the diff touches."""
+        for mode in ("chunk", "verify-resolutions"):
+            roster, why = self._roster(
+                tmp_path, ["plugin/lib/gates.py"] + [f"src/m{i}.py" for i in range(40)],
+                mode=mode,
+            )
+            assert roster == ["reviewer"], f"{mode}: {why}"
+            assert "always single-pass" in why
 
     def test_cumulative_mode_uses_merge_base(self, tmp_path):
         repo = tmp_path / "r"
@@ -1291,6 +1533,79 @@ class TestWorktreeVisibility:
         manifest = json.loads((repo / PARTIALS_REL / "manifest.json").read_text())
         assert manifest["branch"] is None
         assert "(detached)" in result.stdout
+
+
+class TestRecordLintInManifest:
+    """Record checks are answered at DISPATCH and carried in the manifest, so a
+    reviewer reads the result instead of re-deriving it — and the control's own
+    yield rides into the review fact, where it can be queried rather than
+    argued about (`nonfunctional-requirements.md` § Direction)."""
+
+    def _dispatch(self, tmp_path, plan: str | None = None):
+        repo = tmp_path / "r"
+        _init_repo(repo)
+        _commit_file(repo, "src/app.py", "x = 1\n", "init")
+        (repo / ".prawduct" / "artifacts").mkdir(parents=True)
+        (repo / ".prawduct" / "project-state.yaml").write_text("project_name: t\n")
+        if plan is not None:
+            (repo / ".prawduct" / "artifacts" / "build-plan.md").write_text(plan)
+        _commit_file(repo, ".prawduct/keep", "", "seed prawduct")
+        (repo / "src/app.py").write_text("x = 2\n")
+        result = _run_begin(repo, "--mode", "chunk")
+        assert result.returncode == 0, f"stderr={result.stderr!r}"
+        manifest = json.loads((repo / PARTIALS_REL / "manifest.json").read_text())
+        return repo, manifest, result
+
+    def test_manifest_carries_a_record_lint_block(self, tmp_path):
+        _repo, manifest, _res = self._dispatch(tmp_path)
+        lint = manifest["record_lint"]
+        assert set(lint) == {"records", "chunk_graded", "findings", "unchecked", "counts"}
+        # Every check is present with an explicit tally, so a zero is visibly a
+        # zero rather than a key a consumer has to interpret.
+        assert set(lint["counts"]) == set(record_lint.CHECKS)
+
+    def test_a_missing_declared_deliverable_lands_in_the_manifest(self, tmp_path):
+        plan = (
+            "# Plan\n\n## Status\n\n- [ ] Chunk 01: do it\n\n"
+            "### Chunk 01: do it\n\n"
+            "- **Deliverables:** `src/never_built.py`\n"
+        )
+        _repo, manifest, result = self._dispatch(tmp_path, plan)
+        findings = manifest["record_lint"]["findings"]
+        assert [f["check"] for f in findings] == ["chunk-ref-missing"]
+        assert "src/never_built.py" in findings[0]["detail"]
+        # The dispatching agent sees it without opening the manifest.
+        assert "record-lint" in result.stdout
+        assert "src/never_built.py" in result.stdout
+
+    def test_lint_findings_do_not_gate(self, tmp_path):
+        """Advice, not authority: a lint finding never blocks dispatch and never
+        reaches the fact's severity counts."""
+        plan = (
+            "# Plan\n\n## Status\n\n- [ ] Chunk 01: do it\n\n"
+            "### Chunk 01: do it\n\n"
+            "- **Deliverables:** `src/never_built.py`\n"
+        )
+        _repo, manifest, result = self._dispatch(tmp_path, plan)
+        assert result.returncode == 0
+        assert manifest["record_lint"]["findings"], "the finding exists…"
+        body = cc.build_fact_body(manifest, [])
+        assert body["counts"] == {"blocking": 0, "warning": 0, "note": 0}
+        assert body["findings"] == []
+
+    def test_the_fact_carries_the_yield(self, tmp_path):
+        """The observable-yield obligation: a control born after 2026-07-29
+        must leave something queryable behind, not printed output."""
+        _repo, manifest, _res = self._dispatch(tmp_path)
+        body = cc.build_fact_body(manifest, [])
+        assert body["record_lint"] == manifest["record_lint"]
+
+    def test_an_absent_lint_block_does_not_break_the_fact(self, tmp_path):
+        """A manifest written by an older dispatch carries no `record_lint`;
+        the fact records None rather than failing to build."""
+        _repo, manifest, _res = self._dispatch(tmp_path)
+        manifest.pop("record_lint")
+        assert cc.build_fact_body(manifest, [])["record_lint"] is None
 
 
 # ---------------------------------------------------------------------------

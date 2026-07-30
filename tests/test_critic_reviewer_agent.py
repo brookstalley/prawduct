@@ -244,9 +244,24 @@ class TestCoordinatorProseRewritten:
 
 
 class TestSinglePassUnchanged:
-    def test_chunk_and_verify_still_single_pass(self):
+    """`chunk` and `verify-resolutions` must stay outside the coordinator path.
+
+    The invariant is unchanged; where it is *stated* moved. Those two modes now
+    read `goals-1-3.md` and never open `review-protocol.md`, so asserting it
+    only in the protocol would have left the rule pinned in a file its own
+    audience cannot see. Asserted at both ends instead: the protocol still
+    describes the single-pass roster for the modes it serves, and goals-1-3.md
+    tells its reviewer directly.
+    """
+
+    def test_goals_1_3_declares_single_pass(self):
+        text = (REVIEW_PROTOCOL.parent / "goals-1-3.md").read_text()
+        assert "single-pass" in text.lower()
+        assert "no subagents" in text.lower() and "no coordinator" in text.lower()
+
+    def test_protocol_still_describes_the_single_pass_roster(self):
         text = REVIEW_PROTOCOL.read_text()
         assert "single-pass" in text.lower()
-        # chunk / verify-resolutions must remain outside the coordinator path.
         exec_section = text.split("## Review Execution", 1)[1].split("### Coordinator", 1)[0]
-        assert "chunk" in exec_section and "verify-resolutions" in exec_section
+        assert "single-pass" in exec_section.lower()
+        assert "critic-consolidate" in exec_section

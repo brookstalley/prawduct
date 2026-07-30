@@ -67,7 +67,6 @@ class TestCriticSkillDenyPatterns:
         expected = [
             "Read", "Glob", "Grep", "Bash(wc *)", "Write", "Agent",
             "Bash(prawduct-hook test-status)",
-            "Bash(prawduct-hook verify-chunk-refs *)",
             "Bash(prawduct-hook infer-critic-mode *)",
         ]
         allowed = _extract_allowed_tools(_PLUGIN_CRITIC_SKILL.read_text())
@@ -76,6 +75,22 @@ class TestCriticSkillDenyPatterns:
                 f"{_PLUGIN_CRITIC_SKILL.relative_to(REPO_ROOT)} dropped legitimate "
                 f"tool `{tool}` from allowed-tools"
             )
+
+    def test_verify_chunk_refs_grant_is_retired(self):
+        """`verify-chunk-refs` left this list on purpose, not by accident.
+
+        The chunk-deliverable check now runs at DISPATCH (`critic-begin`
+        computes it into the manifest's `record_lint` block), and
+        `review-protocol.md` tells reviewers to read that result rather than
+        re-derive it. A standing grant for a command no instruction issues is a
+        mechanism's name outliving its mechanism — and re-running it by hand is
+        precisely the duplicated work the dispatch-time move removed. The
+        assertion is here rather than the entry merely being deleted above so a
+        future re-add has to argue with a stated decision instead of silently
+        restoring a line that looks like an oversight."""
+        allowed = _extract_allowed_tools(_PLUGIN_CRITIC_SKILL.read_text())
+        assert "verify-chunk-refs" not in allowed
+        assert "critic-begin" in allowed, "dispatch is where the check now runs"
 
     def test_git_is_read_only(self):
         """CRT-2M5P: the Critic must NOT have the broad `Bash(git *)` allow —

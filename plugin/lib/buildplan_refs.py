@@ -586,8 +586,15 @@ _BUILD_PLAN_TRIVIAL_RATIONALE_RE = re.compile(
 # "contains `/`, isn't a path" family as the slash-command / URL carveouts in
 # `_looks_like_file_path`. A token whose first segment is one of these prefixes and
 # whose final segment carries no extension is a ref to skip, not a missing file.
+# `refs` is the ref NAMESPACE rather than a branch prefix — `refs/tags/v3.2.1`,
+# `refs/heads/develop`, `refs/remotes/origin/main` — and a release plan backticks
+# it for exactly the same reason it backticks a branch. It belongs to this set on
+# the same test: it names something in git, not on disk. A repo-root directory
+# literally called `refs/` would be shadowed, which is why the extension guard
+# below still applies (`refs/foo.py` stays checked).
 _GIT_REF_PREFIXES = frozenset(
-    {"feature", "fix", "hotfix", "release", "bugfix", "support", "origin", "upstream"}
+    {"feature", "fix", "hotfix", "release", "bugfix", "support", "origin", "upstream",
+     "refs"}
 )
 
 # "Carries an extension" is not "contains a dot". A version-numbered branch —

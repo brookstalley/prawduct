@@ -579,3 +579,66 @@ class TestAuditLearningsCLI:
         # stream, exit codes, missing-learnings handling, usage) is covered by
         # tests/test_plugin_runtime.py::TestAuditLearningsSubcommand — the
         # engine's stderr/exit-1 contract retired with tools/prawduct-setup.py.
+
+
+class TestLifecycleMetadataLivesWhereItsReaderLooks:
+    """The invariant a byte-conservation check cannot see.
+
+    `audit-learnings` parses `.prawduct/learnings.md` and NOTHING else, and
+    `_METADATA_RE` requires the comment on the line immediately after its `## `
+    title. So a `prawduct-learning:` comment anywhere else is inert.
+
+    On 2026-07-30 a compaction moved every entry's body to
+    `learnings-detail.md` — and the metadata comment is the body's first line,
+    so all three went with it. `audit-learnings` returned zero promotions and
+    zero retirements: indistinguishable from "nothing to report", and it is the
+    live path behind `/prawduct:doctor`. Two of the three carried `sentinel=`,
+    the retirement signal and the only structural path that *shrinks*
+    `learnings.md` — so the pass billed as the last compaction disabled the
+    mechanism that makes future ones unnecessary.
+
+    The move was verified by a byte-conservation check, which passed: every byte
+    did land in the destination. Conservation is not function. The repo already
+    carried the rule ("when compacting a file that tooling parses, classify
+    every span by its CONSUMER"), learned from the *same operation* on
+    2026-07-17. A rule that had already been written and already been violated
+    is a rule that needs a test.
+
+    Stated as an invariant rather than a count, so it cannot go stale as
+    entries are promoted or retired.
+    """
+
+    def _repo_root(self):
+        return Path(__file__).resolve().parent.parent
+
+    def test_no_lifecycle_metadata_has_drifted_to_the_detail_file(self):
+        detail = self._repo_root() / ".prawduct" / "learnings-detail.md"
+        if not detail.is_file():
+            pytest.skip("no learnings-detail.md in this checkout")
+        stray = [
+            line.strip()
+            for line in detail.read_text().splitlines()
+            if line.strip().startswith("<!--") and "prawduct-learning:" in line
+        ]
+        assert not stray, (
+            f"{len(stray)} lifecycle comment(s) in learnings-detail.md — "
+            "audit-learnings never reads that file, so these are inert. Move "
+            "them back under their `## ` title in learnings.md."
+        )
+
+    def test_every_comment_in_learnings_sits_where_the_parser_expects(self):
+        learnings = self._repo_root() / ".prawduct" / "learnings.md"
+        if not learnings.is_file():
+            pytest.skip("no learnings.md in this checkout")
+        lines = learnings.read_text().splitlines()
+        misplaced = [
+            i + 1
+            for i, line in enumerate(lines)
+            if "prawduct-learning:" in line
+            and not (i > 0 and lines[i - 1].startswith("## "))
+        ]
+        assert not misplaced, (
+            f"lifecycle comment(s) at line(s) {misplaced} are not immediately "
+            "after a `## ` title — _METADATA_RE will not associate them with "
+            "any entry, so they are silently ignored."
+        )

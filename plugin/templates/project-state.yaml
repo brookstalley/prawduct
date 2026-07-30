@@ -250,6 +250,34 @@ build_state:
 # build_plan_ref_root: plugin
 
 # =============================================================================
+# RISK SURFACES (opt-in)
+# =============================================================================
+# The paths where a missed defect costs your product the most — auth, payments,
+# migrations, a public API contract, whatever yours are. Two consumers read the
+# list: `prawduct-hook classify-diff-risk` (the review `tier`) and the Critic's
+# roster derivation, which gives a diff touching any of them the deeper
+# three-reviewer review at any size.
+#
+# **Declaring this opts you into the risk-keyed roster.** Leave it unset and you
+# are never reviewed less than before: prawduct's framework-shaped defaults
+# (`skills/`, `lib/gates*`, `bin/*hook*`, plus any contract paths you list in
+# boundary-patterns.md) still escalate, and below those the older file-count rule
+# stands (a coordinator at 5+ changed files). Declaring your own surfaces is what
+# raises the size threshold to 12 judgeable files — prawduct will not review your
+# high-risk changes more cheaply just because they are small.
+#
+# Pattern semantics: a trailing `/` is a directory prefix; anything else is an
+# fnmatch glob (a plain path with no metacharacters is an exact match). An
+# explicit empty list (`risk_surfaces: []`) is a deliberate "this product has
+# no risk surfaces" opt-out and turns the tier check off.
+#
+# risk_surfaces:
+#   - src/auth/
+#   - src/billing/
+#   - migrations/
+#   - src/api/contract.py
+
+# =============================================================================
 # DERIVED VIEWS (enabled by default, v1.4+)
 # =============================================================================
 # When true (default), three derived views are regenerated from change-log.md

@@ -444,6 +444,38 @@ def git_path_is_ignored(project_dir: Path, rel_path: str) -> bool:
         return False
 
 
+def git_paths_ignored(project_dir: Path, rel_paths: "list[str]") -> "set[str]":
+    """The git-ignored subset of ``rel_paths``, in ONE ``git check-ignore`` call.
+
+    The batched sibling of :func:`git_path_is_ignored`, for callers on the
+    session-start hot path where a subprocess per candidate would be the cost —
+    ``clear`` was deliberately taken from 25 git subprocesses to 11, and a
+    per-path loop here would put that back on a large monorepo.
+
+    Same fail-closed direction as the single-path form: any error, timeout, or
+    unparseable output returns the empty set ("couldn't prove anything is
+    ignored"), so a caller that skips ignored paths keeps reporting rather than
+    silently dropping them. ``check-ignore`` exits 0 when something matched, 1
+    when nothing did, and 128 on error; only 0 carries output worth reading.
+    """
+    if not rel_paths:
+        return set()
+    try:
+        result = subprocess.run(
+            ["git", "check-ignore", "--stdin", "-z"],
+            input="\0".join(rel_paths),
+            capture_output=True,
+            text=True,
+            cwd=str(project_dir),
+            timeout=10,
+        )
+    except Exception:  # prawduct:allow prawduct/broad-except -- git failure must not crash a best-effort scan
+        return set()
+    if result.returncode != 0:
+        return set()
+    return {p for p in result.stdout.split("\0") if p}
+
+
 def _get_session_changed_files(project_dir: Path, status_output: str | None = None) -> list[str]:
     """Get files changed since session start. Returns list of file paths.
 
