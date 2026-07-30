@@ -151,6 +151,13 @@ Pointing it at `goals-1-3.md` would extend this chunk's saving to the coordinato
 chunk's spec scopes `final`/`cumulative` to the full protocol, so it was left alone rather than taken
 quietly. It belongs with roster selection, which is Chunk 04's subject.
 
+**Third amendment outside every chunk's scope, 2026-07-30:** `plugin/methodology/session-digest.md`
+gains one line — prefer an invariant to a tally, and where a number is essential compute it at write
+time and let a mechanism own it. Owner-requested, on the observation that `learnings.md` is
+project-scoped so an onboarded product inherits none of its rules. Recorded here because the
+change-log's compaction entry had, one commit earlier, stated the opposite decision; both now stand,
+with the reversal noted at the entry.
+
 **Second amendment outside every chunk's scope, 2026-07-30:** the architecture-staleness probe in
 `plugin/lib/briefing.py` now skips git-ignored directories, via a new batched
 `gitstate.git_paths_ignored`. Declared in the commit and the change-log, and recorded here because
@@ -381,8 +388,8 @@ levers that did pay are Chunk 03's payload cut and the round policy filed as CRT
 - **Tests:** unit — roster selection across the boundary, risk-surface intersection, judgeable-count
   escalator; regression — `chunk`/`verify-resolutions` single-pass path unchanged; the risk-surface
   anchoring regression pinned
-- **Acceptance criteria:** a diff touching no risk surface with 5–11 judgeable files reviews
-  single-pass; a diff touching `plugin/lib/gates.py` reviews coordinator at any size; replayed
+- **Acceptance criteria:** in a repo that declares `risk_surfaces:`, a diff touching no risk surface
+  with 5–11 judgeable files reviews single-pass (an undeclared repo keeps the 5-file rule); a diff touching `plugin/lib/gates.py` reviews coordinator at any size; replayed
   history reproduces the R3 row above
 
 **The prerequisite bug this chunk had to fix first.** `risk.py`'s derived-default surfaces

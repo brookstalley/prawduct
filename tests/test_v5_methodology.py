@@ -267,7 +267,11 @@ class TestBuildingMethodology:
         # estimate_tokens rather than from the line above it:
         # 4657 at branch HEAD (headroom 3) -> 4672 on the first wording, OVER
         # -> 4669 after tightening both restatements -> 4648 after the trim
-        # below. Headroom 3 -> 12.
+        # below. Headroom 3 -> 12 at that point; a later commit in the same
+        # branch removed the restatements entirely (they were false for any
+        # undeclared product), landing where LAST_MEASURED_TOKENS records.
+        # **That table is the current reading — this narrative is history and
+        # must not be read as a live figure.**
         #
         # Note for the next editor: the 2026-07-29 entry above ends at "4639,
         # headroom 21", and this change did NOT start there — Chunks 02-03 of

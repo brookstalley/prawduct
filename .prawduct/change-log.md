@@ -36,9 +36,9 @@ cannot provide: an added `learnings.md` heading over 400 characters is carrying 
 added narrative line belongs in detail. Added lines only, so the over-long rules left standing
 are grandfathered and cost nothing until someone edits them — which is the moment the guidance is
 actionable. Measured yield on the pre-compaction file: **20 over-long rules and 285 narrative
-lines**. The threshold is sized above the corpus's p90 rather than invented; the percentile itself is
-deliberately not quoted here, because it moves with every entry edited and two attempts to state it
-shipped a wrong number. The file's
+lines**. The threshold is set so a rule carrying its evidence trips it and an ordinary rule does not — 16 of
+156 headings were above the line at the compaction. No percentile relation is claimed, deliberately:
+four attempts to state one shipped a wrong number, each while correcting the last. The file's
 own preamble is excluded, because a check that reports the paragraph explaining the format as a
 violation of the format is a check nobody keeps.
 

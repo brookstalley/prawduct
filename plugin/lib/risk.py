@@ -179,17 +179,17 @@ def resolve_surfaces(prawduct_dir: Path) -> tuple[list[str], str]:
 
 
 def has_product_risk_declaration(prawduct_dir: Path) -> bool:
-    """True when THIS REPO has said where its risk concentrates — a non-empty
-    ``risk_surfaces:`` list, or contract paths documented in
-    ``boundary-patterns.md``.
+    """True only when THIS REPO has explicitly said where its risk
+    concentrates — a non-empty ``risk_surfaces:`` list. Nothing else counts.
 
-    The derived defaults deliberately do NOT count. They are framework-shaped
-    (``skills/``, ``lib/gates*``, ``bin/*hook*``), so in an onboarded product
-    they describe the *plugin's* hot spots and typically match nothing in the
-    product's own tree — and an as-scaffolded product declares neither key: the
-    `project-state.yaml` template has no ``risk_surfaces:`` and the
-    `boundary-patterns.md` template writes its examples inside HTML comments,
-    unbackticked, so :func:`_boundary_pattern_paths` yields zero.
+    Neither the derived defaults nor ``boundary-patterns.md`` do. The defaults
+    are framework-shaped (``skills/``, ``lib/gates*``, ``bin/*hook*``), so in an
+    onboarded product they describe the *plugin's* hot spots and typically match
+    nothing in the product's own tree. The contract paths are a product
+    documenting its API, which says nothing about how much review depth it
+    wants — counting them let a repo that had merely written that file be
+    reviewed *less* than before. Both still feed :func:`resolve_surfaces`, so
+    both still ESCALATE; neither can relax anything.
 
     So any consumer deciding on "no risk surface matched" MUST distinguish
     *"this diff is low-risk"* from *"this repo never had a risk signal to

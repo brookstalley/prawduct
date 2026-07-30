@@ -274,11 +274,12 @@ def _check_suite_totals(path: str, added: "list[tuple[int, str]]") -> list[dict]
 
 #: `learnings.md` holds the RULE; `learnings-detail.md` holds the narrative.
 #: A rule longer than this is carrying its evidence, which belongs in detail.
-#: Sized above the corpus's p90 at the 2026-07-30 compaction so it flags the
-#: tail rather than the norm. Deliberately NOT recording that percentile here:
-#: it moves with every entry edited, and two successive attempts to state it
-#: shipped a wrong number — the second while correcting the first. Recompute if
-#: you need it; do not trust a copy.
+#: Set so a rule carrying its evidence trips it and an ordinary rule does not:
+#: at the 2026-07-30 compaction, 16 of 156 headings were above the line.
+#: **No percentile relation is claimed here, deliberately.** Four successive
+#: attempts to state one shipped a wrong number — each while correcting the
+#: last — because the statistic moves with every entry edited while the
+#: sentence does not. Recompute the distribution if you need it:
 #:   python3 -c "import re,statistics as s;h=[len(x[3:].strip()) for x in re.findall(r'^## .*$',open('.prawduct/learnings.md').read(),re.M)];print(s.median(h),sorted(h)[int(.9*len(h))])"
 _LEARNINGS_RULE_MAX = 400
 
