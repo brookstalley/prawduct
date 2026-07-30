@@ -8,7 +8,7 @@
 ## Open
 
 - **[LNG-5W8R]** Uplevel the compliance canary: retire the two checks that re-implement a linter, extend the one factual table, and make what remains measurable — prawduct should judge whether the right tools are applied, not re-derive their rules per language
-  `effort: M · impact: L · area: compliance · kind: task · source: owner · added: 2026-07-29 · reviewed: 2026-07-29 · status: open · stage: ready · related: COV-3M8Q · refs: plugin/lib/compliance.py (`compliance_canary` and its four checks; `_check_broad_exceptions`; `_is_test_file`; `_is_dependency_file`), plugin/bin/prawduct-hook (`_compliance`, the stop-hook call site), plugin/skills/critic/review-protocol.md (the broad-exception WARNING that already owns this judgment), .prawduct/artifacts/project-preferences.md (Enforcement: "Error handling" is already assigned to Critic)`
+  `effort: M · impact: L · area: compliance · kind: task · source: owner · added: 2026-07-29 · reviewed: 2026-07-29 · status: open · stage: ready · related: COV-3M8Q · refs: plugin/lib/compliance.py (`compliance_canary` and its four checks; `_check_broad_exceptions`; `_is_test_file`; `_is_dependency_file`), plugin/bin/test-reference-verify (`_PY_SYMBOL_RE`, `_is_python_file`, and the non-Python skip that makes the BLOCKING `verify-coverage` gate pass vacuously), plugin/lib/gitstate.py (`_PRODUCT_CODE_SUFFIXES` — missing `.cs`, fails open), plugin/bin/prawduct-hook (`_compliance`, the stop-hook call site), plugin/skills/critic/review-protocol.md (the broad-exception WARNING that already owns this judgment), .prawduct/artifacts/project-preferences.md (Enforcement: "Error handling" is already assigned to Critic; the Linter row's `(none configured for prawduct)` is the root cause)`
   <!-- refs are NAME-anchored, not line-anchored, per the CRT-R4Z2 convention. -->
 
   Tracking item for both `architecture.md` § Direction norms born 2026-07-29 (per-file language
@@ -16,7 +16,14 @@
 
   **Inventory, 2026-07-29** (verified by reading, not inherited). `gates.py` and `coverage_algebra.py`
   carry **no language literals at all** — the coverage/free-edge machinery is path-based and already
-  compliant. `compliance.py` holds every violation, across four checks with different characters:
+  compliant. **This survey is partial by declaration, not exhaustive** — completing it is acceptance
+  criterion 1, and it gates the rest. Two confirmed sites live *outside* `compliance.py`:
+  **`plugin/bin/test-reference-verify`** (`_PY_SYMBOL_RE`, `_is_python_file`, and the
+  `if not _is_python_file(fp): continue` skip) — the most serious, because it feeds `verify-coverage`,
+  a **BLOCKING** Goal 1 check that therefore reads as satisfied on a Swift/Rust/C# repo having
+  inspected nothing; and **`gitstate.py`** (`_PRODUCT_CODE_SUFFIXES`, 12 suffixes, missing `.cs`,
+  failing open rather than reporting unchecked). Within `compliance.py`, four checks of different
+  character:
 
   | # | Check | Language dependency | Behaviour off Python/JS |
   |---|---|---|---|
