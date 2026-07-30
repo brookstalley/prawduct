@@ -116,6 +116,25 @@ from; it also caught the check grading the *wrong chunk* (Status names the first
 finished chunk's review graded the next one) and an unguarded decode that would have aborted every
 review dispatch on one non-UTF-8 `.md`. Next: Chunk 03 (per-mode reviewer payload).
 
+**Chunk 03 built 2026-07-30.** `plugin/skills/critic/goals-1-3.md` + `SKILL.md` step 2 routing;
+payload for `chunk`/`verify-resolutions` drops ~10,500 → ~1,875 tokens (83%, bar was 50%). Three
+things Chunk 04's author should know, all on files that chunk also edits:
+
+- **`review-protocol.md` now serves `final`/`cumulative` only**, and its chunk-mode restatements are
+  gone. Headroom went 5 → 48 tokens, so there is room there now — but the trim-or-relocate rule stands.
+- **Goals 1-3 live in two files, bound by a directional test** (`TestCriticGoals13.
+  test_no_check_from_goals_1_3_was_dropped`): adding a check to the protocol's goals 1-3 without
+  adding it to `goals-1-3.md` fails the suite. Editing either copy means editing both.
+- **The `≤80 lines` target was missed at 125**, deliberately — self-containment required inlining four
+  former pointer-chases, and trimming to 80 would have deleted checks. The real acceptance criterion
+  (halve the payload, no follow-the-pointer reads) is met and guardrailed.
+
+**Observed, not built — for Chunk 04's roster work.** The coordinator's **correctness** reviewer runs
+exactly goals 1-3 and still reads the full `review-protocol.md` (its agent definition points there).
+Pointing it at `goals-1-3.md` would extend this chunk's saving to the coordinator path, but this
+chunk's spec scopes `final`/`cumulative` to the full protocol, so it was left alone rather than taken
+quietly. It belongs with roster selection, which is Chunk 04's subject.
+
 **Second amendment outside every chunk's scope, 2026-07-30:** the architecture-staleness probe in
 `plugin/lib/briefing.py` now skips git-ignored directories, via a new batched
 `gitstate.git_paths_ignored`. Declared in the commit and the change-log, and recorded here because

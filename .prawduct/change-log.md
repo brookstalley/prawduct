@@ -3,6 +3,54 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-07-30: A three-goal review stops paying a seven-goal reading fee
+
+<!-- prawduct: type=feature | scope=record-mechanization | chunks=03 -->
+
+**Why, measured over all 267 review facts carrying a duration:** `chunk` mode missed its 1–2 minute
+target in **30 of 30** recorded runs and `verify-resolutions` in **148 of 155**, while `final` — which
+loads the same protocol to run more than twice the goals — sat *inside* its target 85% of the time.
+The tell is the floor: the 96 smallest verify runs, five or fewer changed files and often a one-line
+fix to confirm, still took a **median 240s against a 60–120s target**. That is not diff size, because
+there is barely any diff. It is what the reviewer loads before reading a single changed line.
+
+**Those two modes now read one file.** New `plugin/skills/critic/goals-1-3.md` carries goals 1–3
+complete, and `SKILL.md` step 2 routes by the mode it just resolved: `chunk`/`verify-resolutions` →
+`goals-1-3.md` and **nothing else**; `final`/`cumulative` → `review-protocol.md` as before. Payload
+for the two fast modes drops from ~10,500 tokens (`review-protocol.md` plus the `review-cycle.md` it
+pointed at eight times) to ~1,875 — an **83% cut**, against an acceptance bar of "at least half."
+
+**Self-contained means the pointers had to be paid off, not followed.** The record-lint severity
+table, the chunk-`Type:` protocol selector, the normative-authority preamble and the partial schema
+(including the `resolutions` arm) are now inlined, because each was a read into `review-cycle.md` at
+review time. That is also why the file is 125 lines against the plan's ≤80: the line estimate did not
+price self-containment, and closing the gap would have meant deleting checks — which is exactly what
+the trim-or-relocate rule on `review-protocol.md`'s budget exists to forbid. Checks kept, target
+missed, recorded at the mechanism rather than quietly restated.
+
+**The routing paid for itself in the file it routes away from.** `review-protocol.md` now serves
+`final`/`cumulative` only, so its chunk-mode restatements went — the mode bullets, the goal preamble's
+"chunk mode runs 1-3 only", the framework-checks skip note, the single-pass roster's mode list. The
+ceiling held at 3620 and headroom went from **5 tokens to 48**: this is the second consecutive change
+to that file that added a rule and left it smaller.
+
+**Goals 1–3 now exist in two files, and the test is what makes that safe.** The duplication is the
+obvious objection to the split; it is policed rather than tolerated. The no-dropped-check guardrail
+counts severity verdicts directionally — adding a check to `review-protocol.md`'s goals 1–3 without
+adding it to `goals-1-3.md` fails the suite — so the copies cannot drift in the direction that
+matters, which is a check the chunk-mode reviewer never sees. Deleting goals 1–3 from the protocol
+and having `final` read both files was considered and rejected: it re-splits the seven-goal payload to
+fix what the invariant already closes. Four more guardrails pin the rest — the ≥50% payload cut, the
+2000-token ceiling, self-containment (no line may send the reviewer to another protocol file, and the
+one line naming them is the prohibition), and a regrowth check that fails if final-mode content
+reappears. All mutation-proved.
+
+**One test moved rather than weakened.** `test_chunk_and_verify_still_single_pass` asserted that
+invariant by finding both mode names in `review-protocol.md`'s Review Execution section — a file those
+modes no longer open, so the rule was pinned where its own audience could not see it. It is now
+asserted at both ends: `goals-1-3.md` tells its reviewer directly, and the protocol still describes the
+single-pass roster for the modes it serves.
+
 ## 2026-07-30: The Critic stops re-deriving what a machine can count — record-lint at dispatch
 
 <!-- prawduct: type=feature | scope=record-mechanization | chunks=02 -->

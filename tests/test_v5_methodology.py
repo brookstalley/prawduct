@@ -441,6 +441,173 @@ class TestCriticSkill:
 
 
 # =============================================================================
+# goals-1-3.md — the chunk / verify-resolutions payload
+# =============================================================================
+
+
+class TestCriticGoals13:
+    """`chunk` and `verify-resolutions` read this file INSTEAD of
+    review-protocol.md + review-cycle.md.
+
+    Why the split exists, measured over all 267 review facts carrying a
+    duration: `chunk` missed its 1-2 min target in 30 of 30 recorded runs and
+    `verify-resolutions` in 148 of 155, while `final` — loading the same
+    protocol for more than twice the goals — sat INSIDE its target 85% of the
+    time. The 96 smallest verify runs (<=5 changed files) still took a median
+    240s, so the floor is not diff size; it is what gets loaded before a single
+    changed line is read.
+    """
+
+    @pytest.fixture(autouse=True)
+    def load(self):
+        self.content = read_file("skills/critic/goals-1-3.md")
+        self.protocol = read_file("skills/critic/review-protocol.md")
+
+    def test_payload_at_most_half_the_full_protocol(self):
+        """The chunk's acceptance criterion, pinned: measured payload for these
+        modes drops by at least half.
+
+        Compared against what these modes loaded BEFORE — review-protocol.md
+        plus review-cycle.md, which the protocol pointed at eight times, so a
+        reviewer following its pointers read both. SKILL.md is common to every
+        mode and cancels out of the comparison."""
+        cycle = read_file("skills/critic/review-cycle.md")
+        before = estimate_tokens(self.protocol) + estimate_tokens(cycle)
+        after = estimate_tokens(self.content)
+        assert after * 2 <= before, (
+            f"goals-1-3.md is ~{after} tokens against a ~{before}-token predecessor "
+            f"({100 * after // before}%) — the split must at least halve the payload"
+        )
+
+    def test_token_budget(self):
+        # Ceiling 2000. The plan targeted "<=80 lines" and this landed at 125;
+        # the gap is entirely SELF-CONTAINMENT, which is the other half of the
+        # same acceptance criterion. The line estimate did not account for
+        # inlining the record-lint severity table, the chunk-`Type:` protocol
+        # selector, the normative-authority preamble and the partial schema --
+        # every one of which was a pointer-chase into review-cycle.md, and
+        # pointer-chases are the payload this file removes. Hitting 80 lines
+        # would have meant deleting checks, which the trim-or-relocate rule on
+        # review-protocol.md's own budget exists to forbid. Checks kept, target
+        # missed, recorded here rather than quietly restated.
+        #
+        # Headroom is ~125 tokens BY DESIGN, and the rule is the same one
+        # review-protocol.md carries: the next addition trims or relocates, it
+        # does not bump. A check that belongs to goals 1-3 arriving here is
+        # funded by compressing prose in this file, never by dropping a check.
+        tokens = estimate_tokens(self.content)
+        assert tokens < 2000, f"goals-1-3.md is ~{tokens} tokens, should be <2000"
+
+    def test_is_self_contained(self):
+        """No follow-the-pointer reads at review time — the acceptance criterion
+        the line count was traded for. A reviewer in these modes reads this file
+        and stops.
+
+        The rule is about *directives*, not the strings: the file names the two
+        protocol files precisely once, to forbid opening them, and a concrete
+        prohibition instructs better than "don't read the others." So every line
+        mentioning one must be that prohibition — which also means a future edit
+        cannot smuggle a read-directive back in under the same filename."""
+        pointers = ("review-protocol.md", "review-cycle.md", "framework-checks.md")
+        offenders = [
+            ln for ln in self.content.split("\n")
+            if any(p in ln for p in pointers) and "do not open" not in ln
+        ]
+        assert not offenders, f"goals-1-3.md sends the reviewer elsewhere: {offenders}"
+
+    def test_no_check_from_goals_1_3_was_dropped(self):
+        """The distillation must lose no check. Every check in the protocol is
+        severity-mapped, so a dropped one shows up as a missing verdict — this
+        counts them rather than trusting the prose, and anchors the named checks
+        that a recount alone would not catch.
+
+        **This test is also what makes the duplication safe.** Goals 1-3 now
+        exist in two files, which is real duplication and the obvious objection
+        to the split. It is deliberate and policed rather than tolerated: the
+        count invariant below is directional (`got >= src`), so adding a check
+        to review-protocol.md's goals 1-3 without adding it here FAILS — the two
+        copies cannot drift apart in the direction that matters, which is a
+        check the chunk-mode reviewer never sees.
+
+        The alternative considered and rejected: delete goals 1-3 from
+        review-protocol.md and have `final`/`cumulative` read both files. That
+        removes the duplication outright, but it re-splits the seven-goal
+        payload across two files to fix a problem this test already closes, and
+        the plan scopes `final`/`cumulative` to keep the full protocol. Revisit
+        if the anchor list below starts needing maintenance every time a goal
+        changes — that would mean the coupling had become the cost.
+        """
+        i = self.protocol.index("### 1. Nothing Is Broken")
+        j = self.protocol.index("### 4. Everything Is Coherent")
+        goals = self.protocol[i:j]
+        for sev in ("BLOCKING", "WARNING", "NOTE"):
+            src = goals.count(f"**{sev}**")
+            got = self.content.count(f"**{sev}**")
+            assert got >= src, f"goals-1-3.md has {got} {sev} verdicts, protocol goals 1-3 have {src}"
+        for anchor in (
+            "test-status", "verify-coverage", "missing-coverage:", "pre-existing",
+            "exact-match", "property-based", "injection", "hardcoded secrets",
+            "trust boundaries", "explicitly descoped", "observable behavior",
+            "Requirements Confidence", "record_lint", "project-preferences.md",
+            "accessibility", "infrastructure_dependencies", "Foreign API",
+            "Exposed API", "api_error_model_approach", "operator-verification",
+            "unlisted dependencies", "undocumented architectural", "broad exception",
+            "prawduct:allow", "Trivial because",
+        ):
+            assert anchor.lower() in self.content.lower(), f"goals-1-3.md dropped check anchor {anchor!r}"
+
+    def test_carries_what_the_pointers_used_to_fetch(self):
+        """Self-containment is only real if the inlined content is here. These
+        are the four pointer-chases the old payload forced."""
+        assert "chunk-ref-missing" in self.content and "governed-by-gap" in self.content
+        assert "unchecked" in self.content            # record-lint's not-a-pass rule
+        assert "designer-handoff" in self.content     # the chunk `Type:` selector
+        assert "Normative authority" in self.content  # Goal 3's binding preamble
+        assert '"resolutions"' in self.content        # the verify-resolutions schema arm
+
+    def test_never_runs_anything(self):
+        """The no-execution rule is load-bearing and must survive distillation."""
+        lower = self.content.lower()
+        assert "never run tests" in lower or "do not run tests" in lower
+
+    def test_does_not_carry_the_final_only_payload(self):
+        """The split is only worth its cost if the seven-goal content is gone —
+        a copy that regrew into the full protocol would pass every test above."""
+        for absent in (
+            "Everything Is Coherent", "Decisions Were Deliberate",
+            "The Design Is Sound", "Coordinator Pattern",
+            "Framework-Specific Checks", "Backlog Reconciliation",
+        ):
+            assert absent not in self.content, f"goals-1-3.md regrew {absent!r} — that is final-mode payload"
+
+
+class TestCriticSkillRoutesByMode:
+    """SKILL.md step 2 selects the payload; without this the new file exists and
+    nothing reads it."""
+
+    @pytest.fixture(autouse=True)
+    def load(self):
+        self.content = read_file("skills/critic/SKILL.md")
+
+    def test_step_2_names_both_payloads(self):
+        line = next(ln for ln in self.content.split("\n") if ln.startswith("2. "))
+        assert "goals-1-3.md" in line
+        assert "review-protocol.md" in line
+        for mode in ("chunk", "verify-resolutions", "final", "cumulative"):
+            assert mode in line, f"SKILL step 2 does not route {mode}"
+
+    def test_review_cycle_table_records_the_routing(self):
+        """`review-cycle.md` owns per-mode behavior, so the routing is recorded
+        there too — a reader who checks the mode table must not learn a
+        different answer from the one SKILL.md acts on."""
+        cycle = read_file("skills/critic/review-cycle.md")
+        row = next((ln for ln in cycle.split("\n") if "Protocol read" in ln), None)
+        assert row is not None, "review-cycle.md's per-mode table has no protocol-read row"
+        assert row.count("goals-1-3.md") == 2, "chunk and verify-resolutions both read goals-1-3.md"
+        assert row.count("review-protocol.md") == 2, "final and cumulative both read review-protocol.md"
+
+
+# =============================================================================
 # review-cycle.md
 # =============================================================================
 
