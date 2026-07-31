@@ -333,7 +333,7 @@ class TestBuildingMethodology:
         # signal mid-summary, and what a user wants after a 30-120 minute wait
         # is not a safety verdict alone — it is state, the next action and who
         # owns it, then the verdict. PAID FOR by the trim-or-relocate rule, not
-        # a raise: 4652 -> 4725 on the first draft -> 4655. Fundings, each a
+        # a raise: 4652 -> 4725 on the first draft -> 4646. Fundings, each a
         # relocate to a surface the reader cannot skip rather than a cut:
         # (1) the block's RATIONALE (why three lines, the three failure modes,
         # what counts as "outstanding") went to reflection.md, which owns the
@@ -355,7 +355,12 @@ class TestBuildingMethodology:
         # paragraph said warnings "should be addressed", which review-cycle.md
         # § "The review loop terminates" names BY FILE as the cause of the
         # round pump — it now says warnings and notes gate nothing and are
-        # dispositioned. Headroom 5; the next addition trims or relocates.
+        # dispositioned. The next addition trims or relocates — read the live
+        # headroom off LAST_MEASURED_TOKENS against the assertion below rather
+        # than from this narrative, which is history. A figure written here was
+        # stale twice in one branch (4655 survived a trim to 4646, and this line
+        # said "Headroom 5" above an assertion permitting 14) — the same
+        # copy-forward this table was built to end.
         tokens = estimate_tokens(self.content)
         assert tokens < 4660, f"building.md is ~{tokens} tokens, should be <4660"
 

@@ -656,10 +656,11 @@ class TestIncompleteNoopLiveness:
 # ---------------------------------------------------------------------------
 
 
-#: Every path class the directive can name, mapped to a representative path and
-#: whether the directive is claiming it is free. Adding a class to the directive
-#: without adding it here fails ``test_directive_names_no_unpinned_path_class``,
-#: which is the half that makes the drift guard bidirectional.
+#: Every path class the directive can name, mapped to (representative path,
+#: expected JUDGEABILITY) — True means "costs a review round", i.e. the directive
+#: must place it in the costly clause. Adding a class to the directive without
+#: adding it here fails ``test_directive_names_no_unpinned_path_class``, which is
+#: the half that makes the drift guard bidirectional.
 _DIRECTIVE_PATH_CLASSES = {
     ".prawduct/": (".prawduct/change-log.md", False),
     "`.claude/settings.json`": (".claude/settings.json", False),

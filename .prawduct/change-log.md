@@ -129,7 +129,17 @@ have reinstated the swallow-into-empty-string defect it was written to fix. Five
 three diagnostic branches and the age note — the last of which was untestable with the existing
 fixtures, whose `rev-test-0001` ids the timestamp regex never matches. Two runs also raced on one
 worktree (`critic-begin` resets the partials directory with no in-flight guard — CRT-9T6M, observed
-for the third time), which cost a full review's tokens and recorded nothing.
+for the third time), which cost a full review's tokens and recorded nothing. That round also relabelled
+the no-op note's age from "recorded" to "dispatched": the value is parsed from the review id's own
+stamp, so it precedes the fact's timestamp by however long the review took — ten minutes on a
+coordinator run.
+
+**The figure this entry corrected went stale a second time, in the other copy.** The change-log's
+arithmetic was fixed while `test_v5_methodology.py`'s budget narrative kept saying "→ 4655" and
+"Headroom 5" above an assertion permitting 14, so the two records contradicted each other and the
+stale one sat twenty lines from the live one. Fixed, and the narrative now says to read the headroom
+off `LAST_MEASURED_TOKENS` rather than from prose — the copy-forward that table exists to end,
+committed twice in the branch that documents it.
 
 ## 2026-07-31: The completeness gate can see an item that arrived at the wrong status (BKL-7V2D)
 
