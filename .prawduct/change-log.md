@@ -9,9 +9,13 @@
 <!-- UNTAGGED, and the reason matters because the first draft gave the wrong one. Wrong reason: "no
      build plan, so there is no ## Status to regenerate" — true but irrelevant, since scope= also keys
      release-pending enumeration. Real reason: the two controls CONFLICT and the tag loses. Tagging
-     makes this a release-pending scope with no plan file, which `views.validate_*` (views.py:665-670)
-     rejects; regen-views is fail-closed, so the tag turns every view regeneration into exit 2 with
-     nothing written. Verified by tagging it and running `regen-views --check`, not by reading. So this
+     makes this a release-pending scope with no plan file, which `views.diagnose_scope_plan_coverage`
+     (views.py:665-670) rejects; regen-views folds that into `errors` and returns 2 with nothing
+     written, BEFORE `apply_regen` — so the tag breaks every view regeneration, not just this entry.
+     Verified by tagging it and running `regen-views --check`, not by reading. (The Critic finding that
+     recommended tagging cited a tolerance in `views._collect_status_regens`; no such symbol exists —
+     the real one is `views._plan_status_results`, and it sits downstream of the gate that rejects
+     first, so the recommendation was unworkable as given.) So this
      entry knowingly accepts REL-6Q4M's blind spot — it will not appear in the release-classification
      walk, and a releaser must classify it by hand. Recorded on REL-6Q4M: its fix has to cover the
      planless scope, or the two controls stay mutually exclusive. -->
