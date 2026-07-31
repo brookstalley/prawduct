@@ -1589,3 +1589,26 @@ A line-based pass misses wrapped occurrences, which is why the sweep must be whi
 ## Widening a predicate takes TWO searches: grepping the pattern finds its DUPLICATE COPIES, never the CALLERS that branch on the predicate it backs. So grep the *shape* for copies, then the *predicate's name* for branches; a survey that ran only the first is incomplete however clean it looked. Generalizes to any shared predicate — a validator, a feature flag, a type guard
 
 Chunk 05c widened an id-shape regex; `grep -rn "A-Za-z0-9"` correctly found all four copies (and caught a third the inherited plan had missed), so the survey felt complete and stopped. It was blind by construction to `core.resolve_ref`, which gates an alias round-trip on `is_pfx` — the Critic found it. `grep -rn "is_pfx"` takes seconds and was never run. The consequence was cost plus a widened ambiguity class, not a break, but nothing about the method would have caught a break either. . Relates to [[A completeness claim states the COMMAND that would falsify it and asserts that command now returns nothing]] (same enumeration-wearing-a-query's-clothes failure, one level up: a correct query against the wrong axis) and Root Cause Discipline (#16)
+
+## A spike that discards its code leaves its numbers unfalsifiable — commit the derivation as a runnable script and cite the command, never the digits, because a count transcribed into prose goes stale silently as the corpus grows; the fix is not counting more carefully but moving the count out of prose entirely
+
+Confirmed 2026-07-31 (record-mechanization Chunk 05, the change-log ledger spike). `change-log-ledger-design.md`
+§1 opened with a hand-authored tag census that matched **no** query over its own named tree, and the wrong
+sizing had already propagated into the migration plan's conversion and archive sets. A design artifact whose
+entire thesis is *mechanize hand-authored records* was itself carrying one — the disease found in the
+prescription.
+
+**The correction then repeated the offence twice**, which is the part worth keeping. Replacing the census by
+hand produced a claim about tag-key ordering *inferred from a count rather than measured*, and totals stated
+at a tree the shipping commit no longer described. Counting more carefully is not the fix; a number in prose
+has no owner and no tripwire, so it rots at the next merge whoever wrote it.
+
+The structural fix was to stop having a number: `tests/spikes/change_log_roundtrip.py` ships as the oracle,
+takes any ref, self-checks its own partition arithmetic, and the artifact cites the command. Two review
+findings retired at the mechanism instead of by footnote. The owner's intervention — *"are we getting caught
+up in numbers again?"* — is what reframed a correction into a structural fix, and is the tell to watch for:
+hand-correcting a count is the moment to ask why the count is in prose at all.
+
+Relates to [[A completeness claim states the COMMAND that would falsify it and asserts that command now returns nothing]]
+(same move — cite the falsifying command, not the tally), Living Documentation (#3), and Root Cause
+Discipline (#16).
