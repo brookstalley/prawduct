@@ -304,7 +304,7 @@ the design call:
    through `git show <ref>:.prawduct/backlog.md`, and post-cutover the markdown is frozen while the live
    corpus is Issues, so the check silently stops meaning anything at exactly the moment the migration
    completes. A date evaluates identically on both backends (every open markdown item carries `added:`
-   — 191/191 at survey time; issues carry `created_at`) and is immune to the amend/rebase SHA-orphaning
+   — **every** one of them does, which is the property the baseline needs; issues carry `created_at`) and is immune to the amend/rebase SHA-orphaning
    this repo has already recorded once (BKL-2Q7F, correction 3).
 3. **Surface it at Step 3 as a stated choice, not a refusal.** A survey is judgment — "these five are
    all keeps" is a legitimate answer — so a hard gate would block sound runs with no override. Match

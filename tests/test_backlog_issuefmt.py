@@ -219,9 +219,11 @@ class TestLintBodyBudgets:
         tell the reconciled budget from the one BKL-7H2M retired. This one can:
         160 visible words is over the old 150 and under the current budget, so a
         revert to 150 turns this red. Pinned as a pair with the over-budget case
-        below so the boundary is asserted from both sides rather than assumed."""
+        below so the boundary is asserted from both sides rather than assumed:
+        the check is `visible > BODY_MAX_WORDS`, so 175 must pass and 176 must
+        trip. Asserting a looser under-case (160) would leave a `>=` flip green."""
         assert issuefmt.BODY_MAX_WORDS == 175
-        under = "### Problem\n\n" + " ".join(["word"] * 160)
+        under = "### Problem\n\n" + " ".join(["word"] * 175)
         assert "body-too-long" not in _rules(
             issuefmt.lint("cli: something specific here", under, ["kind:bug", "area:cli"])
         )
