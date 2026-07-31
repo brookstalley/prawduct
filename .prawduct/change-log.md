@@ -3,6 +3,92 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-07-31: The completeness gate can see an item that arrived at the wrong status (BKL-7V2D)
+
+<!-- prawduct: type=fix | scope=backlog-service-v1 -->
+
+`verify-migration` is the gate that must pass before the ~900-write irreversible migration records its
+cutover. It compared the source set against **alias coverage** and never looked at issue state, so an item
+could be present, correctly keyed, and still not migrated — and the gate would say complete. Under
+`--archive-scope all` the run closes about as many items as it creates, and a flaky or rate-limited close
+stretch leaves every archived item sitting open. That is the F9 failure mode through a third door, after
+F9 itself and the unaliasable-id class.
+
+**The import's silence was deliberate policy, not an oversight, and the fix preserves it.** The design
+this was filed against assumed `_reconcile_status` had simply forgotten to handle its error. It had not:
+`tests/test_backlog_migrate.py` pins the behavior in its own words — *a create failure aborts (the scarce
+content budget); a status reconcile is core-budget and transient, so it defers and the resume converges
+it*. Making it raise would invert a tested policy and abort a 900-item run on one transient close failure.
+The reasoning that briefly justified raising — that the reachable failure set was all transport-class, so
+a counting channel would always be empty — conflated *what class* the failure is with *whether the run
+should continue*; the test proves the channel is populated. Both rejected shapes are recorded in the
+backlog item, because at `stage: ready` the next reader is someone who wasn't in the conversation, and
+"make it raise" is the obvious-looking fix they would otherwise re-derive.
+
+**What was genuinely broken in the import was narrower and worse: the close sat outside the rate-limit
+retry budget.** `core.set_status` catches `TransportError` and returns an envelope, so a 429 on a close
+never reached the reactive backoff built for exactly this stretch — the pause-and-retry only ever saw
+*creates*. Of the four wired-in cases in `TestRateLimitBackoff`, two inject a 429 on a create, one 429s
+everything and therefore dies on the first create before a close is attempted, and one injects nothing:
+**no existing test could reach a rate-limited close.** It now re-raises on `rate_limited` only, putting
+the close on the same retry contract as the create; an exhausted budget still falls through to the
+resumable envelope.
+
+Every other reconcile failure still defers — but it is now **counted**, not only narrated. A deferred item
+is in `created`, so the summary line reads as a clean run; `status_unreconciled` rides the result data and
+both resumable cuts, and human mode prints the count on stdout beside the pacing footer, because the scrub
+runbook drives import without `--json` and a data-only field would reach every consumer except the person
+running the irreversible migration.
+
+**The gate itself now reads the decoded status, not the raw state.** `core.iter_alias_issues` yields it as
+a fourth element — free, since the scan already fetches `state="all"` and already parses each body, and
+decoded rather than raw because reconstructing "shipped vs dropped" or "open vs in-progress" from `state`
+would re-implement the decoder's rules at a second site where they can drift. A divergence from the
+source's target is reported as `status_mismatch` and folds into the existing exit-4 `conflict` with its own
+remedy branch: same recoverability class as `missing` (re-running the import reconciles the status axis on
+already-migrated items), not `unaliasable`'s (which re-running cannot fix). No carve-out for an item a
+human may have legitimately moved since import — the gate runs immediately after the import in one
+operator session, and a false positive here is safe where a false negative is the thing being fixed.
+
+The gate's own new risk is that it now compares a decoded value against the source for *every* item, so a
+decoder that disagreed with the encoder would fail a healthy migration wholesale. `DISCODON_MINI` carries
+all five statuses across the three sections, so a clean import is the round-trip proof, and that is pinned.
+
+**Two target issues recording one id get their own list, `duplicate_alias`, and the review is why.** The
+scan derives its ids from the body block while the importer's collision check keys on the `id:PFX`
+*label* — `_AliasIndex` exists precisely because those diverge — so a block-only duplicate is invisible to
+that check, and reading it first-wins would have let the verdict flip with GitHub's page order. Reporting
+it was the first fix; routing it into `status_mismatch` was the second bug. Those lists are partitioned by
+**remedy**, not by symptom, and this pair diverges: a re-import writes to neither issue (the labelled one
+already matches, the block-only one is never looked up), so the operator would burn a full ~900-write pass
+and get the identical exit 4, with "deduplicate the two issues" appearing nowhere. That is verbatim the
+defect `verify_migration`'s docstring already warns about — *"a false conflict … on a gate whose
+prescribed remedy can never clear it"* — reintroduced one list over. The test now runs the wrong remedy
+and asserts it converges on nothing, rather than arguing the point in prose.
+
+**The Step 6 list enumeration is now pinned to the gate rather than hand-copied.** Twice in this branch a
+new list reached one copy of the runbook's prose and not the other — `status_mismatch` into the opening
+but not the closing arithmetic, then `duplicate_alias` repeating it one list later — each time pointing an
+operator at a paragraph explaining a list that was empty in front of them. `TestCompletenessGateLists
+AreEnumeratedConsistently` (`tests/test_cutover_prose_coherence.py`) derives the list names by calling
+`verify_migration` against an empty stub repo, so a sixth list added without a runbook bullet, or an
+enumeration still saying "four", fails there — the only place it can fail before an irreversible run. The
+same review also caught that the prescribed remedy `merge <duplicate-id> --into <survivor-id>` **cannot be
+typed**: both endpoints resolve through the `id:PFX` label search to the same labelled survivor and are
+rejected as merging an item into itself, so the issue-number form is the only one that works.
+
+**`boundary-patterns.md` stops being a pure scaffold**, because the Critic's Goal-5 contract-surface check
+was passing vacuously on a change that crossed two real ones. The two surfaces this work *proved* real are
+recorded — `iter_alias_issues`' positional yield (whose consumers include a runbook snippet, not only code)
+and the backlog-service result envelopes (whose recurring defect is enriching the success path and not the
+error ones). The rest is filed as **`BND-1S4K`**, along with the open question of whether the remainder gets
+filled by accretion or one inventory pass; the artifact's header now describes what happened rather than
+legislating which. Recorded there too: `plugin/lib/risk.py` is a second reader of that file, inert here
+because this repo declares `risk_surfaces:`, but in a product declaring none, filling it *raises* review depth.
+
+**Closes the trigger on Chunk 06** of `build-plan-v3.2.0-golive.md` — this item was filed as deferral with
+a named gate, and the gate was the irreversible run itself.
+
 ## 2026-07-31: The scrub survey the migration was blocked on, and seven items that had already shipped
 
 <!-- prawduct: type=docs | scope=backlog-service-v1 -->

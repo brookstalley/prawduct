@@ -291,6 +291,15 @@ issues, and name the tradeoff:
      (`--archive-scope` defaults to `all`; pass `open` for the open-only choice from Step 3c —
      the closed/archived items it skips stay in the git-tracked source markdown — never lost, but
      outside the migrated tracker and so outside post-cutover `list` and dedup; see Step 3c)
+
+     **Read the line after the summary before moving on.** A status reconcile that
+     fails for a non-rate-limit reason does not stop the run — the item is created
+     and left at the wrong status — so the counts can read as a clean import while
+     work remains. When that happens the import prints
+     `WARNING: N item(s) imported but NOT reconciled to their target status`.
+     **Re-run the import** (it reconciles the status axis on already-migrated items,
+     so this converges) until the line is gone. Step 6's `status_mismatch` is the
+     backstop if you miss it, not a substitute for reading it here.
    - **Fold each duplicate** into its survivor (writes the `superseded_by`
      redirect *before* closing the source, so a crash leaves a resolvable
      open-but-redirected item, never an orphan — AU3/CRASH-2):
@@ -323,9 +332,11 @@ the cutover*. Run:
     prawduct-hook backlog verify-migration --repo <target> \
       --from .prawduct/backlog.md [--archive <archive>] [--archive-scope all|open]
 
-**Exit 0 — `missing`, `unaliasable` and `collisions` all empty — is the
-precondition for the rest of this step.** Do **not** record the key while any is
-non-empty. Exit 4 names the items, and the three lists have different remedies:
+**Exit 0 — `missing`, `unaliasable`, `collisions`, `status_mismatch` and
+`duplicate_alias` all empty — is the precondition for the rest of this step.** Do
+**not** record the key while any is non-empty. Exit 4 names the items, and the
+five lists have different remedies — **re-running the import is the right answer
+for only two of them**:
 
 - **`missing`** — source items with no issue on the target. Re-run the import
   (idempotent, alias-keyed, so already-migrated items skip rather than
@@ -342,10 +353,38 @@ non-empty. Exit 4 names the items, and the three lists have different remedies:
   second rather than merging two items onto one alias, so it was never created
   and re-running will not create it. Give each a distinct PFX in the source,
   then re-import.
+- **`status_mismatch`** — the item is on the target and correctly keyed, but at
+  the **wrong status**: its issue exists, so it is not `missing`, yet a status
+  reconcile never landed. The import defers a failed reconcile so a long run can
+  continue (it reports them in `status_unreconciled`), and under
+  `--archive-scope all` a rate-limited close stretch can leave every archived
+  item sitting open. Same remedy as `missing` — re-run the import, which
+  reconciles the status axis on already-migrated items too — and verify again.
+- **`duplicate_alias`** — **two issues on the target** record the same id in their
+  body block and their statuses disagree, so nothing can decide which is
+  authoritative. It looks like `status_mismatch` and behaves like `collisions`:
+  **do not re-run the import.** A re-run writes to neither issue — the one carrying
+  the `id:PFX` label already matches, and the block-only one is never looked up —
+  so it burns a full pass and returns the identical exit 4. Find the pair by
+  searching the target for the id, then fold one into the other **by issue
+  number** — `merge <owner>/<repo>#<n> --into <owner>/<repo>#<m>` — and verify
+  again. The bare `PFX` form cannot express this merge: both endpoints resolve
+  through the `id:PFX` label search to the *same* labelled survivor, so it is
+  rejected as merging an item into itself. The number is the only handle that
+  distinguishes the two.
 
 `source_items` counts **every** parsed item in scope, not just the aliasable
 ones — so `source_items` exceeding `aliased` with an empty `missing` is exactly
-the `unaliasable`/`collisions` case, not an arithmetic error.
+the `unaliasable`/`collisions` case, not an arithmetic error. The converse does
+**not** mean you are clear: `status_mismatch` and `duplicate_alias` both count
+items that ARE keyed, so `source_items` equalling `aliased` and still exiting 4
+is the expected reading for either of those two, not a contradiction. **Read the
+five lists, not the arithmetic** — and read **every** one that is non-empty, not
+just the first. Exit 4 fires on any of the five and the message joins a clause per
+applicable cause, so a multi-list verdict is ordinary: stopping at `missing`, re-
+running the import and waiting out another full pass only to meet the source-side
+`unaliasable` fix afterwards is the failure this sentence exists to prevent. Only
+two of the five are "re-run the import."
 
 **Pass the same `--archive-scope` you imported with.** The gate derives its
 source set through the importer's own record assembly, so `open` verifies against
@@ -360,7 +399,10 @@ imported**, and nothing noticed until the repo was read months later. A raw issu
 count would not have caught it either — issues filed natively after a cutover
 carry a `prawduct` block but no `id:PFX` alias, so that repo's counts looked
 plausible (17 issues) while 7 source items were stranded. The gate compares the
-**source set against alias coverage**, which is the only comparison that holds.
+**source set against alias coverage**, which is the only comparison that holds —
+and then, because coverage alone still cannot see an item that arrived at the
+wrong status, compares each covered item's **decoded status** against the
+source's target.
 
 Then record the switch that makes the migrated repo the live backlog — a
 top-level scalar in `.prawduct/project-state.yaml`, set to the same `<target>`

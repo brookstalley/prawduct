@@ -659,7 +659,10 @@ prawduct's own repo is the right test bed because it carries **127+ PRs**. Run:
 
 ```python
 from lib.backlog import core
-seen = {n for n, pfxs, labels in core.iter_alias_issues(t, OWNER, REPO)}
+# Starred unpack, so a later widening of the yield cannot break this snippet in
+# an operator's hands (it already widened once: `id_aliases` PFXs, labels, and
+# now the decoded status the completeness gate compares).
+seen = {n for n, *_rest in core.iter_alias_issues(t, OWNER, REPO)}
 print("issues reached:", len(seen))
 raw = t.list_issues(OWNER, REPO, state="all", per_page=100, page=1)
 print("page 1 raw:", len(raw), "| PRs on page 1:", sum(1 for i in raw if "pull_request" in i))
@@ -685,6 +688,8 @@ print(len(t.list_timeline(OWNER, REPO, N)), len(t.list_sub_issues(OWNER, REPO, N
 real repo at real scale rather than a fixture.
 
 **What a pass does NOT discharge.** `BKL-7V2D` (the completeness gate cannot see "imported but never
-reconciled") is a separate and still-open Chunk 06 blocker; it is about what `verify-migration`
-*inspects*, not about whether pagination is sound. And `BKL-3H7W` (the meter under-counts paged reads)
+reconciled") is a separate Chunk 06 blocker — **fixed 2026-07-31**, so no longer outstanding, but still
+not something this probe speaks to: it is about what `verify-migration` *inspects*, not about whether
+pagination is sound. (That fix is also why Fact 2's snippet unpacks with `*_rest`: it widened
+`iter_alias_issues` to yield the decoded status.) And `BKL-3H7W` (the meter under-counts paged reads)
 is untouched by this — a paged list still costs 1 point regardless of page count.
