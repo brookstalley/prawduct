@@ -1644,3 +1644,42 @@ you fixed plus the legitimate contexts. For prose corrections this costs one gre
 above would have been caught by it. Relates to Root Cause Discipline (#16) and Honest Confidence (#5)
 — the false-about-itself case is the sharp one, because it converts a partial fix into an active
 misdirection.
+
+## Routing a filing to the handoff is NOT filing it — file the item the moment you decide it should exist, because a handoff note is read by a session that arrives with its own plan and treats an inherited instruction as context rather than work, and an unwritten handoff (crash, context exhaustion) loses it outright; "later" has two independent ways to never happen and costs the same as now
+
+**The evidence.** Two items — `render-dispositions` rendering only the newest review, and a fixed
+NOTE having no honest disposition kind — were identified during a wrap-up on 2026-07-30 and written
+into `.handoff-notes.md` under the heading **"FILE THIS FIRST — a real gap, deliberately not filed
+mid-wrap."** The routing note even argued its own timing: the next session was a backlog-triage
+session with the skill loaded and the corpus open, "the natural place." That session ran a full
+three hours, worked the backlog corpus directly, filed nothing, and routed **two more** items to the
+handoff by the same mechanism. It then died to a Claude Code segfault before writing that handoff at
+all. All four were filed on 2026-07-31 as `CRT-9K2P`, `CRT-3F7T`, `GOV-5N8R`, `GOV-2H6X`.
+
+**Two independent failure modes, one cause.** The deferral targets an actor who does not yet exist.
+
+1. *The successor deprioritizes it.* A handoff note is read as **context** by a session that arrives
+   with its own plan. "FILE THIS FIRST" is an imperative to its author and a background fact to its
+   reader. Being explicitly right about the timing did not help; the note correctly predicted the
+   conditions and the successor still did not act.
+2. *The handoff never gets written.* Everything between "decide to file" and "write the notes" is a
+   window in which the item exists only in one process's context. Three of the four survived only
+   because the disposition prose independently said "routed to the handoff" in durable text. A crash
+   one round earlier would have left no trace that anything was owed.
+
+**Why the mid-wrap objection is wrong.** The reason given for routing rather than filing was to
+avoid doing unrelated work mid-wrap. But filing costs one skill invocation against a corpus already
+open, whereas routing costs the same note *plus* the successor's re-reading, re-deciding, and
+re-deriving the item body from prose written for a different purpose. The deferral is not cheaper;
+it is the same cost paid later, with two ways of not being paid at all.
+
+**Scope, and what this does not say.** This governs what happens *after* you have decided an item
+should exist. Whether it should exist at all is a different question, already governed by
+[[A review ending is not a filing event — dispose every non-blocking finding as FIX or ACCEPT, and treat FILE as the narrow case clearing THREE bars]]
+— and that rule's preference for FIX over FILE is untouched here. If the answer is FIX, fix it now;
+if the answer is FILE, file it now. "Route it" is not a third answer. Relates to Complete Delivery
+(#2) — a routed item is a requirement in flight with no owner — and to Close the Learning Loop (#18),
+since the same mechanism carries learnings forward and fails the same way.
+
+**Operative form.** The wrap-up **files**; it does not route. A handoff note may *mention* what was
+filed and why it matters next, but the item must already have an id by the time the note names it.
