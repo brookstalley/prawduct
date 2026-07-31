@@ -5,9 +5,10 @@ Owner checkpoint held at the end of the 2026-07-18 session (BKL-8N5K shipped, Cr
 **confirmed** and carries forward to the owner-run migration session (BKL-6M4T), which should
 execute against these decisions without re-asking, re-confirming only if the source has drifted.
 
-**Exception — decision 6 is NOT owner-confirmed.** It is builder-proposed and marked sign-off owed.
+~~**Exception — decision 6 is NOT owner-confirmed.** It is builder-proposed and marked sign-off owed.
 The "execute without re-asking" rule above covers decisions 1–5 only; 6 must be put to the owner
-before it is acted on.
+before it is acted on.~~ **DISCHARGED 2026-07-31 — see decision 6.** All six decisions are now
+owner-confirmed, and decision 1's separate public-visibility sign-off is given.
 
 > ## ⚠ THE SOURCE HAS DRIFTED — do not execute the dispositions below without re-surveying first
 >
@@ -47,9 +48,16 @@ before it is acted on.
 
 ## Decisions
 
-1. **Live run: HELD** (2026-07-18). Target when it runs: `brookstalley/prawduct` (public — the
+1. **Live run: HELD** (2026-07-18). Target when it runs: `brookstalley/prawduct` (public). ~~The
    owner has NOT yet given the explicit public-visibility yes; re-confirm sign-off at the top of
-   the migration session).
+   the migration session.~~
+
+   **PUBLIC-VISIBILITY SIGN-OFF GIVEN — owner, 2026-07-31.** Verbatim: *"this is a public repo, and
+   fine that our issues are public."* So the blocking condition on this decision is discharged and the
+   migration session does **not** need to re-ask it. Recorded here rather than left to a transcript
+   because it is consent to an irreversible public disclosure: under decision 5 (`--archive-scope all`)
+   the whole corpus — open *and* archive — becomes public GitHub issues, and GitHub has no ordinary
+   issue-delete and never reuses numbers (MG1). What remains held is the **run**, not the permission.
 2. **Restructure scope: open survivors only.** The ~78 keep-items get the issue-standard
    restructure (title + template body + `kind:` backfill via a v1 plan, `import --restructure`);
    the 121 archive items import verbatim. Note: zero source items carry `kind:` today.
@@ -113,6 +121,18 @@ before it is acted on.
 
    Owner may overrule; if so, C4's blocked-by drops C7 and the release plan's burn-down step 4
    reverts to running them in parallel.
+
+   **DISCHARGED 2026-07-31 — owner sign-off given, and events had already answered it.** The owner
+   confirmed the recommendation. It is recorded as discharged rather than merely approved because the
+   ordering question is **moot in substance**: part (b) **BUILT 2026-07-24** in v3.2.0 Chunk 04 — the
+   Pacer now meters total REST points across create *and* close via `_PacingTransport` — so it landed
+   before the bulk import exactly as this decision asked, and the bulk import has not run. The open
+   sign-off was therefore a record lagging reality, not a live fork.
+
+   **`BKL-6X5D` the ITEM is NOT closed by this**, and the distinction matters: part (b) is done, part
+   (a)'s doc-coherence legs closed 2026-07-20, but the item's remaining leg — **quantifying the archive
+   window** (an N-months / throughput formula between the `{all,open}` poles) — is live adopter-scale
+   work with no bearing on prawduct's own run, which decision 5 settles at `all`.
 
 ## Approved dispositions (owner-confirmed 2026-07-18)
 

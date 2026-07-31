@@ -3,6 +3,42 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-07-31: The issue standard stops contradicting itself, and a norm's history stops reading as its rationale
+
+<!-- prawduct: type=fix | scope=backlog-service-v1 -->
+
+**The body budget was unsatisfiable at its own stated limits.** `documentation/backlog-service-issue-standard.md`
+carried two different numbers — §2 said ~120 visible words, §4 and `issuefmt.BODY_MAX_WORDS` said 150 —
+and §2's own per-section budgets already summed past both *before any Evidence section at all*. So an
+author following §2 section by section could produce a fully conforming issue that still tripped
+`body-too-long`. Reconciled to **one number, 175**, by owner ruling on the open question the item itself
+posed (do the per-section budgets shrink, or does the total rise?). The total rises: 175 clears the
+per-section sum with headroom for a visible Evidence line, and bulk evidence belongs in a fence, which
+the word count excludes anyway. The rationale now lives at the constant, so the next reader arguing with
+175 meets the reasoning rather than a bare literal.
+
+**The sweep found a fourth home the item named three of.** `documentation/backlog-service-upstream-filing.md`
+also specified ~120 visible words for the same standard. Found by sweeping for the *rule* — every site
+asserting a body-word budget — rather than the three sites the item enumerated; the completion claim is
+the falsifying grep returning no surviving 120/150, not a count of files edited.
+
+**The regression test could not see the change it was written for.** `test_body_too_long` used a
+200-word body, which trips at 150 and at 175 alike — a test that passes identically before and after is
+the vacuous-pin class the backlog already tracks. Added a boundary pair (160 under, 176 over) that
+fails red on a revert to 150, and verified it red before the fix rather than assuming it.
+
+**A norm's amendment record was being read as its live rationale.** Archiving `BKL-8V3D` made the
+`dead-why` probe fire against `security-model.md` — correctly, by its own rule, which scans `Why:`/`Status:`
+lines for citations to closed work. The citation was not on either field: `_direction_lines` soft-wrap-joins
+an unseparated paragraph onto the preceding line, so the 2026-07-24 amendment *history* was merging into
+`Status: steady-state.` and dragging its `BKL-8V3D` literal along. Fixed by detaching the record with a
+blank line — the remedy the probe's own contract prescribes ("a paragraph after a blank line stands
+alone") — and **the id literal is deliberately kept**: dropping it would silence the probe by making the
+premise untraceable, which inverts what norm citations are for. The norm itself is unchanged and
+re-affirmed; what BKL-8V3D established (the adapter has no generic `--apply` contract) is still true,
+and is now better evidenced than when written, since an undocumented departure became a documented
+absence at the surface a model reads.
+
 ## 2026-07-31: Fleet migration gets a triage norm, and the archive scope gets an invariant instead of a status
 
 <!-- prawduct: type=docs | scope=backlog-service-v1 -->

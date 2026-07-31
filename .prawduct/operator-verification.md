@@ -605,3 +605,86 @@ read path until the *last* project cuts over, so deleting it is not the tidy-up 
 **What this does NOT close.** The recovery fixed the instance; the defect that produced it is
 untouched — **cutover (step 6) still has no precondition on verification (step 5)**, and the
 completeness comparison above is a hand-run script, not a command. See functional-audit F9.
+
+## VRF-013 — Chunk 06 pre-run gate — the two transport/pagination defects, live read-only
+
+**Status:** pending
+**Added:** 2026-07-31
+
+**Why this exists.** `.prawduct/artifacts/migration-scrub-decisions.md` carries a **pre-run gate**
+added 2026-07-18 (holistic Fable review): *"the run is BLOCKED until the two transport/pagination
+defects are fixed and live-verified read-only against the real repo (>30 labels, 127+ PRs)."* Both
+code paths were re-read 2026-07-31 and **both look correct** — but no VRF records the live half, and
+VRF-009/011 ran against a *throwaway* repo, not a repo at the scale the gate names. The gate asks for
+evidence at scale; this entry is that evidence. **Read-only: no writes, no issues created, nothing
+mutated.** Cost: a handful of API reads.
+
+**Set up once.** From the prawduct checkout, with `gh` authenticated:
+
+```sh
+python3
+```
+
+```python
+import sys; sys.path.insert(0, "plugin")
+from lib.backlog.transport import GhTransport
+t = GhTransport()
+OWNER, REPO = "brookstalley", "prawduct"
+```
+
+**Fact 1 — multi-page reads reassemble correctly (the `--paginate` multi-doc JSON defect).**
+`_api_paged` uses an explicit page loop rather than `gh --paginate`, because that flag emits each page
+as a *separate JSON document* and a single `json.loads` over the concatenation fails the moment a
+result exceeds one page. `per_page` is injectable precisely so a live check can force multi-page
+behaviour against a real dataset that isn't yet huge. Run:
+
+```python
+one  = t._api_paged(f"repos/{OWNER}/{REPO}/labels", per_page=100)
+many = t._api_paged(f"repos/{OWNER}/{REPO}/labels", per_page=2)
+print(len(one), len(many))
+print({l["name"] for l in one} == {l["name"] for l in many})
+```
+
+**PASS:** both counts equal, and the name sets are identical (`True`). `per_page=2` forces many pages
+over the same data, so an equal result proves the loop reassembles rather than truncating or throwing.
+**FAIL:** any exception (especially a `json` decode error), unequal counts, or `False`.
+
+**Fact 2 — the terminator reads the RAW page, not the PR-filtered view.**
+This is the sharper defect. `iter_alias_issues` scans `issues` — an endpoint where **pull requests
+interleave with issues** — filters PRs out inside the loop, and must test `len(batch) < per_page`
+against the **unfiltered** batch. If the length test ever saw the filtered count, a page that happened
+to be mostly PRs would look short and the scan would stop early, silently under-reporting alias
+coverage — which is exactly what `verify-migration` reads to decide the migration is complete.
+prawduct's own repo is the right test bed because it carries **127+ PRs**. Run:
+
+```python
+from lib.backlog import core
+seen = {n for n, pfxs, labels in core.iter_alias_issues(t, OWNER, REPO)}
+print("issues reached:", len(seen))
+raw = t.list_issues(OWNER, REPO, state="all", per_page=100, page=1)
+print("page 1 raw:", len(raw), "| PRs on page 1:", sum(1 for i in raw if "pull_request" in i))
+```
+
+**PASS:** `issues reached` is in the hundreds and clearly exceeds the non-PR count of page 1 — i.e.
+the scan kept going past a PR-heavy page. **FAIL:** `issues reached` lands at or just under the non-PR
+count of page 1, which is the early-termination signature.
+
+**Fact 3 — the two remaining `_api_paged` readers behave on a real object.** `list_timeline` and
+`list_sub_issues` share the same loop. Pick any real issue number `N` from `seen` above:
+
+```python
+N = sorted(seen)[0]
+print(len(t.list_timeline(OWNER, REPO, N)), len(t.list_sub_issues(OWNER, REPO, N)))
+```
+
+**PASS:** both return without raising (0 is a fine answer — most issues have no sub-issues).
+**FAIL:** an exception, which would mean the shared loop is wrong for those paths.
+
+**What a pass discharges.** The 2026-07-18 pre-run gate, which is one of the named blockers on Chunk
+06. Record the numbers observed — not just "passed" — so a later reader can tell this ran against the
+real repo at real scale rather than a fixture.
+
+**What a pass does NOT discharge.** `BKL-7V2D` (the completeness gate cannot see "imported but never
+reconciled") is a separate and still-open Chunk 06 blocker; it is about what `verify-migration`
+*inspects*, not about whether pagination is sound. And `BKL-3H7W` (the meter under-counts paged reads)
+is untouched by this — a paged list still costs 1 point regardless of page count.

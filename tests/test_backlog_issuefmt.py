@@ -214,6 +214,22 @@ class TestLintBodyBudgets:
         body = "### Problem\n\n" + " ".join(["word"] * 200)
         assert "body-too-long" in _rules(issuefmt.lint("cli: something specific here", body, ["kind:bug", "area:cli"]))
 
+    def test_the_budget_is_the_reconciled_number_not_the_old_one(self):
+        """The 200-word case above trips at 150 and at 175 alike, so it cannot
+        tell the reconciled budget from the one BKL-7H2M retired. This one can:
+        160 visible words is over the old 150 and under the current budget, so a
+        revert to 150 turns this red. Pinned as a pair with the over-budget case
+        below so the boundary is asserted from both sides rather than assumed."""
+        assert issuefmt.BODY_MAX_WORDS == 175
+        under = "### Problem\n\n" + " ".join(["word"] * 160)
+        assert "body-too-long" not in _rules(
+            issuefmt.lint("cli: something specific here", under, ["kind:bug", "area:cli"])
+        )
+        over = "### Problem\n\n" + " ".join(["word"] * 176)
+        assert "body-too-long" in _rules(
+            issuefmt.lint("cli: something specific here", over, ["kind:bug", "area:cli"])
+        )
+
     def test_fenced_content_excluded_from_word_count(self):
         body = "### Problem\n\nshort prose\n\n```\n" + "\n".join(["log line here"] * 100) + "\n```\n"
         assert "body-too-long" not in _rules(
