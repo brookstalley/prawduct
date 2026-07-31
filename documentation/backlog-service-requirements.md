@@ -291,7 +291,7 @@ state; it remains the interim supported path until the GitHub-issue path is buil
   a *pre-structured* file toward the structured format): GV7 nudges a *structured* file onto the
   service, and retires on the same `backlog_service_repo` switch as the other markdown probes. Its
   prerequisite is MG3's shared read-path invariant — the plugin's markdown parser (today
-  `lib/backlog/legacy.py`) is **retired only when the whole portfolio has migrated**, not at any one
+  `plugin/lib/backlog/legacy.py`) is **retired only when the whole portfolio has migrated**, not at any one
   project's cutover; retiring it earlier is exactly the silent degradation GV7 exists to prevent.
   - **(Content) The advisory proposes triage first, and never blocks (owner, 2026-07-31).** Its
     recommended action is a **workflow, not a command**: groom the backlog — close dead-premise items,

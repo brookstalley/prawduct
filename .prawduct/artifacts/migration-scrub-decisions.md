@@ -14,10 +14,11 @@ before it is acted on.
 > Checked 2026-07-31. The "re-confirming only if the source has drifted" condition above **has
 > fired.** Do not read this section's approved dispositions as a current plan.
 >
-> **What still holds.** Every recorded disposition survives: all 5 merge pairs resolve (three
-> survivors moved `open → promoted`, which is *in-flight*, not gone — folding a duplicate into an
-> in-flight survivor is exactly as sound), and all 13 drops are still open, so none has become a
-> no-op.
+> **What still holds.** As at the last check, *every* recorded disposition below survived: each
+> merge pair still resolved, and no drop had become a no-op through its target being disposed some
+> other way. Some merge survivors have since moved `open → promoted` — that is **in-flight, not
+> gone**, and folding a duplicate into in-flight work is exactly as sound, so it is not a reason to
+> re-open those decisions. Re-check rather than trust this paragraph: it describes a past run.
 >
 > **What does not.** The open corpus has grown substantially since the snapshot these were derived
 > against, and every item filed since is **outside every disposition here — never surveyed for
@@ -25,7 +26,8 @@ before it is acted on.
 > staleness evidence) covers the smaller corpus only. That coverage gap, not a wrong plan, is what
 > makes this section unsafe to execute as written.
 >
-> **No figures are quoted here on purpose — they move with every filing.** Run the instrument:
+> **This block states shapes, never counts — every count here would move with the next filing, and
+> a stale one reads as current.** For any number at all, run the instrument:
 >
 >     python3 tests/spikes/backlog_scrub_drift.py
 >

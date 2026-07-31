@@ -129,9 +129,12 @@ def main(argv: list[str]) -> int:
         d, s = now.get(dup), now.get(surv)
         if d is None:
             problems.append(f"{dup} absent")
+        elif d.status == "promoted":
+            # In-flight work the recorded fold would close as a duplicate.
+            problems.append(f"{dup} is promoted — folding it would close in-flight work")
         elif d.status not in DUPLICATE_OK:
-            # A promoted duplicate is in-flight work this fold would close.
-            problems.append(f"{dup} is {d.status} — folding it closes in-flight work")
+            # Already disposed some other way: the fold is a no-op, not a hazard.
+            problems.append(f"{dup} is already {d.status} — the merge is a no-op")
         if s is None:
             problems.append(f"survivor {surv} absent")
         elif s.status not in SURVIVOR_OK:

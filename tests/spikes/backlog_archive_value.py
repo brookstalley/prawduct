@@ -67,13 +67,16 @@ def _outbound_ids(item: legacy.BacklogItem) -> set[str]:
     MG4(b) names `related:` / `refs:` / `closes:` as the load-bearing edges, so they
     are read from the parsed metadata rather than scraped. Body prose is scanned too:
     a disposition note naming an id is as much a reference as a metadata field.
+
+    **Every metadata value is scanned, not just the three named fields.** `legacy`
+    keeps the metadata bar out of `.body`, so reading only `related`/`refs`/`closes`
+    would silently drop ids living in any other field (`closed-by:`, `revisit:`, a
+    project's own soft-enum facet — DM1 makes the vocabulary extensible, so the field
+    set is open by design). Missing a reference biases toward calling a narrow scope
+    reference-closed, which is the fail-open direction this instrument must not have.
     """
-    fields = list(item.related) + list(item.refs)
-    closes = item.metadata.get("closes")
-    if closes:
-        fields.append(closes)
     ids: set[str] = set()
-    for value in fields:
+    for value in item.metadata.values():
         ids.update(ID_RE.findall(value))
     ids.update(ID_RE.findall(item.body))
     ids.discard(item.item_id or "")
