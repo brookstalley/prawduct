@@ -843,7 +843,28 @@ class TestLearningsEntryShape:
     def test_fires_on_a_narrative_body(self, tmp_path):
         """The channel the sweep was built for."""
         entry = "## When X do Y because Z\n\nHere is a paragraph of narrative evidence."
-        assert self._findings(tmp_path, entry)
+        findings = self._findings(tmp_path, entry)
+        assert findings
+        assert "belongs in learnings-detail.md" in findings[0]["detail"]
+
+    def test_a_sentence_continuation_says_JOIN_not_move(self, tmp_path):
+        """The two remedies are opposite, and the wrong one destroys the rule.
+
+        A continuation told to "move to detail" leaves the heading truncated
+        mid-sentence, and the loss is silent — the entry still parses and still
+        reads as a rule up to the dangling word. Three entries were lost that
+        way and repaired on 2026-07-31 from learnings-detail.md, where the move
+        had parked the text. Asserts the remedy, not merely that something fired:
+        the pre-fix check fired here too, with the instruction that caused the
+        damage.
+        """
+        entry = "## When a guard test pins a safety claim, assert the PROPERTY — a test that\n\nmatches a literal passes for every rewording of the same defect"
+        findings = self._findings(tmp_path, entry)
+        assert findings, "a continuation line must still be reported"
+        message = findings[0]["detail"]
+        assert "JOIN it onto the `## ` heading" in message
+        assert "do NOT move it to learnings-detail.md" in message
+        assert "belongs in learnings-detail.md" not in message
 
     def test_quiet_on_structural_lines(self, tmp_path):
         """Separators, comments and wiki-links are not narrative."""

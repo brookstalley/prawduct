@@ -313,10 +313,10 @@ Active rules from this project's development. Surfaced via the `/learnings [topi
 
 ## Before predicting a per-minute rate ceiling will engage, check whether serial round-trip latency already caps throughput below it — a rate ceiling is bounded by requests/min = 60 / round-trip-seconds, so it never binds on TOTAL volume no matter how large; it binds only when you issue requests concurrently/batched faster than one round-trip drains
 
-## When a release has two documents tracking its state, one is already wrong — designate a single live
+## When a release has two documents tracking its state, one is already wrong — designate a single live tracker and demote the other to a decision record; and author each build chunk from the TREE, never from the upstream plan, because a plan derived from a plan describes intent the code may have overtaken
 
-## When a guard test pins a safety claim, assert the PROPERTY, not one spelling of it — a test that
+## When a guard test pins a safety claim, assert the PROPERTY, not one spelling of it — a test that matches a literal (an exact flag token, an exact grant string, a substring anywhere in a file) passes for every rewording of the same defect, so write the check to answer the question the property asks and verify it red against a DIFFERENT phrasing than the one that prompted it
 
-## When the deliverable is INSTRUCTIONS, at least one guardrail must model the READER — tests that
+## When the deliverable is INSTRUCTIONS, at least one guardrail must model the READER — tests that measure the artifact (size, budget, "the right words are present") all pass while the instruction has no effect, because none of them read the file in the order an agent reads it
 
 ## A spike that discards its code leaves its numbers unfalsifiable — commit the derivation as a runnable script and cite the command, never the digits, because a count transcribed into prose is stale the moment the corpus grows and then goes wrong SILENTLY; the tell is a governance record that diagnoses unreproducible counts while shipping its own, and the fix is not counting more carefully but moving the count out of prose entirely

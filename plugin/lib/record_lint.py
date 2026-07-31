@@ -342,16 +342,39 @@ def _check_learnings_shape(
                     )
                 )
         elif stripped and not stripped.startswith(("#", "---", "<!--", "[[")):
-            findings.append(
-                _finding(
-                    "learnings-entry-shape",
-                    path,
-                    line_num,
-                    "narrative body added to learnings.md — this file is the rule "
-                    "index; the body belongs in learnings-detail.md under the same "
-                    "heading (a move, never a deletion)",
+            # A line that CONTINUES the rule sentence is not narrative, and the
+            # two need opposite remedies. Telling an author to move a
+            # continuation to detail truncates the rule mid-sentence and the
+            # loss is silent: the heading still parses, still renders, and still
+            # reads as a rule right up to the dangling word. Three entries were
+            # destroyed exactly that way before the 2026-07-31 repair (their text
+            # was recovered from learnings-detail.md, where the move had parked
+            # it). Lowercase-initial is the discriminator — English sentences
+            # resume lowercase and new narrative paragraphs do not.
+            if stripped[:1].islower():
+                findings.append(
+                    _finding(
+                        "learnings-entry-shape",
+                        path,
+                        line_num,
+                        "this line continues the rule sentence rather than "
+                        "starting a body — JOIN it onto the `## ` heading above "
+                        "(one physical line), do NOT move it to "
+                        "learnings-detail.md; moving a continuation leaves the "
+                        "rule truncated mid-sentence",
+                    )
                 )
-            )
+            else:
+                findings.append(
+                    _finding(
+                        "learnings-entry-shape",
+                        path,
+                        line_num,
+                        "narrative body added to learnings.md — this file is the "
+                        "rule index; the body belongs in learnings-detail.md "
+                        "under the same heading (a move, never a deletion)",
+                    )
+                )
     return findings
 
 

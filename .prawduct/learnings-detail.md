@@ -1496,10 +1496,7 @@ plausible volume-based argument is not a rate argument. Relates to Honest Confid
 Discipline (#16), and Retrieval Over Generation (#24 — the spike is the cheapest check that changes the
 recorded constant).
 
-## When a release has two documents tracking its state, one is already wrong — designate a single live
-
-tracker and demote the other to a decision record; and author each build chunk from the TREE, never
-from the upstream plan, because a plan derived from a plan describes intent the code may have overtaken
+## When a release has two documents tracking its state, one is already wrong — designate a single live tracker and demote the other to a decision record; and author each build chunk from the TREE, never from the upstream plan, because a plan derived from a plan describes intent the code may have overtaken
 
 Confirmed 2026-07-24 (v3.2.0 pre-ship audit). One root cause, two symptoms, both found in one sitting.
 **Symptom A — plan-vs-plan.** `release-plan-backlog-service-golive.md` and `build-plan-v3.2.0-golive.md`
@@ -1521,11 +1518,7 @@ twice, or worse, "fixing" working code to match a stale description. Relates to 
 (#3), Validate Before Propagating (#15 — a plan is an intermediate output), Coherent Artifacts (#13),
 and Retrieval Over Generation (#24).
 
-## When a guard test pins a safety claim, assert the PROPERTY, not one spelling of it — a test that
-
-matches a literal (an exact flag token, an exact grant string, a substring anywhere in a file) passes
-for every rewording of the same defect, so write the check to answer the question the property asks
-and verify it red against a DIFFERENT phrasing than the one that prompted it
+## When a guard test pins a safety claim, assert the PROPERTY, not one spelling of it — a test that matches a literal (an exact flag token, an exact grant string, a substring anywhere in a file) passes for every rewording of the same defect, so write the check to answer the question the property asks and verify it red against a DIFFERENT phrasing than the one that prompted it
 
 Confirmed 2026-07-24 (v3.2.0 cumulative Critic — three instances surfaced in a single review, two of
 them in guards written days earlier specifically to prevent the class). **(a)** BKL-8V3D's guard scanned
@@ -1548,10 +1541,7 @@ line-wide negation filter I wrote also swallowed the exact claim it targeted, be
 contained an unrelated "not"; only injecting a *variant* exposed it. Relates to Tests Are Contracts (#1),
 Honest Confidence (#5), and the false-reassuring-claim-in-an-instruction-surface class BKL-8V3D named.
 
-## When the deliverable is INSTRUCTIONS, at least one guardrail must model the READER — tests that
-
-measure the artifact (size, budget, "the right words are present") all pass while the instruction has
-no effect, because none of them read the file in the order an agent reads it
+## When the deliverable is INSTRUCTIONS, at least one guardrail must model the READER — tests that measure the artifact (size, budget, "the right words are present") all pass while the instruction has no effect, because none of them read the file in the order an agent reads it
 
 Confirmed 2026-07-30 (record-mechanization Chunk 03). A per-mode payload split gave `chunk` and
 `verify-resolutions` reviewers a self-contained `goals-1-3.md` and routed them there at step 2 of the
