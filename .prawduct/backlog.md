@@ -3749,6 +3749,41 @@ an unnarrowed claim sends the next picker to verify the wrong surface.
 
   **Dedup note.** **BLD-7K3Q** (shipped 2026-07-26) fixed the same first-unchecked-Status inference for `verify-chunk-refs`, by giving `buildplan_refs` a git-derived current-chunk path. That fix never reached record-lint — and this item's ask is narrower anyway: the counters must not read clean when nothing was checked, independent of whether the inference is ever repaired.
 
+- **[LRN-8P3W]** `audit-learnings` cannot distinguish a DELETED sentinel from a FAILING one, so it blocks retirement forever and prints an impossible remedy
+  `effort: S · impact: M · area: learnings · kind: bug · source: reflection · added: 2026-07-31 · status: open · stage: design · related: LRN-3F8K, GOV-2H6X · refs: plugin/bin/prawduct-hook (`audit-learnings`), .prawduct/learnings.md (the "Framework ownership follows the write strategy, not just registry membership" entry and its `sentinel=` annotation), tests/ (no `test_prawduct_sync.py` — deleted at `814177e`, M4 / v2.0.3)`
+
+  **Filed from the wrap-up of branch `feature/fleet-migration-triage-requirements` (scope `backlog-service-v1`), found while verifying learnings.md edits.**
+
+  `prawduct-hook audit-learnings` reports:
+
+  > `retire[blocked]: Framework ownership follows the write strategy, not just registry membership (sentinel=tests/test_prawduct_sync.py::TestAutoCommitSafety::test_user_authored_place_once_edits_treated_as_wip)`
+  > `error: … sentinel '…' is failing — fix the test or update the learning before retiring`
+
+  But `tests/test_prawduct_sync.py` **does not exist** — the file-sync engine was removed in M4 (v2.0.3), and the deletion is confirmed in history at commit `814177e`. Verified this session: `ls tests/test_prawduct_sync.py` → *No such file*, and the full suite is green, so **nothing is actually failing.**
+
+  **Three consequences, in increasing severity.** (a) The status is *wrong in kind* — `blocked` should be something like `sentinel-missing`. (b) The printed remedy, "fix the test," is **impossible**, and the alternative it offers ("update the learning") is the wrong instruction for a learning whose subject was deliberately removed. (c) The retirement is blocked **permanently** — no action can make a deleted test pass — so a learning about a retired engine is pinned open forever by its own tombstone.
+
+  **Likely fix shape:** resolve the sentinel's **existence** before its pass/fail, and treat *sentinel gone* as evidence **FOR** retirement rather than against it — a deleted sentinel usually means the mechanism the learning describes is itself gone. That last step is a policy call, hence `stage: design`.
+
+  **Same CLASS as GOV-2H6X** — a check reporting a result whose *kind* is wrong, with a remedy the reader cannot act on. Cross-referenced deliberately: if that class gets a general treatment, both are instances of it.
+
+  **Dedup note — LRN-3F8K is the INSTANCE half of this item and is already open (since 2026-06-04).** That item asks to reconcile this one dangling sentinel: repoint it to a live equivalent test, or drop the annotation / retire the learning — *"a one-line annotation fix once decided."* **This item is the generalizable half:** the audit misclassifies *any* deleted sentinel and emits an unactionable remedy, and fixing the one annotation would silence this instance while leaving the next deletion to reproduce it. Same instance/class split as GOV-5N8R. **Work them together — LRN-3F8K is the one-line reconciliation, this is the guard that stops it recurring** — and note that LRN-3F8K's own fix-shape decision ("has the learning outlived its mechanism?") is exactly the judgement this item wants the tool to stop obstructing.
+
+- **[LRN-6C2X]** The learnings.md → learnings-detail.md same-heading pairing is a stated invariant with nothing enforcing it, and five entries already violate it
+  `effort: M · impact: M · area: learnings · kind: tech-debt · source: reflection · added: 2026-07-31 · status: open · stage: design · related: LRN-4K8T, MET-6W3J, LRN-9K2P, LRN-7M4D, GOV-5N8R · refs: plugin/lib/record_lint.py (`_check_learnings_shape` — added-lines-only by design; see its docstring), plugin/bin/prawduct-hook (`audit-learnings`), .prawduct/learnings.md (its header states the invariant), .prawduct/learnings-detail.md`
+
+  **Filed from the wrap-up of branch `feature/fleet-migration-triage-requirements` (scope `backlog-service-v1`), found while verifying learnings.md edits.**
+
+  `.prawduct/learnings.md`'s own header states the invariant: *"Each entry's full narrative lives in `learnings-detail.md` under the same heading — keep narrative THERE, not here."* **Nothing checks it.** `record_lint`'s `learnings-entry-shape` control checks only the rule's **length** (>400 chars), and **by design** it is diff-scoped and grandfathers existing entries — so it can never see this. `audit-learnings` checks promotion/retirement candidates and sentinels, not pairing.
+
+  **Measured this session across all 159 rules in `learnings.md`: five have no detail section.** Four have no prefix match in the detail file at all. The fifth — *"When building from a review/audit artifact, verify each cited gap and fix-i…"* — **has** a detail section whose heading has **DRIFTED** out of exact match. That second failure mode is the more interesting one: the pairing breaks **silently** whenever either heading is edited without the other, and one invariant catches both.
+
+  **Why this is filed and not fixed here.** Writing five missing narratives for rules I did not author is **authoring, not repair**; and picking which drifted heading is canonical needs the authors' intent. The ask is the **guardrail** — a check that every `learnings.md` rule has an exactly-matching heading in `learnings-detail.md` — **plus** the one-time reconciliation of the five it names.
+
+  **Design constraint to decide explicitly, not inherit:** the guardrail must be **whole-file, not diff-scoped**, or it reproduces exactly the blind spot that let these five accumulate. That is a deliberate departure from `learnings-entry-shape`'s scoping and should be *stated* as a tradeoff (whole-file checks fire on pre-existing debt) rather than copied by default in either direction.
+
+  **Dedup note.** **LRN-4K8T** (shipped 2026-07-30, `closed-by: learnings-compaction`) is what created this pairing at scale — 121KB → 34KB, detail file 116 → 161 entries — so it is the *origin* of the surface, not a duplicate; the coordinator's "check if still open" resolves to **shipped**. **MET-6W3J** (shipped) was the earlier pass. **LRN-9K2P** (open) modernizes ~28 heading *texts*, which would **break pairings if run before this guardrail exists** — sequence them. **GOV-5N8R** is the same class one level up (a stated pattern with nothing pinning it, accreting violations after a sweep).
+
 ## Promoted
 
 - **[BKL-5D2C]** Move the backlog out of git to a centralized, agent-friendly issue-tracking service
