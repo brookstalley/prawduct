@@ -379,8 +379,12 @@ the `unaliasable`/`collisions` case, not an arithmetic error. The converse does
 **not** mean you are clear: `status_mismatch` and `duplicate_alias` both count
 items that ARE keyed, so `source_items` equalling `aliased` and still exiting 4
 is the expected reading for either of those two, not a contradiction. **Read the
-five lists, not the arithmetic** — and read the one that is non-empty, since the
-remedies differ and only two of the five are "re-run the import."
+five lists, not the arithmetic** — and read **every** one that is non-empty, not
+just the first. Exit 4 fires on any of the five and the message joins a clause per
+applicable cause, so a multi-list verdict is ordinary: stopping at `missing`, re-
+running the import and waiting out another full pass only to meet the source-side
+`unaliasable` fix afterwards is the failure this sentence exists to prevent. Only
+two of the five are "re-run the import."
 
 **Pass the same `--archive-scope` you imported with.** The gate derives its
 source set through the importer's own record assembly, so `open` verifies against
