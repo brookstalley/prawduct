@@ -366,15 +366,21 @@ for only two of them**:
   **do not re-run the import.** A re-run writes to neither issue — the one carrying
   the `id:PFX` label already matches, and the block-only one is never looked up —
   so it burns a full pass and returns the identical exit 4. Find the pair by
-  searching the target for the id, fold one into the other
-  (`merge <duplicate-id> --into <survivor-id>`), then verify again.
+  searching the target for the id, then fold one into the other **by issue
+  number** — `merge <owner>/<repo>#<n> --into <owner>/<repo>#<m>` — and verify
+  again. The bare `PFX` form cannot express this merge: both endpoints resolve
+  through the `id:PFX` label search to the *same* labelled survivor, so it is
+  rejected as merging an item into itself. The number is the only handle that
+  distinguishes the two.
 
 `source_items` counts **every** parsed item in scope, not just the aliasable
 ones — so `source_items` exceeding `aliased` with an empty `missing` is exactly
 the `unaliasable`/`collisions` case, not an arithmetic error. The converse does
-**not** mean you are clear: `status_mismatch` counts items that ARE keyed, so
-`source_items` equalling `aliased` and still exiting 4 is the expected reading
-for that list, not a contradiction. Read the four lists, not the arithmetic.
+**not** mean you are clear: `status_mismatch` and `duplicate_alias` both count
+items that ARE keyed, so `source_items` equalling `aliased` and still exiting 4
+is the expected reading for either of those two, not a contradiction. **Read the
+five lists, not the arithmetic** — and read the one that is non-empty, since the
+remedies differ and only two of the five are "re-run the import."
 
 **Pass the same `--archive-scope` you imported with.** The gate derives its
 source set through the importer's own record assembly, so `open` verifies against

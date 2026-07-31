@@ -1407,8 +1407,9 @@ def _incompleteness_remedy(
             "which is authoritative — **do not re-run the import**, which writes to "
             "neither (the labelled issue already matches; the block-only one is never "
             "looked up). Find the pair by searching the target for the id, then "
-            "deduplicate there — `merge <duplicate-id> --into <survivor-id>` — and "
-            "verify again"
+            "deduplicate there by ISSUE NUMBER — `merge owner/repo#<n> --into "
+            "owner/repo#<m>` — and verify again. The bare PFX cannot spell this "
+            "merge: both ends resolve through the alias label to the same issue"
         )
     return "; ".join(parts)
 
