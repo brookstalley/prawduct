@@ -22,9 +22,10 @@ requirement quoted at the item so the next reader argues with GV7 rather than re
 **The archive-scope requirement nearly shipped keyed on the wrong property.** The proposal was a
 narrow migration pole of "open + dropped, discard shipped" — shipped work is safe in git history,
 dropped work is the decision a later agent re-proposes. Measured against the real corpus that is
-backwards: of 137 archived shipped items (median body 1,306 chars, none empty) **62% are referenced
-by a live item**, against 25% of the 20 dropped ones. Shipped is also the larger set, so the pole
-would have preserved 20 items and discarded the 137 live work actually points at. Re-filing was the
+backwards. Archived *shipped* items are not stubs — they carry substantial bodies — and **a clear
+majority of them are referenced by live work**, a far higher share than archived *dropped* items.
+Shipped is also much the larger set, so the pole would have preserved the small set and discarded
+the large one that live work actually points at. Re-filing was the
 wrong risk to optimize; **reference breakage** is the binding one, because the skill stops reading
 the source markdown after cutover — an excluded target is unresolvable, not merely absent. `MG4(b)`
 now makes **reference-closure** the invariant and demotes every status or date window to a starting

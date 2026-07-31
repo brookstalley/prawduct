@@ -389,7 +389,7 @@ history for *this* repo.
 It is the shared plugin's markdown read path, and `GV7`/`MG3` retire it only when
 the **whole portfolio** has migrated: retiring it at one project's cutover is the
 silent degradation GV7 exists to prevent, and it would also disable the *next*
-repo's migration, since `plugin/lib/backlog/migrate.py` reads the source through
+repo's migration, since `lib/backlog/migrate.py` reads the source through
 `legacy.parse_backlog`.
 Portfolio-wide retirement is not this runbook's business.
 

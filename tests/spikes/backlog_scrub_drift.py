@@ -120,7 +120,7 @@ def main(argv: list[str]) -> int:
     open_now = sum(1 for i in now.values() if i.status == "open")
     growth = (100 * open_now // open_then - 100) if open_then else 0
     print(f"== corpus drift since {ref} (via lib.backlog.legacy) ==")
-    print(f"items: {len(then)} -> {len(now)}   open: {open_then} -> {open_now} (+{growth}%)")
+    print(f"items: {len(then)} -> {len(now)}   open: {open_then} -> {open_now} ({growth:+d}%)")
 
     print(f"\n-- recorded merges ({len(merges)}) --")
     stale_merges = 0
@@ -132,6 +132,9 @@ def main(argv: list[str]) -> int:
         elif d.status == "promoted":
             # In-flight work the recorded fold would close as a duplicate.
             problems.append(f"{dup} is promoted — folding it would close in-flight work")
+        elif d.status is None:
+            # No metadata bar at all — status is unknown, not "already something".
+            problems.append(f"{dup} has no status (no metadata bar) — disposition unverifiable")
         elif d.status not in DUPLICATE_OK:
             # Already disposed some other way: the fold is a no-op, not a hazard.
             problems.append(f"{dup} is already {d.status} — the merge is a no-op")

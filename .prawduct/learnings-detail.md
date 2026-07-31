@@ -1612,3 +1612,35 @@ hand-correcting a count is the moment to ask why the count is in prose at all.
 Relates to [[A completeness claim states the COMMAND that would falsify it and asserts that command now returns nothing]]
 (same move — cite the falsifying command, not the tally), Living Documentation (#3), and Root Cause
 Discipline (#16).
+
+## When you write a CORRECTION it is itself a completeness claim — run the query that would falsify it across the whole class BEFORE asserting the fix, because a correction that repaired only the site a review named is false about its own subject, and quoting the parent rule demonstrably does not prevent this
+
+Confirmed 2026-07-31 (fleet-migration-triage), four instances in one session, each one occurring
+*after* the parent rule had been quoted. **(1)** Struck the `legacy.py` retirement leg in `BKL-6M4T`
+and wrote a change-log entry presenting the fix as complete; the same instruction was still live in
+four other surfaces, including `migration-scrub.md` — a runbook an agent **executes**. So the repo
+contradicted itself across five surfaces with the correction applied to one, and the executed one
+still said to retire it. **(2)** Told that a warning box transcribed a figure the box itself
+forbids, deleted the one figure the review named and left three more in the same block. **(3)** Then
+wrote *"No figures are quoted here on purpose"* directly above the survivors — the correction was now
+false about itself, strictly worse than the defect it replaced, because a reader trusts the bolded
+claim and skips the instrument. **(4)** Carried in from the same day's earlier session: the
+`learnings-entry-shape` guard, repaired three times, each repair addressing the instance the review
+named.
+
+**Why a third rule rather than a louder restatement of the two parents.** Both parents already exist
+here — [[A fix lands at the instance a review named; the defect lives in the class]] and
+[[A completeness claim states the COMMAND that would falsify it and asserts that command now returns nothing]].
+They were quoted in a session reflection and in a commit message on the day of the violations, and
+the violations followed each quotation within minutes. Restating them is therefore proven not to be
+the fix. What was missing is the **composition**, and specifically its trigger: the parents fire on
+"closing a finding" and "claiming completeness," neither of which felt like what I was doing. Writing
+a correction did not present itself as either — it felt like *repair*, which is why nothing engaged.
+
+Operative form: the moment you write text asserting that other text was wrong, you have made a claim
+about the whole class of that wrongness. Before committing it, grep for the correction's own subject —
+the file name, the instruction, the figure, the claim — and confirm the query returns only the sites
+you fixed plus the legitimate contexts. For prose corrections this costs one grep. All four instances
+above would have been caught by it. Relates to Root Cause Discipline (#16) and Honest Confidence (#5)
+— the false-about-itself case is the sharp one, because it converts a partial fix into an active
+misdirection.

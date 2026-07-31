@@ -48,7 +48,8 @@ from lib.backlog import legacy  # noqa: E402
 BACKLOG = ".prawduct/backlog.md"
 ARCHIVE_SECTION = "Archive"
 ID_RE = re.compile(r"\b[A-Z]{2,4}-[A-Z0-9]{4}\b")
-SUBSTANTIAL = 800  # chars of body below which an item is a stub, not a record
+SUBSTANTIAL = 800  # chars of body above which an item is a record, not a stub
+STUB = 40          # chars of body below which an item carries no recoverable content
 
 
 def _load(ref: str | None) -> str:
@@ -62,13 +63,15 @@ def _load(ref: str | None) -> str:
 
 
 def _outbound_ids(item: legacy.BacklogItem) -> set[str]:
-    """Every item id this item points at — structured edges first, then body prose.
+    """Every item id this item points at — from its title, metadata bar and body.
 
-    MG4(b) names `related:` / `refs:` / `closes:` as the load-bearing edges, so they
-    are read from the parsed metadata rather than scraped. Body prose is scanned too:
-    a disposition note naming an id is as much a reference as a metadata field.
+    MG4(b) names `related:` / `refs:` / `closes:` as the load-bearing edges, but this
+    scans **every** metadata value plus the title and the body, because a reference
+    that breaks at cutover breaks wherever it was written. A title routinely names the
+    item it supersedes or blocks; body prose naming an id is as much a reference as a
+    metadata field.
 
-    **Every metadata value is scanned, not just the three named fields.** `legacy`
+    **Why every metadata value, not just the three named fields.** `legacy`
     keeps the metadata bar out of `.body`, so reading only `related`/`refs`/`closes`
     would silently drop ids living in any other field (`closed-by:`, `revisit:`, a
     project's own soft-enum facet — DM1 makes the vocabulary extensible, so the field
@@ -78,6 +81,7 @@ def _outbound_ids(item: legacy.BacklogItem) -> set[str]:
     ids: set[str] = set()
     for value in item.metadata.values():
         ids.update(ID_RE.findall(value))
+    ids.update(ID_RE.findall(item.title))
     ids.update(ID_RE.findall(item.body))
     ids.discard(item.item_id or "")
     return ids
@@ -122,13 +126,13 @@ def main(argv: list[str]) -> int:
     for status, group in sorted(by_status.items(), key=lambda kv: -len(kv[1])):
         sizes = sorted(len(i.body.strip()) for i in group)
         median = sizes[len(sizes) // 2] if sizes else 0
-        stubs = sum(1 for s in sizes if s < 40)
+        stubs = sum(1 for s in sizes if s < STUB)
         rich = sum(1 for s in sizes if s > SUBSTANTIAL)
         refd = [i for i in group if i.item_id in live_targets]
         pct = (100 * len(refd) // len(group)) if group else 0
         print(
             f"  {status:<8} n={len(group):<4} median body {median:>6} chars  "
-            f"empty={stubs:<3} >{SUBSTANTIAL}ch={rich:<4} "
+            f"stub<{STUB}ch={stubs:<3} >{SUBSTANTIAL}ch={rich:<4} "
             f"referenced by live work: {len(refd)} ({pct}%)"
         )
 
