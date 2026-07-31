@@ -11,8 +11,10 @@ cites this command instead of the digits, deliberately.
 What it answers, in one pass:
 
   * Is an archived item inert once shipped? (body substance, per status)
-  * Which archived items are load-bearing for LIVE work — i.e. referenced by a
-    non-archived item through `related:` / `closes:` / `refs:` or body prose?
+  * Which archived items are load-bearing for LIVE work — i.e. named by a
+    non-archived item anywhere: its title, ANY metadata value, or its body. Not
+    just `related:` / `closes:` / `refs:`, because DM1 makes the field vocabulary
+    extensible, so an id can live in a field this instrument has never heard of.
   * Would a status-keyed narrow archive scope (`--archive-scope open`, or an
     "open + dropped" pole) preserve the referenced set, or discard it?
 
