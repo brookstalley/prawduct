@@ -3,6 +3,51 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-07-31: The scrub survey the migration was blocked on, and seven items that had already shipped
+
+<!-- prawduct: type=docs | scope=backlog-service-v1 -->
+
+The pre-migration scrub had an approved disposition table from 2026-07-18 and a corpus that had grown
+~81% since. **91 items sat outside every recorded disposition, never screened at all.** This closes that
+gap: every one was read in full, through the production parser rather than by eye, and dispositioned
+under owner ruling (`.prawduct/artifacts/migration-scrub-decisions.md` § Survey 2). **12 items archived**
+— the rest keeps.
+
+**The finding that mattered was not a keep/drop/merge call.** Seven items sat `open` describing work
+that shipped three releases ago: v3.2.0's `[ ]`-until-release convention deferred their status flip to a
+Chunk 09 that never formally ran, because the release shipped narrowed. Migrating as-is would have minted
+seven GitHub issues describing finished work — permanently, in a public repo, on an irreversible run.
+`GOV-3D6X` had already filed exactly this non-propagation risk three days earlier, naming `BKL-3N8Q` —
+one of the seven — as reading "as though the readers are unverified." **It is still open**: a filed
+warning that no gate reads is the same shape as the deferred flip it was warning about.
+
+**The survey's own categories could not have found it.** Keep/drop/merge assumes the defect is *within*
+an item — stale, duplicate. Here the defect was in each item's *relationship to the release*, which no
+offered axis names. Screening strictly by the given axes would have passed all seven. Recorded because
+the generalizable point is that a disposition survey's categories are a hypothesis about what is wrong
+with a corpus, and the corpus can be wrong in a way the categories do not name.
+
+**Zero drops on staleness grounds, and that is a result rather than an omission.** Every unsurveyed item
+was ≤12 days old, so the staleness axis could not fire before a single body was read — naming an axis
+structurally inapplicable is cheaper than screening 91 items against it. The corpus is Critic-sourced
+findings, not silt.
+
+**Self-reports were checked against the tree, and one was wrong.** Seven items claimed BUILT in their own
+bodies — detailed, dated, commit-attributed. Verified anyway: `ONB-3F9P`'s status pointer proved stale in
+the safe direction, claiming two legs remained when both had shipped. An item's self-report about its own
+completeness is a claim like any other.
+
+**Two owner holds discharged**, both recorded with their sign-off at the decision: decision 1 (public
+visibility of the migrated corpus — irreversible public disclosure, so it wanted explicit consent rather
+than inference) and decision 6. `VRF-013` was filed for the owner to run: a read-only live check that
+discharges the 2026-07-18 pre-run transport/pagination gate, whose code paths read correctly but have
+never been exercised at real scale.
+
+**Two new items, both about instruments that cannot see their own blind spot.** `BKL-9F6T` — a scrub
+survey has no recorded coverage boundary, so drift is undetectable, and the one instrument that checks it
+is repo-local, git-ref-keyed, and dies at the cutover it exists to guard. `ONB-7K4D` — onboard states none
+of the cutover's cost. The first was surfaced by this survey needing to exist at all.
+
 ## 2026-07-31: The issue standard stops contradicting itself, and a norm's history stops reading as its rationale
 
 <!-- prawduct: type=fix | scope=backlog-service-v1 -->
@@ -24,8 +69,12 @@ the falsifying grep returning no surviving 120/150, not a count of files edited.
 
 **The regression test could not see the change it was written for.** `test_body_too_long` used a
 200-word body, which trips at 150 and at 175 alike — a test that passes identically before and after is
-the vacuous-pin class the backlog already tracks. Added a boundary pair (160 under, 176 over) that
-fails red on a revert to 150, and verified it red before the fix rather than assuming it.
+the vacuous-pin class the backlog already tracks. Added a boundary pair asserting the budget from both
+sides — a body **exactly at** `BODY_MAX_WORDS` passes, **one word over** trips — guarded by an explicit
+`assert issuefmt.BODY_MAX_WORDS == 175` so the literals cannot drift from the constant silently. The
+under-case sits *at* the budget rather than comfortably below it on purpose: a looser under-case would
+leave a `>` → `>=` flip green. Both halves turn red on a revert to 150, and were verified red before
+the fix rather than assumed.
 
 **A norm's amendment record was being read as its live rationale.** Archiving `BKL-8V3D` made the
 `dead-why` probe fire against `security-model.md` — correctly, by its own rule, which scans `Why:`/`Status:`
