@@ -3697,6 +3697,57 @@ an unnarrowed claim sends the next picker to verify the wrong surface.
 
   **Companion finding — the release-scoped half is NOT filed here; it is already open as [BLD-7K3Q].** The review also observed that this release's `[ ]`-until-release convention pins `verify-chunk-refs` to **chunk 01 for the whole release**, so chunks 02–05 receive **no ref verification at all** — the gate runs but is scoped to a chunk with no refs. That is the same defect BLD-7K3Q describes (`_parse_build_plan_status` takes the first `- [ ]` item, so on a branch where checkboxes only flip at release, chunk 01 stays "current"). See BLD-7K3Q for the fix-shape; a 2026-07-24 recurrence note is recorded there. Filing it twice would split the fix. (critic — rev-20260724T205224Z)
 
+- **[CRT-9K2P]** `render-dispositions` composes over only the NEWEST review, hiding undispositioned findings from earlier reviews on the same branch
+  `effort: M · impact: L · area: critic · kind: bug · source: reflection · added: 2026-07-31 · status: open · stage: design · related: CRT-3F7T, CRT-2X7R, CRT-7P5J, CRT-R4Z2, CRT-8N5V · refs: plugin/lib/dispositions.py (`census`, `disposition_index`), plugin/bin/prawduct-hook (`render-dispositions` — `cmd_render_dispositions`, dispatch at the `render-dispositions` arm)`
+
+  **Filed from the wrap-up of branch `feature/fleet-migration-triage-requirements` (scope `backlog-service-v1`).**
+
+  The pre-PR disposition surface renders the **most recent review fact only**. Findings left undispositioned by an EARLIER review on the same branch are invisible at exactly the surface a PR check reads, while the census reports clean.
+
+  **Observed live on this branch:** of one cumulative review's 14 findings, R-10..R-14 were never dispositioned and three were still unfixed at head — nothing surfaced it, because a later review's census looked complete.
+
+  **Fix shape:** compose over *every* review fact on the branch, not the newest. This is the kernel-v3 rule — *gates compose over facts, not over a derived view* — failing inside the **reporting** layer, which is precisely the failure that rule exists to prevent. `stage: design` because "every review fact on the branch" needs its interval derivation decided, not because the direction is unclear.
+
+  **Compounding cost worth recording:** one entire `verify-resolutions` round on this branch existed ONLY because round 1's findings were half-dispositioned and that was invisible. Fixing the reporting blind spot may remove a round on its own — which puts this on the **CRT-8N5V** (review loop has no structural exit condition) cost line, not only the correctness line.
+
+  **Dedup note — three near-matches, all judged distinct, all cross-linked.** **CRT-2X7R** is the *write* side of the same single-latest-fact root (`verify-resolutions` can only anchor to the derived cache's one `fact_id`, so a superseded fact's findings are permanently undispositionable). **CRT-7P5J** is the *handoff read* side (the session handoff summarizes `.critic-findings.json` instead of composing over resolution facts). This item is the third surface: the **census / render** path a PR check reads. Fixing any one leaves the other two standing. **CRT-3F7T is the same surface as this item** and should be worked with it.
+
+- **[CRT-3F7T]** A **fixed** NOTE has no honest disposition kind — it must be recorded as ACCEPT, which means the opposite
+  `effort: S · impact: M · area: critic · kind: bug · source: reflection · added: 2026-07-31 · status: open · stage: design · related: CRT-9K2P, CRT-R4Z2, CRT-2X7R · refs: plugin/lib/dispositions.py (`record`, `census`, `_state_label`, `disposition_cmd` — the `--accept`/`--file` kinds), plugin/bin/prawduct-hook (`disposition`, `verify-resolutions`)`
+
+  **Filed from the wrap-up of branch `feature/fleet-migration-triage-requirements` (scope `backlog-service-v1`). Same surface as CRT-9K2P — work them together.**
+
+  `verify-resolutions` scopes to **blocking/warning**, so it never records a resolution fact for a note. The `disposition` CLI offers only `--accept` and `--file`. So a note you actually **FIXED** must be recorded as ACCEPT, which reads as "explicitly descoped" — the opposite of what happened.
+
+  **Observed live on this branch:** five findings are recorded that way, with reasons whose prose spells out that they were fixed; the census consequently reads `accepted: 5` when the truth is `fixed: 5`. So the census is not merely *incomplete* (that is CRT-9K2P) — for notes it is **wrong in kind**.
+
+  **Two candidate shapes** (hence `stage: design`): (a) give notes a resolution path in `verify-resolutions`; (b) add a `--fixed` kind to `disposition`. Pick one deliberately — (a) keeps a single vocabulary for "fixed" across severities, (b) is the smaller change.
+
+- **[GOV-5N8R]** A standardized id pattern keeps acquiring new narrow copies days after a four-site sweep, with nothing pinning it
+  `effort: M · impact: M · area: governance · kind: tech-debt · source: critic · added: 2026-07-31 · status: open · stage: design · related: BKL-4W7H, CRT-6R3W, SCN-8T4R, BKL-72AS · refs: .prawduct/artifacts/boundary-patterns.md (where the entry is missing), tests/spikes/backlog_archive_value.py:52 (`ID_RE` — the fifth copy), BKL-4W7H (the four-site sweep, annotated BUILT 2026-07-28)`
+
+  **Routed from the R-1 owner ruling of `rev-20260731T180845Z-df772946`** — the *local* instance was accepted as an explicit descope; **this is the generalizable half.**
+
+  BKL-4W7H widened the backlog id shape in four places and is annotated BUILT 2026-07-28. Yet `tests/spikes/backlog_archive_value.py:52` defines its own `ID_RE = re.compile(r"\b[A-Z]{2,4}-[A-Z0-9]{4}\b")` — a **fifth** narrow copy (fixed 4-char suffix, single hyphen), written **days after** the sweep. It cannot see `MIG-M4-REMOVE`.
+
+  **The class problem, and the reason this is filed rather than fixed:** a sweep that repairs N sites leaves nothing that prevents site N+1. The pattern needs **a single definition plus a guardrail**, not another sweep — which is exactly what `boundary-patterns.md` exists to carry.
+
+  **Explicitly out of scope:** the local one-line widening of that spike's regex. It rides with the next branch that touches these spikes and is **not** what this item asks for.
+
+  **Dedup note — related, not duplicate.** **CRT-6R3W** ("Critic should sweep by the RULE that generates a pattern, not the instances it happened to see") is the *reviewer-behavior* statement of this class; **SCN-8T4R** is a sibling instance (a four-site replicated contract surface with no `boundary-patterns.md` entry). This item is the id-shape instance **plus** the boundary-patterns entry and guardrail it wants; neither existing item would close it.
+
+- **[GOV-2H6X]** `verify-records` reports four zero counters when it could not meaningfully check anything
+  `effort: S · impact: M · area: governance · kind: bug · source: critic · added: 2026-07-31 · status: open · stage: ready · related: BLD-7K3Q, BLD-9H2M · refs: plugin/lib/record_lint.py, plugin/bin/prawduct-hook (`verify-records`), .prawduct/project-state.yaml (`active_build_plan` — the chunk inference input)`
+
+  **Routed from the R-2 disposition of `rev-20260731T180845Z-df772946` — and this is the FIFTH consecutive review to state the same `unchecked:` caveat.**
+
+  record-lint infers a chunk from `active_build_plan`; the build-plan `## Status` names the **first UNCHECKED** chunk, so it grades the *next* chunk rather than the reviewed one. On a branch that builds **no chunk of that plan at all** — as here — no `--chunk` value would be correct, so the grade is **vacuous** rather than merely off-by-one.
+
+  **The defect is the REPORTING, not the inference.** The output `0 finding(s) (chunk-ref-missing=0, governed-by-gap=0, suite-total-claim=0, learnings-entry-shape=0)` is **indistinguishable from a genuinely clean check**, and those zeros have been quoted as "0 findings" in durable records more than once, by readers who did not read the `unchecked:` line above them.
+
+  **Required property:** a check that could not meaningfully run must say so **in its counters**, not print four zeros.
+
+  **Dedup note.** **BLD-7K3Q** (shipped 2026-07-26) fixed the same first-unchecked-Status inference for `verify-chunk-refs`, by giving `buildplan_refs` a git-derived current-chunk path. That fix never reached record-lint — and this item's ask is narrower anyway: the counters must not read clean when nothing was checked, independent of whether the inference is ever repaired.
 
 ## Promoted
 
