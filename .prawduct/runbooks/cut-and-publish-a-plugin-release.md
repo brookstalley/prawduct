@@ -274,9 +274,11 @@ installed consumer, unrecallably. This phase is the second question (REL-8P6M).*
    > deliberately not being fixed here.** The positional-and-scoped sweep is
    > REL-8P6M (e), **held** by owner decision 2026-07-29:
    > `artifacts/change-log-ledger-design.md` proposes deleting this machinery
-   > outright, so rewriting the rule now is throwaway work. Until that decision
-   > is taken, this release tags its shipping subset **by hand across every
-   > scope, once**. `REL-7D4X` stays open with it.
+   > outright, so rewriting the rule now is throwaway work. **That decision was
+   > taken 2026-07-31 — GO on the design, HOLD on the schedule (§11.7) — so the
+   > hold survives and only its bound moved: it now runs until the ledger plan
+   > is scheduled and shipped.** Until then, this release tags its shipping
+   > subset **by hand across every scope, once**. `REL-7D4X` stays open with it.
 
 3. Append ` | release=vX.Y.Z | status=shipped` to every tag line that passed the
    step-2 test, keeping the keys already there and the ` | ` separator:

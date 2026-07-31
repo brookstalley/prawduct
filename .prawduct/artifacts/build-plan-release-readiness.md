@@ -28,7 +28,10 @@ ad-hoc knowledge in an expiring release plan.
 **Out of scope.** Part **(e)** — the Phase 1 change-log sweep selection-rule rewrite — is
 **deliberately held** (owner decision, 2026-07-29): the change-log ledger proposal
 (`change-log-ledger-design.md`) would delete that machinery, so rewriting it now is throwaway work.
-This release tags its shipping subset by hand, once. See Chunk 03. `REL-7D4X` stays open with it.
+That decision was taken 2026-07-31 — **GO on the design, HOLD on the schedule** (`change-log-ledger-design.md`
+§11.7) — so the hold survives the trigger and only its bound moved: it now runs until the ledger plan is
+scheduled and shipped. This release tags its shipping subset by hand, once. See Chunk 03. `REL-7D4X`
+stays open with it.
 
 ## Open assumptions
 

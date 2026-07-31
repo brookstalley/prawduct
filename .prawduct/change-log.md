@@ -3,6 +3,76 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-07-31: Learnings lost three rules to the guard built to protect them
+
+<!-- prawduct: type=fix | scope=record-mechanization -->
+
+Three rules in `learnings.md` were truncated mid-sentence — ending on "designate a single live", "a
+test that", "tests that". They still parsed, still rendered, and still read as rules right up to the
+dangling word, which is why two releases passed without anyone noticing. Their text was recovered
+from `learnings-detail.md`, where it had been parked.
+
+**The cause was the control, not the author.** `record_lint`'s `learnings-entry-shape` check reported
+every non-heading line in `learnings.md` as *"narrative body … belongs in learnings-detail.md under
+the same heading (a move, never a deletion)."* That instruction is right for evidence and destructive
+for a sentence continuation: an author who wrapped a rule onto a second line was told to move it out,
+and the rule lost its second half. A guard whose advice has two opposite remedies, one of them
+lossy, must not issue the lossy one by default.
+
+**The first fix was also wrong, and the Critic caught it.** Discriminating on a lowercase initial
+looks reasonable and fails in both directions — a continuation resuming with a backtick or a proper
+noun gets the destructive instruction, a wrapped paragraph's second line gets the other one, and the
+test is meaningless in caseless scripts. The shipped fix stops trying to classify at all: **position
+decides which advice is SAFE, not which label is true.** A body line adjacent to its heading is
+offered both remedies with the guard clause "the heading must still read as a complete rule
+afterwards"; the bare move instruction is issued only where a continuation cannot be, after
+intervening prose. Tests pin the remedy rather than the firing, because the broken version fired
+here too.
+
+Detection matters as much as the repair: line length says nothing (rules here deliberately carry no
+terminal punctuation, so most look truncated) and the working diagnostic is a cross-file one — the
+same heading in `learnings-detail.md` followed by a lowercase continuation paragraph.
+
+## 2026-07-31: The change-log ledger spike — the format holds, and the artifact falsified its own premise
+
+<!-- prawduct: type=docs | scope=record-mechanization | chunks=05 -->
+
+**The plan's last chunk was a go/no-go, and the answer is GO on the design, HOLD on the schedule.**
+`change-log-ledger-design.md` proposed moving the change log's typed fields into per-change facts and
+demoting the prose to a rendered view. It named its own de-risking step: convert five real entries
+end-to-end and diff against `parse_change_log` as the equivalence oracle. The spike ran the oracle on
+the whole corpus instead, because the converter is the same code either way and five hand-picked
+entries cannot distinguish "the format works" from "the five I picked were easy."
+
+**Every entry round-trips on both oracles** — parsed structure and byte-for-byte — when each entry's
+own tag-key order is preserved. Nothing in the historical corpus defeated the frontmatter shape:
+not tables, fenced code, backticked titles, em-dashes, the pre-tagging untagged entries, nor an entry
+carrying a non-prawduct HTML comment flush against its tag line.
+
+**The spike falsified a load-bearing figure in the artifact it was validating.** §1's tag census
+matched no query over its own named tree — a hand-authored count that had already propagated into
+the migration plan, mis-sizing both the conversion set and the archive set. A design artifact for
+mechanizing hand-authored records was itself carrying one.
+
+**Then the correction repeated the offence, twice**, which is the finding that outlived the numbers:
+a claim about tag-key ordering was inferred from a count rather than measured, and the counts were
+stated at a tree they no longer described. Prose is the wrong medium for derived state, *including
+the prose diagnosing that*. So the oracle ships as `tests/spikes/change_log_roundtrip.py` — it
+self-checks its own partition arithmetic and runs against any ref — and the artifact cites the
+command instead of the digits.
+
+**Two further corrections the oracle forced:** the fact frontmatter needs explicit `title` and `date`
+(the id slug is lossy, so a renderer cannot rebuild the heading from it), and the cutover test as
+written could never pass — byte-identity against *today's* file is unreachable while the corpus
+carries several tag-key sequences and two blank-line layouts, so cutover becomes normalize-then-cut.
+
+**Scheduling is held, not the design.** Release records reconstruct cleanly and the partition
+property §5 wants as a schema invariant already holds in the data. The backlog-service overlap is
+scheduling rather than machinery — and the gate is *not* "lift BKL-6J2X's hold", which was already
+decided and scheduled for retirement and is live only by silence. What is genuinely open, and
+currently unowned, is **which fleet migration gets proven end-to-end first**. Two unproven fleet
+paths must not be live at once.
+
 ## 2026-07-30: The third learnings compaction, and the first one built to be the last
 
 <!-- prawduct: type=fix | release=v3.2.2 | status=shipped -->

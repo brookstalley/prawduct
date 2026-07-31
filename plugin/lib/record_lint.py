@@ -301,6 +301,43 @@ def _first_heading_line(text: "str | None") -> int:
     return 0
 
 
+def _follows_heading(text: "str | None", line_num: int) -> bool:
+    """Is the 1-indexed line inside the FIRST body block under a ``## `` heading?
+
+    Block, not line: a rule hard-wrapped at terminal width becomes a heading plus
+    several body lines, and every one of them is part of the same continuation.
+    Checking only the immediate predecessor would guard line 2 and hand line 3
+    the destructive "move it" instruction — in the same report, on the same
+    sentence. So this walks back over the whole contiguous non-blank run and asks
+    whether that run starts under a heading.
+
+    A blank line ends the continuation only once body prose precedes it. A
+    paragraph separated from its heading by nothing but blank lines is still the
+    first block and still gets the guarded message — a rule may be written with a
+    blank line under the heading, so that position cannot be assumed safe. The
+    bare move instruction therefore fires only after at least one non-blank body
+    line, which is the one position where a continuation cannot be.
+
+    Returns False when the file text is unavailable, so an unreadable file yields
+    the conservative branch rather than a confident instruction derived from
+    nothing.
+    """
+    if not text:
+        return False
+    lines = text.splitlines()
+    i = line_num - 2  # 0-indexed predecessor of a 1-indexed line
+    if i >= len(lines):
+        return False
+    # Back to the start of this contiguous block (a heading also terminates it).
+    while i >= 0 and lines[i].strip() and not lines[i].startswith("## "):
+        i -= 1
+    if i >= 0 and lines[i].startswith("## "):
+        return True  # block runs flush under the heading
+    while i >= 0 and not lines[i].strip():
+        i -= 1
+    return i >= 0 and lines[i].startswith("## ")
+
+
 def _check_learnings_shape(
     path: str, added: "list[tuple[int, str]]", text: "str | None" = None
 ) -> list[dict]:
@@ -342,16 +379,48 @@ def _check_learnings_shape(
                     )
                 )
         elif stripped and not stripped.startswith(("#", "---", "<!--", "[[")):
-            findings.append(
-                _finding(
-                    "learnings-entry-shape",
-                    path,
-                    line_num,
-                    "narrative body added to learnings.md — this file is the rule "
-                    "index; the body belongs in learnings-detail.md under the same "
-                    "heading (a move, never a deletion)",
+            # Body lines get one of two OPPOSITE remedies, and picking wrong in
+            # one direction destroys data: telling an author to move a sentence
+            # *continuation* to detail truncates the rule, and the loss is silent
+            # because the heading still parses, still renders, and still reads as
+            # a rule right up to the dangling word. Three rules were lost exactly
+            # that way and repaired on 2026-07-31.
+            #
+            # Nothing here can classify reliably — a continuation may resume with
+            # a backtick or a proper noun, and a narrative paragraph's first line
+            # sits in the same position as a continuation. So position decides
+            # which ADVICE is safe rather than which label is true: a line
+            # adjacent to the heading is offered both remedies with the guard
+            # clause attached, and the bare "move it" instruction is issued only
+            # where a continuation cannot be (after intervening body prose).
+            # Deliberately no case test — it is wrong for backtick-initial
+            # continuations and meaningless in caseless scripts.
+            if _follows_heading(text, line_num):
+                findings.append(
+                    _finding(
+                        "learnings-entry-shape",
+                        path,
+                        line_num,
+                        "body line directly under a `## ` heading — if it "
+                        "CONTINUES the rule sentence, join it onto the heading "
+                        "as one physical line; if it is evidence, move it to "
+                        "learnings-detail.md under the same heading. Either way "
+                        "the heading must still read as a complete rule "
+                        "afterwards — moving a continuation truncates it "
+                        "mid-sentence, and nothing downstream will notice",
+                    )
                 )
-            )
+            else:
+                findings.append(
+                    _finding(
+                        "learnings-entry-shape",
+                        path,
+                        line_num,
+                        "narrative body added to learnings.md — this file is the "
+                        "rule index; the body belongs in learnings-detail.md "
+                        "under the same heading (a move, never a deletion)",
+                    )
+                )
     return findings
 
 
