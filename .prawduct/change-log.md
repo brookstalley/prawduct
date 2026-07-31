@@ -3,7 +3,7 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
-## 2026-07-31: The change-log ledger spike — validated on all 214 entries, and it falsified its own premise
+## 2026-07-31: The change-log ledger spike — the format holds on every entry, and the artifact falsified its own premise
 
 <!-- prawduct: type=docs | scope=record-mechanization | chunks=05 -->
 
@@ -29,13 +29,21 @@ mechanizing hand-authored records was itself carrying an unreproducible hand-aut
 the disease this plan exists to cure, found in the plan's own source document.
 
 **A second correction the oracle forced:** the cutover test as written could never pass. It asserted
-byte-identity against *today's* file, but the corpus carries two tag-key orders (97 entries lead with
-`chunks=`) and two blank-line layouts (30 put the body flush against the tag line) — so byte-identity
-is reachable only *after* a normalization commit touching **127 of 193 tagged entries**. That commit
-is reviewable as pure formatting, because `parse_change_log` output is unchanged by construction.
+byte-identity against *today's* file, but the corpus carries many distinct tag-key sequences and two
+blank-line layouts — so byte-identity is reachable only *after* a one-time normalization pass. That
+commit is reviewable as pure formatting, because `parse_change_log` output is unchanged by
+construction.
 
-**Scheduling is held, not the design.** Release records reconstruct cleanly (57 releases, zero
-partition violations — the invariant is being adopted rather than imposed), and the backlog-service
+**And the correction above was itself wrong on first writing**, which is the finding that outlived
+the numbers. It said "two tag-key orders" and pinned the whole order-violation count on entries
+leading with `chunks=` — inferred from a number rather than measured, and wrong. Three
+unreproducible counts in one lineage is a pattern, not three slips: prose is the wrong medium for
+derived state, *including the prose diagnosing that*. So the oracle is now committed as
+`tests/spikes/change_log_roundtrip.py` and the artifact cites the command instead of the digits. A
+spike that discards its code leaves its numbers unfalsifiable — which is exactly how these survived.
+
+**Scheduling is held, not the design.** Release records reconstruct cleanly (zero partition
+violations — the invariant is being adopted rather than imposed), and the backlog-service
 overlap turns out to be scheduling rather than machinery. But BKL-6J2X still holds the
 `backlog-service-migration-required` advisory precisely because it "routes the whole fleet into an
 unproven migration path," and this design needs exactly that. Running two unproven fleet migrations

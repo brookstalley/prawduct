@@ -250,7 +250,7 @@ governance surfaces; it makes one of them typed.
 
 1. **Preserve history verbatim.** `change-log.md` → `change-log-archive.md`, untouched, forever. The
    194 existing entries are the record; nothing is rewritten in place.
-2. **Convert the tagged entries mechanically** — **193 at HEAD, not 77** (§11); the tag line is already `key=value`. Deterministic
+2. **Convert the tagged entries mechanically** — the large majority of entries, not the 77 this step once assumed (§11.2); the tag line is already `key=value`. Deterministic
    script, output diffed against `parse_change_log`'s current output as the equivalence oracle (the
    same "keep the old implementation as reference and test both" discipline that carried the
    coverage-perf rewrite).
@@ -259,9 +259,9 @@ governance surfaces; it makes one of them typed.
 4. **Reconstruct release records** for shipped versions from git tags plus each release's tree —
    per L:21, from *code*, never from prose.
 5. **Normalize first, then cut over.** Byte-identity with *today's* file is **provably unreachable**
-   (117/214 — §11), because the corpus carries two tag-key orders and two blank-line layouts. So the
-   cutover is two commits, not one: a mechanical **normalization** commit touching 127 tagged entries
-   (97 key-order, 30 blank-layout, disjoint), which is reviewable as pure formatting because
+   (§11), because the corpus carries many distinct tag-key sequences and two blank-line layouts. So
+   the cutover is two commits, not one: a mechanical **normalization** commit along those two axes
+   (sized by `tests/spikes/change_log_roundtrip.py`), which is reviewable as pure formatting because
    `parse_change_log` output is unchanged by construction; then cut over with both paths live and
    `regen-views --check` asserting byte-identity against the *normalized* file. Delete the parser only
    after a full release cycle runs on the new path.
@@ -286,7 +286,7 @@ The problem is measured and the consumer queries are read from source rather tha
 unconfirmed was scope and sequencing, not the diagnosis.
 
 **Both of the named raisers have now been executed** (§11): the round-trip spike ran — not on five
-entries but on all 214 — and the backlog-service overlap was reviewed. The format is validated; the
+entries but on the whole corpus — and the backlog-service overlap was reviewed. The format is validated; the
 residual uncertainty is *scheduling*, which is a decision rather than an unknown.
 
 **Open assumptions:**
@@ -319,7 +319,7 @@ residual uncertainty is *scheduling*, which is a decision rather than an unknown
 ## 11. Spike findings (2026-07-31) — GO, conditional on scheduling
 
 §9 named two raisers: a five-entry round-trip and a decision on the backlog-service overlap. Both
-were executed. The round-trip ran on **all 214 entries** rather than five, because the converter is
+were executed. The round-trip ran on **every entry in the corpus** rather than five, because the converter is
 the same code either way and a five-entry sample cannot distinguish "the format works" from "the
 five I picked were easy."
 
@@ -329,15 +329,17 @@ Two oracles, deliberately. Parsed-structure identity is what every consumer quer
 byte identity is what §7 step 5 proposes to assert at cutover. A format can pass the second and fail
 the first, and only the first proves the rendered view is drop-in.
 
-| Oracle | Result |
-|---|---|
-| `parse_change_log` structure identical (title + tags) | **214 / 214** |
-| Byte-identical, preserving each entry's own tag-key order | **214 / 214** |
-| Byte-identical under one canonical tag-key order | **117 / 214** |
+**The result, and the only one the GO turns on: every entry round-trips on both oracles** — parsed
+structure and byte-for-byte — when each entry's own tag-key order is preserved. Nothing in the
+historical corpus defeated the frontmatter shape: not tables, fenced code, sub-headings, backticked
+titles, em-dashes, the pre-tagging untagged entries, nor the entry carrying a non-prawduct HTML
+comment flush against its tag line. Under a *single* canonical key order the byte oracle drops well
+short, which is §11.2's third correction.
 
-**The format survives the full historical corpus losslessly.** No entry defeated it — including
-tables, fenced code, sub-headings, backticked titles, em-dashes, an untagged pre-tagging entry, and
-one entry (L3267) carrying a non-prawduct HTML comment flush against its tag line.
+> **Do not cite counts from this section.** They are measurements of a corpus that grows, and
+> transcribing them into prose is the exact defect this plan exists to remove — it already went wrong
+> twice here. Re-derive with `python3 tests/spikes/change_log_roundtrip.py [ref]`, which is committed
+> for that purpose and self-checks its own partition arithmetic.
 
 ### 11.2 Three corrections to the design
 
@@ -354,30 +356,43 @@ one entry (L3267) carrying a non-prawduct HTML comment flush against its tag lin
    record carrying an unreproducible count that later work planned against.
 
 3. **§7 step 5's acceptance test was unreachable as written.** It asserted the rendered file be
-   byte-identical to *today's*. It cannot be: the corpus carries two tag-key orders (97 entries lead
-   with `chunks=`) and two blank-line layouts (30 entries put the body flush against the tag line).
-   Byte-identity is reachable only *after* normalization. Step 5 rewritten as two commits.
+   byte-identical to *today's*. It cannot be: the corpus carries many distinct tag-key sequences and
+   two blank-line layouts, so byte-identity is reachable only *after* a normalization pass. Step 5
+   rewritten as two commits; shape in §11.3.
 
-### 11.3 The normalization commit, sized
+   *This paragraph was itself wrong on first writing* (Critic W-1, same review): it claimed "two
+   tag-key orders" and attributed the whole order-violation count to entries leading with `chunks=`
+   — an inference from a number, never measured. A normalizer written from it would have missed
+   entries and failed the very assertion step 5 depends on. **That is the third unreproducible count
+   in this artifact's lineage, and the reason the counts are now derived by committed code rather
+   than transcribed** (§11.1).
 
-| | count |
-|---|---|
-| Entries | 214 (193 tagged, 21 untagged) |
-| Already fully canonical — untouched | 66 |
-| Non-canonical key order | 97 |
-| Non-canonical blank layout | 30 |
-| **Total touched by normalization** | **127** (the two sets are disjoint) |
+### 11.3 The normalization commit — shape, not size
 
-Blank lines *before* the tag line are universally 1, so that axis needs no normalization. The commit
-is reviewable as pure formatting: `parse_change_log` output is unchanged by construction, which is a
-machine-checkable property rather than a promise.
+Byte-identity requires a one-time normalization along exactly **two** axes, and the follow-on chunk
+should be written against these structural facts rather than against a transcribed count:
+
+- **Tag-key order.** The corpus carries many distinct key sequences, not one. A normalizer keyed on
+  any single "wrong" ordering will silently miss the rest — the failure mode that produced this
+  section's own first draft.
+- **Blank line after the tag line.** Present on most entries, absent on a minority that put the body
+  flush against the tag line. Blank lines *before* the tag line are uniform, so that axis needs
+  nothing.
+- **The two sets are disjoint**, and the script asserts that arithmetic rather than stating it —
+  every flush-body entry is already in canonical key order. If a future run reports a non-zero
+  overlap, the normalizer needs a combined case that does not exist today.
+
+The commit is reviewable as pure formatting: `parse_change_log` output is unchanged by construction,
+which is machine-checkable rather than a promise. For the current counts, run the script.
 
 ### 11.4 Release records reconstruct cleanly
 
-Rebuilding release records from the existing `release=` / `status=` tags yields **57 releases**, and
-the partition property §5 wants as a schema invariant **already holds in the data**: zero entries
-carry a release without a status or vice versa, and zero are release-pending at HEAD. Reconstruction
-(§7 step 4) is therefore mechanical, and the invariant is being adopted rather than imposed.
+Rebuilding release records from the existing `release=` / `status=` tags works, and the partition
+property §5 wants as a schema invariant **already holds in the data**: no entry carries a release
+without a status or vice versa. Reconstruction (§7 step 4) is therefore mechanical, and the invariant
+is being adopted rather than imposed. The script reports the current release count and asserts the
+partition on every run — if it ever reports a violation, §5's "cannot be written incompletely" claim
+has a counterexample and the schema needs a decision.
 
 ### 11.5 Two hazards are latent, not live
 
@@ -390,12 +405,23 @@ recurred, which slightly weakens §1's "three validators become impossible by co
 
 The overlap is **scheduling, not machinery**. Prawduct's own `backlog_service_repo` is unset (markdown
 backend); the service shipped dormant in v3.2.0; the two migrations share no code and touch different
-files. But **BKL-6J2X is still `open, stage: ready`** — the deliberate *hold* on the
-`backlog-service-migration-required` advisory, held precisely because it "routes the whole fleet into
-an unproven migration path." §8 concedes the change-log ledger needs exactly that: a
-`/prawduct:migrate` path, a major bump, and a fleet migration.
+files.
 
-**Running two unproven fleet-migration paths concurrently is the risk BKL-6J2X exists to prevent.**
+*Corrected 2026-07-31 (Critic W-2, same review).* The first version of this section cited
+BKL-6J2X's `status: open` as a standing hold — "held precisely because it routes the whole fleet into
+an unproven migration path." That reads a superseded posture as current. BKL-6J2X carries a
+**`[SUPERSEDED — 2026-07-24]`** block stating the opposite in terms: *"THE HOLD IS SCHEDULED FOR
+RETIREMENT; it is not permanent… treat the hold as temporary and already scheduled, not as the
+standing posture."* The owner decided the advisory **ships lifted**; its lift conditions are
+discharged. It is live today only **by silence** — `build-plan-v3.2.0-golive.md` Chunk 07 done-when
+#5, which retires it, never ran (tracked as BKL-4T9C). The probe registration
+(`_probe_migration_required_held`) confirms the hold is still in force in code.
+
+So the gate must not ask the owner to re-decide something already decided. What is genuinely open is
+narrower and unowned: **which of the two fleet migrations gets proven end-to-end first.** §8 concedes
+the change-log ledger needs the same apparatus the backlog migration does — a `/prawduct:migrate`
+path, a major bump, and a fleet rollout — and running two unproven fleet paths concurrently is the
+risk the (temporary) hold was protecting against.
 
 ### 11.7 Decision: GO on the design, HOLD on the schedule
 
@@ -403,12 +429,26 @@ The design is sound, the format is validated against the whole corpus, and the m
 and reviewable. Nothing found here argues for the §10 alternatives — in particular, "fix the sweep
 properly" remains the fallback but gains no new support.
 
-Scheduling gate, in preference order: **either** BKL-6J2X's hold is lifted and the backlog migration
-is proven on the fleet first, **or** an explicit owner decision to run this one first and hold the
-backlog. Not both at once. Until one of those lands, this stays `spiked`, not `scheduled`.
+**Scheduling gate — one decision, not two.** BKL-6J2X's hold is already decided and scheduled for
+retirement (§11.6), so the gate is not "lift the hold." It is: **which fleet migration is proven
+end-to-end first — backlog-to-Issues, or change-log-to-ledger?** Whichever is chosen, the other waits;
+two unproven fleet paths must not be live at once. Until that ordering is chosen, this stays
+`spiked`, not `scheduled`.
+
+**This decision fires two standing triggers, and they are now bounded by a different event than they
+were written for.** REL-7D4X (`open`, `stage: design`) and the held part (e) of
+`build-plan-release-readiness.md` both name *"the change-log-ledger decision (adopt or reject)"* as
+their `revisit:` trigger, on the reasoning that adoption deletes the sweep outright and rewriting its
+selection rule first is throwaway work. GO fires that trigger — but GO-with-the-schedule-held means
+the sweep is **not** deleted yet, so the stopgap ("every release tags its shipping subset by hand,
+once, across every scope") stays in force with its bound moved from *until a decision* to *until this
+plan is scheduled and shipped*. That is a longer and less certain window than either item was written
+against. Both records were annotated on 2026-07-31 rather than left to imply a decision they did not
+get; REL-7D4X stays `stage: design` for the same reason it was downgraded — which shape survives is
+still open until the schedule is.
 
 **Follow-on plan scope, when scheduled** (five chunks, roughly the shape the evidence supports):
-converter + fact schema with `schema: 1`; the 127-entry normalization commit; renderer +
+converter + fact schema with `schema: 1`; the normalization commit (§11.3); renderer +
 `regen-views` repoint; Q9 gate re-pointed at `.prawduct/changes/` per §5; migrate path + fleet
 rollout. The ~30 `test_views.py` tests targeting `parse_change_log` are the contract (§8) and are
 rewritten in the renderer chunk, not deleted.
