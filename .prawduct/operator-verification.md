@@ -255,7 +255,9 @@ correctly. Chunk 06's acceptance is the dogfood itself.
   GitHub Issues and every hand-minted `PFX` resolves as an `id:PFX` alias.
 - The **live briefing counts** — session start reads the backlog count through the
   adapter (not `legacy.py`), with a visible age, and never hangs when GitHub is slow.
-- `legacy.py` and the `incoming-bugs/` drop-box are retired only *after* the above.
+- The `incoming-bugs/` drop-box is retired only *after* the above, and only in lockstep with its
+  MG5 replacement. **`legacy.py` is not retired at this cutover at all** — GV7/MG3 hold it as the
+  shared markdown read path until the whole portfolio has migrated.
 
 **Drop-box retirement — verify the lockstep replacement (BKL-0QR1, resolved 2026-07-17 → option c):**
 `incoming-bugs/` is retired **only together with** its minimal same-repo replacement (PRD §8.9/MG5),
@@ -264,7 +266,8 @@ never before it. Before/at the retirement, eyeball that the replacement is live:
   **GitHub issue** into prawduct's own (public) repo via the adapter — no `incoming-bugs/` file write.
 - The `untriaged-upstream-reports` advisory counts those **labeled open issues**, not `incoming-bugs/*.md`.
 - The **no-channel fallback** still degrades cleanly to local capture + the canonical-tracker pointer.
-- Only *then* are `legacy.py` and `incoming-bugs/` retired. The full XP1 cross-owner/foreign-identity
+- Only *then* is `incoming-bugs/` retired (`legacy.py` is **not** — GV7/MG3, portfolio-wide only).
+  The full XP1 cross-owner/foreign-identity
   plane stays **W3** — it is deliberately *not* in this slice.
 
 ## VRF-007 — Chunk 02 (backlog-skill-repoint) — /prawduct:backlog drives Issues end-to-end through the skill

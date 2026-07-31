@@ -9,6 +9,33 @@ execute against these decisions without re-asking, re-confirming only if the sou
 The "execute without re-asking" rule above covers decisions 1–5 only; 6 must be put to the owner
 before it is acted on.
 
+> ## ⚠ THE SOURCE HAS DRIFTED — do not execute the dispositions below without re-surveying first
+>
+> Checked 2026-07-31. The "re-confirming only if the source has drifted" condition above **has
+> fired.** Do not read this section's approved dispositions as a current plan.
+>
+> **What still holds.** As at the last check, *every* recorded disposition below survived: each
+> merge pair still resolved, and no drop had become a no-op through its target being disposed some
+> other way. Some merge survivors have since moved `open → promoted` — that is **in-flight, not
+> gone**, and folding a duplicate into in-flight work is exactly as sound, so it is not a reason to
+> re-open those decisions. Re-check rather than trust this paragraph: it describes a past run.
+>
+> **What does not.** The open corpus has grown substantially since the snapshot these were derived
+> against, and every item filed since is **outside every disposition here — never surveyed for
+> staleness or duplication at all.** The per-item survey behind the decisions (gists, DUP clusters,
+> staleness evidence) covers the smaller corpus only. That coverage gap, not a wrong plan, is what
+> makes this section unsafe to execute as written.
+>
+> **This block states shapes, never counts — every count here would move with the next filing, and
+> a stale one reads as current.** For any number at all, run the instrument:
+>
+>     python3 tests/spikes/backlog_scrub_drift.py
+>
+> It re-derives the drift, re-checks every merge and drop recorded below against today's backlog,
+> and lists the unsurveyed items by id. It prints `verdict: dispositions are CURRENT` only when the
+> recorded set covers the whole open corpus — which is the actual precondition for the migration
+> session, and the thing this artifact previously asked a reader to eyeball.
+
 ## Decisions
 
 1. **Live run: HELD** (2026-07-18). Target when it runs: `brookstalley/prawduct` (public — the
@@ -120,7 +147,9 @@ backup) → `export` backup **after** the import (it dumps the migrated repo —
 backs up nothing; ordering corrected 2026-07-18 per the holistic review) → apply the merges/drops
 above (all disposition commands take `--repo`) → verify counts + spot-check → activate the
 BKL-8P2R cutover (`backlog_service_repo: owner/repo` in project-state.yaml — the repoint code
-shipped 2026-07-18) → retire `legacy.py` + `incoming-bugs/` in lockstep with the report-bug MG5
+shipped 2026-07-18) → **do NOT retire `legacy.py`** (GV7/MG3 — it is the shared markdown read path
+and retires only at portfolio-wide migration; retiring it here also disables the next repo's
+migration, which reads through `legacy.parse_backlog`) → retire `incoming-bugs/` in lockstep with the report-bug MG5
 repoint → `/prawduct:critic cumulative` → slice PR. The full item survey (per-item gists, DUP
 clusters, staleness evidence) was produced 2026-07-18; regenerate it if the source drifts
 materially before the run.

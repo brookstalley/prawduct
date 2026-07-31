@@ -1612,3 +1612,74 @@ hand-correcting a count is the moment to ask why the count is in prose at all.
 Relates to [[A completeness claim states the COMMAND that would falsify it and asserts that command now returns nothing]]
 (same move — cite the falsifying command, not the tally), Living Documentation (#3), and Root Cause
 Discipline (#16).
+
+## When you write a CORRECTION it is itself a completeness claim — run the query that would falsify it across the whole class BEFORE asserting the fix, because a correction that repaired only the site a review named is false about its own subject, and quoting the parent rule demonstrably does not prevent this
+
+Confirmed 2026-07-31 (fleet-migration-triage), four instances in one session, each one occurring
+*after* the parent rule had been quoted. **(1)** Struck the `legacy.py` retirement leg in `BKL-6M4T`
+and wrote a change-log entry presenting the fix as complete; the same instruction was still live in
+four other surfaces, including `migration-scrub.md` — a runbook an agent **executes**. So the repo
+contradicted itself across five surfaces with the correction applied to one, and the executed one
+still said to retire it. **(2)** Told that a warning box transcribed a figure the box itself
+forbids, deleted the one figure the review named and left three more in the same block. **(3)** Then
+wrote *"No figures are quoted here on purpose"* directly above the survivors — the correction was now
+false about itself, strictly worse than the defect it replaced, because a reader trusts the bolded
+claim and skips the instrument. **(4)** Carried in from the same day's earlier session: the
+`learnings-entry-shape` guard, repaired three times, each repair addressing the instance the review
+named.
+
+**Why a third rule rather than a louder restatement of the two parents.** Both parents already exist
+here — [[A fix lands at the instance a review named; the defect lives in the class]] and
+[[A completeness claim states the COMMAND that would falsify it and asserts that command now returns nothing]].
+They were quoted in a session reflection and in a commit message on the day of the violations, and
+the violations followed each quotation within minutes. Restating them is therefore proven not to be
+the fix. What was missing is the **composition**, and specifically its trigger: the parents fire on
+"closing a finding" and "claiming completeness," neither of which felt like what I was doing. Writing
+a correction did not present itself as either — it felt like *repair*, which is why nothing engaged.
+
+Operative form: the moment you write text asserting that other text was wrong, you have made a claim
+about the whole class of that wrongness. Before committing it, grep for the correction's own subject —
+the file name, the instruction, the figure, the claim — and confirm the query returns only the sites
+you fixed plus the legitimate contexts. For prose corrections this costs one grep. All four instances
+above would have been caught by it. Relates to Root Cause Discipline (#16) and Honest Confidence (#5)
+— the false-about-itself case is the sharp one, because it converts a partial fix into an active
+misdirection.
+
+## Routing a filing to the handoff is NOT filing it — file the item the moment you decide it should exist, because a handoff note is read by a session that arrives with its own plan and treats an inherited instruction as context rather than work, and an unwritten handoff (crash, context exhaustion) loses it outright; "later" has two independent ways to never happen and costs the same as now
+
+**The evidence.** Two items — `render-dispositions` rendering only the newest review, and a fixed
+NOTE having no honest disposition kind — were identified during a wrap-up on 2026-07-30 and written
+into `.handoff-notes.md` under the heading **"FILE THIS FIRST — a real gap, deliberately not filed
+mid-wrap."** The routing note even argued its own timing: the next session was a backlog-triage
+session with the skill loaded and the corpus open, "the natural place." That session ran a full
+three hours, worked the backlog corpus directly, filed nothing, and routed **two more** items to the
+handoff by the same mechanism. It then died to a Claude Code segfault before writing that handoff at
+all. All four were filed on 2026-07-31 as `CRT-9K2P`, `CRT-3F7T`, `GOV-5N8R`, `GOV-2H6X`.
+
+**Two independent failure modes, one cause.** The deferral targets an actor who does not yet exist.
+
+1. *The successor deprioritizes it.* A handoff note is read as **context** by a session that arrives
+   with its own plan. "FILE THIS FIRST" is an imperative to its author and a background fact to its
+   reader. Being explicitly right about the timing did not help; the note correctly predicted the
+   conditions and the successor still did not act.
+2. *The handoff never gets written.* Everything between "decide to file" and "write the notes" is a
+   window in which the item exists only in one process's context. Three of the four survived only
+   because the disposition prose independently said "routed to the handoff" in durable text. A crash
+   one round earlier would have left no trace that anything was owed.
+
+**Why the mid-wrap objection is wrong.** The reason given for routing rather than filing was to
+avoid doing unrelated work mid-wrap. But filing costs one skill invocation against a corpus already
+open, whereas routing costs the same note *plus* the successor's re-reading, re-deciding, and
+re-deriving the item body from prose written for a different purpose. The deferral is not cheaper;
+it is the same cost paid later, with two ways of not being paid at all.
+
+**Scope, and what this does not say.** This governs what happens *after* you have decided an item
+should exist. Whether it should exist at all is a different question, already governed by
+[[A review ending is not a filing event — dispose every non-blocking finding as FIX or ACCEPT, and treat FILE as the narrow case clearing THREE bars]]
+— and that rule's preference for FIX over FILE is untouched here. If the answer is FIX, fix it now;
+if the answer is FILE, file it now. "Route it" is not a third answer. Relates to Complete Delivery
+(#2) — a routed item is a requirement in flight with no owner — and to Close the Learning Loop (#18),
+since the same mechanism carries learnings forward and fails the same way.
+
+**Operative form.** The wrap-up **files**; it does not route. A handoff note may *mention* what was
+filed and why it matters next, but the item must already have an id by the time the note names it.
