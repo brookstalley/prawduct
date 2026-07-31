@@ -427,8 +427,14 @@ state; it remains the interim supported path until the GitHub-issue path is buil
   SHOULD offer the narrower scope *first* — on a mature backlog the archive is the bulk of the corpus
   and importing it is the dominant write cost. "Recommended default" is **not** "silent default": the
   surfaced-and-owner-confirmed rule above is unchanged, because the consequence must be *heard*, not
-  defaulted past. **And whatever scope is chosen, it MUST be reference-closed.** `related:` / `refs:` /
-  `closes:` are the archive's load-bearing edges; a narrow pole that excludes a reference *target*
+  defaulted past. **And whatever scope is chosen, it MUST be reference-closed.** A reference is an
+  item id named **anywhere in a live item — its title, ANY metadata value, or its body** — not only
+  in `related:` / `refs:` / `closes:`. Those three are the *named* edges, but **DM1 makes the field
+  vocabulary per-project extensible**, so an id can live in `closed-by:`, `revisit:`, or a project's
+  own soft facet, and titles routinely name the item they supersede or block. A closure pass that
+  reads only the three named fields reports REFERENCE-CLOSED while importing a dangling pointer —
+  the fail-open direction, and the one this MUST exists to forbid. A narrow pole that excludes a
+  reference *target*
   leaves the imported item pointing at something the tracker cannot resolve — unresolvable rather than
   merely absent, because the skill stops reading the source markdown after cutover. **Status is the
   wrong selector for this.** Measured on prawduct 2026-07-31, a clear majority of archived *shipped*

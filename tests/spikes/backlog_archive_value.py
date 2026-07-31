@@ -67,11 +67,11 @@ def _load(ref: str | None) -> str:
 def _outbound_ids(item: legacy.BacklogItem) -> set[str]:
     """Every item id this item points at — from its title, metadata bar and body.
 
-    MG4(b) names `related:` / `refs:` / `closes:` as the load-bearing edges, but this
-    scans **every** metadata value plus the title and the body, because a reference
-    that breaks at cutover breaks wherever it was written. A title routinely names the
-    item it supersedes or blocks; body prose naming an id is as much a reference as a
-    metadata field.
+    MG4(b) defines a reference as an id named **anywhere in a live item** — title, any
+    metadata value, or body — and this implements exactly that. `related:` / `refs:` /
+    `closes:` are the *named* edges but not the whole set: a reference that breaks at
+    cutover breaks wherever it was written, and a title routinely names the item it
+    supersedes or blocks.
 
     **Why every metadata value, not just the three named fields.** `legacy`
     keeps the metadata bar out of `.body`, so reading only `related`/`refs`/`closes`
