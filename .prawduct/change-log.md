@@ -134,6 +134,22 @@ the no-op note's age from "recorded" to "dispatched": the value is parsed from t
 stamp, so it precedes the fact's timestamp by however long the review took — ten minutes on a
 coordinator run.
 
+**A Critic severity rule moved, and it was the reviewer protocol manufacturing false blockers.**
+`record_lint` emits two textually distinct `unchecked` shapes: `chunk-ref-missing unchecked — …`
+means the check could not run (BLOCKING, inheriting the retired `cannot-verify:` bar), while
+`chunk-ref-missing graded chunk … inferred from build-plan Status` means it *ran* under an
+assumption (NOTE). `goals-1-3.md` had compressed both to "a `chunk-ref-missing` entry is
+**BLOCKING**" — and that file orders `chunk`/`verify-resolutions` reviewers to read **nothing else**,
+so a compliant reviewer could not reach `review-cycle.md`'s carve-out. Every such dispatch without
+`--chunk` therefore raised a blocker whose only named remedy was unavailable: a branch building no
+chunk has no chunk to supply. It fired on this branch's own reviews, repeatedly. `review-cycle.md`
+was wrong in the other direction — it filed the whole-pass **crash** under "assumption", though that
+entry carries the blocking prefix deliberately (a crash takes the deliverable check down with
+everything else, which is BLD-5J8N arriving by a new route). Both files now grade by prefix and say
+so, and `test_both_unchecked_shapes_are_graded_on_every_reviewer_surface` keys off the strings the
+emitters actually produce — because the compression that caused this is exactly what a token-diet
+pass does to a file with fifty tokens of headroom, and nothing was stopping it a second time.
+
 **The figure this entry corrected went stale a second time, in the other copy.** The change-log's
 arithmetic was fixed while `test_v5_methodology.py`'s budget narrative kept saying "→ 4655" and
 "Headroom 5" above an assertion permitting 14, so the two records contradicted each other and the

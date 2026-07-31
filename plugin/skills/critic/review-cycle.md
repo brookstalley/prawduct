@@ -322,14 +322,24 @@ history in it reports on the entry just written and nothing else. Severity per c
 `suite-total-claim` NOTE, which would otherwise sit in Goal 4. The manifest is named in Goal 2 and
 only that reviewer reads it, so splitting the findings by their natural goal loses them.
 
-**`unchecked` is not a pass, and one entry is BLOCKING.** Each entry names a check that could **not
-run** and why. A `chunk-ref-missing unchecked` line is the old `verify-chunk-refs` `cannot-verify:`
-exit and keeps its severity — **BLOCKING**, because a deliverable check that could not run is
-indistinguishable from one that passed, and habituation to that silence is what BLD-5J8N cost.
-Every other `unchecked` entry is a **NOTE** you must still state in your summary. Two entries name
-an *assumption* rather than a failure: record-lint graded a chunk inferred from build-plan Status
-(Status names the first UNCHECKED chunk, so it may be the next one), or the whole pass crashed and
-the review proceeded without it. Both mean **no answer**, not a clean one.
+**`unchecked` is not a pass, and the PREFIX decides the severity.** Each entry names a check that
+could not run, or an assumption made in place of one — and the two are told apart by the string, not
+by judgment:
+
+- **`chunk-ref-missing unchecked — …` → BLOCKING.** The old `verify-chunk-refs` `cannot-verify:`
+  exit, keeping its severity: a deliverable check that could not run is indistinguishable from one
+  that passed, and habituation to that silence is what BLD-5J8N cost. **The whole-pass crash carries
+  this prefix deliberately** (`record_lint.py`, the comment above the crash return) — a crash takes
+  the deliverable check down with everything else, so it must arrive at the deliverable check's
+  severity rather than as a generic NOTE, which would be BLD-5J8N by a new route.
+- **`chunk-ref-missing graded chunk … inferred from build-plan Status` → NOTE.** An *assumption*,
+  not a failure: the check ran (`chunk_graded` is non-null), but Status names the first UNCHECKED
+  chunk, so it may have graded the next chunk rather than the reviewed one. It means **no answer
+  about this diff**, not a clean one — and blocking it would be a false blocker with no remedy,
+  since a branch that builds no chunk has no `--chunk` to supply.
+- **Every other `unchecked` entry → NOTE**, still stated in your summary.
+
+`goals-1-3.md` carries this same rule for the modes that read only that file; the two must agree.
 
 **`chunk_graded`** names whose deliverables were checked. A zero count is an answer about that
 chunk; if it is `null`, nothing was checked at all.
