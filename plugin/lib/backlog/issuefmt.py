@@ -72,7 +72,16 @@ _SECTION_ALIASES: dict[str, tuple[str, ...]] = {
 # §4 thresholds (single source of truth so lint and any doc stay in step).
 TITLE_MAX = 72
 TITLE_MIN = 15
-BODY_MAX_WORDS = 150
+# The single implementation constant behind the issue standard's body budget.
+# Reconciled 2026-07-31 (owner ruling) from three disagreeing numbers: the
+# standard's §2 said ~120, its §4 and this constant said 150, and §2's own
+# per-section budgets already summed to ~143-155 BEFORE any Evidence section --
+# so an author following §2 exactly could produce a conforming issue that still
+# tripped `body-too-long`. The standard was unsatisfiable at its own limits.
+# 175 is deliberately generous: it clears the per-section sum with headroom for
+# a visible Evidence line or two, and bulk evidence belongs in a fence, which
+# `_visible_words` excludes from the count anyway.
+BODY_MAX_WORDS = 175
 EVIDENCE_MAX_LINES = 30
 LABELS_MAX = 6
 

@@ -28,7 +28,7 @@ issues*: brevity, clarity, specificity.
 
 ## 2. Body
 
-Fixed sections, per-section budget, **~120 visible words**; evidence over budget goes in a fenced block
+Fixed sections, per-section budget, **~175 visible words**; evidence over budget goes in a fenced block
 or `<details>` (progressive disclosure). Original imported text is preserved out-of-band (§5), so
 restructuring loses nothing.
 
@@ -71,7 +71,8 @@ The adapter already models the recommended taxonomy: `kind/area/effort/impact/so
   labels to pre-exist — `provision` already creates them.
 - **Linter (WARN only, never blocks — matches prawduct's never-block posture; this path was never a
   blocking gate):** title > 72 / < 15 / placeholder; title joins ≥2 claims; missing or empty required
-  section; > ~150 visible words; unwrapped evidence > 30 lines; no `kind:`/`area:`; > ~6 labels;
+  section; > ~175 visible words (`issuefmt.BODY_MAX_WORDS` — the one implementation constant, §2's
+  number and this threshold are the same budget); unwrapped evidence > 30 lines; no `kind:`/`area:`; > ~6 labels;
   acceptance prose without `- [ ]`; a `kind:bug` issue with **no Env line** (`bug-missing-env` — the
   product-version-provenance nudge; recommendation, not a mandate).
 
