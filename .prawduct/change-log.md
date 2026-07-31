@@ -3,6 +3,45 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-07-31: The change-log ledger spike — validated on all 214 entries, and it falsified its own premise
+
+<!-- prawduct: type=docs | scope=record-mechanization | chunks=05 -->
+
+**The plan's last chunk was a go/no-go, and the answer is GO on the design, HOLD on the schedule.**
+`change-log-ledger-design.md` proposed moving the change log's typed fields into per-change facts and
+demoting the prose to a rendered view. It named its own de-risking step: convert five real entries
+end-to-end and diff against `parse_change_log` as the equivalence oracle. The spike ran the oracle on
+**all 214 entries** instead, because the converter is the same code either way and five hand-picked
+entries cannot distinguish "the format works" from "the five I picked were easy."
+
+**Result: 214/214 parsed-structure identical, and 214/214 byte-identical** when each entry's own
+tag-key order is preserved. Nothing in the historical corpus defeated the frontmatter shape — not
+tables, fenced code, backticked titles, em-dashes, the 21 pre-tagging untagged entries, nor the one
+entry carrying a non-prawduct HTML comment flush against its tag line.
+
+**The spike falsified a load-bearing figure in the artifact it was validating.** §1 claimed 77
+entries carried machine tags and 117 were "invisible to every view." Recounted at the table's own
+named tree, it is **173 tagged and 21 untagged** — and `77` matches no query over that tree at all:
+not any-tag, not any single key, not all-four-core-keys, not immediate-adjacency, not a raw grep. It
+was a hand-authored count, and it had already propagated into the migration plan, oversizing the
+archive set by 96 entries and undersizing the conversion set by the same. A design artifact for
+mechanizing hand-authored records was itself carrying an unreproducible hand-authored record. That is
+the disease this plan exists to cure, found in the plan's own source document.
+
+**A second correction the oracle forced:** the cutover test as written could never pass. It asserted
+byte-identity against *today's* file, but the corpus carries two tag-key orders (97 entries lead with
+`chunks=`) and two blank-line layouts (30 put the body flush against the tag line) — so byte-identity
+is reachable only *after* a normalization commit touching **127 of 193 tagged entries**. That commit
+is reviewable as pure formatting, because `parse_change_log` output is unchanged by construction.
+
+**Scheduling is held, not the design.** Release records reconstruct cleanly (57 releases, zero
+partition violations — the invariant is being adopted rather than imposed), and the backlog-service
+overlap turns out to be scheduling rather than machinery. But BKL-6J2X still holds the
+`backlog-service-migration-required` advisory precisely because it "routes the whole fleet into an
+unproven migration path," and this design needs exactly that. Running two unproven fleet migrations
+at once is the risk that hold exists to prevent, so the gate is: prove one first, explicitly, before
+starting the other.
+
 ## 2026-07-30: The third learnings compaction, and the first one built to be the last
 
 <!-- prawduct: type=fix | release=v3.2.2 | status=shipped -->

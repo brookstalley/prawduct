@@ -1,14 +1,14 @@
 ---
 artifact: design proposal
 scope: change-log-ledger
-status: proposed — not scheduled, not built
+status: spiked 2026-07-31 — design validated, GO conditional on scheduling (§11); not built
 depends_on:
   - .prawduct/artifacts/kernel-v3-evidence-design.md   # the precedent this reuses
 governed_by:
   - .prawduct/artifacts/data-model.md                   # persisted-format norms — binds hardest
   - .prawduct/artifacts/project-preferences.md          # derived-view conventions, merge strategy
   - .prawduct/artifacts/nonfunctional-requirements.md   # state-file growth posture
-requirements_confidence: Medium
+requirements_confidence: High   # raised from Medium 2026-07-31 by the §11 spike
 ---
 
 # Change-log restructure: facts in a ledger, prose in the change log
@@ -30,7 +30,7 @@ Measured on `feature/v3.2.0-c02-adapter-safety` @ `7db9eca`, 2026-07-29:
 | Signal | Value |
 |---|---|
 | `change-log.md` size | 657 KB · 6,872 lines · **194 entries** |
-| Entries carrying machine tags | **77** (~40%) — the other 117 are invisible to every view |
+| Entries carrying machine tags | ~~**77** (~40%) — the other 117 are invisible to every view~~ **FALSIFIED 2026-07-31** — recounted at this table's own named tree `7db9eca`: **173 tagged (89%), 21 untagged**. See §11. |
 | Machine-derived checkboxes under `regen-views` | **224** across `artifacts/` (191 `[x]`, 33 `[ ]`) |
 | Learnings that exist to encode change-log format rules | **14** |
 | Open backlog items in contact with change-log mechanics | ~41 of 179 (keyword upper bound; the named families below are exact) |
@@ -149,6 +149,8 @@ typed fields, the body carries the narrative:
 ```markdown
 ---
 id: 2026-07-29-coverage-free-edge-equivalence
+date: 2026-07-29
+title: Coverage's free-edge equivalence — 5m12s to 7.95s, same verdict
 type: perf
 scope: coverage-perf
 chunks: ["01"]
@@ -157,6 +159,10 @@ The cumulative coverage gate was quadratic: 5,597 `git diff` subprocesses, 316 s
 verdict. Free edges are an equivalence relation, so keying each tree once replaces diffing
 every pair. 5 m 12 s → 7.95 s, same verdict.
 ```
+
+`date` and `title` are **required, not decorative** — the spike proved the id slug is lossy
+(backticks stripped, punctuation collapsed, truncated), so a renderer cannot reconstruct the `##`
+heading from the id alone. An earlier draft of this section omitted both; §11 records the correction.
 
 Note what is **absent**: no `status`, no `release`. Those are not properties of a change — they are
 properties of *a release's relationship to* a change, and storing them per-entry is why the sweep
@@ -244,16 +250,21 @@ governance surfaces; it makes one of them typed.
 
 1. **Preserve history verbatim.** `change-log.md` → `change-log-archive.md`, untouched, forever. The
    194 existing entries are the record; nothing is rewritten in place.
-2. **Convert the 77 tagged entries mechanically** — the tag line is already `key=value`. Deterministic
+2. **Convert the tagged entries mechanically** — **193 at HEAD, not 77** (§11); the tag line is already `key=value`. Deterministic
    script, output diffed against `parse_change_log`'s current output as the equivalence oracle (the
    same "keep the old implementation as reference and test both" discipline that carried the
    coverage-perf rewrite).
-3. **The 117 untagged entries stay in the archive.** They pre-date tagging, no view can see them
+3. **The 21 untagged entries stay in the archive** (not 117 — §11). They pre-date tagging, no view can see them
    today, and inventing metadata for them would be fabricating history.
 4. **Reconstruct release records** for shipped versions from git tags plus each release's tree —
    per L:21, from *code*, never from prose.
-5. **Cut over** with both paths live and `regen-views --check` asserting the rendered `change-log.md`
-   is byte-identical to today's. Delete the parser only after a full release cycle runs on the new path.
+5. **Normalize first, then cut over.** Byte-identity with *today's* file is **provably unreachable**
+   (117/214 — §11), because the corpus carries two tag-key orders and two blank-line layouts. So the
+   cutover is two commits, not one: a mechanical **normalization** commit touching 127 tagged entries
+   (97 key-order, 30 blank-layout, disjoint), which is reviewable as pure formatting because
+   `parse_change_log` output is unchanged by construction; then cut over with both paths live and
+   `regen-views --check` asserting byte-identity against the *normalized* file. Delete the parser only
+   after a full release cycle runs on the new path.
 
 ## 8. Costs and risks — the honest objections
 
@@ -269,14 +280,14 @@ governance surfaces; it makes one of them typed.
 - **Not during a release.** Doing this while v3.2.0 is in flight would repeat the v3.1.2 mistake of
   restructuring under release pressure.
 
-## 9. Requirements Confidence: **Medium**
+## 9. Requirements Confidence: **High** *(raised from Medium, 2026-07-31)*
 
-The problem is measured and the consumer queries are read from source rather than assumed. What is
-unconfirmed is scope and sequencing, not the diagnosis.
+The problem is measured and the consumer queries are read from source rather than assumed. What was
+unconfirmed was scope and sequencing, not the diagnosis.
 
-**What would raise it to High:** a decision on the backlog-service overlap (§6), and a 30-minute
-spike converting five real entries end-to-end to confirm the frontmatter shape survives contact with
-messy historical data.
+**Both of the named raisers have now been executed** (§11): the round-trip spike ran — not on five
+entries but on all 214 — and the backlog-service overlap was reviewed. The format is validated; the
+residual uncertainty is *scheduling*, which is a decision rather than an unknown.
 
 **Open assumptions:**
 
@@ -302,3 +313,106 @@ messy historical data.
 - **Do nothing.** Defensible if the change log is near end-of-life. Worth noting `GOV-6D4Q` records a
   2026-07-02 simplification diagnosis whose fix programme was never run — "file it and move on" has
   a track record here.
+
+---
+
+## 11. Spike findings (2026-07-31) — GO, conditional on scheduling
+
+§9 named two raisers: a five-entry round-trip and a decision on the backlog-service overlap. Both
+were executed. The round-trip ran on **all 214 entries** rather than five, because the converter is
+the same code either way and a five-entry sample cannot distinguish "the format works" from "the
+five I picked were easy."
+
+### 11.1 The oracle, and what it returned
+
+Two oracles, deliberately. Parsed-structure identity is what every consumer query (Q1–Q7) reads;
+byte identity is what §7 step 5 proposes to assert at cutover. A format can pass the second and fail
+the first, and only the first proves the rendered view is drop-in.
+
+| Oracle | Result |
+|---|---|
+| `parse_change_log` structure identical (title + tags) | **214 / 214** |
+| Byte-identical, preserving each entry's own tag-key order | **214 / 214** |
+| Byte-identical under one canonical tag-key order | **117 / 214** |
+
+**The format survives the full historical corpus losslessly.** No entry defeated it — including
+tables, fenced code, sub-headings, backticked titles, em-dashes, an untagged pre-tagging entry, and
+one entry (L3267) carrying a non-prawduct HTML comment flush against its tag line.
+
+### 11.2 Three corrections to the design
+
+1. **`title` and `date` are required fields.** §5's example frontmatter carried neither. The id slug
+   is lossy — it strips backticks, collapses punctuation, and truncates — so a renderer cannot
+   rebuild the `##` heading from the id. §5 corrected.
+
+2. **§1's tag census was wrong, and nothing derives it.** Recounted at the table's own named tree
+   `7db9eca`: **173 tagged / 21 untagged**, not 77 / 117. `77` matches no query over that tree —
+   not any-tag (173), any single key (114–141), all-four-core-keys (71), immediate-adjacency (0), or
+   a raw grep (253). It appears to be a hand-authored number, and it propagated into migration steps
+   2 and 3, oversizing the archive set by 96 entries and undersizing the conversion set by the same.
+   *This artifact is itself an instance of the disease the parent plan exists to cure* — a governance
+   record carrying an unreproducible count that later work planned against.
+
+3. **§7 step 5's acceptance test was unreachable as written.** It asserted the rendered file be
+   byte-identical to *today's*. It cannot be: the corpus carries two tag-key orders (97 entries lead
+   with `chunks=`) and two blank-line layouts (30 entries put the body flush against the tag line).
+   Byte-identity is reachable only *after* normalization. Step 5 rewritten as two commits.
+
+### 11.3 The normalization commit, sized
+
+| | count |
+|---|---|
+| Entries | 214 (193 tagged, 21 untagged) |
+| Already fully canonical — untouched | 66 |
+| Non-canonical key order | 97 |
+| Non-canonical blank layout | 30 |
+| **Total touched by normalization** | **127** (the two sets are disjoint) |
+
+Blank lines *before* the tag line are universally 1, so that axis needs no normalization. The commit
+is reviewable as pure formatting: `parse_change_log` output is unchanged by construction, which is a
+machine-checkable property rather than a promise.
+
+### 11.4 Release records reconstruct cleanly
+
+Rebuilding release records from the existing `release=` / `status=` tags yields **57 releases**, and
+the partition property §5 wants as a schema invariant **already holds in the data**: zero entries
+carry a release without a status or vice versa, and zero are release-pending at HEAD. Reconstruction
+(§7 step 4) is therefore mechanical, and the invariant is being adopted rather than imposed.
+
+### 11.5 Two hazards are latent, not live
+
+`validate_tag_line_multiplicity` guards a case with **zero current instances** — no entry in the
+corpus has more than one tag line. The guard is cheap insurance against a defect that has not
+recurred, which slightly weakens §1's "three validators become impossible by construction" as a
+*present* cost while leaving the argument intact.
+
+### 11.6 §6 backlog-service overlap — reviewed
+
+The overlap is **scheduling, not machinery**. Prawduct's own `backlog_service_repo` is unset (markdown
+backend); the service shipped dormant in v3.2.0; the two migrations share no code and touch different
+files. But **BKL-6J2X is still `open, stage: ready`** — the deliberate *hold* on the
+`backlog-service-migration-required` advisory, held precisely because it "routes the whole fleet into
+an unproven migration path." §8 concedes the change-log ledger needs exactly that: a
+`/prawduct:migrate` path, a major bump, and a fleet migration.
+
+**Running two unproven fleet-migration paths concurrently is the risk BKL-6J2X exists to prevent.**
+
+### 11.7 Decision: GO on the design, HOLD on the schedule
+
+The design is sound, the format is validated against the whole corpus, and the migration is mechanical
+and reviewable. Nothing found here argues for the §10 alternatives — in particular, "fix the sweep
+properly" remains the fallback but gains no new support.
+
+Scheduling gate, in preference order: **either** BKL-6J2X's hold is lifted and the backlog migration
+is proven on the fleet first, **or** an explicit owner decision to run this one first and hold the
+backlog. Not both at once. Until one of those lands, this stays `spiked`, not `scheduled`.
+
+**Follow-on plan scope, when scheduled** (five chunks, roughly the shape the evidence supports):
+converter + fact schema with `schema: 1`; the 127-entry normalization commit; renderer +
+`regen-views` repoint; Q9 gate re-pointed at `.prawduct/changes/` per §5; migrate path + fleet
+rollout. The ~30 `test_views.py` tests targeting `parse_change_log` are the contract (§8) and are
+rewritten in the renderer chunk, not deleted.
+
+**Spike artifacts** are throwaway by design and were not committed: a corpus survey, a five-entry
+round-trip, and the whole-corpus oracle. Every number above is reproducible from the change log at
+this tree by re-deriving them; recount, do not cite.
