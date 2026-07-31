@@ -5,17 +5,17 @@
 
 ## 2026-07-31: Fleet migration gets a triage norm, and the archive scope gets an invariant instead of a status
 
-<!-- prawduct: type=docs | scope=fleet-migration-triage -->
+<!-- prawduct: type=docs | scope=backlog-service-v1 -->
 
 Scoping prawduct's own backlog-to-Issues cutover surfaced three record defects and one requirement
 that was about to be written wrong.
 
 **A backlog item had been instructing a requirement violation for two weeks.** `BKL-6M4T`'s
-deliverable list says the cutover retires `lib/backlog/legacy.py`. `GV7` says the opposite in terms,
+deliverable list says the cutover retires `plugin/lib/backlog/legacy.py`. `GV7` says the opposite in terms,
 naming the same file: the markdown parser *"is retired only when the whole portfolio has migrated,
 not at any one project's cutover; retiring it earlier is exactly the silent degradation GV7 exists
 to prevent."* `MG3` agrees and names prawduct's own cutover as no exception. Independently it would
-have broken the migration tool itself — `migrate.py` calls `legacy.parse_backlog` to read the
+have broken the migration tool itself — `plugin/lib/backlog/migrate.py` calls `legacy.parse_backlog` to read the
 markdown it converts, so retiring the parser disables the *next* repo's migration. Struck, with the
 requirement quoted at the item so the next reader argues with GV7 rather than rediscovering it.
 

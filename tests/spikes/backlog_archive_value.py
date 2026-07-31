@@ -12,7 +12,7 @@ What it answers, in one pass:
 
   * Is an archived item inert once shipped? (body substance, per status)
   * Which archived items are load-bearing for LIVE work — i.e. referenced by a
-    non-archived item through `related:` / `refs:` / `closes:` / body prose?
+    non-archived item through `related:` / `closes:` / `refs:` or body prose?
   * Would a status-keyed narrow archive scope (`--archive-scope open`, or an
     "open + dropped" pole) preserve the referenced set, or discard it?
 
@@ -21,6 +21,11 @@ backlog skill treats the source markdown as frozen history and stops reading it 
 live state, so an excluded reference target is *unresolvable*, not merely absent.
 That is why MG4(b) makes reference-closure the invariant and treats any status- or
 date-keyed window as a starting selection to be closed over, never a final answer.
+
+Reads through ``lib.backlog.legacy.parse_backlog`` — the same parser the importer
+reads the source through (``migrate.py`` → ``legacy.parse_backlog``). A hand-rolled
+parser here would measure a different item set than the migration acts on, which is
+precisely the divergence this instrument exists to rule out.
 
 Not a pytest test: it measures a living corpus, so it has no fixed expected value to
 assert. It is a measuring instrument, deliberately kept runnable.
@@ -31,18 +36,24 @@ import re
 import subprocess
 import sys
 from collections import Counter
+from pathlib import Path
+
+_SPIKE_DIR = Path(__file__).resolve().parent
+_PLUGIN_ROOT = _SPIKE_DIR.parent.parent / "plugin"
+if str(_PLUGIN_ROOT) not in sys.path:
+    sys.path.insert(0, str(_PLUGIN_ROOT))
+
+from lib.backlog import legacy  # noqa: E402
 
 BACKLOG = ".prawduct/backlog.md"
-HEAD_RE = re.compile(r"^- \*\*\[([A-Z]{2,4}-[A-Z0-9]{4})\]\*\* (.+)$")
-META_RE = re.compile(r"^\s+`(.*(?:status|added):.*)`\s*$")
-ARCHIVE_HEADING = "## Archive"
+ARCHIVE_SECTION = "Archive"
+ID_RE = re.compile(r"\b[A-Z]{2,4}-[A-Z0-9]{4}\b")
 SUBSTANTIAL = 800  # chars of body below which an item is a stub, not a record
 
 
 def _load(ref: str | None) -> str:
     if ref is None:
-        with open(BACKLOG, encoding="utf-8") as fh:
-            return fh.read()
+        return Path(BACKLOG).read_text(encoding="utf-8")
     out = subprocess.run(
         ["git", "show", f"{ref}:{BACKLOG}"],
         capture_output=True, text=True, check=True,
@@ -50,86 +61,86 @@ def _load(ref: str | None) -> str:
     return out.stdout
 
 
-def parse(text: str) -> dict[str, dict]:
-    """Item id -> {status, archived, meta, body}. Archive membership is positional."""
-    items: dict[str, dict] = {}
-    cur: str | None = None
-    archived = False
-    for line in text.splitlines():
-        if line.startswith(ARCHIVE_HEADING):
-            archived = True
-        head = HEAD_RE.match(line)
-        if head:
-            cur = head.group(1)
-            items[cur] = {"status": "?", "archived": archived, "meta": "", "body": []}
-            continue
-        if cur is None:
-            continue
-        meta = META_RE.match(line)
-        if meta and not items[cur]["meta"]:
-            items[cur]["meta"] = meta.group(1)
-            found = re.search(r"status:\s*([a-z-]+)", meta.group(1))
-            if found:
-                items[cur]["status"] = found.group(1)
-        else:
-            items[cur]["body"].append(line)
-    return items
+def _outbound_ids(item: legacy.BacklogItem) -> set[str]:
+    """Every item id this item points at — structured edges first, then body prose.
 
-
-def body_chars(item: dict) -> int:
-    return sum(len(line.strip()) for line in item["body"])
+    MG4(b) names `related:` / `refs:` / `closes:` as the load-bearing edges, so they
+    are read from the parsed metadata rather than scraped. Body prose is scanned too:
+    a disposition note naming an id is as much a reference as a metadata field.
+    """
+    fields = list(item.related) + list(item.refs)
+    closes = item.metadata.get("closes")
+    if closes:
+        fields.append(closes)
+    ids: set[str] = set()
+    for value in fields:
+        ids.update(ID_RE.findall(value))
+    ids.update(ID_RE.findall(item.body))
+    ids.discard(item.item_id or "")
+    return ids
 
 
 def main(argv: list[str]) -> int:
     ref = argv[1] if len(argv) > 1 else None
-    items = parse(_load(ref))
-    archive = {k: v for k, v in items.items() if v["archived"]}
-    live = {k: v for k, v in items.items() if not v["archived"]}
+    backlog = legacy.parse_backlog(_load(ref))
+
+    identified = [i for i in backlog.items if i.item_id]
+    if not identified:
+        raise SystemExit(
+            f"{BACKLOG}: parsed {len(backlog.items)} bullet(s) but none carried an item id. "
+            "The file's shape changed or the wrong path was read — refusing to report, "
+            "because an empty parse makes every narrow scope look reference-closed."
+        )
+
+    archive = [i for i in identified if i.section.strip().lower() == ARCHIVE_SECTION.lower()]
+    live = [i for i in identified if i.section.strip().lower() != ARCHIVE_SECTION.lower()]
+    if not archive:
+        raise SystemExit(
+            f"{BACKLOG}: parsed {len(identified)} item(s) but found no '{ARCHIVE_SECTION}' "
+            "section. Refusing to report a reference-closure verdict against an archive "
+            "this instrument could not find."
+        )
 
     where = ref or "working tree"
-    print(f"== {BACKLOG} @ {where} ==")
+    print(f"== {BACKLOG} @ {where} (via lib.backlog.legacy) ==")
     print(f"live: {len(live)} item(s) | archive: {len(archive)} item(s)")
-    print("archive by status:", dict(Counter(v["status"] for v in archive.values())))
+    print("archive by status:", dict(Counter(i.status or "?" for i in archive)))
 
-    # Every live item's text, as the reference surface.
-    live_text = "\n".join(
-        v["meta"] + "\n" + "\n".join(v["body"]) for v in live.values()
-    )
+    # Everything live work points at, from its structured edges and its prose.
+    live_targets: set[str] = set()
+    for item in live:
+        live_targets |= _outbound_ids(item)
+
+    by_status: dict[str, list[legacy.BacklogItem]] = {}
+    for item in archive:
+        by_status.setdefault(item.status or "?", []).append(item)
 
     print("\n-- is an archived item inert? --")
-    by_status: dict[str, list[str]] = {}
-    for key, item in archive.items():
-        by_status.setdefault(item["status"], []).append(key)
-
-    referenced_total = 0
-    for status, keys in sorted(by_status.items(), key=lambda kv: -len(kv[1])):
-        sizes = sorted(body_chars(archive[k]) for k in keys)
+    for status, group in sorted(by_status.items(), key=lambda kv: -len(kv[1])):
+        sizes = sorted(len(i.body.strip()) for i in group)
         median = sizes[len(sizes) // 2] if sizes else 0
         stubs = sum(1 for s in sizes if s < 40)
         rich = sum(1 for s in sizes if s > SUBSTANTIAL)
-        refd = [k for k in keys if k in live_text]
-        referenced_total += len(refd)
-        pct = (100 * len(refd) // len(keys)) if keys else 0
+        refd = [i for i in group if i.item_id in live_targets]
+        pct = (100 * len(refd) // len(group)) if group else 0
         print(
-            f"  {status:<8} n={len(keys):<4} median body {median:>6} chars  "
+            f"  {status:<8} n={len(group):<4} median body {median:>6} chars  "
             f"empty={stubs:<3} >{SUBSTANTIAL}ch={rich:<4} "
             f"referenced by live work: {len(refd)} ({pct}%)"
         )
 
     print("\n-- would a status-keyed narrow scope be reference-closed? --")
-    for label, kept_statuses in (
+    for label, kept in (
         ("--archive-scope open  (drop all archived)", set()),
         ("open + dropped        (keep dropped only)", {"dropped"}),
     ):
-        excluded = [k for k, v in archive.items() if v["status"] not in kept_statuses]
-        broken = [k for k in excluded if k in live_text]
+        excluded = [i for i in archive if (i.status or "?") not in kept]
+        broken = [i for i in excluded if i.item_id in live_targets]
         verdict = "REFERENCE-CLOSED" if not broken else f"BREAKS {len(broken)} reference(s)"
         print(f"  {label}: excludes {len(excluded):<4} -> {verdict}")
 
-    print(
-        f"\narchive items referenced by live work, all statuses: "
-        f"{referenced_total} of {len(archive)}"
-    )
+    total_refd = sum(1 for i in archive if i.item_id in live_targets)
+    print(f"\narchive items referenced by live work, all statuses: {total_refd} of {len(archive)}")
     print(
         "MG4(b): reference-closure is the invariant; a status or date window is a "
         "starting selection, not a final answer."

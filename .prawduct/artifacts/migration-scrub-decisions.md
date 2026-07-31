@@ -19,13 +19,13 @@ before it is acted on.
 > in-flight survivor is exactly as sound), and all 13 drops are still open, so none has become a
 > no-op.
 >
-> **What does not.** The open corpus grew **+75%** since the snapshot these were derived against,
-> and the items filed since have **never been surveyed for staleness or duplication at all** — they
-> are outside every disposition here, and they are a large minority of today's open set. The
-> per-item survey behind the decisions (gists, DUP clusters, staleness evidence) covers the smaller
-> corpus only.
+> **What does not.** The open corpus has grown substantially since the snapshot these were derived
+> against, and every item filed since is **outside every disposition here — never surveyed for
+> staleness or duplication at all.** The per-item survey behind the decisions (gists, DUP clusters,
+> staleness evidence) covers the smaller corpus only. That coverage gap, not a wrong plan, is what
+> makes this section unsafe to execute as written.
 >
-> **Do not transcribe those figures — they move with every filing.** Run the instrument:
+> **No figures are quoted here on purpose — they move with every filing.** Run the instrument:
 >
 >     python3 tests/spikes/backlog_scrub_drift.py
 >
@@ -145,7 +145,9 @@ backup) → `export` backup **after** the import (it dumps the migrated repo —
 backs up nothing; ordering corrected 2026-07-18 per the holistic review) → apply the merges/drops
 above (all disposition commands take `--repo`) → verify counts + spot-check → activate the
 BKL-8P2R cutover (`backlog_service_repo: owner/repo` in project-state.yaml — the repoint code
-shipped 2026-07-18) → retire `legacy.py` + `incoming-bugs/` in lockstep with the report-bug MG5
+shipped 2026-07-18) → **do NOT retire `legacy.py`** (GV7/MG3 — it is the shared markdown read path
+and retires only at portfolio-wide migration; retiring it here also disables the next repo's
+migration, which reads through `legacy.parse_backlog`) → retire `incoming-bugs/` in lockstep with the report-bug MG5
 repoint → `/prawduct:critic cumulative` → slice PR. The full item survey (per-item gists, DUP
 clusters, staleness evidence) was produced 2026-07-18; regenerate it if the source drifts
 materially before the run.

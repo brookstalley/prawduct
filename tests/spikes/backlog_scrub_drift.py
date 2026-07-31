@@ -14,15 +14,21 @@ transcribed count is stale by the next filing. Run this before executing the scr
 What it answers:
 
   * How far has the corpus moved since the dispositions were approved?
-  * Does every recorded merge pair still resolve — duplicate present, survivor
-    present and not already archived?
+  * Does every recorded merge pair still resolve — and is folding it still SAFE?
   * Is every recorded drop still an open item (a drop of an already-disposed item
     is a no-op, not a decision)?
   * Which items have appeared since the snapshot and have therefore never been
     surveyed for staleness or duplication at all?
 
-A `promoted` survivor is NOT a failure: promoted means in-flight, and folding a
-duplicate into an in-flight survivor is exactly as sound as into an open one.
+**On `promoted`, the two roles are not symmetric.** A promoted *survivor* is fine:
+promoted means in-flight, and folding a duplicate into in-flight work is exactly as
+sound as folding it into an open item. A promoted *duplicate* is not: it is work
+someone has started, and the recorded disposition would close it as a duplicate.
+That pairing is flagged, not waved through.
+
+Reads through ``lib.backlog.legacy.parse_backlog`` — the parser the importer itself
+reads the source through — so the item set measured here is the item set the
+migration will act on.
 
 Not a pytest test: it measures a living corpus against a dated decision, so it has no
 fixed expected value. It is a measuring instrument, deliberately kept runnable.
@@ -32,13 +38,19 @@ from __future__ import annotations
 import re
 import subprocess
 import sys
+from pathlib import Path
+
+_SPIKE_DIR = Path(__file__).resolve().parent
+_PLUGIN_ROOT = _SPIKE_DIR.parent.parent / "plugin"
+if str(_PLUGIN_ROOT) not in sys.path:
+    sys.path.insert(0, str(_PLUGIN_ROOT))
+
+from lib.backlog import legacy  # noqa: E402
 
 BACKLOG = ".prawduct/backlog.md"
 DECISIONS = ".prawduct/artifacts/migration-scrub-decisions.md"
 SNAPSHOT = "964d03b"  # the ref the recorded dispositions were derived against
 
-HEAD_RE = re.compile(r"^- \*\*\[([A-Z]{2,4}-[A-Z0-9]{4})\]\*\* (.+)$")
-META_RE = re.compile(r"^\s+`(.*(?:status|added):.*)`\s*$")
 # The two tables differ in shape: merges are `| duplicate | survivor | reason |`,
 # drops are `| item | reason |` with prose in the second column. Match each on its
 # own terms — a single regex demanding an id in column 2 silently drops every drop.
@@ -46,7 +58,9 @@ MERGE_ROW_RE = re.compile(
     r"^\|\s*([A-Z]{2,4}-[A-Z0-9]{4})\s*\|\s*([A-Z]{2,4}-[A-Z0-9]{4})\s*\|"
 )
 DROP_ROW_RE = re.compile(r"^\|\s*([A-Z]{2,4}-[A-Z0-9]{4})\s*\|")
-LIVE_STATUSES = {"open", "promoted"}
+
+SURVIVOR_OK = {"open", "promoted"}  # in-flight is a fine fold target
+DUPLICATE_OK = {"open"}             # in-flight work must not be folded away
 
 
 def _show(ref: str, path: str) -> str:
@@ -55,35 +69,19 @@ def _show(ref: str, path: str) -> str:
     return out.stdout
 
 
-def parse(text: str) -> dict[str, dict]:
-    items: dict[str, dict] = {}
-    cur = None
-    archived = False
-    for line in text.splitlines():
-        if line.startswith("## Archive"):
-            archived = True
-        head = HEAD_RE.match(line)
-        if head:
-            cur = head.group(1)
-            items[cur] = {"title": head.group(2), "status": "?",
-                          "added": "?", "archived": archived}
-            continue
-        if cur is None:
-            continue
-        meta = META_RE.match(line)
-        if meta and items[cur]["status"] == "?":
-            bar = meta.group(1)
-            st = re.search(r"status:\s*([a-z-]+)", bar)
-            ad = re.search(r"added:\s*([0-9-]+)", bar)
-            if st:
-                items[cur]["status"] = st.group(1)
-            if ad:
-                items[cur]["added"] = ad.group(1)
+def _by_id(text: str) -> dict[str, legacy.BacklogItem]:
+    parsed = legacy.parse_backlog(text)
+    items = {i.item_id: i for i in parsed.items if i.item_id}
+    if not items:
+        raise SystemExit(
+            f"{BACKLOG}: parsed {len(parsed.items)} bullet(s), none with an item id — "
+            "refusing to report drift against an empty parse."
+        )
     return items
 
 
 def recorded_dispositions(text: str) -> tuple[list[tuple[str, str]], list[str]]:
-    """Parse the merge table (duplicate -> survivor) and the drop table from the artifact."""
+    """Parse the merge table (duplicate -> survivor) and the drop table."""
     merges: list[tuple[str, str]] = []
     drops: list[str] = []
     section = None
@@ -114,16 +112,14 @@ def recorded_dispositions(text: str) -> tuple[list[tuple[str, str]], list[str]]:
 
 def main(argv: list[str]) -> int:
     ref = argv[1] if len(argv) > 1 else SNAPSHOT
-    with open(BACKLOG, encoding="utf-8") as fh:
-        now = parse(fh.read())
-    then = parse(_show(ref, BACKLOG))
-    with open(DECISIONS, encoding="utf-8") as fh:
-        merges, drops = recorded_dispositions(fh.read())
+    now = _by_id(Path(BACKLOG).read_text(encoding="utf-8"))
+    then = _by_id(_show(ref, BACKLOG))
+    merges, drops = recorded_dispositions(Path(DECISIONS).read_text(encoding="utf-8"))
 
-    open_then = sum(1 for v in then.values() if v["status"] == "open")
-    open_now = sum(1 for v in now.values() if v["status"] == "open")
+    open_then = sum(1 for i in then.values() if i.status == "open")
+    open_now = sum(1 for i in now.values() if i.status == "open")
     growth = (100 * open_now // open_then - 100) if open_then else 0
-    print(f"== corpus drift since {ref} ==")
+    print(f"== corpus drift since {ref} (via lib.backlog.legacy) ==")
     print(f"items: {len(then)} -> {len(now)}   open: {open_then} -> {open_now} (+{growth}%)")
 
     print(f"\n-- recorded merges ({len(merges)}) --")
@@ -133,14 +129,16 @@ def main(argv: list[str]) -> int:
         d, s = now.get(dup), now.get(surv)
         if d is None:
             problems.append(f"{dup} absent")
-        elif d["status"] not in LIVE_STATUSES:
-            problems.append(f"{dup} already {d['status']}")
+        elif d.status not in DUPLICATE_OK:
+            # A promoted duplicate is in-flight work this fold would close.
+            problems.append(f"{dup} is {d.status} — folding it closes in-flight work")
         if s is None:
             problems.append(f"survivor {surv} absent")
-        elif s["status"] not in LIVE_STATUSES:
-            problems.append(f"survivor {surv} already {s['status']}")
+        elif s.status not in SURVIVOR_OK:
+            problems.append(f"survivor {surv} is {s.status}")
         stale_merges += bool(problems)
-        note = "; ".join(problems) if problems else f"ok ({d['status']} -> {s['status']})"
+        note = ("; ".join(problems) if problems
+                else f"ok ({d.status} -> {s.status})")
         print(f"  {dup} -> {surv}: {note}")
 
     print(f"\n-- recorded drops ({len(drops)}) --")
@@ -150,20 +148,20 @@ def main(argv: list[str]) -> int:
         if item is None:
             print(f"  {did}: absent")
             stale_drops += 1
-        elif item["status"] != "open":
-            print(f"  {did}: already {item['status']} — drop is a no-op")
+        elif item.status != "open":
+            print(f"  {did}: already {item.status} — drop is a no-op")
             stale_drops += 1
         else:
             print(f"  {did}: ok (open)")
 
-    new_open = {k: v for k, v in now.items()
-                if k not in then and v["status"] == "open"}
+    new_open = {k: v for k, v in now.items() if k not in then and v.status == "open"}
     share = (100 * len(new_open) // open_now) if open_now else 0
-    print(f"\n-- never surveyed --")
+    print("\n-- never surveyed --")
     print(f"  {len(new_open)} open item(s) filed since {ref} — {share}% of the open corpus, "
           f"outside every recorded disposition")
     for key in sorted(new_open):
-        print(f"    {key}  {new_open[key]['added']}  {new_open[key]['title'][:96]}")
+        added = new_open[key].metadata.get("added", "?")
+        print(f"    {key}  {added}  {new_open[key].title[:96]}")
 
     verdict = "CURRENT" if not (stale_merges or stale_drops or new_open) else "STALE"
     print(f"\nverdict: dispositions are {verdict} "

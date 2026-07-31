@@ -383,8 +383,18 @@ dark rather than discovering it as an unexplained absence (full retirement
 table: post-sync-advisory-spec §8.2). **Do not set
 it before the import has been verified** (Step 5) — once set, the briefing
 stops counting the markdown file. From here the markdown backlog is frozen
-history; `legacy.py` + `incoming-bugs/` retirement follows in lockstep with
-their replacements (build plan Chunk 06).
+history for *this* repo.
+
+**`legacy.py` is NOT retired at this cutover — not this repo's, not any repo's.**
+It is the shared plugin's markdown read path, and `GV7`/`MG3` retire it only when
+the **whole portfolio** has migrated: retiring it at one project's cutover is the
+silent degradation GV7 exists to prevent, and it would also disable the *next*
+repo's migration, since `migrate.py` reads the source through `legacy.parse_backlog`.
+Portfolio-wide retirement is not this runbook's business.
+
+`incoming-bugs/` is different: it retires **in lockstep with its MG5 replacement**,
+never before it (BKL-0QR1) — and that leg is **gated by BKL-9XQ2**, so it does not
+run here either. Everything else in this runbook is unaffected by that gate.
 
 ## What must never happen
 
