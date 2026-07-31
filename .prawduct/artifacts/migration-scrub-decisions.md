@@ -26,10 +26,14 @@ before it is acted on.
 > staleness evidence) covers the smaller corpus only. That coverage gap, not a wrong plan, is what
 > makes this section unsafe to execute as written.
 >
-> **The survey that closes this gap now EXISTS and is UNCONFIRMED — see § "Survey 2" below.** It reads
-> every open item filed since the snapshot and proposes a disposition for each. Until the owner rules on
-> it, this block still binds: the recorded dispositions above cover the smaller corpus only, and § Survey 2
-> is a proposal, not an approval. Do not execute either set.
+> **The survey that closes this gap EXISTS and is CONFIRMED — see § "Survey 2" below (owner ruling
+> 2026-07-31).** Every open item filed since the snapshot was read in full and dispositioned; the
+> approved status flips, merges and drop were applied to the markdown source. **So the coverage gap this
+> block was raised for is closed.** What this block still binds is the *pre-existing* dispositions above:
+> they were derived against the smaller corpus and are unchanged. Read § Survey 2 for the current state
+> before executing anything, and note that `verdict: CURRENT` will still not print until `SNAPSHOT` is
+> advanced — see the last subsection of § Survey 2 for why that is a property of the instrument, not a
+> sign the survey is incomplete.
 >
 > **This block states shapes, never counts — every count here would move with the next filing, and
 > a stale one reads as current.** For any number at all, run the instrument:
@@ -143,12 +147,27 @@ Drops (`status … dropped` after import; bodies preserved):
 Everything else (~78 open + 121 archive): **keep** (LRN-3F8K explicitly kept — its dangling-sentinel
 error is live and small).
 
-## Survey 2 — the unsurveyed set (proposed 2026-07-31, **NOT owner-confirmed**)
+## Survey 2 — the unsurveyed set (proposed and **OWNER-CONFIRMED 2026-07-31**, one row held)
 
 Closes the coverage gap the ⚠ block above names. Every open item filed since `964d03b` was read in
-full through `lib.backlog.legacy.parse_backlog` and screened for staleness and duplication. **Nothing
-here is confirmed; apply nothing until the owner rules** (MG4/G1 — the model proposes, the owner
-decides, the data plane applies a confirmed set).
+full through `lib.backlog.legacy.parse_backlog` and screened for staleness and duplication (MG4/G1 —
+the model proposed, the owner decided, the data plane applied a confirmed set).
+
+> ### ✅ OWNER RULING — 2026-07-31
+>
+> - **§ A — all seven status flips APPROVED** and applied to the markdown source.
+> - **§ B — two of three merges APPROVED**: `BKL-6J2X → BKL-7D3V` and `BKL-4M6T → GOV-2K7R`.
+>   **`BLD-5R7K → SCN-6V3D` is HELD** — see the row for why.
+> - **§ C — `COV-3M8Q` APPROVED as a drop**, against the recommendation to keep. The ratified goal it
+>   served (review wall-clock is P0) stays tracked by `CRT-8N5V` and `CRT-3W6P`; the goal is not
+>   dropped with the item.
+> - **§ D — the 80 keeps stand.**
+>
+> These were applied **pre-migration, to the markdown source** — not as post-import dispositions. That
+> is a deliberate departure from decision 3's "apply after import" and it is the cheaper order for this
+> class: a corrected source migrates once, correctly, instead of migrating wrong and being repaired
+> across ~10 extra writes. Decision 3's ordering still governs the original 18 dispositions, which are
+> genuine scrub actions on items that must exist as issues before they can be closed or folded.
 
 **On counts in this section.** The ⚠ block forbids corpus counts because they drift. The counts below
 are **not** corpus counts — they describe a *fixed decision set* taken at merge commit `a232407`
@@ -195,7 +214,7 @@ That is why these are proposed rather than flipped.
 |---|---|---|
 | BKL-6J2X | **BKL-7D3V** | Two records of one advisory decision. BKL-6J2X asked that the hold be *"recorded as a release-plan decision"*; BKL-7D3V **is** that record ("the deliverable above is therefore satisfied"). Both residuals are the same single implementation — Chunk 07 done-when #5 (register the real probe, delete the held no-op, flip the pinning test, correct two docstrings). Chunk 07 never ran, so the survivor stays open carrying it |
 | BKL-4M6T | **GOV-2K7R** | Same defect twice: a security-adjacent grant narrowing shipped unpinned while its sibling in the same fix got a test. GOV-2K7R names BKL-4M6T as "the same shape" and asks for the **class** fix — extend the skill-metadata test family so no skill frontmatter carries a bare wildcard. One test family closes both |
-| BLD-5R7K | **SCN-6V3D** | Same function (`resolve_chunk_progress`), same silent degradation to the known-wrong checkbox reading, same discarded `ChunkProgress.git_derived` signal, overlapping candidate surfaces. **Flagged for owner attention:** SCN-6V3D is `ready` and scoped to "pick the surface that reports"; BLD-5R7K is `design` and adds a genuinely separable second leg (document the commit-convention precondition in the build-plan template + `building.md`). Merging must carry that leg into the survivor, or split it out rather than lose it |
+| ~~BLD-5R7K~~ | ~~**SCN-6V3D**~~ | **HELD — owner, 2026-07-31. Not applied; both items stay open and untouched.** The technical case stands: same function (`resolve_chunk_progress`), same silent degradation to the known-wrong checkbox reading, same discarded `ChunkProgress.git_derived` signal, overlapping candidate surfaces. What held it is that BLD-5R7K carries a genuinely **separable** second leg — documenting the commit-convention precondition in the build-plan template and `building.md` — which a fold into SCN-6V3D (`ready`, scoped to "pick the surface that reports") could lose. Re-propose only with that leg either carried explicitly into the survivor or split into its own item first |
 
 **Near-matches deliberately NOT merged.** The corpus has already adjudicated these and recorded the
 reasoning; re-merging would re-litigate settled calls: `CRT-9K2P`/`CRT-2X7R`/`CRT-7P5J` (one root — a
@@ -209,11 +228,11 @@ One of those rulings is now vindicated: `BKL-6T3P` declined to fold into `BKL-8V
 BKL-8V3D looked closable and folding a live defect into it would have made it un-archivable for an
 unrelated reason. Section A proposes exactly that closure. BKL-6T3P correctly carries the residual.
 
-### C. Drop candidate — 1, and it needs a decision rather than a disposition
+### C. Drop — 1, approved against the recommendation
 
 | Item | Reason | Proposed |
 |---|---|---|
-| **COV-3M8Q** | Both of its named routes are now closed. The content-equivalence route was **RULED OUT 2026-07-29** (built, reviewed at 10 blocking with all three reviewers finding the same hole, reverted); the route it then pointed at — record-mechanization Chunk 03, per-mode reviewer payload — **shipped in v3.2.2**. What remains is the bare observation with no live route. **Counter-argument, stated so the drop is not taken cheaply:** the treadmill itself is unfixed (`is_judgeable_path` still classifies by extension, so a docstring-only `.py` edit still demands a full cycle) and the governing goal is ratified. Other items hold that line — `CRT-8N5V`, `CRT-3W6P` | `drop` (owner call) |
+| **COV-3M8Q** | Both of its named routes are now closed. The content-equivalence route was **RULED OUT 2026-07-29** (built, reviewed at 10 blocking with all three reviewers finding the same hole, reverted); the route it then pointed at — record-mechanization Chunk 03, per-mode reviewer payload — **shipped in v3.2.2**. What remains is the bare observation with no live route. **Counter-argument, stated so the drop is not taken cheaply:** the treadmill itself is unfixed (`is_judgeable_path` still classifies by extension, so a docstring-only `.py` edit still demands a full cycle) and the governing goal is ratified. Other items hold that line — `CRT-8N5V`, `CRT-3W6P` | **`dropped` — owner, 2026-07-31.** The counter-argument was put and not taken; recorded here so the drop reads as a decision made against a stated case, not a case nobody made |
 
 ### D. Keep — the remaining 80
 
