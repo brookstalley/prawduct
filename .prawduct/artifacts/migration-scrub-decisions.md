@@ -158,10 +158,14 @@ the model proposed, the owner decided, the data plane applied a confirmed set).
 > - **§ A — all seven status flips APPROVED** and applied to the markdown source.
 > - **§ B — two of three merges APPROVED**: `BKL-6J2X → BKL-7D3V` and `BKL-4M6T → GOV-2K7R`.
 >   **`BLD-5R7K → SCN-6V3D` is HELD** — see the row for why.
-> - **§ C — `COV-3M8Q` APPROVED as a drop**, against the recommendation to keep. The ratified goal it
->   served (review wall-clock is P0) stays tracked by `CRT-8N5V` and `CRT-3W6P`; the goal is not
->   dropped with the item.
-> - **§ D — the 80 keeps stand.**
+> - **§ C — TWO drops APPROVED.** `COV-3M8Q`, against the recommendation to keep (the ratified goal it
+>   served stays tracked by `CRT-8N5V` and `CRT-3W6P`), and `CRT-8Q6R`, which moved from § D to § C when
+>   its own "check this first" condition was finally checked and came back against it.
+> - **§ D — 80 keeps stand.**
+> - **One requirement surfaced by the survey and filed rather than built:** the runbook records no
+>   survey coverage boundary at all, so drift is undetectable for every consumer — prawduct only caught
+>   its own because it hand-built a repo-local spike that does not ship. See § "What this section
+>   changes about running the scrub."
 >
 > These were applied **pre-migration, to the markdown source** — not as post-import dispositions. That
 > is a deliberate departure from decision 3's "apply after import" and it is the cheaper order for this
@@ -228,11 +232,12 @@ One of those rulings is now vindicated: `BKL-6T3P` declined to fold into `BKL-8V
 BKL-8V3D looked closable and folding a live defect into it would have made it un-archivable for an
 unrelated reason. Section A proposes exactly that closure. BKL-6T3P correctly carries the residual.
 
-### C. Drop — 1, approved against the recommendation
+### C. Drops — 2, both owner-approved (one against the recommendation)
 
 | Item | Reason | Proposed |
 |---|---|---|
 | **COV-3M8Q** | Both of its named routes are now closed. The content-equivalence route was **RULED OUT 2026-07-29** (built, reviewed at 10 blocking with all three reviewers finding the same hole, reverted); the route it then pointed at — record-mechanization Chunk 03, per-mode reviewer payload — **shipped in v3.2.2**. What remains is the bare observation with no live route. **Counter-argument, stated so the drop is not taken cheaply:** the treadmill itself is unfixed (`is_judgeable_path` still classifies by extension, so a docstring-only `.py` edit still demands a full cycle) and the governing goal is ratified. Other items hold that line — `CRT-8N5V`, `CRT-3W6P` | **`dropped` — owner, 2026-07-31.** The counter-argument was put and not taken; recorded here so the drop reads as a decision made against a stated case, not a case nobody made |
+| **CRT-8Q6R** | The 4-minute cache-warm interval, sized against an **assumed** 5-minute prompt-cache TTL. The item's own first candidate fix was *"drop it entirely if the harness already handles cache retention — check this first."* **That check can now be made and it comes back against the constant:** sessions run under a documented **1-hour** TTL, which is exactly the case the item calls wasteful ("it burns readouts to defend a cache that was never at risk"). What the item called "a guess dressed as a constant" is now a guess known wrong in the direction that makes the mechanism pure cost. **The requirement is not dropped, the constant is** — "a waiting session must not idle silently" stays live through `CRT-3F7M`, whose cross-link already records that a synchronous coordinator await largely obviates the stopgap and its TTL guessing. **This is not a code change:** `_CACHE_WARM_DIRECTIVE` / `_CACHE_WARM_INTERVAL_MINUTES` and their two pinning tests are untouched | **`dropped` — owner, 2026-07-31** |
 
 ### D. Keep — the remaining 80
 
@@ -240,28 +245,54 @@ Everything not named above. No staleness signal and no duplication signal surviv
 than restate 80 near-identical reasons, the grounds are: each is a recent, independently-verified defect
 against live machinery, most carrying explicit dedup rulings from prior sessions.
 
-Two keeps worth flagging because new evidence has arrived since filing, without changing the
+**Final tally, after the owner's rulings:** 91 = 7 shipped + 2 merged away + 2 dropped + 80 kept. (The
+held merge returns `BLD-5R7K` to the keep set; `CRT-8Q6R` left it.)
+
+One keep worth flagging because new evidence has arrived since filing, without changing the
 disposition:
 
-- **CRT-8Q6R** (the hardcoded 4-minute cache-warm interval, sized against an *assumed* 5-minute prompt
-  cache TTL). The item's own first candidate fix is *"drop it entirely if the harness already handles
-  cache retention"*. Evidence unavailable at filing: sessions now run under a documented **1-hour**
-  prompt-cache TTL, which is precisely the case the item names as wasteful — "it burns readouts to
-  defend a cache that was never at risk." **Keep, but the constant is now demonstrably mis-sized**; the
-  requirement (a waiting session must not idle silently) is what survives, not the number. Note the
-  cadence is pinned by two tests, so re-scoping costs two edits.
 - **GOV-7W3D** (6 of 10 `## Direction` norms undispositioned). Its deadline was *"before Chunk 06 runs"*
   and v3.2.0 shipped without Chunk 06, so the trigger has been overtaken rather than met. The plan file
   is retained (Chunks 06/07 unbuilt), so the item is live — but its bound needs restating.
 
-### What this section changes about running the scrub
+### What this section changes about running the scrub — and the fleet-wide gap behind it
 
 The instrument's verdict **cannot** flip to `CURRENT` by recording dispositions. `backlog_scrub_drift.py`
 derives "unsurveyed" as *open items filed since `SNAPSHOT = "964d03b"`*, so on a growing corpus that set
-is non-empty forever. **Advancing `SNAPSHOT` to the commit this survey was taken at (`a232407`) is the
-step that closes the loop** — and neither the spike's docstring nor this artifact said so. Advance it
-only once these dispositions are confirmed; advancing it first would silently declare an unreviewed
-corpus surveyed.
+is non-empty forever. Advancing `SNAPSHOT` to the commit this survey was taken at (`a232407`) is what
+closes the loop locally — **only after** these dispositions are confirmed, since advancing first would
+silently declare an unreviewed corpus surveyed.
+
+**But the local fix is not the fix, and treating it as one would leave every consumer where prawduct
+was.** The generalizable defect, filed 2026-07-31:
+
+> A scrub survey is a claim about a corpus **at a moment**, and neither `migration-scrub.md` nor any
+> artifact it writes records *which moment*. Step 2 says "surface candidates," Step 3 says "owner
+> confirms," and nothing between them establishes what was surveyed or notices that the corpus moved.
+> With no recorded coverage boundary there is no definition of "surveyed," so an approved disposition
+> table has unknown currency at run time.
+
+prawduct caught its own drift only because someone hand-built `tests/spikes/backlog_scrub_drift.py` and
+hand-wrote the ⚠ block at the head of this file. **Neither ships** — `tests/spikes/` is repo-local, so a
+consumer following the runbook has no drift check at all. The fix has three legs, and the middle one is
+the design call:
+
+1. **Record the boundary explicitly, never derive it.** Deriving it from "the last commit touching this
+   artifact" would let an unrelated edit declare the corpus surveyed — and that is not hypothetical: the
+   owner-ruling commit for *this very survey* edited this file for reasons unrelated to coverage.
+2. **Make the baseline a DATE, not a git ref.** A ref-keyed check **dies at cutover** — it resolves
+   through `git show <ref>:.prawduct/backlog.md`, and post-cutover the markdown is frozen while the live
+   corpus is Issues, so the check silently stops meaning anything at exactly the moment the migration
+   completes. A date evaluates identically on both backends (every open markdown item carries `added:`
+   — 191/191 at survey time; issues carry `created_at`) and is immune to the amend/rebase SHA-orphaning
+   this repo has already recorded once (BKL-2Q7F, correction 3).
+3. **Surface it at Step 3 as a stated choice, not a refusal.** A survey is judgment — "these five are
+   all keeps" is a legitimate answer — so a hard gate would block sound runs with no override. Match
+   Step 3c's existing archive-scope pattern: state the cost plainly, owner decides, record the choice.
+
+**No new adapter op.** The check is `backlog list --json` plus a date filter, and `list` already routes
+to whichever backend is live — so this adds **zero** governed surface, which matters because `GOV-6D4Q`'s
+deletion-only pass forbids adding any and is sequenced ahead of Chunks 07/08.
 
 ## Migration-session runbook pointer
 
