@@ -319,4 +319,4 @@ Active rules from this project's development. Surfaced via the `/learnings [topi
 
 ## When the deliverable is INSTRUCTIONS, at least one guardrail must model the READER — tests that measure the artifact (size, budget, "the right words are present") all pass while the instruction has no effect, because none of them read the file in the order an agent reads it
 
-## A spike that discards its code leaves its numbers unfalsifiable — commit the derivation as a runnable script and cite the command, never the digits, because a count transcribed into prose is stale the moment the corpus grows and then goes wrong SILENTLY; the tell is a governance record that diagnoses unreproducible counts while shipping its own, and the fix is not counting more carefully but moving the count out of prose entirely
+## A spike that discards its code leaves its numbers unfalsifiable — commit the derivation as a runnable script and cite the command, never the digits, because a count transcribed into prose goes stale silently as the corpus grows; the fix is not counting more carefully but moving the count out of prose entirely

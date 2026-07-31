@@ -841,30 +841,54 @@ class TestLearningsEntryShape:
         assert not self._findings(tmp_path, f"## {rule}")
 
     def test_fires_on_a_narrative_body(self, tmp_path):
-        """The channel the sweep was built for."""
+        """The channel the sweep was built for.
+
+        This body sits directly under its heading, which is also where a
+        continuation would sit — so it gets the both-remedies message rather
+        than the bare move instruction. `test_prose_after_intervening_body_...`
+        covers the position where the plain instruction is safe.
+        """
         entry = "## When X do Y because Z\n\nHere is a paragraph of narrative evidence."
         findings = self._findings(tmp_path, entry)
         assert findings
-        assert "belongs in learnings-detail.md" in findings[0]["detail"]
+        assert "move it to learnings-detail.md" in findings[0]["detail"]
 
-    def test_a_sentence_continuation_says_JOIN_not_move(self, tmp_path):
-        """The two remedies are opposite, and the wrong one destroys the rule.
+    def test_a_line_under_the_heading_offers_both_remedies_with_the_guard(self, tmp_path):
+        """The two remedies are opposite and one of them destroys the rule.
 
         A continuation told to "move to detail" leaves the heading truncated
         mid-sentence, and the loss is silent — the entry still parses and still
-        reads as a rule up to the dangling word. Three entries were lost that
-        way and repaired on 2026-07-31 from learnings-detail.md, where the move
-        had parked the text. Asserts the remedy, not merely that something fired:
-        the pre-fix check fired here too, with the instruction that caused the
-        damage.
+        reads as a rule up to the dangling word. Three rules were lost that way
+        and repaired on 2026-07-31 from learnings-detail.md, where the move had
+        parked the text. Nothing can classify continuation-vs-evidence reliably,
+        so position decides which ADVICE is safe: adjacent to the heading, the
+        bare "move it" instruction is never issued alone.
         """
         entry = "## When a guard test pins a safety claim, assert the PROPERTY — a test that\n\nmatches a literal passes for every rewording of the same defect"
         findings = self._findings(tmp_path, entry)
-        assert findings, "a continuation line must still be reported"
+        assert findings, "a body line must still be reported"
         message = findings[0]["detail"]
-        assert "JOIN it onto the `## ` heading" in message
-        assert "do NOT move it to learnings-detail.md" in message
-        assert "belongs in learnings-detail.md" not in message
+        assert "join it onto the heading" in message
+        assert "must still read as a complete rule" in message
+
+    def test_a_backtick_initial_continuation_is_not_told_to_move(self, tmp_path):
+        """The case test this replaced got this exactly backwards.
+
+        `islower()` is False for a continuation resuming with code punctuation,
+        so the old discriminator handed it the destructive instruction — the
+        same one that truncated three rules.
+        """
+        entry = "## When a plan resolves by scope name, never a version, because\n\n`regen-views` silently skips Status flipping otherwise"
+        message = self._findings(tmp_path, entry)[0]["detail"]
+        assert "must still read as a complete rule" in message
+        assert message.count("belongs in learnings-detail.md") == 0
+
+    def test_prose_after_intervening_body_still_says_move(self, tmp_path):
+        """Where a continuation cannot be, the plain instruction is safe."""
+        entry = ("## When X do Y because Z\n\nFirst narrative paragraph of evidence.\n\n"
+                 "Second narrative paragraph, which cannot be continuing the heading.")
+        details = [f["detail"] for f in self._findings(tmp_path, entry)]
+        assert any("belongs in learnings-detail.md" in d for d in details)
 
     def test_quiet_on_structural_lines(self, tmp_path):
         """Separators, comments and wiki-links are not narrative."""

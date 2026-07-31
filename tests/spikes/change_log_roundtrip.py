@@ -202,9 +202,7 @@ def main() -> int:
             continue
         fact, release, body, layout = got
 
-        if layout["n_tag_lines"] == 0:
-            r = release.get("release"), release.get("status")
-        else:
+        if layout["n_tag_lines"]:
             tagged += 1
             multi += layout["n_tag_lines"] > 1
             known = layout["order"]

@@ -453,6 +453,8 @@ converter + fact schema with `schema: 1`; the normalization commit (§11.3); ren
 rollout. The ~30 `test_views.py` tests targeting `parse_change_log` are the contract (§8) and are
 rewritten in the renderer chunk, not deleted.
 
-**Spike artifacts** are throwaway by design and were not committed: a corpus survey, a five-entry
-round-trip, and the whole-corpus oracle. Every number above is reproducible from the change log at
-this tree by re-deriving them; recount, do not cite.
+**The oracle is committed** as `tests/spikes/change_log_roundtrip.py`, and it is the only spike
+artifact that was: the exploratory corpus survey and the first five-entry round-trip were throwaway
+and stayed that way. Committing it is not tidiness — a spike that discards its code leaves its
+numbers unfalsifiable, which is precisely how three unreproducible counts survived into this
+artifact's lineage. Re-derive, do not cite.
