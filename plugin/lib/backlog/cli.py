@@ -844,11 +844,15 @@ def _render_detail_list(value: list) -> str:
     A list of **entry dicts** — an interrupted import's `created`/`skipped` —
     is bookkeeping whose only useful summary is how many; printing them buries
     the error message under hundreds of lines just as the operator is deciding
-    whether to resume.
+    whether to resume. `status_unreconciled` renders as a count here for the
+    same reason, and is the one dict-list that is *not* merely bookkeeping — so
+    it is not left to this count alone: each deferral also emits a per-item
+    warning naming the issue, printed on this path directly below the details.
 
     A list of **plain strings is the payload itself.** The completeness gate's
-    `missing`, `unaliasable` and `collisions` name the items that stranded the
-    run, and the documented remedy for each is unactionable without them —
+    `missing`, `unaliasable`, `collisions`, `status_mismatch` and
+    `duplicate_alias` name the items that stranded the run, and the documented
+    remedy for each is unactionable without them —
     "give each a real prefix in the source before importing" cannot be followed
     against the number 3. Counting those turns a verdict into a figure nobody
     can act on, and the runbook drives this path without ``--json``, so the
@@ -978,6 +982,17 @@ def _print_human_ok(data) -> None:
         if "restructured" in data:
             line += f" ({data['restructured']} restructured by plan)"
         print(line)
+        # An item can be created and still not migrated: a failed status reconcile
+        # defers so the run continues, leaving the issue on the target at the wrong
+        # status. That is invisible in the counts above — a deferred item is in
+        # `created` — so it gets its own line rather than only a stderr warning, for
+        # the same reason as the pacing footer below: this path runs without --json.
+        unreconciled = data.get("status_unreconciled") or []
+        if unreconciled:
+            print(
+                f"  WARNING: {len(unreconciled)} item(s) imported but NOT reconciled "
+                "to their target status — re-run the import, then verify-migration"
+            )
         # The pacing footer is the operator's after-the-fact answer to "was this run
         # throttled, and where did the budget stand?" — printed in HUMAN mode because
         # that is how `migration-scrub.md` actually invokes import (no --json), so a

@@ -609,6 +609,123 @@ class TestImportResumable:
         dis4 = _alias_issues(fake, "DIS-0004")[0]
         assert (dis4.get("state") or "open").lower() == "closed"  # resume converged
 
+    def test_a_deferred_close_is_counted_not_only_warned_about(self, fake):
+        """BKL-7V2D leg 1b. The deferral policy above is right; reporting it *only*
+        as prose in `warnings` is what made a partial migration look complete. In a
+        ~900-item run those lines scroll past, and the import then returns a plain
+        `ok` whose `data` cannot distinguish "imported" from "imported AND at its
+        target status" — which is the state `verify-migration` also could not see."""
+        _seed_labels(fake, DISCODON_MINI)
+        fake.fail_at_mutation(5)  # C1..C4 land, then fail DIS-0004's close
+        result = _import(fake, DISCODON_MINI)
+
+        assert result["status"] == "ok"
+        deferred = result["data"]["status_unreconciled"]
+        assert len(deferred) == 1
+        assert deferred[0]["pfx"] == "DIS-0004"
+        assert deferred[0]["target"] == "shipped"  # the archive close that didn't land
+        assert deferred[0]["code"] == "unavailable"
+        assert deferred[0]["id"].endswith(f"#{_alias_issues(fake, 'DIS-0004')[0]['number']}")
+        # The count rides the summary too — the per-item audit line is not the only
+        # place an operator can learn the run left work undone.
+        assert any("imported but NOT reconciled" in w for w in result["warnings"])
+
+    def test_a_converged_resume_reports_nothing_unreconciled(self, fake):
+        """The field has to clear, or it is a permanent smear rather than a signal:
+        the resume closes DIS-0004, so the second run's list is empty."""
+        _seed_labels(fake, DISCODON_MINI)
+        fake.fail_at_mutation(5)
+        first = _import(fake, DISCODON_MINI)
+        assert len(first["data"]["status_unreconciled"]) == 1
+
+        second = _import(fake, DISCODON_MINI)
+        assert second["status"] == "ok"
+        assert second["data"]["status_unreconciled"] == []
+        assert not any("imported but NOT reconciled" in w for w in second["warnings"])
+
+    def test_a_deferral_accrued_before_a_cut_rides_the_resumable_envelope(
+        self, fake, monkeypatch
+    ):
+        """Same argument as the self-heal warnings below: a deferral recorded before
+        an abort is not reconstructible from the envelope's other fields — the item
+        IS in `created`, which is precisely what makes it look finished — so dropping
+        it here loses the only record that it sits at the wrong status."""
+        _seed_labels(fake, DISCODON_MINI)
+        fake.fail_at_mutation(5)  # DIS-0004's close defers (mutation 5 = U4)
+
+        real_create = fake.create_issue
+        creates = {"n": 0}
+
+        def _cut_on_the_next_create(*args, **kwargs):
+            creates["n"] += 1
+            if creates["n"] == 5:  # DIS-0005 — strictly after DIS-0004's deferral
+                raise TransportError("unavailable", "cut after the deferral")
+            return real_create(*args, **kwargs)
+
+        monkeypatch.setattr(fake, "create_issue", _cut_on_the_next_create)
+        result = _import(fake, DISCODON_MINI)
+
+        assert result["status"] == "error"
+        details = result["error"]["details"]
+        assert details["resumable"] is True
+        assert [d["pfx"] for d in details["status_unreconciled"]] == ["DIS-0004"]
+        # The trap this pins: DIS-0004 is in `created`, so the envelope alone reads
+        # as "four landed, one to go" unless the deferral rides along with it.
+        assert any(e["pfx"] == "DIS-0004" for e in details["created"])
+
+    def test_a_self_heal_line_survives_a_rate_limited_close_replay(self, fake):
+        """Critic R-2. `_import_one_with_retry` discards a retried attempt's local
+        warnings so nothing doubles (BKL-3K9N). Putting the close on the retry
+        contract made that discard reachable *after* a self-heal has already landed:
+        the label restore is a persisted write, the replay then finds the label on
+        the fast path so `healed` is False, and the line would never be re-emitted —
+        by this run or any later resume. That is the permanent loss BKL-9V2W's
+        envelope fix exists to prevent, arriving through a new door."""
+        _seed_labels(fake, _TWO_OPEN_ITEMS)
+        _import(fake, _ONE_OPEN_ITEM)  # DIS-0001 lands
+        number = _alias_issues(fake, "DIS-0001")[0]["number"]
+        fake.remove_label(OWNER, REPO, number, ids.alias_label("DIS-0001"))
+        # Give DIS-0001 a status the re-import must reconcile, so its record reaches
+        # the close at all — the heal alone would not.
+        core.set_status(fake, id_raw=f"{OWNER}/{REPO}#{number}", target="shipped")
+
+        # The heal lands (mutation 1: label restore), then the reconcile back to
+        # `open` 429s once — replaying the whole record and discarding its local list.
+        fake.fail_at_mutation(2, code="rate_limited")
+        backoff = migrate.RateLimitBackoff(sleep=lambda _s: None, base_seconds=0.0)
+        result = _import(fake, _TWO_OPEN_ITEMS, backoff=backoff)
+
+        assert result["status"] == "ok", result
+        assert backoff.pauses == 1  # the close genuinely replayed
+        assert any("restored missing alias label" in w for w in result["warnings"])
+
+    def test_the_other_resumable_cut_also_carries_the_deferrals(self, fake, monkeypatch):
+        """Critic R-3. `import_items` has two cut paths and the sibling
+        `except (OSError, json.JSONDecodeError)` branch has drifted from the
+        `TransportError` one before — that drift is why it carries `resumable` and
+        the accrued warnings at all. Pinning only one of the two is what let it
+        happen, so `status_unreconciled` is asserted on both."""
+        _seed_labels(fake, DISCODON_MINI)
+        fake.fail_at_mutation(5)  # DIS-0004's close defers
+
+        real_create = fake.create_issue
+        creates = {"n": 0}
+
+        def _socket_dies_after_the_deferral(*args, **kwargs):
+            creates["n"] += 1
+            if creates["n"] == 5:
+                raise OSError("connection reset mid-import")
+            return real_create(*args, **kwargs)
+
+        monkeypatch.setattr(fake, "create_issue", _socket_dies_after_the_deferral)
+        result = _import(fake, DISCODON_MINI)
+
+        assert result["status"] == "error"
+        assert result["error"]["code"] == "unavailable"
+        details = result["error"]["details"]
+        assert details["resumable"] is True
+        assert [d["pfx"] for d in details["status_unreconciled"]] == ["DIS-0004"]
+
     def test_resumable_error_carries_accrued_self_heal_warnings(self, fake):
         # Regression (BKL-9V2W): an alias self-heal audit line emitted by an
         # already-completed record must ride the resumable TransportError envelope.
@@ -1144,6 +1261,63 @@ class TestRateLimitBackoff:
         assert result["error"]["code"] == "rate_limited"
         assert result["error"]["details"]["resumable"] is True
 
+    def test_a_rate_limited_close_pauses_and_retries_like_a_create(self, fake):
+        """BKL-7V2D leg 1a — the gap this class could not previously reach.
+
+        `core.set_status` catches `TransportError` and returns an envelope, so a 429
+        on the *close* never reached `_import_one_with_retry`'s handler and the
+        backoff never paused: it only ever saw creates. That is backwards for the
+        migration this exists to survive — under `--archive-scope all` the run closes
+        about as many items as it creates, and the close stretch is where a secondary
+        limit actually bites. Here the 429 lands on DIS-0004's close (mutation 5), and
+        the record replays to completion in the same run."""
+        _seed_labels(fake, DISCODON_MINI)
+        fake.fail_at_mutation(5, code="rate_limited", details={"retry_after": 3})
+        backoff, waited = self._spy_backoff()
+
+        result = _import(fake, DISCODON_MINI, backoff=backoff)
+
+        assert result["status"] == "ok", result
+        assert backoff.pauses == 1
+        assert waited == [3.0]  # the server hint honored on the close, as on a create
+        # Retried to success, so it is NOT reported as left behind...
+        assert result["data"]["status_unreconciled"] == []
+        # ...and the close actually landed (the whole point — a replay of an
+        # idempotent record converges rather than duplicating).
+        dis4 = _alias_issues(fake, "DIS-0004")[0]
+        assert (dis4.get("state") or "open").lower() == "closed"
+        assert len(_alias_issues(fake, "DIS-0004")) == 1  # no duplicate from the replay
+
+    def test_an_exhausted_budget_on_a_close_names_the_close_and_the_item(
+        self, fake, monkeypatch
+    ):
+        """The bound applies to the close exactly as it does to the create: a
+        persistent limit gives up cleanly into the resumable envelope rather than
+        spinning, and never silently converts back into a deferral.
+
+        The message is asserted because it is the only evidence distinguishing a 429
+        storm on the close stretch from one on the creates — and that distinction is
+        the whole reason the close was put on the retry contract. Without this, a
+        future edit drops the attribution and the suite stays green."""
+        _seed_labels(fake, DISCODON_MINI)
+        backoff, waited = self._spy_backoff(max_retries=2)
+
+        def _always_rate_limited(*args, **kwargs):
+            raise TransportError("rate_limited", "secondary rate limit", details={})
+
+        # Every create still lands; only the close keeps 429-ing.
+        monkeypatch.setattr(fake, "update_issue", _always_rate_limited)
+        result = _import(fake, DISCODON_MINI, backoff=backoff)
+
+        assert backoff.pauses == 2  # bounded
+        assert result["status"] == "error"
+        assert result["error"]["code"] == "rate_limited"
+        assert result["error"]["details"]["resumable"] is True
+        # Attributed to the close stretch, and to the item — not a bare 429.
+        message = result["error"]["message"]
+        assert "status reconcile" in message
+        assert f"{OWNER}/{REPO}#" in message
+
     def test_a_completed_run_never_pauses(self, fake):
         _seed_labels(fake, DISCODON_MINI)
         backoff, waited = self._spy_backoff()
@@ -1213,6 +1387,27 @@ class TestMigrateCli:
         out = capsys.readouterr().out
         assert "imported 5 created" in out
         assert "exported 5 item(s)" in out
+
+    def test_human_mode_announces_items_left_at_the_wrong_status(
+        self, fake, tmp_path, capsys
+    ):
+        """A deferred item is counted in `created`, so the summary line reads as a
+        clean run. The scrub runbook drives import without `--json` (the same
+        argument the pacing footer records), so a data-only field would reach every
+        consumer except the one person running the irreversible migration."""
+        _seed_labels(fake, DISCODON_MINI)
+        fake.fail_at_mutation(5)  # DIS-0004's close defers
+        src = tmp_path / "backlog.md"
+        src.write_text(DISCODON_MINI)
+
+        assert cli.run(
+            str(tmp_path), ["import", "--repo", SCOPE, "--from", str(src)], transport=fake
+        ) == 0
+        captured = capsys.readouterr()
+        assert "imported 5 created" in captured.out  # still reads as complete...
+        assert "1 item(s) imported but NOT reconciled" in captured.out  # ...but not alone
+        # The per-item audit line still names WHICH item, on stderr as before.
+        assert "status reconcile deferred" in captured.err
 
     def test_merge_human_mode_output(self, fake, capsys):
         a = _file(fake, title="dup")
@@ -1470,6 +1665,139 @@ class TestVerifyMigration:
             transport=fake,
         )
         assert code == 4  # conflict — source and target disagree
+
+    def test_an_item_imported_but_never_closed_is_caught(self, fake):
+        """BKL-7V2D leg 2 — the third door onto F9, and the one that gates the real
+        ~900-write run.
+
+        The import creates every item and *defers* a failed status reconcile so the
+        run can continue, so an item can be present, correctly keyed, and still not
+        migrated. Under `--archive-scope all` a flaky or rate-limited close stretch
+        does that in bulk. Comparing alias coverage alone reported 100% here while
+        the archived item sat open — the gate green and the migration not done."""
+        _seed_labels(fake, DISCODON_MINI)
+        fake.fail_at_mutation(5)  # DIS-0004's close defers; the item stays open
+        imported = _import(fake, DISCODON_MINI)
+        assert imported["status"] == "ok"  # the import itself reports success
+
+        verdict = migrate.verify_migration(
+            fake, owner=OWNER, repo=REPO, content=DISCODON_MINI
+        )
+        assert verdict["status"] == "error", verdict
+        assert verdict["error"]["code"] == "conflict"
+        details = verdict["error"]["details"]
+        assert details["missing"] == []  # coverage IS complete — that was the trap
+        assert details["status_mismatch"] == ["DIS-0004 (source: shipped, target: open)"]
+
+    def test_two_issues_recording_one_alias_at_odds_is_reported_not_coin_flipped(
+        self, fake
+    ):
+        """Critic R-10. The first-wins read was justified by the importer's collision
+        branch, but that fires on two issues carrying the same `id:PFX` **label**,
+        while this scan derives its PFXs from the body block `id_aliases` — a
+        deliberately different source of truth (`_AliasIndex` exists *because* the
+        label can be deleted while the block survives). A block-only duplicate is
+        therefore invisible to the cited check, and whichever page GitHub returned
+        first would decide the verdict. On the gate for ~900 irreversible writes, a
+        answer that flips with page order is worse than a false positive."""
+        _import(fake, DISCODON_MINI)
+        # A second issue whose BLOCK claims DIS-0001, carrying no `id:` label, and
+        # closed while the real DIS-0001 is open — so the two disagree.
+        dup = fake.create_issue(
+            OWNER, REPO,
+            title="a second issue recording the same alias",
+            body="Body.\n\n```prawduct\nv: 1\nid_aliases: [DIS-0001]\n```\n",
+            labels=[],
+        )
+        fake.update_issue(
+            OWNER, REPO, dup["number"],
+            fields={"state": "closed", "state_reason": "completed"},
+        )
+
+        verdict = migrate.verify_migration(
+            fake, owner=OWNER, repo=REPO, content=DISCODON_MINI
+        )
+        assert verdict["status"] == "error", verdict
+        details = verdict["error"]["details"]
+        assert details["duplicate_alias"] == ["DIS-0001"]
+        # It is NOT a status mismatch, and the distinction is the whole point: that
+        # list's remedy is "re-run the import", which cannot clear this. The labelled
+        # issue already matches so the re-run writes nothing, and the block-only
+        # duplicate is never looked up — so a re-run burns a full pass and the gate
+        # returns the identical exit 4. Verified below rather than argued.
+        assert details["status_mismatch"] == []
+
+        message = verdict["error"]["message"]
+        assert "do not re-run the import" in message
+        assert "deduplicate" in message
+
+        second = _import(fake, DISCODON_MINI)  # the remedy the WRONG bucket prescribes
+        assert second["status"] == "ok"
+        again = migrate.verify_migration(
+            fake, owner=OWNER, repo=REPO, content=DISCODON_MINI
+        )
+        assert again["status"] == "error"  # converges on nothing, exactly as claimed
+        assert again["error"]["details"]["duplicate_alias"] == ["DIS-0001"]
+
+    def test_the_gate_clears_once_the_resume_converges(self, fake):
+        """The mismatch must be a live reading, not a sticky one: re-running the
+        import closes DIS-0004, and the gate then passes. A check that stayed red
+        after the remedy it prescribes would be as useless as one that never fired."""
+        _seed_labels(fake, DISCODON_MINI)
+        fake.fail_at_mutation(5)
+        _import(fake, DISCODON_MINI)
+        _import(fake, DISCODON_MINI)  # the resume reconciles the deferred close
+
+        verdict = migrate.verify_migration(
+            fake, owner=OWNER, repo=REPO, content=DISCODON_MINI
+        )
+        assert verdict["status"] == "ok", verdict
+        assert verdict["data"]["status_mismatch"] == []
+
+    def test_a_status_mismatch_gates_the_cli_with_the_same_exit_code(self, fake, tmp_path):
+        """Folded into the existing exit-4 `conflict` rather than given its own code:
+        the two stores disagree, which is the same class of answer, and step 6 of the
+        runbook already depends on that number."""
+        _seed_labels(fake, DISCODON_MINI)
+        fake.fail_at_mutation(5)
+        _import(fake, DISCODON_MINI)
+        src = tmp_path / "backlog.md"
+        src.write_text(DISCODON_MINI, encoding="utf-8")
+
+        code = cli.run(
+            str(tmp_path),
+            ["verify-migration", "--repo", f"{OWNER}/{REPO}", "--from", str(src)],
+            transport=fake,
+        )
+        assert code == 4
+
+    def test_the_remedy_for_a_status_mismatch_says_re_run_not_re_key(self, fake):
+        """Re-running IS the fix here — the skip branch reconciles the status axis on
+        already-migrated items — which puts a mismatch in `missing`'s recoverability
+        class, not `unaliasable`'s. Telling the operator to re-key would be wrong."""
+        _seed_labels(fake, DISCODON_MINI)
+        fake.fail_at_mutation(5)
+        _import(fake, DISCODON_MINI)
+
+        message = migrate.verify_migration(
+            fake, owner=OWNER, repo=REPO, content=DISCODON_MINI
+        )["error"]["message"]
+        assert "status_mismatch" in message
+        assert "re-run the import" in message
+        assert "give each a real PFX" not in message  # the unaliasable remedy
+
+    def test_every_status_round_trips_so_a_clean_run_raises_no_false_positive(self, fake):
+        """The gate's own risk: it now compares a decoded value against the source
+        for EVERY item, so a decode that disagreed with the encoder would fail a
+        healthy migration wholesale. DISCODON_MINI carries all five statuses across
+        the three sections, so a clean import is the round-trip proof."""
+        _import(fake, DISCODON_MINI)
+        verdict = migrate.verify_migration(
+            fake, owner=OWNER, repo=REPO, content=DISCODON_MINI
+        )
+        assert verdict["status"] == "ok", verdict
+        targets = {r.pfx: r.status for r in migrate.collect_records(DISCODON_MINI)[0]}
+        assert set(targets.values()) == set(encode.STATUS_VALUES)  # all five exercised
 
     def test_an_id_that_is_not_a_pfx_is_reported_not_excluded(self, fake):
         """The gate's own blind spot.
