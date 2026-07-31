@@ -883,6 +883,28 @@ class TestLearningsEntryShape:
         assert "must still read as a complete rule" in message
         assert message.count("belongs in learnings-detail.md") == 0
 
+    def test_every_line_of_a_wrapped_rule_gets_the_same_remedy(self, tmp_path):
+        """A hard-wrapped rule is one sentence, so it needs ONE instruction.
+
+        Rules in this file run to several hundred characters on a single
+        physical line; wrapping one at terminal width yields a heading plus
+        several body lines. An earlier fix checked only the immediate
+        predecessor, so line 2 was guarded and line 3 was told to move — the
+        same sentence, opposite remedies, in one report. An author following
+        both truncates the rule, which is the original defect reintroduced one
+        line deeper.
+        """
+        entry = (
+            "## When a release has two documents tracking its state, one is already wrong\n"
+            "— designate a single live tracker and demote the other to a decision record;\n"
+            "and author each build chunk from the TREE, never from the upstream plan,\n"
+            "because a plan derived from a plan describes intent the code may have overtaken"
+        )
+        details = [f["detail"] for f in self._findings(tmp_path, entry)]
+        assert len(details) == 3, f"expected one finding per wrapped line, got {len(details)}"
+        assert all("must still read as a complete rule" in d for d in details), details
+        assert not any("(a move, never a deletion)" in d for d in details), details
+
     def test_prose_after_intervening_body_still_says_move(self, tmp_path):
         """Where a continuation cannot be, the plain instruction is safe."""
         entry = ("## When X do Y because Z\n\nFirst narrative paragraph of evidence.\n\n"

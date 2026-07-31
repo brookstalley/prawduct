@@ -302,11 +302,22 @@ def _first_heading_line(text: "str | None") -> int:
 
 
 def _follows_heading(text: "str | None", line_num: int) -> bool:
-    """Is the 1-indexed line the first body line under a ``## `` heading?
+    """Is the 1-indexed line inside the FIRST body block under a ``## `` heading?
 
-    Walks back over blank lines to the nearest content line. Returns False when
-    the file text is unavailable, so an unreadable file yields the conservative
-    branch rather than a confident instruction derived from nothing.
+    Block, not line: a rule hard-wrapped at terminal width becomes a heading plus
+    several body lines, and every one of them is part of the same continuation.
+    Checking only the immediate predecessor would guard line 2 and hand line 3
+    the destructive "move it" instruction — in the same report, on the same
+    sentence. So this walks back over the whole contiguous non-blank run and asks
+    whether that run starts under a heading.
+
+    A blank line ends the continuation: prose after one is a separate paragraph,
+    which is the position where a continuation cannot be and the bare move
+    instruction is safe.
+
+    Returns False when the file text is unavailable, so an unreadable file yields
+    the conservative branch rather than a confident instruction derived from
+    nothing.
     """
     if not text:
         return False
@@ -314,6 +325,11 @@ def _follows_heading(text: "str | None", line_num: int) -> bool:
     i = line_num - 2  # 0-indexed predecessor of a 1-indexed line
     if i >= len(lines):
         return False
+    # Back to the start of this contiguous block (a heading also terminates it).
+    while i >= 0 and lines[i].strip() and not lines[i].startswith("## "):
+        i -= 1
+    if i >= 0 and lines[i].startswith("## "):
+        return True  # block runs flush under the heading
     while i >= 0 and not lines[i].strip():
         i -= 1
     return i >= 0 and lines[i].startswith("## ")
