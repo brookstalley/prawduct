@@ -217,8 +217,8 @@ class TestLintBodyBudgets:
     def test_the_budget_is_the_reconciled_number_not_the_old_one(self):
         """The 200-word case above trips at 150 and at 175 alike, so it cannot
         tell the reconciled budget from the one BKL-7H2M retired. This one can:
-        160 visible words is over the old 150 and under the current budget, so a
-        revert to 150 turns this red. Pinned as a pair with the over-budget case
+        175 visible words is over the old 150 and exactly at the current budget,
+        so a revert to 150 turns this red. Pinned as a pair with the over-budget case
         below so the boundary is asserted from both sides rather than assumed:
         the check is `visible > BODY_MAX_WORDS`, so 175 must pass and 176 must
         trip. Asserting a looser under-case (160) would leave a `>=` flip green."""
