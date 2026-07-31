@@ -1171,8 +1171,12 @@ def _already_consolidated_note(prawduct_dir: Path) -> str:
     if not findings:
         return ""
     fact_id = record.get("fact_id") or "unknown"
+    # DISPATCH age, from the id's own stamp — not the time the fact was
+    # recorded, which is later by however long the review took (ten minutes on a
+    # coordinator run). Labelled for what it is; the caller's question is "how
+    # stale is this?", which the dispatch time answers just as well.
     age = dispatch_age_minutes(str(fact_id))
-    age_note = f", recorded {age:.0f} min ago" if age is not None else ""
+    age_note = f", dispatched {age:.0f} min ago" if age is not None else ""
     return (
         f" The newest recorded review ({fact_id}{age_note}) holds {len(findings)}"
         f" finding(s) — read `.prawduct/{cache.name}`; if they are already"

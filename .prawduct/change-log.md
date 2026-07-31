@@ -62,8 +62,13 @@ rather than reasoned about: `METADATA_PREFIXES` covers **all** of `.prawduct/`, 
 build plans and every `regen-views` output are free, while a `.md` under `skills/`, `methodology/` or
 `templates/` is governance-protected and **is** judgeable. Both halves of the draft were backwards, one in
 the direction that costs a wasted commit and one in the direction that costs a round. Since the directive
-is now a prose restatement of that predicate, two tests pin every path class it names against the
-predicate itself, in both directions — the list cannot drift silently.
+is now a prose restatement of that predicate, its tests parse the directive's own text and pin every
+path class it names against the predicate **in both directions** — a predicate that narrows, a list
+edited alone, or a token *moved* between the free and costly clauses all fail. That last case took
+two attempts: the first version read a flag written beside each entry rather than the prose, so
+dropping `templates/` into the free clause stayed green; and the placement check then had to learn
+that the free clause turns negative at "OUTSIDE" before the costly sentence begins, since the four
+protected directories are named *inside* the free clause as exclusions.
 
 **One claim in CRT-9B4K was not adopted, deliberately.** The item insists the gitignored-session-file
 rule and the doc-only carve-out be named as separate things, warning that a reader who fuses them
@@ -105,6 +110,26 @@ pointer, and the inline-limit assertion is now parametrized over both variants a
 with the wider blast radius is the one that is pinned. A cross-surface test also pins State/Next/Clear,
 the in-flight rule and the shared trigger on all four copies — without it, a later trim of any
 destination silently unfunds a trim already taken in `building.md`.
+
+**Two artifacts moved with it.** `cross-cutting-concerns.md` row 45 (Session continuity across
+`/clear`) described the Builder carriers as "the safe-to-`/clear` signal" plus "one line in each
+session digest"; it now names the standing block, its four carriers and the cross-surface test, and
+its Critic cell is re-checked against the in-flight rule — still "none today", because a review
+cannot observe what an agent *said* at the end of a turn. `architecture.md` § Communication Channels
+gains the bound this change made a pattern: channel 1 carries **behavioural directives**, not only
+data, and that is legitimate when the string fires at the moment its rule applies — and is budget
+laundering when it does not, since the runtime is unmeasured and the guides are not.
+
+**A second review round followed, and it was earned rather than pumped.** The fixes above touch
+judgeable files, so the commit moved the tree past the reviewed one and the gate said `uncovered` —
+the sanctioned case, not an inferred round. It resolved all eleven prior blocking/warning findings
+and returned one new blocker: the `_already_consolidated_note` fix shipped with **zero** assertions,
+and the neighbouring test passed identically before and after it, so a revert to `return ""` would
+have reinstated the swallow-into-empty-string defect it was written to fix. Five tests now cover the
+three diagnostic branches and the age note — the last of which was untestable with the existing
+fixtures, whose `rev-test-0001` ids the timestamp regex never matches. Two runs also raced on one
+worktree (`critic-begin` resets the partials directory with no in-flight guard — CRT-9T6M, observed
+for the third time), which cost a full review's tokens and recorded nothing.
 
 ## 2026-07-31: The completeness gate can see an item that arrived at the wrong status (BKL-7V2D)
 

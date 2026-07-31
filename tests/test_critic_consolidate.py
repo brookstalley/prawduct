@@ -700,22 +700,58 @@ class TestBatchFixDirective:
         # The verify pass is a coverage consequence, not an obligation.
         assert "if that commit touches judgeable files" in d
 
+    #: Where the directive stops claiming things are free. NOT "Everything else"
+    #: — that marks the costly *sentence*, but the free sentence already turns
+    #: negative before it: "`.md` files OUTSIDE `skills/`, `methodology/`,
+    #: `templates/` and a root `CLAUDE.md`". Those four are named inside the free
+    #: clause as EXCLUSIONS, so a naive split reads them as free claims. Every
+    #: token from `OUTSIDE` onward is a costly claim.
+    _FREE_CLAUSE_ENDS_AT = "OUTSIDE"
+    _COSTLY_SENTENCE_MARKER = "Everything else"
+
+    def _clause_says_free(self, token: str) -> bool:
+        """True if the directive names ``token`` while still claiming free."""
+        directive = cc._BATCH_FIX_DIRECTIVE
+        return directive.index(token) < directive.index(self._FREE_CLAUSE_ENDS_AT)
+
     def test_directive_free_and_costly_claims_match_the_predicate(self):
-        """Each path class the directive names is classified as it claims."""
+        """Each path class is classified as the directive's own PROSE claims.
+
+        Derived from clause placement, not from a flag in the table beside it.
+        With a hardcoded flag, *moving* a token between clauses — dropping
+        `templates/` into the free list — left the suite green while shipping a
+        message that tells a builder to edit a governance-protected file
+        mid-review and lose their coverage: the higher-cost direction.
+        """
         from lib import coverage_algebra
 
         directive = cc._BATCH_FIX_DIRECTIVE
-        for token, (path, judgeable) in _DIRECTIVE_PATH_CLASSES.items():
+        for marker in (self._FREE_CLAUSE_ENDS_AT, self._COSTLY_SENTENCE_MARKER):
+            assert marker in directive, (
+                "the directive no longer carries the clause boundary the tests "
+                f"split on ({marker!r}) — every placement check below would read "
+                "the wrong region. Restore it or update the marker."
+            )
+        for token, (path, expected_judgeable) in _DIRECTIVE_PATH_CLASSES.items():
             assert token in directive, (
                 f"_DIRECTIVE_PATH_CLASSES pins {token!r}, but the directive no "
                 "longer names it — drop the entry or restore the text"
             )
-            assert coverage_algebra.is_judgeable_path(path) is judgeable, (
+            claimed_free = self._clause_says_free(token)
+            assert claimed_free is not expected_judgeable, (
+                f"the directive now places {token} in the "
+                f"{'free' if claimed_free else 'costly'} clause, but the table "
+                f"expects {'costly' if expected_judgeable else 'free'} — a token "
+                "moved between clauses. Confirm against is_judgeable_path before "
+                "updating either."
+            )
+            assert coverage_algebra.is_judgeable_path(path) is expected_judgeable, (
                 f"the directive classifies {token} as "
-                f"{'costly' if judgeable else 'free'} to write mid-review, but "
-                f"is_judgeable_path({path!r}) now disagrees. Amend both together: "
-                "a wrong 'free' claim costs a reader their coverage, and a wrong "
-                "'costly' claim sends them to a round they did not owe."
+                f"{'costly' if expected_judgeable else 'free'} to write "
+                f"mid-review, but is_judgeable_path({path!r}) now disagrees. "
+                "Amend both together: a wrong 'free' claim costs a reader their "
+                "coverage, and a wrong 'costly' claim sends them to a round they "
+                "did not owe."
             )
 
     def test_directive_names_no_unpinned_path_class(self):
@@ -925,9 +961,15 @@ class TestConsolidateIntegration:
         assert cc._BATCH_FIX_DIRECTIVE not in second.stdout
 
     def test_noop_survives_an_unreadable_findings_cache(self, tmp_path):
-        """A corrupt cache must not turn an informational no-op into a crash —
-        this branch is reached by hooks and by stray calls, and it reports
-        nothing a caller depends on."""
+        """A corrupt cache must not crash an informational no-op — AND must not
+        pass silently, because absence of the note is the "clean review" signal.
+
+        Returning "" here would report a corrupt cache as a clean review to the
+        exact caller CLAUDE.md routes through this branch. The diagnostic is what
+        makes absence mean only "clean"; without this assertion a revert to
+        ``return ""`` passes green and reinstates the swallow-into-empty-string
+        defect.
+        """
         repo = tmp_path / "r"
         _init_repo(repo)
         (repo / ".prawduct").mkdir(parents=True, exist_ok=True)
@@ -935,7 +977,87 @@ class TestConsolidateIntegration:
         result = _run_consolidate(repo)
         assert result.returncode == 0, f"stderr={result.stderr!r}"
         assert "no-op: no pending review manifest" in result.stdout
+        assert "unreadable" in result.stdout
+        assert "not a clean-review signal" in result.stdout
         assert cc._BATCH_FIX_DIRECTIVE not in result.stdout
+
+    def test_noop_reports_a_byte_corrupted_cache_rather_than_crashing(self, tmp_path):
+        # read_text() raises UnicodeDecodeError — a ValueError, NOT an OSError
+        # and not a JSONDecodeError. The original narrower catch would traceback
+        # on the branch the SubagentStop hook reaches.
+        repo = tmp_path / "r"
+        _init_repo(repo)
+        (repo / ".prawduct").mkdir(parents=True, exist_ok=True)
+        (repo / FINDINGS_REL).write_bytes(b"\xff\xfe not utf-8")
+        result = _run_consolidate(repo)
+        assert result.returncode == 0, f"stderr={result.stderr!r}"
+        assert "unreadable" in result.stdout
+        assert "not a clean-review signal" in result.stdout
+
+    def test_noop_reports_a_wrong_shaped_cache_rather_than_reading_it_as_clean(
+        self, tmp_path
+    ):
+        # Valid JSON, wrong shape: parses fine, has no findings list. Silence
+        # here would be indistinguishable from a genuinely clean review.
+        repo = tmp_path / "r"
+        _init_repo(repo)
+        (repo / ".prawduct").mkdir(parents=True, exist_ok=True)
+        (repo / FINDINGS_REL).write_text('["not", "a", "record"]')
+        result = _run_consolidate(repo)
+        assert result.returncode == 0, f"stderr={result.stderr!r}"
+        assert "not a findings record" in result.stdout
+        assert "not a clean-review signal" in result.stdout
+
+    def test_noop_stays_silent_when_no_cache_exists_at_all(self, tmp_path):
+        # A repo that has never been reviewed is not a corrupt one — no
+        # diagnostic, or every first-ever consolidate cries wolf.
+        repo = tmp_path / "r"
+        _init_repo(repo)
+        (repo / ".prawduct").mkdir(parents=True, exist_ok=True)
+        result = _run_consolidate(repo)
+        assert result.returncode == 0, f"stderr={result.stderr!r}"
+        assert result.stdout.strip() == (
+            "no-op: no pending review manifest — nothing to consolidate."
+        )
+
+    def test_noop_note_states_the_age_and_qualifies_dispositioned_findings(
+        self, tmp_path
+    ):
+        """The note names a review it cannot prove is the caller's, so it says
+        how old it is and that already-dispositioned findings are history.
+
+        Uses a REAL minted id: the neighbouring fixtures use ``rev-test-0001``,
+        which ``_REVIEW_ID_TS`` never matches, so the age branch is unreachable
+        with them — the gap that let this ship untested.
+        """
+        repo = tmp_path / "r"
+        _init_repo(repo)
+        (repo / ".prawduct").mkdir(parents=True, exist_ok=True)
+        (repo / FINDINGS_REL).write_text(json.dumps({
+            "fact_id": cc.mint_review_id(),
+            "findings": [{"fid": "R-1", "severity": "warning", "summary": "x"}],
+        }))
+        result = _run_consolidate(repo)
+        assert result.returncode == 0, f"stderr={result.stderr!r}"
+        assert "holds 1 finding(s)" in result.stdout
+        assert "dispatched 0 min ago" in result.stdout
+        assert "already dispositioned, this is history, not work" in result.stdout
+        assert cc._BATCH_FIX_DIRECTIVE in result.stdout
+
+    def test_noop_note_omits_the_age_when_the_id_carries_no_timestamp(self, tmp_path):
+        # Hand-written ids have no parseable stamp; the note must degrade to no
+        # age claim rather than invent or crash on one.
+        repo = tmp_path / "r"
+        _init_repo(repo)
+        (repo / ".prawduct").mkdir(parents=True, exist_ok=True)
+        (repo / FINDINGS_REL).write_text(json.dumps({
+            "fact_id": "rev-test-0001",
+            "findings": [{"fid": "R-1", "severity": "note", "summary": "x"}],
+        }))
+        result = _run_consolidate(repo)
+        assert result.returncode == 0, f"stderr={result.stderr!r}"
+        assert "holds 1 finding(s)" in result.stdout
+        assert "min ago" not in result.stdout
 
     def test_missing_role_is_noop_names_role(self, tmp_path):
         repo = tmp_path / "r"

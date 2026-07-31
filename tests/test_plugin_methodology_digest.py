@@ -159,8 +159,11 @@ class TestDigestHook:
         the full digest grows, so it cannot brake growth in the wider-blast-radius
         file.
 
-        Asserted against the stripped source because that is what the hook emits
-        (`test_additional_context_matches_source` pins the equality).
+        Asserted against the stripped source because that is what the hook emits.
+        The source==emitted equality is pinned per variant, and by DIFFERENT
+        tests: `test_additional_context_matches_source` covers the slim variant
+        (what ROOT emits), and `TestDigestVariantSelection.test_product_fixture
+        _gets_full_digest_verbatim` covers the full one.
         """
         emitted = src.read_text(encoding="utf-8").strip()
         assert len(emitted) < ADDITIONAL_CONTEXT_INLINE_LIMIT, (
