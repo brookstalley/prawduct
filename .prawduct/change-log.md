@@ -34,8 +34,9 @@ the derivation and reports, for each candidate pole, how many references it woul
 
 **The migration's approved dispositions are stale, and the artifact said so without checking.**
 `migration-scrub-decisions.md` told its reader to re-derive "if the source drifts." It has: the open
-corpus is up 75% since the snapshot, and the items filed since have never been surveyed for
-staleness or duplication at all. The recorded dispositions themselves all survive — every merge pair
+corpus has grown substantially since the snapshot — run `python3 tests/spikes/backlog_scrub_drift.py`
+for the figure, which moves with every filing — and the items filed since have never been surveyed
+for staleness or duplication at all. The recorded dispositions themselves all survive — every merge pair
 resolves, every drop is still open — so this is a coverage gap, not a wrong plan. A standing warning
 now sits above the dispositions and points at `tests/spikes/backlog_scrub_drift.py`, which re-checks
 each one against today's backlog and refuses to print `CURRENT` while unsurveyed items remain.
