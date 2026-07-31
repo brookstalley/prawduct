@@ -43,7 +43,7 @@ def estimate_tokens(text: str) -> int:
 LAST_MEASURED_TOKENS = {
     "methodology/building.md": 4646,
     "skills/critic/review-protocol.md": 3616,
-    "skills/critic/goals-1-3.md": 1901,
+    "skills/critic/goals-1-3.md": 1946,
 }
 
 
@@ -333,7 +333,12 @@ class TestBuildingMethodology:
         # signal mid-summary, and what a user wants after a 30-120 minute wait
         # is not a safety verdict alone — it is state, the next action and who
         # owns it, then the verdict. PAID FOR by the trim-or-relocate rule, not
-        # a raise: 4652 -> 4725 on the first draft -> 4646. Fundings, each a
+        # a raise: 4652 -> 4725 on the first draft, then back under budget with
+        # room to spare (the live figure is in LAST_MEASURED_TOKENS above; this
+        # chain deliberately stops short of it, because an endpoint written here
+        # is a hand-maintained copy of a machine-held number and goes stale on
+        # the next edit — which is what happened twice in this branch alone).
+        # Fundings, each a
         # relocate to a surface the reader cannot skip rather than a cut:
         # (1) the block's RATIONALE (why three lines, the three failure modes,
         # what counts as "outstanding") went to reflection.md, which owns the
@@ -652,6 +657,20 @@ class TestCriticGoals13:
         # three coordinator reviewers found it independently. Paid from
         # headroom rather than a trim: the file is 99 under its ceiling and the
         # alternative was a check that cannot be graded. 1875 -> 1901.
+        #
+        # 1901 -> 1946 (2026-07-31). This file compressed review-cycle.md's
+        # two-shape `unchecked` rule to "a `chunk-ref-missing` entry is
+        # BLOCKING", dropping both the `unchecked —` literal-prefix qualifier
+        # and the assumption carve-out. Since this file orders its readers to
+        # read NOTHING else, a compliant chunk/verify-resolutions reviewer could
+        # not reach the carve-out — so every such dispatch without `--chunk`
+        # raised a FALSE BLOCKING with no available remedy (a branch building no
+        # chunk has no `--chunk` to supply). It fired on this branch's own
+        # reviews. 45 tokens of reviewer payload to remove a recurring false
+        # blocker is the trade: a blocker is the one severity that gates, and
+        # each false one buys a 5-10 minute opus round, which is the P0 lever
+        # this budget exists to protect. Partly funded in place by tightening
+        # the re-derive sentence above it.
         tokens = estimate_tokens(self.content)
         assert tokens < 2000, f"goals-1-3.md is ~{tokens} tokens, should be <2000"
 
