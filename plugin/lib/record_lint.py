@@ -311,9 +311,12 @@ def _follows_heading(text: "str | None", line_num: int) -> bool:
     sentence. So this walks back over the whole contiguous non-blank run and asks
     whether that run starts under a heading.
 
-    A blank line ends the continuation: prose after one is a separate paragraph,
-    which is the position where a continuation cannot be and the bare move
-    instruction is safe.
+    A blank line ends the continuation only once body prose precedes it. A
+    paragraph separated from its heading by nothing but blank lines is still the
+    first block and still gets the guarded message — a rule may be written with a
+    blank line under the heading, so that position cannot be assumed safe. The
+    bare move instruction therefore fires only after at least one non-blank body
+    line, which is the one position where a continuation cannot be.
 
     Returns False when the file text is unavailable, so an unreadable file yields
     the conservative branch rather than a confident instruction derived from

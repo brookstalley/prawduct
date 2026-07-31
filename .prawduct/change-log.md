@@ -26,8 +26,8 @@ test is meaningless in caseless scripts. The shipped fix stops trying to classif
 decides which advice is SAFE, not which label is true.** A body line adjacent to its heading is
 offered both remedies with the guard clause "the heading must still read as a complete rule
 afterwards"; the bare move instruction is issued only where a continuation cannot be, after
-intervening prose. Three tests pin the remedy rather than the firing, because the broken version
-fired here too.
+intervening prose. Tests pin the remedy rather than the firing, because the broken version fired
+here too.
 
 Detection matters as much as the repair: line length says nothing (rules here deliberately carry no
 terminal punctuation, so most look truncated) and the working diagnostic is a cross-file one — the
