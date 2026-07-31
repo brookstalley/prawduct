@@ -228,14 +228,24 @@ most reliable way an agent talks itself into a round nothing asked for:
 prawduct-hook check-cumulative-critic   # PR path
 ```
 
-If it passes, you are done — stop. Record-only surfaces (`change-log.md`, `learnings.md`,
-`.prawduct/artifacts/**` plan prose, product docs) are **non-judgeable**: a commit touching only those
-never needs new coverage, so a fix confined to them cannot mandate another review. Two traps, both
-in the direction of *more* review than the extension suggests: a **comment-only edit to a `.py` file
-still counts as judgeable**, which is how a pure-prose fix commit gets pulled back into a full
-round; and a `.md` file under `skills/`, `methodology/` or `templates/`, or a root `CLAUDE.md`, is
-**governance-protected and therefore judgeable** — fork-skill prose is behavioural logic here. When
-in doubt assume judgeable and let the gate say otherwise; it is the gate's answer that binds.
+If it passes, you are done — stop. **Batch the fixes: ONE commit, then ONE `verify-resolutions`.**
+Fix-commit-verify per finding multiplies 5-10 minute rounds and hands each new round the prose the
+last fix wrote. `critic-consolidate` prints this verbatim whenever a review lands findings
+(`_BATCH_FIX_DIRECTIVE`), so the builder meets it holding the findings rather than remembering it
+from here.
+
+**Which writes are free while a review is in flight** — the question the builder actually has
+mid-review, answered by `coverage_algebra.is_judgeable_path`. Free: **everything under
+`.prawduct/`** (change-log, backlog, learnings, `project-state.yaml`, plan prose, `regen-views`
+output, and the gitignored session files), `.claude/settings.json`, and `.md` outside the protected
+set — README, `docs/**`, product prose. These are **non-judgeable**: a commit touching only those
+composes as a free edge, so it never needs new coverage and a fix confined to them cannot mandate
+another review. Two traps, both in the direction of *more* review than the extension suggests: a
+**comment-only edit to a `.py` file still counts as judgeable**, which is how a pure-prose fix
+commit gets pulled back into a full round; and a `.md` file under `skills/`, `methodology/` or
+`templates/`, or a root `CLAUDE.md`, is **governance-protected and therefore judgeable** —
+fork-skill prose is behavioural logic here. When in doubt assume judgeable and let the gate say
+otherwise; it is the gate's answer that binds.
 
 **The reviewer's half of the same rule** (severity contract: `review-protocol.md`). A finding whose
 only subject is a non-judgeable record is a **NOTE** unless it clears one of two bars:

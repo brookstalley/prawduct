@@ -60,7 +60,19 @@ Before ending a work cycle, verify:
 
 Rationale: auto-filed NOTEs turn one-time observations into perpetual every-session lines — how a backlog drifts from a working set into a self-portrait of the tooling reviewing itself.
 
-**Work cycle boundary**: Is the work complete and the next task independent? Then *affirmatively* tell the user `/clear` is safe: (1) persist pending requirements/decisions/plans, (2) update the build plan Status section — mark chunks, update Context, (3) write the forward notes — the line "nothing beyond the plan" if that is the truth, but not *no file*, which tells the next session you left none, (4) state explicitly that governance is complete. Never signal safety if a governance step was skipped or failed. See `methodology/building.md` "Session Scope Discipline".
+**Work cycle boundary**: Is the work complete and the next task independent? Then prepare the close — (1) persist pending requirements/decisions/plans, (2) update the build plan Status section — mark chunks, update Context, (3) write the forward notes — the line "nothing beyond the plan" if that is the truth, but not *no file*, which tells the next session you left none, (4) state explicitly that governance is complete.
+
+**Then close the turn with the standing block.** The trigger — the same one every surface states — is **any turn that ends a chunk or work cycle, or that you end with work outstanding**; it is not every turn, and appending it to trivial Q&A trains the user to skip it, reproducing by volume the burying it exists to prevent.
+
+Write for the person who walked away: a long build leaves them returning to a wall of text, and they read the bottom. Everything they need in the next five seconds goes in three short lines, last, after every other word:
+
+1. **State** — done, blocked, or waiting; whether the work is committed; whether the suite is green. One line, no hedging. This is the "did it work?" they scrolled down to answer.
+2. **Next** — the ONE next action and **whose it is**. Someone back after ninety minutes needs to know immediately whether they are the blocker or you are. If it is theirs, say exactly what you need; if it is yours, say what you are doing and roughly how long.
+3. **Clear** — *"Safe to `/clear`."* or *"Not safe to `/clear` yet — [what has to happen first]."*
+
+**Three ways to fail this, all equally expensive.** *Omitting it* — silence gets read as whichever answer they were hoping for, and they clear on top of live work. *Burying it* — the same lines, correct and complete, in the middle of a long summary; a signal above the fold is a signal not sent. *Padding it* — a closing paragraph of prose that has to be parsed is a closing paragraph that gets skipped. None of these is fixed by writing more.
+
+**Outstanding means in flight, not just unstarted — and anything outstanding takes the second line, named.** Critic reviewers dispatched but not consolidated; a `/prawduct:pr` reviewer still running; any background agent whose output you have not read; a Critic run this work owes; a governance step that was skipped or failed. The coordinator case is the one that catches people: a `final`/`cumulative` review dispatches three subagents and the fork returns immediately, so your turn ends with the review still running — that turn takes the second line. Never signal safety to close a turn tidily. See `methodology/building.md` "Session Scope Discipline".
 
 **Forward notes are not a reflection.** A reflection looks back at what happened; `.prawduct/.handoff-notes.md` looks forward at what the next session needs — where you stopped, what you'd do next, what would bite them. It is one of the two session files **you** own — the other is `.prawduct/.session-reflected`, the subject of this guide, which is why the pairing is easy to confuse. The rest of what the next session receives is machine state about the past, plus whatever you curated into the build plan's Context block. The generated `.prawduct/.session-handoff.md` is the machine's: it is rewritten from your notes at every `/clear`, so writing into it directly is how context gets lost.
 

@@ -20,7 +20,15 @@ restate; product repos receive the full digest (`methodology/session-digest.md`)
 - **Feature-branch medium+ work.** Don't create PRs unless asked — then use `/prawduct:pr`.
 - **Forward notes go in `.prawduct/.handoff-notes.md`** — yours to write (as is
   `.session-reflected`), at chunk close ("nothing beyond the plan" if true, but write the line, not no file).
-  **Never ask whether to prepare one — prepare it, then say `/clear` is safe.**
+  **Never ask whether to prepare one — prepare it, then signal.**
+- **Close with the standing block** — three short lines, last, after every other word, on any turn
+  that ends a chunk or work cycle *or* that you end with work outstanding: **State** (done /
+  blocked / waiting; committed or not; suite green or not), **Next** (the ONE next action and whose
+  it is), **Clear** (*"Safe to `/clear`."* or *"Not safe to `/clear` yet — [what has to happen
+  first]."*). Omitting, burying and padding it fail identically — people read the bottom and
+  nothing else. **Outstanding includes work in flight**: a dispatched review, a running PR reviewer
+  or any unread background agent takes the second line — a coordinator Critic review hands your
+  turn back *before* its three reviewers finish. Full rule: `/prawduct:methodology reflection`.
   **Read it before rewriting it; reconcile, never blind-append**: only `/clear` consumes that file, so a second batch finds the first's notes still there — drop what the work discharged, correct what moved, keep what still bites, and never stack a new section on top.
   `.session-handoff.md` is the machine's, regenerated at every `/clear`.
 - **Norms bind; descriptions track** (`/prawduct:methodology norms`) — departures from Direction/preferences

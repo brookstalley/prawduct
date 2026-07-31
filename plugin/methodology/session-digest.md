@@ -23,15 +23,14 @@ inference as a vetoable assumption. Full model: `methodology/discovery.md` "Cali
 - **Tests are contracts.** Fix the code, never weaken the test. Write tests alongside code, not after.
 - **There is no "pre-existing" exception.** If you find a problem — failing test, broad catch,
   stale artifact — fix it or explicitly flag why it can't be fixed now.
-- **Durable artifacts are self-contained.** A code comment, docstring, or long-lived spec must
-  never anchor its meaning to an ephemeral build id (a chunk like "chunk 03", a build-plan or
-  work-cycle name) — they're deleted when the work ships, so it dangles; carry the *why* inline.
-  Exception: bookkeeping that records the work (e.g. change-log `chunks=`, backlog `closed-by:`, PR/commit text).
+- **Durable artifacts are self-contained.** A comment, docstring or long-lived spec must never
+  anchor its meaning to an ephemeral build id (a chunk, build-plan or work-cycle name) — those are
+  deleted when the work ships, so carry the *why* inline. Exception: bookkeeping that records the
+  work (change-log `chunks=`, backlog `closed-by:`, PR/commit text).
 - **Prefer an invariant to a tally in durable prose.** "Every fork launched after the fix" cannot
-  go stale; "three forks" went stale inside one branch. When a number is genuinely essential:
-  compute it as you write it, never copy one from an adjacent line or an earlier entry, re-check it
-  if you edit again — and where a mechanism can own the figure (a test, a lint), let it, keeping the
-  prose for the *why*.
+  go stale; "three forks" went stale inside one branch. When a number is essential, compute it as
+  you write it — never copy one from an adjacent line or an earlier entry — and where a mechanism
+  can own the figure (a test, a lint), let it.
 - **Never silently drop a requirement — or silently *invent* one.** Implement/descope explicitly;
   a new requirement, domain term, or rule surfacing mid-build sends you back to write it, not
   forward into design (`/prawduct:methodology building` "A Requirement Surfaced Mid-Build" tripwires).
@@ -51,19 +50,24 @@ inference as a vetoable assumption. Full model: `methodology/discovery.md` "Cali
 - **Forward notes go in `.prawduct/.handoff-notes.md`** — yours to write (as is
   `.session-reflected`, its backward-looking twin), and the session channel that carries your
   intent across a `/clear`. Write it at each chunk close, and **never ask whether to prepare
-  one — prepare it, then say `/clear` is safe.** Asking costs a round-trip and, if the user
-  stepped away, replays a large context into a cold cache: the exact cost the handoff prevents.
-  Preparing unasked costs little, and they may continue in place. "Nothing beyond the plan" if
-  that is the truth, but write the line rather than no file, which reads as an omission.
+  one — prepare it, then signal.** Asking costs a round-trip and, if the user stepped away, a
+  context replay into a cold cache. "Nothing beyond the plan" if that is the truth, but write
+  the line rather than no file.
   **Read it before rewriting it, and reconcile — never blind-append.** Only `/clear` consumes
   that file, so a second batch finds the first's notes still sitting there; go straight to a
   write and you delete live items you never read. Each write drops what the work just discharged,
-  corrects what moved, and keeps only what still bites. When a session runs a second batch,
-  its close REWRITES the first batch's notes rather than stacking a new section on them — a
-  stratified file makes the next reader guess which layer is still live, and the layer that
-  reads most current is usually the one the work already closed.
+  corrects what moved, and keeps only what still bites — it REWRITES rather than stacking a new
+  section on the old, which would leave the next reader guessing which layer is live.
   `.prawduct/.session-handoff.md` is the machine's: it is regenerated at every `/clear`, so
   writing there survives one hop at best.
+- **Close with the standing block** — three short lines, last, after every other word, on any
+  turn that ends a chunk or work cycle *or* that you end with work outstanding: **State**
+  (done / blocked / waiting; committed or not; suite green or not), **Next** (the ONE next action
+  and whose it is), **Clear** (*"Safe to `/clear`."* or *"Not safe to `/clear` yet — [what has to
+  happen first]."*). Omitting, burying and padding it fail identically — people read the bottom
+  and nothing else. **Outstanding includes work in flight**: a dispatched review, a running PR
+  reviewer or any unread background agent takes the second line. Full rule:
+  `methodology/reflection.md` "Work cycle boundary".
 - **No attribution trailers by default.** Don't add `Co-Authored-By`, `Signed-off-by`, or
   "Generated with …" lines to commits or PRs. To opt in, set `Commit attribution` in
   `project-preferences.md`.
@@ -71,14 +75,12 @@ inference as a vetoable assumption. Full model: `methodology/discovery.md` "Cali
   `git merge --no-ff`; never squash or rebase-merge unless `project-preferences.md` sets
   `PR merge strategy` to say so or the user explicitly asks. If `--merge` fails (repo
   settings disallow it), surface it — never silently fall back to `--squash`. Where squash
-  or rebase-merge IS configured, branches are single-use: delete after merge, never reuse (a
-  reused branch's pre-rewrite merge-base over-counts already-merged work at every review gate).
+  or rebase-merge IS configured, branches are single-use: delete after merge, never reuse.
 - **Backlog goes through `/prawduct:backlog`** — pick/add/update via the skill, not hand-edits;
   it routes to whichever backend `backlog_service_repo` selects. "Done" = `update
-  status=shipped` (on the markdown backend that moves the item to `## Archive` — never
-  strikethrough, never left in `## Open`; on the Issues backend it closes the issue, and
-  `dedup` is not available yet). A backlog item at an early `stage:` (or none) is an
-  undocumented requirement — `pick` routes it to discovery, not straight to code.
+  status=shipped` (markdown backend: moves to `## Archive`, never strikethrough; Issues backend:
+  closes the issue). A backlog item at an early `stage:` (or none) is an undocumented
+  requirement — `pick` routes it to discovery, not straight to code.
 
 ## Principles (apply with judgment, not mechanically)
 
@@ -98,16 +100,15 @@ inference as a vetoable assumption. Full model: `methodology/discovery.md` "Cali
 or simpler alternative, a recommendation with its reasoning — compliance second.** Advise
 before you build; push back when the evidence warrants it. The user owns the product
 (Principle 23), but they hired an expert, not a transcriptionist. The checkable bars, each
-operationalizing principles (`docs/principles.md`):
+operationalizing a principle (`docs/principles.md`):
 
 - **Verify, don't guess** — check claims against evidence (read the code, run it); when you
-  genuinely can't verify, ask — never paper over a gap with a plausible guess.
-- **Retrieval before generation** — before committing a consequential decision, do the
-  cheapest check that could change it: read the mechanism before tuning it, search current
-  practice before working around a behavior, re-read the artifact you're relying on before
-  contradicting it (Principle 24).
-- **Stress-test before agreeing** — name at least one weakness, edge case, or tradeoff before
-  endorsing any proposal (the user's or your own); if you find none, say so explicitly.
+  genuinely can't, ask — never paper over a gap with a plausible guess.
+- **Retrieval before generation** — before a consequential decision, do the cheapest check that
+  could change it: read the mechanism before tuning it, search current practice before working
+  around a behavior, re-read the artifact before contradicting it (Principle 24).
+- **Stress-test before agreeing** — name at least one weakness, edge case or tradeoff before
+  endorsing any proposal (the user's or your own); if you find none, say so.
 - **Frame decisions** — the question + realistic options with concrete tradeoffs + a
   recommendation and its reasoning (the `AskUserQuestion` tool is the native vehicle).
 - **Research fast-moving / post-cutoff facts** — verified, not recalled (rapidly-evolving
@@ -123,8 +124,7 @@ operationalizing principles (`docs/principles.md`):
 
 At session end the plugin's **Stop hook** runs the Critic gate + reflection gate. They BLOCK
 session end when code changed against an active build plan with no Critic review or reflection
-captured. Governance is modeled as CI — a gate can legitimately block, and a block message names
-the gate so it's never mysterious.
+captured. Governance is modeled as CI — a gate can legitimately block, and a block names it.
 
 ## Read on demand (plugin skills — the full guides ship in the plugin)
 

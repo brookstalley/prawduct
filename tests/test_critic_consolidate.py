@@ -26,6 +26,7 @@ so pyc-cache doesn't leak, GIT_CONFIG neutralized).
 from __future__ import annotations
 
 import json
+import re
 import subprocess
 import sys
 from datetime import datetime, timedelta, timezone
@@ -636,6 +637,132 @@ class TestIncompleteNoopLiveness:
         assert "may have died" in msg
         assert cc._CACHE_WARM_DIRECTIVE not in msg
 
+    def test_wait_side_never_carries_the_fix_strategy(self):
+        # The batch directive answers "how do I fix these?"; a caller with no
+        # findings in hand yet has not asked it. Emitting it on the wait side
+        # would have the reader planning fixes for findings they cannot read.
+        for missing, present, total, age in (
+            (["correctness"], 1, 3, 2),
+            (["reviewer"], 0, 1, 2),
+            (["sustainability"], 2, 3, 45),
+        ):
+            msg = cc._incomplete_noop_message(
+                missing, present, total, self._fresh_id(age))
+            assert cc._BATCH_FIX_DIRECTIVE not in msg
+
+
+# ---------------------------------------------------------------------------
+# Unit: the batch-fix directive
+# ---------------------------------------------------------------------------
+
+
+#: Every path class the directive can name, mapped to a representative path and
+#: whether the directive is claiming it is free. Adding a class to the directive
+#: without adding it here fails ``test_directive_names_no_unpinned_path_class``,
+#: which is the half that makes the drift guard bidirectional.
+_DIRECTIVE_PATH_CLASSES = {
+    ".prawduct/": (".prawduct/change-log.md", False),
+    "`.claude/settings.json`": (".claude/settings.json", False),
+    # The suffix class: `.md` OUTSIDE the protected dirs below is free. Product
+    # docs and READMEs are the common case, and the whole point of the four
+    # protected entries is that they are the exception to this line.
+    "`.md`": ("docs/architecture.md", False),
+    "`skills/`": ("plugin/skills/critic/review-cycle.md", True),
+    "`methodology/`": ("plugin/methodology/building.md", True),
+    "`templates/`": ("plugin/templates/runbook.md", True),
+    "`CLAUDE.md`": ("CLAUDE.md", True),
+}
+
+
+class TestBatchFixDirective:
+    """The directive states which writes are free mid-review. That is a prose
+    restatement of ``coverage_algebra.is_judgeable_path``, so these tests parse
+    the directive's own text and drive the assertions from it — drift in either
+    direction fails, not just a predicate change.
+
+    Why bidirectional matters: asserting hardcoded paths against the predicate
+    catches a predicate that narrows, but leaves the cheaper mistake unguarded —
+    editing the free-list alone (adding `docs/`, dropping `.claude/settings.json`)
+    would keep the suite green while shipping a runtime message that tells a
+    builder to commit mid-review and lose their coverage."""
+
+    def test_directive_dispositions_rather_than_mandating_fixes(self):
+        # Only unresolved BLOCKING gates anything. "Fix them ALL" contradicted
+        # building.md's "warnings and notes gate nothing — disposition each
+        # rather than reflexively fixing", on the surface with the most
+        # authority at the moment the builder decides.
+        d = cc._BATCH_FIX_DIRECTIVE
+        assert "Disposition them ALL in ONE pass" in d
+        assert "accept or file the rest" in d
+        assert "Fix them ALL" not in d
+        assert "ONE commit" in d
+        assert "ONE `/prawduct:critic verify-resolutions`" in d
+        # The verify pass is a coverage consequence, not an obligation.
+        assert "if that commit touches judgeable files" in d
+
+    def test_directive_free_and_costly_claims_match_the_predicate(self):
+        """Each path class the directive names is classified as it claims."""
+        from lib import coverage_algebra
+
+        directive = cc._BATCH_FIX_DIRECTIVE
+        for token, (path, judgeable) in _DIRECTIVE_PATH_CLASSES.items():
+            assert token in directive, (
+                f"_DIRECTIVE_PATH_CLASSES pins {token!r}, but the directive no "
+                "longer names it — drop the entry or restore the text"
+            )
+            assert coverage_algebra.is_judgeable_path(path) is judgeable, (
+                f"the directive classifies {token} as "
+                f"{'costly' if judgeable else 'free'} to write mid-review, but "
+                f"is_judgeable_path({path!r}) now disagrees. Amend both together: "
+                "a wrong 'free' claim costs a reader their coverage, and a wrong "
+                "'costly' claim sends them to a round they did not owe."
+            )
+
+    def test_directive_names_no_unpinned_path_class(self):
+        """A path token in the directive that no entry above pins fails here.
+
+        This is the half that catches an edit to the prose ALONE — the drift
+        direction the first version of these tests missed entirely.
+        """
+        # Backticked tokens that look like paths (contain `/` or end in `.md`
+        # /`.json`), minus the ones that are commands or files-to-read.
+        tokens = set(re.findall(r"`([^`]+)`", cc._BATCH_FIX_DIRECTIVE))
+        pathish = {
+            t for t in tokens
+            if ("/" in t or t.endswith((".md", ".json", ".yaml")))
+            and not t.startswith("/prawduct:")
+        }
+        pinned = set(_DIRECTIVE_PATH_CLASSES)
+        # `.prawduct/` is pinned unbackticked in the map key; normalize.
+        pinned_bare = {p.strip("`") for p in pinned}
+        unpinned = {t for t in pathish if t not in pinned_bare}
+        assert not unpinned, (
+            f"_BATCH_FIX_DIRECTIVE names path class(es) {sorted(unpinned)} that "
+            "no _DIRECTIVE_PATH_CLASSES entry pins against is_judgeable_path. "
+            "Add each with a representative path and its expected judgeability."
+        )
+
+    def test_directive_names_the_comment_only_trap(self):
+        # The single most expensive misread of "free": a `.py` comment edit
+        # looks like prose and is judgeable. coverage_algebra's docstring
+        # records the ruling; the runtime message has to carry it too.
+        assert "comment-only edit to" in cc._BATCH_FIX_DIRECTIVE
+
+    def test_unbackticked_free_surfaces_still_match_the_predicate(self):
+        # The directive also names free surfaces in prose rather than backticks
+        # ("everything under `.prawduct/` — change-log, backlog, project-state,
+        # build plans, regen-views output"). Pin the concrete files those words
+        # denote; the token scan above cannot see them.
+        from lib import coverage_algebra
+
+        for path in (
+            ".prawduct/backlog.md",
+            ".prawduct/project-state.yaml",
+            ".prawduct/artifacts/build-plan-demo.md",
+            ".prawduct/release-notes.md",   # regen-views output
+        ):
+            assert not coverage_algebra.is_judgeable_path(path)
+
 
 # ---------------------------------------------------------------------------
 # Unit: pending_state
@@ -721,6 +848,94 @@ class TestConsolidateIntegration:
         # Marker cleared + partials removed.
         assert not (repo / MARKER_REL).is_file()
         assert not (repo / PARTIALS_REL).exists()
+
+    def test_consolidated_with_findings_carries_the_fix_strategy(self, tmp_path):
+        """A review that lands findings states the fix strategy in the same
+        breath. This is the single-pass path's delivery: the reviewing fork
+        runs consolidate itself, so this stdout IS what the builder reads."""
+        repo = tmp_path / "r"
+        _init_repo(repo)
+        head = _commit_file(repo, "src/app.py", "x = 1\n", "init")
+        _set_marker(repo)
+        _write_manifest(repo, head)
+        _full_roster_partials(repo, head, findings_by_role={
+            "correctness": [{"name": "A", "goal": "Nothing Is Broken",
+                             "severity": "blocking", "recommendation": "Fix"}],
+            "design": [{"name": "B", "goal": "The Design Is Sound",
+                        "severity": "warning", "recommendation": "Reconsider"}],
+        })
+        result = _run_consolidate(repo)
+        assert result.returncode == 0, f"stderr={result.stderr!r}"
+        assert "consolidated:" in result.stdout
+        assert cc._BATCH_FIX_DIRECTIVE in result.stdout
+
+    def test_clean_pass_does_not_carry_the_fix_strategy(self, tmp_path):
+        """Zero findings, zero fix advice — a clean review that ended with
+        batching instructions reads as work the builder does not have."""
+        repo = tmp_path / "r"
+        _init_repo(repo)
+        head = _commit_file(repo, "src/app.py", "x = 1\n", "init")
+        _set_marker(repo)
+        _write_manifest(repo, head)
+        _full_roster_partials(repo, head)
+        result = _run_consolidate(repo)
+        assert result.returncode == 0, f"stderr={result.stderr!r}"
+        assert "consolidated: 0 blocking" in result.stdout
+        assert cc._BATCH_FIX_DIRECTIVE not in result.stdout
+
+    def test_already_consolidated_noop_reports_the_recorded_findings(self, tmp_path):
+        """The COORDINATOR path's normal case. The SubagentStop trigger
+        consolidated while the main agent was elsewhere; that agent then runs
+        consolidate before reading the cache (CLAUDE.md's staleness guard) and
+        lands here. A bare "nothing to consolidate" answers the wrong question
+        and drops the fix strategy on the one path that has no other channel
+        for it — the reviewing fork returns after dispatch without a summary."""
+        repo = tmp_path / "r"
+        _init_repo(repo)
+        head = _commit_file(repo, "src/app.py", "x = 1\n", "init")
+        _set_marker(repo)
+        _write_manifest(repo, head)
+        _full_roster_partials(repo, head, findings_by_role={
+            "correctness": [{"name": "A", "goal": "Nothing Is Broken",
+                             "severity": "blocking", "recommendation": "Fix"}],
+        })
+        assert _run_consolidate(repo).returncode == 0   # the trigger's run
+        second = _run_consolidate(repo)                 # the main agent's run
+        assert second.returncode == 0, f"stderr={second.stderr!r}"
+        assert "no-op: no pending review manifest" in second.stdout
+        assert "holds 1 finding(s)" in second.stdout
+        assert "rev-test-0001" in second.stdout
+        # The path must be readable as-is: the caller's next action is to open
+        # it, and a bare basename is not a path from the project root.
+        assert f"`{FINDINGS_REL}`" in second.stdout
+        assert cc._BATCH_FIX_DIRECTIVE in second.stdout
+
+    def test_noop_stays_bare_when_the_recorded_review_was_clean(self, tmp_path):
+        repo = tmp_path / "r"
+        _init_repo(repo)
+        head = _commit_file(repo, "src/app.py", "x = 1\n", "init")
+        _set_marker(repo)
+        _write_manifest(repo, head)
+        _full_roster_partials(repo, head)
+        assert _run_consolidate(repo).returncode == 0
+        second = _run_consolidate(repo)
+        assert second.returncode == 0
+        assert "no-op: no pending review manifest" in second.stdout
+        assert "finding(s)" not in second.stdout
+        assert cc._BATCH_FIX_DIRECTIVE not in second.stdout
+
+    def test_noop_survives_an_unreadable_findings_cache(self, tmp_path):
+        """A corrupt cache must not turn an informational no-op into a crash —
+        this branch is reached by hooks and by stray calls, and it reports
+        nothing a caller depends on."""
+        repo = tmp_path / "r"
+        _init_repo(repo)
+        (repo / ".prawduct").mkdir(parents=True, exist_ok=True)
+        (repo / FINDINGS_REL).write_text("{not json")
+        result = _run_consolidate(repo)
+        assert result.returncode == 0, f"stderr={result.stderr!r}"
+        assert "no-op: no pending review manifest" in result.stdout
+        assert cc._BATCH_FIX_DIRECTIVE not in result.stdout
 
     def test_missing_role_is_noop_names_role(self, tmp_path):
         repo = tmp_path / "r"

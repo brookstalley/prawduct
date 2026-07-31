@@ -41,7 +41,7 @@ def estimate_tokens(text: str) -> int:
 #: record *why* an edit was affordable, which no test can); the current reading
 #: lives here, where a wrong number fails instead of misleading.
 LAST_MEASURED_TOKENS = {
-    "methodology/building.md": 4652,
+    "methodology/building.md": 4646,
     "skills/critic/review-protocol.md": 3616,
     "skills/critic/goals-1-3.md": 1901,
 }
@@ -142,6 +142,43 @@ class TestBuildingMethodology:
         assert "Never ask whether to prepare one" in slim
         # The why travels with the always-injected surface, not the on-demand one.
         assert "cold cache" in digest
+
+    def test_standing_block_is_on_every_surface_that_claims_it(self):
+        """State / Next / Clear, the in-flight rule, and one shared trigger.
+
+        Four prose copies carry this rule, and the split is deliberate — the
+        injected digests reach product sessions, the guides are read on demand.
+        But `building.md`'s token budget was FUNDED by relocating this rule's
+        rationale into the digests and `reflection.md`, and that funding argument
+        only holds while the destinations actually carry it. Without this pin, a
+        later trim of any destination silently unfunds a trim already taken here.
+
+        Also pins the trigger, which shipped undefined: "every stopping-place
+        turn" appeared nowhere else in the plugin, and since every assistant turn
+        hands control back, one reasonable reading was "every turn" — which
+        appends the block to trivial Q&A and reproduces by volume the burying it
+        exists to prevent.
+        """
+        surfaces = {
+            "methodology/building.md": self.content,
+            "methodology/reflection.md": read_file("methodology/reflection.md"),
+            "methodology/session-digest.md": read_file("methodology/session-digest.md"),
+            "methodology/session-digest-slim.md": read_file(
+                "methodology/session-digest-slim.md"
+            ),
+        }
+        for name, text in surfaces.items():
+            assert "standing block" in text, f"{name} no longer names the standing block"
+            for label in ("**State**", "**Next**", "**Clear**"):
+                assert label in text, f"{name} dropped the {label} line"
+            assert "Safe to `/clear`." in text, f"{name} dropped the safe line"
+            assert "Not safe to `/clear` yet" in text, f"{name} dropped the unsafe line"
+            # Outstanding includes work that is RUNNING, not merely unstarted —
+            # the reported failure was signalling safe while reviewers were live.
+            assert "in flight" in text, f"{name} dropped the in-flight rule"
+            # One trigger, stated the same way, or the surfaces disagree about
+            # when the block is owed.
+            assert "work outstanding" in text, f"{name} states a different trigger"
 
     def test_handoff_notes_are_reconciled_not_appended(self):
         """A handoff is reconciled against reality on every write, not grown.
@@ -288,6 +325,37 @@ class TestBuildingMethodology:
         # the moment it applies, instead of from a guide read hours earlier;
         # a relocate whose destination already existed. 4669 -> 4648,
         # headroom 21 -> 12.
+        #
+        # 2026-07-31 replaced the one-line "Safe to /clear" close with the
+        # three-line standing block (State / Next / Clear) and added the
+        # batch-fix clause. Owner report, and it reshaped the requirement
+        # twice: the rule already existed, but agents were burying a correct
+        # signal mid-summary, and what a user wants after a 30-120 minute wait
+        # is not a safety verdict alone — it is state, the next action and who
+        # owns it, then the verdict. PAID FOR by the trim-or-relocate rule, not
+        # a raise: 4652 -> 4725 on the first draft -> 4655. Fundings, each a
+        # relocate to a surface the reader cannot skip rather than a cut:
+        # (1) the block's RATIONALE (why three lines, the three failure modes,
+        # what counts as "outstanding") went to reflection.md, which owns the
+        # work-cycle boundary, and to BOTH digests, which are always injected —
+        # this file keeps the three line-labels and a pointer; (2) the
+        # fix-strategy detail (which writes stay free mid-review) went to
+        # `critic_consolidate._BATCH_FIX_DIRECTIVE`, which the runtime emits
+        # with the findings themselves, so this file keeps one clause;
+        # (3) "Two session files" dropped the rescued-hop gloss that
+        # session-digest.md states, and step 7 its blind-append gloss that both
+        # digests state — checked, not assumed; (4) the evidence-model paragraph
+        # condensed to a pointer at review-cycle.md, the file that owns it;
+        # (5) the Verify/Code bullet dropped a parenthetical re-listing the
+        # ingest flags named one clause earlier, and Persist-plans a clause
+        # that line 11 already states. Two trims were REVERTED because tests
+        # pinned them as contracts (the seven goal names, "Never blind-append")
+        # — the funding was found elsewhere rather than the tests weakened.
+        # One correction rode along and cost nothing: the Blocking/Warnings
+        # paragraph said warnings "should be addressed", which review-cycle.md
+        # § "The review loop terminates" names BY FILE as the cause of the
+        # round pump — it now says warnings and notes gate nothing and are
+        # dispositioned. Headroom 5; the next addition trims or relocates.
         tokens = estimate_tokens(self.content)
         assert tokens < 4660, f"building.md is ~{tokens} tokens, should be <4660"
 
