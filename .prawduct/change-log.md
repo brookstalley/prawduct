@@ -118,6 +118,44 @@ scheduling rather than machinery — and the gate is *not* "lift BKL-6J2X's hold
 decided and scheduled for retirement and is live only by silence. What is genuinely open, and
 currently unowned, is **which fleet migration gets proven end-to-end first**. Two unproven fleet
 paths must not be live at once.
+## 2026-07-30: Test evidence counts tests, not a reporter's opinion of how many there are
+
+<!-- prawduct: type=fix | scope=junit-leaf-counting | release=unreleased | status=in-review -->
+
+**Why:** `test-evidence record` summed the `tests=` attribute of top-level `<testsuite>` elements.
+That attribute's meaning is reporter-specific, and the two live conventions cannot both be served by
+summing it:
+
+| reporter | `tests=` counts | summing top-level | summing every suite |
+|---|---|---|---|
+| Ant-style | all descendants | correct | double-counts |
+| node:test | direct children | **undercounts** | correct |
+
+Top-level-only summing was introduced to fix the double-count, and it did — while preserving the
+undercount, which is what #128 reported. Reproduced against the shipped 3.2.1 binary: a suite whose
+two child describes hold six tests recorded **2 passed**. The error scales with nesting depth, so the
+~2× in the original report was that repo's shape, not a constant.
+
+**Not a gate-soundness bug** — `failed` stayed accurate and the gate reads `failed`. It is an
+audit-record integrity bug, and its concrete cost is that an independent Critic reviewing a repo with
+nested describes sees a passed/total spread that reads as stale evidence and burns a finding on it.
+That happened, in the reporting repo, to a real review.
+
+**What landed.** Counts come from leaf `<testcase>` elements. A leaf appears exactly once however the
+suites nest, so it is correct under both conventions with no reporter detection — the conflict is a
+property of the attribute, not of the tree. Status is classified per leaf with error-over-failure
+precedence, so a case carrying both counts once rather than pushing `failed` above the number of
+tests that ran. Duration stays suite-level: `<testcase time=>` is per-test CPU, while the suite's is
+the wall clock this field has always reported.
+
+**The fallback is the load-bearing part of the change.** Some CI aggregators emit suite attributes
+with no `<testcase>` children, and recording a confident `0` for them would be a worse bug than the
+one being fixed — so with no leaves anywhere, the attribute sum remains. This is not hypothetical:
+every pre-existing `TestFromJunitIngest` fixture is summary-only, and without the fallback the fix
+breaks all seven.
+
+Each convention is a first-class test, since a fix for either one alone silently reintroduces the
+other.
 
 ## 2026-07-30: The third learnings compaction, and the first one built to be the last
 

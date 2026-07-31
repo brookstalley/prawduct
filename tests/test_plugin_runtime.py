@@ -1425,6 +1425,124 @@ class TestFromJunitIngest:
         assert junit.is_file()  # report read, not consumed
 
 
+class TestJunitLeafCounting:
+    """#128: counts come from leaf `<testcase>` elements, not the `tests=` attribute.
+
+    The attribute's meaning is reporter-specific, and the two live conventions
+    cannot both be served by summing it:
+
+    | reporter   | `tests=` counts   | summing top-level | summing every suite |
+    |------------|-------------------|-------------------|---------------------|
+    | Ant-style  | all descendants   | correct           | double-counts       |
+    | node:test  | direct children   | **undercounts**   | correct             |
+
+    A leaf `<testcase>` appears exactly once however the suites nest, so counting
+    leaves is correct under both with no reporter detection. Each convention is a
+    first-class test here, since a fix for either one alone silently reintroduces
+    the other.
+    """
+
+    def _repo(self, tmp_path) -> Path:
+        repo = tmp_path / "leaf"
+        repo.mkdir()
+        (repo / ".prawduct").mkdir()
+        (repo / "test_sample.py").write_text("def test_ok():\n    assert True\n")
+        _git(repo, "init", "-b", "main")
+        _git(repo, "add", "-A")
+        _git(repo, "commit", "-m", "c1")
+        return repo
+
+    def _write(self, repo: Path, xml: str) -> Path:
+        path = repo / "report.xml"
+        path.write_text('<?xml version="1.0" encoding="utf-8"?>\n' + xml)
+        return path
+
+    def _record(self, repo: Path, xml: str) -> dict:
+        junit = self._write(repo, xml)
+        _run_in(repo, "test-evidence", "record", "--from-junit", str(junit))
+        return json.loads((repo / ".prawduct" / ".test-evidence.json").read_text())
+
+    # Two child describes holding 3 leaves each; the outer suite declares 2.
+    NODE_STYLE = """
+<testsuites>
+  <testsuite name="outer" tests="2" failures="0" errors="0" skipped="0" time="1.0">
+    <testsuite name="a" tests="3" failures="0" errors="0" skipped="0" time="0.5">
+      <testcase name="a1"/><testcase name="a2"/><testcase name="a3"/>
+    </testsuite>
+    <testsuite name="b" tests="3" failures="0" errors="0" skipped="0" time="0.5">
+      <testcase name="b1"/><testcase name="b2"/><testcase name="b3"/>
+    </testsuite>
+  </testsuite>
+</testsuites>
+"""
+
+    def test_nested_describes_are_not_undercounted(self, tmp_path):
+        # The reported bug: 6 real tests recorded as 2, scaling with nest depth.
+        ev = self._record(self._repo(tmp_path), self.NODE_STYLE)
+        assert (ev["passed"], ev["failed"], ev["skipped"]) == (6, 0, 0)
+
+    def test_ant_style_descendant_counts_are_not_double_counted(self, tmp_path):
+        # Same tree, Ant semantics: outer declares 6 (its descendants). Summing
+        # every suite's attribute would report 12; leaves report 6.
+        ev = self._record(
+            self._repo(tmp_path), self.NODE_STYLE.replace('name="outer" tests="2"',
+                                                          'name="outer" tests="6"')
+        )
+        assert (ev["passed"], ev["failed"], ev["skipped"]) == (6, 0, 0)
+
+    def test_flat_suite_is_unchanged(self, tmp_path):
+        # pytest's shape — one suite, leaves directly beneath. The common case
+        # must not move.
+        ev = self._record(self._repo(tmp_path), """
+<testsuites><testsuite name="pytest" tests="4" failures="1" errors="0" skipped="1" time="2.5">
+  <testcase name="t1"/><testcase name="t2"/>
+  <testcase name="t3"><failure message="boom"/></testcase>
+  <testcase name="t4"><skipped/></testcase>
+</testsuite></testsuites>
+""")
+        assert (ev["passed"], ev["failed"], ev["skipped"]) == (2, 1, 1)
+
+    def test_status_is_classified_per_leaf_with_error_precedence(self, tmp_path):
+        # A case carrying BOTH <error> and <failure> counts once, as an error —
+        # otherwise `failed` exceeds the number of tests that actually ran.
+        ev = self._record(self._repo(tmp_path), """
+<testsuites><testsuite name="m" tests="4" failures="9" errors="9" skipped="9" time="1.0">
+  <testcase name="p"/>
+  <testcase name="both"><error message="e"/><failure message="f"/></testcase>
+  <testcase name="f"><failure message="f"/></testcase>
+  <testcase name="s"><skipped/></testcase>
+</testsuite></testsuites>
+""")
+        # 1 passed, 1 error + 1 failure = 2 failed, 1 skipped — and the wrong
+        # suite-level attributes (9/9/9) are ignored entirely.
+        assert (ev["passed"], ev["failed"], ev["skipped"]) == (1, 2, 1)
+
+    def test_summary_only_report_falls_back_to_attributes(self, tmp_path):
+        # Some CI aggregators emit suite attributes with no <testcase> children.
+        # Recording a confident 0 would be worse than the bug being fixed, so the
+        # attribute sum remains the fallback when there are no leaves anywhere.
+        ev = self._record(self._repo(tmp_path), """
+<testsuites><testsuite name="agg" tests="10" failures="2" errors="1" skipped="3" time="9.0"/></testsuites>
+""")
+        assert (ev["passed"], ev["failed"], ev["skipped"]) == (4, 3, 3)
+
+    def test_multiple_roots_still_aggregate(self, tmp_path):
+        # The multi-root behaviour that top-level summing was introduced for must
+        # survive leaf counting: two sibling suites, three leaves each.
+        ev = self._record(self._repo(tmp_path), """
+<testsuites>
+  <testsuite name="one" tests="3" failures="0" errors="0" skipped="0" time="1.0">
+    <testcase name="x1"/><testcase name="x2"/><testcase name="x3"/>
+  </testsuite>
+  <testsuite name="two" tests="3" failures="1" errors="0" skipped="0" time="1.0">
+    <testcase name="y1"/><testcase name="y2"/>
+    <testcase name="y3"><failure message="b"/></testcase>
+  </testsuite>
+</testsuites>
+""")
+        assert (ev["passed"], ev["failed"], ev["skipped"]) == (5, 1, 0)
+
+
 class TestFromCountsIngest:
     """`record --from-counts passed=N failed=M skipped=K [duration=S]` records
     counts supplied directly — the language-/runner-agnostic on-ramp for a

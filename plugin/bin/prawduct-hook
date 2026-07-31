@@ -2463,10 +2463,28 @@ def cmd_test_evidence(project_dir: Path, argv: list[str]) -> int:
         # pytest emits one <testsuite>, but `test_command` invites arbitrary
         # runners (jest-junit, go-junit-report, merged CI reports) whose
         # <testsuites> roots carry many — reading only the first silently
-        # undercounted the evidence the freshness and Critic gates trust. Direct
-        # children only (not iter()) so Ant-style nested suites aren't
-        # double-counted. Multi-environment products contribute one root per
-        # declared command; the sums span all of them.
+        # undercounted the evidence the freshness and Critic gates trust.
+        # Multi-environment products contribute one root per declared command;
+        # the sums span all of them.
+        #
+        # Counts come from LEAF <testcase> elements, not from the `tests=`
+        # attribute, because that attribute's meaning is reporter-specific and
+        # the two conventions cannot both be served by summing it (#128):
+        #
+        #   Ant-style   `tests=` counts all DESCENDANTS  → summing every suite
+        #                                                  double-counts
+        #   node:test   `tests=` counts DIRECT CHILDREN  → summing only
+        #                                                  top-level suites
+        #                                                  undercounts, and the
+        #                                                  error scales with
+        #                                                  nesting depth
+        #
+        # Reading only top-level suites fixed the first and preserved the
+        # second: a node:test suite whose 2 child describes hold 6 tests
+        # recorded 2. A leaf <testcase> appears exactly once however the suites
+        # nest, so counting leaves is correct under both conventions and needs
+        # no reporter detection. `failed`/`skipped` are classified per leaf for
+        # the same reason; `passed` stays the remainder.
         suites = []
         for root in roots:
             suites += [root] if root.tag == "testsuite" else root.findall("testsuite")
@@ -2476,10 +2494,36 @@ def cmd_test_evidence(project_dir: Path, argv: list[str]) -> int:
                 file=sys.stderr,
             )
             return 2
-        total = sum(int(s.get("tests", "0")) for s in suites)
-        failures = sum(int(s.get("failures", "0")) for s in suites)
-        errors = sum(int(s.get("errors", "0")) for s in suites)
-        skipped = sum(int(s.get("skipped", "0")) for s in suites)
+        cases = [c for root in roots for c in root.iter("testcase")]
+        if cases:
+            total = len(cases)
+            # Precedence, most severe first: a case carrying both <error> and
+            # <failure> counts once, as an error. `skipped` loses to both — a
+            # case that errored is not a skip, whatever else it carries.
+            errors = sum(1 for c in cases if c.find("error") is not None)
+            failures = sum(
+                1 for c in cases if c.find("error") is None and c.find("failure") is not None
+            )
+            skipped = sum(
+                1
+                for c in cases
+                if c.find("error") is None
+                and c.find("failure") is None
+                and c.find("skipped") is not None
+            )
+        else:
+            # No leaf elements anywhere, but suites exist: a summary-only report
+            # (some CI aggregators emit attributes without <testcase> children).
+            # Fall back to the attribute sum over top-level suites — the prior
+            # behaviour — rather than recording a confident 0. Ant-style
+            # double-counting cannot arise here, since nested suites carrying no
+            # leaves are what this branch means.
+            total = sum(int(s.get("tests", "0")) for s in suites)
+            failures = sum(int(s.get("failures", "0")) for s in suites)
+            errors = sum(int(s.get("errors", "0")) for s in suites)
+            skipped = sum(int(s.get("skipped", "0")) for s in suites)
+        # Duration stays suite-level: <testcase time=> is per-test CPU, while the
+        # suite's is the wall clock this field has always reported.
         duration = sum(float(s.get("time", "0") or "0") for s in suites)
         passed = total - failures - errors - skipped
         failed = failures + errors
