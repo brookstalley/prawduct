@@ -66,6 +66,26 @@ defect `verify_migration`'s docstring already warns about — *"a false conflict
 prescribed remedy can never clear it"* — reintroduced one list over. The test now runs the wrong remedy
 and asserts it converges on nothing, rather than arguing the point in prose.
 
+**The Step 6 list enumeration is now pinned to the gate rather than hand-copied.** Twice in this branch a
+new list reached one copy of the runbook's prose and not the other — `status_mismatch` into the opening
+but not the closing arithmetic, then `duplicate_alias` repeating it one list later — each time pointing an
+operator at a paragraph explaining a list that was empty in front of them. `TestCompletenessGateLists
+AreEnumeratedConsistently` (`tests/test_cutover_prose_coherence.py`) derives the list names by calling
+`verify_migration` against an empty stub repo, so a sixth list added without a runbook bullet, or an
+enumeration still saying "four", fails there — the only place it can fail before an irreversible run. The
+same review also caught that the prescribed remedy `merge <duplicate-id> --into <survivor-id>` **cannot be
+typed**: both endpoints resolve through the `id:PFX` label search to the same labelled survivor and are
+rejected as merging an item into itself, so the issue-number form is the only one that works.
+
+**`boundary-patterns.md` stops being a pure scaffold**, because the Critic's Goal-5 contract-surface check
+was passing vacuously on a change that crossed two real ones. The two surfaces this work *proved* real are
+recorded — `iter_alias_issues`' positional yield (whose consumers include a runbook snippet, not only code)
+and the backlog-service result envelopes (whose recurring defect is enriching the success path and not the
+error ones). The rest is filed as **`BND-1S4K`**, along with the open question of whether the remainder gets
+filled by accretion or one inventory pass; the artifact's header now describes what happened rather than
+legislating which. Recorded there too: `plugin/lib/risk.py` is a second reader of that file, inert here
+because this repo declares `risk_surfaces:`, but in a product declaring none, filling it *raises* review depth.
+
 **Closes the trigger on Chunk 06** of `build-plan-v3.2.0-golive.md` — this item was filed as deferral with
 a named gate, and the gate was the irreversible run itself.
 
