@@ -3,6 +3,50 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-07-31: Fleet migration gets a triage norm, and the archive scope gets an invariant instead of a status
+
+<!-- prawduct: type=docs | scope=fleet-migration-triage -->
+
+Scoping prawduct's own backlog-to-Issues cutover surfaced three record defects and one requirement
+that was about to be written wrong.
+
+**A backlog item had been instructing a requirement violation for two weeks.** `BKL-6M4T`'s
+deliverable list says the cutover retires `lib/backlog/legacy.py`. `GV7` says the opposite in terms,
+naming the same file: the markdown parser *"is retired only when the whole portfolio has migrated,
+not at any one project's cutover; retiring it earlier is exactly the silent degradation GV7 exists
+to prevent."* `MG3` agrees and names prawduct's own cutover as no exception. Independently it would
+have broken the migration tool itself — `migrate.py` calls `legacy.parse_backlog` to read the
+markdown it converts, so retiring the parser disables the *next* repo's migration. Struck, with the
+requirement quoted at the item so the next reader argues with GV7 rather than rediscovering it.
+
+**The archive-scope requirement nearly shipped keyed on the wrong property.** The proposal was a
+narrow migration pole of "open + dropped, discard shipped" — shipped work is safe in git history,
+dropped work is the decision a later agent re-proposes. Measured against the real corpus that is
+backwards: of 137 archived shipped items (median body 1,306 chars, none empty) **62% are referenced
+by a live item**, against 25% of the 20 dropped ones. Shipped is also the larger set, so the pole
+would have preserved 20 items and discarded the 137 live work actually points at. Re-filing was the
+wrong risk to optimize; **reference breakage** is the binding one, because the skill stops reading
+the source markdown after cutover — an excluded target is unresolvable, not merely absent. `MG4(b)`
+now makes **reference-closure** the invariant and demotes every status or date window to a starting
+selection that must be closed over its references. `tests/spikes/backlog_archive_value.py` ships as
+the derivation and reports, for each candidate pole, how many references it would break.
+
+**The migration's approved dispositions are stale, and the artifact said so without checking.**
+`migration-scrub-decisions.md` told its reader to re-derive "if the source drifts." It has: the open
+corpus is up 75% since the snapshot, and the items filed since have never been surveyed for
+staleness or duplication at all. The recorded dispositions themselves all survive — every merge pair
+resolves, every drop is still open — so this is a coverage gap, not a wrong plan. A standing warning
+now sits above the dispositions and points at `tests/spikes/backlog_scrub_drift.py`, which re-checks
+each one against today's backlog and refuses to print `CURRENT` while unsurveyed items remain.
+
+**And the fleet advisory gets content, not just a trigger.** `GV7` already specified *when*
+`backlog-service-migration-required` fires; it never said what it should ask for. It now does:
+propose triage **before** migration (the moment you touch every item is the moment to groom),
+delegate what "groomed" means to the consuming repo and its owner — that agent has its repo's
+CLAUDE.md, learnings and history, and is no stranger to that backlog — and **never gate migration on
+a triage measurement**. Any completeness bar prawduct could enforce would be a proxy for judgment it
+does not have, and would turn the nudge into the fleet-routing gate `BKL-6J2X` holds it to avoid.
+
 ## 2026-07-31: Learnings lost three rules to the guard built to protect them
 
 <!-- prawduct: type=fix | scope=record-mechanization -->

@@ -9,6 +9,31 @@ execute against these decisions without re-asking, re-confirming only if the sou
 The "execute without re-asking" rule above covers decisions 1–5 only; 6 must be put to the owner
 before it is acted on.
 
+> ## ⚠ THE SOURCE HAS DRIFTED — do not execute the dispositions below without re-surveying first
+>
+> Checked 2026-07-31. The "re-confirming only if the source has drifted" condition above **has
+> fired.** Do not read this section's approved dispositions as a current plan.
+>
+> **What still holds.** Every recorded disposition survives: all 5 merge pairs resolve (three
+> survivors moved `open → promoted`, which is *in-flight*, not gone — folding a duplicate into an
+> in-flight survivor is exactly as sound), and all 13 drops are still open, so none has become a
+> no-op.
+>
+> **What does not.** The open corpus grew **+75%** since the snapshot these were derived against,
+> and the items filed since have **never been surveyed for staleness or duplication at all** — they
+> are outside every disposition here, and they are a large minority of today's open set. The
+> per-item survey behind the decisions (gists, DUP clusters, staleness evidence) covers the smaller
+> corpus only.
+>
+> **Do not transcribe those figures — they move with every filing.** Run the instrument:
+>
+>     python3 tests/spikes/backlog_scrub_drift.py
+>
+> It re-derives the drift, re-checks every merge and drop recorded below against today's backlog,
+> and lists the unsurveyed items by id. It prints `verdict: dispositions are CURRENT` only when the
+> recorded set covers the whole open corpus — which is the actual precondition for the migration
+> session, and the thing this artifact previously asked a reader to eyeball.
+
 ## Decisions
 
 1. **Live run: HELD** (2026-07-18). Target when it runs: `brookstalley/prawduct` (public — the

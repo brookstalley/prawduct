@@ -293,6 +293,20 @@ state; it remains the interim supported path until the GitHub-issue path is buil
   prerequisite is MG3's shared read-path invariant — the plugin's markdown parser (today
   `lib/backlog/legacy.py`) is **retired only when the whole portfolio has migrated**, not at any one
   project's cutover; retiring it earlier is exactly the silent degradation GV7 exists to prevent.
+  - **(Content) The advisory proposes triage first, and never blocks (owner, 2026-07-31).** Its
+    recommended action is a **workflow, not a command**: groom the backlog — close dead-premise items,
+    merge duplicates, drop what this repo will never do — and migrate *after*, on MG4's reasoning that
+    the moment you touch every item is the moment to groom. Today the advisory routes straight to
+    `/prawduct:backlog scrub`, which imports whatever is there.
+  - **(Content) Triage runs by the consuming repo's own practices.** The consuming agent has that
+    repo's CLAUDE.md, learnings and history — it is not a stranger to that backlog, and it, with its
+    own owner, decides what "groomed" means there. prawduct supplies the nudge and the scrub
+    mechanics; it does not define good triage for someone else's product. This is MG4(d)'s "we can
+    surface but not groom their data," stated at the signal that triggers it.
+  - **(Content) No triage measurement gates migration.** A repo may migrate an ungroomed backlog; the
+    advisory says the result will be worse and stops there. Any completeness bar prawduct could
+    enforce would be a proxy for judgment it does not have, and would turn the nudge into exactly the
+    fleet-routing gate **BKL-6J2X** holds this advisory to avoid.
 - **GV8** **Norm-lifecycle signals survive cutover.** The three norm-lifecycle probes —
   `revisit-due` (a norm exception or stopgap whose expiry date has passed), `dead-why` (a norm whose
   stated rationale cites a shipped/dropped item), and `stalled-transition` (a `Status: in-transition`
@@ -408,7 +422,27 @@ state; it remains the interim supported path until the GitHub-issue path is buil
   ceiling is enforced by the Pacer, **not** by this lever; crediting the archive window as the
   rate-budget keeper is the mis-attribution **BKL-6X5D** was filed to correct (NF3). A quantified *recent-shipped
   window* between the two poles (migrate the last N months of archive, drop older) is the adopter-scale
-  refinement tracked by **BKL-6X5D** — its window is deliberately not yet quantified; (c) **disposes, never hard-deletes**
+  refinement tracked by **BKL-6X5D** — its window is deliberately not yet quantified.
+  **Recommended default, and the invariant every window must satisfy (owner, 2026-07-31).** The scrub
+  SHOULD offer the narrower scope *first* — on a mature backlog the archive is the bulk of the corpus
+  and importing it is the dominant write cost. "Recommended default" is **not** "silent default": the
+  surfaced-and-owner-confirmed rule above is unchanged, because the consequence must be *heard*, not
+  defaulted past. **And whatever scope is chosen, it MUST be reference-closed.** `related:` / `refs:` /
+  `closes:` are the archive's load-bearing edges; a narrow pole that excludes a reference *target*
+  leaves the imported item pointing at something the tracker cannot resolve — unresolvable rather than
+  merely absent, because the skill stops reading the source markdown after cutover. **Status is the
+  wrong selector for this.** Measured on prawduct 2026-07-31, a clear majority of archived *shipped*
+  items are referenced by live work — a far higher share than archived *dropped* items, and shipped is
+  also the larger set — so the intuitive narrow pole ("keep the decisions, discard the completed
+  work") discards precisely what live work points at. Re-filing is the wrong risk to optimize;
+  reference breakage is the binding one. Reference-closure is therefore the invariant, and any status-
+  or date-keyed window is a *starting selection* to be closed over its own references before import.
+  **Do not cite figures here — they move with every filing.** Run
+  `python3 tests/spikes/backlog_archive_value.py`, which reports for each candidate pole how many
+  references it would break. Closure rule and both candidate windows are tracked on **BKL-6X5D**;
+  **BKL-4Z7M** measures what any narrow scope costs post-cutover.
+
+  Resuming the scrub's remaining parts: (c) **disposes, never hard-deletes**
   (DM7) — scrubbed items are closed/dropped-with-reason in the file backlog (git preserves them) or
   live in the export; (d) is **model-assisted, human-confirmed** (candidates surfaced via TF2
   stale-verification + Q3 similarity; the owner confirms dispositions; deterministic import then runs
