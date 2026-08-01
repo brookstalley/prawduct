@@ -99,6 +99,24 @@ class TestBuildingMethodology:
         assert "Build Cycle" in self.content
         assert "Test Discipline" in self.content
         assert "Common Traps" in self.content
+
+    def test_resolve_findings_dispositions_rather_than_mandating_fixes(self):
+        """The guide half of the disposition rule, pinned like the runtime half.
+
+        `TestBatchFixDirective` in tests/test_critic_consolidate.py pins
+        `_BATCH_FIX_DIRECTIVE`; nothing pinned this file's copy, and this
+        surface took the regression twice on one branch — "Fix them ALL" in
+        the runtime string, then "Fix them all in ONE commit" here — both
+        caught by a reviewer, neither by a test. The defect is specifically a
+        SELF-contradiction: the reflexive-fix instruction sits ~two paragraphs
+        above the rule saying warnings and notes gate nothing, so both halves
+        are asserted together and the pair is what fails.
+        """
+        assert "Disposition them ALL in ONE pass" in self.content
+        assert "Warnings and notes gate nothing" in self.content
+        # The exact phrasings the runtime's own comment records rejecting.
+        assert "Fix them all in ONE commit" not in self.content
+        assert "Fix them ALL" not in self.content
         assert "Uninvestigated decisions" in self.content
         assert "Boundary blindness" in self.content
 

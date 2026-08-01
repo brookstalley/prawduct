@@ -105,6 +105,14 @@ mirrors the runtime: *disposition them ALL in ONE pass*. The fix pushed the file
 ceiling before it was tightened — the budget caught an unfunded addition on its first live test, which
 is the bound working rather than a separate defect.
 
+**And the guide half is now pinned, because this surface regressed twice on one branch.** Once in the
+runtime string ("Fix them ALL"), once in `building.md` ("Fix them all in ONE commit") — both caught by a
+reviewer, neither by a test, while `TestBatchFixDirective` had pinned the runtime copy all along.
+`TestBuildingMethodology::test_resolve_findings_dispositions_rather_than_mandating_fixes` asserts both
+halves of the pair together, since the defect is specifically a *self*-contradiction: the reflexive-fix
+instruction and the rule it contradicts sit two paragraphs apart in one file, and pinning either alone
+would let the other drift back. Mutation-proved by restoring the old sentence.
+
 **The Critic then falsified the funding argument itself, which is the most useful thing it did.** The
 relocations treated the always-injected digests as free destinations. They are the *tightest*-budgeted
 surface in the framework: `session-digest.md` sits under a 10,000-char inline-context limit — above it
