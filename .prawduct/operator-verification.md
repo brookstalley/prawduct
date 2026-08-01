@@ -267,6 +267,46 @@ migration/repoint/retirement deferred to an owner-run session after design sign-
 >   `lib/backlog/migrate.py` reads through `legacy.parse_backlog`.
 > - **Drop-box NOT retired** — the MG5 leg stays gated by BKL-9XQ2.
 >
+> ### ROLLBACK (done-when #5 — MG1: rollback = close, never delete)
+>
+> **There is no undo. GitHub has no ordinary issue-delete and never reuses numbers**, so the 371
+> issues this created are permanent. "Rollback" means **neutralise**, not remove, and it has two
+> independent halves — do both or the repo is left in a worse state than either:
+>
+> 1. **Unset `backlog_service_repo` in `project-state.yaml`.** That alone restores the markdown as the
+>    live backlog, un-retires the markdown-premise advisory probes, and silences
+>    `backlog-checks-dormant`. It is a one-line revert and it is the *only* half that matters for
+>    getting the repo working again.
+> 2. **Close the migrated issues**, filtering on the `id:` alias namespace so the 9 pre-existing
+>    native issues are untouched — they predate the migration and are not ours to close. Closing is
+>    optional for correctness and required for tidiness; an abandoned open set on a public repo reads
+>    as a live backlog to anyone who finds it.
+>
+> **The markdown is still authoritative-as-of-migration, which is what makes this recoverable at all**
+> — it was never mutated by the import, so unsetting the scalar returns the repo to a working state
+> with a corpus that is stale by exactly the work done since. **What does NOT come back** is the 42
+> dispositions: they were applied on the tracker only, deliberately, so a rollback restores 24 items
+> the owner had merged away and 18 the owner had dropped. Re-applying them to the markdown by hand is
+> the cost of rolling back, and it is the reason to be sure before doing so.
+>
+> ### Done-when #3's "no duplicates on a re-run" — NOT verified, and verifying it is now destructive
+>
+> **Stated honestly rather than claimed.** The obvious check is to re-run the import and confirm the
+> alias-keyed skip path creates nothing. **That check cannot be run now without undoing this session's
+> work**: `migration-scrub.md` records that the skip path *still reconciles status*, so a re-run
+> re-syncs every already-migrated item to its **markdown** status — which would **reopen all 42 items
+> disposed after the import**. The acceptance check is destructive once dispositions are applied.
+>
+> What stands in its place, and why it is strong evidence for the same property: `verify-migration`
+> reported **0 `collisions` and 0 `duplicate_alias` across 371 aliased items**, and the skip authority
+> is the `id:PFX` label written atomically in the create, guarded by
+> `tests/test_backlog_migrate.py::TestArchiveScope::test_open_then_all_backfills_the_archive_without_duplicating`.
+> That is the mechanism the sub-clause is really about. **It is not the same as having re-run it**, and
+> this entry does not pretend otherwise.
+>
+> This sharpens the ordering defect filed as `#528`: the gate must run before disposals *and* the
+> re-run acceptance check must run before them too, which means both belong in one ordering fix.
+>
 > **Two residuals, neither a blocker, both recorded rather than discovered later:**
 >
 > 1. **`promoted` has no Issues-backend equivalent.** The adapter's status enum is

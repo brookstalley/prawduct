@@ -1,9 +1,24 @@
 # Backlog — prawduct
 
-<!-- Structured backlog (format v2). Managed via the /backlog skill.
-     Each item: an ID line + a backticked metadata bar + optional free-form body.
-     Sections: ## Open (pickable) · ## Promoted (in an active build plan) · ## Archive (shipped/dropped).
-     Items move between sections only via explicit `/backlog update` calls. -->
+<!-- FROZEN HISTORY as of 2026-08-01 — this file is NO LONGER THE BACKLOG.
+
+     prawduct cut over to the GitHub Issues backend in v3.2.0 Chunk 06
+     (`backlog_service_repo: brookstalley/prawduct` in project-state.yaml). All 371
+     items below were migrated, verified by `backlog verify-migration` at
+     source_items 371 = aliased 371 with every conflict list empty.
+
+     READ THIS FILE AS A SNAPSHOT OF THE MOMENT OF MIGRATION, NEVER AS LIVE STATE.
+     It is deliberately allowed to diverge from the tracker: the 42 owner-confirmed
+     dispositions were applied on the service afterwards and are NOT backported here,
+     so ~24 items still shown under `## Open` are merged or dropped on the tracker.
+     The section names below are historical labels, not current state — nothing here
+     is pickable.
+
+     Live backlog:   prawduct-hook backlog list --repo brookstalley/prawduct
+     Live item:      prawduct-hook backlog get <PFX-XXXX> --repo brookstalley/prawduct
+
+     Historical format note (format v2): each item is an ID line + a backticked
+     metadata bar + optional free-form body. -->
 
 ## Open
 

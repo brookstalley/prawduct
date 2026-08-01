@@ -351,7 +351,15 @@ views_enabled: true
 # field holds only the current in-progress plan (absent/empty -> the gates
 # fall back to artifacts/build-plan.md).
 
-active_build_plan: artifacts/build-plan-record-mechanization.md
+# Repointed 2026-08-01 (v3.2.0 Chunk 06). It read
+# `artifacts/build-plan-record-mechanization.md` while this branch built the
+# golive plan's Chunk 06 — so record-lint graded the wrong plan and reported
+# `chunk-ref-missing unchecked`, and the golive plan's own Context prose
+# ("active_build_plan now points here") was false. That is CRT-4V8P /
+# GOV-3K7M observed on this very branch: the pointer is single-slot
+# (BLD-7W2J), record-mechanization is legitimately still in progress, and
+# nothing checks that the pointer agrees with the plan under review.
+active_build_plan: artifacts/build-plan-v3.2.0-golive.md
 
 # =============================================================================
 # BUILD-PLAN REF ROOT (opt-in)

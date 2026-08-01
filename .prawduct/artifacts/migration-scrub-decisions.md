@@ -375,7 +375,7 @@ Each was checked against the tree today, not read off its own annotation.
 | **STH-6T9W** (untracked non-code files inflate the chunk-diff scope) | kernel-v3 deleted both scope sites and pinned them deleted; the **waiver-wedge is gone** (`files_reviewed` is code-derived). The item's own landing option **(c) WONTFIX** says so: *"a legitimate outcome now that the harm is 'run one extra review' rather than 'waiver or nothing'; the original waiver-training argument no longer applies."* Verified the milder residue survives (`is_judgeable_path('note.txt')` → True) — that is the harm the item itself rates as not worth fixing | **High** — the item names its own drop |
 | **CRT-9L2F** (post-release check that an explicit `/critic` mode is honored) | Written 2026-06-10 against a `$ARGUMENTS`-delivery hazard. The mechanism has since been redesigned twice: `SKILL.md` step 1 now says **"Forward, never parse"** into `prawduct-hook infer-critic-mode`, which owns the whole precedence and returns `explicit-args` as a rationale (`critic_mode.py:136`). The verification task names a release six versions stale | **Med-high** |
 | **GOV-8N4V** (a set `active_build_plan` reads as "no active build plan") | The heading-form facet was closed by BLD-5J8N's parser broadening. Checked the plan the item names: `build-plan-norm-lifecycle.md` carries `artifact: build-plan` frontmatter and a colon-form `## Status` roster, both of which today's parsers accept. No live repro remains | **Medium** — re-file if it recurs |
-| **TST-6H2Q** (xdist cross-file pollution flaking two stop-gate tests) | Not reproduced during its own 2026-07-19 salvage; the full suite ran green today (3141 passed, 7 skipped). Same disposition and same reasoning as **TST-4P8H**, which the 2026-07-18 set already drops for "no active flakes" | **Low-medium** — one green run is weak evidence; both named tests still exist, so a recurrence re-files cheaply |
+| **TST-6H2Q** (xdist cross-file pollution flaking two stop-gate tests) | Not reproduced during its own 2026-07-19 salvage; the full suite ran green today (re-derive the total; a hardcoded count here is what `suite-total-claim` exists to catch). Same disposition and same reasoning as **TST-4P8H**, which the 2026-07-18 set already drops for "no active flakes" | **Low-medium** — one green run is weak evidence; both named tests still exist, so a recurrence re-files cheaply |
 | **MET-9K4R** (workflow-values schema/validator) | **HELD for the owner, not proposed.** Verified still unvalidated — no code reads or checks `Branching:` / `PR creation:` / `PR merge:` vocabulary. Filed 2026-05-01 at `stage: design` with its own note "low priority — current values are stable," and no instance of the typo-silently-defaults failure has ever been observed. It is a *never-picked idea*, not an obsoleted item, so it belongs to **GOV-6D4Q**'s deletion-only pass rather than to a migration scrub | — |
 
 ### C. Merges and uplevels — 19 folds into 13 survivors
@@ -428,7 +428,7 @@ other four 2026-07-18 merges are unaffected and re-verified resolvable today.
 
 ### E. Net effect
 
-195 open → **153** (−21%): 18 already-approved-and-pending (5 merges + 13 drops, all re-verified
+195 open → **152** (−22%): 18 already-approved-and-pending (5 merges + 13 drops, all re-verified
 resolvable today by `tests/spikes/backlog_scrub_drift.py`), plus 19 new folds, 1 close, 4 drops. Minus
 the CRT-6J4P withdrawal in § D, which returns one item to the keep set.
 
