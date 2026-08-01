@@ -788,9 +788,10 @@ scheduling rather than machinery — and the gate is *not* "lift BKL-6J2X's hold
 decided and scheduled for retirement and is live only by silence. What is genuinely open, and
 currently unowned, is **which fleet migration gets proven end-to-end first**. Two unproven fleet
 paths must not be live at once.
+
 ## 2026-07-30: Test evidence counts tests, not a reporter's opinion of how many there are
 
-<!-- prawduct: type=fix | scope=junit-leaf-counting | release=unreleased | status=in-review -->
+<!-- prawduct: type=fix | scope=junit-leaf-counting | release=v3.2.3 | status=shipped -->
 
 **Why:** `test-evidence record` summed the `tests=` attribute of top-level `<testsuite>` elements.
 That attribute's meaning is reporter-specific, and the two live conventions cannot both be served by

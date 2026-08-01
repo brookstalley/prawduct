@@ -586,6 +586,9 @@ scope_rollups:
   hot-path-git-batching:
     chunks: ["01"]
     releases: ["v2.1.8"]
+  junit-leaf-counting:
+    chunks: []
+    releases: ["v3.2.3"]
   kernel-evidence-store:
     chunks: ["01", "02", "03", "04", "05", "06"]
     releases: ["v3.0.0"]
