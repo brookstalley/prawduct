@@ -3,6 +3,50 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-08-01: the migration runbook now verifies before it disposes, and tells the operator to mark the file it just killed
+
+<!-- prawduct: type=fix | scope=backlog-burndown | chunks=01 -->
+
+Two defects prawduct found by running its own cutover and then fixed only for itself. The fleet still
+shipped both. `#528` and `#530`.
+
+**The gate ran after the disposals, and would have failed a correct migration.** `verify-migration`
+compares each covered item's decoded status against the **source markdown**, so folding a duplicate
+whose source status is `open` reports as `status_mismatch` — exit 4 naming items in exactly the state
+the owner approved. The runbook's ordering (import → fold → close → verify) therefore turned the
+scrub's own owner-confirmed decisions into false migration failures. On prawduct's run, 24 merges
+would each have registered a mismatch.
+
+The fix is not just a swap. The import step now says the dispositions do **not** run there and why;
+the disposals become their own step after the cutover; and that step carries the hazard the reordering
+creates — **do not re-run the import or the gate afterwards.** The import reconciles the status axis of
+already-migrated items against the source markdown, so a reflexive "let me just re-run it to be safe"
+reopens every item the owner disposed, and the gate reports each disposal as a mismatch. Both tools
+answer honestly about a question that stopped being the right one at the cutover.
+
+**The cutover left the source file declaring it was alive.** Setting `backlog_service_repo` changes
+what the *tooling* reads and nothing a human sees: `.prawduct/backlog.md` still carried a "managed via
+the backlog skill" header over a `## Open (pickable)` section. The runbook now instructs the banner,
+with the two constraints that were learned by writing prawduct's own by hand — it must be a
+**blockquote**, because an HTML comment is invisible in GitHub's rendered view and a reader sees a
+heading and a list of open items with no signal at all; and it must say that divergence from the
+tracker is **expected**, since the dispositions are never backported.
+
+**The unwind clause ships with the banner, because the banner breaks the old one.** Adding it mutates a
+file the rollback path assumed was untouched, so unwinding now takes all three halves — unset the
+scalar, close the migrated issues on the `id:` alias namespace (never delete; GitHub does not reuse
+numbers), *and* revert the banner. Skip the third and the restored live backlog announces that it is
+frozen and redirects to a tracker that was just closed.
+
+**Two items closed with no code.** `#233` (run the live prawduct migration) had all three acceptance
+criteria met by the Chunk 06 cutover; `#352`, the backlog-service umbrella, stated its own closing
+condition as *"closes when the backlog-service slice ships"*, and it shipped. Neither was abandoned —
+both were satisfied and left open.
+
+**New cross-references are anchored to step *names*, not numbers.** `#178` records that this file's
+step references have gone stale before and that renumbering them is the wrong fix. Adding a step here
+would have re-created that defect; the existing number-anchored references are `#178`'s to fix.
+
 ## 2026-08-01: prawduct's backlog is on GitHub Issues — 371 items, 0 stranded, and the tripwire that fired at the cutover was re-aimed rather than silenced
 
 <!-- prawduct: type=feature | scope=v3.2.0-golive | chunks=06 | release=v3.2.3 | status=shipped -->
