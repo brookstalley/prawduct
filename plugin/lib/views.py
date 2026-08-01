@@ -556,8 +556,18 @@ def _declares_non_build_plan_artifact(content: str) -> bool:
     with a frontmatter ``scope:`` as a build plan. That is detection by surface
     marker rather than by declared type, and several files in this repo already
     carry a scope while being a design note, a discovery, a reference, a
-    release plan or a collapse map (enumerate rather than trust a digit:
-    ``grep -l '^scope:' .prawduct/artifacts/*.md | xargs grep -L '^artifact: build-plan'``). They were invisible only because none
+    release plan or a collapse map. Enumerate rather than trust a digit::
+
+        grep -l '^scope:' .prawduct/artifacts/*.md \
+          | xargs grep -l '^artifact:' \
+          | xargs grep -L '^artifact: build-plan'
+
+    The middle stage is load-bearing, and omitting it was this docstring's own
+    first mistake: ``grep -L`` alone cannot distinguish "declares another type"
+    from "declares NO type" — precisely the distinction this predicate draws —
+    so it wrongly returns ``build-plan-release-readiness.md`` (a real plan, the
+    counter-example named below) and a file whose ``scope:`` sits inside an
+    HTML comment and never parses. They were invisible only because none
     happened to share a scope VALUE with a real plan; the first one that did
     (`collapse-map-learnings-firing.md`, 2026-08-01) made
     ``diagnose_scope_plan_coverage`` fatal and stopped ``regen-views`` writing

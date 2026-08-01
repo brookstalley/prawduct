@@ -80,7 +80,7 @@ plan. It collided with the real plan, the duplicate-scope diagnostic went fatal,
 `regen-views` wrote **no views for any scope** — the mechanism release time depends on to stamp
 chunks shipped. Detection by surface marker rather than declared type: several files in this repo
 already carry a `scope:` while being a design note, discovery, reference, release plan or
-collapse map (`grep -l '^scope:' .prawduct/artifacts/*.md | xargs grep -L '^artifact: build-plan'`), and they were invisible only because none had yet shared a scope VALUE with a plan.
+collapse map (`grep -l '^scope:' .prawduct/artifacts/*.md | xargs grep -l '^artifact:' | xargs grep -L '^artifact: build-plan'`), and they were invisible only because none had yet shared a scope VALUE with a plan.
 
 Both collectors now exclude a file that declares an `artifact:` type other than `build-plan`,
 and they read `scope:` and `artifact:` through **one** frontmatter walker rather than two that
