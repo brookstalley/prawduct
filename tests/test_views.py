@@ -2767,8 +2767,9 @@ class TestScopeCollectorsAgainstTheRealArtifactsDirectory:
     That is the corpus rule *a fixture's world is narrower than the requirement
     it certifies* (the COMMON instance narrowing the requirement to itself),
     and the fix for it is not a better tmp fixture — it is one test that runs
-    the real collectors over the real directory, which has 87 artifacts of 15
-    declared types rather than the two a fixture author thinks to write.
+    the real collectors over the real directory, which holds every artifact
+    type this repo has ever produced rather than the two a fixture author
+    thinks to write.
 
     Skipped when `.prawduct/artifacts/` is absent so the plugin's own suite
     still runs from a checkout without product state.
@@ -2822,3 +2823,83 @@ class TestScopeCollectorsAgainstTheRealArtifactsDirectory:
             "scope-tagged build plan(s) dropped from the scope map, so "
             "regen-views will never regenerate them: " + ", ".join(missing)
         )
+
+
+class TestDeclaresNonBuildPlanArtifact:
+    """Direct cases for the plan/not-a-plan predicate.
+
+    `TestScopeCollectorsAgainstTheRealArtifactsDirectory` exercises this against
+    the live tree, but only ACCIDENTALLY pins the fail-safe half: "an absent
+    `artifact:` key still reads as a build plan" holds there solely because
+    `build-plan-release-readiness.md` happens to omit the key today. Adding it
+    — ordinary hygiene, and a reviewer would wave it through — silently unpins
+    the property, and a later tightening to a strict `artifact: build-plan`
+    requirement would then go GREEN while dropping real plans from regen-views.
+
+    A fixture whose coverage depends on a fact nobody is guarding is the
+    corpus's "a fixture's world is narrower than the requirement it certifies"
+    one level up: the world is right today and nothing holds it there.
+    """
+
+    def _fm(self, body: str) -> str:
+        return f"---\n{body}\n---\n\n# Title\n"
+
+    def test_absent_artifact_key_reads_as_a_build_plan(self):
+        # The fail-safe direction. Excluding a real plan is the worse error:
+        # its scope regenerates nothing, and nothing says so.
+        assert not views._declares_non_build_plan_artifact(
+            self._fm("scope: some-scope")
+        )
+
+    def test_explicit_build_plan_type_reads_as_a_build_plan(self):
+        assert not views._declares_non_build_plan_artifact(
+            self._fm("artifact: build-plan\nscope: some-scope")
+        )
+
+    def test_another_declared_type_is_excluded(self):
+        for kind in ("collapse-map", "design", "design-note", "discovery",
+                     "reference", "release-plan"):
+            assert views._declares_non_build_plan_artifact(
+                self._fm(f"artifact: {kind}\nscope: some-scope")
+            ), f"artifact: {kind} should not be treated as a build plan"
+
+    def test_empty_artifact_value_reads_as_a_build_plan(self):
+        # Mirrors the `scope:` parser's opt-out reading: a present-but-empty
+        # key is not a declaration of some OTHER type, so it must not exclude.
+        assert not views._declares_non_build_plan_artifact(
+            self._fm("artifact:\nscope: some-scope")
+        )
+
+    def test_a_nested_artifact_key_is_not_a_declaration(self):
+        # `governed_by:` blocks in this repo's plans contain indented
+        # `- artifact: architecture` lines. Reading those as the file's own
+        # type would exclude most build plans in the repo — the highest-stakes
+        # case here.
+        #
+        # Honest note on what enforces it: the explicit indent skip in
+        # `_declares_non_build_plan_artifact` is REDUNDANT. `startswith` runs
+        # on the un-lstripped line, so `  - artifact: …` and `\tartifact: …`
+        # are already rejected; deleting the skip leaves this green. The skip
+        # is kept only for symmetry with `_parse_build_plan_frontmatter_scope`,
+        # where it is equally redundant — the two readers should look identical
+        # so a future edit to one is obviously owed to the other.
+        #
+        # This test pins the PROPERTY (a nested key is not a declaration),
+        # which is worth pinning however many mechanisms enforce it. It does
+        # not prove the skip line, and a mutation of that line will not turn it
+        # red — recorded because a test whose stated subject and actual subject
+        # differ is how a guard silently stops guarding.
+        assert not views._declares_non_build_plan_artifact(
+            self._fm("scope: some-scope\ngoverned_by:\n  - artifact: architecture")
+        )
+
+    def test_quoted_and_commented_values_are_handled(self):
+        assert views._declares_non_build_plan_artifact(
+            self._fm('artifact: "collapse-map"  # a map, not a plan\nscope: s')
+        )
+        assert not views._declares_non_build_plan_artifact(
+            self._fm("artifact: 'build-plan'\nscope: s")
+        )
+
+    def test_no_frontmatter_reads_as_a_build_plan(self):
+        assert not views._declares_non_build_plan_artifact("# Just a title\n")

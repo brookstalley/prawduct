@@ -78,9 +78,9 @@ artifact declares `scope: learnings-firing` in frontmatter, and `views.build_sco
 `diagnose_scope_plan_coverage` treated **any** scope-tagged file under `artifacts/` as a build
 plan. It collided with the real plan, the duplicate-scope diagnostic went fatal, and
 `regen-views` wrote **no views for any scope** — the mechanism release time depends on to stamp
-chunks shipped. Detection by surface marker rather than declared type: ten files in this repo
+chunks shipped. Detection by surface marker rather than declared type: several files in this repo
 already carry a `scope:` while being a design note, discovery, reference, release plan or
-collapse map, and they were invisible only because none had yet shared a scope VALUE with a plan.
+collapse map (`grep -l '^scope:' .prawduct/artifacts/*.md | xargs grep -L '^artifact: build-plan'`), and they were invisible only because none had yet shared a scope VALUE with a plan.
 
 Both collectors now exclude a file that declares an `artifact:` type other than `build-plan`,
 and they read `scope:` and `artifact:` through **one** frontmatter walker rather than two that
@@ -90,7 +90,7 @@ Net effect on output: none — `regen-views` reports every view up to date; thre
 mapping (a design doc and two release plans) and no change-log entry references any of them.
 
 The suite was green throughout because every scope test builds a two-file tmp `artifacts/`; none
-ran the collectors over the real directory of 87 artifacts in 15 declared types. That gap is now
+ran the collectors over the real artifacts directory. That gap is now
 a test, mutation-proved in both directions — removing the filter reproduces the outage, and
 making it strict drops the plan that declares no type.
 

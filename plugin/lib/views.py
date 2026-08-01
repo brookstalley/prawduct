@@ -554,9 +554,10 @@ def _declares_non_build_plan_artifact(content: str) -> bool:
 
     Both scope collectors below glob ``artifacts/*.md`` and treated ANY file
     with a frontmatter ``scope:`` as a build plan. That is detection by surface
-    marker rather than by declared type, and ten files in this repo already
+    marker rather than by declared type, and several files in this repo already
     carry a scope while being a design note, a discovery, a reference, a
-    release plan or a collapse map. They were invisible only because none
+    release plan or a collapse map (enumerate rather than trust a digit:
+    ``grep -l '^scope:' .prawduct/artifacts/*.md | xargs grep -L '^artifact: build-plan'``). They were invisible only because none
     happened to share a scope VALUE with a real plan; the first one that did
     (`collapse-map-learnings-firing.md`, 2026-08-01) made
     ``diagnose_scope_plan_coverage`` fatal and stopped ``regen-views`` writing
@@ -586,9 +587,16 @@ def build_scope_to_plan_map(artifacts_dir: Path) -> dict[str, Path]:
 
     Scans ``artifacts_dir/*.md`` and records ``{scope_value: path}`` for every
     file whose YAML frontmatter declares a non-empty ``scope:`` (parsed by
-    :func:`_parse_build_plan_frontmatter_scope`). This is the scope→FILE
-    resolver that lets ``regen-views`` regenerate every release-pending plan in
-    one pass instead of via the single ``active_build_plan`` pointer (REL-4T8N).
+    :func:`_parse_build_plan_frontmatter_scope`) **and does not declare an
+    ``artifact:`` type other than ``build-plan``** (see
+    :func:`_declares_non_build_plan_artifact` — a design note, discovery,
+    reference, release plan or collapse map may legitimately carry a scope and
+    is not a plan to regenerate). Both keys are stated here, not only in the
+    private helper, because the question a reader arrives with is "why won't my
+    scope regenerate?" and the answer is now two keys rather than one. This is
+    the scope→FILE resolver that lets ``regen-views`` regenerate every
+    release-pending plan in one pass instead of via the single
+    ``active_build_plan`` pointer (REL-4T8N).
 
     On a duplicate scope across two files, the first by sorted filename wins
     (deterministic; a duplicate scope is malformed — surfaced separately by
@@ -667,6 +675,14 @@ def diagnose_scope_plan_coverage(
       frontmatter convention, so the absence is expected, not an error.
     * Two ``artifacts/*.md`` files declaring the same ``scope:`` — ambiguous; the
       map keeps the first by sorted filename.
+
+    **Both cases apply only to files this module considers build plans**, i.e.
+    those NOT declaring an ``artifact:`` type other than ``build-plan``
+    (:func:`_declares_non_build_plan_artifact`). This filter must stay identical
+    to :func:`build_scope_to_plan_map`'s or the diagnostic condemns a file the
+    map never considered — which is exactly what happened on 2026-08-01, when a
+    scope-tagged collapse-map artifact made this function fatal and stopped
+    ``regen-views`` writing views for EVERY scope.
 
     Returns ``[]`` when coverage is clean.
     """
