@@ -100,8 +100,11 @@ record and the two sub-clauses that were deliberately left unverified. **This is
 paragraph has drifted from the chunk bodies it summarizes** — the 2026-07-28 correction directly above
 records the first. A failure that repeats after being named once is evidence the hand-curated summary
 is the wrong mechanism, not that the author was careless twice. Chunk 01 is still undrained but is no
-longer what comes next: the v3.2.3 release ceremony is, with Chunk 07 (verification-only per its
-scoping audit) and Chunk 08 (upstream filing) sequenced behind it.
+longer what comes next: the v3.2.3 release ceremony is, with Chunk 07 and Chunk 08 (upstream filing)
+sequenced behind it. **Chunk 07 is *probably* verification-only** — its scoping audit found all four
+original done-whens already satisfied but says "very likely" and "confirm before building," and that
+hedge is load-bearing, so it is repeated here rather than flattened. (Its done-when #5, the advisory
+lift, is separately **struck** — see the Chunk 07 body.)
 
 **Release scope narrowed 2026-07-28 (owner decision).** v3.2.0 stops after **Chunk 06**. Chunks 07
 (advisory lift) and 08 (upstream filing) *add* governed surface and are deferred behind a
@@ -537,7 +540,10 @@ Step 6 refuses to take on trust. The `WARNING: N item(s) imported but NOT reconc
 **absent**, so every status reconcile landed on the first pass. `backlog_service_repo:
 brookstalley/prawduct` is recorded and `.prawduct/backlog.md` is frozen history from here. 42
 owner-confirmed dispositions then applied 42-of-42 clean, leaving the tracker at **155 open / 149
-shipped / 67 dropped** (plus 9 pre-existing natives). Recorded as **VRF-006** with a three-step
+shipped / 67 dropped**, which is VRF-006's settled identity `155 + 149 + 67 = 371` — the imported set
+exactly. *(An earlier draft of this line added "plus 9 pre-existing natives." Dropped: it is unsourced,
+appears in no settled-facts block, and sits in tension with an identity that already accounts for all
+371.)* Recorded as **VRF-006** with a three-step
 rollback note — rollback means *neutralise*, not undo, because GitHub has no issue-delete.
 
 **Two sub-clauses are explicitly NOT verified, recorded rather than claimed.** Done-when 3's "no
@@ -699,7 +705,28 @@ error vocab (`filing-disabled`, `target-not-pinned`, `self-file`, `approval-mism
 
 ### Chunk 09: Release mechanics — bump · change-log · regen · tag
 
-**Goal:** Ship v3.2.0. The version bump *is* the release trigger.
+**Goal:** ~~Ship v3.2.0. The version bump *is* the release trigger.~~ **Ship the release that carries
+Chunk 06 — which is v3.2.3, not v3.2.0.**
+
+> **SUPERSEDED 2026-08-01 — read before executing any step below.** This chunk was written when v3.2.0
+> was the release that would carry Chunk 06. It is not. **v3.2.0, v3.2.1 and v3.2.2 have all shipped**
+> (`git tag --list` confirms all three); they carried Chunks 01–05c, and every `scope=v3.2.0-golive`
+> change-log entry *except Chunk 06's two* already reads `release=v3.2.0 | status=shipped`. Chunk 06
+> landed after v3.2.0 and is release-pending.
+>
+> **Executing the done-whens below as written would do real damage.** Step 1 would bump `3.2.2`
+> *backwards* to `3.2.0`; step 2 would stamp Chunk 06's entries into an already-published release,
+> mis-deriving both the § Status view and `scope_rollups`; step 4 would fail outright on the existing
+> `v3.2.0` tag.
+>
+> **What governs the real ceremony:** `.prawduct/runbooks/cut-and-publish-a-plugin-release.md`
+> (Phases 0–2) plus `artifacts/release-plan-v3.2.3.md` (classification table, version decision, recorded
+> departures). The steps below are retained as the **record of what the v3.2.0 ceremony was specified to
+> do**, not as instructions — every version literal in them is historical.
+>
+> **Two items carry forward unchanged**, being release-shape-independent: item 6 (the post-tag VRF-002 /
+> VRF-003 pair) and item 7 (the **OWNER RELEASE GATE** — nothing reaches `main` until the owner has
+> exercised the candidate in sibling repos via `--plugin-dir`). Both bind on v3.2.3.
 
 **Covers:** ship-list items 13–17.
 **Depends on:** Chunks 01–07 + 05b *(re-cut twice on 2026-07-28: "01–08" → "01–06 + 05b" at the
@@ -707,7 +734,8 @@ narrowing, then → "01–07 + 05b" when the hard-cutover ruling returned Chunk 
 depending on it would make Chunk 09 permanently unsatisfiable.)*
 **Type:** code (version + change-log) + release ceremony
 
-**Done when:**
+**Done when:** *(historical — the v3.2.0 ceremony's specification, superseded above. The version
+literals below are a record, not instructions; items 6–7 carry forward.)*
 1. Bump `VERSION` + `.claude-plugin/plugin.json` → 3.2.0 (A2). **Both files** — note they live under
    `plugin/` (`plugin/VERSION`, `plugin/.claude-plugin/plugin.json`), not at the repo root.
 2. Flip **every** unreleased change-log entry to `status=shipped` + `release=v3.2.0` — enumerate, don't
