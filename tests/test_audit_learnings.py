@@ -1045,6 +1045,40 @@ class TestSupersessionRetirement:
         )
         assert not (tmp_path / ".prawduct" / "learnings-detail.md").exists()
 
+    def test_a_failed_write_leaves_a_duplicate_not_a_hole(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ):
+        """The two writes are not atomic, so they are ordered by blast radius.
+
+        Composing both files first removes logic errors from the window; it
+        cannot remove I/O failure. What ordering buys is DIRECTION: the archive
+        is written first, so a failure on the second write leaves the entry in
+        both files — visible, and reconciled by a re-run — instead of removing
+        it from the active file and filing it nowhere.
+        """
+        learnings = _seed_learnings(tmp_path, self.CORPUS)
+        before = learnings.read_text()
+        real_write = Path.write_text
+
+        def _fail_on_learnings(self, *a, **k):
+            if self.name == "learnings.md":
+                raise OSError("disk full")
+            return real_write(self, *a, **k)
+
+        monkeypatch.setattr(Path, "write_text", _fail_on_learnings)
+        with pytest.raises(OSError):
+            audit_learnings(tmp_path, apply=True, today=date(2026, 7, 31))
+        monkeypatch.undo()
+
+        # Active file untouched — the rule is still there...
+        assert learnings.read_text() == before
+        # ...and the archive already has it. A duplicate, which a re-run fixes.
+        detail = (tmp_path / ".prawduct" / "learnings-detail.md").read_text()
+        assert "## Narrow rule about fixtures" in detail, (
+            "the archive write did not happen first — a failure here would have "
+            "deleted the entry from learnings.md and filed it nowhere"
+        )
+
     def test_duplicate_headings_do_not_cross_assign_retirement_notes(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ):

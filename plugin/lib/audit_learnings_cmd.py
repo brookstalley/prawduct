@@ -642,15 +642,24 @@ def _apply_retirements(
     detail_path = learnings_path.parent / "learnings-detail.md"
     detail_content = _detail_with_retirements(detail_path, retired_with_notes)
 
-    # BOTH files are composed before EITHER is written. `learnings.md` used to
-    # be written first, so any failure composing the detail content — and there
-    # was one: a guard that tested substring while its locator tested equality,
-    # raising StopIteration on a decorated heading — deleted the entries from
-    # the active file and never filed them. Retirement is a MOVE, and a move
-    # that can half-happen is data loss. Two writes cannot be atomic across two
-    # files, but composing first removes every logic error from the window.
-    learnings_path.write_text(new_content)
+    # BOTH files are composed before EITHER is written, and the ARCHIVE is
+    # written before the active file. Retirement is a MOVE, and a move that can
+    # half-happen is data loss — so the two-line window that remains is aimed
+    # at the recoverable failure.
+    #
+    # Composing first removes every logic error from the window. There was one:
+    # a guard that tested substring while its locator tested equality, raising
+    # StopIteration on a decorated heading, after `learnings.md` had already
+    # been rewritten — entries gone from the active file and filed nowhere.
+    #
+    # Ordering handles the I/O half, which composition cannot. Two writes across
+    # two files are not atomic, but they have a DIRECTION: detail-then-learnings
+    # fails toward a duplicate (the entry is in both files — visible, and a
+    # re-run reconciles it), while learnings-then-detail fails toward deletion.
+    # Same probability, opposite blast radius, and Chunk 03's bulk `--apply` is
+    # the first caller.
     detail_path.write_text(detail_content)
+    learnings_path.write_text(new_content)
 
 
 def _find_historical_section(lines: list[str]) -> int | None:

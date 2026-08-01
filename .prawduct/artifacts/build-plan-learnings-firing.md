@@ -16,6 +16,7 @@ governed_by:
       - "Python-implemented, never Python-specific → conforms, with one thing to watch. Nothing here inspects product code, so no per-file language dispatch is owed. The one Python-shaped surface is `sentinel=`, which names a pytest id — pre-existing, untouched by this plan, and the reason supersession is worth having: a rule retired because a broader rule replaced it needs no test runner at all, so `superseded-by=` is the language-agnostic retirement route the corpus previously lacked."
       - "prawduct guides and reviews, never implements → conforms — the delivery lines pose a question to the builder; none of them inspect or edit product code."
       - "goals and verification bind, prescribed method is advice → conforms, and this plan is the norm's own evidence base. Chunk 01(b) departed from its specced call site and Chunk 02 from two of its stated deliverables; each departure is recorded at the chunk with the reason, and every acceptance criterion was met unchanged. Born 2026-07-31 from this session, so the plan predates the norm — the departures were recorded before it existed, which is what suggested it."
+      - "one home per fact; every other mention is a reference (born 2026-07-31) → conforms, and this plan is where the norm's evidence came from — 9 of 23 findings in its own cumulative review were one fact copied and drifting. Two duplications it introduced are now collapsed: the restamp claim (four copies, all corrected instead of reduced to one — recorded as the wrong repair) and the descent clause's binding status, whose home is the Problem section and whose change-log mention now references it. The `superseded-by=` forwarding pointer is a deliberate second copy of a heading and is the norm's edge case: it is a reference by intent, and Chunk 03(b) records the sequencing constraint that keeps it resolvable"
   - artifact: observability-strategy
     dispositions:
       - "stable severity-prefix vocabulary, stdout/stderr channel split → conforms — delivery lines ride stdout beside the confirmation they annotate, exactly as `_BATCH_FIX_DIRECTIVE` already does. `RESOLUTION_IS_A_CLAIM_DIRECTIVE` carries the `PRAWDUCT:` prefix; `_GREEN_IS_EVIDENCE_DIRECTIVE` does not, because it is appended to a `recorded:` line that already identifies itself."
@@ -87,8 +88,15 @@ Two consequences, both ratified by the owner on 2026-07-31 and binding on the ch
 
 1. **Every rule this plan delivers carries its descent** — the general statement, then the act to
    perform, then instances concrete enough to pattern-match against, then (for code-delivered
-   directives only) an explicit instruction to apply it to the case in hand, aimed at the case
-   the reader is *surest* about, which is the one a general rule never reaches.
+   directives only) an explicit instruction to apply it to the case in hand.
+
+   What *binds* is that structure, and it is what the guard asserts: an imperative present, and
+   the text pointing at the reader's current decision. Aiming the last clause at the case the
+   reader feels **surest** about — on the reasoning that it is the one a general rule never
+   reaches — is authorial intent, deliberately left unpinned. A test that froze the wording would
+   fail every improvement to the sentence and pass any defect that kept the words, which is
+   `learnings.md`'s "assert the PROPERTY, not one spelling of it". The change-log entry states it
+   the same way; if these two ever diverge again, this line is the home.
 2. **The collapse merges statements and unions instances** — see Chunk 03(b). Rule *count* is
    what competes for attention at read time; discriminating detail is not, and is not what the
    corpus needs less of.
