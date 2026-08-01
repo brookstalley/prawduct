@@ -823,8 +823,12 @@ wall clock actually spent.
 
 **The fallback is the load-bearing part of the change, and it is chosen per suite.** Some CI
 aggregators emit suite attributes with no `<testcase>` children, and recording a confident `0` for
-them would be a worse bug than the one being fixed — so a suite with no leaves of its own falls back
-to its attributes. **Deciding that once for the whole ingest was the first cut, and it was a
+them would be a worse bug than the one being fixed — so a **top-level** suite with no leaves anywhere
+beneath it falls back to its attributes. The boundary really is top-level: a summary-only suite
+*nested inside* a leaf-bearing one still contributes zero. That is an accepted limit rather than an
+oversight — no runner in evidence emits that shape, and the code comment names the granularity — but
+it is the same class of gap one level down, so it is recorded here rather than left to be
+rediscovered. **Deciding that once for the whole ingest was the first cut, and it was a
 gate-soundness bug the Critic caught before merge:** with a global switch, any leaf anywhere made
 every summary-only suite contribute zero, including its failures. Because `failed` drives both this
 command's exit status and `tests_are_current` in `lib/gates.py`, that is a false *green* — strictly
