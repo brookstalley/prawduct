@@ -21,12 +21,14 @@ restate; product repos receive the full digest (`methodology/session-digest.md`)
 - **Forward notes go in `.prawduct/.handoff-notes.md`** — yours to write (as is
   `.session-reflected`), at chunk close ("nothing beyond the plan" if true, but write the line, not no file).
   **Never ask whether to prepare one — prepare it, then signal.**
-- **Close with the standing block** — three short lines, last, after every other word, on any turn
-  that ends a chunk or work cycle *or* that you end with work outstanding: **State** (done /
-  blocked / waiting; committed or not; suite green or not), **Next** (the ONE next action and whose
-  it is), **Clear** (*"Safe to `/clear`."* or *"Not safe to `/clear` yet — [what has to happen
-  first]."*). Omitting, burying and padding it fail identically — people read the bottom and
-  nothing else. **Outstanding includes work in flight**: a dispatched review, a running PR reviewer
+- **Close with the standing block** — last, after every other word, on any turn that ends a chunk
+  or work cycle *or* that you end with work outstanding. Three **separate paragraphs**, blank line
+  between, labels backticked so they render as coloured tokens:
+  `` `STATE` `` (done / blocked / waiting; committed or not; suite green or not) ·
+  `` `NEXT` `` (the ONE next action and whose it is) ·
+  `` `CLEAR` `` (*Safe to `/clear`.* — or — *Not safe to `/clear` yet: [what has to happen first]*).
+  Omitting, burying, padding, and collapsing it onto one line fail identically — people read the
+  bottom and nothing else, and three answers run together stop being separately findable. **Outstanding includes work in flight**: a dispatched review, a running PR reviewer
   or any unread background agent takes the second line — a coordinator Critic review hands your
   turn back *before* its three reviewers finish. Full rule: `/prawduct:methodology reflection`.
   **Read it before rewriting it; reconcile, never blind-append**: only `/clear` consumes that file, so a second batch finds the first's notes still there — drop what the work discharged, correct what moved, keep what still bites, and never stack a new section on top.

@@ -934,41 +934,46 @@ class TestResolutionIsAClaimDirective:
         assert _reviewer_can_run("git show")
         assert _reviewer_can_run("git diff --stat")
 
-    def test_the_general_rule_is_followed_by_its_descent(self):
-        """The upleveling failure mode this whole plan exists for.
+    def test_the_directive_descends_rather_than_only_stating_a_rule(self):
+        """Structure, not wording.
 
-        A rule stated only in its general form is agreed with and not applied:
-        the reader accepts "a resolution is a claim" and writes the same
-        unchecked `fixed`, because nothing made it recognize THIS disposition
-        as an instance. So the general sentence must be followed by the act to
-        perform, instances concrete enough to pattern-match against, and an
-        instruction to spend it on the case in hand — and that last one must
-        aim at the finding the reader is SUREST about, which is precisely the
-        one a general rule never reaches.
+        An upleveled rule is agreed with and not applied unless it also carries
+        the descent: the act to perform, and instances concrete enough to
+        pattern-match against. That is a property of the text's SHAPE, and it
+        is what this asserts.
+
+        An earlier cut asserted four exact phrases — "surest about", "actually
+        in front of you", "name the evidence you read". Those had no mechanism
+        behind them; they froze wording chosen an hour earlier and would fail
+        for every improvement to the sentence while passing for any defect that
+        kept the words. `learnings.md` already carries the rule ("assert the
+        PROPERTY, not one spelling of it"), and it did not fire — in the
+        changeset whose thesis is that stored rules do not fire. Deleted rather
+        than elaborated.
         """
         d = cc.RESOLUTION_IS_A_CLAIM_DIRECTIVE
-        # The act, not the virtue: an imperative naming what to produce.
-        assert "name the evidence you read" in d, (
-            "the directive states the rule but no longer tells the reader what "
-            "to DO with a specific finding"
+        # An imperative: the reader is told to produce something, not to feel
+        # something. Any of these verbs satisfies it; the point is that one is
+        # present, not which.
+        assert any(verb in d for verb in ("name ", "say ", "state ", "run ")), (
+            "the directive states a rule but never tells the reader what to DO "
+            "with a specific finding — agreement is not application"
         )
-        # Instances, in the reader's own vocabulary.
-        assert "a diff read instead of the file it changed" in d
-        assert "second site is in a file this delta does not touch" in d
-        # And the descent instruction, which has two halves. Both are pinned:
-        # a mutation that kept "surest about" while rewriting the target to
-        # "resolutions in general" survived an earlier version of this test —
-        # which is the generality failure itself, sitting inside the clause
-        # written to prevent it.
-        assert "surest about" in d, (
-            "the descent clause no longer aims at the case the reader is surest "
-            "about. That is the one a general rule never reaches; aiming at the "
-            "doubtful case reaches only readers who already knew to check."
-        )
-        assert "actually in front of you" in d, (
-            "the descent clause no longer names THIS decision as its target. A "
-            "clause that exhorts about the rule in general is the inertness it "
-            "was written to fix — agreement is not application."
+        # NOT asserting "it carries concrete instances." The draft of this test
+        # tried `d.count(", and ") >= 2`, which is a conjunction count, not an
+        # instance count — it passes for any prose with two `and`s and fails for
+        # a rewrite that uses semicolons. Substituting a fragile proxy for a
+        # property you cannot express is the same defect as pinning a spelling,
+        # so the claim is left to review rather than faked in CI.
+        #
+        # It must point at the case in hand rather than the rule in
+        # general. Detected as a second-person present-tense reference to the
+        # reader's own situation, which is what distinguishes descent from
+        # exhortation.
+        assert "you" in d and ("this " in d or " in front of " in d), (
+            "the directive no longer aims at the decision the reader is making "
+            "right now, which is the whole difference between a rule that "
+            "fires and one that is agreed with"
         )
 
     def test_delivery_is_upstream_of_the_claim(self):

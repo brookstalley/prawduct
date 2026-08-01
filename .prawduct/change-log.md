@@ -14,7 +14,12 @@ the whole rest of the context by the time the claim gets written.
 
 **Chunk 01 moves two rules from storage to code-delivery.** (a) *Green is evidence only about
 what could have made it red*, printed at `test-evidence record` when the merged record shows
-judged code changed — silent on a restamp or a docs-only cycle. (b) *A resolution is a claim
+judged code changed — silent on a docs-only cycle, and on any run that touched no source. (Not
+on a restamp: `--no-rerun` re-runs the F4a overlay, which repopulates the field against the
+current tree, so a restamp with judged changes in the diff fires. Four records said otherwise
+and were corrected in the same review round that found it.) Known limitation, recorded at the
+constant: `changes_referenced` is populated by Python-symbol matching, so the line never fires
+in a Swift/Rust/C#/TypeScript product. (b) *A resolution is a claim
 about the tree*, printed at `critic-begin --mode verify-resolutions`.
 
 **(b)'s print site is a correction to its own spec, and the reason generalizes.** The plan put

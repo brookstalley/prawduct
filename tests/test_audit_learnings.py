@@ -1,6 +1,6 @@
 """Tests for `lib/audit_learnings_cmd.py` and the `bin/prawduct-hook audit-learnings` CLI.
 
-Covers the F9 learnings lifecycle sentinel tracker: metadata parsing,
+Covers the F9 learnings lifecycle tracker: metadata parsing,
 file segmentation, audit classification (promotion / retirement / stale /
 error), and the `--apply` retirement file mutation. Sentinel subprocess
 invocation is gated via ``run_sentinels=False`` so the test suite stays
@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import os
 import subprocess
 from datetime import date
 from pathlib import Path
@@ -681,6 +682,52 @@ class TestSupersessionResolution:
         assert resolved is None
         assert "is empty" in err
 
+    def test_the_empty_case_is_reachable_from_a_real_corpus(self, tmp_path: Path):
+        """The branch above was unreachable from production and this test could
+        not tell.
+
+        `parse_learning_metadata` strips the value, so `superseded-by=` yields
+        `""`, which the audit loop's truthiness guards treated as absent — the
+        entry fell through to "active, no lifecycle metadata" with no error, no
+        retirement record, and no CLI line, while `skills/doctor/SKILL.md`, the
+        plan, and the helper all said empty errors. Calling `_resolve('   ')`
+        directly passed the whole time, on an input shape the parser cannot
+        emit: a fixture that cannot reach the subject. Drive it through
+        `audit_learnings` so the guard and the promise are the same claim.
+        """
+        learnings = _seed_learnings(
+            tmp_path,
+            "# Learnings\n\n"
+            "## Half-finished pointer\n"
+            "<!-- prawduct-learning: superseded-by= -->\n\n"
+            "Body.\n",
+        )
+        before = learnings.read_text()
+        result = audit_learnings(tmp_path, apply=True, today=date(2026, 7, 31))
+
+        assert len(result["errors"]) == 1, (
+            "an empty `superseded-by=` produced no diagnostic — the author who "
+            "wrote half a pointer mid-consolidation reads the silence as "
+            "'active, no lifecycle metadata'"
+        )
+        assert "is empty" in result["errors"][0]["error"]
+        assert result["retirements"][0]["applied"] is False
+        assert learnings.read_text() == before
+
+    def test_whitespace_only_prefix_is_reachable_too(self, tmp_path: Path):
+        # `superseded-by=   ` strips to "" identically; pinned separately so a
+        # future guard that tests `== ""` rather than `.strip()` fails here.
+        _seed_learnings(
+            tmp_path,
+            "# Learnings\n\n"
+            "## Whitespace pointer\n"
+            "<!-- prawduct-learning: superseded-by=    -->\n\n"
+            "Body.\n",
+        )
+        result = audit_learnings(tmp_path, apply=True, today=date(2026, 7, 31))
+        assert len(result["errors"]) == 1
+        assert "is empty" in result["errors"][0]["error"]
+
     def test_self_supersession_is_an_error(self):
         """A rule cannot forward to itself. Without this the entry retires and
         its pointer sends the reader back to the entry they just failed to
@@ -703,7 +750,7 @@ class TestSupersessionRetirement:
     """The lifecycle event: a rule retired because a broader rule replaced it.
 
     Without this, every consolidation is an unauditable hand-edit — which is
-    how a corpus reaches 159 rules with near-duplicate families in it, since
+    how a corpus accumulates near-duplicate families, since
     adding is cheap and merging is not.
     """
 
@@ -912,6 +959,69 @@ class TestSupersessionRetirement:
         block = detail.split("## Terse rule", 1)[1]
         assert "\n\n\n" not in block, f"stray blank paragraph in the block: {block!r}"
 
+    def test_retired_entries_land_inside_the_historical_section(self, tmp_path: Path):
+        """"Under the historical section" was a docstring claim, not behavior:
+        blocks were appended at EOF, which coincides with the section only while
+        the section is last. Chunk 03's bulk collapse is the first `--apply`
+        here, so a later top-level section in `learnings-detail.md` would leave
+        every subsequent retirement filed under a heading it does not belong
+        to — with the file reading as though it did."""
+        _seed_learnings(tmp_path, self.CORPUS)
+        detail = tmp_path / ".prawduct" / "learnings-detail.md"
+        detail.write_text(
+            "# Learnings — Full Detail\n\n"
+            "## Historical (structurally enforced)\n\n"
+            "Existing blurb.\n\n"
+            "## Previously retired\n\nOld body.\n\n"
+            "# Appendix\n\nUnrelated trailing section.\n"
+        )
+        audit_learnings(tmp_path, apply=True, today=date(2026, 7, 31))
+
+        text = detail.read_text()
+        hist = text.index("## Historical (structurally enforced)")
+        appendix = text.index("# Appendix")
+        retired = text.index("## Narrow rule about fixtures")
+        assert hist < retired < appendix, (
+            "the retired entry landed outside the historical section — it must "
+            f"sit between the section header and the next top-level heading:\n{text}"
+        )
+        # The trailing section survives intact.
+        assert "Unrelated trailing section." in text
+        assert "Old body." in text
+
+    def test_duplicate_headings_do_not_cross_assign_retirement_notes(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ):
+        """Titles are not unique by construction — nothing rejects two `## `
+        entries with the same heading. Keyed by title, two same-titled
+        retirements collapsed to the last note written, so one entry's history
+        cited the other's reason: silently wrong, in the file a reader consults
+        precisely when they cannot find a rule."""
+        _seed_learnings(
+            tmp_path,
+            "# Learnings\n\n"
+            "## Same heading\n"
+            "<!-- prawduct-learning: sentinel=tests/foo.py::test_bar -->\n\nFirst body.\n\n"
+            "## Same heading\n"
+            "<!-- prawduct-learning: superseded-by=General rule -->\n\nSecond body.\n\n"
+            "## General rule\n\nBody.\n",
+        )
+        monkeypatch.setattr(
+            _mod, "run_sentinel",
+            lambda product_dir, sentinel, timeout=120: (True, "1 passed"),
+        )
+        audit_learnings(tmp_path, apply=True, today=date(2026, 7, 31))
+
+        detail = (tmp_path / ".prawduct" / "learnings-detail.md").read_text()
+        # Both retired, each keeping ITS OWN reason and body.
+        assert detail.count("## Same heading") == 2
+        assert "sentinel `tests/foo.py::test_bar` passes" in detail
+        assert "superseded by **General rule**" in detail
+        first = detail.index("First body.")
+        second = detail.index("Second body.")
+        assert detail.index("sentinel `tests/foo.py::test_bar` passes") < first
+        assert first < detail.index("superseded by **General rule**") < second
+
     def test_result_keys_are_uniform_across_both_routes(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ):
@@ -945,6 +1055,76 @@ class TestSupersessionRetirement:
             "product_dir", "applied", "promotions",
             "retirements", "stale_flags", "errors",
         }
+
+
+class TestAuditLearningsHumanOutputPerRoute:
+    """The `retire[...]` line, which no test in the repo asserted at all.
+
+    Its own inline comment names the defect it prevents: reading `passed` for
+    both routes renders every resolvable supersession as `blocked`, because a
+    supersession's `passed` is `None` by construction — a clean candidate
+    reported to the operator as a problem, on the surface `/prawduct:doctor`
+    relays verbatim.
+    """
+
+    def _run(self, repo: Path, *args: str) -> subprocess.CompletedProcess:
+        return subprocess.run(
+            ["python3", str(_HOOK_PATH), "audit-learnings", *args],
+            cwd=str(repo), capture_output=True, text=True,
+            env={**os.environ, "CLAUDE_PROJECT_DIR": str(repo)}, timeout=60,
+        )
+
+    def test_resolvable_supersession_renders_ready_not_blocked(self, tmp_path: Path):
+        _seed_learnings(
+            tmp_path,
+            "# Learnings\n\n"
+            "## Narrow rule\n"
+            "<!-- prawduct-learning: superseded-by=General rule -->\n\nBody.\n\n"
+            "## General rule\n\nBody.\n",
+        )
+        res = self._run(tmp_path)
+        assert res.returncode == 0, res.stderr
+        assert "retire[ready]: Narrow rule (superseded-by=General rule)" in res.stdout, (
+            f"expected a ready supersession line; got:\n{res.stdout}"
+        )
+        assert "sentinel=None" not in res.stdout
+
+    def test_unresolvable_supersession_renders_blocked(self, tmp_path: Path):
+        _seed_learnings(
+            tmp_path,
+            "# Learnings\n\n"
+            "## Narrow rule\n"
+            "<!-- prawduct-learning: superseded-by=Nobody wrote this -->\n\nBody.\n",
+        )
+        res = self._run(tmp_path)
+        assert res.returncode == 0, res.stderr
+        assert "retire[blocked]: Narrow rule" in res.stdout
+        assert "does not resolve" in res.stdout
+
+    def test_applied_supersession_renders_retired(self, tmp_path: Path):
+        _seed_learnings(
+            tmp_path,
+            "# Learnings\n\n"
+            "## Narrow rule\n"
+            "<!-- prawduct-learning: superseded-by=General rule -->\n\nBody.\n\n"
+            "## General rule\n\nBody.\n",
+        )
+        res = self._run(tmp_path, "--apply")
+        assert res.returncode == 0, res.stderr
+        assert "retire[retired]: Narrow rule" in res.stdout
+
+    def test_sentinel_route_still_renders_its_sentinel(self, tmp_path: Path):
+        """The older route's line is unchanged — the per-route branch must not
+        have relabelled it on the way past."""
+        _seed_learnings(
+            tmp_path,
+            "# Learnings\n\n"
+            "## Enforced rule\n"
+            "<!-- prawduct-learning: sentinel=tests/nope.py::test_missing -->\n\nBody.\n",
+        )
+        res = self._run(tmp_path)
+        assert res.returncode == 0, res.stderr
+        assert "retire[blocked]: Enforced rule (sentinel=tests/nope.py::test_missing)" in res.stdout
 
 
 class TestLifecycleMetadataLivesWhereItsReaderLooks:

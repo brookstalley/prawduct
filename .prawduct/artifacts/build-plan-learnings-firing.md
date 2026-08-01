@@ -9,16 +9,23 @@ depends_on:
 governed_by:
   - artifact: architecture
     dispositions:
-      - "authority fails closed, advice fails soft → conforms — every surface this plan adds is ADVICE printed to the builder. No gate reads it, no exit code changes, and a delivery line that cannot be computed is omitted rather than blocking the record it rides on."
+      - "reviewer never mutates the session it reviews → conforms, and 01(b) is the one place it bit. The directive is emitted at `critic-begin`, which the reviewing fork runs — it prints to that fork's context and writes nothing. The reason 01(b) moved off its specced site is downstream of this norm: because a reviewer's output is confined to its partial, consolidate's stdout cannot reach the builder, so advice printed there is advice nobody acts on."
+      - "authority fails closed, advice fails soft → conforms — every surface this plan adds is ADVICE printed to the builder. No gate reads it, no exit code changes, and a delivery line that cannot be computed is omitted rather than blocking the record it rides on. Chunk 02's supersession path is the exception that proves it: it feeds a *retirement*, which is authority, so it fails CLOSED on every ambiguity rather than degrading to a note."
+      - "local-first: no network, no daemon, stdlib-only runtime → inapplicable, because nothing in this plan opens a socket, spawns a daemon, or adds a dependency. Chunk 02's only subprocess is the pre-existing `run_sentinel`, which supersession deliberately does not invoke."
       - "plugin writes only its own .prawduct/ state → conforms — the supersession path writes learnings.md and learnings-detail.md, both already owned by `audit-learnings --apply`."
+      - "Python-implemented, never Python-specific → conforms, with one thing to watch. Nothing here inspects product code, so no per-file language dispatch is owed. The one Python-shaped surface is `sentinel=`, which names a pytest id — pre-existing, untouched by this plan, and the reason supersession is worth having: a rule retired because a broader rule replaced it needs no test runner at all, so `superseded-by=` is the language-agnostic retirement route the corpus previously lacked."
       - "prawduct guides and reviews, never implements → conforms — the delivery lines pose a question to the builder; none of them inspect or edit product code."
+      - "goals and verification bind, prescribed method is advice → conforms, and this plan is the norm's own evidence base. Chunk 01(b) departed from its specced call site and Chunk 02 from two of its stated deliverables; each departure is recorded at the chunk with the reason, and every acceptance criterion was met unchanged. Born 2026-07-31 from this session, so the plan predates the norm — the departures were recorded before it existed, which is what suggested it."
   - artifact: observability-strategy
     dispositions:
-      - "stable severity-prefix vocabulary, stdout/stderr channel split → conforms — delivery lines ride stdout beside the confirmation they annotate, exactly as `_BATCH_FIX_DIRECTIVE` already does."
-      - "no prawduct-internal identifiers in product-emitted text → conforms — the lines name the builder's own tests and claims, never a prawduct finding id."
+      - "stable severity-prefix vocabulary, stdout/stderr channel split → conforms — delivery lines ride stdout beside the confirmation they annotate, exactly as `_BATCH_FIX_DIRECTIVE` already does. `RESOLUTION_IS_A_CLAIM_DIRECTIVE` carries the `PRAWDUCT:` prefix; `_GREEN_IS_EVIDENCE_DIRECTIVE` does not, because it is appended to a `recorded:` line that already identifies itself."
+      - "the governance ledger has a single writer; agents never hand-author it → inapplicable, because nothing in this plan writes a ledger line. Chunk 02 mutates learnings.md and learnings-detail.md only, and the directives write nothing at all."
+      - "no prawduct-internal identifiers in product-emitted text → conforms — the lines name the builder's own tests and claims, never a prawduct finding id. Checked against the drafted text, not assumed: the only backticked tokens are `fixed`, `waived`, `unresolved_blocking`, `git show` and `resolutions`, all of which are the reader's own vocabulary at that moment."
   - artifact: api-contract
     dispositions:
-      - "additive-first evolution → conforms — `superseded-by=` is a new optional key in an existing optional comment; absent metadata keeps meaning 'active, no lifecycle metadata', and no existing flag or exit code is repurposed."
+      - "whole-surface semver; the internal CLI carries no per-subcommand version → conforms — `superseded-by=` ships at the plugin version like every other CLI change, and adds no version handle. The persisted surface it touches (`learnings.md` metadata) is not the schema-versioned evidence store."
+      - "exit codes are the contract; severity prefixes stable; errors attributed, never stack traces → conforms — every new failure path (unresolvable, ambiguous, self-referential, empty, both-keys) lands as an attributed `errors` entry naming the entry and the fix, and none of them changes an exit code or escapes as a traceback. `audit-learnings` still exits 0 on a clean audit and 1 only on a structural problem."
+      - "additive-first evolution → conforms — `superseded-by=` is a new optional key in an existing optional comment; absent metadata keeps meaning 'active, no lifecycle metadata', and no existing flag or exit code is repurposed. `retirements` gains `reason`/`superseded_by`/`resolved_to` as new keys and keeps its meaning; supersessions ride that existing list rather than a new one precisely so a reader who iterates it is not silently under-reported to."
 last_validated: 2026-07-31
 ---
 
@@ -171,8 +178,19 @@ the roster. Cite the command, never the digits.
   line names the check, not the virtue: *for each new test, what change would turn it red? A
   fixture that never reaches the subject, an assertion that cannot tell the two orderings
   apart, and a branch that depends on a file that happens to exist locally all pass
-  identically.* Silent when nothing judged changed — a restamp or a docs-only cycle prints
-  nothing.
+  identically.* Silent when nothing judged changed — a docs-only cycle, or a run that touched no
+  source, prints nothing.
+
+  **Two corrections from the cumulative review, both to claims rather than behavior.** (i) *Not*
+  "a restamp prints nothing": `--no-rerun` re-runs the F4a overlay, which repopulates
+  `changes_referenced` against the current tree, so a restamp with judged changes in the diff
+  fires — correctly, since the builder did just change judged code. The claim was wrong here, in
+  the constant's docstring, in a test docstring, and in the change-log, all at once. (ii)
+  `changes_referenced` is a **proxy** for "judged code changed" and is narrower than the phrase:
+  `bin/test-reference-verify` matches Python symbols only, so the directive never fires in a
+  Swift/Rust/C#/TypeScript product, and Success criterion 1 currently holds for Python repos
+  only. Recorded at the constant where a reader meets it; widening the trigger is a separate
+  decision with a noise tradeoff, not a silent fix.
 
   **(b) A claim needs its falsifier run.** The rule: *a resolution is a claim about the tree. Say
   which evidence you read, not that you are confident.*
@@ -198,8 +216,12 @@ the roster. Cite the command, never the digits.
 
 - **Depends on:** (b) only — the clear-signal branch landing (**resolved**)
 - **Artifacts consumed:** `observability-strategy.md` (channel split), `architecture.md` (advice fails soft)
-- **Deliverables:** two module-level directive constants beside `_BATCH_FIX_DIRECTIVE`; both
-  print sites; tests
+- **Deliverables:** two module-level directive constants and their print sites, plus tests.
+  **Only one sits beside `_BATCH_FIX_DIRECTIVE`** — `RESOLUTION_IS_A_CLAIM_DIRECTIVE` in
+  `lib/critic_consolidate.py`, so the data plane's directives are edited together;
+  `_GREEN_IS_EVIDENCE_DIRECTIVE` lives in `bin/prawduct-hook` beside the recorder it annotates.
+  Each is adjacent to the code that emits it, which is the placement that matters; the original
+  "both beside `_BATCH_FIX_DIRECTIVE`" wording survived the 01(b) correction sweep and was false.
 - **Tests:** (a) landed in `tests/test_plugin_runtime.py` and (b) in
   `tests/test_critic_consolidate.py` — **not** the `tests/test_test_evidence.py` this spec named,
   which does not exist. Each half sits beside the code it guards: (a)'s trigger is a helper in
@@ -315,6 +337,18 @@ the roster. Cite the command, never the digits.
   read on demand when debugging a known area, not at the moment the rule has to fire. Heading
   length is not the constraint people assume — the corpus already runs 188 median / 396 p90 / 907
   max characters, and the long ones are the ones that work.
+
+  **Sequencing constraint, and it binds Chunk 03 specifically.** A forwarding pointer is written
+  as *literal resolved heading text* into `learnings-detail.md`, and nothing ever re-resolves it:
+  `audit-learnings` parses `learnings.md` and nothing else. So the moment a successor heading is
+  reworded, every pointer at it names a heading that does not exist — a hole that reads as a
+  forwarding address, which is the exact failure `resolve_supersession_target` rejects
+  self-supersession to prevent, reintroduced downstream of the check. **LRN-9K2P is open at
+  `stage: ready` to reword ~28 `learnings.md` headings, and this chunk mints a batch of pointers.**
+  Run the collapse BEFORE that rewording, or the rewording before the collapse — not interleaved,
+  and never the rewording after without re-checking every `superseded by **X**` in the detail file
+  against `learnings.md`. (LRN-6C2X already records this hazard for the pairing invariant; neither
+  side recorded it for supersession pointers until this review.)
 
   **The map is presented for approval before any retirement is applied** — three members carry
   second-order points that a merge could silently drop (see Requirements Confidence), and under

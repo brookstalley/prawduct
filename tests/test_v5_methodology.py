@@ -41,7 +41,7 @@ def estimate_tokens(text: str) -> int:
 #: record *why* an edit was affordable, which no test can); the current reading
 #: lives here, where a wrong number fails instead of misleading.
 LAST_MEASURED_TOKENS = {
-    "methodology/building.md": 4652,
+    "methodology/building.md": 4657,
     "skills/critic/review-protocol.md": 3616,
     "skills/critic/goals-1-3.md": 1946,
 }
@@ -187,8 +187,29 @@ class TestBuildingMethodology:
         }
         for name, text in surfaces.items():
             assert "standing block" in text, f"{name} no longer names the standing block"
-            for label in ("**State**", "**Next**", "**Clear**"):
+            # The labels are backticked, not bolded: a code span is the only
+            # coloured token near the bottom of a turn, so the eye finds it
+            # without reading. Owner-requested 2026-07-31 — the block was
+            # correct and complete and still scanned as prose.
+            for label in ("`STATE`", "`NEXT`", "`CLEAR`"):
                 assert label in text, f"{name} dropped the {label} line"
+            # Deliberately NOT asserting `**State**` is absent. `reflection.md`
+            # keeps a bolded "what each line owes" list that *explains* the
+            # three lines rather than being the emitted shape, and forbidding
+            # the string would delete useful structure to satisfy a proxy. The
+            # positive assertion above already fails on a revert: drop the
+            # backticked labels and it goes red.
+            # The SHAPE is the deliverable, not only the words. Three answers
+            # run together stop being separately findable, which is most of
+            # what the block is for — so every surface has to say so.
+            assert "separate paragraph" in text or "three paragraphs" in text, (
+                f"{name} no longer requires the three lines to be separate "
+                "paragraphs — without that they render as one run-on block"
+            )
+            assert "backtick" in text, (
+                f"{name} no longer says the labels are backticked, so a reader "
+                "has no way to know the colouring is intentional"
+            )
             assert "Safe to `/clear`." in text, f"{name} dropped the safe line"
             assert "Not safe to `/clear` yet" in text, f"{name} dropped the unsafe line"
             # Outstanding includes work that is RUNNING, not merely unstarted —

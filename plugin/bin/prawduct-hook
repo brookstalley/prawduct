@@ -1992,9 +1992,25 @@ def cmd_stop(project_dir: Path, stop_input: dict | None = None) -> int:
 #: the precedent this follows.
 #:
 #: Printed ONLY when the merged record shows judged code changed
-#: (``changes_referenced`` non-empty) — a restamp, a docs-only cycle, or a run
-#: that touched no source stays silent, because a directive that prints every
-#: time is one the reader learns to skip.
+#: (``changes_referenced`` non-empty) — a docs-only cycle, or a run that touched
+#: no source, stays silent, because a directive that prints every time is one
+#: the reader learns to skip.
+#:
+#: **Not "a restamp stays silent."** An earlier draft of this comment, the plan,
+#: and the change-log all said so, and it is false: ``--no-rerun`` takes the same
+#: path as every other mode — it rebuilds the record and re-runs the F4a overlay,
+#: which repopulates ``changes_referenced`` against the CURRENT tree (pinned by
+#: ``test_refreshes_changes_referenced_against_current_tree``). So a restamp with
+#: judged changes in the diff fires, correctly: the builder did just change
+#: judged code, and how the counts got there is not the question this directive
+#: asks. The only real trigger is "nothing judged changed."
+#:
+#: **Known limitation, recorded where the reader meets it.** ``changes_referenced``
+#: is populated by ``bin/test-reference-verify``, which matches Python symbols
+#: only. In a Swift/Rust/C#/TypeScript product the field is always empty, so this
+#: directive never fires there — the field is a proxy for "judged code changed"
+#: and is narrower than the phrase. Widening the trigger is tracked separately;
+#: until then, do not read a silent run in a non-Python repo as "nothing changed."
 _GREEN_IS_EVIDENCE_DIRECTIVE = (
     "\nGreen is evidence only about what could have made it red. For each test"
     " you just added or changed, name the change that would flip it — and"

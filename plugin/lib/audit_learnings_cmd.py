@@ -1,8 +1,10 @@
-"""F9 — Learnings lifecycle sentinel tracker.
+"""F9 — Learnings lifecycle tracker.
 
 Parses `.prawduct/learnings.md` for optional per-entry metadata, identifies
-promotion / retirement / stale candidates, and (with ``apply=True``) moves
-sentinel-protected entries to ``learnings-detail.md``'s historical section.
+promotion / retirement / stale candidates, and (with ``apply=True``) retires
+entries to ``learnings-detail.md``'s historical section by either of two
+routes — a passing ``sentinel=`` test, or a ``superseded-by=`` pointer at the
+broader rule that replaced it.
 
 Schema (all fields optional; absence → "active, no lifecycle metadata"):
 
@@ -18,8 +20,8 @@ avoids parsing surprises when entries quote example metadata in their prose.
 rule because the failure mode it warned about is now structurally enforced by a
 passing test. ``superseded-by=`` retires it because a *broader rule replaced
 it*, which is what every consolidation is — and without it, consolidation is an
-unauditable hand-edit, which is precisely how a corpus reaches 159 rules with
-near-duplicate families in it: adding is cheap and merging is not. An entry
+unauditable hand-edit, which is how a corpus accumulates near-duplicate
+families: adding is cheap and merging is not. An entry
 declaring both is an error and retires under neither, because the two answer
 different questions and picking one silently would let a failing sentinel be
 bypassed by adding a supersession key.
@@ -405,12 +407,13 @@ def audit_learnings(
     entries = parse_learnings_file(content)
 
     retained_entries: list[LearningEntry] = []
-    retired_entries: list[LearningEntry] = []
-    #: title -> the note its historical entry carries. Keyed by title because
-    #: that is what `_historical_block` renders; the retirement reason is
-    #: decided here, where the metadata is in hand, not re-derived at write
-    #: time from state that would have to be threaded through anyway.
-    retirement_notes: dict[str, str] = {}
+    #: (entry, note) in retirement order — a parallel LIST, not a dict keyed by
+    #: title. Titles are not unique by construction: nothing in the parser or
+    #: the audit rejects two `## ` entries with the same heading, so a dict
+    #: would collapse two same-titled retirements to the last note written and
+    #: stamp one entry's history with the other's reason. Silent, and wrong in
+    #: the file a reader consults precisely when they cannot find a rule.
+    retired_with_notes: list[tuple[LearningEntry, str]] = []
 
     #: Supersession targets resolve against the corpus as it stands BEFORE this
     #: run retires anything. A two-step consolidation (A superseded by B, B by
@@ -454,7 +457,15 @@ def audit_learnings(
         superseded_by = meta.get("superseded-by")
         sentinel_passed: bool | None = None
         sentinel_excerpt = ""
-        if sentinel and superseded_by:
+        # `is not None`, NOT truthiness. `parse_learning_metadata` strips the
+        # value, so a half-finished `superseded-by=` (or `superseded-by=   `)
+        # arrives as `""` — falsy on every branch, so the entry fell through to
+        # "active, no lifecycle metadata" with no error, no record, and no CLI
+        # line, while three records promised an error. The empty-prefix branch
+        # in `resolve_supersession_target` was unreachable from production for
+        # the same reason, and its test passed only by calling the helper
+        # directly with an input the parser cannot emit.
+        if sentinel and superseded_by is not None:
             # Two retirement reasons on one entry is an authoring error, not a
             # precedence question. Picking either silently would let a FAILING
             # sentinel be bypassed by adding a supersession key — a gate
@@ -469,7 +480,7 @@ def audit_learnings(
                 ),
             })
             retained_entries.append(entry)
-        elif superseded_by:
+        elif superseded_by is not None:
             resolved, why = resolve_supersession_target(
                 superseded_by, all_titles, entry.title
             )
@@ -491,10 +502,9 @@ def audit_learnings(
                 retained_entries.append(entry)
             elif apply:
                 record["applied"] = True
-                retired_entries.append(entry)
-                retirement_notes[entry.title] = _retirement_note(
+                retired_with_notes.append((entry, _retirement_note(
                     retired_on=today, superseded_by=resolved
-                )
+                )))
             else:
                 retained_entries.append(entry)
             retirements.append(record)
@@ -529,10 +539,9 @@ def audit_learnings(
             elif sentinel_passed is True:
                 if apply:
                     retirement_record["applied"] = True
-                    retired_entries.append(entry)
-                    retirement_notes[entry.title] = _retirement_note(
+                    retired_with_notes.append((entry, _retirement_note(
                         retired_on=today, sentinel=sentinel
-                    )
+                    )))
                 else:
                     retained_entries.append(entry)
                 retirements.append(retirement_record)
@@ -575,10 +584,9 @@ def audit_learnings(
                         "confirmations": effective_confirmations,
                     })
 
-    if apply and retired_entries:
+    if apply and retired_with_notes:
         _apply_retirements(
-            learnings_path, retained_entries, retired_entries, content,
-            retirement_notes,
+            learnings_path, retained_entries, retired_with_notes, content,
         )
 
     return {
@@ -594,9 +602,8 @@ def audit_learnings(
 def _apply_retirements(
     learnings_path: Path,
     retained_entries: list[LearningEntry],
-    retired_entries: list[LearningEntry],
+    retired_with_notes: list[tuple[LearningEntry, str]],
     original_content: str,
-    retirement_notes: dict[str, str],
 ) -> None:
     """Rewrite ``learnings.md`` with retired entries removed, and append
     those entries to ``learnings-detail.md`` under the historical section.
@@ -605,15 +612,17 @@ def _apply_retirements(
     heading) is preserved verbatim. The detail file is created with a
     minimal header if absent; the historical section is created if absent.
 
-    ``retirement_notes`` maps every retired entry's title to the one-line
-    reason its historical copy carries — the forwarding address for a
-    supersession, the passing sentinel for the other route. Required rather
-    than optional-with-a-verbatim-fallback: the sole caller always builds it,
-    so a fallback would be a branch no test can reach through the public API,
-    and its behavior (copying the entry verbatim, lifecycle comment included)
-    is exactly the defect this parameter exists to fix.
+    ``retired_with_notes`` pairs each retired entry with the one-line reason
+    its historical copy carries — the forwarding address for a supersession,
+    the passing sentinel for the other route. A parallel list rather than a
+    dict keyed by title, because titles are not unique by construction: two
+    same-titled entries retiring in one pass would collapse to one note and
+    stamp the earlier entry's history with the later one's reason. Required
+    rather than optional-with-a-verbatim-fallback: the sole caller always
+    builds it, so a fallback would be a branch no test can reach through the
+    public API, and its behavior (copying the entry verbatim, lifecycle
+    comment included) is exactly the defect this parameter exists to fix.
     """
-    notes = retirement_notes
     # Rebuild learnings.md preserving the preamble.
     lines = original_content.split("\n")
     preamble_end = len(lines)
@@ -642,21 +651,50 @@ def _apply_retirements(
             "See `learnings.md` for the active rule list.\n"
         )
 
+    appended_blocks = "\n".join(
+        _historical_block(entry, note).rstrip("\n") + "\n"
+        for entry, note in retired_with_notes
+    )
+
     if _HISTORICAL_SECTION_HEADER not in detail_content:
         if not detail_content.endswith("\n"):
             detail_content += "\n"
         detail_content += (
             "\n" + _HISTORICAL_SECTION_HEADER + "\n\n"
             + _HISTORICAL_SECTION_BLURB
+            + "\n" + appended_blocks
         )
+        detail_path.write_text(detail_content)
+        return
 
-    appended_blocks = "\n".join(
-        _historical_block(entry, notes[entry.title]).rstrip("\n") + "\n"
-        for entry in retired_entries
+    # The section EXISTS — insert at its end, not the file's. Appending to EOF
+    # happens to be the same place only while the section is last, and this
+    # docstring has claimed "under the historical section" the whole time.
+    # Chunk 03's bulk collapse is the first `--apply` here, so once the section
+    # exists any later narrative appended to `learnings-detail.md` lands after
+    # it, and every subsequent retirement is filed under a heading it does not
+    # belong to — with the file reading as though it did.
+    lines = detail_content.split("\n")
+    start = next(
+        i for i, line in enumerate(lines)
+        if line.strip() == _HISTORICAL_SECTION_HEADER
     )
-    if not detail_content.endswith("\n"):
-        detail_content += "\n"
-    detail_content += "\n" + appended_blocks
+    end = len(lines)
+    for i in range(start + 1, len(lines)):
+        # A sibling `## ` heading ends the section. Retired entries are also
+        # `## `, so only headings at or before the section's own level that are
+        # NOT part of it can close it — and every block this function writes
+        # lands inside, so scanning for the next `# ` (top level) is the safe
+        # boundary. A detail file with no later top-level heading appends at EOF
+        # exactly as before.
+        if lines[i].startswith("# ") and not lines[i].startswith("## "):
+            end = i
+            break
+    tail = "\n".join(lines[end:])
+    head = "\n".join(lines[:end]).rstrip("\n")
+    detail_content = head + "\n\n" + appended_blocks
+    if tail.strip():
+        detail_content = detail_content.rstrip("\n") + "\n\n" + tail
     detail_path.write_text(detail_content)
 
 

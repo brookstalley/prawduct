@@ -2163,6 +2163,102 @@ def _load_hook_module():
     return module
 
 
+class TestGreenIsEvidenceDelivery:
+    """The PRINT SITE, end to end — not the predicate behind it.
+
+    `TestGreenIsEvidenceTrigger` below covers `_evidence_changed_judged_code`
+    and pins phrases in the constant, and every one of those stayed green while
+    the wiring in `cmd_test_evidence` was unverified: inverting the condition,
+    or deleting the concatenation outright, changed nothing the suite could see.
+    A directive nobody proved reaches stdout is a directive that can silently
+    stop being delivered — and the constant's own first clause is *"confirm the
+    fixture actually REACHES the subject,"* which is the rule that gap violated.
+    """
+
+    def _repo(self, tmp_path) -> Path:
+        """A committed baseline. Callers then make the change under test.
+
+        Two fixture mistakes are designed out here, both found by these tests
+        failing. (1) Files written BEFORE the baseline commit leave an empty
+        diff, so `changes_referenced` is empty and the positive case cannot
+        fire. (2) The test file must live under `tests/` — the F4a overlay
+        discovers test roots there unless `tests_dirs:` says otherwise, and
+        without that it reports no coverage rather than a judged change.
+        """
+        repo = tmp_path / "gie"
+        repo.mkdir(parents=True)
+        (repo / ".prawduct").mkdir()
+        (repo / ".prawduct" / "project-state.yaml").write_text(
+            f"test_command: {sys.executable} -m pytest --junit-xml={{junit_xml}} -q\n"
+        )
+        (repo / "tests").mkdir()
+        (repo / "tests" / "test_baseline.py").write_text(
+            "def test_ok():\n    assert True\n"
+        )
+        (repo / "README.md").write_text("seed\n")
+        _git(repo, "init", "-b", "main")
+        _git(repo, "add", "-A")
+        _git(repo, "commit", "-m", "baseline")
+        return repo
+
+    def _judged_change(self, repo: Path) -> None:
+        """A changed `.py` whose symbol a test references — the one shape the
+        overlay puts into `changes_referenced`."""
+        (repo / "widget.py").write_text("def widget_fn():\n    return 1\n")
+        (repo / "tests" / "test_widget.py").write_text(
+            "def test_widget_fn():\n    assert 'widget_fn'\n"
+        )
+
+    def _docs_only_change(self, repo: Path) -> None:
+        """The cycle the directive claims to stay silent on. NOT 'no source
+        file' — an uncommitted `tests/test_*.py` is itself a judged change,
+        because it declares symbols that appear in a test file (itself), which
+        is how the first cut of this negative case fired the directive it was
+        written to prove absent."""
+        (repo / "README.md").write_text("seed\nmore prose\n")
+
+    def test_directive_reaches_stdout_when_judged_code_changed(self, tmp_path):
+        repo = self._repo(tmp_path)
+        self._judged_change(repo)
+        res = _run_in(repo, "test-evidence", "record")
+        assert res.returncode == 0, res.stderr
+        ev = json.loads((repo / ".prawduct" / ".test-evidence.json").read_text())
+        assert ev["changes_referenced"], (
+            "fixture did not produce a judged change, so this test cannot "
+            "distinguish 'directive missing' from 'trigger never held'"
+        )
+        hook = _load_hook_module()
+        assert hook._GREEN_IS_EVIDENCE_DIRECTIVE in res.stdout
+
+    def test_directive_absent_on_a_docs_only_cycle(self, tmp_path):
+        repo = self._repo(tmp_path)
+        self._docs_only_change(repo)
+        res = _run_in(repo, "test-evidence", "record")
+        assert res.returncode == 0, res.stderr
+        ev = json.loads((repo / ".prawduct" / ".test-evidence.json").read_text())
+        assert not ev["changes_referenced"]
+        hook = _load_hook_module()
+        assert hook._GREEN_IS_EVIDENCE_DIRECTIVE not in res.stdout
+        # And the record still went out — advice fails soft, so its absence
+        # must not take the confirmation with it.
+        assert "recorded:" in res.stdout
+
+    def test_the_directive_never_changes_the_exit_code(self, tmp_path):
+        """Acceptance criterion, asserted rather than assumed: the firing and
+        non-firing runs agree on exit status, so the advice rides the record
+        instead of grading it."""
+        fired = self._repo(tmp_path / "a")
+        self._judged_change(fired)
+        silent = self._repo(tmp_path / "b")
+        self._docs_only_change(silent)
+        a = _run_in(fired, "test-evidence", "record")
+        b = _run_in(silent, "test-evidence", "record")
+        hook = _load_hook_module()
+        assert hook._GREEN_IS_EVIDENCE_DIRECTIVE in a.stdout
+        assert hook._GREEN_IS_EVIDENCE_DIRECTIVE not in b.stdout
+        assert a.returncode == b.returncode == 0
+
+
 class TestGreenIsEvidenceTrigger:
     """`_evidence_changed_judged_code` decides whether the directive prints.
 
@@ -2190,8 +2286,11 @@ class TestGreenIsEvidenceTrigger:
         assert hook._evidence_changed_judged_code(path) is False
 
     def test_silent_when_field_absent(self, tmp_path):
-        # A restamp (`--no-rerun`) or a record written before the F4a overlay
-        # ran carries no field at all.
+        # A record written before the F4a overlay existed, or one whose overlay
+        # was skipped (test-reference-verify missing), carries no field at all.
+        # NOT "a restamp": `--no-rerun` re-runs the overlay and repopulates the
+        # field against the current tree, so a restamp with judged changes in
+        # the diff DOES fire. That claim was wrong in four places at once.
         hook = _load_hook_module()
         path = self._write(tmp_path, json.dumps({"passed": 3}))
         assert hook._evidence_changed_judged_code(path) is False
