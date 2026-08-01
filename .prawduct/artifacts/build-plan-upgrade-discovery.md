@@ -181,8 +181,9 @@ chunk alone.
 Context: Authored and built 2026-08-01 on `feature/upgrade-discovery-relay`, from a defect traced
 while preparing an owner acceptance exercise for the backlog migration — the owner asked why an
 auto-updating product would ever discover the migration, and the answer was that it would not.
-All three chunks are built and committed (`4c0dc44` + the Critic-resolution commit); the suite is
-green and both relays were verified against real rendered output. Unmerged and untagged: whether
+All three chunks are built and committed (`4c0dc44`, then `74cdef3` and `f2aeb56` resolving two
+rounds of Critic findings); the suite is green and both relays were verified against real rendered
+output. Unmerged and untagged: whether
 this rides in v3.2.3 or a follow-up is the owner's open call. **Chunks 01 and 02 must ship
 together** — the lift routes consuming repos toward an irreversible bulk write, and the relay is
 what puts a person in that loop.

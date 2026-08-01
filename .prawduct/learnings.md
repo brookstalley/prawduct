@@ -27,6 +27,8 @@ dropping them.
 
 ## The fix for a review finding needs the same adversarial pass as the original work — dispatch a delta review of the fix commit, because "I am correcting a known defect" feels like lower-risk work than writing new code and the verification reflex relaxes exactly where the last round proved it shouldn't
 
+## A finding of the form "A is pinned, B is not" is discharged by PINNING B, never by changing B — changing shipped behaviour to satisfy the letter of such a finding relocates the asymmetry from the code to the test layer, where the next review finds it again and charges you another round against a P0 wall-clock budget. Generalise it: the fix commit carries the cheap check that closes the loop it opens — the test beside the moved behaviour, the parser run before a hand-authored machine-parsed record — because a check deferred to the review that follows costs a whole review run to deliver
+
 ## A governance change cannot supply its own authority — when an agent amends a binding norm mid-build, land the owner's confirmation somewhere the amendment isn't, because a change that is its own only witness is indistinguishable from laundering however sound the substance
 
 ## When you "correct" an inherited number, recount the SET and not just the count — re-measuring inside the frame you inherited reproduces the frame's error while feeling exactly like verification
