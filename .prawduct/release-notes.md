@@ -7,6 +7,12 @@
 
 ## v3.2.3
 
+### upgrade-discovery
+
+**Entry:** 2026-08-01: Everything prawduct says about itself, it says to the model — so a shipped capability reached nobody
+
+**Chunks shipped:** 01, 02, 03
+
 ### v3.2.0-golive
 
 **Entry:** 2026-08-01: prawduct's backlog is on GitHub Issues — 371 items, 0 stranded, and the tripwire that fired at the cutover was re-aimed rather than silenced

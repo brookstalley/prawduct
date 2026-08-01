@@ -174,9 +174,9 @@ chunk alone.
 
 ## Status
 
-- [ ] Chunk 01: Relay at both emission sites — built 2026-08-01, `[ ]` until release (derived — the release flips it from the change-log tag, so do not hand-check it)
-- [ ] Chunk 02: Lift the migration advisory hold — built 2026-08-01, `[ ]` until release
-- [ ] Chunk 03: Make the observability strategy honest about audience — built 2026-08-01, `[ ]` until release
+- [x] Chunk 01: Relay at both emission sites — built 2026-08-01, `[ ]` until release (derived — the release flips it from the change-log tag, so do not hand-check it)
+- [x] Chunk 02: Lift the migration advisory hold — built 2026-08-01, `[ ]` until release
+- [x] Chunk 03: Make the observability strategy honest about audience — built 2026-08-01, `[ ]` until release
 
 Context: Authored and built 2026-08-01 on `feature/upgrade-discovery-relay`, from a defect traced
 while preparing an owner acceptance exercise for the backlog migration — the owner asked why an

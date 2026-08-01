@@ -5,7 +5,7 @@
 
 ## 2026-08-01: Everything prawduct says about itself, it says to the model — so a shipped capability reached nobody
 
-<!-- prawduct: type=fix | scope=upgrade-discovery | chunks=01,02,03 -->
+<!-- prawduct: type=fix | scope=upgrade-discovery | chunks=01,02,03 | release=v3.2.3 | status=shipped -->
 
 **The question that found it.** Preparing an owner acceptance exercise for the backlog migration, the
 owner asked why the script read as if a human would run the migration commands by hand. Three rounds
