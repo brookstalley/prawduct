@@ -73,6 +73,17 @@ absence, it is assent.* The `/prawduct:learnings` skill carries a **reference**,
 caller never sees that header, which is learning "model the READER" applied to the fix for
 inertness rather than to a test.
 
+**Two behavior changes landed while dispositioning the review, both from findings all three
+reviewers or the verify pass caught.** (i) `audit-learnings --apply` now **relocates a retiring
+entry's pre-existing `learnings-detail.md` narrative** into its historical block. It previously
+appended a historical copy and left the original in place, so the first bulk run duplicated 17
+headings — and the *undecorated* one sorts first, meaning `/prawduct:learnings` returned retired
+rules as current with no successor. Retirement is a move; the prose now moves. (ii) **Onboarding
+seeds the descent obligation.** `init_product.py`'s starter `learnings.md` carries the
+`prawduct:descent-obligation` marker, because `/prawduct:learnings` ships an instruction to apply
+"the obligation marked …" and no product's starter file had one. Already-onboarded repos are
+**not** repaired by this and still point at a hole — filed, not fixed.
+
 **Two things `--apply` did that this map did not ask for, both recorded rather than left in the
 diff.** It swept one unrelated entry whose `sentinel=` route was already `ready` (plugin-skill
 frontmatter validation — the mechanism working as designed, and `--apply` cannot be scoped). And

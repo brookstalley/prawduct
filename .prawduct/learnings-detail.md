@@ -1104,8 +1104,7 @@ presents before honoring any pre-written resolution, including your own. Sharpen
 review's advice about a CONVENTION conflicts with a durable learning + the process doc, the documented
 convention wins]] — there the convention was documented and findable; here it exists only in the
 destination's tree. Discovered fix/cov-7k4n-stale-base-advisory merge (2026-07-19). Relates to
-[[A subagent's reported COUNT or LIST is a lead, not ground truth]] and [[When building from a
-review/audit artifact, verify each cited gap and fix-instruction against HEAD before planning]].
+[[A subagent's reported COUNT or LIST is a lead, not ground truth]] and [[Verify a review artifact's cited gaps against HEAD first]].
 
 ## When a feature's value rests on an invariant ("presence of X proves Y"), audit the DEGRADATION paths first — that is where the invariant actually lives: a helper that swallows failure into "" or False makes absence ambiguous and can render the signal's exact inverse, so pick each fallback's direction from what the invariant needs, not from what is locally safe
 

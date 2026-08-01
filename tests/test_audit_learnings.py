@@ -1445,11 +1445,20 @@ class TestDescentObligationReachesTheReader:
         framework-repo-only test, which is the corpus's own "a test asserting
         the framework repo's OWN state instead of the propagated contract"
         failure. Assert the contract that reaches consumer repos.
+
+        Asserted on the STARTER STRING, not on the module's text. The first cut
+        of this guard read the whole file, where the marker appears twice — once
+        in the `#:` doc comment explaining it and once in the string that ships.
+        Deleting it from the string left the guard green, satisfied by the
+        comment standing beside the thing it guards. Caught by the verify pass,
+        and it is the same defect one level up: a fixture that never reaches
+        the subject.
         """
-        init_product = self._repo_root() / "plugin" / "lib" / "init_product.py"
-        if not init_product.is_file():
+        if not (self._repo_root() / "plugin" / "lib" / "init_product.py").is_file():
             pytest.skip("no init_product.py in this checkout")
-        assert self.MARKER in init_product.read_text(), (
+        from lib import init_product  # noqa: PLC0415 — plugin/ is on sys.path via conftest
+
+        assert self.MARKER in init_product._LEARNINGS_STARTER, (
             f"the starter learnings.md carries no `{self.MARKER}` marker, so "
             "/prawduct:learnings ships every onboarded product a pointer at a "
             "hole."
