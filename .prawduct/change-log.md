@@ -92,9 +92,18 @@ names that sentence, by file, as the cause of the round pump: it reads as must-f
 them, each fix commits, coverage stops reaching HEAD, another round runs. It now says warnings and notes
 gate nothing and are dispositioned. Everything added to `building.md` was paid for in place by the file's
 own trim-or-relocate rule — the block's rationale relocated to `reflection.md` and both always-injected
-digests, the fix-strategy detail to the runtime constant — and the file ends **six tokens below** where
-it started (4652 → 4646), fourteen under the ceiling. Two attempted trims were reverted because tests
-pinned them as contracts; the funding was found elsewhere rather than the tests weakened.
+digests, the fix-strategy detail to the runtime constant — and the file ends **exactly where it started**
+(4652), eight under the ceiling. Two attempted trims were reverted because tests pinned them as
+contracts; the funding was found elsewhere rather than the tests weakened.
+
+Those last six tokens were spent at the PR boundary, on the reviewer's catch. `building.md`'s
+Resolve-findings line still opened with **"Fix them all in ONE commit"** — the exact phrasing
+`_BATCH_FIX_DIRECTIVE`'s own comment records rejecting, and by name, citing this file as an authority
+telling the builder to stop. It contradicted **"warnings and notes gate nothing"** two paragraphs down
+in the same file, on the surface with the most authority at the moment a builder holds findings. It now
+mirrors the runtime: *disposition them ALL in ONE pass*. The fix pushed the file eight tokens over its
+ceiling before it was tightened — the budget caught an unfunded addition on its first live test, which
+is the bound working rather than a separate defect.
 
 **The Critic then falsified the funding argument itself, which is the most useful thing it did.** The
 relocations treated the always-injected digests as free destinations. They are the *tightest*-budgeted

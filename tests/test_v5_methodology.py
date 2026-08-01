@@ -41,7 +41,7 @@ def estimate_tokens(text: str) -> int:
 #: record *why* an edit was affordable, which no test can); the current reading
 #: lives here, where a wrong number fails instead of misleading.
 LAST_MEASURED_TOKENS = {
-    "methodology/building.md": 4646,
+    "methodology/building.md": 4652,
     "skills/critic/review-protocol.md": 3616,
     "skills/critic/goals-1-3.md": 1946,
 }
