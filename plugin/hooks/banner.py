@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
 """Prawduct plugin SessionStart banner — version-delta + new-gate attribution.
 
-Chunk 7 of the v2.0.0 plugin-distribution build plan. The banner is the *safety
-net* for always-latest distribution (design §5/§5a): because the plugin
-auto-updates, every version move must be made VISIBLE, never silent. On each
-session start the banner:
+The banner is the *safety net* for always-latest distribution (design §5/§5a):
+because the plugin auto-updates, every version move must be made VISIBLE, never
+silent — and "visible" means visible to the **person**, which takes one more step
+than printing it, since this channel is read by the model (see ``render_delta``).
+On each session start the banner:
 
   1. prints the one-line identity banner (``═══ Prawduct vY (plugin) ═══``),
      carrying a load-provenance segment (``(plugin · develop@a1b2c3d)``) when the
@@ -310,8 +311,24 @@ def new_gates_in_range(gates: list[dict], last: str, current: str) -> list[dict]
     return [g for g in gates if lo < version_tuple(str(g.get("since", "0"))) <= hi]
 
 
+#: Leading glyph of the relay directive. A *directive to the agent*, not a severity
+#: signal, so it sits outside the ``CRITICAL:``/``WARNING:``/``NOTE:`` vocabulary and
+#: alongside the banner's own ``↑``/``•``/``⊕`` line glyphs.
+RELAY_MARKER = "⇒ "
+
+
 def render_delta(last: str, current: str, root: Path) -> list[str]:
-    """Lines for the delta block shown when the version changed."""
+    """Lines for the delta block shown when the version changed.
+
+    Closes with a **relay directive**. The delta block goes to stdout — the
+    agent-facing channel — and ``write_marker`` advances the marker the moment it
+    renders, so it appears exactly once and the person who owns the repo never sees
+    it. Without an instruction to pass it on, an upgrade is announced to nobody and
+    a shipped capability stays undiscoverable: the auto-update this banner exists to
+    make visible would be visible only to the model. The directive is last because
+    it refers to the lines above it; placed first it would read as being about the
+    version line alone.
+    """
     lines = [f"↑ Prawduct updated: v{last} → v{current}"]
     for _v, headline in highlights_in_range(parse_changelog(root), last, current):
         if headline:
@@ -321,6 +338,10 @@ def render_delta(last: str, current: str, root: Path) -> list[str]:
         summary = g.get("summary", "")
         suffix = f" — {summary}" if summary else ""
         lines.append(f"  ⊕ new gate \"{name}\"{suffix} (enforced now)")
+    lines.append(
+        f"{RELAY_MARKER}Tell the user what changed above, in your first reply this "
+        "session — they do not see this banner."
+    )
     return lines
 
 

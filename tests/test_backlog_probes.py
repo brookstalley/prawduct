@@ -212,16 +212,37 @@ class TestMigrationRequiredProbe:
     def test_no_backlog_file(self, tmp_path):
         assert bp.probe_migration_required(ProjectState({}), _cb(tmp_path)) == []
 
-    def test_held_out_of_live_roster(self, tmp_path):
-        # BKL-6J2X: the advisory is registered but **held** — a structured,
-        # un-migrated backlog that WOULD trip the probe (asserted directly, below)
-        # must NOT surface the nudge through the live roster, so no repo is routed
-        # to `/prawduct:backlog scrub` before the migration path is proven.
+    def test_surfaces_through_the_live_roster(self, tmp_path):
+        # The probe was wired to a no-op for several releases while the migration
+        # path was unproven, so a direct-call assertion alone would have passed the
+        # whole time it reached nobody. Assert the ROSTER, which is what a real
+        # session reads.
         _write_backlog(tmp_path, _structured_backlog(2))
-        # The underlying probe still fires when called directly — held, not broken.
-        assert bp.probe_migration_required(ProjectState({}), _cb(tmp_path))
         bp.register()
         cands = run_all_probes(ProjectState({}), make_codebase(tmp_path))
+        surfaced = [c for c in cands if c.type == "backlog-service-migration-required"]
+        assert len(surfaced) == 1
+        assert surfaced[0].recommended_action == "/prawduct:backlog scrub"
+
+    def test_surfaces_at_warn_so_it_trips_the_relay(self, tmp_path):
+        # The advisory routes toward an irreversible bulk write, so it must reach a
+        # person, not just the model. The briefing relays `warn`/`urgent` only —
+        # demoting this to `info` would silently restore the unreachable state the
+        # lift was meant to end.
+        _write_backlog(tmp_path, _structured_backlog(2))
+        bp.register()
+        cands = run_all_probes(ProjectState({}), make_codebase(tmp_path))
+        surfaced = [c for c in cands if c.type == "backlog-service-migration-required"]
+        assert surfaced[0].priority == "warn"
+
+    def test_stays_quiet_post_cutover_through_the_roster(self, tmp_path):
+        # Live now, so the "already migrated" case has to be proven at the roster
+        # too: a repo on the Issues backend must not be nudged to migrate again.
+        _write_backlog(tmp_path, _structured_backlog(2))
+        bp.register()
+        cands = run_all_probes(
+            ProjectState({"backlog_service_repo": "acme/widgets"}), make_codebase(tmp_path)
+        )
         assert not [c for c in cands if c.type == "backlog-service-migration-required"]
 
 

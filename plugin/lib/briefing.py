@@ -559,6 +559,29 @@ def _get_other_branch_wip(prawduct_dir: Path, current_branch: str) -> list[str]:
     return others
 
 
+#: Leading glyph of the advisory relay directive. A *directive to the agent*, not a
+#: severity signal, so it sits outside the ``CRITICAL:``/``WARNING:``/``NOTE:``
+#: vocabulary and alongside the briefing's own ``•``/``→`` line glyphs.
+ADVISORY_RELAY_MARKER = "⇒ "
+
+#: Advisory priorities worth interrupting a person for. `info` is excluded on
+#: purpose: it repeats every session until dismissed, and a channel that nags is a
+#: channel that gets tuned out — which would cost the `warn` case its audience.
+_RELAY_PRIORITIES = frozenset({"warn", "urgent"})
+
+#: Why this exists: the briefing prints to stdout, which this project's ratified
+#: observability norm defines as the AGENT-facing channel (stderr is the person's).
+#: So an advisory is an instruction the model reads, not a nudge the owner reads —
+#: and an advisory whose recommended action is the owner's call to make goes
+#: unanswered every session while looking, from the inside, perfectly delivered.
+#: Relaying it into conversation is what makes the owner's decision reachable.
+ADVISORY_RELAY_TEXT = (
+    f"{ADVISORY_RELAY_MARKER}Tell the user about the advisories above, in your first "
+    "reply this session — they do not see this briefing. Theirs to action, not yours "
+    "to silently resolve or dismiss."
+)
+
+
 def assemble_session_briefing(project_dir: Path, staleness: list[str]) -> str:
     """Assemble session briefing text. Target: <400 tokens (excluding handoff pointer)."""
     prawduct_dir = gitstate.get_prawduct_dir(project_dir)
@@ -698,6 +721,14 @@ def assemble_session_briefing(project_dir: Path, staleness: list[str]) -> str:
                 lines.append(
                     f"  ... and {len(active_adv) - 5} more (run /prawduct:advisory list)"
                 )
+            # Relay directive — see ADVISORY_RELAY_TEXT. Keyed off the full active
+            # set rather than the displayed slice. Today the two agree: the sort
+            # above ranks `urgent`/`warn` ahead of `info`, so a relay-priority
+            # advisory can only be displaced by another one and is always visible.
+            # Keying off the full set means that stays correct if the sort changes,
+            # rather than silently going quiet on the case it exists for.
+            if any(a.get("priority") in _RELAY_PRIORITIES for a in active_adv):
+                lines.append(ADVISORY_RELAY_TEXT)
         else:
             lines.append("ADVISORIES (post-sync):")
         if dismissed_since:

@@ -3,6 +3,51 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-08-01: Everything prawduct says about itself, it says to the model — so a shipped capability reached nobody
+
+<!-- prawduct: type=fix | scope=upgrade-discovery | chunks=01,02,03 | status=open -->
+
+**The question that found it.** Preparing an owner acceptance exercise for the backlog migration, the
+owner asked why the script read as if a human would run the migration commands by hand. Three rounds
+of that question, each one level up, ended at: *"prawduct is set to auto-update, this version lands,
+the user continues working — this doesn't feel like migration will happen unless the user knows to
+ask?"* It doesn't, and the reason generalises past migration.
+
+**The chain, read rather than inferred.** The update lands silently. The version-delta banner renders
+`↑ Prawduct updated: vA → vB` plus the release headline — to **stdout**, which this project's own
+ratified norm defines as the *agent-facing* channel. `write_marker()` then advances the marker, so the
+banner never renders again. Nothing instructed the agent to pass any of it on. And the one advisory
+that would have nudged an un-migrated repo toward the backlog service was registered as a no-op. Net:
+the capability was announced once, on a channel the owner does not read, and then never again.
+
+**The fix is delivery, not authoring — the same diagnosis this release already applied to learnings.**
+A **relay directive** now sits at each emission site: the banner's delta block closes by telling the
+agent to surface what changed in conversation, and the briefing's advisory block does the same for any
+active `warn`/`urgent`. Both fire only when there is news, and both sit next to the content they refer
+to. The session digest was the obvious home and is the wrong one: a rule read at session start,
+competing with everything else in context, is precisely the delivery failure being fixed. (It also had
+44 characters of inline headroom left, measured — but the owner offered to raise the limit and the
+design did not move, which is the honest record of why.)
+
+**`info` is deliberately excluded.** A channel that nags gets tuned out, which would cost the `warn`
+case the audience it exists for.
+
+**The migration advisory is live.** Its recorded lift conditions — three runbook safety fixes plus one
+proven end-to-end migration — were all discharged, and an owner ruling made it live rather than
+leaving the probe's default to decide by silence. It had been shipping held *by silence* anyway,
+because no chunk implemented the ruling. **The relay is what makes the lift safe**: this advisory
+routes toward an irreversible bulk write of 100–250 real GitHub issues, and until now it could have
+routed the *model* there with nobody informed. It is a `warn`, so it relays, and the migration becomes
+the owner's call — the only form in which it was ever meant to be offered. The two ship together; the
+lift should not land without the relay.
+
+**Also corrected: the strategy artifact claimed what the code did not do.** § What You Get sold the
+briefing as answering *"What state is my repo in right now?"* and the advisory list as *"What nudges
+am I ignoring?"* — both framed as the owner's questions, both delivered on the channel its own norm
+reserves for the agent. The norm was right; the description had drifted. It now states how the owner
+actually learns, and records the rejected alternative (routing advisories to stderr by consequence)
+with its reasoning.
+
 ## 2026-08-01: prawduct's backlog is on GitHub Issues — 371 items, 0 stranded, and the tripwire that fired at the cutover was re-aimed rather than silenced
 
 <!-- prawduct: type=feature | scope=v3.2.0-golive | chunks=06 | release=v3.2.3 | status=shipped -->
