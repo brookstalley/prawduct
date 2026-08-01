@@ -73,6 +73,27 @@ absence, it is assent.* The `/prawduct:learnings` skill carries a **reference**,
 caller never sees that header, which is learning "model the READER" applied to the fix for
 inertness rather than to a test.
 
+**A third, found by the PR reviewer and invisible to every gate.** The new collapse-map
+artifact declares `scope: learnings-firing` in frontmatter, and `views.build_scope_to_plan_map` /
+`diagnose_scope_plan_coverage` treated **any** scope-tagged file under `artifacts/` as a build
+plan. It collided with the real plan, the duplicate-scope diagnostic went fatal, and
+`regen-views` wrote **no views for any scope** — the mechanism release time depends on to stamp
+chunks shipped. Detection by surface marker rather than declared type: ten files in this repo
+already carry a `scope:` while being a design note, discovery, reference, release plan or
+collapse map, and they were invisible only because none had yet shared a scope VALUE with a plan.
+
+Both collectors now exclude a file that declares an `artifact:` type other than `build-plan`,
+and they read `scope:` and `artifact:` through **one** frontmatter walker rather than two that
+can disagree. It fails **safe**: an absent `artifact:` key still reads as a build plan, because
+`build-plan-release-readiness.md` has none and a strict rule would silently drop a real plan.
+Net effect on output: none — `regen-views` reports every view up to date; three scopes stop
+mapping (a design doc and two release plans) and no change-log entry references any of them.
+
+The suite was green throughout because every scope test builds a two-file tmp `artifacts/`; none
+ran the collectors over the real directory of 87 artifacts in 15 declared types. That gap is now
+a test, mutation-proved in both directions — removing the filter reproduces the outage, and
+making it strict drops the plan that declares no type.
+
 **Two behavior changes landed while dispositioning the review, both from findings all three
 reviewers or the verify pass caught.** (i) `audit-learnings --apply` now **relocates a retiring
 entry's pre-existing `learnings-detail.md` narrative** into its historical block. It previously
