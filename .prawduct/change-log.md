@@ -3,6 +3,56 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-08-01: prawduct's backlog is on GitHub Issues — 371 items, 0 stranded, and the tripwire that fired at the cutover was re-aimed rather than silenced
+
+<!-- prawduct: type=feature | scope=v3.2.0-golive | chunks=06 -->
+
+**The migration ran.** `371 created, 0 skipped, 0 collision(s) of 371 source item(s)` (152 restructured
+by plan), `≥6548 REST points; no throttling`. `verify-migration` returned **exit 0 with all five
+conflict lists empty** and `source_items 371 = aliased 371`, which is the precondition Step 6 refuses to
+take on trust. `backlog_service_repo: brookstalley/prawduct` is recorded; the markdown is frozen
+history. Then 42 owner-confirmed dispositions applied 42-of-42 clean, leaving **155 open / 149 shipped /
+67 dropped**.
+
+**Read the line after the summary — it was absent, and that is the finding.** A failed status reconcile
+does not stop the run, so an import can report clean counts while `WARNING: N item(s) imported but NOT
+reconciled` sits below them. It did not appear, so every reconcile landed on the first pass.
+
+**Two residuals surfaced by running it, both recorded rather than left to be rediscovered.**
+
+**`verify-migration` must run BEFORE post-import disposals, and the runbook says the opposite** (filed,
+`#528`). The gate compares each covered item's decoded status against the **source markdown**, so
+folding a duplicate whose source status is `open` reads as `status_mismatch`. Step 4→5 ordering —
+dispose, then verify — would therefore have turned 24 owner-approved merges into a false exit 4 on a
+correct migration. The gate certifies *the migration*: that nothing was stranded. Disposals are tracker
+actions taken after it.
+
+**`promoted` has no Issues-backend equivalent** (filed, `#529`). The adapter's enum is
+`submitted|open|in-progress|shipped|dropped`, so three `promoted` items decoded to `open` — the right
+degradation, since promoted means in-flight, but a vocabulary loss whose only surviving record is now
+frozen markdown. `in-progress` looks like a free fix and is not obviously right, which is why it is
+`stage: design`.
+
+**The cutover tripped a test designed to trip, and the honest fix was not the one it prescribed.**
+`test_zero_fire_against_this_repo` asserted `backlog-checks-dormant` is silent here, on the true premise
+that prawduct had not cut over. That premise expired **by design** — the probe exists to start firing at
+exactly this switch. But its stated remedy, *"restore them against the read-through cache (GV8), not to
+narrow or delete this tripwire"*, is **roadmap W1**: no chunk of this release carries it, so the
+tripwire demanded unbuilt machinery at the moment it fired, and a test satisfiable only by unbuilt
+machinery becomes a standing red, which is how waivers get trained.
+
+**Owner ruling: re-aim it at the post-cutover contract.** What moved is the *side of the transition*,
+not the risk. The risk was always silent degradation, and post-cutover the dormancy must be **said out
+loud** (GV8 — retirement is not silence), because a dormant reader returning nothing is
+indistinguishable from a clean bill of health. It now fails if the probe goes quiet here, if it stops
+being dismissible `info`, or if a check enters `DORMANT_CHECKS` without its name reaching the operator —
+both sides derived from the roster, so a check cannot go dark unannounced. **Mutation-proved rather than
+assumed**: made to return `[]`, the test fails; restored, it passes. Restoring the readers is still the
+real fix, and when it lands `DORMANT_CHECKS` shrinks and the test follows it down.
+
+**Done-when 4 was satisfied as a consequence, which is what it asked for**: `probe_migration_required`
+now fires **0 times** — no separate work, no flag flipped by hand.
+
 ## 2026-08-01: The scrub's drift verdict reads CURRENT for the first time — because the survey finally covered the whole corpus
 
 <!-- prawduct: type=chore | scope=v3.2.0-golive | chunks=06 -->

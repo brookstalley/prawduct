@@ -14,6 +14,24 @@ product_identity:
 # by the legacy-backlog-format post-sync advisory probe.
 backlog_format_version: 2
 
+# THE CUTOVER (API §2.4). Set 2026-08-01 by v3.2.0 Chunk 06, after
+# `backlog verify-migration` returned exit 0 with all five conflict lists empty
+# (source_items 371 = aliased 371). This single key repoints the session briefing
+# to the GV2 snapshot and retires every markdown-premise advisory probe — and
+# `backlog-checks-dormant` starts firing at the same switch, so the operator
+# learns what went dark rather than discovering it as an unexplained absence.
+#
+# From here `.prawduct/backlog.md` is FROZEN HISTORY for this repo. It records
+# the corpus as it stood at the moment of migration; the tracker is authoritative
+# from now on, and the two are expected to diverge (the 42 post-import
+# dispositions are applied on the tracker, not backported here).
+#
+# `lib/backlog/legacy.py` is NOT retired by this flip — not this repo's, not any
+# repo's. GV7/MG3 retire it only at portfolio-wide migration, and
+# `lib/backlog/migrate.py` reads through `legacy.parse_backlog`, so retiring it
+# would disable the next repo's migration.
+backlog_service_repo: brookstalley/prawduct
+
 # Last full backlog grooming (stamped by /prawduct:backlog list/pick/groom).
 # Timestamp, not a count — counts are always re-derived (D14). Resolves the
 # backlog-overdue-grooming advisory.

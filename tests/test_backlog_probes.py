@@ -301,19 +301,55 @@ class TestChecksDormantProbe:
             assert internal_id not in action
         assert "dismiss" in action.lower()
 
-    def test_zero_fire_against_this_repo(self):
-        # Repo-coupled tripwire (deliberately NOT hermetic). This repo is genuinely
-        # out of the target state — it has not cut over — so the probe is silent for
-        # the right reason. If prawduct itself cuts over while these readers are
-        # still dormant, this trips; that is the intended signal to restore them
-        # (GV8/W1), never a reason to narrow the trigger.
+    def test_dormancy_is_said_out_loud_against_this_repo(self):
+        # Repo-coupled tripwire (deliberately NOT hermetic), RE-AIMED 2026-08-01 by
+        # owner ruling when prawduct cut over in v3.2.0 Chunk 06.
+        #
+        # It used to assert the probe was SILENT here, on the true premise that this
+        # repo had not cut over. That premise expired at the cutover — by design, since
+        # the probe exists to start firing at exactly that switch. The old assertion
+        # also prescribed a remedy that is not available: "restore them against the
+        # read-through cache" is roadmap W1, so the tripwire demanded, at the moment it
+        # fired, work no chunk of this release carries. A test that can only be
+        # satisfied by unbuilt machinery stops being a contract and becomes a standing
+        # red, which is how waivers get trained.
+        #
+        # What is re-aimed is the SIDE of the transition, not the risk. The risk was
+        # always silent degradation, and it still is: post-cutover the dormancy must be
+        # SAID OUT LOUD (GV8 — "retirement is not silence"), because a dormant reader
+        # returning nothing is indistinguishable from a clean bill of health. So this
+        # now fails if the probe goes quiet here, if it stops being dismissible `info`,
+        # or if a dormant check is added to DORMANT_CHECKS without its name reaching
+        # the operator. Restoring the readers is still the real fix; it is tracked, and
+        # when it lands DORMANT_CHECKS shrinks and this test follows it down.
         repo_root = Path(__file__).resolve().parents[1]
         state = load_project_state(repo_root)
-        assert bp.probe_checks_dormant(state, Codebase(root=repo_root)) == [], (
-            "prawduct itself has now cut over while these checks are still dormant. "
-            "The remediation is to restore them against the backlog read-through "
-            "cache (GV8), not to narrow or delete this tripwire."
+        assert bp.post_cutover(state), (
+            "this repo is expected to be post-cutover since v3.2.0 Chunk 06; if the "
+            "cutover was deliberately reverted, this test is what should tell you."
         )
+
+        fired = bp.probe_checks_dormant(state, Codebase(root=repo_root))
+        assert len(fired) == 1, (
+            "the dormancy must surface as exactly one consolidated advisory — one nag "
+            "per dormant reader trains dismissal, which is what makes the next real "
+            f"signal invisible. Got {len(fired)}."
+        )
+        assert fired[0].priority == "info", (
+            "an accepted, time-boxed interim state is reportable, not actionable — "
+            "escalating it is how a dismissible advisory becomes noise."
+        )
+
+        # Every dormant check reaches the operator by NAME. Derived from the roster on
+        # both sides, so adding a check without surfacing it fails here rather than
+        # going out silently — the exact failure GV8 exists to prevent.
+        evidence = " ".join(fired[0].evidence)
+        for _, name in bp.DORMANT_CHECKS:
+            assert name in evidence, (
+                f"dormant check {name!r} is in DORMANT_CHECKS but never reaches the "
+                "operator's advisory — a check that goes dark unannounced is the "
+                "silent degradation this probe exists to prevent."
+            )
 
 
 class TestRegistration:

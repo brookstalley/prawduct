@@ -234,9 +234,51 @@ behaviors are confirmed only against real GitHub —
 
 ## VRF-006 — Chunk 06 (backlog-service) — prawduct-first migration: scrub dispositions + migrated repo + live briefing
 
-**Status:** pending (deferred — the live migration itself is not yet run)
+**Status:** VERIFIED 2026-08-01 — the real migration ran. See § "Settled facts" below.
 **Added:** 2026-07-17 (backlog-service Chunk 06, offline deliverables landed; live
 migration/repoint/retirement deferred to an owner-run session after design sign-off)
+
+> ### ✅ VERIFIED — 2026-08-01, v3.2.0 Chunk 06, owner-run
+>
+> **Settled facts (raw tool output, not narration):**
+>
+> ```
+> import:           371 created, 0 skipped, 0 collision(s) of 371 source item(s)
+>                   (152 restructured by plan)
+> pacing:           ≥6548 REST points; no throttling (budgets never bound)
+> unreconciled:     none — the "imported but NOT reconciled" line is ABSENT
+> verify-migration: {"source_items": 371, "aliased": 371, "missing": [],
+>                    "unaliasable": [], "collisions": [], "status_mismatch": [],
+>                    "duplicate_alias": []}   exit 0
+> post-import:      42 dispositions applied, 42 of 42 clean (24 merges, 18 drops)
+> tracker after:    155 open / 149 shipped / 67 dropped = 371
+> ```
+>
+> **The owner-eyeball checks below, answered:**
+> - **Disposition list** — 42 applied, every one owner-confirmed (18 from 2026-07-18, 24 from
+>   Survey 3). Nothing hard-deleted: drops are *closed*, duplicates *merged with a
+>   `superseded_by` redirect written before the close*, bodies preserved.
+> - **Spot-check** — `MIG-M4-REMOVE` resolves (decision 4's superseded consequence, proved live:
+>   the multi-hyphen id carries a real alias rather than a content digest); `CRT-9K2P` carries the
+>   plan's restructured title; the three `promoted` items resolve.
+> - **Live briefing** — `post_cutover` is True and `probe_migration_required` now fires **0 times**,
+>   so done-when 4 is satisfied *as a consequence* rather than as separate work.
+> - **`legacy.py` NOT retired** — struck per GV7/MG3, and independently required, since
+>   `lib/backlog/migrate.py` reads through `legacy.parse_backlog`.
+> - **Drop-box NOT retired** — the MG5 leg stays gated by BKL-9XQ2.
+>
+> **Two residuals, neither a blocker, both recorded rather than discovered later:**
+>
+> 1. **`promoted` has no Issues-backend equivalent.** The adapter's status enum is
+>    `submitted|open|in-progress|shipped|dropped`, so the three `promoted` source items decoded to
+>    **`open`**. That is the right degradation — promoted means in-flight — but it is a **vocabulary
+>    loss**, and the frozen markdown is now the only place that distinction survives.
+> 2. **`verify-migration` must run BEFORE post-import disposals, and the runbook's Step 4→5 ordering
+>    says the opposite.** The gate compares each covered item's decoded status against the **source
+>    markdown**, so folding a duplicate whose source status is `open` makes it read as
+>    `status_mismatch`. Disposing first would turn the scrub's own owner-confirmed decisions into a
+>    false exit 4. The gate certifies *the migration* — that nothing was stranded; the disposals are
+>    tracker actions taken after it. Filed.
 **Where to verify:** A real owner-driven session, after design sign-off, running the
 migration-scrub runbook (`skills/backlog/migration-scrub.md`) against a chosen target
 repo — first SPIKE-S2 (`tests/spikes/s2_migration.py`) on a throwaway copy, then the
