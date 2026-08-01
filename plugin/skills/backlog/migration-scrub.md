@@ -402,10 +402,11 @@ for only two of them**:
       gh issue edit <n> --repo <owner>/<repo> --body-file /tmp/loser-body.md
 
   **`id_aliases` is one line holding a list** — `id_aliases: [ABC-1234, DEF-5678]` — so
-  what you are deleting is a list element, not the line. Delete the whole line only if
-  the duplicated id is the sole element. A loser that was itself an earlier survivor
-  carries several ids, and `merge` never moves them to the new survivor, so this issue
-  is their only record: take the line out and they are gone.
+  what you are deleting is a list *element*, not the line. Delete the whole line only if
+  the duplicated id is its sole element. The importer writes exactly one id per issue,
+  so a longer list means someone hand-edited it; and since `merge` never copies a
+  loser's aliases onto the survivor, this issue is the only record of whatever it
+  carries.
 
   **Round-trip it — do not retype it.** `gh issue edit --body` replaces the *whole*
   body, and the fold you ran moments ago wrote `superseded_by: <survivor>` into this
