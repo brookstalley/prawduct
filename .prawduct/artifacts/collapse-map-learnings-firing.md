@@ -1,20 +1,18 @@
 ---
 artifact: collapse-map
-version: 1
+version: 2
 scope: learnings-firing
-status: AWAITING OWNER APPROVAL — no retirement has been applied
-last_validated: 2026-07-31
+status: APPLIED 2026-08-01 — approved, amended in shape, and executed
+last_validated: 2026-08-01
 ---
 
 # Collapse Map — `learnings-firing` Chunk 03(b)
 
-**Nothing here has been applied.** `audit-learnings --apply` has not run against the
-corpus and will not until this map is approved (the plan's hard stop).
+**Applied 2026-08-01.** The owner approved this map, then amended its *shape* the same day
+(below) before `audit-learnings --apply` ran. Seventeen members retired by supersession;
+the corpus went **159 → 149**.
 
 Rosters are derived, never transcribed: `python3 tests/spikes/learning_families.py`.
-Re-run it rather than trusting any count below — one already changed while this map was
-being written (family 2 was reported as 9 until the script stopped excluding line 320
-from its own roster).
 
 ## The test applied to every member
 
@@ -28,79 +26,126 @@ Only a member whose instance is genuinely redundant retires leaving nothing behi
 Relocating an instance to `learnings-detail.md` does **not** count as keeping it: that file
 is read on demand when debugging a known area, not at the moment a rule has to fire.
 
+## Shape amendment — owner decision, 2026-08-01
+
+Version 1 of this map collapsed each family into **one** destination heading and justified it
+as *"within house style — the corpus already runs 188 median / 396 p90 / 907 max characters."*
+
+**That premise was false, and the measurement is what falsified it.** Drafted for real, the two
+destinations came in at **1,484 and 1,798 characters** — 1.7× and 2.0× the largest heading in the
+corpus, not within it. They also collided head-on with `record_lint`'s `learnings-entry-shape`
+check (`_LEARNINGS_RULE_MAX = 400`, shipped 2026-07-30 in `c8a24ed`), whose remedy text is *"move
+the evidence to learnings-detail.md"* — the exact instruction the owner overruled on 2026-07-31.
+Two ratified decisions one day apart, in direct contradiction, meeting here.
+
+**Decision:** split each family **thematically** into destinations that fit under the 400-char
+cap, grouped by the *kind* of failure rather than listed. No lint change; no rule dropped.
+
+Two things this bought and one it cost, all measured:
+
+- **It costs almost nothing in tokens.** One-heading-per-family would have been −21% across the
+  touched set; the split is −18%. Character count is dominated by the *instances*, which both
+  shapes preserve by construction. The shape choice buys **rule count**, not tokens.
+- **It uplevels further than the mega-heading did.** Naming three kinds of green-but-empty test
+  (*the fixture never reaches the subject* / *the assertion passes for a reason that is not the
+  property* / *the fixture's world is narrower than the requirement*) is an abstraction layer
+  that a single 1,798-character list does not have.
+- **It costs rule count.** One-per-family would have been 19 → 6; the split is 19 → 10.
+
+Token reduction was never this chunk's goal and the union rule forecloses it deliberately
+(Success criterion 3: *"shrinks in rule count, not in discriminating detail"*). That work already
+shipped separately as **LRN-4K8T** (2026-07-30, 121KB → 34KB) — which is where the 400 cap came
+from.
+
 ---
 
-## Family 1 — "a durable statement is a CLAIM"
+## Family 1 — "a durable statement is a CLAIM" → 4 destinations
 
-**Destination:** line 292 — *Anything in a durable artifact that one command could check is a
-CLAIM — including an identifier, a count, or a facet value, not just a rationale.*
+| Destination | Carries |
+|---|---|
+| **C1** `Anything in a durable artifact that one command could check is a CLAIM…` (amended in place, was `:292`) | the general statement + `:286` + `:324` |
+| **C2** `A completeness claim asserts the falsifying COMMAND now returns nothing…` (new) | `:27` + `:298` |
+| **C3** `Reads as evidence, is not: …` (new) | `:31` + `:21` + `:51` + `:217` |
+| **C4** `Verify a review artifact's cited gaps against HEAD first…` (amended in place + widened, was `:91`) | `:91`, widened |
+| **`:89`** *(untouched)* | **KEEP** — the trigger, not the definition |
 
-| Rule | Call | Instance that survives into 292 |
+| Retired | → | Instance that survived, and where |
 |---|---|---|
-| `:21` disposition vs diff | **merge** | a disposition record is what the next reader trusts *instead of* re-reading the findings. Also now code-delivered (`RESOLUTION_IS_A_CLAIM_DIRECTIVE`) — the stored copy is the redundant one |
-| `:23` probe with no describable failure | **reclassify → family 2** | not this family. Its own text says *"same discipline as a discriminating regression test, applied to live measurement"*. The keyword net misfiled it |
-| `:27` completeness claim | **merge** | three, all kept: a count of sites is true of any prefix of the real set; run the query whitespace-normalized; query the **concept**, not the phrasings you already found wrong |
-| `:31` absence-claim path resolves | **merge** | a missing directory produces the same evidence as the claim being true |
-| `:51` commit closes a backlog item | **merge** | a fix aimed at the item's *title* lands the adjacent sub-case and passes every guard |
-| `:89` "X now covers Y" | **KEEP** | this is the **trigger**, not the definition. 292 says what a claim is; `:89` says how to notice you are making one — *treat the SENTENCE as the trigger, not your confidence in it*. The delivery half, and the half that actually fires |
-| `:91` inherited `file:line` | **merge** | *a `file:line` you did not personally resolve is a claim, not a citation — its precision reads as evidence of having been read*. **Widen it on merge** (see below) |
-| `:217` subagent count/list | **merge** | a subagent's reported count or list is a lead, not ground truth |
-| `:286` rationale you reached for | **merge** | the *reach* is the tell — this is about **which** claim to check, which 292 cannot generate |
-| `:298` the falsifying query carries the defect | **merge** | normalize the text before searching; line structure is not semantic structure |
-| `:324` a correction is a completeness claim | **merge** | *quoting the parent rule demonstrably does not prevent this* — keep that clause verbatim; it is evidence the rule does not self-enforce |
+| `:21` disposition vs diff | C3 | *a disposition recorded from intent, not the diff, which the next reader trusts INSTEAD of the findings* |
+| `:27` completeness claim | C2 | all three: *never a count of sites fixed, true of any prefix of the real set*; *normalize the text before searching*; *query the CONCEPT, not the phrasings you already found wrong* |
+| `:31` absence-claim path resolves | C3 | *a missing directory returns the same empty result as the claim being true* |
+| `:51` commit closes a backlog item | C3 | *crediting a backlog item by TITLE while its filed reproduction still reproduces* |
+| `:217` subagent count/list | C3 | *a subagent's COUNT or LIST, a lead* |
+| `:286` rationale you reached for | C1 | *the rationale you REACHED FOR to defend a decision already made is the one to verify* |
+| `:298` the falsifying query carries the defect | C2 | *the query is itself a mechanism and can carry the defect it hunts… line structure is not semantic structure* |
+| `:324` a correction is a completeness claim | C1 | *a CORRECTION is itself a completeness claim: quoting the parent rule demonstrably does not prevent this* — kept verbatim, as required |
 
-**12 rules → 2.** One merge carries a required amendment:
+**`:91`'s widening, as approved.** It scoped to an *inherited* citation. Three anchors went stale
+in one session from appends to files cited twenty minutes earlier — same file, same session, no
+branch switch — and one stayed **arithmetically valid** while its content was rewritten, because
+markdown held it as one long line. C4 drops "inherited" and adds *anchor on symbols and headings,
+not digits — one that visibly breaks gets fixed; one still arithmetically valid under a rewrite
+never does*.
 
-> **`:91` must widen.** It currently scopes to an *inherited* citation. Three anchors went
-> stale in one session today from appends to files cited twenty minutes earlier — same file,
-> same session, no branch switch. And one stayed **arithmetically valid** while its content
-> was rewritten underneath, because markdown held it as one long line. An anchor that visibly
-> breaks gets fixed; one that silently stays valid never does. The merged text should say
-> *anchor on symbols and section headings, not digits* and drop "inherited".
+## Family 2 — "green is evidence only about what could have made it red" → 5 destinations
 
----
+| Destination | Carries |
+|---|---|
+| **D1** `Green is evidence ONLY about what could have made it red…` (**new — Chunk 03(a) rule 1**) | the general statement + `:15` + `:23` + discodon mechanism 1 |
+| **D2** `A passing assertion may be satisfied by something other than the property…` (new) | `:123` + `:284` + `:302` |
+| **D3** `A fixture's world is narrower than the requirement it certifies…` (new) | `:252` + `:256` + `:19` + `:141`(a) |
+| **D4** `A test inherits inputs nobody declared and properties nothing observes…` (new) | discodon mechanisms 2, 4, 5, 6 |
+| **D5** `A self-authored adversarial pass inherits the author's blind spots…` (new) | `:141`(b) |
+| **`:318`**, **`:320`** *(untouched)* | **KEEP** — per v1: the only rule saying how to check a guard is not a spelling, and instructions-as-deliverable |
 
-## Family 2 — "green is evidence only about what could have made it red"
-
-**Destination: a NEW rule, added by Chunk 03(a).** It does not exist yet, which is why the
-script excludes nothing from this roster.
-
-| Rule | Call | Instance that survives into the new rule |
+| Retired | → | Instance that survived, and where |
 |---|---|---|
-| `:15` pinning the constant | **merge** | a constant-equality assertion survives an inverted comparison while its *name* convinces the next reader the path is covered |
-| `:19` gate across state transitions | **merge** | a fixture encoding a single moment misses the step where the procedure changes the data the gate reads |
-| `:123` arg guard rejected the flag | **merge** | assert success **before** asserting absence |
-| `:141` fan-out collision | **merge** | two: test the collision case when the key is not unique; a self-authored adversarial pass inherits the author's blind spots |
-| `:252` the common instance narrows the requirement | **merge** | check coverage against the requirement's stated **breadth**, not the available example |
-| `:256` framework's own state vs propagated contract | **merge** | assert the contract that reaches consumer repos |
-| `:284` substring of prose | **merge** | a longer sentence containing the fragment keeps the test green — and when prose changes meaning, grep the tests asserting *fragments*, not just the ones that fail |
-| `:302` gate on THAT event | **merge** | a proxy signal passes every test you think to write, *because you wrote them believing the proxy* |
-| `:318` assert the PROPERTY, not one spelling | **KEEP** | distinct and actionable, with its own verification step — *verify it red against a DIFFERENT phrasing than the one that prompted it*. Merging it would delete the only rule in the corpus that says how to check a guard is not a spelling. **Violated twice in this session's own work** |
-| `:320` model the READER | **KEEP** | different subject: instructions as a *deliverable*, not test discipline. Its instance (size/budget/right-words guards all pass while the instruction is inert) does not follow from the general statement |
-| `:23` (reclassified in) | **merge** | a measurement with no describable failing observation measured nothing — the rule applied to live measurement rather than to a test |
+| `:15` pinning the constant | D1 | *a constant-equality assertion survives an inverted comparison while its NAME convinces the reader it is covered* |
+| `:19` gate across state transitions | D3 | *one moment stands in for the procedure's transitions* |
+| `:23` probe with no describable failure | D1 | *say what a FAILING run would have looked like before recording one* — the reclassification from family 1, as approved |
+| `:123` arg guard rejected the flag | D2 | *an unimplemented flag passes because the arg guard REJECTED it (assert success BEFORE absence)* |
+| `:141` fan-out collision | D3 + D5 | split, both kept: *the collision case is unwritten when the fan-out key is not unique* (D3) and the whole of D5 |
+| `:252` the common instance narrows the requirement | D3 | *the COMMON instance narrows the requirement to itself, so check coverage against its stated BREADTH* |
+| `:256` framework's own state vs propagated contract | D3 | *the framework's OWN state stands in for the propagated contract, so assert what reaches consumer repos* |
+| `:284` substring of prose | D2 | both: *a prose SUBSTRING stays green under any longer sentence containing it*; *grep tests asserting FRAGMENTS, not just failing ones* |
+| `:302` gate on THAT event | D2 | *a proxy passes every test you thought to write — gate on the named event* |
 
-**11 rules → 3** (the new rule, plus `:318` and `:320`).
+**The forwarding pointer for `:141` names D3**, its primary instance. D5 exists because of its
+second, and is cross-referenced from D1's narrative — a supersession record carries one target,
+which is a real limit of the mechanism and worth knowing before splitting a member again.
 
----
+## What else `--apply` swept, deliberately recorded
 
-## What the owner is being asked to approve
+`--apply` is a whole-corpus operation and cannot be scoped to this map. It additionally retired
+**one unrelated entry** whose `sentinel=` route was already `ready`: *"A plugin skill with
+unparseable YAML frontmatter loads with ALL metadata silently dropped"*
+(`tests/test_plugin_manifest.py::TestAllPluginSkillFrontmatter` passes, so the failure mode is
+structurally enforced). That is the mechanism working as designed, not a scope leak — but it is
+recorded here rather than left to be discovered in the diff.
 
-1. **Two KEEPs in family 1** — only `:89`. Everything else merges.
-2. **Two KEEPs in family 2** — `:318` and `:320`.
-3. **The `:91` widening**, which changes a rule's meaning rather than merely relocating it.
-4. **The `:23` reclassification** across families.
-5. That every other member's instance moves **into** its successor's heading, making those
-   two headings substantially longer. The corpus already runs 188 median / 396 p90 / 907 max
-   characters, so this is within house style — but it is the deliberate trade: fewer rules,
-   each carrying more.
+**One entry stayed, correctly.** *"Framework ownership follows the write strategy, not just
+registry membership"* is blocked on a sentinel naming
+`tests/test_prawduct_sync.py::TestAutoCommitSafety::test_user_authored_place_once_edits_treated_as_wip`
+— **a file that no longer exists**, since the file-sync engine was retired in v2.0.3. The audit
+fails closed and retains the entry, which is the right posture. Filed for repair; not fixed here
+(out of this chunk's scope).
 
-**Not yet done, and not to be done without this approval:** writing the two new rules,
-running `audit-learnings --apply`, and the part (c) read-instruction.
+## Verification
 
-## Sequencing constraint — read before applying
+- `python3 tests/spikes/learning_families.py` — family 'assertion' 11 → 4 candidates,
+  'discriminating' 10 → 4. Both destinations now exist, so `FAMILY_GENERALS` names both and the
+  `None` case in that script is retired with them.
+- All **17** forwarding pointers in `learnings-detail.md` resolve against the active corpus
+  (0 unresolvable).
+- No lifecycle metadata drifted into the detail file —
+  `test_no_lifecycle_metadata_has_drifted_to_the_detail_file` and its four siblings pass.
+- Every heading written by this chunk is ≤ 400 chars; the 15 headings still over the cap are
+  pre-existing and grandfathered (the check reads added lines only).
+
+## Sequencing constraint — still live
 
 `LRN-9K2P` is open at `stage: ready` to reword ~28 `learnings.md` headings. A `superseded-by=`
-forwarding pointer is written as *literal resolved heading text* and nothing ever re-resolves
-it. Run this collapse **before** that rewording or **after** it — never interleaved, and never
-the rewording after without re-checking every `superseded by **X**` in `learnings-detail.md`
-against `learnings.md`.
+forwarding pointer is written as *literal resolved heading text* and nothing ever re-resolves it.
+**This collapse has now run, so the rewording is the "after" side** — and it must re-check every
+`superseded by **X**` in `learnings-detail.md` against `learnings.md` before it lands. There are
+now 17 more such pointers than when that item was filed.

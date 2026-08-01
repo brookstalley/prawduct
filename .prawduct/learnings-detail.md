@@ -776,7 +776,7 @@ The decision-research trigger list already names **lock-in** as a research trigg
 
 The plugin's defaults reach onboarded products only through **canonical carriers**, never through this framework repo's own files: gitignore defaults via `lib/core.py::GITIGNORE_ENTRIES` (written into a product `.gitignore` by `update_gitignore` on onboard/doctor) and its import-light inline mirror `bin/prawduct-hook::_SESSION_GITIGNORED_PATHS` (the `_untrack_session_files` set); format legends via `templates/`; default-behavior changes via `methodology/session-digest.md`. Dogfooding this repo creates a blind spot: state the framework repo *also* generates (because the plugin is active here too) can be made quiet by a hand-edit to *this* repo's tracked files, which does nothing for products. The work-model vocabulary index (PR #71) is the canonical instance. Two hooks generate `.prawduct/.work-model-index.json` on every session in *every* `.prawduct/`-bearing repo (SessionStart `build-index`, UserPromptSubmit `user-prompt-submit`). PR #71 correctly intended it ephemeral/gitignored and added the ignore line to this framework repo's own `.gitignore` (line 25) — but never to `GITIGNORE_ENTRIES` or `_SESSION_GITIGNORED_PATHS`. Result: `update_gitignore` never wrote an ignore rule for it into any product, so every onboarded repo regenerated the file each session and carried it as permanent untracked noise (the reported symptom). The damning part is the *test*: `tests/test_work_model_hooks.py::test_index_is_gitignored` existed and **passed continuously** — because it asserted `(ROOT / ".gitignore")`, i.e. *this repo's* file, the one surface that has no bearing on products. A green guard test on the wrong surface is worse than no test: it reads as "covered." Discovered 2026-06-25 from a user report that the file was noisy in both this repo (where it's actually fine) and consuming repos (where it wasn't). Fix: add `.prawduct/.work-model-index.json` to both contract lists (`TestSessionGitignoreMirror` pins them in sync); existing products self-heal — `update_gitignore` adds the line next session, and `_untrack_session_files` `git rm --cached`s it if a repo already committed it. The regression net was rebuilt to assert the *contract*: `test_index_is_in_gitignore_contract` (the entry is in `GITIGNORE_ENTRIES`) and `test_update_gitignore_writes_index_line` (end-to-end — a freshly reconciled product `.gitignore` contains the line). Fix-shape, general: when a feature ships any propagated default (an ignore line, a format field, a digest behavior), write the regression test against the canonical carrier AND an end-to-end propagation into a fresh `tmp_path` product — never against the framework repo's own dogfood copy; if the only assertion touches a file under this repo's root, ask "would this still hold in a *product* repo?" and if not, the test is false coverage. Same root shape as [[A format's schema legend lives in `templates/` (scaffold-only) — adding an optional field reaches already-onboarded repos only via a migrate/triage *refresh* step, not the template]] — anything living only in the framework repo does not reach onboarded repos. Relates to Tests Are Contracts (#1 — a contract test must test the contract, not the producer's private copy), Validate Before Propagating (#15), Complete Delivery (#2), and Clean Deployment (#10 — dev-time dogfood state masking a product-facing defect).
 
-## When building from a review/audit artifact, verify each cited gap and fix-instruction against HEAD before planning — the artifact's file-state claims aged the moment it was written
+## Verify a review artifact's cited gaps against HEAD first — its file-state claims aged the moment it was written, some were never true. A `file:line` you did not resolve yourself is a claim, not a citation: its precision reads as evidence of having been read. Anchor on symbols and headings, not digits — one that visibly breaks gets fixed; one still arithmetically valid under a rewrite never does
 
 **Instance (2026-07-28, v3.2.0 Chunk 05c / BKL-72AS) — the inherited-`file:line` facet, where the
 claim was never true rather than stale.** Resuming from a prior session's analysis, two of its
@@ -1417,7 +1417,7 @@ Filed SCN-5B8Q claiming a resume re-anchors the session base and so "blinds the 
 
 Four live instances in this repo, which is what makes it a class rather than an anecdote: `.session-handoff.md` was written by the machine and then overwritten by the machine (the original continuity bug); `.handoff-notes.md` is written by the model and goes unconsumed wherever the installed plugin predates the feature; `ChunkProgress.git_derived` is computed on every resolve and read by no production caller; and the session briefing is not rendered at all on `compact`, the one source where context genuinely was just lost. Each looked like waste and each was actually a *silent wrong answer* — the reader either gets stale content presented as current, or gets nothing where something was promised. The owner's form of the rule is the sharpest: *if the output were worthless we should cut the feature, not write one and then not read it.* So: adding a producer without a named consumer is the same defect as dropping a requirement, and it hides better — the producing code is present, tested, and green. When you cannot name the consumer, the honest moves are to delete the producer or to record the gap with an item that makes "tracked" true. Discovered session-handoff-continuity, chunks 01-03 (2026-07-27). Relates to [[Anything in a durable artifact that one command could check is a CLAIM — including an identifier, a count, or a facet value, not just a rationale]] and Complete Delivery (#2).
 
-## Anything in a durable artifact that one command could check is a CLAIM — including an identifier, a count, or a facet value, not just a rationale
+## Anything in a durable artifact that one command could check is a CLAIM — an identifier, a count, a `file:line`, or a facet value, not just a rationale — so run its falsifying query first. The rationale you REACHED FOR to defend a decision already made is the one to verify, and a CORRECTION is itself a completeness claim: quoting the parent rule demonstrably does not prevent this
 
 The sibling of [[A rationale you reached for to defend a decision you'd already made is the one to verify BEFORE writing it into a durable spec — the reach itself is the tell]], generalized past rationales after four instances in two chunks. Writing `SCN-6H2W` into `project-preferences.md` for an item not yet filed (the real id came back `MET-8K4R`); filing it with `kind: design`, a value invented on the spot with zero other users in a 4,700-line backlog; filing `stage: design` when the item's own body said the work was "discovery-shaped", which routes to planning instead of discovery; and asserting a token budget of 4590 in two artifacts after a later edit moved it to 4595. Each is the same act as the recruited rationale — producing a plausible token in the shape the sentence needed — but on surfaces that do not *feel* like assertions. An identifier feels like a label, a facet like a form field, a count like bookkeeping; all four are checkable in one command and all four were wrong. So: before a durable artifact ships, grep it for every id, count, filename and enumerated value you wrote from memory, and re-derive each. Three of the four here were caught only because a subagent reported its own result back, which is luck, not method. Discovered session-handoff-continuity Chunk 03 (2026-07-27). Relates to [[Before writing any sentence of the shape "X now covers/catches/handles Y" or "there is no Y", run the one query that would falsify it — a coverage claim is the highest-frequency error class here and is almost always checkable in under a minute, so treat the SENTENCE as the trigger, not your confidence in it]] — same trigger-on-the-sentence discipline, extended to sentences that contain no verb at all — and [[A subagent's reported COUNT or LIST is a lead, not ground truth — verify before a blanket edit]], whose inverse held here: the subagent's report was what caught me. Honest Confidence (#5).
 
@@ -1683,3 +1683,151 @@ since the same mechanism carries learnings forward and fails the same way.
 
 **Operative form.** The wrap-up **files**; it does not route. A handoff note may *mention* what was
 filed and why it matters next, but the item must already have an id by the time the note names it.
+
+## Green is evidence ONLY about what could have made it red — for each test name the change that would turn it red; if you cannot, it measured nothing. The fixture may never reach the subject; a constant-equality assertion survives an inverted comparison while its NAME convinces the reader it is covered. Same for a live probe: say what a FAILING run would have looked like before recording one
+
+Written 2026-08-01 from the discodon retrospective (`documentation/LEARNINGS_VERIFYING_TEST_
+INFRASTRUCTURE.md` in that repo), which recorded four false claims across twelve Critic rounds.
+Six mechanisms were named there; five of them are this one rule, and the sixth is the
+text-anchored-edit rule below.
+
+**The question that does the work is not "is this tested?" but "what change would turn this
+red?"** Those feel identical and are not. The first is answered by the test's *existence*; the
+second requires naming a concrete mutation, and the naming is where the defect surfaces. A test
+whose falsifier you cannot state is a test that is passing for a reason you have not identified —
+which is indistinguishable, from the outside, from passing for the right one.
+
+**Why this rule needed writing when the corpus already had nine members of its family.** Each of
+those nine named one *shape* of the failure: the constant that is pinned instead of the
+threshold, the fixture frozen at one instant, the arg guard that rejects rather than accepts, the
+substring that any longer sentence satisfies, the proxy that co-occurs with the event. A reader
+meeting a new instance matched none of them, because the instance is always new. The general
+question generates all nine and the tenth. That is the collapse this rule was written to head —
+the nine retired *into* it on 2026-08-01, each leaving its instance behind in one of the four
+destinations, because a general statement with no instances is exactly as inert as nine instances
+with no general statement.
+
+**The instances that are hardest to see, and why they are grouped where they are.** The fixture
+that never reaches the subject is the one this repo reproduced three times in a single sitting
+while *fixing* it (files committed into the baseline → empty diff; tests outside `tests/` → no
+roots discovered; a negative case that fired because an uncommitted test file is itself a judged
+change). Its sibling — the constant-equality assertion — is worse, because the assertion's *name*
+does the convincing: `test_threshold_is_enforced` reads as coverage while the body compares a
+literal to itself and survives an inverted comparison intact.
+
+**The live-measurement half was a separate rule and should not have been.** Before recording a
+probe's result as settled fact, state what a failing run would have looked like. It is the same
+discipline pointed at measurement rather than at a test, and it fails the same way — a
+measurement with no describable falsifying observation measured nothing, and the "fact" is an
+artifact of the instrument. It was misfiled into the claims family by keyword and reclassified
+here in the approved collapse map.
+
+Relates to Tests Are Contracts (#1), Honest Confidence (#5), and Root Cause Discipline (#16).
+
+## A text-anchored edit changes a NEIGHBORHOOD, not a point — the anchor names a line, but the insert lands in a structure extending past it, and both still compile. Inserting at a `def` puts the function between the next one and its decorator; restructuring `try/except` into `try/except/else` strands the fallback in `else`. Re-read the enclosing block after every anchored edit; the suite stays green
+
+Written 2026-08-01 from the discodon retrospective's mechanism 3, plus the concrete defect its
+mechanism 6 produced. **This is the defect class the agent's own editing tools manufacture**, and
+nothing in the corpus covered it.
+
+**The mismatch is between how the anchor is chosen and what the edit changes.** An anchor is a
+line — a `def`, an `except`, a closing brace. The edit's *effect* is scoped to whatever syntactic
+structure encloses that line, which extends past it in both directions and is invisible in the
+matched text. So the operation reads as pointwise and is not.
+
+Two instances, both observed:
+
+- Inserting a new function "at" a `def` line places it between the *next* function and that
+  function's decorator. The decorator now decorates the new function; the old one is bare. Both
+  parse. Both import. Whatever the decorator registered is silently unregistered.
+- Restructuring `try/except` into `try/except/else` moves the code after the `try` block into
+  `else`, which runs *only when no exception was raised*. A fallback that existed to handle the
+  exception path is now unreachable on exactly that path. The module compiles and the happy-path
+  tests pass.
+
+**Both stay green**, which is why this is not caught by the suite and has to be caught by the
+edit. That is also the connection to the rule above: the tests that would have gone red are the
+ones nobody wrote, because nobody knew the neighborhood had changed.
+
+**The act:** after any text-anchored edit, re-read the *enclosing block*, not the diff hunk. A
+diff shows the lines you changed; the defect is in the lines you did not, whose meaning your
+change altered. Where the language has structural editing (an AST-aware tool, a language server
+rename), prefer it — it operates on the structure the anchor only approximates.
+
+Relates to Tests Are Contracts (#1) and Validate Before Propagating (#15).
+
+## Historical (structurally enforced)
+
+Learnings retired by `audit-learnings --apply`, for one of two reasons, stated on each entry: a declared `sentinel=` test now passes, so the failure mode is structurally enforced; or a broader rule superseded it, in which case the entry names its replacement. Kept here as historical context.
+
+## Pinning the CONSTANT a threshold uses is not testing the threshold — exercise the firing path and prove it by mutation, because a constant-equality assertion survives an inverted comparison while its name convinces the next reader the path is covered
+
+*Retired 2026-08-01 — superseded by **Green is evidence ONLY about what could have made it red — for each test name the change that would turn it red; if you cannot, it measured nothing. The fixture may never reach the subject; a constant-equality assertion survives an inverted comparison while its NAME convinces the reader it is covered. Same for a live probe: say what a FAILING run would have looked like before recording one**. That rule is the active statement; this one is kept for readers who remember it.*
+
+## A gate that lives inside a procedure must be tested across the procedure's own state transitions, not at one instant — every fixture encoding a single moment will miss the step where the procedure changes the data the gate reads
+
+*Retired 2026-08-01 — superseded by **A fixture's world is narrower than the requirement it certifies — the COMMON instance narrows the requirement to itself, so check coverage against its stated BREADTH; the framework's OWN state stands in for the propagated contract, so assert what reaches consumer repos; one moment stands in for the procedure's transitions; and the collision case is unwritten when the fan-out key is not unique**. That rule is the active statement; this one is kept for readers who remember it.*
+
+## Verify a disposition against the diff before recording it — "fixed" is a claim about the tree, not about intent, and a dispositions record is what the next reader trusts INSTEAD of re-reading the findings
+
+*Retired 2026-08-01 — superseded by **Reads as evidence, is not: an absence-claim citing a path that does not RESOLVE, a missing directory returns the same empty result as the claim being true; a disposition recorded from intent, not the diff, which the next reader trusts INSTEAD of the findings; a commit crediting a backlog item by TITLE while its filed reproduction still reproduces; and a subagent's COUNT or LIST, a lead**. That rule is the active statement; this one is kept for readers who remember it.*
+
+## Before recording a probe's result as a settled fact, state what a FAILING run would have looked like — if you cannot describe the observation that would have falsified it, the probe measured nothing and the "fact" is an artifact of the measurement Same discipline as a discriminating regression test, applied to live measurement
+
+*Retired 2026-08-01 — superseded by **Green is evidence ONLY about what could have made it red — for each test name the change that would turn it red; if you cannot, it measured nothing. The fixture may never reach the subject; a constant-equality assertion survives an inverted comparison while its NAME convinces the reader it is covered. Same for a live probe: say what a FAILING run would have looked like before recording one**. That rule is the active statement; this one is kept for readers who remember it.*
+
+## A completeness claim states the COMMAND that would falsify it and asserts that command now returns nothing — never a count of sites fixed, which is true of any prefix of the real set. Corollaries: run it **whitespace-normalized**, and query the **CONCEPT, not the phrasings you already found wrong** — a regex built from known-bad spellings is another enumeration wearing a query's clothes
+
+*Retired 2026-08-01 — superseded by **A completeness claim asserts the falsifying COMMAND now returns nothing — never a count of sites fixed, which is true of any prefix of the real set. The query is itself a mechanism and can carry the defect it hunts: normalize the text before searching, because line structure is not semantic structure, and query the CONCEPT, not the phrasings you already found wrong**. That rule is the active statement; this one is kept for readers who remember it.*
+
+## An absence-claim must cite a path that RESOLVES, or its verifying command returns empty for the wrong reason — the missing directory produces the same evidence as the claim being true: seven sites asserted "no GraphQL in `lib/backlog/`" after the tree became `plugin/lib/backlog/`, so the grep that "confirmed" it was confirming only its own bad path
+
+*Retired 2026-08-01 — superseded by **Reads as evidence, is not: an absence-claim citing a path that does not RESOLVE, a missing directory returns the same empty result as the claim being true; a disposition recorded from intent, not the diff, which the next reader trusts INSTEAD of the findings; a commit crediting a backlog item by TITLE while its filed reproduction still reproduces; and a subagent's COUNT or LIST, a lead**. That rule is the active statement; this one is kept for readers who remember it.*
+
+## When a commit claims to close a backlog item, verify the claim against the item's FILED CASE before crediting it — a fix aimed at the item's title routinely lands the ADJACENT sub-case, passing every guard while the filed reproduction still reproduces, so merging closes a still-broken item as shipped
+
+*Retired 2026-08-01 — superseded by **Reads as evidence, is not: an absence-claim citing a path that does not RESOLVE, a missing directory returns the same empty result as the claim being true; a disposition recorded from intent, not the diff, which the next reader trusts INSTEAD of the findings; a commit crediting a backlog item by TITLE while its filed reproduction still reproduces; and a subagent's COUNT or LIST, a lead**. That rule is the active statement; this one is kept for readers who remember it.*
+
+## A test written against a not-yet-implemented flag can pass because the arg guard REJECTED it — assert success before asserting absence
+
+*Retired 2026-08-01 — superseded by **A passing assertion may be satisfied by something other than the property — an unimplemented flag passes because the arg guard REJECTED it (assert success BEFORE absence); a prose SUBSTRING stays green under any longer sentence containing it (when prose changes meaning, grep tests asserting FRAGMENTS, not just failing ones); a proxy passes every test you thought to write — gate on the named event**. That rule is the active statement; this one is kept for readers who remember it.*
+
+## When a fan-out render keys on a field that isn't unique, test the collision case — and a self-authored adversarial pass inherits the author's blind spots
+
+*Retired 2026-08-01 — superseded by **A fixture's world is narrower than the requirement it certifies — the COMMON instance narrows the requirement to itself, so check coverage against its stated BREADTH; the framework's OWN state stands in for the propagated contract, so assert what reaches consumer repos; one moment stands in for the procedure's transitions; and the collision case is unwritten when the fan-out key is not unique**. That rule is the active statement; this one is kept for readers who remember it.*
+
+## A subagent's reported COUNT or LIST is a lead, not ground truth — verify before a blanket edit
+
+*Retired 2026-08-01 — superseded by **Reads as evidence, is not: an absence-claim citing a path that does not RESOLVE, a missing directory returns the same empty result as the claim being true; a disposition recorded from intent, not the diff, which the next reader trusts INSTEAD of the findings; a commit crediting a backlog item by TITLE while its filed reproduction still reproduces; and a subagent's COUNT or LIST, a lead**. That rule is the active statement; this one is kept for readers who remember it.*
+
+## A plugin skill with unparseable YAML frontmatter loads with ALL metadata silently dropped — validate it in CI
+
+*Retired 2026-08-01 — sentinel `tests/test_plugin_manifest.py::TestAllPluginSkillFrontmatter` passes, so the failure mode this warned about is structurally enforced.*
+
+## When generalizing or detecting "across all cases", the COMMON / AVAILABLE instance silently narrows the requirement to itself — check coverage against the requirement's stated breadth
+
+*Retired 2026-08-01 — superseded by **A fixture's world is narrower than the requirement it certifies — the COMMON instance narrows the requirement to itself, so check coverage against its stated BREADTH; the framework's OWN state stands in for the propagated contract, so assert what reaches consumer repos; one moment stands in for the procedure's transitions; and the collision case is unwritten when the fan-out key is not unique**. That rule is the active statement; this one is kept for readers who remember it.*
+
+## A test asserting the framework repo's OWN state instead of the propagated contract gives false coverage — assert the contract that reaches consumer repos
+
+*Retired 2026-08-01 — superseded by **A fixture's world is narrower than the requirement it certifies — the COMMON instance narrows the requirement to itself, so check coverage against its stated BREADTH; the framework's OWN state stands in for the propagated contract, so assert what reaches consumer repos; one moment stands in for the procedure's transitions; and the collision case is unwritten when the fan-out key is not unique**. That rule is the active statement; this one is kept for readers who remember it.*
+
+## A test that asserts a SUBSTRING of prose stops being a contract the moment someone writes a longer sentence containing it — when prose changes meaning, grep the tests that assert fragments of it, not just the ones that fail
+
+*Retired 2026-08-01 — superseded by **A passing assertion may be satisfied by something other than the property — an unimplemented flag passes because the arg guard REJECTED it (assert success BEFORE absence); a prose SUBSTRING stays green under any longer sentence containing it (when prose changes meaning, grep tests asserting FRAGMENTS, not just failing ones); a proxy passes every test you thought to write — gate on the named event**. That rule is the active statement; this one is kept for readers who remember it.*
+
+## A rationale you reached for to defend a decision you'd already made is the one to verify BEFORE writing it into a durable spec — the reach itself is the tell
+
+*Retired 2026-08-01 — superseded by **Anything in a durable artifact that one command could check is a CLAIM — an identifier, a count, a `file:line`, or a facet value, not just a rationale — so run its falsifying query first. The rationale you REACHED FOR to defend a decision already made is the one to verify, and a CORRECTION is itself a completeness claim: quoting the parent rule demonstrably does not prevent this**. That rule is the active statement; this one is kept for readers who remember it.*
+
+## A falsifying query is itself a mechanism and can carry the defect it hunts — when proving a claim is ABSENT from a tree, normalize the text before searching, because line structure is not semantic structure
+
+*Retired 2026-08-01 — superseded by **A completeness claim asserts the falsifying COMMAND now returns nothing — never a count of sites fixed, which is true of any prefix of the real set. The query is itself a mechanism and can carry the defect it hunts: normalize the text before searching, because line structure is not semantic structure, and query the CONCEPT, not the phrasings you already found wrong**. That rule is the active statement; this one is kept for readers who remember it.*
+
+## When a guarantee names a specific event, gate on THAT event — a signal that usually co-occurs with it passes every test you think to write, because you wrote them believing the proxy
+
+*Retired 2026-08-01 — superseded by **A passing assertion may be satisfied by something other than the property — an unimplemented flag passes because the arg guard REJECTED it (assert success BEFORE absence); a prose SUBSTRING stays green under any longer sentence containing it (when prose changes meaning, grep tests asserting FRAGMENTS, not just failing ones); a proxy passes every test you thought to write — gate on the named event**. That rule is the active statement; this one is kept for readers who remember it.*
+
+## When you write a CORRECTION it is itself a completeness claim — run the query that would falsify it across the whole class BEFORE asserting the fix, because a correction that repaired only the site a review named is false about its own subject, and quoting the parent rule demonstrably does not prevent this
+
+*Retired 2026-08-01 — superseded by **Anything in a durable artifact that one command could check is a CLAIM — an identifier, a count, a `file:line`, or a facet value, not just a rationale — so run its falsifying query first. The rationale you REACHED FOR to defend a decision already made is the one to verify, and a CORRECTION is itself a completeness claim: quoting the parent rule demonstrably does not prevent this**. That rule is the active statement; this one is kept for readers who remember it.*

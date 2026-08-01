@@ -38,6 +38,50 @@ this is durable for every governed repo rather than local to one. The guard now 
 and `session-digest.md` were both at their ceilings and paid for it in place; headroom is now 1
 token and 45 characters, so the next addition to either has to fund itself.
 
+## 2026-08-01: The collapse — two families become nine rules, and every instance survives
+
+<!-- prawduct: type=feature | scope=learnings-firing | chunks=03 -->
+
+Seventeen rules retired by supersession; the corpus went **159 → 149**. Two of those rules are
+Chunk 03(a)'s genuinely-new ones (*green is evidence only about what could have made it red*, and
+*a text-anchored edit changes a neighborhood, not a point*), both with narratives in
+`learnings-detail.md`. Every retired member's distinguishing instance is locatable in its
+successor's heading — the union half was an acceptance criterion, not a style note, because
+dropping instances is the cheap way to hit the count and the whole reason the corpus stopped
+firing.
+
+**The approved map's stated premise was false, and drafting it for real is what falsified it.**
+Version 1 collapsed each family into one heading, justified as *"within house style — 188 median /
+396 p90 / 907 max."* Drafted, the two destinations measured **1,484 and 1,798 characters**: 1.7×
+and 2.0× the corpus maximum. They also collided with `record_lint`'s `learnings-entry-shape` cap
+(`_LEARNINGS_RULE_MAX = 400`, shipped 2026-07-30 in `c8a24ed`), whose remedy — *"move the evidence
+to learnings-detail.md"* — is precisely what the 2026-07-31 union ruling overruled. Two ratified
+decisions one day apart, contradicting each other, meeting at the first bulk `--apply`.
+
+Owner decision: **split each family thematically under the cap.** Family 1 → four destinations,
+family 2 → five, each grouped by the *kind* of failure rather than listing instances. The
+measured trade, all three numbers: token saving is **−18% vs −21%** for the mega-heading (the
+instances dominate, and both shapes keep them, so the shape buys rule count and not tokens);
+rule count is **19 → 10 vs 19 → 6**; and the split uplevels *further*, because naming three kinds
+of green-but-empty test is an abstraction layer a 1,798-character list does not have. Token
+reduction was never this chunk's goal — Success criterion 3 says *"shrinks in rule count, not in
+discriminating detail"* — and it already shipped as LRN-4K8T, which is where the 400 cap came from.
+
+**Part (c), the descent obligation, landed once and structurally**, in `learnings.md`'s header
+where the corpus is read: *reading a rule is not applying it; the failure mode of this file is not
+absence, it is assent.* The `/prawduct:learnings` skill carries a **reference**, not a copy — its
+caller never sees that header, which is learning "model the READER" applied to the fix for
+inertness rather than to a test.
+
+**Two things `--apply` did that this map did not ask for, both recorded rather than left in the
+diff.** It swept one unrelated entry whose `sentinel=` route was already `ready` (plugin-skill
+frontmatter validation — the mechanism working as designed, and `--apply` cannot be scoped). And
+it correctly *refused* to retire *"Framework ownership follows the write strategy"*, whose
+sentinel names `tests/test_prawduct_sync.py` — **a file deleted when the file-sync engine was
+retired in v2.0.3.** A learning pinned to a test that no longer exists is the corpus's own
+absence-claim rule turned on itself; the audit fails closed and keeps the entry. Filed, not fixed
+here.
+
 ## 2026-07-31: Rules that fire — delivery at the moment, and supersession as a real lifecycle event
 
 <!-- prawduct: type=feature | scope=learnings-firing | chunks=01,02 -->

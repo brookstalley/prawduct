@@ -369,6 +369,30 @@ the roster. Cite the command, never the digits.
   ship one). Repeating an exhortation across 159 rules reproduces the inertness one level up;
   stored rules carry instances instead, which do the same work at lower cost per rule.
 
+  **Built 2026-08-01. One spec correction, owner-decided, and it changes acceptance criterion 3.**
+  The approved map collapsed each family into **one** destination and justified it as *"within
+  house style — 188 median / 396 p90 / 907 max characters."* Drafted for real, the two
+  destinations measured **1,484 and 1,798 characters** — 1.7× and 2.0× the corpus maximum, not
+  within it — and collided with `record_lint`'s `learnings-entry-shape` cap
+  (`_LEARNINGS_RULE_MAX = 400`, shipped 2026-07-30), whose remedy *"move the evidence to
+  learnings-detail.md"* is exactly what the 2026-07-31 union ruling overruled.
+
+  Owner decision: **split each family thematically under the cap** — family 1 into four
+  destinations, family 2 into five, grouped by the *kind* of failure. So criterion 3's *"reduced
+  to their general rule plus whatever the map explicitly kept"* now reads **general rule plus its
+  thematic siblings plus the keeps**; its intent (count down, instances preserved) is met and the
+  union criterion is met in full. Measured trade, recorded because the intuition here is wrong:
+  the split saves **−18%** of characters against the mega-heading's **−21%** — nearly identical,
+  because the *instances* dominate and both shapes keep them. **The shape buys rule count, not
+  tokens** (19 → 10 rather than 19 → 6). Token reduction is not this chunk's goal and criterion 3
+  forecloses it deliberately; that work shipped as LRN-4K8T, which is where the 400 cap came from.
+
+  **Two `--apply` side-effects, recorded rather than left in the diff.** It is a whole-corpus
+  operation, so it also retired one unrelated `sentinel=`-ready entry (plugin-skill frontmatter
+  validation). And it correctly refused *"Framework ownership follows the write strategy"*, whose
+  sentinel names `tests/test_prawduct_sync.py` — deleted with the file-sync engine in v2.0.3.
+  Filed for repair; out of this chunk's scope.
+
 - **Depends on:** Chunk 02 (the mechanism the collapse executes through)
 - **Artifacts consumed:** the discodon retrospective; `learnings.md`; `learnings-detail.md`
 - **Deliverables:** two new rules with narratives in `learnings-detail.md`;

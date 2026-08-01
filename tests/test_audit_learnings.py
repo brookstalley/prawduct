@@ -1278,3 +1278,73 @@ class TestLifecycleMetadataLivesWhereItsReaderLooks:
             "after a `## ` title — _METADATA_RE will not associate them with "
             "any entry, so they are silently ignored."
         )
+
+
+class TestDescentObligationReachesTheReader:
+    """The corpus's standing read-instruction, pinned by POSITION and POINTER.
+
+    `learnings-firing` Chunk 03(c) states the descent obligation once — a rule
+    agreed with and not applied to the case in hand has done nothing — in
+    `learnings.md`'s preamble, and has `/prawduct:learnings` *reference* it
+    rather than carry a second copy.
+
+    Two ways that goes inert, and neither is visible to a size or
+    word-presence check (the failure mode learning 320 names: when the
+    deliverable is INSTRUCTIONS, at least one guardrail must model the READER):
+
+    * The statement drifts BELOW the first rule, where a reader meets it after
+      the rules it governs — reading order is the whole mechanism.
+    * The statement is deleted, leaving the skill pointing at nothing. A
+      reference to a thing that no longer exists is the corpus's own
+      absence-claim failure, one level up.
+
+    Anchored on the ``prawduct:descent-obligation`` MARKER, never on the prose.
+    A test matching a literal passes for every rewording of the same defect
+    (learning 318) — and this repo shipped exactly that mistake on 2026-07-31,
+    freezing the wording of prose chosen an hour earlier. The marker is a
+    mechanism the skill names; the paragraph under it is free to be rewritten.
+    """
+
+    MARKER = "prawduct:descent-obligation"
+
+    def _repo_root(self):
+        return Path(__file__).resolve().parent.parent
+
+    def test_the_obligation_sits_above_every_rule_it_governs(self):
+        learnings = self._repo_root() / ".prawduct" / "learnings.md"
+        if not learnings.is_file():
+            pytest.skip("no learnings.md in this checkout")
+        lines = learnings.read_text().splitlines()
+
+        marker_at = next(
+            (i for i, ln in enumerate(lines) if self.MARKER in ln), None
+        )
+        assert marker_at is not None, (
+            f"no `{self.MARKER}` marker in learnings.md — the descent "
+            "obligation is the corpus's standing read-instruction and "
+            "/prawduct:learnings points at it by this marker."
+        )
+
+        first_rule = next(
+            (i for i, ln in enumerate(lines) if ln.startswith("## ")), None
+        )
+        assert first_rule is not None, "learnings.md has no `## ` rules at all"
+        assert marker_at < first_rule, (
+            f"the descent obligation (line {marker_at + 1}) sits BELOW the "
+            f"first rule (line {first_rule + 1}) — a reader meets it after the "
+            "rules it governs, which is the inertness it exists to prevent."
+        )
+
+    def test_the_skill_references_the_home_and_does_not_copy_it(self):
+        skill = (
+            self._repo_root()
+            / "plugin" / "skills" / "learnings" / "SKILL.md"
+        )
+        if not skill.is_file():
+            pytest.skip("no learnings SKILL.md in this checkout")
+        body = skill.read_text()
+        assert self.MARKER in body, (
+            f"/prawduct:learnings no longer names `{self.MARKER}` — its caller "
+            "never sees learnings.md's header, so without this pointer the "
+            "obligation reaches the subagent and not the reader who acts."
+        )

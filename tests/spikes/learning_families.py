@@ -45,15 +45,15 @@ LEARNINGS = REPO_ROOT / ".prawduct" / "learnings.md"
 #: General rules each family would collapse into, by heading prefix. These are
 #: the *destinations*, and they are excluded from their own family's roster —
 #: a general rule is not a duplicate of itself.
-#: `assertion` collapses into a rule that already exists. `discriminating` does
-#: NOT: its destination is the new rule Chunk 03(a) adds, so until that lands
-#: there is nothing to exclude and every match is a member — including
-#: "model the READER", which is a member of the family, not its head. Naming an
-#: existing rule as the destination here (the first cut named line 320) silently
-#: drops that rule from its own roster and understates the family by one.
+#: Both destinations now exist: `discriminating`'s was written by Chunk 03(a)
+#: on 2026-08-01 and this entry moved from ``None`` at that moment. Naming an
+#: existing rule as a destination silently drops it from its own roster and
+#: understates the family by one (the first cut named line 320 and reported 9
+#: where there were 10), which is why a destination is named only once it is
+#: genuinely the family's head.
 FAMILY_GENERALS = {
     "assertion": "Anything in a durable artifact that one command could check is a CLAIM",
-    "discriminating": None,   # added by Chunk 03(a): "green is evidence only about what could have made it red"
+    "discriminating": "Green is evidence ONLY about what could have made it red",
 }
 
 #: Signatures, deliberately narrow. A broad net (`test|assert|verify|claim`)
@@ -137,8 +137,10 @@ def main() -> int:
         members = families[name]
         print(f"=== family '{name}' — {len(members)} candidate member(s) ===")
         dest = FAMILY_GENERALS[name]
-        print("    collapse destination: " + (dest or
-              "NEW rule, added by Chunk 03(a) — does not exist yet, so nothing is excluded"))
+        # A family with no destination excludes nothing from its own roster, so
+        # say that rather than printing "None" — the roster is read as a count.
+        print("    collapse destination: " + (dest if dest else
+              "(none yet — nothing is excluded from this roster)"))
         for lineno, title in members:
             shown = title if len(title) <= width else title[: width - 1] + "…"
             print(f"    :{lineno:<4} {shown}")
