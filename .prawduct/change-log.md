@@ -3,6 +3,186 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-07-31: A turn that ends without saying where things stand, and a fix strategy that arrives after the fixing (CRT-9B4K + an unfiled owner report)
+
+<!-- prawduct: type=fix -->
+<!-- UNTAGGED, and the reason matters because the first draft gave the wrong one. Wrong reason: "no
+     build plan, so there is no ## Status to regenerate" — true but irrelevant, since scope= also keys
+     release-pending enumeration. Real reason: the two controls CONFLICT and the tag loses. Tagging
+     makes this a release-pending scope with no plan file, which `views.diagnose_scope_plan_coverage`
+     (views.py:665-670) rejects; regen-views folds that into `errors` and returns 2 with nothing
+     written, BEFORE `apply_regen` — so the tag breaks every view regeneration, not just this entry.
+     Verified by tagging it and running `regen-views --check`, not by reading. (The Critic finding that
+     recommended tagging cited a tolerance in `views._collect_status_regens`; no such symbol exists —
+     the real one is `views._plan_status_results`, and it sits downstream of the gate that rejects
+     first, so the recommendation was unworkable as given.) So this
+     entry knowingly accepts REL-6Q4M's blind spot — it will not appear in the release-classification
+     walk, and a releaser must classify it by hand. Recorded on REL-6Q4M: its fix has to cover the
+     planless scope, or the two controls stay mutually exclusive. -->
+
+Both reports came from consuming repos, and both are about **what an agent says at the moment the user
+reads it** rather than about any gate being wrong.
+
+**The `/clear` signal was being buried, and it was answering the wrong question.** The rule already
+existed — `building.md` has said "affirmatively signal when `/clear` is safe" since the session-continuity
+work — and products were still clearing on top of live reviewers. Two distinct defects behind that.
+First, **placement**: a correct, complete "safe to `/clear`" sentence sitting in the middle of a long
+closing summary is a signal not sent, because someone returning to a wall of text reads the bottom and
+nothing else. Second, and larger, **content**: after a 30-120 minute build the user's question is not
+"may I clear?" — it is *did it work, what happens next, and am I the blocker?* A safety verdict alone
+answers the third-most-important thing.
+
+So the close is now a **standing block of three short lines, last, after every other word**: **State**
+(done / blocked / waiting; committed or not; suite green or not), **Next** (the ONE next action and whose
+it is), **Clear** (*"Safe to `/clear`."* or *"Not safe to `/clear` yet — [what has to happen first]."*).
+Three failure modes are named together because they cost the same and only one of them was previously
+covered: omitting the block, burying it, and padding it into a paragraph that has to be parsed.
+
+**"Outstanding" now explicitly includes in-flight work, and the coordinator case is called out by name.**
+This is the mechanism behind the report: a `final`/`cumulative` review with a three-reviewer roster
+dispatches its subagents and hands the turn straight back, so the fork returns *while the review is still
+running*. An agent that treats "my turn ended" as "the work ended" says safe at exactly the wrong moment.
+The `.critic-active` marker makes `prawduct-hook clear` refuse, so the state is protected — but the user
+was told something false, and a PR reviewer has no equivalent marker at all.
+
+**The fix strategy for review findings now ships from the runtime, not from a guide read hours earlier.**
+The measured pump (CRT-3W6P): fixing findings one at a time and committing each fix moves the tree per
+fix, so every commit reopens the coverage gap and buys another 5-10 minute round — and each round then
+reviews the prose the last fix wrote. `critic-consolidate` now prints the strategy (one commit, then one
+`verify-resolutions`) whenever a review lands findings, and the "no pending manifest" no-op — which is the
+**coordinator path's normal case**, since the `SubagentStop` trigger consolidates while the main agent is
+elsewhere — now names the recorded review, its finding count, and the same strategy instead of answering
+"nothing to consolidate" to a question nobody asked. That path had no other channel: the reviewing fork
+returns without a findings summary, so the guide was the only carrier and the guide is optional.
+
+**The free-write list the directive carries was wrong in the report it came from, and the correction is
+the useful part.** The reporter's draft said pure-`.md` records ride the free edge but that
+`project-state.yaml` and `regen-views` output do not. Checked against `coverage_algebra.is_judgeable_path`
+rather than reasoned about: `METADATA_PREFIXES` covers **all** of `.prawduct/`, so `project-state.yaml`,
+build plans and every `regen-views` output are free, while a `.md` under `skills/`, `methodology/` or
+`templates/` is governance-protected and **is** judgeable. Both halves of the draft were backwards, one in
+the direction that costs a wasted commit and one in the direction that costs a round. Since the directive
+is now a prose restatement of that predicate, its tests parse the directive's own text and pin every
+path class it names against the predicate **in both directions** — a predicate that narrows, a list
+edited alone, or a token *moved* between the free and costly clauses all fail. That last case took
+two attempts: the first version read a flag written beside each entry rather than the prose, so
+dropping `templates/` into the free clause stayed green; and the placement check then had to learn
+that the free clause turns negative at "OUTSIDE" before the costly sentence begins, since the four
+protected directories are named *inside* the free clause as exclusions.
+
+**One claim in CRT-9B4K was not adopted, deliberately.** The item insists the gitignored-session-file
+rule and the doc-only carve-out be named as separate things, warning that a reader who fuses them
+"will conclude that tracked doc edits are safe mid-review, which is the wrong lesson in the wrong
+direction." Read against the algebra, that conclusion is correct rather than wrong: a mid-review write
+to a tracked but non-judgeable path yields an interval whose whole diff is non-judgeable, which
+composes as a **free edge**, so coverage still spans to the new tree. The two mechanisms do differ —
+one never enters the tree hash, the other enters it and is exempted — but they give the operator the
+same answer to the only question they are asking, and a doc that splits them into two rules invites
+the more conservative and more expensive reading. Shipped as one list, with the difference left to the
+predicate that implements it. Stated precisely, because the first draft of this paragraph asserted a
+guard that does not exist: nothing *refuses* a dirty tree. `consolidate()` inspects the working tree
+not at all (the module header records the v3 posture — "No staleness refusal"), and `begin_review`
+only *appends an advisory note* to the manifest. What actually happens to a judgeable uncommitted
+file is that it leaves the interval **uncovered**, and the gate reports that — which is the outcome
+the caution was reaching for, arrived at by composition rather than by a check.
+
+**One correction rode along, and it was documented as a defect for two weeks before this.**
+`building.md` said warnings "should be addressed", and `review-cycle.md` § "The review loop terminates"
+names that sentence, by file, as the cause of the round pump: it reads as must-fix, so an agent fixes
+them, each fix commits, coverage stops reaching HEAD, another round runs. It now says warnings and notes
+gate nothing and are dispositioned. Everything added to `building.md` was paid for in place by the file's
+own trim-or-relocate rule — the block's rationale relocated to `reflection.md` and both always-injected
+digests, the fix-strategy detail to the runtime constant — and the file ends **exactly where it started**
+(4652), eight under the ceiling. Two attempted trims were reverted because tests pinned them as
+contracts; the funding was found elsewhere rather than the tests weakened.
+
+Those last six tokens were spent at the PR boundary, on the reviewer's catch. `building.md`'s
+Resolve-findings line still opened with **"Fix them all in ONE commit"** — the exact phrasing
+`_BATCH_FIX_DIRECTIVE`'s own comment records rejecting, and by name, citing this file as an authority
+telling the builder to stop. It contradicted **"warnings and notes gate nothing"** two paragraphs down
+in the same file, on the surface with the most authority at the moment a builder holds findings. It now
+mirrors the runtime: *disposition them ALL in ONE pass*. The fix pushed the file eight tokens over its
+ceiling before it was tightened — the budget caught an unfunded addition on its first live test, which
+is the bound working rather than a separate defect.
+
+**And the guide half is now pinned, because this surface regressed twice on one branch.** Once in the
+runtime string ("Fix them ALL"), once in `building.md` ("Fix them all in ONE commit") — both caught by a
+reviewer, neither by a test, while `TestBatchFixDirective` had pinned the runtime copy all along.
+`TestBuildingMethodology::test_resolve_findings_dispositions_rather_than_mandating_fixes` asserts both
+halves of the pair together, since the defect is specifically a *self*-contradiction: the reflexive-fix
+instruction and the rule it contradicts sit two paragraphs apart in one file, and pinning either alone
+would let the other drift back. Mutation-proved by restoring the old sentence.
+
+That pin's own first draft landed *inside* `test_build_cycle_structure`, between its third and fourth
+assertions, so two Common-Traps assertions ended up under a docstring about the disposition rule —
+nothing under-verified, but the next repin of this churning prose would have carried them out silently.
+A text-anchored insertion changes a neighborhood, not a point, and the anchor here was a line that
+looked like the end of a method and was not. Caught by the Critic, not by green. The first mutation
+written to prove the repair was itself non-discriminating — `"Boundary blindness"` → `"Boundary
+blindnessX"` still satisfies an `in` assertion — so the proof only became a proof when the string was
+replaced rather than extended.
+
+**The Critic then falsified the funding argument itself, which is the most useful thing it did.** The
+relocations treated the always-injected digests as free destinations. They are the *tightest*-budgeted
+surface in the framework: `session-digest.md` sits under a 10,000-char inline-context limit — above it
+Claude Code spills the digest to a file instead of injecting it — and it was at **9,999**. The addition
+took it to 11,143, 11% over, and the one guard could not see it: `test_additional_context_under_inline
+_limit` runs the digest hook against the framework repo, which since the variant renegotiation emits the
+*slim* digest, so the full digest — the one every product session receives, and the sole carrier of
+framework defaults for thin-anchor repos — was pinned by nothing. `test_slim_budget_at_most_half_of_full`
+is not a brake either; it gets *easier* to satisfy as the full digest grows. Both halves are fixed: the
+digest is back to 9,996 with the rule compressed to its three line-labels plus the in-flight rule and a
+pointer, and the inline-limit assertion is now parametrized over both variants at the source, so the file
+with the wider blast radius is the one that is pinned. A cross-surface test also pins State/Next/Clear,
+the in-flight rule and the shared trigger on all four copies — without it, a later trim of any
+destination silently unfunds a trim already taken in `building.md`.
+
+**Two artifacts moved with it.** `cross-cutting-concerns.md` row 45 (Session continuity across
+`/clear`) described the Builder carriers as "the safe-to-`/clear` signal" plus "one line in each
+session digest"; it now names the standing block, its four carriers and the cross-surface test, and
+its Critic cell is re-checked against the in-flight rule — still "none today", because a review
+cannot observe what an agent *said* at the end of a turn. `architecture.md` § Communication Channels
+gains the bound this change made a pattern: channel 1 carries **behavioural directives**, not only
+data, and that is legitimate when the string fires at the moment its rule applies — and is budget
+laundering when it does not, since the runtime is unmeasured and the guides are not.
+
+**A second review round followed, and it was earned rather than pumped.** The fixes above touch
+judgeable files, so the commit moved the tree past the reviewed one and the gate said `uncovered` —
+the sanctioned case, not an inferred round. It resolved all eleven prior blocking/warning findings
+and returned one new blocker: the `_already_consolidated_note` fix shipped with **zero** assertions,
+and the neighbouring test passed identically before and after it, so a revert to `return ""` would
+have reinstated the swallow-into-empty-string defect it was written to fix. Five tests now cover the
+three diagnostic branches and the age note — the last of which was untestable with the existing
+fixtures, whose `rev-test-0001` ids the timestamp regex never matches. Two runs also raced on one
+worktree (`critic-begin` resets the partials directory with no in-flight guard — CRT-9T6M, observed
+for the third time), which cost a full review's tokens and recorded nothing. That round also relabelled
+the no-op note's age from "recorded" to "dispatched": the value is parsed from the review id's own
+stamp, so it precedes the fact's timestamp by however long the review took — ten minutes on a
+coordinator run.
+
+**A Critic severity rule moved, and it was the reviewer protocol manufacturing false blockers.**
+`record_lint` emits two textually distinct `unchecked` shapes: `chunk-ref-missing unchecked — …`
+means the check could not run (BLOCKING, inheriting the retired `cannot-verify:` bar), while
+`chunk-ref-missing graded chunk … inferred from build-plan Status` means it *ran* under an
+assumption (NOTE). `goals-1-3.md` had compressed both to "a `chunk-ref-missing` entry is
+**BLOCKING**" — and that file orders `chunk`/`verify-resolutions` reviewers to read **nothing else**,
+so a compliant reviewer could not reach `review-cycle.md`'s carve-out. Every such dispatch without
+`--chunk` therefore raised a blocker whose only named remedy was unavailable: a branch building no
+chunk has no chunk to supply. It fired on this branch's own reviews, repeatedly. `review-cycle.md`
+was wrong in the other direction — it filed the whole-pass **crash** under "assumption", though that
+entry carries the blocking prefix deliberately (a crash takes the deliverable check down with
+everything else, which is BLD-5J8N arriving by a new route). Both files now grade by prefix and say
+so, and `test_both_unchecked_shapes_are_graded_on_every_reviewer_surface` keys off the strings the
+emitters actually produce — because the compression that caused this is exactly what a token-diet
+pass does to a file with fifty tokens of headroom, and nothing was stopping it a second time.
+
+**The figure this entry corrected went stale a second time, in the other copy.** The change-log's
+arithmetic was fixed while `test_v5_methodology.py`'s budget narrative kept saying "→ 4655" and
+"Headroom 5" above an assertion permitting 14, so the two records contradicted each other and the
+stale one sat twenty lines from the live one. Fixed, and the narrative now says to read the headroom
+off `LAST_MEASURED_TOKENS` rather than from prose — the copy-forward that table exists to end,
+committed twice in the branch that documents it.
+
 ## 2026-07-31: The completeness gate can see an item that arrived at the wrong status (BKL-7V2D)
 
 <!-- prawduct: type=fix | scope=backlog-service-v1 -->

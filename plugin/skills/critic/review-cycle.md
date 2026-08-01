@@ -228,14 +228,24 @@ most reliable way an agent talks itself into a round nothing asked for:
 prawduct-hook check-cumulative-critic   # PR path
 ```
 
-If it passes, you are done — stop. Record-only surfaces (`change-log.md`, `learnings.md`,
-`.prawduct/artifacts/**` plan prose, product docs) are **non-judgeable**: a commit touching only those
-never needs new coverage, so a fix confined to them cannot mandate another review. Two traps, both
-in the direction of *more* review than the extension suggests: a **comment-only edit to a `.py` file
-still counts as judgeable**, which is how a pure-prose fix commit gets pulled back into a full
-round; and a `.md` file under `skills/`, `methodology/` or `templates/`, or a root `CLAUDE.md`, is
-**governance-protected and therefore judgeable** — fork-skill prose is behavioural logic here. When
-in doubt assume judgeable and let the gate say otherwise; it is the gate's answer that binds.
+If it passes, you are done — stop. **Batch the fixes: ONE commit, then ONE `verify-resolutions`.**
+Fix-commit-verify per finding multiplies 5-10 minute rounds and hands each new round the prose the
+last fix wrote. `critic-consolidate` prints this verbatim whenever a review lands findings
+(`_BATCH_FIX_DIRECTIVE`), so the builder meets it holding the findings rather than remembering it
+from here.
+
+**Which writes are free while a review is in flight** — the question the builder actually has
+mid-review, answered by `coverage_algebra.is_judgeable_path`. Free: **everything under
+`.prawduct/`** (change-log, backlog, learnings, `project-state.yaml`, plan prose, `regen-views`
+output, and the gitignored session files), `.claude/settings.json`, and `.md` outside the protected
+set — README, `docs/**`, product prose. These are **non-judgeable**: a commit touching only those
+composes as a free edge, so it never needs new coverage and a fix confined to them cannot mandate
+another review. Two traps, both in the direction of *more* review than the extension suggests: a
+**comment-only edit to a `.py` file still counts as judgeable**, which is how a pure-prose fix
+commit gets pulled back into a full round; and a `.md` file under `skills/`, `methodology/` or
+`templates/`, or a root `CLAUDE.md`, is **governance-protected and therefore judgeable** —
+fork-skill prose is behavioural logic here. When in doubt assume judgeable and let the gate say
+otherwise; it is the gate's answer that binds.
 
 **The reviewer's half of the same rule** (severity contract: `review-protocol.md`). A finding whose
 only subject is a non-judgeable record is a **NOTE** unless it clears one of two bars:
@@ -312,14 +322,24 @@ history in it reports on the entry just written and nothing else. Severity per c
 `suite-total-claim` NOTE, which would otherwise sit in Goal 4. The manifest is named in Goal 2 and
 only that reviewer reads it, so splitting the findings by their natural goal loses them.
 
-**`unchecked` is not a pass, and one entry is BLOCKING.** Each entry names a check that could **not
-run** and why. A `chunk-ref-missing unchecked` line is the old `verify-chunk-refs` `cannot-verify:`
-exit and keeps its severity — **BLOCKING**, because a deliverable check that could not run is
-indistinguishable from one that passed, and habituation to that silence is what BLD-5J8N cost.
-Every other `unchecked` entry is a **NOTE** you must still state in your summary. Two entries name
-an *assumption* rather than a failure: record-lint graded a chunk inferred from build-plan Status
-(Status names the first UNCHECKED chunk, so it may be the next one), or the whole pass crashed and
-the review proceeded without it. Both mean **no answer**, not a clean one.
+**`unchecked` is not a pass, and the PREFIX decides the severity.** Each entry names a check that
+could not run, or an assumption made in place of one — and the two are told apart by the string, not
+by judgment:
+
+- **`chunk-ref-missing unchecked — …` → BLOCKING.** The old `verify-chunk-refs` `cannot-verify:`
+  exit, keeping its severity: a deliverable check that could not run is indistinguishable from one
+  that passed, and habituation to that silence is what BLD-5J8N cost. **The whole-pass crash carries
+  this prefix deliberately** (`record_lint.py`, the comment above the crash return) — a crash takes
+  the deliverable check down with everything else, so it must arrive at the deliverable check's
+  severity rather than as a generic NOTE, which would be BLD-5J8N by a new route.
+- **`chunk-ref-missing graded chunk … inferred from build-plan Status` → NOTE.** An *assumption*,
+  not a failure: the check ran (`chunk_graded` is non-null), but Status names the first UNCHECKED
+  chunk, so it may have graded the next chunk rather than the reviewed one. It means **no answer
+  about this diff**, not a clean one — and blocking it would be a false blocker with no remedy,
+  since a branch that builds no chunk has no `--chunk` to supply.
+- **Every other `unchecked` entry → NOTE**, still stated in your summary.
+
+`goals-1-3.md` carries this same rule for the modes that read only that file; the two must agree.
 
 **`chunk_graded`** names whose deliverables were checked. A zero count is an answer about that
 chunk; if it is `null`, nothing was checked at all.

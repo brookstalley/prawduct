@@ -315,7 +315,16 @@ opts into the backlog service:
 
 1. **CLI invocation + JSON on stdin/stdout** — the harness passes event payloads to `prawduct-hook`
    on stdin; skills and the Critic fork reach the data plane by invoking `prawduct-hook`
-   subcommands.
+   subcommands. This channel also carries **behavioural directives**, not just data: a command whose
+   output an agent reads at a decision point may state the rule that applies there
+   (`critic_consolidate._CACHE_WARM_DIRECTIVE`, `_BATCH_FIX_DIRECTIVE`). The move is
+   deliberate — a guide is read hours earlier if at all, and on the Critic's coordinator path the
+   reviewing fork returns no findings summary, so this is the only surface the builder is guaranteed
+   to meet. It is also *unbudgeted*, which is the bound worth stating: relocating instruction text
+   out of a measured methodology file into a runtime string is legitimate when the string fires at
+   the moment the rule applies, and is budget laundering when it does not. Directives here are
+   advisory (they never block) and carry no prawduct-internal ids, per
+   `observability-strategy.md`.
 2. **Files as the shared bus** — the dispatch manifest, per-role partials, evidence store, findings
    view, and session markers let the decoupled coordinator, reviewers, and consolidator communicate
    without ever being alive simultaneously.

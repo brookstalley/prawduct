@@ -33,16 +33,18 @@ norms exist; with none, **NOTE** naming the capture path. Tell: amending a norm 
 code. Correctness shapes the recommendation, never the need. Judge jurisdiction yourself;
 applicability is recorded, never assumed. Stale registry → NOTE: `/prawduct:doctor`; never a downgrade.
 
-**Record checks are already answered — read the manifest's `record_lint`, never re-derive it.** Do
-not recount what it counted; re-deriving a machine-checked number is how a record defect buys a
-review round. `chunk-ref-missing` (a deliverable the reviewed chunk declares does not exist) →
+**Record checks are already answered — read the manifest's `record_lint`, never re-derive it.** Never
+recount what it counted: that is how a record defect buys a review round. `chunk-ref-missing` (a deliverable the reviewed chunk declares does not exist) →
 **BLOCKING**. `governed-by-gap` (a plan disposes of fewer norms than a cited artifact's `## Direction`
 carries, or cites an artifact that does not exist) → **WARNING** under Goal 2. `suite-total-claim` (a
 suite-total test count in durable prose) → **NOTE**. `learnings-entry-shape` (a `learnings.md`
-rule over 400 chars, or a narrative body — both belong in the detail file) → **NOTE**. **`unchecked` is not a pass**: each entry names a
-check that could not run. A `chunk-ref-missing` entry is **BLOCKING** — a deliverable check that could
-not run is indistinguishable from one that passed. Every other entry is a **NOTE** you must still
-state in your summary. `chunk_graded` names whose deliverables were checked; `null` means none were.
+rule over 400 chars, or a narrative body — both belong in the detail file) → **NOTE**. **`unchecked` is not a pass, and only one shape blocks.** `chunk-ref-missing unchecked — …` is
+**BLOCKING**: the check could not run, which is indistinguishable from passing. `chunk-ref-missing
+graded chunk … inferred from build-plan Status` is an **assumption, not a failure** — it DID run
+(`chunk_graded` non-null), just possibly against the next chunk → **NOTE**. Blocking that shape is a
+false blocker with no remedy: a branch building no chunk has no `--chunk` to supply. Every other entry
+is a **NOTE** you must still state. `chunk_graded` names whose deliverables were checked; `null` means
+none were.
 
 ## 1. Nothing Is Broken
 
