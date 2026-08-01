@@ -12,10 +12,19 @@ patch bump, not a minor-per-feature.*
 **Recorded because a minor is arguable here and was not taken.** This release carries the largest
 consumer-visible code delta since v3.2.0 — `audit_learnings_cmd.py` (+428), `backlog/migrate.py`
 (+234), `critic_consolidate.py` (+175), `views.py` (+130) — and it adds a genuinely new capability
-(`superseded-by=` retirement in `audit-learnings`). It stays a patch because **nothing goes live and
-no persisted format or gate semantic breaks**: `superseded-by=` is an additive metadata key that
-fails closed on every ambiguity, the two new delivery sites *print* rather than gate, and the
-backlog service remains opt-in per repo. No behaviour an adopter depends on changes shape.
+(`superseded-by=` retirement in `audit-learnings`). It stays a patch because **no persisted format
+or gate semantic breaks**: `superseded-by=` is an additive metadata key that fails closed on every
+ambiguity, and every new delivery site *prints* rather than gates. No behaviour an adopter depends
+on changes shape.
+
+**Corrected 2026-08-01 — the original rationale said "nothing goes live," and the
+`upgrade-discovery` scope falsifies it.** That scope's Chunk 02 lifts the
+`backlog-service-migration-required` hold, so the advisory now fires at `warn` in every un-migrated
+repo with a structured backlog; the backlog service is still opt-in to *adopt*, but the nudge toward
+it is no longer opt-in to *see*. Patch remains correct under the conservative-versioning norm — the
+advisory prints and recommends, it does not gate, and nothing an adopter depends on changes shape —
+but the reason is now "it prints rather than gates," not "nothing goes live." Re-recorded rather
+than left standing, because a false premise in a version decision is worse than an arguable one.
 
 ## Release classification
 
@@ -25,6 +34,7 @@ backlog service remains opt-in per repo. No behaviour an adopter depends on chan
 | learnings-firing | ships | |
 | backlog-service-v1 | ships | |
 | record-mechanization | ships | |
+| upgrade-discovery | ships | |
 
 `K withheld = 0` → **whole-develop promotion** (runbook Phase 2 steps 14–20), not the pruned path.
 The v3.1.2 pruning does not carry forward: v3.2.0 promoted whole-develop and re-established
@@ -45,6 +55,19 @@ frozen history and blocker liveness is no longer readable from it. It did not fi
 worth recording: **the gate reads blocker liveness only for rows that name a blocker, and no row
 here does.** Every scope ships, so there is no withholding decision whose premise could have expired
 and nothing for the frozen backlog to be consulted about.
+
+**Re-measured 2026-08-01, after `upgrade-discovery` joined the release.** The measurement above was
+taken before the Phase 1 prep commit (`ddb6dd1`) stamped the first four scopes, and before a fifth
+existed; it is kept as the historical record rather than overwritten. Current state:
+
+```
+releasable: no release-pending scopes — nothing to classify
+  (227 change-log entries scanned, 206 tagged, 5 scope(s) already tagged release=v3.2.3).
+```
+
+Per `cut-and-publish-a-plugin-release.md` step 0, `no release-pending scopes — nothing to classify`
+takes the **same whole-develop promotion path** as `K withheld = 0`. The reasoning above still holds
+for the same reason: no row names a blocker.
 
 So the by-hand blocker check the runbook asks a cut-over repo for is **vacuous by construction here**,
 not skipped. The distinction matters a release later, when "there was nothing to check" and "I did
@@ -112,6 +135,18 @@ stranded, `verify-migration` exit 0. Consumer-visible portion is the hardening t
    completeness, not performance*: for every supported scenario, no functional requirement is
    broken, unproven against the real API, or silently wrong. `BKL-2K8V` (pick latency) is an NFR and
    explicitly does **not** gate.
+3. **Added 2026-08-01 with the `upgrade-discovery` scope — decide whether the migration advisory
+   goes fleet-wide with `BKL-8W2M` unbuilt.** The lift itself is settled: owner ruling 2026-07-24,
+   and `BKL-7D3V` explicitly scopes out re-litigating it. What is *not* settled is an interaction
+   that post-dates that ruling. `BKL-7D3V` recorded the accepted risk as "a repo that will never
+   host on GitHub gets an unresolvable `warn` every session… `BKL-8W2M` is what makes the lift
+   survivable" — and `BKL-8W2M` (#197) is still open at `stage:requirements`, i.e. unbuilt and
+   unscoped. That risk was accepted when the advisory reached only the **agent**. Chunk 01 of this
+   scope relays every `warn` to the **person, in conversation, every session**, which is strictly
+   worse than what was accepted and is the exact failure the relay's own `info`-exclusion note
+   guards against ("a channel that nags gets tuned out, which would cost the `warn` case its
+   audience"). Publishing is the irreversible step; merging to `develop` was not. Either land
+   `BKL-8W2M` before Phase 2, or record an explicit second acceptance of the amplified version.
 
 **Status at time of writing: PENDING.** Owner elected to hold at the Phase 1 checkpoint —
 `origin/develop` fully prepped, nothing published. Record the result in

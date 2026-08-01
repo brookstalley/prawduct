@@ -305,8 +305,11 @@ state; it remains the interim supported path until the GitHub-issue path is buil
     surface but not groom their data," stated at the signal that triggers it.
   - **(Content) No triage measurement gates migration.** A repo may migrate an ungroomed backlog; the
     advisory says the result will be worse and stops there. Any completeness bar prawduct could
-    enforce would be a proxy for judgment it does not have, and would turn the nudge into exactly the
-    fleet-routing gate **BKL-6J2X** holds this advisory to avoid.
+    enforce would be a proxy for judgment it does not have, and would turn the nudge into a
+    fleet-routing gate — the thing this advisory was held out of the live roster for several releases
+    to avoid becoming. It now fires live, and what keeps it a nudge rather than a route is that it is
+    a `warn`, so the briefing relays it into conversation for the owner to answer. A completeness bar
+    would put prawduct's judgment back in front of theirs.
 - **GV8** **Norm-lifecycle signals survive cutover.** The three norm-lifecycle probes —
   `revisit-due` (a norm exception or stopgap whose expiry date has passed), `dead-why` (a norm whose
   stated rationale cites a shipped/dropped item), and `stalled-transition` (a `Status: in-transition`
