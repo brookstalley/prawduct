@@ -638,10 +638,40 @@ def _apply_retirements(
     for entry in retained_entries:
         rebuilt_parts.append(_entry_block(entry).rstrip("\n") + "\n")
     new_content = "\n".join(rebuilt_parts).rstrip("\n") + "\n"
-    learnings_path.write_text(new_content)
 
-    # Append to learnings-detail.md.
     detail_path = learnings_path.parent / "learnings-detail.md"
+    detail_content = _detail_with_retirements(detail_path, retired_with_notes)
+
+    # BOTH files are composed before EITHER is written. `learnings.md` used to
+    # be written first, so any failure composing the detail content — and there
+    # was one: a guard that tested substring while its locator tested equality,
+    # raising StopIteration on a decorated heading — deleted the entries from
+    # the active file and never filed them. Retirement is a MOVE, and a move
+    # that can half-happen is data loss. Two writes cannot be atomic across two
+    # files, but composing first removes every logic error from the window.
+    learnings_path.write_text(new_content)
+    detail_path.write_text(detail_content)
+
+
+def _find_historical_section(lines: list[str]) -> int | None:
+    """Index of the historical section's heading, or ``None``.
+
+    ONE predicate, used by both the "does it exist" question and the "where is
+    it" question. Those were once a substring test and an equality test, which
+    disagree on any decorated heading (``## Historical (structurally enforced)
+    — 2026 archive``, or a ``###`` variant): the guard said present, the
+    locator found nothing, and the bare ``next()`` raised.
+    """
+    for i, line in enumerate(lines):
+        if line.strip().startswith(_HISTORICAL_SECTION_HEADER):
+            return i
+    return None
+
+
+def _detail_with_retirements(
+    detail_path: Path, retired_with_notes: list[tuple[LearningEntry, str]]
+) -> str:
+    """The full new text of ``learnings-detail.md``. Pure — writes nothing."""
     if detail_path.is_file():
         detail_content = detail_path.read_text()
     else:
@@ -656,46 +686,37 @@ def _apply_retirements(
         for entry, note in retired_with_notes
     )
 
-    if _HISTORICAL_SECTION_HEADER not in detail_content:
+    lines = detail_content.split("\n")
+    start = _find_historical_section(lines)
+    if start is None:
         if not detail_content.endswith("\n"):
             detail_content += "\n"
-        detail_content += (
+        return detail_content + (
             "\n" + _HISTORICAL_SECTION_HEADER + "\n\n"
             + _HISTORICAL_SECTION_BLURB
             + "\n" + appended_blocks
         )
-        detail_path.write_text(detail_content)
-        return
 
     # The section EXISTS — insert at its end, not the file's. Appending to EOF
-    # happens to be the same place only while the section is last, and this
-    # docstring has claimed "under the historical section" the whole time.
-    # Chunk 03's bulk collapse is the first `--apply` here, so once the section
-    # exists any later narrative appended to `learnings-detail.md` lands after
-    # it, and every subsequent retirement is filed under a heading it does not
+    # is the same place only while the section is last, and the docstring has
+    # claimed "under the historical section" the whole time. Chunk 03's bulk
+    # collapse is the first `--apply` here, so once any later top-level section
+    # exists, EOF-appending files every retirement under a heading it does not
     # belong to — with the file reading as though it did.
-    lines = detail_content.split("\n")
-    start = next(
-        i for i, line in enumerate(lines)
-        if line.strip() == _HISTORICAL_SECTION_HEADER
-    )
     end = len(lines)
     for i in range(start + 1, len(lines)):
-        # A sibling `## ` heading ends the section. Retired entries are also
-        # `## `, so only headings at or before the section's own level that are
-        # NOT part of it can close it — and every block this function writes
-        # lands inside, so scanning for the next `# ` (top level) is the safe
-        # boundary. A detail file with no later top-level heading appends at EOF
-        # exactly as before.
+        # Only a TOP-level heading closes the section: retired entries are `## `
+        # and every block this function writes belongs inside. A detail file
+        # with no later top-level heading appends at EOF exactly as before.
         if lines[i].startswith("# ") and not lines[i].startswith("## "):
             end = i
             break
     tail = "\n".join(lines[end:])
     head = "\n".join(lines[:end]).rstrip("\n")
-    detail_content = head + "\n\n" + appended_blocks
+    out = head + "\n\n" + appended_blocks
     if tail.strip():
-        detail_content = detail_content.rstrip("\n") + "\n\n" + tail
-    detail_path.write_text(detail_content)
+        out = out.rstrip("\n") + "\n\n" + tail
+    return out
 
 
 def run_audit_learnings(product_dir: str, *, apply: bool = False) -> dict:

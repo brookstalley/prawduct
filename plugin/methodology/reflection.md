@@ -67,6 +67,8 @@ Rationale: auto-filed NOTEs turn one-time observations into perpetual every-sess
 Write for the person who walked away: a long build leaves them returning to a wall of text, and they read the bottom. Everything they need in the next five seconds goes last, after every other word, in this exact shape — **three separate paragraphs, a blank line between each, the labels backticked so the terminal renders them as coloured tokens**:
 
 ```
+---
+
 `STATE` — done / blocked / waiting; committed or not; suite green or not.
 
 `NEXT` — the ONE next action, and whose it is.
@@ -74,7 +76,7 @@ Write for the person who walked away: a long build leaves them returning to a wa
 `CLEAR` — Safe to `/clear`. — or — Not safe to `/clear` yet: [what has to happen first].
 ```
 
-The shape is part of the signal, not decoration. Three answers run together as list items, or bolded inline inside a paragraph, stop being *separately* findable — and separately findable is most of what the block is for, because the reader is scanning for one of the three, not reading all three. Blank lines give each its own landing place; the backticked label is the only coloured token near the bottom of the turn, so the eye finds it without reading.
+The shape is part of the signal, not decoration, and each element does a different job. The `---` rule is the only horizontal break in the turn, so it separates the block from the wall of text above it before the reader has parsed a word. Blank lines give each answer its own landing place — three answers run together as list items, or bolded inline inside a paragraph, stop being *separately* findable, and separately findable is most of what the block is for, because the reader is scanning for one of the three, not reading all three. The backticked labels are the only coloured tokens near the bottom of the turn, so the eye finds them without reading.
 
 What each line owes:
 

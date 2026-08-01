@@ -115,9 +115,11 @@ Limit work cycles to 1-3 chunks for medium+ work — Critic quality degrades acr
 
 1. **Commit** (tests passing). 2. **Critic** (if medium+ and not run yet) — resolve blocking findings. 3. **Persist** pending decisions/plans to artifact files. 4. **Backlog** — file/close affected items via `/prawduct:backlog`. 5. **Update build plan Status** (mark chunks, update Context). 6. **Reflection** — confirm `.prawduct/.session-reflected` has an entry for this chunk; add a synthesis only if a cross-cutting pattern emerged. 7. **Handoff notes** — **read `.prawduct/.handoff-notes.md` before rewriting it**, then reconcile to what the *next* session needs: where you stopped, what you'd do next, what would bite them. Never blind-append.
 
-**Then close the turn with the standing block — last, after every other word. This exact shape — three paragraphs, blank line between, labels backticked so they render coloured:**
+**Then close the turn with the standing block — last, after every other word. This exact shape, `---` rule included, three separate paragraphs, labels backticked so they render coloured:**
 
 ```
+---
+
 `STATE` — done / blocked / waiting; committed or not; suite green or not.
 
 `NEXT` — the ONE next action, and whose it is.

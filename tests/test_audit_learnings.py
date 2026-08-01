@@ -989,6 +989,62 @@ class TestSupersessionRetirement:
         assert "Unrelated trailing section." in text
         assert "Old body." in text
 
+    @pytest.mark.parametrize(
+        "header",
+        [
+            "## Historical (structurally enforced)",
+            "## Historical (structurally enforced) — 2026 archive",
+            "### Historical (structurally enforced)",
+        ],
+        ids=["exact", "decorated", "deeper-level"],
+    )
+    def test_a_decorated_section_heading_never_loses_entries(
+        self, tmp_path: Path, header: str
+    ):
+        """Data loss, not cosmetics. The guard tested SUBSTRING and the locator
+        tested EQUALITY, so a decorated heading meant "section present" to one
+        and "not found" to the other — `next()` raised, and `learnings.md` had
+        already been rewritten, so the retired entries were gone from the active
+        file and never reached the detail file. Chunk 03's bulk `--apply` is the
+        first caller. Both files are now composed before either is written."""
+        learnings = _seed_learnings(tmp_path, self.CORPUS)
+        detail = tmp_path / ".prawduct" / "learnings-detail.md"
+        detail.write_text(f"# Learnings — Full Detail\n\n{header}\n\nBlurb.\n")
+
+        audit_learnings(tmp_path, apply=True, today=date(2026, 7, 31))
+
+        # Retired out of the active file...
+        assert "Narrow rule about fixtures" not in learnings.read_text()
+        # ...and INTO the detail file. Neither half may happen alone.
+        text = detail.read_text()
+        assert "## Narrow rule about fixtures" in text, (
+            f"entry vanished: removed from learnings.md and never filed under "
+            f"{header!r}"
+        )
+        assert "superseded by **General rule about evidence**" in text
+
+    def test_nothing_is_written_when_composing_the_detail_file_fails(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ):
+        """The ordering invariant itself, independent of any one bug: if
+        composing the detail content raises, `learnings.md` must be untouched.
+        Retirement is a MOVE, and a move that can half-happen is data loss."""
+        learnings = _seed_learnings(tmp_path, self.CORPUS)
+        before = learnings.read_text()
+
+        def _boom(*a, **k):
+            raise RuntimeError("composition failed")
+
+        monkeypatch.setattr(_mod, "_detail_with_retirements", _boom)
+        with pytest.raises(RuntimeError):
+            audit_learnings(tmp_path, apply=True, today=date(2026, 7, 31))
+
+        assert learnings.read_text() == before, (
+            "learnings.md was rewritten before the detail file was composed — "
+            "the retired entries are gone and were never filed"
+        )
+        assert not (tmp_path / ".prawduct" / "learnings-detail.md").exists()
+
     def test_duplicate_headings_do_not_cross_assign_retirement_notes(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ):

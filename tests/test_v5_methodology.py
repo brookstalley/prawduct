@@ -41,7 +41,7 @@ def estimate_tokens(text: str) -> int:
 #: record *why* an edit was affordable, which no test can); the current reading
 #: lives here, where a wrong number fails instead of misleading.
 LAST_MEASURED_TOKENS = {
-    "methodology/building.md": 4657,
+    "methodology/building.md": 4659,
     "skills/critic/review-protocol.md": 3616,
     "skills/critic/goals-1-3.md": 1946,
 }
@@ -206,10 +206,21 @@ class TestBuildingMethodology:
                 f"{name} no longer requires the three lines to be separate "
                 "paragraphs — without that they render as one run-on block"
             )
-            assert "backtick" in text, (
-                f"{name} no longer says the labels are backticked, so a reader "
-                "has no way to know the colouring is intentional"
+            # The `---` rule: the only horizontal break in the turn, so it
+            # separates the block from the wall of text above before the reader
+            # has parsed a word. Owner-requested 2026-07-31, and pinned on every
+            # surface because the DIGESTS are what reach product sessions — a
+            # rule that lived only in the on-demand guides would be a one-off
+            # for this repo.
+            assert "`---`" in text, (
+                f"{name} dropped the `---` rule that precedes the block"
             )
+            # NOT asserting the word "backtick". Every surface already shows the
+            # labels backticked and the assertion above checks that literal, so
+            # requiring the word too is a second statement of one fact — the
+            # thing `architecture.md`'s one-home norm exists to stop, and it
+            # would fail a surface that demonstrates the shape instead of
+            # narrating it.
             assert "Safe to `/clear`." in text, f"{name} dropped the safe line"
             assert "Not safe to `/clear` yet" in text, f"{name} dropped the unsafe line"
             # Outstanding includes work that is RUNNING, not merely unstarted —
