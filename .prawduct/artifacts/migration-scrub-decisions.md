@@ -432,6 +432,14 @@ other four 2026-07-18 merges are unaffected and re-verified resolvable today.
 resolvable today by `tests/spikes/backlog_scrub_drift.py`), plus 19 new folds, 1 close, 4 drops. Minus
 the CRT-6J4P withdrawal in § D, which returns one item to the keep set.
 
+> **SUPERSEDED BY THE RULING ABOVE — the arithmetic in this paragraph is the PROPOSAL's, kept as
+> the record of what was put to the owner.** The ruling changed two of its inputs: **§ B gained a
+> fifth drop** (`MET-9K4R`), and **§ D was overruled**, so no item returns to the keep set. Net is
+> **195 − 18 − 1 − 5 − 19 = 152**, which is the figure the headline carries and the one the
+> tracker reconciles with (152 survivors + 3 `promoted`-decoded-to-`open` = 155 open). Corrected
+> by a superseding clause rather than an edit, because this paragraph is the proposal the ruling
+> ruled on — rewriting it would erase what was actually decided against.
+
 ### F. Keep — the remainder
 
 No staleness signal and no shared-root signal survived screening. The grounds are the same as Survey 2's:

@@ -1,6 +1,23 @@
 # Backlog — prawduct
 
-<!-- FROZEN HISTORY as of 2026-08-01 — this file is NO LONGER THE BACKLOG.
+> # ⚠ FROZEN HISTORY — this file is NO LONGER THE BACKLOG
+>
+> prawduct cut over to the GitHub Issues backend on **2026-08-01** (v3.2.0 Chunk 06). The live
+> backlog is **https://github.com/brookstalley/prawduct/issues**.
+>
+>     prawduct-hook backlog list --repo brookstalley/prawduct
+>     prawduct-hook backlog get <PFX-XXXX> --repo brookstalley/prawduct
+>
+> **Read what follows as a snapshot of the moment of migration, never as live state.** It is
+> deliberately allowed to diverge: the 42 owner-confirmed dispositions were applied on the service
+> afterwards and are **not** backported here, so ~24 items still shown under `## Open` are merged or
+> dropped on the tracker. The section headings below are historical labels — nothing here is pickable.
+
+<!-- Rendered as a blockquote rather than an HTML comment on purpose: a comment is invisible in
+     GitHub's rendered view, so a reader browsing this file would have seen a heading and a list of
+     open items with no signal at all that it is dead.
+
+     FROZEN HISTORY as of 2026-08-01 — this file is NO LONGER THE BACKLOG.
 
      prawduct cut over to the GitHub Issues backend in v3.2.0 Chunk 06
      (`backlog_service_repo: brookstalley/prawduct` in project-state.yaml). All 371

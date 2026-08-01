@@ -281,6 +281,11 @@ migration/repoint/retirement deferred to an owner-run session after design sign-
 >    native issues are untouched — they predate the migration and are not ours to close. Closing is
 >    optional for correctness and required for tidiness; an abandoned open set on a public repo reads
 >    as a live backlog to anyone who finds it.
+> 3. **Revert the FROZEN-HISTORY banner at the head of `.prawduct/backlog.md`.** Easy to miss,
+>    and it is the step that makes the other two coherent: the import never mutated that file,
+>    but the cutover commit added a banner declaring it dead and pointing at the tracker. Run
+>    steps 1 and 2 without this and the restored live backlog announces that it is frozen and
+>    redirects readers to a tracker step 2 has just closed.
 >
 > **The markdown is still authoritative-as-of-migration, which is what makes this recoverable at all**
 > — it was never mutated by the import, so unsetting the scalar returns the repo to a working state
