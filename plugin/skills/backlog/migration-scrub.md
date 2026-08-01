@@ -394,17 +394,28 @@ for only two of them**:
   "target-side deduplication" the gate's own code comment says is the only fix.
 
   **Use `gh` or the web editor for this one edit — `backlog update --body` cannot do
-  it, and will report `ok` while changing nothing:**
+  it, and will report `ok` while leaving `id_aliases` untouched.** Read the body,
+  delete only that one entry, and pass everything else back **verbatim**:
 
-      gh issue edit <n> --repo <owner>/<repo> --body "<the body, minus that id>"
+      gh issue view <n> --repo <owner>/<repo> --json body -q .body > /tmp/loser-body.md
+      # delete ONLY the one id_aliases entry; leave every other line alone
+      gh issue edit <n> --repo <owner>/<repo> --body-file /tmp/loser-body.md
 
-  The adapter's `update` path deliberately **preserves** the `prawduct:` block: it
-  re-parses the old block, strips any block you paste into the new text, and
-  re-appends the original — a guard against silently destroying body-authoritative
-  fields (`id_aliases`, `verified`, `superseded_by`) that live nowhere else. That guard
-  is right almost always, and this is the one case where you need to defeat it, so the
-  edit has to go around the adapter. **Known defect — the gate's exit-4 message still
-  prescribes the fold alone, with no mention of any of this: `#534`.**
+  **Round-trip it — do not retype it.** `gh issue edit --body` replaces the *whole*
+  body, and the fold you ran moments ago wrote `superseded_by: <survivor>` into this
+  issue's block. Retyping the body drops that redirect — along with `v: 1` and
+  `verified` — and the loss is **silent**: the scan never consults `superseded_by`, so
+  the re-verify you finish on passes clean while every stale reference to the folded id
+  now resolves to nothing. Prefer the web editor if you want to see what you are
+  replacing.
+
+  This is the one case where you must go around the adapter, and it is worth knowing
+  why. `update` deliberately **preserves** the `prawduct:` block — it re-parses the old
+  block, strips any block you paste into the new text, and re-appends the original —
+  guarding exactly the body-authoritative fields above from a careless whole-body
+  rewrite. Going around it means carrying that guard's job yourself, which is what the
+  round-trip above is for. **Known defect — the gate's exit-4 message still prescribes
+  the fold alone, with no mention of any of this: `#534`.**
 
 `source_items` counts **every** parsed item in scope, not just the aliasable
 ones — so `source_items` exceeding `aliased` with an empty `missing` is exactly
