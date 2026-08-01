@@ -1,7 +1,30 @@
+---
+artifact: build-plan
+version: 2
+scope: upgrade-discovery
+governed_by:
+  - artifact: observability-strategy
+    dispositions:
+      - norm: "stdout is the agent-facing channel; stderr is the user-and-diagnostics channel"
+        disposition: applies
+        note: >-
+          The whole plan follows from this norm. It is not amended — it was correct;
+          what drifted was the description claiming the briefing answers the owner's
+          questions. Chunk 03 fixes the description, not the norm.
+      - norm: "Text emitted into a governed product names no prawduct-internal identifier"
+        disposition: applies
+        note: >-
+          Both relay directives are emitted text. Asserted by test, not just review.
+---
+
 # Build plan — Upgrade discovery: make a shipped capability reachable by the human
 
-**Critic mode:** cumulative-final
 **Branch:** `feature/upgrade-discovery-relay`
+
+<!-- No plan-level `Critic mode:` field: the reader looks for it inside a `## Chunk` section, and
+     the valid tokens are chunk/final/cumulative/verify-resolutions. A plan-level line naming a
+     chunk `Type:` value is silently ignored, which reads as configured while doing nothing. -->
+
 
 ## Problem
 
@@ -97,8 +120,19 @@ nagging, which trains the user to ignore the channel and costs more than it buys
 5. Tests, banner: directive present on a crossing; absent when `last == current`; absent on
    first-marker write; present alongside both headline-only and new-gate deltas.
 6. Tests, advisories: directive present with a `warn`; present with an `urgent`; absent on `info`-only;
-   absent with no active advisories; unaffected by the 5-item display cap (a `warn` ranked past the cap
-   still triggers it — the cap is a display limit, not a relevance filter).
+   absent with no active advisories; absent for a *resolved* `warn` (state decides, not priority);
+   and the display cap cannot hide a consequential advisory.
+
+   **Amended during build — the cap clause originally read "a `warn` ranked past the cap still
+   triggers the relay."** That state is unreachable: the priority sort ranks `urgent`/`warn` ahead
+   of `info`, so the only thing that can displace a `warn` from the visible five is an `urgent`,
+   itself relay-priority. A test of it passed identically against a correct implementation and one
+   keyed off the displayed slice — it asserted nothing. Replaced with the property that is real and
+   load-bearing: **the cap can never hide a consequential advisory**, which pins the *sort* (reorder
+   it to newest-first and a `warn` under six fresh `info`s would be relayed but not shown, telling
+   the person to look at something they cannot see). Verified by mutation that the replacement
+   fails when the priority sort is removed. The implementation still keys off the full active set —
+   not because the slice is wrong today, but so it stays right if the sort changes.
 7. Offline suite green.
 
 ## Chunk 02 — Lift the migration advisory hold
@@ -131,6 +165,15 @@ chunk alone.
 
 ## Status
 
-- [ ] Chunk 01 — Relay the upgrade to the human, from the banner
-- [ ] Chunk 02 — Lift the migration advisory hold
-- [ ] Chunk 03 — Make the observability strategy honest about audience
+- [ ] Chunk 01: Relay at both emission sites — built 2026-08-01, `[ ]` until release (derived — the release flips it from the change-log tag, so do not hand-check it)
+- [ ] Chunk 02: Lift the migration advisory hold — built 2026-08-01, `[ ]` until release
+- [ ] Chunk 03: Make the observability strategy honest about audience — built 2026-08-01, `[ ]` until release
+
+Context: Authored and built 2026-08-01 on `feature/upgrade-discovery-relay`, from a defect traced
+while preparing an owner acceptance exercise for the backlog migration — the owner asked why an
+auto-updating product would ever discover the migration, and the answer was that it would not.
+All three chunks are built and committed (`4c0dc44` + the Critic-resolution commit); the suite is
+green and both relays were verified against real rendered output. Unmerged and untagged: whether
+this rides in v3.2.3 or a follow-up is the owner's open call. **Chunks 01 and 02 must ship
+together** — the lift routes consuming repos toward an irreversible bulk write, and the relay is
+what puts a person in that loop.
