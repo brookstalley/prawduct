@@ -99,6 +99,8 @@ class TestBuildingMethodology:
         assert "Build Cycle" in self.content
         assert "Test Discipline" in self.content
         assert "Common Traps" in self.content
+        assert "Uninvestigated decisions" in self.content
+        assert "Boundary blindness" in self.content
 
     def test_resolve_findings_dispositions_rather_than_mandating_fixes(self):
         """The guide half of the disposition rule, pinned like the runtime half.
@@ -117,8 +119,6 @@ class TestBuildingMethodology:
         # The exact phrasings the runtime's own comment records rejecting.
         assert "Fix them all in ONE commit" not in self.content
         assert "Fix them ALL" not in self.content
-        assert "Uninvestigated decisions" in self.content
-        assert "Boundary blindness" in self.content
 
     def test_retrieval_over_generation_anchors(self):
         """The cheap-check gate and its Common Trap survive future token-diet

@@ -113,6 +113,15 @@ halves of the pair together, since the defect is specifically a *self*-contradic
 instruction and the rule it contradicts sit two paragraphs apart in one file, and pinning either alone
 would let the other drift back. Mutation-proved by restoring the old sentence.
 
+That pin's own first draft landed *inside* `test_build_cycle_structure`, between its third and fourth
+assertions, so two Common-Traps assertions ended up under a docstring about the disposition rule —
+nothing under-verified, but the next repin of this churning prose would have carried them out silently.
+A text-anchored insertion changes a neighborhood, not a point, and the anchor here was a line that
+looked like the end of a method and was not. Caught by the Critic, not by green. The first mutation
+written to prove the repair was itself non-discriminating — `"Boundary blindness"` → `"Boundary
+blindnessX"` still satisfies an `in` assertion — so the proof only became a proof when the string was
+replaced rather than extended.
+
 **The Critic then falsified the funding argument itself, which is the most useful thing it did.** The
 relocations treated the always-injected digests as free destinations. They are the *tightest*-budgeted
 surface in the framework: `session-digest.md` sits under a 10,000-char inline-context limit — above it
