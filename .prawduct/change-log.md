@@ -3,41 +3,6 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
-## 2026-07-31: One home per fact, method prescriptions become advice, and the closing block gets a shape
-
-<!-- prawduct: type=governance -->
-
-Three owner decisions, all from watching this session's own review rather than from theory.
-
-**Two `## Direction` norms born in `architecture.md`.** *Goals and verification bind; prescribed
-method is advice* (`in-transition`, GOV-4T9P) — a governing artifact says what must be true and
-how it is checked; where it also prescribes *how*, that is the author's guess made before the code
-was read, and a builder who finds a better route takes it and records why. Measured: three of the
-`learnings-firing` chunk-level prescriptions were wrong (an inert delivery site, a test file that
-does not exist, a deliverable that was decorative) while every goal-level statement held.
-Verification structure is carved out and binds unchanged — the same session had mutation-proving
-catch two tests the builder was confident about and wrong about.
-
-*Every fact has one home; every other mention is a reference to it* (`in-transition`, GOV-2R8K) —
-**9 of 23 findings in one review were a single fact copied and drifting**, and the repair applied
-to the largest of them was itself wrong: correcting the claim in all four places restored agreement
-and preserved the duplication. The norm reframes the review question from *"do these agree?"* to
-*"why are there two?"*. This repo had already invented the rule four times for four fact types
-(`LAST_MEASURED_TOKENS`, `suite-total-claim`, learning 322, the `governed_by:` pointer table)
-without stating it once — which is the upleveling failure the `learnings-firing` plan is about,
-sitting in the framework's own artifacts. The norm violated itself on the day it shipped: its
-Enforcement row paraphrased it instead of naming it, caught by the backlog reviewer and shortened
-to a title.
-
-**The standing block gets a shape.** Owner-requested after the content was already right: a `---`
-rule, then three separate paragraphs with backticked labels, so the three answers are separately
-findable at the bottom of a long turn rather than scanning as prose. Changed on all four surfaces
-— `building.md`, `reflection.md`, and **both digests**, which are what reach product sessions, so
-this is durable for every governed repo rather than local to one. The guard now pins the shape
-(rule present, separate paragraphs, backticked labels) rather than only the words. `building.md`
-and `session-digest.md` were both at their ceilings and paid for it in place; headroom is now 1
-token and 45 characters, so the next addition to either has to fund itself.
-
 ## 2026-08-01: The collapse — two families become nine rules, and every instance survives
 
 <!-- prawduct: type=feature | scope=learnings-firing | chunks=03 -->
@@ -113,6 +78,41 @@ sentinel names `tests/test_prawduct_sync.py` — **a file deleted when the file-
 retired in v2.0.3.** A learning pinned to a test that no longer exists is the corpus's own
 absence-claim rule turned on itself; the audit fails closed and keeps the entry. Filed, not fixed
 here.
+
+## 2026-07-31: One home per fact, method prescriptions become advice, and the closing block gets a shape
+
+<!-- prawduct: type=governance -->
+
+Three owner decisions, all from watching this session's own review rather than from theory.
+
+**Two `## Direction` norms born in `architecture.md`.** *Goals and verification bind; prescribed
+method is advice* (`in-transition`, GOV-4T9P) — a governing artifact says what must be true and
+how it is checked; where it also prescribes *how*, that is the author's guess made before the code
+was read, and a builder who finds a better route takes it and records why. Measured: three of the
+`learnings-firing` chunk-level prescriptions were wrong (an inert delivery site, a test file that
+does not exist, a deliverable that was decorative) while every goal-level statement held.
+Verification structure is carved out and binds unchanged — the same session had mutation-proving
+catch two tests the builder was confident about and wrong about.
+
+*Every fact has one home; every other mention is a reference to it* (`in-transition`, GOV-2R8K) —
+**9 of 23 findings in one review were a single fact copied and drifting**, and the repair applied
+to the largest of them was itself wrong: correcting the claim in all four places restored agreement
+and preserved the duplication. The norm reframes the review question from *"do these agree?"* to
+*"why are there two?"*. This repo had already invented the rule four times for four fact types
+(`LAST_MEASURED_TOKENS`, `suite-total-claim`, learning 322, the `governed_by:` pointer table)
+without stating it once — which is the upleveling failure the `learnings-firing` plan is about,
+sitting in the framework's own artifacts. The norm violated itself on the day it shipped: its
+Enforcement row paraphrased it instead of naming it, caught by the backlog reviewer and shortened
+to a title.
+
+**The standing block gets a shape.** Owner-requested after the content was already right: a `---`
+rule, then three separate paragraphs with backticked labels, so the three answers are separately
+findable at the bottom of a long turn rather than scanning as prose. Changed on all four surfaces
+— `building.md`, `reflection.md`, and **both digests**, which are what reach product sessions, so
+this is durable for every governed repo rather than local to one. The guard now pins the shape
+(rule present, separate paragraphs, backticked labels) rather than only the words. `building.md`
+and `session-digest.md` were both at their ceilings and paid for it in place; headroom is now 1
+token and 45 characters, so the next addition to either has to fund itself.
 
 ## 2026-07-31: Rules that fire — delivery at the moment, and supersession as a real lifecycle event
 
