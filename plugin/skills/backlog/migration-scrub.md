@@ -376,14 +376,24 @@ for only two of them**:
   the `id:PFX` label already matches, and the block-only one is never looked up —
   so it burns a full pass and returns the identical exit 4. Find the pair by
   searching the target for the id, then fold one into the other **by issue
-  number** — `merge <owner>/<repo>#<n> --into <owner>/<repo>#<m>` — and verify
-  again. The bare `PFX` form cannot express this merge: both endpoints resolve
-  through the `id:PFX` label search to the *same* labelled survivor, so it is
-  rejected as merging an item into itself. The number is the only handle that
-  distinguishes the two. **This fold is a migration repair, not a confirmed
-  disposition** — it reconciles two target issues onto one source item rather than
-  diverging from the source — so it is correct to run here, before the gate passes, and
-  the import step's "no disposals yet" rule does not reach it.
+  number** — `merge <owner>/<repo>#<n> --into <owner>/<repo>#<m>`. The bare `PFX` form
+  cannot express this merge: both endpoints resolve through the `id:PFX` label search
+  to the *same* labelled survivor, so it is rejected as merging an item into itself.
+  The number is the only handle that distinguishes the two. **This fold is a migration
+  repair, not a confirmed disposition** — it reconciles two target issues onto one
+  source item rather than diverging from the source — so it is correct to run here,
+  before the gate passes, and the import step's "no disposals yet" rule does not reach
+  it.
+
+  ⚠ **The fold alone will NOT clear this list — you must also remove the loser's
+  `id_aliases` entry.** The scan derives its ids from the body block and never consults
+  `superseded_by`, so after the fold the closed loser still records the same id, now at
+  `dropped`; unless the survivor is *also* `dropped`, the two still disagree and the
+  gate exits 4 again. Edit the losing issue's body to drop that id from `id_aliases`
+  (`backlog update <owner>/<repo>#<n> --body …`), leaving the survivor as the only
+  claimant, then verify again. This is the "target-side deduplication" the gate's own
+  code comment says is the only fix. **Known defect — the gate's exit-4 message still
+  prescribes the fold alone: `#534`.**
 
 `source_items` counts **every** parsed item in scope, not just the aliasable
 ones — so `source_items` exceeding `aliased` with an empty `missing` is exactly

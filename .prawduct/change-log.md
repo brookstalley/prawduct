@@ -38,6 +38,16 @@ scalar, close the migrated issues on the `id:` alias namespace (never delete; Gi
 numbers), *and* revert the banner. Skip the third and the restored live backlog announces that it is
 frozen and redirects to a tracker that was just closed.
 
+**Reviewing the fix found a worse defect underneath it, and the runbook now says so.** Clarifying
+that the `duplicate_alias` fold is a migration repair rather than a confirmed disposition put weight
+on a remedy that **cannot clear the list it is prescribed for**. The alias scan derives ids from the
+body block and never consults `superseded_by`; `merge` closes the loser as `dropped` but leaves its
+`id_aliases` entry — so the pair still records the same id at disagreeing statuses and the gate exits
+4 again, stranding the operator at the one step that "must not be taken on trust." The runbook now
+names the additional target-side edit that does converge. The gate's own exit-4 message still
+prescribes the fold alone, and `duplicate_alias` has no convergence test though its sibling
+`status_mismatch` has one — filed as `#534`, out of this doc-only chunk's scope.
+
 **Two items closed with no code.** `#233` (run the live prawduct migration) had all three acceptance
 criteria met by the Chunk 06 cutover; `#352`, the backlog-service umbrella, stated its own closing
 condition as *"closes when the backlog-service slice ships"*, and it shipped. Neither was abandoned —
