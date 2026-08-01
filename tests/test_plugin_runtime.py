@@ -20,6 +20,8 @@ ported runtime:
 from __future__ import annotations
 
 import ast
+import importlib.machinery
+import importlib.util
 import json
 import os
 import re
@@ -2130,6 +2132,105 @@ class TestJurisdictionSubcommand:
         )
         assert result.returncode == 0, result.stderr
         assert ".prawduct/artifacts/telemetry-strategy.md" in result.stdout
+
+
+# =============================================================================
+# Green-is-evidence directive — a rule DELIVERED at its moment, not stored
+# =============================================================================
+
+
+def _load_hook_module():
+    """Import bin/prawduct-hook as a module.
+
+    The script guards its entry point with ``if __name__ == "__main__"``, so
+    importing runs definitions only. Needed because the trigger under test is a
+    pure function whose end-to-end path runs a subprocess overlay — testing it
+    only through that path would leave the assertion unable to distinguish "the
+    trigger is wrong" from "the overlay populated nothing," which is the exact
+    fixture-cannot-reach-the-subject failure this directive warns about.
+    """
+    # bin/prawduct-hook is deliberately extensionless (it is invoked as a bare
+    # command on the Bash PATH), so spec_from_file_location cannot infer a
+    # loader and returns None. Supply SourceFileLoader explicitly.
+    loader = importlib.machinery.SourceFileLoader(
+        "prawduct_hook_under_test", str(HOOK)
+    )
+    spec = importlib.util.spec_from_file_location(
+        "prawduct_hook_under_test", HOOK, loader=loader
+    )
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+class TestGreenIsEvidenceTrigger:
+    """`_evidence_changed_judged_code` decides whether the directive prints.
+
+    The rule it carries has existed in `learnings.md` in general form for a long
+    time (line 292, "anything one command could check is a CLAIM") and does not
+    fire from there. Delivering it at `test-evidence record` — the moment green
+    stops being an observation and becomes evidence the gates read — is the
+    whole point, so the trigger must be exact in BOTH directions: a directive
+    that prints on every invocation is one the reader learns to skip.
+    """
+
+    def _write(self, tmp_path, payload: str) -> Path:
+        path = tmp_path / ".test-evidence.json"
+        path.write_text(payload)
+        return path
+
+    def test_fires_when_judged_code_changed(self, tmp_path):
+        hook = _load_hook_module()
+        path = self._write(tmp_path, json.dumps({"changes_referenced": ["lib/a.py"]}))
+        assert hook._evidence_changed_judged_code(path) is True
+
+    def test_silent_when_nothing_judged_changed(self, tmp_path):
+        hook = _load_hook_module()
+        path = self._write(tmp_path, json.dumps({"changes_referenced": []}))
+        assert hook._evidence_changed_judged_code(path) is False
+
+    def test_silent_when_field_absent(self, tmp_path):
+        # A restamp (`--no-rerun`) or a record written before the F4a overlay
+        # ran carries no field at all.
+        hook = _load_hook_module()
+        path = self._write(tmp_path, json.dumps({"passed": 3}))
+        assert hook._evidence_changed_judged_code(path) is False
+
+    @pytest.mark.parametrize(
+        "payload",
+        [
+            "{not json at all",              # malformed
+            json.dumps(["a", "list"]),       # valid JSON, wrong shape
+            json.dumps({"changes_referenced": "lib/a.py"}),  # str, not list
+        ],
+        ids=["malformed", "not-a-dict", "field-not-a-list"],
+    )
+    def test_advice_fails_soft_on_unusable_records(self, tmp_path, payload):
+        # Architecture norm: authority fails closed, ADVICE fails soft. The
+        # evidence is already written and schema-valid by this point, so an
+        # uncomputable trigger omits a hint — it must never raise into a
+        # recording run.
+        hook = _load_hook_module()
+        assert hook._evidence_changed_judged_code(self._write(tmp_path, payload)) is False
+
+    def test_missing_file_is_false_not_an_error(self, tmp_path):
+        hook = _load_hook_module()
+        assert hook._evidence_changed_judged_code(tmp_path / "absent.json") is False
+
+    def test_directive_names_the_check_not_the_virtue(self):
+        """The text must stay actionable prose, not an exhortation.
+
+        Pins the three failure modes it exists to prevent — an unreachable
+        fixture, a non-discriminating assertion, and a machine-dependent branch
+        — plus the one-directional-mutation caveat that is the reason a builder
+        who already ran a mutation pass still needs to read it.
+        """
+        hook = _load_hook_module()
+        text = hook._GREEN_IS_EVIDENCE_DIRECTIVE
+        assert "REACHES the subject" in text
+        assert "cannot tell the two orderings apart" in text
+        assert "happens to exist on this machine" in text
+        assert "blind to what your change broke beside it" in text
 
 
 # =============================================================================

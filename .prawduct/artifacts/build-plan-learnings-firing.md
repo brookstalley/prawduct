@@ -42,10 +42,23 @@ problem. It has a delivery problem.** A rule stored in a file that is read at se
 and never again competes with the entire rest of the context by the time the claim gets
 written.
 
-The one counter-example proves the thesis. `_BATCH_FIX_DIRECTIVE`
-(`plugin/lib/critic_consolidate.py:232`) is not stored — it is *printed by code at the exact
-moment the builder holds a set of findings*. It exists because the file-stored version of the
-same rule was not firing.
+The design precedent is `_BATCH_FIX_DIRECTIVE` — not stored, but *printed by code at the exact
+moment the builder holds a set of findings*, built because the file-stored version of the same
+rule was not firing.
+
+**It is a precedent, not evidence.** It lives on the unmerged `feature/clear-signal-and-batch-fix`
+branch and has never shipped, so nothing has been observed firing in the field and this plan may
+not cite it as proof that delivery works. That branch is also where "warnings and notes gate
+nothing" replaces develop's "**Warnings** should be addressed — the Critic only uses WARNING when
+confident." Both halves of the round-multiplication fix are in flight there; neither reached
+discodon.
+
+Which sharpens the diagnosis rather than softening it. On *shipped* prawduct the round-count
+pressure is real and partly instruction-driven: the guidance a builder actually reads pushes
+toward addressing warnings, and no code-delivered directive counters it at the moment findings
+land. That two independent lines of work — discodon's retrospective and that branch — converged
+on the same defect is the strongest signal here that it is structural rather than one builder's
+bad day.
 
 ## Success
 
@@ -125,11 +138,17 @@ the roster. Cite the command, never the digits.
   nothing.
 
   **(b) A claim needs its falsifier run.** The moment is `critic-consolidate`, beside
-  `_BATCH_FIX_DIRECTIVE`, whose delivery slot is already proven. Trigger: the review recorded
-  resolutions (i.e. the builder is about to write "fixed" somewhere). The line: *a resolution is
-  a claim about the tree. Say which command you ran, not that you are confident.*
+  `_BATCH_FIX_DIRECTIVE`. Trigger: the review recorded resolutions (i.e. the builder is about to
+  write "fixed" somewhere). The line: *a resolution is a claim about the tree. Say which command
+  you ran, not that you are confident.*
 
-- **Depends on:** nothing
+  **(b) is BLOCKED on a branch decision and is not built until it resolves.** The constant it
+  sits beside does not exist on `develop`; it lives on the unmerged
+  `feature/clear-signal-and-batch-fix`. Building (b) here would either duplicate that constant or
+  conflict with it on merge. (a) touches `bin/prawduct-hook` only and is unaffected — it proceeds
+  on `develop` now.
+
+- **Depends on:** (b) only — the clear-signal branch landing, or this branch rebasing onto it
 - **Artifacts consumed:** `observability-strategy.md` (channel split), `architecture.md` (advice fails soft)
 - **Deliverables:** two module-level directive constants beside `_BATCH_FIX_DIRECTIVE`; both
   print sites; tests
