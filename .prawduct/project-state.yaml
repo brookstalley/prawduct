@@ -505,7 +505,7 @@ scope_rollups:
     releases: ["v2.0.15"]
   backlog-service-v1:
     chunks: ["01", "02", "03", "04", "05"]
-    releases: ["v3.2.0"]
+    releases: ["v3.2.0", "v3.2.3"]
   backlog-ship-in-pr:
     chunks: ["01"]
     releases: ["v2.1.6"]
@@ -584,6 +584,9 @@ scope_rollups:
   kernel-evidence-store:
     chunks: ["01", "02", "03", "04", "05", "06"]
     releases: ["v3.0.0"]
+  learnings-firing:
+    chunks: ["01", "02", "03"]
+    releases: ["v3.2.3"]
   legacy-backlog-format-probe:
     chunks: ["01"]
     releases: ["v2.0.17"]
@@ -594,8 +597,8 @@ scope_rollups:
     chunks: ["01", "02", "03"]
     releases: ["v2.3.0"]
   record-mechanization:
-    chunks: ["01", "02", "03", "04"]
-    releases: ["v3.2.1", "v3.2.2"]
+    chunks: ["01", "02", "03", "04", "05"]
+    releases: ["v3.2.1", "v3.2.2", "v3.2.3"]
   regen-views-null-plan:
     chunks: ["01"]
     releases: ["v2.2.1"]
@@ -690,8 +693,8 @@ scope_rollups:
     chunks: ["1", "10", "11", "12", "13", "14", "2", "3", "4", "5", "6", "7", "8", "9"]
     releases: ["v2.0.0"]
   v3.2.0-golive:
-    chunks: ["02", "03", "04", "05b", "05c"]
-    releases: ["v3.2.0"]
+    chunks: ["02", "03", "04", "05b", "05c", "06"]
+    releases: ["v3.2.0", "v3.2.3"]
   work-model:
     chunks: ["1", "2", "3"]
     releases: ["v2.0.13"]

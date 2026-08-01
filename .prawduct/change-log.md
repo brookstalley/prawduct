@@ -5,7 +5,7 @@
 
 ## 2026-08-01: prawduct's backlog is on GitHub Issues — 371 items, 0 stranded, and the tripwire that fired at the cutover was re-aimed rather than silenced
 
-<!-- prawduct: type=feature | scope=v3.2.0-golive | chunks=06 -->
+<!-- prawduct: type=feature | scope=v3.2.0-golive | chunks=06 | release=v3.2.3 | status=shipped -->
 
 **The migration ran.** `371 created, 0 skipped, 0 collision(s) of 371 source item(s)` (152 restructured
 by plan), `≥6548 REST points; no throttling`. `verify-migration` returned **exit 0 with all five
@@ -55,7 +55,7 @@ now fires **0 times** — no separate work, no flag flipped by hand.
 
 ## 2026-08-01: The scrub's drift verdict reads CURRENT for the first time — because the survey finally covered the whole corpus
 
-<!-- prawduct: type=chore | scope=v3.2.0-golive | chunks=06 -->
+<!-- prawduct: type=chore | scope=v3.2.0-golive | chunks=06 | release=v3.2.3 | status=shipped -->
 
 Chunk 06's Step 2 half. Every one of the **195 open items** was read in full and screened, and the
 dispositions are recorded as **Survey 3** in `artifacts/migration-scrub-decisions.md`: 1 close, 5
@@ -98,7 +98,7 @@ cross-bundle case rather than assuming an ancestor guard closes it.
 
 ## 2026-08-01: The collapse — two families become nine rules, and every instance survives
 
-<!-- prawduct: type=feature | scope=learnings-firing | chunks=03 -->
+<!-- prawduct: type=feature | scope=learnings-firing | chunks=03 | release=v3.2.3 | status=shipped -->
 
 Seventeen rules retired by supersession; the corpus went **159 → 149**. Two of those rules are
 Chunk 03(a)'s genuinely-new ones (*green is evidence only about what could have made it red*, and
@@ -174,7 +174,7 @@ here.
 
 ## 2026-07-31: One home per fact, method prescriptions become advice, and the closing block gets a shape
 
-<!-- prawduct: type=governance -->
+<!-- prawduct: type=governance | release=v3.2.3 | status=shipped -->
 
 Three owner decisions, all from watching this session's own review rather than from theory.
 
@@ -209,7 +209,7 @@ token and 45 characters, so the next addition to either has to fund itself.
 
 ## 2026-07-31: Rules that fire — delivery at the moment, and supersession as a real lifecycle event
 
-<!-- prawduct: type=feature | scope=learnings-firing | chunks=01,02 -->
+<!-- prawduct: type=feature | scope=learnings-firing | chunks=01,02 | release=v3.2.3 | status=shipped -->
 
 `learnings.md` holds 159 rules, and the one that would have caught four false claims in a
 consuming repo's retrospective was already there, already general, already well-worded. It did
@@ -273,7 +273,7 @@ one leaves the guard failing for the other.
 
 ## 2026-07-31: A turn that ends without saying where things stand, and a fix strategy that arrives after the fixing (CRT-9B4K + an unfiled owner report)
 
-<!-- prawduct: type=fix -->
+<!-- prawduct: type=fix | release=v3.2.3 | status=shipped -->
 <!-- UNTAGGED, and the reason matters because the first draft gave the wrong one. Wrong reason: "no
      build plan, so there is no ## Status to regenerate" — true but irrelevant, since scope= also keys
      release-pending enumeration. Real reason: the two controls CONFLICT and the tag loses. Tagging
@@ -459,7 +459,7 @@ committed twice in the branch that documents it.
 
 ## 2026-07-31: The completeness gate can see an item that arrived at the wrong status (BKL-7V2D)
 
-<!-- prawduct: type=fix | scope=backlog-service-v1 -->
+<!-- prawduct: type=fix | scope=backlog-service-v1 | release=v3.2.3 | status=shipped -->
 
 `verify-migration` is the gate that must pass before the ~900-write irreversible migration records its
 cutover. It compared the source set against **alias coverage** and never looked at issue state, so an item
@@ -545,7 +545,7 @@ a named gate, and the gate was the irreversible run itself.
 
 ## 2026-07-31: The scrub survey the migration was blocked on, and seven items that had already shipped
 
-<!-- prawduct: type=docs | scope=backlog-service-v1 -->
+<!-- prawduct: type=docs | scope=backlog-service-v1 | release=v3.2.3 | status=shipped -->
 
 The pre-migration scrub had an approved disposition table from 2026-07-18 and a corpus that had grown
 ~81% since. **91 items sat outside every recorded disposition, never screened at all.** This closes that
@@ -590,7 +590,7 @@ of the cutover's cost. The first was surfaced by this survey needing to exist at
 
 ## 2026-07-31: The issue standard stops contradicting itself, and a norm's history stops reading as its rationale
 
-<!-- prawduct: type=fix | scope=backlog-service-v1 -->
+<!-- prawduct: type=fix | scope=backlog-service-v1 | release=v3.2.3 | status=shipped -->
 
 **The body budget was unsatisfiable at its own stated limits.** `documentation/backlog-service-issue-standard.md`
 carried two different numbers — §2 said ~120 visible words, §4 and `issuefmt.BODY_MAX_WORDS` said 150 —
@@ -630,7 +630,7 @@ absence at the surface a model reads.
 
 ## 2026-07-31: Fleet migration gets a triage norm, and the archive scope gets an invariant instead of a status
 
-<!-- prawduct: type=docs | scope=backlog-service-v1 -->
+<!-- prawduct: type=docs | scope=backlog-service-v1 | release=v3.2.3 | status=shipped -->
 
 Scoping prawduct's own backlog-to-Issues cutover surfaced three record defects and one requirement
 that was about to be written wrong.
@@ -676,7 +676,7 @@ does not have, and would turn the nudge into the fleet-routing gate `BKL-6J2X` h
 
 ## 2026-07-31: Learnings lost three rules to the guard built to protect them
 
-<!-- prawduct: type=fix | scope=record-mechanization -->
+<!-- prawduct: type=fix | scope=record-mechanization | release=v3.2.3 | status=shipped -->
 
 Three rules in `learnings.md` were truncated mid-sentence — ending on "designate a single live", "a
 test that", "tests that". They still parsed, still rendered, and still read as rules right up to the
@@ -706,7 +706,7 @@ same heading in `learnings-detail.md` followed by a lowercase continuation parag
 
 ## 2026-07-31: The change-log ledger spike — the format holds, and the artifact falsified its own premise
 
-<!-- prawduct: type=docs | scope=record-mechanization | chunks=05 -->
+<!-- prawduct: type=docs | scope=record-mechanization | chunks=05 | release=v3.2.3 | status=shipped -->
 
 **The plan's last chunk was a go/no-go, and the answer is GO on the design, HOLD on the schedule.**
 `change-log-ledger-design.md` proposed moving the change log's typed fields into per-change facts and

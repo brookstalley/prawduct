@@ -76,7 +76,7 @@ unknown; Chunk 04's review-stats measurement resolves the threshold.
 - [x] Chunk 02: Subtraction sweep and deterministic record-lint
 - [x] Chunk 03: Per-mode reviewer payload
 - [x] Chunk 04: Coordinator roster keyed to risk surface
-- [ ] Chunk 05: Change-log ledger spike and go/no-go
+- [x] Chunk 05: Change-log ledger spike and go/no-go
 Context: Plan authored 2026-07-29 from the ship-day retrospective (v3.2.0 + discodon). **Chunk 01
 complete 2026-07-29** — `disposition` fact kind + `render-dispositions`; step 0's consumer-query
 enumeration is recorded in the chunk's own section and is the schema-lock-in checkpoint's subject.

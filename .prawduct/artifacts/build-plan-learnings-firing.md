@@ -155,9 +155,9 @@ directive does not address (*entering* a round versus batching *within* one).
 
 ## Status
 
-- [ ] Chunk 01: Deliver the two rules at their moment
-- [ ] Chunk 02: Supersession as a lifecycle event
-- [ ] Chunk 03: Collapse the two families, add the two new rules
+- [x] Chunk 01: Deliver the two rules at their moment
+- [x] Chunk 02: Supersession as a lifecycle event
+- [x] Chunk 03: Collapse the two families, add the two new rules
 
 ## Scaffolding
 
