@@ -60,6 +60,32 @@ land. That two independent lines of work — discodon's retrospective and that b
 on the same defect is the strongest signal here that it is structural rather than one builder's
 bad day.
 
+### The second failure: delivery is not descent (owner-raised, 2026-08-01)
+
+Delivery gets the rule in front of the reader at the right moment. It does **not** make the
+reader spend it. A general rule can arrive exactly on time, be read, be agreed with, and change
+nothing — because nothing made the reader recognize the case in hand as an instance of it. That
+is a distinct failure from the one above and it survives the fix for it.
+
+It also inverts part of this plan's own remedy. Upleveling buys durability by removing the
+particulars, and the particulars are what a reader pattern-matches against. So **a rule's
+generality is what makes it storable and what makes it inert, and those are the same property.**
+The corpus bears this out: `learnings.md` headings run to a median of 188 characters and 396 at
+the 90th percentile (`awk '/^## /{print length($0)}' .prawduct/learnings.md`), because the rules
+that work already carry their instances inline. `learnings-detail.md` is documented as
+"consulted when debugging in a known area" (`methodology/reflection.md`), i.e. read on demand —
+so an instance relocated there is, for firing purposes, deleted.
+
+Two consequences, both ratified by the owner on 2026-08-01 and binding on the chunks below:
+
+1. **Every rule this plan delivers carries its descent** — the general statement, then the act to
+   perform, then instances concrete enough to pattern-match against, then (for code-delivered
+   directives only) an explicit instruction to apply it to the case in hand, aimed at the case
+   the reader is *surest* about, which is the one a general rule never reaches.
+2. **The collapse merges statements and unions instances** — see Chunk 03(b). Rule *count* is
+   what competes for attention at read time; discriminating detail is not, and is not what the
+   corpus needs less of.
+
 ## Success
 
 1. At least two rules move from stored to **delivered**: emitted by code at the moment of the
@@ -67,9 +93,15 @@ bad day.
 2. Retiring a rule **by supersession** becomes a first-class, auditable operation — the
    historical entry names the rule that replaced it, so a reader who remembers the old rule
    finds a forwarding address rather than a hole.
-3. The corpus shrinks. Two near-duplicate families (counted by the commands in Scaffolding,
-   never transcribed here — learning 322) collapse into their existing general rules.
-4. Six mechanisms from the discodon retrospective land as **two** rules, not six.
+3. The corpus shrinks **in rule count, not in discriminating detail**. Two near-duplicate
+   families (counted by the commands in Scaffolding, never transcribed here — learning 322)
+   collapse into their existing general rules, each of which absorbs the distinguishing
+   instances of the members it retires. A collapse that reduced the count by dropping instances
+   would fail this criterion, not meet it.
+4. Six mechanisms from the discodon retrospective land as **two** rules, not six — each stated
+   generally and each carrying the mechanisms it absorbed as named instances.
+5. Every rule delivered or rewritten here descends: statement → act → instances, plus an
+   apply-it-here clause on the code-delivered directives.
 
 ## Out of Scope
 
@@ -88,11 +120,16 @@ directive does not address (*entering* a round versus batching *within* one).
 **Medium** on Chunk 03's collapse ratio.
 
 - [ASSUMPTION: the ~14-rule assertion family collapses into line 292 without losing a distinction
-  worth keeping | HIGH impact | user can override] — three members carry second-order points a
-  merge could silently drop: 298 (the falsifying query can itself carry the defect it hunts),
-  27 (a completeness claim must never be a count of sites fixed), and 286 (a rationale you
-  *reached for* is the one to verify). Chunk 03 resolves this per-rule with an explicit
-  keep/merge call, and the collapse does not proceed until the map is approved.
+  worth keeping | HIGH impact | user can override] — **superseded 2026-08-01, and it was the
+  wrong shape of worry.** It named three members as exceptions: 298 (the falsifying query can
+  itself carry the defect it hunts), 27 (a completeness claim must never be a count of sites
+  fixed), and 286 (a rationale you *reached for* is the one to verify). The owner-raised descent
+  problem generalizes those three to the whole family — the second-order point *is* each rule's
+  value, and the general statement is the index, not the content. So the assumption is not
+  "does the merge lose something for three of them" but "the merge loses something for all of
+  them unless instances are unioned rather than dropped", which Chunk 03(b) now requires and
+  the acceptance criteria pin. What still needs the owner's per-rule call is which instances are
+  genuinely redundant — that remains the approved map's job.
 - [ASSUMPTION: printing a delivery line on a narrow trigger reads as help rather than nagging
   | MED impact | user can override] — mitigated by conditioning each line on state the builder
   just changed, never on every invocation.
@@ -137,23 +174,38 @@ the roster. Cite the command, never the digits.
   identically.* Silent when nothing judged changed — a restamp or a docs-only cycle prints
   nothing.
 
-  **(b) A claim needs its falsifier run.** The moment is `critic-consolidate`, beside
-  `_BATCH_FIX_DIRECTIVE`. Trigger: the review recorded resolutions (i.e. the builder is about to
-  write "fixed" somewhere). The line: *a resolution is a claim about the tree. Say which command
-  you ran, not that you are confident.*
+  **(b) A claim needs its falsifier run.** The rule: *a resolution is a claim about the tree. Say
+  which evidence you read, not that you are confident.*
 
-  **(b) is BLOCKED on a branch decision and is not built until it resolves.** The constant it
-  sits beside does not exist on `develop`; it lives on the unmerged
-  `feature/clear-signal-and-batch-fix`. Building (b) here would either duplicate that constant or
-  conflict with it on merge. (a) touches `bin/prawduct-hook` only and is unaffected — it proceeds
-  on `develop` now.
+  **The moment is `critic-begin --mode verify-resolutions`, NOT `critic-consolidate`** — a
+  correction to this spec made when (b) was built (2026-08-01), because the specced site cannot
+  fire. `verify-resolutions` is always single-pass (`_derive_roster` returns `SINGLE_PASS_ROSTER`
+  for it unconditionally), so the reviewing fork writes its `resolutions` into the partial and
+  *then* runs `critic-consolidate` itself: a directive there reaches an agent that has already
+  made the claim and is one step from exiting. Nor does it carry to the builder — the Critic
+  skill is `context: fork`, and the fork's report-back instruction (`skills/critic/goals-1-3.md`)
+  enumerates findings and a summary, not the consolidator's stdout. Dispatch is the same reader
+  in the same review, one step earlier, and upstream of the claim. The constant still lives
+  beside `_BATCH_FIX_DIRECTIVE` so the data plane's two directives are edited together; only the
+  print site moved.
 
-- **Depends on:** (b) only — the clear-signal branch landing, or this branch rebasing onto it
+  Trigger: the manifest's mode is `verify-resolutions` — keyed off the manifest rather than the
+  `--mode` argument, so a dispatch demoted for scope-widening (exit 2) never delivers advice for
+  a review that is not happening.
+
+  **Unblocked 2026-08-01**: `feature/clear-signal-and-batch-fix` merged to `develop` as `0f3e26c`
+  (PR #155) and this branch was rebased onto it, so `_BATCH_FIX_DIRECTIVE` is present.
+
+- **Depends on:** (b) only — the clear-signal branch landing (**resolved**)
 - **Artifacts consumed:** `observability-strategy.md` (channel split), `architecture.md` (advice fails soft)
 - **Deliverables:** two module-level directive constants beside `_BATCH_FIX_DIRECTIVE`; both
   print sites; tests
-- **Tests:** `tests/test_critic_consolidate.py`, `tests/test_test_evidence.py` — trigger-on,
-  trigger-off, and exit-code-unchanged for each
+- **Tests:** (a) landed in `tests/test_plugin_runtime.py` and (b) in
+  `tests/test_critic_consolidate.py` — **not** the `tests/test_test_evidence.py` this spec named,
+  which does not exist. Each half sits beside the code it guards: (a)'s trigger is a helper in
+  `bin/prawduct-hook`, and (b)'s constant and its sibling `_BATCH_FIX_DIRECTIVE` are both in
+  `lib/critic_consolidate.py`, so the two directives' rules are read and edited together.
+  Trigger-on, trigger-off, and exit-code-unchanged for each
 - **Acceptance criteria:** each line appears exactly on its trigger; neither changes any exit
   code; both are mutation-proved (invert the trigger → red)
 - **Type:** code
@@ -211,21 +263,49 @@ the roster. Cite the command, never the digits.
      inside `else`. Both compile, both stay green. This is the defect class the agent's own
      text-anchored Edit tool manufactures, and nothing in the corpus covers it.
 
-  **(b) The collapse.** Write `scripts/learning-families.py` to classify the corpus, then
-  produce a per-rule keep/merge map for both families. The assertion family merges into
-  existing line 292; the discriminating-test family merges into the new rule (1) above.
+  **(b) The collapse — merge the statements, union the instances.** Write
+  `scripts/learning-families.py` to classify the corpus, then produce a per-rule keep/merge map
+  for both families. The assertion family merges into existing line 292; the
+  discriminating-test family merges into the new rule (1) above.
+
+  **The keep/merge test is NOT "is this member covered by the general rule?"** Everything is
+  covered by the general rule — that is what makes generality feel like progress while it removes
+  the discriminating power a reader needs to recognize their own case. The test is: *does this
+  member contribute an instance the general statement cannot generate?* If yes, the member
+  retires and **its instance moves into the successor's heading**; the successor gets longer, the
+  corpus gets shorter by one rule, and nothing recognizable is lost. Only a member whose instance
+  is genuinely redundant retires without leaving anything behind.
+
+  Relocating an instance to `learnings-detail.md` does **not** count as keeping it: that file is
+  read on demand when debugging a known area, not at the moment the rule has to fire. Heading
+  length is not the constraint people assume — the corpus already runs 188 median / 396 p90 / 907
+  max characters, and the long ones are the ones that work.
+
   **The map is presented for approval before any retirement is applied** — three members carry
-  second-order points that a merge could silently drop (see Requirements Confidence).
+  second-order points that a merge could silently drop (see Requirements Confidence), and under
+  the union rule the map must state, per retired member, which instance survived and where.
+
+  **(c) The standing read-instruction.** One structural statement of the descent obligation —
+  that a rule agreed with and not applied to the case in hand has done nothing — added where
+  learnings are *read*, not repeated per rule. Owner ruling 2026-08-01: structural once, plus an
+  inline apply-it-here clause on the code-delivered directives only (Chunk 01(a) and 01(b) each
+  ship one). Repeating an exhortation across 159 rules reproduces the inertness one level up;
+  stored rules carry instances instead, which do the same work at lower cost per rule.
 
 - **Depends on:** Chunk 02 (the mechanism the collapse executes through)
 - **Artifacts consumed:** the discodon retrospective; `learnings.md`; `learnings-detail.md`
 - **Deliverables:** two new rules with narratives in `learnings-detail.md`;
-  `scripts/learning-families.py`; the approved collapse applied via `audit-learnings --apply`
+  `scripts/learning-families.py`; the approved collapse applied via `audit-learnings --apply`;
+  the standing read-instruction from (c)
 - **Tests:** the family script re-run post-collapse is the completeness check; the retirement
   path is already tested by Chunk 02
 - **Acceptance criteria:** both new rules present with narratives; every retired rule carries a
   resolvable forwarding pointer; the family script reports both families reduced to their
-  general rule plus whatever the map explicitly kept
+  general rule plus whatever the map explicitly kept; **every retired member's distinguishing
+  instance is locatable in its successor's heading, or the map says explicitly why it was
+  redundant** — the union half of the collapse is an acceptance criterion, not a style note,
+  because dropping instances is the cheap way to hit the count and the whole reason the corpus
+  stopped firing
 - **Type:** code
 - **Done when:**
   1. Acceptance criteria met

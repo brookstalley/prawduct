@@ -1206,6 +1206,16 @@ def cmd_critic_begin(project_dir: Path, argv: list[str]) -> int:
         )
     if _critic_marker().write_marker(prawduct_dir):
         print("PRAWDUCT: critic-active marker set (session-mutating clear is guarded).")
+
+    # LAST, and only on the one mode that can weaken a gate. The reviewer reads
+    # this dispatch output before assessing anything (SKILL.md step 4) and
+    # writes its `resolutions` several steps later — so this is the last thing
+    # in the tool result at the only moment the advice can still change the
+    # claim. Keyed off the manifest's own mode rather than the raw --mode
+    # argument: `begin_review` is what canonicalizes the token, and a
+    # verify-resolutions dispatch that got demoted never reaches here at all.
+    if manifest["mode"] == consolidate.MODE_TOKEN_TO_VERBOSE["verify-resolutions"]:
+        print(consolidate.RESOLUTION_IS_A_CLAIM_DIRECTIVE)
     return 0
 
 

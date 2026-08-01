@@ -802,6 +802,209 @@ class TestBatchFixDirective:
 
 
 # ---------------------------------------------------------------------------
+# Unit: the resolution-is-a-claim directive
+# ---------------------------------------------------------------------------
+
+
+#: Shell binaries a reviewer-facing directive could plausibly name. Any
+#: backticked token in the directive whose first word is one of these is a
+#: COMMAND claim and gets checked against the Critic skill's own `allowed-tools`
+#: grant. Deliberately over-broad: an entry the directive never names costs
+#: nothing, while a missing entry silently exempts the command it would catch.
+_COMMAND_HEADS = (
+    "git", "grep", "rg", "pytest", "python", "python3", "prawduct-hook",
+    "wc", "find", "ls", "cat", "sed", "awk", "make", "npm", "node", "bash",
+)
+
+_CRITIC_SKILL = ROOT / "skills" / "critic" / "SKILL.md"
+
+
+def _critic_bash_grants() -> list[str]:
+    """Literal command prefixes the Critic skill's `allowed-tools` grants.
+
+    `!Bash(...)` deny entries are excluded — skill-frontmatter deny is not
+    reliably enforced (see `tests/test_critic_skill_metadata.py`), so treating
+    one as a grant would be the wrong direction, and treating it as a *denial*
+    would let the allow-list look narrower than it is. Neither: only the
+    pure-allow entries define what the reviewer can actually run.
+    """
+    content = _CRITIC_SKILL.read_text(encoding="utf-8")
+    m = re.search(r"^allowed-tools:\s*(.+)$", content, re.MULTILINE)
+    assert m is not None, f"{_CRITIC_SKILL} has no `allowed-tools:` frontmatter"
+    grants = re.findall(r"(?<!!)Bash\(([^)]+)\)", m.group(1))
+    assert grants, "parsed no Bash grants — the frontmatter shape changed"
+    return [g.split("*")[0].strip() for g in grants]
+
+
+def _reviewer_can_run(command: str) -> bool:
+    """True when `command` falls under some Critic Bash grant.
+
+    Prefix match in both directions: the grant `git show ` covers the bare
+    token `git show`, and it also covers `git show HEAD`.
+    """
+    return any(
+        command.startswith(prefix) or prefix.startswith(command)
+        for prefix in _critic_bash_grants()
+    )
+
+
+class TestResolutionIsAClaimDirective:
+    """The directive delivered at `verify-resolutions` DISPATCH.
+
+    Three properties, none of them "the right words are present":
+
+    1. Its claims about the gate are TRUE — asserted against
+       `coverage_algebra`, not against the sentence that makes them. A runtime
+       message stating a false property of the gate is worse than silence.
+    2. Every command it names is one the reviewer can actually run. Its reader
+       is tool-restricted; advice it cannot follow is discovered mid-review,
+       holding a claim it now has no way to check.
+    3. It descends. An upleveled rule is durable because it is general and
+       inert for the same reason — the reader agrees with it and writes the
+       same unchecked disposition. The act, the instances, and the spend-it-here
+       instruction are what convert agreement into a changed decision, so they
+       are pinned as deliverables rather than as style.
+    """
+
+    def test_the_gate_claims_it_makes_are_true(self):
+        """`fixed` and `waived` BOTH resolve; omission is the only fail-closed
+        answer. Driven from the algebra so a third disposition, or a change to
+        which ones resolve, fails here instead of shipping a message that sends
+        reviewers to an escape hatch that does not exist."""
+        from lib import coverage_algebra
+
+        fact = {
+            "id": "rev-x",
+            "body": {"findings": [
+                {"fid": "R-1", "severity": "blocking", "title": "t"}
+            ]},
+        }
+        # The directive's core promise: no resolution fact → still blocking.
+        assert [
+            f["fid"] for f in coverage_algebra.unresolved_blocking(fact, set())
+        ] == ["R-1"], (
+            "the directive tells reviewers that leaving a finding out of "
+            "`resolutions` keeps it blocking. It no longer does."
+        )
+        # And why omission is the ONLY fail-closed answer: every recognized
+        # disposition clears it, so "waive it when unsure" would weaken the
+        # very gate this text warns about.
+        for disposition in sorted(coverage_algebra._RESOLVING_DISPOSITIONS):
+            resolved = coverage_algebra.resolution_index([{
+                "kind": "resolution",
+                "body": {
+                    "finding": {"review_id": "rev-x", "fid": "R-1"},
+                    "disposition": disposition,
+                },
+            }])
+            assert coverage_algebra.unresolved_blocking(fact, resolved) == [], (
+                f"{disposition!r} no longer resolves — the directive names it "
+                "as one of the two that lift a blocker"
+            )
+            assert f"`{disposition}`" in cc.RESOLUTION_IS_A_CLAIM_DIRECTIVE, (
+                f"{disposition!r} resolves a blocking finding but the directive "
+                "does not name it. A reviewer told only about `fixed` reads the "
+                "unnamed one as the safe answer for a finding it could not check."
+            )
+
+    def test_names_no_command_the_reviewer_cannot_run(self):
+        """The Critic's `allowed-tools` is pure-allow and grants no test runner
+        (CRT-3X9D). "Run the suite" is therefore not advice — it is an
+        instruction the reader must discover it cannot follow, mid-review.
+        """
+        tokens = set(re.findall(r"`([^`]+)`", cc.RESOLUTION_IS_A_CLAIM_DIRECTIVE))
+        commands = {t for t in tokens if t.split()[0] in _COMMAND_HEADS}
+        for command in sorted(commands):
+            assert _reviewer_can_run(command), (
+                f"the directive tells the reviewer to run {command!r}, which no "
+                "Bash grant in skills/critic/SKILL.md covers. Name evidence the "
+                "reader can actually produce, or widen the grant deliberately."
+            )
+
+    def test_the_command_check_would_catch_an_ungranted_command(self):
+        """Negative control for the check above.
+
+        Without this, `test_names_no_command_the_reviewer_cannot_run` passes
+        just as happily when the token scan matches nothing at all — which is
+        what a typo in `_COMMAND_HEADS`, or a directive rewritten to drop its
+        backticks, would produce. Pin that the matcher discriminates.
+        """
+        assert not _reviewer_can_run("pytest -q")
+        assert not _reviewer_can_run("grep -rn foo")  # the TOOL is granted; bash grep is not
+        assert _reviewer_can_run("git show")
+        assert _reviewer_can_run("git diff --stat")
+
+    def test_the_general_rule_is_followed_by_its_descent(self):
+        """The upleveling failure mode this whole plan exists for.
+
+        A rule stated only in its general form is agreed with and not applied:
+        the reader accepts "a resolution is a claim" and writes the same
+        unchecked `fixed`, because nothing made it recognize THIS disposition
+        as an instance. So the general sentence must be followed by the act to
+        perform, instances concrete enough to pattern-match against, and an
+        instruction to spend it on the case in hand — and that last one must
+        aim at the finding the reader is SUREST about, which is precisely the
+        one a general rule never reaches.
+        """
+        d = cc.RESOLUTION_IS_A_CLAIM_DIRECTIVE
+        # The act, not the virtue: an imperative naming what to produce.
+        assert "name the evidence you read" in d, (
+            "the directive states the rule but no longer tells the reader what "
+            "to DO with a specific finding"
+        )
+        # Instances, in the reader's own vocabulary.
+        assert "a diff read instead of the file it changed" in d
+        assert "second site is in a file this delta does not touch" in d
+        # And the descent instruction, which has two halves. Both are pinned:
+        # a mutation that kept "surest about" while rewriting the target to
+        # "resolutions in general" survived an earlier version of this test —
+        # which is the generality failure itself, sitting inside the clause
+        # written to prevent it.
+        assert "surest about" in d, (
+            "the descent clause no longer aims at the case the reader is surest "
+            "about. That is the one a general rule never reaches; aiming at the "
+            "doubtful case reaches only readers who already knew to check."
+        )
+        assert "actually in front of you" in d, (
+            "the descent clause no longer names THIS decision as its target. A "
+            "clause that exhorts about the rule in general is the inertness it "
+            "was written to fix — agreement is not application."
+        )
+
+    def test_delivery_is_upstream_of_the_claim(self):
+        """WHERE this prints is the chunk's substance, so it is pinned here.
+
+        `verify-resolutions` is always single-pass, so the reviewing fork
+        writes its `resolutions` into the partial and only THEN runs
+        consolidate. Emitting there — beside `_BATCH_FIX_DIRECTIVE`, the
+        obvious slot — would reach an agent that has already made the claim and
+        is one step from exiting, and would never reach the builder at all
+        (the Critic skill is `context: fork`, and `goals-1-3.md`'s report-back
+        enumerates findings and a summary, not consolidate's stdout).
+
+        Asserted against the modules rather than the docstring: `critic-begin`
+        must reference it, `consolidate` must not.
+        """
+        begin_src = HOOK.read_text(encoding="utf-8")
+        assert "RESOLUTION_IS_A_CLAIM_DIRECTIVE" in begin_src, (
+            "the dispatch command no longer emits the directive — it is "
+            "delivered at critic-begin precisely because that is the last "
+            "moment before the reviewer writes its resolutions"
+        )
+        consolidate_src = (
+            ROOT / "lib" / "critic_consolidate.py"
+        ).read_text(encoding="utf-8")
+        body = consolidate_src.split("def consolidate(", 1)
+        assert len(body) == 2, "consolidate() not found — update this guard"
+        assert "RESOLUTION_IS_A_CLAIM_DIRECTIVE" not in body[1], (
+            "the directive is now also emitted from consolidate(), which runs "
+            "AFTER the reviewer has written its resolutions. A directive there "
+            "cannot change the claim it is about. Delete it, or move the "
+            "delivery deliberately and rewrite this test's rationale."
+        )
+
+
+# ---------------------------------------------------------------------------
 # Unit: pending_state
 # ---------------------------------------------------------------------------
 
@@ -1801,6 +2004,123 @@ class TestVerifyResolutionsDispatch:
         result = _run_begin(repo, "--mode", "verify-resolutions")
         assert result.returncode == 2
         assert "scope-widened" in result.stderr
+
+
+class TestResolutionDirectiveDelivery:
+    """End-to-end: the directive reaches the reviewer at dispatch, on that one
+    mode, and changes no exit code.
+
+    The trigger is narrow on purpose. A directive that prints on every dispatch
+    is one the reader learns to skip, and `verify-resolutions` is the only mode
+    whose output can weaken a gate — the other three cannot carry `resolutions`
+    at all (consolidate fails closed on a resolutions payload in any other
+    mode).
+    """
+
+    def _seed_and_fix(self, repo: Path) -> str:
+        """Prior review fact with a blocker at the initial commit's real tree,
+        then an uncommitted fix — the state a verify-resolutions dispatch needs.
+        """
+        head = _commit_file(repo, "src/app.py", "x = 1\n", "init")
+        head_tree = _git(repo, "rev-parse", "HEAD^{tree}").stdout.strip()
+        (repo / ".prawduct").mkdir(exist_ok=True)
+        _seed_prior_review_with_blocker(
+            repo, head, head_tree=head_tree, head_commit=head
+        )
+        (repo / "src/app.py").write_text("x = 2  # fixed\n")
+        return head
+
+    def test_verify_resolutions_dispatch_delivers_it(self, tmp_path):
+        repo = tmp_path / "r"
+        _init_repo(repo)
+        self._seed_and_fix(repo)
+        result = _run_begin(repo, "--mode", "verify-resolutions")
+        assert result.returncode == 0, f"stderr={result.stderr!r}"
+        assert cc.RESOLUTION_IS_A_CLAIM_DIRECTIVE in result.stdout
+
+    def test_it_is_the_last_thing_in_the_dispatch_output(self, tmp_path):
+        """Position is a deliverable, not a detail. This is a long tool result —
+        manifest line, worktree line, record-lint block, marker line — and the
+        reader acts on what it read last. Anything appended after this would
+        push the one instruction in the message off the bottom.
+        """
+        repo = tmp_path / "r"
+        _init_repo(repo)
+        self._seed_and_fix(repo)
+        result = _run_begin(repo, "--mode", "verify-resolutions")
+        assert result.returncode == 0, f"stderr={result.stderr!r}"
+        assert result.stdout.rstrip().endswith(
+            cc.RESOLUTION_IS_A_CLAIM_DIRECTIVE.rstrip()
+        ), (
+            "something now prints after the directive. Move it above, or move "
+            "the directive back to last — the reader acts on the tail."
+        )
+
+    @pytest.mark.parametrize("mode", ["chunk", "final", "cumulative"])
+    def test_no_other_mode_delivers_it(self, tmp_path, mode):
+        """These modes cannot record resolutions, so the advice is noise — and
+        noise is what teaches a reader to skip the line that matters.
+        """
+        repo = tmp_path / "r"
+        _init_repo(repo)
+        _commit_file(repo, "src/app.py", "x = 1\n", "init")
+        (repo / ".prawduct").mkdir()
+        if mode == "cumulative":
+            # cumulative scopes a COMMITTED bundle against the merge base, so a
+            # dirty tree on the base branch is an empty diff and it refuses to
+            # dispatch at all — which would pass this assertion for the wrong
+            # reason (no dispatch rather than no directive).
+            _git(repo, "checkout", "-q", "-b", "feature/demo")
+            _commit_file(repo, "src/feat.py", "z = 1\n", "feature work")
+        else:
+            (repo / "src/app.py").write_text("x = 2\n")
+        result = _run_begin(repo, "--mode", mode)
+        assert result.returncode == 0, f"stderr={result.stderr!r}"
+        assert cc.RESOLUTION_IS_A_CLAIM_DIRECTIVE not in result.stdout
+
+    def test_a_refused_dispatch_delivers_nothing(self, tmp_path):
+        """No prior review → exit 1 and the skill re-dispatches as chunk/final.
+        Advice for a review that is not happening would be read as if it were.
+        """
+        repo = tmp_path / "r"
+        _init_repo(repo)
+        _commit_file(repo, "src/app.py", "x = 1\n", "init")
+        (repo / ".prawduct").mkdir()
+        (repo / "src/app.py").write_text("x = 2\n")
+        result = _run_begin(repo, "--mode", "verify-resolutions")
+        assert result.returncode == 1
+        assert cc.RESOLUTION_IS_A_CLAIM_DIRECTIVE not in result.stdout
+
+    def test_a_widened_dispatch_delivers_nothing(self, tmp_path):
+        """Exit 2 — the dispatch is demoted to `final`, which records no
+        resolutions. Keyed off the manifest's mode rather than the `--mode`
+        argument, so a demoted dispatch never reaches the print at all.
+        """
+        repo = tmp_path / "r"
+        _init_repo(repo)
+        self._seed_and_fix(repo)
+        for i in range(2 * 1 + 6):
+            (repo / f"src/new_{i}.py").write_text(f"n = {i}\n")
+        result = _run_begin(repo, "--mode", "verify-resolutions")
+        assert result.returncode == 2
+        assert cc.RESOLUTION_IS_A_CLAIM_DIRECTIVE not in result.stdout
+
+    def test_the_dispatch_it_annotates_is_otherwise_unchanged(self, tmp_path):
+        """Advice fails soft: it rides an existing report and alters nothing
+        about it. Same exit code, same manifest, same marker as the dispatch
+        tests above assert without it.
+        """
+        repo = tmp_path / "r"
+        _init_repo(repo)
+        self._seed_and_fix(repo)
+        result = _run_begin(repo, "--mode", "verify-resolutions")
+        assert result.returncode == 0, f"stderr={result.stderr!r}"
+        manifest = json.loads((repo / PARTIALS_REL / "manifest.json").read_text())
+        assert manifest["mode"] == VERIFY_MODE
+        assert manifest["roster"] == ["reviewer"]
+        ok, reason = cc.validate_manifest(manifest)
+        assert ok, reason
+        assert (repo / MARKER_REL).is_file()
 
 
 class TestWorktreeVisibility:
