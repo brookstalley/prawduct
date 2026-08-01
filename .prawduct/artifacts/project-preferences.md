@@ -7,6 +7,7 @@ Developer preferences for how code is written in this project. Captured during d
 - **Language**: Python 3
 - **Version**: 3.10+ (uses `X | Y` union syntax, `match` statements not required)
 - **Package manager**: pip. `pyproject.toml` exists for pytest configuration and dev dependencies (`pytest`, `pytest-xdist`, `pytest-timeout`, `pyyaml`) — the scripts themselves are standalone tools, not a published package
+- **Runtime dependency (opt-in): the `gh` CLI.** Required only once a product sets `backlog_service_repo`; unset means the markdown backend and **zero** network calls, so the governance runtime remains stdlib-only for every product that has not opted in. `gh` owns the credential (`~/.config/gh`) and the adapter never manages a token — which is why opting in flips no structural characteristic. Sole egress is `lib/backlog/transport.py`. Rationale home is PRD O5; the norm that permits it is `architecture.md` § Direction *Local-first*, amended 2026-07-21. **This repo opted in on 2026-08-01** (v3.2.0 Chunk 06), so `gh` is a hard runtime dependency *here* and an optional one for the fleet.
 
 ## Code Style
 
