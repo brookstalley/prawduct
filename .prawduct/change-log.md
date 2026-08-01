@@ -44,7 +44,13 @@ on a remedy that **cannot clear the list it is prescribed for**. The alias scan 
 body block and never consults `superseded_by`; `merge` closes the loser as `dropped` but leaves its
 `id_aliases` entry — so the pair still records the same id at disagreeing statuses and the gate exits
 4 again, stranding the operator at the one step that "must not be taken on trust." The runbook now
-names the additional target-side edit that does converge. The gate's own exit-4 message still
+names the additional target-side edit that does converge — and, because that edit has to go around
+the adapter's block-preservation guard, spells out that it must be a **round-trip**: read the body,
+remove one list element, write the rest back verbatim. Retyping it drops the `superseded_by` the
+fold wrote moments earlier, and that loss is **silent**, since the scan never reads that field and
+the closing re-verify passes clean. The transferable half is the shape, not the commands: *when you
+document why a safety guard exists in order to justify going around it, that sentence is the
+specification for what your replacement owes.* The gate's own exit-4 message still
 prescribes the fold alone, and `duplicate_alias` has no convergence test though its sibling
 `status_mismatch` has one — filed as `#534`, out of this doc-only chunk's scope.
 

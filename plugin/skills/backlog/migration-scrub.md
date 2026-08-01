@@ -398,8 +398,14 @@ for only two of them**:
   delete only that one entry, and pass everything else back **verbatim**:
 
       gh issue view <n> --repo <owner>/<repo> --json body -q .body > /tmp/loser-body.md
-      # delete ONLY the one id_aliases entry; leave every other line alone
+      # remove the duplicated id from the id_aliases LIST; keep the rest of the line
       gh issue edit <n> --repo <owner>/<repo> --body-file /tmp/loser-body.md
+
+  **`id_aliases` is one line holding a list** — `id_aliases: [ABC-1234, DEF-5678]` — so
+  what you are deleting is a list element, not the line. Delete the whole line only if
+  the duplicated id is the sole element. A loser that was itself an earlier survivor
+  carries several ids, and `merge` never moves them to the new survivor, so this issue
+  is their only record: take the line out and they are gone.
 
   **Round-trip it — do not retype it.** `gh issue edit --body` replaces the *whole*
   body, and the fold you ran moments ago wrote `superseded_by: <survivor>` into this
