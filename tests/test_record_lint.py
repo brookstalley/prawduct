@@ -972,3 +972,49 @@ class TestEveryCheckCarriesASeverity:
                 f"{rel} documents no severity for {missing} — a reviewer meets "
                 "the finding with no verdict. Add a row, or remove the check."
             )
+
+    def test_both_unchecked_shapes_are_graded_on_every_reviewer_surface(self):
+        """The two `unchecked` shapes are told apart by PREFIX, on both surfaces.
+
+        `_check_chunk_refs` emits two textually distinct strings and only one
+        means the check could not run. Compressing them to "a
+        `chunk-ref-missing` entry is BLOCKING" — which `goals-1-3.md` did, and
+        which is the natural casualty of a token-diet pass on a file with ~50
+        tokens of headroom — turns the *assumption* shape into a BLOCKING with
+        no remedy available: a branch that builds no chunk has no `--chunk` to
+        supply. That fired on real reviews before it was caught, and a blocker
+        is the one severity that gates.
+
+        Keyed off the strings the emitters actually produce, so the pin tracks
+        the code rather than the prose that describes it.
+        """
+        import sys
+        root = Path(__file__).resolve().parent.parent
+        sys.path.insert(0, str(root / "plugin"))
+        from lib import record_lint
+
+        emitter_src = Path(record_lint.__file__).read_text()
+        # Both shapes must still be what the code emits, or the anchors below
+        # are pinning prose against a contract that moved.
+        assert "chunk-ref-missing unchecked — " in emitter_src
+        assert "chunk-ref-missing graded chunk " in emitter_src
+
+        for rel in ("plugin/skills/critic/review-cycle.md",
+                    "plugin/skills/critic/goals-1-3.md"):
+            text = (root / rel).read_text()
+            assert "chunk-ref-missing unchecked" in text, (
+                f"{rel} no longer names the cannot-run shape by its prefix — a "
+                "reviewer cannot tell which `unchecked` entry blocks."
+            )
+            assert "inferred from build-plan Status" in text, (
+                f"{rel} dropped the assumption shape, so the compressed reading "
+                "('any chunk-ref-missing entry is BLOCKING') returns and with it "
+                "a false blocker that no --chunk value can clear."
+            )
+            # The assumption shape must be graded NOTE somewhere after it is
+            # named — the specific severity, not merely a mention.
+            tail = text[text.index("inferred from build-plan Status"):]
+            assert "NOTE" in tail[:600], (
+                f"{rel} names the assumption shape but does not grade it NOTE "
+                "nearby; an ungraded mention is how the BLOCKING reading wins."
+            )

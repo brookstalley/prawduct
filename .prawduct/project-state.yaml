@@ -14,6 +14,24 @@ product_identity:
 # by the legacy-backlog-format post-sync advisory probe.
 backlog_format_version: 2
 
+# THE CUTOVER (API §2.4). Set 2026-08-01 by v3.2.0 Chunk 06, after
+# `backlog verify-migration` returned exit 0 with all five conflict lists empty
+# (source_items 371 = aliased 371). This single key repoints the session briefing
+# to the GV2 snapshot and retires every markdown-premise advisory probe — and
+# `backlog-checks-dormant` starts firing at the same switch, so the operator
+# learns what went dark rather than discovering it as an unexplained absence.
+#
+# From here `.prawduct/backlog.md` is FROZEN HISTORY for this repo. It records
+# the corpus as it stood at the moment of migration; the tracker is authoritative
+# from now on, and the two are expected to diverge (the 42 post-import
+# dispositions are applied on the tracker, not backported here).
+#
+# `lib/backlog/legacy.py` is NOT retired by this flip — not this repo's, not any
+# repo's. GV7/MG3 retire it only at portfolio-wide migration, and
+# `lib/backlog/migrate.py` reads through `legacy.parse_backlog`, so retiring it
+# would disable the next repo's migration.
+backlog_service_repo: brookstalley/prawduct
+
 # Last full backlog grooming (stamped by /prawduct:backlog list/pick/groom).
 # Timestamp, not a count — counts are always re-derived (D14). Resolves the
 # backlog-overdue-grooming advisory.
@@ -333,7 +351,20 @@ views_enabled: true
 # field holds only the current in-progress plan (absent/empty -> the gates
 # fall back to artifacts/build-plan.md).
 
-active_build_plan: artifacts/build-plan-record-mechanization.md
+# Repoint this whenever the plan under active build changes. The slot is
+# single-valued and nothing checks that it agrees with the plan actually being
+# built, so a stale pointer sends record-lint, the stop-hook gate, regen-views
+# and Critic mode inference at the wrong plan — silently, since each of them
+# reports confidently about whichever plan it was handed.
+#
+# It has now gone stale twice on consecutive branches: once pointing at
+# record-mechanization while the golive plan was being built (record-lint graded
+# the wrong plan; the golive plan's own "active_build_plan now points here" prose
+# was false), and once pointing at the golive plan while the upgrade-discovery
+# plan was being built (Critic mode inference misfired off it). The recurrence is
+# the argument that a reminder in a comment is not the fix — the check that the
+# pointer agrees with the plan under review is.
+active_build_plan: artifacts/build-plan-upgrade-discovery.md
 
 # =============================================================================
 # BUILD-PLAN REF ROOT (opt-in)
@@ -479,7 +510,7 @@ scope_rollups:
     releases: ["v2.0.15"]
   backlog-service-v1:
     chunks: ["01", "02", "03", "04", "05"]
-    releases: ["v3.2.0"]
+    releases: ["v3.2.0", "v3.2.3"]
   backlog-ship-in-pr:
     chunks: ["01"]
     releases: ["v2.1.6"]
@@ -558,6 +589,9 @@ scope_rollups:
   kernel-evidence-store:
     chunks: ["01", "02", "03", "04", "05", "06"]
     releases: ["v3.0.0"]
+  learnings-firing:
+    chunks: ["01", "02", "03"]
+    releases: ["v3.2.3"]
   legacy-backlog-format-probe:
     chunks: ["01"]
     releases: ["v2.0.17"]
@@ -568,8 +602,8 @@ scope_rollups:
     chunks: ["01", "02", "03"]
     releases: ["v2.3.0"]
   record-mechanization:
-    chunks: ["01", "02", "03", "04"]
-    releases: ["v3.2.1", "v3.2.2"]
+    chunks: ["01", "02", "03", "04", "05"]
+    releases: ["v3.2.1", "v3.2.2", "v3.2.3"]
   regen-views-null-plan:
     chunks: ["01"]
     releases: ["v2.2.1"]
@@ -636,6 +670,9 @@ scope_rollups:
   test-evidence-single-run:
     chunks: ["01", "02", "03"]
     releases: ["v2.2.3"]
+  upgrade-discovery:
+    chunks: ["01", "02", "03"]
+    releases: ["v3.2.3"]
   upstream-bug-reporting:
     chunks: ["01", "02"]
     releases: ["v2.1.6"]
@@ -664,8 +701,8 @@ scope_rollups:
     chunks: ["1", "10", "11", "12", "13", "14", "2", "3", "4", "5", "6", "7", "8", "9"]
     releases: ["v2.0.0"]
   v3.2.0-golive:
-    chunks: ["02", "03", "04", "05b", "05c"]
-    releases: ["v3.2.0"]
+    chunks: ["02", "03", "04", "05b", "05c", "06"]
+    releases: ["v3.2.0", "v3.2.3"]
   work-model:
     chunks: ["1", "2", "3"]
     releases: ["v2.0.13"]

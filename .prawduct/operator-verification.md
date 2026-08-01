@@ -234,9 +234,96 @@ behaviors are confirmed only against real GitHub —
 
 ## VRF-006 — Chunk 06 (backlog-service) — prawduct-first migration: scrub dispositions + migrated repo + live briefing
 
-**Status:** pending (deferred — the live migration itself is not yet run)
+**Status:** VERIFIED 2026-08-01 — the real migration ran. See § "Settled facts" below.
 **Added:** 2026-07-17 (backlog-service Chunk 06, offline deliverables landed; live
 migration/repoint/retirement deferred to an owner-run session after design sign-off)
+
+> ### ✅ VERIFIED — 2026-08-01, v3.2.0 Chunk 06, owner-run
+>
+> **Settled facts (raw tool output, not narration):**
+>
+> ```
+> import:           371 created, 0 skipped, 0 collision(s) of 371 source item(s)
+>                   (152 restructured by plan)
+> pacing:           ≥6548 REST points; no throttling (budgets never bound)
+> unreconciled:     none — the "imported but NOT reconciled" line is ABSENT
+> verify-migration: {"source_items": 371, "aliased": 371, "missing": [],
+>                    "unaliasable": [], "collisions": [], "status_mismatch": [],
+>                    "duplicate_alias": []}   exit 0
+> post-import:      42 dispositions applied, 42 of 42 clean (24 merges, 18 drops)
+> tracker after:    155 open / 149 shipped / 67 dropped = 371
+> ```
+>
+> **The owner-eyeball checks below, answered:**
+> - **Disposition list** — 42 applied, every one owner-confirmed (18 from 2026-07-18, 24 from
+>   Survey 3). Nothing hard-deleted: drops are *closed*, duplicates *merged with a
+>   `superseded_by` redirect written before the close*, bodies preserved.
+> - **Spot-check** — `MIG-M4-REMOVE` resolves (decision 4's superseded consequence, proved live:
+>   the multi-hyphen id carries a real alias rather than a content digest); `CRT-9K2P` carries the
+>   plan's restructured title; the three `promoted` items resolve.
+> - **Live briefing** — `post_cutover` is True and `probe_migration_required` now fires **0 times**,
+>   so done-when 4 is satisfied *as a consequence* rather than as separate work.
+> - **`legacy.py` NOT retired** — struck per GV7/MG3, and independently required, since
+>   `lib/backlog/migrate.py` reads through `legacy.parse_backlog`.
+> - **Drop-box NOT retired** — the MG5 leg stays gated by BKL-9XQ2.
+>
+> ### ROLLBACK (done-when #5 — MG1: rollback = close, never delete)
+>
+> **There is no undo. GitHub has no ordinary issue-delete and never reuses numbers**, so the 371
+> issues this created are permanent. "Rollback" means **neutralise**, not remove, and it has two
+> independent halves — do both or the repo is left in a worse state than either:
+>
+> 1. **Unset `backlog_service_repo` in `project-state.yaml`.** That alone restores the markdown as the
+>    live backlog, un-retires the markdown-premise advisory probes, and silences
+>    `backlog-checks-dormant`. It is a one-line revert and it is the *only* half that matters for
+>    getting the repo working again.
+> 2. **Close the migrated issues**, filtering on the `id:` alias namespace so the 9 pre-existing
+>    native issues are untouched — they predate the migration and are not ours to close. Closing is
+>    optional for correctness and required for tidiness; an abandoned open set on a public repo reads
+>    as a live backlog to anyone who finds it.
+> 3. **Revert the FROZEN-HISTORY banner at the head of `.prawduct/backlog.md`.** Easy to miss,
+>    and it is the step that makes the other two coherent: the import never mutated that file,
+>    but the cutover commit added a banner declaring it dead and pointing at the tracker. Run
+>    steps 1 and 2 without this and the restored live backlog announces that it is frozen and
+>    redirects readers to a tracker step 2 has just closed.
+>
+> **The markdown is still authoritative-as-of-migration, which is what makes this recoverable at all**
+> — it was never mutated by the import, so unsetting the scalar returns the repo to a working state
+> with a corpus that is stale by exactly the work done since. **What does NOT come back** is the 42
+> dispositions: they were applied on the tracker only, deliberately, so a rollback restores 24 items
+> the owner had merged away and 18 the owner had dropped. Re-applying them to the markdown by hand is
+> the cost of rolling back, and it is the reason to be sure before doing so.
+>
+> ### Done-when #3's "no duplicates on a re-run" — NOT verified, and verifying it is now destructive
+>
+> **Stated honestly rather than claimed.** The obvious check is to re-run the import and confirm the
+> alias-keyed skip path creates nothing. **That check cannot be run now without undoing this session's
+> work**: `migration-scrub.md` records that the skip path *still reconciles status*, so a re-run
+> re-syncs every already-migrated item to its **markdown** status — which would **reopen all 42 items
+> disposed after the import**. The acceptance check is destructive once dispositions are applied.
+>
+> What stands in its place, and why it is strong evidence for the same property: `verify-migration`
+> reported **0 `collisions` and 0 `duplicate_alias` across 371 aliased items**, and the skip authority
+> is the `id:PFX` label written atomically in the create, guarded by
+> `tests/test_backlog_migrate.py::TestArchiveScope::test_open_then_all_backfills_the_archive_without_duplicating`.
+> That is the mechanism the sub-clause is really about. **It is not the same as having re-run it**, and
+> this entry does not pretend otherwise.
+>
+> This sharpens the ordering defect filed as `#528`: the gate must run before disposals *and* the
+> re-run acceptance check must run before them too, which means both belong in one ordering fix.
+>
+> **Two residuals, neither a blocker, both recorded rather than discovered later:**
+>
+> 1. **`promoted` has no Issues-backend equivalent.** The adapter's status enum is
+>    `submitted|open|in-progress|shipped|dropped`, so the three `promoted` source items decoded to
+>    **`open`**. That is the right degradation — promoted means in-flight — but it is a **vocabulary
+>    loss**, and the frozen markdown is now the only place that distinction survives.
+> 2. **`verify-migration` must run BEFORE post-import disposals, and the runbook's Step 4→5 ordering
+>    says the opposite.** The gate compares each covered item's decoded status against the **source
+>    markdown**, so folding a duplicate whose source status is `open` makes it read as
+>    `status_mismatch`. Disposing first would turn the scrub's own owner-confirmed decisions into a
+>    false exit 4. The gate certifies *the migration* — that nothing was stranded; the disposals are
+>    tracker actions taken after it. Filed.
 **Where to verify:** A real owner-driven session, after design sign-off, running the
 migration-scrub runbook (`skills/backlog/migration-scrub.md`) against a chosen target
 repo — first SPIKE-S2 (`tests/spikes/s2_migration.py`) on a throwaway copy, then the
@@ -605,3 +692,91 @@ read path until the *last* project cuts over, so deleting it is not the tidy-up 
 **What this does NOT close.** The recovery fixed the instance; the defect that produced it is
 untouched — **cutover (step 6) still has no precondition on verification (step 5)**, and the
 completeness comparison above is a hand-run script, not a command. See functional-audit F9.
+
+## VRF-013 — Chunk 06 pre-run gate — the two transport/pagination defects, live read-only
+
+**Status:** pending
+**Added:** 2026-07-31
+
+**Why this exists.** `.prawduct/artifacts/migration-scrub-decisions.md` carries a **pre-run gate**
+added 2026-07-18 (holistic Fable review): *"the run is BLOCKED until the two transport/pagination
+defects are fixed and live-verified read-only against the real repo (>30 labels, 127+ PRs)."* Both
+code paths were re-read 2026-07-31 and **both look correct** — but no VRF records the live half, and
+VRF-009/011 ran against a *throwaway* repo, not a repo at the scale the gate names. The gate asks for
+evidence at scale; this entry is that evidence. **Read-only: no writes, no issues created, nothing
+mutated.** Cost: a handful of API reads.
+
+**Set up once.** From the prawduct checkout, with `gh` authenticated:
+
+```sh
+python3
+```
+
+```python
+import sys; sys.path.insert(0, "plugin")
+from lib.backlog.transport import GhTransport
+t = GhTransport()
+OWNER, REPO = "brookstalley", "prawduct"
+```
+
+**Fact 1 — multi-page reads reassemble correctly (the `--paginate` multi-doc JSON defect).**
+`_api_paged` uses an explicit page loop rather than `gh --paginate`, because that flag emits each page
+as a *separate JSON document* and a single `json.loads` over the concatenation fails the moment a
+result exceeds one page. `per_page` is injectable precisely so a live check can force multi-page
+behaviour against a real dataset that isn't yet huge. Run:
+
+```python
+one  = t._api_paged(f"repos/{OWNER}/{REPO}/labels", per_page=100)
+many = t._api_paged(f"repos/{OWNER}/{REPO}/labels", per_page=2)
+print(len(one), len(many))
+print({l["name"] for l in one} == {l["name"] for l in many})
+```
+
+**PASS:** both counts equal, and the name sets are identical (`True`). `per_page=2` forces many pages
+over the same data, so an equal result proves the loop reassembles rather than truncating or throwing.
+**FAIL:** any exception (especially a `json` decode error), unequal counts, or `False`.
+
+**Fact 2 — the terminator reads the RAW page, not the PR-filtered view.**
+This is the sharper defect. `iter_alias_issues` scans `issues` — an endpoint where **pull requests
+interleave with issues** — filters PRs out inside the loop, and must test `len(batch) < per_page`
+against the **unfiltered** batch. If the length test ever saw the filtered count, a page that happened
+to be mostly PRs would look short and the scan would stop early, silently under-reporting alias
+coverage — which is exactly what `verify-migration` reads to decide the migration is complete.
+prawduct's own repo is the right test bed because it carries **127+ PRs**. Run:
+
+```python
+from lib.backlog import core
+# Starred unpack, so a later widening of the yield cannot break this snippet in
+# an operator's hands (it already widened once: `id_aliases` PFXs, labels, and
+# now the decoded status the completeness gate compares).
+seen = {n for n, *_rest in core.iter_alias_issues(t, OWNER, REPO)}
+print("issues reached:", len(seen))
+raw = t.list_issues(OWNER, REPO, state="all", per_page=100, page=1)
+print("page 1 raw:", len(raw), "| PRs on page 1:", sum(1 for i in raw if "pull_request" in i))
+```
+
+**PASS:** `issues reached` is in the hundreds and clearly exceeds the non-PR count of page 1 — i.e.
+the scan kept going past a PR-heavy page. **FAIL:** `issues reached` lands at or just under the non-PR
+count of page 1, which is the early-termination signature.
+
+**Fact 3 — the two remaining `_api_paged` readers behave on a real object.** `list_timeline` and
+`list_sub_issues` share the same loop. Pick any real issue number `N` from `seen` above:
+
+```python
+N = sorted(seen)[0]
+print(len(t.list_timeline(OWNER, REPO, N)), len(t.list_sub_issues(OWNER, REPO, N)))
+```
+
+**PASS:** both return without raising (0 is a fine answer — most issues have no sub-issues).
+**FAIL:** an exception, which would mean the shared loop is wrong for those paths.
+
+**What a pass discharges.** The 2026-07-18 pre-run gate, which is one of the named blockers on Chunk
+06. Record the numbers observed — not just "passed" — so a later reader can tell this ran against the
+real repo at real scale rather than a fixture.
+
+**What a pass does NOT discharge.** `BKL-7V2D` (the completeness gate cannot see "imported but never
+reconciled") is a separate Chunk 06 blocker — **fixed 2026-07-31**, so no longer outstanding, but still
+not something this probe speaks to: it is about what `verify-migration` *inspects*, not about whether
+pagination is sound. (That fix is also why Fact 2's snippet unpacks with `*_rest`: it widened
+`iter_alias_issues` to yield the decoded status.) And `BKL-3H7W` (the meter under-counts paged reads)
+is untouched by this — a paged list still costs 1 point regardless of page count.

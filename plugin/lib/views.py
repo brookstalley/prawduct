@@ -385,29 +385,10 @@ def _parse_build_plan_frontmatter_scope(content: str) -> tuple[bool, str | None]
       rather than raising on a malformed file. A real build-plan always closes
       its header, so this only affects hand-corrupted input.
     """
-    lines = content.splitlines()
-    i = 0
-    # Skip leading blank lines, then any leading HTML comment block (possibly
-    # multi-line). Build-plans conventionally start with a comment header.
-    while i < len(lines) and not lines[i].strip():
-        i += 1
-    if i < len(lines) and lines[i].lstrip().startswith("<!--"):
-        # Walk to the closing `-->` (inclusive). If the comment is UNCLOSED,
-        # this walks to EOF; `i` then lands past the last line so the consume
-        # below is skipped and the `i >= len(lines)` guard returns (False, None)
-        # — a deliberately lenient reading of a malformed header (see docstring).
-        while i < len(lines) and "-->" not in lines[i]:
-            i += 1
-        if i < len(lines):
-            i += 1  # consume the line containing `-->`
-    while i < len(lines) and not lines[i].strip():
-        i += 1
-    if i >= len(lines) or lines[i].strip() != "---":
+    fm = _frontmatter_lines(content)
+    if fm is None:
         return (False, None)
-    for j in range(i + 1, len(lines)):
-        line = lines[j]
-        if line.strip() == "---":
-            return (False, None)
+    for line in fm:
         if line[:1] in (" ", "\t"):
             continue
         stripped = line.split("#", 1)[0].rstrip()
@@ -421,6 +402,41 @@ def _parse_build_plan_frontmatter_scope(content: str) -> tuple[bool, str | None]
             return (True, None)
         return (True, value)
     return (False, None)
+
+
+def _frontmatter_lines(content: str) -> list[str] | None:
+    """The frontmatter block's body lines, or ``None`` when there is no block.
+
+    Extracted so ``scope:`` and ``artifact:`` are read by ONE walker. Two
+    independent walkers over the same block is the shape that lets a file be a
+    build plan to one reader and not to another, which is exactly the class of
+    disagreement the scope collectors were already exhibiting.
+
+    Tolerances (unchanged, and load-bearing — a third of this repo's build
+    plans open with a comment header): leading blank lines and one leading HTML
+    comment block are skipped before the opening ``---``. An UNCLOSED comment
+    header or an unterminated frontmatter both read as *absent* rather than
+    raising — a deliberately lenient reading of a malformed header.
+    """
+    lines = content.splitlines()
+    i = 0
+    while i < len(lines) and not lines[i].strip():
+        i += 1
+    if i < len(lines) and lines[i].lstrip().startswith("<!--"):
+        while i < len(lines) and "-->" not in lines[i]:
+            i += 1
+        if i < len(lines):
+            i += 1  # consume the line containing `-->`
+    while i < len(lines) and not lines[i].strip():
+        i += 1
+    if i >= len(lines) or lines[i].strip() != "---":
+        return None
+    body: list[str] = []
+    for j in range(i + 1, len(lines)):
+        if lines[j].strip() == "---":
+            return body
+        body.append(lines[j])
+    return None  # unterminated frontmatter reads as absent
 
 
 def _detect_active_scope(
@@ -532,14 +548,65 @@ def build_status_view(
     return "\n".join(new_lines) + trailing, changes
 
 
+def _declares_non_build_plan_artifact(content: str) -> bool:
+    """True when frontmatter declares an ``artifact:`` type that is NOT a build
+    plan — i.e. this file is scope-tagged but is not a plan to regenerate.
+
+    Both scope collectors below glob ``artifacts/*.md`` and treated ANY file
+    with a frontmatter ``scope:`` as a build plan. That is detection by surface
+    marker rather than by declared type, and several files in this repo already
+    carry a scope while being a design note, a discovery, a reference, a
+    release plan or a collapse map. Enumerate rather than trust a digit::
+
+        grep -l '^scope:' .prawduct/artifacts/*.md \
+          | xargs grep -l '^artifact:' \
+          | xargs grep -L '^artifact: build-plan'
+
+    The middle stage is load-bearing, and omitting it was this docstring's own
+    first mistake: ``grep -L`` alone cannot distinguish "declares another type"
+    from "declares NO type" — precisely the distinction this predicate draws —
+    so it wrongly returns ``build-plan-release-readiness.md`` (a real plan, the
+    counter-example named below) and a file whose ``scope:`` sits inside an
+    HTML comment and never parses. They were invisible only because none
+    happened to share a scope VALUE with a real plan; the first one that did
+    (`collapse-map-learnings-firing.md`, 2026-08-01) made
+    ``diagnose_scope_plan_coverage`` fatal and stopped ``regen-views`` writing
+    views for EVERY scope — the mechanism release time depends on.
+
+    Absence is treated as a build plan, not excluded: `build-plan-release-
+    readiness.md` declares no ``artifact:`` key at all, so requiring
+    ``artifact: build-plan`` would silently drop a real plan. Excluding only an
+    explicit *other* type fails safe in the direction that keeps plans.
+    """
+    fm = _frontmatter_lines(content)
+    if fm is None:
+        return False
+    for line in fm:
+        if line[:1] in (" ", "\t"):
+            continue  # nested key, not a top-level declaration
+        stripped = line.split("#", 1)[0].rstrip()
+        if not stripped.startswith("artifact:"):
+            continue
+        value = stripped.split(":", 1)[1].strip().strip('"').strip("'")
+        return bool(value) and value != "build-plan"
+    return False
+
+
 def build_scope_to_plan_map(artifacts_dir: Path) -> dict[str, Path]:
     """Map each frontmatter ``scope:`` to its build-plan FILE under artifacts/.
 
     Scans ``artifacts_dir/*.md`` and records ``{scope_value: path}`` for every
     file whose YAML frontmatter declares a non-empty ``scope:`` (parsed by
-    :func:`_parse_build_plan_frontmatter_scope`). This is the scope→FILE
-    resolver that lets ``regen-views`` regenerate every release-pending plan in
-    one pass instead of via the single ``active_build_plan`` pointer (REL-4T8N).
+    :func:`_parse_build_plan_frontmatter_scope`) **and does not declare an
+    ``artifact:`` type other than ``build-plan``** (see
+    :func:`_declares_non_build_plan_artifact` — a design note, discovery,
+    reference, release plan or collapse map may legitimately carry a scope and
+    is not a plan to regenerate). Both keys are stated here, not only in the
+    private helper, because the question a reader arrives with is "why won't my
+    scope regenerate?" and the answer is now two keys rather than one. This is
+    the scope→FILE resolver that lets ``regen-views`` regenerate every
+    release-pending plan in one pass instead of via the single
+    ``active_build_plan`` pointer (REL-4T8N).
 
     On a duplicate scope across two files, the first by sorted filename wins
     (deterministic; a duplicate scope is malformed — surfaced separately by
@@ -562,6 +629,8 @@ def build_scope_to_plan_map(artifacts_dir: Path) -> dict[str, Path]:
             # every other plan. `UnicodeDecodeError` is a `ValueError`, so the
             # narrower `except OSError` here let it escape to `regen-views`.
             continue
+        if _declares_non_build_plan_artifact(content):
+            continue  # scope-tagged, but declares itself a non-plan artifact
         _present, scope = _parse_build_plan_frontmatter_scope(content)
         if scope and scope not in result:
             result[scope] = plan_path
@@ -617,6 +686,14 @@ def diagnose_scope_plan_coverage(
     * Two ``artifacts/*.md`` files declaring the same ``scope:`` — ambiguous; the
       map keeps the first by sorted filename.
 
+    **Both cases apply only to files this module considers build plans**, i.e.
+    those NOT declaring an ``artifact:`` type other than ``build-plan``
+    (:func:`_declares_non_build_plan_artifact`). This filter must stay identical
+    to :func:`build_scope_to_plan_map`'s or the diagnostic condemns a file the
+    map never considered — which is exactly what happened on 2026-08-01, when a
+    scope-tagged collapse-map artifact made this function fatal and stopped
+    ``regen-views`` writing views for EVERY scope.
+
     Returns ``[]`` when coverage is clean.
     """
     warnings: list[str] = []
@@ -632,6 +709,9 @@ def diagnose_scope_plan_coverage(
                 # tracebacked out of `regen-views` — across a boundary whose
                 # error model forbids an internal stack trace crossing it.
                 continue
+            if _declares_non_build_plan_artifact(content):
+                continue  # must match `build_scope_to_plan_map` exactly, or the
+                # diagnostic condemns a file the map never considered
             _present, scope = _parse_build_plan_frontmatter_scope(content)
             if not scope:
                 continue

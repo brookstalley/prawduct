@@ -3,9 +3,679 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-08-01: Everything prawduct says about itself, it says to the model — so a shipped capability reached nobody
+
+<!-- prawduct: type=fix | scope=upgrade-discovery | chunks=01,02,03 | release=v3.2.3 | status=shipped -->
+
+**The question that found it.** Preparing an owner acceptance exercise for the backlog migration, the
+owner asked why the script read as if a human would run the migration commands by hand. Three rounds
+of that question, each one level up, ended at: *"prawduct is set to auto-update, this version lands,
+the user continues working — this doesn't feel like migration will happen unless the user knows to
+ask?"* It doesn't, and the reason generalises past migration.
+
+**The chain, read rather than inferred.** The update lands silently. The version-delta banner renders
+`↑ Prawduct updated: vA → vB` plus the release headline — to **stdout**, which this project's own
+ratified norm defines as the *agent-facing* channel. `write_marker()` then advances the marker, so the
+banner never renders again. Nothing instructed the agent to pass any of it on. And the one advisory
+that would have nudged an un-migrated repo toward the backlog service was registered as a no-op. Net:
+the capability was announced once, on a channel the owner does not read, and then never again.
+
+**The fix is delivery, not authoring — the same diagnosis this release already applied to learnings.**
+A **relay directive** now sits at each emission site: the banner's delta block closes by telling the
+agent to surface what changed in conversation, and the briefing's advisory block does the same for any
+active `warn`/`urgent`. Both fire only when there is news, and both sit next to the content they refer
+to. The session digest was the obvious home and is the wrong one: a rule read at session start,
+competing with everything else in context, is precisely the delivery failure being fixed. (It also had
+44 characters of inline headroom left, measured — but the owner offered to raise the limit and the
+design did not move, which is the honest record of why.)
+
+**`info` is deliberately excluded.** A channel that nags gets tuned out, which would cost the `warn`
+case the audience it exists for.
+
+**The migration advisory is live.** Its recorded lift conditions — three runbook safety fixes plus one
+proven end-to-end migration — were all discharged, and an owner ruling made it live rather than
+leaving the probe's default to decide by silence. It had been shipping held *by silence* anyway,
+because no chunk implemented the ruling. **The relay is what makes the lift safe**: this advisory
+routes toward an irreversible bulk write of 100–250 real GitHub issues, and until now it could have
+routed the *model* there with nobody informed. It is a `warn`, so it relays, and the migration becomes
+the owner's call — the only form in which it was ever meant to be offered. The two ship together; the
+lift should not land without the relay.
+
+**Also corrected: the strategy artifact claimed what the code did not do.** § What You Get sold the
+briefing as answering *"What state is my repo in right now?"* and the advisory list as *"What nudges
+am I ignoring?"* — both framed as the owner's questions, both delivered on the channel its own norm
+reserves for the agent. The norm was right; the description had drifted. It now states how the owner
+actually learns, and records the rejected alternative (routing advisories to stderr by consequence)
+with its reasoning.
+
+## 2026-08-01: prawduct's backlog is on GitHub Issues — 371 items, 0 stranded, and the tripwire that fired at the cutover was re-aimed rather than silenced
+
+<!-- prawduct: type=feature | scope=v3.2.0-golive | chunks=06 | release=v3.2.3 | status=shipped -->
+
+**The migration ran.** `371 created, 0 skipped, 0 collision(s) of 371 source item(s)` (152 restructured
+by plan), `≥6548 REST points; no throttling`. `verify-migration` returned **exit 0 with all five
+conflict lists empty** and `source_items 371 = aliased 371`, which is the precondition Step 6 refuses to
+take on trust. `backlog_service_repo: brookstalley/prawduct` is recorded; the markdown is frozen
+history. Then 42 owner-confirmed dispositions applied 42-of-42 clean, leaving **155 open / 149 shipped /
+67 dropped**.
+
+**Read the line after the summary — it was absent, and that is the finding.** A failed status reconcile
+does not stop the run, so an import can report clean counts while `WARNING: N item(s) imported but NOT
+reconciled` sits below them. It did not appear, so every reconcile landed on the first pass.
+
+**Two residuals surfaced by running it, both recorded rather than left to be rediscovered.**
+
+**`verify-migration` must run BEFORE post-import disposals, and the runbook says the opposite** (filed,
+`#528`). The gate compares each covered item's decoded status against the **source markdown**, so
+folding a duplicate whose source status is `open` reads as `status_mismatch`. Step 4→5 ordering —
+dispose, then verify — would therefore have turned 24 owner-approved merges into a false exit 4 on a
+correct migration. The gate certifies *the migration*: that nothing was stranded. Disposals are tracker
+actions taken after it.
+
+**`promoted` has no Issues-backend equivalent** (filed, `#529`). The adapter's enum is
+`submitted|open|in-progress|shipped|dropped`, so three `promoted` items decoded to `open` — the right
+degradation, since promoted means in-flight, but a vocabulary loss whose only surviving record is now
+frozen markdown. `in-progress` looks like a free fix and is not obviously right, which is why it is
+`stage: design`.
+
+**The cutover tripped a test designed to trip, and the honest fix was not the one it prescribed.**
+`test_zero_fire_against_this_repo` asserted `backlog-checks-dormant` is silent here, on the true premise
+that prawduct had not cut over. That premise expired **by design** — the probe exists to start firing at
+exactly this switch. But its stated remedy, *"restore them against the read-through cache (GV8), not to
+narrow or delete this tripwire"*, is **roadmap W1**: no chunk of this release carries it, so the
+tripwire demanded unbuilt machinery at the moment it fired, and a test satisfiable only by unbuilt
+machinery becomes a standing red, which is how waivers get trained.
+
+**Owner ruling: re-aim it at the post-cutover contract.** What moved is the *side of the transition*,
+not the risk. The risk was always silent degradation, and post-cutover the dormancy must be **said out
+loud** (GV8 — retirement is not silence), because a dormant reader returning nothing is
+indistinguishable from a clean bill of health. It now fails if the probe goes quiet here, if it stops
+being dismissible `info`, or if a check enters `DORMANT_CHECKS` without its name reaching the operator —
+both sides derived from the roster, so a check cannot go dark unannounced. **Mutation-proved rather than
+assumed**: made to return `[]`, the test fails; restored, it passes. Restoring the readers is still the
+real fix, and when it lands `DORMANT_CHECKS` shrinks and the test follows it down.
+
+**Done-when 4 was satisfied as a consequence, which is what it asked for**: `probe_migration_required`
+now fires **0 times** — no separate work, no flag flipped by hand.
+
+## 2026-08-01: The scrub's drift verdict reads CURRENT for the first time — because the survey finally covered the whole corpus
+
+<!-- prawduct: type=chore | scope=v3.2.0-golive | chunks=06 | release=v3.2.3 | status=shipped -->
+
+Chunk 06's Step 2 half. Every one of the **195 open items** was read in full and screened, and the
+dispositions are recorded as **Survey 3** in `artifacts/migration-scrub-decisions.md`: 1 close, 5
+drops, 19 folds into 13 survivors — **plus the 18 already-approved-and-pending dispositions from
+2026-07-18** (5 merges + 13 drops, all re-verified), which this sentence previously left unstated.
+Net **195 − 18 − 1 − 5 − 19 = 152 open survivors** at import — the figure the tracker reconciles with
+(152 survivors + 3 `promoted`-decoded-to-`open` = 155 open). Stated as the full sum rather than an
+arrow, because the arrow form was reconstructible only by knowing the missing term.
+
+**Zero items were dropped on staleness grounds — the same result Survey 2 got, and it is the finding.**
+This corpus is not silted, it is dense: recent, independently-verified defects against live machinery,
+most carrying an explicit dedup ruling from a prior session. The whole reduction comes from
+**upleveling by root cause**, which is a different screen from the staleness-and-duplication one
+Surveys 1 and 2 ran, and is why it returns different answers about items those surveys already kept.
+Five uplevels carry most of it — the largest names *a single-latest-fact derived view standing in for
+the evidence store* and folds its render, write and read surfaces (`CRT-2X7R`, `CRT-7P5J`, `CRT-3F7T`
+→ `CRT-9K2P`); another folds three adapter-documentation gaps into the item that says the adapter has
+no usage table, because one of the three **mints** the missing referent.
+
+**`SNAPSHOT` advanced `964d03b` → `5a169b2`, and the instrument now prints `dispositions are CURRENT`.**
+`BKL-9F6T` records why it never could before: the spike derives "unsurveyed" as *open items filed since
+the ref*, so on a growing corpus that set is non-empty forever and the green light was **structurally
+unreachable**. Advancing is legitimate only after the covering survey is owner-confirmed — doing it
+first silently declares an unreviewed corpus surveyed. The constant is on its way out regardless: a
+git-ref baseline resolves through `git show <ref>:<backlog>` and stops meaning anything the moment the
+markdown becomes frozen history, which is exactly the transition it guards. `BKL-9F6T` owns the
+date-keyed replacement.
+
+**The dispositions split on decision 3's line, not Survey 2's — the correction is the reusable part.**
+Survey 2's pre-import exception was earned by *status flips*, where minting an open issue to describe
+finished work is the waste. It does not extend to **folds**: `merge` writes a real `superseded_by`
+redirect *before* closing the source (AU3/CRASH-2), and markdown can only carry that as prose. So one
+`shipped` close lands pre-import and the other 42 dispositions ride the adapter afterwards, at ~1.7s
+each — the ordering costs nothing and buys real redirects. The frozen markdown will record those 42 as
+open **at cutover**, which is accurate history.
+
+One previously-approved merge was challenged and the owner overruled the challenge: `CRT-6J4P →
+CRT-8H3R` stands, so whoever builds `CRT-8H3R` should read the folded body for the same-lineage
+cross-bundle case rather than assuming an ancestor guard closes it.
+
+## 2026-08-01: The collapse — two families become nine rules, and every instance survives
+
+<!-- prawduct: type=feature | scope=learnings-firing | chunks=03 | release=v3.2.3 | status=shipped -->
+
+Seventeen rules retired by supersession; the corpus went **159 → 149**. Two of those rules are
+Chunk 03(a)'s genuinely-new ones (*green is evidence only about what could have made it red*, and
+*a text-anchored edit changes a neighborhood, not a point*), both with narratives in
+`learnings-detail.md`. Every retired member's distinguishing instance is locatable in its
+successor's heading — the union half was an acceptance criterion, not a style note, because
+dropping instances is the cheap way to hit the count and the whole reason the corpus stopped
+firing.
+
+**The approved map's stated premise was false, and drafting it for real is what falsified it.**
+Version 1 collapsed each family into one heading, justified as *"within house style — 188 median /
+396 p90 / 907 max."* Drafted, the two destinations measured **1,484 and 1,798 characters**: 1.7×
+and 2.0× the corpus maximum. They also collided with `record_lint`'s `learnings-entry-shape` cap
+(`_LEARNINGS_RULE_MAX = 400`, shipped 2026-07-30 in `c8a24ed`), whose remedy — *"move the evidence
+to learnings-detail.md"* — is precisely what the 2026-07-31 union ruling overruled. Two ratified
+decisions one day apart, contradicting each other, meeting at the first bulk `--apply`.
+
+Owner decision: **split each family thematically under the cap.** Family 1 → four destinations,
+family 2 → five, each grouped by the *kind* of failure rather than listing instances. The
+measured trade, all three numbers: token saving is **−18% vs −21%** for the mega-heading (the
+instances dominate, and both shapes keep them, so the shape buys rule count and not tokens);
+rule count is **19 → 10 vs 19 → 6**; and the split uplevels *further*, because naming three kinds
+of green-but-empty test is an abstraction layer a 1,798-character list does not have. Token
+reduction was never this chunk's goal — Success criterion 3 says *"shrinks in rule count, not in
+discriminating detail"* — and it already shipped as LRN-4K8T, which is where the 400 cap came from.
+
+**Part (c), the descent obligation, landed once and structurally**, in `learnings.md`'s header
+where the corpus is read: *reading a rule is not applying it; the failure mode of this file is not
+absence, it is assent.* The `/prawduct:learnings` skill carries a **reference**, not a copy — its
+caller never sees that header, which is learning "model the READER" applied to the fix for
+inertness rather than to a test.
+
+**A third, found by the PR reviewer and invisible to every gate.** The new collapse-map
+artifact declares `scope: learnings-firing` in frontmatter, and `views.build_scope_to_plan_map` /
+`diagnose_scope_plan_coverage` treated **any** scope-tagged file under `artifacts/` as a build
+plan. It collided with the real plan, the duplicate-scope diagnostic went fatal, and
+`regen-views` wrote **no views for any scope** — the mechanism release time depends on to stamp
+chunks shipped. Detection by surface marker rather than declared type: several files in this repo
+already carry a `scope:` while being a design note, discovery, reference, release plan or
+collapse map (`grep -l '^scope:' .prawduct/artifacts/*.md | xargs grep -l '^artifact:' | xargs grep -L '^artifact: build-plan'`), and they were invisible only because none had yet shared a scope VALUE with a plan.
+
+Both collectors now exclude a file that declares an `artifact:` type other than `build-plan`,
+and they read `scope:` and `artifact:` through **one** frontmatter walker rather than two that
+can disagree. It fails **safe**: an absent `artifact:` key still reads as a build plan, because
+`build-plan-release-readiness.md` has none and a strict rule would silently drop a real plan.
+Net effect on output: none — `regen-views` reports every view up to date; three scopes stop
+mapping (a design doc and two release plans) and no change-log entry references any of them.
+
+The suite was green throughout because every scope test builds a two-file tmp `artifacts/`; none
+ran the collectors over the real artifacts directory. That gap is now
+a test, mutation-proved in both directions — removing the filter reproduces the outage, and
+making it strict drops the plan that declares no type.
+
+**Two behavior changes landed while dispositioning the review, both from findings all three
+reviewers or the verify pass caught.** (i) `audit-learnings --apply` now **relocates a retiring
+entry's pre-existing `learnings-detail.md` narrative** into its historical block. It previously
+appended a historical copy and left the original in place, so the first bulk run duplicated 17
+headings — and the *undecorated* one sorts first, meaning `/prawduct:learnings` returned retired
+rules as current with no successor. Retirement is a move; the prose now moves. (ii) **Onboarding
+seeds the descent obligation.** `init_product.py`'s starter `learnings.md` carries the
+`prawduct:descent-obligation` marker, because `/prawduct:learnings` ships an instruction to apply
+"the obligation marked …" and no product's starter file had one. Already-onboarded repos are
+**not** repaired by this and still point at a hole — filed, not fixed.
+
+**Two things `--apply` did that this map did not ask for, both recorded rather than left in the
+diff.** It swept one unrelated entry whose `sentinel=` route was already `ready` (plugin-skill
+frontmatter validation — the mechanism working as designed, and `--apply` cannot be scoped). And
+it correctly *refused* to retire *"Framework ownership follows the write strategy"*, whose
+sentinel names `tests/test_prawduct_sync.py` — **a file deleted when the file-sync engine was
+retired in v2.0.3.** A learning pinned to a test that no longer exists is the corpus's own
+absence-claim rule turned on itself; the audit fails closed and keeps the entry. Filed, not fixed
+here.
+
+## 2026-07-31: One home per fact, method prescriptions become advice, and the closing block gets a shape
+
+<!-- prawduct: type=governance | release=v3.2.3 | status=shipped -->
+
+Three owner decisions, all from watching this session's own review rather than from theory.
+
+**Two `## Direction` norms born in `architecture.md`.** *Goals and verification bind; prescribed
+method is advice* (`in-transition`, GOV-4T9P) — a governing artifact says what must be true and
+how it is checked; where it also prescribes *how*, that is the author's guess made before the code
+was read, and a builder who finds a better route takes it and records why. Measured: three of the
+`learnings-firing` chunk-level prescriptions were wrong (an inert delivery site, a test file that
+does not exist, a deliverable that was decorative) while every goal-level statement held.
+Verification structure is carved out and binds unchanged — the same session had mutation-proving
+catch two tests the builder was confident about and wrong about.
+
+*Every fact has one home; every other mention is a reference to it* (`in-transition`, GOV-2R8K) —
+**9 of 23 findings in one review were a single fact copied and drifting**, and the repair applied
+to the largest of them was itself wrong: correcting the claim in all four places restored agreement
+and preserved the duplication. The norm reframes the review question from *"do these agree?"* to
+*"why are there two?"*. This repo had already invented the rule four times for four fact types
+(`LAST_MEASURED_TOKENS`, `suite-total-claim`, learning 322, the `governed_by:` pointer table)
+without stating it once — which is the upleveling failure the `learnings-firing` plan is about,
+sitting in the framework's own artifacts. The norm violated itself on the day it shipped: its
+Enforcement row paraphrased it instead of naming it, caught by the backlog reviewer and shortened
+to a title.
+
+**The standing block gets a shape.** Owner-requested after the content was already right: a `---`
+rule, then three separate paragraphs with backticked labels, so the three answers are separately
+findable at the bottom of a long turn rather than scanning as prose. Changed on all four surfaces
+— `building.md`, `reflection.md`, and **both digests**, which are what reach product sessions, so
+this is durable for every governed repo rather than local to one. The guard now pins the shape
+(rule present, separate paragraphs, backticked labels) rather than only the words. `building.md`
+and `session-digest.md` were both at their ceilings and paid for it in place; headroom is now 1
+token and 45 characters, so the next addition to either has to fund itself.
+
+## 2026-07-31: Rules that fire — delivery at the moment, and supersession as a real lifecycle event
+
+<!-- prawduct: type=feature | scope=learnings-firing | chunks=01,02 | release=v3.2.3 | status=shipped -->
+
+`learnings.md` holds 159 rules, and the one that would have caught four false claims in a
+consuming repo's retrospective was already there, already general, already well-worded. It did
+not fire. The diagnosis is delivery, not authoring: a rule read at session start competes with
+the whole rest of the context by the time the claim gets written.
+
+**Chunk 01 moves two rules from storage to code-delivery.** (a) *Green is evidence only about
+what could have made it red*, printed at `test-evidence record` when the merged record shows
+judged code changed — silent on a docs-only cycle, and on any run that touched no source. (Not
+on a restamp: `--no-rerun` re-runs the F4a overlay, which repopulates the field against the
+current tree, so a restamp with judged changes in the diff fires. Four records said otherwise
+and were corrected in the same review round that found it.) Known limitation, recorded at the
+constant: `changes_referenced` is populated by Python-symbol matching, so the line never fires
+in a Swift/Rust/C#/TypeScript product. (b) *A resolution is a claim
+about the tree*, printed at `critic-begin --mode verify-resolutions`.
+
+**(b)'s print site is a correction to its own spec, and the reason generalizes.** The plan put
+it beside `_BATCH_FIX_DIRECTIVE` in `critic-consolidate`. That site cannot fire:
+`verify-resolutions` is always single-pass, so the reviewing fork writes its `resolutions` into
+the partial and *then* runs consolidate itself — the directive would reach an agent that has
+already made the claim and is one step from exiting. Nor does it carry to the builder, because
+the Critic skill is `context: fork` and the fork's report-back enumerates findings and a
+summary, not the consolidator's stdout. Dispatch is the same reader, one step earlier, upstream
+of the claim. **A delivery site has to be checked against the order its reader actually reads
+in, not against which module the related constant lives in.**
+
+**Delivery is not descent** — raised by the owner mid-build and now binding on the plan. A
+general rule can arrive exactly on time, be read, be agreed with, and change nothing, because
+nothing made the reader recognize the case in hand as an instance. So each delivered directive
+is statement → act → instances → an explicit instruction to spend it on the case in front of
+you. (The drafted text aims that last clause at the case the reader feels *surest* about, on the
+reasoning that it is the one a general rule never reaches. That is authorial intent, not a pinned
+property: the guard asserts the *structure* — an imperative present, and the text pointing at the
+reader's current decision — because a test that froze the wording would fail every improvement to
+the sentence and pass any defect that kept the words.) The same reasoning changed Chunk 03 before
+it was built: the collapse now **merges
+statements and unions instances** rather than dropping them, because rule *count* is what
+competes for attention at read time and discriminating detail is not.
+
+**Chunk 02 adds `superseded-by=`** — retirement because a broader rule replaced it, which is
+what every consolidation is and which `audit-learnings` previously could not express, leaving
+consolidation an unauditable hand-edit. That is a large part of how a corpus reaches 159 rules
+with near-duplicate families in it: adding is cheap and merging is not. The retired entry's
+historical copy names its replacement, so a reader who remembers the old rule finds a
+forwarding address rather than a hole. Fail-closed on every ambiguity, like a failing sentinel:
+unresolvable, ambiguous, self-referential, or empty pointers error and do not retire, and an
+entry declaring both routes retires under neither — picking one silently would let a failing
+sentinel be bypassed by adding a supersession key.
+
+Two things the chunk found rather than built. **`_KNOWN_METADATA_KEYS` was dead code** — one
+reference in the module, its own definition, under a comment claiming the audit logic consults
+it. Adding a key to a set nothing reads is a decorative deliverable, so it is now pinned to the
+keys the logic actually reads by a guard parsing the module's own `meta.get(...)` sites. And
+**the retirement path collided with the repo's own guard test**: it copied retired entries
+verbatim into `learnings-detail.md`, lifecycle comment included, which
+`test_no_lifecycle_metadata_has_drifted_to_the_detail_file` forbids — so Chunk 03's collapse
+would have broken the suite the first time it ran `--apply` here. Verified empirically before
+fixing. Retired entries now shed the comment and carry a retirement note instead; this changes
+the older sentinel route too, deliberately, because the break is identical on both and fixing
+one leaves the guard failing for the other.
+
+## 2026-07-31: A turn that ends without saying where things stand, and a fix strategy that arrives after the fixing (CRT-9B4K + an unfiled owner report)
+
+<!-- prawduct: type=fix | release=v3.2.3 | status=shipped -->
+<!-- UNTAGGED, and the reason matters because the first draft gave the wrong one. Wrong reason: "no
+     build plan, so there is no ## Status to regenerate" — true but irrelevant, since scope= also keys
+     release-pending enumeration. Real reason: the two controls CONFLICT and the tag loses. Tagging
+     makes this a release-pending scope with no plan file, which `views.diagnose_scope_plan_coverage`
+     (views.py:665-670) rejects; regen-views folds that into `errors` and returns 2 with nothing
+     written, BEFORE `apply_regen` — so the tag breaks every view regeneration, not just this entry.
+     Verified by tagging it and running `regen-views --check`, not by reading. (The Critic finding that
+     recommended tagging cited a tolerance in `views._collect_status_regens`; no such symbol exists —
+     the real one is `views._plan_status_results`, and it sits downstream of the gate that rejects
+     first, so the recommendation was unworkable as given.) So this
+     entry knowingly accepts REL-6Q4M's blind spot — it will not appear in the release-classification
+     walk, and a releaser must classify it by hand. Recorded on REL-6Q4M: its fix has to cover the
+     planless scope, or the two controls stay mutually exclusive. -->
+
+Both reports came from consuming repos, and both are about **what an agent says at the moment the user
+reads it** rather than about any gate being wrong.
+
+**The `/clear` signal was being buried, and it was answering the wrong question.** The rule already
+existed — `building.md` has said "affirmatively signal when `/clear` is safe" since the session-continuity
+work — and products were still clearing on top of live reviewers. Two distinct defects behind that.
+First, **placement**: a correct, complete "safe to `/clear`" sentence sitting in the middle of a long
+closing summary is a signal not sent, because someone returning to a wall of text reads the bottom and
+nothing else. Second, and larger, **content**: after a 30-120 minute build the user's question is not
+"may I clear?" — it is *did it work, what happens next, and am I the blocker?* A safety verdict alone
+answers the third-most-important thing.
+
+So the close is now a **standing block, last, after every other word**, answering State / Next / Clear.
+
+<!-- SHAPE SUPERSEDED 2026-07-31 — see the "Rules that fire" entry at the top of this file. The
+     three-short-lines / `**State**` form described here was reshaped (a `---` rule, three separate
+     paragraphs, backticked labels). The reasoning below stands; the literal form does not, and its
+     one home is `methodology/building.md`. Left rather than rewritten because a change-log entry
+     records what was decided then — but a superseded form stated in the present tense reads as
+     current, which is the second-copy defect `architecture.md`'s one-home norm exists to stop. -->
+
+Three failure modes are named together because they cost the same and only one of them was previously
+covered: omitting the block, burying it, and padding it into a paragraph that has to be parsed.
+
+**"Outstanding" now explicitly includes in-flight work, and the coordinator case is called out by name.**
+This is the mechanism behind the report: a `final`/`cumulative` review with a three-reviewer roster
+dispatches its subagents and hands the turn straight back, so the fork returns *while the review is still
+running*. An agent that treats "my turn ended" as "the work ended" says safe at exactly the wrong moment.
+The `.critic-active` marker makes `prawduct-hook clear` refuse, so the state is protected — but the user
+was told something false, and a PR reviewer has no equivalent marker at all.
+
+**The fix strategy for review findings now ships from the runtime, not from a guide read hours earlier.**
+The measured pump (CRT-3W6P): fixing findings one at a time and committing each fix moves the tree per
+fix, so every commit reopens the coverage gap and buys another 5-10 minute round — and each round then
+reviews the prose the last fix wrote. `critic-consolidate` now prints the strategy (one commit, then one
+`verify-resolutions`) whenever a review lands findings, and the "no pending manifest" no-op — which is the
+**coordinator path's normal case**, since the `SubagentStop` trigger consolidates while the main agent is
+elsewhere — now names the recorded review, its finding count, and the same strategy instead of answering
+"nothing to consolidate" to a question nobody asked. That path had no other channel: the reviewing fork
+returns without a findings summary, so the guide was the only carrier and the guide is optional.
+
+**The free-write list the directive carries was wrong in the report it came from, and the correction is
+the useful part.** The reporter's draft said pure-`.md` records ride the free edge but that
+`project-state.yaml` and `regen-views` output do not. Checked against `coverage_algebra.is_judgeable_path`
+rather than reasoned about: `METADATA_PREFIXES` covers **all** of `.prawduct/`, so `project-state.yaml`,
+build plans and every `regen-views` output are free, while a `.md` under `skills/`, `methodology/` or
+`templates/` is governance-protected and **is** judgeable. Both halves of the draft were backwards, one in
+the direction that costs a wasted commit and one in the direction that costs a round. Since the directive
+is now a prose restatement of that predicate, its tests parse the directive's own text and pin every
+path class it names against the predicate **in both directions** — a predicate that narrows, a list
+edited alone, or a token *moved* between the free and costly clauses all fail. That last case took
+two attempts: the first version read a flag written beside each entry rather than the prose, so
+dropping `templates/` into the free clause stayed green; and the placement check then had to learn
+that the free clause turns negative at "OUTSIDE" before the costly sentence begins, since the four
+protected directories are named *inside* the free clause as exclusions.
+
+**One claim in CRT-9B4K was not adopted, deliberately.** The item insists the gitignored-session-file
+rule and the doc-only carve-out be named as separate things, warning that a reader who fuses them
+"will conclude that tracked doc edits are safe mid-review, which is the wrong lesson in the wrong
+direction." Read against the algebra, that conclusion is correct rather than wrong: a mid-review write
+to a tracked but non-judgeable path yields an interval whose whole diff is non-judgeable, which
+composes as a **free edge**, so coverage still spans to the new tree. The two mechanisms do differ —
+one never enters the tree hash, the other enters it and is exempted — but they give the operator the
+same answer to the only question they are asking, and a doc that splits them into two rules invites
+the more conservative and more expensive reading. Shipped as one list, with the difference left to the
+predicate that implements it. Stated precisely, because the first draft of this paragraph asserted a
+guard that does not exist: nothing *refuses* a dirty tree. `consolidate()` inspects the working tree
+not at all (the module header records the v3 posture — "No staleness refusal"), and `begin_review`
+only *appends an advisory note* to the manifest. What actually happens to a judgeable uncommitted
+file is that it leaves the interval **uncovered**, and the gate reports that — which is the outcome
+the caution was reaching for, arrived at by composition rather than by a check.
+
+**One correction rode along, and it was documented as a defect for two weeks before this.**
+`building.md` said warnings "should be addressed", and `review-cycle.md` § "The review loop terminates"
+names that sentence, by file, as the cause of the round pump: it reads as must-fix, so an agent fixes
+them, each fix commits, coverage stops reaching HEAD, another round runs. It now says warnings and notes
+gate nothing and are dispositioned. Everything added to `building.md` was paid for in place by the file's
+own trim-or-relocate rule — the block's rationale relocated to `reflection.md` and both always-injected
+digests, the fix-strategy detail to the runtime constant — and the file ends **exactly where it started**
+(4652), eight under the ceiling. Two attempted trims were reverted because tests pinned them as
+contracts; the funding was found elsewhere rather than the tests weakened.
+
+Those last six tokens were spent at the PR boundary, on the reviewer's catch. `building.md`'s
+Resolve-findings line still opened with **"Fix them all in ONE commit"** — the exact phrasing
+`_BATCH_FIX_DIRECTIVE`'s own comment records rejecting, and by name, citing this file as an authority
+telling the builder to stop. It contradicted **"warnings and notes gate nothing"** two paragraphs down
+in the same file, on the surface with the most authority at the moment a builder holds findings. It now
+mirrors the runtime: *disposition them ALL in ONE pass*. The fix pushed the file eight tokens over its
+ceiling before it was tightened — the budget caught an unfunded addition on its first live test, which
+is the bound working rather than a separate defect.
+
+**And the guide half is now pinned, because this surface regressed twice on one branch.** Once in the
+runtime string ("Fix them ALL"), once in `building.md` ("Fix them all in ONE commit") — both caught by a
+reviewer, neither by a test, while `TestBatchFixDirective` had pinned the runtime copy all along.
+`TestBuildingMethodology::test_resolve_findings_dispositions_rather_than_mandating_fixes` asserts both
+halves of the pair together, since the defect is specifically a *self*-contradiction: the reflexive-fix
+instruction and the rule it contradicts sit two paragraphs apart in one file, and pinning either alone
+would let the other drift back. Mutation-proved by restoring the old sentence.
+
+That pin's own first draft landed *inside* `test_build_cycle_structure`, between its third and fourth
+assertions, so two Common-Traps assertions ended up under a docstring about the disposition rule —
+nothing under-verified, but the next repin of this churning prose would have carried them out silently.
+A text-anchored insertion changes a neighborhood, not a point, and the anchor here was a line that
+looked like the end of a method and was not. Caught by the Critic, not by green. The first mutation
+written to prove the repair was itself non-discriminating — `"Boundary blindness"` → `"Boundary
+blindnessX"` still satisfies an `in` assertion — so the proof only became a proof when the string was
+replaced rather than extended.
+
+**The Critic then falsified the funding argument itself, which is the most useful thing it did.** The
+relocations treated the always-injected digests as free destinations. They are the *tightest*-budgeted
+surface in the framework: `session-digest.md` sits under a 10,000-char inline-context limit — above it
+Claude Code spills the digest to a file instead of injecting it — and it was at **9,999**. The addition
+took it to 11,143, 11% over, and the one guard could not see it: `test_additional_context_under_inline
+_limit` runs the digest hook against the framework repo, which since the variant renegotiation emits the
+*slim* digest, so the full digest — the one every product session receives, and the sole carrier of
+framework defaults for thin-anchor repos — was pinned by nothing. `test_slim_budget_at_most_half_of_full`
+is not a brake either; it gets *easier* to satisfy as the full digest grows. Both halves are fixed: the
+digest is back to 9,996 with the rule compressed to its three line-labels plus the in-flight rule and a
+pointer, and the inline-limit assertion is now parametrized over both variants at the source, so the file
+with the wider blast radius is the one that is pinned. A cross-surface test also pins State/Next/Clear,
+the in-flight rule and the shared trigger on all four copies — without it, a later trim of any
+destination silently unfunds a trim already taken in `building.md`.
+
+**Two artifacts moved with it.** `cross-cutting-concerns.md` row 45 (Session continuity across
+`/clear`) described the Builder carriers as "the safe-to-`/clear` signal" plus "one line in each
+session digest"; it now names the standing block, its four carriers and the cross-surface test, and
+its Critic cell is re-checked against the in-flight rule — still "none today", because a review
+cannot observe what an agent *said* at the end of a turn. `architecture.md` § Communication Channels
+gains the bound this change made a pattern: channel 1 carries **behavioural directives**, not only
+data, and that is legitimate when the string fires at the moment its rule applies — and is budget
+laundering when it does not, since the runtime is unmeasured and the guides are not.
+
+**A second review round followed, and it was earned rather than pumped.** The fixes above touch
+judgeable files, so the commit moved the tree past the reviewed one and the gate said `uncovered` —
+the sanctioned case, not an inferred round. It resolved all eleven prior blocking/warning findings
+and returned one new blocker: the `_already_consolidated_note` fix shipped with **zero** assertions,
+and the neighbouring test passed identically before and after it, so a revert to `return ""` would
+have reinstated the swallow-into-empty-string defect it was written to fix. Five tests now cover the
+three diagnostic branches and the age note — the last of which was untestable with the existing
+fixtures, whose `rev-test-0001` ids the timestamp regex never matches. Two runs also raced on one
+worktree (`critic-begin` resets the partials directory with no in-flight guard — CRT-9T6M, observed
+for the third time), which cost a full review's tokens and recorded nothing. That round also relabelled
+the no-op note's age from "recorded" to "dispatched": the value is parsed from the review id's own
+stamp, so it precedes the fact's timestamp by however long the review took — ten minutes on a
+coordinator run.
+
+**A Critic severity rule moved, and it was the reviewer protocol manufacturing false blockers.**
+`record_lint` emits two textually distinct `unchecked` shapes: `chunk-ref-missing unchecked — …`
+means the check could not run (BLOCKING, inheriting the retired `cannot-verify:` bar), while
+`chunk-ref-missing graded chunk … inferred from build-plan Status` means it *ran* under an
+assumption (NOTE). `goals-1-3.md` had compressed both to "a `chunk-ref-missing` entry is
+**BLOCKING**" — and that file orders `chunk`/`verify-resolutions` reviewers to read **nothing else**,
+so a compliant reviewer could not reach `review-cycle.md`'s carve-out. Every such dispatch without
+`--chunk` therefore raised a blocker whose only named remedy was unavailable: a branch building no
+chunk has no chunk to supply. It fired on this branch's own reviews, repeatedly. `review-cycle.md`
+was wrong in the other direction — it filed the whole-pass **crash** under "assumption", though that
+entry carries the blocking prefix deliberately (a crash takes the deliverable check down with
+everything else, which is BLD-5J8N arriving by a new route). Both files now grade by prefix and say
+so, and `test_both_unchecked_shapes_are_graded_on_every_reviewer_surface` keys off the strings the
+emitters actually produce — because the compression that caused this is exactly what a token-diet
+pass does to a file with fifty tokens of headroom, and nothing was stopping it a second time.
+
+**The figure this entry corrected went stale a second time, in the other copy.** The change-log's
+arithmetic was fixed while `test_v5_methodology.py`'s budget narrative kept saying "→ 4655" and
+"Headroom 5" above an assertion permitting 14, so the two records contradicted each other and the
+stale one sat twenty lines from the live one. Fixed, and the narrative now says to read the headroom
+off `LAST_MEASURED_TOKENS` rather than from prose — the copy-forward that table exists to end,
+committed twice in the branch that documents it.
+
+## 2026-07-31: The completeness gate can see an item that arrived at the wrong status (BKL-7V2D)
+
+<!-- prawduct: type=fix | scope=backlog-service-v1 | release=v3.2.3 | status=shipped -->
+
+`verify-migration` is the gate that must pass before the ~900-write irreversible migration records its
+cutover. It compared the source set against **alias coverage** and never looked at issue state, so an item
+could be present, correctly keyed, and still not migrated — and the gate would say complete. Under
+`--archive-scope all` the run closes about as many items as it creates, and a flaky or rate-limited close
+stretch leaves every archived item sitting open. That is the F9 failure mode through a third door, after
+F9 itself and the unaliasable-id class.
+
+**The import's silence was deliberate policy, not an oversight, and the fix preserves it.** The design
+this was filed against assumed `_reconcile_status` had simply forgotten to handle its error. It had not:
+`tests/test_backlog_migrate.py` pins the behavior in its own words — *a create failure aborts (the scarce
+content budget); a status reconcile is core-budget and transient, so it defers and the resume converges
+it*. Making it raise would invert a tested policy and abort a 900-item run on one transient close failure.
+The reasoning that briefly justified raising — that the reachable failure set was all transport-class, so
+a counting channel would always be empty — conflated *what class* the failure is with *whether the run
+should continue*; the test proves the channel is populated. Both rejected shapes are recorded in the
+backlog item, because at `stage: ready` the next reader is someone who wasn't in the conversation, and
+"make it raise" is the obvious-looking fix they would otherwise re-derive.
+
+**What was genuinely broken in the import was narrower and worse: the close sat outside the rate-limit
+retry budget.** `core.set_status` catches `TransportError` and returns an envelope, so a 429 on a close
+never reached the reactive backoff built for exactly this stretch — the pause-and-retry only ever saw
+*creates*. Of the four wired-in cases in `TestRateLimitBackoff`, two inject a 429 on a create, one 429s
+everything and therefore dies on the first create before a close is attempted, and one injects nothing:
+**no existing test could reach a rate-limited close.** It now re-raises on `rate_limited` only, putting
+the close on the same retry contract as the create; an exhausted budget still falls through to the
+resumable envelope.
+
+Every other reconcile failure still defers — but it is now **counted**, not only narrated. A deferred item
+is in `created`, so the summary line reads as a clean run; `status_unreconciled` rides the result data and
+both resumable cuts, and human mode prints the count on stdout beside the pacing footer, because the scrub
+runbook drives import without `--json` and a data-only field would reach every consumer except the person
+running the irreversible migration.
+
+**The gate itself now reads the decoded status, not the raw state.** `core.iter_alias_issues` yields it as
+a fourth element — free, since the scan already fetches `state="all"` and already parses each body, and
+decoded rather than raw because reconstructing "shipped vs dropped" or "open vs in-progress" from `state`
+would re-implement the decoder's rules at a second site where they can drift. A divergence from the
+source's target is reported as `status_mismatch` and folds into the existing exit-4 `conflict` with its own
+remedy branch: same recoverability class as `missing` (re-running the import reconciles the status axis on
+already-migrated items), not `unaliasable`'s (which re-running cannot fix). No carve-out for an item a
+human may have legitimately moved since import — the gate runs immediately after the import in one
+operator session, and a false positive here is safe where a false negative is the thing being fixed.
+
+The gate's own new risk is that it now compares a decoded value against the source for *every* item, so a
+decoder that disagreed with the encoder would fail a healthy migration wholesale. `DISCODON_MINI` carries
+all five statuses across the three sections, so a clean import is the round-trip proof, and that is pinned.
+
+**Two target issues recording one id get their own list, `duplicate_alias`, and the review is why.** The
+scan derives its ids from the body block while the importer's collision check keys on the `id:PFX`
+*label* — `_AliasIndex` exists precisely because those diverge — so a block-only duplicate is invisible to
+that check, and reading it first-wins would have let the verdict flip with GitHub's page order. Reporting
+it was the first fix; routing it into `status_mismatch` was the second bug. Those lists are partitioned by
+**remedy**, not by symptom, and this pair diverges: a re-import writes to neither issue (the labelled one
+already matches, the block-only one is never looked up), so the operator would burn a full ~900-write pass
+and get the identical exit 4, with "deduplicate the two issues" appearing nowhere. That is verbatim the
+defect `verify_migration`'s docstring already warns about — *"a false conflict … on a gate whose
+prescribed remedy can never clear it"* — reintroduced one list over. The test now runs the wrong remedy
+and asserts it converges on nothing, rather than arguing the point in prose.
+
+**The Step 6 list enumeration is now pinned to the gate rather than hand-copied.** Twice in this branch a
+new list reached one copy of the runbook's prose and not the other — `status_mismatch` into the opening
+but not the closing arithmetic, then `duplicate_alias` repeating it one list later — each time pointing an
+operator at a paragraph explaining a list that was empty in front of them. `TestCompletenessGateLists
+AreEnumeratedConsistently` (`tests/test_cutover_prose_coherence.py`) derives the list names by calling
+`verify_migration` against an empty stub repo, so a sixth list added without a runbook bullet, or an
+enumeration still saying "four", fails there — the only place it can fail before an irreversible run. The
+same review also caught that the prescribed remedy `merge <duplicate-id> --into <survivor-id>` **cannot be
+typed**: both endpoints resolve through the `id:PFX` label search to the same labelled survivor and are
+rejected as merging an item into itself, so the issue-number form is the only one that works.
+
+**`boundary-patterns.md` stops being a pure scaffold**, because the Critic's Goal-5 contract-surface check
+was passing vacuously on a change that crossed two real ones. The two surfaces this work *proved* real are
+recorded — `iter_alias_issues`' positional yield (whose consumers include a runbook snippet, not only code)
+and the backlog-service result envelopes (whose recurring defect is enriching the success path and not the
+error ones). The rest is filed as **`BND-1S4K`**, along with the open question of whether the remainder gets
+filled by accretion or one inventory pass; the artifact's header now describes what happened rather than
+legislating which. Recorded there too: `plugin/lib/risk.py` is a second reader of that file, inert here
+because this repo declares `risk_surfaces:`, but in a product declaring none, filling it *raises* review depth.
+
+**Closes the trigger on Chunk 06** of `build-plan-v3.2.0-golive.md` — this item was filed as deferral with
+a named gate, and the gate was the irreversible run itself.
+
+## 2026-07-31: The scrub survey the migration was blocked on, and seven items that had already shipped
+
+<!-- prawduct: type=docs | scope=backlog-service-v1 | release=v3.2.3 | status=shipped -->
+
+The pre-migration scrub had an approved disposition table from 2026-07-18 and a corpus that had grown
+~81% since. **91 items sat outside every recorded disposition, never screened at all.** This closes that
+gap: every one was read in full, through the production parser rather than by eye, and dispositioned
+under owner ruling (`.prawduct/artifacts/migration-scrub-decisions.md` § Survey 2). **12 items archived**
+— the rest keeps.
+
+**The finding that mattered was not a keep/drop/merge call.** Seven items sat `open` describing work
+that shipped three releases ago: v3.2.0's `[ ]`-until-release convention deferred their status flip to a
+Chunk 09 that never formally ran, because the release shipped narrowed. Migrating as-is would have minted
+seven GitHub issues describing finished work — permanently, in a public repo, on an irreversible run.
+`GOV-3D6X` had already filed exactly this non-propagation risk three days earlier, naming `BKL-3N8Q` —
+one of the seven — as reading "as though the readers are unverified." **It is still open**: a filed
+warning that no gate reads is the same shape as the deferred flip it was warning about.
+
+**The survey's own categories could not have found it.** Keep/drop/merge assumes the defect is *within*
+an item — stale, duplicate. Here the defect was in each item's *relationship to the release*, which no
+offered axis names. Screening strictly by the given axes would have passed all seven. Recorded because
+the generalizable point is that a disposition survey's categories are a hypothesis about what is wrong
+with a corpus, and the corpus can be wrong in a way the categories do not name.
+
+**Zero drops on staleness grounds, and that is a result rather than an omission.** Every unsurveyed item
+was ≤12 days old, so the staleness axis could not fire before a single body was read — naming an axis
+structurally inapplicable is cheaper than screening 91 items against it. The corpus is Critic-sourced
+findings, not silt.
+
+**Self-reports were checked against the tree, and one was wrong.** Seven items claimed BUILT in their own
+bodies — detailed, dated, commit-attributed. Verified anyway: `ONB-3F9P`'s status pointer proved stale in
+the safe direction, claiming two legs remained when both had shipped. An item's self-report about its own
+completeness is a claim like any other.
+
+**Two owner holds discharged**, both recorded with their sign-off at the decision: decision 1 (public
+visibility of the migrated corpus — irreversible public disclosure, so it wanted explicit consent rather
+than inference) and decision 6. `VRF-013` was filed for the owner to run: a read-only live check that
+discharges the 2026-07-18 pre-run transport/pagination gate, whose code paths read correctly but have
+never been exercised at real scale.
+
+**Two new items, both about instruments that cannot see their own blind spot.** `BKL-9F6T` — a scrub
+survey has no recorded coverage boundary, so drift is undetectable, and the one instrument that checks it
+is repo-local, git-ref-keyed, and dies at the cutover it exists to guard. `ONB-7K4D` — onboard states none
+of the cutover's cost. The first was surfaced by this survey needing to exist at all.
+
+## 2026-07-31: The issue standard stops contradicting itself, and a norm's history stops reading as its rationale
+
+<!-- prawduct: type=fix | scope=backlog-service-v1 | release=v3.2.3 | status=shipped -->
+
+**The body budget was unsatisfiable at its own stated limits.** `documentation/backlog-service-issue-standard.md`
+carried two different numbers — §2 said ~120 visible words, §4 and `issuefmt.BODY_MAX_WORDS` said 150 —
+and §2's own per-section budgets already summed past both *before any Evidence section at all*. So an
+author following §2 section by section could produce a fully conforming issue that still tripped
+`body-too-long`. Reconciled to **one number, 175**, by owner ruling on the open question the item itself
+posed (do the per-section budgets shrink, or does the total rise?). The total rises: 175 clears the
+per-section sum with headroom for a visible Evidence line, and bulk evidence belongs in a fence, which
+the word count excludes anyway. The rationale now lives at the constant, so the next reader arguing with
+175 meets the reasoning rather than a bare literal.
+
+**The sweep found a fourth home the item named three of.** `documentation/backlog-service-upstream-filing.md`
+also specified ~120 visible words for the same standard. Found by sweeping for the *rule* — every site
+asserting a body-word budget — rather than the three sites the item enumerated; the completion claim is
+the falsifying grep returning no surviving 120/150, not a count of files edited.
+
+**The regression test could not see the change it was written for.** `test_body_too_long` used a
+200-word body, which trips at 150 and at 175 alike — a test that passes identically before and after is
+the vacuous-pin class the backlog already tracks. Added a boundary pair asserting the budget from both
+sides — a body **exactly at** `BODY_MAX_WORDS` passes, **one word over** trips — guarded by an explicit
+`assert issuefmt.BODY_MAX_WORDS == 175` so the literals cannot drift from the constant silently. The
+under-case sits *at* the budget rather than comfortably below it on purpose: a looser under-case would
+leave a `>` → `>=` flip green. Both halves turn red on a revert to 150, and were verified red before
+the fix rather than assumed.
+
+**A norm's amendment record was being read as its live rationale.** Archiving `BKL-8V3D` made the
+`dead-why` probe fire against `security-model.md` — correctly, by its own rule, which scans `Why:`/`Status:`
+lines for citations to closed work. The citation was not on either field: `_direction_lines` soft-wrap-joins
+an unseparated paragraph onto the preceding line, so the 2026-07-24 amendment *history* was merging into
+`Status: steady-state.` and dragging its `BKL-8V3D` literal along. Fixed by detaching the record with a
+blank line — the remedy the probe's own contract prescribes ("a paragraph after a blank line stands
+alone") — and **the id literal is deliberately kept**: dropping it would silence the probe by making the
+premise untraceable, which inverts what norm citations are for. The norm itself is unchanged and
+re-affirmed; what BKL-8V3D established (the adapter has no generic `--apply` contract) is still true,
+and is now better evidenced than when written, since an undocumented departure became a documented
+absence at the surface a model reads.
+
 ## 2026-07-31: Fleet migration gets a triage norm, and the archive scope gets an invariant instead of a status
 
-<!-- prawduct: type=docs | scope=backlog-service-v1 -->
+<!-- prawduct: type=docs | scope=backlog-service-v1 | release=v3.2.3 | status=shipped -->
 
 Scoping prawduct's own backlog-to-Issues cutover surfaced three record defects and one requirement
 that was about to be written wrong.
@@ -51,7 +721,7 @@ does not have, and would turn the nudge into the fleet-routing gate `BKL-6J2X` h
 
 ## 2026-07-31: Learnings lost three rules to the guard built to protect them
 
-<!-- prawduct: type=fix | scope=record-mechanization -->
+<!-- prawduct: type=fix | scope=record-mechanization | release=v3.2.3 | status=shipped -->
 
 Three rules in `learnings.md` were truncated mid-sentence — ending on "designate a single live", "a
 test that", "tests that". They still parsed, still rendered, and still read as rules right up to the
@@ -81,7 +751,7 @@ same heading in `learnings-detail.md` followed by a lowercase continuation parag
 
 ## 2026-07-31: The change-log ledger spike — the format holds, and the artifact falsified its own premise
 
-<!-- prawduct: type=docs | scope=record-mechanization | chunks=05 -->
+<!-- prawduct: type=docs | scope=record-mechanization | chunks=05 | release=v3.2.3 | status=shipped -->
 
 **The plan's last chunk was a go/no-go, and the answer is GO on the design, HOLD on the schedule.**
 `change-log-ledger-design.md` proposed moving the change log's typed fields into per-change facts and

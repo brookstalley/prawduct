@@ -24,6 +24,8 @@ governed_by:
       - "plugin writes only its own .prawduct/ state, the evidence store, and reconciled config → conforms — new facts go to the evidence store; the renderer writes nothing unasked"
       - "Python-implemented, never Python-specific; per-file dispatch; unpopulated language reported unchecked (born 2026-07-29) → conforms — record-lint reads records (markdown, YAML, JSON) and backlog ids, not product source, so it classifies no language and encodes no grammar. Chunk 02's `verify-chunk-refs` work touches file *paths* only. If a later chunk needs to decide whether a referenced path is source, it must route through the shared classifier rather than growing a private suffix list."
       - "prawduct guides and reviews, never implements; never re-implements a rule an ecosystem's tooling owns (born 2026-07-29) → conforms — record-lint checks prawduct's OWN governance records for internal consistency, which no linter models and no ecosystem tool owns; it emits findings for the builder rather than editing anything, and writes no product code, config or tooling"
+      - "goals and verification bind, prescribed method is advice (born 2026-07-31) → conforms retroactively, and this plan already worked that way before the norm existed. Chunks 02, 03 and 04 each departed from a stated deliverable and recorded the reason at the chunk: two lint checks were built and then DELETED for measuring zero true positives, `verify-chunk-refs` moved from a reviewer instruction to dispatch, and the ≤80-line payload target was missed at 125 because trimming to it would have deleted checks. All three are the norm's shape — the acceptance criterion was met by a better route than the one written down. Disposition added 2026-07-31 when the norm's birth raised architecture's count to 7; nothing in this plan changes."
+      - "one home per fact; every other mention is a reference (born 2026-07-31) → conforms — record-lint is the norm's mechanism half applied to records: `suite-total-claim` exists precisely because a suite total kept a prose copy of a figure a mechanism owns, and `governed-by-gap` catches a plan restating a norm roster instead of disposing of it. Disposition added 2026-07-31 when the norm's birth raised architecture's count to 8; nothing in this plan changes"
   - artifact: nonfunctional-requirements
     dispositions:
       - "review wall-clock is P0 — BOTH levers, run-count and per-mode payload (amended 2026-07-29) → conforms — this plan is that norm's implementation arm on both arms: Chunk 02 cuts record-triggered round *count*, Chunk 03 cuts per-mode reviewer *payload*. The disposition previously read 'run-count is the lever' and was updated with the amendment, not around it."
@@ -74,7 +76,7 @@ unknown; Chunk 04's review-stats measurement resolves the threshold.
 - [x] Chunk 02: Subtraction sweep and deterministic record-lint
 - [x] Chunk 03: Per-mode reviewer payload
 - [x] Chunk 04: Coordinator roster keyed to risk surface
-- [ ] Chunk 05: Change-log ledger spike and go/no-go
+- [x] Chunk 05: Change-log ledger spike and go/no-go
 Context: Plan authored 2026-07-29 from the ship-day retrospective (v3.2.0 + discodon). **Chunk 01
 complete 2026-07-29** — `disposition` fact kind + `render-dispositions`; step 0's consumer-query
 enumeration is recorded in the chunk's own section and is the schema-lock-in checkpoint's subject.

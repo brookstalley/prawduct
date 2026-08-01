@@ -1206,6 +1206,16 @@ def cmd_critic_begin(project_dir: Path, argv: list[str]) -> int:
         )
     if _critic_marker().write_marker(prawduct_dir):
         print("PRAWDUCT: critic-active marker set (session-mutating clear is guarded).")
+
+    # LAST, and only on the one mode that can weaken a gate. The reviewer reads
+    # this dispatch output before assessing anything (SKILL.md step 4) and
+    # writes its `resolutions` several steps later — so this is the last thing
+    # in the tool result at the only moment the advice can still change the
+    # claim. Keyed off the manifest's own mode rather than the raw --mode
+    # argument: `begin_review` is what canonicalizes the token, and a
+    # verify-resolutions dispatch that got demoted never reaches here at all.
+    if manifest["mode"] == consolidate.MODE_TOKEN_TO_VERBOSE["verify-resolutions"]:
+        print(consolidate.RESOLUTION_IS_A_CLAIM_DIRECTIVE)
     return 0
 
 
@@ -1970,6 +1980,75 @@ def cmd_stop(project_dir: Path, stop_input: dict | None = None) -> int:
 # =============================================================================
 
 
+#: Delivered at the moment the builder stamps "the suite is green" into the
+#: record the gates read — the one point where green stops being an observation
+#: and becomes evidence someone else will rely on.
+#:
+#: This text lives in code rather than in `learnings.md` deliberately. The
+#: general form of this rule has been in that file for a long time and does not
+#: fire: a rule read at session start competes with the whole rest of the
+#: context by the time the test gets written. `_BATCH_FIX_DIRECTIVE` in
+#: ``lib/critic_consolidate.py`` is the same move for the same reason, and is
+#: the precedent this follows.
+#:
+#: Printed ONLY when the merged record shows judged code changed
+#: (``changes_referenced`` non-empty) — a docs-only cycle, or a run that touched
+#: no source, stays silent, because a directive that prints every time is one
+#: the reader learns to skip.
+#:
+#: **Not "a restamp stays silent."** An earlier draft of this comment, the plan,
+#: and the change-log all said so, and it is false: ``--no-rerun`` takes the same
+#: path as every other mode — it rebuilds the record and re-runs the F4a overlay,
+#: which repopulates ``changes_referenced`` against the CURRENT tree (pinned by
+#: ``test_refreshes_changes_referenced_against_current_tree``). So a restamp with
+#: judged changes in the diff fires, correctly: the builder did just change
+#: judged code, and how the counts got there is not the question this directive
+#: asks. The only real trigger is "nothing judged changed."
+#:
+#: **Known limitation, recorded where the reader meets it.** ``changes_referenced``
+#: is populated by ``bin/test-reference-verify``, which matches Python symbols
+#: only. In a Swift/Rust/C#/TypeScript product the field is always empty, so this
+#: directive never fires there — the field is a proxy for "judged code changed"
+#: and is narrower than the phrase. Widening the trigger is tracked separately;
+#: until then, do not read a silent run in a non-Python repo as "nothing changed."
+_GREEN_IS_EVIDENCE_DIRECTIVE = (
+    "\nGreen is evidence only about what could have made it red. For each test"
+    " you just added or changed, name the change that would flip it — and"
+    " confirm the fixture actually REACHES the subject, because a setup that"
+    " never gets to the code passes forever. Three that pass identically when"
+    " the thing they name is broken: a fixture whose input cannot trigger the"
+    " guard, an assertion that cannot tell the two orderings apart, and a"
+    " branch that depends on a file which happens to exist on this machine."
+    " Mutation answers this only for the line you ADDED — reverting removes the"
+    " damage alongside the fix, so it is blind to what your change broke beside"
+    " it; pair it with branch coverage of every path in the function you"
+    " touched."
+)
+
+
+def _evidence_changed_judged_code(evidence_path: Path) -> bool:
+    """True when the MERGED evidence record shows judged code changed.
+
+    Read back from disk rather than from the in-memory record: the F4a overlay
+    (``bin/test-reference-verify --merge-into``) writes ``changes_referenced``
+    into the FILE after the base record is written, so the dict the caller
+    holds still carries the empty seed.
+
+    Advice fails soft. Every unreadable, malformed, or unexpectedly-shaped
+    record answers False — the evidence is already written and schema-valid, so
+    a trigger that cannot be computed omits a hint rather than failing a
+    recording run.
+    """
+    try:
+        merged = json.loads(evidence_path.read_text())
+    except (OSError, ValueError):
+        return False
+    if not isinstance(merged, dict):
+        return False
+    referenced = merged.get("changes_referenced")
+    return isinstance(referenced, list) and bool(referenced)
+
+
 def _parse_evidence_counts(tokens: list[str]) -> tuple[dict | None, str]:
     """Parse ``--from-counts`` ``key=value`` tokens into a counts dict.
 
@@ -2658,6 +2737,11 @@ def cmd_test_evidence(project_dir: Path, argv: list[str]) -> int:
     print(
         f"recorded: {passed} passed, {failed} failed, {skipped} skipped "
         f"in {record['duration_seconds']}s ({record['timestamp']})"
+        + (
+            _GREEN_IS_EVIDENCE_DIRECTIVE
+            if _evidence_changed_judged_code(evidence_path)
+            else ""
+        )
     )
     # Exit status mirrors the suite when we ran it (every declared command must
     # exit 0); in ingest mode there is no process, so derive it from the
@@ -4003,8 +4087,19 @@ def cmd_audit_learnings(project_dir: Path, argv: list[str]) -> int:
     for p in promotions:
         print(f"  promote: {p['title']} (confirmations={p['confirmations']})")
     for r in retirements:
-        state = "retired" if r.get("applied") else ("ready" if r.get("passed") else "blocked")
-        print(f"  retire[{state}]: {r['title']} (sentinel={r['sentinel']})")
+        # Two retirement routes, and the readiness question differs per route:
+        # a sentinel candidate is ready when its test passes, a supersession
+        # when its pointer resolved. Reading `passed` for both would report
+        # every resolvable supersession as "blocked" (its `passed` is None by
+        # construction) — a clean candidate rendered as a problem.
+        if r.get("reason") == "superseded-by":
+            ready = r.get("resolved_to") is not None
+            why = f"superseded-by={r.get('resolved_to') or r.get('superseded_by')}"
+        else:
+            ready = bool(r.get("passed"))
+            why = f"sentinel={r['sentinel']}"
+        state = "retired" if r.get("applied") else ("ready" if ready else "blocked")
+        print(f"  retire[{state}]: {r['title']} ({why})")
     for s in stale:
         print(f"  stale: {s['title']} ({s['age_days']}d, confirmations={s['confirmations']})")
     for e in errors:

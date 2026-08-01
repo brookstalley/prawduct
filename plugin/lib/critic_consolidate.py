@@ -195,6 +195,116 @@ _CACHE_WARM_DIRECTIVE = (
     " expire and re-reads its whole context when the partials land."
 )
 
+#: Appended wherever a caller meets a review that HAS findings — the moment the
+#: fix strategy is chosen, and the only moment at which stating it changes what
+#: happens next.
+#:
+#: The pump it closes is measured and cross-repo (CRT-3W6P): fixing findings one
+#: at a time and committing each fix moves the tree per fix, so every commit
+#: reopens the coverage gap and buys another 5-10 minute delta round — and each
+#: round then reviews the prose the previous round's fix wrote. Observed at four
+#: rounds on a ~40-line change here, and independently at four rounds in a
+#: consuming repo on v3.2.1, where 100% of rounds 2-3's new findings were
+#: self-inflicted by the fixing.
+#:
+#: It ships from the runtime rather than from a guide because the guide is read
+#: hours earlier if at all: on the coordinator path the reviewing fork never
+#: writes a findings summary, so `critic-consolidate` output plus
+#: `.critic-findings.json` is the ONLY surface the builder is guaranteed to meet.
+#: Same reasoning as :data:`_CACHE_WARM_DIRECTIVE`.
+#:
+#: **Disposition, not "fix everything."** Only unresolved BLOCKING findings gate
+#: anything (``coverage_algebra.unresolved_blocking``); warnings and notes gate
+#: nothing and are the builder's to fix, accept or file. An earlier draft said
+#: "Fix them ALL", which on the common ``0 blocking, 9 warning, 16 note`` review
+#: instructed exactly the reflexive fixing that ``methodology/building.md`` and
+#: ``skills/critic/review-cycle.md`` tell the builder to stop — a contradiction
+#: landing on the surface with the most authority at the decision moment. The
+#: verify pass is likewise stated as a *coverage consequence*, not an
+#: obligation: a review with nothing blocking and no judgeable fix needs no
+#: second pass at all.
+#:
+#: The free-write list restates ``coverage_algebra.is_judgeable_path`` and would
+#: drift from it silently, so ``TestBatchFixDirective`` in
+#: ``tests/test_critic_consolidate.py`` parses the backticked path tokens out of
+#: this string and drives its assertions from the text — drift in EITHER
+#: direction fails (a predicate change, or an edit to this list alone).
+_BATCH_FIX_DIRECTIVE = (
+    " Disposition them ALL in ONE pass — land every fix you are going to make in"
+    " ONE commit, and accept or file the rest. Only unresolved BLOCKING findings"
+    " gate anything; if that commit touches judgeable files, ONE"
+    " `/prawduct:critic verify-resolutions` re-covers it. A fix-commit-verify"
+    " cycle per finding multiplies 5-10 minute rounds, and each round reviews the"
+    " prose the previous fix wrote. Free to write at any time (they do not move"
+    " coverage): everything under `.prawduct/` — change-log, backlog,"
+    " project-state, build plans, regen-views output — plus"
+    " `.claude/settings.json` and `.md` files OUTSIDE `skills/`,"
+    " `methodology/`, `templates/` and a root `CLAUDE.md`. Everything else"
+    " moves the tree and must land BEFORE the verify pass: code, config, data,"
+    " tests, and those governance-protected `.md` files (a comment-only edit to"
+    " a code file counts)."
+)
+
+
+#: Delivered at `verify-resolutions` DISPATCH — before the reviewer judges each
+#: prior finding, not after it has.
+#:
+#: Public because its print site is ``cmd_critic_begin`` in ``bin/prawduct-hook``;
+#: it lives here so the two directives the review data plane emits are read and
+#: edited together.
+#:
+#: **Why dispatch and not consolidation.** The obvious slot is beside
+#: :data:`_BATCH_FIX_DIRECTIVE` in :func:`consolidate`, on a "this review
+#: recorded resolutions" trigger. That slot is downstream of the claim on every
+#: path that can carry one. ``verify-resolutions`` is always single-pass
+#: (:func:`_derive_roster` returns :data:`SINGLE_PASS_ROSTER` for it
+#: unconditionally), so the reviewing fork writes its ``resolutions`` into the
+#: partial and THEN runs consolidate itself — the directive would reach
+#: an agent that has already made the claim and is one step from exiting. Nor
+#: does it carry to the builder: the Critic skill is ``context: fork``, and the
+#: fork's report-back instruction (``skills/critic/goals-1-3.md``) enumerates
+#: findings and a summary, not the consolidator's stdout. Dispatch is the same
+#: reader in the same review, one step earlier, and upstream of the claim.
+#:
+#: **Why the rule is worth a directive at all.** A resolution is the only
+#: reviewer output that WEAKENS a gate: ``coverage_algebra.resolution_index``
+#: admits both ``fixed`` and ``waived``, and either one lifts a blocking finding
+#: out of ``unresolved_blocking`` with nothing downstream re-checking it. It is
+#: also the judgment most cheaply made from memory — the reviewer read the fix
+#: commit minutes ago and remembers it landing.
+#:
+#: The no-execution clause is not filler. The Critic cannot run the suite (its
+#: ``allowed-tools`` grant no test runner — CRT-3X9D), so "the test passes now"
+#: is a resolution rationale it structurally cannot have verified;
+#: ``TestResolutionIsAClaimDirective`` pins every command this text names
+#: against that grant so a future edit cannot instruct the impossible.
+#:
+#: **Every clause after the general statement is the descent, and it is
+#: load-bearing.** An upleveled rule earns its durability by being general and
+#: loses all of its effect there: a reader agrees with "a resolution is a claim"
+#: and writes the same unchecked ``fixed`` it was going to write, because
+#: nothing made it recognize THIS disposition as an instance. So the general
+#: sentence is followed by the act to perform ("name the evidence you read"),
+#: instances concrete enough to pattern-match against, and an explicit
+#: instruction to spend it on the case in hand — aimed at the finding the
+#: reader is surest about, which is the one a general rule never reaches.
+RESOLUTION_IS_A_CLAIM_DIRECTIVE = (
+    "PRAWDUCT: a resolution is a claim about the tree, and it WEAKENS a gate —"
+    " `fixed` and `waived` BOTH lift a blocking finding out of"
+    " `unresolved_blocking`, and nothing downstream re-checks either. For each"
+    " prior finding, name the evidence you read before writing the disposition:"
+    " the search that comes back empty, the `git show` of the hunk, the file and"
+    " line you opened — not that the fix commit looked right, and not that you"
+    " are confident. You cannot run the suite from here, so \"the test passes"
+    " now\" is never something you verified. A finding you could not settle from"
+    " the tree is LEFT OUT of `resolutions`: omitting it keeps it blocking,"
+    " which is the answer that fails closed. Two that read as resolved and are"
+    " not — a diff read instead of the file it changed, and a finding whose"
+    " second site is in a file this delta does not touch. Spend this on the"
+    " finding you feel surest about: a rule you agree with and do not apply to"
+    " the disposition actually in front of you has done nothing."
+)
+
 _REVIEW_ID_TS = re.compile(r"^rev-(\d{8}T\d{6}Z)-")
 
 
@@ -1077,6 +1187,63 @@ def _incomplete_noop_message(missing: list[str], present: int, total: int,
     return line
 
 
+def _already_consolidated_note(prawduct_dir: Path) -> str:
+    """What the "no pending manifest" no-op should add about the review that
+    already landed.
+
+    This branch is the COORDINATOR path's normal case, not an error: the
+    SubagentStop trigger consolidated while the main agent was elsewhere, and
+    CLAUDE.md tells that agent to run ``critic-consolidate`` before reading the
+    findings precisely so it never reads a stale file. Bare "nothing to
+    consolidate" answers a question it did not ask. Naming the review that IS
+    recorded — and, when it has findings, how to fix them without buying extra
+    rounds — is the answer to the question it did ask.
+
+    Says "newest recorded", never "yours" — nothing here can tell whether the
+    recorded review is the caller's or a bystander's. It CAN tell how old it is
+    (:func:`dispatch_age_minutes` parses the same id shape sixty lines up), so it
+    says: an unqualified "holds N findings" about a week-old review, followed by
+    a disposition directive, would manufacture the very round this exists to
+    prevent.
+
+    **Absence of the note means "clean", so a failure must never render as
+    absence** — that is the swallow-into-``""`` shape ``learnings.md`` warns
+    about by name, and here it would report a truncated cache as a clean review
+    to the one caller CLAUDE.md routes through this branch. Read/parse/shape
+    failures therefore say so; only a genuinely finding-free cache is silent.
+    Diagnostics stay advisory (``architecture.md``: advice fails soft — which
+    says do not block, not do not report).
+    """
+    cache = prawduct_dir / ".critic-findings.json"
+    if not cache.exists():
+        return ""
+    try:
+        # ValueError covers JSONDecodeError AND the UnicodeDecodeError a
+        # byte-truncated cache raises from read_text() — the case the "must not
+        # crash an informational no-op" contract promises and a narrower
+        # (OSError, JSONDecodeError) missed.
+        record = json.loads(cache.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as exc:
+        return f" (`.prawduct/{cache.name}` exists but is unreadable: {exc} — not a clean-review signal.)"
+    if not isinstance(record, dict) or not isinstance(record.get("findings"), list):
+        return f" (`.prawduct/{cache.name}` is not a findings record — not a clean-review signal.)"
+    findings = record["findings"]
+    if not findings:
+        return ""
+    fact_id = record.get("fact_id") or "unknown"
+    # DISPATCH age, from the id's own stamp — not the time the fact was
+    # recorded, which is later by however long the review took (ten minutes on a
+    # coordinator run). Labelled for what it is; the caller's question is "how
+    # stale is this?", which the dispatch time answers just as well.
+    age = dispatch_age_minutes(str(fact_id))
+    age_note = f", dispatched {age:.0f} min ago" if age is not None else ""
+    return (
+        f" The newest recorded review ({fact_id}{age_note}) holds {len(findings)}"
+        f" finding(s) — read `.prawduct/{cache.name}`; if they are already"
+        " dispositioned, this is history, not work." + _BATCH_FIX_DIRECTIVE
+    )
+
+
 def consolidate(project_dir: Path) -> int:
     """Merge complete reviewer partials into evidence facts + the derived
     cache. Idempotent.
@@ -1102,7 +1269,10 @@ def consolidate(project_dir: Path) -> int:
     prawduct_dir = gitstate.get_prawduct_dir(project_dir)
     mpath = manifest_path(prawduct_dir)
     if not mpath.is_file():
-        print("no-op: no pending review manifest — nothing to consolidate.")
+        print(
+            "no-op: no pending review manifest — nothing to consolidate."
+            + _already_consolidated_note(prawduct_dir)
+        )
         return 0
 
     try:
@@ -1339,6 +1509,9 @@ def consolidate(project_dir: Path) -> int:
         f"{dupe_note} "
         f"from {len(partials)} reviewer(s) → fact {review_id}{res_note} + "
         f"{findings_path.name} + ledger anchor; marker cleared."
+        # Only when there is something to fix — a clean pass that ended with a
+        # fix strategy attached would read as work it does not have.
+        + (_BATCH_FIX_DIRECTIVE if all_findings else "")
     )
     return 0
 

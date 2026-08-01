@@ -146,6 +146,34 @@ class TestDigestHook:
             "inline threshold; Claude Code would spill it to a file"
         )
 
+    @pytest.mark.parametrize("src", [DIGEST_SRC, SLIM_DIGEST_SRC], ids=["full", "slim"])
+    def test_every_digest_variant_is_under_the_inline_limit(self, src: Path):
+        """Both variants, pinned at the SOURCE — not just whichever one ROOT emits.
+
+        The test above runs `_run_digest(ROOT)`, and since the variant
+        renegotiation ROOT emits the SLIM digest — so the FULL digest, the one
+        injected into every product session and the sole carrier of framework
+        defaults for thin-anchor repos, was pinned by nothing. It reached 11,143
+        chars (11% over) before this assertion existed. `test_slim_budget_at
+        _most_half_of_full` is not a substitute: it gets *easier* to satisfy as
+        the full digest grows, so it cannot brake growth in the wider-blast-radius
+        file.
+
+        Asserted against the stripped source because that is what the hook emits.
+        The source==emitted equality is pinned per variant, and by DIFFERENT
+        tests: `test_additional_context_matches_source` covers the slim variant
+        (what ROOT emits), and `TestDigestVariantSelection.test_product_fixture
+        _gets_full_digest_verbatim` covers the full one.
+        """
+        emitted = src.read_text(encoding="utf-8").strip()
+        assert len(emitted) < ADDITIONAL_CONTEXT_INLINE_LIMIT, (
+            f"{src.name} is {len(emitted)} chars — over the "
+            f"{ADDITIONAL_CONTEXT_INLINE_LIMIT} inline threshold; Claude Code "
+            "would spill it to a file instead of injecting it. Trim or relocate; "
+            "the digests are the tightest-budgeted surface in the framework, not "
+            "a free destination for text trimmed out of a methodology guide."
+        )
+
     def test_digest_points_at_load_bearing_readers(self):
         ctx = json.loads(_run_digest(ROOT).stdout)["hookSpecificOutput"]["additionalContext"]
         # The digest's job is to route to on-demand guidance and name the gate.

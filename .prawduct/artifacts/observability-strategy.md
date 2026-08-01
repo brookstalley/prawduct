@@ -19,8 +19,10 @@ last_validated: null
 
 The scenarios this design must make answerable:
 
-1. **"What state is my repo in right now?"** → the SessionStart briefing renders it at the top of
-   every session (branch, active work, advisories, stale artifacts, size warnings).
+1. **"What state is my repo in right now?"** → the SessionStart briefing assembles it at the top of
+   every session (branch, active work, advisories, stale artifacts, size warnings) — for the *agent*,
+   on stdout. The owner learns the parts that matter **by relay**: the agent is directed to surface
+   consequential advisories and version changes in conversation (see § How the owner actually learns).
 2. **"Is my prawduct install healthy?"** → `/prawduct:doctor` reports **healthy** or **degraded**
    with the specific reason.
 3. **"Why did a gate block me?"** → the block message names the gate and the remedy inline; nothing
@@ -28,10 +30,42 @@ The scenarios this design must make answerable:
 4. **"Is review costing too much?"** → `review-stats` aggregates the governance ledger into
    wall-clock, run-count, and finding-yield numbers (this is how the P0 wall-clock budget in
    `nonfunctional-requirements.md` is actually watched).
-5. **"What nudges am I ignoring?"** → the advisory list shows post-sync advisories and their state.
+5. **"What nudges am I ignoring?"** → `/prawduct:advisory list` on demand; and for `warn`/`urgent`,
+   the relay raises them unasked, so ignoring one is a choice rather than an accident.
 
 If those five are answerable from the terminal and the committed/local state, observability has
 done its job.
+
+### How the owner actually learns
+
+The channel norm below is deliberate and correct: stdout is the agent's, stderr is the person's. The
+consequence is easy to miss and was missed for several releases — **almost everything prawduct says
+about itself is said to the model.** The briefing, its advisory block, and the version-delta banner
+all print to stdout. The banner compounds it: it renders once at a version crossing, then advances
+its marker and never renders again.
+
+So a capability could ship, be announced, and reach nobody. That is not hypothetical — it is how the
+backlog service shipped: announced at the crossing, on the agent's channel, with the one advisory
+that would have nudged it registered as a no-op.
+
+The mechanism that closes it is a **relay directive** at each emission site — `banner.RELAY_MARKER`
+for a version crossing, `briefing.ADVISORY_RELAY_TEXT` for an active `warn`/`urgent` advisory. Each
+instructs the agent to surface the news in conversation, which is the one channel the owner reliably
+reads. Two properties are load-bearing:
+
+- **At the emission site, not in the session digest.** A directive fires only when there is something
+  to say; a digest rule is re-read every session to cover the minority that have news, and sits far
+  from the content it governs. This mirrors the same release's learnings change — deliver the rule
+  where it applies rather than parking it in a file to be read later.
+- **`warn`/`urgent` only.** Relaying `info` every session is nagging, and a channel that nags gets
+  tuned out — which would cost the `warn` case the audience it exists for.
+
+**Rejected: routing advisories to stderr by consequence.** Tempting, since the norm already provides
+the split and stderr is the person's channel. Rejected because the relay covers advisories,
+headlines, and gate activations through one mechanism, whereas channel-routing would solve only the
+advisory third and add a second way for the same signal to reach the same person. Revisit if the
+relay proves unreliable in practice — the evidence to watch for is an owner surprised by a `warn`
+they were never told about.
 
 ## Direction
 
