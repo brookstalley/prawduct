@@ -64,7 +64,7 @@ completing cleanly. Neither blocks authoring the rest of the plan.
 - [ ] Chunk 05: SPIKE-S2 live dry-run + MG4 scrub workflow (C1 + C2) — live dry-run run 2026-07-24 (VRF-009, §9 S2 settled), `[ ]` until release
 - [x] Chunk 05b: `pick` honesty + fan-out cost, ahead of the migration — built 2026-07-28, `[ ]` until release
 - [x] Chunk 05c: multi-hyphen ids absorbed, so the completeness gate and the recorded scrub decisions stop contradicting each other — built 2026-07-28, `[ ]` until release
-- [ ] Chunk 06: The real prawduct migration + VRF-006 (C4) — irreversible, operator-run
+- [ ] Chunk 06: The real prawduct migration + VRF-006 (C4) — irreversible, operator-run — **ran 2026-08-01**: 371 created / 0 skipped / 0 collisions, `verify-migration` exit 0, 42 dispositions applied 42-of-42; `[ ]` until release (derived — the release flips it from the change-log tag, so do not hand-check it)
 - [ ] Chunk 07: Briefing/gates repoint through the adapter (C5) — scoping audit 2026-07-24 finds all four original done-whens already satisfied; the chunk's real content is now the **advisory lift** (done-when #5, owner decision BKL-7D3V) — ~~DEFERRED out of v3.2.0 2026-07-28~~ **BACK IN 2026-07-28 (same day), by the hard-cutover ruling**: the advisory lift is the mechanism that tells the fleet to migrate, and a hard cutover that never announces itself is not a cutover. Deferring it was correct under "07/08 add governed surface"; it is wrong under a hard cutover
 - [ ] Chunk 08: MG5 / upstream filing — file-upstream op, report-bug rewrite, drop-box retirement (splittable 08a/08b) — **DEFERRED out of v3.2.0 2026-07-28** (same reason; the § Direction norm amendment it carries defers with it)
 - [ ] Chunk 09: Release mechanics — version bump, change-log flip, regen-views, tag; VRF-002/003 post-tag — **re-cut twice on 2026-07-28**: "01–08" → "01–06 + 05b" at the narrowing, then → **"01–07 + 05b"** when the hard-cutover ruling returned Chunk 07 the same day. Chunk 08 stays out (depending on it would make this chunk permanently unsatisfiable). The authority is the chunk body's `Depends on:`
@@ -90,9 +90,18 @@ three residuals that are explicitly not blockers.
 **Correction 2026-07-28:** this paragraph read "Next: **Chunk 05 live half**" for four days after that
 half had landed — the chunk body and `operator-verification.md` (VRF-009 `verified`) both already said
 so. The § Status summary drifted from the chunk bodies it summarizes, which is the same two-trackers
-failure the § below diagnoses, reproduced *inside* the surviving tracker. Next is **Chunk 01** — VRF-005
+failure the § below diagnoses, reproduced *inside* the surviving tracker. ~~Next is **Chunk 01** — VRF-005
 /007/008 drained against `samsung-frame-art-loader`, plus the BKL-4W7H `promoted → shipped` flip — then
-**Chunk 06** (the irreversible real migration).
+**Chunk 06** (the irreversible real migration).~~
+
+**Correction 2026-08-01 — Chunk 06 RAN; the struck sentence above called it upcoming.** It was false
+from `144a0a5` onward. The migration executed 2026-08-01; the Chunk 06 body carries the completion
+record and the two sub-clauses that were deliberately left unverified. **This is the second time this
+paragraph has drifted from the chunk bodies it summarizes** — the 2026-07-28 correction directly above
+records the first. A failure that repeats after being named once is evidence the hand-curated summary
+is the wrong mechanism, not that the author was careless twice. Chunk 01 is still undrained but is no
+longer what comes next: the v3.2.3 release ceremony is, with Chunk 07 (verification-only per its
+scoping audit) and Chunk 08 (upstream filing) sequenced behind it.
 
 **Release scope narrowed 2026-07-28 (owner decision).** v3.2.0 stops after **Chunk 06**. Chunks 07
 (advisory lift) and 08 (upstream filing) *add* governed surface and are deferred behind a
@@ -520,6 +529,23 @@ this is why Chunks 02–05 gate it.
 4. The `backlog-service-migration-required` advisory resolves *as a consequence* (not separate work).
 5. Recorded to `.prawduct/operator-verification.md` with a rollback note (per MG1, rollback = close, not
    delete).
+
+**RAN 2026-08-01 — all five done-whens met.** `371 created, 0 skipped, 0 collision(s) of 371 source
+item(s)` (152 restructured by plan), `≥6548 REST points; no throttling`. `verify-migration` returned
+**exit 0 with all five conflict lists empty** and `source_items 371 = aliased 371` — the precondition
+Step 6 refuses to take on trust. The `WARNING: N item(s) imported but NOT reconciled` line was
+**absent**, so every status reconcile landed on the first pass. `backlog_service_repo:
+brookstalley/prawduct` is recorded and `.prawduct/backlog.md` is frozen history from here. 42
+owner-confirmed dispositions then applied 42-of-42 clean, leaving the tracker at **155 open / 149
+shipped / 67 dropped** (plus 9 pre-existing natives). Recorded as **VRF-006** with a three-step
+rollback note — rollback means *neutralise*, not undo, because GitHub has no issue-delete.
+
+**Two sub-clauses are explicitly NOT verified, recorded rather than claimed.** Done-when 3's "no
+duplicates on a re-run" was **not performed**: the alias-keyed skip path reconciles status, so a re-run
+would reopen all 42 disposed items. Filed as `#528` together with the ordering defect it shares a fix
+with — `verify-migration` must run *before* post-import disposals, and the runbook's Step 4→5 says the
+opposite. Done-when 4 resolved as a consequence as designed, but `promoted` has no Issues-backend
+equivalent and decoded to `open` for 3 items (`#529`).
 
 ---
 

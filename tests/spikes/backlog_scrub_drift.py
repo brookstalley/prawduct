@@ -1,12 +1,23 @@
 """Scrub-decision drift — are the recorded migration dispositions still current?
 
+**ONE-WAY AGAINST THIS REPO AS OF 2026-08-01 — the verdict here is now vacuous.** The
+cutover froze `.prawduct/backlog.md`, and this instrument resolves its source through
+that file, so what it calls "the corpus" is a fixed snapshot rather than a living set.
+`CURRENT` became structurally unavoidable rather than measured: the unsurveyed set is
+empty because nothing can be added to it, not because everything was surveyed. **Do not
+read a verdict from this against prawduct's own backlog.** `BKL-9F6T` owns the
+date-keyed replacement that works post-cutover. Kept runnable and otherwise unmodified
+because it is still sound against *any other* repo's markdown backlog — which is the
+case the fleet migration needs it for, and the reason deleting it would be wrong.
+
 `.prawduct/artifacts/migration-scrub-decisions.md` records owner-approved merge and
 drop dispositions against a corpus snapshot, and tells its reader to *"regenerate it
 if the source drifts materially before the run."* This is that regeneration check.
 
 Committed rather than discarded for the same reason as the dispositions' own caveat
-("144 items at 964d03b; re-derive at use"): the corpus grows continuously, so any
-transcribed count is stale by the next filing. Run this before executing the scrub.
+("144 items at 964d03b; re-derive at use"): on a *live* markdown backlog the corpus
+grows continuously, so any transcribed count is stale by the next filing. Run this
+before executing the scrub — in a repo whose backlog is still markdown.
 
     python3 tests/spikes/backlog_scrub_drift.py            # vs the recorded snapshot
     python3 tests/spikes/backlog_scrub_drift.py 4e08a6c    # vs any other ref

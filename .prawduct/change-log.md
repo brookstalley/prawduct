@@ -59,7 +59,11 @@ now fires **0 times** — no separate work, no flag flipped by hand.
 
 Chunk 06's Step 2 half. Every one of the **195 open items** was read in full and screened, and the
 dispositions are recorded as **Survey 3** in `artifacts/migration-scrub-decisions.md`: 1 close, 5
-drops, 19 folds into 13 survivors. Net **195 → 152 open survivors** at import.
+drops, 19 folds into 13 survivors — **plus the 18 already-approved-and-pending dispositions from
+2026-07-18** (5 merges + 13 drops, all re-verified), which this sentence previously left unstated.
+Net **195 − 18 − 1 − 5 − 19 = 152 open survivors** at import — the figure the tracker reconciles with
+(152 survivors + 3 `promoted`-decoded-to-`open` = 155 open). Stated as the full sum rather than an
+arrow, because the arrow form was reconstructible only by knowing the missing term.
 
 **Zero items were dropped on staleness grounds — the same result Survey 2 got, and it is the finding.**
 This corpus is not silted, it is dense: recent, independently-verified defects against live machinery,
