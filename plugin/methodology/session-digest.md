@@ -60,12 +60,11 @@ inference as a vetoable assumption. Full model: `methodology/discovery.md` "Cali
   section on the old, which would leave the next reader guessing which layer is live.
   `.prawduct/.session-handoff.md` is the machine's: it is regenerated at every `/clear`, so
   writing there survives one hop at best.
-- **Close with the standing block** — three short lines, last, after every other word, on any
-  turn that ends a chunk or work cycle *or* that you end with work outstanding: **State**
-  (done / blocked / waiting; committed or not; suite green or not), **Next** (the ONE next action
-  and whose it is), **Clear** (*"Safe to `/clear`."* or *"Not safe to `/clear` yet — [what has to
-  happen first]."*). Omitting, burying and padding it fail identically — people read the bottom
-  and nothing else. **Outstanding includes work in flight**: a dispatched review, a running PR
+- **Close with the standing block** — last, after every other word, on any turn ending a chunk or
+  work cycle *or* left with work outstanding. A `---` rule, then three **separate paragraphs**:
+  `STATE` (done / blocked / waiting; committed?; suite green?) · `NEXT` (the ONE next action, and
+  whose) · `CLEAR` (*Safe to `/clear`.* / *Not safe to `/clear` yet: [what first]*). Burying,
+  padding or collapsing it fail alike — the bottom is all they read. **Outstanding includes work in flight**: a dispatched review, a running PR
   reviewer or any unread background agent takes the second line. Full rule:
   `methodology/reflection.md` "Work cycle boundary".
 - **No attribution trailers by default.** Don't add `Co-Authored-By`, `Signed-off-by`, or

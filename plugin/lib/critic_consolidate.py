@@ -245,6 +245,66 @@ _BATCH_FIX_DIRECTIVE = (
     " a code file counts)."
 )
 
+
+#: Delivered at `verify-resolutions` DISPATCH — before the reviewer judges each
+#: prior finding, not after it has.
+#:
+#: Public because its print site is ``cmd_critic_begin`` in ``bin/prawduct-hook``;
+#: it lives here so the two directives the review data plane emits are read and
+#: edited together.
+#:
+#: **Why dispatch and not consolidation.** The obvious slot is beside
+#: :data:`_BATCH_FIX_DIRECTIVE` in :func:`consolidate`, on a "this review
+#: recorded resolutions" trigger. That slot is downstream of the claim on every
+#: path that can carry one. ``verify-resolutions`` is always single-pass
+#: (:func:`_derive_roster` returns :data:`SINGLE_PASS_ROSTER` for it
+#: unconditionally), so the reviewing fork writes its ``resolutions`` into the
+#: partial and THEN runs consolidate itself — the directive would reach
+#: an agent that has already made the claim and is one step from exiting. Nor
+#: does it carry to the builder: the Critic skill is ``context: fork``, and the
+#: fork's report-back instruction (``skills/critic/goals-1-3.md``) enumerates
+#: findings and a summary, not the consolidator's stdout. Dispatch is the same
+#: reader in the same review, one step earlier, and upstream of the claim.
+#:
+#: **Why the rule is worth a directive at all.** A resolution is the only
+#: reviewer output that WEAKENS a gate: ``coverage_algebra.resolution_index``
+#: admits both ``fixed`` and ``waived``, and either one lifts a blocking finding
+#: out of ``unresolved_blocking`` with nothing downstream re-checking it. It is
+#: also the judgment most cheaply made from memory — the reviewer read the fix
+#: commit minutes ago and remembers it landing.
+#:
+#: The no-execution clause is not filler. The Critic cannot run the suite (its
+#: ``allowed-tools`` grant no test runner — CRT-3X9D), so "the test passes now"
+#: is a resolution rationale it structurally cannot have verified;
+#: ``TestResolutionIsAClaimDirective`` pins every command this text names
+#: against that grant so a future edit cannot instruct the impossible.
+#:
+#: **Every clause after the general statement is the descent, and it is
+#: load-bearing.** An upleveled rule earns its durability by being general and
+#: loses all of its effect there: a reader agrees with "a resolution is a claim"
+#: and writes the same unchecked ``fixed`` it was going to write, because
+#: nothing made it recognize THIS disposition as an instance. So the general
+#: sentence is followed by the act to perform ("name the evidence you read"),
+#: instances concrete enough to pattern-match against, and an explicit
+#: instruction to spend it on the case in hand — aimed at the finding the
+#: reader is surest about, which is the one a general rule never reaches.
+RESOLUTION_IS_A_CLAIM_DIRECTIVE = (
+    "PRAWDUCT: a resolution is a claim about the tree, and it WEAKENS a gate —"
+    " `fixed` and `waived` BOTH lift a blocking finding out of"
+    " `unresolved_blocking`, and nothing downstream re-checks either. For each"
+    " prior finding, name the evidence you read before writing the disposition:"
+    " the search that comes back empty, the `git show` of the hunk, the file and"
+    " line you opened — not that the fix commit looked right, and not that you"
+    " are confident. You cannot run the suite from here, so \"the test passes"
+    " now\" is never something you verified. A finding you could not settle from"
+    " the tree is LEFT OUT of `resolutions`: omitting it keeps it blocking,"
+    " which is the answer that fails closed. Two that read as resolved and are"
+    " not — a diff read instead of the file it changed, and a finding whose"
+    " second site is in a file this delta does not touch. Spend this on the"
+    " finding you feel surest about: a rule you agree with and do not apply to"
+    " the disposition actually in front of you has done nothing."
+)
+
 _REVIEW_ID_TS = re.compile(r"^rev-(\d{8}T\d{6}Z)-")
 
 

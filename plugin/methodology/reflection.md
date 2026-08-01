@@ -64,11 +64,25 @@ Rationale: auto-filed NOTEs turn one-time observations into perpetual every-sess
 
 **Then close the turn with the standing block.** The trigger — the same one every surface states — is **any turn that ends a chunk or work cycle, or that you end with work outstanding**; it is not every turn, and appending it to trivial Q&A trains the user to skip it, reproducing by volume the burying it exists to prevent.
 
-Write for the person who walked away: a long build leaves them returning to a wall of text, and they read the bottom. Everything they need in the next five seconds goes in three short lines, last, after every other word:
+Write for the person who walked away: a long build leaves them returning to a wall of text, and they read the bottom. Everything they need in the next five seconds goes last, after every other word, in this exact shape — **three separate paragraphs, a blank line between each, the labels backticked so the terminal renders them as coloured tokens**:
 
-1. **State** — done, blocked, or waiting; whether the work is committed; whether the suite is green. One line, no hedging. This is the "did it work?" they scrolled down to answer.
+```
+---
+
+`STATE` — done / blocked / waiting; committed or not; suite green or not.
+
+`NEXT` — the ONE next action, and whose it is.
+
+`CLEAR` — Safe to `/clear`. — or — Not safe to `/clear` yet: [what has to happen first].
+```
+
+The shape is part of the signal, not decoration, and each element does a different job. The `---` rule is the only horizontal break in the turn, so it separates the block from the wall of text above it before the reader has parsed a word. Blank lines give each answer its own landing place — three answers run together as list items, or bolded inline inside a paragraph, stop being *separately* findable, and separately findable is most of what the block is for, because the reader is scanning for one of the three, not reading all three. The backticked labels are the only coloured tokens near the bottom of the turn, so the eye finds them without reading.
+
+What each line owes:
+
+1. **State** — done, blocked, or waiting; whether the work is committed; whether the suite is green. No hedging. This is the "did it work?" they scrolled down to answer.
 2. **Next** — the ONE next action and **whose it is**. Someone back after ninety minutes needs to know immediately whether they are the blocker or you are. If it is theirs, say exactly what you need; if it is yours, say what you are doing and roughly how long.
-3. **Clear** — *"Safe to `/clear`."* or *"Not safe to `/clear` yet — [what has to happen first]."*
+3. **Clear** — the safety verdict, and when it is negative, what has to happen first.
 
 **Three ways to fail this, all equally expensive.** *Omitting it* — silence gets read as whichever answer they were hoping for, and they clear on top of live work. *Burying it* — the same lines, correct and complete, in the middle of a long summary; a signal above the fold is a signal not sent. *Padding it* — a closing paragraph of prose that has to be parsed is a closing paragraph that gets skipped. None of these is fixed by writing more.
 

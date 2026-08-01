@@ -3,6 +3,181 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-08-01: The collapse — two families become nine rules, and every instance survives
+
+<!-- prawduct: type=feature | scope=learnings-firing | chunks=03 -->
+
+Seventeen rules retired by supersession; the corpus went **159 → 149**. Two of those rules are
+Chunk 03(a)'s genuinely-new ones (*green is evidence only about what could have made it red*, and
+*a text-anchored edit changes a neighborhood, not a point*), both with narratives in
+`learnings-detail.md`. Every retired member's distinguishing instance is locatable in its
+successor's heading — the union half was an acceptance criterion, not a style note, because
+dropping instances is the cheap way to hit the count and the whole reason the corpus stopped
+firing.
+
+**The approved map's stated premise was false, and drafting it for real is what falsified it.**
+Version 1 collapsed each family into one heading, justified as *"within house style — 188 median /
+396 p90 / 907 max."* Drafted, the two destinations measured **1,484 and 1,798 characters**: 1.7×
+and 2.0× the corpus maximum. They also collided with `record_lint`'s `learnings-entry-shape` cap
+(`_LEARNINGS_RULE_MAX = 400`, shipped 2026-07-30 in `c8a24ed`), whose remedy — *"move the evidence
+to learnings-detail.md"* — is precisely what the 2026-07-31 union ruling overruled. Two ratified
+decisions one day apart, contradicting each other, meeting at the first bulk `--apply`.
+
+Owner decision: **split each family thematically under the cap.** Family 1 → four destinations,
+family 2 → five, each grouped by the *kind* of failure rather than listing instances. The
+measured trade, all three numbers: token saving is **−18% vs −21%** for the mega-heading (the
+instances dominate, and both shapes keep them, so the shape buys rule count and not tokens);
+rule count is **19 → 10 vs 19 → 6**; and the split uplevels *further*, because naming three kinds
+of green-but-empty test is an abstraction layer a 1,798-character list does not have. Token
+reduction was never this chunk's goal — Success criterion 3 says *"shrinks in rule count, not in
+discriminating detail"* — and it already shipped as LRN-4K8T, which is where the 400 cap came from.
+
+**Part (c), the descent obligation, landed once and structurally**, in `learnings.md`'s header
+where the corpus is read: *reading a rule is not applying it; the failure mode of this file is not
+absence, it is assent.* The `/prawduct:learnings` skill carries a **reference**, not a copy — its
+caller never sees that header, which is learning "model the READER" applied to the fix for
+inertness rather than to a test.
+
+**A third, found by the PR reviewer and invisible to every gate.** The new collapse-map
+artifact declares `scope: learnings-firing` in frontmatter, and `views.build_scope_to_plan_map` /
+`diagnose_scope_plan_coverage` treated **any** scope-tagged file under `artifacts/` as a build
+plan. It collided with the real plan, the duplicate-scope diagnostic went fatal, and
+`regen-views` wrote **no views for any scope** — the mechanism release time depends on to stamp
+chunks shipped. Detection by surface marker rather than declared type: several files in this repo
+already carry a `scope:` while being a design note, discovery, reference, release plan or
+collapse map (`grep -l '^scope:' .prawduct/artifacts/*.md | xargs grep -l '^artifact:' | xargs grep -L '^artifact: build-plan'`), and they were invisible only because none had yet shared a scope VALUE with a plan.
+
+Both collectors now exclude a file that declares an `artifact:` type other than `build-plan`,
+and they read `scope:` and `artifact:` through **one** frontmatter walker rather than two that
+can disagree. It fails **safe**: an absent `artifact:` key still reads as a build plan, because
+`build-plan-release-readiness.md` has none and a strict rule would silently drop a real plan.
+Net effect on output: none — `regen-views` reports every view up to date; three scopes stop
+mapping (a design doc and two release plans) and no change-log entry references any of them.
+
+The suite was green throughout because every scope test builds a two-file tmp `artifacts/`; none
+ran the collectors over the real artifacts directory. That gap is now
+a test, mutation-proved in both directions — removing the filter reproduces the outage, and
+making it strict drops the plan that declares no type.
+
+**Two behavior changes landed while dispositioning the review, both from findings all three
+reviewers or the verify pass caught.** (i) `audit-learnings --apply` now **relocates a retiring
+entry's pre-existing `learnings-detail.md` narrative** into its historical block. It previously
+appended a historical copy and left the original in place, so the first bulk run duplicated 17
+headings — and the *undecorated* one sorts first, meaning `/prawduct:learnings` returned retired
+rules as current with no successor. Retirement is a move; the prose now moves. (ii) **Onboarding
+seeds the descent obligation.** `init_product.py`'s starter `learnings.md` carries the
+`prawduct:descent-obligation` marker, because `/prawduct:learnings` ships an instruction to apply
+"the obligation marked …" and no product's starter file had one. Already-onboarded repos are
+**not** repaired by this and still point at a hole — filed, not fixed.
+
+**Two things `--apply` did that this map did not ask for, both recorded rather than left in the
+diff.** It swept one unrelated entry whose `sentinel=` route was already `ready` (plugin-skill
+frontmatter validation — the mechanism working as designed, and `--apply` cannot be scoped). And
+it correctly *refused* to retire *"Framework ownership follows the write strategy"*, whose
+sentinel names `tests/test_prawduct_sync.py` — **a file deleted when the file-sync engine was
+retired in v2.0.3.** A learning pinned to a test that no longer exists is the corpus's own
+absence-claim rule turned on itself; the audit fails closed and keeps the entry. Filed, not fixed
+here.
+
+## 2026-07-31: One home per fact, method prescriptions become advice, and the closing block gets a shape
+
+<!-- prawduct: type=governance -->
+
+Three owner decisions, all from watching this session's own review rather than from theory.
+
+**Two `## Direction` norms born in `architecture.md`.** *Goals and verification bind; prescribed
+method is advice* (`in-transition`, GOV-4T9P) — a governing artifact says what must be true and
+how it is checked; where it also prescribes *how*, that is the author's guess made before the code
+was read, and a builder who finds a better route takes it and records why. Measured: three of the
+`learnings-firing` chunk-level prescriptions were wrong (an inert delivery site, a test file that
+does not exist, a deliverable that was decorative) while every goal-level statement held.
+Verification structure is carved out and binds unchanged — the same session had mutation-proving
+catch two tests the builder was confident about and wrong about.
+
+*Every fact has one home; every other mention is a reference to it* (`in-transition`, GOV-2R8K) —
+**9 of 23 findings in one review were a single fact copied and drifting**, and the repair applied
+to the largest of them was itself wrong: correcting the claim in all four places restored agreement
+and preserved the duplication. The norm reframes the review question from *"do these agree?"* to
+*"why are there two?"*. This repo had already invented the rule four times for four fact types
+(`LAST_MEASURED_TOKENS`, `suite-total-claim`, learning 322, the `governed_by:` pointer table)
+without stating it once — which is the upleveling failure the `learnings-firing` plan is about,
+sitting in the framework's own artifacts. The norm violated itself on the day it shipped: its
+Enforcement row paraphrased it instead of naming it, caught by the backlog reviewer and shortened
+to a title.
+
+**The standing block gets a shape.** Owner-requested after the content was already right: a `---`
+rule, then three separate paragraphs with backticked labels, so the three answers are separately
+findable at the bottom of a long turn rather than scanning as prose. Changed on all four surfaces
+— `building.md`, `reflection.md`, and **both digests**, which are what reach product sessions, so
+this is durable for every governed repo rather than local to one. The guard now pins the shape
+(rule present, separate paragraphs, backticked labels) rather than only the words. `building.md`
+and `session-digest.md` were both at their ceilings and paid for it in place; headroom is now 1
+token and 45 characters, so the next addition to either has to fund itself.
+
+## 2026-07-31: Rules that fire — delivery at the moment, and supersession as a real lifecycle event
+
+<!-- prawduct: type=feature | scope=learnings-firing | chunks=01,02 -->
+
+`learnings.md` holds 159 rules, and the one that would have caught four false claims in a
+consuming repo's retrospective was already there, already general, already well-worded. It did
+not fire. The diagnosis is delivery, not authoring: a rule read at session start competes with
+the whole rest of the context by the time the claim gets written.
+
+**Chunk 01 moves two rules from storage to code-delivery.** (a) *Green is evidence only about
+what could have made it red*, printed at `test-evidence record` when the merged record shows
+judged code changed — silent on a docs-only cycle, and on any run that touched no source. (Not
+on a restamp: `--no-rerun` re-runs the F4a overlay, which repopulates the field against the
+current tree, so a restamp with judged changes in the diff fires. Four records said otherwise
+and were corrected in the same review round that found it.) Known limitation, recorded at the
+constant: `changes_referenced` is populated by Python-symbol matching, so the line never fires
+in a Swift/Rust/C#/TypeScript product. (b) *A resolution is a claim
+about the tree*, printed at `critic-begin --mode verify-resolutions`.
+
+**(b)'s print site is a correction to its own spec, and the reason generalizes.** The plan put
+it beside `_BATCH_FIX_DIRECTIVE` in `critic-consolidate`. That site cannot fire:
+`verify-resolutions` is always single-pass, so the reviewing fork writes its `resolutions` into
+the partial and *then* runs consolidate itself — the directive would reach an agent that has
+already made the claim and is one step from exiting. Nor does it carry to the builder, because
+the Critic skill is `context: fork` and the fork's report-back enumerates findings and a
+summary, not the consolidator's stdout. Dispatch is the same reader, one step earlier, upstream
+of the claim. **A delivery site has to be checked against the order its reader actually reads
+in, not against which module the related constant lives in.**
+
+**Delivery is not descent** — raised by the owner mid-build and now binding on the plan. A
+general rule can arrive exactly on time, be read, be agreed with, and change nothing, because
+nothing made the reader recognize the case in hand as an instance. So each delivered directive
+is statement → act → instances → an explicit instruction to spend it on the case in front of
+you. (The drafted text aims that last clause at the case the reader feels *surest* about, on the
+reasoning that it is the one a general rule never reaches. That is authorial intent, not a pinned
+property: the guard asserts the *structure* — an imperative present, and the text pointing at the
+reader's current decision — because a test that froze the wording would fail every improvement to
+the sentence and pass any defect that kept the words.) The same reasoning changed Chunk 03 before
+it was built: the collapse now **merges
+statements and unions instances** rather than dropping them, because rule *count* is what
+competes for attention at read time and discriminating detail is not.
+
+**Chunk 02 adds `superseded-by=`** — retirement because a broader rule replaced it, which is
+what every consolidation is and which `audit-learnings` previously could not express, leaving
+consolidation an unauditable hand-edit. That is a large part of how a corpus reaches 159 rules
+with near-duplicate families in it: adding is cheap and merging is not. The retired entry's
+historical copy names its replacement, so a reader who remembers the old rule finds a
+forwarding address rather than a hole. Fail-closed on every ambiguity, like a failing sentinel:
+unresolvable, ambiguous, self-referential, or empty pointers error and do not retire, and an
+entry declaring both routes retires under neither — picking one silently would let a failing
+sentinel be bypassed by adding a supersession key.
+
+Two things the chunk found rather than built. **`_KNOWN_METADATA_KEYS` was dead code** — one
+reference in the module, its own definition, under a comment claiming the audit logic consults
+it. Adding a key to a set nothing reads is a decorative deliverable, so it is now pinned to the
+keys the logic actually reads by a guard parsing the module's own `meta.get(...)` sites. And
+**the retirement path collided with the repo's own guard test**: it copied retired entries
+verbatim into `learnings-detail.md`, lifecycle comment included, which
+`test_no_lifecycle_metadata_has_drifted_to_the_detail_file` forbids — so Chunk 03's collapse
+would have broken the suite the first time it ran `--apply` here. Verified empirically before
+fixing. Retired entries now shed the comment and carry a retirement note instead; this changes
+the older sentinel route too, deliberately, because the break is identical on both and fixing
+one leaves the guard failing for the other.
+
 ## 2026-07-31: A turn that ends without saying where things stand, and a fix strategy that arrives after the fixing (CRT-9B4K + an unfiled owner report)
 
 <!-- prawduct: type=fix -->
@@ -32,9 +207,15 @@ nothing else. Second, and larger, **content**: after a 30-120 minute build the u
 "may I clear?" — it is *did it work, what happens next, and am I the blocker?* A safety verdict alone
 answers the third-most-important thing.
 
-So the close is now a **standing block of three short lines, last, after every other word**: **State**
-(done / blocked / waiting; committed or not; suite green or not), **Next** (the ONE next action and whose
-it is), **Clear** (*"Safe to `/clear`."* or *"Not safe to `/clear` yet — [what has to happen first]."*).
+So the close is now a **standing block, last, after every other word**, answering State / Next / Clear.
+
+<!-- SHAPE SUPERSEDED 2026-07-31 — see the "Rules that fire" entry at the top of this file. The
+     three-short-lines / `**State**` form described here was reshaped (a `---` rule, three separate
+     paragraphs, backticked labels). The reasoning below stands; the literal form does not, and its
+     one home is `methodology/building.md`. Left rather than rewritten because a change-log entry
+     records what was decided then — but a superseded form stated in the present tense reads as
+     current, which is the second-copy defect `architecture.md`'s one-home norm exists to stop. -->
+
 Three failure modes are named together because they cost the same and only one of them was previously
 covered: omitting the block, burying it, and padding it into a paragraph that has to be parsed.
 
