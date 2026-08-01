@@ -204,7 +204,8 @@ the plugin no longer places them.
 |------|-------|-------|---------|
 | Ledger (source of truth) | `<git-common-dir>/prawduct/` (inside `.git`) | evidence facts | shared by all worktrees of a clone; never committed |
 | Session/gate state | `.prawduct/.*` (gitignored) | markers, partials, caches, session baselines, advisories | per-worktree |
-| Committed product state | `.prawduct/` (tracked) | project-state, backlog, learnings, artifacts, change log, build plan | shared via git, owned by the product |
+| Committed product state | `.prawduct/` (tracked) | project-state, learnings, artifacts, change log, build plan — **and `backlog.md` only while a product is pre-cutover** | shared via git, owned by the product |
+| Backlog, post-cutover | GitHub Issues on `backlog_service_repo` | the live backlog, reached through the `gh` CLI (channel 5) | owned by the target repo; `.prawduct/backlog.md` becomes **frozen history** and is no longer read as live state |
 | Plugin (distributed) | `plugin/` in the prawduct repo; the plugin root once installed | skills, hooks, methodology, CLI, templates | read-only; never placed into a repo |
 | Framework docs (this repo) | `documentation/` (tracked) | long-form requirements, PRDs, research, and the migration guide — human-facing working docs, framework-repo only (distinct from the plugin-bundled `docs/` reference) | committed to the framework repo |
 | Upstream bug intake (this repo) | `incoming-bugs/` (tracked) | bug reports products file upstream about prawduct itself, via `/prawduct:report-bug`; triaged into the backlog, then archived under `incoming-bugs/archive/` | committed to the framework repo |

@@ -3,6 +3,99 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-08-01: prawduct's backlog is on GitHub Issues — 371 items, 0 stranded, and the tripwire that fired at the cutover was re-aimed rather than silenced
+
+<!-- prawduct: type=feature | scope=v3.2.0-golive | chunks=06 -->
+
+**The migration ran.** `371 created, 0 skipped, 0 collision(s) of 371 source item(s)` (152 restructured
+by plan), `≥6548 REST points; no throttling`. `verify-migration` returned **exit 0 with all five
+conflict lists empty** and `source_items 371 = aliased 371`, which is the precondition Step 6 refuses to
+take on trust. `backlog_service_repo: brookstalley/prawduct` is recorded; the markdown is frozen
+history. Then 42 owner-confirmed dispositions applied 42-of-42 clean, leaving **155 open / 149 shipped /
+67 dropped**.
+
+**Read the line after the summary — it was absent, and that is the finding.** A failed status reconcile
+does not stop the run, so an import can report clean counts while `WARNING: N item(s) imported but NOT
+reconciled` sits below them. It did not appear, so every reconcile landed on the first pass.
+
+**Two residuals surfaced by running it, both recorded rather than left to be rediscovered.**
+
+**`verify-migration` must run BEFORE post-import disposals, and the runbook says the opposite** (filed,
+`#528`). The gate compares each covered item's decoded status against the **source markdown**, so
+folding a duplicate whose source status is `open` reads as `status_mismatch`. Step 4→5 ordering —
+dispose, then verify — would therefore have turned 24 owner-approved merges into a false exit 4 on a
+correct migration. The gate certifies *the migration*: that nothing was stranded. Disposals are tracker
+actions taken after it.
+
+**`promoted` has no Issues-backend equivalent** (filed, `#529`). The adapter's enum is
+`submitted|open|in-progress|shipped|dropped`, so three `promoted` items decoded to `open` — the right
+degradation, since promoted means in-flight, but a vocabulary loss whose only surviving record is now
+frozen markdown. `in-progress` looks like a free fix and is not obviously right, which is why it is
+`stage: design`.
+
+**The cutover tripped a test designed to trip, and the honest fix was not the one it prescribed.**
+`test_zero_fire_against_this_repo` asserted `backlog-checks-dormant` is silent here, on the true premise
+that prawduct had not cut over. That premise expired **by design** — the probe exists to start firing at
+exactly this switch. But its stated remedy, *"restore them against the read-through cache (GV8), not to
+narrow or delete this tripwire"*, is **roadmap W1**: no chunk of this release carries it, so the
+tripwire demanded unbuilt machinery at the moment it fired, and a test satisfiable only by unbuilt
+machinery becomes a standing red, which is how waivers get trained.
+
+**Owner ruling: re-aim it at the post-cutover contract.** What moved is the *side of the transition*,
+not the risk. The risk was always silent degradation, and post-cutover the dormancy must be **said out
+loud** (GV8 — retirement is not silence), because a dormant reader returning nothing is
+indistinguishable from a clean bill of health. It now fails if the probe goes quiet here, if it stops
+being dismissible `info`, or if a check enters `DORMANT_CHECKS` without its name reaching the operator —
+both sides derived from the roster, so a check cannot go dark unannounced. **Mutation-proved rather than
+assumed**: made to return `[]`, the test fails; restored, it passes. Restoring the readers is still the
+real fix, and when it lands `DORMANT_CHECKS` shrinks and the test follows it down.
+
+**Done-when 4 was satisfied as a consequence, which is what it asked for**: `probe_migration_required`
+now fires **0 times** — no separate work, no flag flipped by hand.
+
+## 2026-08-01: The scrub's drift verdict reads CURRENT for the first time — because the survey finally covered the whole corpus
+
+<!-- prawduct: type=chore | scope=v3.2.0-golive | chunks=06 -->
+
+Chunk 06's Step 2 half. Every one of the **195 open items** was read in full and screened, and the
+dispositions are recorded as **Survey 3** in `artifacts/migration-scrub-decisions.md`: 1 close, 5
+drops, 19 folds into 13 survivors — **plus the 18 already-approved-and-pending dispositions from
+2026-07-18** (5 merges + 13 drops, all re-verified), which this sentence previously left unstated.
+Net **195 − 18 − 1 − 5 − 19 = 152 open survivors** at import — the figure the tracker reconciles with
+(152 survivors + 3 `promoted`-decoded-to-`open` = 155 open). Stated as the full sum rather than an
+arrow, because the arrow form was reconstructible only by knowing the missing term.
+
+**Zero items were dropped on staleness grounds — the same result Survey 2 got, and it is the finding.**
+This corpus is not silted, it is dense: recent, independently-verified defects against live machinery,
+most carrying an explicit dedup ruling from a prior session. The whole reduction comes from
+**upleveling by root cause**, which is a different screen from the staleness-and-duplication one
+Surveys 1 and 2 ran, and is why it returns different answers about items those surveys already kept.
+Five uplevels carry most of it — the largest names *a single-latest-fact derived view standing in for
+the evidence store* and folds its render, write and read surfaces (`CRT-2X7R`, `CRT-7P5J`, `CRT-3F7T`
+→ `CRT-9K2P`); another folds three adapter-documentation gaps into the item that says the adapter has
+no usage table, because one of the three **mints** the missing referent.
+
+**`SNAPSHOT` advanced `964d03b` → `5a169b2`, and the instrument now prints `dispositions are CURRENT`.**
+`BKL-9F6T` records why it never could before: the spike derives "unsurveyed" as *open items filed since
+the ref*, so on a growing corpus that set is non-empty forever and the green light was **structurally
+unreachable**. Advancing is legitimate only after the covering survey is owner-confirmed — doing it
+first silently declares an unreviewed corpus surveyed. The constant is on its way out regardless: a
+git-ref baseline resolves through `git show <ref>:<backlog>` and stops meaning anything the moment the
+markdown becomes frozen history, which is exactly the transition it guards. `BKL-9F6T` owns the
+date-keyed replacement.
+
+**The dispositions split on decision 3's line, not Survey 2's — the correction is the reusable part.**
+Survey 2's pre-import exception was earned by *status flips*, where minting an open issue to describe
+finished work is the waste. It does not extend to **folds**: `merge` writes a real `superseded_by`
+redirect *before* closing the source (AU3/CRASH-2), and markdown can only carry that as prose. So one
+`shipped` close lands pre-import and the other 42 dispositions ride the adapter afterwards, at ~1.7s
+each — the ordering costs nothing and buys real redirects. The frozen markdown will record those 42 as
+open **at cutover**, which is accurate history.
+
+One previously-approved merge was challenged and the owner overruled the challenge: `CRT-6J4P →
+CRT-8H3R` stands, so whoever builds `CRT-8H3R` should read the folded body for the same-lineage
+cross-bundle case rather than assuming an ancestor guard closes it.
+
 ## 2026-08-01: The collapse — two families become nine rules, and every instance survives
 
 <!-- prawduct: type=feature | scope=learnings-firing | chunks=03 -->

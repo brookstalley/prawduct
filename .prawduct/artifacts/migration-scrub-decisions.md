@@ -314,6 +314,196 @@ the design call:
 to whichever backend is live — so this adds **zero** governed surface, which matters because `GOV-6D4Q`'s
 deletion-only pass forbids adding any and is sequenced ahead of Chunks 07/08.
 
+## Survey 3 — full-corpus cleanup pass (**OWNER-CONFIRMED 2026-08-01**)
+
+> ### ✅ OWNER RULING — 2026-08-01
+>
+> - **§ A, § B and § C APPROVED as proposed** — 1 close, 4 drops, 19 folds into 13 survivors, including
+>   all five root-cause uplevels and both contested folds (`VWS-2W6H`, `TST-6H2Q`).
+> - **§ B gains a fifth drop: `MET-9K4R`.** Proposed as *held* on the ground that a never-picked idea
+>   belongs to `GOV-6D4Q`'s deletion-only pass rather than to a migration scrub; the owner ruled it
+>   dropped here instead. Recorded as a decision made against a stated case, not one nobody made.
+> - **§ D is OVERRULED — the `CRT-6J4P → CRT-8H3R` merge STANDS as approved 2026-07-18.** The
+>   withdrawal argument (that CRT-6J4P's same-lineage cross-bundle chain survives an ancestor guard,
+>   so folding it loses a defect the fix does not catch) was put and not taken. Whoever builds
+>   CRT-8H3R should read the folded body for the same-lineage case rather than assuming the ancestor
+>   guard closes it.
+>
+> **Ordering — the dispositions split on decision 3's line, not Survey 2's.** The proposal said "apply
+> §A–§C to the markdown pre-migration, the same order Survey 2 used." That is **corrected here** and
+> the correction is the reason worth recording: Survey 2's pre-import exception was earned by *status
+> flips*, where minting an open issue to describe finished work is the waste. It does not extend to
+> **folds** — `merge` writes a real `superseded_by` redirect *before* closing the source (AU3/CRASH-2),
+> and markdown can only carry that as prose. So:
+>
+> - **Pre-import, to the markdown source:** § A only (`BKL-3T7X` → `shipped`). Same class as Survey 2 § A.
+> - **Post-import, through the adapter:** § B's five drops and § C's nineteen folds, alongside the
+>   2026-07-18 set's five merges and thirteen drops. **42 disposition ops in total** — ~1.7s each at
+>   VRF-009's measured latency, so the ordering costs nothing and buys real redirects.
+>
+> The frozen markdown will therefore record these 24 items as open **at cutover**, which is accurate
+> history; the live tracker is authoritative from that moment (Step 6).
+
+Requested by the owner at the head of the Chunk 06 session, ahead of the restructure decision:
+*"First we should do a cleanup pass to close completed items, merge duplicates (including upleveling
+where details are distinct but same root cause), and delete items obsoleted by movement in the code."*
+
+**Survey baseline: the whole open corpus at `5a169b2` (origin/develop) — 195 open items, read in full
+through `lib.backlog.legacy.parse_backlog`.** Unlike Survey 2, which closed a coverage *gap*, this pass
+re-screens every open item including the ones Surveys 1 and 2 already kept. That is why it finds folds
+those surveys did not: they screened for staleness and duplication; this screens for **shared root
+cause**, which is a different question and returns different answers about the same corpus.
+
+**Corpus shape, and the honest headline: this backlog is not silted, it is dense.** Zero items were
+dropped on staleness grounds — the same result Survey 2 got, for the same reason. The corpus is
+overwhelmingly recent, independently-verified defects against live machinery, most carrying explicit
+dedup rulings from prior sessions. The reduction available here comes almost entirely from **upleveling
+by root cause**, not from disposal.
+
+### A. Close as shipped — 1
+
+| Item | Verification performed | Proposed |
+|---|---|---|
+| **BKL-3T7X** (issue-title/body standard) | Its own deliverable — `documentation/backlog-service-issue-standard.md` — exists on disk. It was **decomposed 2026-07-17** into four build items; three are archived `shipped` (BKL-2H9W, BKL-4C6P, BKL-8N5K) and the fourth (**BKL-7F3D**, YAML Issue Forms) is open and carries the residual | `shipped` |
+
+### B. Drops — obsoleted by movement in the code, 4 (+1 held for the owner)
+
+Each was checked against the tree today, not read off its own annotation.
+
+| Item | What moved | Confidence |
+|---|---|---|
+| **STH-6T9W** (untracked non-code files inflate the chunk-diff scope) | kernel-v3 deleted both scope sites and pinned them deleted; the **waiver-wedge is gone** (`files_reviewed` is code-derived). The item's own landing option **(c) WONTFIX** says so: *"a legitimate outcome now that the harm is 'run one extra review' rather than 'waiver or nothing'; the original waiver-training argument no longer applies."* Verified the milder residue survives (`is_judgeable_path('note.txt')` → True) — that is the harm the item itself rates as not worth fixing | **High** — the item names its own drop |
+| **CRT-9L2F** (post-release check that an explicit `/critic` mode is honored) | Written 2026-06-10 against a `$ARGUMENTS`-delivery hazard. The mechanism has since been redesigned twice: `SKILL.md` step 1 now says **"Forward, never parse"** into `prawduct-hook infer-critic-mode`, which owns the whole precedence and returns `explicit-args` as a rationale (`critic_mode.py:136`). The verification task names a release six versions stale | **Med-high** |
+| **GOV-8N4V** (a set `active_build_plan` reads as "no active build plan") | The heading-form facet was closed by BLD-5J8N's parser broadening. Checked the plan the item names: `build-plan-norm-lifecycle.md` carries `artifact: build-plan` frontmatter and a colon-form `## Status` roster, both of which today's parsers accept. No live repro remains | **Medium** — re-file if it recurs |
+| **TST-6H2Q** (xdist cross-file pollution flaking two stop-gate tests) | Not reproduced during its own 2026-07-19 salvage; the full suite ran green today (re-derive the total; a hardcoded count here is what `suite-total-claim` exists to catch). Same disposition and same reasoning as **TST-4P8H**, which the 2026-07-18 set already drops for "no active flakes" | **Low-medium** — one green run is weak evidence; both named tests still exist, so a recurrence re-files cheaply |
+| **MET-9K4R** (workflow-values schema/validator) | **HELD for the owner, not proposed.** Verified still unvalidated — no code reads or checks `Branching:` / `PR creation:` / `PR merge:` vocabulary. Filed 2026-05-01 at `stage: design` with its own note "low priority — current values are stable," and no instance of the typo-silently-defaults failure has ever been observed. It is a *never-picked idea*, not an obsoleted item, so it belongs to **GOV-6D4Q**'s deletion-only pass rather than to a migration scrub | — |
+
+### C. Merges and uplevels — 19 folds into 13 survivors
+
+The distinction the owner asked for: a **merge** folds a duplicate; an **uplevel** folds several items whose
+*details* are distinct but whose *root cause* is one, retitling the survivor to the root so the fix is
+aimed at the cause rather than at whichever surface someone happened to be looking at.
+
+**Uplevels (root cause named; instances folded with their bodies preserved):**
+
+| Survivor (retitle to the root) | Folded | The one root cause |
+|---|---|---|
+| **CRT-9K2P** | CRT-2X7R, CRT-7P5J, CRT-3F7T | **A single-latest-fact derived view stands in for the append-only evidence store.** CRT-9K2P is the census/render path, CRT-2X7R the write path (`verify-resolutions` can only anchor to the cache's one `fact_id`), CRT-7P5J the handoff read path, CRT-3F7T the disposition vocabulary on CRT-9K2P's own surface. One decision — *compose over every review fact in the interval* — answers all four. **Read the objection before ruling:** the corpus says "fixing any one leaves the other two standing." That is true of a *point* fix and is exactly the argument for upleveling rather than against it; CRT-9K2P's own dedup note already names the shared root in those words |
+| **BKL-6T3P** | BKL-2D8N, BKL-4H8P, BKL-9T3K | **The adapter's instruction surface does not describe its own contract.** BKL-6T3P bounds the model by "the ops in the usage table" and no usage table exists; BKL-2D8N is that `--help` prints exit-2 instead of the usage; BKL-4H8P is that `retryable: true` states no budget; BKL-9T3K is that block ownership is unstated. **BKL-2D8N's fix literally mints BKL-6T3P's missing referent.** All four are the same surface and the same dogfood |
+| **BLD-8R3T** | BLD-9H2M, BLD-5N7C | **The `new` forward-reference exemption is both under- and over-reaching.** BLD-8R3T's own body already requires BLD-9H2M to "land first or alongside," and names BLD-5N7C as "the two instances" of itself. One visit to `_BUILD_PLAN_NEW_QUALIFIER_RE` and the exemption's expiry |
+| **VWS-4T9P** | VWS-2F9K, VWS-2W6H | **`build_scope_to_plan_map` answers "which file is a plan" wrong three ways** — invisible (non-recursive glob), mis-classified (no `artifact: build-plan` filter), and unmatchable (`CHUNK_LINE_RE` requires the colon form). VWS-4T9P already says of VWS-2F9K "fix them together — do not fix one and leave the other." **The corpus argues against folding VWS-2W6H** ("cross-linked deliberately, not merged") — the counter is that all three edit the same two glob sites, so they are one visit whoever does them |
+| **COV-8R2K** | COV-6T3P | **One judgeability predicate with no per-project file-type opinion.** COV-8R2K wants `.md`/config to stop blocking coverage; COV-6T3P wants `.md` to *start* counting for markdown-centric products. Opposite directions, one knob. Both already name `is_judgeable_path` as the site |
+
+**Ordinary merges (one fix closes both, by the corpus's own words):**
+
+| Survivor | Folded | Why |
+|---|---|---|
+| **GOV-3K7M** | GOV-2H6X | GOV-3K7M's stated fix — *"when the scope-named plan and the pointer disagree, that is the `unchecked` case, not a silent grade"* — **is** GOV-2H6X's entire ask (counters must not read clean when nothing was checked). Threading the manifest's `scope` into `lint_records_safe` delivers both |
+| **STH-4P2R** | STH-3K7M | Verbatim from the corpus: *"one 'resolve the session's git context once at the `cmd_clear` entry and pass it down' change closes both items"* |
+| **LRN-6C2X** | LRN-5T2W | Both are whole-file heading-identity checks over the same two files, both break under LRN-9K2P. LRN-5T2W: *"they should almost certainly be built in one pass."* **LRN-9K2P is NOT folded** — it is the sequenced consumer these guardrails must precede, not a duplicate |
+| **LRN-8P3W** | LRN-3F8K | Explicit instance/class pair with an explicit instruction: *"Work them together — LRN-3F8K is the one-line reconciliation, this is the guard that stops it recurring"* |
+| **CRT-3W6P** | CRT-8N5V | CRT-8N5V has **no residual of its own**: remaining-scope #1 is COV-3M8Q (dropped 2026-07-31), #2 is *"now carried by CRT-3W6P"* in its own words, and #3 is what CRT-3W6P says *"should be designed alongside it."* The survivor is the item that carries the live work; the parent's body is preserved verbatim |
+| **CRT-6R3W** | CRT-4X2N | CRT-4X2N is *"the enumeration half of a larger problem; CRT-6R3W carries the rule-vs-instance design question."* One reviewer-protocol change states the generating rule **and** enumerates instances. Direction matters: CRT-6R3W's "must not be deduped into it" forbids folding the *stronger* item into the weaker one, which is not what this does |
+| **GOV-7W3D** | GOV-8C3W | **GOV-8C3W's escalation is already shipped.** It asked to "make the enumeration mechanical"; `record_lint`'s `governed-by-gap` check did exactly that in record-mechanization Chunk 02 (measured yield: 22 gaps across 8 plans). Its residual — complete the `security-model` dispositions — is a subset of GOV-7W3D's ask |
+| **ONB-7K4D** | BKL-4C9P | Same defect, two files, and ONB-7K4D already states the shared fix: *"BKL-4C9P is the same class one file over, and should be fixed the same way… Whichever of the two lands first should carry the shape to the other."* State the invariant; never correct the count |
+
+**Considered and deliberately NOT merged** (recorded so they are not re-proposed):
+`GOV-6X2N`↛`COV-4M2J` (same root, but GOV-6X2N is closable off a language-agnostic trigger and must not
+wait on an L-sized requirements pass) · `SCN-8T4R`/`GOV-5N8R`↛`BND-1S4K` (each carries a guardrail leg
+beyond the artifact entry; BND-1S4K says so) · `REL-6Q4M`↛`REL-7D4X` (adjacent, but different
+mechanisms — runbook prose vs `release_readiness.py`) · `LRN-9K2P`↛`LRN-6C2X` (sequenced consumer,
+not duplicate) · `CRT-4V8P`↛`GOV-3K7M` (shares the unbounded-pointer root, but owns mode inference and
+review *attribution*, which a record-lint argument does not reach).
+
+### D. One previously-approved disposition the owner should reconsider
+
+**`CRT-6J4P → CRT-8H3R` (approved 2026-07-18) is contradicted by its own target's body.** The approval
+reason was *"same mode-inference ancestor-guard fix; bodies cross-reference."* One day later, CRT-6J4P's
+2026-07-19 salvage annotation records the opposite, as a correction to the record: *"The branch's ancestor
+guard closes only the sibling-BRANCH sub-case, which is CRT-8H3R's territory, not this one… do not treat
+the CRT-8H3R fix as closing it."* CRT-6J4P is a **same-lineage** cross-bundle chain (the anchor **is** an
+ancestor of HEAD, so an ancestor guard passes it); CRT-8H3R is the sibling-branch case. **Folding them
+loses a defect an ancestor guard provably does not catch.** Recommend **withdrawing this merge**; the
+other four 2026-07-18 merges are unaffected and re-verified resolvable today.
+
+### E. Net effect
+
+195 open → **152** (−22%): 18 already-approved-and-pending (5 merges + 13 drops, all re-verified
+resolvable today by `tests/spikes/backlog_scrub_drift.py`), plus 19 new folds, 1 close, 4 drops. Minus
+the CRT-6J4P withdrawal in § D, which returns one item to the keep set.
+
+> **SUPERSEDED BY THE RULING ABOVE — the arithmetic in this paragraph is the PROPOSAL's, kept as
+> the record of what was put to the owner.** The ruling changed two of its inputs: **§ B gained a
+> fifth drop** (`MET-9K4R`), and **§ D was overruled**, so no item returns to the keep set. Net is
+> **195 − 18 − 1 − 5 − 19 = 152**, which is the figure the headline carries and the one the
+> tracker reconciles with (152 survivors + 3 `promoted`-decoded-to-`open` = 155 open). Corrected
+> by a superseding clause rather than an edit, because this paragraph is the proposal the ruling
+> ruled on — rewriting it would erase what was actually decided against.
+
+### F. Keep — the remainder
+
+No staleness signal and no shared-root signal survived screening. The grounds are the same as Survey 2's:
+each is a recent, independently-verified defect against live machinery, most carrying an explicit dedup
+ruling from a prior session. Two are worth flagging to the migration session specifically rather than
+restating 150 reasons: **GOV-7W3D**'s deadline is literally *"before Chunk 06 runs"* (six `## Direction`
+norms undispositioned on this very plan), and **BKL-9F6T** is the coverage-boundary defect this survey is
+the third hand-run instance of.
+
+## Decision 7 — restructure scope re-sized, and the Step 3b batch approval (owner, 2026-08-01)
+
+**Scope: FULL restructure, per decision 2, re-sized from ~78 to 152.** The owner was offered a
+narrowing to titles-plus-`kind` (bodies verbatim) with that as the builder's recommendation, and chose
+the full restructure — title, `kind`, and issue-standard body sections for every open survivor. Recorded
+as a decision made against a stated case.
+
+**The set is 152, not 194, and the correction came from the owner.** The builder's first figure counted
+every open item; the 42 disposed post-import need no restructure entry, since a folded duplicate or a
+dropped item is imported verbatim and then closed. The importer refuses only a plan naming an item
+*outside the chosen archive scope*, so a subset of in-scope items is legal.
+
+**Plan: `.prawduct/artifacts/migration-restructure-plan.json`, committed rather than left in a scratch
+dir** — it is the owner-approved input to an irreversible run, so it is auditable for the same reason
+this file is, and re-authoring it costs hours. Completeness is checkable, not asserted: the key set is
+**exactly** the 152 survivors, no duplicates, no extras, every entry carries sections, every title is
+within the 72-char budget.
+
+**Decision 2's premise had expired, and the owner ruled on the replacement.** Decision 2 recorded that
+*"zero source items carry `kind:` today"* — true on 2026-07-18, **false by 2026-08-01**: 92 open items
+carry one, across a **ten**-value vocabulary (`bug`, `task`, `feature`, `debt`, `tech-debt`, `fix`,
+`docs`, `question`, `test-gap`, `improvement`). The issue standard §3 defines **five**. **Ruled: conform
+to the standard's five**, which relabels 24 items — one vocabulary, so `list --kind` means the same
+thing everywhere and the provisioned labels match the standard. The alternative (preserve each filer's
+choice) was put and not taken.
+
+**STEP 3b BATCH APPROVAL GIVEN — owner, 2026-08-01.** Reviewed in aggregate against the full
+before/after artifact, generated from the same code path the import consumes, so what was approved is
+byte-for-byte what gets written.
+
+**The 174 lint findings were approved as reasoned, not overlooked.** All WARN-only; none blocks.
+- **96 `body-too-long`** (~63% of entries). Real, and it is the accepted cost of the full-restructure
+  choice: these bodies carry layered corrections and retractions — *"RETRACTED"*, *"overclaim withdrawn"*,
+  *"the first draft did not add up"* — and compressing to the ~175-word budget drops exactly that. The
+  owner was offered a compress-first option and declined it. Originals survive in `original_body`, so
+  nothing is lost either way; what the budget buys is what a reader **sees**.
+- **77 `bug-missing-env`** — one per `kind: bug`. The standard calls Env a recommendation, never a
+  mandate. **Fabricating an Env line for an item migrated from markdown would be worse than the
+  warning**, so none was invented.
+- **0 `missing-section`, 0 collisions.** Both were non-zero on the first render — two entries carried
+  bug-shaped sections under a non-bug kind — and were fixed before approval.
+
+**10 items flagged `non_atomic`** (`DOC-4T6P`, `CRT-5Q8W`, `LNG-5W8R`, `MET-2X6F`, `ENV-2W7K`,
+`GOV-4X9M`, `BKL-9J3F`, `JNT-9R2K`, `REL-7D4X`, `VWS-4T9P`), each with its reason in the plan's `note`.
+**Flagged, never auto-split** — splitting mints new ids and is an owner scrub decision (1 PFX = 1 issue).
+Deferring every split is a legitimate answer and is the current state.
+
+**Pre-import target state, verified rather than assumed (2026-08-01):** `brookstalley/prawduct`, public,
+issues enabled; **9 open native issues, 0 closed; 0 `id:` alias labels; 0 namespaced facet labels.** So
+there was no prior migration to adopt and nothing to collide with. The nine natives are correctly
+outside `verify-migration`'s comparison, which measures the **source set against alias coverage** rather
+than a raw issue count — the only comparison that holds, and the one whose absence let
+`samsung-frame-art-loader` record a cutover with 7 of 9 items stranded. `provision` then created **7**
+namespaced base labels and touched none of the repo's existing nine (PROV-1, create-only).
+
 ## Migration-session runbook pointer
 
 `skills/backlog/migration-scrub.md` (steps 0–4, incl. 2b restructure pre-pass). Sequence:
