@@ -60,7 +60,7 @@ land. That two independent lines of work — discodon's retrospective and that b
 on the same defect is the strongest signal here that it is structural rather than one builder's
 bad day.
 
-### The second failure: delivery is not descent (owner-raised, 2026-08-01)
+### The second failure: delivery is not descent (owner-raised, 2026-07-31)
 
 Delivery gets the rule in front of the reader at the right moment. It does **not** make the
 reader spend it. A general rule can arrive exactly on time, be read, be agreed with, and change
@@ -76,7 +76,7 @@ that work already carry their instances inline. `learnings-detail.md` is documen
 "consulted when debugging in a known area" (`methodology/reflection.md`), i.e. read on demand —
 so an instance relocated there is, for firing purposes, deleted.
 
-Two consequences, both ratified by the owner on 2026-08-01 and binding on the chunks below:
+Two consequences, both ratified by the owner on 2026-07-31 and binding on the chunks below:
 
 1. **Every rule this plan delivers carries its descent** — the general statement, then the act to
    perform, then instances concrete enough to pattern-match against, then (for code-delivered
@@ -120,7 +120,7 @@ directive does not address (*entering* a round versus batching *within* one).
 **Medium** on Chunk 03's collapse ratio.
 
 - [ASSUMPTION: the ~14-rule assertion family collapses into line 292 without losing a distinction
-  worth keeping | HIGH impact | user can override] — **superseded 2026-08-01, and it was the
+  worth keeping | HIGH impact | user can override] — **superseded 2026-07-31, and it was the
   wrong shape of worry.** It named three members as exceptions: 298 (the falsifying query can
   itself carry the defect it hunts), 27 (a completeness claim must never be a count of sites
   fixed), and 286 (a rationale you *reached for* is the one to verify). The owner-raised descent
@@ -178,7 +178,7 @@ the roster. Cite the command, never the digits.
   which evidence you read, not that you are confident.*
 
   **The moment is `critic-begin --mode verify-resolutions`, NOT `critic-consolidate`** — a
-  correction to this spec made when (b) was built (2026-08-01), because the specced site cannot
+  correction to this spec made when (b) was built (2026-07-31), because the specced site cannot
   fire. `verify-resolutions` is always single-pass (`_derive_roster` returns `SINGLE_PASS_ROSTER`
   for it unconditionally), so the reviewing fork writes its `resolutions` into the partial and
   *then* runs `critic-consolidate` itself: a directive there reaches an agent that has already
@@ -193,7 +193,7 @@ the roster. Cite the command, never the digits.
   `--mode` argument, so a dispatch demoted for scope-widening (exit 2) never delivers advice for
   a review that is not happening.
 
-  **Unblocked 2026-08-01**: `feature/clear-signal-and-batch-fix` merged to `develop` as `0f3e26c`
+  **Unblocked 2026-07-31**: `feature/clear-signal-and-batch-fix` merged to `develop` as `0f3e26c`
   (PR #155) and this branch was rebased onto it, so `_BATCH_FIX_DIRECTIVE` is present.
 
 - **Depends on:** (b) only — the clear-signal branch landing (**resolved**)
@@ -229,14 +229,49 @@ the roster. Cite the command, never the digits.
   failing-sentinel path already takes, and the direct analogue of learning 31 (an absence-claim
   must cite a path that resolves).
 
+  **Built 2026-07-31. Four things the spec did not anticipate, all recorded at the mechanism:**
+
+  1. **`_KNOWN_METADATA_KEYS` was dead code, so "add the key to it" was a decorative
+     deliverable.** The module had exactly one reference to that set — its own definition —
+     while its comment claimed "the audit logic only consults this set." Adding `superseded-by`
+     to a set nothing reads changes no behavior. It is now pinned to the keys the logic actually
+     reads, by a guard that parses this module's own `meta.get(...)` call sites
+     (`TestKnownMetadataKeysMatchesTheLogic`); drift fails in both directions.
+  2. **The retirement path collided with the repo's own guard test, and would have blocked
+     Chunk 03.** `_apply_retirements` copied each retired entry verbatim — lifecycle comment
+     included — into `learnings-detail.md`, which
+     `test_no_lifecycle_metadata_has_drifted_to_the_detail_file` forbids, because that file is
+     never parsed and an inert comment there once disabled the whole mechanism. Verified
+     empirically before the fix, not inferred. Retired entries now shed the comment and carry a
+     one-line retirement note in its place. **This changes the older sentinel route too**, which
+     is a deliberate departure from "no existing audit-learnings behavior changes" below: the
+     latent break is identical on both routes, and fixing only the new one leaves the guard
+     failing for the old.
+  3. **An entry declaring BOTH keys is an error and retires under neither.** Not a precedence
+     question: choosing silently would let a *failing* sentinel be bypassed by adding a
+     supersession key — a gate weakened by an edit to the thing it guards.
+  4. **Supersession targets resolve against the corpus as it stood before the run**, so a chain
+     retired in one pass (A→B, B→C) resolves both pointers rather than failing A for naming a
+     heading the same run removed. The reader following A lands on B in the historical section,
+     which carries its own pointer to C.
+
 - **Depends on:** nothing (parallel with 01)
 - **Artifacts consumed:** `api-contract.md` (additive-first evolution)
-- **Deliverables:** `superseded-by` in `_KNOWN_METADATA_KEYS`; retirement path; forwarding
-  pointer in the historical section; `--json` shape extended additively
+- **Deliverables:** `superseded-by` in `_KNOWN_METADATA_KEYS` **plus the guard that makes that
+  set load-bearing**; retirement path; forwarding pointer in the historical section; `--json`
+  shape extended additively; `skills/doctor/SKILL.md` updated (it documents the retirement
+  semantics and said sentinel was the only route)
 - **Tests:** `tests/test_audit_learnings.py` — retires without a sentinel; forwarding pointer
-  present; unresolvable target errors and does not apply; sentinel path unchanged
-- **Acceptance criteria:** the four cases above pass and are mutation-proved; no existing
-  audit-learnings behavior changes
+  present and placed under the title; unresolvable / ambiguous / self-referential / empty
+  targets error and do not apply; both-keys errors; chain resolves; sentinel path otherwise
+  unchanged; record key sets uniform across both routes
+- **Acceptance criteria:** the cases above pass and are mutation-proved (10 mutations, all
+  caught); no existing audit-learnings behavior changes **except the comment-shedding in (2),
+  which is recorded here as a deliberate departure with its reason**
+- **Verified live**, not only through the library: `prawduct-hook audit-learnings` and
+  `--apply` run against a synthetic corpus, reporting `ready` for a resolvable pointer and
+  `blocked` for an unresolvable one, and writing both files as specified. `--json` shape and
+  `--apply`-to-write posture conform to `api-contract.md`'s Operations norms.
 - **Type:** code
 - **Done when:**
   1. Acceptance criteria met
@@ -287,7 +322,7 @@ the roster. Cite the command, never the digits.
 
   **(c) The standing read-instruction.** One structural statement of the descent obligation —
   that a rule agreed with and not applied to the case in hand has done nothing — added where
-  learnings are *read*, not repeated per rule. Owner ruling 2026-08-01: structural once, plus an
+  learnings are *read*, not repeated per rule. Owner ruling 2026-07-31: structural once, plus an
   inline apply-it-here clause on the code-delivered directives only (Chunk 01(a) and 01(b) each
   ship one). Repeating an exhortation across 159 rules reproduces the inertness one level up;
   stored rules carry instances instead, which do the same work at lower cost per rule.

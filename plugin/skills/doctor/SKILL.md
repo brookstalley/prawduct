@@ -97,7 +97,7 @@ Refuses to verify an `accepted` entry — `accepted` means the gate was overridd
 
 ## Audit-Learnings Flow (lifecycle metadata triage)
 
-Plugin-native — `prawduct-hook audit-learnings` walks the repo's own `.prawduct/learnings.md`, reads the optional per-entry metadata comment, and reports promotion candidates (advisory), retirement candidates (sentinel-protected), and stale single-confirmation entries (>90 days old).
+Plugin-native — `prawduct-hook audit-learnings` walks the repo's own `.prawduct/learnings.md`, reads the optional per-entry metadata comment, and reports promotion candidates (advisory), retirement candidates, and stale single-confirmation entries (>90 days old).
 
 The metadata comment is a single line placed immediately after each `## Title`:
 
@@ -108,15 +108,23 @@ The metadata comment is a single line placed immediately after each `## Title`:
 Body of the learning…
 ```
 
-All three fields are optional. An entry without the comment is treated as "active, no lifecycle metadata" and stays untouched.
+All fields are optional. An entry without the comment is treated as "active, no lifecycle metadata" and stays untouched.
+
+**Two retirement routes, never both on one entry.** `sentinel=<test id>` retires a rule because the failure mode it warned about is now structurally enforced by a passing test. `superseded-by=<heading prefix>` retires it because a **broader rule replaced it** — which is what every consolidation is, and without it consolidation is an unauditable hand-edit. The retired entry's historical copy names its replacement, so a reader who remembers the old rule finds a forwarding address rather than a hole.
+
+Supersession is fail-closed on every ambiguity, like a failing sentinel: the prefix must match exactly one *other* heading (case-sensitively). Unresolvable, ambiguous, self-referential, or empty → an `errors` entry, and the rule is **not** retired. An entry declaring both keys errors and retires under neither — picking one silently would let a failing sentinel be bypassed by adding a supersession key.
+
+Each `retirements` record carries `reason` (`sentinel` | `superseded-by`); branch on that rather than probing which keys are populated.
 
 Use when the user asks to "audit learnings", "retire structurally-enforced learnings", "check lifecycle metadata", or similar.
 
 1. Run: `prawduct-hook audit-learnings --json`
-2. Relay each list — surface promotion candidates as advisory ("the rule has been confirmed twice — consider whether it belongs in `learnings.md` or can move to historical detail"), retirement candidates pending `--apply` ("the declared sentinel passes; running with `--apply` moves the entry to `learnings-detail.md`"), stale flags ("the entry is over 90 days old with no second confirmation — has the rule held up?"), and errors (failing sentinels, malformed dates).
-3. If the user confirms intent to retire, re-run with `--apply`: `prawduct-hook audit-learnings --apply --json`. The `--apply` invocation mutates two files: `.prawduct/learnings.md` (entry removed) and `.prawduct/learnings-detail.md` (entry appended under the "Historical (structurally enforced)" section).
+2. Relay each list — surface promotion candidates as advisory ("the rule has been confirmed twice — consider whether it belongs in `learnings.md` or can move to historical detail"), retirement candidates pending `--apply` (say which route: "the declared sentinel passes", or "superseded by *<resolved heading>*"), stale flags ("the entry is over 90 days old with no second confirmation — has the rule held up?"), and errors (failing sentinels, malformed dates, unresolvable or ambiguous supersession pointers, entries declaring both routes).
+3. If the user confirms intent to retire, re-run with `--apply`: `prawduct-hook audit-learnings --apply --json`. The `--apply` invocation mutates two files: `.prawduct/learnings.md` (entry removed) and `.prawduct/learnings-detail.md` (entry appended under the "Historical (structurally enforced)" section, carrying a one-line retirement note that states its route — and, for a supersession, names the replacement).
 
-The audit is read-only by default. Promotion is always advisory — `learnings.md` doesn't have a sectioned active/promoted split; the count just surfaces in the report. Retirement is the only mutation, and only when `--apply` is passed AND the sentinel passes.
+**A retired entry sheds its lifecycle comment.** `superseded-by=` / `sentinel=` are directives for the *active* corpus; carried into `learnings-detail.md` they are inert, because `audit-learnings` parses `learnings.md` and nothing else — and an inert comment in the detail file has previously disabled the whole mechanism. The retirement note replaces it.
+
+The audit is read-only by default. Promotion is always advisory — `learnings.md` doesn't have a sectioned active/promoted split; the count just surfaces in the report. Retirement is the only mutation, and only when `--apply` is passed AND the entry's route is satisfied (sentinel passes, or the supersession pointer resolves).
 
 ## Important Notes
 

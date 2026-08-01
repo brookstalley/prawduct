@@ -3640,6 +3640,24 @@ an unnarrowed claim sends the next picker to verify the wrong surface.
 
   **Dedup note.** **LRN-4K8T** (shipped 2026-07-30, `closed-by: learnings-compaction`) is what created this pairing at scale — 121KB → 34KB, detail file 116 → 161 entries — so it is the *origin* of the surface, not a duplicate; the coordinator's "check if still open" resolves to **shipped**. **MET-6W3J** (shipped) was the earlier pass. **LRN-9K2P** (open) modernizes ~28 heading *texts*, which would **break pairings if run before this guardrail exists** — sequence them. **GOV-5N8R** is the same class one level up (a stated pattern with nothing pinning it, accreting violations after a sweep).
 
+- **[GOV-5H2Q]** Require a per-principle disposition map in build plans, reusing `governed_by:`
+  `effort: M · impact: L · area: governance · kind: feature · source: user · added: 2026-07-31 · reviewed: 2026-07-31 · status: open · stage: design · related: GOV-8C3W, GOV-7Q4N · refs: CLAUDE.md:12-43 (the 24 principles — the stored guidance this would make fire), plugin/docs/principles.md (the full statements with rationale), plugin/lib/record_lint.py:532 (`_check_governed_by` — the existing under-disposition check), plugin/lib/record_lint.py:434 (`direction_norm_count` — how it counts a cited artifact's `## Direction` norms), plugin/lib/record_lint.py:54 (the `governed-by-gap` finding code), plugin/methodology/planning.md:108-109 (the disposition vocabulary AND the prose ratification this would mechanize), .prawduct/change-log.md:757 (the measured yield — "22 gaps across 8 plans"), .prawduct/artifacts/build-plan-learnings-firing.md:109 (the Out of Scope line that is why this is filed separately)`
+
+  **The problem.** The 24 principles in `CLAUDE.md` are stored guidance, and "consider the principles" is unverifiable and self-certifying — a reader can believe they considered them and leave no residue either way. Principles end up shaping *prose about* the work more than they shape the work. This is the same delivery-vs-descent failure `build-plan-learnings-firing.md` diagnoses for `learnings.md`, one level up.
+
+  **The insight (owner, 2026-07-31).** Requiring an **output** beats requiring an **input**. "Build a map of how each abstract principle applies to the work you're doing" forces the descent as a side effect — you cannot write the cell without inspecting the decision. "Please consider the abstract principles" cannot.
+
+  **Why this is cheap — prawduct already runs the mechanism, just not on the principles.** Build plans carry `governed_by:` in frontmatter with a one-line disposition per norm (`conforms` | `ruling needed` | `exception` | `amendment proposed` | `inapplicable because X`). `record_lint._check_governed_by` (the `governed-by-gap` check) counts each cited artifact's `## Direction` norms via `direction_norm_count` and fires on under-disposition; measured yield when that check shipped was **22 gaps across 8 plans**. And `methodology/planning.md` already ratifies the idea in prose: *"Applicability is recorded, not assumed: 'this norm doesn't apply here' is itself an interpretation, and it belongs on paper where a reviewer can disagree, not in your head."*
+
+  **Proposed shape (owner-chosen).** Extend `governed_by:` to accept `artifact: principles`, so the existing governed-by-gap lint requires 24 dispositions. Three design constraints, each aimed at a known failure mode:
+  1. **"No bearing" must be cheap and legal — one word.** Most rows will be that, and forcing every row to claim applicability is how the map becomes wallpaper.
+  2. **A bearing row must carry a CITATION** (a decision, file, or chunk) **or a CONSEQUENCE** (what it changes, or what it confirms and why that was not automatic). A bare verdict like "Principle 11 — conforms" is unfalsifiable and did no work. The test of a good cell is that a reviewer can disagree with it.
+  3. **A ratio tripwire.** A map where **all** 24 bear, or where **none** do, is flagged suspect — "everything applies" discriminates nothing and is as much a tell as "nothing applies."
+
+  **Scale caveat to design against.** A typical plan disposes 7–12 norms today (architecture 6, observability-strategy 3, api-contract 3), all repo-specific, so most genuinely bear. 24 *universal* principles is a different regime — most will not bear on a given chunk. Constraint (1) is what keeps that from turning into 24 rows of fluent nothing.
+
+  **Scope note.** Deliberately **not** folded into `build-plan-learnings-firing.md`, whose Out of Scope reads *"Any change to what the Critic reviews or how gates compose. This plan adds advice, not authority."* — and this is precisely that. Filed separately so that plan's scope stays honest. **GOV-8C3W** is the original governed-by mechanical enumeration this extends.
+
 ## Promoted
 
 - **[BKL-5D2C]** Move the backlog out of git to a centralized, agent-friendly issue-tracking service

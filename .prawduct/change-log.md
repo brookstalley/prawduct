@@ -3,6 +3,61 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-07-31: Rules that fire — delivery at the moment, and supersession as a real lifecycle event
+
+<!-- prawduct: type=feature | scope=learnings-firing | chunks=01,02 -->
+
+`learnings.md` holds 159 rules, and the one that would have caught four false claims in a
+consuming repo's retrospective was already there, already general, already well-worded. It did
+not fire. The diagnosis is delivery, not authoring: a rule read at session start competes with
+the whole rest of the context by the time the claim gets written.
+
+**Chunk 01 moves two rules from storage to code-delivery.** (a) *Green is evidence only about
+what could have made it red*, printed at `test-evidence record` when the merged record shows
+judged code changed — silent on a restamp or a docs-only cycle. (b) *A resolution is a claim
+about the tree*, printed at `critic-begin --mode verify-resolutions`.
+
+**(b)'s print site is a correction to its own spec, and the reason generalizes.** The plan put
+it beside `_BATCH_FIX_DIRECTIVE` in `critic-consolidate`. That site cannot fire:
+`verify-resolutions` is always single-pass, so the reviewing fork writes its `resolutions` into
+the partial and *then* runs consolidate itself — the directive would reach an agent that has
+already made the claim and is one step from exiting. Nor does it carry to the builder, because
+the Critic skill is `context: fork` and the fork's report-back enumerates findings and a
+summary, not the consolidator's stdout. Dispatch is the same reader, one step earlier, upstream
+of the claim. **A delivery site has to be checked against the order its reader actually reads
+in, not against which module the related constant lives in.**
+
+**Delivery is not descent** — raised by the owner mid-build and now binding on the plan. A
+general rule can arrive exactly on time, be read, be agreed with, and change nothing, because
+nothing made the reader recognize the case in hand as an instance. So each delivered directive
+is statement → act → instances → an explicit instruction to spend it on the case in front of
+you, aimed at the one the reader feels *surest* about, which is the one a general rule never
+reaches. The same reasoning changed Chunk 03 before it was built: the collapse now **merges
+statements and unions instances** rather than dropping them, because rule *count* is what
+competes for attention at read time and discriminating detail is not.
+
+**Chunk 02 adds `superseded-by=`** — retirement because a broader rule replaced it, which is
+what every consolidation is and which `audit-learnings` previously could not express, leaving
+consolidation an unauditable hand-edit. That is a large part of how a corpus reaches 159 rules
+with near-duplicate families in it: adding is cheap and merging is not. The retired entry's
+historical copy names its replacement, so a reader who remembers the old rule finds a
+forwarding address rather than a hole. Fail-closed on every ambiguity, like a failing sentinel:
+unresolvable, ambiguous, self-referential, or empty pointers error and do not retire, and an
+entry declaring both routes retires under neither — picking one silently would let a failing
+sentinel be bypassed by adding a supersession key.
+
+Two things the chunk found rather than built. **`_KNOWN_METADATA_KEYS` was dead code** — one
+reference in the module, its own definition, under a comment claiming the audit logic consults
+it. Adding a key to a set nothing reads is a decorative deliverable, so it is now pinned to the
+keys the logic actually reads by a guard parsing the module's own `meta.get(...)` sites. And
+**the retirement path collided with the repo's own guard test**: it copied retired entries
+verbatim into `learnings-detail.md`, lifecycle comment included, which
+`test_no_lifecycle_metadata_has_drifted_to_the_detail_file` forbids — so Chunk 03's collapse
+would have broken the suite the first time it ran `--apply` here. Verified empirically before
+fixing. Retired entries now shed the comment and carry a retirement note instead; this changes
+the older sentinel route too, deliberately, because the break is identical on both and fixing
+one leaves the guard failing for the other.
+
 ## 2026-07-31: A turn that ends without saying where things stand, and a fix strategy that arrives after the fixing (CRT-9B4K + an unfiled owner report)
 
 <!-- prawduct: type=fix -->

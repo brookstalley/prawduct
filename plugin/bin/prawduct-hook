@@ -4027,8 +4027,19 @@ def cmd_audit_learnings(project_dir: Path, argv: list[str]) -> int:
     for p in promotions:
         print(f"  promote: {p['title']} (confirmations={p['confirmations']})")
     for r in retirements:
-        state = "retired" if r.get("applied") else ("ready" if r.get("passed") else "blocked")
-        print(f"  retire[{state}]: {r['title']} (sentinel={r['sentinel']})")
+        # Two retirement routes, and the readiness question differs per route:
+        # a sentinel candidate is ready when its test passes, a supersession
+        # when its pointer resolved. Reading `passed` for both would report
+        # every resolvable supersession as "blocked" (its `passed` is None by
+        # construction) — a clean candidate rendered as a problem.
+        if r.get("reason") == "superseded-by":
+            ready = r.get("resolved_to") is not None
+            why = f"superseded-by={r.get('resolved_to') or r.get('superseded_by')}"
+        else:
+            ready = bool(r.get("passed"))
+            why = f"sentinel={r['sentinel']}"
+        state = "retired" if r.get("applied") else ("ready" if ready else "blocked")
+        print(f"  retire[{state}]: {r['title']} ({why})")
     for s in stale:
         print(f"  stale: {s['title']} ({s['age_days']}d, confirmations={s['confirmations']})")
     for e in errors:
