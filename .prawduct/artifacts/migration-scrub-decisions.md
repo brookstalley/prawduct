@@ -441,6 +441,61 @@ restating 150 reasons: **GOV-7W3D**'s deadline is literally *"before Chunk 06 ru
 norms undispositioned on this very plan), and **BKL-9F6T** is the coverage-boundary defect this survey is
 the third hand-run instance of.
 
+## Decision 7 — restructure scope re-sized, and the Step 3b batch approval (owner, 2026-08-01)
+
+**Scope: FULL restructure, per decision 2, re-sized from ~78 to 152.** The owner was offered a
+narrowing to titles-plus-`kind` (bodies verbatim) with that as the builder's recommendation, and chose
+the full restructure — title, `kind`, and issue-standard body sections for every open survivor. Recorded
+as a decision made against a stated case.
+
+**The set is 152, not 194, and the correction came from the owner.** The builder's first figure counted
+every open item; the 42 disposed post-import need no restructure entry, since a folded duplicate or a
+dropped item is imported verbatim and then closed. The importer refuses only a plan naming an item
+*outside the chosen archive scope*, so a subset of in-scope items is legal.
+
+**Plan: `.prawduct/artifacts/migration-restructure-plan.json`, committed rather than left in a scratch
+dir** — it is the owner-approved input to an irreversible run, so it is auditable for the same reason
+this file is, and re-authoring it costs hours. Completeness is checkable, not asserted: the key set is
+**exactly** the 152 survivors, no duplicates, no extras, every entry carries sections, every title is
+within the 72-char budget.
+
+**Decision 2's premise had expired, and the owner ruled on the replacement.** Decision 2 recorded that
+*"zero source items carry `kind:` today"* — true on 2026-07-18, **false by 2026-08-01**: 92 open items
+carry one, across a **ten**-value vocabulary (`bug`, `task`, `feature`, `debt`, `tech-debt`, `fix`,
+`docs`, `question`, `test-gap`, `improvement`). The issue standard §3 defines **five**. **Ruled: conform
+to the standard's five**, which relabels 24 items — one vocabulary, so `list --kind` means the same
+thing everywhere and the provisioned labels match the standard. The alternative (preserve each filer's
+choice) was put and not taken.
+
+**STEP 3b BATCH APPROVAL GIVEN — owner, 2026-08-01.** Reviewed in aggregate against the full
+before/after artifact, generated from the same code path the import consumes, so what was approved is
+byte-for-byte what gets written.
+
+**The 174 lint findings were approved as reasoned, not overlooked.** All WARN-only; none blocks.
+- **96 `body-too-long`** (~63% of entries). Real, and it is the accepted cost of the full-restructure
+  choice: these bodies carry layered corrections and retractions — *"RETRACTED"*, *"overclaim withdrawn"*,
+  *"the first draft did not add up"* — and compressing to the ~175-word budget drops exactly that. The
+  owner was offered a compress-first option and declined it. Originals survive in `original_body`, so
+  nothing is lost either way; what the budget buys is what a reader **sees**.
+- **77 `bug-missing-env`** — one per `kind: bug`. The standard calls Env a recommendation, never a
+  mandate. **Fabricating an Env line for an item migrated from markdown would be worse than the
+  warning**, so none was invented.
+- **0 `missing-section`, 0 collisions.** Both were non-zero on the first render — two entries carried
+  bug-shaped sections under a non-bug kind — and were fixed before approval.
+
+**10 items flagged `non_atomic`** (`DOC-4T6P`, `CRT-5Q8W`, `LNG-5W8R`, `MET-2X6F`, `ENV-2W7K`,
+`GOV-4X9M`, `BKL-9J3F`, `JNT-9R2K`, `REL-7D4X`, `VWS-4T9P`), each with its reason in the plan's `note`.
+**Flagged, never auto-split** — splitting mints new ids and is an owner scrub decision (1 PFX = 1 issue).
+Deferring every split is a legitimate answer and is the current state.
+
+**Pre-import target state, verified rather than assumed (2026-08-01):** `brookstalley/prawduct`, public,
+issues enabled; **9 open native issues, 0 closed; 0 `id:` alias labels; 0 namespaced facet labels.** So
+there was no prior migration to adopt and nothing to collide with. The nine natives are correctly
+outside `verify-migration`'s comparison, which measures the **source set against alias coverage** rather
+than a raw issue count — the only comparison that holds, and the one whose absence let
+`samsung-frame-art-loader` record a cutover with 7 of 9 items stranded. `provision` then created **7**
+namespaced base labels and touched none of the repo's existing nine (PROV-1, create-only).
+
 ## Migration-session runbook pointer
 
 `skills/backlog/migration-scrub.md` (steps 0–4, incl. 2b restructure pre-pass). Sequence:
