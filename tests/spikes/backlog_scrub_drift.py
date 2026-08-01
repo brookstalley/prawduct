@@ -49,7 +49,18 @@ from lib.backlog import legacy  # noqa: E402
 
 BACKLOG = ".prawduct/backlog.md"
 DECISIONS = ".prawduct/artifacts/migration-scrub-decisions.md"
-SNAPSHOT = "964d03b"  # the ref the recorded dispositions were derived against
+# The ref the recorded dispositions were derived against. Advanced 964d03b -> 5a169b2
+# on 2026-08-01, when Survey 3 screened the WHOLE open corpus rather than closing a
+# coverage gap in it — so from that commit there is no unsurveyed set left to derive.
+# Advancing is only ever legitimate after the covering survey's dispositions are
+# owner-confirmed; doing it first silently declares an unreviewed corpus surveyed.
+#
+# This constant is on its way out, and the reason is worth stating where the next
+# reader meets it: a git-ref baseline resolves through `git show <ref>:<backlog>`, so
+# it stops meaning anything the moment the markdown becomes frozen history and the
+# live corpus is GitHub Issues. A date evaluates identically on both backends. The
+# replacement is owned by BKL-9F6T, not by this spike.
+SNAPSHOT = "5a169b2"
 
 # The two tables differ in shape: merges are `| duplicate | survivor | reason |`,
 # drops are `| item | reason |` with prose in the second column. Match each on its

@@ -3,6 +3,45 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-08-01: The scrub's drift verdict reads CURRENT for the first time — because the survey finally covered the whole corpus
+
+<!-- prawduct: type=chore | scope=v3.2.0-golive | chunks=06 -->
+
+Chunk 06's Step 2 half. Every one of the **195 open items** was read in full and screened, and the
+dispositions are recorded as **Survey 3** in `artifacts/migration-scrub-decisions.md`: 1 close, 5
+drops, 19 folds into 13 survivors. Net **195 → 152 open survivors** at import.
+
+**Zero items were dropped on staleness grounds — the same result Survey 2 got, and it is the finding.**
+This corpus is not silted, it is dense: recent, independently-verified defects against live machinery,
+most carrying an explicit dedup ruling from a prior session. The whole reduction comes from
+**upleveling by root cause**, which is a different screen from the staleness-and-duplication one
+Surveys 1 and 2 ran, and is why it returns different answers about items those surveys already kept.
+Five uplevels carry most of it — the largest names *a single-latest-fact derived view standing in for
+the evidence store* and folds its render, write and read surfaces (`CRT-2X7R`, `CRT-7P5J`, `CRT-3F7T`
+→ `CRT-9K2P`); another folds three adapter-documentation gaps into the item that says the adapter has
+no usage table, because one of the three **mints** the missing referent.
+
+**`SNAPSHOT` advanced `964d03b` → `5a169b2`, and the instrument now prints `dispositions are CURRENT`.**
+`BKL-9F6T` records why it never could before: the spike derives "unsurveyed" as *open items filed since
+the ref*, so on a growing corpus that set is non-empty forever and the green light was **structurally
+unreachable**. Advancing is legitimate only after the covering survey is owner-confirmed — doing it
+first silently declares an unreviewed corpus surveyed. The constant is on its way out regardless: a
+git-ref baseline resolves through `git show <ref>:<backlog>` and stops meaning anything the moment the
+markdown becomes frozen history, which is exactly the transition it guards. `BKL-9F6T` owns the
+date-keyed replacement.
+
+**The dispositions split on decision 3's line, not Survey 2's — the correction is the reusable part.**
+Survey 2's pre-import exception was earned by *status flips*, where minting an open issue to describe
+finished work is the waste. It does not extend to **folds**: `merge` writes a real `superseded_by`
+redirect *before* closing the source (AU3/CRASH-2), and markdown can only carry that as prose. So one
+`shipped` close lands pre-import and the other 42 dispositions ride the adapter afterwards, at ~1.7s
+each — the ordering costs nothing and buys real redirects. The frozen markdown will record those 42 as
+open **at cutover**, which is accurate history.
+
+One previously-approved merge was challenged and the owner overruled the challenge: `CRT-6J4P →
+CRT-8H3R` stands, so whoever builds `CRT-8H3R` should read the folded body for the same-lineage
+cross-bundle case rather than assuming an ancestor guard closes it.
+
 ## 2026-08-01: The collapse — two families become nine rules, and every instance survives
 
 <!-- prawduct: type=feature | scope=learnings-firing | chunks=03 -->
