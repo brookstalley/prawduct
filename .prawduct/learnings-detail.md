@@ -32,7 +32,7 @@ This is minutes, not another full cumulative. `/prawduct:critic verify-resolutio
 Discovered 2026-07-29, release-readiness (PR #143; Critic cumulative `rev-20260729T185143Z` → verify passes `rev-…192252Z`/`rev-…194336Z`/`rev-…195906Z` → independent PR review → delta review of `c68443d`). Relates to Validate Before Propagating (#15), Root Cause Discipline (#16), Honest Confidence (#5).
 
 Measured base rate on one bundle: **four consecutive review rounds, each of which found a defect introduced by the previous round's fix** — three Critic verify passes plus a delta review that turned up 2 BLOCKING in a fix commit an independent PR reviewer had already cleared the tree for. Warnings don't block PR creation, so going straight to `gh pr create` after a fix commit is permitted and would have shipped both. Mechanics: after committing fixes for findings, spawn one focused review scoped to *exactly that commit* (`git show <sha>`), told the base rate and told to assume more remain — it is minutes, not another full cumulative, and `verify-resolutions` is the Critic-side equivalent. Give it the fix's own claims to re-run rather than a general brief: every published command executed, every cited tree/line/count checked at the tree named, every cross-reference opened. The specific traps that recur: a *detection* command that cannot match the defect it was written to find (grepping the vocabulary when the residual asserts the same thing by invoking the mechanism), a claim measured at the **pre-fix** tree, and an inherited premise hardened into a certainty the tree cannot support. Discovered 2026-07-29, release-readiness (PR #143; Critic `rev-…185143Z` → three verify passes → delta review of `c68443d`). Relates to Validate Before Propagating (#15), Root Cause Discipline (#16), Honest Confidence (#5), [[When you "correct" an inherited number, recount the SET and not just the count]], [[Verify a disposition against the diff before recording it]].
-## Inside a fix, the defect is systematically the JUSTIFICATION — an added "because" clause is a new claim carrying the same verification duty as the instruction it supports, and it escapes the check because it reads as commentary
+## Justify at the ALTITUDE OF THE DECISION, not the altitude of the mechanism — a mechanism claim is a new claim carrying the same verification duty as the instruction it supports, and it escapes the check because it reads as commentary
 
 Six `verify-resolutions` rounds on a single **doc-only** chunk (v3.2.3, `backlog-burndown` Chunk 01, the migration-scrub runbook). Laid end to end, every defect sat in a justification or a procedure and none in a finding:
 
@@ -49,7 +49,20 @@ Six `verify-resolutions` rounds on a single **doc-only** chunk (v3.2.3, `backlog
 
 **Stopping rule this produced.** Convergence shows as severity falling — blocking → warning → note — not as findings reaching zero. A dense document always yields another note. Notes-only means close.
 
-Sharpens [[The fix for a review finding needs the same adversarial pass as the original work]], which says to re-review fixes; this says where in the fix to look. Relates to Retrieval Over Generation (#24), Honest Confidence (#5).
+### The generalization (owner, 2026-08-01): this is the exact-numbers problem again
+
+The owner named the sibling: review feedback that reads *"it's 22 call sites, not 21"* — true, and useless. Moving those claims to *"more than 10"* largely ended that churn. **Same defect, different surface: a claim finer than any decision requires is pure liability. It can be wrong, and being right buys nothing.** The repo already institutionalized the numbers half (D14 "never persist derived counts"; `record_lint._SUITE_TOTAL_RE`, which lints humans for writing suite totals; the no-suite-total-claim preference row). This rule is the prose half.
+
+**Why "don't justify unless someone will decide on it" is the wrong form of the fix.** It collides with three standing things: Principle 4 (*Reasoned Decisions*), the norms lifecycle (a norm's **why** is what decides whether a proposed exception is legitimate — `docs/norms.md`), and this file's own premise that a rule without its reason is inert. It also has a bad failure mode: read as "justify less," it is gameable into "drop traceability," and the agent that suppresses its why draws fewer findings while becoming less reviewable. The problem was never that I explained; it was the *altitude* I explained at.
+
+**The operative test.** Will the reader have to reason **past** this instruction — handle a case it doesn't enumerate, or depart from it?
+
+- **No** → mechanism is liability. Justify at decision altitude: *"delete a list element, not the line — taking the line can remove more than you meant."* Sound, actionable, needs no call-site check.
+- **Yes** → mechanism is load-bearing and gets verified like code. This is why a norm, a `## Direction` entry, or a recorded design decision **must** carry mechanism: someone will later argue an exception, and the why is the only thing that adjudicates it.
+
+A runbook step is almost always the first case. A norm is always the second. The four defects above were all first-case instructions carrying second-case prose.
+
+Sharpens [[The fix for a review finding needs the same adversarial pass as the original work]], which says to re-review fixes; this says where in the fix to look. Relates to Retrieval Over Generation (#24), Honest Confidence (#5), Reasoned Decisions (#4 — the constraint this rule must not violate).
 
 ## A governance change cannot supply its own authority — when an agent amends a binding norm mid-build, land the owner's confirmation somewhere the amendment isn't, because a change that is its own only witness is indistinguishable from laundering however sound the substance
 
