@@ -685,6 +685,28 @@ class TestAdvisoryRelayDirective:
         self._advisories(monkeypatch, resolved)
         assert briefing.ADVISORY_RELAY_MARKER not in briefing.assemble_session_briefing(tmp_path, [])
 
+    def test_relay_is_last_in_the_block(self, tmp_path, monkeypatch):
+        # The directive refers to everything above it, so trailing block content
+        # would make it read as covering only the part it precedes. Its banner twin
+        # is pinned by an equivalent test; this site was moved to satisfy a review
+        # finding with nothing holding it there, so the position is pinned now.
+        # `dismissed`/`resolved` are the lines that follow the advisory list, so a
+        # regression puts them after the directive.
+        self._state(tmp_path, "")
+        (tmp_path / ".prawduct" / ".session-start").write_text("2026-01-01T00:00:00Z")
+        dismissed = self._adv("info", "ADV-D") | {
+            "state": "dismissed", "dismissed_at": "2026-01-02T00:00:00Z"
+        }
+        self._advisories(monkeypatch, self._adv("warn"), dismissed)
+        out = briefing.assemble_session_briefing(tmp_path, [])
+        block_lines = out.splitlines()
+        assert "Dismissed since last session" in out, "fixture must produce a trailing line"
+        relay_at = block_lines.index(briefing.ADVISORY_RELAY_TEXT)
+        dismissed_at = next(
+            i for i, ln in enumerate(block_lines) if "Dismissed since last session" in ln
+        )
+        assert relay_at > dismissed_at, "relay must follow every line of its block"
+
     def test_display_cap_can_never_hide_a_consequential_advisory(self, tmp_path, monkeypatch):
         # The block displays 5 of N. That cap can only mislead if a relay-priority
         # advisory is ever pushed out of the visible set — which the priority sort
@@ -701,8 +723,13 @@ class TestAdvisoryRelayDirective:
         out = briefing.assemble_session_briefing(tmp_path, [])
         assert briefing.ADVISORY_RELAY_MARKER in out
         assert "... and 2 more" in out, "expected 7 active with 5 displayed"
-        relayed_line_index = out.splitlines().index(briefing.ADVISORY_RELAY_TEXT)
-        shown = "\n".join(out.splitlines()[:relayed_line_index])
+        # Bound the "displayed" set by the overflow line rather than by the relay's
+        # position: the relay moved once already, and a proxy that tracks it would
+        # keep passing while measuring something else.
+        overflow_at = next(
+            i for i, ln in enumerate(out.splitlines()) if "... and 2 more" in ln
+        )
+        shown = "\n".join(out.splitlines()[:overflow_at])
         assert "ADV-LATE" in shown, "a warn must be inside the displayed set, not just relayed"
 
     def test_relay_names_no_internal_identifier(self, tmp_path, monkeypatch):

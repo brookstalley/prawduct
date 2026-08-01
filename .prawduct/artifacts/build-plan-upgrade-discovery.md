@@ -15,6 +15,15 @@ governed_by:
         disposition: applies
         note: >-
           Both relay directives are emitted text. Asserted by test, not just review.
+      - norm: "The governance ledger has a single writer (the `ledger-append` helper);
+          agents never hand-author it"
+        disposition: inapplicable
+        note: >-
+          Recorded rather than omitted: an absent entry reads as unconsidered, and
+          "inapplicable, because —" is a disposition. This plan touches no ledger
+          write path — the relay directives are session-start stdout, and the probe
+          registration changes which function the advisory roster calls. Nothing
+          here appends a ledger event by any route, hand-authored or otherwise.
 ---
 
 # Build plan — Upgrade discovery: make a shipped capability reachable by the human
