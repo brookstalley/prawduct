@@ -2449,7 +2449,7 @@ an unnarrowed claim sends the next picker to verify the wrong surface.
   `docs/work-model-spec.md` Part C and `docs/work-model-enforcement.md`.
 
 - **[LRN-3F8K]** Reconcile the dangling sentinel on the "Framework ownership follows the write strategy" learning
-  `effort: S · impact: S · area: learnings · source: critic · added: 2026-06-04 · status: open · stage: design · refs: .prawduct/learnings.md · reviewed: 2026-06-10`
+  `effort: S · impact: S · area: learnings · source: critic · added: 2026-06-04 · status: open · stage: design · related: LRN-8P3W · refs: .prawduct/learnings.md · reviewed: 2026-08-01`
 
   `audit-learnings` reports an error: the learning "Framework ownership follows the write strategy,
   not just registry membership" carries `sentinel=tests/test_prawduct_sync.py::TestAutoCommitSafety::test_user_authored_place_once_edits_treated_as_wip`,
@@ -2460,6 +2460,15 @@ an unnarrowed claim sends the next picker to verify the wrong surface.
   write-strategy-ownership contract still has a live equivalent test (repoint the sentinel to it), or
   the learning has outlived its mechanism (drop the sentinel annotation / retire the learning) — a
   one-line annotation fix once decided. Filed from the v2.0.7 release audit. (critic)
+
+  **Corroboration — third independent sighting, 2026-08-01** (learnings-firing Chunk 03, bulk
+  `--apply`; prior sightings: v2.0.7 release audit 2026-06-04, `feature/fleet-migration-triage-requirements`
+  wrap-up 2026-07-31). The reporter reached the same fix-shape conclusion unprompted: the learning is
+  about **file-sync write-strategy ownership, a subsystem that no longer exists**, which is evidence
+  for the *retire* branch rather than the *repoint* branch of the decision above. Recurrence across
+  three unrelated workflows (release audit, branch wrap-up, bulk learnings apply) is the case for
+  treating this as permanent per-run noise, not an occasional annoyance. Class half is **LRN-8P3W** —
+  work them together. (reflection)
 
 - **[STN-6K3D]** (Optional) Ship a non-forced `output-styles/` style power users can voluntarily select
   `effort: S · impact: S · area: agent-stance · source: builder · added: 2026-06-04 · status: open · stage: ready · reviewed: 2026-06-10`
@@ -3606,7 +3615,7 @@ an unnarrowed claim sends the next picker to verify the wrong surface.
   **Dedup note.** **BLD-7K3Q** (shipped 2026-07-26) fixed the same first-unchecked-Status inference for `verify-chunk-refs`, by giving `buildplan_refs` a git-derived current-chunk path. That fix never reached record-lint — and this item's ask is narrower anyway: the counters must not read clean when nothing was checked, independent of whether the inference is ever repaired.
 
 - **[LRN-8P3W]** `audit-learnings` cannot distinguish a DELETED sentinel from a FAILING one, so it blocks retirement forever and prints an impossible remedy
-  `effort: S · impact: M · area: learnings · kind: bug · source: reflection · added: 2026-07-31 · status: open · stage: design · related: LRN-3F8K, GOV-2H6X · refs: plugin/bin/prawduct-hook (`audit-learnings`), .prawduct/learnings.md (the "Framework ownership follows the write strategy, not just registry membership" entry and its `sentinel=` annotation), tests/ (no `test_prawduct_sync.py` — deleted at `814177e`, M4 / v2.0.3)`
+  `effort: S · impact: M · area: learnings · kind: bug · source: reflection · added: 2026-07-31 · status: open · stage: design · related: LRN-3F8K, GOV-2H6X · refs: plugin/bin/prawduct-hook (`audit-learnings`), .prawduct/learnings.md (the "Framework ownership follows the write strategy, not just registry membership" entry and its `sentinel=` annotation), tests/ (no `test_prawduct_sync.py` — deleted at `814177e`, M4 / v2.0.3) · reviewed: 2026-08-01`
 
   **Filed from the wrap-up of branch `feature/fleet-migration-triage-requirements` (scope `backlog-service-v1`), found while verifying learnings.md edits.**
 
@@ -3624,6 +3633,16 @@ an unnarrowed claim sends the next picker to verify the wrong surface.
   **Same CLASS as GOV-2H6X** — a check reporting a result whose *kind* is wrong, with a remedy the reader cannot act on. Cross-referenced deliberately: if that class gets a general treatment, both are instances of it.
 
   **Dedup note — LRN-3F8K is the INSTANCE half of this item and is already open (since 2026-06-04).** That item asks to reconcile this one dangling sentinel: repoint it to a live equivalent test, or drop the annotation / retire the learning — *"a one-line annotation fix once decided."* **This item is the generalizable half:** the audit misclassifies *any* deleted sentinel and emits an unactionable remedy, and fixing the one annotation would silence this instance while leaving the next deletion to reproduce it. Same instance/class split as GOV-5N8R. **Work them together — LRN-3F8K is the one-line reconciliation, this is the guard that stops it recurring** — and note that LRN-3F8K's own fix-shape decision ("has the learning outlived its mechanism?") is exactly the judgement this item wants the tool to stop obstructing.
+
+  **Corroboration — independently re-reported 2026-08-01** (learnings-firing Chunk 03, bulk `--apply`;
+  a third workflow after the v2.0.7 release audit and the `feature/fleet-migration-triage-requirements`
+  wrap-up). The re-report reached consequence (b) unaided — *"the current message advises the wrong
+  repair"* — and named the same fix: **`audit-learnings` must distinguish "sentinel test FAILS" from
+  "sentinel test DOES NOT EXIST"; they are different conditions with different repairs.** It also
+  characterizes the effect as **permanent noise in every audit run**, which sharpens consequence (c):
+  the cost is not just one pinned learning but a standing `error:` on every invocation, training
+  readers to ignore audit output. Recurrence across three unrelated workflows is the argument for
+  fixing the classification rather than silencing the instance. (reflection)
 
 - **[LRN-6C2X]** The learnings.md → learnings-detail.md same-heading pairing is a stated invariant with nothing enforcing it, and five entries already violate it
   `effort: M · impact: M · area: learnings · kind: tech-debt · source: reflection · added: 2026-07-31 · status: open · stage: design · related: LRN-4K8T, MET-6W3J, LRN-9K2P, LRN-7M4D, GOV-5N8R · refs: plugin/lib/record_lint.py (`_check_learnings_shape` — added-lines-only by design; see its docstring), plugin/bin/prawduct-hook (`audit-learnings`), .prawduct/learnings.md (its header states the invariant), .prawduct/learnings-detail.md`
@@ -3707,6 +3726,40 @@ an unnarrowed claim sends the next picker to verify the wrong surface.
   **Second acceptance criterion:** the four existing single-purpose mechanisms above should end up as *references to the general norm* rather than four independent inventions of it — otherwise the sweep reproduces the defect at the level of the rule itself.
 
   **Note on enforcement, so a later reader does not assume a lint is owed:** the Enforcement row is Critic-judgment-only. "Is this a second authoritative statement or a reference?" has no reliable mechanical hook for prose, and a lint that guessed would flag every legitimate quotation. Specific fact *classes* are mechanizable (`suite-total-claim` already is) — if the sweep finds another class worth mechanizing, that is a finding, not an assumed deliverable.
+
+- **[LRN-2D7Q]** prawduct's learnings corpus is project-scoped, so the framework ships NONE of its hard-won general rules to consuming products — every onboarded product re-learns from zero
+  `effort: M · impact: L · area: learnings · kind: feature · source: reflection · added: 2026-08-01 · status: open · stage: design · related: MET-8K4R, LRN-7M4D, LRN-6C2X, LRN-9K2P · refs: .prawduct/learnings.md (the project-scoped corpus that never leaves this repo), plugin/skills/learnings/SKILL.md:22-23 (the reader — its two sources are `.prawduct/learnings.md` and `.prawduct/learnings-detail.md`, both product-local; nothing plugin-side), plugin/bin/prawduct-hook:2014 (`_GREEN_IS_EVIDENCE_DIRECTIVE`) and plugin/lib/critic_consolidate.py:291 (`RESOLUTION_IS_A_CLAIM_DIRECTIVE`) — the ONLY promotion path that exists today, plugin/methodology/building.md and plugin/methodology/session-digest.md (the two guides at their token ceilings — the closed path), tests/test_v5_methodology.py:43 (`LAST_MEASURED_TOKENS` — the authoritative reading for those ceilings; re-run rather than re-cite), .prawduct/artifacts/architecture.md § Direction (the "every fact has one home" norm born 2026-07-31, which rules out a copy-at-onboard shape), plugin/lib/init_product.py (product scaffolding — where an onboard-time copy WOULD have gone, and deliberately should not)`
+
+  **The observation, verified 2026-08-01 rather than assumed.** `find plugin -iname '*learning*'` returns exactly two things — `plugin/lib/audit_learnings_cmd.py` and `plugin/skills/learnings/` — and neither is a corpus. `/prawduct:learnings` reads only `.prawduct/learnings.md` and `.prawduct/learnings-detail.md`, both product-local. So a product that onboards today inherits the *methodology* and the *gates*, and **none of the rules prawduct paid for.**
+
+  **Why today sharpened it.** The `learnings-firing` Chunk 03 work produced rules that are stack-agnostic and universally applicable, not prawduct-specific:
+  - green is evidence only about what could have made it red;
+  - a text-anchored edit changes a **neighborhood**, not a point;
+  - a `file:line` you did not resolve yourself is a claim;
+  - exactness is owed to a number something **relies on** for a decision.
+
+  No onboarded product will ever see any of them.
+
+  **The sharpest case is the text-anchored-edit rule**, and it is worth stating separately because it is the argument that this is a defect rather than a nice-to-have: that rule describes a defect *the agent's own `Edit` tool manufactures in every repo*. A product cannot learn it independently, because it does not present as a tool problem — it presents as a mystery regression. Every governed repo will hit it, and every one will diagnose it from scratch or not at all.
+
+  **Only one promotion path exists today, and it is narrow.** Code-delivered directives (`_GREEN_IS_EVIDENCE_DIRECTIVE`, `RESOLUTION_IS_A_CLAIM_DIRECTIVE`) do ship in plugin code and do fire in products — so the *capability* is proven. But that path only covers a rule that has a **moment** some plugin command runs at. A rule about how to read a diff, or when a number needs to be exact, has no such moment.
+
+  **The methodology-guide path is effectively closed, not merely tight.** `building.md` and `session-digest.md` are both at their token ceilings — headroom measured in single-digit tokens and single-digit characters as of 2026-08-01. (Re-derive from `tests/test_v5_methodology.py::LAST_MEASURED_TOKENS` rather than citing these words back; the digits are a snapshot and the table is the home.) Adding a general rule to a guide now costs an existing rule, which makes "just put it in the methodology" a zero-sum trade, not an option.
+
+  **PROPOSED SHAPE — for discussion. The owner has NOT ratified any of this.** A plugin-shipped corpus (`plugin/methodology/learnings-general.md`) that `/prawduct:learnings` **merges** with the product's own at query time, labelled by origin so a reader can tell a framework rule from a local one. Load-bearing detail: it is **read from the plugin at query time, never copied into the product at onboarding.** A copy drifts, and would violate the one-home-per-fact norm born 2026-07-31 — the same reason `architecture.md` says the plugin is read-only and never placed into a repo.
+
+  **Promotion should be mechanical, not editorial.** A `scope=general` key in the existing `prawduct-learning` metadata comment (additive-first, which the api-contract norm already blesses), plus a render step at release that makes the shipped file a **derived view** — the same `views_enabled` pattern this repo already uses. The point is that promotion is a property an author sets on a rule, not a separate curation pass someone has to remember to run.
+
+  **Three promotion tests, all of which must hold** for a rule to carry `scope=general`:
+  1. **stack-agnostic** — not about Python, this repo's layout, or any one toolchain;
+  2. **not about prawduct internals** — a rule about `critic-consolidate` is not general;
+  3. **about building software with an agent**, rather than about this codebase.
+
+  **Open risk to resolve in design:** token cost in consuming products as the corpus grows. Partial mitigation already exists — the `learnings` skill filters by topic via a subagent, so cost is bounded **at query time, not at session start**. That bound needs checking against a corpus several times today's size before it can be relied on, and the answer may constrain how permissive the three tests can be.
+
+  **Dedup note (checked at filing).** Searched for `learnings general`, `shipped corpus`, `scope=general`, `promote learnings`, `product inherits`, `consuming product`, `stack-agnostic`, and every `[LRN-*]` item; **no existing item covers this.** The nearest cousin is **MET-8K4R** — "should prawduct ship PROCESS *norms* as ratifiable defaults?" — which is the same *question shape* (a plugin-shipped body of rules with no delivery path into products) applied to **norms**, and whose owner ruling already settled the storage half: two stores, separate terminology, prawduct ships only constitutional norms plus *suggested defaults hoisted at onboard*. That ruling is directly relevant and possibly in tension with the query-time-merge shape proposed here — **whoever designs this must reconcile the two**, because a hoist-at-onboard answer for norms and a read-at-query-time answer for learnings need a stated reason to differ. `LRN-7M4D` (memory convergence, `stage: design`) governs which memory files are durable and would need to say where a plugin-shipped corpus sits; `LRN-6C2X` (the learnings/detail pairing invariant) and `LRN-9K2P` (heading modernization) both touch entry *shape* and would interact with a `scope=general` metadata key.
+
+  **`impact: L` is an inference, not a filer-supplied value** — the filer supplied `effort: M` only. Rated L because the surface is every onboarded product, forever, and the failure mode is silent (a product never learns what it never sees). Retag if the owner disagrees.
 
 ## Promoted
 

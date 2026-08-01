@@ -229,19 +229,59 @@ def _retirement_note(
     )
 
 
-def _historical_block(entry: LearningEntry, note: str) -> str:
+def _historical_block(
+    entry: LearningEntry, note: str, narrative: str = ""
+) -> str:
     """A retired entry as it appears in the historical section: title, its
     retirement note, then the body with the live lifecycle comment removed.
 
     The note sits directly under the title because that is where a reader who
     followed a stale reference looks first — a forwarding address buried below
     the body is one they read the whole entry to find.
+
+    ``narrative`` is the entry's pre-existing ``learnings-detail.md`` prose,
+    folded in here so retirement stays a MOVE. Without it the detail file grows
+    a second block under the same heading, and the *undecorated* one sorts
+    first — so `/prawduct:learnings`, which reads that file for Key Context,
+    returns a retired rule as current with no successor. That is precisely the
+    hole-that-reads-as-a-forwarding-address this lifecycle exists to prevent,
+    reintroduced one file over. Found by all three reviewers independently on
+    the first bulk `--apply` (2026-08-01), which duplicated 17 headings.
     """
     body = "\n".join(_strip_metadata_comment(entry.body_lines)).strip("\n")
     parts = [f"## {entry.title}", "", note]
     if body:
         parts += ["", body]
+    narrative = narrative.strip("\n")
+    if narrative:
+        parts += ["", narrative]
     return "\n".join(parts)
+
+
+def _take_active_narrative(lines: list[str], title: str, limit: int) -> str:
+    """Cut the ``## title`` block living ABOVE ``limit`` out of ``lines`` and
+    return its body. Mutates ``lines``. Returns ``""`` when there is none.
+
+    ``limit`` is the historical section's index, so a heading already archived
+    is never re-cut — otherwise a re-run would strip the note it wrote last
+    time. Matching is exact on the title, mirroring how the pairing is
+    maintained everywhere else; a heading that has drifted out of exact match
+    is left alone rather than guessed at, because cutting the wrong block
+    silently destroys an unrelated narrative.
+    """
+    start = None
+    for i in range(min(limit, len(lines))):
+        if lines[i].startswith("## ") and lines[i][3:].strip() == title:
+            start = i
+            break
+    if start is None:
+        return ""
+    end = start + 1
+    while end < limit and not lines[end].startswith("## "):
+        end += 1
+    body = "\n".join(lines[start + 1 : end]).strip("\n")
+    del lines[start:end]
+    return body
 
 
 def resolve_supersession_target(
@@ -690,17 +730,33 @@ def _detail_with_retirements(
             "See `learnings.md` for the active rule list.\n"
         )
 
+    # Cut each retiring entry's ACTIVE narrative out of the detail file before
+    # composing its historical block, so the prose MOVES rather than being
+    # duplicated under a second copy of the same heading. Done against a live
+    # `lines` list — and the historical boundary is re-found after every cut,
+    # because each removal shifts it upward.
+    lines = detail_content.split("\n")
+    narratives: list[str] = []
+    for entry, _note in retired_with_notes:
+        boundary = _find_historical_section(lines)
+        limit = boundary if boundary is not None else len(lines)
+        narratives.append(_take_active_narrative(lines, entry.title, limit))
+
     appended_blocks = "\n".join(
-        _historical_block(entry, note).rstrip("\n") + "\n"
-        for entry, note in retired_with_notes
+        _historical_block(entry, note, narrative).rstrip("\n") + "\n"
+        for (entry, note), narrative in zip(retired_with_notes, narratives)
     )
 
-    lines = detail_content.split("\n")
     start = _find_historical_section(lines)
     if start is None:
-        if not detail_content.endswith("\n"):
-            detail_content += "\n"
-        return detail_content + (
+        # Rebuild from `lines`, NOT from `detail_content` — the narratives were
+        # cut out of `lines`, and returning the original string here would put
+        # every one of them back while also writing its historical copy, which
+        # is the duplication this function now exists to prevent.
+        remaining = "\n".join(lines)
+        if not remaining.endswith("\n"):
+            remaining += "\n"
+        return remaining + (
             "\n" + _HISTORICAL_SECTION_HEADER + "\n\n"
             + _HISTORICAL_SECTION_BLURB
             + "\n" + appended_blocks

@@ -58,7 +58,29 @@ _STATE_TEMPLATES: list[tuple[str, str]] = [
 _SCAFFOLD_DIRS = (".prawduct", ".prawduct/artifacts", ".prawduct/.pr-reviews")
 
 _LEARNINGS_REL = ".prawduct/learnings.md"
-_LEARNINGS_STARTER = "# Learnings\n\nAccumulated wisdom from building this product.\n"
+
+#: The starter corpus carries the descent obligation from the very first
+#: session, because `/prawduct:learnings` instructs its caller to apply "the
+#: obligation marked `prawduct:descent-obligation`" — a pointer that resolves
+#: in the framework repo and, before this, nowhere else. Every onboarded
+#: product got an instruction aimed at a file that had no such marker.
+#: The marker is what the skill and the guard both key on; the prose beneath
+#: it is free to be reworded, and a product may rewrite it entirely.
+_LEARNINGS_STARTER = (
+    "# Learnings\n\n"
+    "Accumulated wisdom from building this product. Entries use "
+    '"When X, do Y because Z" format, and each rule carries its instances '
+    "inline — they are what a reader pattern-matches their own case against.\n\n"
+    "<!-- prawduct:descent-obligation — the statement below is the HOME of the\n"
+    "     descent rule; `/prawduct:learnings` points here rather than restating\n"
+    "     it. Reword the prose freely; keep this marker, above the first rule. -->\n\n"
+    "**Reading a rule is not applying it.** The failure mode of a learnings file "
+    "is not absence, it is assent: a rule arrives at the right moment, is read, "
+    "is agreed with, and changes nothing, because nothing made you recognize the "
+    "case in hand as an instance of it. So for any rule you read here, name the "
+    "decision you are about to make and say what the rule changes about it — or "
+    "say that it does not apply, which is also an answer.\n"
+)
 
 
 def _subs(name: str) -> dict[str, str]:

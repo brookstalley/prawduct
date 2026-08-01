@@ -1280,6 +1280,105 @@ class TestLifecycleMetadataLivesWhereItsReaderLooks:
         )
 
 
+class TestRetirementMovesTheDetailNarrative:
+    """Retirement is a MOVE, and the detail narrative has to move with it.
+
+    Before 2026-08-01 `_apply_retirements` rewrote `learnings.md` and appended a
+    historical block to `learnings-detail.md` — but never touched the entry's
+    EXISTING narrative in that same file. In this corpus the prose lives there
+    under the identical heading, so the first bulk `--apply` produced 17
+    duplicated headings, and the **undecorated** copy sorts first.
+
+    That is worse than untidy. `/prawduct:learnings` reads the detail file for
+    Key Context, so the copy a reader reaches first presents a retired rule as
+    current and carries no forwarding address — the exact hole that
+    `resolve_supersession_target` fails closed to prevent, reintroduced one file
+    downstream of the check. All three reviewers found it independently.
+    """
+
+    def _apply(self, tmp_path: Path, learnings: str, detail: str) -> str:
+        _seed_learnings(tmp_path, learnings)
+        (tmp_path / ".prawduct" / "learnings-detail.md").write_text(detail)
+        audit_learnings(tmp_path, apply=True, today=date(2026, 8, 1))
+        return (tmp_path / ".prawduct" / "learnings-detail.md").read_text()
+
+    def test_the_narrative_moves_instead_of_being_duplicated(self, tmp_path):
+        out = self._apply(
+            tmp_path,
+            "# Learnings\n\n## Old rule\n"
+            "<!-- prawduct-learning: superseded-by=New rule -->\n\n## New rule\n",
+            "# Detail\n\n## Old rule\n\nThe original narrative prose.\n",
+        )
+        assert out.count("## Old rule") == 1, (
+            "the retired heading appears twice — the undecorated copy sorts "
+            "first and reads as a current rule with no successor"
+        )
+        assert "The original narrative prose." in out, "narrative was dropped"
+        assert "superseded by **New rule**" in out
+        moved = out.index("The original narrative prose.")
+        assert moved > out.index("superseded by **New rule**"), (
+            "the narrative should sit under the retirement note, so a reader "
+            "who followed a stale reference meets the forwarding address first"
+        )
+
+    def test_an_entry_with_no_detail_narrative_still_retires(self, tmp_path):
+        out = self._apply(
+            tmp_path,
+            "# Learnings\n\n## Old rule\n"
+            "<!-- prawduct-learning: superseded-by=New rule -->\n\n## New rule\n",
+            "# Detail\n\n## Some other rule\n\nUnrelated prose.\n",
+        )
+        assert out.count("## Old rule") == 1
+        assert "Unrelated prose." in out, "an unrelated narrative was cut"
+
+    def test_an_already_archived_block_is_never_re_cut(self, tmp_path: Path):
+        """The `limit` guard's own case, and it is destructive when absent.
+
+        When a heading exists ONLY in the historical section — a rule retired,
+        later re-added under the same title, now retiring again — an unbounded
+        search finds the archived block and cuts it, destroying the previous
+        retirement's forwarding address to write a new one. Nothing else in
+        this class covers it: every other fixture has an ACTIVE narrative,
+        which the forward search reaches first either way, so all of them stay
+        green with the guard removed. Written after a mutation proved that.
+        """
+        out = self._apply(
+            tmp_path,
+            "# Learnings\n\n## Old rule\n"
+            "<!-- prawduct-learning: superseded-by=New rule -->\n\n## New rule\n",
+            "# Detail\n\n## Historical (structurally enforced)\n\n"
+            "## Old rule\n\n*Retired 2019-01-01 — superseded by **Ancient rule**.*\n",
+        )
+        # A substring check cannot see this defect: an unbounded search deletes
+        # the archived HEADING while its note survives, orphaned under whatever
+        # heading precedes it. So assert the structural property — the old
+        # forwarding address must still sit under its own title.
+        lines = out.splitlines()
+        note_at = next(i for i, ln in enumerate(lines) if "Ancient rule" in ln)
+        owner = next(
+            (lines[i] for i in range(note_at, -1, -1) if lines[i].startswith("## ")),
+            None,
+        )
+        assert owner == "## Old rule", (
+            f"the 2019 forwarding address is now filed under {owner!r} — its "
+            "archived heading was cut and reused, so a reader following the "
+            "older reference lands on the wrong entry"
+        )
+
+    def test_a_retained_entrys_narrative_is_never_cut(self, tmp_path):
+        out = self._apply(
+            tmp_path,
+            "# Learnings\n\n## Old rule\n"
+            "<!-- prawduct-learning: superseded-by=New rule -->\n\n## New rule\n",
+            "# Detail\n\n## New rule\n\nThe successor's own prose.\n",
+        )
+        assert "The successor's own prose." in out
+        assert out.count("## New rule") == 1, (
+            "the SUCCESSOR's narrative was moved into the archive — only the "
+            "retiring entry's prose may be cut"
+        )
+
+
 class TestDescentObligationReachesTheReader:
     """The corpus's standing read-instruction, pinned by POSITION and POINTER.
 
@@ -1333,6 +1432,27 @@ class TestDescentObligationReachesTheReader:
             f"the descent obligation (line {marker_at + 1}) sits BELOW the "
             f"first rule (line {first_rule + 1}) — a reader meets it after the "
             "rules it governs, which is the inertness it exists to prevent."
+        )
+
+    def test_a_newly_onboarded_product_gets_the_home_too(self):
+        """The pointer must resolve in PRODUCTS, not only in this repo.
+
+        `/prawduct:learnings` ships with the plugin and tells its caller to
+        apply the obligation "marked `prawduct:descent-obligation`". The guard
+        above reads *this repo's* learnings.md, so it stayed green while every
+        newly onboarded product received an instruction aimed at a starter file
+        that had no such marker — a framework-repo-only feature with a
+        framework-repo-only test, which is the corpus's own "a test asserting
+        the framework repo's OWN state instead of the propagated contract"
+        failure. Assert the contract that reaches consumer repos.
+        """
+        init_product = self._repo_root() / "plugin" / "lib" / "init_product.py"
+        if not init_product.is_file():
+            pytest.skip("no init_product.py in this checkout")
+        assert self.MARKER in init_product.read_text(), (
+            f"the starter learnings.md carries no `{self.MARKER}` marker, so "
+            "/prawduct:learnings ships every onboarded product a pointer at a "
+            "hole."
         )
 
     def test_the_skill_references_the_home_and_does_not_copy_it(self):

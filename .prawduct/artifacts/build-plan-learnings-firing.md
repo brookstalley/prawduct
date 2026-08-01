@@ -34,12 +34,16 @@ last_validated: 2026-07-31
 
 ## Problem
 
-`.prawduct/learnings.md` holds 159 rules. A product repo (discodon) running the latest
+`.prawduct/learnings.md` held 159 rules when this plan was authored (2026-07-29); Chunk 03's
+collapse brought it to 149 on 2026-08-01. Recompute rather than cite either:
+`grep -c '^## ' .prawduct/learnings.md`. A product repo (discodon) running the latest
 prawduct spent one cycle whose retrospective — `documentation/LEARNINGS_VERIFYING_TEST_
 INFRASTRUCTURE.md` in that repo — records four false claims and twelve Critic rounds. Every
 one of those failures was already covered by a rule in this file.
 
-The decisive evidence is line 292:
+The decisive evidence is the rule *Anything in a durable artifact that one command could check
+is a CLAIM*, which read as follows when this plan was authored (Chunk 03 amended it in place on
+2026-08-01 to absorb two retiring members; grep the heading rather than a line number):
 
 > Anything in a durable artifact that one command could check is a CLAIM — including an
 > identifier, a count, or a facet value, not just a rationale.
@@ -158,7 +162,7 @@ directive does not address (*entering* a round versus batching *within* one).
 ## Scaffolding
 
 **Family membership is derived, never transcribed.** Both counts in this plan come from
-`scripts/learning-families.py` (added in Chunk 03), which classifies by heading text and prints
+`tests/spikes/learning_families.py` (added in Chunk 03), which classifies by heading text and prints
 the roster. Cite the command, never the digits.
 
 ## Verification Strategy
@@ -170,7 +174,7 @@ the roster. Cite the command, never the digits.
   sentinel retires under `--apply`; the historical entry carries the forwarding pointer; a
   `superseded-by=` naming a heading that does not exist is an error, not a silent retirement.
 - **Chunk 03** — the collapse is executed *through* Chunk 02's mechanism, which dogfoods it.
-  `scripts/learning-families.py` re-run after the collapse is the completeness check.
+  `tests/spikes/learning_families.py` re-run after the collapse is the completeness check.
 
 ## Build Chunks
 
@@ -329,7 +333,7 @@ the roster. Cite the command, never the digits.
      text-anchored Edit tool manufactures, and nothing in the corpus covers it.
 
   **(b) The collapse — merge the statements, union the instances.** Write
-  `scripts/learning-families.py` to classify the corpus, then produce a per-rule keep/merge map
+  `tests/spikes/learning_families.py` to classify the corpus, then produce a per-rule keep/merge map
   for both families. The assertion family merges into existing line 292; the
   discriminating-test family merges into the new rule (1) above.
 
@@ -366,7 +370,7 @@ the roster. Cite the command, never the digits.
   that a rule agreed with and not applied to the case in hand has done nothing — added where
   learnings are *read*, not repeated per rule. Owner ruling 2026-07-31: structural once, plus an
   inline apply-it-here clause on the code-delivered directives only (Chunk 01(a) and 01(b) each
-  ship one). Repeating an exhortation across 159 rules reproduces the inertness one level up;
+  ship one). Repeating an exhortation across every rule reproduces the inertness one level up;
   stored rules carry instances instead, which do the same work at lower cost per rule.
 
   **Built 2026-08-01. One spec correction, owner-decided, and it changes acceptance criterion 3.**
@@ -396,7 +400,7 @@ the roster. Cite the command, never the digits.
 - **Depends on:** Chunk 02 (the mechanism the collapse executes through)
 - **Artifacts consumed:** the discodon retrospective; `learnings.md`; `learnings-detail.md`
 - **Deliverables:** two new rules with narratives in `learnings-detail.md`;
-  `scripts/learning-families.py`; the approved collapse applied via `audit-learnings --apply`;
+  `tests/spikes/learning_families.py`; the approved collapse applied via `audit-learnings --apply`;
   the standing read-instruction from (c)
 - **Tests:** the family script re-run post-collapse is the completeness check; the retirement
   path is already tested by Chunk 02

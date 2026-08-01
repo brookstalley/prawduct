@@ -10,7 +10,12 @@ last_validated: 2026-08-01
 
 **Applied 2026-08-01.** The owner approved this map, then amended its *shape* the same day
 (below) before `audit-learnings --apply` ran. Seventeen members retired by supersession;
-the corpus went **159 → 149**.
+the collapse took the corpus **159 → 149**.
+
+> `grep -c '^## ' .prawduct/learnings.md` returns **150**, not 149, and that is not drift: one
+> unrelated rule (*exactness is owed to a number something RELIES ON for a decision*) was added
+> later the same day from an owner correction during this chunk's own reflection. Recompute
+> rather than cite; the 159 → 149 figure describes the collapse, not the corpus's current size.
 
 Rosters are derived, never transcribed: `python3 tests/spikes/learning_families.py`.
 
@@ -132,9 +137,15 @@ fails closed and retains the entry, which is the right posture. Filed for repair
 
 ## Verification
 
-- `python3 tests/spikes/learning_families.py` — family 'assertion' 11 → 4 candidates,
-  'discriminating' 10 → 4. Both destinations now exist, so `FAMILY_GENERALS` names both and the
-  `None` case in that script is retired with them.
+- `python3 tests/spikes/learning_families.py` — **run it; do not read a number here.** Both
+  families are reduced to their destination cluster plus the explicit keeps. Both destinations
+  now exist, so `FAMILY_GENERALS` names both and that script's `None` case retires with them.
+
+  The figures originally transcribed into this line were *wrong within the hour* — 'discriminating'
+  was written as 4 and is 3 — because the roster moves with every entry edited while a sentence
+  does not. That is learning 322 (*commit the derivation, cite the command, never the digits*)
+  failing on the very artifact discharging the acceptance criterion it governs, and it is the
+  second time on this branch a count in prose went stale between writing and review.
 - All **17** forwarding pointers in `learnings-detail.md` resolve against the active corpus
   (0 unresolvable).
 - No lifecycle metadata drifted into the detail file —
