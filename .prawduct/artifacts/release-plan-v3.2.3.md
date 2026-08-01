@@ -63,8 +63,12 @@ existed; it is kept as the historical record rather than overwritten. Current st
 
 ```
 releasable: no release-pending scopes — nothing to classify
-  (227 change-log entries scanned, 206 tagged, 5 scope(s) already tagged release=v3.2.3).
+  (228 change-log entries scanned, 207 tagged, 6 scope(s) already tagged release=v3.2.3).
 ```
+
+Re-measured again when `junit-leaf-counting` joined as the sixth scope — the counts above are the
+current ones. A measurement quoted in a plan goes stale every time the release grows, so treat the
+block as a snapshot with a date, not a standing fact.
 
 Per `cut-and-publish-a-plugin-release.md` step 0, `no release-pending scopes — nothing to classify`
 takes the **same whole-develop promotion path** as `K withheld = 0`. The reasoning above still holds

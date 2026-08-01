@@ -1544,6 +1544,90 @@ class TestJunitLeafCounting:
 """)
         assert (ev["passed"], ev["failed"], ev["skipped"]) == (5, 1, 0)
 
+    def _record_many(self, repo: Path, *xmls: str) -> dict:
+        args = []
+        for i, xml in enumerate(xmls):
+            path = repo / f"report{i}.xml"
+            path.write_text('<?xml version="1.0" encoding="utf-8"?>\n' + xml)
+            args += ["--from-junit", str(path)]
+        _run_in(repo, "test-evidence", "record", *args)
+        return json.loads((repo / ".prawduct" / ".test-evidence.json").read_text())
+
+    def test_summary_only_suite_survives_alongside_a_populated_one(self, tmp_path):
+        # One report can mix shapes: a populated suite plus one that died before
+        # emitting any <testcase> and carries only attributes. Choosing
+        # leaf-vs-attribute once for the whole ingest drops the second entirely —
+        # and with it a real error.
+        ev = self._record(self._repo(tmp_path), """
+<testsuites>
+  <testsuite name="ok" tests="2" failures="0" errors="0" skipped="0" time="1.0">
+    <testcase name="a"/><testcase name="b"/>
+  </testsuite>
+  <testsuite name="died" tests="1" failures="0" errors="1" skipped="0" time="0.0"/>
+</testsuites>
+""")
+        # 2 leaves plus the summary-only suite's 1 error. A global switch reports
+        # (2, 0, 0) here — a broken run recorded as green.
+        assert (ev["passed"], ev["failed"], ev["skipped"]) == (2, 1, 0)
+
+    def test_mixed_multi_report_ingest_keeps_every_failure(self, tmp_path):
+        # `--from-junit` is repeatable — the documented multi-environment on-ramp.
+        # One runner emitting leaves and another emitting a summary-only report is
+        # the shape that turns a global leaf/attribute switch into a FALSE GREEN:
+        # `failed` drives this command's exit status AND `tests_are_current`, so a
+        # dropped failing environment would let the stop gate pass.
+        ev = self._record_many(
+            self._repo(tmp_path),
+            """
+<testsuites><testsuite name="leafy" tests="2" failures="0" errors="0" skipped="0" time="1.0">
+  <testcase name="a"/><testcase name="b"/>
+</testsuite></testsuites>
+""",
+            """
+<testsuites><testsuite name="summary" tests="5" failures="2" errors="0" skipped="0" time="3.0"/></testsuites>
+""",
+        )
+        assert (ev["passed"], ev["failed"], ev["skipped"]) == (5, 2, 0)
+
+    def test_skipped_loses_to_failure_in_the_precedence_chain(self, tmp_path):
+        # The precedence rule claims `skipped` loses to BOTH <error> and <failure>.
+        # The error half is pinned above; this pins the failure half, so reordering
+        # the chain to test `skipped` first cannot pass silently.
+        ev = self._record(self._repo(tmp_path), """
+<testsuites><testsuite name="p" tests="2" failures="0" errors="0" skipped="0" time="1.0">
+  <testcase name="ok"/>
+  <testcase name="both"><skipped/><failure message="f"/></testcase>
+</testsuite></testsuites>
+""")
+        # The dual case is a failure, never a skip: (1, 1, 0), not (1, 0, 1).
+        assert (ev["passed"], ev["failed"], ev["skipped"]) == (1, 1, 0)
+
+    def test_malformed_count_attribute_exits_two_not_traceback(self, tmp_path):
+        # Every other bad-report path here exits 2 with a named cause. A
+        # non-numeric `tests=` must not be the one that tracebacks instead.
+        repo = self._repo(tmp_path)
+        junit = self._write(repo, """
+<testsuites><testsuite name="bad" tests="oops" failures="0" errors="0" skipped="0" time="1.0"/></testsuites>
+""")
+        res = _run_in(repo, "test-evidence", "record", "--from-junit", str(junit))
+        assert res.returncode == 2, res.stderr
+        assert "malformed count attribute" in res.stderr
+        assert "Traceback" not in res.stderr
+
+    def test_empty_count_attribute_reads_zero(self, tmp_path):
+        # `tests=""` is absent-with-extra-steps, not malformed: it must read 0 and
+        # let the run record, rather than taking the exit-2 path a non-numeric
+        # value earns. Without that distinction this report fails to record at all.
+        ev = self._record(self._repo(tmp_path), """
+<testsuites>
+  <testsuite name="leafy" tests="1" failures="0" errors="0" skipped="0" time="1.0">
+    <testcase name="a"/>
+  </testsuite>
+  <testsuite name="blank" tests="" failures="" errors="" skipped="" time="0.0"/>
+</testsuites>
+""")
+        assert (ev["passed"], ev["failed"], ev["skipped"]) == (1, 0, 0)
+
 
 class TestFromCountsIngest:
     """`record --from-counts passed=N failed=M skipped=K [duration=S]` records
