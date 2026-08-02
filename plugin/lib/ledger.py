@@ -32,10 +32,14 @@ to pass ``--findings <path>`` (the branch-derived evidence path the
 ``actor.model`` come from the findings record / ``--model`` — both
 nullable, never invented.
 
-**Scope attribution.** ``--scope`` is passed EXPLICITLY by the reviewer from
-the plan it reviewed against; the ``active_build_plan`` pointer is only the
-fallback, because side-plans (a feature branch whose plan isn't the pointed-at
-one) would otherwise mis-attribute the feature key.
+**Scope attribution.** ``--scope`` comes from the dispatch manifest, where
+``critic-begin`` recorded it — derived in CODE from the branch name matched
+against the scopes build plans declare, or passed explicitly as an override.
+The ``active_build_plan`` pointer is only the last fallback, because
+side-plans (a feature branch whose plan isn't the pointed-at one) would
+otherwise mis-attribute the feature key. It used to say the *reviewer* passes
+it explicitly; having the agent derive attribution from the pointer is what
+misattributed manifests, review facts and ledger events to unrelated plans.
 
 Size is unbounded-but-tiny (one line per event). If a long-lived repo ever
 needs pruning, truncate oldest-first by line — every line is self-contained;

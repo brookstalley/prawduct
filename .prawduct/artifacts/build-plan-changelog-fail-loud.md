@@ -9,6 +9,16 @@ last_validated: 2026-07-02
 
 # Build Plan — changelog-fail-loud (Wave 1 Plan B, VWS-6R4T)
 
+> **Historical record — partially superseded 2026-08-01.** This plan shipped, and what it built is
+> still in force in substance: *no silent partial flips*. What changed is the GRANULARITY. The
+> regen-views-is-advice ruling moved the unit of atomicity from the **run** to the **view**, so the
+> "any validation error → exit 2, nothing written" contract described below now holds only for
+> errors no single view owns (an unrecognized `status=`, conflicting tag lines). The three
+> scope-local classes — roster miss, unreleased scope with no plan file, duplicate scope — withhold
+> that one scope's `## Status` and exit **3**, having written every other view. Read the assumption
+> block below as the reasoning of its time; read `.prawduct/learnings.md`
+> [[regen-views-is-advice]] and `documentation/release-process.md` for the current contract.
+
 Parent requirement: `.prawduct/artifacts/framework-efficiency-review-2026-07-02.md`
 (Wave 1 Plan B, Overbuilt #2). Backlog: VWS-6R4T (related REL-3M7K; the item's named
 overlaps REL-9F2T, VWS-4D8J, VWS-7N3K are all already shipped/archived — nothing to fold).

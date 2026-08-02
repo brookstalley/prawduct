@@ -1555,7 +1555,16 @@ def _check_previous_session_gates(project_dir: Path) -> list[str]:
     # composed-coverage verdict cmd_stop blocks on (kernel-v3 chunk 04), so
     # the advisory and the blocking gate can never diverge. Advisory tone:
     # one warning line, not the full remedy text.
-    has_build_plan = gates._has_active_build_plan_file(prawduct_dir) or gates._has_build_plan_in_state(prawduct_dir)
+    # Resolved from the BRANCH's plan, exactly as `cmd_stop` does. The comment
+    # above promises this advisory and the blocking gate can never diverge —
+    # reading the pointer here while the gate reads the branch is precisely a
+    # divergence, and in the silent direction: the advisory would say nothing
+    # at session start about the gate that blocks at session end.
+    gate_plan = buildplan_refs.resolve_branch_plan(project_dir, prawduct_dir).path
+    has_build_plan = (
+        gates._has_active_build_plan_file(prawduct_dir, gate_plan)
+        or gates._has_build_plan_in_state(prawduct_dir)
+    )
     if has_build_plan and not doc_only and "critic" not in waivers and gitstate.git_has_code_changes(project_dir, status_output):
         verdict = gates.session_review_verdict(project_dir)
         status = verdict.get("status")

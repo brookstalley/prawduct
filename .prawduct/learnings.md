@@ -21,11 +21,26 @@ dropping them.
 
 ---
 
+## RULING (regen-views-is-advice) — when two norms reach one command, its OUTPUT decides the posture: a writer whose only product is a DERIVED VIEW fails soft one view at a time, because no gate reads a view to reach a verdict. Soft is not blanket — input it cannot interpret at all still fails closed. Skip-and-report a bad view, never write it half-right
+<!-- anchor: regen-views-is-advice — linked from architecture.md and data-model.md Rulings: -->
+
+## `grep -rn <new symbol> tests/` before calling a behaviour change done — a guard with no test is one a regression deletes silently. Three rounds running found that, the last two in code written to FIX the previous instance: applying a rule to the finding in front of you is not applying it to the code you write while applying it
+
+## Enumerate the sites answering a question by GREP, never by memory — a fix that threads a resolved value through the two call sites you remembered leaves the third reading the old source, and the comment you write above it ("both fields") is accurate for exactly one commit. Same shape as the bug being fixed, one field over
+
+## A fix ships TWO artifacts that can independently be false — the change, and the evidence that it works. This branch put every defect in the second: a test that could not see the bug it pinned, then a comment asserting the rule its own assertion disproves. When you fix something, sweep the NEIGHBOURING PROSE in the same pass, or a reviewer finds it one comment at a time
+
+## A mutation test is only evidence if the MUTANT IS THE DEFECT — hand-reverting to "something wrong" tests nothing. Restore the code that actually shipped the bug, gate conditions included: drop a guard the real defect sat behind and the test exercises a path the bug never reached, passing against the very code it was written to catch
+
+## A dry run that validates IDENTICALLY to the real run is not a safety device — it is where drift hides, because it reports clean while the artifact it checks rots. Delete the mode and always write. Tell: the check and the real command share a validation path and differ only in whether they persist
+
 ## Before implementing against a mechanism, grep the BACKLOG for that mechanism's name — and when claiming something is "provably equivalent," name the proposition the proof actually establishes, because equivalence under one model is not equivalence under the one that governs behaviour
 
 ## Under a single-parent promotion model, "did this ship?" is a question about TREE CONTENT and never about ancestry — `git tag --contains` cannot return a positive answer for any scope, so it fails as a confident false negative, and the content test needs a control that fails plus a functional-surface target
 
 ## The fix for a review finding needs the same adversarial pass as the original work — dispatch a delta review of the fix commit, because "I am correcting a known defect" feels like lower-risk work than writing new code and the verification reflex relaxes exactly where the last round proved it shouldn't
+
+## Justify at the ALTITUDE OF THE DECISION, never the mechanism — a mechanism claim carries the same verification duty as the instruction it supports but escapes the check by reading as commentary. Test: must the reader reason PAST this instruction? No → mechanism is liability; yes (a norm, a recorded decision) → verify it like code. Same species as over-precise counts. Altitude, never omission
 
 ## A finding of the form "A is pinned, B is not" is discharged by PINNING B, never by changing B — changing shipped behaviour to satisfy the letter of such a finding relocates the asymmetry from the code to the test layer, where the next review finds it again and charges you another round against a P0 wall-clock budget. Generalise it: the fix commit carries the cheap check that closes the loop it opens — the test beside the moved behaviour, the parser run before a hand-authored machine-parsed record — because a check deferred to the review that follows costs a whole review run to deliver
 

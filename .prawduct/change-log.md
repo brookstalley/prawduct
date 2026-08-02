@@ -3,6 +3,220 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-08-01: a review now knows which plan it is of, and which tree it looked at
+
+<!-- prawduct: type=fix | scope=backlog-burndown | chunks=03 -->
+
+Five defects in the Critic's dispatch path, all of the same family: **a question answered from two
+places with nothing checking they agree.** `#206`, `#208`, `#218`, `#288`, `#344`.
+
+**Which plan.** The chunk id came from the dispatch manifest and the plan came from
+`active_build_plan`. Those are different questions — the pointer means "which plan is in progress in
+this repo", which on a repo running several plans across worktrees is not "which plan is this review
+of". When they diverge the deliverable check grades another plan's chunk and answers zero, and zero
+is the shape of a clean result. `scope` was already a live local in `begin_review` and already
+written into the manifest; it is now threaded into `record_lint`, which prefers the plan that scope
+names. A scope naming *no* plan is the `unchecked` case, because falling back to the pointer there is
+the silent grade this closes.
+
+**And which plan the record says.** `critic-begin` now derives `scope` itself when the dispatch omits
+it — the branch name's last segment, accepted only when a plan under `artifacts/` declares it — and
+records the choice as `scope_chosen_by`. A branch matching nothing infers nothing, and a branch
+matching a plan with no unchecked chunk is rejected too (sharp under `views_enabled`, where boxes
+flip at release; elsewhere it lapses between the last tick and the merge) — so the guarantee is
+bounded rather than absolute: a
+branch named after an unfinished plan it is not building will be attributed to that plan, and
+explicit `--scope` is the remedy. That closes the manifest, the review fact and the ledger
+event in one change: the ledger already preferred the manifest's scope, and the fact always carried
+it. The `/prawduct:critic` SKILL no longer derives scope from the pointer, which is where the
+misattribution entered.
+
+**Counts stopped lying by omission.** A check that could not run counted `0`, identical to a check
+that ran clean — and a tally gets quoted without the caveat printed above it. Each entry in `counts`
+is now an integer or `null`, `chunk-ref-missing` is `null` exactly when `chunk_graded` is, and the
+dispatch line names what did not run instead of listing every check as run.
+
+**Which tree.** `verify-resolutions` chose its head anchor from a *commit-set* diff while the refusal
+guard tested a *tree* delta. The two disagree on exactly one flow, and it is the documented one: a
+review of a dirty tree vouches for the commit that materializes it verbatim, and that vouching commit
+made the commit set non-empty while the trees stayed identical — so the anchor moved to committed
+HEAD, the delta computed empty, and dispatch refused with "nothing changed since" over a working tree
+holding unreviewed work. Intent is now tree inequality. A commit that changes no content is not a
+change of intent. The refusal that remains names the anchor and both tree hashes.
+
+**Which lineage.** Anchors were checked for *resolution* only, and worktrees of one clone share an
+object store, so a sibling branch's anchor resolved fine and latched a pass onto a cross-branch
+delta. Rules 1 and 1b and the dispatch-side prior fact now require `merge-base --is-ancestor`,
+failing closed — not-an-ancestor and any git failure demote alike. (This does not close the
+same-lineage cross-bundle case, where the anchor genuinely *is* an ancestor.)
+
+**Mode inference.** Rule 4 returned `chunk` on a clean tree, whose interval is empty, so dispatch
+refused and the caller re-dispatched by hand. It now redirects to `cumulative` — but only when
+cumulative would itself have something to review, since swapping one refusal for another buys
+nothing. Rule 4 also grounds on *this branch's* plan when the branch names one, and says in its
+rationale when the pointer is standing unconfirmed; that rationale is what lands in `mode_chosen_by`.
+
+A docstring naming `_verify_resolutions_gate_check`, deleted in the kernel-v3 cutover, is repointed
+at the surviving mechanism.
+
+**What the Critic changed.** Four of its findings were the same species as the chunk's own subject —
+a question still answered from two places — which is why they are folded in here rather than
+deferred:
+
+- The branch→scope match now also requires the matched plan to have an **unchecked chunk**. Without
+  it every released plan a long-lived repo accumulates was a live target, so a branch named after a
+  shipped scope could attribute a review to it and raise a BLOCKING `chunk-ref-missing` about
+  deliverables that shipped months ago. The `[DECISION:]` block claiming the inference "can only ever
+  ADD attribution" was corrected too — that holds for the no-match case only, and the residual case
+  (a branch named after an *unfinished* plan it is not building) is now stated rather than implied.
+- Rule 4's clean-tree redirect asked "is there uncommitted **code**" while its premise is "is the
+  interval empty". Those differ by exactly a record-only work cycle: uncommitted plan and change-log
+  edits are in `chunk`'s interval, so the redirect would have excluded the records just written and
+  written "working tree is clean" into `mode_chosen_by` — a durable field of the review fact — over a
+  dirty tree. Rule 2 keeps the metadata-blind predicate deliberately, and now says why.
+- The Stop hook read the chunk's `Type:` through the pointer while `Critic mode:` came from the
+  branch's plan — two chunk-level fields from two plans, this chunk's defect one field over. Both now
+  resolve from one plan.
+- The `null`-count **renderings** — the operator-facing half of the whole change — had no test.
+
+**Scope admission.** #533 (publish `INSTALL_REFERENCE` as a stable surface) was added to Chunk 04 at
+owner request, taking the batch from sixteen items to seventeen. No code for it lands here; the plan
+carries the deliverable, its test shape and its acceptance criteria.
+
+## 2026-08-01: regen-views is advice, not authority — one mode, and one bad scope no longer freezes every view
+
+<!-- prawduct: type=fix | scope=backlog-burndown | chunks=02 -->
+
+Defects in how the runtime decides what a build plan is and what it says, plus the owner-requested
+collapse of `regen-views` to a single always-writing mode. `#201`, `#211`, `#224`, `#327`, `#333` —
+the item count and the defect count differ because `#201` alone carries several legs.
+
+**The ruling came first, and it is the substantive change.** `#201`'s fourth leg asked to stop
+`regen-views` failing closed on one unresolvable scope — but the fatality was a *ratified* choice
+(VWS-6R4T), and two `## Direction` norms pointed opposite ways: `architecture.md`'s *authority fails
+closed; advice fails soft* against `data-model.md`'s *derived views are never authoritative*. Ruled at
+the category level: **a command's failure posture follows what it produces.** The authority norm's why
+is that a verdict must not be satisfiable by feeding it garbage, which reaches a command only where a
+verdict exists to corrupt; `regen-views` emits none and no gate reads its output. So it is advice, and
+the unit of atomicity moves from the **run** to the **view**. VWS-6R4T's actual content — *no silent
+partial flips* — is preserved, not reversed: a view whose inputs are invalid is skipped and reported,
+never written half-right. Recorded in `learnings.md` with precedence on both norms.
+
+Concretely: a scope-local error (no plan file, duplicate scope, a `chunks=` ID missing from its
+roster) now suppresses only that scope's `## Status` and exits **3**, while release-notes and
+scope-rollups — which have no plan-roster dependency at all — are still written. A global error
+(unrecognized `status=`, conflicting tag lines) still exits 2 with nothing written, because an entry
+that cannot be interpreted leaves a view half-right rather than absent.
+
+**Plan discovery was non-recursive at both glob sites**, so a repo organizing plans as
+`artifacts/plans/<id>/build-plan.md` had every one invisible — four surveyed repos carry 16 nested
+plans each, and the largest was safe only because `views_enabled` was unset. The two sites were
+line-for-line twins whose docstrings each warned they must not diverge; they had, on 2026-08-01. Both
+now consume one `iter_scoped_plan_candidates`, so the divergence is structurally impossible rather
+than documented. Duplicate-scope messages report paths relative to `artifacts/`, because nesting makes
+`build-plan.md` a near-certain name collision.
+
+**`--check` is deprecated, not deleted.** `api-contract.md`'s *deprecation is signalled, not silent*
+prescribes notice-then-remove-at-a-major, and the owner's requirement — views always regenerate — is
+met by making the flag write. It could never have caught anything anyway: `check_only` was consulted
+only *after* the validation block returned, so the two-step pre-flight every release plan prescribed
+was validate-and-stop followed by validate-and-stop-or-write. Worse, it exited 0 with writes still
+*pending*, so a clean check meant "the tags parse", not "the views are correct" — which is how one
+consumer lost six whole release-notes sections and ran `scope_rollups` at 34 keys instead of 62 while
+the check read clean. An unknown flag now exits 2, repairing a live violation of `api-contract.md`'s
+own rule.
+
+**`#327` adds one control, and states the yield it expects.** When the git-derived chunk reading bails
+on a `views_enabled` repo, the checkbox reading that takes over is the one known to be wrong, and
+nothing said so. The notice fires only on `views_enabled` **and** a plan with a roster **and** a bailed
+git path — the `views_enabled`-unset case is pure noise and stays silent — and it is emitted from
+deliberately-invoked surfaces (`verify-chunk-refs` on the inference path, `handoff preview`), never
+from `_git_aware_progress` on the SessionStart hot path. **Expected yield: rare.** It should fire only
+where a base branch cannot resolve or git is unavailable, so a steady-state repo on a feature branch
+should see it approximately never; a run of firings means base-branch resolution is broken, which is
+the finding. Carries the stable token `degraded-chunk-reading` so its firings are *findable*, which is what
+makes retirement evidence collectable at all; the token must not be reworded. Deliberately not
+promising a counting mechanism — session logs are not a store this repo queries, and naming
+`grep -c` as "the retirement evidence" claimed a pipeline nobody built. The comment beside the
+token declines to make that promise, and this entry now agrees with it.
+
+Two smaller ones. `#211`'s guard test **replicated** the production chunk-heading matcher and had
+drifted strictly narrower, failing plans that parse fine; it now consumes `_CHUNK_HEADING_RE` instead
+of widening a copy. `#333` extends the branch-prefix set to Conventional-Commits and bot prefixes —
+`missing-ref:` is BLOCKING, so a `feat/…` branch named in plan prose failed a review on its own name.
+The shape-rule alternative the item preferred was evaluated and **rejected**: "a token is a path only
+if it looks like a filename" stops verifying extensionless real paths, and this repo's most-cited path
+is `plugin/bin/prawduct-hook`.
+
+`#224` gets both halves. The `new` forward-ref exemption now **expires** when the chunk completes —
+re-derived through `resolve_chunk_progress`, never "first unchecked box", since under `views_enabled`
+the checkboxes do not flip until release and the expiry would never fire on the only surface that
+matters — and fails *toward* the exemption whenever completion is uncertain. Its scope narrowed from
+"anywhere in the section" to list items, which excludes the adjectival prose that motivated the item.
+The prescribed narrowing to the Deliverables block was **not** taken: real plans declare files they
+create in `- **Tests:**` and in acceptance criteria, and honouring the qualifier only in Deliverables
+would have turned every one of those into a false missing-ref.
+
+## 2026-08-01: the migration runbook now verifies before it disposes, and tells the operator to mark the file it just killed
+
+<!-- prawduct: type=fix | scope=backlog-burndown | chunks=01 -->
+
+Two defects prawduct found by running its own cutover and then fixed only for itself. The fleet still
+shipped both. `#528` and `#530`.
+
+**The gate ran after the disposals, and would have failed a correct migration.** `verify-migration`
+compares each covered item's decoded status against the **source markdown**, so folding a duplicate
+whose source status is `open` reports as `status_mismatch` — exit 4 naming items in exactly the state
+the owner approved. The runbook's ordering (import → fold → close → verify) therefore turned the
+scrub's own owner-confirmed decisions into false migration failures. On prawduct's run, 24 merges
+would each have registered a mismatch.
+
+The fix is not just a swap. The import step now says the dispositions do **not** run there and why;
+the disposals become their own step after the cutover; and that step carries the hazard the reordering
+creates — **do not re-run the import or the gate afterwards.** The import reconciles the status axis of
+already-migrated items against the source markdown, so a reflexive "let me just re-run it to be safe"
+reopens every item the owner disposed, and the gate reports each disposal as a mismatch. Both tools
+answer honestly about a question that stopped being the right one at the cutover.
+
+**The cutover left the source file declaring it was alive.** Setting `backlog_service_repo` changes
+what the *tooling* reads and nothing a human sees: `.prawduct/backlog.md` still carried a "managed via
+the backlog skill" header over a `## Open (pickable)` section. The runbook now instructs the banner,
+with the two constraints that were learned by writing prawduct's own by hand — it must be a
+**blockquote**, because an HTML comment is invisible in GitHub's rendered view and a reader sees a
+heading and a list of open items with no signal at all; and it must say that divergence from the
+tracker is **expected**, since the dispositions are never backported.
+
+**The unwind clause ships with the banner, because the banner breaks the old one.** Adding it mutates a
+file the rollback path assumed was untouched, so unwinding now takes all three halves — unset the
+scalar, close the migrated issues on the `id:` alias namespace (never delete; GitHub does not reuse
+numbers), *and* revert the banner. Skip the third and the restored live backlog announces that it is
+frozen and redirects to a tracker that was just closed.
+
+**Reviewing the fix found a worse defect underneath it, and the runbook now says so.** Clarifying
+that the `duplicate_alias` fold is a migration repair rather than a confirmed disposition put weight
+on a remedy that **cannot clear the list it is prescribed for**. The alias scan derives ids from the
+body block and never consults `superseded_by`; `merge` closes the loser as `dropped` but leaves its
+`id_aliases` entry — so the pair still records the same id at disagreeing statuses and the gate exits
+4 again, stranding the operator at the one step that "must not be taken on trust." The runbook now
+names the additional target-side edit that does converge — and, because that edit has to go around
+the adapter's block-preservation guard, spells out that it must be a **round-trip**: read the body,
+remove one list element, write the rest back verbatim. Retyping it drops the `superseded_by` the
+fold wrote moments earlier, and that loss is **silent**, since the scan never reads that field and
+the closing re-verify passes clean. The transferable half is the shape, not the commands: *when you
+document why a safety guard exists in order to justify going around it, that sentence is the
+specification for what your replacement owes.* The gate's own exit-4 message still
+prescribes the fold alone, and `duplicate_alias` has no convergence test though its sibling
+`status_mismatch` has one — filed as `#534`, out of this doc-only chunk's scope.
+
+**Two items closed with no code.** `#233` (run the live prawduct migration) had all three acceptance
+criteria met by the Chunk 06 cutover; `#352`, the backlog-service umbrella, stated its own closing
+condition as *"closes when the backlog-service slice ships"*, and it shipped. Neither was abandoned —
+both were satisfied and left open.
+
+**New cross-references are anchored to step *names*, not numbers.** `#178` records that this file's
+step references have gone stale before and that renumbering them is the wrong fix. Adding a step here
+would have re-created that defect; the existing number-anchored references are `#178`'s to fix.
+
 ## 2026-08-01: Everything prawduct says about itself, it says to the model — so a shipped capability reached nobody
 
 <!-- prawduct: type=fix | scope=upgrade-discovery | chunks=01,02,03 | release=v3.2.3 | status=shipped -->

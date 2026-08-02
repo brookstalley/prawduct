@@ -283,7 +283,7 @@ issues, and name the tradeoff:
    repo that has been live for a while, treat the backfill as a migration in its own
    right (re-scrub the source first), never as a free top-up.
 
-**4. Apply the confirmed plan — deterministically.**
+**4. Import the confirmed plan — deterministically, and nothing else yet.**
    - **Import** the source into issues (idempotent/resumable, keyed on the
      `id:PFX` alias, so a re-run never duplicates), applying the confirmed
      restructure plan at create:
@@ -300,29 +300,38 @@ issues, and name the tradeoff:
      **Re-run the import** (it reconciles the status axis on already-migrated items,
      so this converges) until the line is gone. Step 6's `status_mismatch` is the
      backstop if you miss it, not a substitute for reading it here.
-   - **Fold each duplicate** into its survivor (writes the `superseded_by`
-     redirect *before* closing the source, so a crash leaves a resolvable
-     open-but-redirected item, never an orphan — AU3/CRASH-2):
-     `prawduct-hook backlog merge <duplicate-id> --into <survivor-id> --repo <target>`
-     (`--repo` is required for bare `PFX-XXXX` ids — alias resolution needs the
-     target repo)
-   - **Close each stale item** (closed + preserved, not deleted):
-     `prawduct-hook backlog status <id> --to dropped --repo <target>`
 
-   Ordering: import-then-dispose is always safe and idempotent. For a **large**
-   backlog where the content-creation budget (≈80/min, ≈500/hr) is the scarce
-   path, it is tempting to import obvious stale items already-closed to avoid
-   create-then-close churn — **but the importer cannot do that today**: the create
-   path carries no initial-state field (Step 3c), so every closed item is a create
-   plus a status reconcile regardless of ordering. Treat the churn as a fixed cost
-   of `all` and size the run for it; revisit only if the create path gains an
-   initial state.
+   **The confirmed dispositions do NOT run here — they are the *Apply the confirmed
+   dispositions* step, which runs after the gate.**
+   Folding a **scrub-confirmed** duplicate, or closing a stale item, *before*
+   `verify-migration` makes the scrub's own owner-approved decisions look like migration
+   failures. (This is not the same act as the `duplicate_alias` fold the gate itself may
+   demand — see that remedy in the cutover step; it repairs the migration rather than
+   diverging from the source, and is correct to run when the gate asks for it.) The gate compares
+   each covered item's **decoded status against the source markdown**, so a duplicate
+   whose source status is `open` and which you have just closed on the target reports as
+   `status_mismatch` — exit 4, naming items that are in exactly the state the owner
+   confirmed. Following that order literally produces a false failure on a correct
+   migration. The gate certifies **the migration** — that nothing was stranded; merges
+   and drops are **tracker** actions taken after it, and the frozen markdown is a
+   snapshot of the moment of migration that is *expected* to diverge from the tracker
+   thereafter.
 
-**5. Verify.** `prawduct-hook backlog counts --repo <target>` for the
+   **Sizing note for `--archive-scope all`.** For a **large** backlog where the
+   content-creation budget (≈80/min, ≈500/hr) is the scarce path, it is tempting to
+   import obvious stale items already-closed to avoid create-then-close churn — **but
+   the importer cannot do that today**: the create path carries no initial-state field
+   (Step 3c), so every closed item is a create plus a status reconcile regardless of
+   ordering. Treat the churn as a fixed cost of `all` and size the run for it; revisit
+   only if the create path gains an initial state.
+
+**5. Spot-check.** `prawduct-hook backlog counts --repo <target>` for the
 rollup; spot-check a handful of migrated bodies and IDs; confirm every
-hand-minted `PFX` resolves as an `id:PFX` alias and every disposed item is
-*closed*, not missing. Total issue count = every source item — a dropped or
-merged item is still present, just closed.
+hand-minted `PFX` resolves as an `id:PFX` alias. Total issue count = every source
+item — an item the *source* recorded as dropped or shipped is still present, just
+closed. **Nothing has been disposed yet**, so the scrub's own drops and merges are
+not what you are looking for here; they are checked at *Apply the confirmed
+dispositions*.
 
 **6. Cut over.** **Gate first — this is the one step that must not be taken on
 trust.** Setting the key below is what makes the markdown stop being read, so
@@ -367,11 +376,53 @@ for only two of them**:
   the `id:PFX` label already matches, and the block-only one is never looked up —
   so it burns a full pass and returns the identical exit 4. Find the pair by
   searching the target for the id, then fold one into the other **by issue
-  number** — `merge <owner>/<repo>#<n> --into <owner>/<repo>#<m>` — and verify
-  again. The bare `PFX` form cannot express this merge: both endpoints resolve
-  through the `id:PFX` label search to the *same* labelled survivor, so it is
-  rejected as merging an item into itself. The number is the only handle that
-  distinguishes the two.
+  number** — `merge <owner>/<repo>#<n> --into <owner>/<repo>#<m>`. The bare `PFX` form
+  cannot express this merge: both endpoints resolve through the `id:PFX` label search
+  to the *same* labelled survivor, so it is rejected as merging an item into itself.
+  The number is the only handle that distinguishes the two. **This fold is a migration
+  repair, not a confirmed disposition** — it reconciles two target issues onto one
+  source item rather than diverging from the source — so it is correct to run here,
+  before the gate passes, and the import step's "no disposals yet" rule does not reach
+  it.
+
+  ⚠ **The fold alone will NOT clear this list — you must also remove the loser's
+  `id_aliases` entry.** The scan derives its ids from the body block and never consults
+  `superseded_by`, so after the fold the closed loser still records the same id, now at
+  `dropped`; unless the survivor is *also* `dropped`, the two still disagree and the
+  gate exits 4 again. Edit the losing issue's body to drop that id from `id_aliases`,
+  leaving the survivor as the only claimant, then verify again. This is the
+  "target-side deduplication" the gate's own code comment says is the only fix.
+
+  **Use `gh` or the web editor for this one edit — `backlog update --body` cannot do
+  it, and will report `ok` while leaving `id_aliases` untouched.** Read the body,
+  delete only that one entry, and pass everything else back **verbatim**:
+
+      gh issue view <n> --repo <owner>/<repo> --json body -q .body > /tmp/loser-body.md
+      # remove the duplicated id from the id_aliases LIST; keep the rest of the line
+      gh issue edit <n> --repo <owner>/<repo> --body-file /tmp/loser-body.md
+
+  **`id_aliases` is one line holding a list** — `id_aliases: [ABC-1234, DEF-5678]` — so
+  what you are deleting is a list *element*, not the line. Delete the whole line only if
+  the duplicated id is its sole element. The importer writes exactly one id per issue,
+  so a longer list means someone hand-edited it; and since `merge` never copies a
+  loser's aliases onto the survivor, this issue is the only record of whatever it
+  carries.
+
+  **Round-trip it — do not retype it.** `gh issue edit --body` replaces the *whole*
+  body, and the fold you ran moments ago wrote `superseded_by: <survivor>` into this
+  issue's block. Retyping the body drops that redirect — along with `v: 1` and
+  `verified` — and the loss is **silent**: the scan never consults `superseded_by`, so
+  the re-verify you finish on passes clean while every stale reference to the folded id
+  now resolves to nothing. Prefer the web editor if you want to see what you are
+  replacing.
+
+  This is the one case where you must go around the adapter, and it is worth knowing
+  why. `update` deliberately **preserves** the `prawduct:` block — it re-parses the old
+  block, strips any block you paste into the new text, and re-appends the original —
+  guarding exactly the body-authoritative fields above from a careless whole-body
+  rewrite. Going around it means carrying that guard's job yourself, which is what the
+  round-trip above is for. **Known defect — the gate's exit-4 message still prescribes
+  the fold alone, with no mention of any of this: `#534`.**
 
 `source_items` counts **every** parsed item in scope, not just the aliasable
 ones — so `source_items` exceeding `aliased` with an empty `missing` is exactly
@@ -423,9 +474,31 @@ not silence: one probe starts firing at the same switch —
 no Issues-backend path yet, so the operator running this scrub learns what goes
 dark rather than discovering it as an unexplained absence (full retirement
 table: post-sync-advisory-spec §8.2). **Do not set
-it before the import has been verified** (Step 5) — once set, the briefing
-stops counting the markdown file. From here the markdown backlog is frozen
-history for *this* repo.
+it before the import has been verified** (the gate at the head of this step) —
+once set, the briefing stops counting the markdown file. From here the markdown
+backlog is frozen history for *this* repo.
+
+**Then mark the source file itself — the key alone leaves it declaring that it is
+live.** Setting the scalar changes what the *tooling* reads; it changes nothing a
+human sees when they open `.prawduct/backlog.md`, which still carries a "managed via
+the backlog skill" header and a `## Open (pickable)` section under it. Write a
+frozen-history banner at the head of the source naming the cutover date, the live
+tracker URL, and the read commands. Two constraints, both learned the hard way:
+
+- **It must be visible when RENDERED.** An HTML comment is invisible in GitHub's
+  rendered view — a reader browsing the file sees a heading and a list of open items
+  with no signal at all that it is dead. Use a blockquote.
+- **Say that divergence is expected.** The dispositions applied at *Apply the confirmed
+  dispositions* land on the tracker and are *not* backported here, so the frozen file
+  will show items as open that the tracker has closed. A banner that omits this reads as
+  a bug the first time someone reconciles the two.
+
+**Unwinding the cutover takes all three halves, or the repo is worse off than before.**
+Unsetting `backlog_service_repo` restores markdown as live and silences the dormancy
+advisory — that is the only half that matters for *working* again. But you must also
+close the migrated issues (filtered on the `id:` alias namespace — never delete; GitHub
+does not reuse numbers) **and revert this banner**. Skip the third and the restored live
+backlog announces that it is frozen and redirects readers to a tracker you just closed.
 
 **`legacy.py` is NOT retired at this cutover — not this repo's, not any repo's.**
 It is the shared plugin's markdown read path, and `GV7`/`MG3` retire it only when
@@ -439,6 +512,32 @@ Portfolio-wide retirement is not this runbook's business.
 never before it (BKL-0QR1) — and that leg is **gated by BKL-9XQ2**, so it does not
 run here either. Everything else in this runbook is unaffected by that gate.
 
+**7. Apply the confirmed dispositions — on the tracker, now that the gate has passed.**
+These are the drops and merges the owner accepted at *Owner confirms*. They run last on
+purpose: they are deliberate divergence from the source markdown, and the gate that
+certifies the migration cannot tell deliberate divergence from a stranded item — see the
+import step, which says why.
+
+   - **Fold each duplicate** into its survivor (writes the `superseded_by`
+     redirect *before* closing the source, so a crash leaves a resolvable
+     open-but-redirected item, never an orphan — AU3/CRASH-2):
+     `prawduct-hook backlog merge <duplicate-id> --into <survivor-id> --repo <target>`
+     (`--repo` is required for bare `PFX-XXXX` ids — alias resolution needs the
+     target repo)
+   - **Close each stale item** (closed + preserved, not deleted):
+     `prawduct-hook backlog status <id> --to dropped --repo <target>`
+   - **Confirm each disposed item is *closed*, not missing** — the check *Spot-check*
+     could not yet make, because nothing had been disposed when it ran.
+
+**Do not re-run the import after this point, and do not re-run `verify-migration`.** The
+import reconciles the status axis of already-migrated items against the **source
+markdown**, so a re-run reopens every item you just disposed — the more items the owner
+confirmed, the more damage a reflexive "let me just re-run it to be safe" does. The gate
+has the mirror-image problem: it now reports each disposal as `status_mismatch` and exits
+4 on a migration that is entirely correct. Both tools are answering honestly about a
+question that stopped being the right one the moment the cutover was recorded. If
+something *is* wrong after this point, fix it on the tracker.
+
 ## What must never happen
 
 - A mutating op run on an item the owner did not confirm.
@@ -448,3 +547,7 @@ run here either. Everything else in this runbook is unaffected by that gate.
   numbers; disposal is always close/redirect).
 - A model call inside `import`/`merge`/`status` — the decision happens upstream,
   in this workflow, as confirmed data.
+- **A re-run of `import` after the confirmed dispositions have been applied.** It
+  reconciles every migrated item back to its *source markdown* status, so it reopens
+  each item the owner disposed — the one action in this runbook that destroys work
+  already done correctly.

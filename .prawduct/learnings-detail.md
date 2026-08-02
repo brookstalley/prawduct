@@ -6,6 +6,117 @@ No size constraint on this file — it's the deep reference, consulted via `/lea
 
 ---
 
+## A fix ships TWO artifacts that can independently be false — the change, and the evidence that it works. This branch put every defect in the second: a test that could not see the bug it pinned, then a comment asserting the rule its own assertion disproves. When you fix something, sweep the NEIGHBOURING PROSE in the same pass, or a reviewer finds it one comment at a time
+
+Measured across one chunk. Five review passes; the last three each returned a finding, and none was
+in an instruction:
+
+- The fix was correct; the **test** pinning it passed against the defect.
+- The test was fixed; a **comment fifteen lines above it** still asserted the rule the new assertion
+  disproves — and it was the authority a maintainer would cite to weaken that assertion.
+- Two more comments: a docstring prescribing a rule unconditionally after it became conditional, and
+  a note whose two constraints had their *scopes* backwards.
+
+The sibling of [[justify at the altitude of the decision]] one layer out. That rule is about reasons
+being wrong. This one is about **evidence** being wrong — and evidence is more dangerous, because a
+green test and a plausible comment both produce the felt experience of verification while providing
+none. You do not re-read them, because their whole job is to be the thing you trust.
+
+**Why prose specifically.** A comment beside a fix is written in the same minute as the fix, from
+inside the frame the fix just created, and it describes the code as the author now intends it rather
+than as it now is. When the fix *narrows* a rule — from "always X" to "X only on path A" — every
+sentence nearby that still says "always X" becomes false silently, and no test covers a comment.
+
+**The cheap countermeasure, and the reason it is worth doing:** when a fix changes a rule, grep the
+symbol's name across the module and read every prose hit in the same pass. It costs one search. Not
+doing it costs a review round *per comment*, because each fix commit moves HEAD past the verified
+tree and buys another coverage pass — so a two-line comment edit is a full round.
+
+## A mutation test is only evidence if the MUTANT IS THE DEFECT — hand-reverting to "something wrong" tests nothing. Restore the code that actually shipped the bug, gate conditions included: drop a guard the real defect sat behind and the test exercises a path the bug never reached, passing against the very code it was written to catch
+
+Found by a `verify-resolutions` pass on work where I had *already* mutation-tested the fix and
+recorded it as verified.
+
+The defect: a completion set was computed by slicing a roster with a COUNT of done items, which is
+not positional, so a non-contiguous roster named the wrong chunks. The real code guarded that slice
+behind `if progress.git_derived:` and used an exact predicate otherwise. My fix removed the branch.
+To mutation-test it I pasted the count-slice back — **unguarded**, applying to both paths.
+
+That mutant is not the bug. It is a *different* bug, and it happens to be one my test could see. The
+faithful revert restores the guard too, and against it both of my new tests passed: one ran on the
+checkbox path, where the original code was correct, and the other's done-set was contiguous, where
+the count and the prefix agree. Two tests written specifically to pin this fix, both green against
+the defect.
+
+**Why hand-reverting goes wrong in this exact direction.** You revert from memory of *the fix*, not
+of *the original*, so what you reconstruct is "the fix, inverted" — and the fix is usually a
+simplification, so the inversion drops the very conditions that made the original subtle. The guard
+you forget is the one that made the bug hard to find in the first place.
+
+Countermeasures, cheapest first: revert with `git show <commit>^:<path>` or `git stash` rather than
+by retyping; then assert the mutant actually *fails* the test — a mutation run where nothing goes
+red is a failed experiment, not a passed one. And when the fixture is the thing in doubt, make it
+assert its own preconditions (`assert progress.git_derived`, `assert progress.complete == 2`) so a
+silent fixture regression is loud rather than green.
+
+Same family as [[the fix for a review finding needs the same adversarial pass as the original work]]
+— the verification reflex relaxes exactly where the previous round proved it should not — and the
+concrete instance of the test-evidence prompt's standing warning that a fixture which never reaches
+the subject passes forever.
+
+## RULING (regen-views-is-advice) — when two norms reach one command, its OUTPUT decides the posture: a writer whose only product is a DERIVED VIEW fails soft one view at a time, because no gate reads a view to reach a verdict. Soft is not blanket — input it cannot interpret at all still fails closed. Skip-and-report a bad view, never write it half-right
+
+**Collision ruling, owner decision 2026-08-01**, raised by #201's fourth leg. Two `## Direction`
+norms both reached `regen-views` and pointed opposite ways: `architecture.md`'s *authority fails
+closed; advice fails soft*, and `data-model.md`'s *derived views are disposable and never
+authoritative — no gate reads a view to reach a verdict*.
+
+**Why the output decides.** The authority norm's why is that a verdict must not be satisfiable by
+feeding it garbage. That rationale reaches a command only where a verdict exists to corrupt.
+`regen-views` emits no verdict and no gate consumes its output *to reach one*, so the authority
+half never attaches, and the derived-views norm decides the posture. Rule at the category level:
+**the failure posture of a command follows what it produces, not how important the command feels.**
+
+Two edges, because the unqualified form is false in both directions. *"No gate reads a view"* is too
+strong — a gate trigger does read the build-plan checkbox view (`cross-cutting-concerns.md` records
+this deliberately); what no gate does is read one **to reach a verdict**, which is the norm's own
+wording and the load-bearing clause. And *fails soft* is not blanket: input the command cannot
+interpret at all still fails closed, because a view written from it would be half-right rather than
+absent, and silent half-rightness is the bug class the whole rule protects.
+
+**What the ruling had to preserve.** VWS-6R4T made the command fail closed for a stated reason —
+*"no silent partial flips — partial application is the bug class"* (the ASSUMPTION block in
+`artifacts/build-plan-changelog-fail-loud.md`). That content survives; only its whole-run coupling
+is dropped. The unit of atomicity moves from the **run** to the **view**: a view whose inputs are
+invalid is skipped and reported, never written half-right, and views with no dependency on the bad
+input are still written. `views.apply_regen` already writes each view as one whole file, so per-view
+skipping cannot produce the state VWS-6R4T names. This is the distinction that let the leg be
+granted without reopening the bug class: **"fail soft" means "don't block the others," never "write
+one you know is wrong."**
+
+**The dry run was the drift.** `--check` and the real run validated identically — `cmd_regen_views`
+consulted the flag only *after* its validation block had already returned — so the two-step
+`--check` → `regen-views` that every release plan prescribed was validate-and-stop followed by
+validate-and-stop-or-write. The first step could not catch anything the second didn't. Worse,
+`--check` exited 0 while writes were *pending*, so a clean check meant "the tags parse," not "the
+views are correct," and it was read as the latter: one reporting repo had lost whole version
+sections from `release-notes.md` and was running `scope_rollups` at roughly half its true key count
+while the check reported up to date. **A dry run that validates identically to the real run is not a
+safety device — it is a way for a check to report clean while the artifact it checks rots.** Hence
+one mode: views always regenerate.
+
+Recorded shapes, not values, on purpose. Earlier drafts of this entry carried exact line citations
+(`prawduct-hook:3028-3043`, `views.py:1339-1345`) and exact counts; **both citations were already
+wrong at the commit that shipped this entry** — the code moved in the same change, and one of the
+lines cited no longer existed. A durable rule that names a line number is a rule with an expiry date
+nobody sets. Name the function; let the reader grep.
+
+**The generalizable tell.** The question arrived as "is this command authority or advice?" and
+looked like an unresolvable norm conflict for as long as it was asked at the *command* level. It
+dissolved on asking what the command *produces*. When two norms appear to collide, check whether
+they are being applied at the same granularity before arbitrating between their whys — a collision
+at the wrong altitude is usually a category error wearing a conflict's clothes.
+
 ## The fix for a review finding needs the same adversarial pass as the original work — dispatch a delta review of the fix commit, because "I am correcting a known defect" feels like lower-risk work than writing new code and the verification reflex relaxes exactly where the last round proved it shouldn't
 
 The release-readiness bundle produced a clean measurement of this. One Critic cumulative (1 blocking / 12 warnings / 10 notes) → three verify passes, **each of which found a defect introduced by the previous round's fix** → clean. An independent PR reviewer then read the resulting tree and found W-1, a defect the bundle had itself created and *twice declared closed*. The fix for W-1 was then delta-reviewed and contained **2 BLOCKING plus 3 warnings**. Four rounds, four times the correction carried a new defect.
@@ -32,6 +143,41 @@ This is minutes, not another full cumulative. `/prawduct:critic verify-resolutio
 Discovered 2026-07-29, release-readiness (PR #143; Critic cumulative `rev-20260729T185143Z` → verify passes `rev-…192252Z`/`rev-…194336Z`/`rev-…195906Z` → independent PR review → delta review of `c68443d`). Relates to Validate Before Propagating (#15), Root Cause Discipline (#16), Honest Confidence (#5).
 
 Measured base rate on one bundle: **four consecutive review rounds, each of which found a defect introduced by the previous round's fix** — three Critic verify passes plus a delta review that turned up 2 BLOCKING in a fix commit an independent PR reviewer had already cleared the tree for. Warnings don't block PR creation, so going straight to `gh pr create` after a fix commit is permitted and would have shipped both. Mechanics: after committing fixes for findings, spawn one focused review scoped to *exactly that commit* (`git show <sha>`), told the base rate and told to assume more remain — it is minutes, not another full cumulative, and `verify-resolutions` is the Critic-side equivalent. Give it the fix's own claims to re-run rather than a general brief: every published command executed, every cited tree/line/count checked at the tree named, every cross-reference opened. The specific traps that recur: a *detection* command that cannot match the defect it was written to find (grepping the vocabulary when the residual asserts the same thing by invoking the mechanism), a claim measured at the **pre-fix** tree, and an inherited premise hardened into a certainty the tree cannot support. Discovered 2026-07-29, release-readiness (PR #143; Critic `rev-…185143Z` → three verify passes → delta review of `c68443d`). Relates to Validate Before Propagating (#15), Root Cause Discipline (#16), Honest Confidence (#5), [[When you "correct" an inherited number, recount the SET and not just the count]], [[Verify a disposition against the diff before recording it]].
+## Justify at the ALTITUDE OF THE DECISION, never the mechanism — a mechanism claim carries the same verification duty as the instruction it supports but escapes the check by reading as commentary. Test: must the reader reason PAST this instruction? No → mechanism is liability; yes (a norm, a recorded decision) → verify it like code. Same species as over-precise counts. Altitude, never omission
+
+A long run of `verify-resolutions` rounds on a single **doc-only** chunk (v3.2.3, `backlog-burndown` Chunk 01, the migration-scrub runbook). The defects clustered hard in the justifications — a representative set, not a census:
+
+1. **The remedy I clarified.** Disambiguating two senses of "duplicate" required saying which act was correct — which put my weight behind a `duplicate_alias` fold that cannot clear the list it is prescribed for (the alias scan never consults `superseded_by`; `merge` leaves the loser's `id_aliases`).
+2. **The command I named.** The replacement said `backlog update --body`, which a *passing test* proves cannot perform the edit — `_body_update_preserving_block` strips the caller's block and re-appends the old one.
+3. **The bypass I authorized.** `gh issue edit --body` is a whole-body replacement handed over with no read-modify-write step, so it would drop the `superseded_by` the fold had just written — silently, since the gate never reads that field.
+4. **The instruction's own nouns.** `# delete ONLY the one id_aliases entry; leave every other line alone` — but `id_aliases` is one line holding a list, so "entry" and "line" name the same thing, and the ambiguity resolved toward deleting the line and silently dropping any other ids on it.
+5. **The reason I supplied.** "A loser that was itself an earlier survivor carries several ids, and `merge` never moves them" — self-contradictory in one sentence, and false: *because* merge never moves aliases, an earlier survivor is precisely the item that accumulated none.
+
+**The instruction was usually right; the sentence explaining why was what kept failing.** Item 4 is the instructive exception and worth keeping in view — the same disease in the imperative mood, two nouns for one object, resolving toward data loss.
+
+*(This paragraph has been rewritten twice by reviews of this very entry. First it read "the instruction was right every time" — a universal contradicted by item 4. Then the opening stated a round count that went stale between rounds. Both are the species the entry indicts, committed inside it. The fix that finally held was not a more accurate number or a hedged absolute but **removing the countable claim** — "a long run", "usually", "a representative set, not a census" — because a value can go stale and a form cannot. When a claim draws the same finding twice, change its shape, not its contents.)*
+
+**Why justification escapes the check.** Explanation is generative: it reaches for a mechanism that makes the instruction feel inevitable, which is the generate-instead-of-retrieve move Principle 24 exists to catch. But it doesn't *present* as a claim — it presents as commentary on a claim already made, so it never enters the set of things to verify. Note that #3 is the sharpest form: I cited the exact fields the preservation guard protects *as my justification for bypassing the guard*, and then didn't carry the guard's job across. The sentence functioned as permission rather than as a specification of what I now owed.
+
+**The countermeasure is fewer claims, not better ones.** "Verify harder" cannot help with a claim that never entered the check set. The closing fix carried three clauses, each pinned to a named call site, and dropped the explanatory framing entirely. When the reviewer then surfaced a residual (`_block_for` iterates source metadata after writing `id_aliases`, so a hand-authored source bar could carry a longer list), the right move was to leave the text alone — the existing sentence already said "a longer list means someone hand-edited it," and adding a covering clause would have been the same reflex again.
+
+**Stopping rule this produced.** Convergence shows as severity falling — blocking → warning → note — not as findings reaching zero. A dense document always yields another note. Notes-only means close.
+
+### The generalization (owner, 2026-08-01): this is the exact-numbers problem again
+
+The owner named the sibling: review feedback that reads *"it's 22 call sites, not 21"* — true, and useless. Moving those claims to *"more than 10"* largely ended that churn. **Same defect, different surface: a claim finer than any decision requires is pure liability. It can be wrong, and being right buys nothing.** The repo already institutionalized the numbers half (D14 "never persist derived counts"; `record_lint._SUITE_TOTAL_RE`, which lints humans for writing suite totals; the no-suite-total-claim preference row). This rule is the prose half.
+
+**Why "don't justify unless someone will decide on it" is the wrong form of the fix.** It collides with three standing things: Principle 4 (*Reasoned Decisions*), the norms lifecycle (a norm's **why** is what decides whether a proposed exception is legitimate — `docs/norms.md`), and this file's own premise that a rule without its reason is inert. It also has a bad failure mode: read as "justify less," it is gameable into "drop traceability," and the agent that suppresses its why draws fewer findings while becoming less reviewable. The problem was never that I explained; it was the *altitude* I explained at.
+
+**The operative test.** Will the reader have to reason **past** this instruction — handle a case it doesn't enumerate, or depart from it?
+
+- **No** → mechanism is liability. Justify at decision altitude: *"delete a list element, not the line — taking the line can remove more than you meant."* Sound, actionable, needs no call-site check.
+- **Yes** → mechanism is load-bearing and gets verified like code. This is why a norm, a `## Direction` entry, or a recorded design decision **must** carry mechanism: someone will later argue an exception, and the why is the only thing that adjudicates it.
+
+A runbook step is almost always the first case. A norm is always the second. The four defects above were all first-case instructions carrying second-case prose.
+
+Sharpens [[The fix for a review finding needs the same adversarial pass as the original work]], which says to re-review fixes; this says where in the fix to look. Relates to Retrieval Over Generation (#24), Honest Confidence (#5), Reasoned Decisions (#4 — the constraint this rule must not violate).
+
 ## A governance change cannot supply its own authority — when an agent amends a binding norm mid-build, land the owner's confirmation somewhere the amendment isn't, because a change that is its own only witness is indistinguishable from laundering however sound the substance
 
 `operational-spec.md` § Direction's gitflow promotion norm bound `develop`→`main` to a *content-identical tree-set*. That mechanism blocked Chunk 02, and it was genuinely wrong: the norm's stated purpose is that a release must not **ship integration WIP**, and content-identity *forces* precisely that whenever `develop` holds unready work. prawduct had already departed from it twice (v3.1.1, v3.1.2) with nothing recorded, so the binding text described a practice that had ceased. The amendment narrowed the mechanism to a *fully classified partition* — every unreleased scope shipped or withheld behind a named blocker — landing **stricter** about what the norm actually protects.
@@ -577,7 +723,7 @@ So the post-fix cost is ONE light pass, not a full re-review — but that is bes
 
 ## A new build plan with `scope: null` and low chunk numbers inherits another scope's shipped checkbox flips — set `scope:` from the start
 
-When creating a build plan, set the frontmatter `scope:` to a unique slug immediately (matching the change-log entry's `scope=` tag) — do NOT leave it `scope: null`. With `views_enabled: true`, `regen-views` derives each plan's `## Status` checkboxes from `status=shipped` change-log entries; `collect_shipped_chunks` filters by the plan's detected scope, but a `scope: null` plan falls into "legacy unfiltered" mode where EVERY shipped entry contributes its chunk IDs. So a brand-new single-chunk plan whose chunk is "Chunk 1" gets flipped to `[x]` by an unrelated shipped entry like `chunks=1,2,3 | status=shipped | scope=work-model` — a spurious "shipped" on work that's only on a feature branch. (Discovered building CRT-3X9D: my `scope: null` plan's Chunk 1 flipped from the work-model v2.0.13 entry.) The build-plan template's `scope:` comment warns about this, but the warning lives in a template comment that from-scratch plan authors don't see, so it keeps recurring. Fix-shape: every build plan declares a unique `scope:` slug up front; verify with `regen-views --check` after adding the change-log entry (a statusless branch entry must leave the chunk `[ ]`). Discovered CRT-3X9D (2026-06-07, branch). Relates to Coherent Artifacts (#13), [[new change-log entries on a feature branch are statusless]] (the sibling regen-views trap), and Validate Before Propagating (#15).
+When creating a build plan, set the frontmatter `scope:` to a unique slug immediately (matching the change-log entry's `scope=` tag) — do NOT leave it `scope: null`. With `views_enabled: true`, `regen-views` derives each plan's `## Status` checkboxes from `status=shipped` change-log entries; `collect_shipped_chunks` filters by the plan's detected scope, but a `scope: null` plan falls into "legacy unfiltered" mode where EVERY shipped entry contributes its chunk IDs. So a brand-new single-chunk plan whose chunk is "Chunk 1" gets flipped to `[x]` by an unrelated shipped entry like `chunks=1,2,3 | status=shipped | scope=work-model` — a spurious "shipped" on work that's only on a feature branch. (Discovered building CRT-3X9D: my `scope: null` plan's Chunk 1 flipped from the work-model v2.0.13 entry.) The build-plan template's `scope:` comment warns about this, but the warning lives in a template comment that from-scratch plan authors don't see, so it keeps recurring. Fix-shape: every build plan declares a unique `scope:` slug up front; verify by running `regen-views` after adding the change-log entry and reading the plan back (a statusless branch entry must leave the chunk `[ ]`) — `--check` is gone, views always regenerate. Discovered CRT-3X9D (2026-06-07, branch). Relates to Coherent Artifacts (#13), [[new change-log entries on a feature branch are statusless]] (the sibling regen-views trap), and Validate Before Propagating (#15).
 
 ## New change-log entries on a feature branch are statusless — `status=in-progress` is deprecated and trips the regen-views typo-guard
 
@@ -593,7 +739,7 @@ A `context:fork` skill (e.g. `/prawduct:backlog`, `allowed-tools: Read, Edit, Wr
 
 ## At release, flip *statusless* unreleased change-log entries to `status=shipped` too — not just `status=merged`
 
-`docs/release-process.md` step 3 says to flip entries "from `status=merged` to `status=shipped`," but in practice most unreleased entries reach release-prep **statusless**, not `status=merged`. The documented two-state lifecycle (add `status=merged` at the feature→develop merge — see [[new change-log entries on a feature branch are statusless]]) is manual, and the `/prawduct:pr` merge flow does NOT apply it, so a branch entry stays statusless from branch through develop into release-prep. A release author who follows step 3 literally flips only the `status=merged` entries and **silently drops every statusless one** — and because `regen-views` acts only on entries with `status ∈ {shipped, merged}`, a dropped statusless entry's build-plan `## Status` checkboxes never flip, and it never appears in `release-notes.md` or `scope_rollups`. The omission is invisible (no warning — a statusless entry trips no typo-guard), so the release ships looking complete while quietly missing scopes. At v2.0.14 (batched: hook-decomp ch.1–7 + critic-session-guard) **8 of 10** unreleased entries were statusless; only the two bugfixes carried `status=merged`. Fix-shape: at release-prep, enumerate ALL change-log entries above the prior `release=vX` boundary and flip each (statusless OR `status=merged`) to `status=shipped` + `release=vX.Y.Z`; then run `regen-views` and confirm with `regen-views --check` that every shipped scope's plan flipped to `[x]` and appears in `scope_rollups`. Deeper fix is filed ([[backlog]] REL-2N8K): either make the feature→develop merge reliably set `status=merged`, or reword release-process.md step 3 to say "statusless or `status=merged`." Discovered v2.0.14 release (2026-06-08, release). Relates to Complete Delivery (#2), Living Documentation (#3), [[new change-log entries on a feature branch are statusless]], and Validate Before Propagating (#15).
+`docs/release-process.md` step 3 says to flip entries "from `status=merged` to `status=shipped`," but in practice most unreleased entries reach release-prep **statusless**, not `status=merged`. The documented two-state lifecycle (add `status=merged` at the feature→develop merge — see [[new change-log entries on a feature branch are statusless]]) is manual, and the `/prawduct:pr` merge flow does NOT apply it, so a branch entry stays statusless from branch through develop into release-prep. A release author who follows step 3 literally flips only the `status=merged` entries and **silently drops every statusless one** — and because `regen-views` acts only on entries with `status ∈ {shipped, merged}`, a dropped statusless entry's build-plan `## Status` checkboxes never flip, and it never appears in `release-notes.md` or `scope_rollups`. The omission is invisible (no warning — a statusless entry trips no typo-guard), so the release ships looking complete while quietly missing scopes. At v2.0.14 (batched: hook-decomp ch.1–7 + critic-session-guard) **8 of 10** unreleased entries were statusless; only the two bugfixes carried `status=merged`. Fix-shape: at release-prep, enumerate ALL change-log entries above the prior `release=vX` boundary and flip each (statusless OR `status=merged`) to `status=shipped` + `release=vX.Y.Z`; then run `regen-views` (exit 0, not 3 — a 3 means some scope's `## Status` was suppressed) and confirm every shipped scope's plan flipped to `[x]` and appears in `scope_rollups`. Deeper fix is filed ([[backlog]] REL-2N8K): either make the feature→develop merge reliably set `status=merged`, or reword release-process.md step 3 to say "statusless or `status=merged`." Discovered v2.0.14 release (2026-06-08, release). Relates to Complete Delivery (#2), Living Documentation (#3), [[new change-log entries on a feature branch are statusless]], and Validate Before Propagating (#15).
 
 ## "I'm just codifying their guidance" is not an exemption from the research trigger — and volatility is a separate axis from knowledge-confidence
 

@@ -467,3 +467,58 @@ class TestNoInlineCopiesRemain:
         for rel in ("lib/gates.py", "lib/briefing.py"):
             source = (ROOT / rel).read_text()
             assert "critic_findings.stat" not in source, rel
+
+
+class TestBriefingAdvisoryReadsTheBranchsPlan:
+    """The advisory and the blocking gate must resolve the SAME plan.
+
+    `briefing.py`'s comment promises they "can never diverge". Reading the
+    pointer here while `cmd_stop` reads the branch is a divergence, and in the
+    silent direction: nothing at session start about the gate that blocks at
+    session end. The sibling suite stubs the predicate, so this is the only
+    place the resolution itself is exercised.
+
+    Discriminating by construction — the POINTER's plan is all `[x]` (so
+    `_has_active_build_plan_file` reads False through it and the advisory goes
+    quiet), the BRANCH's plan has an open chunk. Revert the branch resolution
+    and this warning disappears.
+    """
+
+    def _two_plan_repo(self, tmp_path: Path) -> Path:
+        repo = _session_repo(tmp_path)
+        artifacts = repo / ".prawduct" / "artifacts"
+        artifacts.mkdir(parents=True)
+        (artifacts / "build-plan.md").write_text(
+            "---\nartifact: build-plan\nscope: pointed\n---\n\n"
+            "# Build Plan\n\n## Status\n- [x] Chunk 01: shipped\n"
+        )
+        (artifacts / "build-plan-mine.md").write_text(
+            "---\nartifact: build-plan\nscope: mine\n---\n\n"
+            "# Build Plan\n\n## Status\n- [ ] Chunk 01: in progress\n"
+        )
+        (repo / ".prawduct" / ".session-git-baseline").write_text("")
+        (repo / ".prawduct" / ".session-reflected").write_text(
+            "Session reflection long enough to satisfy the fifty-character floor check."
+        )
+        _git(repo, "checkout", "-q", "-b", "fix/mine")
+        return repo
+
+    def test_the_advisory_follows_the_branchs_plan(self, tmp_path):
+        repo = self._two_plan_repo(tmp_path)
+        (repo / "code.py").write_text("x = 2\n")
+        warnings = briefing._check_previous_session_gates(repo)
+        assert "Critic review not recorded" in " ".join(warnings), (
+            "the branch's plan has an open chunk, so there IS governed work and "
+            f"the advisory must fire. warnings={warnings!r}"
+        )
+
+    def test_an_unmatched_branch_keeps_the_pointer_reading(self, tmp_path):
+        """The fallback, pinned: no declared scope matches, behaviour unchanged."""
+        repo = self._two_plan_repo(tmp_path)
+        _git(repo, "checkout", "-q", "-b", "fix/unrelated-name")
+        (repo / "code.py").write_text("x = 2\n")
+        warnings = briefing._check_previous_session_gates(repo)
+        assert not any("Critic" in w for w in warnings), (
+            "no branch match → the all-[x] pointer plan decides, exactly as "
+            f"before. warnings={warnings!r}"
+        )

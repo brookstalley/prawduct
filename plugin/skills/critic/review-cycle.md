@@ -96,13 +96,18 @@ Every consolidated review appends a **fact** to the shared evidence store (`<git
 
 **Anchoring.** `critic-begin --mode verify-resolutions` locates the prior review fact via the findings cache's `fact_id` pointer and derives the interval: prior fact's `head_tree` → the captured working tree. Scope = the prior `files_reviewed` plus the delta — all computed in code and recorded in the manifest. Tree keying makes a dirty-tree verify sound: no commit needs to precede the pass, and the resulting fact extends coverage to whatever tree it saw.
 
+The head end moves to **committed HEAD** instead when committed content differs from the reviewed tree — that is the PR gate's target, and anchoring there keeps a stray uncommitted file from leaving the gate `uncovered` after a successful pass (the WIP is noted and excluded). "Differs" is a **tree** comparison, not a commit-set one: the vouching commit above — the one that materializes the reviewed tree verbatim — changes no content, so it is not a change of intent and does not move the anchor. Deciding this from the commit set instead is what made `critic-begin` refuse with "nothing changed since" over a working tree holding unreviewed work.
+
+The anchor must also be an **ancestor of HEAD**. The findings cache is single-slot and survives a branch switch, and worktrees of one clone share an object store, so a sibling branch's anchor still resolves — resolution alone once latched a pass onto a cross-branch delta full of phantom findings. Not-an-ancestor and any git failure both demote.
+
 **Demotion** (all detected by `critic-begin`, fail-closed — it refuses to anchor rather than silently shrinking the review):
 
 | Trigger (exit code) | Why it demotes |
 |---|---|
 | No readable findings cache, no `fact_id` in it, or the fact is gone from the store (1) | Nothing to anchor against — fall back to `chunk`/`final`, record `mode_chosen_by: "fallback-no-prior-findings"`. |
 | The prior tree can't be diffed against the current tree (1) | Rewritten history — anchor unreliable; same fallback. |
-| Prior review has no BLOCKING/WARNING findings and nothing changed since (1) | Nothing to verify and no delta to review. |
+| The prior fact's anchor commit is not an ancestor of HEAD (1) | It belongs to another lineage — a branch switch, or rewritten history; the delta from it would span the divergence. Same fallback. |
+| Prior review has no BLOCKING/WARNING findings and the anchored tree is the one it reviewed (1) | Nothing to verify and no delta to review. The message names the anchor and both tree hashes, because the old wording ("nothing changed since") was true of the anchor and false of the repo. |
 | Delta files > 2 × prior `files_reviewed` + 5 (2) | Scope widened beyond the prior surface — a partial review would mislead; fall back to `final`, record `mode_chosen_by: "fallback-scope-widened"`. |
 
 **When NOT to use verify-resolutions.** Not as a chunk's first review (it's a re-review mode). Not after long drift unrelated to the original findings — the scope-widening threshold exists for exactly that.
@@ -332,17 +337,28 @@ by judgment:
   this prefix deliberately** (`record_lint.py`, the comment above the crash return) — a crash takes
   the deliverable check down with everything else, so it must arrive at the deliverable check's
   severity rather than as a generic NOTE, which would be BLD-5J8N by a new route.
-- **`chunk-ref-missing graded chunk … inferred from build-plan Status` → NOTE.** An *assumption*,
-  not a failure: the check ran (`chunk_graded` is non-null), but Status names the first UNCHECKED
-  chunk, so it may have graded the next chunk rather than the reviewed one. It means **no answer
-  about this diff**, not a clean one — and blocking it would be a false blocker with no remedy,
-  since a branch that builds no chunk has no `--chunk` to supply.
+- **`chunk-ref-missing graded chunk … of <plan>: …` → NOTE.** An *assumption*, not a failure: the
+  check ran (`chunk_graded` is non-null), but one half of "whose deliverables" was inferred rather
+  than dispatched. Two inferences carry this prefix and the line names which fired — the **chunk**
+  was inferred from build-plan Status (which names the first UNCHECKED chunk, so it may be the next
+  chunk rather than the reviewed one), or the **plan** came from the `active_build_plan` pointer
+  because the dispatch carried no scope (the pointer names the plan in progress in the repo, which
+  need not be the one this branch is building). Either means **no answer about this diff**, not clean
+  — and blocking it would be a false blocker with no remedy, since a branch that builds no chunk has
+  no `--chunk` to supply.
 - **Every other `unchecked` entry → NOTE**, still stated in your summary.
 
 `goals-1-3.md` carries this same rule for the modes that read only that file; the two must agree.
 
-**`chunk_graded`** names whose deliverables were checked. A zero count is an answer about that
-chunk; if it is `null`, nothing was checked at all.
+**`chunk_graded` and `plan_graded`** name whose deliverables were checked — which chunk, of which
+plan file. A zero count is an answer about that chunk of that plan; if either is `null`, nothing was
+checked at all.
+
+**A `null` count is not a zero.** Each entry in `counts` is an integer when the check ran and `null`
+when it produced no answer. Read alike, they are opposite facts: zeros are a clean check, nulls are
+a check that never happened — and a tally is quoted far more often than the caveat beside it, so the
+number has to carry the distinction itself. `chunk-ref-missing` is `null` exactly when `chunk_graded`
+is, so a subject and its tally can no longer disagree.
 
 Record-lint is **advice**: it reports to the builder and gates nothing. Its findings are yours to
 raise at the severities above, and its per-check counts ride into the review fact so the control's
@@ -404,6 +420,8 @@ Every review cycle must produce a record — governance without an audit trail i
 
 The ledger (`.prawduct/.governance-ledger.jsonl`, gitignored) is the append-only telemetry history: `critic-consolidate` appends one `review.critic` event per consolidated review (the PR skill appends `review.pr` the same way). `prawduct-hook ledger-append` is the **single writer** — it validates the record and computes the envelope; agents never hand-author JSONL. No gate reads the ledger; `prawduct-hook review-stats` aggregates it.
 
+Its `scope` comes from the dispatch manifest, where `critic-begin` recorded it — **derived in code** from the branch name matched against the scopes build plans declare, or passed explicitly as an override. `active_build_plan` is only the last fallback. Do not derive scope yourself and pass it: an agent reading that pointer is what attributed manifests, review facts and ledger events to unrelated plans.
+
 Each line is one event with an envelope/payload split:
 
 ```json
@@ -414,4 +432,4 @@ Each line is one event with an envelope/payload split:
  "review": { ...the findings record verbatim... }}
 ```
 
-The envelope is shared by every event kind; the kind-specific payload nests under a family-named key (`review` for `review.critic` and `review.pr`). Consumers key on the envelope and **skip unknown event kinds and fields** — later kinds join without schema change. `duration_seconds` and `actor.model` are nullable, never invented; `scope` is the build-plan feature key (passed explicitly; `active_build_plan` is only the fallback). Every line is self-contained; a long-lived repo can truncate oldest lines.
+The envelope is shared by every event kind; the kind-specific payload nests under a family-named key (`review` for `review.critic` and `review.pr`). Consumers key on the envelope and **skip unknown event kinds and fields** — later kinds join without schema change. `duration_seconds` and `actor.model` are nullable, never invented; `scope` is the build-plan feature key (derived by `critic-begin` — see above; `active_build_plan` is only the last fallback). Every line is self-contained; a long-lived repo can truncate oldest lines.

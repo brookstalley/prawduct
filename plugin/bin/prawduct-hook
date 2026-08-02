@@ -1173,23 +1173,40 @@ def cmd_critic_begin(project_dir: Path, argv: list[str]) -> int:
     # and so a reviewer is never asked to re-derive one.
     lint = manifest.get("record_lint") or {}
     lint_lines = _record_lint().format_findings(lint)
+    # The clause lists are DERIVED, never restated. A hand-written one went out
+    # naming two checks the same commit deleted — a clean report vouching for
+    # work nobody did, which is precisely the silence-as-pass record-lint exists
+    # to refuse, relocated from the library into its own report line. Derived
+    # from `counts` rather than from CHECKS, because a `None` count is a check
+    # that produced NO ANSWER, and listing it as run is that same lie by omission.
+    counts = lint.get("counts") or {}
+    ran = ", ".join(c for c, n in counts.items() if n is not None)
+    skipped = ", ".join(c for c, n in counts.items() if n is None)
+    subject = lint.get("plan_graded")
     if lint_lines:
         print(
             f"PRAWDUCT: record-lint — {len(lint.get('findings') or [])} finding(s) "
-            f"across {len(lint.get('records') or [])} changed record(s). "
-            "Advisory: fix or disposition them; they gate nothing."
+            f"across {len(lint.get('records') or [])} changed record(s)"
+            + (f"; {skipped} produced NO answer" if skipped else "")
+            + ". Advisory: fix or disposition them; they gate nothing."
         )
         for line in lint_lines:
             print(f"  {line}")
     elif lint.get("records"):
-        # The clause list is DERIVED, never restated. A hand-written one went out
-        # naming two checks the same commit deleted — a clean report vouching for
-        # work nobody did, which is precisely the silence-as-pass this module
-        # exists to refuse, relocated from the library into its own report line.
-        ran = ", ".join(_record_lint().CHECKS)
         print(
             f"PRAWDUCT: record-lint clean across {len(lint['records'])} changed "
-            f"record(s) — checks run: {ran}."
+            f"record(s) — checks run: {ran or '(none)'}"
+            + (f"; NOT run: {skipped}" if skipped else "")
+            + "."
+        )
+    if subject:
+        # Name the subject the deliverable check graded. A review whose record
+        # names one plan while its lint graded another is the failure this
+        # dispatch line makes visible at the moment it can still be corrected.
+        print(
+            f"PRAWDUCT: record-lint graded chunk {lint.get('chunk_graded')} of "
+            f"{subject} (scope {manifest.get('scope') or '(none)'}, "
+            f"{manifest.get('scope_chosen_by')})."
         )
 
     siblings = [
@@ -1466,7 +1483,19 @@ def cmd_stop(project_dir: Path, stop_input: dict | None = None) -> int:
 
     # Determine if there's an active build plan (used by both gates).
     # "Active" means incomplete chunks remain — a completed plan (all [x]) does not count.
-    has_build_plan = _gates()._has_active_build_plan_file(prawduct_dir) or _gates()._has_build_plan_in_state(prawduct_dir)
+    #
+    # Resolved from the BRANCH's plan, the same one the Type-driven carveouts
+    # below read. Asking "is there governed work" of the pointer while asking
+    # "what does that work declare" of the branch is one question answered from
+    # two places — the defect class this bundle exists to close, at the gate that
+    # decides whether the others run at all. Falls back to the pointer whenever
+    # the branch names no declared scope, so repos whose branch names differ from
+    # their scopes are unaffected.
+    gate_plan = _buildplan_refs().resolve_branch_plan(project_dir, prawduct_dir).path
+    has_build_plan = (
+        _gates()._has_active_build_plan_file(prawduct_dir, gate_plan)
+        or _gates()._has_build_plan_in_state(prawduct_dir)
+    )
 
     # Gate 1: Reflection
     # - With active build plan: BLOCKING (structured work deserves reflection)
@@ -1555,9 +1584,20 @@ def cmd_stop(project_dir: Path, stop_input: dict | None = None) -> int:
     # trivial-declaration contract is independent.
     trivial_block_reason = ""
     if has_changes and has_build_plan:
-        current_chunk_id = _buildplan_refs()._current_chunk_id_from_status(project_dir)
+        # Resolve WHICH plan once, then read all three chunk-level fields from
+        # it: the current chunk id, its `Type:`, and its trivial rationale.
+        # `active_build_plan` names the plan in progress in this repo; on a repo
+        # running several plans across worktrees that is not the plan this
+        # branch is building, and the gate's Type-driven carveouts would be
+        # decided by a chunk of a plan the session never touched. Falls back to
+        # the pointer whenever the branch names no declared scope, so a repo
+        # whose branch names differ from its scopes is unaffected.
+        _bpr = _buildplan_refs()  # `gate_plan` resolved once, above
+        current_chunk_id = _bpr._current_chunk_id_from_status(project_dir, gate_plan)
         if current_chunk_id is not None:
-            chunk_type, type_error = _buildplan_refs()._parse_build_plan_chunk_type(prawduct_dir, current_chunk_id)
+            chunk_type, type_error = _bpr._parse_build_plan_chunk_type(
+                prawduct_dir, current_chunk_id, gate_plan
+            )
             # v1.5.1 Chunk 04(a): surface typo'd Type values. Pre-fix, the
             # parser's "unknown type: ..." message was discarded so the author
             # never saw it. Surfacing in waiver_notes makes the typo visible
@@ -1578,8 +1618,8 @@ def cmd_stop(project_dir: Path, stop_input: dict | None = None) -> int:
                 if not fileset_ok:
                     trivial_block_reason = fileset_reason
                 else:
-                    _, rationale_error = _buildplan_refs()._parse_build_plan_chunk_trivial_rationale(
-                        prawduct_dir, current_chunk_id
+                    _, rationale_error = _bpr._parse_build_plan_chunk_trivial_rationale(
+                        prawduct_dir, current_chunk_id, gate_plan
                     )
                     if rationale_error:
                         trivial_block_reason = rationale_error
@@ -2824,6 +2864,13 @@ def cmd_verify_chunk_refs(project_dir: Path, chunk_id: str | None) -> int:
         # One canonical current-chunk resolution (shared with the stop hook and
         # the Critic helper); handles both the "### Chunk NN:" and
         # "## Chunk N (ID) — Name" Status-item forms.
+        # #327: announce a KNOWN-degraded reading before acting on it. Only on
+        # the inference path — an explicit chunk_id does not consume the
+        # progress reading, so warning there would be noise about something the
+        # caller already overrode.
+        notice = _buildplan_refs().degraded_progress_notice(project_dir)
+        if notice:
+            print(notice, file=sys.stderr)
         chunk_id = _buildplan_refs()._current_chunk_id_from_status(project_dir)
         if chunk_id is None:
             print("ok: no current chunk in Status; nothing to verify")
@@ -2858,7 +2905,8 @@ def cmd_verify_chunk_refs(project_dir: Path, chunk_id: str | None) -> int:
 def cmd_verify_records(project_dir: Path, argv: list[str]) -> int:
     """Run the deterministic record-lint checks over changed governance records.
 
-    Usage: verify-records [--base <tree-ish>] [--head <tree-ish>] [--chunk <id>] [--json]
+    Usage: verify-records [--base <tree-ish>] [--head <tree-ish>] [--chunk <id>]
+                          [--scope <s>] [--json]
 
     Defaults to the same interval the Critic reviews (the repo's base branch
     through the working tree), so running it by hand answers the same question
@@ -2869,6 +2917,15 @@ def cmd_verify_records(project_dir: Path, argv: list[str]) -> int:
     is inferred from build-plan Status and the inference is REPORTED, because
     Status names the first *unchecked* chunk — which is the next one, not the
     finished one, the moment a box is ticked.
+
+    ``--scope`` names which PLAN those deliverables are declared in. Without it
+    the scope is derived exactly as ``critic-begin`` derives it — from the branch
+    name, matched against the scopes build plans declare — falling back to the
+    ``active_build_plan`` pointer only when that matches nothing. Deriving it the
+    same way is the point: this form exists so a builder can answer the record
+    checks *before* dispatch instead of paying a review round to be told, and one
+    that grades a different plan than the dispatch will is answering a different
+    question, confidently.
 
     **Advice, not authority — so exit 0 on findings.** Record-lint reports to
     the builder; the review gates keep composing over facts, and a lint finding
@@ -2885,7 +2942,7 @@ def cmd_verify_records(project_dir: Path, argv: list[str]) -> int:
             as_json = True
             i += 1
             continue
-        if arg not in ("--base", "--head", "--chunk"):
+        if arg not in ("--base", "--head", "--chunk", "--scope"):
             print(f"verify-records: unknown argument {arg!r}", file=sys.stderr)
             return 2
         if i + 1 >= len(argv):
@@ -2954,8 +3011,16 @@ def cmd_verify_records(project_dir: Path, argv: list[str]) -> int:
         return 1
 
     record_lint = _record_lint()
+    scope = opts.get("scope")
+    if not scope:
+        # The same derivation `critic-begin` uses, so the by-hand answer and the
+        # dispatched one are about the same plan.
+        from lib import buildplan_refs  # noqa: PLC0415 — lazy; plan readers
+
+        scope = buildplan_refs.resolve_branch_plan(project_dir, prawduct_dir).scope
     result = record_lint.lint_records_safe(
-        project_dir, prawduct_dir, changed, base_tree, head_tree, opts.get("chunk")
+        project_dir, prawduct_dir, changed, base_tree, head_tree,
+        opts.get("chunk"), scope,
     )
     if as_json:
         print(json.dumps(result, indent=2))
@@ -2964,11 +3029,17 @@ def cmd_verify_records(project_dir: Path, argv: list[str]) -> int:
         print(line)
     total = len(result["findings"])
     graded = result.get("chunk_graded")
-    subject = f"chunk {graded}" if graded else "no chunk in scope"
+    plan = result.get("plan_graded")
+    subject = f"chunk {graded} of {plan}" if graded else "no chunk in scope"
+    # A count of `None` prints as `did-not-run`, never as a number. The word is
+    # the point: a `None` sitting beside integers still scans as a
+    # tally, and a tally of nothing is what reads as clean.
+    tallies = ", ".join(
+        f"{k}={'did-not-run' if v is None else v}" for k, v in result["counts"].items()
+    )
     print(
         f"ok: {len(result['records'])} record(s) linted, deliverables of {subject}, "
-        f"{total} finding(s) "
-        f"({', '.join(f'{k}={v}' for k, v in result['counts'].items())})"
+        f"{total} finding(s) ({tallies})"
     )
     return 0
 
@@ -3017,28 +3088,70 @@ def cmd_regen_views(project_dir: Path, args: list[str] | None = None) -> int:
     No-op when `views_enabled: true` is absent (enabled by default in v1.4;
     sync auto-enables for existing repos and `false` is the explicit opt-out).
 
-    Validation is fail-CLOSED (VWS-6R4T): every change-log tag is validated
-    against the plan roster BEFORE any view is written, and any ERROR-class
-    finding (unrecognized status=, chunks= ID missing from the plan's Status
-    roster, unreleased scope with no plan file, duplicate scope, conflicting
-    tag lines) aborts the whole regen with exit 2 and nothing written — a
-    partial flip is the silent failure class this command must never produce.
+    **There is ONE mode: views always regenerate.** Validation still runs before
+    any write, but its granularity is the VIEW, not the run (the
+    regen-views-is-advice ruling, 2026-08-01 — `.prawduct/learnings.md`, with
+    precedence recorded on `architecture.md`'s authority-fails-closed norm and
+    `data-model.md`'s derived-views norm). Two error classes:
+
+    * **Scope-attributed** (`views.ScopedError`, from
+      `diagnose_scope_plan_coverage` and `validate_chunk_roster`) — can only make
+      ONE scope's `## Status` view wrong, so that view is suppressed and every
+      other view is still written. This is the coupling VWS-6R4T introduced: one
+      unresolvable scope used to stop release-notes and scope-rollups too, which
+      have no plan-roster dependency at all. One consumer lost whole
+      release-notes sections to it; the repos carrying the most nested plans
+      were merely LATENT, safe only because `views_enabled` was unset.
+    * **Global** (unrecognized `status=`, conflicting tag lines) — an entry that
+      cannot be interpreted leaves a view silently HALF-RIGHT rather than absent,
+      which is precisely the bug class VWS-6R4T names. Still fail-closed: exit 2,
+      nothing written.
+
     Mere tag-line multiplicity (union repair is correct) stays a WARNING.
 
-    `--check` computes + validates but writes NOTHING: the release pre-flight.
-    Exit 0 = tags validate (pending writes are reported, not errors); exit 2 =
-    validation errors.
+    `--check` is **deprecated**: it prints a notice and performs the full regen.
+    A dry run that validated identically to the real run never caught anything
+    the real run didn't, and because it exits 0 while writes are *pending*, a
+    clean check meant "the tags parse", not "the views are correct" — which is
+    how one consumer lost six whole release-notes sections while the check read
+    clean. Removal defers to the next major, per `api-contract.md`'s
+    deprecation-is-signalled-not-silent norm.
 
     Exit codes:
-      0 - success (views disabled, no changes needed, regen applied cleanly,
-          or --check with clean validation)
+      0 - every view is current (written, created, or already up to date)
       1 - the plugin lib/ could not be imported (incomplete install) — a
           state-mutating command must not report success on a broken install
           (mirrors accept/verify-operator-verification's ImportError handling)
-      2 - I/O or schema error (missing change-log or build-plan), or a tag
-          validation error (fail closed: no views written)
+      2 - nothing written: I/O or schema error (missing change-log or
+          build-plan), a global validation error, or a usage error
+      3 - PARTIAL: scope-attributed errors suppressed their own `## Status`
+          views; every other view WAS written and each suppression is named on
+          stderr. A documented per-command sentinel in the established style of
+          `critic-begin` 2 (scope-widened) and `backlog verify-migration` 4, so
+          neither 1 nor 2 changes meaning.
     """
-    check_only = "--check" in (args or [])
+    # `api-contract.md`: "unknown flags rejected with a usage error (exit 2)".
+    # The previous `"--check" in args` membership test silently ignored every
+    # other argument, so a typo'd flag ran a full regen while its author believed
+    # they were dry-running.
+    deprecated_check = False
+    for arg in args or []:
+        if arg == "--check":
+            deprecated_check = True
+            continue
+        print(
+            f"error: regen-views: unknown flag {arg!r} — regen-views takes no "
+            f"arguments (`--check` is deprecated and performs a full regen).",
+            file=sys.stderr,
+        )
+        return 2
+    if deprecated_check:
+        print(
+            "WARNING: `regen-views --check` is deprecated and now performs a FULL "
+            "regeneration — views always regenerate, there is no dry-run mode. "
+            "Drop the flag; it is removed in the next major.",
+            file=sys.stderr,
+        )
     # Ensure the plugin root is on sys.path so `from lib import views` resolves
     # both when invoked as a script and when imported via SourceFileLoader in tests.
     lib_root = _plugin_root()
@@ -3091,42 +3204,88 @@ def cmd_regen_views(project_dir: Path, args: list[str] | None = None) -> int:
         return 2
     parsed_entries = views.parse_change_log(change_log_text)
     artifacts_dir = prawduct_dir / "artifacts"
-    errors: list[str] = []
+
+    # GLOBAL errors — no single view owns them, and each one would leave a view
+    # silently half-right rather than absent. Fail closed (VWS-6R4T's actual
+    # content, which the advice ruling preserves).
+    global_errors: list[str] = []
     # Unrecognized status= (typo) — the entry would silently never flip.
-    errors.extend(views.validate_status_values(parsed_entries))
+    global_errors.extend(views.validate_status_values(parsed_entries))
     # Conflicting scalar values across tag lines — first-wins may be wrong.
-    errors.extend(views.validate_tag_conflicts(parsed_entries))
-    # Unreleased scope with no plan file + duplicate scope across plan files.
-    errors.extend(views.diagnose_scope_plan_coverage(change_log_text, artifacts_dir))
-    # chunks= IDs that match nothing in their plan's Status roster.
-    errors.extend(views.validate_chunk_roster(change_log_text, artifacts_dir))
+    global_errors.extend(views.validate_tag_conflicts(parsed_entries))
+
+    # SCOPE-ATTRIBUTED errors — each can only make its own scope's `## Status`
+    # view wrong. Unreleased scope with no plan file, duplicate scope across
+    # plan files, and chunks= IDs matching nothing in their plan's roster.
+    scoped_errors: list[views.ScopedError] = []
+    scoped_errors.extend(views.diagnose_scope_plan_coverage(change_log_text, artifacts_dir))
+    scoped_errors.extend(views.validate_chunk_roster(change_log_text, artifacts_dir))
+    # A scope-attributed error that carries no scope has nothing to suppress, so
+    # suppressing "the scope it names" would silently suppress nothing and the
+    # bad input would ride into a written view. Treat it as global — fail closed
+    # is the safe direction when attribution is missing.
+    global_errors.extend(e for e in scoped_errors if e.scope is None)
+    scoped_errors = [e for e in scoped_errors if e.scope is not None]
+
     for warning in views.validate_tag_line_multiplicity(parsed_entries):
         print(f"WARNING: {warning}", file=sys.stderr)
-    if errors:
-        for err in errors:
+
+    if global_errors:
+        for err in global_errors:
             print(f"ERROR: {err}", file=sys.stderr)
         print(
-            f"{len(errors)} validation error(s) — no views written. Fix the "
-            f"change-log tags (or plan roster) and re-run.",
+            f"{len(global_errors)} validation error(s) affecting every view — no "
+            f"views written. Fix the change-log tags and re-run.",
             file=sys.stderr,
         )
         return 2
 
-    if check_only:
-        for r in results:
-            print(f"[check] {r.summary}")
-        print("check passed: tags validate against the plan roster; nothing written.")
-        return 0
+    suppressed_scopes = {e.scope for e in scoped_errors}
+    for err in scoped_errors:
+        print(f"ERROR: {err}", file=sys.stderr)
+
+    kept = [
+        r
+        for r in results
+        if not (r.name == "status" and r.scope in suppressed_scopes)
+    ]
+    if suppressed_scopes:
+        # Report what was actually withheld, not what was matched. The
+        # no-plan-file case names a scope that HAS no Status view — there was
+        # nothing to suppress, and claiming otherwise tells an operator to go
+        # look for a view that was never going to be written.
+        withheld = sorted(
+            {r.scope for r in results if r.name == "status" and r.scope in suppressed_scopes}
+        )
+        unresolvable = sorted(suppressed_scopes - set(withheld))
+        parts = []
+        if withheld:
+            parts.append(
+                "withheld the ## Status view for "
+                + ", ".join(f"scope={s!r}" for s in withheld)
+            )
+        if unresolvable:
+            parts.append(
+                "no ## Status view exists to write for "
+                + ", ".join(f"scope={s!r}" for s in unresolvable)
+            )
+        print(
+            f"{len(scoped_errors)} scope-local validation error(s) — "
+            + "; ".join(parts)
+            + ". Every other view was regenerated; fix these and re-run to "
+            "complete them.",
+            file=sys.stderr,
+        )
 
     try:
-        views.apply_regen(prawduct_dir, results)
+        views.apply_regen(prawduct_dir, kept)
     except OSError as e:
         print(f"ERROR writing view output: {e}", file=sys.stderr)
         return 2
 
-    for r in results:
+    for r in kept:
         print(r.summary)
-    return 0
+    return 3 if suppressed_scopes else 0
 
 
 def cmd_check_operator_verification(project_dir: Path) -> int:
@@ -3423,6 +3582,15 @@ def cmd_handoff(project_dir: Path, argv: list[str]) -> int:
             file=sys.stderr,
         )
         return 1
+
+    # #327: the preview's Resume line is derived from the chunk reading, so a
+    # known-degraded reading makes the thing being previewed wrong. Emitted here
+    # rather than inside `briefing.py` — the notice belongs to the deliberately
+    # invoked command, and the same renderer also serves the SessionStart hot
+    # path, where this must NOT fire.
+    notice = _buildplan_refs().degraded_progress_notice(project_dir)
+    if notice:
+        print(notice, file=sys.stderr)
 
     return briefing.handoff_cmd(project_dir, argv)
 
@@ -4206,6 +4374,17 @@ def cmd_repo_disable(project_dir: Path, argv: list[str]) -> int:
     return 0
 
 
+# Two constraints, both learned by breaking a test. They have DIFFERENT scopes,
+# and getting that backwards is why this note was wrong on its first attempt:
+# 1. Scope: the block below only. No close-paren character anywhere inside it —
+#    not in the strings, not in a comment. Several tests read the block by
+#    splitting the source on the first one, so any occurrence silently truncates
+#    the text they check. Use brackets. A paren up here is harmless, because the
+#    truncation starts after the assignment.
+# 2. Scope: this note TOO. Nothing here or below may write the constant's name,
+#    because the tests slice between its FIRST and SECOND occurrence in the whole
+#    file — so naming it in this comment would make the window be this comment.
+#    That is the only reason the sentences above talk around it.
 _USAGE = (
     "Usage: prawduct-hook "
     "{clear [--session-start|--force|--brief-only]|critic-begin --mode <m>|critic-end|critic-consolidate|"
@@ -4216,14 +4395,14 @@ _USAGE = (
     "test-evidence record [--from-junit <r>|--from-counts passed=N failed=M skipped=K|--no-rerun] [-- pytest args]|"
     "check-cumulative-critic|"
     "verify-chunk-refs [chunk_id]|"
-    "verify-records [--base <t>] [--head <t>] [--chunk <id>] [--json]|verify-coverage|"
+    "verify-records [--base <t>] [--head <t>] [--chunk <id>] [--scope <s>] [--json]|verify-coverage|"
     "ledger-append --event <kind> [--scope <s>] [--chunk <id>] [--model <id>]|"
     "handoff preview|"
     "review-stats [--json]|classify-diff-risk [<base>]|"
     "check-operator-verification|accept-operator-verification <rationale>|"
     "verify-operator-verification <vrf-id>|"
     "check-pr-doc-only|check-change-log-entry|check-releasability [--release vX.Y.Z]|"
-    "regen-views [--check]|stamp-merged|"
+    "regen-views [--check, deprecated]|stamp-merged|"
     "infer-critic-mode [args]|"
     "resolve-base|version|"
     "evidence {status|list [--kind <k>] [-n <count>]}|advisory <subcmd> [args]|"

@@ -40,6 +40,7 @@ from __future__ import annotations
 
 import re
 import subprocess
+from collections.abc import Iterator
 from pathlib import Path
 from typing import NamedTuple
 
@@ -106,9 +107,19 @@ def _iter_status_section_items(content: str):
 # "### Chunk 02:"). Previously only the colon form parsed, so an em-dash heading
 # silently disabled Goal-2 ref verification and per-chunk mode scoping for the
 # whole plan.
-_CHUNK_ID_SEP = r"\s*(?:[:—–(-]|$)"
-_CHUNK_HEADING_RE = re.compile(r"^#{2,3}\s+Chunk\s+(\w+)" + _CHUNK_ID_SEP)
-_CHUNK_ITEM_RE = re.compile(r"^Chunk\s+(\w+)" + _CHUNK_ID_SEP)
+# `**` closes a bolded label (`**Chunk A** — Name`) and so terminates the id
+# exactly as `:` or an em-dash does. It is in the SEPARATOR set, and `_CHUNK_BOLD`
+# allows the opening `**`, because `views.CHUNK_LINE_RE` — the Status-line twin —
+# accepts the bold form and the two must agree. When they did not, the failure
+# was worse than either alone: the checkbox flipped (views matched) while
+# `_chunk_id_from_item_text` returned None (this matcher did not), so the plan
+# read as having NO current chunk and `verify-chunk-refs` exited 0 having
+# verified nothing. A one-sided widening of a shared contract is not a partial
+# fix, it is a new defect.
+_CHUNK_ID_SEP = r"\s*(?:[:—–(-]|\*\*|$)"
+_CHUNK_BOLD = r"(?:\*\*\s*)?"
+_CHUNK_HEADING_RE = re.compile(r"^#{2,3}\s+" + _CHUNK_BOLD + r"Chunk\s+(\w+)" + _CHUNK_ID_SEP)
+_CHUNK_ITEM_RE = re.compile(r"^" + _CHUNK_BOLD + r"Chunk\s+(\w+)" + _CHUNK_ID_SEP)
 
 
 def _chunk_id_from_item_text(text: str) -> str | None:
@@ -119,11 +130,15 @@ def _chunk_id_from_item_text(text: str) -> str | None:
     return m.group(1) if m else None
 
 
-def _count_build_plan_chunks(prawduct_dir: Path) -> tuple[int, int]:
+def _count_build_plan_chunks(
+    prawduct_dir: Path, plan_path: "Path | None" = None
+) -> tuple[int, int]:
     """Count chunks in the active build plan's Status section.
 
     Resolves the plan via the ``active_build_plan:`` pointer (falls back to
-    ``artifacts/build-plan.md``), so scope-named plans are counted too.
+    ``artifacts/build-plan.md``), so scope-named plans are counted too —
+    unless ``plan_path`` names one, which the gate paths pass so that
+    "is there governed work" and "what does it declare" read one file.
     Returns ``(total, complete)``; ``(0, 0)`` if the plan or its Status section
     is missing or unreadable. The single canonical implementation — both callers
     are in ``lib.gates`` (the end-of-cycle synthesis gate and its sibling); they
@@ -132,7 +147,8 @@ def _count_build_plan_chunks(prawduct_dir: Path) -> tuple[int, int]:
     :func:`resolve_chunk_progress`, which is the one place the checkbox and
     git-derived readings are reconciled.
     """
-    plan_path = resolve_build_plan_path(prawduct_dir)
+    if plan_path is None:
+        plan_path = resolve_build_plan_path(prawduct_dir)
     if not plan_path.is_file():
         return 0, 0
     try:
@@ -346,16 +362,22 @@ class ChunkProgress(NamedTuple):
     ``current_id`` / ``current_text`` are empty-ish (``None`` / ``""``) when the
     plan has no remaining chunk.
 
-    ``git_derived`` records which of the two readings answered. Stated honestly:
-    **no production caller reads it today** — it is asserted by tests and
-    available to a caller that wants to report *why* instead of guessing. The
-    gap that leaves is named rather than papered over: when the git-derived path
-    bails (absent base branch, git failure, a branch not ahead) the answer
-    silently becomes the checkbox reading, and on a ``views_enabled`` repo
-    mid-branch that is the reading known to be wrong. Nothing tells anyone.
-    Closing it means choosing which surface should report — a deliberately
-    invoked diagnostic, not this hot path, since most ``git_derived=False``
-    answers are perfectly normal — so it is a design call, not a rename.
+    ``git_derived`` records which of the two readings answered, and
+    :func:`degraded_progress_notice` is its production consumer: when the
+    git-derived path bails (absent base branch, git failure, a branch not ahead)
+    the answer becomes the checkbox reading, and on a ``views_enabled`` repo
+    mid-branch that is the reading known to be wrong. It used to become that
+    silently. The notice reports it from deliberately-invoked surfaces only —
+    most ``git_derived=False`` answers are perfectly normal, so this hot path
+    stays quiet.
+
+    ``complete`` is a COUNT of done items, not a positional boundary: done-ness
+    is deliberately non-contiguous (see :func:`_git_aware_progress` on why the
+    union exists), so slicing a roster by it names the wrong chunks. Callers
+    needing "which chunks are done" take the prefix before ``current_id`` **on
+    the git-derived reading only** — on the checkbox reading the per-item
+    predicate is the ``checked`` flag itself, which is exact, and the prefix
+    would under-report a checked item sitting after ``current_id``.
     """
 
     total: int
@@ -366,7 +388,241 @@ class ChunkProgress(NamedTuple):
     git_derived: bool
 
 
-def resolve_chunk_progress(project_dir: Path) -> ChunkProgress:
+class ReviewedPlan(NamedTuple):
+    """Which build plan a review is actually about, and how that was decided.
+
+    ``path`` is ``None`` when no plan could be resolved at all. ``gap`` carries a
+    reason when the resolution is an assumption or a failure, so a caller can
+    report it rather than grade a subject it only guessed at; it is ``None`` when
+    the answer is grounded.
+
+    The distinction this type exists for: **a chunk id from the dispatch and a
+    plan from ``active_build_plan`` are two halves of one question resolved from
+    different places, with nothing checking they agree.** When they disagree the
+    deliverable check grades a chunk of a plan the diff has nothing to do with,
+    and answers zero — which is the shape of a clean result.
+    """
+
+    path: Path | None
+    rel: str | None
+    scope: str | None
+    source: str  # "scope-named" | "active-pointer" | "none"
+    gap: str | None
+
+
+def _scope_plan_map(prawduct_dir: Path) -> dict[str, Path]:
+    """``{frontmatter scope: plan path}`` over this repo's artifacts directory.
+
+    Lazy import: ``lib.views`` is a HEAVY_SUBMODULE. **Three paths ask this**:
+    review dispatch, every session END (the Stop hook resolves its gate plan
+    from the branch BEFORE deciding whether a plan is active, so the scan runs
+    whenever the hook runs — not only where a plan and changes both exist), and
+    every session START (the briefing's advisory reads the same plan so it
+    cannot diverge from the gate). So the cost moved onto a hot path from one
+    already measured in minutes. Lazy still earns its keep: it stays off the
+    import graph of every consumer that never asks.
+
+    **Nothing memoizes the scan across calls.** The import is cached by the
+    module system; the recursive walk of ``artifacts/`` and its per-file
+    frontmatter parse are not. :func:`resolve_branch_plan` builds the map ONCE
+    and hands it to both halves, so a resolution is one walk — an earlier
+    version wrote the composite longhand at each caller and paid two.
+    Deliberately no millisecond figure here: a machine-held number
+    hand-copied into prose that ships to consumer repos whose ``artifacts/``
+    is nothing like this one's is the drift ``record_lint``'s suite-total
+    tripwire exists to catch, one file over.
+    """
+    from . import views  # noqa: PLC0415 — lazy; views is a HEAVY_SUBMODULE
+
+    return views.build_scope_to_plan_map(prawduct_dir / "artifacts")
+
+
+def resolve_branch_plan(project_dir: Path, prawduct_dir: Path) -> ReviewedPlan:
+    """**The** answer to "which plan is this branch building" — infer the scope
+    from the branch, then resolve the plan it names.
+
+    The one entry point for that composite. Written out longhand it is
+    ``resolve_reviewed_plan(pd, prd, infer_scope_from_branch(pd, prd))``, which
+    appeared at every caller and scanned ``artifacts/`` **twice** per resolution
+    — once to match the branch name, once to resolve the match. Building the map
+    here and handing it to both halves makes it one scan, and gives the composite
+    a name so the next consumer asks rather than re-assembles. A repeated
+    two-call composite is how two callers end up answering the same question
+    differently, which is the defect class this module's plan resolution exists
+    to close.
+    """
+    known = _scope_plan_map(prawduct_dir)
+    scope = infer_scope_from_branch(project_dir, prawduct_dir, known=known)
+    return resolve_reviewed_plan(project_dir, prawduct_dir, scope, known=known)
+
+
+def infer_scope_from_branch(
+    project_dir: Path, prawduct_dir: Path, known: "dict[str, Path] | None" = None
+) -> str | None:
+    """The scope this branch is building, or ``None`` when it cannot be shown.
+
+    A **match against declared data, never a guess**: the branch name's last
+    segment (and the whole name, for branches without a prefix) is accepted only
+    when some build plan under ``artifacts/`` declares it as a frontmatter
+    ``scope:``. ``fix/backlog-burndown`` → ``backlog-burndown`` because
+    ``build-plan-backlog-burndown.md`` says so; ``develop`` → ``None`` because
+    nothing declares it.
+
+    ``known`` is a prebuilt scope→plan map — pass it to share one walk of
+    ``artifacts/`` with a caller that also resolves the plan (:func:`resolve_branch_plan`).
+
+    Two narrowings, and the honest statement of what remains:
+
+    - A branch matching no declared scope infers nothing, leaving every caller
+      on the behaviour it had before.
+    - A matched plan whose Status is **entirely checked** is rejected. Those
+      boxes flip at release, so an all-checked plan has shipped, and a branch
+      named after a shipped scope is far more likely to be new work near old
+      code than a resumption of finished work. Without this, every one of the
+      dozens of released plans a long-lived repo accumulates is a live target.
+
+    **What is still possible, stated plainly:** a branch whose name matches an
+    *unfinished* plan it is not actually building will be attributed to that
+    plan. Nothing here can tell those apart — a name is the only signal — so the
+    residual case is real and the remedy is explicit ``--scope``. This is
+    narrower than "can only add, never redirect," which is true of the no-match
+    case only.
+    """
+    branch = gitstate.current_branch(project_dir)
+    if not branch:
+        return None  # detached HEAD — nothing to read a scope from
+    candidates = [branch]
+    if "/" in branch:
+        candidates.append(branch.rsplit("/", 1)[1])
+    if known is None:
+        known = _scope_plan_map(prawduct_dir)
+    for candidate in candidates:
+        plan_path = known.get(candidate)
+        if plan_path is not None and _has_unfinished_chunk(plan_path):
+            return candidate
+    return None
+
+
+def _has_unfinished_chunk(plan_path: Path) -> bool:
+    """True when ``plan_path``'s Status section still holds an unchecked chunk.
+
+    The liveness signal for :func:`infer_scope_from_branch`. Read from the
+    checkboxes deliberately rather than through the git-aware resolver, which
+    would answer the different question "which chunk is being built right now".
+
+    **The signal is sharp under ``views_enabled`` and blunt elsewhere, and the
+    difference is worth knowing.** Where views are enabled the boxes flip at
+    *release*, so "all checked" means shipped — exactly the question being asked.
+    Everywhere else the boxes flip per chunk, so a plan reads finished from the
+    moment its last chunk is ticked, which is typically before the branch merges.
+    In that window the branch stops matching and every caller falls back to the
+    ``active_build_plan`` pointer: attribution, ``plan_graded``, and the Stop
+    hook's ``Type:`` carveouts. That is the behaviour those callers had before
+    branch inference existed, so the window is a *lapse of the improvement*, not
+    a new defect — but it lands at end-of-plan, which is exactly when a
+    `cumulative` review and the last gate run happen. Narrowing it needs a
+    liveness signal a non-views plan does not carry; ``--scope`` is the remedy
+    meanwhile.
+
+    A plan with no Status items at all reads as unfinished — an unparseable plan
+    is not evidence of completion, and the caller's fallback (the pointer) is no
+    better an answer for it.
+    """
+    try:
+        content = plan_path.read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError):
+        return False
+    items = list(_iter_status_section_items(content))
+    if not items:
+        return True
+    return any(not checked for checked, _text in items)
+
+
+def resolve_reviewed_plan(
+    project_dir: Path,
+    prawduct_dir: Path,
+    scope: "str | None",
+    known: "dict[str, Path] | None" = None,
+) -> ReviewedPlan:
+    """Resolve the build plan a review is about, preferring the reviewed SCOPE's
+    plan over the ``active_build_plan`` pointer.
+
+    The pointer answers "which plan is in progress in this repo," which is not
+    the same question as "which plan is this review of" — and on a repo running
+    several plans across worktrees the two legitimately differ. The pointer is
+    then *correct* and still the wrong answer here, which is why this resolves
+    around it rather than asking anyone to repoint it.
+
+    ``known`` is a prebuilt scope→plan map, so a caller resolving both halves
+    pays one walk of ``artifacts/`` rather than two — see
+    :func:`resolve_branch_plan`, which is the reason it exists. Omitted, it
+    builds its own.
+
+    Three outcomes:
+
+    - **scope names a plan** → that plan, ``gap=None``. The pointer is not the
+      subject and needs no comment; ``rel`` names the file that was graded.
+    - **scope names no plan** → ``path=None`` and a ``gap``. Falling back to the
+      pointer here is precisely the silent grade of an unrelated plan, so the
+      caller must report instead of answering.
+    - **no scope** → the pointer's plan, with a ``gap`` stating the assumption.
+      A plan-less repo yields ``path=None`` and no gap: that is an absence, not
+      a failure.
+    """
+    if scope and scope.strip():
+        scope = scope.strip()
+        match = (known if known is not None else _scope_plan_map(prawduct_dir)).get(scope)
+        if match is None:
+            return ReviewedPlan(
+                None,
+                None,
+                scope,
+                "none",
+                f"the dispatch names scope {scope!r} but no build plan under "
+                "artifacts/ declares it — grading the active_build_plan pointer's "
+                "plan would grade a different subject",
+            )
+        return ReviewedPlan(match, _repo_rel(prawduct_dir, match), scope, "scope-named", None)
+
+    pointer = resolve_build_plan_path(prawduct_dir)
+    if not pointer.is_file():
+        return ReviewedPlan(None, None, None, "none", None)
+    rel = _repo_rel(prawduct_dir, pointer)
+    # The assumption is only worth reporting where it could be WRONG and the
+    # reader has a remedy: two or more plans declaring scopes means the pointer
+    # picked one of several, and `--scope` would have said which. Below that
+    # there is nothing to have chosen differently, and a note fires on every
+    # review of every such repo — which is how a channel stops being read
+    # (`nonfunctional-requirements.md` § Direction: a control that fires
+    # repeatedly with no yield is removed by default).
+    ambiguous = len(known if known is not None else _scope_plan_map(prawduct_dir)) > 1
+    return ReviewedPlan(
+        pointer,
+        rel,
+        None,
+        "active-pointer",
+        (
+            f"graded {rel}, resolved from the active_build_plan pointer because "
+            "the dispatch carried no scope — the pointer names the plan in "
+            "progress in this repo, which need not be the plan this branch is "
+            "building, and this repo declares several"
+        )
+        if ambiguous
+        else None,
+    )
+
+
+def _repo_rel(prawduct_dir: Path, path: Path) -> str:
+    """``path`` relative to the repo root, or its bare name when it lies outside."""
+    try:
+        return str(path.relative_to(prawduct_dir.parent))
+    except ValueError:
+        return path.name
+
+
+def resolve_chunk_progress(
+    project_dir: Path, plan_path: "Path | None" = None
+) -> ChunkProgress:
     """The ONE answer to "how far along is the plan, and which chunk is current."
 
     Two readings exist — the Status checkboxes, and the git-derived one for
@@ -381,9 +637,16 @@ def resolve_chunk_progress(project_dir: Path) -> ChunkProgress:
     Every consumer — :func:`_parse_build_plan_status` and so the handoff, the
     briefing, ``verify-chunk-refs``, and ``critic_mode.infer_mode`` — resolves
     through here.
+
+    ``plan_path`` overrides which plan is read. It defaults to the
+    ``active_build_plan`` pointer, so every existing caller is unchanged; mode
+    inference passes the branch's own plan when :func:`resolve_reviewed_plan`
+    found one, so "which chunk is current" and "which plan the record names"
+    cannot answer about two different files.
     """
     prawduct_dir = gitstate.get_prawduct_dir(project_dir)
-    plan_path = resolve_build_plan_path(prawduct_dir)
+    if plan_path is None:
+        plan_path = resolve_build_plan_path(prawduct_dir)
     if not plan_path.is_file():
         return ChunkProgress(0, 0, None, "", False, False)
     try:
@@ -423,6 +686,59 @@ def _resolve_chunk_progress_from(project_dir: Path, content: str) -> ChunkProgre
     )
 
 
+# Stable token on every degraded-reading emission, so occurrences can be counted
+# by whoever is deciding whether this control still earns its place (the
+# proportionality norm: a finding that is printed and forgotten can never be
+# retired on evidence). **Do not reword it** — that instruction stands on its own
+# and needs no mechanism to obey. No counter is claimed here: the notice reaches
+# the agent transcript, which lives outside this repo, so asserting a specific
+# counting command would be a mechanism claim nothing in the tree implements.
+DEGRADED_PROGRESS_TOKEN = "degraded-chunk-reading"
+
+
+def degraded_progress_notice(project_dir: Path) -> str | None:
+    """A notice when the chunk reading in force is the one known to be wrong.
+
+    Closes the gap :class:`ChunkProgress` names: when the git-derived path bails
+    (no base branch, git failure, a branch not ahead) the answer silently
+    becomes the checkbox reading, and on a ``views_enabled`` repo mid-branch
+    that is the reading known to be wrong. Nothing told anyone (#327).
+
+    Fires only when all three hold:
+
+    * ``views_enabled`` — the Status checkboxes are a derived view that does not
+      flip until release, so mid-branch they read all-incomplete;
+    * a plan with a Status roster was actually read (``has_status_items``), so
+      "there is no plan" is never reported as a degraded reading;
+    * the git-derived path bailed (``git_derived`` false).
+
+    Returns ``None`` otherwise. **Reporting the ``views_enabled``-unset case
+    would be pure noise** — there the checkbox reading is authoritative and a
+    ``git_derived=False`` answer is simply correct, which is most of them.
+
+    Deliberately NOT emitted from :func:`_git_aware_progress`, which is on the
+    SessionStart/Stop hot path: a per-invocation diagnostic there spends
+    wall-clock the nonfunctional budget protects and reaches an audience that
+    cannot act on it. Callers are deliberately-invoked surfaces only.
+    """
+    prawduct_dir = gitstate.get_prawduct_dir(project_dir)
+    if not read_bool_yaml_key(prawduct_dir / "project-state.yaml", "views_enabled"):
+        return None
+    progress = resolve_chunk_progress(project_dir)
+    if not progress.has_status_items or progress.git_derived:
+        return None
+    current = progress.current_text or "(none — plan reads complete)"
+    return (
+        f"WARNING: {DEGRADED_PROGRESS_TOKEN}: views_enabled is set, so this "
+        f"plan's ## Status checkboxes do not flip until release — and the "
+        f"git-derived reading bailed (no base branch resolved, git unavailable, "
+        f"or HEAD not ahead of base), so chunk progress fell back to those "
+        f"checkboxes. Reporting {current!r} as current; on a feature branch that "
+        f"is likely the FIRST chunk rather than the live one. Pass --chunk "
+        f"explicitly to anything that grades a chunk."
+    )
+
+
 def _plan_description_fallback(plan_path: Path, content: str) -> str:
     """Name the plan when it carries no ``# Build Plan`` H1.
 
@@ -442,7 +758,9 @@ def _plan_description_fallback(plan_path: Path, content: str) -> str:
     return plan_path.stem.removeprefix("build-plan-") or plan_path.stem
 
 
-def _parse_build_plan_status(project_dir: Path) -> dict[str, str]:
+def _parse_build_plan_status(
+    project_dir: Path, plan_path: "Path | None" = None
+) -> dict[str, str]:
     """Parse work context from the active build plan's Status section.
 
     Returns dict with keys matching _parse_wip output:
@@ -456,9 +774,13 @@ def _parse_build_plan_status(project_dir: Path) -> dict[str, str]:
     through :func:`_git_aware_progress`, which needs the repo. The explicit
     parameter is the point — every caller can see that this reads git, which the
     three separate local patches of the same defect could not.
+
+    ``plan_path`` overrides which plan is read, defaulting to the
+    ``active_build_plan`` pointer (see :func:`resolve_chunk_progress`).
     """
     prawduct_dir = gitstate.get_prawduct_dir(project_dir)
-    plan_path = resolve_build_plan_path(prawduct_dir)
+    if plan_path is None:
+        plan_path = resolve_build_plan_path(prawduct_dir)
     if not plan_path.is_file():
         return {}
     try:
@@ -557,6 +879,34 @@ def build_plan_is_complete(status: dict[str, str]) -> bool:
 
 _BUILD_PLAN_PATH_RE = re.compile(r"`([^`\s]+)`")
 _BUILD_PLAN_NEW_QUALIFIER_RE = re.compile(r"\bnew\s+`([^`\s]+)`")
+# #224(b): `new` is also an ordinary English adjective. Narrative prose ABOUT a
+# file — a `Context:` paragraph recording that a chunk "added new `x.py`" — is
+# not a declaration that THIS chunk creates it, but the qualifier matched any
+# `new` before any backticked token anywhere in the section, so one such
+# sentence silently exempted a real path from verification for the whole chunk.
+#
+# **The item prescribed scoping to a Deliverables list item; that is too narrow
+# and this departs from it deliberately.** Real plans in this repo declare
+# creations outside Deliverables as a matter of course —
+# `build-plan-api-design.md:177` names a new test file in `- **Tests:**` and
+# `:109` names one in acceptance criteria. Honouring the qualifier only inside
+# Deliverables would turn every one of those into a false missing-ref, which is
+# the failure the exemption exists to prevent. The distinction that actually
+# separates the two cases is STRUCTURAL rather than positional: a declaration is
+# a list item (`- new \`x\``, `1. new \`x\``), while the adjectival use that
+# motivated the item lives in running paragraphs. Scoping to list items excludes
+# the prose without breaking the fields plans really use, and #224(a) — the
+# expiry below — is what actually catches a file the chunk promised and skipped.
+_LIST_ITEM_RE = re.compile(r"^\s*(?:[-*+]\s|\d+[.)]\s)")
+# A list item does not end at its first newline. This repo's plans wrap
+# deliverable bullets across several lines, and the `new `path`` declaration
+# routinely lands on a CONTINUATION line rather than the one carrying the
+# bullet marker. Matching per-line therefore dropped the exemption for the
+# dominant declaration form and would have produced BLOCKING `missing-ref:`
+# findings on open chunks — a worse failure than the one #224(b) set out to fix.
+# A continuation is a non-blank line that starts no new item and is not a
+# column-0 field; a blank line or a column-0 non-list line closes the block.
+_PLAN_FIELD_RE = re.compile(r"^\S")
 # A trailing `:<line>`, `:<line>:<col>`, or `:<line>-<line>` on a backticked
 # token is a code-location citation (`lib/critic_mode.py:452`, `lib/foo.py:5-8`,
 # the editor-style `lib/foo.py:12:34`), not part of the filename.
@@ -592,9 +942,37 @@ _BUILD_PLAN_TRIVIAL_RATIONALE_RE = re.compile(
 # the same test: it names something in git, not on disk. A repo-root directory
 # literally called `refs/` would be shadowed, which is why the extension guard
 # below still applies (`refs/foo.py` stays checked).
+#
+# #333: the original set covered git-flow only, so every consumer on
+# Conventional-Commits branch naming (`feat/…`, `chore/…`) or with a dependency
+# bot got a spurious BLOCKING `missing-ref:` for a branch named in plan prose —
+# `missing-ref:` is BLOCKING in `skills/critic/review-protocol.md`, so this
+# failed a review on the branch name itself.
+#
+# **The shape-rule alternative was evaluated and rejected**, though the item and
+# the plan both proposed it as the better route. "A token is a path only if its
+# final segment carries an extension-shaped suffix" would drop the guessing
+# entirely — but it also stops verifying real extensionless paths, and this
+# repo's single most-cited path is one: `plugin/bin/prawduct-hook`. Trading a
+# spurious-finding class for a missed-finding class on the most-referenced file
+# in the tree is the wrong direction, so the allowlist stays and grows.
 _GIT_REF_PREFIXES = frozenset(
-    {"feature", "fix", "hotfix", "release", "bugfix", "support", "origin", "upstream",
-     "refs"}
+    {
+        # git-flow
+        "feature", "fix", "hotfix", "release", "bugfix", "support",
+        # remotes and raw refs
+        "origin", "upstream", "refs",
+        # Conventional-Commits branch naming, as enumerated by #333. Deliberately
+        # NOT `docs`, `test`, `build` or `style`: those are plausible top-level
+        # DIRECTORY names, and every prefix added here stops an extensionless
+        # token under it from being verified (`docs/requirements` would go
+        # unchecked). The set is entries whose collision risk with a real
+        # directory is near zero — `ci` and `perf` are the weakest two and are
+        # here because the item named them.
+        "feat", "chore", "refactor", "perf", "ci", "wip",
+        # dependency bots
+        "dependabot", "renovate",
+    }
 )
 
 # "Carries an extension" is not "contains a dot". A version-numbered branch —
@@ -744,9 +1122,109 @@ def _chunk_section_lines(
     return in_section, section_lines
 
 
-def _parse_build_plan_chunk_refs(prawduct_dir: Path, chunk_id: str) -> dict:
+def _normalize_chunk_id(chunk_id: str) -> str:
+    """Leading-zero-normalized chunk id (``01`` -> ``1``), for comparison only.
+
+    **Not** :func:`views.normalize_chunk_id`, which is the canonical one and
+    additionally casefolds and unifies ``_``/``-``. This is the weaker idiom this
+    module already used inline at four other sites, named here so new comparisons
+    stop adding copies. The two are NOT interchangeable: this one compares
+    ``Chunk_A`` and ``Chunk-A`` as different. Both are only ever applied to both
+    sides of a comparison within one module, so the difference is contained —
+    unifying them is worth doing but is its own change, not a rider on this one.
+    """
+    return chunk_id.lstrip("0") or "0"
+
+
+def _qualifier_scope_lines(
+    section_lines: list[tuple[int, str]],
+) -> Iterator[tuple[int, str]]:
+    """A chunk's LIST-ITEM lines, **wrapped continuations included** — where a
+    ``new `path`` declaration counts.
+
+    See ``_LIST_ITEM_RE`` for why this is list items rather than the
+    Deliverables block the item prescribed, and why a per-line test is wrong.
+    Narrative paragraphs are excluded, which is where the adjectival ``new``
+    that motivated #224(b) lives.
+    """
+    in_item = False
+    for line_num, line in section_lines:
+        if _LIST_ITEM_RE.match(line):
+            in_item = True
+        elif not line.strip() or _PLAN_FIELD_RE.match(line):
+            # A blank line, or a line starting in column 0 — either closes the
+            # item. Column-0 prose is a narrative paragraph, not a wrap: this
+            # repo indents continuations.
+            in_item = False
+        if in_item:
+            yield line_num, line
+
+
+def _completed_chunk_ids(project_dir: Path, content: str) -> set[str] | None:
+    """Normalized ids of the chunks this plan's progress reading says are DONE.
+
+    ``None`` means *cannot tell*, and callers must read it as "expire nothing"
+    — #224a fails toward the exemption on purpose, because a false missing-ref
+    fires on every review of an in-progress chunk while a missed one surfaces at
+    the next verify.
+
+    Precedence belongs to :func:`resolve_chunk_progress` and is not re-derived
+    here. That matters: under ``views_enabled`` the Status checkboxes are a
+    derived view that only flips at release, so on a feature branch they read
+    all-incomplete and a checkbox-based expiry would never fire on the only
+    surface where it matters.
+
+    The two readings get different treatment, because precision is free in one
+    and not in the other:
+
+    * **Checkbox reading** — the done-predicate IS the ``checked`` flag, already
+      in hand. Read it directly and be exact. An earlier version applied the
+      prefix rule here too and justified the imprecision as "the predicate lives
+      in a closure", which is true of the git path and false of this one; the
+      cost was real, since a checked chunk after ``current_id`` kept an
+      exemption it had no claim to.
+    * **Git-derived reading** — ``progress.complete`` is a COUNT of done items
+      *anywhere* in the roster, deliberately non-contiguous (see
+      :func:`_git_aware_progress` on why the union exists), and the per-item
+      predicate is a closure over that function's git state. Slicing by the count
+      names the wrong chunks: on ``01 open / 02 committed / 03 committed`` it
+      yields ``{01, 02}``, expiring the exemption on the chunk
+      ``resolve_chunk_progress`` simultaneously calls CURRENT. So take the roster
+      prefix strictly before ``current_id`` — sound by construction, since
+      "current" is the first item that is not done. It under-reports a done item
+      sitting after ``current_id``, which is the safe direction.
+    """
+    progress = _resolve_chunk_progress_from(project_dir, content)
+    if not progress.has_status_items:
+        return None  # no roster to reason about
+    items = list(_iter_status_section_items(content))
+    ordered = [_chunk_id_from_item_text(text) for _checked, text in items]
+    if any(cid is None for cid in ordered):
+        return None  # an unparseable roster entry — placement is unsafe
+    normalized = [_normalize_chunk_id(cid) for cid in ordered]
+    if not progress.git_derived:
+        return {
+            cid for (checked, _text), cid in zip(items, normalized) if checked
+        }
+    if progress.current_id is None:
+        return set(normalized)  # nothing left open: every chunk is complete
+    current = _normalize_chunk_id(progress.current_id)
+    if current not in normalized:
+        return None  # current is not in the roster we just read — placement unsafe
+    return set(normalized[: normalized.index(current)])
+
+
+def _parse_build_plan_chunk_refs(
+    prawduct_dir: Path, chunk_id: str, plan_path: "Path | None" = None
+) -> dict:
     """Extract backticked file-path references from a single chunk's section
     in ``.prawduct/artifacts/build-plan.md``.
+
+    ``plan_path`` names the plan to read; it defaults to the
+    ``active_build_plan`` pointer, which is right for ``verify-chunk-refs``
+    (a repo-level question) and wrong for a review (a question about the plan
+    the DISPATCH named). The review path passes
+    :func:`resolve_reviewed_plan`'s answer.
 
     The section is located by ``_chunk_section_lines`` (both the ``### Chunk NN:``
     and ``## Chunk N (ID) — Name`` heading forms, leading zeros tolerant), and
@@ -764,7 +1242,8 @@ def _parse_build_plan_chunk_refs(prawduct_dir: Path, chunk_id: str) -> dict:
     Symbol and backlog-ID verification remain deferred.
     """
     result: dict = {"file_paths": [], "error": None}
-    plan_path = resolve_build_plan_path(prawduct_dir)
+    if plan_path is None:
+        plan_path = resolve_build_plan_path(prawduct_dir)
     if not plan_path.is_file():
         result["error"] = f"missing build-plan: {plan_path}"
         return result
@@ -783,14 +1262,32 @@ def _parse_build_plan_chunk_refs(prawduct_dir: Path, chunk_id: str) -> dict:
     # for the WHOLE chunk section, not just the occurrence carrying the word.
     # Chunks routinely declare `new `path`` on Deliverables and then name the
     # same path again in a Done-when step; keying the exemption to that one
-    # occurrence made every re-reference a false missing-ref. Collected over all
-    # section lines first, and normalized the same way as the tokens below so a
-    # `new `path`` declaration also exempts a later `path:42` citation of it.
+    # occurrence made every re-reference a false missing-ref. Normalized the same
+    # way as the tokens below so a `new `path`` declaration also exempts a later
+    # `path:42` citation of it.
+    #
+    # Scoped to list items (#224b) — see `_LIST_ITEM_RE` for why not Deliverables.
     forward_refs: set[str] = {
         _ref_path_part(m.group(1))
-        for _, section_line in section_lines
+        for _, section_line in _qualifier_scope_lines(section_lines)
         for m in _BUILD_PLAN_NEW_QUALIFIER_RE.finditer(section_line)
     }
+    # #224(a): the exemption EXPIRES when the chunk completes. `new `path`` says
+    # "this chunk will create it" — once the chunk is done, a file that still
+    # does not exist is a real missing ref, and the un-expiring exemption meant a
+    # chunk could claim to create a file, not create it, and never be caught.
+    #
+    # Completion is re-derived through `resolve_chunk_progress`, never from "the
+    # first unchecked box": under `views_enabled` the checkboxes are a derived
+    # view that stays `[ ]` until release, so on a feature branch every chunk
+    # reads incomplete and the expiry would never fire on the only surface where
+    # it matters. `_completed_chunk_ids` returns None when it cannot tell, and
+    # None keeps every exemption — failing TOWARD the exemption, because a false
+    # missing-ref fires on every review of an in-progress chunk while a missed
+    # one surfaces at the next verify.
+    completed = _completed_chunk_ids(prawduct_dir.parent, content)
+    if completed is not None and _normalize_chunk_id(chunk_id) in completed:
+        forward_refs = set()
 
     seen: set[tuple[str, int]] = set()
     for line_num, line in section_lines:
@@ -809,9 +1306,15 @@ def _parse_build_plan_chunk_refs(prawduct_dir: Path, chunk_id: str) -> dict:
 
 
 def _parse_build_plan_chunk_type(
-    prawduct_dir: Path, chunk_id: str
+    prawduct_dir: Path, chunk_id: str, plan_path: "Path | None" = None
 ) -> tuple[str | None, str | None]:
     """Extract the `Type:` declaration from a chunk's build-plan section.
+
+    ``plan_path`` names the plan to read, defaulting to the ``active_build_plan``
+    pointer. It exists so a caller that has already resolved *which plan* — via
+    :func:`resolve_reviewed_plan` — reads this chunk field from the same file it
+    read the others from. Two chunk-level fields resolving from two different
+    plans is the same "one question, two answers" defect one field over.
 
     Returns ``(chunk_type, error)``. ``chunk_type`` is one of
     ``code | doc-only | cleanup | designer-handoff | cumulative-final | trivial``.
@@ -825,7 +1328,8 @@ def _parse_build_plan_chunk_type(
     name-anchored on ``### Chunk <chunk_id>:`` with leading-zero tolerance;
     fenced code blocks are skipped.
     """
-    plan_path = resolve_build_plan_path(prawduct_dir)
+    if plan_path is None:
+        plan_path = resolve_build_plan_path(prawduct_dir)
     if not plan_path.is_file():
         return None, f"missing build-plan: {plan_path}"
     try:
@@ -853,7 +1357,7 @@ def _parse_build_plan_chunk_type(
 
 
 def _parse_build_plan_chunk_trivial_rationale(
-    prawduct_dir: Path, chunk_id: str
+    prawduct_dir: Path, chunk_id: str, plan_path: "Path | None" = None
 ) -> tuple[str | None, str | None]:
     """Extract the ``**Trivial because:**`` rationale from a chunk's section.
 
@@ -866,8 +1370,15 @@ def _parse_build_plan_chunk_trivial_rationale(
     Section discovery is the shared ``_chunk_section_lines`` walker —
     name-anchored on ``### Chunk <chunk_id>:`` with leading-zero tolerance;
     fenced code blocks are skipped.
+
+    ``plan_path`` names the plan to read, defaulting to the pointer — the third
+    of the chunk-level fields to take it. The chunk id and the rationale must
+    come from the SAME plan: validating a trivial declaration against another
+    plan's same-numbered chunk either blocks on a rationale that is present, or
+    passes on one written for different work.
     """
-    plan_path = resolve_build_plan_path(prawduct_dir)
+    if plan_path is None:
+        plan_path = resolve_build_plan_path(prawduct_dir)
     if not plan_path.is_file():
         return None, f"missing build-plan: {plan_path}"
     try:
@@ -1031,7 +1542,9 @@ def _classify_trivial_change(
     return None
 
 
-def _current_chunk_id_from_status(project_dir: Path) -> str | None:
+def _current_chunk_id_from_status(
+    project_dir: Path, plan_path: "Path | None" = None
+) -> str | None:
     """Extract the chunk id of the build-plan Status section's current item,
     e.g. ``"03"`` for ``- [ ] Chunk 03: Foo`` and ``"2"`` for
     ``- [ ] Chunk 2 (ID) — Foo``. Returns ``None`` if Status is missing, has no
@@ -1041,8 +1554,13 @@ def _current_chunk_id_from_status(project_dir: Path) -> str | None:
     "current" checkbox-wise or git-wise as the repo demands — so the stop hook,
     ``verify-chunk-refs``, and mode inference agree on which chunk is current by
     construction rather than by three parallel patches.
+
+    ``plan_path`` overrides which plan is read (see
+    :func:`resolve_chunk_progress`); the review path passes the plan the dispatch
+    named so the fallback cannot answer about a different file than the one being
+    graded.
     """
-    status = _parse_build_plan_status(project_dir)
+    status = _parse_build_plan_status(project_dir, plan_path)
     return _chunk_id_from_item_text(status.get("current_chunk", ""))
 
 

@@ -300,32 +300,41 @@ installed consumer, unrecallably. This phase is the second question (REL-8P6M).*
    **Expected:** every line above the step 2 boundary now carries
    `| release=vX.Y.Z | status=shipped`.
 
-5. Pre-flight the tags. This writes nothing:
-
-   ```
-   prawduct-hook regen-views --check
-   ```
-
-   **Expected:** `check passed: tags validate against the plan roster; nothing
-   written.`
-   **If not:** it ends with `N validation error(s) — no views written.` and one
-   `ERROR:` line per bad tag → fix those tags in `.prawduct/change-log.md` and
-   re-run this step.
-
-6. Regenerate the derived views:
+5. Regenerate the derived views. **There is no pre-flight and no dry run** —
+   validation runs inside this one command, before any write, so the separate
+   check step this runbook used to carry could never catch anything this does
+   not. Read the exit code; it is the whole signal:
 
    ```
    prawduct-hook regen-views
    ```
+
+   **Expected:** exit 0.
+
+   **If it exits 2:** nothing was written. A *global* tag error — an
+   unrecognized `status=`, or conflicting tag lines — is on stderr as `ERROR:`
+   lines. Fix those tags in `.prawduct/change-log.md` and re-run this step.
+
+   **If it exits 3:** views **were** written, but at least one scope's
+   `## Status` was withheld because its own tags do not validate (a `chunks=`
+   ID matching no roster entry, an unreleased scope with no plan file, a
+   duplicate `scope:`). stderr names each. **This is a release blocker even
+   though views were written** — fix those tags and re-run until it exits 0.
+
+6. Confirm the views actually landed. Run `git status` and read step 5's stdout.
 
    **Expected — all of:**
    - one `Status (artifacts/<plan>.md): N chunk(s) flipped — shipped [...]`
      line per release-pending plan
    - `Release notes: write release-notes.md`
    - a `Scope rollups: ...` line
+   - the corresponding files dirty in `git status`
 
    **If not:** a `Status (...): up to date` line where you expected a flip means
-   that plan's `chunks=` tags matched nothing → back to step 3.
+   that plan's `chunks=` tags matched nothing → back to step 3. **Check
+   `git status` first**: after a successful step 5 a re-run prints `up to date`
+   for everything because it genuinely is, and reading that as "the tags matched
+   nothing" sends you to re-edit correct tags.
 
    > *Why: the build-plan checkboxes, release notes and scope rollups are all
    > derived here — hand-edit them and the next regen reverts you.*
