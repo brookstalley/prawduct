@@ -134,6 +134,19 @@ reported it unclaimed and buildable. `active_build_plan` still points at `build-
 **by design** and must not be repointed: the gates resolve the *branch's* plan by scope, and the
 golive plan is retained until the pending `develop`→`main` release regenerates it.
 
+**Chunk 01 BUILT 2026-08-02** (#193) — `tests/test_path_reference_resolution.py`, 8 tests, plus one
+live fix in a shipped file. **The plan's own Chunk 01 design was superseded before any code was
+written**: the live-artifact predicate was dropped once form-based extraction reduced the surface
+from 195 unresolved references to 6, and the named allowlist came in at **one** file against a
+budget of four. The distinction that did the work — *a citation is not a reference* — is not in
+#193's text; it came from the measurement and from the sibling `${CLAUDE_PLUGIN_ROOT}` check.
+
+Two extractor defects surfaced from the tests, not from reading: requiring a file extension in
+command position would have missed `plugin/bin/prawduct-hook`, the extensionless path whose
+relocation earned the item; and a markdown link quoted inside a code span was followed as a link, so
+the check reddened on this plan. Both are the same rule one level down. Coverage: 148 references
+extracted, 102 checked across 41 instruction files, 46 skipped as records.
+
 **Release deferral, reaffirmed 2026-08-02.** The owner was offered release-first and chose to keep
 burning down. The `develop`→`main` promotion is now **three batches deep** and `#533`'s filer stays
 blocked behind `ref: main` until it ships. This is a recorded decision, not an oversight — do not
@@ -209,15 +222,48 @@ review pass over both is the shape that has repeatedly let prose defects through
 - **Tests:** the new file is the deliverable. Each surface gets a red-verified case: break one
   resolving path per surface and confirm exactly that surface reddens.
 
-**[DECISION: the artifact surface is scoped by a mechanical live-artifact predicate, not by a
-hand-maintained exclusion list | the census makes the naive scope untenable — 102 of 195 unresolved
-refs are in three completed plans describing the pre-`plugin/` layout, where the references were
-accurate when written; and a hand-list of excluded files is itself a durable record that drifts,
-which is the defect this whole batch exists to remove | user can veto]** The predicate must be
-derivable from the artifact, not from a list in the test — candidate signals are the plan's `scope:`
-against the change-log's shipped tags, or the presence of an unshipped chunk in `## Status`. The
-builder picks the cheapest signal that is *already maintained for another reason*; inventing a new
-front-matter field for this would add a fact with no home.
+**[DECISION — SUPERSEDED 2026-08-02, before any code: extraction is by REFERENCE FORM, and the
+live-artifact predicate is dropped entirely | measurement replaced the hypothesis | user can veto]**
+
+The plan first proposed scoping the artifact surface with a mechanical live-artifact predicate,
+because the census counted 195 unresolved refs and 102 of them sat in completed plans. That census
+extracted **every backticked path token**, which is the wrong extractor — it cannot tell a path
+someone is told to *use* from a path someone is *talking about*, and the plan's own six unresolvable
+citations are the proof.
+
+The existing sibling check named the fix. `test_no_shipped_file_points_at_an_unshipped_plugin_root_
+path` keys on `${CLAUDE_PLUGIN_ROOT}/…` — a **form** that unambiguously means *go read this*. Applying
+the same idea, the high-signal forms are: **`allowed-tools:` front-matter grants**, **command
+position** (a backticked span whose first token is an executable), and **markdown links**
+`[text](path)`. A bare backticked path in a sentence is a citation and is not extracted.
+
+**Re-measured across all 233 tracked `.md` files with relative links resolved against the containing
+file** (the first pass got this wrong and over-reported 21 link failures that were simply relative):
+
+| form | unresolved |
+|---|---|
+| markdown links | **1** |
+| command position | **5** |
+| `allowed-tools:` grants | **0** |
+
+Six total, and the whole 195-citation problem evaporates because citations are never extracted.
+**No live-artifact predicate is needed, and the allowlist is four historical-record entries rather
+than a hand-list of excluded files.** This is the difference between a check with a real catch and
+one whose allowlist is longer than its catch.
+
+**The one markdown-link failure is a genuine defect in a shipped file, and it is this chunk's proof
+of value:** `plugin/docs/principles.md:5` links to `[learnings file](../.prawduct/learnings.md)`.
+From `plugin/docs/` that resolves to `plugin/.prawduct/learnings.md`, which does not exist here and
+is equally broken in a consumer's plugin cache — the reader is sent to the product's learnings file
+and lands nowhere. It is the same class the `${CLAUDE_PLUGIN_ROOT}` test already guards, arriving in
+the one form that test cannot see.
+
+The five command-position failures are `.prawduct/backlog.md` and `.prawduct/change-log.md` naming
+the pre-relocation `tools/prawduct-*.py` (frozen history — `backlog.md` is frozen by the Issues
+cutover and the change-log is a record, so both are allowlisted **as record files, one entry each,
+not one per reference**) and `documentation/prompt-management-requirements.md` naming
+`config/models.yaml`, a requirements doc describing a config that does not exist yet — a forward
+reference, allowlisted with that reason.
 
 **A citation is not a reference, and this plan proves it.** Measured against this file at authoring
 time: it carries **six** path tokens that do not resolve — `tools/lib/core.py` and
@@ -235,20 +281,27 @@ honest outcome is to cover the two prose surfaces properly and report the artifa
 deferred with the reason — not to ship a check whose allowlist is longer than its catch.
 
 - **Acceptance criteria:**
-  - Every unresolved reference in the covered surfaces is fixed, allowlisted with a named reason, or
-    excluded by the recorded predicate — and the chunk states which of the three applies to each.
-  - **The check is green on this plan file**, whose six unresolvable citations are listed above. If
-    it reddens on them, the extraction rule is wrong — not the plan.
-  - The `allowed-tools:` surface stays green (census: 1 distinct token, 0 unresolved — it is green
-    *today*, and the check exists so that it stays green through the next relocation).
-  - The check reddens on a deliberately broken path in **each** covered surface, verified one surface
-    at a time.
-  - The check does **not** redden on illustrative prose. The census names three known-benign shapes
-    that must stay green: `skills/foo/bar.md` (planning.md's own worked example of the forward-
-    reference rule), `.prawduct/artifacts/build-plan.md` (the documented default path in a product
-    repo), and runtime-generated paths (`.prawduct/.handoff-notes.md`, `.prawduct/sync-manifest.json`,
-    `.prawduct/.critic-partials/*.json`).
-  - The allowlist has an entry count the chunk states and defends. Every entry carries a reason.
+  - Each of the six measured failures is **fixed** or **allowlisted with a named reason**, and the
+    chunk states which applies to each. The `principles.md` link is fixed, not allowlisted — it is a
+    live defect in a shipped file.
+  - **The check is green on this plan file**, whose six unresolvable *citations* are listed above.
+    If it reddens on them, the extraction rule is wrong — not the plan. This is the single sharpest
+    acceptance criterion in the chunk: the plan is the adversarial case, and it was written before
+    the check existed.
+  - The check reddens on a deliberately broken path in **each** covered form — grant, command,
+    link — verified one form at a time. A form with no red-verified case is a form that is not
+    actually covered.
+  - **The scan is proved non-vacuous**, following the precedent already set in
+    `tests/test_plugin_packaging.py` (`assert len(scanned) > 50`): an extractor that silently
+    matches nothing passes forever. Assert a floor on both files scanned and references extracted —
+    the second matters more, since a regex that stops matching is the likely failure and a file
+    count would not notice.
+  - Relative links resolve against the **containing file**, not the repo root, with a case pinning
+    it. Getting this wrong over-reported 21 failures during the census and would have sent the
+    builder to fix twenty non-defects.
+  - The allowlist is **four entries or fewer**, each with a reason, and record files are allowlisted
+    **as files** rather than one entry per reference — an allowlist that grows per-reference is the
+    ceremony #193 warned about.
 - **Done when:** acceptance criteria pass · `/prawduct:critic` · change-log entry
 - **Critic mode:** (inferred — `chunk`)
 - **Type:** code

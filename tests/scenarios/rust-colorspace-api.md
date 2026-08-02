@@ -53,7 +53,7 @@ This scenario creates productive tension across multiple framework dimensions:
 
 1. Create an isolated project directory for the evaluation:
    ```bash
-   python3 bin/prawduct-hook init-product /tmp/eval-colorspace-api --name "Chromavert" --apply
+   python3 plugin/bin/prawduct-hook init-product /tmp/eval-colorspace-api --name "Chromavert" --apply
    ```
 
 ### Running the evaluation

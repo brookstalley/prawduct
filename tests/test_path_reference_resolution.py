@@ -1,0 +1,406 @@
+"""Intra-repo path references must RESOLVE — the complement to pinning where files may live.
+
+``test_plugin_packaging.py`` pins *location*: which files are allowed to exist where, and which
+reach a consumer's plugin cache. It is blind to a reference pointing at a path that no longer
+exists. The ``plugin/`` relocation shipped ``bin/prawduct-hook`` in five skills' instruction prose
+**and in their ``allowed-tools:`` permission grants**, with the full suite green throughout, because
+no test executes skill front-matter. The documented command could not run and the grant did not
+cover the one that would.
+
+That is the third recurrence of *relocating a source file: sweep every READER of the old path*,
+which is what promotes the rule to a mechanism.
+
+**Extraction is by reference FORM, and that is the whole design.** The naive extractor — every
+backticked path token — cannot distinguish a path a reader is told to *use* from one the prose is
+*talking about*. Measured across this repo's artifacts it produced two orders of magnitude more
+"failures", nearly all of them in completed build plans that correctly describe the pre-``plugin/``
+tree layout, and it flagged the very build plan that specified this test (which quotes broken paths
+as examples of the problem). An allowlist absorbing that is longer than the check's catch, and
+``docs/norms.md`` warns that a probe which misfires trains its reader to ignore the one real catch.
+(The census figures have one home: the ``2026-08-02`` change-log entry for this work. They are a
+historical measurement, not a live quantity, and restating them here would be a third copy of a
+number — the defect class this batch exists to remove.)
+
+``test_no_shipped_file_points_at_an_unshipped_plugin_root_path`` named the fix: it keys on
+``${CLAUDE_PLUGIN_ROOT}/…``, a form that unambiguously means *go read this*. The same idea gives
+three high-signal forms, in the sweep order of how silently each fails:
+
+1. ``allowed-tools:`` front-matter grants — a grant naming a path that does not exist is a
+   permission that cannot cover the command it was written for. Fails most silently of all: nothing
+   executes front-matter.
+2. **Command position** — a backticked span whose first token is an executable. The path is an
+   argument to something a reader will run.
+3. **Markdown links** — ``[text](path)``. An unambiguous pointer.
+
+A bare backticked path inside a sentence is a *citation* and is deliberately not extracted.
+
+Relative targets resolve against the **containing file**, not the repo root. Getting that wrong
+over-reported twenty non-defects during the census.
+"""
+
+from __future__ import annotations
+
+import posixpath
+import re
+import subprocess
+from pathlib import Path
+
+import pytest
+
+REPO = Path(__file__).resolve().parent.parent
+
+
+def _tracked() -> list[str]:
+    """Git-tracked paths. Asserted against tracked state so an untracked leftover cannot vouch
+    for itself — the same reasoning as the packaging tests."""
+    out = subprocess.run(
+        ["git", "ls-files"], cwd=REPO, capture_output=True, text=True, check=True
+    ).stdout
+    return out.split("\n") if out else []
+
+
+_TRACKED = [p for p in _tracked() if p]
+_TRACKED_SET = set(_TRACKED)
+_TRACKED_DIRS = {
+    "/".join(p.split("/")[:i]) for p in _TRACKED for i in range(1, len(p.split("/")))
+}
+
+# RECORDS vs INSTRUCTIONS — the distinction that keeps the allowlist from swallowing the check.
+#
+# A file whose job is to say *what happened* legitimately names the tree as it stood at the time:
+# the change-log entry that ran ``tools/product-hook`` was correct when written, and rewriting it to
+# satisfy a resolver falsifies the record. A file whose job is to *instruct* has no such licence —
+# a reader follows it against today's tree.
+#
+# This is a predicate on the file's ROLE, not a list of awkward cases, which is why it does not
+# grow: six historical plans naming the pre-v2 CLI cost zero entries.
+_RECORD_FILES = frozenset(
+    {
+        ".prawduct/change-log.md",       # append-only: what changed, when
+        ".prawduct/backlog.md",          # frozen by the GitHub Issues cutover
+        ".prawduct/learnings.md",        # narrates defects, quoting the paths they occurred at
+        ".prawduct/learnings-detail.md",
+        ".prawduct/reflections.md",
+        ".prawduct/operator-verification.md",
+    }
+)
+_RECORD_PREFIXES = (".prawduct/archive/",)
+# ``v1``/``v2``-named artifacts are the PRE-V3 plan convention, retired when plans became
+# ``build-plan-<scope>.md``. The naming convention itself marks them as shipped-era, so no status
+# lookup is needed.
+#
+# Deliberately NOT extended to ``release-plan-v3.*``: those are the *current* convention, the v3.2.3
+# one is still pending, and skipping them would silently exempt live instruction files. An earlier
+# cut of this pattern matched any version-shaped name and excluded all four v3.2.x release plans —
+# contradicting the pre-v3 rationale written directly above it. Narrowing cost nothing: zero
+# offenders either way, so the wider pattern bought no green and gave up real coverage.
+_HISTORICAL_ARTIFACT = re.compile(r"^\.prawduct/(?:archive/)?artifacts/v[12]\d*[.-]")
+
+
+def _is_record(rel: str) -> bool:
+    return (
+        rel in _RECORD_FILES
+        or rel.startswith(_RECORD_PREFIXES)
+        or bool(_HISTORICAL_ARTIFACT.match(rel))
+    )
+
+
+# Named exceptions that are neither records nor fixable. Kept tiny and reasoned on purpose.
+ALLOWLISTED_FILES = {
+    "documentation/prompt-management-requirements.md": (
+        "requirements doc describing a config file that does not exist yet — a forward reference to "
+        "a planned surface, not a stale reference to a removed one"
+    ),
+}
+
+# Executables whose arguments are paths a reader will actually run against this tree.
+_COMMAND_HEAD = re.compile(
+    r"^(?:\$\s+)?(?:python3?|prawduct-hook|pytest|bash|sh|cat|less|grep|rg|ls|chmod)\b"
+)
+_PATH_SHAPED = re.compile(r"^[A-Za-z0-9_.-]+(?:/[A-Za-z0-9_.-]+)+$")
+_HAS_EXTENSION = re.compile(r"\.(?:py|md|sh|json|yaml|yml|toml|jsonl)$")
+
+# Directory vocabulary of this repo's source tree, INCLUDING directories that no longer exist
+# (``tools/``, ``agents/``, and a repo-root ``bin/``). Deliberately explicit rather than derived
+# from the current tree: a derived set can only name directories that still exist, and the defect
+# class this test was built for is a reference to one that was REMOVED. ``bin/prawduct-hook`` — the
+# original five-skill breakage — is extensionless and lives under a root ``bin/`` that is now
+# ``plugin/bin/``, so neither the extension rule nor a derived-directory rule would see it.
+_SOURCE_DIR_SEGMENTS = frozenset(
+    {
+        "plugin", "bin", "lib", "tests", "docs", "skills", "methodology",
+        "templates", "hooks", "documentation", "tools", "agents",
+        ".prawduct", ".claude", ".claude-plugin",
+    }
+)
+
+
+def _is_repo_path(token: str) -> bool:
+    """Path-shaped and plausibly naming something in this tree.
+
+    The extension branch catches ``tools/prawduct-sync.py``; the directory branch catches
+    extensionless ``plugin/bin/prawduct-hook``. Together they exclude ``owner/repo`` arguments,
+    which are path-shaped, appear in command position after ``--repo``, and name nothing on disk.
+    """
+    if not _PATH_SHAPED.match(token):
+        return False
+    return bool(_HAS_EXTENSION.search(_strip_ref(token))) or (
+        token.split("/", 1)[0] in _SOURCE_DIR_SEGMENTS
+    )
+_BACKTICKED = re.compile(r"`([^`\n]{3,300})`")
+_MD_LINK = re.compile(r"\[[^\]]*\]\(([^)\s]+)\)")
+_FRONT_MATTER = re.compile(r"\A---\n(.*?)\n---", re.S)
+_ALLOWED_TOOLS = re.compile(r"^allowed-tools:(.*)$", re.M)
+
+
+def _strip_ref(raw: str) -> str:
+    """Trim trailing prose punctuation, a line-number suffix, and an anchor."""
+    ref = raw.rstrip(".,;:)`").rstrip("/")
+    ref = ref.split("#", 1)[0]
+    ref = re.sub(r":\d+(?:[,-]\d+)*$", "", ref)  # foo.py:182 and foo.md:58-60
+    return ref
+
+
+def _resolves(containing: str, raw: str) -> bool:
+    """True if ``raw``, referenced from ``containing``, names something in the tracked tree.
+
+    Three roots are tried, and each earns its place:
+    - the repo root, for ordinary repo-relative references;
+    - the containing file's own directory, for ``./`` and ``../`` targets;
+    - ``plugin/`` — but only for files entitled to it (see below).
+
+    **The ``plugin/`` fallback is scoped, and that scoping is load-bearing.** Applied everywhere, it
+    resolves ``bin/prawduct-hook`` against ``plugin/bin/prawduct-hook`` and thereby hides the exact
+    relocation this test exists to catch — the docstring's motivating breakage would have been
+    invisible to the check written to prevent its recurrence. It is legitimate in two places and no
+    others: files under ``plugin/``, which name paths the way the plugin ships them
+    (``lib/gates.py``, ``skills/backlog/SKILL.md``), and build plans under ``.prawduct/artifacts/``,
+    for which this repo *declares* ``build_plan_ref_root: plugin`` in ``project-state.yaml``. That is
+    a declared second root, not a sniffed one.
+
+    Scoping it surfaced live instances of the motivating defect in ``tests/scenarios/*.md``, each
+    instructing a reader to run ``python3 bin/prawduct-hook …`` from the repo root, where no such
+    file exists. They were fixed with this change; the count is in the change-log entry.
+    """
+    ref = _strip_ref(raw)
+    if not ref:
+        return True
+    candidates = []
+    if ref.startswith(("./", "../")):
+        candidates.append(posixpath.normpath(posixpath.join(posixpath.dirname(containing), ref)))
+    else:
+        candidates.append(ref.lstrip("/"))
+        if containing.startswith("plugin/") or containing.startswith(".prawduct/artifacts/"):
+            candidates.append(f"plugin/{ref.lstrip('/')}")
+    return any(c in _TRACKED_SET or c in _TRACKED_DIRS for c in candidates)
+
+
+def _fenced_command_lines(text: str) -> list[str]:
+    """Lines inside fenced blocks that begin with a known executable.
+
+    #193 names *fenced and inline* commands; a shell block is command position just as much as an
+    inline span, and it is where multi-line setup instructions live.
+    """
+    lines: list[str] = []
+    in_fence = False
+    for line in text.splitlines():
+        if line.lstrip().startswith("```"):
+            in_fence = not in_fence
+            continue
+        if in_fence and _COMMAND_HEAD.match(line.strip()):
+            lines.append(line.strip())
+    return lines
+
+
+def _strip_code(text: str) -> str:
+    """Remove fenced blocks and inline code spans.
+
+    A markdown link *inside backticks* is being quoted, not offered — this batch's own build plan
+    quotes the broken ``[learnings file](../.prawduct/learnings.md)`` as evidence, and an extractor
+    that follows it reddens on the document specifying it. Same citation-versus-reference rule as
+    for bare paths, applied to the link form.
+    """
+    text = re.sub(r"```.*?```", " ", text, flags=re.S)
+    return re.sub(r"`[^`\n]*`", " ", text)
+
+
+def _references(rel: str, text: str) -> list[tuple[str, str]]:
+    """Every instruction-bearing path reference in ``text``, as ``(form, raw_ref)``."""
+    found: list[tuple[str, str]] = []
+
+    fm = _FRONT_MATTER.match(text)
+    if fm:
+        for grant_line in _ALLOWED_TOOLS.findall(fm.group(1)):
+            for token in re.findall(r"[A-Za-z0-9_./-]+", grant_line):
+                if _PATH_SHAPED.match(token) and "/" in token:
+                    found.append(("allowed-tools", token))
+
+    for span in list(_BACKTICKED.findall(text)) + _fenced_command_lines(text):
+        span = span.strip()
+        if not _COMMAND_HEAD.match(span):
+            continue
+        for token in span.split()[1:]:
+            if _is_repo_path(token):
+                found.append(("command", token))
+
+    for target in _MD_LINK.findall(_strip_code(text)):
+        if target.startswith(("http://", "https://", "#", "mailto:")):
+            continue
+        if not _HAS_EXTENSION.search(target.split("#", 1)[0]):
+            continue  # section links and bare anchors are not file references
+        found.append(("md-link", target))
+
+    return found
+
+
+def _scan() -> tuple[list[str], list[tuple[str, str, str]]]:
+    """Return (offenders, checked_references) across tracked markdown.
+
+    ``checked`` deliberately excludes references skipped as records or allowlisted: it is the
+    quantity the non-vacuity floor guards, and counting *extracted* references instead would let
+    the check go fully dark — widen the record predicate far enough and every reference is skipped
+    while the floor still sees them all.
+    """
+    offenders: list[str] = []
+    checked: list[tuple[str, str, str]] = []
+    for rel in _TRACKED:
+        if not rel.endswith(".md"):
+            continue
+        try:
+            text = (REPO / rel).read_text(encoding="utf-8")
+        except (UnicodeDecodeError, OSError):
+            continue
+        if rel in ALLOWLISTED_FILES or _is_record(rel):
+            continue
+        for form, raw in _references(rel, text):
+            checked.append((rel, form, raw))
+            if not _resolves(rel, raw):
+                offenders.append(f"{rel} [{form}] -> {raw}")
+    return offenders, checked
+
+
+def test_every_instruction_bearing_path_reference_resolves():
+    """The check itself: no tracked markdown sends a reader to a path that is not there.
+
+    Caught on its first run: ``plugin/docs/principles.md`` linked to ``../.prawduct/learnings.md``,
+    which from ``plugin/docs/`` resolves to ``plugin/.prawduct/learnings.md`` — absent here and
+    equally absent in a consumer's plugin cache, where the reader wants the *product's* learnings
+    file. The same class the ``${CLAUDE_PLUGIN_ROOT}`` guard catches, in the one form it cannot see.
+    """
+    offenders, _ = _scan()
+    assert not offenders, (
+        "markdown references a path that does not resolve. Fix the reference, or — only if the "
+        "file is historical or aspirational by construction — add the FILE to ALLOWLISTED_FILES "
+        "with a reason:\n  " + "\n  ".join(sorted(offenders))
+    )
+
+
+def test_the_scan_is_not_vacuous():
+    """An extractor that silently stops matching passes forever.
+
+    The floors guard references **actually checked**, not references extracted. That distinction is
+    the whole point: the two escape hatches are asymmetric — ``ALLOWLISTED_FILES`` is bounded at
+    four and demands a reason per entry, while the record predicate is unbounded and unasserted, so
+    it is the cheapest door through which a future red could be quietly greened. A floor on
+    extracted references would not notice, because a skipped reference is still an extracted one.
+
+    Precedent for the shape: ``assert len(scanned) > 50`` in ``test_plugin_packaging.py``.
+    """
+    files = [p for p in _TRACKED if p.endswith(".md")]
+    _, checked = _scan()
+    assert len(files) > 150, f"expected to scan the tracked markdown tree, got {len(files)} files"
+    assert len(checked) > 90, (
+        f"only {len(checked)} path references are actually being checked — either the extractor "
+        "stopped matching a form, or the record predicate has widened until the check is dark"
+    )
+    assert len({rel for rel, _, _ in checked}) > 30, (
+        f"only {len({rel for rel, _, _ in checked})} files contribute a checked reference"
+    )
+    forms = {form for _, form, _ in checked}
+    assert forms == {"allowed-tools", "command", "md-link"}, (
+        f"a covered form checks nothing: {sorted(forms)}. An uncovered form is an unguarded "
+        "surface, not a clean one."
+    )
+
+
+def test_the_allowlist_stays_small_and_reasoned():
+    """A probe whose allowlist outgrows its catch trains its reader to ignore it.
+
+    Bound stated in the plan and defended here rather than left to drift. Entries are FILES, so the
+    bound does not move when a record file gains another historical reference.
+    """
+    assert len(ALLOWLISTED_FILES) <= 4, (
+        f"{len(ALLOWLISTED_FILES)} allowlisted files. Adding a fifth is a decision to record, not "
+        "a step in fixing a red test — the check stops being worth reading somewhere around here."
+    )
+    for path, reason in ALLOWLISTED_FILES.items():
+        assert path in _TRACKED_SET, f"allowlisted file is not tracked: {path} (stale entry?)"
+        assert len(reason) > 40, f"allowlist entry for {path} needs a real reason, got: {reason!r}"
+
+
+@pytest.mark.parametrize(
+    "form,text",
+    [
+        (
+            "allowed-tools",
+            "---\nallowed-tools: Read, Bash(python3 plugin/bin/does-not-exist run *)\n---\nbody\n",
+        ),
+        ("command", "Run `python3 plugin/bin/does-not-exist --json` to check.\n"),
+        ("md-link", "See the [guide](../plugin/docs/does-not-exist.md) for details.\n"),
+    ],
+)
+def test_a_broken_reference_is_caught_in_each_covered_form(form: str, text: str):
+    """Red-verified per form. A form with no failing case is not actually covered.
+
+    Synthetic rather than by mutating a real file: mutating the tree to prove a test works leaves
+    the proof nowhere, and this keeps each form's failure independently visible.
+    """
+    refs = _references("docs/example.md", text)
+    assert refs, f"the {form} extractor matched nothing in its own fixture"
+    assert any(f == form for f, _ in refs), f"expected a {form} reference, got {refs}"
+    assert any(not _resolves("docs/example.md", raw) for f, raw in refs if f == form), (
+        f"the {form} fixture references a nonexistent path but was reported as resolving"
+    )
+
+
+def test_a_citation_is_not_a_reference():
+    """Prose that mentions a path in order to discuss it must not redden.
+
+    Every string here is real: the first three are quoted in this batch's own build plan (a worked
+    example, and two descriptions of the pre-``plugin/`` layout), the rest are runtime-generated or
+    product-side paths that legitimately do not exist in this tree. A check that fails on its own
+    specification is a check nobody will keep.
+    """
+    citations = [
+        "The forward-reference rule uses `skills/foo/bar.md` as its example.",
+        "Completed plans name `tools/lib/core.py`, which was accurate when written.",
+        "The v1.5 plan refers to `agents/critic/SKILL.md` throughout.",
+        "The default is `.prawduct/artifacts/build-plan.md` in a product repo.",
+        "Forward notes live in `.prawduct/.handoff-notes.md`.",
+        "The dispatcher writes `.prawduct/.critic-partials/reviewer.json`.",
+        # A markdown link QUOTED inside a code span. Pinned synthetically rather than relying on
+        # the build plan that quotes the real one: a guard that lives in a document scheduled for
+        # deletion is a guard with an expiry date, and this is precisely the "branch that depends
+        # on a file which happens to exist" shape.
+        "It links to `[learnings file](../.prawduct/learnings.md)`, which does not resolve.",
+        "```\nsee [a guide](../nowhere/absent.md)\n```",
+    ]
+    for text in citations:
+        assert not _references("docs/example.md", text), (
+            f"a citation was extracted as an instruction-bearing reference: {text!r}"
+        )
+
+
+def test_relative_targets_resolve_against_the_containing_file():
+    """``./`` and ``../`` are relative to the file, not the repo root.
+
+    Resolving them at the repo root over-reported twenty non-defects during the census — a whole
+    cluster of ``documentation/work-model*.md`` cross-links that are perfectly correct. A resolver
+    that is wrong in this direction sends the builder to 'fix' working links.
+    """
+    assert _resolves("plugin/docs/principles.md", "./doctor-vs-janitor.md")
+    assert _resolves("plugin/skills/critic/SKILL.md", "../../methodology/building.md")
+    assert not _resolves("plugin/docs/principles.md", "../.prawduct/learnings.md")
+    # The same target from a file one level up DOES resolve — proving the base is the containing
+    # file rather than a constant.
+    assert _resolves("plugin/principles.md", "../.prawduct/learnings.md")

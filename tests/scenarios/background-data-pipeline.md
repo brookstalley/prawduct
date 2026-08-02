@@ -33,7 +33,7 @@
 
 1. Create an isolated project directory for the evaluation:
    ```bash
-   python3 bin/prawduct-hook init-product /tmp/eval-background-pipeline --name "Digest Bot" --apply
+   python3 plugin/bin/prawduct-hook init-product /tmp/eval-background-pipeline --name "Digest Bot" --apply
    ```
 
 ### Running the evaluation

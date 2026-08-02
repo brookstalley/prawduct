@@ -3,6 +3,114 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-08-02: a path reference is checked by the form that means "go here", not by looking like a path
+
+<!-- prawduct: type=feature | scope=drift-burndown | chunks=01 -->
+
+**`#193` — nothing verified that intra-repo path references RESOLVE.**
+`tests/test_plugin_packaging.py` pins where files may *live* and is blind to a reference pointing at
+a path that no longer exists. The `plugin/` relocation shipped `bin/prawduct-hook` in five skills'
+instruction prose **and in their `allowed-tools:` grants** with the suite green throughout, because
+nothing executes front-matter. Third recurrence of *relocating a source file: sweep every READER of
+the old path*, which is what promotes a rule to a mechanism.
+
+**The design turns on a distinction the item did not name: a citation is not a reference.** The
+obvious extractor — every backticked path token — cannot tell a path a reader is told to *use* from
+one the prose is *talking about*. Measured before writing any code, it produced **195** unresolved
+references across 37 artifact files, **102 of them in three completed plans** that correctly describe
+the pre-`plugin/` tree. Absorbing that into an allowlist produces a check whose exception list is
+longer than its catch, and `docs/norms.md` warns that a probe which misfires trains its reader to
+ignore the one real catch.
+
+**The existing sibling check named the fix.** `test_no_shipped_file_points_at_an_unshipped_plugin_
+root_path` keys on `${CLAUDE_PLUGIN_ROOT}/…` — a *form* that unambiguously means *go read this*. The
+same idea gives three high-signal forms, in the sweep order of how silently each fails:
+`allowed-tools:` grants, command position (inline and fenced), and markdown links. Re-measured on
+that basis across all 233 tracked `.md` files: **1 unresolved link, 5 unresolved commands, 0 grants**
+— and the 195-citation problem disappears, because citations are never extracted. **The planned
+live-artifact predicate was dropped as unnecessary before it was built.**
+
+**The one link failure was a live defect in a shipped file.** `plugin/docs/principles.md` linked to
+`[learnings file](../.prawduct/learnings.md)`, which from `plugin/docs/` resolves to
+`plugin/.prawduct/learnings.md` — absent here and equally absent in a consumer's plugin cache, where
+the reader wants the *product's* learnings file. It is the class the `${CLAUDE_PLUGIN_ROOT}` guard
+already catches, arriving in the one form that guard cannot see. Fixed by making it a plain
+reference, since the file lives in the product's repo and no relative path from the plugin reaches it.
+
+**Records versus instructions, rather than an allowlist.** A file whose job is to say *what
+happened* legitimately names the tree as it stood: the change-log entry that ran `tools/product-hook`
+was correct when written. A file whose job is to *instruct* has no such licence. That predicate — the
+append-only records, `.prawduct/archive/**`, and the version-named pre-v3 plans, which the naming
+convention itself marks as shipped-era — costs **zero** entries for six historical plans naming the
+pre-v2 CLI. The named allowlist is **one** file: a requirements doc forward-referencing a config that
+does not exist yet. The bound is asserted at four.
+
+**Two extractor defects were found by the tests rather than by review.** The first: requiring a file
+extension in command position **would have missed `plugin/bin/prawduct-hook`** — the extensionless
+path whose relocation earned this item. Fixed with a directory-vocabulary branch that deliberately
+includes *removed* directories (`tools/`, `agents/`, a root `bin/`), because a set derived from the
+current tree can only name directories that still exist, which is the wrong half of the defect class.
+The second: a markdown link **quoted inside a code span** was followed as a link — so the check
+reddened on the very build plan specifying it, which quotes the broken link as evidence. Both are the
+citation/reference rule reasserting itself one level down.
+
+**Census figures have one home — this entry.** They are a historical measurement, and the test file
+and build plan reference them rather than restating them. Naive extractor: **195** unresolved across
+37 artifact files, **102** of those in three completed plans. Form-based extractor at chunk close:
+**101 references checked across 40 instruction files** (60 command, 27 link, 14 grant), 31 files
+skipped as records, **0 offenders**, **1** allowlisted file against a budget of four.
+
+### The chunk review (0 blocking, 4 warnings, 1 note)
+
+**The `plugin/` root fallback was hiding the very relocation this test cites as its reason to
+exist.** Applied at every file, it resolves `bin/prawduct-hook` against `plugin/bin/prawduct-hook`,
+so the prose half of the motivating five-skill breakage was invisible to the check written to
+prevent its recurrence. The fallback is legitimate in exactly two places — files under `plugin/`,
+which name paths as the plugin ships them, and build plans under `.prawduct/artifacts/`, for which
+this repo *declares* `build_plan_ref_root: plugin` — and is now scoped to them. **Scoping it turned
+a documentation clause into seven real fixes**: every `tests/scenarios/*.md` instructs a reader to
+run `python3 bin/prawduct-hook init-product …` from the repo root, where no such file has existed
+since the relocation. The reviewer asked for a hedge on the claim; the claim turned out to be
+fixable instead.
+
+**The non-vacuity floor guarded the wrong quantity.** It counted references *extracted*, which
+includes those skipped as records — so widening the record predicate far enough would take the check
+fully dark with every test still green. The two escape hatches were asymmetric: the allowlist is
+bounded and demands a reason per entry, while the record predicate is unbounded and unasserted, which
+made it the cheapest door for quietly greening a future red. The floor now counts references
+**checked**, with a second floor on contributing files.
+
+**A version-shaped exclusion outran its own rationale.** `_HISTORICAL_ARTIFACT` was written for the
+pre-v3 `v1`/`v2` plan convention but matched any version-named artifact, silently exempting all four
+`release-plan-v3.2.*` files — including the pending one this batch's own plan calls live. Narrowed to
+`v[12]`; zero offenders either way, so the wider pattern bought no green and gave up real coverage.
+
+**Not fixed, filed as `#552`:** `verify-chunk-refs` still uses the naive token extractor this
+chunk's thesis rejects, which is why record-lint raised eight `chunk-ref-missing` entries against a
+correct build plan — six of them the citations the plan enumerates *by name* as its adversarial
+case. The reviewer recorded a deliberate departure from the protocol's BLOCKING mapping rather than
+manufacture a fix round against a correct record. Two extractors now disagree about one tree, and
+the naive one is the one wired to a gate.
+
+**rev-20260802T174847Z-2a761657** — scope `drift-burndown`, chunk 01, 2026-08-02T17:55:06Z
+
+| Finding | Severity | State | Detail |
+|---|---|---|---|
+| R-1 | warning | accepted | fixed: _scan() now skips record/allowlisted files before extraction and returns only CHECKED references; the floor guards that quantity plus a second floor on contributing files |
+| R-2 | warning | accepted | fixed: _HISTORICAL_ARTIFACT narrowed to the pre-v3 v[12] convention, so all four release-plan-v3.2.* files including the pending one are now checked; zero offenders either way |
+| R-3 | warning | accepted | fixed beyond the ask: the plugin/ fallback is scoped to plugin-internal files and to build plans under .prawduct/artifacts/ (declared build_plan_ref_root), which surfaced and fixed seven live bin/prawduct-hook defects in tests/scenarios/*.md |
+| R-4 | warning | filed | `brookstalley/prawduct#552` |
+| R-5 | note | accepted | fixed: census figures now have one home (the change-log entry); the test docstring and build plan reference it instead of restating, and the colliding 102s are gone |
+
+**5 findings** (4 warning, 1 note) — accepted: 4, filed: 1.
+
+**Red-verified, including one guard that was quietly load-bearing on a doomed file.** Each form has
+a synthetic failing fixture; the repo-wide check was red on `principles.md` before the fix. The
+code-span rule was initially pinned only by this batch's own build plan quoting the link — a guard
+with an expiry date, and exactly the *branch that depends on a file which happens to exist* shape the
+green-is-evidence directive names. It now has a synthetic case, verified red by disabling the
+code-span strip.
+
 ## 2026-08-02: the gate named the one route that could not clear the finding it was naming
 
 <!-- prawduct: type=fix | scope=critic-burndown | chunks=03 -->
