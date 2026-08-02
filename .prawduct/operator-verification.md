@@ -780,3 +780,68 @@ not something this probe speaks to: it is about what `verify-migration` *inspect
 pagination is sound. (That fix is also why Fact 2's snippet unpacks with `*_rest`: it widened
 `iter_alias_issues` to yield the decoded status.) And `BKL-3H7W` (the meter under-counts paged reads)
 is untouched by this — a paged list still costs 1 point regardless of page count.
+
+---
+
+## VRF-014 — v3.2.3 OWNER RELEASE GATE — go/no-go evidence
+
+**Status: PARTIAL — item 2 discharged, items 1 and 3 still open.** The three gate items live in
+`.prawduct/artifacts/release-plan-v3.2.3.md` § OWNER RELEASE GATE. Recorded here per that section's
+own instruction ("Record the result in `.prawduct/operator-verification.md` … then run Phase 2").
+Phase 2 must NOT run on this record alone.
+
+### Item 2 — "GitHub Issues is working great" — **DISCHARGED 2026-08-02**
+
+**Owner statement (2026-08-02):** *"so far github issues ARE working great. the only thing not
+validated is handling of private repos filing issues upstream. I think that is acceptable for now."*
+
+Per the 2026-07-28 owner ruling this item is **functional completeness, not performance**: for every
+*supported* scenario, no functional requirement is broken, unproven against the real API, or silently
+wrong. `BKL-2K8V` (pick latency) is an NFR and explicitly does not gate.
+
+**The named carve-out does not compromise the criterion, because the scenario is out of scope rather
+than unproven.** Verified against the tree at 2026-08-02, not inferred:
+
+- Private-repo upstream filing is pinned to **W3** and explicitly fenced:
+  `documentation/backlog-service-prd.md:187` — *"arbitrary cross-owner targets, private repos,
+  foreign-identity auth-by-target-owner … stays W3; do not pull it forward."*
+- **No upstream GitHub-issue path ships at all in v3.2.3**, for public or private targets. The MG5
+  leg is unbuilt: `artifacts/build-plan-backlog-service.md:121` carries Chunk 06 as `- [ ]`,
+  `incoming-bugs/` is still present, and `plugin/lib/upstream_probes.py:56` still counts drop-box
+  files rather than labeled issues.
+- Today's upstream path therefore makes **no GitHub API call**: inbox reachable → a plain file write
+  to `<inbox>/<slug>.md` ("no git operations, no commit"); no inbox → `report-bug/SKILL.md` §4
+  **"do not attempt any upstream write"**, capture locally and point at the tracker URL.
+
+Repo visibility cannot change behavior in a code path that makes no API call, so "unproven against
+the real API" is not triggered. **Item 2 passes on scope, not on an accepted risk.**
+
+**What this does NOT discharge.** Items 1 and 3 below. Also *not* discharged: any claim about a
+private product repo running **its own** backlog on **its own** private Issues. That is a genuinely
+shipping scenario on the same `gh` path with the same inherited auth, and `backlog.md:1379` scopes it
+explicitly DO-NOT-BLOCK — but nothing here measured it, and the owner's statement was about upstream
+filing, so it must not be read as covering it.
+
+**Correction recorded so it is not repeated.** The owner's stated plan was to validate private-repo
+upstream filing with their own private repos *immediately after release*. That plan targets an
+unbuilt capability: post-v3.2.3, a private repo filing upstream reaches the drop-box or the inert
+fallback, so the exercise would measure pre-MG5 behavior and could read as a false pass. **The real
+checkpoint is the release that carries MG5**, which `.prawduct/backlog.md:1379-1381` already gates:
+*BLOCK Chunk 06's MG5 leg and the release that carries it; DO NOT BLOCK a consumer migrating its own
+backlog to its own Issues.* Note the exposure there is broader than private repos —
+`backlog.md:1365` records that even the minimal **public-repo** replacement "already sends a
+consumer's bug body into a public repo," making content-minimization (`BKL-7Q4M`) live at Chunk 06
+rather than deferrable to W3.
+
+### Item 1 — exercise the candidate in sibling repos via `--plugin-dir` — **PENDING**
+
+Not started. Requires naming which sibling repos were exercised and what was checked. This release
+changes fleet-visible governance that is invisible to this repo's own suite.
+
+### Item 3 — migration advisory fleet-wide with `BKL-8W2M` unbuilt — **PENDING**
+
+Unchanged and still the substantive one. `BKL-8W2M` (#197) remains open at `stage:requirements`.
+The accepted risk in `BKL-7D3V` was recorded when the advisory reached only the **agent**;
+`upgrade-discovery` Chunk 01 now relays every `warn` to the **person, every session**, which is
+strictly worse than what was accepted. Either land `BKL-8W2M` before Phase 2, or record an explicit
+second acceptance of the amplified version.

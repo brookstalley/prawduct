@@ -1,6 +1,10 @@
 # Release plan — v3.2.3
 
-**Cut from:** `origin/develop` @ `d9fe20b` (PR #531 merged 2026-08-01)
+**Cut from:** **whole-develop at Phase 2** — the tip as of the promotion, not a pinned commit.
+*(Originally recorded as `origin/develop` @ `d9fe20b`, PR #531 merged 2026-08-01. Six of the ten
+classified scopes landed after `d9fe20b` and it is 76 commits behind as of 2026-08-02, so the pinned
+form was describing a cut point that keeps moving. `K withheld = 0` selects whole-develop promotion,
+which makes the tip the answer; restated rather than re-pinned so it cannot go stale again.)*
 **Previous release:** v3.2.2
 
 ## Version decision
@@ -37,6 +41,9 @@ than left standing, because a false premise in a version decision is worse than 
 | upgrade-discovery | ships | |
 | junit-leaf-counting | ships | |
 | install-reference-drift | ships | |
+| backlog-burndown | ships | |
+| critic-burndown | ships | |
+| critic-death-signals | ships | |
 
 `K withheld = 0` → **whole-develop promotion** (runbook Phase 2 steps 14–20), not the pruned path.
 The v3.1.2 pruning does not carry forward: v3.2.0 promoted whole-develop and re-established
@@ -85,6 +92,41 @@ current ones" has had to be walked back — which is the point the paragraph alr
 enough instances to stop treating it as bad luck: a measurement quoted in a plan goes stale every
 time the release grows. Treat the block as a snapshot with a date, and treat `check-releasability`
 as the live answer.
+
+**Cleared 2026-08-02.** `backlog-burndown` (#545), `critic-burndown` (#551) and
+`critic-death-signals` (#559) are classified `ships`, taking the table to ten rows, and
+`check-releasability --release v3.2.3` returns **exit 0**:
+
+```
+releasable: v3.2.3 — 3 release-pending scope(s), 3 shipping, 0 withheld.
+  classification: /Users/brookstalley/source/prawduct/.prawduct/artifacts/release-plan-v3.2.3.md
+  shipping: backlog-burndown, critic-burndown, critic-death-signals
+```
+
+**Read the `3` correctly — it is not the size of the release.** *Release-pending* means "has a
+`scope=` key and no `release=` tag," so the seven already-stamped scopes have left the pending set.
+Four were stamped by the Phase 1 prep commit (`ddb6dd1` — `backlog-service-v1`, `learnings-firing`,
+`record-mechanization`, `v3.2.0-golive`) and three by follow-on classification commits (`c853796`
+upgrade-discovery, `8d07019` junit-leaf-counting, `2eabf45` install-reference-drift); the set, not
+any single commit, is what emptied the pending bucket. Their rows are not orphans only because the
+gate's
+orphan check carries a **`ships`-only re-run exemption** for rows whose entries already carry this
+release's tag — the same asymmetry the runbook spells out for `withheld` rows, where the identical
+situation is an error rather than an exemption. So `K withheld = 0` still selects whole-develop
+promotion, and the ten rows still partition the corpus; the header count just answers a narrower
+question than "what is in this release" and should not be quoted as if it answered the wider one.
+
+**Why classifying the other two branches' scopes is bookkeeping here and not the guess the bullet
+above refused to make.** That refusal was correct *while they were in flight* — a disposition is the
+author's to state, and an unmerged branch might not land at all. All three have since merged to
+`develop`, which settles it without anyone's intent being inferred: this release takes the
+**whole-develop promotion** path, so every scope on `develop` ships by construction. The only way
+one of these could be `withheld` is if a named blocker were open against it, and none is. Withholding
+any of them would not be a bookkeeping variant — it would make `K > 0` and switch Phase 2 to the
+pruned cherry-pick path.
+
+The stale-counts lesson holds and this entry is another instance of it, not an exception: these
+counts are a snapshot dated 2026-08-02, and `check-releasability` remains the live answer.
 
 Per `cut-and-publish-a-plugin-release.md` step 0, `no release-pending scopes — nothing to classify`
 takes the **same whole-develop promotion path** as `K withheld = 0`. The reasoning above still holds
@@ -173,6 +215,44 @@ check could not see at all: `enabledPlugins` — governance switched off entirel
 HC#1 was widened to assert every field the advisory can fire on, so its recommended action can
 actually repair what it reports.
 
+**`backlog-burndown` (Chunks 01–04).** Four batches of governance defects, the largest of them in
+how the runtime reads its own artifacts. **The migration runbook now verifies before it disposes**
+(`#528`, `#530`) — `verify-migration` compared each covered item against the *source markdown*, so
+folding a duplicate would have failed a correct migration; both defects were ones prawduct found by
+running its own cutover and had fixed only for itself while the fleet still shipped them.
+**`regen-views` became advice rather than authority** (`#201`, `#211`, `#224`, `#327`, `#333`):
+one always-writing mode, and one bad scope no longer freezes every view. **A review now knows which
+plan it is of, and which tree it looked at** (`#206`, `#208`, `#218`, `#288`, `#344`) — five defects
+sharing one shape, a question answered from two places with nothing checking the answers agree.
+**Untriaged issues stopped being invisible** (`#532`, `#533`, `#209`, `#307`, `#313`): an issue with
+no prawduct provenance at all was dropped from `counts` entirely, so the items least likely to be
+looked at were the only ones the tooling could not see.
+
+**`critic-burndown` (Chunks 01–03).** Three Critic controls the protocol never had. **A
+cross-component message contract is now Goal 1's business, in chunk mode, BLOCKING** (`#97`) — the
+filing case was a two-process app whose consumer awaited a terminal signal the producer's success
+path never sends; types matched, unit and IPC tests were green because the fixtures synthesized the
+very signal the real producer omits, and in production the flow hangs forever. It was caught only
+because a human wrote a pointed reviewer prompt, which made detection **prompt-driven rather than
+protocol-driven**. **`risk_surfaces:` stopped deciding review depth through a question nobody asked**
+(`#163`) — the fallback is silent by design, so a product that declares nothing is never reviewed
+*less* and therefore never learns it could be reviewed *more*; `discovery.md` now asks. **A
+superseded BLOCKING finding no longer strands its own advice** (`#536`): each `verify-resolutions`
+pass anchors to the newest prior review fact, so a blocker left behind on an earlier round is never
+named again — while the gate message prescribed exactly that route. The state self-heals through a
+clean `cumulative`; the defect was that nothing said so, so this adds a sentence and moves no verdict.
+
+**`critic-death-signals` (Chunk 1).** "The Critic died" reports from consumers traced to **three
+compounding false signals, not a dead review.** A field report supplied the timeline: an agent
+checked liveness ~8 minutes into a healthy coordinator review, found `.critic-active`'s `pid` dead,
+found zero partials, concluded death *inside* the grace window, re-dispatched — doubling review cost
+— and the re-dispatch clobbered the first manifest, erasing the only evidence the first review ran.
+The reviewers were alive throughout. One fix per signal: the marker's **`pid` field is gone** (it
+recorded the short-lived `critic-begin` process, dead within milliseconds of every dispatch, and
+nothing ever read it back — it existed only to tell a reader that a healthy review had died);
+reviewers now write a **per-role liveness marker** so "zero partials" no longer reads as "nobody
+started"; and a re-dispatch **archives rather than clobbers**, so evidence survives.
+
 ## OWNER RELEASE GATE — blocking, held at the Phase 1 checkpoint
 
 `build-plan-v3.2.0-golive.md` Chunk 09 items 7 and 8 bind on this release by their own terms
@@ -198,10 +278,18 @@ actually repair what it reports.
    audience"). Publishing is the irreversible step; merging to `develop` was not. Either land
    `BKL-8W2M` before Phase 2, or record an explicit second acceptance of the amplified version.
 
-**Status at time of writing: PENDING.** Owner elected to hold at the Phase 1 checkpoint —
-`origin/develop` fully prepped, nothing published. Record the result in
-`.prawduct/operator-verification.md` as this release's go/no-go evidence, naming which sibling repos
-were exercised and what was checked, then run Phase 2.
+**Status: PARTIAL as of 2026-08-02 — item 2 discharged, items 1 and 3 open.** Owner elected to hold
+at the Phase 1 checkpoint — `origin/develop` fully prepped, nothing published.
+
+**Item 2 is discharged** on owner statement plus a verified scope argument: private-repo upstream
+filing is **W3 and unbuilt**, and no upstream GitHub-issue path ships in v3.2.3 at all (Chunk 06 of
+`build-plan-backlog-service.md` is `- [ ]`), so the carve-out names an out-of-scope capability rather
+than an unproven supported scenario. Full evidence, including a correction to the post-release
+validation plan the carve-out assumed, is at **`.prawduct/operator-verification.md` § VRF-014**.
+
+**Items 1 and 3 remain blocking.** Record their results in `.prawduct/operator-verification.md`
+alongside VRF-014 — naming which sibling repos were exercised and what was checked — then run
+Phase 2. Phase 2 must not run on item 2 alone.
 
 ## Runbook departure — `active_build_plan` NOT cleared
 
