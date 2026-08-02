@@ -789,6 +789,58 @@ decided and scheduled for retirement and is live only by silence. What is genuin
 currently unowned, is **which fleet migration gets proven end-to-end first**. Two unproven fleet
 paths must not be live at once.
 
+## 2026-07-30: Test evidence counts tests, not a reporter's opinion of how many there are
+
+<!-- prawduct: type=fix | scope=junit-leaf-counting | release=v3.2.3 | status=shipped -->
+
+**Why:** `test-evidence record` summed the `tests=` attribute of top-level `<testsuite>` elements.
+That attribute's meaning is reporter-specific, and the two live conventions cannot both be served by
+summing it:
+
+| reporter | `tests=` counts | summing top-level | summing every suite |
+|---|---|---|---|
+| Ant-style | all descendants | correct | double-counts |
+| node:test | direct children | **undercounts** | correct |
+
+Top-level-only summing was introduced to fix the double-count, and it did — while preserving the
+undercount, which is what #128 reported. Reproduced against the shipped 3.2.1 binary: a suite whose
+two child describes hold six tests recorded **2 passed**. The error scales with nesting depth, so the
+~2× in the original report was that repo's shape, not a constant.
+
+**Not a gate-soundness bug** — `failed` stayed accurate and the gate reads `failed`. It is an
+audit-record integrity bug, and its concrete cost is that an independent Critic reviewing a repo with
+nested describes sees a passed/total spread that reads as stale evidence and burns a finding on it.
+That happened, in the reporting repo, to a real review.
+
+**What landed.** Counts come from leaf `<testcase>` elements wherever a suite has them. A leaf appears
+exactly once however the suites nest, so it is correct under both conventions with no reporter
+detection — the conflict is a property of the attribute, not of the tree. Status is classified per
+leaf with error-over-failure precedence, so a case carrying both counts once rather than pushing
+`failed` above the number of tests that ran. Duration stays suite-level: the suite's `time` is the
+wall clock this field has always reported, and summing `<testcase time=>` would change the field's
+meaning — per-case times are elapsed-per-test and, under any parallel runner, add up to more than the
+wall clock actually spent.
+
+**The fallback is the load-bearing part of the change, and it is chosen per suite.** Some CI
+aggregators emit suite attributes with no `<testcase>` children, and recording a confident `0` for
+them would be a worse bug than the one being fixed — so a **top-level** suite with no leaves anywhere
+beneath it falls back to its attributes. The boundary really is top-level: a summary-only suite
+*nested inside* a leaf-bearing one still contributes zero. That is an accepted limit rather than an
+oversight — no runner in evidence emits that shape, and the code comment names the granularity — but
+it is the same class of gap one level down, so it is recorded here rather than left to be
+rediscovered. **Deciding that once for the whole ingest was the first cut, and it was a
+gate-soundness bug the Critic caught before merge:** with a global switch, any leaf anywhere made
+every summary-only suite contribute zero, including its failures. Because `failed` drives both this
+command's exit status and `tests_are_current` in `lib/gates.py`, that is a false *green* — strictly
+worse than the undercount being fixed, which never lied about `failed`. Two reachable shapes: a
+repeated `--from-junit` ingest, and one report mixing a populated suite with a `<testsuite
+errors="1">` that died before emitting any case. Both are now pinned by tests.
+
+Each convention is a first-class test, since a fix for either one alone silently reintroduces the
+other. The pre-existing `TestFromJunitIngest` fixtures are summary-only, so the fallback is exercised
+by the existing suite as well as the new one — though only three of the seven reach the counting
+block, the rest exiting earlier for unrelated reasons.
+
 ## 2026-07-30: The third learnings compaction, and the first one built to be the last
 
 <!-- prawduct: type=fix | release=v3.2.2 | status=shipped -->

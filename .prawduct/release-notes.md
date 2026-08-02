@@ -43,6 +43,10 @@
 
 **Chunks shipped:** 05
 
+### junit-leaf-counting
+
+**Entry:** 2026-07-30: Test evidence counts tests, not a reporter's opinion of how many there are
+
 See `.prawduct/change-log.md` for full details.
 
 ## v3.2.2

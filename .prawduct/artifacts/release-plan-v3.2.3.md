@@ -35,6 +35,7 @@ than left standing, because a false premise in a version decision is worse than 
 | backlog-service-v1 | ships | |
 | record-mechanization | ships | |
 | upgrade-discovery | ships | |
+| junit-leaf-counting | ships | |
 
 `K withheld = 0` → **whole-develop promotion** (runbook Phase 2 steps 14–20), not the pruned path.
 The v3.1.2 pruning does not carry forward: v3.2.0 promoted whole-develop and re-established
@@ -62,8 +63,12 @@ existed; it is kept as the historical record rather than overwritten. Current st
 
 ```
 releasable: no release-pending scopes — nothing to classify
-  (227 change-log entries scanned, 206 tagged, 5 scope(s) already tagged release=v3.2.3).
+  (228 change-log entries scanned, 207 tagged, 6 scope(s) already tagged release=v3.2.3).
 ```
+
+Re-measured again when `junit-leaf-counting` joined as the sixth scope — the counts above are the
+current ones. A measurement quoted in a plan goes stale every time the release grows, so treat the
+block as a snapshot with a date, not a standing fact.
 
 Per `cut-and-publish-a-plugin-release.md` step 0, `no release-pending scopes — nothing to classify`
 takes the **same whole-develop promotion path** as `K withheld = 0`. The reasoning above still holds
@@ -122,6 +127,21 @@ change-log ledger spike ran and falsified its own artifact's premise.
 **`v3.2.0-golive` (Chunk 06).** prawduct's own backlog migrated to GitHub Issues — 371 items, 0
 stranded, `verify-migration` exit 0. Consumer-visible portion is the hardening this produced:
 `migrate.py`, and `migration-scrub.md`'s corrected step ordering.
+
+**`upgrade-discovery` (Chunks 01–03).** Everything prawduct said about itself, it said to stdout —
+the agent's channel by this repo's own ratified norm — and the version banner marked itself shown, so
+it never rendered again. A relay directive now sits at each emission site: the version-delta block
+and the briefing's advisory block (the latter for `warn`/`urgent` only; `info` is excluded because a
+nagging channel gets tuned out). Chunk 03 lifts the `backlog-service-migration-required` hold, which
+is why **gate item 3 exists** — the lift routes toward an irreversible bulk write, and the relay is
+what puts a person in that loop.
+
+**`junit-leaf-counting`** (#128, contributed by @Jason-Vaughan). `test-evidence record` summed a
+`tests=` attribute whose meaning is reporter-specific, undercounting nested suites — 6 real tests
+recorded as 2, worsening with depth. Counts now come from leaf `<testcase>` elements, with an
+attribute fallback decided **per suite**. The per-suite granularity is load-bearing: deciding once
+per ingest made every summary-only suite contribute zero the moment any other carried a leaf, and
+since `failed` drives `tests_are_current`, that was a false *green* — caught in review, not shipped.
 
 ## OWNER RELEASE GATE — blocking, held at the Phase 1 checkpoint
 
