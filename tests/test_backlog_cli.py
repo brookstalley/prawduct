@@ -548,3 +548,38 @@ class TestHelpAdvertisesHonoredFlags:
                 f"`{op}` accepts --archive-scope but does not advertise it; an "
                 "owner cannot make an explicit choice they cannot discover (MG4b)"
             )
+
+
+class TestReviewedRejectsAStrayValue:
+    """`--reviewed <date>` must not silently stamp today (#550, cumulative R-15).
+
+    `--reviewed=<date>` was already rejected, but the SPACE-separated form parsed
+    the date as a second positional that `_run_update` ignored — exit 0, today
+    stamped, no diagnostic. A wrong result with a success code is worse than any
+    error, because nothing prompts the caller to look.
+    """
+
+    def test_space_separated_date_is_rejected(self, capsys):
+        fake = FakeGitHub()
+        item_id = _file(fake, capsys)
+        code, out, err = _run(
+            ["update", item_id, "--reviewed", "2020-01-01", "--json"], fake, capsys
+        )
+        assert code == 2
+        assert "reviewed" in json.loads(out)["error"]["message"]
+
+    def test_the_stray_date_is_not_stamped(self, capsys):
+        # The exit code is not the property that matters — that nothing was
+        # written is.
+        fake = FakeGitHub()
+        item_id = _file(fake, capsys)
+        _run(["update", item_id, "--reviewed", "2020-01-01", "--json"], fake, capsys)
+        owner_repo, number = item_id.split("#")
+        owner, repo = owner_repo.split("/")
+        assert "reviewed" not in fake.get_issue(owner, repo, int(number))["body"]
+
+    def test_a_bare_reviewed_still_works(self, capsys):
+        fake = FakeGitHub()
+        item_id = _file(fake, capsys)
+        code, _, _ = _run(["update", item_id, "--reviewed", "--json"], fake, capsys)
+        assert code == 0

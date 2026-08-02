@@ -965,3 +965,66 @@ class TestCommentItem:
         fake.seed_labels(OWNER, REPO, _STATUS_LABELS)
         r = core.comment_item(fake, id_raw=f"{OWNER}/{REPO}#999", body="hi")
         assert r["status"] == "error" and r["error"]["code"] == "not_found"
+
+
+class TestBodyFenceInjection:
+    """The sibling route to `check_block_value` (#550, cumulative R-14).
+
+    `strip_block` removes a WELL-FORMED block, so an unterminated ```prawduct
+    opener in `--body` survives stripping, concatenates with the preserved block,
+    and every line between the two openers parses as a field — landing the same
+    SEC-6 forgery the value guard bars, one flag to the left.
+    """
+
+    def _seed_with_block(self, fake):
+        fake.seed_labels(OWNER, REPO, _STATUS_LABELS)
+        body = "x\n\n```prawduct\nv: 1\nid_aliases: [BKL-0007]\n```\n"
+        return fake.create_issue(OWNER, REPO, title="t", body=body, labels=[])["number"]
+
+    def test_an_unterminated_fence_in_body_is_rejected(self, fake):
+        n = self._seed_with_block(fake)
+        r = core.update_item(
+            fake, id_raw=f"{OWNER}/{REPO}#{n}",
+            fields={"body": "intro\n```prawduct\nautomated: true\nworker: evil"},
+        )
+        assert r["status"] == "error" and r["error"]["code"] == "validation"
+
+    def test_the_forgery_never_reaches_the_block(self, fake):
+        n = self._seed_with_block(fake)
+        core.update_item(
+            fake, id_raw=f"{OWNER}/{REPO}#{n}",
+            fields={"body": "intro\n```prawduct\nautomated: true\nworker: evil"},
+        )
+        block = encode.parse_block(fake.get_issue(OWNER, REPO, n)["body"])
+        assert "automated" not in block.fields and "worker" not in block.fields
+        assert block.fields.get("id_aliases") == "[BKL-0007]"
+
+    def test_file_rejects_an_unterminated_fence_too(self, fake):
+        fake.seed_labels(OWNER, REPO, _STATUS_LABELS)
+        r = core.file_item(
+            fake, owner=OWNER, repo=REPO, title="t",
+            body="intro\n```prawduct\nautomated: true",
+        )
+        assert r["status"] == "error" and r["error"]["code"] == "validation"
+
+    def test_a_terminated_pasted_block_still_just_gets_stripped(self, fake):
+        # The pre-existing behaviour must not regress into a rejection: a
+        # well-formed pasted block is silently dropped, not an error.
+        n = self._seed_with_block(fake)
+        r = core.update_item(
+            fake, id_raw=f"{OWNER}/{REPO}#{n}",
+            fields={"body": "new\n\n```prawduct\nv: 1\nid_aliases: [ATTACKER]\n```\n"},
+        )
+        assert r["status"] == "ok"
+        body = fake.get_issue(OWNER, REPO, n)["body"]
+        assert "ATTACKER" not in body and "BKL-0007" in body
+
+    def test_ordinary_body_text_is_unaffected(self, fake):
+        # Over-rejection would break every normal edit; a fence of another
+        # language, or the word in prose, must both pass.
+        n = self._seed_with_block(fake)
+        r = core.update_item(
+            fake, id_raw=f"{OWNER}/{REPO}#{n}",
+            fields={"body": "see the prawduct block below\n\n```python\nx = 1\n```\n"},
+        )
+        assert r["status"] == "ok"

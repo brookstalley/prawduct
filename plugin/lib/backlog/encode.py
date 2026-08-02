@@ -287,6 +287,42 @@ def format_list(items: list[str]) -> str:
     return "[" + ", ".join(items) + "]"
 
 
+def check_body_text(text: str | None) -> str | None:
+    """Reject human body text that still opens a ``prawduct`` fence after stripping.
+
+    The sibling injection route to :func:`check_block_value`, and it must be
+    guarded in the same breath or the value guard is security theatre: locking
+    ``--refs`` while ``--body`` stays open leaves the identical forgery one flag
+    to the left.
+
+    :func:`strip_block` removes a *well-formed* block, because ``_BLOCK_RE``
+    requires a closing fence. An **unterminated** ````` ```prawduct ````` opener
+    therefore survives stripping — and once the preserved block is appended after
+    it, the body holds two openers, the non-greedy regex spans from the attacker's
+    to the real block's terminator, and every line between them parses as a field.
+    Observed: a ``--body`` ending mid-fence landed ``automated: true`` and
+    ``worker: evil`` *ahead* of the genuine fields, so the next re-serialization
+    made them permanent.
+
+    Rejecting the opener outright is deliberate over trying to escape or re-fence
+    it. A body that legitimately needs to *show* a prawduct block can indent it,
+    use a different fence language, or say it in prose; a rewrite rule here would
+    have to be exactly as clever as every future attacker.
+
+    Returns an error message, or ``None`` when the text is safe.
+    """
+    if not text:
+        return None
+    for line in strip_block(text).splitlines():
+        if line.strip().startswith("```prawduct"):
+            return (
+                "body may not open a ```prawduct fence — an unterminated one "
+                "survives block-stripping and injects every line after it as a "
+                "block field; the block is edited through its own flags"
+            )
+    return None
+
+
 def check_block_value(key: str, value) -> str | None:
     """Reject a block field value that would break the line-based block format.
 

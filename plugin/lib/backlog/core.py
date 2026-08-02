@@ -112,6 +112,9 @@ def file_item(
         bad = encode.check_block_value("refs", refs)
         if bad:
             return error("validation", bad, details={"field": "refs"})
+    bad = encode.check_body_text(body)
+    if bad:
+        return error("validation", bad, details={"field": "body"})
 
     # Emit the §1 title shape (`area: summary`) before the create so the issue is
     # born standard-compliant (issue-standard §1). Idempotent; never fights a
@@ -611,6 +614,13 @@ def update_item(
             bad = encode.check_block_value(key, fields[key])
             if bad:
                 return error("validation", bad, details={"field": key})
+    # The sibling route: `--body` is caller text that lands in the same body an
+    # unterminated fence can turn into block fields. Guarding the flags but not
+    # this would leave the identical forgery one flag to the left.
+    if "body" in fields:
+        bad = encode.check_body_text(fields["body"])
+        if bad:
+            return error("validation", bad, details={"field": "body"})
 
     warnings: list[str] = []
     try:

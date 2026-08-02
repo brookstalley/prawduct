@@ -48,14 +48,14 @@ cache (§6) projects the same fields for the queries GitHub can't serve read-you
 | `relationships` | §1.3 | native dependencies / sub-issues / refs | DM3, ready-work |
 | `provenance` | §1.5 | block (detail) + `source:<product>` label (the coarse XP2/Q4 filter) | XP2 |
 | `history` | append-only | issue **timeline/events** (native) | CC4 |
-| `closed_by` | branch/PR/release handle | native **timeline close-ref** (close-on-merge) + block `closed_by` (manual-close fallback) | GV3 |
+| `closed_by` | branch/PR/release handle | native **timeline close-ref** (close-on-merge) + block **`closed-by`** (manual-close fallback — hyphenated in the block; see §2) | GV3 |
 
 *Soft enums (DM1):* an undeclared `stage:`/`kind:` value is **flagged, not rejected** (scriob's `kind:`
 on 158 items). `added` is display/sort metadata (sort-by-date under Q1), not a standalone query key.
 
 *`closed_by` (GV3, added v3):* the ship-**traceability** handle that replaces git's ship-atomicity. On a
 close-on-merge it is **authoritative from the native `closed` timeline event** (the closing PR/commit
-ref, no new stored field), with the block `closed_by` only as the **manual-close** fallback (a bare
+ref, no new stored field), with the block **`closed-by`** (hyphenated — §2) only as the **manual-close** fallback (a bare
 `status`→shipped otherwise carries no handle). The GV3 bidirectional drift sweep (*shipped-but-PR-died* ·
 *merged-but-item-open*) is a janitor `list`+timeline scan, not a stored projection — see API contract
 §2.6.
@@ -63,7 +63,7 @@ ref, no new stored field), with the block `closed_by` only as the **manual-close
 ### 1.2 Field authority & justified mirrors
 - **Native/label-authoritative, block-unmirrored:** `status`, `stage`, `area/effort/impact/kind`,
   `assignee`. Changing them is a label/state call (core budget), never a content-creation.
-- **Block-authoritative, unmirrored:** `verified`, `claimed_at`, `attachments`, `superseded_by`,
+- **Block-authoritative, unmirrored:** `verified` (designed, unbuilt), `claimed_at`, `attachments`, `superseded_by`,
   `automated`/`worker` (the unattended-actor marker — Security §1a/CC4; self-asserted like all block
   fields, trustworthy for audit only insofar as the acting API identity is), and the four
   **editorial** fields `refs`/`revisit`/`closed-by`/`reviewed` (§2).
@@ -108,7 +108,7 @@ CC5 human edits make a doubled/misplaced block plausible; last-block-wins is det
 ```prawduct
 v: 1                         # block schema version (§7 — additive-only-forever)
 id_aliases: [BKL-7M4Q]       # migrated PFX; old refs resolve forever (label + here)
-verified: [{by: …, on: …}]   # TF2 round-trip authority (query runs off cache `reviewed`)
+verified: [{by: …, on: …}]   # DESIGNED, UNBUILT — zero live items; `reviewed:` below is TF2's live encoding
 claimed_at: 2026-07-16T…Z    # CC3 visible staleness
 provenance: {source: scriob, version: …, session: …}   # XP2 detail (label = coarse filter)
 superseded_by: owner/repo#123                            # merge/duplicate redirect (DM7/AU3)
@@ -356,6 +356,6 @@ submitted/in-progress carry one — §4.)*
 DM1→§1.1/§3; DM2→§4; DM3→§1.3; DM4→§5; DM5→§1.3; DM6→§1.6; DM7→§8. Q1-structured→§4 ready-work + §6;
 Q1-fulltext/Q3→§6 (`item_fts`); Q2→§6 (`cursor`); **Q4→query-side fan-out (NOT the cache), §6 note**;
 Q5→§6 (derived-on-read + the `briefing_counts` GV2 exception). ready-work→§4 (list-then-fan-out);
-stale-verification (TF2)→§1.1 `verified` + cache `reviewed`; provenance (XP2)→§1.5 + `source:` label
-(the XP2 filter — *not* Q4); **GV3→§1.1 `closed_by`** (native close-ref authoritative, block fallback;
+stale-verification (TF2)→§1.1 block `reviewed` (live; `verified` + cache `reviewed` designed-but-unbuilt); provenance (XP2)→§1.5 + `source:` label
+(the XP2 filter — *not* Q4); **GV3→§1.1 `closed_by`**, block key `closed-by` (native close-ref authoritative, block fallback;
 drift sweep is a janitor scan, API contract §2.6).

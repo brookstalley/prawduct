@@ -130,7 +130,7 @@ sections** post-cutover: open/closed state + `status:` labels carry lifecycle pl
 
 ### add
 `prawduct-hook backlog file --repo <r> --title T --body B [--stage S] [--kind K] [--area A]
-[--effort E] [--impact I] [--source SRC]`. Author an issue-standard title (`area: summary`, ≤72,
+[--effort E] [--impact I] [--source SRC] [--refs R]`. Author an issue-standard title (`area: summary`, ≤72,
 atomic) + a sectioned body; set `--kind`. The result may carry `lint[]` (WARN-only issue-standard
 hints — surface, never blocks). **Dedup-on-create is degraded** while the backend has no full-text search: do a
 coarse check with `list --area=<area> --json` and eyeball recent titles for overlap before filing,
@@ -139,13 +139,23 @@ and say full dedup is not available on this backend yet.
 ### update `<id>`
 Route by what changed:
 - **status** (`status=X`) → `status <id> --to <mapped>` (bridge table above). Idempotent (re-run =
-  no-op); a close records `closed_by` natively.
+  no-op). A close records `closed_by` natively **only on close-on-merge** (the timeline close-ref);
+  a bare `status --to shipped` carries no handle, so pass `closed-by=` through as
+  `update <id> --closed-by <scope>` in the same breath or the ship handle is simply lost.
 - **field** (title/body/stage/kind/area/effort/impact/source) → `update <id> [--flag …]` (last write
   wins — correct for the interactive single-actor case). The item envelope does **not** surface an
   `updated_at`, so the optional `--if-updated-at <ts>` optimistic-concurrency guard (exit **4
   conflict** on a stale timestamp) is only usable when a caller already holds that timestamp from
   elsewhere; the skill's normal path omits it.
-- **claim** (`accepted-by=@x` / clear) → `claim <id> [--claim-ttl S]` / `unclaim <id>`.
+- **editorial block field** (`refs:`/`revisit:`/`closed-by:`/`reviewed:`) → `update <id> --refs V`,
+  `--revisit V`, `--closed-by V` (each takes a value; an **empty** value clears the field) and
+  `--reviewed` (**no value** — it stamps today, and is never implied by another edit). `file` also
+  takes `--refs` so a new item can carry its governing-doc link from birth. These are the only
+  writable block fields; **`--body` is not a route into the block** — a pasted block is stripped and
+  the existing one re-appended, so a block edit sent that way reports success and changes nothing.
+- **claim** (markdown's `accepted-by=@x` / clear) → `claim <id> [--claim-ttl S]` / `unclaim <id>`.
+  There is no `accepted-by` flag: the claim is the native assignee, which the backend records and a
+  caller cannot forge.
 - **link edge** (`related:`/blocks/blocked-by/parent/child) → `link <id> --edge <e> --to <target>` /
   `unlink …`.
 - **a free note** → `comment <id> --body B`.

@@ -62,7 +62,7 @@ tier (§7).
 | `update` | one Item | – | field-wise | field-wise edit; **optimistic CAS** on state/`updated_at` → `conflict` for retry | CC2 |
 | `status` (set) | one Item | – | **yes** | the crash-safe two-axis transition — maps to the Data Model's idempotent **`set-status`** primitive (re-run = no-op); a close also records **`closed_by`** (§2.6) | DM2, CC1, GV3 |
 | `claim` / `unclaim` | Item assignee | – | **yes** | atomic take-and-verify; TTL-reap surfaces `claim_conflict` (non-fatal) | CC3 |
-| `verify` | Item block+cache | – | **yes** (keyed on actor+date) | record "premise re-checked against code by <actor> on <date>" in one call — re-stamp same (actor,date) = no-op (the `verified` list is append-with-dedup, Data Model §1.1/§2) | TF2 |
+| `verify` | Item block+cache | – | **yes** (keyed on actor+date) | **NOT BUILT — superseded in practice by `update --reviewed`**, which stamps the block's `reviewed:` date; the actor comes from the API identity (unforgeable) rather than a self-asserted `verified` entry. Kept as the designed richer shape for the day multiple retained verification events are needed (Data Model §2 "`reviewed` vs `verified`") | TF2 |
 | `comment` | Item comment | – | **no** | add a threaded, attributed comment | DM5 |
 | `attach` | Item attachment | – | **cond.** | store a file (release-asset **or** attachments-branch, both no-PR); returns the stored URL. **Idempotent by content-hash on the attachments-branch path; name-keyed (so overwrite-or-skip) on the release-asset path** — the key depends on which S5 resolves | DM6 |
 

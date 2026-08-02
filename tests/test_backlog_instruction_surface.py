@@ -322,6 +322,19 @@ def _writable_field_names() -> frozenset[str]:
     return frozenset(_cli_string_literals()) | OP_OWNED_FIELDS
 
 
+# SKILL.md is the DUAL-BACKEND file, and the writable set derived above is the
+# Issues adapter's. A line that explicitly scopes itself to the markdown backend
+# is therefore judged against the wrong vocabulary: `accepted-by:`, `closes:` and
+# `added:` are legitimate markdown metadata-bar writes and phantom Issues ones.
+# Today nothing false-positives, but only by luck of phrasing — so scope it
+# rather than wait for the misfire (cumulative R-8).
+#
+# Deliberately a NAMED-BACKEND check, not a heuristic: a line has to say
+# "markdown" to be exempt, which keeps the default "this is an Issues claim" and
+# makes the exemption visible in the prose a reader is already looking at.
+_MARKDOWN_SCOPED = re.compile(r"\bmarkdown\b", re.I)
+
+
 def _instructed_field_writes(surfaces=None) -> list[tuple[str, str]]:
     """``(field, "path:lineno: line")`` for every field write an instruction asserts."""
     found: list[tuple[str, str]] = []
@@ -331,6 +344,8 @@ def _instructed_field_writes(surfaces=None) -> list[tuple[str, str]]:
         ):
             if not _in_adapter_context(surface, line):
                 continue
+            if _MARKDOWN_SCOPED.search(line):
+                continue  # judged against the wrong backend's vocabulary
             names = {m.group("f") for m in _PROSE_FIELD_WRITE.finditer(line)}
             if _UPDATE_FORM.search(line):
                 names |= {m.group("f") for m in _COMMAND_FIELD_WRITE.finditer(line)}
@@ -403,3 +418,73 @@ def test_the_capability_guard_does_not_flag_a_writable_field(tmp_path):
         f for f, _ in _instructed_field_writes([fixture])
         if f not in _writable_field_names()
     ] == []
+
+
+# --- The prose enumeration must match the derived set ------------------------
+
+# Bounded at the SENTENCE, not the line: the surrounding paragraph goes on to
+# discuss `--body` (which is a real flag, but not a block field), and a
+# to-end-of-line span swept it in and reported a disagreement that was the
+# regex's fault rather than the prose's. A false alarm here is worse than none —
+# it is the "probe that misfires trains its reader to ignore it" failure this
+# module's own docstring names.
+_WRITABLE_PROSE = re.compile(r"block fields are writable[^.]*")
+
+
+def test_skill_prose_field_list_matches_the_derived_writable_set():
+    """SKILL.md states the writable block fields in prose; that list must be true.
+
+    The guards above check that no instruction names an UNWRITABLE field. They do
+    not check the converse — a sentence enumerating "only these are writable"
+    carries a closed-world claim, and nothing binds it to the CLI. Add a fifth
+    flag and that sentence becomes silently false, which is precisely the drift
+    class this whole file exists to close, one level up (cumulative R-7).
+
+    The expected set is DERIVED from `core._UPDATE_BLOCK` plus the boolean
+    `reviewed`, never restated here — restating it would reproduce the defect
+    inside its own guard.
+    """
+    import sys
+
+    if str(PLUGIN) not in sys.path:
+        sys.path.insert(0, str(PLUGIN))
+    from lib.backlog import core  # noqa: PLC0415 — path set above
+
+    expected = {f"--{name}" for name in core._UPDATE_BLOCK} | {"--reviewed"}
+    skill = (PLUGIN / "skills" / "backlog" / "SKILL.md").read_text(encoding="utf-8")
+    claims = _WRITABLE_PROSE.findall(skill)
+    assert claims, (
+        "SKILL.md no longer states which block fields are writable — if the "
+        "sentence moved, retarget this guard; if it was deleted, the skill lost "
+        "the one place a reader learns the write surface"
+    )
+    for claim in claims:
+        named = set(re.findall(r"`(--[a-z-]+)`", claim))
+        assert named == expected, (
+            f"SKILL.md's writable-field list {sorted(named)} disagrees with the "
+            f"adapter's actual set {sorted(expected)} — update the prose, or the "
+            "closed-world claim 'only these are writable' is false"
+        )
+
+
+def test_a_markdown_scoped_line_is_exempt_but_an_issues_one_is_not(tmp_path):
+    """R-8's scoping must cut exactly one way.
+
+    A markdown-backend line naming `added:` is legitimate; the identical claim
+    without that scope is a phantom Issues capability. Both directions are pinned
+    because an exemption that swallows the unscoped case would silently disable
+    the guard for every line that happens to say "markdown".
+    """
+    exempt = tmp_path / "a.md"
+    exempt.write_text(
+        "Run `prawduct-hook backlog update <id>`. On the markdown backend, set `added:` to today.\n",
+        encoding="utf-8",
+    )
+    assert [f for f, _ in _instructed_field_writes([exempt])] == []
+
+    caught = tmp_path / "b.md"
+    caught.write_text(
+        "Run `prawduct-hook backlog update <id>` and set `added:` to today.\n",
+        encoding="utf-8",
+    )
+    assert "added" in [f for f, _ in _instructed_field_writes([caught])]
