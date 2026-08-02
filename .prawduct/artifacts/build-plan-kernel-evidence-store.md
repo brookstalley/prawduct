@@ -177,7 +177,7 @@ under `tests/scenarios/` like the existing ones.
 
 ### Verification Strategy
 
-Every chunk is verified against the **repo-local** `python3 bin/prawduct-hook`
+Every chunk is verified against the **repo-local** `python3 plugin/bin/prawduct-hook`
 (never the PATH/plugin-cache binary — learned rule). Chunks 01 and 06 verify
 across two real worktrees of a scratch clone (the topology the store exists
 to fix). Chunk 04 replays the CRT-J4PM and CRT-5D8Q reproduction sequences

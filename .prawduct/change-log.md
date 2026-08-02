@@ -64,14 +64,28 @@ skipped as records, **0 offenders**, **1** allowlisted file against a budget of 
 
 **The `plugin/` root fallback was hiding the very relocation this test cites as its reason to
 exist.** Applied at every file, it resolves `bin/prawduct-hook` against `plugin/bin/prawduct-hook`,
-so the prose half of the motivating five-skill breakage was invisible to the check written to
-prevent its recurrence. The fallback is legitimate in exactly two places — files under `plugin/`,
-which name paths as the plugin ships them, and build plans under `.prawduct/artifacts/`, for which
-this repo *declares* `build_plan_ref_root: plugin` — and is now scoped to them. **Scoping it turned
-a documentation clause into seven real fixes**: every `tests/scenarios/*.md` instructs a reader to
-run `python3 bin/prawduct-hook init-product …` from the repo root, where no such file has existed
-since the relocation. The reviewer asked for a hedge on the claim; the claim turned out to be
-fixable instead.
+so the motivating five-skill breakage was invisible to the check written to prevent its recurrence.
+
+**The first fix scoped it by FILE and shipped claiming that closed the finding. It did not**, and
+the verify pass caught it: the motivating defect lived in five *skills'* prose and grants, skills
+live under `plugin/`, and `plugin/` was inside the scope the first fix retained. Two of the three
+covered forms, on the exact files, of the exact class, still resolved — and the change-log asserted
+the opposite, in a batch whose subject is records asserting what the code does not support. Second
+instance of that pattern on this branch's own work, and the first where the author was the source.
+
+**The closing fix scopes by FORM as well as by file**, on a distinction the first pass missed: the
+fallback earns its place for *naming* a file — docs under `plugin/` refer to siblings the way the
+plugin ships them (`skills/critic/review-cycle.md`, `methodology/building.md`, dozens more), and
+build plans do the same under the declared `build_plan_ref_root: plugin`. It earns nothing for
+*running* one, because a reader executes from a working directory, which in this repo means
+`plugin/bin/prawduct-hook` — what all fifteen in-tree invocations say. The fallback is therefore
+denied to the two invocation forms (`command`, `allowed-tools`), pinned by a test so restoring the
+wider form reddens rather than merely being unwritten.
+
+**Scoping bought eleven real fixes across two surfaces.** Seven `tests/scenarios/*.md` instructed a
+reader to run `python3 bin/prawduct-hook init-product …` from the repo root, where no such file has
+existed since the relocation; four build plans did the same in command position, while their bare
+`` `bin/prawduct-hook` `` *file* references were left alone as legitimate under the declared root.
 
 **The non-vacuity floor guarded the wrong quantity.** It counted references *extracted*, which
 includes those skipped as records — so widening the record predicate far enough would take the check
@@ -103,6 +117,28 @@ the naive one is the one wired to a gate.
 | R-5 | note | accepted | fixed: census figures now have one home (the change-log entry); the test docstring and build plan reference it instead of restating, and the colliding 102s are gone |
 
 **5 findings** (4 warning, 1 note) — accepted: 4, filed: 1.
+
+### The verify pass (0 blocking, 2 warnings, 1 note)
+
+It verified the resolutions **against the tree rather than against the fix notes**, which is the
+only reason the R-3 miss was caught: the disposition said "fixed beyond the ask" and the code had
+fixed a neighbouring surface. Both residuals were record corrections, both landed here.
+
+**rev-20260802T180909Z-3791bed3** — scope `drift-burndown`, chunk 01, 2026-08-02T18:09:09Z
+
+| Finding | Severity | State | Detail |
+|---|---|---|---|
+| R-1 | warning | accepted | fixed properly this round: the plugin/ fallback is now scoped by FORM as well as file — denied to command and allowed-tools — so a skill invoking the pre-relocation bin/prawduct-hook is caught; pinned by test_the_plugin_fallback_is_denied_to_invocation_forms, and four more live command-position defects in build plans were fixed |
+| R-2 | warning | accepted | fixed: the build plan no longer restates any post-fix coverage figure; the change-log is the single home and the plan says so, with the stale 102/41/46 removed |
+| R-3 | note | accepted | acknowledged, no action: the record-lint chunk-ref-missing entries are the known #552 false-positive class, already filed with the departure recorded |
+
+**3 findings** (2 warning, 1 note) — accepted: 3.
+
+Final coverage, measured at close: **101 references checked across 40 instruction files** (60
+command, 27 link, 14 grant), 0 offenders, 1 allowlisted file, 7 test functions / 9 cases. The
+invocation-form denial changed how references *resolve*, not which are extracted, so the count is
+unchanged from the chunk-review figure above — a draft of this line asserted it had dropped, which
+would have been the fourth unmeasured number in a change-log about unmeasured numbers.
 
 **Red-verified, including one guard that was quietly load-bearing on a doomed file.** Each form has
 a synthetic failing fixture; the repo-wide check was red on `principles.md` before the fix. The

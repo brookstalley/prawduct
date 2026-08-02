@@ -150,6 +150,8 @@ def _is_repo_path(token: str) -> bool:
 _BACKTICKED = re.compile(r"`([^`\n]{3,300})`")
 _MD_LINK = re.compile(r"\[[^\]]*\]\(([^)\s]+)\)")
 _FRONT_MATTER = re.compile(r"\A---\n(.*?)\n---", re.S)
+# Forms that INVOKE a path rather than name it. The plugin/ root fallback is denied to these.
+_INVOCATION_FORMS = frozenset({"command", "allowed-tools"})
 _ALLOWED_TOOLS = re.compile(r"^allowed-tools:(.*)$", re.M)
 
 
@@ -161,7 +163,7 @@ def _strip_ref(raw: str) -> str:
     return ref
 
 
-def _resolves(containing: str, raw: str) -> bool:
+def _resolves(containing: str, raw: str, form: str = "md-link") -> bool:
     """True if ``raw``, referenced from ``containing``, names something in the tracked tree.
 
     Three roots are tried, and each earns its place:
@@ -169,18 +171,25 @@ def _resolves(containing: str, raw: str) -> bool:
     - the containing file's own directory, for ``./`` and ``../`` targets;
     - ``plugin/`` — but only for files entitled to it (see below).
 
-    **The ``plugin/`` fallback is scoped, and that scoping is load-bearing.** Applied everywhere, it
-    resolves ``bin/prawduct-hook`` against ``plugin/bin/prawduct-hook`` and thereby hides the exact
-    relocation this test exists to catch — the docstring's motivating breakage would have been
-    invisible to the check written to prevent its recurrence. It is legitimate in two places and no
-    others: files under ``plugin/``, which name paths the way the plugin ships them
-    (``lib/gates.py``, ``skills/backlog/SKILL.md``), and build plans under ``.prawduct/artifacts/``,
-    for which this repo *declares* ``build_plan_ref_root: plugin`` in ``project-state.yaml``. That is
-    a declared second root, not a sniffed one.
+    **The ``plugin/`` fallback is scoped by BOTH file and form, and the form half is what makes the
+    motivating defect visible.** Applied everywhere, it resolves ``bin/prawduct-hook`` against
+    ``plugin/bin/prawduct-hook`` and hides the exact relocation this test exists to catch.
 
-    Scoping it surfaced live instances of the motivating defect in ``tests/scenarios/*.md``, each
-    instructing a reader to run ``python3 bin/prawduct-hook …`` from the repo root, where no such
-    file exists. They were fixed with this change; the count is in the change-log entry.
+    The fallback earns its place for **naming a file**: docs under ``plugin/`` refer to siblings the
+    way the plugin ships them (``skills/critic/review-cycle.md``, ``methodology/building.md``,
+    ``lib/backlog_probes.py`` — dozens of them), and build plans under ``.prawduct/artifacts/`` do
+    the same under this repo's *declared* ``build_plan_ref_root: plugin``. A declared second root,
+    not a sniffed one.
+
+    It earns nothing for **running one**. A reader executing a command runs it from a working
+    directory, and in this repo that means ``plugin/bin/prawduct-hook`` — which is what all fifteen
+    in-tree invocations say. So the fallback is denied to the two invocation forms, ``command`` and
+    ``allowed-tools``, and a skill reverting to a bare ``bin/prawduct-hook`` in either is caught.
+
+    Scoping by file alone was not enough and shipped as if it were: the motivating breakage was in
+    five *skills'* prose and grants, and skills live under ``plugin/`` — inside the retained scope.
+    Two of the three covered forms, on the exact files, of the exact class, still resolved. The form
+    half closes it.
     """
     ref = _strip_ref(raw)
     if not ref:
@@ -190,7 +199,8 @@ def _resolves(containing: str, raw: str) -> bool:
         candidates.append(posixpath.normpath(posixpath.join(posixpath.dirname(containing), ref)))
     else:
         candidates.append(ref.lstrip("/"))
-        if containing.startswith("plugin/") or containing.startswith(".prawduct/artifacts/"):
+        entitled = containing.startswith("plugin/") or containing.startswith(".prawduct/artifacts/")
+        if entitled and form not in _INVOCATION_FORMS:
             candidates.append(f"plugin/{ref.lstrip('/')}")
     return any(c in _TRACKED_SET or c in _TRACKED_DIRS for c in candidates)
 
@@ -274,7 +284,7 @@ def _scan() -> tuple[list[str], list[tuple[str, str, str]]]:
             continue
         for form, raw in _references(rel, text):
             checked.append((rel, form, raw))
-            if not _resolves(rel, raw):
+            if not _resolves(rel, raw, form):
                 offenders.append(f"{rel} [{form}] -> {raw}")
     return offenders, checked
 
@@ -389,6 +399,30 @@ def test_a_citation_is_not_a_reference():
         assert not _references("docs/example.md", text), (
             f"a citation was extracted as an instruction-bearing reference: {text!r}"
         )
+
+
+def test_the_plugin_fallback_is_denied_to_invocation_forms():
+    """A plugin doc may NAME a sibling the way the plugin ships it; it may not INVOKE one that way.
+
+    This is the assertion that makes the motivating defect visible. Scoping the fallback by file
+    alone leaves skills inside the entitled scope — and skills' prose and grants are exactly where
+    the five-skill breakage lived, so two of three forms on the exact files of the exact class still
+    resolved. Without this test the property is incidental to how ``_resolves`` happens to be
+    written; with it, restoring the wider fallback reddens.
+    """
+    skill = "plugin/skills/backlog/SKILL.md"
+    # NAMING a sibling file the way the plugin ships it — legitimate, still resolves.
+    assert _resolves(skill, "methodology/building.md", "md-link")
+    assert _resolves(skill, "lib/backlog_probes.py", "md-link")
+    # INVOKING the pre-relocation path — the motivating defect, in both invocation forms.
+    assert not _resolves(skill, "bin/prawduct-hook", "command")
+    assert not _resolves(skill, "bin/prawduct-hook", "allowed-tools")
+    # The corrected form resolves from anywhere, which is why all fifteen in-tree uses say it.
+    assert _resolves(skill, "plugin/bin/prawduct-hook", "command")
+    # Build plans hold the same declared entitlement, and the same denial.
+    plan = ".prawduct/artifacts/build-plan-drift-burndown.md"
+    assert _resolves(plan, "lib/gates.py", "md-link")
+    assert not _resolves(plan, "bin/prawduct-hook", "command")
 
 
 def test_relative_targets_resolve_against_the_containing_file():

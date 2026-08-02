@@ -144,8 +144,19 @@ budget of four. The distinction that did the work — *a citation is not a refer
 Two extractor defects surfaced from the tests, not from reading: requiring a file extension in
 command position would have missed `plugin/bin/prawduct-hook`, the extensionless path whose
 relocation earned the item; and a markdown link quoted inside a code span was followed as a link, so
-the check reddened on this plan. Both are the same rule one level down. Coverage: 148 references
-extracted, 102 checked across 41 instruction files, 46 skipped as records.
+the check reddened on this plan. Both are the same rule one level down.
+
+**Two review rounds, 0 blocking in both.** The chunk pass (4 warnings, 1 note) found the
+non-vacuity floor guarding references *extracted* rather than *checked* — so widening the unbounded
+record predicate would have darkened the check with the suite green — and a version-shaped exclusion
+that exempted the pending release plan. The verify pass (2 warnings, 1 note) found that the first
+fix to the `plugin/` fallback **scoped it by file and claimed that closed the finding, when skills
+live inside the retained scope**; the closing fix scopes by form as well. That is a record asserting
+what the code does not support, written by me, inside the batch whose subject is exactly that.
+
+**Coverage and census figures have one home: the change-log entry for this chunk.** They are not
+restated here — an earlier draft of this paragraph carried three post-fix numbers that were stale
+within the hour, which is the defect being burned down appearing in the burndown's own plan.
 
 **Release deferral, reaffirmed 2026-08-02.** The owner was offered release-first and chose to keep
 burning down. The `develop`→`main` promotion is now **three batches deep** and `#533`'s filer stays
