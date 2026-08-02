@@ -6,6 +6,60 @@ No size constraint on this file — it's the deep reference, consulted via `/lea
 
 ---
 
+## An exception APPENDED to standing advice still leads with the advice — so before appending, ask whether the exception can cover the WHOLE set, and if it can, it must be able to REPLACE the lead sentence rather than follow it
+
+`#536` was filed because a superseded blocker could only be cleared by a spanning review, while the
+gate message prescribed `verify-resolutions`. The fix added a clause naming the spanning route — and
+appended it *after* the existing "Fix them, then run `/prawduct:critic verify-resolutions`" sentence.
+For the partial case that is right: some blockers are reachable by the standard route, so it should
+lead and the exception should qualify it. For the total case it reproduced the filed defect exactly.
+The operator whose every blocker is superseded was still told, first, to take the one route that
+cannot work; the correction arrived four lines later, after they had read an instruction.
+
+I noticed the awkwardness reading the live output and talked myself out of it — the word "instead"
+seemed to carry the weight. A reviewer flagged it independently with a sharper argument: people act
+on the first instruction, and the cost is a real verify round (~1-2 min plus a fix commit) that
+clears nothing. That is the tell for this whole class — **when you find yourself justifying why a
+reader will get to the correction, the correction is in the wrong position.**
+
+The structural fix matters more than the wording: `blocking_remedy_lines` now owns the entire remedy
+and returns one of three blocks, deciding which route *leads*. Both call sites render whatever it
+returns and compose nothing themselves, so neither can reintroduce a lead sentence of its own. The
+earlier shape — shared exception, locally-owned lead — looked like deduplication while leaving the
+load-bearing decision duplicated at two sites.
+
+Generalizes past messages: any place a conditional qualifier is bolted onto an unconditional
+statement. The test is whether the qualifier's predicate is a *count over the same set* the statement
+addresses. If it is, the all-case exists and must be handled by replacement.
+
+## When you TRANSCRIBE a rule between two records, its identifiers are the part that silently degrades — re-verify every field, symbol and path against the code, because a paraphrase reads exactly like a faithful copy
+
+Three independent reviewers converged on one defect: a retire rule corrected twice in the build plan
+had never reached the change-log, so the durable record — the one that outlives the plan — still
+stated the rejected version. The fix transcribed the corrected rule across. In doing so it wrote
+"findings whose **`summary`** opens with the token" where the plan said `title`.
+
+`summary` is not a random error. It is the adjacent, plausible word: findings *do* have summaries in
+the PR reviewer's record, and the per-worktree derived cache *does* carry a per-finding `summary`.
+But the shared evidence store — the only store a 30-review sweep can query — carries `title`, written
+by `critic_consolidate` from the partial's `name`. A sweep run against the named field would return
+zero for every review and retire a control that had been firing: the precise failure the correction
+existed to prevent, reproduced one level down by the commit that prevented it.
+
+Two things make this its own rule rather than another instance of the two-copies pattern:
+
+1. **The direction flipped.** The four prior instances on this branch all had the primary site fixed
+   and the secondary stale. This one had the *plan* correct and the *durable copy* wrong — because
+   the defect entered during transcription, not during the original edit. Sweeping "did the fix reach
+   the second site?" would have reported clean; the second site existed and said something false.
+2. **Prose review does not catch it.** Both sentences are grammatical, both name a real field, and
+   the wrong one is more familiar. Only checking the identifier against the code separates them.
+
+The durable mitigation is to carry the *reason* with the token, not the token alone: the change-log
+now says "`title`, because a partial's `name` becomes the fact's `title`, while per-finding `summary`
+lives only in the per-worktree derived cache." A future transcriber paraphrasing that sentence has to
+paraphrase a mechanism, which is much harder to do wrongly than a bare field name.
+
 ## A fix ships TWO artifacts that can independently be false — the change, and the evidence that it works. This branch put every defect in the second: a test that could not see the bug it pinned, then a comment asserting the rule its own assertion disproves. When you fix something, sweep the NEIGHBOURING PROSE in the same pass, or a reviewer finds it one comment at a time
 
 Measured across one chunk. Five review passes; the last three each returned a finding, and none was
@@ -2133,3 +2187,103 @@ Pairs with [[when you correct an inherited number recount the SET]] — same fai
 earlier: that rule is about re-measuring inside an inherited frame; this one is about the frame
 arriving in the item text and reading like a finding because it sits under a "Problem" heading.
 
+
+## A token budget is raised only when the framework is provably better FOR THE RAISE and upleveling has no headroom left
+
+Two Critic controls had to land in files with 2 and 12 words of headroom. Word-shaving looked
+hopeless, and the estimator is `len(text.split()) * 1.3`, so reflowing buys literally nothing.
+
+What worked was cutting whole classes of content rather than tightening sentences:
+
+- **Definitions another file owns.** `goals-1-3.md` told the reviewer to read `record_lint`'s output
+  and *never re-derive it*, then spent forty words re-deriving what each lint id means — including a
+  400-char threshold no reviewer applies, because code computes it. `review-protocol.md` did the same
+  with the four Framework-Specific Checks, immediately after pointing at `framework-checks.md` for
+  the definitions. Both cuts are safe *because* the file already ordered the reader elsewhere.
+- **Machine output quoted verbatim.** A WARNING's exact wording, reproduced in prose, when the
+  reviewer composes the message anyway.
+- **History.** "Reviewer-model tiering was removed" — what a mechanism *used* to do, carried in an
+  instruction payload where it can only cost. Note the near-miss: "an undeclared repo is never
+  reviewed less than before" *looks* like the same class and is not — it is a **live invariant**,
+  still asserted in `review-cycle.md`. Cutting it was right for a different reason (the fact has one
+  home and the payload already points at it), and filing a live invariant under "history" is how a
+  true statement gets deleted next time on a false premise. Check which one you have before cutting.
+- **Rationale aimed at a maintainer, inside a payload aimed at a reviewer.** The most self-defeating
+  instance: a citation explaining *why this file is short*, in the file whose purpose is minimum
+  reviewer payload.
+
+Both files ended up smaller than they started while each gained a check.
+
+**Two guards caught real damage, and both were worth more than the tokens saved.** Deleting Goal 4's
+`**Norms**` bullet as a "pure restatement" broke `test_project_preferences_blocking`, which contracts
+on a single line carrying both `project-preferences` and `blocking` — that bullet is the only line
+satisfying it. The budget comment recorded a previous editor doing exactly this and reverting; I did
+it anyway, which is why the note now names the trap instead of narrating the incident. Separately,
+compressing "the chunk *inferred from* build-plan Status" to "the chunk from build-plan Status"
+broke a guard pinning that the assumption shape names both its causes — a compressed reading there
+had previously produced a recurring false BLOCKING no `--chunk` could clear.
+
+The general form: **prose that reads as redundant may be the only witness to a contract.** Uplevel
+aggressively, then run the suite — the guards, not the reading, decide what was redundant.
+
+## Exactness is owed to a number something RELIES ON for a decision, not one something merely READS
+
+Instance, 2026-08-02: restoring one word to a budgeted file moved its token reading by 1, which then
+had to be updated in `LAST_MEASURED_TOKENS`, a change-log paragraph, and a build-plan Status
+paragraph. Three edits, one word, and no decision anywhere depended on the digit — the *ceiling*
+assertion is what decides. The prose figures were removed and the table left owning the reading.
+`LAST_MEASURED_TOKENS` itself is the open question: it is an exact-equality pin that drives no
+branch, so every edit to a budgeted file pays a mandatory update whose only function is to force the
+author to notice. That may be worth it, but it is exact-number churn by construction and should be
+decided deliberately rather than inherited.
+
+## A rule you must RECALL at the right moment is its weakest form
+
+Three failures in one work cycle, all of the same shape: the rule was **in context** and the instance
+went unrecognised.
+
+1. Deleted a bullet a budget comment explicitly warns against deleting — while reading that comment.
+2. Missed the second site on three of four review warnings, against a *second-site sweep* rule this
+   same branch wrote two chunks earlier.
+3. Wrote a retire rule counting PR reviews from a store PR findings never reach — about a hundred
+   lines below my own paragraph explaining that this ledger is per-worktree and gitignored, which I
+   had just applied correctly to a different item.
+
+The tempting conclusion is "read more carefully." The evidence says otherwise: **every catch came
+from something that runs.** The suite caught both bad cuts. `render-dispositions` caught a
+disposition claiming a fix I had not yet made. Two independent reviewers caught a schema assumption.
+Nothing was caught by remembering a rule at the moment it applied — including rules authored minutes
+earlier, because familiarity reads as compliance.
+
+So the operational form is not vigilance but conversion: when a rule governs a class of claim that a
+query could settle, spend the effort building the query rather than restating the rule. This is
+exactly what the stable-token mechanism does for control yield — it turns "did this check ever fire?"
+from a memory into a grep — and why the structured `check:` field is the better version still.
+
+Corollary for review economics: this is an argument for *mechanising*, not for more review rounds.
+Two of the three failures were caught by a reviewer, which is expensive; the first was caught by a
+test, which is free and repeats forever.
+
+## The RHETORICAL ROLE of a sentence can select its content over a fact you already hold
+
+`pr/SKILL.md`, one paragraph, written in a single pass:
+
+> The durable record of a review is the *fact*, and facts live in the shared evidence store …
+> **Known cost, accepted:** PR findings are therefore not queryable from the shared store …
+
+Both sentences are mine, two apart. The first is false for PR reviews (`evidence.KNOWN_KINDS` is
+`{review, resolution, disposition}`, all written by `critic-consolidate`; a PR review lands in a
+gitignored per-worktree ledger). The second states that correctly. I had been corrected on exactly
+this by a review round the same day.
+
+This is not forgetting, and no recall-based guard would have caught it — I *held* the fact, and
+demonstrated so in the same paragraph. What happened is that the two sentences had different jobs.
+The justification slot wanted a reason that made the decision sound principled, and "the durable
+record lives in the shared store" is a better-sounding reason than "it lives in a gitignored
+per-worktree ledger event." The caveat slot wanted a limitation, and there the true fact fit.
+
+The operational form: when writing a rationale, identify the **load-bearing clause** — the one the
+decision rests on — and check that one against the mechanism, separately from reading the paragraph
+for sense. Reading for sense will pass it, because it reads well; that is the property that selected
+it. Pairs with [[A rule you must RECALL at the right moment is its weakest form]]: that rule covers
+rules you fail to apply, this one covers facts you apply *away from* where they are needed.

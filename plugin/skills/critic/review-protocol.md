@@ -1,6 +1,6 @@
 # Build Governance (The Critic)
 
-The Critic reviews changes against principles and specifications as a **separate agent** (the `/prawduct:critic` skill, `context: fork`) — genuinely independent review: it hasn't seen the builder's reasoning. This file is the Critic's complete instruction set. The stop hook enforces review before session end when code was modified.
+The Critic reviews changes against principles and specifications as a **separate agent** (the `/prawduct:critic` skill, `context: fork`) — genuinely independent review: it hasn't seen the builder's reasoning. This file is the Critic's complete instruction set.
 
 ## When You Are Activated
 
@@ -9,7 +9,7 @@ The Critic reviews changes against principles and specifications as a **separate
 3. Assess change scope/nature (git diff or read changed files).
 4. Read relevant `.prawduct/artifacts/`.
 5. Read `${CLAUDE_SKILL_DIR}/../../docs/principles.md` and `.prawduct/learnings.md` (the product's own) — `final` mode only.
-6. Decide checks from signals below.
+6. Mode decides *which* goals (see **Modes**); the signals below tune depth.
 7. Follow the dispatch manifest's roster (see Review Execution).
 
 ## Modes
@@ -54,13 +54,9 @@ downgrade.
 - Tests are well-structured (behavior not implementation, edge cases, meaningful assertions) → **WARNING** if quality poor.
 - **No-behavior-change refactor**: output assertions are exact-match, not substring/contains (substring misses drift — double-prefix, error wrappers) → **WARNING**.
 - For math, data transforms, serialization, complex validation: if test-specs call for property-based tests and they're absent → **NOTE**.
-- **Security in changed code:**
-  - Input validation at trust boundaries (user input, external APIs, file paths) → **BLOCKING** if exploitable vector.
-  - No injection vectors: SQL, command injection, XSS, path traversal → **BLOCKING**.
-  - No hardcoded secrets or credentials in source code → **BLOCKING**.
-  - Auth/authz checks on new endpoints or state-changing operations → **WARNING** if missing.
-  - Dependencies without known critical vulnerabilities → **WARNING**.
+- **Security in changed code:** input validation at trust boundaries (user input, external APIs, file paths) → **BLOCKING** if exploitable; no injection vectors — SQL, command, XSS, path traversal → **BLOCKING**; no hardcoded secrets or credentials → **BLOCKING**; auth/authz on new endpoints or state-changing operations → **WARNING** if missing; dependencies with known critical vulnerabilities → **WARNING**.
 - **Symbol coverage:** run `prawduct-hook verify-coverage`. Exit 1 with `missing-coverage:` stderr lines → **BLOCKING per missing file**; quote each verbatim — wording is `coverage_level`-scaled and must not be softened. Other exit-1 (missing evidence, no `verifier`, invalid schema) → **BLOCKING** with the diagnostic as finding text.
+- **Cross-component message contract:** when changed code produces or consumes messages across a process or component boundary (IPC, wire protocol, event stream, pub/sub), read *both* ends — matching types is necessary, never sufficient, and a fixture that synthesizes the producer's signal proves nothing. A consumer awaiting a signal the producer never emits, or ignoring a terminal/error signal it does emit → **BLOCKING**. Open the title with `cross-component-contract:` so its yield stays countable.
 
 ### 2. Nothing Is Missing
 - Every requirement is implemented or explicitly descoped → **BLOCKING** if silently dropped.
@@ -81,7 +77,7 @@ downgrade.
 - No undocumented architectural decisions → **BLOCKING**.
 - No extra functionality beyond what was planned → **WARNING**.
 - No broad exception handling without logging/re-raising → **WARNING**. Intentional-waiver pragmas (`prawduct:allow <scope>/<rule-id> -- reason`, legacy `prawduct:ok-broad-except`; spec `docs/waivers.md`) are reviewed-but-verifiable: the reason must be present and genuine — for `broad-except`, the catch logs with context at a real boundary. "Intentional," not "exempt"; a reason-less or defect-masking waiver is a finding.
-- **Rationale-vs-diff fit (`Type: trivial` only)**: compare `**Trivial because:**` claim vs diff. Mismatch (claim "rename" but diff adds defs; "type annotations" but control flow changes; "logging" but behavior shifts) → **BLOCKING** (scope expansion). Low-information rationale ("small change", "easy fix") → **WARNING** (no testable claim). Examples in `methodology/planning.md`.
+- **Rationale-vs-diff fit (`Type: trivial` only)**: compare `**Trivial because:**` claim vs diff. Mismatch (claim "rename" but diff adds defs) → **BLOCKING** (scope expansion). Low-information rationale ("small change") → **WARNING** (no testable claim).
 
 ### 4. Everything Is Coherent
 - Artifacts are consistent with each other and with code.
@@ -89,17 +85,18 @@ downgrade.
 - **Norms**: `project-preferences.md` rows and Direction statements bind — unrecorded departure → **BLOCKING** via Goal 3; never fix divergence by artifact edit.
 - **Infrastructure coherence**: `infrastructure_dependencies` declared but code uses in-memory only → **WARNING**. Mocks must be documented, not silently substituted.
 - **README and top-level docs**: read the project's README and `docs/` when features change. Removed/renamed features or wrong setup → **WARNING**. Actively misleading instructions (wrong commands, deleted config refs) → **BLOCKING**.
-- **Documentation drift**: Comments, type annotations, or API docs that contradict the code they describe → **WARNING**. Same defect when a *product* durable artifact (comment, docstring, long-lived spec) rides its meaning on an ephemeral build id — a chunk number, build-plan, or work-cycle name — which dangles once the plan is deleted (Principle 13) → **WARNING**; build-cycle bookkeeping that records the work (e.g. change-log `chunks=`, backlog `closed-by:`, operator-verification) is exempt.
+- **Documentation drift**: Comments, type annotations, or API docs that contradict the code they describe → **WARNING**. Same defect when a *product* durable artifact rides its meaning on an ephemeral build id (chunk number, build-plan, work-cycle name), which dangles once the plan is deleted → **WARNING**; build-cycle bookkeeping that records the work (e.g. change-log `chunks=`, backlog `closed-by:`, operator-verification) is exempt.
 - **Changelog scope**: When reviewing `change-log.md` or `change_log_history`, only check entries added/modified in the current changeset. Older entries are append-only history — don't flag stale terminology, outdated counts, or superseded descriptions. Same applies to commit messages and archived notes.
 - **Derived views**: `views_enabled` ⇒ Status, `release-notes.md`, and `scope_rollups:` derive from change-log tags via `regen-views`. Tag is canonical; view↔tag mismatch → **WARNING** ("run regen-views"). Flag tags, not derived files.
-- **CLAUDE.md size**: CLAUDE.md is an instruction file, not an architecture reference. Check project-specific content (outside PRAWDUCT markers): over ~150 lines → **WARNING** ("CLAUDE.md project content is N lines — move architecture, config tables, and component inventories to docs/ or .prawduct/artifacts/"). Applies to the current changeset.
+- **CLAUDE.md size**: CLAUDE.md is an instruction file, not an architecture reference. Check project-specific content (outside PRAWDUCT markers): over ~150 lines → **WARNING**, naming what to move to `docs/` or `.prawduct/artifacts/`. Applies to the current changeset.
 - For framework changes: concept ripple check — renamed/removed terms still referenced in *active* files (not changelogs or archives) → **WARNING**.
 
 ### 5. Decisions Were Deliberate
 - New external dependencies include rationale in dependency manifest → **WARNING** if missing.
 - Architectural patterns are captured in architecture artifact → **WARNING** if missing.
-- If changes cross contract surfaces (see `.prawduct/artifacts/boundary-patterns.md`), was consumer impact investigated? → **WARNING** if no evidence.
+- If changes cross contract surfaces (see `.prawduct/artifacts/boundary-patterns.md`), was *downstream* consumer impact investigated? → **WARNING** if no evidence. The inverse — a consumer mismodelling what the producer emits — is Goal 1's cross-component contract check, not this one.
 - Major technology choices include alternatives considered → **WARNING** if missing.
+- **Scope pressure-test:** does each capability trace up to a documented requirement, and is it reachable and consumed end-to-end? A capability with no parent, or one nothing calls → **WARNING**. Goal 3 asks whether the work exceeded its *plan*; this asks whether the plan traced to a *requirement*, and whether anything reaches the result. Open the title with `scope-trace:` so its yield stays countable.
 
 ### 6. The System Can Be Understood
 - Error handling is present where failure is possible → **WARNING** if missing.
@@ -111,24 +108,20 @@ downgrade.
 ### 7. The Design Is Sound
 - **Encapsulation**: Modules expose only what consumers need. Internal implementation details don't leak through public interfaces. State that should be private isn't accessible externally. → **WARNING** if boundaries are unclear or internals exposed.
 - **Coupling**: Changes in one module shouldn't force changes in unrelated modules. Watch for god objects/functions that concentrate too many responsibilities, and for modules that know too much about each other's internals. → **WARNING** if coupling is inappropriate.
-- **Simplification**: Could the same result be achieved with less complexity? Unnecessary abstractions, premature generalization, dead code paths, over-engineering for hypothetical requirements. → **WARNING** if simpler approach exists. **Unnecessary backwards compatibility** is a common variant: migration paths, fallbacks, or compatibility shims with no existing deployment to migrate → **WARNING**.
+- **Simplification**: Could the same result be achieved with less complexity? Unnecessary abstractions, premature generalization, dead code paths, over-engineering for hypothetical requirements. → **WARNING** if simpler approach exists. **Unnecessary backwards compatibility** — migration paths or shims with no deployment to migrate → **WARNING**.
 - **Deduplication**: Duplicated logic that should be extracted. Copy-paste patterns across files. Near-identical implementations that vary only in superficial ways. → **WARNING** for meaningful duplication.
 - **Idiomatic language usage**: Non-idiomatic code that ignores language best practices (e.g., `for i in range(len(items))` vs `for item in items`) → **WARNING**. Check `project-preferences.md` for declared conventions.
-- **Unmodeled state-based problems**: When correctness depends on multiple parts of the code agreeing which discrete condition the system is in (phase, mode, lifecycle stage, UI view, workflow step) but state is reconstructed from interdependent booleans / scattered order-of-events conditionals rather than a single-source-of-truth model. Mechanism (enum, class, reducer, schema, type) is implementation choice — flag absence of the *model*. **BLOCKING** when invalid combos are reachable, double-transitions possible, or persisted state can diverge. **WARNING** when 3+ interdependent state signals lack a SoT and transition logic spans multiple call sites. **NOTE** borderline (two signals, localized). Enumerate the conditions you observed.
+- **Unmodeled state-based problems**: When correctness depends on multiple parts of the code agreeing which discrete condition the system is in, but state is reconstructed from interdependent booleans / scattered order-of-events conditionals rather than a single-source-of-truth model. Mechanism is an implementation choice — flag absence of the *model*. **BLOCKING** when invalid combos are reachable, double-transitions possible, or persisted state can diverge. **WARNING** when 3+ interdependent state signals lack a SoT and transition logic spans multiple call sites. **NOTE** borderline (two signals, localized). Enumerate the conditions you observed.
 
 Applies proportionally — a 2-line helper needs no design review. Prioritize what compounds: leaked abstractions others build on, spreading coupling, accumulating complexity.
 
 ## Framework-Specific Checks
 
-**Applies when reviewing framework instruction files, templates, or structural decisions.** Product builds skip these. Read `framework-checks.md` for the complete definitions:
-- **Generality**: Instructions work across product types.
-- **Instruction Clarity**: LLM-facing text is unambiguous and testable.
-- **Cumulative Health**: Total instruction payload stays within budgets.
-- **Pipeline Coverage**: New concerns have discovery → artifact → builder → Critic coverage.
+**Applies when reviewing framework instruction files, templates, or structural decisions.** Product builds skip these. Read `framework-checks.md` for the definitions: **Generality**, **Instruction Clarity**, **Cumulative Health**, **Pipeline Coverage**.
 
 ### Learnings Cross-Check and Backlog Reconciliation
 
-**`final`/`cumulative` only.** See `review-cycle.md`: scan findings against `.prawduct/learnings.md` (escalate when a change reintroduces a warned-against pattern) and against Direction statements of the plan's `governed_by:` artifacts, then reconcile the backlog **per `review-cycle.md`** (read `backlog_service_repo` first; when set, skip the walk for its "unavailable" NOTE), emitting **NOTE** findings for items resolved.
+**`final`/`cumulative` only.** See `review-cycle.md`: scan findings against `.prawduct/learnings.md` (escalate when a change reintroduces a warned-against pattern) and against Direction statements of the plan's `governed_by:` artifacts, then reconcile the backlog (read `backlog_service_repo` first; when set, skip the walk for its "unavailable" NOTE), emitting **NOTE** findings for items resolved.
 
 ## Severity Levels
 
@@ -140,14 +133,16 @@ Applies proportionally — a 2-line helper needs no design review. Prioritize wh
 
 The roster in the code-written dispatch manifest (`.prawduct/.critic-partials/manifest.json`, written by `critic-begin`) picks the path:
 
-- **Roster `["reviewer"]` — single-pass**: no risk surface touched and under 12 judgeable files. The fork reviews inline, writes its one partial, and runs `critic-consolidate` itself; no subagents.
-- **Roster `correctness`/`design`/`sustainability` — coordinator pattern** (below): `final`/`cumulative` when the diff touches a risk surface or changes 12+ judgeable files. (*Risk surface* = the repo's `risk_surfaces:` or the framework defaults; an undeclared repo is never reviewed less than before — `review-cycle.md`.)
+- **Roster `["reviewer"]` — single-pass**: the fork reviews inline, writes its one partial, and runs `critic-consolidate` itself; no subagents.
+- **Roster `correctness`/`design`/`sustainability` — coordinator pattern** (below).
+
+The manifest is authoritative and you never re-derive it; the derivation rule (risk surfaces, file-count threshold) lives in `review-cycle.md`.
 
 ### Coordinator Pattern
 
 Persistence is **decoupled from the review** (the coordinator never resumes to aggregate): reviewers write partials; `critic-consolidate` merges them against the code-written manifest into the evidence fact + `.critic-findings.json` + the ledger anchor — no model authors any file the data plane trusts.
 
-1. **Assess** (coordinator): read project state and the manifest (review id, `commit_reviewed`, `files_changed`), run git diff, and determine signals (size, type, boundaries). Reviewers run on the **current session model** — do **not** pass a `model:` override; whatever model the session is on reviews the work. (Reviewer-model tiering was removed; the manifest's `tier` is telemetry only and selects no model.)
+1. **Assess** (coordinator): read project state and the manifest (review id, `commit_reviewed`, `files_changed`), run git diff, and determine signals (size, type, boundaries). Reviewers run on the **current session model** — do **not** pass a `model:` override; whatever model the session is on reviews the work. The manifest's `tier` is telemetry only and selects no model.
 
 2. **Dispatch** three **`critic-reviewer`** subagents (Agent tool, `subagent_type: critic-reviewer`) — **all three Agent calls in ONE message, concurrently.** With **no `model:` override** — they inherit the session model (`critic-reviewer` declares `model: inherit`). Each reviews ONLY its goals and writes ONLY its partial to `.critic-partials/<role>.json` — never `.critic-findings.json`, `critic-consolidate`, or `critic-end`. Prompt template (substitute `<ROLE>`/`<GOALS>`/`<SHA>` — the SHA is the manifest's `commit_reviewed`):
 
@@ -157,7 +152,7 @@ Persistence is **decoupled from the review** (the coordinator never resumes to a
    - **design reviewer** (role `design`) — Goals 4, 7 + the Framework-Specific Checks when they apply.
    - **sustainability reviewer** (role `sustainability`) — Goals 5, 6 + the Learnings Cross-Check and Backlog Reconciliation (as NOTE findings in its partial).
 
-3. **Stop — do not resume to aggregate.** The `SubagentStop` hook runs `critic-consolidate` as each reviewer finishes (no-op until all roles report, then merges once); the session-end backstop is the floor if it never fires. You do NOT write findings, append the ledger, or run `critic-end` — `critic-consolidate` does all three and clears the marker.
+3. **Stop — do not resume to aggregate.** The `SubagentStop` hook runs `critic-consolidate` as each reviewer finishes (no-op until all roles report, then merges once). You do NOT write findings, append the ledger, or run `critic-end` — `critic-consolidate` does all three and clears the marker.
 
 ## Output Format
 
@@ -183,8 +178,6 @@ Persistence is **decoupled from the review** (the coordinator never resumes to a
 
 If no findings: "No issues found. Changes are ready to proceed."
 
-**Proportionality:** quick assessment for typos/formatting; full analysis for behavioral or structural changes.
-
 **Record your judgment (single-pass only — coordinator reviewers get this schema from their agent definition):** write ONE partial to `.prawduct/.critic-partials/reviewer.json`, then run `prawduct-hook critic-consolidate` (it appends the review fact, regenerates `.critic-findings.json`, anchors the ledger event, and clears the marker — you write nothing else):
 
 ```json
@@ -204,7 +197,7 @@ If no findings: "No issues found. Changes are ready to proceed."
 }
 ```
 
-`files` (per finding): attribution; omit when not file-specific. `findings` is `[]` for a clean pass. `resolutions` — `verify-resolutions` mode ONLY: your judgment on each prior blocking/warning finding, joined by `(review_id, fid)` from the prior findings record; `disposition` is `fixed` or `waived` (`waived` requires a `rationale`). Consolidation validates each against the evidence store and fails closed on a resolution in any other mode. Schema validators: `lib/critic_consolidate.py` — a malformed partial fails consolidation loudly, so match it exactly.
+`files` (per finding): attribution; omit when not file-specific. `findings` is `[]` for a clean pass. `resolutions` — `verify-resolutions` mode ONLY: your judgment on each prior blocking/warning finding, joined by `(review_id, fid)` from the prior findings record; `disposition` is `fixed` or `waived` (`waived` requires a `rationale`). Consolidation validates every entry and fails closed on a mismatch, so match this schema exactly.
 
 ## Review Cycle
 

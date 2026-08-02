@@ -42,8 +42,8 @@ def estimate_tokens(text: str) -> int:
 #: lives here, where a wrong number fails instead of misleading.
 LAST_MEASURED_TOKENS = {
     "methodology/building.md": 4659,
-    "skills/critic/review-protocol.md": 3616,
-    "skills/critic/goals-1-3.md": 1983,
+    "skills/critic/review-protocol.md": 3599,
+    "skills/critic/goals-1-3.md": 1960,
 }
 
 
@@ -583,65 +583,32 @@ class TestCriticSkill:
         assert "Instruction Clarity" in self.content
 
     def test_token_budget(self):
-        # Ceiling 3530 (was 3450, was 3350). The prose-diet audit found this
-        # file LEAN -- every goal bullet is a specific, severity-mapped check.
-        # 3450 held until the norm-lifecycle consolidation (2026-07-16,
-        # owner-approved GOV-7Q4N): the Normative-authority block landed in the
-        # Review Goals preamble, PAID FOR partly by deleting Goal 6's
-        # observability-strategy line and merging Goal 4's preferences check
-        # into it (four scattered divergence checks became one rule; canonical
-        # detail lives in docs/norms.md, this file carries only the pointer
-        # form). Net ~3524 est (words x1.3). Ceiling 3530 -- still UNDER the
-        # diet's own post-diet +10% formula (~3533), so the diet stays locked,
-        # with near-zero headroom BY DESIGN: the next addition must trim or
-        # relocate, not bump past the formula.
+        # Ceiling 3620. This file is the `final` / `cumulative` payload, and the
+        # prose-diet audit found it LEAN -- every goal bullet is a specific,
+        # severity-mapped check, so there is no slack to reclaim by rewording.
         #
-        # 3530 -> 3620 (2026-07-28, OWNER RULING). A deliberate departure from
-        # the "trim or relocate, not bump" rule directly above, and from
-        # MET-3Q8V's "stay green without raising budgets" success line. What
-        # was added: the WARNING/NOTE consequence test and the record-only NOTE
-        # default (see review-cycle.md "The review loop terminates").
+        # The standing rule, and the only part of this comment that decides
+        # anything: THE NEXT ADDITION TRIMS OR RELOCATES, IT DOES NOT BUMP.
+        # Raising the ceiling requires showing the framework is provably better
+        # for the raise AND that no headroom remains in upleveling -- cutting
+        # detail, dates, worked examples, and definitions the reader never
+        # applies. The ceiling has been raised exactly once, by owner ruling,
+        # for a rule that removes more review work than it costs; every other
+        # addition has been funded in place.
         #
-        # Why the ruling went this way rather than trimming. The addition is
-        # NEGATIVE-cost governance: it exists to stop the Critic rating record
-        # prose WARNING, which is what converts a finding into a fix commit and
-        # a fix commit into the next review round. Measured on the session that
-        # produced it -- four review rounds, ~40 min, on a ~40-line code change,
-        # the last round required by no gate. Trimming an existing goal bullet
-        # to fit would have removed a real check to make room for a rule that
-        # removes far more work than it costs. Three compression passes were
-        # attempted first and landed +43 over; the trim-or-relocate rule was
-        # applied before it was overridden, not instead of.
+        # Three cuts that funded real additions, kept because they generalize:
+        # a definition another file owns and the reader is told to open is not
+        # worth restating here (Framework-Specific Checks now names the four
+        # checks and points at framework-checks.md); a message the reviewer can
+        # compose is not worth quoting verbatim; and history -- what a mechanism
+        # USED to do -- is never worth carrying in an instruction payload.
         #
-        # This does NOT reopen the diet. Headroom is again a few words BY
-        # DESIGN, and the next addition trims or relocates first -- the rule
-        # above stands; it was overridden once, on the record, for this.
-        #
-        # 2026-07-30: the record-lint bullet landed and the ceiling did NOT
-        # move -- the rule above was applied, not overridden a second time. It
-        # paid for itself: the `verify-chunk-refs` instruction was DELETED,
-        # because that check now runs at dispatch and rides the manifest's
-        # `record_lint`, so a reviewer executing it by hand is duplicated work.
-        # No check was removed to make room -- one moved into code, and the
-        # bullet that replaced it is shorter than the one it replaced.
-        #
-        # An opportunistic trim was ATTEMPTED and reverted: compressing Goal
-        # 4's `**Norms**` bullet to a pointer (it restates the
-        # Normative-authority preamble) broke test_project_preferences_blocking
-        # above, which contracts on one LINE carrying both
-        # "project-preferences" and "blocking". Reverted rather than
-        # re-plumbed: funding a budget overrun by shortening an unrelated
-        # governance rule is the move the paragraph above forbids, and the
-        # test caught it doing exactly that.
-        #
-        # 2026-07-30 (record-mechanization Chunk 04): the roster bullets now name
-        # a *risk surface*, a term this file had no definition for, so a reader
-        # met a load-bearing term with nowhere to resolve it. The full
-        # definition went to review-cycle.md — which owns the roster table and
-        # is not on the chunk-mode payload path — and this file kept a
-        # one-clause gloss plus the pointer. First wording overran (3623 of
-        # 3620); trimmed to the gloss rather than funded by a raise. 3572 ->
-        # 3614, headroom 48 -> 6.
+        # One trap, learned twice: Goal 4's `**Norms**` bullet READS as a pure
+        # restatement of the Normative-authority preamble and is not safe to
+        # delete. test_project_preferences_blocking contracts on a single LINE
+        # carrying both "project-preferences" and "blocking", and that bullet is
+        # the only line that satisfies it. Two separate editors have cut it and
+        # put it back.
         tokens = estimate_tokens(self.content)
         assert tokens < 3620, f"review-protocol.md is ~{tokens} tokens, should be <3620"
 
@@ -686,61 +653,30 @@ class TestCriticGoals13:
         )
 
     def test_token_budget(self):
-        # Ceiling 2000. The plan targeted "<=80 lines" and this landed at 125;
-        # the gap is entirely SELF-CONTAINMENT, which is the other half of the
-        # same acceptance criterion. The line estimate did not account for
-        # inlining the record-lint severity table, the chunk-`Type:` protocol
-        # selector, the normative-authority preamble and the partial schema --
-        # every one of which was a pointer-chase into review-cycle.md, and
-        # pointer-chases are the payload this file removes. Hitting 80 lines
-        # would have meant deleting checks, which the trim-or-relocate rule on
-        # review-protocol.md's own budget exists to forbid. Checks kept, target
-        # missed, recorded here rather than quietly restated.
+        # Ceiling 2000. This file is the chunk / verify-resolutions payload and
+        # orders its reader to open nothing else, so every pointer-chase it
+        # would cause has to be inlined here instead -- which is why it is long,
+        # and why the ceiling is the thing that governs rather than a line count.
         #
-        # Headroom is ~125 tokens BY DESIGN, and the rule is the same one
-        # review-protocol.md carries: the next addition trims or relocates, it
-        # does not bump. A check that belongs to goals 1-3 arriving here is
-        # funded by compressing prose in this file, never by dropping a check.
-        # 2026-07-30: +26 for `learnings-entry-shape`'s severity, which the
-        # check shipped without — a reviewer told to "raise them at the
-        # severities given there" met a finding class with no verdict, and all
-        # three coordinator reviewers found it independently. Paid from
-        # headroom rather than a trim: the file is 99 under its ceiling and the
-        # alternative was a check that cannot be graded. 1875 -> 1901.
+        # The standing rule, and the only part of this comment that decides
+        # anything: THE NEXT ADDITION TRIMS OR RELOCATES, IT DOES NOT BUMP. A
+        # check belonging to goals 1-3 is funded by compressing prose here,
+        # never by dropping a check and never by raising the ceiling. Raising it
+        # requires showing the framework is provably better for the raise AND
+        # that no headroom is left in upleveling -- cutting detail, dates,
+        # worked examples and definitions the reader never applies.
         #
-        # 1901 -> 1946 (2026-07-31). This file compressed review-cycle.md's
-        # two-shape `unchecked` rule to "a `chunk-ref-missing` entry is
-        # BLOCKING", dropping both the `unchecked —` literal-prefix qualifier
-        # and the assumption carve-out. Since this file orders its readers to
-        # read NOTHING else, a compliant chunk/verify-resolutions reviewer could
-        # not reach the carve-out — so every such dispatch without `--chunk`
-        # raised a FALSE BLOCKING with no available remedy (a branch building no
-        # chunk has no `--chunk` to supply). It fired on this branch's own
-        # reviews. 45 tokens of reviewer payload to remove a recurring false
-        # blocker is the trade: a blocker is the one severity that gates, and
-        # each false one buys a 5-10 minute opus round, which is the P0 lever
-        # this budget exists to protect. Partly funded in place by tightening
-        # the re-derive sentence above it.
+        # Two cuts that paid for real additions, kept because they generalize:
+        # a definition the machine already emits is not worth restating (the
+        # reviewer is told to read `record_lint`'s own message and raise it), and
+        # neither is a rationale explaining why this file is short, addressed to
+        # a maintainer, inside the file whose purpose is minimum reviewer
+        # payload.
         #
-        # 1946 -> 1983 (2026-08-01). Two facts a reviewer cannot act correctly
-        # without, both new to the manifest: `plan_graded` (the deliverable
-        # check now names WHICH PLAN it graded, because the chunk id and the
-        # plan used to resolve from different places), and the rule that a
-        # `null` in `counts` means the check produced NO ANSWER rather than
-        # found nothing. The second is the whole point of the 0 -> None change:
-        # a reviewer who reads a null as a zero reads a check that never ran as
-        # a clean one, which is the failure the change exists to remove, landing
-        # in the one file that reviewer is allowed to read.
-        #
-        # A trim WAS attempted and mostly failed: reflowing the check-severity
-        # paragraph returned 1 token (the estimator is word-based, so rewrapping
-        # buys nothing), and compressing the two new sentences returned 16 —
-        # both applied, so 53 tokens of content shipped as 37. The remaining 37
-        # came from headroom, which is now ~17 and the tightest in the file. The
-        # next editor here is trimming, not spending: the honest candidates are
-        # the chunk-`Type:` paragraph, which restates a table `review-cycle.md`
-        # owns, and the normative-authority block, which is the longest passage
-        # that is not a per-finding severity.
+        # Standing trim candidates when the next editor needs room: the
+        # chunk-`Type:` paragraph, which restates a table `review-cycle.md` owns,
+        # and the normative-authority block, the longest passage that is not a
+        # per-finding severity.
         tokens = estimate_tokens(self.content)
         assert tokens < 2000, f"goals-1-3.md is ~{tokens} tokens, should be <2000"
 

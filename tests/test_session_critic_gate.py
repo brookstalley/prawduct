@@ -26,16 +26,31 @@ remedy, never a pass.
 
 from __future__ import annotations
 
+import importlib.machinery
+import importlib.util
 import itertools
 import json
 import subprocess
 import sys
 from pathlib import Path
 
+import pytest
+
 ROOT = Path(__file__).resolve().parent.parent / "plugin"
 
 sys.path.insert(0, str(ROOT))
 from lib import briefing, evidence, gates  # noqa: E402
+
+# The Stop hook itself, for the one class that pins its RENDERING rather than
+# the shared verdict (extensionless shebang script; the module name is not
+# "__main__", so CLI dispatch stays inert on import).
+_hook_loader = importlib.machinery.SourceFileLoader(
+    "prawduct_hook_session_gate", str(ROOT / "bin" / "prawduct-hook")
+)
+_hook = importlib.util.module_from_spec(
+    importlib.util.spec_from_loader("prawduct_hook_session_gate", _hook_loader)
+)
+_hook_loader.exec_module(_hook)
 
 _ids = itertools.count(1)
 
@@ -522,3 +537,95 @@ class TestBriefingAdvisoryReadsTheBranchsPlan:
             "no branch match → the all-[x] pointer plan decides, exactly as "
             f"before. warnings={warnings!r}"
         )
+
+
+# ---------------------------------------------------------------------------
+# The superseded-blocker remedy reaches the Stop hook's message too (#536)
+# ---------------------------------------------------------------------------
+
+
+class TestSupersededAdviceReachesTheStopHook:
+    """Two gates render a blocking verdict — the PR gate (pinned in
+    ``test_cumulative_gate.py``) and ``cmd_stop``. Both prescribe
+    verify-resolutions, which cannot clear a superseded blocker, so both must
+    carry the spanning-review escape. This is the second site: the wording is
+    shared, but a call site that never runs is the failure mode this catches.
+    """
+
+    @staticmethod
+    def _blocking_session(tmp_path: Path) -> Path:
+        """A session whose Stop reaches the Critic gate: committed baseline, an
+        uncommitted judgeable change, an active build plan, reflection already
+        satisfied so the Critic gate is the only blocker."""
+        repo = tmp_path / "repo"
+        repo.mkdir()
+        _git(repo, "init", "-q", "-b", "main")
+        _commit(repo, "code.py", "x = 1\n", "c1")
+        prawduct = repo / ".prawduct"
+        (prawduct / "artifacts").mkdir(parents=True)
+        (prawduct / "artifacts" / "build-plan.md").write_text(
+            "# Build Plan\n\n## Status\n\n- [ ] Chunk 01: work\n"
+        )
+        (prawduct / ".session-reflected").write_text(
+            "A sufficiently long session reflection so only the Critic gate blocks.\n"
+        )
+        (repo / "code.py").write_text("x = 2\n")
+        return repo
+
+    def _run_stop(self, repo: Path, monkeypatch, capsys, *, superseded: bool) -> str:
+        monkeypatch.setattr(
+            gates,
+            "session_review_verdict",
+            lambda project_dir: {
+                "status": "blocked",
+                "unresolved": [
+                    {
+                        "review_id": "rev-test-stranded",
+                        "fid": "R-1",
+                        "title": "a blocker",
+                        "superseded": superseded,
+                    }
+                ],
+                "base": "a" * 40,
+                "target": "b" * 40,
+            },
+        )
+        _hook.cmd_stop(repo, {})
+        return capsys.readouterr().err
+
+    @staticmethod
+    def _shared_lines(*, superseded: bool) -> list[str]:
+        return gates.blocking_remedy_lines([{"superseded": superseded}])
+
+    def test_blocked_render_names_the_spanning_review(
+        self, tmp_path, monkeypatch, capsys
+    ):
+        err = self._run_stop(
+            self._blocking_session(tmp_path), monkeypatch, capsys, superseded=True
+        )
+        assert "unresolved blocking findings" in err
+        assert "/prawduct:critic cumulative" in err
+
+    def test_reachable_blocker_keeps_the_standard_remedy_only(
+        self, tmp_path, monkeypatch, capsys
+    ):
+        err = self._run_stop(
+            self._blocking_session(tmp_path), monkeypatch, capsys, superseded=False
+        )
+        assert "verify-resolutions" in err
+        assert "/prawduct:critic cumulative" not in err
+
+    @pytest.mark.parametrize("superseded", [True, False])
+    def test_the_rendered_remedy_is_the_shared_one_verbatim(
+        self, tmp_path, monkeypatch, capsys, superseded
+    ):
+        """The drift guard the two tests above do NOT give: they match a phrase,
+        so a future edit that inlined divergent wording at ``cmd_stop`` would
+        keep passing as long as that phrase survived. Every shared line must
+        appear intact (indented) in the rendered block, which is what makes the
+        one-home claim mechanical rather than aspirational."""
+        err = self._run_stop(
+            self._blocking_session(tmp_path), monkeypatch, capsys, superseded=superseded
+        )
+        for line in self._shared_lines(superseded=superseded):
+            assert f"  {line}\n" in err, line

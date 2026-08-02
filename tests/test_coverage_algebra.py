@@ -394,8 +394,39 @@ class TestBlockingAndResolutions:
                 "fid": "F-1",
                 "severity": "BLOCKING",
                 "title": "broken thing",
+                # Reachable: r1 is the only review on the path, so it is exactly
+                # what a verify-resolutions pass anchors to.
+                "superseded": False,
             }
         ]
+
+    def test_blocker_on_an_earlier_round_is_marked_superseded(self):
+        """A verify-resolutions pass anchors to the most recent review on the
+        path, so a blocker any earlier fact still carries is one no verify pass
+        will name again. Marked so gate messages can offer the spanning review
+        instead of a route the operator cannot take."""
+        facts = [
+            _review("r1", T0, T1, ["lib/a.py"], findings=[BLOCKER]),
+            _review("r2", T1, T2, ["lib/b.py"]),  # newer, clean — the verify anchor
+        ]
+        verdict = ca.coverage_verdict(facts, T0, T2, _diff({}))
+        assert verdict["status"] == "blocked"
+        assert [(e["review_id"], e["superseded"]) for e in verdict["unresolved"]] == [
+            ("r1", True)
+        ]
+
+    def test_the_anchor_is_the_newest_fact_not_the_last_path_step(self):
+        """Store order decides, because that is what the dispatcher's anchor
+        follows — appended last is newest. Here the newest fact covers the
+        EARLIER interval, so a path-position reading would mark the wrong one."""
+        facts = [
+            _review("r-late-interval", T1, T2, ["lib/b.py"], findings=[BLOCKER]),
+            _review("r-appended-last", T0, T1, ["lib/a.py"], findings=[BLOCKER]),
+        ]
+        verdict = ca.coverage_verdict(facts, T0, T2, _diff({}))
+        assert verdict["status"] == "blocked"
+        marked = {e["review_id"]: e["superseded"] for e in verdict["unresolved"]}
+        assert marked == {"r-late-interval": True, "r-appended-last": False}
 
     def test_resolution_fact_unblocks_without_rerun(self):
         facts = [

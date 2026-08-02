@@ -275,6 +275,48 @@ def _attribute_free_steps(path: list[dict], diff_fn: DiffFn) -> list[dict]:
 # ---------------------------------------------------------------------------
 
 
+def _verify_anchor_id(facts: list[dict], path: list[dict]) -> "str | None":
+    """The review fact on ``path`` that a verify-resolutions pass would anchor
+    to: the most recently appended one. ``None`` when the path holds no review
+    step.
+
+    This is what makes a blocking finding *reachable*. A verify pass reviews
+    the delta from one prior fact and records resolutions against that fact
+    alone, so a blocker carried by any OTHER fact on the path is one no verify
+    pass will ever name again — it is superseded, and only a review spanning
+    the whole interval can supply a clean path around it.
+
+    Two deliberate choices, because both directions of error are wrong advice:
+
+    - **Appended order, not the derived findings cache.** The dispatcher finds
+      its anchor through that cache's pointer, but no gate may read it (D7),
+      and it is per-worktree while facts are the shared truth. The store is
+      append-only and :func:`evidence.read_facts` preserves that order, so the
+      last review fact IS the newest one.
+    - **Restricted to the path, not the whole store.** The store is shared by
+      every worktree of the clone, so a sibling's newer review would otherwise
+      make a perfectly reachable finding look stranded. Path facts are on this
+      interval's lineage by construction.
+
+    **The residual, stated rather than implied.** This is a faithful *proxy*
+    for the dispatcher's anchor, not the same value. Should the cache point at
+    a fact that is not on the composed path, an on-path blocker is reported
+    reachable and the message prescribes a verify pass that will demote rather
+    than clear it — the original defect in a narrower case. Nothing detects
+    that, and nothing here can: reading the cache to check is the very thing
+    D7 forbids a gate to do. It stays a proxy because the failure is soft (the
+    verdict never moves, only the advice) and because closing it properly means
+    giving the anchor a home in the shared store, which is a larger change than
+    a message correction.
+    """
+    on_path = {s.get("id") for s in path if s.get("kind") == "review"}
+    newest = None
+    for fact in facts:
+        if fact.get("kind") == "review" and fact.get("id") in on_path:
+            newest = fact.get("id")
+    return newest
+
+
 def coverage_verdict(
     facts: list[dict],
     base_tree: str,
@@ -289,7 +331,7 @@ def coverage_verdict(
 
         {"status": "covered",   "path": [step, ...]}
       | {"status": "blocked",   "path": [step, ...], "unresolved": [
-            {"review_id", "fid", "title", ...}, ...]}
+            {"review_id", "fid", "title", "superseded", ...}, ...]}
       | {"status": "uncovered", "reason": str}
 
     Path steps are ``{"kind": "review", "id", "src", "dst"}`` or
@@ -300,6 +342,12 @@ def coverage_verdict(
     = ``covered``); then over all valid edges (success = ``blocked``, listing
     the unresolved findings of the path found — fix/verify them and the same
     evidence passes, no re-review); neither = ``uncovered``.
+
+    Each unresolved entry carries ``superseded``: True when its fact is not the
+    one a verify-resolutions pass would anchor to (:func:`_verify_anchor_id`),
+    which means no verify pass will revisit it and only a spanning review can
+    clear it. Gate messages need this to avoid prescribing a route the operator
+    cannot take; the verdict itself is unaffected — a blocker blocks either way.
     """
     if not isinstance(base_tree, str) or not base_tree:
         return {"status": "uncovered", "reason": "no base tree to compose from"}
@@ -320,6 +368,7 @@ def coverage_verdict(
 
     path = _find_path(edges, base_tree, target_tree, diff_fn, key_fn)
     if path is not None:
+        verify_anchor = _verify_anchor_id(facts, path)
         unresolved = []
         for step in path:
             if step["kind"] != "review":
@@ -328,7 +377,10 @@ def coverage_verdict(
                 e["fact"] for e in edges if e["fact"].get("id") == step["id"]
             )
             for finding in unresolved_blocking(fact, resolved):
-                entry = {"review_id": fact.get("id")}
+                entry = {
+                    "review_id": fact.get("id"),
+                    "superseded": fact.get("id") != verify_anchor,
+                }
                 entry.update(
                     {
                         k: finding.get(k)

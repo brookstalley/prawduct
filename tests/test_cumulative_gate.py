@@ -425,6 +425,62 @@ class TestBlockingAndResolutions:
         assert rc == 0, err
         assert "satisfied" in out
 
+    def test_superseded_blocker_names_the_route_that_can_clear_it(
+        self, tmp_path, capsys
+    ):
+        """#536: a blocker left on an EARLIER review round is never named by a
+        verify-resolutions pass again (each anchors to the most recent review),
+        so prescribing only that route sends the operator down a path that
+        cannot work. The state already self-heals through a spanning review —
+        the defect was that nothing said so.
+
+        Field repro: round N blocks, round N+1 reports a new blocker about the
+        fix and declines to resolve N's, round N+2 resolves N+1's. N's is now
+        stranded.
+        """
+        repo = _branch_repo(tmp_path)
+        first_tree = _tree(repo)
+        stranded = _fact(
+            repo,
+            _tree(repo, "main"),
+            first_tree,
+            ["feature.py"],
+            findings=[{"fid": "R-1", "severity": "BLOCKING", "title": "stranded"}],
+        )
+        # A later, clean round over the next commit — this is what a verify pass
+        # would anchor to, and it never names R-1.
+        _commit(repo, "later.py", "z = 3\n", "f2")
+        _fact(repo, first_tree, _tree(repo), ["later.py"])
+
+        rc, _out, err = _run_gate(repo, capsys)
+
+        assert rc == 1  # advice only — a superseded blocker still blocks
+        assert f"{stranded}/R-1" in err
+        assert "/prawduct:critic cumulative" in err  # the route that CAN clear it
+
+    def test_reachable_blocker_is_not_sent_to_a_spanning_review(
+        self, tmp_path, capsys
+    ):
+        """Contrast pin for the test above. The blocker sits on the newest
+        review fact, so verify-resolutions WILL revisit it — naming the
+        spanning cumulative here would be the opposite wrong advice, and a
+        predicate stuck at True is the likeliest way this breaks."""
+        repo = _branch_repo(tmp_path)
+        rid = _fact(
+            repo,
+            _tree(repo, "main"),
+            _tree(repo),
+            ["feature.py"],
+            findings=[{"fid": "R-1", "severity": "BLOCKING", "title": "boom"}],
+        )
+
+        rc, _out, err = _run_gate(repo, capsys)
+
+        assert rc == 1
+        assert f"{rid}/R-1" in err
+        assert "verify-resolutions" in err  # the standard remedy still stands
+        assert "cumulative" not in err
+
     def test_waived_disposition_also_resolves(self, tmp_path, capsys):
         repo = _branch_repo(tmp_path)
         rid = _fact(
@@ -437,6 +493,56 @@ class TestBlockingAndResolutions:
         _resolution(repo, rid, "R-1", "waived")
         rc, _out, err = _run_gate(repo, capsys)
         assert rc == 0, err
+
+
+# ---------------------------------------------------------------------------
+# The superseded-blocker remedy text (shared by both blocking messages)
+# ---------------------------------------------------------------------------
+
+
+class TestBlockingRemedyLines:
+    """``gates.blocking_remedy_lines`` is the single home for the remedy two
+    gates emit — the PR gate here and the Stop hook's. Pinned directly because
+    the three cases differ in WHICH route leads, and leading with the wrong one
+    is the defect this whole change exists to remove."""
+
+    @staticmethod
+    def _text(unresolved):
+        return " ".join(gates.blocking_remedy_lines(unresolved))
+
+    def test_standard_remedy_when_every_blocker_is_reachable(self):
+        for reachable in (None, [], [{"superseded": False}], [{"fid": "R-1"}]):
+            text = self._text(reachable)
+            assert "verify-resolutions" in text, reachable
+            # A pre-annotation entry (no key at all) must not read as superseded.
+            assert "Superseded" not in text, reachable
+            assert "/prawduct:critic cumulative" not in text, reachable
+
+    def test_mixed_set_keeps_the_standard_remedy_and_adds_the_exception(self):
+        lines = gates.blocking_remedy_lines(
+            [{"superseded": True}, {"superseded": False}, {"superseded": True}]
+        )
+        text = " ".join(lines)
+        # The standard route still leads — one of the three IS reachable by it.
+        assert lines[0].startswith("Fix them, then run /prawduct:critic verify-resolutions")
+        assert "Superseded: 2 findings" in text
+        assert "/prawduct:critic cumulative" in text
+
+    def test_all_superseded_leads_with_the_spanning_review(self):
+        """The case the first pass got wrong: appending the exception after
+        'run verify-resolutions' hands the operator the one route that cannot
+        work as their FIRST instruction."""
+        for unresolved in ([{"superseded": True}], [{"superseded": True}] * 3):
+            lines = gates.blocking_remedy_lines(unresolved)
+            text = " ".join(lines)
+            assert lines[0].startswith("Superseded:"), lines
+            assert "/prawduct:critic cumulative" in text
+            # The unreachable route is never prescribed as the action to take.
+            assert "run /prawduct:critic verify-resolutions" not in text, lines
+
+    def test_reads_naturally_for_one_and_for_many(self):
+        assert "the blocker above sits" in self._text([{"superseded": True}])
+        assert "all 3 blockers above sit" in self._text([{"superseded": True}] * 3)
 
 
 # ---------------------------------------------------------------------------

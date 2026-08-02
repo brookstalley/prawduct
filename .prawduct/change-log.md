@@ -3,6 +3,294 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-08-02: the gate named the one route that could not clear the finding it was naming
+
+<!-- prawduct: type=fix | scope=critic-burndown | chunks=03 -->
+
+**`#536` — a BLOCKING finding that is *superseded* rather than resolved is never revisited, and the
+gate message prescribed the only route guaranteed not to reach it.** Each `verify-resolutions` pass
+anchors to the newest prior review fact, so a blocker left behind on an earlier round is never named
+again by any later pass. It sits in `unresolved_blocking` permanently — while the message says *fix
+them, then run verify-resolutions*, which is exactly the route that cannot clear it. Observed in the
+field on `fix/backlog-burndown` Chunk 01: five subsequent verify passes ran and none mentioned the
+blocker.
+
+**The state was never actually stuck; only the advice was.** `coverage_verdict`'s first search runs
+over blocker-free facts, so a later `cumulative` spanning base→HEAD with nothing blocking supplies a
+clean path and the gate passes. A `cumulative-final` chunk therefore self-heals on its own. The
+defect was that **nothing said so** — so this change adds a sentence and moves no verdict. The exit
+code, the fail-closed posture, and what the gate *decides* are all untouched; a superseded blocker
+blocks exactly as hard as any other.
+
+**The predicate lives with the data that produces it, not at either message.** `coverage_verdict`
+now annotates every unresolved entry with `superseded`, computed by `_verify_anchor_id`. Two choices
+there are load-bearing, and both directions of error are wrong advice:
+
+- **Appended order, not the derived findings cache.** The dispatcher finds its anchor through that
+  cache's `fact_id` pointer — but no gate may read the cache (D7), and it is per-worktree while facts
+  are the shared truth. The store is append-only and `read_facts` preserves that order, so the last
+  review fact is the newest one. A regression test pins the distinction from the tempting shortcut:
+  the newest fact can cover an *earlier* interval, so reading path position instead of store order
+  marks the wrong finding.
+- **Restricted to the composed path, not the whole store.** The evidence store is shared by every
+  worktree of the clone, so a sibling worktree's newer review would otherwise make a perfectly
+  reachable finding look stranded. Path facts are on this interval's lineage by construction.
+
+**Both blocking messages render one shared wording** (`gates.superseded_blocker_lines`, renamed to
+`blocking_remedy_lines` by the review round below when it took over the whole remedy) — the PR
+gate's and the Stop hook's — because both otherwise prescribed verify-resolutions alone, and wording
+duplicated at two sites is wording that drifts at one. Each call site owns only its indentation. A
+**third** candidate site was found by the sweep and deliberately left alone: the session-start
+advisory in `briefing.py` reports the *count* and names no route at all, by explicit design ("advisory
+tone, not the full remedy text"), so it carries no wrong advice to correct.
+
+**The prose that restated the remedy was corrected in the same pass**, since a fix that leaves a
+second artifact asserting the old claim has only moved the defect: `skills/pr/SKILL.md`,
+`skills/critic/review-cycle.md`, and `check_cumulative_critic`'s own docstring each named
+verify-resolutions as *the* answer to `blocking` and now carry the superseded exception.
+
+**`#228` — two behaviors that were CLI-verified by hand during discodon-upstream-defects and never
+pinned.** Neither behavior changed; the gap was coverage, and changing either was explicitly out of
+scope. `cmd_verify_chunk_refs` keeps `cannot-verify:` (the Goal-2 deliverable check could not *run*)
+distinct from `missing-ref:` (a named deliverable is absent) — asserted as **mutual exclusion**, each
+message carrying its own prefix and not the other's, because merely asserting the two strings differ
+survives a real collapse: the interpolated detail differs either way. That weaker form was written
+first, caught by the red-check, and deleted rather than kept as a misleading green.
+
+`cmd_critic_begin`'s branchless sibling-worktree fallback is exercised against a **real bare-repo
+worktree** rather than a stubbed worktree list, because the guard exists for what git actually emits
+— `bare`, which is neither a `branch` nor a `detached` line, leaving the entry with no `branch` key.
+The test drives the real CLI in a subprocess: called in-process it never reaches the sibling listing,
+because `critic-begin` first refuses outright when the shell's cwd differs from the resolved project
+dir. Both tests were verified red — the message collapse fails the first, dropping the fallback
+raises `KeyError` through the second.
+
+**One existing contract test was updated, not weakened.** `test_unresolved_blocker_blocks_with_
+attribution` asserts an unresolved entry by exact dict equality; the additive `superseded` key
+changed that contract, so the expectation now carries `"superseded": False`. The equality stays
+exact and the assertion is strictly stronger — it now pins the annotation as well.
+
+### The cumulative review (0 blocking, 6 warnings, 13 notes)
+
+**The first pass fixed the partial case and left the total one — the same defect, inverted.** The
+superseded clause was *appended* after "Fix them, then run verify-resolutions", so when **every**
+unresolved blocker is superseded the operator's first instruction was still the route that cannot
+work. That is `#536` in its total case, shipped inside `#536`'s own fix. The remedy is no longer
+assembled at the call sites at all: `blocking_remedy_lines` owns the whole block and decides which
+route *leads* — standard when nothing is superseded, standard-plus-exception when some are, and the
+spanning review alone when all are. Both gates now render whatever it returns, so neither can
+reintroduce a lead sentence of its own.
+
+**The prose sweep stopped two sites short, and the miss was the narrowed grep.** The concept query
+that found the three corrected surfaces was run over a phrase (`same evidence passes`), not the
+concept, so it never reached `lib/dispositions.py` — which *prints* the uncorrected claim, unhedged,
+at the moment an operator is handling a blocking finding. The same file already hedges the identical
+claim eleven lines earlier, which is what made the survivor look intentional. Corrected there, and in
+`methodology/building.md`, whose one-token budget headroom was met by making the sentence *accurate*
+rather than longer: it now names both routes in the same word count it used to name one.
+
+**A test of mine was deleted for the second time this chunk, and a claim of mine was corrected.**
+The build-plan Status paragraph said both directions of the predicate were verified red across four
+tests at both emission sites. They were not: the Stop-hook tests are handed a verdict dict with
+`superseded` already set, so they pin *rendering* and a flipped predicate cannot redden them. Both
+properties are covered; the sentence merged them and credited the wrong tests. The rendering tests
+now additionally assert the shared lines appear **verbatim**, which is what makes the one-home claim
+mechanical rather than aspirational — previously they matched a phrase, so inlined divergent wording
+at one site would have passed.
+
+**Three independent reviewers converged on one defect, and it was not in this chunk's code.** The
+`scope-trace:` retire rule was corrected twice in the build plan (`33d7a5d`) and neither correction
+reached the change-log — so the durable copy still stated the pre-correction denominator, bolded,
+and omitted the meta-filter without which the rule can never fire. Both are now here, in the record
+that outlives the plan. The adjacent spliced sentence from `4a71084` — two half-sentences welded,
+leading with the causal claim that commit existed to remove — is also repaired.
+
+### The verify pass (0 blocking, 1 warning, 1 note)
+
+**The commit that fixed the retire-rule drift reintroduced it one level down.** The meta-filter it
+added to the durable record said "findings whose `summary` opens with the token" — the wrong field
+for the store the query runs against. A Critic partial's `name` becomes the fact's `title`;
+per-finding `summary` exists only in the per-worktree derived cache, which holds one fact and cannot
+answer a 30-review sweep. The same entry states both halves of that correctly 25 lines above, and
+the build plan had it right. A Norm Health sweep querying the named field would have got zero for
+every review and retired a control that had been firing — the exact failure the fix existed to
+prevent, one level down.
+
+**Fifth instance on this branch of the same pattern, and the first with the plan correct and the
+durable copy wrong.** The four before it all ran the other way. The direction flipped because the
+correction was *transcribed* from plan to change-log, and transcription is where a field name gets
+paraphrased into the nearest plausible synonym. Both copies now say `title`, and the change-log
+carries a sentence saying why it is not `summary`, so the next transcriber has the reason and not
+just the token. The rename to `blocking_remedy_lines` had also left two record files naming a symbol
+that no longer exists — code and tests were fully renamed, the records were not.
+
+**The predicate's residual is now stated in the code rather than only in a reflection.** The
+superseded test is a faithful *proxy* for the dispatcher's anchor, not the same value; should the
+per-worktree findings cache point at a fact off the composed path, an on-path blocker reads as
+reachable and gets sent to a verify pass that will demote rather than clear it. Nothing detects that,
+and nothing at this layer can — reading the cache to check is exactly what the derived-views norm
+forbids a gate to do. It stays a proxy because the failure is soft (advice moves, the verdict never
+does) and closing it properly means giving the anchor a home in the shared store.
+
+## 2026-08-02: five prose defects from a 2026-06-09 review, and the question that set review depth
+
+<!-- prawduct: type=fix | scope=critic-burndown | chunks=02 -->
+
+**`#163` — `risk_surfaces:` decided review depth for every onboarded product through a question
+nobody asked.** Pipeline coverage was checked leg by leg and three of four were present: the template
+carries the config block, `building.md` points at the roster rule, and the Critic derives the roster
+in code. Discovery was absent — nothing anywhere asked *where would a missed defect cost you most?*,
+so the only route to declaring the field was a product owner opening a template comment.
+
+**The absent leg was the load-bearing one, because the fallback is silent by design.** A product that
+declares nothing is never reviewed *less* — the framework-shaped defaults still escalate and the
+older file-count rule stands underneath — so nothing fails, nothing prompts, and the product keeps
+the generic rule forever. What declaring buys is **size-independence on the paths you name**: a diff
+touching one gets the deeper review however small it is. (Declaring also raises the file-count threshold governing
+*everything else* — a separate effect running the other way; `review-cycle.md` owns both numbers.)
+An unasked question is an unanswered one. `discovery.md` now asks it as its own section, and the
+concerns registry has the row it never had.
+
+**`risk_surfaces: []` is documented as an opt-OUT, not as a way to record that you discussed it** —
+corrected before merge, after all three reviewers of this batch caught the first draft advising the
+opposite. A *present* key is exclusive (`lib/risk.py::resolve_surfaces`), so `[]` retires the derived
+defaults **and** the product's `boundary-patterns.md` contract paths: strictly *less* review than
+leaving the key absent. The "never reviewed less than before" guarantee covers the **absent** case
+only. Write `[]` only when the product genuinely has no concentrated risk; if surfaces exist but are
+unnamed, leave the key absent and record the discussion where discussion belongs.
+
+**`#264` — five prose defects, all still live after the prose diet compressed the text around them.**
+The Critic's activation step 6 said "decide checks from signals below," which is vague about the one
+thing that is not a judgment call: the resolved *mode* decides which goals apply, and the signals
+only tune depth. The Learnings Cross-Check assumed learnings are infallible, with no rule for two
+entries that disagree — it now says the **later** rule governs, that conforming to it is not a
+regression, and that an *implicit* supersession is itself worth surfacing, because the next reviewer
+will read the stale rule as live. Framework Check 7 asked for "strengthening the dynamic generation
+system" with no worked example, so it now carries one: an enumerated *"check webhook retry limits"*
+fires for one integration shape and is silent on cron loops, queue consumers and polling clients,
+while *"a call that can be retried states its bound"* reaches all four — the tell is the diff's shape,
+not its length.
+
+The backlog skill's `pick` documented that a missing `effort:`/`impact:` maps to `2` but never the
+combined effect: **both missing scores `2/2 = 1.0`, which ranks an unassessed item *above* an
+assessed but unattractive one** (`S/M` = 0.5). The legacy penalty does not cover it — that applies
+only to items with no metadata bar at all. A cluster of 1.0s means *unassessed*, not *medium value*.
+The stale `(Q6)` label is gone.
+
+**PR-review evidence deletion is now a recorded decision rather than an apparent oversight** (owner,
+2026-08-02). The durable record of a PR review is the **`review.pr` ledger event**, which embeds the
+findings record verbatim — **not** the shared evidence store, whose `KNOWN_KINDS` is
+`{review, resolution, disposition}`, all written by `critic-consolidate`; no path puts a PR finding
+there. `.prawduct/.pr-reviews/<branch>.json` is per-clone scratch for one
+in-flight review. Archiving it would give that record a second home — which the *every fact has one home*
+norm forbids — and leave a stale copy outliving the branch it describes. The cost is named rather
+than hidden: PR findings are consequently not queryable from the shared store, so any yield
+measurement spanning PR reviews needs a cross-worktree ledger sweep. That is the same constraint the
+Chunk 01 retire rule was corrected for, now stated where the deletion happens.
+
+Sub-item (2) of `#264` (the designer-handoff note) was resolved on 2026-06-10 and was **not** redone —
+the item says so, and re-fixing a closed sub-item is how a batch quietly reverts someone's work.
+
+## 2026-08-02: two checks the cheapest gate did not have, paid for by upleveling
+
+<!-- prawduct: type=fix | scope=critic-burndown | chunks=01 -->
+
+Two Critic controls that the protocol never mandated, both landing under a budget that forbids
+paying for them with a ceiling raise.
+
+**A cross-component message contract is now Goal 1's business, in chunk mode, BLOCKING** (`#97`).
+The filing case came from a governed product: a two-process app whose consumer awaited a terminal
+signal the producer's success path never sends. Types matched on both sides, the unit and IPC tests
+were green — because the fixtures synthesized the very signal the real producer omits — and
+chunk-mode review passed it. In production the flow hangs forever. It was caught later only because
+a human wrote a pointed reviewer prompt, which means detection was **prompt-driven, not
+protocol-driven**: neither the Critic's nor the PR reviewer's protocol mandated the trace. The check
+folds into Goal 1 rather than becoming an eighth goal, per the skill's own guidance, and it lands in
+`goals-1-3.md` because that file *is* the chunk-mode payload — the earliest and cheapest gate is the
+point. Goal 5 is scoped in the same pass to *downstream* consumer impact, so the two no longer
+overlap: Goal 5 asks whether your change broke a consumer, Goal 1 asks whether your consumer
+mismodels the producer. That inverse is the direction the original had no home for.
+
+**A scope pressure-test joins the cumulative and PR protocols** (`#293`). Every reviewer checks the
+work *as scoped* and none asks whether the capability should exist or was ever reached end-to-end.
+It sits in Goal 5, not Goal 2, which keeps it out of the chunk-mode payload deliberately — whether a
+capability is consumed end-to-end is a question only the full bundle can answer.
+
+**Neither ceiling moved, and both files came out smaller than they went in** — each having *gained*
+a check. (The readings live in `LAST_MEASURED_TOKENS`, which owns them; restating a figure here is
+how the budget narratives went stale in the first place.) The funding was upleveling rather than
+word-shaving, and three cuts generalize well enough to record: a
+definition another file owns and the reader is told to open is not worth restating (each record-lint
+id's *definition* — the severity **mapping** stays, because the emitted entries carry no severity and
+the reviewer has nowhere else to get one; and the four Framework-Specific Checks); a message the
+reviewer can compose is not worth
+quoting verbatim; and history — what a mechanism *used* to do — is never worth carrying in an
+instruction payload. The same lens was turned on the budget comments themselves, which had
+accumulated into running tallies of exact token counts and dates that drive no decision. The ceiling
+assertion is what decides; the tally was churn.
+
+**The observable-yield obligation is discharged with stable tokens, not goal attribution.**
+`nonfunctional-requirements.md` binds a control added after 2026-07-29 to emit its yield observably.
+Goal-level attribution cannot carry it: findings do persist a `goal` field, but it is reviewer-written
+free text and it already drifts — one framework check appears in the evidence store under four
+spellings. A sub-check inside Goal 1 would have been uncountable from the day it shipped. Both
+controls instead instruct the reviewer to open the finding title with a stable token
+(`cross-component-contract:`, `scope-trace:`), making the yield a one-line query, and
+`tests/test_control_yield_tokens.py` pins the tokens so a later reflow cannot silently delete the
+countability.
+
+**Review caught that half the yield mechanism could not work, and two reviewers found it
+independently.** The token discharge is genuine on the Critic side — a partial's `name` becomes the
+fact's `title` in the shared evidence store. On the PR side it was not: that reviewer's persisted
+record carries `goal`, `severity`, `file`, `line`, `summary` and **no title field at all**, so the
+instruction to open a title with `scope-trace:` named something that never persists. The PR half now
+opens `summary` instead. Also fixed from the same review: the `cross-cutting-concerns.md` Boundary
+coherence row still named Goal 5 alone after this change split that leg across Goal 1 and Goal 5; the
+scope pressure-test claimed to be the only check asking whether a capability should exist, which Goal
+3's "no extra functionality" already does, so both copies now disambiguate rather than overclaim; and
+a funding trim had quietly widened the doc-drift rule's jurisdiction and dropped its exemption
+examples, both restored. **Three of the four warnings share one shape** — the primary edit was right
+and the second site of the same idea was left untouched, which is this branch's recurring failure and
+was recorded as a rule two chunks before it happened again.
+
+**The norm has two conjuncts and only one was discharged.** Proportionality asks a new control to
+*name the yield it expects* **and** *emit it observably*. The departure argued the second at length
+and was silent on the first, so the plan now states a stopping rule per control — retire
+`cross-component-contract:` on zero BLOCKING findings across 20+ reviews **of boundary-crossing
+diffs** (not 20 reviews total; a check that never met its trigger has not been tested), and
+`scope-trace:` on zero findings across 30+ **`final`-or-`cumulative`** reviews — both modes, because
+the check lives in Goal 5, which `final` runs too, and a frame omitting a third of the firing
+opportunities would under-count the yield and retire the control early. Stated in advance so the
+sweep inherits a baseline rather than a bare count.
+
+**Both numerators need a filter, without which the rules are unsatisfiable from day one.** Every
+finding whose `title` opens with a yield token so far is a finding *about* the control — its
+placement, its overlap, its uncountability — filed while this batch was reviewed, not a firing of the
+check against product code. "Retire if zero findings" would therefore never fire, because the query
+already returns several. So the retire query is: findings whose **`title`** opens with the token
+**and whose `files` do not name the protocol files that define it** (`skills/critic/review-protocol.md`,
+`skills/critic/goals-1-3.md`, `skills/pr/review-protocol.md`). A finding filed against the control's
+own definition is meta-commentary; one filed against product code is a firing. **`title`, not
+`summary`** — a Critic partial's `name` becomes the fact's `title`, while per-finding `summary` exists
+only in the per-worktree derived cache, which holds one fact and cannot answer a 30-review sweep.
+(The PR protocol opens `summary` because its record has no title field, and PR findings are excluded
+from this evidence anyway — see the paragraph below.)
+
+**The first draft of that rule counted PR reviews, which the numerator cannot reach** — caught by the
+verify pass. PR findings never enter the shared evidence store (`evidence.KNOWN_KINDS` is
+`{review, resolution, disposition}`, all written by `critic-consolidate`); a PR review lands in the
+gitignored, **per-worktree** `.prawduct/.pr-reviews/` and ledger. A query would have counted zero and
+read it as "never fired," retiring a control on a denominator it never sampled. The PR half keeps the
+token — it makes the finding legible to a human reading the report — but contributes no retirement
+evidence without a cross-worktree ledger sweep. Worth recording *where* the trap was documented: this
+same plan warns about per-worktree gitignored ledgers roughly a hundred lines above the rule that
+walked into it, in the paragraph explaining why `#165` stayed deferred.
+
+`#165` was considered for this batch and **deliberately excluded**: its recorded revisit trigger is a
+*second* surplus review event, and the ledger carries exactly one, the known duplicate the item
+already names. Worth recording how nearly that check went wrong — the ledger is per-worktree and
+gitignored, so counting only the working worktree returns a false clean.
+
 ## 2026-08-02: the untriaged, the truncated, the unpublished, and two hardening passes
 
 <!-- prawduct: type=fix | scope=backlog-burndown | chunks=04 -->
