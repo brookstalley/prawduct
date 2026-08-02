@@ -361,3 +361,5 @@ dropping them.
 ## A disposition claiming "fixed" must restate the FINDING'S OWN predicate and show it false — arguing from what the change FOUND is satisfiable by fixing an adjacent surface. If the finding says *the check cannot see X*, the closing test asserts exactly that sentence. Tell: the fix note describes what the fix caught rather than what the finding said
 
 ## Scope an exemption by the PROPERTY that justifies it, not by the container it lives in — an exemption justified by *naming* a file belongs to naming forms, not to every file under that directory, and the container is one cheap generalisation away from correct while looking complete. Tell: the boundary is a path prefix while the rationale is a verb
+
+## "Make A agree with B" has two solutions and the cheap one hands A the defects of B — an agreement criterion is satisfied by teaching A the narrower predicate, so it cannot tell correctness from consensus and goes green with both wrong together. Pin the DIRECTION separately, on a fixture from the population that predicate is worst at. Tell: every fixture sits inside its allowlist
