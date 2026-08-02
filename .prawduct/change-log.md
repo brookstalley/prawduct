@@ -105,6 +105,25 @@ and omitted the meta-filter without which the rule can never fire. Both are now 
 that outlives the plan. The adjacent spliced sentence from `4a71084` — two half-sentences welded,
 leading with the causal claim that commit existed to remove — is also repaired.
 
+### The verify pass (0 blocking, 1 warning, 1 note)
+
+**The commit that fixed the retire-rule drift reintroduced it one level down.** The meta-filter it
+added to the durable record said "findings whose `summary` opens with the token" — the wrong field
+for the store the query runs against. A Critic partial's `name` becomes the fact's `title`;
+per-finding `summary` exists only in the per-worktree derived cache, which holds one fact and cannot
+answer a 30-review sweep. The same entry states both halves of that correctly 25 lines above, and
+the build plan had it right. A Norm Health sweep querying the named field would have got zero for
+every review and retired a control that had been firing — the exact failure the fix existed to
+prevent, one level down.
+
+**Fifth instance on this branch of the same pattern, and the first with the plan correct and the
+durable copy wrong.** The four before it all ran the other way. The direction flipped because the
+correction was *transcribed* from plan to change-log, and transcription is where a field name gets
+paraphrased into the nearest plausible synonym. Both copies now say `title`, and the change-log
+carries a sentence saying why it is not `summary`, so the next transcriber has the reason and not
+just the token. The rename to `blocking_remedy_lines` had also left two record files naming a symbol
+that no longer exists — code and tests were fully renamed, the records were not.
+
 **The predicate's residual is now stated in the code rather than only in a reflection.** The
 superseded test is a faithful *proxy* for the dispatcher's anchor, not the same value; should the
 per-worktree findings cache point at a fact off the composed path, an on-path blocker reads as

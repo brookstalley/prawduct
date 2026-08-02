@@ -6,6 +6,60 @@ No size constraint on this file — it's the deep reference, consulted via `/lea
 
 ---
 
+## An exception APPENDED to standing advice still leads with the advice — so before appending, ask whether the exception can cover the WHOLE set, and if it can, it must be able to REPLACE the lead sentence rather than follow it
+
+`#536` was filed because a superseded blocker could only be cleared by a spanning review, while the
+gate message prescribed `verify-resolutions`. The fix added a clause naming the spanning route — and
+appended it *after* the existing "Fix them, then run `/prawduct:critic verify-resolutions`" sentence.
+For the partial case that is right: some blockers are reachable by the standard route, so it should
+lead and the exception should qualify it. For the total case it reproduced the filed defect exactly.
+The operator whose every blocker is superseded was still told, first, to take the one route that
+cannot work; the correction arrived four lines later, after they had read an instruction.
+
+I noticed the awkwardness reading the live output and talked myself out of it — the word "instead"
+seemed to carry the weight. A reviewer flagged it independently with a sharper argument: people act
+on the first instruction, and the cost is a real verify round (~1-2 min plus a fix commit) that
+clears nothing. That is the tell for this whole class — **when you find yourself justifying why a
+reader will get to the correction, the correction is in the wrong position.**
+
+The structural fix matters more than the wording: `blocking_remedy_lines` now owns the entire remedy
+and returns one of three blocks, deciding which route *leads*. Both call sites render whatever it
+returns and compose nothing themselves, so neither can reintroduce a lead sentence of its own. The
+earlier shape — shared exception, locally-owned lead — looked like deduplication while leaving the
+load-bearing decision duplicated at two sites.
+
+Generalizes past messages: any place a conditional qualifier is bolted onto an unconditional
+statement. The test is whether the qualifier's predicate is a *count over the same set* the statement
+addresses. If it is, the all-case exists and must be handled by replacement.
+
+## When you TRANSCRIBE a rule between two records, its identifiers are the part that silently degrades — re-verify every field, symbol and path against the code, because a paraphrase reads exactly like a faithful copy
+
+Three independent reviewers converged on one defect: a retire rule corrected twice in the build plan
+had never reached the change-log, so the durable record — the one that outlives the plan — still
+stated the rejected version. The fix transcribed the corrected rule across. In doing so it wrote
+"findings whose **`summary`** opens with the token" where the plan said `title`.
+
+`summary` is not a random error. It is the adjacent, plausible word: findings *do* have summaries in
+the PR reviewer's record, and the per-worktree derived cache *does* carry a per-finding `summary`.
+But the shared evidence store — the only store a 30-review sweep can query — carries `title`, written
+by `critic_consolidate` from the partial's `name`. A sweep run against the named field would return
+zero for every review and retire a control that had been firing: the precise failure the correction
+existed to prevent, reproduced one level down by the commit that prevented it.
+
+Two things make this its own rule rather than another instance of the two-copies pattern:
+
+1. **The direction flipped.** The four prior instances on this branch all had the primary site fixed
+   and the secondary stale. This one had the *plan* correct and the *durable copy* wrong — because
+   the defect entered during transcription, not during the original edit. Sweeping "did the fix reach
+   the second site?" would have reported clean; the second site existed and said something false.
+2. **Prose review does not catch it.** Both sentences are grammatical, both name a real field, and
+   the wrong one is more familiar. Only checking the identifier against the code separates them.
+
+The durable mitigation is to carry the *reason* with the token, not the token alone: the change-log
+now says "`title`, because a partial's `name` becomes the fact's `title`, while per-finding `summary`
+lives only in the per-worktree derived cache." A future transcriber paraphrasing that sentence has to
+paraphrase a mechanism, which is much harder to do wrongly than a bare field name.
+
 ## A fix ships TWO artifacts that can independently be false — the change, and the evidence that it works. This branch put every defect in the second: a test that could not see the bug it pinned, then a comment asserting the rule its own assertion disproves. When you fix something, sweep the NEIGHBOURING PROSE in the same pass, or a reviewer finds it one comment at a time
 
 Measured across one chunk. Five review passes; the last three each returned a finding, and none was
