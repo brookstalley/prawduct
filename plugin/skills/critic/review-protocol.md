@@ -85,7 +85,7 @@ downgrade.
 - **Norms**: `project-preferences.md` rows and Direction statements bind — unrecorded departure → **BLOCKING** via Goal 3; never fix divergence by artifact edit.
 - **Infrastructure coherence**: `infrastructure_dependencies` declared but code uses in-memory only → **WARNING**. Mocks must be documented, not silently substituted.
 - **README and top-level docs**: read the project's README and `docs/` when features change. Removed/renamed features or wrong setup → **WARNING**. Actively misleading instructions (wrong commands, deleted config refs) → **BLOCKING**.
-- **Documentation drift**: Comments, type annotations, or API docs that contradict the code they describe → **WARNING**. Same defect when a *product* durable artifact rides its meaning on an ephemeral build id (chunk number, build-plan, work-cycle name), which dangles once the plan is deleted → **WARNING**; build-cycle bookkeeping that records the work (change-log `chunks=`, backlog `closed-by:`) is exempt.
+- **Documentation drift**: Comments, type annotations, or API docs that contradict the code they describe → **WARNING**. Same defect when a *product* durable artifact rides its meaning on an ephemeral build id (chunk number, build-plan, work-cycle name), which dangles once the plan is deleted → **WARNING**; build-cycle bookkeeping that records the work (e.g. change-log `chunks=`, backlog `closed-by:`, operator-verification) is exempt.
 - **Changelog scope**: When reviewing `change-log.md` or `change_log_history`, only check entries added/modified in the current changeset. Older entries are append-only history — don't flag stale terminology, outdated counts, or superseded descriptions. Same applies to commit messages and archived notes.
 - **Derived views**: `views_enabled` ⇒ Status, `release-notes.md`, and `scope_rollups:` derive from change-log tags via `regen-views`. Tag is canonical; view↔tag mismatch → **WARNING** ("run regen-views"). Flag tags, not derived files.
 - **CLAUDE.md size**: CLAUDE.md is an instruction file, not an architecture reference. Check project-specific content (outside PRAWDUCT markers): over ~150 lines → **WARNING**, naming what to move to `docs/` or `.prawduct/artifacts/`. Applies to the current changeset.
@@ -133,8 +133,10 @@ Applies proportionally — a 2-line helper needs no design review. Prioritize wh
 
 The roster in the code-written dispatch manifest (`.prawduct/.critic-partials/manifest.json`, written by `critic-begin`) picks the path:
 
-- **Roster `["reviewer"]` — single-pass**: no risk surface touched and under 12 judgeable files. The fork reviews inline, writes its one partial, and runs `critic-consolidate` itself; no subagents.
-- **Roster `correctness`/`design`/`sustainability` — coordinator pattern** (below): `final`/`cumulative` when the diff touches a risk surface or changes 12+ judgeable files. (*Risk surface* = the repo's `risk_surfaces:` or the framework defaults — `review-cycle.md`.)
+- **Roster `["reviewer"]` — single-pass**: the fork reviews inline, writes its one partial, and runs `critic-consolidate` itself; no subagents.
+- **Roster `correctness`/`design`/`sustainability` — coordinator pattern** (below).
+
+The manifest is authoritative and you never re-derive it; the derivation rule (risk surfaces, file-count threshold) lives in `review-cycle.md`.
 
 ### Coordinator Pattern
 

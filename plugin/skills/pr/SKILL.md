@@ -139,14 +139,15 @@ Push branch with `-u`. Draft title and description from work context + review fi
 5. Delete remote branch, switch to base branch, pull, delete local branch
 6. Clean up evidence file (gitignored, local — no commit involved). **Deletion is intended, not an
    oversight — it is not archived, and this is the recorded decision** (owner, 2026-08-02). The
-   durable record of a review is the *fact*, and facts live in the shared evidence store
-   (`<git-common-dir>/prawduct/evidence.jsonl`) plus the `review.pr` ledger event appended at Create
-   Step 4. `.prawduct/.pr-reviews/<branch>.json` is per-clone working scratch for one branch's
-   in-flight review; keeping it past the merge would give a fact a second home, which the *every fact
-   has one home* norm forbids, and would leave a stale copy that outlives the branch it describes.
-   **Known cost, accepted:** PR findings are therefore not queryable from the shared store — the
-   ledger event is per-worktree and gitignored — so any yield measurement spanning PR reviews needs a
-   cross-worktree ledger sweep rather than a store query.
+   durable record of a PR review is the **`review.pr` ledger event** appended at Create Step 4, which
+   embeds the findings record verbatim. It is **not** the shared evidence store: `evidence.KNOWN_KINDS`
+   is `{review, resolution, disposition}`, all written by `critic-consolidate`, and no path puts a PR
+   finding there. `.prawduct/.pr-reviews/<branch>.json` is per-clone working scratch for one branch's
+   in-flight review; keeping it past the merge would give that record a second home, which the *every
+   fact has one home* norm forbids, and would leave a stale copy outliving the branch it describes.
+   **Known cost, accepted:** the ledger is gitignored and per-worktree, so PR findings are not
+   queryable from the shared store — any yield measurement spanning PR reviews needs a cross-worktree
+   ledger sweep, never a store query.
 7. **Confirm the bookkeeping merged WITH the PR — there is nothing to commit here.** Create-flow Step 1d put the backlog archives, the change-log status, the derived views, and (trunk) the plan retirement in the branch, so the merge just landed them atomically. If something was missed, fold it into the next PR that touches the repo — **never** push a bookkeeping commit to the integration branch and **never** open a housekeeping-only PR. On gitflow, statuses additionally self-converge at the release (it flips every unreleased entry regardless) and the backlog skill's reconcile step catches unarchived items; on trunk there is no later release step, so the fold-into-the-next-PR rule IS the convergence — treat a missed `shipped` flip as named debt for the next PR, not something that self-heals. Run `prawduct-hook resolve-base` to know which case applies:
    - **Base is `develop`** (gitflow, ahead of a batched `develop→main` release): the work is release-pending — its change-log entry stays **statusless** (older logs may carry the legacy `status=merged` stamp; same state). **RETAIN** both the plan file and the `active_build_plan` pointer. The `develop→main` release flips the change-log to `status=shipped` and runs `regen-views`, which regenerates the `## Status` of **every** scope-tagged release-pending plan in one pass (REL-4T8N) — so multiple merged-pending-release plans coexist fine and the single pointer is only a fallback for unscoped plans; deleting now would leave the release nothing to regenerate (see the "KEEP the build plan" learning). A non-blocking "consider deleting idle plan" advisory may surface in the briefing during this window — ignore it until the release ships.
    - **Base is the release surface** (the `main` family — `resolve-base` prints `main`, `origin/main`, or the `HEAD~1` fallback; i.e. a trunk repo, or any repo whose base is the deployed branch): this merge shipped the work, and the closing PR already carried the `status=shipped` entry and retired the active build plan / cleared the `active_build_plan` pointer (Step 1d). If it didn't, treat it as missed bookkeeping per the rule above.

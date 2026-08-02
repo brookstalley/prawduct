@@ -178,14 +178,24 @@ touching any listed path the deeper three-reviewer review **at any size**.
 **Why this question earns its place rather than being left to a template comment.** The fallback is
 silent *by design*: a product that declares nothing is never reviewed *less* than before — prawduct's
 framework-shaped defaults still escalate, and below them the older file-count rule stands — so
-nothing ever fails, nothing prompts, and the product simply keeps the generic rule forever. Declaring
-your own surfaces is what raises the size threshold to 12 judgeable files, i.e. what stops a small
-change to your most dangerous code being reviewed cheaply *because* it is small. An unasked question
-is an unanswered one, and this one decides review depth for the life of the product.
+nothing ever fails, nothing prompts, and the product simply keeps the generic rule forever. What
+declaring buys is **size-independence on the paths you named**: a diff touching one of them gets the
+deeper review however small it is, so a two-line change to your riskiest code is no longer reviewed
+cheaply *because* it is small. (Declaring also raises the file-count threshold that governs
+*everything else* — a separate effect, and one that runs the other way. `skills/critic/review-cycle.md`
+owns both numbers; don't restate them here.) An unasked question is an unanswered one, and this one
+decides review depth for the life of the product.
 
-`risk_surfaces: []` is a valid, deliberate answer — "this product has no concentrated risk" — and it
-turns the tier check off. Record it explicitly rather than leaving the key absent, so a later reader
-can tell a decision from an omission.
+**`risk_surfaces: []` is an opt-OUT, not a way to record "we discussed it."** A *present* key is
+exclusive (`lib/risk.py::resolve_surfaces`), so the empty list retires the derived defaults **and**
+your `boundary-patterns.md` contract paths — a small diff touching a contract path drops from three
+reviewers to one. That is strictly *less* review than leaving the key absent, so the "never reviewed
+less than before" guarantee above applies to the **absent** case only. Write `[]` only when the
+product genuinely has no concentrated risk and you intend the tier check off.
+
+**If the answer is "we have surfaces but haven't named them yet," leave the key absent** and record
+the discussion where discussion belongs — the product brief, a decision note, the commit. Absent is
+the safe state; the key is not a checkbox to tick.
 
 ## What Discovery Produces
 

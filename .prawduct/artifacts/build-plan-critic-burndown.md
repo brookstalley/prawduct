@@ -33,7 +33,7 @@ governed_by:
       - "facts are immutable and append-only → conforms (Chunk 03 reads only; it appends and edits nothing)"
       - "derived views are disposable and never authoritative → conforms (no chunk makes a gate read a view)"
       - "a fact written by a newer schema is surfaced as a loud block, never silently dropped → inapplicable because no chunk changes the fact schema, additively or otherwise"
-      - "two stores, two lifetimes → inapplicable because no chunk moves state between the committed and gitignored stores"
+      - "two stores, two lifetimes: shared committed *answers* kept distinct from per-clone gitignored *nags and caches* → **conforms, with a ruling recorded in Chunk 02** (the disposition read *inapplicable* until the cumulative review caught that Chunk 02 rules directly on this norm). Chunk 02's PR-evidence decision is a two-stores question and answers it in the norm's favour: `.prawduct/.pr-reviews/<branch>.json` is per-clone in-flight scratch, so it is deleted at merge rather than archived, and the durable record is the `review.pr` ledger event. No chunk moves state *between* the stores — but saying the norm did not apply was wrong, because deciding which store owns a record is exactly what it governs"
       - "`backlog_service_repo` selects the authoritative store → inapplicable because no chunk reads or writes the backlog store"
   - artifact: api-contract
     dispositions:
@@ -205,7 +205,7 @@ directly against this checkout and reading the emitted text, not only by asserti
 - **Done when:**
   1. Acceptance criteria met and tests pass
   2. `/prawduct:critic` run and blocking findings resolved
-  3. Committed and chunk marked `[x]` in Status
+  3. Committed, and the chunk recorded in the Status **Context** paragraph — the checkboxes are a derived view and stay `[ ]` until the release; never hand-flip them
 
 [DECISION: the two new controls discharge the observable-yield obligation with a **stable token in
 the finding title**, not with goal-level attribution | the norm's why is that a control whose
@@ -229,9 +229,12 @@ the second half of and this states explicitly, so the sweep has a baseline rathe
   asymmetry is itself the reason to count trigger-eligible reviews rather than all reviews.
 - **`scope-trace:`** — expected to fire rarely and to be *high-value when it does*, because the
   failure it names (a capability with no parent requirement, or one nothing reaches) is the kind that
-  survives every other check. **Retire it if it produces zero findings across 30+ `cumulative`
-  reviews**, or if its findings prove consistently duplicative of Goal 3's "no extra functionality"
-  bullet — the overlap this chunk disambiguated but did not eliminate.
+  survives every other check. **Retire it if it produces zero findings across 30+ `final`-or-
+  `cumulative` reviews**, or if its findings prove consistently duplicative of Goal 3's "no extra
+  functionality" bullet — the overlap this chunk disambiguated but did not eliminate. **Both modes,
+  not just `cumulative`**: the check lives in Goal 5, which the Modes block gives to `final` as well,
+  and `final` is roughly a third of the reviews that run it — a sample frame that omits a third of
+  the firing opportunities would under-count the yield and retire the control early.
 
 **The PR half is deliberately outside the retire decision, and this is the correction that matters.**
 An earlier draft of this rule counted "`cumulative`/PR reviews" — a denominator the numerator cannot
@@ -245,11 +248,27 @@ a retirement, and a rule that counted it would have retired the control on a den
 sampled. Reviving the PR half as evidence needs a cross-worktree ledger sweep — the same measurement
 `#165` required — not a bigger threshold.
 
-**Both denominators are honest about their cost.** `scope-trace:`'s is a one-line query over the
-store. `cross-component-contract:`'s is not: review facts carry no boundary-crossing classification,
-so "reviews of boundary-crossing diffs" is a **hand audit** of `files_changed`. Stated rather than
-hidden — a threshold whose denominator is manual will be measured late or not at all, which is an
-argument for `#548`'s structured `check:` field carrying the trigger alongside the yield.
+**The numerator needs a filter, and without it the rule is unsatisfiable from day one.** Measured on
+the shared store: **every** finding whose title opens with a yield token so far is a finding *about*
+the control — its placement, its overlap, its uncountability — filed while this batch was being
+reviewed, not a firing of the check against product code. "Retire if zero findings" would therefore
+never fire, because the query already returns several. The token cannot distinguish *the check found
+something* from *a reviewer discussed the check*, and it never will, because both are legitimate uses
+of the same literal string.
+
+So the retire query is: findings whose title opens with the token **and whose `files` do not name the
+protocol files that define it** (`skills/critic/review-protocol.md`, `skills/critic/goals-1-3.md`,
+`skills/pr/review-protocol.md`). A finding filed *against the control's own definition* is
+meta-commentary; a finding filed against product code is a firing. That filter is checkable and
+belongs with the rule rather than being rediscovered by whoever runs the sweep.
+
+**Both denominators are honest about their cost.** `scope-trace:`'s is a one-line query plus the
+filter above. `cross-component-contract:`'s is worse: review facts carry no boundary-crossing
+classification, so "reviews of boundary-crossing diffs" is a **hand audit** of `files_changed`. Stated
+rather than hidden — a threshold whose denominator is manual will be measured late or not at all.
+Both problems have the same root and the same fix: a free-text token cannot carry structure, which is
+the whole argument for `#548`'s `check:` field, and this is now the second independent defect that
+field would have prevented.
 
 These are *stopping rules stated in advance*, not predictions. The norm's own in-transition note says
 a control may be retired on a reasoned argument provided the argument states what evidence would have
@@ -289,7 +308,7 @@ settled it; these are that statement.
 - **Done when:**
   1. Acceptance criteria met and tests pass
   2. `/prawduct:critic` run and blocking findings resolved
-  3. Committed and chunk marked `[x]` in Status
+  3. Committed, and the chunk recorded in the Status **Context** paragraph — the checkboxes are a derived view and stay `[ ]` until the release; never hand-flip them
 
 ### Chunk 03: The code tail — a reachable gate message and two unpinned CLI behaviors (#536, #228)
 
@@ -329,7 +348,7 @@ settled it; these are that statement.
 - **Done when:**
   1. Acceptance criteria met and tests pass
   2. Committed, then `/prawduct:critic cumulative` run and blocking findings resolved
-  3. Chunk marked `[x]` in Status
+  3. Chunk recorded in the Status **Context** paragraph (never hand-flip the derived checkboxes)
 
 ## Early Feedback Milestone
 

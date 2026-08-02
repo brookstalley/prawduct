@@ -89,6 +89,29 @@ class TestScopeTraceToken:
             f"with `{self.TOKEN}` — the check's yield stops being countable."
         )
 
+    def test_the_pr_copy_targets_summary_not_a_title(self) -> None:
+        # The two protocols persist DIFFERENT finding shapes and this is the
+        # whole reason the PR bullet is worded differently. A Critic partial has
+        # `name` (consolidated to `title`); a PR findings record is
+        # {goal, severity, file, line, summary} with no title field at all, so
+        # "open the title with ..." there names something that never persists.
+        # Without this test, normalising the two bullets to match restores the
+        # original defect with the suite green.
+        bullet = next(
+            l for l in PR_PROTOCOL.read_text().splitlines() if self.TOKEN in l
+        )
+        assert "`summary`" in bullet, (
+            "the PR scope-trace bullet no longer targets `summary` — PR findings "
+            "persist no title field, so any other target is uncountable."
+        )
+        # Assert the INSTRUCTION's target, not the absence of a word: the bullet
+        # legitimately explains *why* (`findings here persist no title field`),
+        # so a naive "title must not appear" check fails on correct prose.
+        assert "open the title" not in bullet.lower(), (
+            "the PR scope-trace bullet instructs opening a *title* — PR findings "
+            "persist no title field, so that names something that never lands."
+        )
+
     def test_it_stays_out_of_the_chunk_mode_payload(self) -> None:
         # Deliberately NOT a chunk-mode check: it asks whether a capability should
         # exist and is consumed end-to-end, which needs the whole bundle to answer.

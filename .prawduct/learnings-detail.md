@@ -2209,3 +2209,27 @@ from a memory into a grep — and why the structured `check:` field is the bette
 Corollary for review economics: this is an argument for *mechanising*, not for more review rounds.
 Two of the three failures were caught by a reviewer, which is expensive; the first was caught by a
 test, which is free and repeats forever.
+
+## The RHETORICAL ROLE of a sentence can select its content over a fact you already hold
+
+`pr/SKILL.md`, one paragraph, written in a single pass:
+
+> The durable record of a review is the *fact*, and facts live in the shared evidence store …
+> **Known cost, accepted:** PR findings are therefore not queryable from the shared store …
+
+Both sentences are mine, two apart. The first is false for PR reviews (`evidence.KNOWN_KINDS` is
+`{review, resolution, disposition}`, all written by `critic-consolidate`; a PR review lands in a
+gitignored per-worktree ledger). The second states that correctly. I had been corrected on exactly
+this by a review round the same day.
+
+This is not forgetting, and no recall-based guard would have caught it — I *held* the fact, and
+demonstrated so in the same paragraph. What happened is that the two sentences had different jobs.
+The justification slot wanted a reason that made the decision sound principled, and "the durable
+record lives in the shared store" is a better-sounding reason than "it lives in a gitignored
+per-worktree ledger event." The caveat slot wanted a limitation, and there the true fact fit.
+
+The operational form: when writing a rationale, identify the **load-bearing clause** — the one the
+decision rests on — and check that one against the mechanism, separately from reading the paragraph
+for sense. Reading for sense will pass it, because it reads well; that is the property that selected
+it. Pairs with [[a-rule-you-must-recall-at-the-right-moment-is-its-weakest-form]]: that rule covers
+rules you fail to apply, this one covers facts you apply *away from* where they are needed.

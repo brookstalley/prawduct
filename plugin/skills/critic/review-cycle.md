@@ -283,7 +283,9 @@ After the goal-based review in `final` mode, run two additional passes that `chu
 
 Scan your findings against active learnings. If a change reintroduces a pattern `.prawduct/learnings.md` explicitly warns against, escalate severity — tolerating regression undoes the learning. Conversely, if learnings reference patterns the changed code handles correctly, no finding is needed.
 
-**Learnings are dated, not infallible — the latest one wins.** The file is append-only and rules accumulate, so two entries can disagree: a later rule may revoke an earlier one outright, narrow its scope, or soften it from a prohibition to a preference. When they conflict, the **later** rule governs, and a change conforming to it is not a regression no matter what the earlier rule says. Do not escalate against a superseded rule; if the supersession is implicit rather than stated, say so in the finding — an unstated revocation is itself worth surfacing, because the next reviewer will read the stale rule as live.
+**Learnings are ordered, not infallible — the later one wins.** Rules are undated `##` headings; the file is append-only, so **position is the ordering signal — later in the file is later in time**. Do not hunt for timestamps, and do not treat a date mentioned in a narrative body as the rule's own date. Two entries can disagree: a later rule may revoke an earlier one outright, narrow its scope, or soften it from a prohibition to a preference. When they conflict, the **later** rule governs, and a change conforming to it is not a regression no matter what the earlier rule says — do not escalate against a superseded rule.
+
+Two different outputs, so keep them apart. Against the *change*: no finding. Against the *learnings file*, when the supersession is implicit rather than stated: a **NOTE** naming both entries, because the stale rule reads as live to the next reviewer and to every product that inherits the file. The second is about the record, not the code, and it is the only case here that produces a finding at all.
 
 ### Backlog Reconciliation
 
