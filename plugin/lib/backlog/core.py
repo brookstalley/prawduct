@@ -88,6 +88,7 @@ def file_item(
     facets: dict[str, str] | None = None,
     automated: bool = False,
     worker: str | None = None,
+    refs: str | None = None,
 ) -> dict:
     """Create one item (AG2): ``title`` + ``body`` suffice; every facet optional.
 
@@ -105,6 +106,12 @@ def file_item(
         return error("validation", "title is required")
     if body is None:
         return error("validation", "body is required (may be empty text, not omitted)")
+    if refs is not None:
+        # Same value-level guard as `update` — a create is no less a write path
+        # into the block, and this is the one block field settable here.
+        bad = encode.check_block_value("refs", refs)
+        if bad:
+            return error("validation", bad, details={"field": "refs"})
 
     # Emit the §1 title shape (`area: summary`) before the create so the issue is
     # born standard-compliant (issue-standard §1). Idempotent; never fights a
@@ -132,7 +139,7 @@ def file_item(
         if labels:
             prov = provision.ensure_labels(transport, owner, repo, labels)
             warnings.extend(prov.warnings)
-        full_body = _body_with_block(body, automated=automated, worker=worker)
+        full_body = _body_with_block(body, automated=automated, worker=worker, refs=refs)
         issue = transport.create_issue(
             owner, repo, title=title, body=full_body, labels=labels
         )
@@ -155,16 +162,29 @@ def file_item(
     return result
 
 
-def _body_with_block(body: str, *, automated: bool = False, worker: str | None = None) -> str:
+def _body_with_block(
+    body: str,
+    *,
+    automated: bool = False,
+    worker: str | None = None,
+    refs: str | None = None,
+) -> str:
     """Append a minimal ``prawduct:`` block (``v: 1``) to the issue body.
 
     An unattended create stamps ``automated: true`` + a ``worker`` marker (CC4/
-    SEC-6) so a background sweep is not misattributed to the human."""
+    SEC-6) so a background sweep is not misattributed to the human.
+
+    ``refs`` is the one editorial field settable at birth. Without it a natively
+    filed item could never carry a ``refs:`` at all: the field is block-resident,
+    and before this the only writer was the importer — so post-cutover items were
+    structurally incapable of the link the skill's triage step asks for."""
     fields = {"v": "1"}
     if automated:
         fields["automated"] = "true"
         if worker:
             fields["worker"] = worker
+    if refs:
+        fields["refs"] = refs
     # The body↔block framing is shared with the importer via encode.compose_body,
     # so the two fresh-block writers can never diverge on separator/newline.
     return encode.compose_body(body, fields)
@@ -503,33 +523,78 @@ def set_status(
 _UPDATE_DIRECT: tuple[str, ...] = ("title", "body")
 _UPDATE_FACETS: tuple[str, ...] = ("stage", "kind", "area", "effort", "impact", "source")
 
+# The block-authoritative fields `update` may write — editorial metadata whose
+# value is a human/agent judgment about the item and which GitHub has no native
+# slot for. Before these existed the block was **write-once at import**: the only
+# writers were the importer and the three ops that own a field apiece, so the
+# skill's own instructions to set `refs:` / `closed-by:` named writes no exposed
+# op could perform, and `--body` looked like it worked because
+# `_body_update_preserving_block` re-appends the OLD block by design.
+#
+# Deliberately NOT writable, each for a different reason — this list is the
+# extension of the SEC-2 guard, not a hole in it:
+#   `added`                     native `created_at` already answers it, unforgeably;
+#                               a creation date is never updated.
+#   `id_aliases` `v`            identity and schema version — permanent-alias loss
+#                               is the MG2 footgun the block exists to prevent.
+#   `original_title/_body`      write-once migration provenance (MG6).
+#   `automated` `worker`        the unattended-actor marker; caller-settable
+#                               attribution is exactly the SEC-6 forgery it guards.
+#   `provenance`                self-asserted, untrusted-until-triaged (Security §5).
+#   `claimed_at` `related`      owned by claim/unclaim, link/unlink and merge —
+#   `superseded_by`             a bare field write would bypass their invariants
+#                               (atomic take-and-verify, edge symmetry, redirect).
+#   `verified` `attachments`    structured values, not free text; no flag shape yet.
+#
+# `closed-by` is HYPHENATED because that is what 149 live items spell and zero
+# spell `closed_by`; the data-model's prose is what gets corrected, not the data.
+# An empty value CLEARS a field — an expired `revisit:` has to be removable — so
+# these are valued flags, never booleans.
+_UPDATE_BLOCK: tuple[str, ...] = ("refs", "revisit", "closed-by")
+
 
 def update_item(
     transport: Transport,
     *,
     id_raw: str,
     fields: dict,
+    mark_reviewed: bool = False,
     expected_updated_at: str | None = None,
     default_owner: str | None = None,
     default_repo: tuple[str, str] | None = None,
+    now: datetime | None = None,
 ) -> dict:
     """Field-wise edit with optimistic CAS (CC2) and a mass-assignment guard (SEC-2).
 
     Writes **only** the documented item fields the caller named — ``title``,
-    ``body``, and the soft-enum facets (``stage``/``kind``/``area``/``effort``/
-    ``impact``/``source``). ``status`` goes through set-status, ``assignee`` through
-    claim; any other key — a native/protected field (``node_id``, ``number``,
-    ``state``, ``history``), an ``automated:`` marker, foreign attribution — is
-    **rejected**, never written from request input (attribution comes only from the
-    API identity). When ``expected_updated_at`` is supplied, a live ``updated_at``
-    mismatch returns a **retryable ``conflict``** (the lost-update guard) so the
-    caller re-reads and retries.
+    ``body``, the soft-enum facets (``stage``/``kind``/``area``/``effort``/
+    ``impact``/``source``), and the editorial block fields in :data:`_UPDATE_BLOCK`
+    (``refs``/``revisit``/``closed-by``). ``status`` goes through set-status,
+    ``assignee`` through claim; any other key — a native/protected field
+    (``node_id``, ``number``, ``state``, ``history``), an ``automated:`` marker,
+    foreign attribution — is **rejected**, never written from request input
+    (attribution comes only from the API identity). When ``expected_updated_at``
+    is supplied, a live ``updated_at`` mismatch returns a **retryable
+    ``conflict``** (the lost-update guard) so the caller re-reads and retries.
+
+    ``mark_reviewed`` stamps the block's ``reviewed:`` with **today**, and is the
+    only way to set it. It is deliberately a boolean rather than a date the caller
+    supplies, and deliberately not implied by any other edit:
+
+    - *Not a date* — "someone re-read this and it still holds" is only assertable
+      about **now**. A backdated re-confirmation is unfalsifiable, so accepting one
+      would add forgery surface and buy nothing.
+    - *Not automatic* — stamping it on every touch would make it a self-asserted
+      copy of native ``updated_at``, which is server-authoritative and already
+      answers "was this touched". The value of a separate field is precisely that
+      a label fix moves ``updated_at`` **without** claiming anyone re-read the item;
+      collapsing the two would delete the only signal the staleness sweep wants.
     """
-    if not fields:
+    if not fields and not mark_reviewed:
         return error("validation", "update requires at least one field to change")
     # SEC-2 — reject any field off the allowlist. Reject (not silently ignore) so a
     # mass-assignment attempt or a caller typo is surfaced, never quietly dropped.
-    allowed = set(_UPDATE_DIRECT) | set(_UPDATE_FACETS)
+    allowed = set(_UPDATE_DIRECT) | set(_UPDATE_FACETS) | set(_UPDATE_BLOCK)
     rejected = sorted(key for key in fields if key not in allowed)
     if rejected:
         return error(
@@ -537,6 +602,15 @@ def update_item(
             f"update cannot write field(s) {rejected}; writable fields are {sorted(allowed)}",
             details={"rejected": rejected},
         )
+    # The allowlist above guards which KEYS a caller may name; this guards what
+    # their VALUES expand into. Block values are free text and land in a
+    # line-based format, so without this a legal key smuggles forbidden siblings
+    # (`--refs $'a\nautomated: true'`) straight past the allowlist that just ran.
+    for key in _UPDATE_BLOCK:
+        if key in fields:
+            bad = encode.check_block_value(key, fields[key])
+            if bad:
+                return error("validation", bad, details={"field": key})
 
     warnings: list[str] = []
     try:
@@ -562,8 +636,27 @@ def update_item(
         # preserves the existing prawduct: block (block-authoritative fields live
         # only in the body — Data Model §2); other direct fields pass through.
         patch: dict = {k: fields[k] for k in _UPDATE_DIRECT if k in fields and k != "body"}
-        if "body" in fields:
-            patch["body"] = _body_update_preserving_block(issue.get("body") or "", fields["body"])
+        old_body = issue.get("body") or ""
+        # Block writes compose ON TOP of the body edit, in this order, so `--body`
+        # and a block flag in the same call cannot clobber each other: the body
+        # edit replaces the human text and carries the existing block forward
+        # untouched, then each named field is upserted into that carried block.
+        # Reversed, the body edit would discard the block writes it just made.
+        new_body = (
+            _body_update_preserving_block(old_body, fields["body"])
+            if "body" in fields
+            else old_body
+        )
+        block_writes = [k for k in _UPDATE_BLOCK if k in fields]
+        for key in block_writes:
+            # Empty value → clear the field outright rather than write an empty
+            # one, so an expired `revisit:` can be removed and not just blanked.
+            new_body = encode.upsert_block_field(new_body, key, fields[key] or None)
+        if mark_reviewed:
+            stamp = (now or datetime.now(timezone.utc)).date().isoformat()
+            new_body = encode.upsert_block_field(new_body, "reviewed", stamp)
+        if "body" in fields or block_writes or mark_reviewed:
+            patch["body"] = new_body
         if patch:
             issue = transport.update_issue(nid.owner, nid.repo, nid.number, fields=patch)
 

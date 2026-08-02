@@ -287,6 +287,40 @@ def format_list(items: list[str]) -> str:
     return "[" + ", ".join(items) + "]"
 
 
+def check_block_value(key: str, value) -> str | None:
+    """Reject a block field value that would break the line-based block format.
+
+    The block is ``key: value``, one per line (§2), and :func:`parse_block` reads
+    **every** line inside the fence as a field. So a value carrying a newline does
+    not store a multi-line value — it *injects sibling fields*. Concretely,
+    ``--refs $'a\\nautomated: true'`` writes a forged ``automated:`` marker (the
+    SEC-6 unattended-actor attribution) that no allowlist catches, because an
+    allowlist guards **the keys a caller named**, not the lines those keys' values
+    expand into. The same reach lands ``worker``, ``provenance`` and
+    ``id_aliases`` — the MG2 permanent-alias loss the block exists to prevent.
+    A value that starts a line with a backtick fence closes the block early and
+    corrupts the body/block split, so even a benign multi-line paste is a
+    correctness bug; barring the newline bars that too, since a fence can only
+    close the block from the start of a line.
+
+    Free text is **rejected, not escaped.** :func:`format_text` exists and would
+    make any value safe, but it JSON-quotes the value on disk, and the 149 live
+    items spelling ``closed-by: fix/branch`` bare are the format of record —
+    quoting new writes would fork one field into two spellings every reader would
+    then have to guess between. Rejecting keeps one spelling and loses nothing a
+    single-line field wanted to say.
+
+    Returns an error message, or ``None`` when the value is legal.
+    """
+    text = value if isinstance(value, str) else str(value)
+    if "\n" in text or "\r" in text:
+        return (
+            f"{key} must be a single line — a newline in a block value injects "
+            "sibling fields instead of storing a multi-line value"
+        )
+    return None
+
+
 def format_text(text: str) -> str:
     """Render arbitrary (possibly multi-line) text as a single-line block value.
 
@@ -585,5 +619,24 @@ def decode_item(issue: dict, *, canonical_id: str | None = None) -> tuple[dict, 
         "id_aliases": block.id_aliases(),
         "superseded_by": block.superseded_by(),
         "block_version": block.version(),
+        # The editorial block fields, projected so a write is confirmable from the
+        # SAME response that performed it. Without these, `update --refs X --json`
+        # returns an item with no `refs` key and the caller has to re-read and
+        # re-parse the body to learn whether anything happened — which is exactly
+        # the blindness that let `--body` "succeed" while changing nothing for the
+        # whole cutover. Additive per the api-contract norm (`--json` readers
+        # tolerate unknown keys); no consumer pins this dict's key set.
+        #
+        # NOTE THE TWO SPELLINGS, which are both deliberate and must not be
+        # "harmonised": the BLOCK key is `closed-by` (hyphen) because that is what
+        # 149 live items carry and renaming it would orphan every one, while the
+        # ITEM key is `closed_by` (underscore) because this projection is snake_case
+        # throughout (`id_aliases`, `superseded_by`, `claimed_at`) and matches the
+        # data model's §1.1 field name. The hyphen→underscore hop happens here and
+        # only here.
+        "refs": block.get("refs") or None,
+        "revisit": block.get("revisit") or None,
+        "closed_by": block.get("closed-by") or None,
+        "reviewed": block.get("reviewed") or None,
     }
     return item, warnings

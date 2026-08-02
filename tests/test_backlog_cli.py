@@ -399,6 +399,60 @@ class TestUpdateCli:
         assert code == 2
 
 
+class TestBlockFieldFlagsCli:
+    """The block-field flags reach `core` through the front (#550).
+
+    `core` is covered directly in test_backlog_core.py; what these pin is the
+    wiring — that each flag is *parsed* rather than rejected as unknown, since a
+    flag missing from the `valued`/`boolean` sets is exactly how these writes were
+    unreachable in the first place.
+    """
+
+    def _body_of(self, fake, item_id):
+        owner_repo, number = item_id.split("#")
+        owner, repo = owner_repo.split("/")
+        return fake.get_issue(owner, repo, int(number))["body"]
+
+    @pytest.mark.parametrize("flag,value", [
+        ("--refs", "documentation/x.md"),
+        ("--revisit", "2027-01-01"),
+        ("--closed-by", "fix/some-branch"),
+    ])
+    def test_each_valued_block_flag_parses_and_writes(self, capsys, flag, value):
+        fake = FakeGitHub()
+        item_id = _file(fake, capsys)
+        code, out, err = _run(["update", item_id, flag, value, "--json"], fake, capsys)
+        assert code == 0
+        assert f"{flag[2:]}: {value}" in self._body_of(fake, item_id)
+
+    def test_reviewed_is_a_boolean_flag(self, capsys):
+        fake = FakeGitHub()
+        item_id = _file(fake, capsys)
+        code, out, err = _run(["update", item_id, "--reviewed", "--json"], fake, capsys)
+        assert code == 0
+        assert "reviewed: " in self._body_of(fake, item_id)
+
+    def test_reviewed_rejects_a_value(self, capsys):
+        # Presence-only: a caller-supplied date is refused rather than silently
+        # honoured, so the field can only ever assert "re-confirmed now".
+        fake = FakeGitHub()
+        item_id = _file(fake, capsys)
+        code, out, err = _run(
+            ["update", item_id, "--reviewed=2020-01-01", "--json"], fake, capsys
+        )
+        assert code == 2
+
+    def test_file_refs_flag_parses(self, capsys):
+        fake = FakeGitHub()
+        code, out, err = _run(
+            ["file", "--repo", REPO, "--title", "t", "--body", "b",
+             "--refs", "documentation/x.md", "--json"],
+            fake, capsys,
+        )
+        assert code == 0
+        assert "refs: documentation/x.md" in self._body_of(fake, json.loads(out)["data"]["id"])
+
+
 class TestCommentCli:
     def test_comment_json(self, capsys):
         fake = FakeGitHub()

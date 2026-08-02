@@ -50,11 +50,15 @@ _EXIT_CLASS: dict[str, int] = {
 _HELP = (
     "usage: prawduct-hook backlog <op> [flags]\n"
     "  file     --repo owner/repo --title T --body B "
-    "[--stage S] [--kind K] [--area A] [--effort E] [--impact I] [--source SRC]\n"
+    "[--stage S] [--kind K] [--area A] [--effort E] [--impact I] [--source SRC] [--refs R]\n"
     "  get      <id> [--repo owner/repo]\n"
     "  status   <id> --to submitted|open|in-progress|shipped|dropped [--repo owner/repo]\n"
     "  update   <id> [--title T] [--body B] [--stage S] [--kind K] [--area A] "
-    "[--effort E] [--impact I] [--source SRC] [--if-updated-at TS] [--repo owner/repo]\n"
+    "[--effort E] [--impact I] [--source SRC] [--refs R] [--revisit R] "
+    "[--closed-by REF] [--reviewed] [--if-updated-at TS] [--repo owner/repo]\n"
+    "           --refs/--revisit/--closed-by edit the prawduct: block; an empty "
+    "value clears the field. --reviewed stamps today (explicit re-confirmation; "
+    "never implied by another edit)\n"
     "  comment  <id> --body B [--repo owner/repo]\n"
     "  list     --repo owner/repo [--status S] [--stage S] [--kind K] [--area A] "
     "[--effort E] [--impact I] [--source SRC] [--assignee A|none|*] "
@@ -194,7 +198,10 @@ def run(project_dir, argv: list[str], *, transport=None) -> int:
 def _run_file(rest: list[str], transport):
     flags, positionals, err = _parse_flags(
         rest,
-        valued={"repo", "title", "body", "stage", "kind", "area", "effort", "impact", "source"},
+        valued={
+            "repo", "title", "body", "stage", "kind", "area",
+            "effort", "impact", "source", "refs",
+        },
     )
     if err:
         return core.error("validation", err)
@@ -225,6 +232,7 @@ def _run_file(rest: list[str], transport):
         facets=facets,
         automated=automated,
         worker=context.worker_marker() if automated else None,
+        refs=flags.get("refs"),
     )
 
 
@@ -280,7 +288,9 @@ def _run_update(rest: list[str], transport):
         valued={
             "repo", "title", "body", "stage", "kind", "area",
             "effort", "impact", "source", "if-updated-at",
+            "refs", "revisit", "closed-by",
         },
+        boolean={"reviewed"},
     )
     if err:
         return core.error("validation", err)
@@ -288,7 +298,10 @@ def _run_update(rest: list[str], transport):
         return core.error("validation", "update requires an <id>")
     fields = {
         key: flags[key]
-        for key in ("title", "body", "stage", "kind", "area", "effort", "impact", "source")
+        for key in (
+            "title", "body", "stage", "kind", "area", "effort", "impact", "source",
+            "refs", "revisit", "closed-by",
+        )
         if key in flags
     }
     default_owner, default_repo, err = _repo_defaults(flags)
@@ -299,6 +312,7 @@ def _run_update(rest: list[str], transport):
         transport,
         id_raw=positionals[0],
         fields=fields,
+        mark_reviewed=bool(flags.get("reviewed")),
         expected_updated_at=flags.get("if-updated-at"),
         default_owner=default_owner,
         default_repo=default_repo,

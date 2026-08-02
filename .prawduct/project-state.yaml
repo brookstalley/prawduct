@@ -371,7 +371,7 @@ views_enabled: true
 # release-plan-v3.2.3.md. upgrade-discovery is complete; its plan is RETAINED
 # rather than deleted only because the develop->main release regenerates Status
 # for every release-pending plan.
-active_build_plan: artifacts/build-plan-v3.2.0-golive.md
+active_build_plan: artifacts/build-plan-backlog-block-field-writes.md
 
 # =============================================================================
 # BUILD-PLAN REF ROOT (opt-in)
