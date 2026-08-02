@@ -6,6 +6,30 @@ No size constraint on this file — it's the deep reference, consulted via `/lea
 
 ---
 
+## A sample you sliced for DISPLAY is not the set — if the command that formed your impression carried a `[:8]` or a `head`, re-run it unsliced before writing "all/every/entirely", because the slice is invisible in the output you read back. A RETRACTION is where this bites hardest
+
+A Critic warning retracted a claim I had measured in an unrepresentative scratch repo. Fixing it, I
+wrote the *replacement* at three sites: "26 unjudged entries, all under `.prawduct/`". The verify
+round read the record I had cited — 16 under `.prawduct/`, 10 unprotected prose, held out by a
+different branch of the predicate. The conclusion survived; the characterisation misled the exact
+reader the passage addressed, someone weighing whether to relax the metadata carve-out and now told
+it was the whole story rather than 62% of it.
+
+The false "all" was not carelessness in the sentence. It came from a diagnostic I had run earlier
+whose output I sliced — `print(... [:8])` — to keep the terminal readable. Eight `.prawduct/` paths
+were visible and eighteen more were not, some of them different in kind. Nothing in the output says
+"18 omitted"; the slice erases itself, so the impression it leaves is indistinguishable from having
+seen the whole set.
+
+Why this is not covered by the existing rule (`learnings.md`: *anything one command could check is a
+CLAIM… a CORRECTION is itself a completeness claim*): that rule was quoted **in the same commit**
+that carried the false replacement, and did not prevent it. It already records that quoting the
+parent rule demonstrably does not prevent recurrence. So the useful addition is not another
+exhortation to be careful but a mechanical trigger with a visible tell — the `[:8]` or `head` in
+your own scrollback — and the observation that a retraction is the highest-risk moment, because the
+author replacing a false claim feels most careful and is therefore least likely to re-open the
+artifact being cited.
+
 ## An exception APPENDED to standing advice still leads with the advice — so before appending, ask whether the exception can cover the WHOLE set, and if it can, it must be able to REPLACE the lead sentence rather than follow it
 
 `#536` was filed because a superseded blocker could only be cleared by a spanning review, while the
