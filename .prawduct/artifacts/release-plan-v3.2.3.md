@@ -36,6 +36,7 @@ than left standing, because a false premise in a version decision is worse than 
 | record-mechanization | ships | |
 | upgrade-discovery | ships | |
 | junit-leaf-counting | ships | |
+| install-reference-drift | ships | |
 
 `K withheld = 0` → **whole-develop promotion** (runbook Phase 2 steps 14–20), not the pruned path.
 The v3.1.2 pruning does not carry forward: v3.2.0 promoted whole-develop and re-established
@@ -66,9 +67,24 @@ releasable: no release-pending scopes — nothing to classify
   (228 change-log entries scanned, 207 tagged, 6 scope(s) already tagged release=v3.2.3).
 ```
 
-Re-measured again when `junit-leaf-counting` joined as the sixth scope — the counts above are the
-current ones. A measurement quoted in a plan goes stale every time the release grows, so treat the
-block as a snapshot with a date, not a standing fact.
+Re-measured again when `junit-leaf-counting` joined as the sixth scope. **The counts above are from
+that measurement and are now two scopes stale**, in two different ways:
+
+- `install-reference-drift` joined as the seventh on 2026-08-02 and is classified in the table
+  above. The block was deliberately not re-run for it — no row it could add names a blocker, and the
+  vacuity argument below is what actually carries the conclusion.
+- **`backlog-burndown` landed on develop the same day (PR #545) and is NOT classified.**
+  `check-releasability --release v3.2.3` therefore returns **`not-releasable`** right now:
+  *"ERROR: unclassified scope(s) … backlog-burndown"*. That is real and must be cleared before the
+  release cuts — it is #545's bookkeeping debt, deliberately not absorbed here, because classifying
+  another branch's scope from this one guesses at a disposition its author has not stated.
+
+So the table is seven rows against eight release-pending scopes, and `K withheld = 0` describes the
+seven that are classified, not the corpus. This is the *third* time "the counts above are the
+current ones" has had to be walked back — which is the point the paragraph already makes, now with
+enough instances to stop treating it as bad luck: a measurement quoted in a plan goes stale every
+time the release grows. Treat the block as a snapshot with a date, and treat `check-releasability`
+as the live answer.
 
 Per `cut-and-publish-a-plugin-release.md` step 0, `no release-pending scopes — nothing to classify`
 takes the **same whole-develop promotion path** as `K withheld = 0`. The reasoning above still holds
@@ -142,6 +158,20 @@ recorded as 2, worsening with depth. Counts now come from leaf `<testcase>` elem
 attribute fallback decided **per suite**. The per-suite granularity is load-bearing: deciding once
 per ingest made every summary-only suite contribute zero the moment any other carried a leaf, and
 since `failed` drives `tests_are_current`, that was a false *green* — caught in review, not shipped.
+
+**`install-reference-drift`** (#148). A repo can commit an install reference pinned to a fixed
+release ref, or with `autoUpdate: false`, and nothing surfaces it — `/prawduct:doctor` Health Check
+#1 asserts the contract but is operator-invoked, and nobody health-checks a repo that appears to be
+working. An ambient session-start advisory now fires on the drift, cause-agnostic and self-resolving
+from the committed file. **The consumer-visible correction is what the drift actually costs:** the
+committed reference and the machine-level `known_marketplaces.json` are *decoupled* — a repo pinned
+at `v2.1.5` ran a clean v3.2.2 session — so the drift is inert on a configured machine and strands
+the *next clone*, which is Health Check #1's own rationale. The PR's original framing (a
+CLI-writes-down / repo-re-seeds loop) was falsified by testing and corrected across all seven sites
+that carried it, including the operator-facing summary line. Review also closed a hole the two-field
+check could not see at all: `enabledPlugins` — governance switched off entirely — now drifts too, and
+HC#1 was widened to assert every field the advisory can fire on, so its recommended action can
+actually repair what it reports.
 
 ## OWNER RELEASE GATE — blocking, held at the Phase 1 checkpoint
 

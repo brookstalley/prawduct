@@ -1581,6 +1581,147 @@ dated performance audit) moved to `.prawduct/archive/` — `norm_probes` globs a
 completion by *scope* name, so a zero filename count is a weak signal, and establishing their real
 status is what Chunk 02's record-lint is for.
 
+## 2026-07-30: A pinned install reference now announces itself instead of running silently
+
+<!-- prawduct: type=feature | scope=install-reference-drift | release=v3.2.3 | status=shipped -->
+
+**Why:** a repo whose `.claude/settings.json` commits a pin of `extraKnownMarketplaces.prawduct` to
+a fixed release ref (or `autoUpdate: false`) hands that state to every fresh clone of it, and any
+clone that seeds from it stops receiving framework versions. Nothing about that state is loud: the
+repo does not fail, the gates all pass, and the SessionStart banner faithfully reports a version
+that simply never moves. `/prawduct:doctor` Health Check #1 already asserts exactly this contract —
+but it is operator-invoked, per repo, and nobody health-checks a repo that appears to be working.
+**The gap was the trigger, not the assertion.**
+
+Observed in the field on a machine with 15 governed repos (#120): 11 carried
+`ref: v2.1.5, autoUpdate: false`, and the machine had been stranded across seven releases —
+including one whose headline fix was a review-losing Critic defect. Five of those repos had the
+pinned entry **on disk but in no commit**, which rules prawduct out as the writer: it only ever
+writes `ref: "main"`, and writes it to be committed.
+
+**The first diagnosis of *who* wrote it was wrong, and testing is what caught it.** The original
+entry named the Claude Code CLI, propagating a machine-level pin down into each repo, which a repo
+then re-seeded the machine from on open — a loop, offered as the reason hand-repairing either end
+alone reverts. **That loop does not exist.** The CLI does not write the machine pin down into
+repos, and a stale repo entry does not re-seed the machine; the writer in the reported case was the
+reporter's own session manager, outside this ecosystem entirely. Recorded rather than quietly
+replaced because the falsified mechanism is what #120 and this PR's own description asserted in
+public, so a reader arriving from either needs the correction to be findable — and because the
+inference *felt* like evidence (five uncommitted entries genuinely do rule out prawduct; they say
+nothing about which other tool wrote them). **Nothing about what the probe detects changes** — a
+repo can carry a stale committed reference indefinitely with nothing surfacing it, which was
+verified directly after the machine was repaired.
+
+**What landed.** `migrate_plugin.install_reference_drift()` reports how a present reference departs
+from the contract, reading `INSTALL_REFERENCE` itself rather than transcribing it — the same
+single-source property `core.gitignore_contract_drift` gives the `.gitignore` contract, and a
+test repoints the constant to prove the check follows it. On top of it, an ambient
+`install-reference` / `contract-drift` probe fires at session start in any repo whose reference has
+drifted, cause-agnostic (state, not event) and self-resolving from the committed file itself, so a
+teammate's fix clears it for every clone on next sync.
+
+**Scope held deliberately narrow — in one specific way, and review found it had been read as two.**
+The probe is inert when there is **no** prawduct entry at all. Absence is doctor's Health Check #1
+finding; a probe firing on it would nag every repo that has not onboarded. Firing is one advisory
+naming every drifted field, never one per field.
+
+**The check now walks the contract instead of naming two fields of it.** As submitted it compared
+`source.ref` and `autoUpdate` while its docstring claimed it "reads `INSTALL_REFERENCE` itself" with
+parity to `core.gitignore_contract_drift`. That claim was false in the way that matters:
+`_contract_diff` iterates its whole entry set, this transcribed two paths — so `enabledPlugins`
+(**governance switched off entirely**, strictly worse than a version pin) and a repointed
+`source.repo` were both completely silent. It now walks every leaf of the constant, so a field added
+to the contract is compared with no edit here, and a property test corrupts each leaf in turn and
+requires exactly its own drift back. That the *single-source claim itself* was the thing that had
+gone stale is a pointed echo of this entry's other correction: the same "already believed once"
+failure, in the paragraph asserting the code was immune to it.
+
+Covering `enabledPlugins` then made the fixed summary clause wrong for the case it added —
+"stranded at that reference" is not what a governance-off clone suffers — so the consequence branches:
+stranding for a version drift, "runs with prawduct governance switched off" otherwise, stranding
+winning when both. Caught by rendering all four cases, the same way evidence line 2 was.
+
+**Doctor Health Check #1 widened, because the advisory's only action could not fix what it
+reported.** HC#1 asserted `enabledPlugins` and `ref` — never `autoUpdate`. So an `autoUpdate: false`
+repo fired this advisory every session, and running its sole recommended action reported *healthy*.
+The stated rationale ("doctor already asserts this exact contract") was false in both directions at
+once. HC#1 now asserts the whole `INSTALL_REFERENCE` contract and says why it must: any field the
+ambient probe can fire on and the health check cannot repair is a nudge that dead-ends the person
+who follows it.
+
+**`priority="info"` is now a recorded decision rather than an unexplained default.** `info` is
+excluded from `briefing._RELAY_PRIORITIES`, so this never reaches the person-facing relay — which
+looks wrong for a change whose whole argument is that the condition is silent to people. It is
+right, and the corrected mechanism is what settles it: the drift costs the current machine nothing,
+it is self-resolving, and it re-fires every session until someone commits the fix. That is precisely
+the profile the relay exclusion exists for. Recorded with the condition that would reverse it.
+
+**Wiring is tested now.** `test_register_runs_in_the_roster` called `irp.register()` directly, so
+deleting both `probe_families.register_all()` lines left the suite green and the probe dead in
+production — the exact incident `probe_families.py`'s own docstring records. Mutation-confirmed
+before and after, and renamed: "runs in the roster" claimed coverage it did not have.
+
+**The headline/footnote failure happened a third time — inside the fix for the second one.** Growing
+the check from two fields to five left two sites still describing a two-field contract: the module's
+opening summary (every *deeper* docstring was corrected; the first paragraph was not) and evidence
+line 1, which named `extraKnownMarketplaces.prawduct` as the mismatched thing — so a repo drifting
+only on `enabledPlugins`, a top-level sibling, was told a subtree that matches exactly does not.
+Both were caught by the verify pass, and both are the same error this entry opens by recording.
+
+Three instances, same shape, one change: correct the claim where it was noticed, leave it standing
+where it was merely *implied* by a summary. Worth naming as a rule rather than a third apology — **a
+correction is a search, not an edit.** The specific tell is that summaries and headlines are written
+last and read first, so they are simultaneously the least likely to be revisited and the most likely
+to be believed. The generalized fix here is structural, not vigilance: the opening paragraph no
+longer *defines* the contract by listing it — `INSTALL_REFERENCE` is named as the authority and the
+illustrations that follow are marked as illustrations — and evidence line 1 names the file rather
+than a subtree. Neither can go stale when the contract grows again. (Evidence could not simply
+branch per drift-set: it is hashed into the advisory id, so it must stay drift-set-independent —
+`test_evidence_is_drift_set_independent` pins that.)
+
+**A fourth instance, and a fifth, both caught by the verify passes.** The "Why this needs an ambient
+nudge" paragraph still read "a pinned repo … runs an old framework forever" — the original falsified
+claim, in the one paragraph nobody had revisited. Found by finally doing what the rule above says:
+grepping the claim's whole vocabulary across every file rather than re-reading the diff, which also
+proved it was the last live instance. And the opener asserting the module "never enumerates" the
+contract was *immediately followed by an enumeration* of four of its five leaves — the fix for
+instance three contradicting itself in its own sentence. Recorded because the count is the finding:
+five instances of one pattern in one change is not carelessness repeated five times, it is evidence
+that catching this by reading does not work, and that the durable fixes are the structural ones
+(point at the source of truth; mark illustrations as illustrations; pin the corrected wording with a
+mutation-checked test — which evidence line 1 initially was not, one round after line 3 was).
+
+**Honest limit, carried in the advisory's own evidence.** The file that actually binds plugin
+resolution is `~/.claude/plugins/known_marketplaces.json`, which is machine-level and outside
+`${CLAUDE_PROJECT_DIR}` — the boundary the hook runtime does not cross (design §2). The committed
+reference and that file are **decoupled**, measured rather than assumed: a repo still reading
+`ref: v2.1.5` ran a clean v3.2.2 session, because the configured machine resolved the plugin and
+the repo entry never got a vote.
+
+So the limit is a **false negative, not a coupling**. A stranded machine whose repos all carry a
+correct reference produces no advisory here — the stranding lives somewhere this probe cannot see.
+What a drifted committed reference does cost is the *next* clone: it is what a fresh checkout or a
+new machine seeds from, which is `/prawduct:doctor` Health Check #1's own rationale ("contributors
+won't get governance on clone"). The advisory therefore states the clone cost and routes to doctor,
+which is model-side and can read the machine-level file — two complementary checks rather than two
+ends of one loop.
+
+**The operator-facing headline was restated to match, not just the footnotes.** The advisory's
+one-line summary read "this repo will not receive framework updates" — the loudest instance of the
+falsified premise, and false on precisely the machine most operators would read it on. It now reads
+"a fresh clone of this repo would be stranded at that reference", and a test pins the old wording
+*out*. Correcting a module's explanation while leaving its headline asserting the disproved version
+would have shipped a file that contradicts itself in paragraph four.
+
+**A second evidence line was carrying it too, and only *running* the probe found that.** Evidence 2
+read "the repo keeps running an old framework" — sitting directly above the corrected evidence 3,
+which says the committed entry is inert on a configured machine. Two adjacent lines of the same
+advisory contradicting each other. Four passes of reading the diff did not surface it; rendering the
+advisory the way an operator receives it surfaced it immediately, because the contradiction only
+exists in the assembled output and never in any one hunk. The methodology already says to launch it
+and inspect the output rather than trust review — this is the cheapest possible instance of why, on
+a change whose entire subject was a claim that had already been believed once and was false.
+
 ## 2026-07-29: A self-contradicting security model, a tightened FILE bar, and a coverage relaxation that was built and reverted
 
 <!-- prawduct: type=fix | scope=record-mechanization | release=v3.2.2 | status=shipped -->
