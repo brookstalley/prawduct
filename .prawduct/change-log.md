@@ -3,6 +3,72 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-08-02: the gate named the one route that could not clear the finding it was naming
+
+<!-- prawduct: type=fix | scope=critic-burndown | chunks=03 -->
+
+**`#536` — a BLOCKING finding that is *superseded* rather than resolved is never revisited, and the
+gate message prescribed the only route guaranteed not to reach it.** Each `verify-resolutions` pass
+anchors to the newest prior review fact, so a blocker left behind on an earlier round is never named
+again by any later pass. It sits in `unresolved_blocking` permanently — while the message says *fix
+them, then run verify-resolutions*, which is exactly the route that cannot clear it. Observed in the
+field on `fix/backlog-burndown` Chunk 01: five subsequent verify passes ran and none mentioned the
+blocker.
+
+**The state was never actually stuck; only the advice was.** `coverage_verdict`'s first search runs
+over blocker-free facts, so a later `cumulative` spanning base→HEAD with nothing blocking supplies a
+clean path and the gate passes. A `cumulative-final` chunk therefore self-heals on its own. The
+defect was that **nothing said so** — so this change adds a sentence and moves no verdict. The exit
+code, the fail-closed posture, and what the gate *decides* are all untouched; a superseded blocker
+blocks exactly as hard as any other.
+
+**The predicate lives with the data that produces it, not at either message.** `coverage_verdict`
+now annotates every unresolved entry with `superseded`, computed by `_verify_anchor_id`. Two choices
+there are load-bearing, and both directions of error are wrong advice:
+
+- **Appended order, not the derived findings cache.** The dispatcher finds its anchor through that
+  cache's `fact_id` pointer — but no gate may read the cache (D7), and it is per-worktree while facts
+  are the shared truth. The store is append-only and `read_facts` preserves that order, so the last
+  review fact is the newest one. A regression test pins the distinction from the tempting shortcut:
+  the newest fact can cover an *earlier* interval, so reading path position instead of store order
+  marks the wrong finding.
+- **Restricted to the composed path, not the whole store.** The evidence store is shared by every
+  worktree of the clone, so a sibling worktree's newer review would otherwise make a perfectly
+  reachable finding look stranded. Path facts are on this interval's lineage by construction.
+
+**Both blocking messages render one shared wording** (`gates.superseded_blocker_lines`) — the PR
+gate's and the Stop hook's — because both otherwise prescribed verify-resolutions alone, and wording
+duplicated at two sites is wording that drifts at one. Each call site owns only its indentation. A
+**third** candidate site was found by the sweep and deliberately left alone: the session-start
+advisory in `briefing.py` reports the *count* and names no route at all, by explicit design ("advisory
+tone, not the full remedy text"), so it carries no wrong advice to correct.
+
+**The prose that restated the remedy was corrected in the same pass**, since a fix that leaves a
+second artifact asserting the old claim has only moved the defect: `skills/pr/SKILL.md`,
+`skills/critic/review-cycle.md`, and `check_cumulative_critic`'s own docstring each named
+verify-resolutions as *the* answer to `blocking` and now carry the superseded exception.
+
+**`#228` — two behaviors that were CLI-verified by hand during discodon-upstream-defects and never
+pinned.** Neither behavior changed; the gap was coverage, and changing either was explicitly out of
+scope. `cmd_verify_chunk_refs` keeps `cannot-verify:` (the Goal-2 deliverable check could not *run*)
+distinct from `missing-ref:` (a named deliverable is absent) — asserted as **mutual exclusion**, each
+message carrying its own prefix and not the other's, because merely asserting the two strings differ
+survives a real collapse: the interpolated detail differs either way. That weaker form was written
+first, caught by the red-check, and deleted rather than kept as a misleading green.
+
+`cmd_critic_begin`'s branchless sibling-worktree fallback is exercised against a **real bare-repo
+worktree** rather than a stubbed worktree list, because the guard exists for what git actually emits
+— `bare`, which is neither a `branch` nor a `detached` line, leaving the entry with no `branch` key.
+The test drives the real CLI in a subprocess: called in-process it never reaches the sibling listing,
+because `critic-begin` first refuses outright when the shell's cwd differs from the resolved project
+dir. Both tests were verified red — the message collapse fails the first, dropping the fallback
+raises `KeyError` through the second.
+
+**One existing contract test was updated, not weakened.** `test_unresolved_blocker_blocks_with_
+attribution` asserts an unresolved entry by exact dict equality; the additive `superseded` key
+changed that contract, so the expectation now carries `"superseded": False`. The equality stays
+exact and the assertion is strictly stronger — it now pins the annotation as well.
+
 ## 2026-08-02: five prose defects from a 2026-06-09 review, and the question that set review depth
 
 <!-- prawduct: type=fix | scope=critic-burndown | chunks=02 -->

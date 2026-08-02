@@ -143,8 +143,32 @@ Filed rather than built: `#547`, `#548`, `#549`.
 was resolved 2026-06-10 and deliberately **not** redone. Sub-item (6) settled by **owner decision**:
 PR-review evidence deletion is documented as intended, no archive — the fact lives in the shared
 evidence store, and a second home would break the one-home norm. `#163`'s discovery question and its
-registry row both landed, closing the one absent leg of a four-leg pipeline. Next: **Chunk 03**
-(#536, #228) — `Type: cumulative-final`.
+registry row both landed, closing the one absent leg of a four-leg pipeline.
+
+**Chunk 03 BUILT 2026-08-02** (#536, #228) — the batch's only code. `#536`'s superseded-blocker clause
+landed in both emission sites off **one shared wording function** (`gates.superseded_blocker_lines`),
+with the predicate itself annotated onto the verdict in `coverage_algebra` rather than recomputed at
+either message. The sweep found a **third** candidate site — the session-start advisory in
+`briefing.py` — and it is deliberately untouched: it reports a count and names no route, by design,
+so it carries no wrong advice. Three prose surfaces that *restated* the `blocking` remedy were
+corrected in the same pass (`skills/pr/SKILL.md`, `skills/critic/review-cycle.md`, and
+`check_cumulative_critic`'s docstring), since a fix leaving a second artifact asserting the old claim
+has only moved the defect.
+
+`#228`'s two tests pin behaviour that did not change. Both were **verified red**, as were both
+directions of the `#536` predicate (stuck-off and stuck-on each fail four tests across both emission
+sites). Two findings worth carrying forward: `critic-begin` cannot be exercised in-process — it
+refuses when the shell's cwd differs from the resolved project dir — so that test drives the real CLI
+in a subprocess against a **real bare-repo worktree**; and a first-draft assertion that merely
+compared the two exit messages for inequality **survived a genuine collapse** and was deleted rather
+than kept as a misleading green.
+
+One existing contract test was updated rather than weakened:
+`test_unresolved_blocker_blocks_with_attribution` asserts an unresolved entry by exact dict equality,
+and the additive `superseded` key changed that contract — the expectation now carries
+`"superseded": False`, keeping the equality exact and pinning the annotation too.
+
+Next: the `cumulative` review that serves as this chunk's own (`Type: cumulative-final`).
 
 ## Scaffolding
 
