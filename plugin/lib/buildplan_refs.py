@@ -136,7 +136,9 @@ def _count_build_plan_chunks(
     """Count chunks in the active build plan's Status section.
 
     Resolves the plan via the ``active_build_plan:`` pointer (falls back to
-    ``artifacts/build-plan.md``), so scope-named plans are counted too.
+    ``artifacts/build-plan.md``), so scope-named plans are counted too —
+    unless ``plan_path`` names one, which the gate paths pass so that
+    "is there governed work" and "what does it declare" read one file.
     Returns ``(total, complete)``; ``(0, 0)`` if the plan or its Status section
     is missing or unreadable. The single canonical implementation — both callers
     are in ``lib.gates`` (the end-of-cycle synthesis gate and its sibling); they
@@ -465,6 +467,9 @@ def infer_scope_from_branch(
     ``scope:``. ``fix/backlog-burndown`` → ``backlog-burndown`` because
     ``build-plan-backlog-burndown.md`` says so; ``develop`` → ``None`` because
     nothing declares it.
+
+    ``known`` is a prebuilt scope→plan map — pass it to share one walk of
+    ``artifacts/`` with a caller that also resolves the plan (:func:`resolve_branch_plan`).
 
     Two narrowings, and the honest statement of what remains:
 
