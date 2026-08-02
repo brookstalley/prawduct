@@ -831,6 +831,45 @@ class TestBlockValueInjection:
         assert "worker" not in block.fields
         assert field not in block.fields  # nothing partial was written either
 
+    @pytest.mark.parametrize("sep,name", [
+        ("\n", "LF"), ("\r", "CR"), ("\r\n", "CRLF"), ("\v", "VT"), ("\f", "FF"),
+        ("\x1c", "FS"), ("\x1d", "GS"), ("\x1e", "RS"), ("\x85", "NEL"),
+        (" ", "LS"), (" ", "PS"),
+    ])
+    def test_every_separator_splitlines_honours_is_barred(self, fake, sep, name):
+        # The guard must cover the parser's WHOLE separator set, not just \n\r.
+        # `parse_block` splits on `splitlines()`, and `_emit_block` writes the
+        # value as one PHYSICAL line — so a `\v` leaves the \n-anchored fence
+        # regex undisturbed while still re-parsing as an extra field. A guard
+        # narrower than the parser is not a guard.
+        n = self._seed_with_block(fake)
+        r = core.update_item(
+            fake, id_raw=f"{OWNER}/{REPO}#{n}",
+            fields={"refs": f"a{sep}automated: true"},
+        )
+        assert r["status"] == "error", f"{name} was accepted"
+        block = encode.parse_block(fake.get_issue(OWNER, REPO, n)["body"])
+        assert "automated" not in block.fields, f"{name} landed a forged field"
+
+    def test_a_trailing_separator_is_barred_too(self, fake):
+        # "abc\n".splitlines() == ["abc"] — one element, so a `len(...) > 1` check
+        # passes it while `_emit_block` still writes a stray line.
+        n = self._seed_with_block(fake)
+        r = core.update_item(
+            fake, id_raw=f"{OWNER}/{REPO}#{n}", fields={"refs": "docs/x.md\n"}
+        )
+        assert r["status"] == "error"
+
+    def test_the_guard_tracks_the_parser_not_a_hardcoded_list(self, fake):
+        # Bind the predicate to `splitlines()` directly: if Python ever widens the
+        # universal-newline set, this fails rather than silently reopening the hole.
+        for cp in range(0x110000):
+            ch = chr(cp)
+            if len((f"a{ch}b").splitlines()) > 1:
+                assert encode.check_block_value("refs", f"a{ch}b") is not None, (
+                    f"U+{cp:04X} splits under splitlines() but the guard allows it"
+                )
+
     def test_a_carriage_return_is_rejected_too(self, fake):
         # `.splitlines()` splits on \r as well, so \r alone is a live injection.
         n = self._seed_with_block(fake)

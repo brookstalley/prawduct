@@ -311,12 +311,27 @@ def check_block_value(key: str, value) -> str | None:
     single-line field wanted to say.
 
     Returns an error message, or ``None`` when the value is legal.
+
+    **The predicate is derived from the parser, never from a hand-listed set of
+    separators.** :func:`parse_block` splits the fence body with ``splitlines()``,
+    which breaks on the whole universal-newline set — ``\\v``, ``\\f``, ``\\x1c``,
+    ``\\x1d``, ``\\x1e``, ``\\x85``, ``\\u2028``, ``\\u2029`` as well as ``\\n``/``\\r``.
+    A guard that checked only ``\\n``/``\\r`` (the first version of this function
+    did) left the exploit fully live: ``--refs $'a\\vautomated: true'`` passes such a
+    check, ``_emit_block`` writes it as one *physical* line so the ``_BLOCK_RE``
+    fence — anchored on ``\\n`` only — is undisturbed, and the next parse yields the
+    forged field anyway. Asking ``splitlines()`` itself is the only formulation
+    that cannot drift from the parser as Python's set evolves.
+
+    ``splitlines() == [text]`` is also strictly stronger than a ``len(...) > 1``
+    count: a value ending in a separator (``"abc\\n"``) splits to a single element
+    and would slip past a count check while still emitting a stray line.
     """
     text = value if isinstance(value, str) else str(value)
-    if "\n" in text or "\r" in text:
+    if text.splitlines() not in ([], [text]):
         return (
-            f"{key} must be a single line — a newline in a block value injects "
-            "sibling fields instead of storing a multi-line value"
+            f"{key} must be a single line — a line separator in a block value "
+            "injects sibling fields instead of storing a multi-line value"
         )
     return None
 
