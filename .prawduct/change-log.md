@@ -3,6 +3,54 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-08-02: the cache-warm stopgap is retired, and the wait-side messages stop describing a wait
+
+<!-- prawduct: type=fix | scope=critic-coordinator-await | chunks=02 -->
+
+**`#207`, discharging the `revisit:` clock inherited from `CRT-8Q6R`.** That clock bound the
+disposal of `_CACHE_WARM_INTERVAL_MINUTES = 4` to *this item's own resolution*, on the recorded
+reasoning that a synchronous coordinator await would obviate the stopgap rather than merely
+re-size it. Chunk 01 established the await, so the clock resolves in the **retire** direction
+and the constant is gone rather than re-tuned.
+
+**Two independent reasons, and only the second decides it.** The interval defended an assumed
+5-minute prompt cache that nothing in the runtime could observe and that sessions do not run
+on — already enough to call it mis-sized. What makes it *retired* is that its addressee no
+longer exists: the reviewing fork waits for its own reviewers inside a blocked tool call, so
+there is no session idling a prefix and no advice that could reach one. The comment left at the
+deletion site names the tell for the next editor — reinstating a cadence here means the wait
+moved back out to the caller, and the directive would be treating a symptom.
+
+**The wait-side messages were describing the old mechanism, not just carrying the old advice.**
+The coordinator variant opened *"Reviewers run in the BACKGROUND after the dispatching fork
+returns"* — false as of Chunk 01, and false in the direction that costs the reader something:
+believing it, they wait on a `SubagentStop` trigger instead of the fork's report. Both variants
+are rewritten around who is actually holding the reviewers, and the docstring now says who this
+message is *for* — a bystander who ran consolidate directly, never the fork itself. The
+past-grace branch is untouched: abandonment is still the one real lever there.
+
+**Retirement is plugin-wide or it is not done.** Five tests moved, not two. The wait-side pair
+inverted — it now asserts the *absence* of any polling cadence where it used to require the
+directive; `test_coordinator_wait_side_names_the_fork_as_the_holder` is the new positive pin on
+the replacement claim, since an absence test alone passes on a message that says nothing about
+who holds the reviewers; the guide-binding test now forbids `review-cycle.md` from stating a
+cadence at all, where it previously bound the guide's literal to the constant; the
+stale-dispatch test keeps its liveness half and drops the directive half. The fifth walks every
+`.py` and `.md` under `plugin/`. That scope is the point: the symbol's last survivors were a
+`:data:` cross-reference in a sibling docstring, a governing artifact, and a token-budget
+narrative — none in the defining module, so a module-scoped check would have called this done
+while three references dangled. Three surfaces that cited the symbol are repointed in this same commit rather than
+left for the propagation chunk: `_BATCH_FIX_DIRECTIVE`'s docstring cross-reference, a
+token-budget narrative that credited the directive as funding for a relocated clause, and
+`architecture.md`, which both named the symbol and carried the falsified *"the coordinator
+cannot reliably resume to aggregate"* rationale. A reference dies in the same commit as its
+referent; anything else ships a governing artifact citing a symbol that does not exist.
+
+**One note kept deliberately.** The token-budget narrative is corrected, not deleted: its
+accounting still stands (the tokens left `building.md` and never came back), but it now carries
+a footnote that its relocation *destination* is gone — so it is not cited as precedent for
+"relocate into a runtime string" without checking the far end is still live.
+
 ## 2026-08-02: the Critic coordinator waits for the reviewers it dispatched
 
 <!-- prawduct: type=fix | scope=critic-coordinator-await | chunks=01 -->

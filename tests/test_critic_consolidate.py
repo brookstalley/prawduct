@@ -577,24 +577,72 @@ class TestIncompleteNoopLiveness:
         assert "0/3 partials present" in msg
         assert "dispatched" not in msg
         assert "NOT evidence the reviewers died" in msg
-        # No age claim, but it is still a wait — the readout directive applies.
-        assert cc._CACHE_WARM_DIRECTIVE in msg
 
-    def test_wait_side_directs_a_periodic_readout(self):
-        # An idle waiting session issues no requests, so its prompt cache
-        # expires and the next turn replays the whole prefix. Both wait-side
-        # variants must carry the readout directive, and it must name a cadence
-        # strictly under the 5-minute cache it is sized against.
-        assert cc._CACHE_WARM_INTERVAL_MINUTES < 5
+    def test_wait_side_never_directs_polling_or_a_readout_cadence(self):
+        # RETIRED CONTROL, pinned as an absence so it cannot creep back.
+        # This used to assert a periodic-readout directive on both wait-side
+        # variants, sized under an assumed 5-minute prompt cache. Both of its
+        # premises died: sessions run on an hour TTL, and — the reason it is
+        # retired rather than re-sized — the reviewing fork now awaits its own
+        # reviewers, so nobody is sitting on this message waiting. The reader
+        # here is a bystander who ran consolidate directly; telling them to
+        # narrate or re-run would be advising them to sit on someone else's
+        # work.
         for missing, present, total in (
             (["correctness", "design"], 1, 3),  # coordinator roster
             (["reviewer"], 0, 1),               # single-pass roster
         ):
             msg = cc._incomplete_noop_message(
                 missing, present, total, self._fresh_id(2))
-            assert cc._CACHE_WARM_DIRECTIVE in msg
-            assert f"every {cc._CACHE_WARM_INTERVAL_MINUTES} minutes" in msg
-            assert "idling silently" in msg
+            for banned in ("idling silently", "prompt cache", "minutes rather than",
+                           "Re-run this command later"):
+                assert banned not in msg, (
+                    f"wait-side variant {missing} still carries retired "
+                    f"cache-warm/polling wording: {banned!r}"
+                )
+
+    def test_coordinator_wait_side_names_the_fork_as_the_holder(self):
+        # The replacement claim, pinned positively — an absence test alone
+        # passes on a message that says nothing about who has the reviewers.
+        # The old text said reviewers "run in the BACKGROUND after the
+        # dispatching fork returns", which the coordinator await makes false,
+        # and a caller who believes it waits for a trigger instead of a report.
+        msg = cc._incomplete_noop_message(
+            ["correctness", "design"], 1, 3, self._fresh_id(2))
+        assert "dispatching fork is holding these reviewers" in msg
+        assert "BACKGROUND after the dispatching fork returns" not in msg
+
+    def test_the_retired_constants_are_gone_from_the_whole_plugin(self):
+        """Retirement is plugin-wide or it is not done.
+
+        Scoped to the shipped plugin, not the module: the symbol's last three
+        survivors were a `:data:` cross-reference in a sibling docstring, a
+        governing artifact, and a token-budget narrative — none of them in this
+        file, all of them dangling the moment the definition went. A
+        module-scoped check would have called that retirement complete.
+
+        Substring, not `count(... ) == 0` per identifier: `_CACHE_WARM_DIRECTIVE`
+        and `_CACHE_WARM_INTERVAL_MINUTES` share a prefix, and an earlier draft
+        guarded one with an exact count and the other with only its assignment
+        line — so a prose mention of the directive passed. One rule for both.
+
+        `.prawduct/` is deliberately out of scope: backlog items, change-log
+        entries and migration records are history and must keep naming the
+        symbol they retired.
+        """
+        assert not hasattr(cc, "_CACHE_WARM_DIRECTIVE")
+        assert not hasattr(cc, "_CACHE_WARM_INTERVAL_MINUTES")
+        survivors = [
+            f"{path.relative_to(ROOT)}:{n}"
+            for path in sorted(ROOT.rglob("*"))
+            if path.suffix in {".py", ".md"} and path.is_file()
+            for n, line in enumerate(path.read_text().splitlines(), 1)
+            if "_CACHE_WARM" in line
+        ]
+        assert not survivors, (
+            "the retired cache-warm symbol still appears in the shipped "
+            f"plugin: {survivors}"
+        )
 
     def test_begin_review_routes_through_the_single_minter(self):
         # The round-trip below proves the MINTER agrees with the parser. It does
@@ -621,25 +669,29 @@ class TestIncompleteNoopLiveness:
         age = cc.dispatch_age_minutes(rid)
         assert age is not None and age < 1.0
 
-    def test_review_cycle_prose_matches_the_code_cadence(self):
-        # The cadence is interpolated into the CLI message but written as a bare
-        # literal in the skill prose. CRT-8Q6R expects that number to change, so
-        # bind them: a bump that updates only the constant would leave the
-        # operator-facing guide quietly contradicting the tool.
+    def test_review_cycle_prose_carries_no_cadence_literal(self):
+        # This used to BIND review-cycle.md's bare `every 4 minutes` literal to
+        # the code constant, so a bump could not update one without the other.
+        # With the constant retired the guard inverts: the guide must not carry
+        # a cadence at all, or it re-introduces operator-facing advice that the
+        # tool no longer gives.
         prose = (ROOT / "skills" / "critic" / "review-cycle.md").read_text()
-        assert f"every {cc._CACHE_WARM_INTERVAL_MINUTES} minutes" in prose, (
-            "review-cycle.md's cadence no longer matches "
-            f"_CACHE_WARM_INTERVAL_MINUTES ({cc._CACHE_WARM_INTERVAL_MINUTES})"
+        assert not re.search(r"every \d+ minutes", prose), (
+            "review-cycle.md still states a polling cadence; the cache-warm "
+            "directive it mirrored was retired 2026-08-02"
         )
+        assert "prompt cache" not in prose
 
-    def test_stale_dispatch_omits_the_readout_directive(self):
+    def test_stale_dispatch_still_advises_abandonment(self):
         # Past the grace window the advice is to STOP waiting (critic-end +
-        # re-dispatch). Telling the caller to keep narrating there would warm
-        # the cache for a state it should be leaving.
+        # re-dispatch) — the one branch where the caller has a real lever. The
+        # readout-directive half of this test retired with the constant; the
+        # liveness verdict it guarded did not, and is the half worth keeping.
         msg = cc._incomplete_noop_message(
             ["sustainability"], 2, 3, self._fresh_id(45))
         assert "may have died" in msg
-        assert cc._CACHE_WARM_DIRECTIVE not in msg
+        assert "critic-end" in msg
+        assert "dispatching fork is holding these reviewers" not in msg
 
     def test_wait_side_never_carries_the_fix_strategy(self):
         # The batch directive answers "how do I fix these?"; a caller with no

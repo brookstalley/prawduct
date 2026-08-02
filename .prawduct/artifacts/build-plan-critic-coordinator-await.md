@@ -60,12 +60,22 @@ requirement is CRT-3F7M (#207), whose acceptance criteria this plan discharges i
 one design choice that could have gone either way — whether the caller blocks — was put to
 the owner and answered on 2026-08-02: keep the skill backgrounded, make the fork await.
 
-**Open assumptions / unknowns:**
-[ASSUMPTION: an edited `plugin/skills/critic/SKILL.md` is picked up by an already-running
-session without a restart | MED impact | resolved by observation at Chunk 03's review — if the
-fork still reports "dispatched and stopping", restart the session and re-run; the marketplace
-installs this plugin from this working directory (`known_marketplaces.json` →
-`source: directory, path: /Users/brookstalley/source/prawduct`), so no copy step is involved]
+**Open assumptions / unknowns:** none open — the one that mattered is **RESOLVED, in the
+negative**, 2026-08-02 by Chunk 01's `verify-resolutions` pass.
+
+[RESOLVED-ASSUMPTION: an edited `plugin/skills/critic/SKILL.md` is picked up by an
+already-running session without a restart → **FALSE.** The reviewing fork's own skill body
+matched `git show fd9edea:plugin/skills/critic/SKILL.md` byte-for-byte — still ending
+`and **STOP**` / `there is no resume-to-aggregate` — while HEAD carried the rewrite. The
+marketplace installs from this working directory (`known_marketplaces.json` →
+`source: directory, path: /Users/brookstalley/source/prawduct`), so no copy step explains it:
+skill bodies are cached **per session**, and edits reach a fork only after a session boundary.
+Impact is confined to validation, not to the fix: a `verify-resolutions` routes identically
+under either body, which is why Chunk 01's review was unaffected. But Chunk 03's `cumulative`
+is this plan's live acceptance test, and run from an unrestarted session it would
+dispatch-and-return — burning 7-9 minutes on a result that cannot tell "await-in-fork does not
+work" from "this session never loaded the fix." That ambiguity is exactly the failure mode
+#207 spent twelve days in, so the restart is a **precondition** on Chunk 03, not advice.]
 
 **What would raise confidence:** Chunk 03's own `cumulative` review is the live validation —
 see Verification Strategy.
@@ -178,14 +188,32 @@ running session — restart and re-run before concluding anything about await-in
   `test_review_cycle_prose_matches_the_code_cadence`, replacing them with assertions on the
   corrected wording; `tests/test_v5_methodology.py` (the token-budget narrative names the
   directive as the funding source for a since-relocated clause — the note becomes false when
-  the symbol goes)
-- **Tests:** the two retired tests are replaced, not merely deleted — the new pair asserts
-  that neither wait-side variant tells a caller to poll on a cadence, and that the coordinator
-  variant names the fork as the holder of the reviewers. A repo-wide grep assertion that
-  `_CACHE_WARM` survives nowhere keeps the retirement from being partial
-- **Acceptance criteria:** suite green; `grep -rn _CACHE_WARM` returns nothing outside
-  `.prawduct/` history (backlog, change-log, and prior migration records are history and stay
-  verbatim); the no-op message read cold describes the current mechanism
+  the symbol goes); `plugin/lib/critic_consolidate.py`'s `_BATCH_FIX_DIRECTIVE` docstring,
+  which cross-references the retired symbol by `:data:` role;
+  `.prawduct/artifacts/architecture.md` — **both** sites, moved here from Chunk 03 (see
+  [DECISION] below)
+
+- **[DECISION: `architecture.md` moves from Chunk 03 to Chunk 02.]** The plan assigned both of
+  its sites to Chunk 03's propagation pass. But one of them *names the symbol this chunk
+  deletes*, and the other states the falsified rationale ("the coordinator cannot reliably
+  resume to aggregate") that Chunk 01 already disproved. Leaving either until Chunk 03 means
+  shipping a commit whose governing artifact cites a symbol that no longer exists and explains
+  a decision by a mechanism that was measured false — a state no reader could distinguish from
+  a genuine defect. A reference dies in the same commit as its referent. Chunk 03 keeps the
+  rest of its propagation list; only this file moved. This also discharges R-4 of
+  `rev-20260802T174556Z-b9290989`, which was accepted as a deferral to Chunk 03.
+- **Tests:** the retired tests are replaced, not merely deleted — the wait-side pair asserts
+  that neither variant tells a caller to poll on a cadence, a positive pin asserts the
+  coordinator variant names the fork as the holder of the reviewers, the guide-binding test
+  inverts to forbid any cadence literal in `review-cycle.md`, and the stale-dispatch test keeps
+  its liveness half. One assertion walks **every `.py` and `.md` under `plugin/`** for
+  `_CACHE_WARM`, so the retirement cannot be called done while a cross-reference dangles
+  outside the module that defined it
+- **Acceptance criteria:** suite green; `_CACHE_WARM` survives nowhere under `plugin/`. Two
+  scopes are deliberately exempt and neither is a loophole: `.prawduct/` history (backlog,
+  change-log, migration records — they must keep naming what they retired) and the absence
+  guard itself in `tests/`, since a test that forbids a symbol has to spell it. The no-op
+  message read cold describes the current mechanism
 - **Done when:**
   1. Acceptance criteria met and tests pass
   2. `/prawduct:critic` run and blocking findings resolved
@@ -206,12 +234,9 @@ running session — restart and re-run before concluding anything about await-in
   means in flight"); `plugin/methodology/session-digest.md` and
   `plugin/methodology/session-digest-slim.md` (the consolidate-before-read line and the
   standing-block clause); `CLAUDE.md` § The Critic; `plugin/methodology/building.md`
-  § Resolve findings; `.prawduct/artifacts/architecture.md` — **two** sites, not one: the
-  `_CACHE_WARM_DIRECTIVE` reference at the runtime-emission entry, and the paragraph around
-  lines 152-154 recording "the coordinator cannot reliably resume to aggregate" as the
-  rationale for decoupling, which Chunk 01 falsifies (drift, not a `## Direction` norm — but
-  no other chunk touches the file, so naming it here is the only thing that catches it);
-  `.prawduct/change-log.md` (entries tagged `critic-coordinator-await` for all three chunks)
+  § Resolve findings; `.prawduct/change-log.md` (entries tagged `critic-coordinator-await` for
+  all three chunks). **`architecture.md` is NOT in this list** — both its sites moved into
+  Chunk 02, where the symbol they cite is deleted; see that chunk's [DECISION].
 - **Tests:** existing prose-coherence and token-budget tests cover these files; extend
   `tests/test_cutover_prose_coherence.py` (or the nearest equivalent) so a surface claiming
   the fork returns without aggregating fails the suite. Token budgets are ceilings, not
@@ -220,6 +245,12 @@ running session — restart and re-run before concluding anything about await-in
   surface's *mechanism* matches the harness; CRT-3F7M's acceptance boxes are both discharged
 - **Type:** cumulative-final
 - **Done when:**
+  0. **PRECONDITION — run the `cumulative` from a session started AFTER Chunk 01 landed.**
+     Skill bodies are cached per session (see RESOLVED-ASSUMPTION above); a fork launched from
+     an older session serves the pre-fix `SKILL.md` and will dispatch-and-return no matter how
+     correct the tree is. Confirm before invoking: the reviewing fork must be running a body
+     whose coordinator bullet names `run_in_background: false`. Without this the review is not
+     evidence about anything.
   1. Acceptance criteria met and tests pass
   2. Committed, then `/prawduct:critic cumulative` run — **this review is the plan's live
      validation; record the three Verification Strategy observations in the reflection**

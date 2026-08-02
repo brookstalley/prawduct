@@ -149,10 +149,15 @@ The flagship multi-process flow, and the clearest expression of invariant 1.
   appends the review fact (and any resolution facts) to the evidence store, regenerates the derived
   findings view, anchors a telemetry event, clears the marker, and removes the partials.
 
-**Why consolidation is decoupled from dispatch.** The harness backgrounds dispatched subagents, so
-the coordinator cannot reliably resume to aggregate. Instead, consolidation runs from three
-independent triggers — the per-reviewer `SubagentStop` hook, the single-pass fork
-inline, and the Stop-hook backstop — so the review lands regardless of which fires. **"Exactly once"
+**Why consolidation has more than one trigger.** The reviewing fork consolidates in-turn — the
+single-pass fork after writing its own partial, the coordinator after awaiting its three reviewers
+— and that is the primary path, the one whose result reaches the caller. It is not the only one:
+the per-reviewer `SubagentStop` hook and the Stop-hook backstop also fire, so the review still
+lands if the fork dies mid-flight or a reviewer's trigger wins the race. The rationale recorded
+here until 2026-08-02 — that the harness backgrounds dispatched subagents, so the coordinator
+*cannot* reliably resume to aggregate — was false: a dispatch with `run_in_background: false`
+blocks. What actually backgrounded the review was one level up, the fork skill's own
+`background ?? true` default. **"Exactly once"
 holds for the review *fact*, not for every output:** the fact is idempotent by `(kind, id)`, while the
 governance-ledger anchor is replay-closed by `ledger.review_event_exists` and merely overlap-narrowed
 (read-then-write, no lock). A concurrent overlap can still anchor twice — observed live 2026-07-29 —
@@ -333,10 +338,9 @@ opts into the backlog service:
    on stdin; skills and the Critic fork reach the data plane by invoking `prawduct-hook`
    subcommands. This channel also carries **behavioural directives**, not just data: a command whose
    output an agent reads at a decision point may state the rule that applies there
-   (`critic_consolidate._CACHE_WARM_DIRECTIVE`, `_BATCH_FIX_DIRECTIVE`). The move is
-   deliberate — a guide is read hours earlier if at all, and on the Critic's coordinator path the
-   reviewing fork returns no findings summary, so this is the only surface the builder is guaranteed
-   to meet. It is also *unbudgeted*, which is the bound worth stating: relocating instruction text
+   (`critic_consolidate._BATCH_FIX_DIRECTIVE`). The move is deliberate — a guide is read hours
+   earlier if at all, while `critic-consolidate`'s output and `.critic-findings.json` are read at
+   the moment the disposition is actually chosen. It is also *unbudgeted*, which is the bound worth stating: relocating instruction text
    out of a measured methodology file into a runtime string is legitimate when the string fires at
    the moment the rule applies, and is budget laundering when it does not. Directives here are
    advisory (they never block) and carry no prawduct-internal ids, per

@@ -368,13 +368,20 @@ class TestBuildingMethodology:
         # ending number as your starting one.**
         # PAID FOR by the trim-or-relocate rule, not a raise. The
         # funding was the cache-warming clause of "The Critic takes time"
-        # ("don't go silent either, or your prompt cache expires…"), which
-        # `critic_consolidate._CACHE_WARM_DIRECTIVE` emits verbatim into the
-        # consolidate no-op the caller reads WHILE waiting — checked, not
-        # assumed. So the guidance now reaches the reader from the runtime at
-        # the moment it applies, instead of from a guide read hours earlier;
-        # a relocate whose destination already existed. 4669 -> 4648,
-        # headroom 21 -> 12.
+        # ("don't go silent either, or your prompt cache expires…"), relocated
+        # into the consolidate no-op the caller reads WHILE waiting — checked,
+        # not assumed. 4669 -> 4648, headroom 21 -> 12.
+        #
+        # 2026-08-02 FOOTNOTE, and the reason this entry is kept rather than
+        # deleted: that relocation destination is GONE. The runtime directive
+        # it moved into was retired with the coordinator-await fix — the
+        # coordinator now waits for its own reviewers, so no session sits on
+        # the no-op and the advice had no addressee left. The ACCOUNTING above
+        # still stands (the tokens left building.md and never came back, which
+        # is what the figures record), but do not cite this entry as precedent
+        # for "relocate into a runtime string" without checking the
+        # destination still exists. A relocation is only funding while both
+        # ends are live; this one outlived its far end by three days.
         #
         # 2026-07-31 replaced the one-line "Safe to /clear" close with the
         # three-line standing block (State / Next / Clear) and added the

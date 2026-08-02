@@ -175,25 +175,20 @@ COORDINATOR_FILE_THRESHOLD = 5
 # forever.
 _INFLIGHT_GRACE_MINUTES = 15
 
-# A session waiting on in-flight reviewers issues no model requests, so its
-# prompt cache ages out and the next turn re-reads the entire prefix — the
-# token replay adopters hit when a long review finally lands. A brief readout
-# on this cadence keeps the prefix warm by making a request against it.
+# RETIRED 2026-08-02: the cache-warm directive and its 4-minute interval. It
+# told a session waiting on in-flight reviewers to emit a periodic readout so
+# its prompt cache did not age out. Two independent reasons it is gone, and the
+# second is why it is retired rather than re-sized:
 #
-# Deliberate stopgap, and the interval is the weak part: it assumes the
-# 5-minute prompt cache every current adopter runs on, which nothing here can
-# observe (longer-lived caches exist, and on those this cadence buys nothing).
-# Sized just under 5 so a slow turn still lands inside the window.
-_CACHE_WARM_INTERVAL_MINUTES = 4
-
-#: Appended to the wait-side variants only. Past the grace window the advice is
-#: to stop waiting, so warming the cache there would prolong the wrong state.
-_CACHE_WARM_DIRECTIVE = (
-    " While waiting, print a one-line progress note (what you are waiting on,"
-    f" elapsed time) at least every {_CACHE_WARM_INTERVAL_MINUTES} minutes"
-    " rather than idling silently — an idle session lets its prompt cache"
-    " expire and re-reads its whole context when the partials land."
-)
+#   1. The interval defended a 5-minute prompt cache that it could not observe
+#      and that sessions do not run on — the documented TTL is an hour, so the
+#      readouts bought nothing.
+#   2. There is no longer a session in that state. The coordinator awaits its
+#      own reviewers and consolidates in-turn, so the waiting happens inside a
+#      blocked tool call, where no advice can reach and no prefix is idling.
+#
+# Reinstating a cadence directive here means the wait moved back out to the
+# caller — check that first, because the directive would be treating a symptom.
 
 #: Appended wherever a caller meets a review that HAS findings — the moment the
 #: fix strategy is chosen, and the only moment at which stating it changes what
@@ -211,7 +206,9 @@ _CACHE_WARM_DIRECTIVE = (
 #: hours earlier if at all: on the coordinator path the reviewing fork never
 #: writes a findings summary, so `critic-consolidate` output plus
 #: `.critic-findings.json` is the ONLY surface the builder is guaranteed to meet.
-#: Same reasoning as :data:`_CACHE_WARM_DIRECTIVE`.
+#: (The retired cache-warm directive above shipped from here for the same
+#: reason; that it was later retired on its own merits does not weaken this
+#: one — guidance that must arrive at a specific moment ships from the runtime.)
 #:
 #: **Disposition, not "fix everything."** Only unresolved BLOCKING findings gate
 #: anything (``coverage_algebra.unresolved_blocking``); warnings and notes gate
@@ -1205,11 +1202,17 @@ def dispatch_age_minutes(review_id: str, *, now: datetime | None = None) -> floa
 def _incomplete_noop_message(missing: list[str], present: int, total: int,
                              review_id: str) -> str:
     """The incomplete no-op with a liveness verdict, not just a partial count.
-    Zero partials shortly after dispatch is the NORMAL background-reviewer
-    state — say so explicitly, or the caller infers reviewer death from
-    silence and double-dispatches. The wait-side variants also direct a
-    periodic progress readout, so a session that correctly decides to wait
-    does not idle its prompt cache into expiry while doing so."""
+    Zero partials shortly after dispatch is the NORMAL in-flight state — say so
+    explicitly, or the caller infers reviewer death from silence and
+    double-dispatches.
+
+    Who is holding the reviewers differs by roster, and so does the advice: on
+    both paths the reviewing fork now waits for them and consolidates in-turn,
+    so the reader of this message is a BYSTANDER who ran consolidate directly,
+    not the fork itself. Telling that reader to wait, poll, or narrate would be
+    advising them to sit on someone else's work — the right answer is that the
+    fork will report, and the only useful lever is abandonment once the run is
+    past the grace window."""
     age = dispatch_age_minutes(review_id)
     counts = f"{present}/{total} partials present"
     if age is not None:
@@ -1229,21 +1232,20 @@ def _incomplete_noop_message(missing: list[str], present: int, total: int,
             " The single-pass reviewer (the dispatching fork itself) writes its"
             " partial and consolidates when it finishes — reviews typically take"
             " 4-10 minutes; missing partials are the normal in-flight state, NOT"
-            " evidence the reviewer died. Re-run this command later; if the fork"
-            " already returned without consolidating, abandon with"
+            " evidence the reviewer died. It will report when it lands; if the"
+            " fork already returned without consolidating, abandon with"
             " `prawduct-hook critic-end`, then re-dispatch."
         )
-        line += _CACHE_WARM_DIRECTIVE
     else:
         line += (
-            " Reviewers run in the BACKGROUND after the dispatching fork returns"
-            " and typically take 4-10 minutes; missing partials are the normal"
+            " The dispatching fork is holding these reviewers — it waits for all"
+            " three, consolidates, and reports the counts itself; reviews"
+            " typically take 4-10 minutes and missing partials are the normal"
             " in-flight state, NOT evidence the reviewers died. Do not"
-            " re-dispatch — wait for the SubagentStop trigger to consolidate"
-            " (or re-run this command later). A genuine re-dispatch requires"
+            " re-dispatch and do not sit on this command: the fork's own report"
+            " is what carries the findings. A genuine re-dispatch requires"
             " `prawduct-hook critic-end` first."
         )
-        line += _CACHE_WARM_DIRECTIVE
     return line
 
 
