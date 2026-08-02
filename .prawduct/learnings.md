@@ -21,6 +21,9 @@ dropping them.
 
 ---
 
+## RULING (regen-views-is-advice) — a writer of DERIVED VIEWS is advice and fails soft ONE VIEW AT A TIME; only a verdict emitter fails closed. When two norms reach one command the OUTPUT decides: no gate reads a view, so its writer never blocks. Skip-and-report a bad-input view, never write it half-right; and a dry-run validating identically to the real run is where drift hides, not a safety device
+<!-- anchor: regen-views-is-advice — linked from architecture.md and data-model.md Rulings: -->
+
 ## Before implementing against a mechanism, grep the BACKLOG for that mechanism's name — and when claiming something is "provably equivalent," name the proposition the proof actually establishes, because equivalence under one model is not equivalence under the one that governs behaviour
 
 ## Under a single-parent promotion model, "did this ship?" is a question about TREE CONTENT and never about ancestry — `git tag --contains` cannot return a positive answer for any scope, so it fails as a confident false negative, and the content test needs a control that fails plus a functional-surface target

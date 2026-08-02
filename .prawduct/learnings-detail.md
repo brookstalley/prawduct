@@ -6,6 +6,46 @@ No size constraint on this file — it's the deep reference, consulted via `/lea
 
 ---
 
+## RULING (regen-views-is-advice) — a writer of DERIVED VIEWS is advice and fails soft ONE VIEW AT A TIME; only a verdict emitter fails closed. When two norms reach one command the OUTPUT decides: no gate reads a view, so its writer never blocks. Skip-and-report a bad-input view, never write it half-right; and a dry-run validating identically to the real run is where drift hides, not a safety device
+
+**Collision ruling, owner decision 2026-08-01**, raised by #201's fourth leg. Two `## Direction`
+norms both reached `regen-views` and pointed opposite ways: `architecture.md`'s *authority fails
+closed; advice fails soft*, and `data-model.md`'s *derived views are disposable and never
+authoritative — no gate reads a view to reach a verdict*.
+
+**Why the output decides.** The authority norm's why is that a verdict must not be satisfiable by
+feeding it garbage. That rationale reaches a command only where a verdict exists to corrupt.
+`regen-views` emits no verdict and no gate consumes its output, so the authority half never
+attaches, and the derived-views norm decides the posture. Rule at the category level: **the
+failure posture of a command follows what it produces, not how important the command feels.**
+
+**What the ruling had to preserve.** VWS-6R4T made the command fail closed for a stated reason —
+*"no silent partial flips — partial application is the bug class"*
+(`artifacts/build-plan-changelog-fail-loud.md:39-51`). That content survives; only its whole-run
+coupling is dropped. The unit of atomicity moves from the **run** to the **view**: a view whose
+inputs are invalid is skipped and reported, never written half-right, and views with no dependency
+on the bad input are still written. `apply_regen` (`plugin/lib/views.py:1339-1345`) already writes
+each view as one whole file, so per-view skipping cannot produce the state VWS-6R4T names. This is
+the distinction that let the leg be granted without reopening the bug class: **"fail soft" means
+"don't block the others," never "write one you know is wrong."**
+
+**The dry run was the drift.** `--check` and the real run validate identically — `check_only` is
+consulted only *after* the validation block returns 2 (`plugin/bin/prawduct-hook:3028-3043`) — so
+the two-step `--check` → `regen-views` that every release plan prescribed was validate-and-stop
+followed by validate-and-stop-or-write. The first step could not catch anything the second didn't.
+Worse, `--check` exits 0 while writes are *pending*, so a clean check meant "the tags parse," not
+"the views are correct," and it was read as the latter: #201's reporting repo lost six whole
+version sections from `release-notes.md` and ran `scope_rollups` at 34 keys instead of 62 while
+the check reported up to date (`.prawduct/backlog.md:1101`). **A dry run that validates identically
+to the real run is not a safety device — it is a way for a check to report clean while the artifact
+it checks rots.** Hence one mode: views always regenerate.
+
+**The generalizable tell.** The question arrived as "is this command authority or advice?" and
+looked like an unresolvable norm conflict for as long as it was asked at the *command* level. It
+dissolved on asking what the command *produces*. When two norms appear to collide, check whether
+they are being applied at the same granularity before arbitrating between their whys — a collision
+at the wrong altitude is usually a category error wearing a conflict's clothes.
+
 ## The fix for a review finding needs the same adversarial pass as the original work — dispatch a delta review of the fix commit, because "I am correcting a known defect" feels like lower-risk work than writing new code and the verification reflex relaxes exactly where the last round proved it shouldn't
 
 The release-readiness bundle produced a clean measurement of this. One Critic cumulative (1 blocking / 12 warnings / 10 notes) → three verify passes, **each of which found a defect introduced by the previous round's fix** → clean. An independent PR reviewer then read the resulting tree and found W-1, a defect the bundle had itself created and *twice declared closed*. The fix for W-1 was then delta-reviewed and contained **2 BLOCKING plus 3 warnings**. Four rounds, four times the correction carried a new defect.

@@ -22,7 +22,7 @@ governed_by:
       - "`backlog_service_repo` selects the authoritative store; frozen markdown is never live → conforms, and Chunk 01 is what makes the next repo's cutover satisfy it"
   - artifact: architecture
     dispositions:
-      - "authority fails closed; advice fails soft → **ruling needed** for #201's decoupling leg, conforms elsewhere. Chunk 03's ancestor guard fails closed to cumulative/final and #327 is the literal instantiation of *advice fails soft is not advice fails silent* — but `diagnose_scope_plan_coverage` treats its warnings as fatal *by ratified choice*, and #201 asks to undo that. Whether `regen-views` is authority or advice is the open question; `data-model.md`'s *derived views are never authoritative* argues advice. See Chunk 02"
+      - "authority fails closed; advice fails soft → **ruled 2026-08-01**, conforms elsewhere. `regen-views` is **advice**: it emits no verdict and no gate reads its output, so the fail-closed half never attaches and `data-model.md`'s *derived views are never authoritative* decides the posture. Fail-soft is **per view**, which preserves VWS-6R4T's *no silent partial flips* by moving the atomicity unit from the run to the view. Precedence recorded on both norms; ruling in `learnings.md` [[regen-views-is-advice]]. Chunk 03's ancestor guard fails closed to cumulative/final and #327 instantiates *advice fails soft is not advice fails silent* — both unaffected"
       - "every fact has one home; every other mention is a reference → conforms, and Chunk 02 repairs a violation: the chunk-heading guard test is a second implementation of a contract `plugin/lib/buildplan_refs.py` owns"
       - "goals and verification bind; prescribed method is advice → conforms (this plan's Deliverables are pre-code guesses; a builder who finds a better route takes it and records why)"
       - "an independent reviewer never mutates the session it reviews → inapplicable because no chunk touches the review-active mutation guard"
@@ -78,10 +78,24 @@ against current machinery rather than trusted from its citations.
   chunk-line matcher, and decoupled view regeneration ship together. The item names decoupling as
   the load-bearing half, and splitting it would leave the trap — prawduct's own error message
   recommending the action that triggers the bug — live for another cycle.
-- [DECISION: #201's decoupling leg is settled by a recorded ruling before any code is written |
-  the current fatality is a ratified fail-closed choice, not an oversight, and
-  `architecture.md`'s authority-vs-advice norm is what decides it — building first and amending
-  the norm afterwards is the laundering pattern | user can rule either way]
+- [DECISION: `regen-views` is **advice** and fails soft at the granularity of one view; the
+  atomicity unit moves from the run to the view | the authority norm's why is that a verdict must
+  not be satisfiable by feeding it garbage, which reaches a command only where a verdict exists to
+  corrupt — `regen-views` emits none and no gate reads its output, so `data-model.md`'s
+  *derived views are never authoritative* decides the posture. VWS-6R4T's *no silent partial flips*
+  is preserved, not reversed: a view whose inputs are invalid is skipped and reported, never written
+  half-right, and `apply_regen` already writes each view as one whole file | owner ruled 2026-08-01;
+  recorded in `learnings.md` [[regen-views-is-advice]] with precedence on both norms]
+- [DECISION: `regen-views` loses `--check`; there is ONE mode and views always regenerate |
+  owner-stated requirement 2026-08-01. `check_only` is consulted only *after* the validation block
+  returns 2 (`plugin/bin/prawduct-hook:3028-3043`), so `--check` and the real run validate and fail
+  identically — the two-step pre-flight every release plan prescribes cannot catch anything the
+  single run doesn't. Worse, `--check` exits 0 while writes are *pending*, so a clean check means
+  "the tags parse," not "the views are correct": #201's reporting repo lost six release-notes
+  sections and ran `scope_rollups` at 34 keys instead of 62 while the check read clean
+  (`.prawduct/backlog.md:1101`). Always-writing makes that drift structurally impossible. Coheres
+  with the ruling above — "always regenerated" and "one bad tag writes nothing" cannot both hold |
+  user can veto/override]
 
 **What would raise confidence:** N/A — the residual uncertainty is scope preference, not knowledge.
 
@@ -132,7 +146,8 @@ Existing surfaces only; this plan creates no files.
 
 ```
 plugin/skills/backlog/migration-scrub.md   Chunk 01
-plugin/lib/buildplan_refs.py, views.py     Chunk 02
+plugin/lib/buildplan_refs.py, views.py,
+        plugin/bin/prawduct-hook (cmd_regen_views)  Chunk 02
 plugin/lib/critic_mode.py,
         critic_consolidate.py, record_lint.py   Chunk 03
 plugin/lib/evidence.py, backlog/*.py,
@@ -187,7 +202,8 @@ and the `new` exemption expiry consumes that function rather than re-deriving fr
 
 ### Chunk 02: Plan discovery and plan reading
 
-- **Description:** Five defects in how the runtime decides what a build plan is and what it says.
+- **Description:** Five defects in how the runtime decides what a build plan is and what it says,
+  plus one owner-requested simplification (`regen-views` collapses to a single always-writing mode).
   They interlock: #201's broadened chunk-line matcher and #211's guard-test drift are the same
   question — which chunk-heading contract is authoritative — answered in two places, and #224 and
   #327 both depend on `resolve_chunk_progress` being the single progress answer.
@@ -212,15 +228,32 @@ and the `new` exemption expiry consumes that function rather than re-deriving fr
     - **Leg 3 — the chunk-line matcher — is live.** `CHUNK_LINE_RE` still pins the colon form with no
       tolerance for `**` or an em-dash, so those checkboxes can never flip. Answer it *together with*
       #211: one contract, one home.
-    - **Leg 4 — decoupling — is live, and is a ruling, not a defect fix.** The fatality is a
-      *deliberate* choice: `diagnose_scope_plan_coverage`'s docstring records "the caller treats them
-      as fatal (fail closed)". #201 asks to reverse that, and `architecture.md`'s § Direction norm
-      says authority fails closed while advice fails soft — so the question is which `regen-views`
-      is. `data-model.md`'s *derived views are never authoritative* argues advice, which would make
-      decoupling conform rather than depart. **Record the ruling before writing the code**; do not
-      amend the norm to bless the change. The trap the item names is real either way: prawduct's own
-      error message tells the user to set `views_enabled: true`, which on a 16-nested-plan repo fails
-      closed on everything.
+    - **Leg 4 — decoupling — is live, and was a ruling, not a defect fix. RULED 2026-08-01:
+      `regen-views` is advice and fails soft per view** (see § Requirements Confidence and
+      `learnings.md` [[regen-views-is-advice]]). Build it as: errors partition by the view they can
+      affect. `diagnose_scope_plan_coverage`'s errors are scope-local — they suppress only that
+      scope's `## Status` view; release-notes and scope-rollups have no plan-roster dependency and
+      are still written. `validate_status_values` and `validate_tag_conflicts` stay fatal for the
+      views they touch, because a typo'd `status=` means an entry never contributes its flip, which
+      IS a half-right Status view. Exit non-zero whenever any view was suppressed — soft is not
+      silent. The trap the item names is real either way: prawduct's own error message tells the
+      user to set `views_enabled: true`, which on a 16-nested-plan repo fails closed on everything.
+  - **NEW — collapse `regen-views` to one mode (owner requirement 2026-08-01, not from #201).**
+    `plugin/bin/prawduct-hook`. Delete `--check`; views always regenerate. Same edit to the same
+    error block as leg 4, which is why it lands here rather than in its own chunk. Two things to get
+    right: (a) an **unknown flag must exit 2** — today `check_only = "--check" in (args or [])`
+    ignores every other argument, so an operator on a stale runbook silently gets a write where they
+    expected a dry run; (b) the **doc cascade is larger than the code change** and is part of this
+    deliverable, not follow-up: `documentation/release-process.md` (steps at :101 and :154),
+    `.prawduct/artifacts/kernel-inventory-2026-07-12.md:45` (the row records `--check` as a HARD
+    kernel gate), `learnings-detail.md:615` and `:631` (both prescribe verifying with `--check`),
+    `.prawduct/artifacts/change-log-ledger-design.md:266,277` (a *future* design that plans to
+    assert byte-identity via a non-writing check — it needs a different mechanism, and saying so is
+    in scope; building it is not). **Out of scope and deliberately not edited:
+    `.prawduct/artifacts/build-plan-v3.2.0-golive.md:743`** — it belongs to the primary checkout's
+    active plan; flag it in the handoff for that worktree instead. Historical release plans
+    (v3.1.1-hotfix, v3.2.1, backlog-service-golive, single-pr-bookkeeping, backlog-rework) are
+    records of what was done and are **not** rewritten.
   - **#211** — `tests/test_build_plan_resolution.py`: widen `_parseable_body_chunk_ids` to match
     production (`##` or `###`, and any of `: — – ( -` or end-of-line). **Do not narrow
     `_CHUNK_ID_SEP` to match the stale test** — that re-breaks the em-dash research-plan form on
@@ -246,12 +279,18 @@ and the `new` exemption expiry consumes that function rather than re-deriving fr
 - **Tests:** unit — the widened heading matcher against both hash depths and all five separators;
   exemption expiry across an open chunk, a completed chunk, and an *uncertain* completion (must fail
   toward the exemption); the degraded-reading notice fires on `views_enabled` + git-bail and stays
-  silent on `views_enabled` unset; each new branch prefix parses as a ref, not a path. Integration —
-  `regen-views` completes release-notes and scope-rollup regeneration with one scope unresolvable.
+  silent on `views_enabled` unset; each new branch prefix parses as a ref, not a path; `--check` is
+  gone and an unknown flag exits 2. Integration — `regen-views` completes release-notes and
+  scope-rollup regeneration with one scope unresolvable, exiting non-zero while having written both;
+  and a typo'd `status=` suppresses only its own scope's Status view. **Existing `--check` tests
+  (`tests/test_views.py`, `tests/spikes/change_log_roundtrip.py`) are rewritten against the single
+  mode, not deleted** — each one asserts a validation behaviour that must survive the collapse.
 - **Acceptance criteria:** `python3 plugin/bin/prawduct-hook verify-chunk-refs` and `regen-views` both
   behave as specified against this repo; full suite green.
 - **Done when:**
-  0. The authority-vs-advice ruling on #201's decoupling leg is recorded — before that leg's code
+  0. **DONE 2026-08-01.** The authority-vs-advice ruling on #201's decoupling leg is recorded —
+     before that leg's code. `learnings.md` + `learnings-detail.md` [[regen-views-is-advice]],
+     `Rulings:` on both colliding norms, `[DECISION: …]` ×2 in § Requirements Confidence
   1. Acceptance criteria met and tests pass
   2. #327's expected yield is stated in the change-log entry and the notice is countable, per the
      proportionality norm — a control whose findings are printed and forgotten can never be retired
