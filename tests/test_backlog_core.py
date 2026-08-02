@@ -1031,11 +1031,22 @@ class TestBodyFenceInjection:
 
 
 class TestBodyFenceGuardTracksTheParser:
-    """The guard must be exactly as strict as `_BLOCK_RE`, not stricter.
+    """The guard tracks `_BLOCK_RE`'s opener — with ONE deliberate exception.
 
     The first version was a `startswith` on the stripped line, which rejected an
     INDENTED fence the column-anchored parser can never match — a false positive
     that refused the one workaround the docstring recommends.
+
+    **Do not "correct" the guard into exact equivalence.** `_FENCE_OPEN_RE`'s `$`
+    matches at end-of-string; `_BLOCK_RE`'s opener requires a following newline.
+    So a body ENDING in a bare ```` ```prawduct ```` is rejected here though the
+    parser would not open on it *as written* — and it must be, because
+    `_body_update_preserving_block` composes `f"{human}\\n\\n{rendered}\\n"` and
+    supplies exactly the newline the parser was missing. That is the R-14 attack.
+    Equivalence is the goal everywhere the two can be compared on the same input;
+    this one case is where the guard is correctly stricter, and
+    `test_a_body_ending_in_a_bare_opener_is_rejected` is what stops a future
+    tidy-up from reopening it.
     """
 
     def _seed(self, fake):
@@ -1066,7 +1077,10 @@ class TestBodyFenceGuardTracksTheParser:
 
     def test_guard_and_parser_agree_on_every_opener_spelling(self, fake):
         # Derived-not-described, asserted directly: for each candidate spelling,
-        # the guard rejects it iff the parser would treat it as an opener.
+        # the guard rejects it iff the parser would treat it as an opener. Every
+        # case here is newline-terminated, which is what makes the comparison
+        # fair — the end-of-string case is deliberately asymmetric and is pinned
+        # separately below rather than smuggled in here as a passing equivalence.
         for spelling in (
             "```prawduct", "```prawduct ", "```prawduct\t",
             " ```prawduct", "    ```prawduct", "x ```prawduct", "```prawductx",
@@ -1075,3 +1089,27 @@ class TestBodyFenceGuardTracksTheParser:
             guard_rejects = encode.check_body_text(text) is not None
             parser_opens = encode.parse_block(text + "```\n").fields != {}
             assert guard_rejects == parser_opens, spelling
+
+    def test_a_body_ending_in_a_bare_opener_is_rejected(self, fake):
+        # The one place the guard is CORRECTLY stricter than the parser. The
+        # parser does not open on this text as written (no trailing newline), but
+        # `_body_update_preserving_block` appends "\n\n" + the preserved block —
+        # supplying the newline and completing the R-14 injection. Pinned so a
+        # future "make the guard exactly match the parser" tidy-up fails here
+        # instead of silently reopening the hole.
+        assert encode.check_body_text("intro\n```prawduct") is not None
+
+    def test_that_composition_is_what_makes_it_dangerous(self, fake):
+        # The reason above, asserted rather than asserted-in-a-comment: the raw
+        # text is inert, and composition is what arms it.
+        raw = "intro\n```prawduct"
+        assert encode.parse_block(raw).fields == {}          # inert as written
+        composed = f"{raw}\n\n```prawduct\nv: 1\nx: 1\n```\n"
+        assert encode.parse_block(composed).fields != {}     # armed by composition
+
+    def test_the_end_to_end_path_refuses_it(self, fake):
+        n = self._seed(fake)
+        r = core.update_item(
+            fake, id_raw=f"{OWNER}/{REPO}#{n}", fields={"body": "intro\n```prawduct"}
+        )
+        assert r["status"] == "error"

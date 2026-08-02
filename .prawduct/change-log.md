@@ -3,6 +3,56 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-08-02: the instruction surfaces caught up with the adapter, and the drift class got a guard
+
+<!-- prawduct: type=fix | scope=backlog-block-field-writes | chunks=02 -->
+
+`#550`, second half. Chunk 01 gave the four editorial block fields a write path; this makes the
+prose that instructs them true, and adds the check that would have caught the drift in the first
+place.
+
+**The guard is the point, not the prose fixes.** `test_backlog_instruction_surface.py` already
+caught a surface promising a *safety mechanism* the adapter lacks — but it is scoped by its own
+docstring to "the mutation-safety family", so the sibling class, a surface instructing a **field
+write no op can perform**, went unseen for the whole cutover. The new check derives the writable set
+from the CLI's own string literals plus a curated list of op-owned fields; a hand-kept list would be
+the very defect it exists to catch. Run before any prose was touched, it flagged exactly one live
+phantom — `accepted-by=@actor` — which is the evidence it discriminates. Two fixture tests pin both
+directions, because a guard whose patterns match nothing passes just as happily as one that works.
+
+**What the prose actually said.** Claims now route to `claim`/`unclaim`, the native assignee — a
+self-asserted claimant is forgeable, the backend's own record is not. The `update` section marks its
+`field=value` spellings as the *markdown* backend's and names the real flags for Issues. "Always set
+`reviewed:` on any touch" became explicit re-confirmation, with the reason. One sentence — *"write it
+into the metadata bar (not the body)"* — was exactly backwards for Issues, where the block **is** the
+body. `adapter-mode.md`, the runbook SKILL.md tells agents to follow, had never learned any of it,
+and its ship route glossed `closed_by` as recorded natively — true only for close-on-merge, so an
+agent following it dropped the handle believing it landed.
+
+**`reviewed` vs `verified`, settled by reading TF2 rather than guessing.** The requirement asks for
+*"premise re-checked against code by `<actor>` on `<date>`"* and TF3 counts `reviewed:` stamps as the
+observed workload — so they are one concept at two fidelities. `reviewed:` is the live encoding (zero
+items carry `verified`), and the actor half comes from the API identity, which is unforgeable, rather
+than a block field, which is not. Data-model §1.2 now separates *block-authoritative* from
+*writable*: conflating those two axes is what stranded these fields for a whole cutover.
+
+**Two live defects the reviews found, both reproduced before fixing.** `--body` injected block fields
+through an *unterminated* ```` ```prawduct ```` fence — `strip_block` needs a closing one, so the
+opener survived, concatenated with the preserved block, and every line between them parsed as a
+field. And `--reviewed <date>` (space-separated) parsed the date as a stray positional that was
+silently ignored: exit 0, today stamped, caller believing they had backdated.
+
+**The recurring shape, recorded because it cost three rounds.** Each time, the guard was narrower
+than the thing it guarded: an allowlist over keys that never constrained values; a value guard
+listing two separators where the parser split on nine; and — after the learning was already written —
+a fence guard hand-rolling a *looser* copy of the parser's own regex, which then rejected indented
+fences its own docstring recommended. The rule is in `learnings.md`: derive the predicate from the
+mechanism, never enumerate it alongside. One place the guard is *correctly* stricter is now pinned
+with the reason, so a future tidy-up toward "exact equivalence" fails a test instead of reopening the
+injection.
+
+**Classification:** structural
+
 ## 2026-08-02: the backlog block was write-once at import, and the first free-text write into it was injectable
 
 <!-- prawduct: type=fix | scope=backlog-block-field-writes | chunks=01 -->

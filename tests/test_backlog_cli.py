@@ -583,3 +583,34 @@ class TestReviewedRejectsAStrayValue:
         item_id = _file(fake, capsys)
         code, _, _ = _run(["update", item_id, "--reviewed", "--json"], fake, capsys)
         assert code == 0
+
+
+class TestExtraPositionalHintIsConditional:
+    """The stray-positional error must name the RIGHT likely cause.
+
+    Blaming `--reviewed` unconditionally misleads the other common arrival —
+    `update <id> status=shipped`, the markdown spelling still instructed by
+    skills/pr and the Critic's review-cycle. Both arms are pinned, because with
+    only the `--reviewed` arm tested, reverting the conditional leaves the suite
+    green and the wrong-cause message comes straight back.
+    """
+
+    def test_reviewed_arm_names_reviewed(self, capsys):
+        fake = FakeGitHub()
+        item_id = _file(fake, capsys)
+        code, out, _ = _run(
+            ["update", item_id, "--reviewed", "2020-01-01", "--json"], fake, capsys
+        )
+        assert code == 2
+        assert "--reviewed" in json.loads(out)["error"]["message"]
+
+    def test_non_reviewed_arm_does_not_blame_reviewed(self, capsys):
+        fake = FakeGitHub()
+        item_id = _file(fake, capsys)
+        code, out, _ = _run(
+            ["update", item_id, "status=shipped", "--json"], fake, capsys
+        )
+        assert code == 2
+        message = json.loads(out)["error"]["message"]
+        assert "--reviewed" not in message, "the wrong cause is named"
+        assert "named flags" in message, "the right cause is not named"

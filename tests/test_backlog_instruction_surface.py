@@ -296,6 +296,11 @@ def test_surfaces_claim_no_unbacked_adapter_guard():
 # was tried and rejected: `` `key: value` `` spans match ordinary documentation
 # prose constantly, and a check that cries wolf trains its reader to skip the one
 # real catch — the failure this module's own docstring warns about.
+#
+# There is a SECOND blind spot, and it is not restated here so the two cannot
+# drift apart: backend scoping is heuristic (the `markdown` adjacency window
+# below). Both are written out together in the module docstring — read that
+# before trusting a green run to mean "no phantom capability is instructed".
 
 # Fields with no flag of their own because a dedicated op owns them — writing
 # them through `update` would bypass that op's invariants (atomic take-and-
@@ -556,6 +561,10 @@ def test_a_mixed_backend_line_is_still_scanned(tmp_path):
         "scope is line-wide again, and the mixed-backend lines that make up most "
         "of SKILL.md are unscanned"
     )
-    assert "accepted-by" not in caught, (
-        "the clause actually next to 'markdown' should stay exempt"
-    )
+    # NOT asserting `accepted-by` is absent here: the fixture's verb ("carries")
+    # is not in `_PROSE_FIELD_WRITE`'s list and there is no `foo=` form, so that
+    # field can never be emitted from this line — the assertion would pass with
+    # the exemption present, absent, or inverted. Vacuous, so it is gone; the
+    # exempt direction is genuinely covered by
+    # `test_a_markdown_scoped_line_is_exempt_but_an_issues_one_is_not`, whose
+    # fixture uses a real write verb.
