@@ -17,10 +17,19 @@ so the only route to declaring the field was a product owner opening a template 
 declares nothing is never reviewed *less* — the framework-shaped defaults still escalate and the
 older file-count rule stands underneath — so nothing fails, nothing prompts, and the product keeps
 the generic rule forever. What declaring surfaces actually buys is the raised size threshold: it is
-what stops a small change to your most dangerous code being reviewed cheaply *because* it is small.
+what declaring buys is **size-independence on the paths you name**: a diff touching one gets the
+deeper review however small it is. (Declaring also raises the file-count threshold governing
+*everything else* — a separate effect running the other way; `review-cycle.md` owns both numbers.)
 An unasked question is an unanswered one. `discovery.md` now asks it as its own section, and the
-concerns registry has the row it never had — `risk_surfaces: []` is recorded as a valid deliberate
-answer, so a later reader can tell a decision from an omission.
+concerns registry has the row it never had.
+
+**`risk_surfaces: []` is documented as an opt-OUT, not as a way to record that you discussed it** —
+corrected before merge, after all three reviewers of this batch caught the first draft advising the
+opposite. A *present* key is exclusive (`lib/risk.py::resolve_surfaces`), so `[]` retires the derived
+defaults **and** the product's `boundary-patterns.md` contract paths: strictly *less* review than
+leaving the key absent. The "never reviewed less than before" guarantee covers the **absent** case
+only. Write `[]` only when the product genuinely has no concentrated risk; if surfaces exist but are
+unnamed, leave the key absent and record the discussion where discussion belongs.
 
 **`#264` — five prose defects, all still live after the prose diet compressed the text around them.**
 The Critic's activation step 6 said "decide checks from signals below," which is vague about the one
@@ -41,9 +50,11 @@ only to items with no metadata bar at all. A cluster of 1.0s means *unassessed*,
 The stale `(Q6)` label is gone.
 
 **PR-review evidence deletion is now a recorded decision rather than an apparent oversight** (owner,
-2026-08-02). The durable record of a review is the *fact*, which lives in the shared evidence store
-plus the `review.pr` ledger event; `.prawduct/.pr-reviews/<branch>.json` is per-clone scratch for one
-in-flight review. Archiving it would give a fact a second home — which the *every fact has one home*
+2026-08-02). The durable record of a PR review is the **`review.pr` ledger event**, which embeds the
+findings record verbatim — **not** the shared evidence store, whose `KNOWN_KINDS` is
+`{review, resolution, disposition}`, all written by `critic-consolidate`; no path puts a PR finding
+there. `.prawduct/.pr-reviews/<branch>.json` is per-clone scratch for one
+in-flight review. Archiving it would give that record a second home — which the *every fact has one home*
 norm forbids — and leave a stale copy outliving the branch it describes. The cost is named rather
 than hidden: PR findings are consequently not queryable from the shared store, so any yield
 measurement spanning PR reviews needs a cross-worktree ledger sweep. That is the same constraint the

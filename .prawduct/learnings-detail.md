@@ -2231,5 +2231,5 @@ per-worktree ledger event." The caveat slot wanted a limitation, and there the t
 The operational form: when writing a rationale, identify the **load-bearing clause** — the one the
 decision rests on — and check that one against the mechanism, separately from reading the paragraph
 for sense. Reading for sense will pass it, because it reads well; that is the property that selected
-it. Pairs with [[a-rule-you-must-recall-at-the-right-moment-is-its-weakest-form]]: that rule covers
+it. Pairs with [[A rule you must RECALL at the right moment is its weakest form]]: that rule covers
 rules you fail to apply, this one covers facts you apply *away from* where they are needed.

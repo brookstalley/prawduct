@@ -183,8 +183,9 @@ declaring buys is **size-independence on the paths you named**: a diff touching 
 deeper review however small it is, so a two-line change to your riskiest code is no longer reviewed
 cheaply *because* it is small. (Declaring also raises the file-count threshold that governs
 *everything else* — a separate effect, and one that runs the other way. `skills/critic/review-cycle.md`
-owns both numbers; don't restate them here.) An unasked question is an unanswered one, and this one
-decides review depth for the life of the product.
+owns both numbers; don't restate them here. Both effects need a **non-empty** list: on this axis `[]`
+and absent behave identically, so an empty declaration buys none of it.) An unasked question is an
+unanswered one, and this one decides review depth for the life of the product.
 
 **`risk_surfaces: []` is an opt-OUT, not a way to record "we discussed it."** A *present* key is
 exclusive (`lib/risk.py::resolve_surfaces`), so the empty list retires the derived defaults **and**
