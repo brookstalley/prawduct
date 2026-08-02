@@ -3,6 +3,57 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-08-02: two checks the cheapest gate did not have, paid for by upleveling
+
+<!-- prawduct: type=fix | scope=critic-burndown | chunks=01 -->
+
+Two Critic controls that the protocol never mandated, both landing under a budget that forbids
+paying for them with a ceiling raise.
+
+**A cross-component message contract is now Goal 1's business, in chunk mode, BLOCKING** (`#97`).
+The filing case came from a governed product: a two-process app whose consumer awaited a terminal
+signal the producer's success path never sends. Types matched on both sides, the unit and IPC tests
+were green — because the fixtures synthesized the very signal the real producer omits — and
+chunk-mode review passed it. In production the flow hangs forever. It was caught later only because
+a human wrote a pointed reviewer prompt, which means detection was **prompt-driven, not
+protocol-driven**: neither the Critic's nor the PR reviewer's protocol mandated the trace. The check
+folds into Goal 1 rather than becoming an eighth goal, per the skill's own guidance, and it lands in
+`goals-1-3.md` because that file *is* the chunk-mode payload — the earliest and cheapest gate is the
+point. Goal 5 is scoped in the same pass to *downstream* consumer impact, so the two no longer
+overlap: Goal 5 asks whether your change broke a consumer, Goal 1 asks whether your consumer
+mismodels the producer. That inverse is the direction the original had no home for.
+
+**A scope pressure-test joins the cumulative and PR protocols** (`#293`). Every reviewer checks the
+work *as scoped* and none asks whether the capability should exist or was ever reached end-to-end.
+It sits in Goal 5, not Goal 2, which keeps it out of the chunk-mode payload deliberately — whether a
+capability is consumed end-to-end is a question only the full bundle can answer.
+
+**Neither ceiling moved, and both files came out smaller than they went in** — each having *gained*
+a check. (The readings live in `LAST_MEASURED_TOKENS`, which owns them; restating a figure here is
+how the budget narratives went stale in the first place.) The funding was upleveling rather than
+word-shaving, and three cuts generalize well enough to record: a
+definition another file owns and the reader is told to open is not worth restating (the record-lint
+severities, the four Framework-Specific Checks); a message the reviewer can compose is not worth
+quoting verbatim; and history — what a mechanism *used* to do — is never worth carrying in an
+instruction payload. The same lens was turned on the budget comments themselves, which had
+accumulated into running tallies of exact token counts and dates that drive no decision. The ceiling
+assertion is what decides; the tally was churn.
+
+**The observable-yield obligation is discharged with stable tokens, not goal attribution.**
+`nonfunctional-requirements.md` binds a control added after 2026-07-29 to emit its yield observably.
+Goal-level attribution cannot carry it: findings do persist a `goal` field, but it is reviewer-written
+free text and it already drifts — one framework check appears in the evidence store under four
+spellings. A sub-check inside Goal 1 would have been uncountable from the day it shipped. Both
+controls instead instruct the reviewer to open the finding title with a stable token
+(`cross-component-contract:`, `scope-trace:`), making the yield a one-line query, and
+`tests/test_control_yield_tokens.py` pins the tokens so a later reflow cannot silently delete the
+countability.
+
+`#165` was considered for this batch and **deliberately excluded**: its recorded revisit trigger is a
+*second* surplus review event, and the ledger carries exactly one, the known duplicate the item
+already names. Worth recording how nearly that check went wrong — the ledger is per-worktree and
+gitignored, so counting only the working worktree returns a false clean.
+
 ## 2026-08-02: the untriaged, the truncated, the unpublished, and two hardening passes
 
 <!-- prawduct: type=fix | scope=backlog-burndown | chunks=04 -->

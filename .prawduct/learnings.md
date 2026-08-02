@@ -343,3 +343,5 @@ dropping them.
 ## A filed item's stated MECHANISM is a hypothesis, not a finding — reproduce it against live data before designing the fix, because the reporter saw a correlation and wrote it up as a cause, and the item's own evidence often carries the disproof. Run the command and reconcile against the source of truth, THEN read the item again
 
 ## A deferral justified by "there is no consumer yet" is scoped to the surfaces that consumer does not touch — when one appears, the premise goes false without the decision going wrong, so restate the SCOPE rather than retiring the deferral or amending the decision. Record it as a ruling, and enumerate the now-supported surfaces in one place every other mention tracks — a count stated in four sentences drifts on the first correction
+
+## A token budget is raised only when the framework is provably better FOR THE RAISE and upleveling has no headroom left — cut the class, not the words: dates, running tallies, worked examples, and definitions another file owns and tells the reader to open are removable outright, and rewrapping returns nothing against a word-count estimator. What looks unaffordable is usually history

@@ -2133,3 +2133,48 @@ Pairs with [[when you correct an inherited number recount the SET]] — same fai
 earlier: that rule is about re-measuring inside an inherited frame; this one is about the frame
 arriving in the item text and reading like a finding because it sits under a "Problem" heading.
 
+
+## A token budget is raised only when the framework is provably better FOR THE RAISE and upleveling has no headroom left
+
+Two Critic controls had to land in files with 2 and 12 words of headroom. Word-shaving looked
+hopeless, and the estimator is `len(text.split()) * 1.3`, so reflowing buys literally nothing.
+
+What worked was cutting whole classes of content rather than tightening sentences:
+
+- **Definitions another file owns.** `goals-1-3.md` told the reviewer to read `record_lint`'s output
+  and *never re-derive it*, then spent forty words re-deriving what each lint id means — including a
+  400-char threshold no reviewer applies, because code computes it. `review-protocol.md` did the same
+  with the four Framework-Specific Checks, immediately after pointing at `framework-checks.md` for
+  the definitions. Both cuts are safe *because* the file already ordered the reader elsewhere.
+- **Machine output quoted verbatim.** A WARNING's exact wording, reproduced in prose, when the
+  reviewer composes the message anyway.
+- **History.** "Reviewer-model tiering was removed", "an undeclared repo is never reviewed less than
+  before" — what a mechanism *used* to do, carried in an instruction payload where it can only cost.
+- **Rationale aimed at a maintainer, inside a payload aimed at a reviewer.** The most self-defeating
+  instance: a citation explaining *why this file is short*, in the file whose purpose is minimum
+  reviewer payload.
+
+Both files ended up smaller than they started while each gained a check.
+
+**Two guards caught real damage, and both were worth more than the tokens saved.** Deleting Goal 4's
+`**Norms**` bullet as a "pure restatement" broke `test_project_preferences_blocking`, which contracts
+on a single line carrying both `project-preferences` and `blocking` — that bullet is the only line
+satisfying it. The budget comment recorded a previous editor doing exactly this and reverting; I did
+it anyway, which is why the note now names the trap instead of narrating the incident. Separately,
+compressing "the chunk *inferred from* build-plan Status" to "the chunk from build-plan Status"
+broke a guard pinning that the assumption shape names both its causes — a compressed reading there
+had previously produced a recurring false BLOCKING no `--chunk` could clear.
+
+The general form: **prose that reads as redundant may be the only witness to a contract.** Uplevel
+aggressively, then run the suite — the guards, not the reading, decide what was redundant.
+
+## Exactness is owed to a number something RELIES ON for a decision, not one something merely READS
+
+Instance, 2026-08-02: restoring one word to a budgeted file moved its token reading by 1, which then
+had to be updated in `LAST_MEASURED_TOKENS`, a change-log paragraph, and a build-plan Status
+paragraph. Three edits, one word, and no decision anywhere depended on the digit — the *ceiling*
+assertion is what decides. The prose figures were removed and the table left owning the reading.
+`LAST_MEASURED_TOKENS` itself is the open question: it is an exact-equality pin that drives no
+branch, so every edit to a budgeted file pays a mandatory update whose only function is to force the
+author to notice. That may be worth it, but it is exact-number churn by construction and should be
+decided deliberately rather than inherited.
