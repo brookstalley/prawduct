@@ -36,6 +36,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from . import core
+
 #: What the skill points at and the guards key on. The marker is the mechanism; the
 #: prose beneath it is free to be reworded (a test that matched the wording would
 #: pass for every rewrite of the same defect), and a product may rewrite it entirely.
@@ -97,17 +99,25 @@ def check(project_dir: str | Path) -> dict:
 
     The statuses, and why each is its own answer rather than a boolean:
 
+    **The home is the FIRST occurrence of the marker**, which is the rule the
+    framework repo's own position guard already uses. An earlier cut graded on
+    *every* occurrence, reasoning that one well-placed marker should not excuse a
+    second copy further down — but the marker is an ordinary string, and a product
+    that writes a rule *about* the obligation (a natural thing for a prawduct-derived
+    corpus to do) then earns ``misplaced``: the one status the repair declines, so
+    doctor tells an owner to move a block that is already in the right place and
+    offers nothing. A dead-end verdict on a healthy corpus is how a check teaches its
+    reader to skip it. Duplicate-copy detection was never asked for and is not worth
+    that; the first occurrence decides.
+
     ``ok``
-        A marker exists and **every** occurrence sits above the first rule. Strict
-        about *every* occurrence on purpose: one correctly-placed marker does not
-        excuse a second copy further down, and a corpus with two homes for the same
-        statement is the failure this whole area is about.
+        A marker exists above the first rule.
     ``missing``
         No marker anywhere — ``/prawduct:learnings`` ships this product an
         instruction aimed at a hole. Repairable.
     ``misplaced``
-        A marker exists at or below the first rule. Not repairable here: fixing it
-        means moving a line, and this repair only ever inserts.
+        The first marker sits at or below the first rule. Not repairable here:
+        fixing it means moving a line, and this repair only ever inserts.
     ``absent``
         No ``learnings.md`` at all. Reported, not repaired — a missing core-state
         file is the health check's own finding (doctor #5), and scaffolding one from
@@ -159,15 +169,14 @@ def check(project_dir: str | Path) -> dict:
             ),
         }
 
-    if first_rule is not None and any(i >= first_rule for i in marker_at):
-        below = [i + 1 for i in marker_at if i >= first_rule]
+    if first_rule is not None and marker_at[0] >= first_rule:
         return {
             **found,
             "status": STATUS_MISPLACED,
             "detail": (
-                f"the `{MARKER}` marker appears at line(s) {', '.join(map(str, below))}, "
-                f"at or below the first rule (line {first_rule + 1}) — a reader meets "
-                "the obligation after the rules it governs, which is the inertness it "
+                f"the first `{MARKER}` marker is at line {marker_at[0] + 1}, at or "
+                f"below the first rule (line {first_rule + 1}) — a reader meets the "
+                "obligation after the rules it governs, which is the inertness it "
                 "exists to prevent. Move the block above the first rule; this repair "
                 "inserts only and will not move or delete an authored line."
             ),
@@ -245,7 +254,14 @@ def repair(project_dir: str | Path, *, apply: bool = False) -> dict:
     updated = lines[:at] + text.split("\n") + lines[at:]
     body = "\n".join(updated) + "\n"
     try:
-        path.write_text(body, encoding="utf-8")
+        # Atomic (tmp sibling + os.replace) via the shared writer, not because a
+        # reader of this file fails open — nothing reads it as state — but because
+        # the file is the OWNER'S authored corpus. A torn write on the framework's
+        # own state costs a regenerated file; here it costs prose nobody else has.
+        # Old-or-new for one import. (`core.atomic_write_text` writes at the locale
+        # encoding rather than utf-8 — see `#562`; this block is non-ASCII, so it
+        # is the caller that surfaces the gap.)
+        core.atomic_write_text(path, body)
     except OSError as exc:
         result.update({"repairable": False,
                        "detail": f"could not write {LEARNINGS_REL}: {exc}"})

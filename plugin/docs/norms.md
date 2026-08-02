@@ -314,8 +314,11 @@ but not mutually exclusive (see below):
 | 1 — strategy-artifact-missing | characteristics **recorded**, but an expected strategy-class artifact is absent | author the artifact (a `(not relevant — …)` stub counts) |
 | 2 — norm-registry-unratified | a strategy-class artifact **exists**, but the norm registry is unratified | ratify the direction, or record there is none |
 
-Layer 0 fires on the negation of the boundary predicate; layer 1 on its truth — exact
-complements, so 0 and 1 never double-fire. Layer 1 stays silent until characteristics are
+Layer 0 speaks only on the negation of the boundary predicate; layer 1 only on its truth — so 0
+and 1 never double-fire. Each adds a second condition of its own (the table above: layer 0 also
+needs product work, layer 1 a missing artifact), so both are silent on a freshly-onboarded empty
+repo — that is the chain not yet engaged, not the chain satisfied, and `coverage-status` renders
+the two differently. Layer 1 stays silent until characteristics are
 recorded *even for the universal artifacts* — "every product needs a data model" means every
 product that has told the framework it is one. Layer 2 keeps its OWN artifact-existence gate: it
 fires once *any* strategy-class artifact exists and the registry is unratified — you can ratify the

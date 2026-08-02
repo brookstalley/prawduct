@@ -3884,15 +3884,24 @@ def cmd_coverage_status(project_dir: Path, argv: list[str]) -> int:
         print(f"NOTE: coverage-status unavailable (plugin lib/ not importable: {exc})", file=sys.stderr)
         return 0
 
-    state_path = project_dir / ".prawduct" / "project-state.yaml"
     codebase = store.make_codebase(project_dir)
-    recorded = cp.structural_characteristics_recorded(state_path)
-    missing = cp.missing_expected_artifacts(codebase)  # [(name, characteristic|None)]
-    # Whether discovery is owed YET — a freshly-onboarded repo with no code and no
-    # docs owes nothing, which is why layer 0 stays silent there. Reported as its
-    # own field so "no active layer" doesn't render a fresh repo's not-started
-    # chain identically to a finished one's.
-    expected = cp.discovery_expected(codebase)
+    # Layers 0-1 in one evaluation (each predicate walks the tree; layer_status pays
+    # for each once). Guarded like layer 2 below and for the same reason — this
+    # function promises a health REPORT, and a report that raises has failed harder
+    # than one that says "unknown". `staging` reads None-per-key when it could not
+    # run, and every consumer below discriminates on that.
+    staging: dict = {}
+    try:
+        staging = cp.layer_status(codebase)
+    except Exception as exc:  # prawduct:allow prawduct/broad-except -- report must not crash; degrade layers 0-1 to unknown + log
+        print(f"NOTE: coverage-status layers 0-1 (staging) check skipped: {exc}", file=sys.stderr)
+    recorded = staging.get("structural_recorded")
+    missing = staging.get("missing") or []  # [(name, characteristic|None)]
+    # Whether discovery is owed YET. False means "no product work this scan
+    # RECOGNISES" (the source-suffix allowlist, #561), never "this repo is empty" —
+    # every rendering below is worded to that, because the one population it is
+    # wrong about is a repo full of source in an unlisted language.
+    expected = staging.get("discovery_expected")
 
     # Layer 2 composes over the norm probe (its own gate is "strategy artifacts
     # exist AND registry unratified"). The probe is declared non-raising, but a
@@ -3908,12 +3917,12 @@ def cmd_coverage_status(project_dir: Path, argv: list[str]) -> int:
 
     # Which single layer currently owns the nudge (the chain stages). Layers 0 and 1
     # are asked of the probe module, never re-derived here: this report's whole claim
-    # is that it mirrors the ambient nudge, and it earns that only by calling the same
-    # predicates the probes fire on.
-    if cp.layer0_active(codebase):
+    # is that it mirrors the ambient nudge, and it earns that only by composing the
+    # same predicates the probes fire on.
+    if staging.get("layer0_active"):
         active_layer: int | None = 0
         fix: str | None = "record structural characteristics: /prawduct:methodology discovery"
-    elif cp.layer1_active(codebase):
+    elif staging.get("layer1_active"):
         active_layer = 1
         fix = ("author each missing artifact (/prawduct:methodology planning), or drop stubs "
                "in one act: prawduct-hook coverage-scaffold --apply")
@@ -3937,23 +3946,28 @@ def cmd_coverage_status(project_dir: Path, argv: list[str]) -> int:
         return 0
 
     print("Structural coverage (three-layer chain):")
-    if recorded:
-        print("  Layer 0 · discovery         : characteristics RECORDED")
-    elif expected:
-        print("  Layer 0 · discovery         : characteristics NOT RECORDED")
+    if not staging:
+        print("  Layer 0 · discovery         : unknown (staging check unavailable)")
+        print("  Layer 1 · strategy artifacts : unknown (staging check unavailable)")
     else:
-        # Unrecorded AND unowed. Printing the bare "NOT RECORDED" here reads as the
-        # finding it is not: nothing has been built yet, so there is nothing to
-        # characterise.
-        print("  Layer 0 · discovery         : characteristics NOT RECORDED "
-              "(not owed yet — no product work in this repo)")
-    if missing:
-        print(f"  Layer 1 · strategy artifacts : {len(missing)} expected artifact(s) missing")
-        for name, char in missing:
-            suffix = "" if char is None else f"  (required — {char} recorded)"
-            print(f"       - {name}{suffix}")
-    else:
-        print("  Layer 1 · strategy artifacts : all expected artifacts present")
+        if recorded:
+            print("  Layer 0 · discovery         : characteristics RECORDED")
+        elif expected:
+            print("  Layer 0 · discovery         : characteristics NOT RECORDED")
+        else:
+            # Unrecorded AND nothing recognised to characterise. A bare "NOT
+            # RECORDED" reads as the finding it is not — but the scan sees source
+            # by suffix, so the honest claim is about what it FOUND, not about what
+            # is there (#561).
+            print("  Layer 0 · discovery         : characteristics NOT RECORDED "
+                  "(not owed yet — no source code or docs/ that this scan recognises)")
+        if missing:
+            print(f"  Layer 1 · strategy artifacts : {len(missing)} expected artifact(s) missing")
+            for name, char in missing:
+                suffix = "" if char is None else f"  (required — {char} recorded)"
+                print(f"       - {name}{suffix}")
+        else:
+            print("  Layer 1 · strategy artifacts : all expected artifacts present")
     if norms_unratified is None:
         print("  Layer 2 · norm ratification : unknown (norm check unavailable)")
     elif norms_unratified:
@@ -3962,6 +3976,8 @@ def cmd_coverage_status(project_dir: Path, argv: list[str]) -> int:
         print("  Layer 2 · norm ratification : ratified or not yet applicable")
     if active_layer is not None:
         print(f"  Active nudge → Layer {active_layer}: {fix}")
+    elif not staging:
+        print("  Active nudge → none actionable: layers 0-1 could not be checked.")
     elif norms_unratified is None:
         # Layers 0-1 satisfied, but layer 2 couldn't be checked — don't claim the
         # whole chain is satisfied (the --json consumer discriminates on the
@@ -3970,8 +3986,8 @@ def cmd_coverage_status(project_dir: Path, argv: list[str]) -> int:
     elif not expected and not recorded:
         # "Satisfied" would be a false clean bill: nothing has been asked of this
         # repo yet. Name what starts the chain instead.
-        print("  Active nudge → none: no product work yet — the chain engages once "
-              "the repo has source code or docs/.")
+        print("  Active nudge → none: no product work found yet — the chain engages "
+              "once the repo has source code or docs/.")
     else:
         print("  Active nudge → none: the coverage chain is satisfied.")
     return 0
@@ -4415,7 +4431,12 @@ def cmd_learnings_obligation(project_dir: Path, argv: list[str]) -> int:
     if as_json:
         print(json.dumps(result, indent=2))
     else:
-        print(f"learnings-obligation ({'applied' if result['applied'] else 'dry-run'}): {status}")
+        # Labelled from the MODE the operator asked for, not from whether a write
+        # happened: `--apply` against a refused status (misplaced, absent,
+        # unreadable) writes nothing, and calling that run "dry-run" invites the
+        # reader to conclude they forgot the flag and re-run it. `status`/`detail`
+        # say what actually happened.
+        print(f"learnings-obligation ({'apply' if apply else 'dry-run'}): {status}")
         print(f"  {result['detail']}")
         if result["repairable"] and not result["applied"]:
             # The informed confirmation: name the file, the exact line, and the

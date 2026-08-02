@@ -224,6 +224,35 @@ class TestReportAgreesWithTheNudge:
         assert (data["active_layer"] == 1) == layer1_nudged
         assert data["active_layer"] is None
 
+    def test_an_unrecognised_language_is_reported_as_unfound_not_as_absent(self, tmp_path):
+        """The population this staging predicate is wrong about.
+
+        `_has_product_definition_work` reads source by suffix allowlist, so a repo
+        written entirely in a language the tuple omits (`.cs`, `.tsx`, `.php`, …)
+        scans as unstarted. Under-firing is the right direction for a *nudge* —
+        silence costs advice, never soundness — but the report renders the same
+        predicate as prose, and prose that says "no product work in this repo" to a
+        repo full of C# is a new false claim, printed as fact, by the one surface
+        that was telling that population the truth before this chunk.
+
+        So the pin is on the CLAIM, not on the classification: the report may say it
+        found nothing, and may not say there is nothing. `#561` is the real fix
+        (classify by exclusion); this keeps the wording honest until it lands, and
+        it is what fails if someone re-tightens the sentence.
+        """
+        _write_state(tmp_path, _ALL_NULL)
+        (tmp_path / "src").mkdir()
+        (tmp_path / "src" / "Program.cs").write_text("class P {}\n", encoding="utf-8")
+
+        result = _run("coverage-status", tmp_path)
+        assert result.returncode == 0
+        assert "recognises" in result.stdout
+        assert "no product work in this repo" not in result.stdout
+        # And the report still agrees with the nudge, which is the chunk's invariant
+        # — both are wrong about this repo together, which is a filed item, not a
+        # disagreement.
+        assert self._reports_layer0(tmp_path) == self._nudged(tmp_path)
+
     def test_human_output_does_not_call_an_unstarted_chain_satisfied(self, tmp_path):
         """The `--json` path never exercises the formatter (learning: a human-mode
         branch that no test reads is where a new result type hides). "Satisfied" and
@@ -231,9 +260,71 @@ class TestReportAgreesWithTheNudge:
         _write_state(tmp_path, _ALL_NULL)
         result = _run("coverage-status", tmp_path)
         assert result.returncode == 0
-        assert "no product work yet" in result.stdout
+        assert "no product work found yet" in result.stdout
         assert "the coverage chain is satisfied" not in result.stdout
         assert "Active nudge → Layer" not in result.stdout
+
+    def test_a_broken_staging_check_reports_unknown_rather_than_crashing(self, tmp_path):
+        """`cmd_coverage_status` promises a report that degrades, never crashes.
+
+        Layer 2 already had that guard; layers 0-1 did not, and this chunk gave them
+        a call that walks the tree and lazy-imports `gitstate`. The probes' own
+        fail-softness comes from the advisory *runner*, which is not on this path.
+        Simulated by making the plugin lib raise on import of the module the staging
+        predicate reaches.
+        """
+        _write_state(tmp_path, _ALL_NULL)
+        broken = tmp_path.parent / "_broken_lib"
+        broken.mkdir(exist_ok=True)
+        # A sitecustomize that lets `lib.coverage_probes` import normally and then
+        # breaks the one call the report makes. Poisoning `lib.gitstate` outright
+        # would not reach this branch — the hook resolves its project dir through
+        # gitstate before dispatching, so the crash would land upstream of the code
+        # under test, which is its own lesson about fixtures that never arrive.
+        (broken / "sitecustomize.py").write_text(
+            "import importlib, importlib.abc, importlib.util, sys\n"
+            "TARGET = 'lib.coverage_probes'\n"
+            "class _Wrap(importlib.abc.MetaPathFinder, importlib.abc.Loader):\n"
+            "    busy = False\n"
+            "    def find_spec(self, name, path=None, target=None):\n"
+            "        if name != TARGET or _Wrap.busy:\n"
+            "            return None\n"
+            "        return importlib.util.spec_from_loader(name, self)\n"
+            "    def create_module(self, spec):\n"
+            "        _Wrap.busy = True\n"
+            "        try:\n"
+            "            mod = importlib.import_module(TARGET)\n"
+            "        finally:\n"
+            "            _Wrap.busy = False\n"
+            "        def _boom(*a, **k):\n"
+            "            raise RuntimeError('staging predicate is broken')\n"
+            "        mod.layer_status = _boom\n"
+            "        return mod\n"
+            "    def exec_module(self, module):\n"
+            "        pass\n"
+            "sys.meta_path.insert(0, _Wrap())\n",
+            encoding="utf-8",
+        )
+        home = tmp_path.parent / "_home"
+        home.mkdir(exist_ok=True)
+        result = subprocess.run(
+            ["python3", str(HOOK), "coverage-status"],
+            capture_output=True, text=True, timeout=30,
+            env={
+                "HOME": str(home),
+                "CLAUDE_PLUGIN_ROOT": str(ROOT),
+                "CLAUDE_PROJECT_DIR": str(tmp_path),
+                "PATH": "/usr/bin:/bin:/usr/sbin:/sbin",
+                "PYTHONPATH": str(broken),
+                "PYTHONDONTWRITEBYTECODE": "1",
+            },
+        )
+        assert result.returncode == 0, result.stderr
+        assert "Traceback" not in result.stderr
+        assert "unknown (staging check unavailable)" in result.stdout
+        assert "layers 0-1 could not be checked" in result.stdout
+        # And it must not silently claim a clean chain while unable to check it.
+        assert "the coverage chain is satisfied" not in result.stdout
 
 
 # ---------------------------------------------------------------------------

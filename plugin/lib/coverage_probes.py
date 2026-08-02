@@ -40,8 +40,9 @@ silence on anything it cannot read as clearly present.
 
 **The whole probe stages behind layer 0.** It stays silent until the product has
 recorded at least one structural characteristic
-(:func:`structural_characteristics_recorded`) — the shared boundary predicate layer
-0 fires on the negation of. A product that has not captured *what it is* gets the
+(:func:`structural_characteristics_recorded`) — the shared boundary predicate, which
+layer 0 fires on the negation of *and* on the repo showing product-definition work
+(:func:`layer0_active`). A product that has not captured *what it is* gets the
 upstream nudge (record your characteristics), not the downstream one (author the
 artifacts those characteristics imply); firing both at once would double-nag. Once
 characteristics are recorded, layer 0 clears and layer 1 takes over — the universal
@@ -237,11 +238,16 @@ def structural_characteristics_recorded(state_path: Path) -> bool:
 
     This is the **shared staging boundary** between layer 0
     (:func:`probe_discovery_not_captured`) and layer 1 (the strategy-artifact
-    probe). Layer 0 fires on its *negation*; layer 1 speaks only on its truth — so
-    exactly one layer nudges a given product (one actionable nudge at a time;
-    docs/norms.md § Enforcement). Both sides key off THIS predicate rather than each
-    re-deciding "were characteristics captured?", so the boundary can't drift
-    (transcription across surfaces flattens quantifiers).
+    probe). Layer 0 speaks only on its negation; layer 1 only on its truth — so the
+    two never double-nag (one actionable nudge at a time; docs/norms.md
+    § Enforcement). Both sides key off THIS predicate rather than each re-deciding
+    "were characteristics captured?", so the boundary can't drift (transcription
+    across surfaces flattens quantifiers).
+
+    Note it is a *boundary*, not the whole of either condition — each layer adds its
+    own second half (:func:`layer0_active` also requires product-definition work;
+    :func:`layer1_active` also requires a missing artifact), so **both can be
+    silent**: a freshly-onboarded empty repo owes neither nudge.
 
     "Recorded" is defined as ≥1 characteristic present, not all six answered,
     because the template default is ``null`` for every characteristic and ``null``
@@ -260,18 +266,27 @@ def structural_characteristics_recorded(state_path: Path) -> bool:
 
 
 def discovery_expected(codebase: Codebase) -> bool:
-    """True when this repo is far enough along to owe discovery at all.
+    """True when this repo shows product-definition work prawduct can *recognise*.
 
     Two conditions, cheapest first: it carries prawduct state (a
     ``project-state.yaml`` to record characteristics *in* — its absence is core-state
-    breakage, a different check's finding), and it shows product-definition work
-    (``gitstate._has_product_definition_work`` — source code, or markdown under a
-    documentation root). A freshly-onboarded empty repo satisfies neither
-    interesting half: nobody has started building, so "you have not told governance
-    what this is" is not yet true of anything.
+    breakage, a different check's finding), and
+    ``gitstate._has_product_definition_work`` finds source code or markdown under a
+    documentation root. A freshly-onboarded empty repo satisfies neither interesting
+    half: nobody has started building, so "you have not told governance what this is"
+    is not yet true of anything.
 
-    Split out from :func:`layer0_active` because the *report* needs the distinction
-    the *nudge* does not: silence means "nothing owed yet" here and "everything
+    **False is "nothing recognised", NOT "nothing there" — and the difference is
+    load-bearing for any caller that renders it.** The underlying scan reads source
+    code from a suffix allowlist (``gitstate._PRODUCT_CODE_SUFFIXES``), so a repo
+    written entirely in a language the tuple omits reads as unstarted. Under-firing
+    is the intended direction for a *nudge* (silence costs advice, never soundness),
+    but a caller that turns this into prose must not upgrade it to a claim about the
+    repo: `#561` tracks classifying by exclusion, which is the fix that removes the
+    distinction rather than documenting it.
+
+    Split out from :func:`layer0_active` because the *report* needs a distinction the
+    *nudge* does not: silence means "nothing owed yet" here and "everything
     satisfied" once discovery is expected and answered, and a status line that
     renders those two identically tells a fresh repo its coverage chain is complete.
     """
@@ -282,20 +297,37 @@ def discovery_expected(codebase: Codebase) -> bool:
     return gitstate._has_product_definition_work(codebase.root)
 
 
+def _layer0(*, recorded: bool, expected: bool) -> bool:
+    """Layer 0 owns the nudge: discovery is expected of this repo and unanswered.
+
+    The composition itself, taking its inputs rather than fetching them, so the two
+    callers that need it — :func:`layer0_active` (one predicate, for the probe) and
+    :func:`layer_status` (all of them at once, for the report) — share the rule
+    without either re-deriving it or paying for the other's scans.
+    """
+    return expected and not recorded
+
+
+def _layer1(*, recorded: bool, missing: list) -> bool:
+    """Layer 1 owns the nudge: characteristics recorded, expected artifacts absent."""
+    return bool(recorded and missing)
+
+
 def layer0_active(codebase: Codebase) -> bool:
     """True when layer 0 — discovery not captured — is this product's live gap.
 
     The single home for "does layer 0 own the nudge?", shared by the probe that
     raises it (:func:`probe_discovery_not_captured`) and the ``coverage-status``
-    report that grades it. Both surfaces claim to answer from the same expectation
-    table; before this they answered from two, and the report graded a
-    freshly-onboarded empty repo as degraded while the nudge it claimed to mirror
-    correctly stayed silent (#241). A report that disagrees with the nudge is worse
-    than no report — it sends an owner to fix something the framework is not asking
-    for.
+    report that grades it (through :func:`layer_status`). Both surfaces claim to
+    answer from the same expectation table; before this they answered from two, and
+    the report graded a freshly-onboarded empty repo as degraded while the nudge it
+    claimed to mirror correctly stayed silent (#241). A report that disagrees with
+    the nudge is worse than no report — it sends an owner to fix something the
+    framework is not asking for.
     """
-    return discovery_expected(codebase) and not structural_characteristics_recorded(
-        _state_path(codebase)
+    return _layer0(
+        recorded=structural_characteristics_recorded(_state_path(codebase)),
+        expected=discovery_expected(codebase),
     )
 
 
@@ -309,10 +341,35 @@ def layer1_active(codebase: Codebase) -> bool:
     to layer 1 — the same disagreement, one layer down, wearing the fix as a
     disguise.
     """
-    return bool(
-        structural_characteristics_recorded(_state_path(codebase))
-        and missing_expected_artifacts(codebase)
+    return _layer1(
+        recorded=structural_characteristics_recorded(_state_path(codebase)),
+        missing=missing_expected_artifacts(codebase),
     )
+
+
+def layer_status(codebase: Codebase) -> dict:
+    """Every layer-0/1 input and verdict, from **one** evaluation of each predicate.
+
+    For a caller that needs more than one of them. Calling the individual predicates
+    in sequence re-walks the tree: :func:`discovery_expected` bottoms out in an
+    ``os.walk`` that short-circuits only when it *finds* source, so the population
+    that pays for the repeat is exactly the one with nothing to find. The probes keep
+    calling the single predicates (each needs one, and neither should pay for the
+    other's scan); the ``coverage-status`` report calls this.
+
+    Keys: ``structural_recorded``, ``discovery_expected``, ``missing`` (the
+    ``(artifact, characteristic|None)`` pairs), ``layer0_active``, ``layer1_active``.
+    """
+    recorded = structural_characteristics_recorded(_state_path(codebase))
+    expected = discovery_expected(codebase)
+    missing = missing_expected_artifacts(codebase)
+    return {
+        "structural_recorded": recorded,
+        "discovery_expected": expected,
+        "missing": missing,
+        "layer0_active": _layer0(recorded=recorded, expected=expected),
+        "layer1_active": _layer1(recorded=recorded, missing=missing),
+    }
 
 
 def _missing_universal(codebase: Codebase) -> list[str]:

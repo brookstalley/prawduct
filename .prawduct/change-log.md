@@ -81,9 +81,67 @@ state-mutating writer `--apply` exits 0 on a write or an idempotent no-op and 1 
 
 **One stale count fixed in passing, in the file this chunk edits.** `docs/doctor-vs-janitor.md` said
 doctor drives "three bounded `prawduct-hook` operations" and named three; there were already five.
-Replaced with a pointer to the Health Check flow rather than a corrected list — this batch's own
-subject is facts with too many homes, and fixing a stale enumeration by writing a fresher one is how
-it recurs.
+Replaced with a pointer rather than a corrected list — this batch's own subject is facts with too
+many homes, and fixing a stale enumeration by writing a fresher one is how it recurs. (The first
+pointer was itself wrong: it aimed at the Health Check flow, which contains neither operation the
+deleted text named. The correction *is* the batch's sharpened rule landing inside the correction.)
+
+### The cumulative round: 0 blocking, 7 warnings, 10 notes — and the one that falsified a rationale
+
+Twelve fixed in one pass, three filed, two accepted (census below). Four are worth keeping.
+
+**The strictness I justified by consistency was not consistent** (R-2). `check()` graded `misplaced`
+if *any* occurrence of the marker sat below the first rule, and I defended that against my own
+doubt by saying it matched the framework repo's existing position guard. It does not: that guard
+reads `next(...)` — the **first** occurrence. So the check I shipped was stricter than the thing I
+cited as authority for it, and the cost lands on the exact reader it was for: a product that writes
+a rule *about* the obligation earns `misplaced`, which is the one status the repair declines, so
+doctor reports degraded and offers nothing. A dead-end verdict on a healthy corpus is how a check
+teaches its reader to skip it. Now first-occurrence, matching the guard, with both directions pinned
+(a prose mention below the rules is `ok`; a corpus whose *only* marker is below them is not).
+
+**The fix for #241 walked into the defect it fixes, one layer down** (R-5), and this one is filed
+rather than closed. The report was made to agree with the nudge by teaching it the *nudge's*
+predicate — which bottoms out in a source-suffix allowlist with no `.cs`, `.tsx`, `.php`, `.dart`.
+Before the fix a C#-only repo got the correct layer-0 advice from the report by accident; after it,
+the report says it found no product work. Agreement was achieved by making the report wrong in the
+same place the nudge already was. Chunk 03 of this very batch argued at length that an extension
+allowlist "would have reproduced this defect one language at a time" and reused a classify-by-
+exclusion predicate to avoid it — then Chunk 04 promoted the allowlist into a public probe, a
+report line and a `--json` key. **Fixed here: the report no longer renders the predicate as a claim
+about the repo** ("no product work in this repo" → "no source code or `docs/` that this scan
+recognises"), pinned by a `.cs`-only fixture. **Filed as `#561`:** the classification itself is
+shared with another gate, so widening it is its own change with its own review.
+
+**A control that names its yield and cannot emit it has not discharged the norm** (R-11). The plan
+disposed the ratified proportionality norm by saying Chunk 04's yield "is the degraded-count that
+surface already prints" — which is *verbatim* the case the norm rules out ("printed and forgotten …
+can never be retired on evidence, only defended on principle"). Doctor emits no fact, no counter, no
+ledger line, so the janitor's Norm Health sweep will have zero firing data for #13. The plan now
+states the exact expected yield (every pre-marker repo fires once and then never again, because the
+repair is idempotent — a *second* firing is evidence the repair did not hold), says plainly that the
+emission half is **unmet rather than carved out**, and files the gap as `#563`. Naming a norm as
+`conforms` when the mechanism it requires does not exist is a compliance claim, and this batch is
+about those.
+
+**A report that promises not to crash has to be made not to crash** (R-3, R-10). `cmd_coverage_status`
+documents that a faulty sub-check degrades to "unknown"; layer 2 was guarded, layers 0-1 were not,
+and this chunk handed them a tree-walking, lazy-importing predicate. The probes' fail-softness comes
+from the advisory *runner*, which is not on the report's path. Both layers now resolve through one
+guarded `coverage_probes.layer_status` call — which also stops the report re-walking the tree for
+each predicate, and the population that paid for the repeat was exactly the one with nothing to
+find. Pinned by a fault-injection fixture, red-verified by removing the guard.
+
+Also fixed: `learnings-obligation` reaching two of `api-contract.md`'s three subcommand enumerations
+and not the third (R-1/R-6/R-14 — one edit, and the same shape `#162` closed two chunks ago); the
+`unreadable` status left unrouted in Health Check #13, so an undecodable corpus read as healthy
+(R-8/R-12); `discovery_expected` published with doctor named as its consumer while the doctor prose
+was never told to read it (R-13); a `--apply` run that refused being labelled "(dry-run)" (R-15);
+and a `cross-cutting-concerns.md` row for the descent obligation, which records the surface as
+**uneven on purpose** — writer, reader and detector, no discovery leg and no Critic leg (R-9).
+Accepted: the learnings cross-check and the backlog-reconciliation notice, both informational.
+Filed alongside: `#562`, the shared atomic writer writing at the locale encoding while every reader
+demands UTF-8 — latent until this chunk gave it a caller with non-ASCII content.
 
 ## 2026-08-02: the green-is-evidence directive now fires off a language it does not have to know
 

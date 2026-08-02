@@ -90,10 +90,30 @@ class TestCheck:
         assert result["status"] == lo.STATUS_MISPLACED
         assert "below the first rule" in result["detail"]
 
-    def test_a_second_copy_below_the_rules_is_misplaced_even_beside_a_good_one(self, tmp_path):
-        # One correctly-placed marker does not excuse a second home for the same
-        # statement further down — the whole reason the skill points rather than copies.
-        _product(tmp_path, _PREAMBLE + "\n" + lo.OBLIGATION_BLOCK + _RULES + "\n" + lo.OBLIGATION_BLOCK)
+    def test_a_prose_mention_below_the_rules_does_not_fake_a_misplacement(self, tmp_path):
+        """The home is the FIRST occurrence, and this is why.
+
+        An earlier cut graded on *every* occurrence, so that a second copy below the
+        rules would be caught. But the marker is an ordinary string: a corpus with a
+        rule *about* the obligation — which a prawduct-derived product will write —
+        then grades `misplaced`, the one status the repair declines. Doctor would
+        report degraded, tell the owner to move a block that is already correctly
+        placed, and offer no repair. A dead-end verdict on a healthy corpus is how a
+        check teaches its reader to skip it.
+        """
+        corpus = (
+            _PREAMBLE + "\n" + lo.OBLIGATION_BLOCK + _RULES
+            + "\n## Keep the obligation above the rules\n\n"
+            "When editing learnings.md, keep the `prawduct:descent-obligation` "
+            "marker above the first rule because a reader meets it in file order.\n"
+        )
+        _product(tmp_path, corpus)
+        assert lo.check(tmp_path)["status"] == lo.STATUS_OK
+
+    def test_a_marker_only_below_the_rules_is_still_misplaced(self, tmp_path):
+        # The first-occurrence rule must not become "any occurrence anywhere is
+        # fine": a corpus whose ONLY marker is below the rules is the real defect.
+        _product(tmp_path, _PREAMBLE + _RULES + "\n" + lo.OBLIGATION_BLOCK)
         assert lo.check(tmp_path)["status"] == lo.STATUS_MISPLACED
 
     def test_no_learnings_file_is_absent_not_missing(self, tmp_path):
@@ -184,6 +204,30 @@ class TestRepair:
         _product(tmp_path, _PREAMBLE)
         lo.repair(tmp_path, apply=True)
         assert lo.check(tmp_path)["status"] == lo.STATUS_OK
+
+    def test_a_failed_write_reports_and_claims_nothing(self, tmp_path, monkeypatch):
+        # The one error path with no other coverage. A repair that cannot write must
+        # not return applied=True — the whole value of the status is that an owner
+        # can believe it.
+        _product(tmp_path, _PREAMBLE + _RULES)
+
+        def _boom(path, text):
+            raise OSError("disk full")
+
+        monkeypatch.setattr(lo.core, "atomic_write_text", _boom)
+        result = lo.repair(tmp_path, apply=True)
+        assert result["applied"] is False
+        assert "could not write" in result["detail"]
+        assert lo.check(tmp_path)["status"] == lo.STATUS_MISSING  # untouched
+
+    def test_the_insertion_survives_the_round_trip_intact(self, tmp_path):
+        # The block is non-ASCII (em-dashes). An encoding mismatch between the write
+        # and the read would corrupt the owner's corpus, and the marker — pure
+        # ASCII — would still be found, so the status alone cannot see it.
+        _product(tmp_path, _PREAMBLE + _RULES)
+        lo.repair(tmp_path, apply=True)
+        text = (tmp_path / lo.LEARNINGS_REL).read_text(encoding="utf-8")
+        assert lo.OBLIGATION_BLOCK in text
 
     def test_the_block_is_not_welded_to_its_neighbours(self, tmp_path):
         # Markdown collapses adjacent lines into one paragraph; a block run into the
@@ -281,6 +325,16 @@ class TestCommand:
         # State-mutating writer: refused → 1, never a false success.
         _product(tmp_path, corpus)
         assert _run(tmp_path, "--apply").returncode == 1
+
+    def test_a_refused_apply_is_not_labelled_a_dry_run(self, tmp_path):
+        # The label names the mode the operator asked for. Reading it off "did a
+        # write happen" told someone who passed --apply and hit a refusal that they
+        # had run a dry run — an invitation to re-run the flag they did pass.
+        _product(tmp_path, _PREAMBLE + _RULES + "\n" + lo.OBLIGATION_BLOCK)
+        result = _run(tmp_path, "--apply")
+        assert result.returncode == 1
+        assert "(apply)" in result.stdout
+        assert "dry-run" not in result.stdout
 
     def test_an_unreadable_corpus_could_not_run(self, tmp_path):
         _product(tmp_path, "")

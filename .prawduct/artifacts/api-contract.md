@@ -86,7 +86,7 @@ The CLI groups by responsibility. Every subcommand is read-only unless marked mu
 - **Coverage & jurisdiction** — `coverage-status`, `coverage-scaffold` (mutating with `--apply`),
   `jurisdiction`.
 - **Repo lifecycle** — `migrate-plugin`, `init-product`, `update-gitignore`, `audit-learnings`,
-  `repo-disable`, `bug-inbox` (all dry-run-by-default where they mutate).
+  `learnings-obligation`, `repo-disable`, `bug-inbox` (all dry-run-by-default where they mutate).
 - **Published surfaces** (read-only, and the only ones third parties may bind to) —
   `version` (bare plugin semver on stdout) and `print-install-reference` (the canonical
   `.claude/settings.json` install reference as JSON on stdout, sorted keys, exit 0; exit 1 with an
