@@ -92,10 +92,19 @@ NAMESPACED_LABEL_PREFIXES: tuple[str, ...] = (
     "import-key:",  # idempotency-only marker for an id-less imported item (Data Model §5)
 )
 
+# The opener is written ONCE and both readers are built from it. `check_body_text`
+# previously hand-rolled `line.strip().startswith("```prawduct")`, which is looser
+# than this pattern in exactly the direction that hurts: it rejected an INDENTED
+# fence that `_BLOCK_RE` — column-anchored — could never have matched. A guard
+# stricter than its parser is not safe, it is a false positive, and this one
+# refused the very workaround its own docstring recommended.
+_FENCE_OPEN = r"```prawduct[ \t]*"
 _BLOCK_RE = re.compile(
-    r"^```prawduct[ \t]*\n(?P<body>.*?)^```[ \t]*$",
+    rf"^{_FENCE_OPEN}\n(?P<body>.*?)^```[ \t]*$",
     re.MULTILINE | re.DOTALL,
 )
+#: The opener alone — what `check_body_text` must look for, same source as above.
+_FENCE_OPEN_RE = re.compile(rf"^{_FENCE_OPEN}$", re.MULTILINE)
 
 
 # --- The prawduct: block -----------------------------------------------------
@@ -305,21 +314,30 @@ def check_body_text(text: str | None) -> str | None:
     made them permanent.
 
     Rejecting the opener outright is deliberate over trying to escape or re-fence
-    it. A body that legitimately needs to *show* a prawduct block can indent it,
-    use a different fence language, or say it in prose; a rewrite rule here would
-    have to be exactly as clever as every future attacker.
+    it. A body that legitimately needs to *show* a prawduct block can **indent
+    it** (an indented fence is not an opener to :data:`_BLOCK_RE`, so it is safe
+    *and* accepted here), use a different fence language, or say it in prose; a
+    rewrite rule would have to be exactly as clever as every future attacker.
+
+    The predicate is :data:`_FENCE_OPEN_RE`, built from the same ``_FENCE_OPEN``
+    source as the parser — not a hand-written ``startswith``. The first version
+    *was* a ``startswith`` on the stripped line, which made it **stricter** than
+    the parser: it rejected indented fences the parser can never match, so the
+    docstring's own "indent it" advice was the one workaround the code refused.
+    Same rule as :func:`check_block_value` — derive from the reader, never
+    re-describe it.
 
     Returns an error message, or ``None`` when the text is safe.
     """
     if not text:
         return None
-    for line in strip_block(text).splitlines():
-        if line.strip().startswith("```prawduct"):
-            return (
-                "body may not open a ```prawduct fence — an unterminated one "
-                "survives block-stripping and injects every line after it as a "
-                "block field; the block is edited through its own flags"
-            )
+    if _FENCE_OPEN_RE.search(strip_block(text)):
+        return (
+            "body may not open a ```prawduct fence at the start of a line — an "
+            "unterminated one survives block-stripping and injects every line "
+            "after it as a block field; indent it to show one, and edit the real "
+            "block through its own flags"
+        )
     return None
 
 

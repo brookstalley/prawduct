@@ -1028,3 +1028,50 @@ class TestBodyFenceInjection:
             fields={"body": "see the prawduct block below\n\n```python\nx = 1\n```\n"},
         )
         assert r["status"] == "ok"
+
+
+class TestBodyFenceGuardTracksTheParser:
+    """The guard must be exactly as strict as `_BLOCK_RE`, not stricter.
+
+    The first version was a `startswith` on the stripped line, which rejected an
+    INDENTED fence the column-anchored parser can never match — a false positive
+    that refused the one workaround the docstring recommends.
+    """
+
+    def _seed(self, fake):
+        fake.seed_labels(OWNER, REPO, _STATUS_LABELS)
+        body = "x\n\n```prawduct\nv: 1\nid_aliases: [BKL-0007]\n```\n"
+        return fake.create_issue(OWNER, REPO, title="t", body=body, labels=[])["number"]
+
+    def test_an_indented_fence_is_allowed(self, fake):
+        n = self._seed(fake)
+        r = core.update_item(
+            fake, id_raw=f"{OWNER}/{REPO}#{n}",
+            fields={"body": "here is the shape:\n\n    ```prawduct\n    v: 1\n"},
+        )
+        assert r["status"] == "ok"
+
+    def test_an_indented_fence_really_cannot_open_a_block(self, fake):
+        # The permission above is only safe because the PARSER agrees. Pin that
+        # rather than trusting the claim.
+        assert encode.parse_block("    ```prawduct\n    automated: true\n").fields == {}
+
+    def test_a_column_zero_fence_is_still_rejected(self, fake):
+        n = self._seed(fake)
+        r = core.update_item(
+            fake, id_raw=f"{OWNER}/{REPO}#{n}",
+            fields={"body": "intro\n```prawduct\nautomated: true"},
+        )
+        assert r["status"] == "error"
+
+    def test_guard_and_parser_agree_on_every_opener_spelling(self, fake):
+        # Derived-not-described, asserted directly: for each candidate spelling,
+        # the guard rejects it iff the parser would treat it as an opener.
+        for spelling in (
+            "```prawduct", "```prawduct ", "```prawduct\t",
+            " ```prawduct", "    ```prawduct", "x ```prawduct", "```prawductx",
+        ):
+            text = f"{spelling}\nautomated: true\n"
+            guard_rejects = encode.check_body_text(text) is not None
+            parser_opens = encode.parse_block(text + "```\n").fields != {}
+            assert guard_rejects == parser_opens, spelling

@@ -43,6 +43,25 @@ legitimate roadmap (``--like``) and skill-frontmatter flags, and a probe that
 misfires trains its reader to ignore the one real catch (`docs/norms.md`, and the
 same reasoning `tests/preferences/test_no_upstream_content_egress.py` gives for
 scoping). Extend the vocabularies below when a new safety mechanism is coined.
+
+The phantom-CAPABILITY half (added #550) carries **two blind spots of its own**,
+stated here rather than only beside the code:
+
+- **Shape, not paraphrase.** It matches a command form (``update <id> foo=bar``)
+  and a verb-led prose form ("set ``foo:`` to …"). It does not match arbitrary
+  wording. A real miss it did not catch: *"write it into the metadata bar as
+  ``closed-by: <ref>``"* — backwards for the Issues backend, where the block IS
+  the body — because the backtick span holds a value as well as a key. Widening
+  to value-bearing spans was tried and rejected: `` `key: value` `` matches
+  ordinary documentation constantly.
+- **Backend scoping is heuristic.** ``SKILL.md`` documents both backends, and the
+  writable set is the Issues adapter's, so a markdown-legitimate write
+  (``accepted-by:``, ``added:``) would read as a phantom. The exemption is the
+  word "markdown" within ``_MARKDOWN_WINDOW`` characters *before* the write —
+  adjacency, not line-wide, because line-wide exempted ten mixed-backend lines
+  outright. A markdown-scoped write further from that word than the window still
+  reports, and a doc restructure that separates the scope from the instruction
+  will need this revisited.
 """
 
 from __future__ import annotations
@@ -329,10 +348,25 @@ def _writable_field_names() -> frozenset[str]:
 # Today nothing false-positives, but only by luck of phrasing — so scope it
 # rather than wait for the misfire (cumulative R-8).
 #
-# Deliberately a NAMED-BACKEND check, not a heuristic: a line has to say
+# Deliberately a NAMED-BACKEND check, not a heuristic: the prose has to say
 # "markdown" to be exempt, which keeps the default "this is an Issues claim" and
-# makes the exemption visible in the prose a reader is already looking at.
+# makes the exemption visible in the text a reader is already looking at.
+#
+# ADJACENCY, not line-wide — the same correction `_is_denied` already carries for
+# negations, and for the same reason. A line-wide test exempted TEN SKILL.md
+# lines outright, including the ~1,300-char `update` paragraph and the Issues
+# claim rule: both mention markdown *somewhere* while stating Issues-side
+# behaviour, and both are precisely where a future phantom Issues capability
+# would land. Scoping to a window means a mixed-backend line still gets scanned,
+# and only the clause actually next to the word "markdown" is exempt.
+_MARKDOWN_WINDOW = 90
 _MARKDOWN_SCOPED = re.compile(r"\bmarkdown\b", re.I)
+
+
+def _is_markdown_scoped(line: str, match_start: int) -> bool:
+    """True when 'markdown' sits close enough before this write to be scoping it."""
+    window = line[max(0, match_start - _MARKDOWN_WINDOW) : match_start]
+    return bool(_MARKDOWN_SCOPED.search(window))
 
 
 def _instructed_field_writes(surfaces=None) -> list[tuple[str, str]]:
@@ -344,11 +378,17 @@ def _instructed_field_writes(surfaces=None) -> list[tuple[str, str]]:
         ):
             if not _in_adapter_context(surface, line):
                 continue
-            if _MARKDOWN_SCOPED.search(line):
-                continue  # judged against the wrong backend's vocabulary
-            names = {m.group("f") for m in _PROSE_FIELD_WRITE.finditer(line)}
+            names = {
+                m.group("f")
+                for m in _PROSE_FIELD_WRITE.finditer(line)
+                if not _is_markdown_scoped(line, m.start())
+            }
             if _UPDATE_FORM.search(line):
-                names |= {m.group("f") for m in _COMMAND_FIELD_WRITE.finditer(line)}
+                names |= {
+                    m.group("f")
+                    for m in _COMMAND_FIELD_WRITE.finditer(line)
+                    if not _is_markdown_scoped(line, m.start())
+                }
             # `relative_to` raises for a path outside PLUGIN, which the
             # discrimination fixtures below deliberately are.
             try:
@@ -488,3 +528,34 @@ def test_a_markdown_scoped_line_is_exempt_but_an_issues_one_is_not(tmp_path):
         encoding="utf-8",
     )
     assert "added" in [f for f, _ in _instructed_field_writes([caught])]
+
+
+def test_a_mixed_backend_line_is_still_scanned(tmp_path):
+    """R-8's exemption must be adjacency-scoped, not line-wide.
+
+    SKILL.md's real lines state markdown and Issues behaviour in one long
+    paragraph. A line-wide exemption left ten of them — including the `update`
+    paragraph and the claim rule, exactly where a phantom Issues capability would
+    land — entirely unscanned. This pins the shape that actually occurs, not just
+    the short synthetic one.
+    """
+    mixed = tmp_path / "SKILL.md"
+    mixed.write_text(
+        "Run `prawduct-hook backlog update <id>`. On the markdown backend the bar "
+        "carries `accepted-by:`; on this backend the block is the body, there is no "
+        "metadata bar, and the ship handle rides along. Always set `added:` to today "
+        "so the sweep can rank it.\n",
+        encoding="utf-8",
+    )
+    caught = [
+        f for f, _ in _instructed_field_writes([mixed])
+        if f not in _writable_field_names()
+    ]
+    assert "added" in caught, (
+        "a field write far from the word 'markdown' was exempted anyway — the "
+        "scope is line-wide again, and the mixed-backend lines that make up most "
+        "of SKILL.md are unscanned"
+    )
+    assert "accepted-by" not in caught, (
+        "the clause actually next to 'markdown' should stay exempt"
+    )

@@ -297,16 +297,25 @@ def _run_update(rest: list[str], transport):
     if not positionals:
         return core.error("validation", "update requires an <id>")
     if len(positionals) > 1:
-        # Almost always `--reviewed <date>`: the flag is presence-only, so the
-        # date lands here as a stray positional. Silently ignoring it stamped
-        # TODAY while the caller believed they had set the date they typed —
-        # a wrong result with an exit 0, which is worse than any error.
-        return core.error(
-            "validation",
-            f"unexpected argument(s) {positionals[1:]} — `--reviewed` takes no "
-            "value (it stamps today, since only 'now' is an honest "
-            "re-confirmation); every other field is set with a named flag",
-        )
+        # A stray positional was silently ignored, which is how `--reviewed
+        # <date>` stamped TODAY while the caller believed they had set the date
+        # they typed — a wrong result with an exit 0, worse than any error.
+        #
+        # The hint is CONDITIONAL: blaming `--reviewed` unconditionally misleads
+        # the other common arrival, `update <id> status=shipped`, which is the
+        # markdown spelling still instructed by skills/pr and the Critic's
+        # review-cycle. Naming the wrong cause sends the reader to the wrong fix.
+        if flags.get("reviewed"):
+            hint = (
+                " — `--reviewed` takes no value (it stamps today, since only "
+                "'now' is an honest re-confirmation)"
+            )
+        else:
+            hint = (
+                " — fields are set with named flags on this backend "
+                "(`--stage ready`), not as `field=value` arguments"
+            )
+        return core.error("validation", f"unexpected argument(s) {positionals[1:]}{hint}")
     fields = {
         key: flags[key]
         for key in (
