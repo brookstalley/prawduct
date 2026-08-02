@@ -176,7 +176,13 @@ def review_edges(facts: list[dict]) -> list[dict]:
     read back from a plain file on disk: a corrupted or hand-edited one can
     carry any string, and these values become git argv downstream. Rejecting
     the edge is the same direction as every other malformedness in this
-    function — it costs coverage, so it can only ever demand more review."""
+    function — it costs coverage, so it can only ever demand more review.
+
+    Rejection here is **silent by construction**: this module is pure (no I/O,
+    see the module docstring), so it has no channel to attribute on. The
+    attribution belongs to the layer that owns the store, and
+    ``evidence.tree_diff``/``tree_entries`` emit it when the same malformed id
+    reaches the git boundary — see ``evidence._attribute_bad_tree``."""
     edges = []
     for fact in facts:
         if fact.get("kind") != "review":

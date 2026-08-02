@@ -479,18 +479,27 @@ and the `new` exemption expiry consumes that function rather than re-deriving fr
     there is one place to fail loud instead of four divergent caps. A cap trip raises an attributed
     `TransportError(unavailable, 'result truncated at N pages')` or surfaces through the envelope —
     today `export`, which is the backup path, cannot distinguish truncated from complete.
-  - **#532** — the backlog counting path: stage-less items are counted as open and surfaced as an
-    explicit untriaged bucket, the same surface-by-exception posture `/prawduct:doctor` uses. An
-    untriaged item must be *louder* than a triaged one, never quieter. `counts` already prints a
-    `(none)` stage bucket for the whole corpus, so the information sits one line from the undercount
-    it causes. **Collision constraint:** land the fix in the backlog query layer. `plugin/lib/briefing.py`
+  - **#532** — the backlog counting path: items with no prawduct provenance are counted as open and
+    surfaced as an explicit untriaged bucket, the same surface-by-exception posture
+    `/prawduct:doctor` uses. An untriaged item must be *louder* than a triaged one, never quieter.
+    ~~stage-less items are counted as open~~ **Corrected 2026-08-02 during the build: the item's
+    stated mechanism was wrong.** Stage-less items were *already* counted and land in the `(none)`
+    stage bucket — a stage-bucket bug cannot change a total, and the item's own evidence records
+    the total moving (374 → 383). What was dropped is anything failing `encode.is_prawduct_issue`:
+    no namespaced label **and** no `prawduct:` block, which is how a human-filed or product-filed
+    issue arrives. The original nine were excluded for that reason; adding `stage:` labels fixed
+    the count only because it incidentally granted provenance. **Collision constraint:** land the fix in the backlog query layer. `plugin/lib/briefing.py`
     is dirty on `feature/upgrade-discovery-relay` in the primary checkout — if the briefing surface
     must change, coordinate with that session first rather than editing it here.
-    [DECISION: #532 changes the value `open` reports for an unchanged corpus (158 → 167 on this repo)
-    without renaming the key | the key's documented meaning is "open items" and the defect was that
-    the value did not match it — this restores the contract rather than repurposing it, and the
-    alternative (a new key beside a knowingly-wrong one) leaves the wrong number as the default read
-    | user can veto]
+    [DECISION: #532 changes the value `open` reports for an unchanged corpus without renaming the
+    key | the key's documented meaning is "open items" and the defect was that the value did not
+    match it — this restores the contract rather than repurposing it, and the alternative (a new key
+    beside a knowingly-wrong one) leaves the wrong number as the default read | user can veto]
+    **Measured delta corrected 2026-08-02: 158 → 159, not the 158 → 167 predicted here.** The
+    prediction inherited the item's wrong mechanism and counted nine stage-less items; the real set
+    was the one issue with no provenance at all (#533). `open` now reconciles exactly with
+    `gh issue list --state open`. The decision's substance is unchanged — only the number was wrong,
+    and it was wrong because it was re-measured inside the frame it inherited.
   - **#533** — `plugin/bin/prawduct-hook`, `plugin/lib/migrate_plugin.py`: publish `INSTALL_REFERENCE`
     as a stable surface via a `print-install-reference` subcommand emitting the dict as JSON on
     stdout. It is the canonical statement of how a repo references the plugin, and it is a *private

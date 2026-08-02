@@ -446,8 +446,22 @@ class TestSharedPaginator:
         pages = [[1] * 100, []]
         assert list(tp.paginate(lambda p, s: pages[p - 1])) == [1] * 100
 
-    def test_non_list_page_is_treated_as_empty_not_crashed(self):
-        assert list(tp.paginate(lambda p, s: {"message": "Not Found"})) == []
+    def test_non_list_page_raises_rather_than_reading_as_end_of_results(self):
+        """Unreadable is not empty. Coercing a non-list page to `[]` satisfies
+        the short-page terminator, so the walk ends and returns a prefix
+        indistinguishable from a complete result — the exact failure this
+        function exists to stop, one line below the docstring saying so."""
+        with pytest.raises(tp.TransportError) as exc:
+            list(tp.paginate(lambda p, s: {"message": "Not Found"}))
+        assert exc.value.code == "unavailable"
+        assert "not a list" in exc.value.message
+        assert exc.value.details["page"] == 1
+
+    def test_a_non_list_page_mid_walk_does_not_silently_shorten(self):
+        pages = [[1] * 100, {"message": "Server Error"}]
+        with pytest.raises(tp.TransportError) as exc:
+            list(tp.paginate(lambda p, s: pages[p - 1]))
+        assert exc.value.details["page"] == 2
 
     def test_cap_is_shared_not_per_call_site(self):
         """The bug was divergence: 100 / 100 / 1000 / 100 with three different

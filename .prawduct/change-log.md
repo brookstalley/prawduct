@@ -78,15 +78,24 @@ fixed by making the fixtures carry production's shape, never by relaxing the che
 `f"t{i}"`-built ids escaped the first sweep of quoted literals, which is the *enumerate by grep, not
 by memory* rule biting on the same branch that wrote it down.
 
-**Four operator-facing strings stopped naming ids nobody downstream can resolve** (`#209`).
-`cmd_clear`'s critic-active refusal, the backlog CLI's `reconcile-labels` and `import` usage lines,
-and `validate_partial`'s waived-disposition error each carried an internal id where the reason
-belonged; the id moved to the adjacent comment, which the norm permits. That closes the last of the
-inventory, so the `## Direction` norm in `observability-strategy.md` transitions
-**`in-transition` → `steady-state`** and its interim rule retires with it — there is no longer an
-untouched-site backlog for the rule to except. Recorded at the transition, because it is the norm's
-standing weakness: **enforcement is the reviewer's judgment, not a regex.** Id prefixes are
-open-ended, so a clean sweep means only "no *known-shaped* id survives".
+**Seven operator-facing strings stopped naming ids nobody downstream can resolve** (`#209`). The
+item inventoried four — `cmd_clear`'s critic-active refusal, the backlog CLI's `reconcile-labels`
+and `import` usage lines, and `validate_partial`'s waived-disposition error. Three more were found
+only after the Critic rejected the first attempt: the Stop hook's worktree-redirect line, the
+designer-handoff waiver note, and the title of the restructure-preview document, which is written
+for the owner to read. The id moved to the adjacent comment in each, which the norm permits, and the
+`## Direction` norm in `observability-strategy.md` transitions **`in-transition` → `steady-state`**
+with its interim rule retired.
+
+The interesting part is *how the first attempt was wrong*, because it is the norm's standing
+weakness demonstrating itself. That sweep matched string literals passed **as arguments** to
+`print`/`error`/`log_diag`/`TransportError` and reported clean — but emitted text is not a syntactic
+category. A string can be returned from one function and printed by its caller, appended to a list
+printed at session end, or assembled into a document written for a human. All three shapes were
+present, and all three were invisible to the query. Two reviewers caught one site; widening the
+sweep to *every non-docstring literal, read by eye* caught the other two. So: **enforcement is the
+reviewer's judgment, not a regex** — a clean sweep means "no known-shaped id survives in a literal",
+never "no emitted text names an id".
 
 ## 2026-08-01: a review now knows which plan it is of, and which tree it looked at
 

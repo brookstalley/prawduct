@@ -328,8 +328,13 @@ issues, and name the tradeoff:
 **5. Spot-check.** `prawduct-hook backlog counts --repo <target>` for the
 rollup; spot-check a handful of migrated bodies and IDs; confirm every
 hand-minted `PFX` resolves as an `id:PFX` alias. Total issue count = every source
-item — an item the *source* recorded as dropped or shipped is still present, just
-closed. **Nothing has been disposed yet**, so the scrub's own drops and merges are
+item **plus `untriaged`** — an item the *source* recorded as dropped or shipped is
+still present, just closed, and `total` also counts any issue already on the target
+that is not a prawduct item (a hand-filed report, a report from another product).
+On a target that was empty before the import, `untriaged` is `0` and the identity is
+plain; on a target with pre-existing issues, subtract `untriaged` before comparing —
+the gate that actually decides completeness is `verify-migration` in step 6, not this
+arithmetic. **Nothing has been disposed yet**, so the scrub's own drops and merges are
 not what you are looking for here; they are checked at *Apply the confirmed
 dispositions*.
 

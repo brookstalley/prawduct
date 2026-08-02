@@ -1396,9 +1396,11 @@ def _worktree_redirect_note(project_dir: Path) -> str | None:
         return None
     branch = _gitstate().current_branch(project_dir)
     branch_str = f" for branch '{branch}'" if branch else ""
+    # The redirect's id (STH-4K7N) stays here: this string is printed to hook
+    # stderr in a governed product, where an operator cannot resolve it.
     return (
         f"WORKTREE: .prawduct/ state resolved to worktree {project_dir}{branch_str}, "
-        f"not CLAUDE_PROJECT_DIR ({env_dir}) — the Stop gates read THIS worktree (STH-4K7N)."
+        f"not CLAUDE_PROJECT_DIR ({env_dir}) — the Stop gates read THIS worktree."
     )
 
 
@@ -1614,7 +1616,10 @@ def cmd_stop(project_dir: Path, stop_input: dict | None = None) -> int:
             if chunk_type == "designer-handoff" and not doc_only:
                 designer_handoff_skip = True
                 waiver_notes.append(
-                    f"critic: skipped (Chunk {current_chunk_id} declares Type: designer-handoff — v1.4 F6 carveout)"
+                    # Waiver notes are printed at session end; the carveout's
+                    # requirement id (v1.4 F6) stays in this comment.
+                    f"critic: skipped (Chunk {current_chunk_id} declares Type: designer-handoff "
+                    "— a visual handoff is reviewed by a human, not by code analysis)"
                 )
             elif chunk_type == "trivial":
                 fileset_ok, fileset_reason = _gates()._is_trivial_fileset_eligible(project_dir)

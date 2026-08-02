@@ -30,6 +30,7 @@ import json
 import os
 import re
 import subprocess
+from collections.abc import Callable, Iterator
 
 # --- Secret scrub (the SEC-1 backstop) ---------------------------------------
 
@@ -120,7 +121,13 @@ PAGE_SIZE = 100
 MAX_PAGES = 1000
 
 
-def paginate(fetch_page, *, per_page: int = PAGE_SIZE, max_pages: int = MAX_PAGES, what: str = "results"):
+def paginate(
+    fetch_page: Callable[[int, int], list],
+    *,
+    per_page: int = PAGE_SIZE,
+    max_pages: int = MAX_PAGES,
+    what: str = "results",
+) -> Iterator:
     """Yield every item of a paged GitHub list endpoint, page by page.
 
     ``fetch_page(page, per_page)`` returns one **raw** page. The one paginator
@@ -146,7 +153,17 @@ def paginate(fetch_page, *, per_page: int = PAGE_SIZE, max_pages: int = MAX_PAGE
     while page <= max_pages:
         batch = fetch_page(page, per_page)
         if not isinstance(batch, list):
-            batch = []
+            # A page that is not a list is a response we cannot read. Coercing
+            # it to `[]` would satisfy the short-page terminator below and end
+            # the walk — returning a prefix indistinguishable from a complete
+            # result, which is the exact failure this function exists to stop.
+            # Unreadable is not empty.
+            raise TransportError(
+                "unavailable",
+                f"{what}: page {page} was not a list — the response could not be "
+                f"read, so the result is incomplete and has not been returned",
+                details={"page": page},
+            )
         yield from batch
         if len(batch) < per_page:
             return
@@ -155,7 +172,6 @@ def paginate(fetch_page, *, per_page: int = PAGE_SIZE, max_pages: int = MAX_PAGE
         "unavailable",
         f"{what} truncated at the {max_pages}-page read limit — "
         f"the result is incomplete and has not been returned",
-        retryable=False,
         details={"max_pages": max_pages, "per_page": per_page},
     )
 

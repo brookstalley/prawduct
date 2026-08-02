@@ -351,6 +351,17 @@ def _run_list(rest: list[str], transport):
     }
     if "untriaged" in flags:
         filters["untriaged"] = True
+        # --untriaged always scans every page (the set is small and its members
+        # are the NEWEST issues, so one ascending page is where they are not).
+        # Refuse an explicit page request rather than ignoring it: returning the
+        # whole set to someone who asked for page 2 is a confident wrong answer,
+        # and only this layer can tell a passed value from a default.
+        if "per-page" in flags or "page" in flags:
+            return core.error(
+                "validation",
+                "--untriaged scans every page, so --per-page/--page do not apply "
+                "— re-run without them to get the whole untriaged set",
+            )
     per_page, err = _int_flag(flags, "per-page", 100)
     if err:
         return core.error("validation", err)
@@ -1047,7 +1058,11 @@ def _print_human_ok(data) -> None:
                 "labels or block — filed by hand or by another product, and "
                 "nothing has triaged them yet"
             )
-            print(f"    see them: backlog list --repo {data.get('repo')} --untriaged")
+            # The full binary name, not a bare `backlog …`: an operator copies
+            # this line, and `backlog` alone is not a command.
+            print(
+                f"    see them: prawduct-hook backlog list --repo {data.get('repo')} --untriaged"
+            )
         if "persisted" in data:  # refresh-counts adds the snapshot outcome
             if data.get("persisted"):
                 print(f"  snapshot written ({data.get('fetched_at')})")

@@ -61,7 +61,8 @@ def list_items(
     per_page: int = 100,
     page: int = 1,
 ) -> dict:
-    """Structured, online ``list`` (Q1-structured). One page as requested.
+    """Structured, online ``list`` (Q1-structured). One page as requested —
+    except under ``untriaged``, which scans the whole set (see below).
 
     ``filters`` may carry ``status`` (two-axis: mapped to state + label, then
     refined on the decoded status because closed ``shipped``/``dropped`` differ
@@ -78,6 +79,12 @@ def list_items(
     pull requests / out-of-scope issues (items ``[]`` but ``has_more`` true)
     does not falsely end the walk (BKL-5T3J — "page until an empty page" was
     trippable by an all-PR page in a PR-bearing repo).
+
+    ``filters["untriaged"]`` **inverts** the PROV-2 scope filter, returning only
+    the issues this function normally drops. That branch scans every page and
+    reports ``has_more: False``; every other filter (``assignee``, ``sort``,
+    ``direction``, ``state``, the label facets) applies as usual, and an
+    explicit page request is refused at the CLI rather than ignored.
     """
     filters = filters or {}
     # GitHub silently clamps per_page to 100; clamp locally too so `has_more`
@@ -111,8 +118,24 @@ def list_items(
         # not. Returning page 1 of the untriaged set would answer "nothing to
         # triage" while items waited on page 2: a short answer indistinguishable
         # from a complete one, the same failure the shared paginator's loud cap
-        # exists to prevent. `--per-page`/`--page` are therefore ignored here.
-        issues = _all_issues(transport, owner, repo, state=state, labels=labels or None)
+        # exists to prevent.
+        #
+        # Paging is therefore the one thing this branch cannot honour. The CLI
+        # refuses an explicit `--per-page`/`--page` alongside `--untriaged`
+        # (`cli._run_list`) rather than ignoring it, because only the CLI can
+        # tell a passed value from this function's default. Every other filter
+        # — assignee, sort, direction, state, the label facets — is honoured
+        # normally, so none is silently dropped.
+        issues = _all_issues(
+            transport,
+            owner,
+            repo,
+            state=state,
+            labels=labels or None,
+            assignee=assignee,
+            sort=sort,
+            direction=direction,
+        )
         if isinstance(issues, dict):
             return issues  # an error envelope bubbled up from the scan
         items, warnings = _decode_unscoped(issues, owner, repo)
@@ -298,6 +321,14 @@ def counts(transport: Transport, *, owner: str, repo: str) -> dict:
     these issues have a real GitHub state, so they decode to a real status the
     same way every other issue does. Adding them to a total that already counts
     them would double-count.
+
+    **It counts OPEN untriaged issues only**, while ``total``/``by_status`` span
+    every state. A closed issue has been dispositioned — whatever else is true
+    of it, nobody needs to triage it — so counting it here would inflate a
+    number whose whole purpose is "work waiting to be looked at". It also keeps
+    this figure equal to what ``list --untriaged`` shows, which defaults to open
+    and is printed one line beneath it; a count and its own drill-down command
+    disagreeing is worse than either being absent.
     """
     issues = _all_issues(transport, owner, repo, state="all", labels=None)
     if isinstance(issues, dict):
@@ -312,7 +343,9 @@ def counts(transport: Transport, *, owner: str, repo: str) -> dict:
         if encode.is_pull_request(issue):
             continue  # PRs interleave the raw issues list and are never items
         scoped = encode.is_prawduct_issue(issue)
-        if not scoped:
+        # Normalised the same way `encode.decode_status` reads it — a bare
+        # `== "open"` would miss "OPEN" and treat an absent state as closed.
+        if not scoped and (issue.get("state") or "open").lower() == "open":
             untriaged += 1
         item, decode_warnings = encode.decode_item(issue)
         # Decode advisories are about *item* encoding; an untriaged issue has no
@@ -419,7 +452,15 @@ def _decode_unscoped(issues: list[dict], owner: str, repo: str) -> tuple[list[di
 
 
 def _all_issues(
-    transport: Transport, owner: str, repo: str, *, state: str, labels: list[str] | None
+    transport: Transport,
+    owner: str,
+    repo: str,
+    *,
+    state: str,
+    labels: list[str] | None,
+    assignee: str | None = None,
+    sort: str | None = None,
+    direction: str | None = None,
 ) -> list[dict] | dict:
     """Fetch **every** matching issue across pages (for whole-set ops — ``pick``,
     ``counts``). Returns the issue list, or an error **envelope** to bubble up.
@@ -428,11 +469,24 @@ def _all_issues(
     converts to an envelope here like any other transport failure — so a scan
     that could not be completed reports as unavailable rather than as a short
     list, which ``counts`` would otherwise publish as a smaller backlog."""
+    # Only pass the optional axes when set: `pick`/`counts` call this without
+    # them, and a transport fake's `list_issues` need not accept sort/direction.
+    extra = {
+        key: value
+        for key, value in (("assignee", assignee), ("sort", sort), ("direction", direction))
+        if value is not None
+    }
     try:
         return list(
             paginate(
                 lambda page, size: transport.list_issues(
-                    owner, repo, state=state, labels=labels or None, per_page=size, page=page
+                    owner,
+                    repo,
+                    state=state,
+                    labels=labels or None,
+                    per_page=size,
+                    page=page,
+                    **extra,
                 ),
                 what="list scan",
             )

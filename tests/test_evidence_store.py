@@ -560,6 +560,23 @@ class TestTreeEntries:
             assert evidence.tree_entries(repo, bad) is None, bad
         assert calls == [], f"a malformed tree id reached git: {calls}"
 
+    def test_shape_rejection_is_attributed_not_silent(self, tmp_path, capsys):
+        """Skip WITH attribution is this module's posture for malformed input.
+        A store holding an unreadable tree id is corrupted; answering a bare
+        ``None`` would present that as an ordinary "cannot compute"."""
+        evidence._ATTRIBUTED_BAD_TREES.clear()
+        repo = _make_repo(tmp_path)
+        good = _git(repo, "rev-parse", "HEAD^{tree}")
+        assert evidence.tree_diff(repo, good, "--upload-pack=evil") is None
+        err = capsys.readouterr().err
+        assert "not a git object id" in err
+        assert "hand-edited" in err
+
+        # Deduped: one corrupt fact is probed once per composition path, and
+        # the tenth copy of the same line teaches nothing.
+        assert evidence.tree_entries(repo, "--upload-pack=evil") is None
+        assert capsys.readouterr().err == ""
+
     def test_both_real_object_id_widths_are_accepted(self, tmp_path):
         """40-hex (SHA-1) and 64-hex (SHA-256) are the two real widths. The
         repo is SHA-1 today; the 64-hex leg is what keeps that from being
