@@ -432,4 +432,4 @@ Each line is one event with an envelope/payload split:
  "review": { ...the findings record verbatim... }}
 ```
 
-The envelope is shared by every event kind; the kind-specific payload nests under a family-named key (`review` for `review.critic` and `review.pr`). Consumers key on the envelope and **skip unknown event kinds and fields** — later kinds join without schema change. `duration_seconds` and `actor.model` are nullable, never invented; `scope` is the build-plan feature key (passed explicitly; `active_build_plan` is only the fallback). Every line is self-contained; a long-lived repo can truncate oldest lines.
+The envelope is shared by every event kind; the kind-specific payload nests under a family-named key (`review` for `review.critic` and `review.pr`). Consumers key on the envelope and **skip unknown event kinds and fields** — later kinds join without schema change. `duration_seconds` and `actor.model` are nullable, never invented; `scope` is the build-plan feature key (derived by `critic-begin` — see above; `active_build_plan` is only the last fallback). Every line is self-contained; a long-lived repo can truncate oldest lines.

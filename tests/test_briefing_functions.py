@@ -432,7 +432,14 @@ class TestCheckPreviousSessionGates:
         monkeypatch.setattr(briefing.gates, "session_changes_all_non_judgeable", lambda d, s=None: doc_only)
         monkeypatch.setattr(briefing.gitstate, "git_has_code_changes", lambda d, s=None: code)
         monkeypatch.setattr(briefing.gates, "_read_gates_waived", lambda d: waivers or {})
-        monkeypatch.setattr(briefing.gates, "_has_active_build_plan_file", lambda d: build_plan)
+        # Accepts the plan-path argument the briefing now passes (it resolves the
+        # BRANCH's plan, the same one the Stop gate reads, so the advisory cannot
+        # go silent where the gate blocks). The stub ignores it: what is under
+        # test is the advisory's reaction, not which file it was pointed at.
+        monkeypatch.setattr(
+            briefing.gates, "_has_active_build_plan_file",
+            lambda d, _plan_path=None: build_plan,
+        )
         monkeypatch.setattr(briefing.gates, "_has_build_plan_in_state", lambda d: False)
         monkeypatch.setattr(
             briefing.gates, "session_review_verdict", lambda d: {"status": "uncovered", "reason": "no facts"}

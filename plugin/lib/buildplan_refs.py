@@ -411,22 +411,24 @@ class ReviewedPlan(NamedTuple):
 def _scope_plan_map(prawduct_dir: Path) -> dict[str, Path]:
     """``{frontmatter scope: plan path}`` over this repo's artifacts directory.
 
-    Lazy import: ``lib.views`` is a HEAVY_SUBMODULE. **Two paths ask this**:
-    review dispatch, and — since the Stop hook began resolving its gate plan
-    from the branch — every session end where a build plan and changes both
-    exist. So the cost moved onto a hot path from one already measured in
-    minutes. Lazy still earns its keep: sessions that skip the gate block skip
-    this entirely.
+    Lazy import: ``lib.views`` is a HEAVY_SUBMODULE. **Three paths ask this**:
+    review dispatch, every session END (the Stop hook resolves its gate plan
+    from the branch BEFORE deciding whether a plan is active, so the scan runs
+    whenever the hook runs — not only where a plan and changes both exist), and
+    every session START (the briefing's advisory reads the same plan so it
+    cannot diverge from the gate). So the cost moved onto a hot path from one
+    already measured in minutes. Lazy still earns its keep: it stays off the
+    import graph of every consumer that never asks.
 
-    **Nothing memoizes the scan, and the Stop path runs it twice** — once via
-    :func:`infer_scope_from_branch`, once inside :func:`resolve_reviewed_plan`.
-    The import is cached by the module system; the recursive walk of
-    ``artifacts/`` and its per-file frontmatter parse are not. Stated as a count
-    rather than a duration deliberately: a millisecond figure here would be a
-    machine-held fact hand-copied into prose that ships to consumer repos whose
-    ``artifacts/`` is nothing like this one's — the drift ``record_lint``'s
-    suite-total tripwire exists to catch, one file over. Whether the second walk
-    is worth caching is open; the count is what a reader needs to decide.
+    **Nothing memoizes the scan across calls.** The import is cached by the
+    module system; the recursive walk of ``artifacts/`` and its per-file
+    frontmatter parse are not. :func:`resolve_branch_plan` builds the map ONCE
+    and hands it to both halves, so a resolution is one walk — an earlier
+    version wrote the composite longhand at each caller and paid two.
+    Deliberately no millisecond figure here: a machine-held number
+    hand-copied into prose that ships to consumer repos whose ``artifacts/``
+    is nothing like this one's is the drift ``record_lint``'s suite-total
+    tripwire exists to catch, one file over.
     """
     from . import views  # noqa: PLC0415 — lazy; views is a HEAVY_SUBMODULE
 
@@ -545,6 +547,11 @@ def resolve_reviewed_plan(
     several plans across worktrees the two legitimately differ. The pointer is
     then *correct* and still the wrong answer here, which is why this resolves
     around it rather than asking anyone to repoint it.
+
+    ``known`` is a prebuilt scope→plan map, so a caller resolving both halves
+    pays one walk of ``artifacts/`` rather than two — see
+    :func:`resolve_branch_plan`, which is the reason it exists. Omitted, it
+    builds its own.
 
     Three outcomes:
 

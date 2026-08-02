@@ -350,3 +350,44 @@ class TestGateReadsTheBranchsPlanNotThePointer:
             "no branch match → the pointer's designer-handoff decides, exactly as "
             f"before. stdout={result.stdout!r} stderr={result.stderr!r}"
         )
+
+    def test_whether_the_gate_runs_follows_the_branchs_plan_too(self, tmp_path):
+        """The gate's WHETHER must read the same plan as its WHAT.
+
+        `has_build_plan` decides whether the reflection and Critic gates run at
+        all. It resolved through `active_build_plan` while the three chunk-level
+        fields beneath it came from the branch's plan — one question answered
+        from two places, at the gate that decides whether the others happen.
+
+        This fixture is built to DISCRIMINATE, which the three above it are not:
+        the POINTER's plan is entirely `[x]`, so `_has_active_build_plan_file`
+        reads False through it and every gate goes silent; the BRANCH's plan has
+        an open chunk, so it reads True. Revert `gate_plan` out of the
+        `has_build_plan` line and this sees exit 0 instead of the Critic block.
+        """
+        prawduct = tmp_path / ".prawduct"
+        artifacts = prawduct / "artifacts"
+        artifacts.mkdir(parents=True)
+        (artifacts / "build-plan.md").write_text(
+            "---\nartifact: build-plan\nscope: pointed\n---\n\n"
+            "# Build Plan\n\n## Status\n- [x] Chunk 01: shipped\n\n"
+            "### Chunk 01: shipped\n**Type:** code\n\nBody.\n"
+        )
+        (artifacts / "build-plan-mine.md").write_text(
+            "---\nartifact: build-plan\nscope: mine\n---\n\n"
+            "# Build Plan\n\n## Status\n- [ ] Chunk 01: in progress\n\n"
+            "### Chunk 01: in progress\n**Type:** code\n\nBody.\n"
+        )
+        (prawduct / ".session-reflected").write_text(
+            "Session reflection: implemented the chunk and verified all tests pass."
+        )
+        (prawduct / ".session-git-baseline").write_text("")
+        ts = datetime.now(timezone.utc) - timedelta(seconds=60)
+        (prawduct / ".session-start").write_text(ts.strftime("%Y-%m-%dT%H:%M:%SZ"))
+
+        result = _run_stop(tmp_path, status=_CODE_DIFF, symbolic_ref="fix/mine")
+        assert result.returncode == 2, (
+            "the branch's plan has an open chunk, so there IS governed work and "
+            f"the Critic gate must fire. stdout={result.stdout!r} stderr={result.stderr!r}"
+        )
+        assert "CRITIC" in result.stderr
