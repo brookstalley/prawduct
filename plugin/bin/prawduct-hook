@@ -2575,10 +2575,29 @@ def cmd_test_evidence(project_dir: Path, argv: list[str]) -> int:
         # pytest emits one <testsuite>, but `test_command` invites arbitrary
         # runners (jest-junit, go-junit-report, merged CI reports) whose
         # <testsuites> roots carry many — reading only the first silently
-        # undercounted the evidence the freshness and Critic gates trust. Direct
-        # children only (not iter()) so Ant-style nested suites aren't
-        # double-counted. Multi-environment products contribute one root per
-        # declared command; the sums span all of them.
+        # undercounted the evidence the freshness and Critic gates trust.
+        # Multi-environment products contribute one root per declared command;
+        # the sums span all of them.
+        #
+        # Counts come from LEAF <testcase> elements wherever a suite has them,
+        # not from the `tests=` attribute, because that attribute's meaning is
+        # reporter-specific and the two conventions cannot both be served by
+        # summing it (#128):
+        #
+        #   Ant-style   `tests=` counts all DESCENDANTS  → summing every suite
+        #                                                  double-counts
+        #   node:test   `tests=` counts DIRECT CHILDREN  → summing only
+        #                                                  top-level suites
+        #                                                  undercounts, and the
+        #                                                  error scales with
+        #                                                  nesting depth
+        #
+        # Reading only top-level suites fixed the first and preserved the
+        # second: a node:test suite whose 2 child describes hold 6 tests
+        # recorded 2. A leaf <testcase> appears exactly once however the suites
+        # nest, so counting leaves is correct under both conventions and needs
+        # no reporter detection. `failed`/`skipped` are classified per leaf for
+        # the same reason; `passed` stays the remainder.
         suites = []
         for root in roots:
             suites += [root] if root.tag == "testsuite" else root.findall("testsuite")
@@ -2588,10 +2607,67 @@ def cmd_test_evidence(project_dir: Path, argv: list[str]) -> int:
                 file=sys.stderr,
             )
             return 2
-        total = sum(int(s.get("tests", "0")) for s in suites)
-        failures = sum(int(s.get("failures", "0")) for s in suites)
-        errors = sum(int(s.get("errors", "0")) for s in suites)
-        skipped = sum(int(s.get("skipped", "0")) for s in suites)
+        def _attr_int(suite, name: str) -> int:
+            """A count attribute as int. Absent or empty reads 0; malformed raises
+            ValueError, which the caller turns into the command's exit-2 diagnostic
+            rather than a traceback."""
+            raw = (suite.get(name) or "").strip()
+            return int(raw) if raw else 0
+
+        # The leaf-vs-attribute choice is made PER TOP-LEVEL SUITE, never once for
+        # the whole ingest. The condition the fallback exists for — attributes with
+        # no <testcase> children — is a property of an individual suite, so deciding
+        # globally makes every summary-only suite contribute 0 the moment any other
+        # suite carries leaves. That is a false GREEN rather than an undercount:
+        # `failed` drives both this command's exit status and `tests_are_current`
+        # in lib/gates.py, so a dropped failing environment would let the stop gate
+        # pass on evidence that never saw it. Two reachable shapes — repeated
+        # --from-junit (the documented multi-command on-ramp), and one report mixing
+        # a populated suite with a <testsuite errors="1"> that died before emitting
+        # any <testcase>.
+        total = failures = errors = skipped = 0
+        try:
+            for s in suites:
+                leaves = list(s.iter("testcase"))
+                if leaves:
+                    total += len(leaves)
+                    # Precedence, most severe first: a case carrying both <error>
+                    # and <failure> counts once, as an error. `skipped` loses to
+                    # both — a case that errored is not a skip, whatever else it
+                    # carries.
+                    errors += sum(1 for c in leaves if c.find("error") is not None)
+                    failures += sum(
+                        1
+                        for c in leaves
+                        if c.find("error") is None and c.find("failure") is not None
+                    )
+                    skipped += sum(
+                        1
+                        for c in leaves
+                        if c.find("error") is None
+                        and c.find("failure") is None
+                        and c.find("skipped") is not None
+                    )
+                else:
+                    # Summary-only suite: its attributes are the only evidence it
+                    # carries, so recording a confident 0 would discard a whole
+                    # environment. Ant-style double-counting cannot arise here — a
+                    # suite reaching this branch has no descendant leaves at all.
+                    total += _attr_int(s, "tests")
+                    failures += _attr_int(s, "failures")
+                    errors += _attr_int(s, "errors")
+                    skipped += _attr_int(s, "skipped")
+        except ValueError as exc:
+            print(
+                "error: malformed count attribute on a <testsuite> in the test "
+                f"report ({exc})",
+                file=sys.stderr,
+            )
+            return 2
+        # Duration stays suite-level: the suite's `time` is the wall clock this
+        # field has always reported. Summing <testcase time=> would change the
+        # field's meaning — per-case times are elapsed-per-test and, under any
+        # parallel runner, add up to more than the wall clock actually spent.
         duration = sum(float(s.get("time", "0") or "0") for s in suites)
         passed = total - failures - errors - skipped
         failed = failures + errors

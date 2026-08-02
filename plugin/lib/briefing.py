@@ -559,6 +559,29 @@ def _get_other_branch_wip(prawduct_dir: Path, current_branch: str) -> list[str]:
     return others
 
 
+#: Leading glyph of the advisory relay directive. A *directive to the agent*, not a
+#: severity signal, so it sits outside the ``CRITICAL:``/``WARNING:``/``NOTE:``
+#: vocabulary and alongside the briefing's own ``•``/``→`` line glyphs.
+ADVISORY_RELAY_MARKER = "⇒ "
+
+#: Advisory priorities worth interrupting a person for. `info` is excluded on
+#: purpose: it repeats every session until dismissed, and a channel that nags is a
+#: channel that gets tuned out — which would cost the `warn` case its audience.
+_RELAY_PRIORITIES = frozenset({"warn", "urgent"})
+
+#: Why this exists: the briefing prints to stdout, which this project's ratified
+#: observability norm defines as the AGENT-facing channel (stderr is the person's).
+#: So an advisory is an instruction the model reads, not a nudge the owner reads —
+#: and an advisory whose recommended action is the owner's call to make goes
+#: unanswered every session while looking, from the inside, perfectly delivered.
+#: Relaying it into conversation is what makes the owner's decision reachable.
+ADVISORY_RELAY_TEXT = (
+    f"{ADVISORY_RELAY_MARKER}Tell the user about the advisories above, in your first "
+    "reply this session — they do not see this briefing. Theirs to action, not yours "
+    "to silently resolve or dismiss."
+)
+
+
 def assemble_session_briefing(project_dir: Path, staleness: list[str]) -> str:
     """Assemble session briefing text. Target: <400 tokens (excluding handoff pointer)."""
     prawduct_dir = gitstate.get_prawduct_dir(project_dir)
@@ -683,6 +706,7 @@ def assemble_session_briefing(project_dir: Path, staleness: list[str]) -> str:
                 and a.get("state") == "dismissed"
                 and (a.get("dismissed_at") or "") >= session_start_ts
             )
+    relay_advisories = False
     if active_adv or resolved_since or dismissed_since:
         if active_adv:
             lines.append(f"ADVISORIES (post-sync, {len(active_adv)} active):")
@@ -698,6 +722,14 @@ def assemble_session_briefing(project_dir: Path, staleness: list[str]) -> str:
                 lines.append(
                     f"  ... and {len(active_adv) - 5} more (run /prawduct:advisory list)"
                 )
+            # Decided over the full active set rather than the displayed slice.
+            # Today the two agree: the sort above ranks `urgent`/`warn` ahead of
+            # `info`, so a relay-priority advisory can only be displaced by another
+            # one and is always visible. Keying off the full set keeps that correct
+            # if the sort changes, instead of going quiet on the case it exists for.
+            relay_advisories = any(
+                a.get("priority") in _RELAY_PRIORITIES for a in active_adv
+            )
         else:
             lines.append("ADVISORIES (post-sync):")
         if dismissed_since:
@@ -707,6 +739,11 @@ def assemble_session_briefing(project_dir: Path, staleness: list[str]) -> str:
             )
         if resolved_since:
             lines.append(f"  Resolved since last session: {resolved_since}")
+        # Relay directive last in the block, matching its banner twin: it refers to
+        # everything above it, and a directive with block content below it reads as
+        # covering only the part it precedes.
+        if relay_advisories:
+            lines.append(ADVISORY_RELAY_TEXT)
 
     # CLAUDE.md size check
     claude_md_path = project_dir / "CLAUDE.md"

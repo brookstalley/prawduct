@@ -19,6 +19,7 @@ from __future__ import annotations
 import importlib.util
 import json
 import os
+import re
 import subprocess
 import sys
 from importlib.machinery import SourceFileLoader
@@ -149,6 +150,75 @@ class TestVersionMath:
         ]}))
         lines = banner.render_delta("2.0.0", "2.1.0", root)
         assert any("new gate" in line and "cumulative-critic" in line for line in lines)
+
+
+class TestUpgradeRelay:
+    """The delta block is emitted on stdout — the agent-facing channel — and the
+    marker advances immediately, so it renders exactly once and the human never
+    sees it. Without an explicit instruction to pass it on, a shipped capability
+    is announced to nobody: the relay directive is what closes that gap."""
+
+    def test_delta_carries_a_relay_directive(self, banner):
+        lines = banner.render_delta("1.8.0", "1.8.1", ROOT)
+        assert any(
+            line.startswith(banner.RELAY_MARKER) for line in lines
+        ), "a delta the user cannot see must instruct the agent to relay it"
+
+    def test_relay_directive_is_last(self, banner):
+        # It has to follow the content it refers to; a directive above the
+        # headlines reads as being about the version line alone.
+        lines = banner.render_delta("1.8.0", "1.8.1", ROOT)
+        assert lines[-1].startswith(banner.RELAY_MARKER)
+
+    def test_relay_accompanies_a_new_gate_delta(self, banner, tmp_path):
+        # A newly-enforced gate changes what blocks the user mid-session. That is
+        # the delta they most need relayed, so it must not depend on the release
+        # happening to carry a changelog headline.
+        root = tmp_path / "plugin"
+        (root / "hooks").mkdir(parents=True)
+        (root / "CHANGELOG.md").write_text("# CL\n\n## v2.1.0\n\n")
+        (root / "hooks" / "gates.json").write_text(json.dumps({"gates": [
+            {"id": "cumulative-critic", "name": "cumulative-critic", "since": "2.1.0",
+             "summary": "PR bundle review required"}
+        ]}))
+        lines = banner.render_delta("2.0.0", "2.1.0", root)
+        assert any("new gate" in line for line in lines)
+        assert lines[-1].startswith(banner.RELAY_MARKER)
+
+    def test_relay_names_no_internal_identifier(self, banner):
+        # § Direction: text emitted into a governed product carries the plain-language
+        # reason, never a requirement/chunk/backlog id the reader cannot resolve.
+        directive = next(
+            line for line in banner.render_delta("1.8.0", "1.8.1", ROOT)
+            if line.startswith(banner.RELAY_MARKER)
+        )
+        assert not re.search(r"\b[A-Z]{2,4}-[A-Z0-9]{3,4}\b", directive), directive
+
+    def test_no_relay_when_version_is_unchanged(self, tmp_path, banner):
+        # Assert the marker, not the word "relay": the identity line carries a
+        # provenance segment naming the checked-out branch, so a loose substring
+        # match here passes or fails on what the branch happens to be called.
+        prawduct = _repo(tmp_path)
+        (prawduct / ".prawduct-version").write_text(PLUGIN_VERSION + "\n")
+        r = _run_banner(ROOT, tmp_path)
+        assert r.returncode == 0, r.stderr
+        assert banner.RELAY_MARKER not in r.stdout
+
+    def test_no_relay_on_first_marker_write(self, tmp_path, banner):
+        # First contact has no prior version to diff, so there is no news to pass
+        # on — telling the user "something changed" here would be a false claim.
+        prawduct = _repo(tmp_path)
+        r = _run_banner(ROOT, tmp_path)
+        assert r.returncode == 0, r.stderr
+        assert banner.RELAY_MARKER not in r.stdout
+        assert (prawduct / ".prawduct-version").read_text().strip() == PLUGIN_VERSION
+
+    def test_relay_reaches_stdout_on_a_real_crossing(self, tmp_path, banner):
+        prawduct = _repo(tmp_path)
+        (prawduct / ".prawduct-version").write_text("1.8.0\n")
+        r = _run_banner(ROOT, tmp_path)
+        assert r.returncode == 0, r.stderr
+        assert banner.RELAY_MARKER in r.stdout
 
 
 # =============================================================================

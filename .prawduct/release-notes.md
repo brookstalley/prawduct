@@ -7,6 +7,12 @@
 
 ## v3.2.3
 
+### upgrade-discovery
+
+**Entry:** 2026-08-01: Everything prawduct says about itself, it says to the model — so a shipped capability reached nobody
+
+**Chunks shipped:** 01, 02, 03
+
 ### v3.2.0-golive
 
 **Entry:** 2026-08-01: prawduct's backlog is on GitHub Issues — 371 items, 0 stranded, and the tripwire that fired at the cutover was re-aimed rather than silenced
@@ -36,6 +42,10 @@
 **Entry:** 2026-07-31: Learnings lost three rules to the guard built to protect them
 
 **Chunks shipped:** 05
+
+### junit-leaf-counting
+
+**Entry:** 2026-07-30: Test evidence counts tests, not a reporter's opinion of how many there are
 
 See `.prawduct/change-log.md` for full details.
 
