@@ -52,7 +52,6 @@ parseable, falling back to the file's mtime.
 from __future__ import annotations
 
 import json
-import os
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -82,9 +81,13 @@ def write_marker(prawduct_dir: Path) -> bool:
     """
     if not prawduct_dir.is_dir():
         return False
+    # No pid field: this function runs in the short-lived critic-begin hook
+    # process, so any pid recorded here is dead by the time a reader checks it —
+    # `ps -p <pid>` then reads as "the review died" on every healthy review, and
+    # nothing in the framework consumes the field. Liveness is answered by
+    # `started_at` age here and per-role started markers in critic_consolidate.
     payload = {
         "started_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
-        "pid": os.getpid(),
         "tool": "critic",
     }
     atomic_write_text(_marker_path(prawduct_dir), json.dumps(payload))

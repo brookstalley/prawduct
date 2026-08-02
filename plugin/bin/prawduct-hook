@@ -456,6 +456,7 @@ _SESSION_GITIGNORED_PATHS = (
     ".prawduct/.critic-active",
     ".prawduct/.critic-findings.json",
     ".prawduct/.critic-partials",
+    ".prawduct/.critic-partials-archive",
     ".prawduct/.governance-ledger.jsonl",
     ".prawduct/.handoff-notes.md",
     ".prawduct/.test-evidence.json",
@@ -1166,7 +1167,12 @@ def cmd_critic_begin(project_dir: Path, argv: list[str]) -> int:
         print(f"critic-begin: {result['reason']}", file=sys.stderr)
         return 2 if result.get("kind") == "scope-widened" else 1
 
-    if result["cleared_leftovers"]:
+    if result.get("archived_leftovers"):
+        print(
+            "PRAWDUCT: a prior review's leftover .critic-partials were archived "
+            f"to {result['archived_leftovers']} (not deleted)."
+        )
+    elif result["cleared_leftovers"]:
         print("PRAWDUCT: cleared leftover .critic-partials from a prior review.")
     for note in result["notes"]:
         print(f"PRAWDUCT NOTE: {note}", file=sys.stderr)

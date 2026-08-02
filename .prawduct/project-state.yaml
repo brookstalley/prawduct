@@ -371,7 +371,9 @@ views_enabled: true
 # release-plan-v3.2.3.md. upgrade-discovery is complete; its plan is RETAINED
 # rather than deleted only because the develop->main release regenerates Status
 # for every release-pending plan.
-active_build_plan: artifacts/build-plan-v3.2.0-golive.md
+# Repointed 2026-08-02 on branch fix/critic-death-signals: this branch builds
+# the critic-death-signals plan; the golive plan continues on its own branch.
+active_build_plan: artifacts/build-plan-critic-death-signals.md
 
 # =============================================================================
 # BUILD-PLAN REF ROOT (opt-in)

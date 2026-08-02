@@ -70,6 +70,19 @@ class TestCriticMarkerUnit:
         assert active is True
         assert age is not None and age < 60  # just written
 
+    def test_marker_payload_carries_no_pid(self, tmp_path):
+        # The marker is written by the short-lived critic-begin hook process,
+        # so any pid it records is dead by the time a reader checks it —
+        # `ps -p <pid>` then reads as "the review died" on every healthy
+        # review (field report 2026-08-02: that false signal outranked the
+        # grace-window guidance and triggered a duplicate dispatch). Nothing
+        # in the framework reads the field; the marker must not carry it.
+        prawduct = _prawduct(tmp_path)
+        cm.write_marker(prawduct)
+        payload = json.loads((prawduct / cm.MARKER_NAME).read_text())
+        assert "pid" not in payload
+        assert "started_at" in payload  # liveness stays answered by age
+
     def test_write_marker_noop_outside_repo(self, tmp_path):
         # The Critic only runs in an onboarded repo; outside one this is a no-op.
         missing = tmp_path / "nope" / ".prawduct"
