@@ -34,6 +34,16 @@ needed one — it is one REST call on a single-item `get`.)
 
 **Classification:** feature
 
+**Review dispositions** — `rev-20260802T192905Z-27f373c6` (cumulative, 0 blocking / 1 warning / 4 notes):
+
+| Finding | Severity | State | Detail |
+|---|---|---|---|
+| R-1 | note | accepted | record-only prose per the finding itself — the Context block is build-cycle bookkeeping where the count is the record; the evidence store stays authoritative |
+| R-2 | warning | fixed (`9f7e900`) | plan amended to record the deliberate SKILL.md narrowing — SKILL.md routes every Issues-backend op to adapter-mode.md, so the guidance lives there once |
+| R-3 | note | fixed (`9f7e900`) | the comment `id` joins the documented shape on all three contract surfaces |
+| R-4 | note | fixed (`9f7e900`) | `id` documented as the native comment id — the stable handle for any future comment-level op |
+| R-5 | note | accepted | backlog item `#555` was filed and archived on this branch before the review consolidated — Done-when 3 already discharged |
+
 ## 2026-08-02: the gate named the one route that could not clear the finding it was naming
 
 <!-- prawduct: type=fix | scope=critic-burndown | chunks=03 -->
