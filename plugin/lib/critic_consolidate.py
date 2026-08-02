@@ -60,6 +60,7 @@ from __future__ import annotations
 
 import json
 import re
+import shutil
 import sys
 import uuid
 from datetime import datetime, timezone
@@ -342,6 +343,91 @@ def manifest_path(prawduct_dir: Path) -> Path:
 
 def partial_path(prawduct_dir: Path, role: str) -> Path:
     return partials_dir(prawduct_dir) / f"{role}.json"
+
+
+def started_path(prawduct_dir: Path, role: str) -> Path:
+    """The per-role liveness marker a coordinator-dispatched reviewer writes as
+    its FIRST action. Its mtime is the signal (reviewers have no clock tool —
+    their toolset is read-only file/git plus Write); the content is irrelevant.
+    Without it, "no partial yet" and "reviewer never started" are the same
+    on-disk state for the reviewer's whole multi-minute run, and callers infer
+    death from the silence (the observed double-dispatch failure)."""
+    return partials_dir(prawduct_dir) / f"{role}.started"
+
+
+def started_age_minutes(prawduct_dir: Path, role: str) -> float | None:
+    """Minutes since ``role``'s started marker was written, or None when the
+    marker is absent/unreadable. Clamped at zero for clock skew."""
+    try:
+        mtime = started_path(prawduct_dir, role).stat().st_mtime
+    except OSError:
+        return None
+    age_s = datetime.now(timezone.utc).timestamp() - mtime
+    return max(age_s, 0.0) / 60.0
+
+
+#: An unconsolidated predecessor's manifest + partials move here instead of
+#: being deleted, so a re-dispatch cannot erase the only evidence the first
+#: review ever ran (observed 2026-08-02: a premature death verdict led to a
+#: re-dispatch that clobbered the first manifest — the first review became
+#: unreconstructable from disk). Newest :data:`_ARCHIVE_KEEP` kept.
+ARCHIVE_DIRNAME = ".critic-partials-archive"
+_ARCHIVE_KEEP = 3
+
+
+def archive_dir(prawduct_dir: Path) -> Path:
+    return prawduct_dir / ARCHIVE_DIRNAME
+
+
+def _archive_leftovers(prawduct_dir: Path) -> Path | None:
+    """Move a pending review's files aside rather than deleting them.
+
+    Returns the archive directory the files landed in, or None when there was
+    nothing to archive (or archiving failed — the caller falls through to
+    :func:`remove_partials` either way, so a failed archive degrades to
+    exactly the old delete behavior, never to a blocked dispatch).
+
+    Named after the abandoned review's id when its manifest is readable, else
+    a timestamp — partials can outlive their manifest (a late reviewer writing
+    into an already-consolidated review re-creates the directory)."""
+    pdir = partials_dir(prawduct_dir)
+    if not pdir.is_dir():
+        return None
+    children = [c for c in pdir.iterdir() if c.is_file()]
+    if not children:
+        return None
+    name: str | None = None
+    mpath = manifest_path(prawduct_dir)
+    if mpath.is_file():
+        try:
+            raw = json.loads(mpath.read_text())
+            candidate = raw.get("id") if isinstance(raw, dict) else None
+            if isinstance(candidate, str) and candidate.strip():
+                name = candidate.strip()
+        except (OSError, json.JSONDecodeError):
+            name = None
+    if name is None:
+        name = "unmanifested-" + datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    dest = archive_dir(prawduct_dir) / name
+    try:
+        dest.mkdir(parents=True, exist_ok=True)
+        for child in children:
+            child.rename(dest / child.name)
+    except OSError:
+        return None
+    # Prune to the newest _ARCHIVE_KEEP by mtime — best-effort, an unprunable
+    # archive must not fail the dispatch.
+    try:
+        entries = sorted(
+            (d for d in archive_dir(prawduct_dir).iterdir() if d.is_dir()),
+            key=lambda d: d.stat().st_mtime,
+            reverse=True,
+        )
+        for stale in entries[_ARCHIVE_KEEP:]:
+            shutil.rmtree(stale, ignore_errors=True)
+    except OSError:
+        pass
+    return dest
 
 
 # ---------------------------------------------------------------------------
@@ -712,8 +798,20 @@ def begin_review(
         return {"status": "error", "reason": f"internal error — derived manifest invalid: {reason}"}
 
     cleared = False
+    archived: Path | None = None
     pdir = partials_dir(prawduct_dir)
     if pdir.is_dir():
+        # A manifest still on disk here belongs to a review that never
+        # consolidated (consolidate removes everything on success). Deleting
+        # it would erase the only trace that review ran — archive first, then
+        # sweep whatever archiving left behind.
+        archived = _archive_leftovers(prawduct_dir)
+        if archived is not None:
+            notes.append(
+                f"a prior dispatch was never consolidated — its manifest/partials"
+                f" are archived at {archived} (newest {_ARCHIVE_KEEP} kept),"
+                " not deleted"
+            )
         remove_partials(prawduct_dir)
         cleared = True
     pdir.mkdir(parents=True, exist_ok=True)
@@ -726,6 +824,7 @@ def begin_review(
         "path": str(manifest_path(prawduct_dir)),
         "notes": notes,
         "cleared_leftovers": cleared,
+        "archived_leftovers": str(archived) if archived else None,
         "manifest": manifest,
     }
 
@@ -1203,21 +1302,50 @@ def dispatch_age_minutes(review_id: str, *, now: datetime | None = None) -> floa
 
 
 def _incomplete_noop_message(missing: list[str], present: int, total: int,
-                             review_id: str) -> str:
+                             review_id: str,
+                             prawduct_dir: Path | None = None) -> str:
     """The incomplete no-op with a liveness verdict, not just a partial count.
     Zero partials shortly after dispatch is the NORMAL background-reviewer
     state — say so explicitly, or the caller infers reviewer death from
     silence and double-dispatches. The wait-side variants also direct a
     periodic progress readout, so a session that correctly decides to wait
-    does not idle its prompt cache into expiry while doing so."""
+    does not idle its prompt cache into expiry while doing so.
+
+    Per-role liveness: each coordinator-dispatched reviewer writes
+    ``<role>.started`` as its first action, so a missing role is judged by its
+    OWN started-marker age when one exists — a reviewer that started late (e.g.
+    resumed against a moved HEAD) is not declared dead by dispatch age. The
+    past-grace advice fires only when EVERY missing role is past the grace
+    window on its own effective age (marker age when present, dispatch age
+    otherwise): one dead reviewer among live ones converges — the live roles
+    report and leave ``missing``, and the dead one's age keeps growing."""
     age = dispatch_age_minutes(review_id)
     counts = f"{present}/{total} partials present"
     if age is not None:
         counts += f"; dispatched {age:.1f} min ago"
-    line = f"no-op: review incomplete — waiting on {', '.join(missing)} ({counts})."
-    if age is not None and age > _INFLIGHT_GRACE_MINUTES:
+    started: dict[str, float | None] = {}
+    if prawduct_dir is not None and total > 1:
+        started = {role: started_age_minutes(prawduct_dir, role) for role in missing}
+
+    def _label(role: str) -> str:
+        s_age = started.get(role)
+        return role if s_age is None else f"{role} (started {s_age:.1f} min ago)"
+
+    line = (
+        f"no-op: review incomplete — waiting on "
+        f"{', '.join(_label(r) for r in missing)} ({counts})."
+    )
+    effective = [
+        started.get(role) if started.get(role) is not None else age
+        for role in missing
+    ]
+    past_grace = bool(effective) and all(
+        e is not None and e > _INFLIGHT_GRACE_MINUTES for e in effective
+    )
+    if past_grace:
         line += (
-            f" That is past the in-flight grace window (~{_INFLIGHT_GRACE_MINUTES} min)"
+            f" Every missing role is past the in-flight grace window"
+            f" (~{_INFLIGHT_GRACE_MINUTES} min) on its own age"
             " — the reviewers may have died. Abandon this review with"
             " `prawduct-hook critic-end`, then re-dispatch."
         )
@@ -1393,7 +1521,8 @@ def consolidate(project_dir: Path) -> int:
         partials.append(data)
 
     if missing:
-        print(_incomplete_noop_message(missing, len(partials), len(roster), review_id))
+        print(_incomplete_noop_message(
+            missing, len(partials), len(roster), review_id, prawduct_dir))
         return 0
 
     # Resolutions may only arrive from a verify-resolutions dispatch — they

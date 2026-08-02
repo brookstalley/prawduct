@@ -3,6 +3,42 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-08-02: every signal a waiting caller could reach said the healthy review was dead
+
+<!-- prawduct: type=fix | scope=critic-death-signals | chunks=1 -->
+
+**"The Critic died" reports from consumers traced to three compounding false signals, not a dead
+review.** A field report (plugin 3.2.3, 2026-08-02) supplied the timeline: an agent checked
+liveness at ~8 minutes into a healthy coordinator review, found `.critic-active`'s `pid` dead
+(`ps -p` → gone), found zero partials, concluded death *inside* the grace window, re-dispatched —
+doubling review cost — and the re-dispatch clobbered the first manifest, erasing the only evidence
+the first review ran. The reviewers were alive the whole time. Three fixes, one per signal:
+
+- **The marker's `pid` field is gone** (`lib/critic_marker.py`). It recorded the short-lived
+  `critic-begin` hook process — dead within milliseconds of every dispatch — and nothing in the
+  framework ever read it back. It existed only to tell any reader who checked it that a healthy
+  review had died; that false signal outranked the v3.1.1 grace-window guidance in the field.
+  Liveness stays answered by `started_at` age (the staleness guard's actual input).
+- **Reviewers now write a per-role liveness marker** (`.critic-partials/<role>.started`, first
+  action, mtime is the signal — reviewers have no clock tool). `critic-consolidate`'s waiting
+  message reports it per missing role ("design (started 3.4 min ago)" vs a bare name), and the
+  death verdict keys on each role's own effective age — started-marker age when present, dispatch
+  age otherwise — firing only when *every* missing role is past the grace window on its own age.
+  A reviewer that started late (e.g. resumed against a moved HEAD) is no longer declared dead by
+  dispatch age; one dead reviewer among live ones still converges (the live ones report and leave
+  `missing`). The instruction is prose on both dispatch surfaces (the `critic-reviewer` agent
+  definition and the coordinator prompt template), bound to the code's filename convention by test.
+- **`critic-begin` archives an unconsolidated predecessor instead of deleting it**
+  (`.prawduct/.critic-partials-archive/<review-id>/`, newest 3 kept, gitignored for products). A
+  manifest still on disk at dispatch is a review that never consolidated — the one state whose
+  trace matters for exactly this diagnosis. Archiving is best-effort: a failed archive degrades to
+  the old delete, never to a blocked dispatch.
+
+Out of scope, deliberately: the reviewer-toolset SendMessage gap the same report noted (filed
+separately), the hard concurrent-dispatch guard (#171 — archiving narrows the damage; the guard
+question stays open), and CRT-3F7M's await-in-fork dispatch-model question (unchanged). Suite
+green; regression tests pin all three behaviors plus the prose⇄code convention binding.
+
 ## 2026-08-02: the gate named the one route that could not clear the finding it was naming
 
 <!-- prawduct: type=fix | scope=critic-burndown | chunks=03 -->
