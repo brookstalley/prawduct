@@ -39,6 +39,27 @@ separately), the hard concurrent-dispatch guard (#171 — archiving narrows the 
 question stays open), and CRT-3F7M's await-in-fork dispatch-model question (unchanged). Suite
 green; regression tests pin all three behaviors plus the prose⇄code convention binding.
 
+A closing observation for the record: this branch's own cumulative review was consolidated by the
+`SubagentStop` trigger — the first observed live firing of the CRT-2J8N-fixed matcher in this repo.
+
+**Review dispositions** — `rev-20260802T201307Z-8ade0188` (cumulative, 0 blocking / 3 warning / 7
+note), all fixes landed in `068a4ef`, verified clean (0/0/0) by `rev-20260802T202716Z-a37945a9`:
+
+| Finding | Severity | State | Detail |
+|---|---|---|---|
+| R-1 | warning | fixed | archive-failure degrade path is a shipped claim without a test |
+| R-2 | note | accepted | false positive — .critic-partials-archive/ is a runtime-created directory, not a chunk deliverable file; record-lint cannot see it by design |
+| R-3 | warning | fixed | Framework repo's own .gitignore missing .critic-partials-archive/ |
+| R-4 | warning | fixed | Plan-required test for started-marker clearing not shipped |
+| R-5 | note | accepted | fixed in 068a4ef (note dropped; the structured archived_leftovers line is the single channel) — verify pass rev-20260802T202716Z-a37945a9 confirms the landing in narrative; recorded as accept because its resolution facts were scoped to the prior warnings |
+| R-6 | note | accepted | the agent definition is the binding surface and states the two-file contract; the prompt template's ONLY-your-partial sentence follows an explicit FIRST-marker instruction in the same prompt, and the template is at 9 tokens of budget headroom — no room to restate what the agent doc already resolves |
+| R-7 | note | accepted | fixed in 068a4ef (OSError reason now printed to stderr before the delete fallback; SKILL.md says best-effort) — confirmed by verify pass a37945a9's narrative; accept records it because resolution facts covered warnings only |
+| R-8 | note | accepted | fixed in 068a4ef (plan Success wording reconciled to the shipped bare-name rendering) — confirmed by verify pass a37945a9's narrative; accept records it because resolution facts covered warnings only |
+| R-9 | note | accepted | informational — learnings cross-check clean, no action |
+| R-10 | note | accepted | informational — backlog reconciliation dormant on the GitHub Issues backend; follow-ups are being filed via /prawduct:backlog at this boundary |
+
+**10 findings** (3 warning, 7 note) — accepted: 7, fixed: 3.
+
 ## 2026-08-02: the gate named the one route that could not clear the finding it was naming
 
 <!-- prawduct: type=fix | scope=critic-burndown | chunks=03 -->
