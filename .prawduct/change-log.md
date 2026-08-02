@@ -1576,10 +1576,23 @@ where it was merely *implied* by a summary. Worth naming as a rule rather than a
 correction is a search, not an edit.** The specific tell is that summaries and headlines are written
 last and read first, so they are simultaneously the least likely to be revisited and the most likely
 to be believed. The generalized fix here is structural, not vigilance: the opening paragraph no
-longer enumerates the contract at all, it points at `INSTALL_REFERENCE`, and evidence line 1 names
-the file rather than a subtree — neither can go stale when the contract grows again. (Evidence could
-not simply branch per drift-set: it is hashed into the advisory id, so it must stay
-drift-set-independent — `test_evidence_is_drift_set_independent` pins that.)
+longer *defines* the contract by listing it — `INSTALL_REFERENCE` is named as the authority and the
+illustrations that follow are marked as illustrations — and evidence line 1 names the file rather
+than a subtree. Neither can go stale when the contract grows again. (Evidence could not simply
+branch per drift-set: it is hashed into the advisory id, so it must stay drift-set-independent —
+`test_evidence_is_drift_set_independent` pins that.)
+
+**A fourth instance, and a fifth, both caught by the verify passes.** The "Why this needs an ambient
+nudge" paragraph still read "a pinned repo … runs an old framework forever" — the original falsified
+claim, in the one paragraph nobody had revisited. Found by finally doing what the rule above says:
+grepping the claim's whole vocabulary across every file rather than re-reading the diff, which also
+proved it was the last live instance. And the opener asserting the module "never enumerates" the
+contract was *immediately followed by an enumeration* of four of its five leaves — the fix for
+instance three contradicting itself in its own sentence. Recorded because the count is the finding:
+five instances of one pattern in one change is not carelessness repeated five times, it is evidence
+that catching this by reading does not work, and that the durable fixes are the structural ones
+(point at the source of truth; mark illustrations as illustrations; pin the corrected wording with a
+mutation-checked test — which evidence line 1 initially was not, one round after line 3 was).
 
 **Honest limit, carried in the advisory's own evidence.** The file that actually binds plugin
 resolution is `~/.claude/plugins/known_marketplaces.json`, which is machine-level and outside

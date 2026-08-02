@@ -203,6 +203,23 @@ def test_contract_is_read_not_transcribed(tmp_path, monkeypatch):
     assert drift["drifted"][0]["actual"] == original
 
 
+def test_evidence_line_one_names_the_file_not_a_subtree(tmp_path):
+    """The contract-mismatch line must name `.claude/settings.json`, not a subtree.
+
+    `enabledPlugins` is a top-level SIBLING of `extraKnownMarketplaces`, so naming
+    the latter told a repo drifting only on `enabledPlugins` that a subtree which
+    matches exactly does not. Pinned because this fix landed unpinned once: the
+    third evidence line was corrected for this same defect class WITH a
+    mutation-checked test, and this one was corrected a round later without.
+    """
+    _write_settings(tmp_path, _contract_entry(), enabled=False)
+    out = irp.probe_install_reference_drift(ProjectState({}), _cb(tmp_path))
+    contract_line = [e for e in out[0].evidence if "INSTALL_REFERENCE" in e]
+    assert len(contract_line) == 1
+    assert ".claude/settings.json does not match" in contract_line[0]
+    assert "extraKnownMarketplaces" not in contract_line[0]
+
+
 def test_every_contract_leaf_is_compared(tmp_path):
     """Corrupt each contract leaf in turn; each must produce exactly its own drift.
 

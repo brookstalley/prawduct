@@ -2,20 +2,23 @@
 
 One probe: it nudges repair when a repo's ``.claude/settings.json`` has drifted
 from the install contract prawduct writes — **every field of**
-``lib.migrate_plugin.INSTALL_REFERENCE``, which this module never enumerates
-because enumerating it is how the check went stale once already (see
-:func:`lib.migrate_plugin.install_reference_drift`). The drift is a pin to a
-fixed release ref, an opt-out of auto-update, a repointed marketplace repo,
-prawduct disabled outright — or any combination — and the repo hands that state
-to every fresh clone of it. See "Known limit" below for what it does *not* mean:
+``lib.migrate_plugin.INSTALL_REFERENCE``, which is the authority for what the
+contract *is*; no list in this docstring is (a transcribed list is exactly how
+the check went stale once already — see
+:func:`lib.migrate_plugin.install_reference_drift`). Drift looks like a pin to a
+fixed release ref, an opt-out of auto-update, a repointed marketplace repo, or
+prawduct disabled outright — **examples, not the set** — in any combination, and
+the repo hands that state to every fresh clone of it. See "Known limit" below for what it does *not* mean:
 on a machine that has already resolved the plugin, the committed entry is inert.
 
 **Why this needs an ambient nudge and not only a health check.**
 ``/prawduct:doctor`` Health Check #1 already asserts this exact contract, and it
 is the right check — but it is operator-invoked, per repo, and the condition it
-detects is *silent*. A pinned repo does not fail; it runs an old framework
-forever while the session banner reports a version that never moves. Nobody runs
-a health check on a repo that appears to be working. The gap is the trigger, not
+detects is *silent*. A drifted repo does not fail, and on a configured machine
+nothing here breaks today at all; it is a clone seeded from the drift that runs
+an old framework while its banner reports a version that never moves. Nobody
+runs a health check on a repo that appears to be working — and this one does
+appear to be working, which is the whole difficulty. The gap is the trigger, not
 the assertion, which is why this probe reuses doctor's contract rather than
 inventing a second one.
 
