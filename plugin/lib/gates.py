@@ -785,7 +785,9 @@ def _has_build_plan_in_state(prawduct_dir: Path) -> bool:
         return False
 
 
-def _has_active_build_plan_file(prawduct_dir: Path) -> bool:
+def _has_active_build_plan_file(
+    prawduct_dir: Path, plan_path: "Path | None" = None
+) -> bool:
     """Return True if build-plan.md has at least one incomplete chunk.
 
     A completed plan (all [x]) or a missing file both return False — only an
@@ -802,7 +804,7 @@ def _has_active_build_plan_file(prawduct_dir: Path) -> bool:
     finding-resolution sessions happen. Under ``views_enabled`` a flipped box
     means *shipped*, so "unflipped" is the right reading of "still governed."
     """
-    total, complete = buildplan_refs._count_build_plan_chunks(prawduct_dir)
+    total, complete = buildplan_refs._count_build_plan_chunks(prawduct_dir, plan_path)
     return total > 0 and complete < total
 
 

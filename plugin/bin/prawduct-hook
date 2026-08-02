@@ -1483,7 +1483,19 @@ def cmd_stop(project_dir: Path, stop_input: dict | None = None) -> int:
 
     # Determine if there's an active build plan (used by both gates).
     # "Active" means incomplete chunks remain — a completed plan (all [x]) does not count.
-    has_build_plan = _gates()._has_active_build_plan_file(prawduct_dir) or _gates()._has_build_plan_in_state(prawduct_dir)
+    #
+    # Resolved from the BRANCH's plan, the same one the Type-driven carveouts
+    # below read. Asking "is there governed work" of the pointer while asking
+    # "what does that work declare" of the branch is one question answered from
+    # two places — the defect class this bundle exists to close, at the gate that
+    # decides whether the others run at all. Falls back to the pointer whenever
+    # the branch names no declared scope, so repos whose branch names differ from
+    # their scopes are unaffected.
+    gate_plan = _buildplan_refs().resolve_branch_plan(project_dir, prawduct_dir).path
+    has_build_plan = (
+        _gates()._has_active_build_plan_file(prawduct_dir, gate_plan)
+        or _gates()._has_build_plan_in_state(prawduct_dir)
+    )
 
     # Gate 1: Reflection
     # - With active build plan: BLOCKING (structured work deserves reflection)
@@ -1580,12 +1592,7 @@ def cmd_stop(project_dir: Path, stop_input: dict | None = None) -> int:
         # decided by a chunk of a plan the session never touched. Falls back to
         # the pointer whenever the branch names no declared scope, so a repo
         # whose branch names differ from its scopes is unaffected.
-        _bpr = _buildplan_refs()
-        gate_plan = _bpr.resolve_reviewed_plan(
-            project_dir,
-            prawduct_dir,
-            _bpr.infer_scope_from_branch(project_dir, prawduct_dir),
-        ).path
+        _bpr = _buildplan_refs()  # `gate_plan` resolved once, above
         current_chunk_id = _bpr._current_chunk_id_from_status(project_dir, gate_plan)
         if current_chunk_id is not None:
             chunk_type, type_error = _bpr._parse_build_plan_chunk_type(
@@ -3010,7 +3017,7 @@ def cmd_verify_records(project_dir: Path, argv: list[str]) -> int:
         # dispatched one are about the same plan.
         from lib import buildplan_refs  # noqa: PLC0415 — lazy; plan readers
 
-        scope = buildplan_refs.infer_scope_from_branch(project_dir, prawduct_dir)
+        scope = buildplan_refs.resolve_branch_plan(project_dir, prawduct_dir).scope
     result = record_lint.lint_records_safe(
         project_dir, prawduct_dir, changed, base_tree, head_tree,
         opts.get("chunk"), scope,

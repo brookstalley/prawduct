@@ -9,7 +9,7 @@ depends_on: []
 governed_by:
   - artifact: observability-strategy
     dispositions:
-      - "stable severity-prefix vocabulary + stdout/stderr channel split → conforms (the three new emissions — Chunk 02's degraded-progress notice, Chunk 04's truncation error and untriaged bucket — use the existing prefixes on the documented channel)"
+      - "stable severity-prefix vocabulary + stdout/stderr channel split → conforms. **Enumeration corrected 2026-08-02** (PR-review finding): the original counted three emissions and Chunk 03 added more — the record-lint subject line, the `NOT run:` clause, and `verify-records`' `did-not-run` tally. All ride the existing `PRAWDUCT:` prefix on stdout, except `verify-records`' summary, which is a plain CLI report line on a query command and carries no severity prefix by design. Stating the count was the mistake; the conformance claim is per-emission and holds"
       - "ledger has a single writer; agents never hand-author it → inapplicable because no chunk writes a ledger line; Chunk 03 changes the *inputs* to code-written records, not the writer"
       - "text emitted into a governed product names no prawduct-internal identifier → conforms, and Chunk 04 closes this norm's `in-transition` residue (the four remaining sites). Binds the new emissions too: none may name an issue id"
   - artifact: data-model
@@ -33,7 +33,7 @@ governed_by:
   - artifact: nonfunctional-requirements
     dispositions:
       - "review wall-clock is P0; run-count is a lever → conforms, and it is why the batch is 4 chunks rather than one per item"
-      - "proportionality ratchets both ways; a new control names the yield it expects and emits it observably → conforms *conditionally* — Chunk 02 adds one control (#327's degraded-reading notice), so that chunk must state its expected yield and make the notice countable. Done-when step 2 carries it"
+      - "proportionality ratchets both ways; a new control names the yield it expects and emits it observably → conforms, **enumeration corrected 2026-08-02** (PR-review finding: this named only Chunk 02's control while Chunk 03 shipped four). Chunk 02: #327's degraded-reading notice, countable by its stable token. Chunk 03: scope derivation emits `scope_chosen_by` into the manifest and the review fact; rule 4's grounding emits its rationale into `mode_chosen_by`; the null-count contract emits `did-not-run`/`NOT run:` where an operator reads it. **The ancestor guard is the exception and is recorded as one** — it fires on the inference path, which writes no fact when it declines, so its yield is NOT observable today. Accepted rather than instrumented: it is a fail-closed guard whose whole purpose is to prevent a review that would otherwise happen, and instrumenting a decline costs a write on a hot path. Revisit if it is ever suspected of over-firing"
       - "state-file growth surfaced as an advisory, never a hard block → inapplicable because no chunk changes a size threshold"
   - artifact: operational-spec
     dispositions:
@@ -323,8 +323,8 @@ and the `new` exemption expiry consumes that function rather than re-deriving fr
 - **Tests:** unit — the widened heading matcher against both hash depths and all five separators;
   exemption expiry across an open chunk, a completed chunk, and an *uncertain* completion (must fail
   toward the exemption); the degraded-reading notice fires on `views_enabled` + git-bail and stays
-  silent on `views_enabled` unset; each new branch prefix parses as a ref, not a path; `--check` is
-  gone and an unknown flag exits 2. Integration — `regen-views` completes release-notes and
+  silent on `views_enabled` unset; each new branch prefix parses as a ref, not a path; `--check` is **deprecated** — it warns and
+  regenerates rather than checking — and an unknown flag exits 2. Integration — `regen-views` completes release-notes and
   scope-rollup regeneration with one scope unresolvable, exiting non-zero while having written both;
   and a typo'd `status=` fails the run CLOSED (exit 2, nothing written) rather than suppressing one
   view — an entry that cannot be interpreted would leave a Status view half-right, which is the bug

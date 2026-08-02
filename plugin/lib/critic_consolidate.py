@@ -495,7 +495,7 @@ def begin_review(
     scope = (scope or "").strip() or None
     scope_chosen_by = "explicit-args" if scope else None
     if scope is None:
-        scope = buildplan_refs.infer_scope_from_branch(project_dir, prawduct_dir)
+        scope = buildplan_refs.resolve_branch_plan(project_dir, prawduct_dir).scope
         scope_chosen_by = "branch-name" if scope else "not-resolved"
 
     capture = evidence.capture_tree(project_dir)

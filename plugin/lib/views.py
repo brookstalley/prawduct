@@ -716,6 +716,14 @@ def iter_scoped_plan_candidates(artifacts_dir: Path) -> Iterator[tuple[Path, str
     # this module file-scoped (`tests/preferences/test_build_plan_decoding.py`),
     # so it no longer depends on a local's name.
     for plan_path in sorted(artifacts_dir.rglob("*.md")):
+        # Archived plans are history, not live assertion — the same rule every
+        # record check applies (`record_lint._ARCHIVE_MARKERS`). Load-bearing
+        # once discovery went recursive: the scan is `sorted()` and first-wins,
+        # and `artifacts/archive/build-plan-foo.md` sorts BEFORE
+        # `artifacts/build-plan-foo.md`, so an archived copy would shadow its
+        # own live sibling and regenerate the retired plan's Status instead.
+        if any(part == "archive" for part in plan_path.relative_to(artifacts_dir).parts):
+            continue
         try:
             content = plan_path.read_text(encoding="utf-8")
         except (OSError, UnicodeDecodeError):

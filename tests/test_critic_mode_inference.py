@@ -1056,6 +1056,43 @@ class TestRule4ChunkDefault:
         _git(tmp_path, "checkout", "-b", "fix/live", "--quiet")
         assert buildplan_refs.infer_scope_from_branch(tmp_path, prawduct) == "live"
 
+    def test_archived_plans_do_not_shadow_their_live_siblings(self, tmp_path: Path):
+        """Discovery went recursive; `archive/` had to stop being discoverable.
+
+        The scan is `sorted()` and first-wins, and `artifacts/archive/x.md` sorts
+        BEFORE `artifacts/x.md` — so an archived copy would win the scope and
+        regenerate the retired plan instead of the live one. Every record check
+        already honours the archive convention; discovery did not.
+        """
+        _init_repo(tmp_path)
+        _write(tmp_path, "README.md", "x\n")
+        _commit(tmp_path, "initial")
+        _checkout_new_branch(tmp_path, "fix/shadowed")
+
+        artifacts = tmp_path / ".prawduct" / "artifacts"
+        (artifacts / "archive").mkdir(parents=True, exist_ok=True)
+        # Same scope, both files. The archived one sorts first.
+        (artifacts / "archive" / "build-plan-shadowed.md").write_text(
+            "---\nartifact: build-plan\nscope: shadowed\n---\n\n"
+            "# Retired\n\n## Status\n\n- [ ] Chunk 01: retired work\n"
+        )
+        (artifacts / "build-plan-shadowed.md").write_text(
+            "---\nartifact: build-plan\nscope: shadowed\n---\n\n"
+            "# Live\n\n## Status\n\n- [ ] Chunk 01: live work\n"
+        )
+
+        plan = buildplan_refs.resolve_branch_plan(tmp_path, tmp_path / ".prawduct")
+        assert plan.scope == "shadowed"
+        assert plan.path.name == "build-plan-shadowed.md"
+        # By PARENT, not by substring: `tmp_path` embeds the test's own name,
+        # which contains "archived" — a substring check would fail here for a
+        # reason that has nothing to do with the behaviour under test.
+        assert plan.path.parent.name == "artifacts", (
+            f"an archived plan shadowed its live sibling: {plan.path}"
+        )
+        assert plan.path.read_text().startswith("---\nartifact: build-plan")
+        assert "# Live" in plan.path.read_text()
+
     def test_has_unfinished_chunk_edge_readings(self, tmp_path: Path):
         """The two readings the docstring promises, pinned so they stay true.
 

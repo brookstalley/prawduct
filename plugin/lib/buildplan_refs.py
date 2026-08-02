@@ -130,7 +130,9 @@ def _chunk_id_from_item_text(text: str) -> str | None:
     return m.group(1) if m else None
 
 
-def _count_build_plan_chunks(prawduct_dir: Path) -> tuple[int, int]:
+def _count_build_plan_chunks(
+    prawduct_dir: Path, plan_path: "Path | None" = None
+) -> tuple[int, int]:
     """Count chunks in the active build plan's Status section.
 
     Resolves the plan via the ``active_build_plan:`` pointer (falls back to
@@ -143,7 +145,8 @@ def _count_build_plan_chunks(prawduct_dir: Path) -> tuple[int, int]:
     :func:`resolve_chunk_progress`, which is the one place the checkbox and
     git-derived readings are reconciled.
     """
-    plan_path = resolve_build_plan_path(prawduct_dir)
+    if plan_path is None:
+        plan_path = resolve_build_plan_path(prawduct_dir)
     if not plan_path.is_file():
         return 0, 0
     try:
@@ -430,7 +433,28 @@ def _scope_plan_map(prawduct_dir: Path) -> dict[str, Path]:
     return views.build_scope_to_plan_map(prawduct_dir / "artifacts")
 
 
-def infer_scope_from_branch(project_dir: Path, prawduct_dir: Path) -> str | None:
+def resolve_branch_plan(project_dir: Path, prawduct_dir: Path) -> ReviewedPlan:
+    """**The** answer to "which plan is this branch building" — infer the scope
+    from the branch, then resolve the plan it names.
+
+    The one entry point for that composite. Written out longhand it is
+    ``resolve_reviewed_plan(pd, prd, infer_scope_from_branch(pd, prd))``, which
+    appeared at every caller and scanned ``artifacts/`` **twice** per resolution
+    — once to match the branch name, once to resolve the match. Building the map
+    here and handing it to both halves makes it one scan, and gives the composite
+    a name so the next consumer asks rather than re-assembles. A repeated
+    two-call composite is how two callers end up answering the same question
+    differently, which is the defect class this module's plan resolution exists
+    to close.
+    """
+    known = _scope_plan_map(prawduct_dir)
+    scope = infer_scope_from_branch(project_dir, prawduct_dir, known=known)
+    return resolve_reviewed_plan(project_dir, prawduct_dir, scope, known=known)
+
+
+def infer_scope_from_branch(
+    project_dir: Path, prawduct_dir: Path, known: "dict[str, Path] | None" = None
+) -> str | None:
     """The scope this branch is building, or ``None`` when it cannot be shown.
 
     A **match against declared data, never a guess**: the branch name's last
@@ -463,7 +487,8 @@ def infer_scope_from_branch(project_dir: Path, prawduct_dir: Path) -> str | None
     candidates = [branch]
     if "/" in branch:
         candidates.append(branch.rsplit("/", 1)[1])
-    known = _scope_plan_map(prawduct_dir)
+    if known is None:
+        known = _scope_plan_map(prawduct_dir)
     for candidate in candidates:
         plan_path = known.get(candidate)
         if plan_path is not None and _has_unfinished_chunk(plan_path):
@@ -507,7 +532,10 @@ def _has_unfinished_chunk(plan_path: Path) -> bool:
 
 
 def resolve_reviewed_plan(
-    project_dir: Path, prawduct_dir: Path, scope: "str | None"
+    project_dir: Path,
+    prawduct_dir: Path,
+    scope: "str | None",
+    known: "dict[str, Path] | None" = None,
 ) -> ReviewedPlan:
     """Resolve the build plan a review is about, preferring the reviewed SCOPE's
     plan over the ``active_build_plan`` pointer.
@@ -531,7 +559,7 @@ def resolve_reviewed_plan(
     """
     if scope and scope.strip():
         scope = scope.strip()
-        match = _scope_plan_map(prawduct_dir).get(scope)
+        match = (known if known is not None else _scope_plan_map(prawduct_dir)).get(scope)
         if match is None:
             return ReviewedPlan(
                 None,
@@ -555,7 +583,7 @@ def resolve_reviewed_plan(
     # review of every such repo — which is how a channel stops being read
     # (`nonfunctional-requirements.md` § Direction: a control that fires
     # repeatedly with no yield is removed by default).
-    ambiguous = len(_scope_plan_map(prawduct_dir)) > 1
+    ambiguous = len(known if known is not None else _scope_plan_map(prawduct_dir)) > 1
     return ReviewedPlan(
         pointer,
         rel,

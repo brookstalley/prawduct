@@ -830,11 +830,22 @@ def _count(findings: list[dict], no_answer: "set[str] | None" = None) -> dict:
     consumer that renders these must read ``None`` as "did not run" — a
     ``0``-vs-``None`` slip reads as clean, which is the direction that loses
     governance.
+
+    **``no_answer`` wins over findings, including a PARTIAL run.** A check can be
+    both skipped and productive — ``governed-by-gap`` is added to ``no_answer``
+    per unreadable plan while other, readable plans still contribute findings —
+    and reporting the partial tally as a bare integer says "this check ran and
+    found N", which is the whole confusion ``None`` exists to remove. Nothing is
+    lost: every finding stays in ``findings`` and prints, and the ``unchecked``
+    reason names what was skipped. Only the *tally* withholds, because a count
+    over some of the inputs is not a count.
     """
     skipped = no_answer or set()
     counts: dict = {check: (None if check in skipped else 0) for check in CHECKS}
     for finding in findings:
         check = finding["check"]
+        if check in skipped:
+            continue
         counts[check] = (counts.get(check) or 0) + 1
     return counts
 

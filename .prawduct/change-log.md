@@ -134,8 +134,11 @@ deliberately-invoked surfaces (`verify-chunk-refs` on the inference path, `hando
 from `_git_aware_progress` on the SessionStart hot path. **Expected yield: rare.** It should fire only
 where a base branch cannot resolve or git is unavailable, so a steady-state repo on a feature branch
 should see it approximately never; a run of firings means base-branch resolution is broken, which is
-the finding. Countable by the stable token `degraded-chunk-reading` — `grep -c` over session logs is
-the retirement evidence, so the token must not be reworded.
+the finding. Carries the stable token `degraded-chunk-reading` so its firings are *findable*, which is what
+makes retirement evidence collectable at all; the token must not be reworded. Deliberately not
+promising a counting mechanism — session logs are not a store this repo queries, and naming
+`grep -c` as "the retirement evidence" claimed a pipeline nobody built. The comment beside the
+token declines to make that promise, and this entry now agrees with it.
 
 Two smaller ones. `#211`'s guard test **replicated** the production chunk-heading matcher and had
 drifted strictly narrower, failing plans that parse fine; it now consumes `_CHUNK_HEADING_RE` instead

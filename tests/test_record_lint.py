@@ -834,6 +834,31 @@ class TestResultShape:
         assert result["chunk_graded"] is None
         assert result["records"] == [".prawduct/artifacts/notes.md"]
 
+    def test_a_partial_run_withholds_its_tally(self):
+        """A check can be BOTH skipped and productive, and the tally must withhold.
+
+        `governed-by-gap` lands in `no_answer` per unreadable plan while other,
+        readable plans still contribute findings. Reporting that partial as a
+        bare integer says "this check ran and found N" — the exact confusion the
+        None exists to remove, reachable through the increment loop rather than
+        the initialiser. Nothing is lost: the findings stay in `findings`, and
+        only the count withholds, because a count over some of the inputs is not
+        a count.
+        """
+        counts = record_lint._count(
+            [{"check": "governed-by-gap", "path": "b.md", "line": 1, "detail": "x"}],
+            {"governed-by-gap"},
+        )
+        assert counts["governed-by-gap"] is None, (
+            "a check that produced no answer for one input must not report an "
+            "integer because another input produced findings"
+        )
+        # A check that genuinely ran still counts normally.
+        assert record_lint._count(
+            [{"check": "suite-total-claim", "path": "a.md", "line": 1, "detail": "x"}],
+            {"governed-by-gap"},
+        )["suite-total-claim"] == 1
+
     def test_retired_checks_are_absent_from_the_contract(self):
         """`dangling-ref` and `unknown-backlog-id` were measured at zero true
         positives and removed. Their absence is a decision, and a consumer

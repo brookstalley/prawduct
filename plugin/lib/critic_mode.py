@@ -163,11 +163,7 @@ def infer_mode(
     # declares, that plan is the subject and the pointer is not consulted; when
     # it names nothing, the pointer stands and rule 4 says so in its rationale
     # rather than presenting an assumption as a finding.
-    plan = buildplan_refs.resolve_reviewed_plan(
-        project_dir,
-        prawduct_dir,
-        buildplan_refs.infer_scope_from_branch(project_dir, prawduct_dir),
-    )
+    plan = buildplan_refs.resolve_branch_plan(project_dir, prawduct_dir)
     progress = buildplan_refs.resolve_chunk_progress(project_dir, plan.path)
     total, complete = progress.total, progress.complete
     current_chunk_id = progress.current_id
