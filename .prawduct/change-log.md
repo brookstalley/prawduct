@@ -44,6 +44,13 @@ needed one — it is one REST call on a single-item `get`.)
 | R-4 | note | fixed (`9f7e900`) | `id` documented as the native comment id — the stable handle for any future comment-level op |
 | R-5 | note | accepted | backlog item `#555` was filed and archived on this branch before the review consolidated — Done-when 3 already discharged |
 
+**Verify round** — `rev-20260802T193426Z-f5fe3512` (verify-resolutions, 0 blocking / 0 warnings / 2 notes; R-2 warning resolution verified with tree-level evidence):
+
+| Finding | Severity | State | Detail |
+|---|---|---|---|
+| R-1 | note | accepted | fixed in place (free write): the plan's backticked REST route template — which record-lint tokenized as a deliverable file — reworded to prose, so the pre-merge review will not re-raise it |
+| R-2 | note | accepted | fixed in place (free write): learnings rule compacted to 269 chars; evidence narrative moved to learnings-detail.md per the lint's instruction |
+
 ## 2026-08-02: the gate named the one route that could not clear the finding it was naming
 
 <!-- prawduct: type=fix | scope=critic-burndown | chunks=03 -->

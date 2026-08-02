@@ -354,4 +354,4 @@ dropping them.
 
 ## A sentence's RHETORICAL ROLE can select its content over a fact you already hold — the justification slot pulls whatever makes a decision sound principled, while the caveat slot states the truth correctly two sentences later. Check the load-bearing clause against the mechanism, separately from reading the paragraph for sense: reading for sense passes it, because that is what selected it
 
-## A write op shipped without its read twin is a channel that exists only in the contract — the review swept `comment` under DM5 and never asked WHO READS THESE BACK, so clarifications landed somewhere no consumer could see for a full release cycle. When an op WRITES a channel, name its read consumer at contract time (the op that returns it and the agent instruction that reads it), or the channel is write-only in practice
+## A write op shipped without its read twin is a channel that exists only in the contract — when an op WRITES a channel, name its read consumer at contract time (the op that returns it and the agent instruction that reads it), or the channel is write-only in practice

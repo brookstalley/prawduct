@@ -60,8 +60,8 @@ file-and-archive.
 ### Chunk 01: transport + core + CLI + docs + tests
 
 - `plugin/lib/backlog/transport.py`: `list_comments(owner, repo, number)` on the
-  `Transport` protocol and `GhTransport` (`_api_paged` over
-  `repos/{o}/{r}/issues/{n}/comments`, reduced to
+  `Transport` protocol and `GhTransport` (`_api_paged` over the REST issue
+  comments endpoint, reduced to
   `{id, author, created_at, body, url}` — the `list_timeline` precedent).
 - `tests/fakes/fake_github.py`: `list_comments` (stateful, not_found on a missing
   issue, `_maybe_unreachable`); issue payloads model the native `comments` count

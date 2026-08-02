@@ -2287,3 +2287,15 @@ decision rests on — and check that one against the mechanism, separately from 
 for sense. Reading for sense will pass it, because it reads well; that is the property that selected
 it. Pairs with [[A rule you must RECALL at the right moment is its weakest form]]: that rule covers
 rules you fail to apply, this one covers facts you apply *away from* where they are needed.
+
+## A write op shipped without its read twin is a channel that exists only in the contract
+
+From the `backlog-comments-read` cycle (2026-08-02). The backlog service's `comment` op wrote
+native GitHub issue comments — DM5 even named them "the drill-down channel" — but no read op
+returned them, and the contract review swept `comment` under DM5 without ever asking *who reads
+these back*. The result: clarifications and solution links landed somewhere no backlog-skill agent
+could see for a full release cycle (the skill's `allowed-tools` confine agents to the adapter ops,
+so the gap was structural, not instructional). The fix was one REST call on `get`; the lesson is
+the contract-time question. Pairs with [[A deferral justified by "there is no consumer yet" is
+scoped to the surfaces that consumer does not touch]]: Q1 full-text-over-comments was legitimately
+deferred to the cache, but that deferral was silently read as covering the drill-down read too.
