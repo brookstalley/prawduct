@@ -2287,3 +2287,62 @@ decision rests on — and check that one against the mechanism, separately from 
 for sense. Reading for sense will pass it, because it reads well; that is the property that selected
 it. Pairs with [[A rule you must RECALL at the right moment is its weakest form]]: that rule covers
 rules you fail to apply, this one covers facts you apply *away from* where they are needed.
+
+## A disposition claiming "fixed" must restate the finding's own predicate
+
+**Where it came from.** `fix/drift-burndown` Chunk 01 (#193), 2026-08-02. The chunk review's R-3
+said: *the `plugin/` root fallback means the check cannot see the root-`bin/` → `plugin/bin/`
+relocation its own docstring cites as the reason it exists.* The fallback resolves a bare
+`bin/prawduct-hook` against `plugin/bin/prawduct-hook`, so the motivating defect was invisible.
+
+**What I did.** Scoped the fallback by FILE — allowed only for files under `plugin/` and for build
+plans under `.prawduct/artifacts/` (which carry a declared `build_plan_ref_root: plugin`). That
+immediately surfaced **seven real defects**: every `tests/scenarios/*.md` told a reader to run
+`python3 bin/prawduct-hook init-product …` from the repo root, where no such file has existed since
+the relocation. I fixed them, dispositioned R-3 as "fixed beyond the ask", and wrote in the
+change-log: *"the reviewer asked for a hedge on the claim; the claim turned out to be fixable
+instead."*
+
+**Why it was wrong.** The motivating defect lived in five **skills'** prose and `allowed-tools:`
+grants. Skills live at `plugin/skills/*/SKILL.md` — **inside the scope I retained**. Two of the
+three covered forms, on the exact files, of the exact class, still resolved. The finding was
+untouched. The verify pass caught it by checking the tree rather than the fix notes.
+
+**The mechanism of the error.** I verified *the fix I made* instead of *the finding as stated*. My
+question was "did offenders appear, and are they real?" — which returns yes for a neighbouring
+surface. R-3's question was "can the check see this specific relocation, in these specific files?"
+Seven genuine fixes made the false claim feel earned; had the scoping found nothing I would have
+looked harder.
+
+**Aggravating context.** This shipped inside a batch whose subject is *records asserting what the
+code does not support*, in the chunk building the detector for that class. The failure mode does not
+care that you are writing about it.
+
+**The closing fix, and why it is better than the hedge R-3 asked for.** Scope by FORM as well as
+file. The fallback is justified by *naming* a file — plugin docs refer to siblings the way the
+plugin ships them (`skills/critic/review-cycle.md`, `methodology/building.md`, dozens more) — and is
+justified for nothing when *running* one, because a reader executes from a working directory, which
+in this repo means `plugin/bin/prawduct-hook` (all fifteen in-tree invocations say so). Denied to
+`command` and `allowed-tools`. That bought four more live fixes in build plans and is pinned by
+`test_the_plugin_fallback_is_denied_to_invocation_forms`, red-verified by restoring the wider form.
+
+**The rule.** A "fixed" disposition restates the finding's predicate and demonstrates it false,
+ideally as an assertion. Tell: the fix note argues from what the change caught rather than from what
+the finding said.
+
+## Scope an exemption by the property that justifies it, not by the container
+
+**Same chunk, the structural half of the above.** The `plugin/` fallback's rationale is a verb —
+*naming* a file — but the boundary I wrote was a path prefix: `containing.startswith("plugin/")`.
+Those coincide for most files and diverge exactly where the defect lives, because a skill both names
+sibling files (legitimate) and invokes executables (not). Container-scoping looked complete: it had
+a stated rationale, a declared config backing half of it (`build_plan_ref_root`), and it produced
+real catches.
+
+**The generalisation trap.** Going from "plugin docs name paths as the plugin ships them" to "files
+under `plugin/` get the fallback" is one step, feels like the same sentence, and silently widens the
+exemption from a *form* to a *location*. The correct boundary needed both: entitled file **and**
+non-invocation form.
+
+**Tell.** The exemption's boundary is expressed as a path prefix while its rationale is expressed as
+a verb. When those two shapes disagree, the prefix is the approximation.
