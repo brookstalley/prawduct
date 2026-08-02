@@ -9,7 +9,7 @@ The Critic reviews changes against principles and specifications as a **separate
 3. Assess change scope/nature (git diff or read changed files).
 4. Read relevant `.prawduct/artifacts/`.
 5. Read `${CLAUDE_SKILL_DIR}/../../docs/principles.md` and `.prawduct/learnings.md` (the product's own) — `final` mode only.
-6. Decide checks from signals below.
+6. Mode decides *which* goals (see **Modes**); the signals below tune depth.
 7. Follow the dispatch manifest's roster (see Review Execution).
 
 ## Modes

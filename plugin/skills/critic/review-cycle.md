@@ -283,6 +283,8 @@ After the goal-based review in `final` mode, run two additional passes that `chu
 
 Scan your findings against active learnings. If a change reintroduces a pattern `.prawduct/learnings.md` explicitly warns against, escalate severity — tolerating regression undoes the learning. Conversely, if learnings reference patterns the changed code handles correctly, no finding is needed.
 
+**Learnings are dated, not infallible — the latest one wins.** The file is append-only and rules accumulate, so two entries can disagree: a later rule may revoke an earlier one outright, narrow its scope, or soften it from a prohibition to a preference. When they conflict, the **later** rule governs, and a change conforming to it is not a regression no matter what the earlier rule says. Do not escalate against a superseded rule; if the supersession is implicit rather than stated, say so in the finding — an unstated revocation is itself worth surfacing, because the next reviewer will read the stale rule as live.
+
 ### Backlog Reconciliation
 
 **Check the backend first.** Read the top-level `backlog_service_repo` scalar from

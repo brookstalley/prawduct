@@ -137,7 +137,14 @@ round counted a denominator its numerator cannot reach. Both were prose assertin
 does not support; neither was a logic error in shipped behaviour, which is now thirteen consecutive
 rounds of that pattern across this and the previous branch.
 
-Filed rather than built: `#547`, `#548`, `#549`. Next: **Chunk 02** (#264, #163).
+Filed rather than built: `#547`, `#548`, `#549`.
+
+**Chunk 02 BUILT 2026-08-02** (#264, #163). All five surviving `#264` sub-items landed; sub-item (2)
+was resolved 2026-06-10 and deliberately **not** redone. Sub-item (6) settled by **owner decision**:
+PR-review evidence deletion is documented as intended, no archive — the fact lives in the shared
+evidence store, and a second home would break the one-home norm. `#163`'s discovery question and its
+registry row both landed, closing the one absent leg of a four-leg pipeline. Next: **Chunk 03**
+(#536, #228) — `Type: cumulative-final`.
 
 ## Scaffolding
 

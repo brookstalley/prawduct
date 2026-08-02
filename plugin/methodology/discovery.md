@@ -162,6 +162,31 @@ When a feature affects user workflow, ask what behavioral variations exist — u
 
 As structural characteristics emerge, note where components will interact — API endpoints, database schemas, IPC channels, frontend/backend type contracts. These become the project's contract surfaces, documented in `.prawduct/artifacts/boundary-patterns.md` during planning. Identifying them during discovery scopes the build: boundary-heavy designs need more integration testing and consumer-impact investigation. For products with `exposes_programmatic_interface`, `has_multiple_party_types`, or `multi_process_distributed`, boundary patterns are a significant architectural concern — surface them.
 
+## Surface Risk Surfaces
+
+Ask it in the product's own terms: **where would a missed defect cost you most?** Auth, payments, a
+migration that rewrites data, a public API contract others build against, the safety interlock —
+whatever this product's answer is. It is one question and it is worth asking directly, because the
+answer is not inferable from the file tree: two repos with identical structure can put their worst
+failure in completely different places.
+
+**Capture to `project-state.yaml`** under `risk_surfaces:` as path patterns (trailing `/` is a
+directory prefix; anything else is an fnmatch glob). Two consumers read it — `prawduct-hook
+classify-diff-risk` for the review tier, and the Critic's roster derivation, which gives a diff
+touching any listed path the deeper three-reviewer review **at any size**.
+
+**Why this question earns its place rather than being left to a template comment.** The fallback is
+silent *by design*: a product that declares nothing is never reviewed *less* than before — prawduct's
+framework-shaped defaults still escalate, and below them the older file-count rule stands — so
+nothing ever fails, nothing prompts, and the product simply keeps the generic rule forever. Declaring
+your own surfaces is what raises the size threshold to 12 judgeable files, i.e. what stops a small
+change to your most dangerous code being reviewed cheaply *because* it is small. An unasked question
+is an unanswered one, and this one decides review depth for the life of the product.
+
+`risk_surfaces: []` is a valid, deliberate answer — "this product has no concentrated risk" — and it
+turns the tier check off. Record it explicitly rather than leaving the key absent, so a later reader
+can tell a decision from an omission.
+
 ## What Discovery Produces
 
 A `project-state.yaml` with:

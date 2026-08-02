@@ -3,6 +3,55 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-08-02: five prose defects from a 2026-06-09 review, and the question that set review depth
+
+<!-- prawduct: type=fix | scope=critic-burndown | chunks=02 -->
+
+**`#163` — `risk_surfaces:` decided review depth for every onboarded product through a question
+nobody asked.** Pipeline coverage was checked leg by leg and three of four were present: the template
+carries the config block, `building.md` points at the roster rule, and the Critic derives the roster
+in code. Discovery was absent — nothing anywhere asked *where would a missed defect cost you most?*,
+so the only route to declaring the field was a product owner opening a template comment.
+
+**The absent leg was the load-bearing one, because the fallback is silent by design.** A product that
+declares nothing is never reviewed *less* — the framework-shaped defaults still escalate and the
+older file-count rule stands underneath — so nothing fails, nothing prompts, and the product keeps
+the generic rule forever. What declaring surfaces actually buys is the raised size threshold: it is
+what stops a small change to your most dangerous code being reviewed cheaply *because* it is small.
+An unasked question is an unanswered one. `discovery.md` now asks it as its own section, and the
+concerns registry has the row it never had — `risk_surfaces: []` is recorded as a valid deliberate
+answer, so a later reader can tell a decision from an omission.
+
+**`#264` — five prose defects, all still live after the prose diet compressed the text around them.**
+The Critic's activation step 6 said "decide checks from signals below," which is vague about the one
+thing that is not a judgment call: the resolved *mode* decides which goals apply, and the signals
+only tune depth. The Learnings Cross-Check assumed learnings are infallible, with no rule for two
+entries that disagree — it now says the **later** rule governs, that conforming to it is not a
+regression, and that an *implicit* supersession is itself worth surfacing, because the next reviewer
+will read the stale rule as live. Framework Check 7 asked for "strengthening the dynamic generation
+system" with no worked example, so it now carries one: an enumerated *"check webhook retry limits"*
+fires for one integration shape and is silent on cron loops, queue consumers and polling clients,
+while *"a call that can be retried states its bound"* reaches all four — the tell is the diff's shape,
+not its length.
+
+The backlog skill's `pick` documented that a missing `effort:`/`impact:` maps to `2` but never the
+combined effect: **both missing scores `2/2 = 1.0`, which ranks an unassessed item *above* an
+assessed but unattractive one** (`S/M` = 0.5). The legacy penalty does not cover it — that applies
+only to items with no metadata bar at all. A cluster of 1.0s means *unassessed*, not *medium value*.
+The stale `(Q6)` label is gone.
+
+**PR-review evidence deletion is now a recorded decision rather than an apparent oversight** (owner,
+2026-08-02). The durable record of a review is the *fact*, which lives in the shared evidence store
+plus the `review.pr` ledger event; `.prawduct/.pr-reviews/<branch>.json` is per-clone scratch for one
+in-flight review. Archiving it would give a fact a second home — which the *every fact has one home*
+norm forbids — and leave a stale copy outliving the branch it describes. The cost is named rather
+than hidden: PR findings are consequently not queryable from the shared store, so any yield
+measurement spanning PR reviews needs a cross-worktree ledger sweep. That is the same constraint the
+Chunk 01 retire rule was corrected for, now stated where the deletion happens.
+
+Sub-item (2) of `#264` (the designer-handoff note) was resolved on 2026-06-10 and was **not** redone —
+the item says so, and re-fixing a closed sub-item is how a batch quietly reverts someone's work.
+
 ## 2026-08-02: two checks the cheapest gate did not have, paid for by upleveling
 
 <!-- prawduct: type=fix | scope=critic-burndown | chunks=01 -->
