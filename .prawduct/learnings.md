@@ -24,7 +24,7 @@ dropping them.
 ## RULING (regen-views-is-advice) — when two norms reach one command, its OUTPUT decides the posture: a writer whose only product is a DERIVED VIEW fails soft one view at a time, because no gate reads a view to reach a verdict. Soft is not blanket — input it cannot interpret at all still fails closed. Skip-and-report a bad view, never write it half-right
 <!-- anchor: regen-views-is-advice — linked from architecture.md and data-model.md Rulings: -->
 
-## `grep -rn <new symbol> tests/` before calling a behaviour change done — a guard with no test is a guard a regression deletes silently, and three consecutive rounds on one branch found exactly that, each time in code written to FIX the previous instance. Applying a rule to the finding in front of you is not the same as applying it to the code you write while applying it
+## `grep -rn <new symbol> tests/` before calling a behaviour change done — a guard with no test is a guard a regression deletes silently, and three consecutive rounds on one branch found exactly that — the first in ordinary build work, the next two in code written to FIX the previous instance. Applying a rule to the finding in front of you is not the same as applying it to the code you write while applying it
 
 ## Enumerate the sites answering a question by GREP, never by memory — a fix that threads a resolved value through the two call sites you remembered leaves the third reading the old source, and the comment you write above it ("both fields") is accurate for exactly one commit. Same shape as the bug being fixed, one field over
 
