@@ -22,7 +22,9 @@ the silent grade this closes.
 **And which plan the record says.** `critic-begin` now derives `scope` itself when the dispatch omits
 it — the branch name's last segment, accepted only when a plan under `artifacts/` declares it — and
 records the choice as `scope_chosen_by`. A branch matching nothing infers nothing, and a branch
-matching a *released* plan is rejected too — so the guarantee is bounded rather than absolute: a
+matching a plan with no unchecked chunk is rejected too (sharp under `views_enabled`, where boxes
+flip at release; elsewhere it lapses between the last tick and the merge) — so the guarantee is
+bounded rather than absolute: a
 branch named after an unfinished plan it is not building will be attributed to that plan, and
 explicit `--scope` is the remedy. That closes the manifest, the review fact and the ledger
 event in one change: the ledger already preferred the manifest's scope, and the fact always carried

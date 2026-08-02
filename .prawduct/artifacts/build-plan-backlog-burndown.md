@@ -400,9 +400,13 @@ and the `new` exemption expiry consumes that function rather than re-deriving fr
     against declared data*, not a guess: `fix/backlog-burndown` → `backlog-burndown` →
     `build-plan-backlog-burndown.md`. A branch whose name matches nothing (the primary checkout on
     `develop`) infers nothing and keeps today's behaviour exactly. The liveness clause was added
-    after Critic finding R-6: a long-lived repo accumulates dozens of released plans, and without it
-    a branch named `fix/gate-noise` would attribute to a plan that shipped months ago and could raise
-    a BLOCKING `chunk-ref-missing` about its deliverables. **The residual case, stated rather than
+    after Critic finding R-6: a long-lived repo accumulates dozens of finished plans, and without it
+    a branch named `fix/gate-noise` would attribute to one of them and could raise a BLOCKING
+    `chunk-ref-missing` about its deliverables. **"Finished" is sharp only under `views_enabled`**,
+    where boxes flip at release; elsewhere they flip per chunk, so a plan reads finished from its
+    last tick until merge and attribution falls back to the pointer for that window — a lapse of
+    the improvement rather than a new defect, stated here because a vetoable record that is one
+    qualification behind the code is what the owner would be vetoing. **The residual case, stated rather than
     waved at:** a branch whose name matches an *unfinished* plan it is not building will be
     attributed to that plan. A name is the only signal available, so nothing here can tell those
     apart; the remedy is explicit `--scope`. An earlier draft of this block claimed the inference

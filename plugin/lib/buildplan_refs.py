@@ -408,8 +408,13 @@ class ReviewedPlan(NamedTuple):
 def _scope_plan_map(prawduct_dir: Path) -> dict[str, Path]:
     """``{frontmatter scope: plan path}`` over this repo's artifacts directory.
 
-    Lazy import: ``lib.views`` is a HEAVY_SUBMODULE, and only the review-dispatch
-    path asks this question.
+    Lazy import: ``lib.views`` is a HEAVY_SUBMODULE. **Two paths ask this**:
+    review dispatch, and — since the Stop hook began resolving its gate plan
+    from the branch — every session end where a build plan and changes both
+    exist. So the cost (the heavy import plus a recursive scan of
+    ``artifacts/``, ~18ms on a repo with ~60 plans) is now on a hot path, not
+    only on a path already measured in minutes. Lazy still earns its keep:
+    the sessions that skip the gate block skip this entirely.
     """
     from . import views  # noqa: PLC0415 — lazy; views is a HEAVY_SUBMODULE
 

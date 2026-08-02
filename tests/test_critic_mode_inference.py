@@ -421,6 +421,32 @@ class TestRule1VerifyResolutions:
         mode, _ = infer_mode(tmp_path, None)
         assert mode != "verify-resolutions"
 
+    def test_working_tree_probe_fails_toward_not_empty(self, tmp_path: Path):
+        """The probe's docstring promises "any git failure returns False".
+
+        The raise class is the half a `returncode` check misses: an absent binary
+        (OSError) or the timeout. Returning False there keeps rule 4 on its
+        fail-safe answer instead of redirecting on a tree it could not read —
+        and an unguarded call would propagate out of `infer_mode` instead.
+        """
+        _init_repo(tmp_path)
+        _write(tmp_path, "README.md", "x\n")
+        _commit(tmp_path, "initial")
+        assert critic_mode._working_tree_is_empty(tmp_path) is True
+
+        import subprocess as _sp
+
+        for boom in (OSError("no git"), _sp.TimeoutExpired("git", 10)):
+            def _raise(*_a, _exc=boom, **_k):
+                raise _exc
+
+            original = critic_mode.subprocess.run
+            critic_mode.subprocess.run = _raise
+            try:
+                assert critic_mode._working_tree_is_empty(tmp_path) is False
+            finally:
+                critic_mode.subprocess.run = original
+
     def test_ancestor_check_fails_closed_on_git_failure(self, tmp_path: Path):
         """Not-an-ancestor and a broken git are the same answer: refuse.
 

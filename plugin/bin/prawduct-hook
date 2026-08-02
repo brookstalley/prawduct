@@ -1572,7 +1572,8 @@ def cmd_stop(project_dir: Path, stop_input: dict | None = None) -> int:
     # trivial-declaration contract is independent.
     trivial_block_reason = ""
     if has_changes and has_build_plan:
-        # Resolve WHICH plan once, then read both chunk-level fields from it.
+        # Resolve WHICH plan once, then read all three chunk-level fields from
+        # it: the current chunk id, its `Type:`, and its trivial rationale.
         # `active_build_plan` names the plan in progress in this repo; on a repo
         # running several plans across worktrees that is not the plan this
         # branch is building, and the gate's Type-driven carveouts would be
