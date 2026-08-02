@@ -70,8 +70,18 @@ was recorded as a rule two chunks before it happened again.
 and was silent on the first, so the plan now states a stopping rule per control — retire
 `cross-component-contract:` on zero BLOCKING findings across 20+ reviews **of boundary-crossing
 diffs** (not 20 reviews total; a check that never met its trigger has not been tested), and
-`scope-trace:` on zero findings across 30+ `cumulative`/PR reviews. Stated in advance so the sweep
+`scope-trace:` on zero findings across 30+ **`cumulative`** reviews. Stated in advance so the sweep
 inherits a baseline rather than a bare count.
+
+**The first draft of that rule counted PR reviews, which the numerator cannot reach** — caught by the
+verify pass. PR findings never enter the shared evidence store (`evidence.KNOWN_KINDS` is
+`{review, resolution, disposition}`, all written by `critic-consolidate`); a PR review lands in the
+gitignored, **per-worktree** `.prawduct/.pr-reviews/` and ledger. A query would have counted zero and
+read it as "never fired," retiring a control on a denominator it never sampled. The PR half keeps the
+token — it makes the finding legible to a human reading the report — but contributes no retirement
+evidence without a cross-worktree ledger sweep. Worth recording *where* the trap was documented: this
+same plan warns about per-worktree gitignored ledgers roughly a hundred lines above the rule that
+walked into it, in the paragraph explaining why `#165` stayed deferred.
 
 `#165` was considered for this batch and **deliberately excluded**: its recorded revisit trigger is a
 *second* surplus review event, and the ledger carries exactly one, the known duplicate the item

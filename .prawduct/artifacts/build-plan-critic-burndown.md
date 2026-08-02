@@ -210,13 +210,31 @@ the second half of and this states explicitly, so the sweep has a baseline rathe
   asymmetry is itself the reason to count trigger-eligible reviews rather than all reviews.
 - **`scope-trace:`** — expected to fire rarely and to be *high-value when it does*, because the
   failure it names (a capability with no parent requirement, or one nothing reaches) is the kind that
-  survives every other check. **Retire it if it produces zero findings across 30+ `cumulative`/PR
+  survives every other check. **Retire it if it produces zero findings across 30+ `cumulative`
   reviews**, or if its findings prove consistently duplicative of Goal 3's "no extra functionality"
   bullet — the overlap this chunk disambiguated but did not eliminate.
 
-Both figures are *stopping rules stated in advance*, not predictions. The norm's own in-transition
-note says a control may be retired on a reasoned argument provided the argument states what evidence
-would have settled it; these are that statement.
+**The PR half is deliberately outside the retire decision, and this is the correction that matters.**
+An earlier draft of this rule counted "`cumulative`/PR reviews" — a denominator the numerator cannot
+reach. PR findings never enter the shared evidence store: `evidence.KNOWN_KINDS` is
+`{review, resolution, disposition}`, all written by `critic-consolidate`, and the PR reviewer's
+record lands in `.prawduct/.pr-reviews/` plus a `review.pr` ledger event in
+`.prawduct/.governance-ledger.jsonl` — **gitignored and per-worktree**. So a query over the store
+would count zero PR findings and read it as "never fired." The token still belongs in the PR protocol
+(it makes the finding legible to a human reading the report); it simply cannot contribute evidence to
+a retirement, and a rule that counted it would have retired the control on a denominator it never
+sampled. Reviving the PR half as evidence needs a cross-worktree ledger sweep — the same measurement
+`#165` required — not a bigger threshold.
+
+**Both denominators are honest about their cost.** `scope-trace:`'s is a one-line query over the
+store. `cross-component-contract:`'s is not: review facts carry no boundary-crossing classification,
+so "reviews of boundary-crossing diffs" is a **hand audit** of `files_changed`. Stated rather than
+hidden — a threshold whose denominator is manual will be measured late or not at all, which is an
+argument for `#548`'s structured `check:` field carrying the trigger alongside the yield.
+
+These are *stopping rules stated in advance*, not predictions. The norm's own in-transition note says
+a control may be retired on a reasoned argument provided the argument states what evidence would have
+settled it; these are that statement.
 
 ### Chunk 02: The prose batch and the discovery gap (#264, #163)
 
