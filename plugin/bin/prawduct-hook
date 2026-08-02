@@ -2959,8 +2959,9 @@ def cmd_regen_views(project_dir: Path, args: list[str] | None = None) -> int:
       ONE scope's `## Status` view wrong, so that view is suppressed and every
       other view is still written. This is the coupling VWS-6R4T introduced: one
       unresolvable scope used to stop release-notes and scope-rollups too, which
-      have no plan-roster dependency at all, and on a 16-nested-plan repo that
-      meant nothing regenerated, ever.
+      have no plan-roster dependency at all. One consumer lost whole
+      release-notes sections to it; the repos carrying the most nested plans
+      were merely LATENT, safe only because `views_enabled` was unset.
     * **Global** (unrecognized `status=`, conflicting tag lines) — an entry that
       cannot be interpreted leaves a view silently HALF-RIGHT rather than absent,
       which is precisely the bug class VWS-6R4T names. Still fail-closed: exit 2,
@@ -3109,10 +3110,30 @@ def cmd_regen_views(project_dir: Path, args: list[str] | None = None) -> int:
         if not (r.name == "status" and r.scope in suppressed_scopes)
     ]
     if suppressed_scopes:
+        # Report what was actually withheld, not what was matched. The
+        # no-plan-file case names a scope that HAS no Status view — there was
+        # nothing to suppress, and claiming otherwise tells an operator to go
+        # look for a view that was never going to be written.
+        withheld = sorted(
+            {r.scope for r in results if r.name == "status" and r.scope in suppressed_scopes}
+        )
+        unresolvable = sorted(suppressed_scopes - set(withheld))
+        parts = []
+        if withheld:
+            parts.append(
+                "withheld the ## Status view for "
+                + ", ".join(f"scope={s!r}" for s in withheld)
+            )
+        if unresolvable:
+            parts.append(
+                "no ## Status view exists to write for "
+                + ", ".join(f"scope={s!r}" for s in unresolvable)
+            )
         print(
-            f"{len(scoped_errors)} scope-local validation error(s) — suppressed the "
-            f"## Status view for {', '.join(f'scope={s!r}' for s in sorted(suppressed_scopes))}. "
-            f"Every other view was regenerated; fix these and re-run to complete them.",
+            f"{len(scoped_errors)} scope-local validation error(s) — "
+            + "; ".join(parts)
+            + ". Every other view was regenerated; fix these and re-run to "
+            "complete them.",
             file=sys.stderr,
         )
 

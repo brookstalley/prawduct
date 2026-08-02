@@ -7,8 +7,9 @@
 
 <!-- prawduct: type=fix | scope=backlog-burndown | chunks=02 -->
 
-Six defects in how the runtime decides what a build plan is and what it says, plus the owner-requested
-collapse of `regen-views` to a single always-writing mode. `#201`, `#211`, `#224`, `#327`, `#333`.
+Defects in how the runtime decides what a build plan is and what it says, plus the owner-requested
+collapse of `regen-views` to a single always-writing mode. `#201`, `#211`, `#224`, `#327`, `#333` —
+the item count and the defect count differ because `#201` alone carries several legs.
 
 **The ruling came first, and it is the substantive change.** `#201`'s fourth leg asked to stop
 `regen-views` failing closed on one unresolvable scope — but the fatality was a *ratified* choice

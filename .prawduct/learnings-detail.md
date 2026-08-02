@@ -6,7 +6,7 @@ No size constraint on this file — it's the deep reference, consulted via `/lea
 
 ---
 
-## RULING (regen-views-is-advice) — a writer of DERIVED VIEWS is advice and fails soft ONE VIEW AT A TIME; only a verdict emitter fails closed. When two norms reach one command the OUTPUT decides: no gate reads a view, so its writer never blocks. Skip-and-report a bad-input view, never write it half-right; and a dry-run validating identically to the real run is where drift hides, not a safety device
+## RULING (regen-views-is-advice) — when two norms reach one command, its OUTPUT decides the posture: a writer whose only product is a DERIVED VIEW fails soft one view at a time, because no gate reads a view to reach a verdict. Soft is not blanket — input it cannot interpret at all still fails closed. Skip-and-report a bad view, never write it half-right
 
 **Collision ruling, owner decision 2026-08-01**, raised by #201's fourth leg. Two `## Direction`
 norms both reached `regen-views` and pointed opposite ways: `architecture.md`'s *authority fails
@@ -15,30 +15,43 @@ authoritative — no gate reads a view to reach a verdict*.
 
 **Why the output decides.** The authority norm's why is that a verdict must not be satisfiable by
 feeding it garbage. That rationale reaches a command only where a verdict exists to corrupt.
-`regen-views` emits no verdict and no gate consumes its output, so the authority half never
-attaches, and the derived-views norm decides the posture. Rule at the category level: **the
-failure posture of a command follows what it produces, not how important the command feels.**
+`regen-views` emits no verdict and no gate consumes its output *to reach one*, so the authority
+half never attaches, and the derived-views norm decides the posture. Rule at the category level:
+**the failure posture of a command follows what it produces, not how important the command feels.**
+
+Two edges, because the unqualified form is false in both directions. *"No gate reads a view"* is too
+strong — a gate trigger does read the build-plan checkbox view (`cross-cutting-concerns.md` records
+this deliberately); what no gate does is read one **to reach a verdict**, which is the norm's own
+wording and the load-bearing clause. And *fails soft* is not blanket: input the command cannot
+interpret at all still fails closed, because a view written from it would be half-right rather than
+absent, and silent half-rightness is the bug class the whole rule protects.
 
 **What the ruling had to preserve.** VWS-6R4T made the command fail closed for a stated reason —
-*"no silent partial flips — partial application is the bug class"*
-(`artifacts/build-plan-changelog-fail-loud.md:39-51`). That content survives; only its whole-run
-coupling is dropped. The unit of atomicity moves from the **run** to the **view**: a view whose
-inputs are invalid is skipped and reported, never written half-right, and views with no dependency
-on the bad input are still written. `apply_regen` (`plugin/lib/views.py:1339-1345`) already writes
-each view as one whole file, so per-view skipping cannot produce the state VWS-6R4T names. This is
-the distinction that let the leg be granted without reopening the bug class: **"fail soft" means
-"don't block the others," never "write one you know is wrong."**
+*"no silent partial flips — partial application is the bug class"* (the ASSUMPTION block in
+`artifacts/build-plan-changelog-fail-loud.md`). That content survives; only its whole-run coupling
+is dropped. The unit of atomicity moves from the **run** to the **view**: a view whose inputs are
+invalid is skipped and reported, never written half-right, and views with no dependency on the bad
+input are still written. `views.apply_regen` already writes each view as one whole file, so per-view
+skipping cannot produce the state VWS-6R4T names. This is the distinction that let the leg be
+granted without reopening the bug class: **"fail soft" means "don't block the others," never "write
+one you know is wrong."**
 
-**The dry run was the drift.** `--check` and the real run validate identically — `check_only` is
-consulted only *after* the validation block returns 2 (`plugin/bin/prawduct-hook:3028-3043`) — so
-the two-step `--check` → `regen-views` that every release plan prescribed was validate-and-stop
-followed by validate-and-stop-or-write. The first step could not catch anything the second didn't.
-Worse, `--check` exits 0 while writes are *pending*, so a clean check meant "the tags parse," not
-"the views are correct," and it was read as the latter: #201's reporting repo lost six whole
-version sections from `release-notes.md` and ran `scope_rollups` at 34 keys instead of 62 while
-the check reported up to date (`.prawduct/backlog.md:1101`). **A dry run that validates identically
-to the real run is not a safety device — it is a way for a check to report clean while the artifact
-it checks rots.** Hence one mode: views always regenerate.
+**The dry run was the drift.** `--check` and the real run validated identically — `cmd_regen_views`
+consulted the flag only *after* its validation block had already returned — so the two-step
+`--check` → `regen-views` that every release plan prescribed was validate-and-stop followed by
+validate-and-stop-or-write. The first step could not catch anything the second didn't. Worse,
+`--check` exited 0 while writes were *pending*, so a clean check meant "the tags parse," not "the
+views are correct," and it was read as the latter: one reporting repo had lost whole version
+sections from `release-notes.md` and was running `scope_rollups` at roughly half its true key count
+while the check reported up to date. **A dry run that validates identically to the real run is not a
+safety device — it is a way for a check to report clean while the artifact it checks rots.** Hence
+one mode: views always regenerate.
+
+Recorded shapes, not values, on purpose. Earlier drafts of this entry carried exact line citations
+(`prawduct-hook:3028-3043`, `views.py:1339-1345`) and exact counts; **both citations were already
+wrong at the commit that shipped this entry** — the code moved in the same change, and one of the
+lines cited no longer existed. A durable rule that names a line number is a rule with an expiry date
+nobody sets. Name the function; let the reader grep.
 
 **The generalizable tell.** The question arrived as "is this command authority or advice?" and
 looked like an unresolvable norm conflict for as long as it was asked at the *command* level. It

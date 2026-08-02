@@ -21,8 +21,10 @@ dropping them.
 
 ---
 
-## RULING (regen-views-is-advice) — a writer of DERIVED VIEWS is advice and fails soft ONE VIEW AT A TIME; only a verdict emitter fails closed. When two norms reach one command the OUTPUT decides: no gate reads a view, so its writer never blocks. Skip-and-report a bad-input view, never write it half-right; and a dry-run validating identically to the real run is where drift hides, not a safety device
+## RULING (regen-views-is-advice) — when two norms reach one command, its OUTPUT decides the posture: a writer whose only product is a DERIVED VIEW fails soft one view at a time, because no gate reads a view to reach a verdict. Soft is not blanket — input it cannot interpret at all still fails closed. Skip-and-report a bad view, never write it half-right
 <!-- anchor: regen-views-is-advice — linked from architecture.md and data-model.md Rulings: -->
+
+## A dry run that validates IDENTICALLY to the real run is not a safety device — it is where drift hides, because it reports clean while the artifact it checks rots. Delete the mode and always write. Tell: the check and the real command share a validation path and differ only in whether they persist
 
 ## Before implementing against a mechanism, grep the BACKLOG for that mechanism's name — and when claiming something is "provably equivalent," name the proposition the proof actually establishes, because equivalence under one model is not equivalence under the one that governs behaviour
 

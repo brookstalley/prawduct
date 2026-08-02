@@ -332,6 +332,47 @@ class TestGuardMatchesProductionHeadingContract:
         assert _parseable_body_chunk_ids("#### Chunk 01: Name\n") == set()
 
 
+class TestChunkContractsAgreeAcrossModules:
+    """The Status-line matcher and the heading/item matchers share a separator
+    contract, and widening one side alone is a new defect rather than a partial
+    fix: a bold Status line whose box flips in `views` but whose id
+    `buildplan_refs` cannot parse makes the plan read as having NO current
+    chunk, so `verify-chunk-refs` exits 0 having verified nothing — strictly
+    worse than the uniformly-invisible pre-state.
+    """
+
+    def test_separator_sets_are_identical(self):
+        import importlib
+        views = importlib.import_module("lib.views")
+        assert views._CHUNK_LINE_SEP == _bpr._CHUNK_ID_SEP
+
+    @pytest.mark.parametrize(
+        "item_text,expected",
+        [
+            ("Chunk 01: A", "01"),
+            ("Chunk 01 — A", "01"),
+            ("**Chunk 01** — A", "01"),
+            ("**Chunk 01**: A", "01"),
+            ("Chunk 01", "01"),
+        ],
+    )
+    def test_item_matcher_accepts_every_status_form_views_flips(
+        self, item_text: str, expected: str
+    ):
+        assert _bpr._chunk_id_from_item_text(item_text) == expected
+
+    def test_bold_status_line_round_trips(self):
+        # The end-to-end shape of the defect: views must match the LINE and
+        # buildplan_refs must parse the ID out of the same line's text.
+        import importlib
+        views = importlib.import_module("lib.views")
+        line = "- [ ] **Chunk 03** — the adapter"
+        m = views.CHUNK_LINE_RE.match(line)
+        assert m is not None, "views does not match the bold Status form"
+        assert m.group("id") == "03"
+        assert _bpr._chunk_id_from_item_text(line[5:].strip()) == "03"
+
+
 class TestGitRefPrefixes:
     """#333: `missing-ref:` is BLOCKING, so a branch name in plan prose that is
     not recognized as a ref fails a review on the branch name itself."""
@@ -585,6 +626,78 @@ class TestNewQualifierExpiry:
         refs = _bpr._parse_build_plan_chunk_refs(prawduct, "01")
         assert refs["file_paths"] == []
 
+    def test_non_contiguous_roster_never_expires_an_open_chunk(
+        self, tmp_path: Path
+    ):
+        # `- [x] 01, - [ ] 02, - [x] 03` — `progress.complete` is 2, so slicing
+        # the roster by that COUNT would name 01 and 02 and expire the exemption
+        # on 02, which is open. Completion is read as the prefix strictly before
+        # `current_id` instead, which is done-by-construction under both
+        # readings. Chunk 02's `new` path must stay exempt.
+        _project, prawduct = _project_with_status_and_chunk(
+            tmp_path,
+            "- [x] Chunk 01: first\n- [ ] Chunk 02: open\n- [x] Chunk 03: later\n",
+            "- creates new `lib/created.py`\n",
+        )
+        plan = prawduct / "artifacts" / "build-plan.md"
+        plan.write_text(
+            plan.read_text().replace(
+                "### Chunk 01: a chunk", "### Chunk 02: open"
+            )
+        )
+        refs = _bpr._parse_build_plan_chunk_refs(prawduct, "02")
+        assert refs["file_paths"] == []
+
+    def test_git_derived_reading_drives_the_expiry_when_boxes_are_unflipped(
+        self, tmp_path: Path
+    ):
+        # The case the whole expiry exists for, and the one the count-slice bug
+        # lived in: `views_enabled` on a feature branch, so every checkbox is
+        # still `[ ]` and only the git log knows chunk 01 is done. A
+        # checkbox-based expiry would never fire here.
+        repo = tmp_path / "repo"
+        prawduct = repo / ".prawduct"
+        (prawduct / "artifacts").mkdir(parents=True)
+        (prawduct / "project-state.yaml").write_text(
+            "views_enabled: true\nbase_branch: main\n"
+        )
+        (prawduct / "change-log.md").write_text("# Change Log\n")
+        plan = prawduct / "artifacts" / "build-plan.md"
+        plan.write_text(
+            "---\nartifact: build-plan\nscope: demo\n---\n\n"
+            "## Status\n\n- [ ] Chunk 01: first\n- [ ] Chunk 02: second\n\n"
+            "## Build Chunks\n\n"
+            "### Chunk 01: first\n\n- creates new `lib/created.py`\n\n"
+            "### Chunk 02: second\n\n- creates new `lib/later.py`\n"
+        )
+
+        def _git(*args: str) -> None:
+            subprocess.run(
+                ["git", *args], cwd=repo, check=True, timeout=20,
+                capture_output=True,
+            )
+
+        _git("init", "-q", "-b", "main")
+        _git("config", "user.email", "t@example.com")
+        _git("config", "user.name", "t")
+        _git("add", "-A")
+        _git("commit", "-q", "-m", "base")
+        _git("checkout", "-q", "-b", "feature/demo")
+        (repo / "marker.txt").write_text("x\n")
+        _git("add", "-A")
+        _git("commit", "-q", "-m", "feat(demo): land the parser (Chunk 01)")
+
+        progress = _bpr.resolve_chunk_progress(repo)
+        assert progress.git_derived, "fixture did not reach the git-derived path"
+        assert progress.current_id == "02"
+
+        # Chunk 01 is complete per git -> its exemption expired.
+        refs01 = _bpr._parse_build_plan_chunk_refs(prawduct, "01")
+        assert [r["ref"] for r in refs01["file_paths"]] == ["lib/created.py"]
+        # Chunk 02 is the current chunk -> still exempt.
+        refs02 = _bpr._parse_build_plan_chunk_refs(prawduct, "02")
+        assert refs02["file_paths"] == []
+
     def test_unparseable_roster_entry_fails_toward_the_exemption(
         self, tmp_path: Path
     ):
@@ -628,6 +741,20 @@ class TestNewQualifierScope:
     def test_numbered_list_item_declaration_exempts(self, tmp_path: Path):
         _project, prawduct = _project_with_chunk(
             tmp_path, "1. new `lib/created.py` — the parser\n"
+        )
+        assert _bpr._parse_build_plan_chunk_refs(prawduct, "01")["file_paths"] == []
+
+    def test_wrapped_list_item_continuation_still_exempts(self, tmp_path: Path):
+        # A list item does not end at its first newline, and this repo's plans
+        # wrap deliverable bullets — the declaration routinely lands on a
+        # continuation line. Matching per-line dropped the exemption for the
+        # DOMINANT declaration form and would have emitted BLOCKING
+        # `missing-ref:` on open chunks.
+        _project, prawduct = _project_with_chunk(
+            tmp_path,
+            "- **Deliverables:**\n"
+            "  - the parser rewrite, which lands as\n"
+            "    new `lib/created.py` alongside the existing walk\n",
         )
         assert _bpr._parse_build_plan_chunk_refs(prawduct, "01")["file_paths"] == []
 

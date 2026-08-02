@@ -112,11 +112,18 @@ When `develop` is ready to release as `vX.Y.Z`:
    **Batched releases (multiple scopes in one version):** a single `regen-views` now regenerates
    the `## Status` of **every** release-pending plan in one pass — it enumerates each distinct
    `scope=` in the change-log (`status` ∈ {`shipped`, `merged`}) and resolves it to its build-plan
-   file via that plan's frontmatter `scope:` (REL-4T8N). Validation is fail-closed (VWS-6R4T):
-   an unrecognized `status=`, a `chunks=` ID missing from its plan's `## Status` roster, an
-   unreleased scope with no matching plan file, a duplicate `scope:` across plan files, or
-   conflicting tag lines aborts the whole regen (exit 2, nothing written) — no silent partial
-   flips. Chunk-ID matching is tolerant (`chunks=1` flips `Chunk 01`; case and `-`/`_`
+   file via that plan's frontmatter `scope:` (REL-4T8N). Validation runs before any write, and
+   its granularity is the **view**, not the run (VWS-6R4T's *no silent partial flips*, preserved
+   by the 2026-08-01 regen-views-is-advice ruling). Two classes:
+   - **Global** — an unrecognized `status=` or conflicting tag lines. Either would leave a view
+     silently half-right rather than absent, so the whole regen aborts: **exit 2, nothing
+     written.**
+   - **Scope-local** — a `chunks=` ID missing from its plan's `## Status` roster, an unreleased
+     scope with no matching plan file, or a duplicate `scope:` across plan files. Each can only
+     make its own scope's `## Status` wrong, so that one view is withheld and every other view is
+     written: **exit 3.** A view is never written half-right either way.
+
+   Chunk-ID matching is tolerant (`chunks=1` flips `Chunk 01`; case and `-`/`_`
    variants match).
 5. **Tag the release:** `git tag vX.Y.Z` (and push the tag).
 6. **Confirm the banner.** On the next session against the new `main`, the version-delta banner
@@ -133,7 +140,8 @@ Three states are meaningful to the release flow:
   `stamp-merged` chore commit forced consumers with protected integration branches into a
   second, bookkeeping-only PR, so it was retired). Step 3 flips it to `shipped` at
   release; `regen-views` enumerates its `scope=` as release-pending and fails loudly
-  (exit 2) when that scope resolves to no plan file. It does **not** flip checkboxes, so
+  (exit 3, that scope's `## Status` withheld, other views written) when that scope
+  resolves to no plan file. It does **not** flip checkboxes, so
   the build plan's `## Status` stays `[ ]` and the plan + `active_build_plan` pointer are
   retained until the release (see "KEEP the build plan" in `learnings.md`). The
   `/prawduct:pr` merge flow honors this: a feature→`develop` merge **retains** the plan
@@ -150,10 +158,13 @@ On a repo whose integration branch is **protected** (commits land only by PR), r
 itself rides in a PR — that one release PR is the only bookkeeping vehicle the flow ever
 needs; no per-feature housekeeping commit exists anywhere in the lifecycle.
 
-Any other `status=` value (including a typo) is a **fatal validation error** (VWS-6R4T,
+Any other `status=` value (including a typo) is a **global validation error** (VWS-6R4T,
 promoting the VWS-3K7P typo-guard): `regen-views` exits 2 with an ERROR line and writes
-nothing, as it does for a `chunks=` ID missing from its plan's roster, an unreleased scope
-with no plan file, duplicate scopes, or conflicting tag lines. Entries with multiple
+nothing — a typo'd `status=` means that entry never contributes its flip, which would leave
+a Status view silently half-right. The three *scope-local* errors — a `chunks=` ID missing
+from its plan's roster, an unreleased scope with no plan file, duplicate scopes — instead
+withhold that one scope's `## Status` and exit 3, having written every other view. Entries
+with multiple
 non-conflicting tag lines are still unioned with a stderr WARNING (VWS-4D8J) — fix the
 format, but the output is correct. Run `regen-views` before tagging; it must exit 0 — a `3`
 means some scope's `## Status` was suppressed and is not release-ready.

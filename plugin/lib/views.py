@@ -47,15 +47,20 @@ from .core import (
 
 TAG_LINE_RE = re.compile(r"<!--\s*prawduct:\s*(.+?)\s*-->")
 H2_RE = re.compile(r"^##\s+(.+?)\s*$")
-# The Status-line twin of `buildplan_refs._CHUNK_ID_SEP`, and deliberately the
-# same separator set (`: — – ( -` or end-of-line) — a plan author who writes
+# The Status-line twin of `buildplan_refs._CHUNK_ID_SEP`, kept character-for-
+# character identical with it — `**` included. A plan author who writes
 # `## Chunk A — Name` as a body heading writes `- [ ] **Chunk A** — Name` in
 # Status, and before VWS-2F9K/#201-leg-3 only the colon form matched here, so
-# those checkboxes could never flip and nothing said why. `**` is tolerated on
-# either side of the ID because bolding a chunk label is an authoring style, not
-# a different contract. The two regexes are NOT shared code: this one also has to
-# capture `prefix`/`state`/`rest` for rewriting, while the heading matcher only
-# reads. What must not drift is the separator set, which is why it is named here.
+# those checkboxes could never flip and nothing said why.
+#
+# The two regexes are NOT shared code: this one also captures
+# `prefix`/`state`/`rest` for rewriting, while the heading/item matchers only
+# read. The SEPARATOR SET is the shared contract, and widening one side alone is
+# a new defect rather than a partial fix — a bold Status line whose box flips
+# here but whose id `buildplan_refs` cannot parse makes the plan read as having
+# no current chunk, so `verify-chunk-refs` exits 0 having verified nothing.
+# If you change this set, change `buildplan_refs._CHUNK_ID_SEP` in the same edit;
+# `tests/test_build_plan_resolution.py` pins that they agree.
 _CHUNK_LINE_SEP = r"\s*(?:[:—–(-]|\*\*|$)"
 CHUNK_LINE_RE = re.compile(
     r"^(?P<prefix>\s*-\s+)\[(?P<state>[ xX])\]"
@@ -87,7 +92,13 @@ class ScopedError(str):
     behaviour, to buy nothing the caller can use.
     """
 
-    scope: str | None
+    # A real class attribute, not just an annotation, so `.scope` is always
+    # readable. A `str` subclass loses its instance dict through any operation
+    # that returns a NEW str (slicing, concatenation, `.strip()`), and those
+    # return plain `str` — but a caller holding one of these and reading
+    # `.scope` should get a safe answer rather than `AttributeError`, and
+    # `None` (= "no single view owns this") is the fail-closed answer.
+    scope: str | None = None
 
     def __new__(cls, message: str, scope: str | None = None) -> "ScopedError":
         obj = super().__new__(cls, message)
@@ -694,12 +705,9 @@ def iter_scoped_plan_candidates(artifacts_dir: Path) -> Iterator[tuple[Path, str
     (2026-07-21 fleet survey on the item).
 
     Ordering is by sorted path so the first-wins tie-break in both consumers
-    stays deterministic. Note this makes *directory depth* part of the tie-break
-    for a duplicated scope, which is why the duplicate-scope diagnostic reports
-    paths relative to ``artifacts_dir`` rather than bare filenames: nesting makes
-    ``build-plan.md`` a near-certain name collision across ``plans/<id>/``
-    directories, and a message naming two files called ``build-plan.md`` is
-    unactionable.
+    stays deterministic, which now makes *directory depth* part of that
+    tie-break. Consumers report paths via :func:`_display_path` rather than
+    ``Path.name`` — see its docstring for why nesting makes that necessary.
     """
     if not artifacts_dir.is_dir():
         return
@@ -761,8 +769,10 @@ def diagnose_scope_plan_coverage(
     that view and still writes release-notes and scope-rollups, which have no
     plan-roster dependency (the regen-views-is-advice ruling, 2026-08-01 —
     ``learnings.md``). Until that ruling the caller treated these as fatal for
-    the whole run (VWS-6R4T), which is what let one unresolvable scope stop
-    every view in a 16-nested-plan repo from regenerating. Two cases:
+    the whole run (VWS-6R4T), so one unresolvable scope stopped every unrelated
+    view from regenerating — realized on the reporting repo, and latent on the
+    repos carrying the most nested plans, which were safe only because
+    ``views_enabled`` was unset. Two cases:
 
     * An unreleased scope with NO matching build-plan file — its ``## Status``
       cannot be regenerated, a real release-process error. "Unreleased" covers
@@ -865,7 +875,7 @@ def validate_chunk_roster(
 
     Returns ``[]`` when every resolvable ``chunks=`` ID matches its roster.
     """
-    errors: list[str] = []
+    errors: list[ScopedError] = []
     plan_map = build_scope_to_plan_map(artifacts_dir)
     # Cache per plan file: (verbatim roster IDs, normalized roster set).
     rosters: dict[Path, tuple[list[str], set[str]]] = {}
@@ -1206,13 +1216,13 @@ class ViewRegenResult:
     summary: str  # human-readable detail
     new_content: str | None = None  # new file content (None for noop)
     path_relative: str = ""  # path relative to prawduct_dir, for caller to write
-    # The scope this view belongs to, for `status` results — the plan's OWN
-    # frontmatter declaration, not a reverse lookup through the scope map, so a
-    # duplicate-scope repo still attributes each result to the file that claims
-    # it. `None` for the plan-independent views (release-notes, scope-rollups)
-    # and for a plan declaring no scope. The caller matches a scope-attributed
-    # validation error (:class:`ScopedError`) against this to suppress exactly
-    # one view instead of the whole run.
+    # The scope this view belongs to, for `status` results — resolved by
+    # :func:`_detect_active_scope`, the same function that decides which
+    # change-log entries the write consumes. `None` for the plan-independent
+    # views (release-notes, scope-rollups) and for a plan that resolves to no
+    # scope at all. The caller matches a scope-attributed validation error
+    # (:class:`ScopedError`) against this to suppress exactly one view instead
+    # of the whole run.
     scope: str | None = None
 
 
@@ -1298,7 +1308,15 @@ def _plan_status_results(
                 )
             )
             continue
-        _present, plan_scope = _parse_build_plan_frontmatter_scope(plan_content)
+        # The SAME resolution the write uses (`build_status_view` →
+        # `_detect_active_scope`), not the raw frontmatter key. A plan with no
+        # `scope:` key at all infers its scope from the most recent change-log
+        # `scope=` tag, so keying suppression to the frontmatter would leave the
+        # always-included pointer plan at `scope=None` — never matching
+        # `suppressed_scopes`, yet written from the suppressed scope's tags.
+        # Suppression must key on whatever decides the write, or it protects
+        # nothing in exactly the case that needs protecting.
+        plan_scope = _detect_active_scope(plan_content, change_log_content)
         status_new, status_changes = build_status_view(change_log_content, plan_content)
         if status_new is None:
             results.append(

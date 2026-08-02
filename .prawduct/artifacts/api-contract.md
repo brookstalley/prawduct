@@ -133,7 +133,11 @@ Fail-direction is deliberate and per-purpose:
   state, but an unrun check must never read as a clean one — inside a single run, the same rule
   appears per check as the `unchecked` list rather than a silently absent result.
 - **Special sentinels** (documented, not general): `critic-begin` **2** = scope-widened;
-  `evidence status` **2** = schema-ahead records present (gates can't be trusted until update).
+  `evidence status` **2** = schema-ahead records present (gates can't be trusted until update);
+  `backlog verify-migration` **4** = completeness failure (a source item with no target issue);
+  `regen-views` **3** = partial — one or more scopes' `## Status` views were withheld by their own
+  validation errors while every other view WAS written (the regen-views-is-advice ruling; 2 still
+  means nothing was written).
 
 **Message vocabulary:** `CRITICAL:` / `WARNING:` / `NOTE:` / `PRAWDUCT:` / `BLOCKED —…`, with a
 channel split — **stdout is agent-facing** (composed into model context), **stderr is
@@ -206,7 +210,12 @@ Evolution rules we want to hold, so new versions stay rare:
   a consumer reading either surface reads the same keys.
 - **Internal / lifecycle surface** (called by the harness or by consolidation, not a public
   contract): `clear`, `stop`, `subagent-stop`, `critic-begin`, `critic-consolidate`, `build-index`.
-- **Deprecated:** `stamp-merged` (removal deferred to a major).
+- **Deprecated:** `stamp-merged` (removal deferred to a major); `regen-views --check` (removal
+  deferred to a major — **and note it is a repurposing, not a clean deprecation**: the flag now
+  performs a full regen where it documented "writes nothing", so unlike `stamp-merged` it does not
+  still do what it said. Recorded as a departure from the flag-repurposing clause above, not as
+  conformance; the norm's why is about consumers pinned at version N, and no hook, skill or gate
+  ever invoked it — every consumer was prose).
 
 *Current state (honest):* the stable/internal split above is the intended inventory and is reflected
 in how skills allowlist commands, but there is **no formal stability-tier table in the code and no

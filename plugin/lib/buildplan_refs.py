@@ -107,9 +107,19 @@ def _iter_status_section_items(content: str):
 # "### Chunk 02:"). Previously only the colon form parsed, so an em-dash heading
 # silently disabled Goal-2 ref verification and per-chunk mode scoping for the
 # whole plan.
-_CHUNK_ID_SEP = r"\s*(?:[:—–(-]|$)"
-_CHUNK_HEADING_RE = re.compile(r"^#{2,3}\s+Chunk\s+(\w+)" + _CHUNK_ID_SEP)
-_CHUNK_ITEM_RE = re.compile(r"^Chunk\s+(\w+)" + _CHUNK_ID_SEP)
+# `**` closes a bolded label (`**Chunk A** — Name`) and so terminates the id
+# exactly as `:` or an em-dash does. It is in the SEPARATOR set, and `_CHUNK_BOLD`
+# allows the opening `**`, because `views.CHUNK_LINE_RE` — the Status-line twin —
+# accepts the bold form and the two must agree. When they did not, the failure
+# was worse than either alone: the checkbox flipped (views matched) while
+# `_chunk_id_from_item_text` returned None (this matcher did not), so the plan
+# read as having NO current chunk and `verify-chunk-refs` exited 0 having
+# verified nothing. A one-sided widening of a shared contract is not a partial
+# fix, it is a new defect.
+_CHUNK_ID_SEP = r"\s*(?:[:—–(-]|\*\*|$)"
+_CHUNK_BOLD = r"(?:\*\*\s*)?"
+_CHUNK_HEADING_RE = re.compile(r"^#{2,3}\s+" + _CHUNK_BOLD + r"Chunk\s+(\w+)" + _CHUNK_ID_SEP)
+_CHUNK_ITEM_RE = re.compile(r"^" + _CHUNK_BOLD + r"Chunk\s+(\w+)" + _CHUNK_ID_SEP)
 
 
 def _chunk_id_from_item_text(text: str) -> str | None:
@@ -347,16 +357,19 @@ class ChunkProgress(NamedTuple):
     ``current_id`` / ``current_text`` are empty-ish (``None`` / ``""``) when the
     plan has no remaining chunk.
 
-    ``git_derived`` records which of the two readings answered. Stated honestly:
-    **no production caller reads it today** — it is asserted by tests and
-    available to a caller that wants to report *why* instead of guessing. The
-    gap that leaves is named rather than papered over: when the git-derived path
-    bails (absent base branch, git failure, a branch not ahead) the answer
-    silently becomes the checkbox reading, and on a ``views_enabled`` repo
-    mid-branch that is the reading known to be wrong. Nothing tells anyone.
-    Closing it means choosing which surface should report — a deliberately
-    invoked diagnostic, not this hot path, since most ``git_derived=False``
-    answers are perfectly normal — so it is a design call, not a rename.
+    ``git_derived`` records which of the two readings answered, and
+    :func:`degraded_progress_notice` is its production consumer: when the
+    git-derived path bails (absent base branch, git failure, a branch not ahead)
+    the answer becomes the checkbox reading, and on a ``views_enabled`` repo
+    mid-branch that is the reading known to be wrong. It used to become that
+    silently. The notice reports it from deliberately-invoked surfaces only —
+    most ``git_derived=False`` answers are perfectly normal, so this hot path
+    stays quiet.
+
+    ``complete`` is a COUNT of done items, not a positional boundary: done-ness
+    is deliberately non-contiguous (see :func:`_git_aware_progress` on why the
+    union exists), so slicing a roster by it names the wrong chunks. Callers
+    needing "which chunks are done" take the prefix before ``current_id``.
     """
 
     total: int
@@ -424,10 +437,13 @@ def _resolve_chunk_progress_from(project_dir: Path, content: str) -> ChunkProgre
     )
 
 
-# Stable, greppable token on every degraded-reading emission. The
-# proportionality norm requires a new control to be retirable on evidence, and a
-# finding that is printed and forgotten never can be: `grep -c` over session
-# logs is the counting mechanism, so the token must not drift or be reworded.
+# Stable token on every degraded-reading emission, so occurrences can be counted
+# by whoever is deciding whether this control still earns its place (the
+# proportionality norm: a finding that is printed and forgotten can never be
+# retired on evidence). **Do not reword it** — that instruction stands on its own
+# and needs no mechanism to obey. No counter is claimed here: the notice reaches
+# the agent transcript, which lives outside this repo, so asserting a specific
+# counting command would be a mechanism claim nothing in the tree implements.
 DEGRADED_PROGRESS_TOKEN = "degraded-chunk-reading"
 
 
@@ -627,6 +643,15 @@ _BUILD_PLAN_NEW_QUALIFIER_RE = re.compile(r"\bnew\s+`([^`\s]+)`")
 # the prose without breaking the fields plans really use, and #224(a) — the
 # expiry below — is what actually catches a file the chunk promised and skipped.
 _LIST_ITEM_RE = re.compile(r"^\s*(?:[-*+]\s|\d+[.)]\s)")
+# A list item does not end at its first newline. This repo's plans wrap
+# deliverable bullets across several lines, and the `new `path`` declaration
+# routinely lands on a CONTINUATION line rather than the one carrying the
+# bullet marker. Matching per-line therefore dropped the exemption for the
+# dominant declaration form and would have produced BLOCKING `missing-ref:`
+# findings on open chunks — a worse failure than the one #224(b) set out to fix.
+# A continuation is a non-blank line that starts no new item and is not a
+# column-0 field; a blank line or a column-0 non-list line closes the block.
+_PLAN_FIELD_RE = re.compile(r"^\S")
 # A trailing `:<line>`, `:<line>:<col>`, or `:<line>-<line>` on a backticked
 # token is a code-location citation (`lib/critic_mode.py:452`, `lib/foo.py:5-8`,
 # the editor-style `lib/foo.py:12:34`), not part of the filename.
@@ -845,9 +870,13 @@ def _chunk_section_lines(
 def _normalize_chunk_id(chunk_id: str) -> str:
     """Leading-zero-normalized chunk id (``01`` -> ``1``), for comparison only.
 
-    This module carries the same idiom inline at four other sites. They are
-    deliberately left alone rather than swept (adjacent-code refactor), but new
-    comparisons route through here so the copy count stops growing.
+    **Not** :func:`views.normalize_chunk_id`, which is the canonical one and
+    additionally casefolds and unifies ``_``/``-``. This is the weaker idiom this
+    module already used inline at four other sites, named here so new comparisons
+    stop adding copies. The two are NOT interchangeable: this one compares
+    ``Chunk_A`` and ``Chunk-A`` as different. Both are only ever applied to both
+    sides of a comparison within one module, so the difference is contained —
+    unifying them is worth doing but is its own change, not a rider on this one.
     """
     return chunk_id.lstrip("0") or "0"
 
@@ -855,14 +884,24 @@ def _normalize_chunk_id(chunk_id: str) -> str:
 def _qualifier_scope_lines(
     section_lines: list[tuple[int, str]],
 ) -> Iterator[tuple[int, str]]:
-    """A chunk's LIST-ITEM lines — where a ``new `path`` declaration counts.
+    """A chunk's LIST-ITEM lines, **wrapped continuations included** — where a
+    ``new `path`` declaration counts.
 
     See ``_LIST_ITEM_RE`` for why this is list items rather than the
-    Deliverables block the item prescribed. Narrative paragraphs are excluded,
-    which is where the adjectival ``new`` that motivated #224(b) lives.
+    Deliverables block the item prescribed, and why a per-line test is wrong.
+    Narrative paragraphs are excluded, which is where the adjectival ``new``
+    that motivated #224(b) lives.
     """
+    in_item = False
     for line_num, line in section_lines:
         if _LIST_ITEM_RE.match(line):
+            in_item = True
+        elif not line.strip() or _PLAN_FIELD_RE.match(line):
+            # A blank line, or a line starting in column 0 — either closes the
+            # item. Column-0 prose is a narrative paragraph, not a wrap: this
+            # repo indents continuations.
+            in_item = False
+        if in_item:
             yield line_num, line
 
 
@@ -878,10 +917,22 @@ def _completed_chunk_ids(project_dir: Path, content: str) -> set[str] | None:
     here. That matters: under ``views_enabled`` the Status checkboxes are a
     derived view that only flips at release, so on a feature branch they read
     all-incomplete and a checkbox-based expiry would never fire on the only
-    surface where it matters. When the reading is git-derived, completion is a
-    COUNT, so the roster is taken in order; when it is the checkbox reading, the
-    checked flags are used directly, because checkboxes can legitimately be
-    checked out of order and a prefix slice would then name the wrong chunks.
+    surface where it matters.
+
+    Completion is read as **the roster prefix strictly before ``current_id``**,
+    which is sound by construction under both readings: each computes "current"
+    as the FIRST item that is not done, so everything ahead of it is done. It is
+    deliberately not ``ordered[:progress.complete]`` — ``complete`` is a COUNT of
+    done items *anywhere* in the roster, so on a non-contiguous roster
+    (``[x] 01, [ ] 02, [x] 03`` — count 2) a prefix slice names 01 and 02, and 02
+    is not done. That would expire an exemption on an OPEN chunk, which is the
+    one direction this must never fail in.
+
+    The prefix under-reports instead: a done item sitting after ``current_id``
+    keeps its exemption. That is the safe direction and is why the simpler rule
+    is preferred over reconstructing the per-item predicate, which lives inside
+    :func:`_git_aware_progress` as a closure over its git state and could not be
+    reused here without duplicating the whole precondition chain.
     """
     progress = _resolve_chunk_progress_from(project_dir, content)
     if not progress.has_status_items:
@@ -890,13 +941,13 @@ def _completed_chunk_ids(project_dir: Path, content: str) -> set[str] | None:
     ordered = [_chunk_id_from_item_text(text) for _checked, text in items]
     if any(cid is None for cid in ordered):
         return None  # an unparseable roster entry — placement is unsafe
-    if progress.git_derived:
-        return {_normalize_chunk_id(cid) for cid in ordered[: progress.complete]}
-    return {
-        _normalize_chunk_id(cid)
-        for (checked, _text), cid in zip(items, ordered)
-        if checked
-    }
+    normalized = [_normalize_chunk_id(cid) for cid in ordered]
+    if progress.current_id is None:
+        return set(normalized)  # nothing left open: every chunk is complete
+    current = _normalize_chunk_id(progress.current_id)
+    if current not in normalized:
+        return None  # current is not in the roster we just read — placement unsafe
+    return set(normalized[: normalized.index(current)])
 
 
 def _parse_build_plan_chunk_refs(prawduct_dir: Path, chunk_id: str) -> dict:

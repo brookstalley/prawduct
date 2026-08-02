@@ -43,7 +43,7 @@ governed_by:
     dispositions:
       - "whole-surface semver; no per-subcommand version → conforms"
       - "exit codes are the contract; stable severity prefixes; errors attributed, never stack traces → conforms (Chunk 04's malformed-SHA path yields no edge and no traceback; the truncation signal is an attributed `TransportError`)"
-      - "additive-first evolution; `--json` keys are never repurposed → conforms with a recorded decision, see [DECISION] under Chunk 04 — #532 changes the *value* `open` reports, not the key's documented meaning. **Chunk 02 also engages this norm and conforms**: `--check` is deprecated (notice + full regen), not removed, per the norm's own *deprecation is signalled, not silent* pattern, and the new partial-regen signal is an additive exit-3 sentinel rather than a repurposing of 1 or 2. Both recorded as [DECISION] blocks"
+      - "additive-first evolution; `--json` keys are never repurposed → conforms with a recorded decision, see [DECISION] under Chunk 04 — #532 changes the *value* `open` reports, not the key's documented meaning. **Chunk 02 DEPARTS on the flag-repurposing clause and conforms on the rest**: `--check` now does the opposite of what it documented, which is a repurposing wearing a deprecation's clothes and is recorded as a departure rather than claimed as conformance (the norm's why is about consumers pinned at version N, and every `--check` consumer is prose, not code). The exit-3 sentinel is separately additive and conforms — it repurposes neither 1 nor 2. Both recorded as [DECISION] blocks; `api-contract.md`'s sentinel registry and Deprecated inventory updated to match"
       - "exit codes are the contract; unknown flags rejected with a usage error (exit 2) → Chunk 02 **repairs a live violation**: `cmd_regen_views` reads `--check` by membership test and silently ignores every other argument"
   - artifact: security-model
     dispositions:
@@ -97,16 +97,20 @@ against current machinery rather than trusted from its citations.
   (`.prawduct/backlog.md:1101`). Always-writing makes that drift structurally impossible. Coheres
   with the ruling above — "always regenerated" and "one bad tag writes nothing" cannot both hold |
   user can veto/override]
-- [DECISION: `--check` is **deprecated, not deleted** — it prints a stderr deprecation notice and
-  performs the full regen; removal defers to the next major and is filed | `api-contract.md`'s
-  steady-state norm *deprecation is signalled, not silent* prescribes exactly this shape (help
-  marking, stderr notice, keeps working, removal at a major) with `stamp-merged` as the reference
-  example, and this batch is a patch release. The owner's requirement is that views ALWAYS
-  regenerate; that is satisfied by making the flag write, and deleting it is not needed to get
-  there. So the mode collapses with **no norm departure**, and every release procedure still on the
-  two-step keeps working while telling its operator to drop the flag. Had the flag been deleted,
-  the same requirement would have cost an exception against a steady-state norm for no additional
-  behaviour | user can veto/override — say so and I record the hard removal as an exception]
+- [DECISION: `--check` is **repurposed under a deprecation notice** — it keeps parsing, prints a
+  stderr deprecation notice, and performs the full regen; removal defers to the next major |
+  **This DEPARTS from `api-contract.md`'s additive-first norm and the departure is the clause
+  *"existing flag names … are never repurposed"*, not the *"deprecation is signalled, not silent"*
+  clause it satisfies.** An earlier draft of this decision claimed conformance by engaging only the
+  second, which was the wrong half: the norm's reference example, `stamp-merged`, still *does what
+  it documented* while warning, whereas `--check` now does the opposite of "writes nothing." Calling
+  that a deprecation would have laundered a semantic change through a compatibility mechanism.
+  Recorded as a departure instead. Why it is the right departure: the norm's why is that a consumer
+  pinned at version N must not break at N+1, and the consumers here are **documentation read by
+  humans, not pinned code** — no hook, skill, or gate invokes `--check` (verified by search). A hard
+  removal would break every stale runbook at once; the repurposing makes them write, which is the
+  behaviour the owner asked for and the one they wanted next anyway. Deleting the flag outright is
+  the same departure plus a broken command, so it buys nothing | user can veto/override]
 - [DECISION: `regen-views` gains a documented exit-**3** sentinel = *partial: some views suppressed,
   the rest written* | the writer scheme already assigns 0=written, 1=refused/incomplete install,
   2=usage or validation error with nothing written, and per-view fail-soft creates a fourth outcome
@@ -221,8 +225,9 @@ and the `new` exemption expiry consumes that function rather than re-deriving fr
 
 ### Chunk 02: Plan discovery and plan reading
 
-- **Description:** Five defects in how the runtime decides what a build plan is and what it says,
-  plus one owner-requested simplification (`regen-views` collapses to a single always-writing mode).
+- **Description:** Defects in how the runtime decides what a build plan is and what it says (five
+  tracker items, several legs each), plus one owner-requested simplification (`regen-views`
+  collapses to a single always-writing mode).
   They interlock: #201's broadened chunk-line matcher and #211's guard-test drift are the same
   question — which chunk-heading contract is authoritative — answered in two places, and #224 and
   #327 both depend on `resolve_chunk_progress` being the single progress answer.
@@ -304,7 +309,9 @@ and the `new` exemption expiry consumes that function rather than re-deriving fr
   silent on `views_enabled` unset; each new branch prefix parses as a ref, not a path; `--check` is
   gone and an unknown flag exits 2. Integration — `regen-views` completes release-notes and
   scope-rollup regeneration with one scope unresolvable, exiting non-zero while having written both;
-  and a typo'd `status=` suppresses only its own scope's Status view. **Existing `--check` tests
+  and a typo'd `status=` fails the run CLOSED (exit 2, nothing written) rather than suppressing one
+  view — an entry that cannot be interpreted would leave a Status view half-right, which is the bug
+  class the per-view rule exists to preserve, so it is deliberately NOT scope-local. **Existing `--check` tests
   (`tests/test_views.py`, `tests/spikes/change_log_roundtrip.py`) are rewritten against the single
   mode, not deleted** — each one asserts a validation behaviour that must survive the collapse.
 - **Acceptance criteria:** `python3 plugin/bin/prawduct-hook verify-chunk-refs` and `regen-views` both
