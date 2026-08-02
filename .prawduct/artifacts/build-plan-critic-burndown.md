@@ -9,8 +9,8 @@ depends_on: []
 governed_by:
   - artifact: nonfunctional-requirements
     dispositions:
-      - "review wall-clock is P0; cost = unit-cost × run-count, and unit-cost is the reviewer's *payload* → **conforms, and this plan is the norm's lever being exercised as designed**. Chunks 01 and 02 both add prose to the two budgeted payload files, and both are at their ceilings: `skills/critic/goals-1-3.md` measures 1983 against a 2000 ceiling (17 tokens ≈ 13 words of headroom) and `skills/critic/review-protocol.md` measures 3616 against 3620 (4 tokens ≈ 3 words). Every addition is funded by trimming redundancy in the same file; **no chunk raises a ceiling**. That is the recorded rule (`learnings-detail.md` — a guardrail at its ceiling forces trim-vs-bump, and the guardrail correctly makes new content pay for itself), and it is why Chunk 01 is a real chunk rather than a two-line edit"
-      - "proportionality ratchets both ways; a control added from 2026-07-29 names its expected yield **and emits that yield observably** → **DEPARTURE, recorded — see [DECISION] under Chunk 01.** #97 and #293 both add controls after the boundary date, so the obligation binds at birth. Goal-level attribution does not discharge it: findings do carry a `goal` field into the persisted fact (measured — 1,921 findings in the shared evidence store, attributed across 28 distinct goal strings), but the field is **free text and already drifting** — Framework Check 8 alone appears under four spellings (`Instruction Clarity (Framework Check 8)`, `Framework Check 8 — Instruction Clarity`, `Instruction Clarity (Check 8)`, `Framework Check 8 (Instruction Clarity)`). A sub-check *inside* Goal 1 is a fortiori uncountable. The plan's answer is a stable token in the finding title, per the precedent this repo already set (#327's degraded-reading notice, 'countable by its stable token')"
+      - "review wall-clock is P0; cost = unit-cost × run-count, and unit-cost is the reviewer's *payload* → **conforms, and this plan is the norm's lever being exercised as designed**. Chunks 01 and 02 both add prose to the two budgeted payload files, and at planning time both sat within a handful of words of their ceilings — which is why Chunk 01 is a real chunk rather than a two-line edit. Every addition is funded in the same file; **no chunk raises a ceiling**. Current readings live in `LAST_MEASURED_TOKENS` and the ceilings in each file's `test_token_budget`; this disposition deliberately states neither, because a figure restated in a governing document is a figure that goes stale the moment the work it governs lands. **Chunk 01 discharged this**: both files ended smaller than they started, each having gained a check. Funding rule, per owner ruling 2026-08-02: raise a ceiling only when the framework is provably better FOR THE RAISE and upleveling has no headroom left — detail, dates, running tallies, worked examples, and definitions another file owns are cuttable outright"
+      - "proportionality ratchets both ways; a control added from 2026-07-29 names its expected yield **and emits that yield observably** → **DEPARTURE, recorded — see [DECISION] under Chunk 01.** #97 and #293 both add controls after the boundary date, so the obligation binds at birth. Goal-level attribution does not discharge it: findings do carry a `goal` field into the persisted fact, but the field is **free text and already drifting** — Framework Check 8 alone appears under four spellings (`Instruction Clarity (Framework Check 8)`, `Framework Check 8 — Instruction Clarity`, `Instruction Clarity (Check 8)`, `Framework Check 8 (Instruction Clarity)`). A sub-check *inside* Goal 1 is a fortiori uncountable. The plan's answer is a stable token in the finding title, per the precedent this repo already set (#327's degraded-reading notice, 'countable by its stable token')"
       - "state-file growth surfaced as an advisory, never a hard block → inapplicable because no chunk changes a size threshold"
   - artifact: observability-strategy
     dispositions:
@@ -178,7 +178,11 @@ directly against this checkout and reading the emitted text, not only by asserti
   their `LAST_MEASURED_TOKENS` entries updated to the true readings; each budget comment says what
   the edit cost **and what paid for it**; Goal 1's new bullet is BLOCKING and reachable in chunk
   mode; Goal 5 no longer overlaps it; both the cumulative and PR protocols carry the scope question.
-- **Type:** doc-only
+  <!-- No `Type:` declared, so this chunk runs the default `code` protocol. It was drafted as
+       `doc-only` on the assumption that strengthening protocols is prose work; that was wrong —
+       the chunk ships a new test file and rewrites another, and `doc-only` tells the Critic to
+       skip test-evidence checks. Over-declaring Type is the unsafe direction
+       (`methodology/planning.md`), so the field is omitted rather than narrowed. -->
 - **Done when:**
   1. Acceptance criteria met and tests pass
   2. `/prawduct:critic` run and blocking findings resolved
@@ -188,11 +192,31 @@ directly against this checkout and reading the emitted text, not only by asserti
 the finding title**, not with goal-level attribution | the norm's why is that a control whose
 findings are printed and forgotten can never be retired on evidence, only defended on principle —
 and goal-level attribution cannot carry the weight here: the persisted `goal` field is free text and
-is measurably drifting already (Framework Check 8 appears under four spellings across 1,921 stored
-findings), so a sub-check inside Goal 1 would be uncountable from the day it shipped. A stable token
+is measurably drifting already (Framework Check 8 appears under four spellings in the shared
+evidence store), so a sub-check inside Goal 1 would be uncountable from the day it shipped. A stable token
 makes the yield a one-line query against the shared evidence store, which is the specification the
 norm's in-transition arm asks a new control to leave behind for the janitor's Norm Health sweep to
 build against | user can veto/override]
+
+**The yield each control expects** — the norm's *first* conjunct, which the DECISION above discharges
+the second half of and this states explicitly, so the sweep has a baseline rather than a bare count:
+
+- **`cross-component-contract:`** — expected to fire only on diffs that actually cross a process or
+  component boundary, which is a minority of chunks in this repo (prawduct is single-process; its
+  boundaries are the hook↔skill and hook↔`gh` surfaces). **Retire it if it produces zero BLOCKING
+  findings across 20+ reviews of boundary-crossing diffs** — not 20 reviews total, since a check that
+  never met its trigger has not been tested. Note the filing case came from a *governed product*, not
+  from here, so a low yield in this repo is weak evidence about the check's value to consumers; that
+  asymmetry is itself the reason to count trigger-eligible reviews rather than all reviews.
+- **`scope-trace:`** — expected to fire rarely and to be *high-value when it does*, because the
+  failure it names (a capability with no parent requirement, or one nothing reaches) is the kind that
+  survives every other check. **Retire it if it produces zero findings across 30+ `cumulative`/PR
+  reviews**, or if its findings prove consistently duplicative of Goal 3's "no extra functionality"
+  bullet — the overlap this chunk disambiguated but did not eliminate.
+
+Both figures are *stopping rules stated in advance*, not predictions. The norm's own in-transition
+note says a control may be retired on a reasoned argument provided the argument states what evidence
+would have settled it; these are that statement.
 
 ### Chunk 02: The prose batch and the discovery gap (#264, #163)
 

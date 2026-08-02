@@ -85,7 +85,7 @@ downgrade.
 - **Norms**: `project-preferences.md` rows and Direction statements bind — unrecorded departure → **BLOCKING** via Goal 3; never fix divergence by artifact edit.
 - **Infrastructure coherence**: `infrastructure_dependencies` declared but code uses in-memory only → **WARNING**. Mocks must be documented, not silently substituted.
 - **README and top-level docs**: read the project's README and `docs/` when features change. Removed/renamed features or wrong setup → **WARNING**. Actively misleading instructions (wrong commands, deleted config refs) → **BLOCKING**.
-- **Documentation drift**: Comments, type annotations, or API docs that contradict the code they describe → **WARNING**. Same defect when a durable artifact rides its meaning on an ephemeral build id (chunk number, build-plan, work-cycle name), which dangles once the plan is deleted → **WARNING**; build-cycle bookkeeping that records the work is exempt.
+- **Documentation drift**: Comments, type annotations, or API docs that contradict the code they describe → **WARNING**. Same defect when a *product* durable artifact rides its meaning on an ephemeral build id (chunk number, build-plan, work-cycle name), which dangles once the plan is deleted → **WARNING**; build-cycle bookkeeping that records the work (change-log `chunks=`, backlog `closed-by:`) is exempt.
 - **Changelog scope**: When reviewing `change-log.md` or `change_log_history`, only check entries added/modified in the current changeset. Older entries are append-only history — don't flag stale terminology, outdated counts, or superseded descriptions. Same applies to commit messages and archived notes.
 - **Derived views**: `views_enabled` ⇒ Status, `release-notes.md`, and `scope_rollups:` derive from change-log tags via `regen-views`. Tag is canonical; view↔tag mismatch → **WARNING** ("run regen-views"). Flag tags, not derived files.
 - **CLAUDE.md size**: CLAUDE.md is an instruction file, not an architecture reference. Check project-specific content (outside PRAWDUCT markers): over ~150 lines → **WARNING**, naming what to move to `docs/` or `.prawduct/artifacts/`. Applies to the current changeset.
@@ -96,7 +96,7 @@ downgrade.
 - Architectural patterns are captured in architecture artifact → **WARNING** if missing.
 - If changes cross contract surfaces (see `.prawduct/artifacts/boundary-patterns.md`), was *downstream* consumer impact investigated? → **WARNING** if no evidence. The inverse — a consumer mismodelling what the producer emits — is Goal 1's cross-component contract check, not this one.
 - Major technology choices include alternatives considered → **WARNING** if missing.
-- **Scope pressure-test:** does each capability trace up to a documented requirement, and is it reachable and consumed end-to-end? A capability with no parent, or one nothing calls → **WARNING**. Every other check asks whether the work was done well; this is the only one asking whether it should exist. Open the title with `scope-trace:` so its yield stays countable.
+- **Scope pressure-test:** does each capability trace up to a documented requirement, and is it reachable and consumed end-to-end? A capability with no parent, or one nothing calls → **WARNING**. Goal 3 asks whether the work exceeded its *plan*; this asks whether the plan traced to a *requirement*, and whether anything reaches the result. Open the title with `scope-trace:` so its yield stays countable.
 
 ### 6. The System Can Be Understood
 - Error handling is present where failure is possible → **WARNING** if missing.
@@ -150,7 +150,7 @@ Persistence is **decoupled from the review** (the coordinator never resumes to a
    - **design reviewer** (role `design`) — Goals 4, 7 + the Framework-Specific Checks when they apply.
    - **sustainability reviewer** (role `sustainability`) — Goals 5, 6 + the Learnings Cross-Check and Backlog Reconciliation (as NOTE findings in its partial).
 
-3. **Stop — do not resume to aggregate.** The `SubagentStop` hook runs `critic-consolidate` as each reviewer finishes (no-op until all roles report, then merges once); the session-end backstop is the floor if it never fires. You do NOT write findings, append the ledger, or run `critic-end` — `critic-consolidate` does all three and clears the marker.
+3. **Stop — do not resume to aggregate.** The `SubagentStop` hook runs `critic-consolidate` as each reviewer finishes (no-op until all roles report, then merges once). You do NOT write findings, append the ledger, or run `critic-end` — `critic-consolidate` does all three and clears the marker.
 
 ## Output Format
 

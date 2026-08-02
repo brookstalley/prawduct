@@ -32,8 +32,10 @@ capability is consumed end-to-end is a question only the full bundle can answer.
 a check. (The readings live in `LAST_MEASURED_TOKENS`, which owns them; restating a figure here is
 how the budget narratives went stale in the first place.) The funding was upleveling rather than
 word-shaving, and three cuts generalize well enough to record: a
-definition another file owns and the reader is told to open is not worth restating (the record-lint
-severities, the four Framework-Specific Checks); a message the reviewer can compose is not worth
+definition another file owns and the reader is told to open is not worth restating (each record-lint
+id's *definition* — the severity **mapping** stays, because the emitted entries carry no severity and
+the reviewer has nowhere else to get one; and the four Framework-Specific Checks); a message the
+reviewer can compose is not worth
 quoting verbatim; and history — what a mechanism *used* to do — is never worth carrying in an
 instruction payload. The same lens was turned on the budget comments themselves, which had
 accumulated into running tallies of exact token counts and dates that drive no decision. The ceiling
@@ -48,6 +50,28 @@ controls instead instruct the reviewer to open the finding title with a stable t
 (`cross-component-contract:`, `scope-trace:`), making the yield a one-line query, and
 `tests/test_control_yield_tokens.py` pins the tokens so a later reflow cannot silently delete the
 countability.
+
+**Review caught that half the yield mechanism could not work, and two reviewers found it
+independently.** The token discharge is genuine on the Critic side — a partial's `name` becomes the
+fact's `title` in the shared evidence store. On the PR side it was not: that reviewer's persisted
+record carries `goal`, `severity`, `file`, `line`, `summary` and **no title field at all**, so the
+instruction to open a title with `scope-trace:` named something that never persists. The PR half now
+opens `summary` instead. Also fixed from the same review: the `cross-cutting-concerns.md` Boundary
+coherence row still named Goal 5 alone after this change split that leg across Goal 1 and Goal 5; the
+scope pressure-test claimed to be the only check asking whether a capability should exist, which Goal
+3's "no extra functionality" already does, so both copies now disambiguate rather than overclaim; and
+a funding trim had quietly widened the doc-drift rule's jurisdiction and dropped its exemption
+examples, both restored. **Three of the four warnings share one shape** — the primary edit was right
+and the second site of the same idea was left untouched, which is this branch's recurring failure and
+was recorded as a rule two chunks before it happened again.
+
+**The norm has two conjuncts and only one was discharged.** Proportionality asks a new control to
+*name the yield it expects* **and** *emit it observably*. The departure argued the second at length
+and was silent on the first, so the plan now states a stopping rule per control — retire
+`cross-component-contract:` on zero BLOCKING findings across 20+ reviews **of boundary-crossing
+diffs** (not 20 reviews total; a check that never met its trigger has not been tested), and
+`scope-trace:` on zero findings across 30+ `cumulative`/PR reviews. Stated in advance so the sweep
+inherits a baseline rather than a bare count.
 
 `#165` was considered for this batch and **deliberately excluded**: its recorded revisit trigger is a
 *second* surplus review event, and the ledger carries exactly one, the known duplicate the item

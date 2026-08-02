@@ -2148,8 +2148,12 @@ What worked was cutting whole classes of content rather than tightening sentence
   the definitions. Both cuts are safe *because* the file already ordered the reader elsewhere.
 - **Machine output quoted verbatim.** A WARNING's exact wording, reproduced in prose, when the
   reviewer composes the message anyway.
-- **History.** "Reviewer-model tiering was removed", "an undeclared repo is never reviewed less than
-  before" — what a mechanism *used* to do, carried in an instruction payload where it can only cost.
+- **History.** "Reviewer-model tiering was removed" — what a mechanism *used* to do, carried in an
+  instruction payload where it can only cost. Note the near-miss: "an undeclared repo is never
+  reviewed less than before" *looks* like the same class and is not — it is a **live invariant**,
+  still asserted in `review-cycle.md`. Cutting it was right for a different reason (the fact has one
+  home and the payload already points at it), and filing a live invariant under "history" is how a
+  true statement gets deleted next time on a false premise. Check which one you have before cutting.
 - **Rationale aimed at a maintainer, inside a payload aimed at a reviewer.** The most self-defeating
   instance: a citation explaining *why this file is short*, in the file whose purpose is minimum
   reviewer payload.

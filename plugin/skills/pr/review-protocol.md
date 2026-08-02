@@ -26,7 +26,7 @@ Your goals, in priority order — the release-specific concerns no Critic layer 
 - PR represents a single coherent change (one logical unit)
 - Scope matches the stated work description in project-state.yaml — the PR does what it claims and nothing extra (no unrelated changes, no opportunistic refactors smuggled in)
 - If oversized: is it practically splittable? Only flag if splitting is cheap — respect that the work is done
-- **Scope pressure-test:** does each capability trace up to a documented requirement, and is it reachable and consumed end-to-end? A capability with no parent, or one nothing calls, is the failure reviewing-as-scoped cannot see — every other check here asks whether the work was done well, not whether it should exist. Open the title with `scope-trace:` so its yield stays countable.
+- **Scope pressure-test:** does each capability trace up to a documented requirement, and is it reachable and consumed end-to-end? A capability with no parent, or one nothing calls → **WARNING**. The bullet above asks whether the PR exceeded its stated scope; this asks whether that scope traced to a requirement at all, and whether anything reaches the result. Open `summary` with `scope-trace:` so its yield stays countable — findings here persist no title field.
 
 ### 2. Clear Narrative
 **Severity: WARNING**
