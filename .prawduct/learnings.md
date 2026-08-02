@@ -298,6 +298,8 @@ dropping them.
 
 ## Anything in a durable artifact that one command could check is a CLAIM — an identifier, a count, a `file:line`, or a facet value, not just a rationale — so run its falsifying query first. The rationale you REACHED FOR to defend a decision already made is the one to verify, and a CORRECTION is itself a completeness claim: quoting the parent rule demonstrably does not prevent this
 
+## A sample you sliced for DISPLAY is not the set — when the command that formed your impression carried a `[:8]`, `head`, or `| head -20`, any "all/every/entirely" you then write is unverified, and the slice is invisible in the output you are reading. Re-run unsliced or count by predicate before characterizing the whole; a RETRACTION is where this bites hardest, because the author replacing a false claim feels most careful
+
 ## A status surface that reports the ABSENCE of expected output must say whether absence is the normal in-flight state — a bare zero invites the reader to invent a death story and take recovery action against healthy work
 
 ## When auditing guidance material, have a fresh agent USE it before you recommend changing it — analytic review predicts defects that do not survive contact with practice, and the trial is what tells you which findings are real

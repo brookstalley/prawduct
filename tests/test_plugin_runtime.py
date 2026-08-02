@@ -2562,14 +2562,17 @@ class TestGreenIsEvidenceTrigger:
     def test_framework_metadata_alone_does_not_fire_it(self, tmp_path):
         """The carve-out that keeps the widened trigger from firing every cycle.
 
-        `changes_unjudged` is dominated by `.prawduct/` in practice, because the
+        `changes_unjudged` carries a lot of `.prawduct/` in practice, because the
         methodology *requires* each chunk to update the change-log and the build
         plan — so governed work puts framework metadata in its own changed set by
         construction. Measured on this repo while recording the evidence for this
-        chunk: 26 unjudged entries, every one of them under `.prawduct/`, none
-        judgeable. Reading `changes_unjudged` wholesale would therefore print the
-        directive on cycles that changed no product code at all, which is the
-        failure the class docstring names.
+        chunk: 26 unjudged entries, none judgeable — 16 under `.prawduct/`, the
+        other 10 unprotected prose (`documentation/`, `tests/scenarios/*.md`).
+        **Two different branches of the predicate hold those two groups out**, and
+        the fixture below must exercise the metadata one specifically. Reading
+        `changes_unjudged` wholesale would print the directive on cycles that
+        changed no product code at all, which is the failure the class docstring
+        names.
 
         Deliberately NOT claimed: that `.prawduct/.test-evidence.json` is itself
         always present. `lib/core.py` scaffolds it into `.gitignore`, and
@@ -2587,6 +2590,13 @@ class TestGreenIsEvidenceTrigger:
                 {
                     "changes_referenced": [],
                     "changes_unjudged": [
+                        # NON-`.md`, and load-bearing for what this test claims to
+                        # pin: only `METADATA_PREFIXES` can hold this one out. The
+                        # two records below it are `.md`, so with the metadata
+                        # branch deleted they fall through to the unprotected-prose
+                        # branch and answer False anyway — an all-`.md` fixture
+                        # cannot fail when the carve-out it is named for is removed.
+                        ".prawduct/project-state.yaml",
                         ".prawduct/artifacts/build-plan-drift-burndown.md",
                         ".prawduct/change-log.md",
                     ],

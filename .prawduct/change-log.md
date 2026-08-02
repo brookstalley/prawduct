@@ -28,22 +28,28 @@ coverage**, per `coverage_algebra.is_judgeable_path`. Three things about that ch
   Python file can sit in `changes_referenced` while `is_judgeable_path` calls it metadata; replacing
   the old clause would have taken that case dark while claiming to widen. Pinned by test.
 - **The silence still holds, and one carve-out is load-bearing in a non-obvious way.**
-  `changes_unjudged` is dominated by `.prawduct/` in practice, because the methodology *requires*
+  `changes_unjudged` carries a lot of `.prawduct/` in practice, because the methodology *requires*
   each chunk to update the change-log and the build plan — governed work puts framework metadata in
   its own changed set by construction. Measured while recording this chunk's evidence: 26 unjudged
-  entries, all under `.prawduct/`, none judgeable. Reading the field wholesale would print the
-  directive on cycles that changed no product code at all, which is the failure the original comment
-  named ("a directive that prints every time is one the reader learns to skip"). Metadata being
-  unjudgeable is what prevents it, and it now has its own test.
+  entries, **none judgeable — 16 under `.prawduct/`, the other 10 unprotected prose**
+  (`documentation/`, `plugin/docs/principles.md`, seven `tests/scenarios/*.md`). Two *different*
+  branches of the predicate hold those groups out, which matters to anyone weighing a relaxation:
+  the metadata carve-out is the larger share, not the whole story. Reading the field wholesale would
+  print the directive on cycles that changed no product code at all, which is the failure the
+  original comment named ("a directive that prints every time is one the reader learns to skip").
 
-  **A first draft of that claim was wrong and the Critic caught it.** It said
+  **This claim was wrong TWICE, and the second time is the instructive one.** It said
   `.prawduct/.test-evidence.json` is in the changed set of *every* invocation, so the directive would
   otherwise print 100% of the time. False in any onboarded repo: `lib/core.py` scaffolds that path
   into `.gitignore` and `_changed_files` builds its untracked half with `--exclude-standard`, so it
   enters neither half. It was measured in a scratch repo that had no `.gitignore` — an
   unrepresentative fixture generalised into a measured-sounding number, which would have over-priced
-  the carve-out for whoever next weighs relaxing it. Recorded rather than quietly corrected, because
-  the corrected claim is the *stronger* one and the failure mode is this batch's own subject.
+  the carve-out for whoever next weighs relaxing it. **The replacement was then wrong the same way**
+  — "all 26 under `.prawduct/`" was written without re-reading the record it cited, where 10 of the
+  26 are prose held out by a different branch. The verify round caught it. The rule *a correction is
+  a new claim* was written into this very entry and then not applied to the sentence composed beside
+  it, which is the sharper lesson: knowing a rule is not what fires it, and a retraction is the
+  moment of highest risk, not lowest, because the retracting author feels most careful.
 
 Red-verified in both senses the chunk demanded: the new integration case asserts the fixture's
 *shape* (`changes_referenced` empty, `Widget.swift` in `changes_unjudged`) before its outcome,

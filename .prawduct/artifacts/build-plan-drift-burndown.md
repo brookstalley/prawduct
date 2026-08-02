@@ -183,19 +183,21 @@ classifies by exclusion, so an unknown language fires the directive instead of g
 Python file sits in `changes_referenced` while the predicate calls it metadata, and substituting
 would have taken that case dark while claiming to widen.
 
-**The carve-out that keeps it quiet is not the obvious one.** `changes_unjudged` is dominated by
-`.prawduct/`, because the methodology requires every chunk to update the change-log and build plan —
-governed work puts framework metadata in its own changed set by construction (26 unjudged entries
-while recording this chunk, all `.prawduct/`, none judgeable). Metadata being unjudgeable is what
-keeps the directive off cycles that changed no product code, and it now has a test.
+**The carve-out that keeps it quiet is not the obvious one.** Governed work puts framework metadata
+in its own changed set by construction, since the methodology requires every chunk to update the
+change-log and build plan. Measured while recording this chunk: 26 unjudged entries, none judgeable
+— 16 under `.prawduct/`, the other 10 unprotected prose, held out by a *different* branch of the
+predicate. The metadata carve-out is the larger share, not the whole story, and it now has a test
+whose fixture carries a non-`.md` path so it actually fails when the carve-out is deleted.
 
-**The first version of that claim was wrong, and the Critic caught it** — it named
-`.prawduct/.test-evidence.json` as always-present, which is false in any onboarded repo (`lib/core.py`
-gitignores it; the untracked half uses `--exclude-standard`). It came from a scratch repo with no
-`.gitignore`: an unrepresentative fixture generalised into a measured-sounding "100% of the time".
-The same class as Chunk 02's lesson — *a correction is a new claim* — reproduced one chunk later,
-which is why the falsifying check has to run against the **replacement** text and not only the text
-being replaced.
+**That claim was wrong twice, which is the part worth keeping.** The first version named
+`.prawduct/.test-evidence.json` as always-present — false in any onboarded repo (`lib/core.py`
+gitignores it; the untracked half uses `--exclude-standard`), and measured in a scratch repo that
+had no `.gitignore`. The *replacement* was then wrong the same way: "all 26 under `.prawduct/`",
+written without re-reading the record it cited. Chunk 02's rule — *a correction is a new claim, run
+the falsifying query on the replacement text* — was quoted in this chunk's own change-log entry and
+then not applied to the sentence written next to it. Knowing the rule is not what fires it; a
+retraction is the moment of **highest** risk, because the retracting author feels most careful.
 
 **The residual is filed, not gestured at** (`#556`): a Python file whose symbols no test mentions is
 in **neither** evidence list, so no trigger composed from those two fields can see it. That is the
