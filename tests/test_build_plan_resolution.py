@@ -629,11 +629,17 @@ class TestNewQualifierExpiry:
     def test_non_contiguous_roster_never_expires_an_open_chunk(
         self, tmp_path: Path
     ):
-        # `- [x] 01, - [ ] 02, - [x] 03` — `progress.complete` is 2, so slicing
-        # the roster by that COUNT would name 01 and 02 and expire the exemption
-        # on 02, which is open. Completion is read as the prefix strictly before
-        # `current_id` instead, which is done-by-construction under both
-        # readings. Chunk 02's `new` path must stay exempt.
+        # `- [x] 01, - [ ] 02, - [x] 03` on the CHECKBOX path. This roster is
+        # chosen to be wrong under BOTH rival rules, and each assertion below
+        # kills a different one:
+        #   * a count-slice (`progress.complete` is 2) names 01 and 02, expiring
+        #     the exemption on 02 — which is OPEN;
+        #   * a uniform prefix-before-`current_id` names only 01, letting 03 —
+        #     which is CHECKED, i.e. done under the reading in force — keep an
+        #     exemption it has no claim to.
+        # So on this path the `checked` flags are read directly. The prefix rule
+        # applies to the GIT-derived path only, where the per-item predicate is
+        # not available; `test_git_derived_reading_drives_the_expiry…` covers it.
         project = tmp_path / "proj"
         prawduct = project / ".prawduct"
         (prawduct / "artifacts").mkdir(parents=True)

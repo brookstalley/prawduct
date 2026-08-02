@@ -4234,13 +4234,17 @@ def cmd_repo_disable(project_dir: Path, argv: list[str]) -> int:
     return 0
 
 
-# Two constraints on the block below, both learned by breaking a test with it.
-# 1. No close-paren character anywhere inside — not in the strings, not in a
-#    comment. Several tests read this block by splitting the source on the first
-#    one, so any occurrence silently truncates the text they check. Use brackets.
-# 2. Nothing in it may repeat the name of the constant, for the same reason: a
-#    second occurrence shortens the window those tests slice.
-# Both are why this note sits out here rather than beside the line that needs it.
+# Two constraints, both learned by breaking a test. They have DIFFERENT scopes,
+# and getting that backwards is why this note was wrong on its first attempt:
+# 1. Scope: the block below only. No close-paren character anywhere inside it —
+#    not in the strings, not in a comment. Several tests read the block by
+#    splitting the source on the first one, so any occurrence silently truncates
+#    the text they check. Use brackets. A paren up here is harmless, because the
+#    truncation starts after the assignment.
+# 2. Scope: this note TOO. Nothing here or below may write the constant's name,
+#    because the tests slice between its FIRST and SECOND occurrence in the whole
+#    file — so naming it in this comment would make the window be this comment.
+#    That is the only reason the sentences above talk around it.
 _USAGE = (
     "Usage: prawduct-hook "
     "{clear [--session-start|--force|--brief-only]|critic-begin --mode <m>|critic-end|critic-consolidate|"

@@ -369,7 +369,10 @@ class ChunkProgress(NamedTuple):
     ``complete`` is a COUNT of done items, not a positional boundary: done-ness
     is deliberately non-contiguous (see :func:`_git_aware_progress` on why the
     union exists), so slicing a roster by it names the wrong chunks. Callers
-    needing "which chunks are done" take the prefix before ``current_id``.
+    needing "which chunks are done" take the prefix before ``current_id`` **on
+    the git-derived reading only** — on the checkbox reading the per-item
+    predicate is the ``checked`` flag itself, which is exact, and the prefix
+    would under-report a checked item sitting after ``current_id``.
     """
 
     total: int
