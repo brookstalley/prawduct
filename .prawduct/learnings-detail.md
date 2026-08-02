@@ -6,6 +6,38 @@ No size constraint on this file — it's the deep reference, consulted via `/lea
 
 ---
 
+## A mutation test is only evidence if the MUTANT IS THE DEFECT — hand-reverting to "something wrong" tests nothing. Restore the code that actually shipped the bug, gate conditions included: drop a guard the real defect sat behind and the test exercises a path the bug never reached, passing against the very code it was written to catch
+
+Found by a `verify-resolutions` pass on work where I had *already* mutation-tested the fix and
+recorded it as verified.
+
+The defect: a completion set was computed by slicing a roster with a COUNT of done items, which is
+not positional, so a non-contiguous roster named the wrong chunks. The real code guarded that slice
+behind `if progress.git_derived:` and used an exact predicate otherwise. My fix removed the branch.
+To mutation-test it I pasted the count-slice back — **unguarded**, applying to both paths.
+
+That mutant is not the bug. It is a *different* bug, and it happens to be one my test could see. The
+faithful revert restores the guard too, and against it both of my new tests passed: one ran on the
+checkbox path, where the original code was correct, and the other's done-set was contiguous, where
+the count and the prefix agree. Two tests written specifically to pin this fix, both green against
+the defect.
+
+**Why hand-reverting goes wrong in this exact direction.** You revert from memory of *the fix*, not
+of *the original*, so what you reconstruct is "the fix, inverted" — and the fix is usually a
+simplification, so the inversion drops the very conditions that made the original subtle. The guard
+you forget is the one that made the bug hard to find in the first place.
+
+Countermeasures, cheapest first: revert with `git show <commit>^:<path>` or `git stash` rather than
+by retyping; then assert the mutant actually *fails* the test — a mutation run where nothing goes
+red is a failed experiment, not a passed one. And when the fixture is the thing in doubt, make it
+assert its own preconditions (`assert progress.git_derived`, `assert progress.complete == 2`) so a
+silent fixture regression is loud rather than green.
+
+Same family as [[the fix for a review finding needs the same adversarial pass as the original work]]
+— the verification reflex relaxes exactly where the previous round proved it should not — and the
+concrete instance of the test-evidence prompt's standing warning that a fixture which never reaches
+the subject passes forever.
+
 ## RULING (regen-views-is-advice) — when two norms reach one command, its OUTPUT decides the posture: a writer whose only product is a DERIVED VIEW fails soft one view at a time, because no gate reads a view to reach a verdict. Soft is not blanket — input it cannot interpret at all still fails closed. Skip-and-report a bad view, never write it half-right
 
 **Collision ruling, owner decision 2026-08-01**, raised by #201's fourth leg. Two `## Direction`

@@ -634,19 +634,28 @@ class TestNewQualifierExpiry:
         # on 02, which is open. Completion is read as the prefix strictly before
         # `current_id` instead, which is done-by-construction under both
         # readings. Chunk 02's `new` path must stay exempt.
-        _project, prawduct = _project_with_status_and_chunk(
-            tmp_path,
-            "- [x] Chunk 01: first\n- [ ] Chunk 02: open\n- [x] Chunk 03: later\n",
-            "- creates new `lib/created.py`\n",
+        project = tmp_path / "proj"
+        prawduct = project / ".prawduct"
+        (prawduct / "artifacts").mkdir(parents=True)
+        (prawduct / "project-state.yaml").write_text("")
+        (prawduct / "artifacts" / "build-plan.md").write_text(
+            "---\nartifact: build-plan\n---\n\n"
+            "## Status\n\n"
+            "- [x] Chunk 01: first\n- [ ] Chunk 02: open\n- [x] Chunk 03: later\n\n"
+            "## Build Chunks\n\n"
+            "### Chunk 02: open\n\n- creates new `lib/open.py`\n\n"
+            "### Chunk 03: later\n\n- creates new `lib/later.py`\n"
         )
-        plan = prawduct / "artifacts" / "build-plan.md"
-        plan.write_text(
-            plan.read_text().replace(
-                "### Chunk 01: a chunk", "### Chunk 02: open"
-            )
-        )
-        refs = _bpr._parse_build_plan_chunk_refs(prawduct, "02")
-        assert refs["file_paths"] == []
+        # Chunk 02 is OPEN — exempt under any correct rule. This is the
+        # assertion the count-slice defect breaks.
+        assert _bpr._parse_build_plan_chunk_refs(prawduct, "02")["file_paths"] == []
+        # Chunk 03 is CHECKED, i.e. complete under the reading actually in force,
+        # but it sits AFTER `current_id`. A uniform prefix-before-current rule
+        # under-reports it and lets it keep an exemption it has no claim to —
+        # so on the checkbox path the `checked` flags are read directly, and
+        # this is the assertion that tells the two rules apart.
+        refs03 = _bpr._parse_build_plan_chunk_refs(prawduct, "03")
+        assert [r["ref"] for r in refs03["file_paths"]] == ["lib/later.py"]
 
     def test_git_derived_reading_drives_the_expiry_when_boxes_are_unflipped(
         self, tmp_path: Path
