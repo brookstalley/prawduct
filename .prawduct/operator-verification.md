@@ -785,7 +785,7 @@ is untouched by this — a paged list still costs 1 point regardless of page cou
 
 ## VRF-014 — v3.2.3 OWNER RELEASE GATE — go/no-go evidence
 
-**Status: PARTIAL — item 2 discharged, items 1 and 3 still open.** The three gate items live in
+**Status: PARTIAL — items 2 and 3 discharged, item 1 still open and BLOCKING.** The three gate items live in
 `.prawduct/artifacts/release-plan-v3.2.3.md` § OWNER RELEASE GATE. Recorded here per that section's
 own instruction ("Record the result in `.prawduct/operator-verification.md` … then run Phase 2").
 Phase 2 must NOT run on this record alone.
@@ -838,10 +838,33 @@ rather than deferrable to W3.
 Not started. Requires naming which sibling repos were exercised and what was checked. This release
 changes fleet-visible governance that is invisible to this repo's own suite.
 
-### Item 3 — migration advisory fleet-wide with `BKL-8W2M` unbuilt — **PENDING**
+### Item 3 — migration advisory fleet-wide with `BKL-8W2M` unbuilt — **DISCHARGED 2026-08-02, by explicit second acceptance**
 
-Unchanged and still the substantive one. `BKL-8W2M` (#197) remains open at `stage:requirements`.
-The accepted risk in `BKL-7D3V` was recorded when the advisory reached only the **agent**;
-`upgrade-discovery` Chunk 01 now relays every `warn` to the **person, every session**, which is
-strictly worse than what was accepted. Either land `BKL-8W2M` before Phase 2, or record an explicit
-second acceptance of the amplified version.
+**Owner statement (2026-08-02):** *"item 3 -- yes, accept the amplified volume. It's a minor
+annoyance, we can work on BKL-8W2M in the next few days."*
+
+This is the **second acceptance** the gate item asked for, and it is recorded as its own decision
+rather than folded into `BKL-7D3V` — the two accept different things:
+
+| | `BKL-7D3V` (prior) | This acceptance |
+|---|---|---|
+| Who sees the `warn` | the **agent** only | the **person**, in conversation |
+| How often | once per session, to stdout | every session, relayed |
+| Resolvable by the recipient | no | no |
+
+**What is being accepted.** In every un-migrated repo with a structured backlog,
+`backlog-service-migration-required` fires at `warn` and `upgrade-discovery` Chunk 01 relays it to
+the person **every session**, with `BKL-8W2M` (#197) unbuilt at `stage:requirements` — so there is no
+action the recipient can take to make it stop short of migrating.
+
+**The residual risk is not the nag.** It is **desensitization of the `warn` channel**: an
+unresolvable advisory arriving every session teaches the reader to skip the block, which then costs
+every *other* `warn` its audience. That is the exact failure the relay's own `info`-exclusion note
+was written to prevent ("a channel that nags every session is one you learn to skip"), so this
+release ships a mechanism whose stated rationale its own content partly violates. The exposure is
+**bounded by time, not by design** — it ends when `BKL-8W2M` ships, which the owner intends within
+days of release. If `BKL-8W2M` slips well past that, this acceptance should be re-taken rather than
+assumed to still hold; nothing in the code will re-raise it.
+
+**Not re-litigated:** the lift itself is settled by owner ruling 2026-07-24, and `BKL-7D3V` scopes
+re-litigating it out. Only the amplified *delivery* was open, and only that is accepted here.

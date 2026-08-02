@@ -110,9 +110,9 @@ owner answers and neither blocks a chunk from starting.
      Do NOT hand-flip the checkboxes. Stays [ ] on this branch until the release ships —
      a built chunk is recorded in Context below, not by its checkbox. -->
 
-- [ ] Chunk 01: The two new Critic controls, funded not bumped (#97, #293)
-- [ ] Chunk 02: The prose batch and the discovery gap (#264, #163)
-- [ ] Chunk 03: The code tail — a reachable gate message and two unpinned CLI behaviors (#536, #228)
+- [x] Chunk 01: The two new Critic controls, funded not bumped (#97, #293)
+- [x] Chunk 02: The prose batch and the discovery gap (#264, #163)
+- [x] Chunk 03: The code tail — a reachable gate message and two unpinned CLI behaviors (#536, #228)
 Context: Plan authored 2026-08-02 on `fix/critic-burndown` off `develop` at `b271d78`, from the
 owner's choice of the `critic` `stage: ready` cluster. Six of the seven candidate items are in
 scope; #165 is excluded on its own unfired revisit trigger (measured — see Open assumptions).

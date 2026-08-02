@@ -49,7 +49,7 @@ sentence, and the fix set was chosen by the owner ("we have to fix this now").
 
 ## Status
 
-- [ ] Chunk 1: Kill the false death signals (marker PID, per-role liveness, archive-not-clobber)
+- [x] Chunk 1: Kill the false death signals (marker PID, per-role liveness, archive-not-clobber)
 
 **Context:** Branch `fix/critic-death-signals` off `origin/develop` (b1d6667). Single-chunk
 plan. `active_build_plan` repointed here on this branch (precedent:

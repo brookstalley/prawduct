@@ -7,6 +7,24 @@
 
 ## v3.2.3
 
+### critic-death-signals
+
+**Entry:** 2026-08-02: every signal a waiting caller could reach said the healthy review was dead
+
+**Chunks shipped:** 1
+
+### critic-burndown
+
+**Entry:** 2026-08-02: the gate named the one route that could not clear the finding it was naming
+
+**Chunks shipped:** 01, 02, 03
+
+### backlog-burndown
+
+**Entry:** 2026-08-02: the untriaged, the truncated, the unpublished, and two hardening passes
+
+**Chunks shipped:** 01, 02, 03, 04
+
 ### upgrade-discovery
 
 **Entry:** 2026-08-01: Everything prawduct says about itself, it says to the model — so a shipped capability reached nobody

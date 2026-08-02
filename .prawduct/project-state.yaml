@@ -373,7 +373,16 @@ views_enabled: true
 # for every release-pending plan.
 # Repointed 2026-08-02 on branch fix/critic-death-signals: this branch builds
 # the critic-death-signals plan; the golive plan continues on its own branch.
-active_build_plan: artifacts/build-plan-critic-death-signals.md
+# Cleared 2026-08-02 at v3.2.3 Phase 1 step 11. The two previous releases recorded
+# a departure here instead of clearing, on the ground that the pointer named a plan
+# with unchecked chunks and clearing it would orphan work mid-flight. That ground is
+# gone: the pointer names build-plan-critic-death-signals.md, whose only chunk flipped
+# to shipped in this release's regen-views, so nothing is in flight to orphan. It is
+# NOT repointed at the golive plan — that plan has 5 unchecked chunks but no one is
+# building them (07 and 08 were deferred out of v3.2.0 and never re-cut), and pointing
+# at a dormant plan is what produced all three stale-pointer incidents above. Next
+# work comes from /prawduct:backlog pick, which sets this.
+active_build_plan: null
 
 # =============================================================================
 # BUILD-PLAN REF ROOT (opt-in)
@@ -508,6 +517,9 @@ scope_rollups:
   api-design:
     chunks: ["01", "02", "03", "04", "05", "06"]
     releases: ["v2.2.0"]
+  backlog-burndown:
+    chunks: ["01", "02", "03", "04"]
+    releases: ["v3.2.3"]
   backlog-closed-by-handle:
     chunks: ["01"]
     releases: ["v2.1.7"]
@@ -541,6 +553,12 @@ scope_rollups:
   coverage-perf:
     chunks: []
     releases: ["v3.2.0"]
+  critic-burndown:
+    chunks: ["01", "02", "03"]
+    releases: ["v3.2.3"]
+  critic-death-signals:
+    chunks: ["1"]
+    releases: ["v3.2.3"]
   critic-disposition:
     chunks: []
     releases: ["v3.2.0"]

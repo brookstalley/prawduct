@@ -278,8 +278,27 @@ started"; and a re-dispatch **archives rather than clobbers**, so evidence survi
    audience"). Publishing is the irreversible step; merging to `develop` was not. Either land
    `BKL-8W2M` before Phase 2, or record an explicit second acceptance of the amplified version.
 
-**Status: PARTIAL as of 2026-08-02 — item 2 discharged, items 1 and 3 open.** Owner elected to hold
-at the Phase 1 checkpoint — `origin/develop` fully prepped, nothing published.
+**Status: PARTIAL as of 2026-08-02 — items 2 and 3 discharged, item 1 open and BLOCKING.** Nothing
+published.
+
+> **Correction 2026-08-02 (later session): "`origin/develop` fully prepped" was not true when
+> written.** Phase 1 step 3 was outstanding — eight change-log entries across `backlog-burndown`,
+> `critic-burndown` and `critic-death-signals` still carried no `release=` tag, so steps 4–6 had not
+> run either and three build plans' `## Status` sections were unflipped. The classification commit
+> (`d4d4f40`) had also not been pushed, so `origin/develop` did not even hold the classification.
+> **Phase 1 steps 1–11 are complete in the working tree; steps 12 (commit) and 13 (push) remain.**
+> The claim was written against the intent rather than the tree. This is the same stale-measurement
+> failure the blocker-liveness section above documents three instances of, arriving in a new place:
+> the fix there was *treat `check-releasability` as the live answer*, and `check-releasability` was
+> in fact green at the time — because it grades **classification**, not **tagging**. A green gate is
+> evidence about what that gate measures and nothing else.
+>
+> **Second-order, caught in review (R-1):** the first draft of this very correction said "Phase 1 is
+> complete **now**" while steps 12–13 had not run — reproducing the defect it was written to name,
+> two sentences after naming it. Scoped to `1–11` above. The reason a reader must care: Phase 2 step
+> 15 sets `main`'s tree from **`origin/develop`**, so an unpushed Phase 1 publishes none of this. Do
+> not read "Phase 1 complete" as "the checkpoint is reached" until `git status -sb` shows
+> `## develop...origin/develop` with no ahead-count and no file lines.
 
 **Item 2 is discharged** on owner statement plus a verified scope argument: private-repo upstream
 filing is **W3 and unbuilt**, and no upstream GitHub-issue path ships in v3.2.3 at all (Chunk 06 of
@@ -287,19 +306,63 @@ filing is **W3 and unbuilt**, and no upstream GitHub-issue path ships in v3.2.3 
 than an unproven supported scenario. Full evidence, including a correction to the post-release
 validation plan the carve-out assumed, is at **`.prawduct/operator-verification.md` § VRF-014**.
 
-**Items 1 and 3 remain blocking.** Record their results in `.prawduct/operator-verification.md`
-alongside VRF-014 — naming which sibling repos were exercised and what was checked — then run
-Phase 2. Phase 2 must not run on item 2 alone.
+**Item 3 is discharged 2026-08-02 by explicit second acceptance.** Owner accepted the amplified
+delivery — the advisory reaching the *person* every session with `BKL-8W2M` (#197) unbuilt — as a
+minor annoyance, with `BKL-8W2M` intended within days. Recorded with its residual risk
+(desensitization of the `warn` channel, bounded by shipping `BKL-8W2M`, and to be re-taken rather
+than assumed if that slips) at **`.prawduct/operator-verification.md` § VRF-014 item 3**.
 
-## Runbook departure — `active_build_plan` NOT cleared
+**Item 1 alone remains blocking.** Exercise the candidate in sibling repos via `--plugin-dir`, then
+record the result in `.prawduct/operator-verification.md` alongside VRF-014 — naming which sibling
+repos were exercised and what was checked — and only then run Phase 2. **Phase 2 must not run on
+items 2 and 3 alone**: those two were discharged by argument and by decision respectively, and
+neither put the candidate plugin in front of a consuming repo. Item 1 is the only gate item that
+executes anything.
 
-Phase 1 step 11 says set `active_build_plan:` to `null`. **Not done, deliberately** — the same
-departure recorded at v3.2.2, for the same reason and against a different plan. The pointer holds
-`artifacts/build-plan-v3.2.0-golive.md`, and that plan is **not** completed by this release: Chunk 06
-ships here, but Chunks 01, 05, 07, 08 and 09 remain unchecked (07 and 08 were deferred out of v3.2.0
-and never re-cut). Clearing the pointer would orphan a live plan mid-flight.
+## Runbook departure — `active_build_plan`: recorded, then withdrawn
 
-Step 11 should be conditional on the plan having no unchecked chunks left. Filed rather than fixed
-here — a runbook edit mid-release is its own change needing its own review, and this is now the
-**second consecutive release** to record the identical departure, which makes it debt rather than a
-one-off.
+**Originally recorded as a departure; reversed 2026-08-02 when its premise expired.** The departure
+read: Phase 1 step 11 says set `active_build_plan:` to `null`, not done deliberately, because the
+pointer held `artifacts/build-plan-v3.2.0-golive.md` and that plan is not completed by this release
+(Chunk 06 ships; Chunks 01, 05, 07, 08, 09 unchecked, with 07 and 08 deferred out of v3.2.0 and never
+re-cut). Clearing it would have orphaned a live plan mid-flight. That reasoning was sound when
+written and is kept rather than deleted.
+
+**What changed: the pointer moved.** `fix/critic-death-signals` repointed it at
+`artifacts/build-plan-critic-death-signals.md`, and that merged to `develop`. This release's
+`regen-views` flipped that plan's only chunk to `shipped`, so the pointer now names a **completed**
+plan and clearing it orphans nothing. The departure's own stated fix — *"step 11 should be
+conditional on the plan having no unchecked chunks left"* — is satisfied, so step 11 was executed
+normally. **v3.2.3 takes no departure here.**
+
+**It was deliberately not repointed at the golive plan instead.** That plan does still carry five
+unchecked chunks, but nobody is building them, and `project-state.yaml`'s own comment block records
+**three** stale-pointer incidents — each one the pointer naming a plan that was not the plan under
+review, each producing a wrong verdict (record-lint grading the wrong plan; two Critic mode-inference
+misfires). Pointing at a dormant plan to keep the slot non-empty is the shape that caused all three.
+`null` is the honest value when no work is in flight; `/prawduct:backlog pick` sets it next.
+
+**The clear switches off two Stop-hook gates for the rest of this release — chosen, not discovered
+(Critic R-2).** `develop` names no declared scope, so `resolve_branch_plan` falls back to the now-null
+pointer and `_has_active_build_plan_file` returns False; `_has_build_plan_in_state` also returns False,
+because this repo's state carries `build_state:` rather than the `build_plan:`/`chunks:` shape that
+function scans. From the next session `has_build_plan` is False, which **downgrades the reflection
+gate from BLOCKING to advisory and skips Gate 2 (Critic review) entirely** — the guard is
+`if has_changes and has_build_plan:`. So the prep commit and the Phase 2 promotion run ungated.
+
+Accepted rather than reversed, for three reasons. **(1)** This is the designed meaning of `null`, and
+the alternative — parking the pointer on a dormant plan to keep a gate armed — is precisely the
+stale-pointer shape that produced three wrong verdicts already; buying gate coverage by feeding the
+gate a false input is not a trade worth making. **(2)** The gate is a safety net for *unreviewed*
+work, and the work it would have caught here was reviewed explicitly instead — this section exists
+because that review ran. **(3)** Phase 2 authors nothing: it is `git read-tree` plus a push, and its
+real protections are the runbook's step 17/18 content-identity and version checks plus the owner
+gate, none of which route through the Critic. **What this does cost:** from here to the end of the
+release, review coverage is a thing someone has to *choose*, and reflection will not block if it is
+skipped. Re-arming is automatic — the next `/prawduct:backlog pick` sets the pointer.
+
+The step-11 debt is therefore **discharged for this release but not fixed in the runbook** — the
+conditional is still unwritten, so the next release whose pointer names an in-flight plan will face
+the same call. Filed, not fixed here: a runbook edit mid-release is its own change needing its own
+review. **A second item joins it:** step 11 hands the rest of the release to an ungated session and
+the runbook does not say so. Both belong in the same runbook edit.

@@ -582,10 +582,10 @@ things that exercise would otherwise have failed to confirm.
      tagged scope=backlog-burndown / status=shipped, then run regen-views.
      Do NOT hand-flip the checkboxes. Stays [ ] on this branch until the release ships. -->
 
-- [ ] Chunk 01: The migration runbook's two operator-facing defects
-- [ ] Chunk 02: Plan discovery and plan reading
-- [ ] Chunk 03: Critic dispatch anchoring and review-record attribution
-- [ ] Chunk 04: The independent tail
+- [x] Chunk 01: The migration runbook's two operator-facing defects
+- [x] Chunk 02: Plan discovery and plan reading
+- [x] Chunk 03: Critic dispatch anchoring and review-record attribution
+- [x] Chunk 04: The independent tail
 Context: Plan authored 2026-08-01 on `fix/backlog-burndown`, from a re-derivation of the 168 open
 tracker items by `refs:` co-location. **ALL FOUR CHUNKS ARE BUILT.** Chunks 01–03 merged to
 `develop` (PR #538); **Chunk 04 built, reviewed and committed 2026-08-02** — five items closed

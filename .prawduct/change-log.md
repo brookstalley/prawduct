@@ -5,7 +5,7 @@
 
 ## 2026-08-02: every signal a waiting caller could reach said the healthy review was dead
 
-<!-- prawduct: type=fix | scope=critic-death-signals | chunks=1 -->
+<!-- prawduct: type=fix | scope=critic-death-signals | chunks=1 | release=v3.2.3 | status=shipped -->
 
 **"The Critic died" reports from consumers traced to three compounding false signals, not a dead
 review.** A field report (plugin 3.2.3, 2026-08-02) supplied the timeline: an agent checked
@@ -62,7 +62,7 @@ note), all fixes landed in `068a4ef`, verified clean (0/0/0) by `rev-20260802T20
 
 ## 2026-08-02: the gate named the one route that could not clear the finding it was naming
 
-<!-- prawduct: type=fix | scope=critic-burndown | chunks=03 -->
+<!-- prawduct: type=fix | scope=critic-burndown | chunks=03 | release=v3.2.3 | status=shipped -->
 
 **`#536` — a BLOCKING finding that is *superseded* rather than resolved is never revisited, and the
 gate message prescribed the only route guaranteed not to reach it.** Each `verify-resolutions` pass
@@ -191,7 +191,7 @@ does) and closing it properly means giving the anchor a home in the shared store
 
 ## 2026-08-02: five prose defects from a 2026-06-09 review, and the question that set review depth
 
-<!-- prawduct: type=fix | scope=critic-burndown | chunks=02 -->
+<!-- prawduct: type=fix | scope=critic-burndown | chunks=02 | release=v3.2.3 | status=shipped -->
 
 **`#163` — `risk_surfaces:` decided review depth for every onboarded product through a question
 nobody asked.** Pipeline coverage was checked leg by leg and three of four were present: the template
@@ -250,7 +250,7 @@ the item says so, and re-fixing a closed sub-item is how a batch quietly reverts
 
 ## 2026-08-02: two checks the cheapest gate did not have, paid for by upleveling
 
-<!-- prawduct: type=fix | scope=critic-burndown | chunks=01 -->
+<!-- prawduct: type=fix | scope=critic-burndown | chunks=01 | release=v3.2.3 | status=shipped -->
 
 Two Critic controls that the protocol never mandated, both landing under a budget that forbids
 paying for them with a ceiling raise.
@@ -350,7 +350,7 @@ gitignored, so counting only the working worktree returns a false clean.
 
 ## 2026-08-02: the untriaged, the truncated, the unpublished, and two hardening passes
 
-<!-- prawduct: type=fix | scope=backlog-burndown | chunks=04 -->
+<!-- prawduct: type=fix | scope=backlog-burndown | chunks=04 | release=v3.2.3 | status=shipped -->
 
 Five items sharing no surface, which is why they batched last: `#209`, `#307`, `#313`, `#532`,
 `#533`.
@@ -447,7 +447,7 @@ never "no emitted text names an id".
 
 ## 2026-08-01: a review now knows which plan it is of, and which tree it looked at
 
-<!-- prawduct: type=fix | scope=backlog-burndown | chunks=03 -->
+<!-- prawduct: type=fix | scope=backlog-burndown | chunks=03 | release=v3.2.3 | status=shipped -->
 
 Five defects in the Critic's dispatch path, all of the same family: **a question answered from two
 places with nothing checking they agree.** `#206`, `#208`, `#218`, `#288`, `#344`.
@@ -527,7 +527,7 @@ carries the deliverable, its test shape and its acceptance criteria.
 
 ## 2026-08-01: regen-views is advice, not authority — one mode, and one bad scope no longer freezes every view
 
-<!-- prawduct: type=fix | scope=backlog-burndown | chunks=02 -->
+<!-- prawduct: type=fix | scope=backlog-burndown | chunks=02 | release=v3.2.3 | status=shipped -->
 
 Defects in how the runtime decides what a build plan is and what it says, plus the owner-requested
 collapse of `regen-views` to a single always-writing mode. `#201`, `#211`, `#224`, `#327`, `#333` —
@@ -601,7 +601,7 @@ would have turned every one of those into a false missing-ref.
 
 ## 2026-08-01: the migration runbook now verifies before it disposes, and tells the operator to mark the file it just killed
 
-<!-- prawduct: type=fix | scope=backlog-burndown | chunks=01 -->
+<!-- prawduct: type=fix | scope=backlog-burndown | chunks=01 | release=v3.2.3 | status=shipped -->
 
 Two defects prawduct found by running its own cutover and then fixed only for itself. The fleet still
 shipped both. `#528` and `#530`.
