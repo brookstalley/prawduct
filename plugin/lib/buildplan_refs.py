@@ -411,10 +411,19 @@ def _scope_plan_map(prawduct_dir: Path) -> dict[str, Path]:
     Lazy import: ``lib.views`` is a HEAVY_SUBMODULE. **Two paths ask this**:
     review dispatch, and — since the Stop hook began resolving its gate plan
     from the branch — every session end where a build plan and changes both
-    exist. So the cost (the heavy import plus a recursive scan of
-    ``artifacts/``, ~18ms on a repo with ~60 plans) is now on a hot path, not
-    only on a path already measured in minutes. Lazy still earns its keep:
-    the sessions that skip the gate block skip this entirely.
+    exist. So the cost moved onto a hot path from one already measured in
+    minutes. Lazy still earns its keep: sessions that skip the gate block skip
+    this entirely.
+
+    **Nothing memoizes the scan, and the Stop path runs it twice** — once via
+    :func:`infer_scope_from_branch`, once inside :func:`resolve_reviewed_plan`.
+    The import is cached by the module system; the recursive walk of
+    ``artifacts/`` and its per-file frontmatter parse are not. Stated as a count
+    rather than a duration deliberately: a millisecond figure here would be a
+    machine-held fact hand-copied into prose that ships to consumer repos whose
+    ``artifacts/`` is nothing like this one's — the drift ``record_lint``'s
+    suite-total tripwire exists to catch, one file over. Whether the second walk
+    is worth caching is open; the count is what a reader needs to decide.
     """
     from . import views  # noqa: PLC0415 — lazy; views is a HEAVY_SUBMODULE
 

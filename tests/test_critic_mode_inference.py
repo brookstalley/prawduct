@@ -421,32 +421,6 @@ class TestRule1VerifyResolutions:
         mode, _ = infer_mode(tmp_path, None)
         assert mode != "verify-resolutions"
 
-    def test_working_tree_probe_fails_toward_not_empty(self, tmp_path: Path):
-        """The probe's docstring promises "any git failure returns False".
-
-        The raise class is the half a `returncode` check misses: an absent binary
-        (OSError) or the timeout. Returning False there keeps rule 4 on its
-        fail-safe answer instead of redirecting on a tree it could not read —
-        and an unguarded call would propagate out of `infer_mode` instead.
-        """
-        _init_repo(tmp_path)
-        _write(tmp_path, "README.md", "x\n")
-        _commit(tmp_path, "initial")
-        assert critic_mode._working_tree_is_empty(tmp_path) is True
-
-        import subprocess as _sp
-
-        for boom in (OSError("no git"), _sp.TimeoutExpired("git", 10)):
-            def _raise(*_a, _exc=boom, **_k):
-                raise _exc
-
-            original = critic_mode.subprocess.run
-            critic_mode.subprocess.run = _raise
-            try:
-                assert critic_mode._working_tree_is_empty(tmp_path) is False
-            finally:
-                critic_mode.subprocess.run = original
-
     def test_ancestor_check_fails_closed_on_git_failure(self, tmp_path: Path):
         """Not-an-ancestor and a broken git are the same answer: refuse.
 
@@ -978,6 +952,36 @@ class TestRule4ChunkDefault:
         mode, rationale = infer_mode(tmp_path, None)
         assert mode == "chunk"
         assert rationale.startswith("rule-4 chunk:")
+
+    def test_working_tree_probe_fails_toward_not_empty(
+        self, tmp_path: Path, monkeypatch
+    ):
+        """The probe's docstring promises "any git failure returns False".
+
+        The raise class is the half a `returncode` check misses: an absent
+        binary (OSError) or the timeout. Returning False there keeps rule 4 on
+        its fail-safe answer instead of redirecting on a tree it could not read
+        — an unguarded call would propagate out of `infer_mode` instead.
+
+        Lives here rather than beside the rule-1 anchor tests because rule 4 is
+        the only caller, and uses `monkeypatch` rather than a hand-rolled
+        reassignment so the stdlib module object is restored by the fixture
+        rather than by this test remembering to.
+        """
+        _init_repo(tmp_path)
+        _write(tmp_path, "README.md", "x\n")
+        _commit(tmp_path, "initial")
+        # Unpatched first: proves the call is REACHED, so the False below is the
+        # guard answering and not a short circuit above it.
+        assert critic_mode._working_tree_is_empty(tmp_path) is True
+
+        for boom in (OSError("no git"), subprocess.TimeoutExpired("git", 10)):
+            def _raise(*_a, _exc=boom, **_k):
+                raise _exc
+
+            monkeypatch.setattr(critic_mode.subprocess, "run", _raise)
+            assert critic_mode._working_tree_is_empty(tmp_path) is False
+            monkeypatch.undo()
 
     def test_grounds_on_the_branchs_own_plan_not_the_pointer(self, tmp_path: Path):
         """Rule 4 names the plan it grounded on, and prefers this branch's.
