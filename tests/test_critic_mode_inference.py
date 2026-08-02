@@ -26,7 +26,7 @@ REPO_ROOT = Path(__file__).resolve().parent.parent / "plugin"
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from lib import critic_mode, infer_mode  # noqa: E402 — sys.path mutated above
+from lib import buildplan_refs, critic_mode, infer_mode  # noqa: E402 — sys.path mutated above
 
 
 # ---------------------------------------------------------------------------
@@ -988,6 +988,59 @@ class TestRule4ChunkDefault:
         assert mode == "chunk", rationale
         assert "build-plan-mine.md" in rationale
         assert "declares this branch's scope 'mine'" in rationale
+
+    def test_a_branch_named_after_a_finished_plan_does_not_match(self, tmp_path: Path):
+        """The liveness narrowing: a matched plan must still have work in it.
+
+        A long-lived repo accumulates dozens of released plans, all of them
+        scope-declaring. Without this, a branch named after any of them
+        attributes its review to a plan that shipped long ago — and record-lint
+        would then raise a BLOCKING `chunk-ref-missing` about deliverables that
+        shipped with it. Deleting `_has_unfinished_chunk` must not leave a green
+        suite, which is why the fully-ticked plan here is otherwise identical to
+        the one the sibling test matches on.
+        """
+        _init_repo(tmp_path)
+        _write(tmp_path, "README.md", "x\n")
+        _commit(tmp_path, "initial")
+        _checkout_new_branch(tmp_path, "fix/shipped")
+
+        artifacts = tmp_path / ".prawduct" / "artifacts"
+        artifacts.mkdir(parents=True, exist_ok=True)
+        (artifacts / "build-plan-shipped.md").write_text(
+            "---\nartifact: build-plan\nscope: shipped\n---\n\n"
+            "# Plan\n\n## Status\n\n- [x] Chunk 01: done\n- [x] Chunk 02: also done\n"
+        )
+        (artifacts / "build-plan-live.md").write_text(
+            "---\nartifact: build-plan\nscope: live\n---\n\n"
+            "# Plan\n\n## Status\n\n- [x] Chunk 01: done\n- [ ] Chunk 02: current\n"
+        )
+
+        prawduct = tmp_path / ".prawduct"
+        assert buildplan_refs.infer_scope_from_branch(tmp_path, prawduct) is None, (
+            "a released plan is not what this branch is building"
+        )
+
+        # Control: the identical branch shape DOES match a plan with work left,
+        # so the assertion above is about liveness and not about the fixture.
+        _git(tmp_path, "checkout", "-b", "fix/live", "--quiet")
+        assert buildplan_refs.infer_scope_from_branch(tmp_path, prawduct) == "live"
+
+    def test_has_unfinished_chunk_edge_readings(self, tmp_path: Path):
+        """The two readings the docstring promises, pinned so they stay true.
+
+        A plan with no Status section reads unfinished — an unparseable plan is
+        not evidence of completion. An unreadable one reads finished, because a
+        file we cannot open is not something to attribute a review to.
+        """
+        plan = tmp_path / "p.md"
+        plan.write_text("# Plan\n\nNo Status section at all.\n")
+        assert buildplan_refs._has_unfinished_chunk(plan) is True
+
+        plan.write_text("# Plan\n\n## Status\n\n- [x] Chunk 01: done\n")
+        assert buildplan_refs._has_unfinished_chunk(plan) is False
+
+        assert buildplan_refs._has_unfinished_chunk(tmp_path / "absent.md") is False
 
     def test_an_unconfirmable_pointer_is_named_as_an_assumption(self, tmp_path: Path):
         """A branch matching no declared scope cannot be shown related OR

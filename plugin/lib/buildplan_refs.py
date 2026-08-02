@@ -461,10 +461,22 @@ def _has_unfinished_chunk(plan_path: Path) -> bool:
     """True when ``plan_path``'s Status section still holds an unchecked chunk.
 
     The liveness signal for :func:`infer_scope_from_branch`. Read from the
-    checkboxes deliberately rather than through the git-aware resolver: on a
-    ``views_enabled`` repo those boxes flip at *release*, which is precisely the
-    "has this plan shipped" question being asked, and the git-aware reading
+    checkboxes deliberately rather than through the git-aware resolver, which
     would answer the different question "which chunk is being built right now".
+
+    **The signal is sharp under ``views_enabled`` and blunt elsewhere, and the
+    difference is worth knowing.** Where views are enabled the boxes flip at
+    *release*, so "all checked" means shipped — exactly the question being asked.
+    Everywhere else the boxes flip per chunk, so a plan reads finished from the
+    moment its last chunk is ticked, which is typically before the branch merges.
+    In that window the branch stops matching and every caller falls back to the
+    ``active_build_plan`` pointer: attribution, ``plan_graded``, and the Stop
+    hook's ``Type:`` carveouts. That is the behaviour those callers had before
+    branch inference existed, so the window is a *lapse of the improvement*, not
+    a new defect — but it lands at end-of-plan, which is exactly when a
+    `cumulative` review and the last gate run happen. Narrowing it needs a
+    liveness signal a non-views plan does not carry; ``--scope`` is the remedy
+    meanwhile.
 
     A plan with no Status items at all reads as unfinished — an unparseable plan
     is not evidence of completion, and the caller's fallback (the pointer) is no
@@ -1291,7 +1303,7 @@ def _parse_build_plan_chunk_type(
 
 
 def _parse_build_plan_chunk_trivial_rationale(
-    prawduct_dir: Path, chunk_id: str
+    prawduct_dir: Path, chunk_id: str, plan_path: "Path | None" = None
 ) -> tuple[str | None, str | None]:
     """Extract the ``**Trivial because:**`` rationale from a chunk's section.
 
@@ -1304,8 +1316,15 @@ def _parse_build_plan_chunk_trivial_rationale(
     Section discovery is the shared ``_chunk_section_lines`` walker —
     name-anchored on ``### Chunk <chunk_id>:`` with leading-zero tolerance;
     fenced code blocks are skipped.
+
+    ``plan_path`` names the plan to read, defaulting to the pointer — the third
+    of the chunk-level fields to take it. The chunk id and the rationale must
+    come from the SAME plan: validating a trivial declaration against another
+    plan's same-numbered chunk either blocks on a rationale that is present, or
+    passes on one written for different work.
     """
-    plan_path = resolve_build_plan_path(prawduct_dir)
+    if plan_path is None:
+        plan_path = resolve_build_plan_path(prawduct_dir)
     if not plan_path.is_file():
         return None, f"missing build-plan: {plan_path}"
     try:

@@ -1610,8 +1610,8 @@ def cmd_stop(project_dir: Path, stop_input: dict | None = None) -> int:
                 if not fileset_ok:
                     trivial_block_reason = fileset_reason
                 else:
-                    _, rationale_error = _buildplan_refs()._parse_build_plan_chunk_trivial_rationale(
-                        prawduct_dir, current_chunk_id
+                    _, rationale_error = _bpr._parse_build_plan_chunk_trivial_rationale(
+                        prawduct_dir, current_chunk_id, gate_plan
                     )
                     if rationale_error:
                         trivial_block_reason = rationale_error

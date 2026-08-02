@@ -40,20 +40,38 @@ HOOK = ROOT / "bin" / "prawduct-hook"
 _CODE_DIFF = " M src/app.py"
 
 
-def _write_mock_git(mock_bin: Path, *, status: str, branch: str = "main") -> None:
+def _write_mock_git(
+    mock_bin: Path, *, status: str, branch: str = "main", symbolic_ref: str = ""
+) -> None:
+    """A mock git for the stop path.
+
+    ``symbolic_ref`` answers ``git symbolic-ref --short HEAD``, which is what
+    ``gitstate.current_branch`` reads — a different probe from ``branch
+    --show-current`` above it. Empty (the default) means the probe fails, so
+    branch-derived scope inference finds nothing and the pointer stands: exactly
+    the state every pre-existing fixture here is in.
+    """
     mock_bin.mkdir(parents=True, exist_ok=True)
     status_file = mock_bin / "_status"
     status_file.write_text(status)
     git = mock_bin / "git"
+    symref = (
+        f'if [[ "$1" == "symbolic-ref" ]]; then echo "{symbolic_ref}"; exit 0; fi\n'
+        if symbolic_ref
+        else 'if [[ "$1" == "symbolic-ref" ]]; then exit 1; fi\n'
+    )
+    # f-strings throughout: `+`-concatenating a pre-formatted fragment into a
+    # `%`-formatted literal silently applies `%` to the LAST literal only.
     git.write_text(
         "#!/bin/bash\n"
         'if [[ "$1" == "rev-parse" && "$2" == "HEAD" ]]; then echo "deadbeefdeadbeef"; exit 0; fi\n'
         'if [[ "$1" == "rev-parse" ]]; then echo ".git"; exit 0; fi\n'
-        'if [[ "$1" == "status" ]]; then cat "%s"; exit 0; fi\n'
-        'if [[ "$1" == "branch" && "$2" == "--show-current" ]]; then echo "%s"; exit 0; fi\n'
+        f'if [[ "$1" == "status" ]]; then cat "{status_file}"; exit 0; fi\n'
+        f'if [[ "$1" == "branch" && "$2" == "--show-current" ]]; then echo "{branch}"; exit 0; fi\n'
+        f"{symref}"
         'if [[ "$1" == "worktree" ]]; then exit 0; fi\n'
         'if [[ "$1" == "ls-files" ]]; then exit 1; fi\n'
-        "exit 0\n" % (status_file, branch)
+        "exit 0\n"
     )
     git.chmod(0o755)
     gh = mock_bin / "gh"
@@ -61,12 +79,14 @@ def _write_mock_git(mock_bin: Path, *, status: str, branch: str = "main") -> Non
     gh.chmod(0o755)
 
 
-def _run_stop(project_dir: Path, *, status: str) -> subprocess.CompletedProcess:
+def _run_stop(
+    project_dir: Path, *, status: str, symbolic_ref: str = ""
+) -> subprocess.CompletedProcess:
     """Invoke `bin/prawduct-hook stop` as Claude Code would, with a mock git on
     PATH and the plugin/project roots wired. mock_bin + HOME live OUTSIDE
     project_dir so nothing per-user lands under the fixture."""
     mock_bin = project_dir.parent / "_mock_bin"
-    _write_mock_git(mock_bin, status=status)
+    _write_mock_git(mock_bin, status=status, symbolic_ref=symbolic_ref)
     home = project_dir.parent / "_home"
     home.mkdir(exist_ok=True)
     env = {
@@ -250,3 +270,83 @@ class TestSynthesisAdvisoryAcceptsCumulative:
         ok, reason = _critic_session_satisfies_gate(repo)
         assert not ok, f"{mode!r} must trip the synthesis advisory"
         assert "/prawduct:critic final" in reason
+
+
+class TestGateReadsTheBranchsPlanNotThePointer:
+    """The chunk-level fields the gate acts on come from ONE plan.
+
+    `active_build_plan` answers "which plan is in progress in this repo". On a
+    repo running several plans across worktrees that is not "which plan is this
+    branch building" — and the gate's Type-driven carveouts were being decided
+    by a chunk of a plan the session never touched. Both fields now resolve from
+    the branch's plan when the branch names one; when it names nothing (every
+    other fixture in this file) the pointer stands, unchanged.
+    """
+
+    def _two_plan_repo(self, tmp_path: Path, *, branch_type: str, pointer_type: str):
+        prawduct = tmp_path / ".prawduct"
+        artifacts = prawduct / "artifacts"
+        artifacts.mkdir(parents=True)
+        # The pointer's plan — legitimately in progress, and not this branch's.
+        (artifacts / "build-plan.md").write_text(
+            "---\nartifact: build-plan\nscope: pointed\n---\n\n"
+            "# Build Plan\n\n## Status\n- [ ] Chunk 01: Pointed\n\n"
+            f"### Chunk 01: Pointed\n**Type:** {pointer_type}\n\nBody.\n"
+        )
+        (artifacts / "build-plan-mine.md").write_text(
+            "---\nartifact: build-plan\nscope: mine\n---\n\n"
+            "# Build Plan\n\n## Status\n- [ ] Chunk 01: Mine\n\n"
+            f"### Chunk 01: Mine\n**Type:** {branch_type}\n\nBody.\n"
+        )
+        (prawduct / ".session-reflected").write_text(
+            "Session reflection: implemented the chunk and verified all tests pass."
+        )
+        (prawduct / ".session-git-baseline").write_text("")
+        ts = datetime.now(timezone.utc) - timedelta(seconds=60)
+        (prawduct / ".session-start").write_text(ts.strftime("%Y-%m-%dT%H:%M:%SZ"))
+        return prawduct
+
+    def test_the_carveout_follows_the_branchs_plan(self, tmp_path):
+        """Branch plan says `designer-handoff`, pointer says `code` → skip.
+
+        Reverting the gate-plan threading reads the pointer's `code` and the
+        gate fires, so this dies with the fix removed.
+        """
+        self._two_plan_repo(
+            tmp_path, branch_type="designer-handoff", pointer_type="code"
+        )
+        result = _run_stop(tmp_path, status=_CODE_DIFF, symbolic_ref="fix/mine")
+        assert result.returncode == 0, (
+            "the branch's chunk declares designer-handoff, so the Critic gate is "
+            f"carved out. stdout={result.stdout!r} stderr={result.stderr!r}"
+        )
+
+    def test_the_pointers_carveout_does_not_leak_onto_this_branch(self, tmp_path):
+        """The mirror, and the one that matters more.
+
+        Pointer says `designer-handoff`, branch says `code`. Reading the pointer
+        here SKIPS the Critic gate for a chunk that never asked for it — a
+        governance carveout granted by an unrelated plan.
+        """
+        self._two_plan_repo(
+            tmp_path, branch_type="code", pointer_type="designer-handoff"
+        )
+        result = _run_stop(tmp_path, status=_CODE_DIFF, symbolic_ref="fix/mine")
+        assert result.returncode == 2, (
+            "this branch's chunk is `code`; the pointer's designer-handoff must "
+            f"not carve it out. stdout={result.stdout!r} stderr={result.stderr!r}"
+        )
+        assert "CRITIC" in result.stderr
+
+    def test_an_unmatched_branch_still_uses_the_pointer(self, tmp_path):
+        """The fallback, pinned: no declared scope matches, nothing changes."""
+        self._two_plan_repo(
+            tmp_path, branch_type="code", pointer_type="designer-handoff"
+        )
+        result = _run_stop(
+            tmp_path, status=_CODE_DIFF, symbolic_ref="fix/unrelated-name"
+        )
+        assert result.returncode == 0, (
+            "no branch match → the pointer's designer-handoff decides, exactly as "
+            f"before. stdout={result.stdout!r} stderr={result.stderr!r}"
+        )

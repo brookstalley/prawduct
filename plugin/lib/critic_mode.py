@@ -541,17 +541,22 @@ def _working_tree_is_empty(project_dir: Path) -> bool:
     :func:`_get_uncommitted_code_files` answers the narrower "is there *code* in
     flight", which the size-based rules want and this does not.
 
-    Fails toward NOT empty: a git failure returns False, so an unreadable state
-    keeps the caller on the fail-safe answer rather than redirecting on a
-    tree it could not read.
+    Fails toward NOT empty: any git failure returns False, so an unreadable
+    state keeps the caller on the fail-safe answer rather than redirecting on a
+    tree it could not read. The guard covers the *raise* class too — an absent
+    binary or the timeout — because a docstring promising a return value while
+    the call propagates is a promise the code does not keep.
     """
-    proc = subprocess.run(
-        ["git", "status", "--porcelain", "--untracked-files=all"],
-        cwd=str(project_dir),
-        capture_output=True,
-        text=True,
-        timeout=10,
-    )
+    try:
+        proc = subprocess.run(
+            ["git", "status", "--porcelain", "--untracked-files=all"],
+            cwd=str(project_dir),
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return False
     if proc.returncode != 0:
         return False
     return not proc.stdout.strip()

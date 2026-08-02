@@ -2130,21 +2130,39 @@ class TestVerifyResolutionsDispatch:
         assert "another lineage" in result.stderr, result.stderr
         assert prior_id in result.stderr
 
-    def test_a_dirty_tree_fact_anchored_at_head_is_not_refused(self, tmp_path):
+    def test_a_dirty_tree_fact_falling_back_to_dispatch_commit_is_not_refused(
+        self, tmp_path
+    ):
         """Fail-closed must not tighten into stranding the builder.
 
-        A review of a dirty tree records no `head_commit`, so the anchor falls
-        back to `dispatch_commit` — which IS this branch's HEAD. That is the
-        ordinary fix-in-progress case, and refusing it would break dirty-tree
-        verify for everyone while looking like extra safety.
+        A review of a dirty tree records **no `head_commit`**, so the anchor
+        falls back to `dispatch_commit`. That fallback is the branch the guard
+        could most easily break, so the fixture must actually reach it: an
+        earlier version of this test seeded `head_commit=head` and never left the
+        first branch, pinning a case its own name did not describe. On a branch
+        that landed a commit for tests which "proved" a fix while passing against
+        the defect, a test misdescribing its own fixture is that hazard one layer
+        up.
         """
         repo = tmp_path / "r"
         _init_repo(repo)
-        head, _prior_id = self._seed_and_fix(repo)
+        reviewed_tree = self._seed_clean_dirty_tree_review(repo)
+        prior = next(
+            f for f in _store_facts(repo, "review") if f["id"] == "rev-prior-0001"
+        )
+        assert prior["body"]["head_commit"] is None, (
+            "the fixture must reach the dispatch_commit fallback, not the "
+            "head_commit branch — that is the whole point of this test"
+        )
+        anchor = prior["body"]["dispatch_commit"]
+        assert _commit_is_ancestor(repo, anchor)
 
-        assert _commit_is_ancestor(repo, head), "HEAD is trivially its own ancestor"
+        # Real unreviewed work, so the pass has something to verify.
+        (repo / "src/app.py").write_text("x = 3  # further fix\n")
         result = _run_begin(repo, "--mode", "verify-resolutions")
         assert result.returncode == 0, f"stderr={result.stderr!r}"
+        manifest = json.loads((repo / PARTIALS_REL / "manifest.json").read_text())
+        assert manifest["base_tree"] == reviewed_tree
 
     def test_verify_scope_widened_exits_2(self, tmp_path):
         repo = tmp_path / "r"

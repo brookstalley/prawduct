@@ -556,9 +556,11 @@ things that exercise would otherwise have failed to confirm.
 - [ ] Chunk 03: Critic dispatch anchoring and review-record attribution
 - [ ] Chunk 04: The independent tail
 Context: Plan authored 2026-08-01 on `fix/backlog-burndown`, from a re-derivation of the 168 open
-tracker items by `refs:` co-location. Nothing built yet. `active_build_plan` still points at
-`artifacts/build-plan-v3.2.0-golive.md` and **must not be repointed** — that plan is in progress in
-the primary checkout, the pointer is single-slot, and repointing is the wrong fix for the
-attribution defect this plan's Chunk 03 closes. Until then, dispatch every review with
-`--mode <m> --scope backlog-burndown --chunk NN` explicitly; see § Verification Strategy. Next:
-Chunk 01.
+tracker items by `refs:` co-location. **Chunks 01, 02 and 03 are built, reviewed and committed**;
+Chunk 04 is next, and now carries a fifth item (#533, added at owner request).
+`active_build_plan` still points at `artifacts/build-plan-v3.2.0-golive.md` and **must not be
+repointed** — that plan is in progress in the primary checkout, the pointer is single-slot, and
+repointing was the wrong fix for the attribution defect Chunk 03 closes by resolving *around* it.
+**Dispatch with `--mode <m> --chunk NN`, and NOT `--scope`** — Chunk 03 made the branch name derive
+it, and this line prescribing the old workaround is what the Critic caught twice; see
+§ Verification Strategy for what still binds and why. Next: Chunk 04.
