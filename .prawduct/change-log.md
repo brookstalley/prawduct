@@ -58,9 +58,12 @@ JSON on stdout. This publishes the value; it does not re-decide it.
 That trips the `api_versioning_approach` revisit trigger — *the first non-prawduct caller of
 `prawduct-hook`* — which asked for a stability tier and a `--version` handle before such a thing
 ships. Recorded as a **ruling**, not an amendment: the decision's content is unchanged, and both
-requirements are already met — the tier is `stable` and applies to exactly this one subcommand
-(everything else stays internal and unsupported), and `prawduct-hook version` is the version handle,
-since a per-subcommand one would be the ceremony the decision exists to avoid.
+requirements are already met — the tier is `stable` and applies to a two-command "Published
+surfaces" group (`print-install-reference` and `version`; everything else stays internal and
+unsupported), and `prawduct-hook version` is the version handle, since a per-subcommand one would be
+the ceremony the decision exists to avoid. `version` is in the group because naming it as *the*
+handle for an external consumer is itself binding a third party to it, and a handle a consumer may
+not rely on is not a handle.
 
 **Tree ids are shape-checked before they reach git** (`#307`). The evidence store is a plain
 append-only file every worktree of a clone shares, so a corrupted or hand-edited fact can put any

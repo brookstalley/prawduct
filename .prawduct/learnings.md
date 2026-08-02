@@ -341,3 +341,5 @@ dropping them.
 ## Exactness is owed to a number something RELIES ON for a decision, not one something merely READS — ask what branch is taken differently if it is wrong by two, and if none, the precision is waste. Reading is passive and nearly universal, so "something reads it" licenses precision everywhere; verify the CONSUMER before defending the cost you already paid for it
 
 ## A filed item's stated MECHANISM is a hypothesis, not a finding — reproduce it against live data before designing the fix, because the reporter saw a correlation and wrote it up as a cause, and the item's own evidence often carries the disproof. Run the command and reconcile against the source of truth, THEN read the item again
+
+## A deferral justified by "there is no consumer yet" is scoped to the surfaces that consumer does not touch — when one appears, the premise goes false without the decision going wrong, so restate the SCOPE rather than retiring the deferral or amending the decision. Record it as a ruling, and enumerate the now-supported surfaces in one place every other mention tracks — a count stated in four sentences drifts on the first correction

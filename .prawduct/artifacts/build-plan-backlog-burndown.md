@@ -518,15 +518,33 @@ and the `new` exemption expiry consumes that function rather than re-deriving fr
     not re-decide it.
   - **Scope-out, stated so it is not silently dropped:** backfilling stage labels on the 64 stage-less
     **closed** items. They are already dispositioned and do not affect the pending figure.
+  - **Deferred out of #532 during the build, filed rather than dropped** (added 2026-08-02, so the
+    deferrals live in an artifact rather than only in a commit message — a reviewer cannot verify a
+    tracker item from a review context and is right to fail closed on the claim):
+    - **#542** — *adopting* an untriaged issue into a real item (the write half). `stage: design`:
+      what stage an adopted issue gets, who decides `kind`/`area`, and whether an unattended sweep
+      may retitle a human's report are open questions, not implementation details. Owner-raised.
+    - **#543** — the session briefing must surface `untriaged` rather than absorbing it into
+      "N pending". **Blocked on coordination, not effort:** `plugin/lib/briefing.py` is dirty on
+      `feature/upgrade-discovery-relay` in the primary checkout, and this plan's own collision
+      constraint (above) says coordinate with that session before editing it. The number the
+      briefing prints is already correct; what is missing is the breakout.
+    - **#544** — `list --untriaged` and the anonymous-filing *quarantine* surface designed in
+      `backlog-service-api-contract.md` §9 are one query under two names.
 - **Tests:** unit — a malformed SHA in a fact produces no edge and no traceback; the shared paginator's
-  cap trip raises rather than returning a prefix, across all four call sites; stage-less items appear
-  in the open count and in an untriaged bucket; `print-install-reference` emits JSON that round-trips
+  cap trip raises rather than returning a prefix, across all four call sites; **issues with no
+  prawduct provenance** appear in the open count and in an untriaged bucket (~~stage-less items~~ —
+  corrected 2026-08-02, see the #532 deliverable above: stage-less items were already counted, and
+  a test written to the original wording would have passed against the defect);
+  `print-install-reference` emits JSON that round-trips
   to `INSTALL_REFERENCE` **by comparison against the constant, never against a transcribed literal** —
   a copy in the test is the same drift the item was filed about. Preferences — the
-  no-internal-identifier guard, if one exists, still passes over the four edited sites.
+  no-internal-identifier guard, if one exists, still passes over the edited sites.
 - **Acceptance criteria:** `python3 plugin/bin/prawduct-hook backlog counts --repo brookstalley/prawduct`
-  reconciles against `gh issue list --state open` exactly; the four operator-facing strings read as
-  plain language; `print-install-reference | python3 -c 'import json,sys; json.load(sys.stdin)'`
+  reconciles against `gh issue list --state open` exactly; **the seven** operator-facing strings read as
+  plain language (~~four~~ — the item inventoried four; three more surfaced only when the sweep was
+  widened past `print(...)` arguments, and the Critic blocked the first attempt for claiming
+  otherwise); `print-install-reference | python3 -c 'import json,sys; json.load(sys.stdin)'`
   succeeds and its output equals the constant; full suite green.
 - **Type:** cumulative-final
 - **Done when:**
