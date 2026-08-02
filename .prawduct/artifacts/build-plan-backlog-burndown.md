@@ -17,7 +17,7 @@ governed_by:
       - "verdicts computed from facts, no model in the write path → conforms (Chunk 03 and Chunk 04 harden code-side paths only)"
       - "facts immutable and append-only → conforms (Chunk 04 validates on read/compose; it never edits a fact)"
       - "derived views never authoritative → conforms, and Chunk 02 repairs a violation: the `new` exemption must expire against `resolve_chunk_progress`, never against the checkbox view"
-      - "newer-schema fact surfaced, never dropped → inapplicable because no chunk changes the fact schema or its version handling"
+      - "newer-schema fact surfaced, never dropped → **conforms** (reason corrected 2026-08-02 by PR review). The original reading — *inapplicable because no chunk changes the fact schema* — is false: Chunk 03 adds `scope_chosen_by` to the persisted review-fact body and changes `record_lint.counts` values from int to int-or-null inside that same body. Both are **additive**, so `evidence.SCHEMA_VERSION` stays 1 and an older reader ignores an unknown key rather than dropping the fact — the conclusion held, the stated reason did not. Recorded rather than quietly repaired because a disposition is what the owner vetoes, and this is the drift class the plan exists to fix, one artifact over"
       - "two stores, two lifetimes → inapplicable because no chunk moves state between the committed and gitignored stores"
       - "`backlog_service_repo` selects the authoritative store; frozen markdown is never live → conforms, and Chunk 01 is what makes the next repo's cutover satisfy it"
   - artifact: architecture
