@@ -174,6 +174,35 @@ first-round warnings were claims *this chunk* made about the tree that the tree 
 which is the batch's own subject reproduced inside the correction. Three findings dispositioned
 accept-with-a-written-home into Chunk 03's carry-in block (below), one filed as `#554`.
 
+**Chunk 03 BUILT 2026-08-02** (#348) — the directive's trigger is now `changes_referenced` non-empty
+**OR** any `changes_unjudged` path that `coverage_algebra.is_judgeable_path` says needs review
+coverage. The design call worth keeping: the predicate was **reused, not re-invented**. An extension
+allowlist would have reproduced this defect one language at a time, whereas `is_judgeable_path`
+classifies by exclusion, so an unknown language fires the directive instead of going dark. Held as an
+**OR** rather than a substitution so the widening is strict by construction — a `.prawduct/`-resident
+Python file sits in `changes_referenced` while the predicate calls it metadata, and substituting
+would have taken that case dark while claiming to widen.
+
+**The carve-out that keeps it quiet is not the obvious one.** `changes_unjudged` is dominated by
+`.prawduct/`, because the methodology requires every chunk to update the change-log and build plan —
+governed work puts framework metadata in its own changed set by construction (26 unjudged entries
+while recording this chunk, all `.prawduct/`, none judgeable). Metadata being unjudgeable is what
+keeps the directive off cycles that changed no product code, and it now has a test.
+
+**The first version of that claim was wrong, and the Critic caught it** — it named
+`.prawduct/.test-evidence.json` as always-present, which is false in any onboarded repo (`lib/core.py`
+gitignores it; the untracked half uses `--exclude-standard`). It came from a scratch repo with no
+`.gitignore`: an unrepresentative fixture generalised into a measured-sounding "100% of the time".
+The same class as Chunk 02's lesson — *a correction is a new claim* — reproduced one chunk later,
+which is why the falsifying check has to run against the **replacement** text and not only the text
+being replaced.
+
+**The residual is filed, not gestured at** (`#556`): a Python file whose symbols no test mentions is
+in **neither** evidence list, so no trigger composed from those two fields can see it. That is the
+same defect shape #348 filed — a tracking reference naming no id — so the comment names the item.
+Under-fires; costs advice, never soundness. The four carried-in test edits landed with the chunk as
+planned.
+
 **Release deferral, reaffirmed 2026-08-02.** The owner was offered release-first and chose to keep
 burning down. The `develop`→`main` promotion is now **three batches deep** and `#533`'s filer stays
 blocked behind `ref: main` until it ships. This is a recorded decision, not an oversight — do not
@@ -429,7 +458,7 @@ Chunk 01's third verify round; the other three from the 2026-08-02 cumulative
    building now; an unexamined exemption is what is not acceptable.
 4. **Route grant tokens through `_is_repo_path`.** `_references` extracts `allowed-tools` grant
    tokens on `_PATH_SHAPED.match(token) and "/" in token`, while command position additionally
-   requires `_is_repo_path` — whose own docstring says the pair exists to exclude `owner/repo`
+   requires `_is_repo_path` — whose own docstring says the pair exists to exclude `<owner>/<repo>`
    arguments, which are path-shaped and name nothing on disk. Verified latent, not live: the only
    slash-bearing grant token in tracked markdown today is `plugin/bin/prawduct-hook`. The moment a
    skill grants `Bash(gh issue list --repo owner/name *)` the suite reddens on a non-defect, and the

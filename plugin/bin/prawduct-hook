@@ -150,6 +150,19 @@ def _coverage():
     return coverage
 
 
+def _coverage_algebra():
+    """Lazy-import the pure judgeability/coverage algebra (lib/coverage_algebra).
+    Same lazy idiom as _coverage() — seeds sys.path so the hook's top level stays
+    lib-free; the module is I/O- and git-free and pulls only its light siblings
+    (buildplan_refs, gitstate, core)."""
+    lib_root = _plugin_root()
+    if lib_root not in sys.path:
+        sys.path.insert(0, lib_root)
+    from lib import coverage_algebra  # noqa: PLC0415 — lazy keeps top-level cheap + lib-free
+
+    return coverage_algebra
+
+
 def _release_readiness():
     """Lazy-import the Phase 0 releasability gate (lib/release_readiness).
     Same lazy idiom as _coverage() — seeds sys.path so the hook's top level
@@ -2045,10 +2058,13 @@ def cmd_stop(project_dir: Path, stop_input: dict | None = None) -> int:
 #: ``lib/critic_consolidate.py`` is the same move for the same reason, and is
 #: the precedent this follows.
 #:
-#: Printed ONLY when the merged record shows judged code changed
-#: (``changes_referenced`` non-empty) — a docs-only cycle, or a run that touched
-#: no source, stays silent, because a directive that prints every time is one
-#: the reader learns to skip.
+#: Printed ONLY when the merged record shows the cycle changed code tests
+#: should vouch for — a docs-only cycle, or a run that touched no source, stays
+#: silent, because a directive that prints every time is one the reader learns
+#: to skip. The trigger is language-agnostic (see
+#: ``_evidence_changed_judged_code``): it fires off ``changes_referenced``, and
+#: ALSO off any ``changes_unjudged`` path that needs review coverage, which is
+#: how a Swift/Go/Rust/C#/TS product reaches it at all.
 #:
 #: **Not "a restamp stays silent."** An earlier draft of this comment, the plan,
 #: and the change-log all said so, and it is false: ``--no-rerun`` takes the same
@@ -2057,14 +2073,25 @@ def cmd_stop(project_dir: Path, stop_input: dict | None = None) -> int:
 #: ``test_refreshes_changes_referenced_against_current_tree``). So a restamp with
 #: judged changes in the diff fires, correctly: the builder did just change
 #: judged code, and how the counts got there is not the question this directive
-#: asks. The only real trigger is "nothing judged changed."
+#: asks. The only thing that silences it is "nothing needing review coverage
+#: changed" — which since the widening below is a claim about the changed FILES,
+#: not about whether a Python symbol grep happened to match.
 #:
-#: **Known limitation, recorded where the reader meets it.** ``changes_referenced``
-#: is populated by ``bin/test-reference-verify``, which matches Python symbols
-#: only. In a Swift/Rust/C#/TypeScript product the field is always empty, so this
-#: directive never fires there — the field is a proxy for "judged code changed"
-#: and is narrower than the phrase. Widening the trigger is tracked separately;
-#: until then, do not read a silent run in a non-Python repo as "nothing changed."
+#: **Known limitation, recorded where the reader meets it, WITH its id.** One
+#: population still cannot reach this directive: a Python file declaring symbols
+#: no test mentions appears in NEITHER ``changes_referenced`` nor
+#: ``changes_unjudged`` — ``bin/test-reference-verify`` withholds it from both on
+#: purpose, since it is the gap ``verify-coverage`` exists to catch. So the record does
+#: not carry the whole changed set and no trigger composed from those two fields
+#: can. That is brookstalley/prawduct#556 — closing it means a schema change or a
+#: second git diff on this path, both larger than this trigger. The direction is
+#: the safe one: it under-fires, costing advice rather than soundness.
+#:
+#: The predecessor limitation — "empty in every non-Python product, so the
+#: directive is dark there" — is CLOSED (#348), and this comment previously said
+#: it was "tracked separately" while naming no item, which is how it stayed open
+#: long enough to be worth this warning: a tracking reference that points at no
+#: id is not a tracking reference.
 _GREEN_IS_EVIDENCE_DIRECTIVE = (
     "\nGreen is evidence only about what could have made it red. For each test"
     " you just added or changed, name the change that would flip it — and"
@@ -2081,12 +2108,35 @@ _GREEN_IS_EVIDENCE_DIRECTIVE = (
 
 
 def _evidence_changed_judged_code(evidence_path: Path) -> bool:
-    """True when the MERGED evidence record shows judged code changed.
+    """True when the MERGED evidence record shows changed code tests should vouch for.
 
     Read back from disk rather than from the in-memory record: the F4a overlay
-    (``bin/test-reference-verify --merge-into``) writes ``changes_referenced``
+    (``bin/test-reference-verify --merge-into``) writes the coverage fields
     into the FILE after the base record is written, so the dict the caller
     holds still carries the empty seed.
+
+    **Two senses of "judged" meet in this function — do not conflate them.**
+    ``changes_unjudged`` means *the symbol-grep overlay had no signal for this
+    file* (it is not Python, declares no symbols, or was deleted).
+    ``coverage_algebra.is_judgeable_path`` means *a change here needs review
+    coverage*. A Swift file is unjudged in the first sense and judgeable in the
+    second, which is exactly the population this trigger has to reach.
+
+    Reusing ``is_judgeable_path`` rather than matching source extensions is
+    deliberate: it is the single canonical answer to "does this file need
+    review coverage?" (the predicate CRT-5D8Q unified), and it classifies by
+    exclusion — framework metadata and unprotected ``.md`` are out, everything
+    else is in — so a language nobody has heard of fires the directive instead
+    of silently going dark. An extension allowlist would have reproduced this
+    defect one language at a time.
+
+    **The cost was weighed, not overlooked.** Classifying by exclusion also
+    admits files with no testable behaviour: a cycle touching only
+    ``.gitignore``, ``LICENSE``, a CI yaml or a binary asset now prints the
+    directive where it used to stay quiet. That is the price of the failure
+    direction being right — over-firing costs a reader two seconds, while the
+    under-firing it replaced cost an entire language its directive, silently and
+    unobservably.
 
     Advice fails soft. Every unreadable, malformed, or unexpectedly-shaped
     record answers False — the evidence is already written and schema-valid, so
@@ -2100,7 +2150,22 @@ def _evidence_changed_judged_code(evidence_path: Path) -> bool:
     if not isinstance(merged, dict):
         return False
     referenced = merged.get("changes_referenced")
-    return isinstance(referenced, list) and bool(referenced)
+    if isinstance(referenced, list) and referenced:
+        return True
+    # Second clause, and the reason this fires off Python at all. Kept as an OR
+    # rather than a replacement so the widening is strict by construction: a
+    # `.prawduct/`-resident Python file can sit in `changes_referenced` while
+    # `is_judgeable_path` calls it framework metadata, and substituting the new
+    # predicate would take that case dark.
+    unjudged = merged.get("changes_unjudged")
+    if not isinstance(unjudged, list):
+        return False
+    try:
+        is_judgeable = _coverage_algebra().is_judgeable_path
+    except ImportError:
+        # Broken install — advice fails soft, same as an unreadable record.
+        return False
+    return any(isinstance(p, str) and is_judgeable(p) for p in unjudged)
 
 
 def _parse_evidence_counts(tokens: list[str]) -> tuple[dict | None, str]:

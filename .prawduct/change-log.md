@@ -3,6 +3,84 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-08-02: the green-is-evidence directive now fires off a language it does not have to know
+
+<!-- prawduct: type=fix | scope=drift-burndown | chunks=03 -->
+
+`_GREEN_IS_EVIDENCE_DIRECTIVE` triggered off `changes_referenced`, which `bin/test-reference-verify`
+populates by grepping **Python** symbols. In a Swift/Go/Rust/C#/TS product that field is empty on
+every run, so the directive was **silently dark in every non-Python product** — and dark is the one
+failure a directive cannot report. That violates a standing Direction norm (*prawduct must never be
+specific to Python; gates dispatch per file by language, never per repo*), and it narrows a claim
+other items lean on: code-delivered directives are the only proven path by which prawduct ships a
+general learning into a consuming product, so an exemplar that works on Python alone makes that path
+narrower than the items citing it assume.
+
+**The trigger is now `changes_referenced` non-empty OR any `changes_unjudged` path that needs review
+coverage**, per `coverage_algebra.is_judgeable_path`. Three things about that choice:
+
+- **Reuse, not a new list.** `is_judgeable_path` is the single canonical answer to "does this file
+  need review coverage?" — the predicate CRT-5D8Q unified after three sites answered it three ways.
+  Matching source extensions instead would have reproduced this very defect one language at a time;
+  the predicate classifies by *exclusion* (framework metadata and unprotected `.md` are out,
+  everything else is in), so a language nobody has heard of fires it rather than going dark.
+- **An OR, not a substitution**, so the widening is strict by construction. A `.prawduct/`-resident
+  Python file can sit in `changes_referenced` while `is_judgeable_path` calls it metadata; replacing
+  the old clause would have taken that case dark while claiming to widen. Pinned by test.
+- **The silence still holds, and one carve-out is load-bearing in a non-obvious way.**
+  `changes_unjudged` is dominated by `.prawduct/` in practice, because the methodology *requires*
+  each chunk to update the change-log and the build plan — governed work puts framework metadata in
+  its own changed set by construction. Measured while recording this chunk's evidence: 26 unjudged
+  entries, all under `.prawduct/`, none judgeable. Reading the field wholesale would print the
+  directive on cycles that changed no product code at all, which is the failure the original comment
+  named ("a directive that prints every time is one the reader learns to skip"). Metadata being
+  unjudgeable is what prevents it, and it now has its own test.
+
+  **A first draft of that claim was wrong and the Critic caught it.** It said
+  `.prawduct/.test-evidence.json` is in the changed set of *every* invocation, so the directive would
+  otherwise print 100% of the time. False in any onboarded repo: `lib/core.py` scaffolds that path
+  into `.gitignore` and `_changed_files` builds its untracked half with `--exclude-standard`, so it
+  enters neither half. It was measured in a scratch repo that had no `.gitignore` — an
+  unrepresentative fixture generalised into a measured-sounding number, which would have over-priced
+  the carve-out for whoever next weighs relaxing it. Recorded rather than quietly corrected, because
+  the corrected claim is the *stronger* one and the failure mode is this batch's own subject.
+
+Red-verified in both senses the chunk demanded: the new integration case asserts the fixture's
+*shape* (`changes_referenced` empty, `Widget.swift` in `changes_unjudged`) before its outcome,
+because a Python fixture would pass on the old trigger and prove nothing.
+
+**The comment that said "tracked separately" while naming no item now names one — and the residual
+it names is real.** A Python file declaring symbols no test mentions appears in **neither**
+`changes_referenced` nor `changes_unjudged` (the verifier withholds it from both on purpose — it is
+the gap `verify-coverage` exists to catch), so the evidence record does not carry the whole changed
+set and no trigger composed from those two fields can. Verified in a scratch repo, not inferred.
+Filed as `#556` rather than absorbed: closing it needs an evidence-schema change or a second git
+diff on this path, both larger than a trigger widening, and the chunk's scope boundary is explicit
+that a needed coverage floor is a finding to file. It under-fires, so it costs advice, never
+soundness.
+
+**Four carried-in edits to `tests/test_path_reference_resolution.py`** landed here rather than in
+the doc-only chunk that found them, because this is the chunk that opens that file and a test-file
+edit in a doc-only chunk moves the judgeable tree to buy a review round for a note. (1) `_resolves`'
+`form` parameter loses its default: it defaulted to `md-link`, the one form the `plugin/` fallback is
+*granted* to, so an omitted argument silently bought the most permissive behaviour at the five call
+sites least likely to have considered it. (2) "all fifteen **in-tree** invocations" named the wrong
+scope in two places — 15 is the count inside the shipped plugin, and tree-wide the literal appears
+well over a hundred times in tracked markdown, so a reviewer re-measuring would read a load-bearing
+count as fabricated. Re-counted both scopes rather than trusting the note, which had said 132. The
+tree-wide figure is deliberately left unpinned here: the precise count drifted between the note and
+the build, and any exact number written into an append-only record invalidates itself, since this
+very entry adds another occurrence. The plugin-scope 15 verifies exactly and is the one the code
+comment leans on. (3) The record exemption is
+container-scoped while its rationale (*narrates defects*) is role-scoped: it holds for
+`learnings-detail.md`, but `learnings.md` also carries live instructions — one rule tells the reader
+to invoke `python3 plugin/bin/prawduct-hook`, served as current guidance — so a relocation strands
+them with the suite green. Per-reference scoping is not worth building for one instance; an
+unexamined exemption reads as an examined one, so it is now named. (4) `allowed-tools` grant tokens
+route through `_is_repo_path` like command position already did, so the first skill to grant
+`Bash(gh issue list --repo owner/name *)` does not redden the suite on a non-defect and spend an
+allowlist entry on a bug in the extractor.
+
 ## 2026-08-02: three records that outlived what they describe — one home, one swept matrix, one closure that reached a quarter of its surfaces
 
 <!-- prawduct: type=fix | scope=drift-burndown | chunks=02 -->

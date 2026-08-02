@@ -36,6 +36,17 @@ A bare backticked path inside a sentence is a *citation* and is deliberately not
 
 Relative targets resolve against the **containing file**, not the repo root. Getting that wrong
 over-reported twenty non-defects during the census.
+
+**The record exemption is container-scoped; its rationale is role-scoped, and the two do not
+line up.** ``_is_record`` exempts whole files, but the reason it gives — *narrates defects, quoting
+the paths they occurred at* — is a claim about a reference's role. It holds for
+``learnings-detail.md``, which quotes stale invocations as evidence. It does not hold for every
+reference inside ``learnings.md``: that file also carries live instructions (one rule tells the
+reader to invoke ``python3 plugin/bin/prawduct-hook``, and ``/prawduct:learnings`` serves it as
+current guidance), so a future relocation strands them with the suite green — the exact defect
+class this test exists for. Scoping the exemption per reference rather than per file is not worth
+building for one known instance; leaving the gap unnamed is what is not acceptable, since an
+exemption nobody has examined reads as one somebody has.
 """
 
 from __future__ import annotations
@@ -163,7 +174,7 @@ def _strip_ref(raw: str) -> str:
     return ref
 
 
-def _resolves(containing: str, raw: str, form: str = "md-link") -> bool:
+def _resolves(containing: str, raw: str, form: str) -> bool:
     """True if ``raw``, referenced from ``containing``, names something in the tracked tree.
 
     Three roots are tried, and each earns its place:
@@ -183,8 +194,13 @@ def _resolves(containing: str, raw: str, form: str = "md-link") -> bool:
 
     It earns nothing for **running one**. A reader executing a command runs it from a working
     directory, and in this repo that means ``plugin/bin/prawduct-hook`` — which is what all fifteen
-    in-tree invocations say. So the fallback is denied to the two invocation forms, ``command`` and
-    ``allowed-tools``, and a skill reverting to a bare ``bin/prawduct-hook`` in either is caught.
+    invocations in the shipped plugin say. So the fallback is denied to the two invocation forms,
+    ``command`` and ``allowed-tools``, and a skill reverting to a bare ``bin/prawduct-hook`` in
+    either is caught.
+
+    ``form`` has no default on purpose. It defaulted to ``md-link`` — the one form the ``plugin/``
+    fallback is *granted* to — so an omitted argument silently bought the most permissive behaviour
+    at exactly the call sites least likely to have thought about it.
 
     Scoping by file alone was not enough and shipped as if it were: the motivating breakage was in
     five *skills'* prose and grants, and skills live under ``plugin/`` — inside the retained scope.
@@ -242,7 +258,20 @@ def _references(rel: str, text: str) -> list[tuple[str, str]]:
     if fm:
         for grant_line in _ALLOWED_TOOLS.findall(fm.group(1)):
             for token in re.findall(r"[A-Za-z0-9_./-]+", grant_line):
-                if _PATH_SHAPED.match(token) and "/" in token:
+                # Same predicate as command position, and for the same reason ``_is_repo_path``
+                # was written: ``owner/repo`` arguments are path-shaped and name nothing on disk.
+                # Latent rather than live today — the only slash-bearing grant token in tracked
+                # markdown is ``plugin/bin/prawduct-hook`` — but the moment a skill grants
+                # ``Bash(gh issue list --repo owner/name *)`` the bare shape test reddens on a
+                # non-defect, and the cheapest-looking fix is an allowlist entry spent on a bug
+                # in this extractor.
+                #
+                # ``buildplan_refs._verify_chunk_refs`` answers the same shape the OPPOSITE way —
+                # it reports the ambiguity and has the author disambiguate. Both are right on
+                # their own blast radii: that check emits an advisory lint line a human reads,
+                # while this one fails the suite outright, and a hard failure a reader cannot
+                # disambiguate is one they silence with an allowlist entry.
+                if _is_repo_path(token):
                     found.append(("allowed-tools", token))
 
     for span in list(_BACKTICKED.findall(text)) + _fenced_command_lines(text):
@@ -368,9 +397,30 @@ def test_a_broken_reference_is_caught_in_each_covered_form(form: str, text: str)
     refs = _references("docs/example.md", text)
     assert refs, f"the {form} extractor matched nothing in its own fixture"
     assert any(f == form for f, _ in refs), f"expected a {form} reference, got {refs}"
-    assert any(not _resolves("docs/example.md", raw) for f, raw in refs if f == form), (
+    assert any(not _resolves("docs/example.md", raw, form) for f, raw in refs if f == form), (
         f"the {form} fixture references a nonexistent path but was reported as resolving"
     )
+
+
+def test_a_grant_token_naming_a_repository_is_not_a_path_reference():
+    """``owner/name`` is path-shaped, names nothing on disk, and must not redden the suite.
+
+    Pins the narrowing rather than assuming it: the shared allowed-tools fixture grants
+    ``plugin/bin/does-not-exist``, which the bare shape test and ``_is_repo_path`` BOTH extract, so
+    reverting grant extraction to ``_PATH_SHAPED.match(token) and "/" in token`` leaves every other
+    case in this file green. Latent today — ``plugin/bin/prawduct-hook`` is the only slash-bearing
+    grant token in tracked markdown — which is exactly why it needs a test rather than a comment.
+    """
+    grant = "---\nallowed-tools: Read, Bash(gh issue list --repo owner/name *)\n---\nbody\n"
+    assert not [f for f, _ in _references("docs/example.md", grant) if f == "allowed-tools"], (
+        "a repository argument was extracted as a path reference, which reddens the suite on a "
+        "non-defect and invites an allowlist entry spent on a bug in this extractor"
+    )
+    # The same line still yields the real path beside it — narrowing, not disabling.
+    both = "---\nallowed-tools: Bash(gh issue list --repo owner/name *), Bash(python3 plugin/bin/prawduct-hook *)\n---\nbody\n"
+    assert [raw for f, raw in _references("docs/example.md", both) if f == "allowed-tools"] == [
+        "plugin/bin/prawduct-hook"
+    ]
 
 
 def test_a_citation_is_not_a_reference():
@@ -417,7 +467,10 @@ def test_the_plugin_fallback_is_denied_to_invocation_forms():
     # INVOKING the pre-relocation path — the motivating defect, in both invocation forms.
     assert not _resolves(skill, "bin/prawduct-hook", "command")
     assert not _resolves(skill, "bin/prawduct-hook", "allowed-tools")
-    # The corrected form resolves from anywhere, which is why all fifteen in-tree uses say it.
+    # The corrected form resolves from anywhere, which is why all fifteen uses in the shipped
+    # plugin say it. "In the shipped plugin", not "in-tree": tree-wide the literal appears in
+    # tracked markdown well over a hundred times, and a reviewer re-measuring the wider scope
+    # would read this load-bearing count as fabricated.
     assert _resolves(skill, "plugin/bin/prawduct-hook", "command")
     # Build plans hold the same declared entitlement, and the same denial.
     plan = ".prawduct/artifacts/build-plan-drift-burndown.md"
@@ -432,9 +485,12 @@ def test_relative_targets_resolve_against_the_containing_file():
     cluster of ``documentation/work-model*.md`` cross-links that are perfectly correct. A resolver
     that is wrong in this direction sends the builder to 'fix' working links.
     """
-    assert _resolves("plugin/docs/principles.md", "./doctor-vs-janitor.md")
-    assert _resolves("plugin/skills/critic/SKILL.md", "../../methodology/building.md")
-    assert not _resolves("plugin/docs/principles.md", "../.prawduct/learnings.md")
+    # ``form`` is never consulted on a ``./``/``../`` ref — the relative branch returns before the
+    # fallback that reads it — but it is passed explicitly because the parameter is required, and
+    # ``md-link`` is the form these actually appear in.
+    assert _resolves("plugin/docs/principles.md", "./doctor-vs-janitor.md", "md-link")
+    assert _resolves("plugin/skills/critic/SKILL.md", "../../methodology/building.md", "md-link")
+    assert not _resolves("plugin/docs/principles.md", "../.prawduct/learnings.md", "md-link")
     # The same target from a file one level up DOES resolve — proving the base is the containing
     # file rather than a constant.
-    assert _resolves("plugin/principles.md", "../.prawduct/learnings.md")
+    assert _resolves("plugin/principles.md", "../.prawduct/learnings.md", "md-link")

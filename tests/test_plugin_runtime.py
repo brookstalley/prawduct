@@ -2419,6 +2419,40 @@ class TestGreenIsEvidenceDelivery:
         written to prove absent."""
         (repo / "README.md").write_text("seed\nmore prose\n")
 
+    def _non_python_change(self, repo: Path) -> None:
+        """A changed source file the symbol-grep overlay cannot judge at all.
+
+        `.swift` stands in for every non-Python product (Go, Rust, C#, TS): the
+        overlay classifies it `changes_unjudged` and leaves `changes_referenced`
+        empty, which is the exact shape that kept this directive dark in every
+        such repo.
+        """
+        (repo / "Widget.swift").write_text("struct Widget { let n = 1 }\n")
+
+    def test_directive_fires_when_the_changed_set_holds_no_python_at_all(
+        self, tmp_path
+    ):
+        """The whole point of the language-agnostic trigger.
+
+        Asserts the fixture's *shape* before its outcome: a Python fixture
+        passes this test today and proves nothing, so the empty
+        `changes_referenced` is checked first — without it, a green here cannot
+        distinguish "the trigger widened" from "the overlay judged the file
+        after all".
+        """
+        repo = self._repo(tmp_path)
+        self._non_python_change(repo)
+        res = _run_in(repo, "test-evidence", "record")
+        assert res.returncode == 0, res.stderr
+        ev = json.loads((repo / ".prawduct" / ".test-evidence.json").read_text())
+        assert not ev["changes_referenced"], (
+            "fixture leaked a judged Python change — this test would then pass "
+            "on the OLD trigger and prove nothing about non-Python products"
+        )
+        assert "Widget.swift" in ev["changes_unjudged"]
+        hook = _load_hook_module()
+        assert hook._GREEN_IS_EVIDENCE_DIRECTIVE in res.stdout
+
     def test_directive_reaches_stdout_when_judged_code_changed(self, tmp_path):
         repo = self._repo(tmp_path)
         self._judged_change(repo)
@@ -2486,6 +2520,113 @@ class TestGreenIsEvidenceTrigger:
         hook = _load_hook_module()
         path = self._write(tmp_path, json.dumps({"changes_referenced": []}))
         assert hook._evidence_changed_judged_code(path) is False
+
+    def test_fires_on_non_python_source_the_overlay_could_not_judge(self, tmp_path):
+        """The non-Python product, at the predicate. `changes_referenced` is
+        empty there by construction — symbol-grep judges Python only — so the
+        trigger has to read `changes_unjudged` or it can never fire off Python.
+        """
+        hook = _load_hook_module()
+        path = self._write(
+            tmp_path,
+            json.dumps(
+                {"changes_referenced": [], "changes_unjudged": ["src/main.swift"]}
+            ),
+        )
+        assert hook._evidence_changed_judged_code(path) is True
+
+    @pytest.mark.parametrize(
+        "unjudged",
+        [
+            ["README.md", "docs/guide.md"],
+            [".prawduct/project-state.yaml", ".claude/settings.json"],
+        ],
+        ids=["prose", "framework-metadata"],
+    )
+    def test_silent_when_every_unjudged_path_needs_no_review(self, tmp_path, unjudged):
+        """Widening the trigger must not cost it its silence.
+
+        `changes_unjudged` is a mixed bag — non-Python source, prose, framework
+        metadata, and files deleted in the diff all land there — so reading it
+        wholesale would fire on every docs-only cycle, and a directive that
+        prints every time is one the reader learns to skip. Only the paths that
+        need review coverage count.
+        """
+        hook = _load_hook_module()
+        path = self._write(
+            tmp_path,
+            json.dumps({"changes_referenced": [], "changes_unjudged": unjudged}),
+        )
+        assert hook._evidence_changed_judged_code(path) is False
+
+    def test_framework_metadata_alone_does_not_fire_it(self, tmp_path):
+        """The carve-out that keeps the widened trigger from firing every cycle.
+
+        `changes_unjudged` is dominated by `.prawduct/` in practice, because the
+        methodology *requires* each chunk to update the change-log and the build
+        plan — so governed work puts framework metadata in its own changed set by
+        construction. Measured on this repo while recording the evidence for this
+        chunk: 26 unjudged entries, every one of them under `.prawduct/`, none
+        judgeable. Reading `changes_unjudged` wholesale would therefore print the
+        directive on cycles that changed no product code at all, which is the
+        failure the class docstring names.
+
+        Deliberately NOT claimed: that `.prawduct/.test-evidence.json` is itself
+        always present. `lib/core.py` scaffolds it into `.gitignore`, and
+        `_changed_files` builds its untracked half with `--exclude-standard`, so
+        in any onboarded repo it is in neither half. An earlier draft of this
+        docstring asserted the opposite from a scratch repo that had no
+        `.gitignore` — the fixture was unrepresentative, and the conclusion
+        ("prints 100% of the time") over-priced the carve-out for whoever next
+        weighs relaxing it.
+        """
+        hook = _load_hook_module()
+        path = self._write(
+            tmp_path,
+            json.dumps(
+                {
+                    "changes_referenced": [],
+                    "changes_unjudged": [
+                        ".prawduct/artifacts/build-plan-drift-burndown.md",
+                        ".prawduct/change-log.md",
+                    ],
+                }
+            ),
+        )
+        assert hook._evidence_changed_judged_code(path) is False
+
+    def test_a_deleted_source_file_fires(self, tmp_path):
+        """Admitted deliberately, recorded because it is not obvious.
+
+        The overlay files diff-deleted paths under `changes_unjudged` alongside
+        prose, and by the time this predicate reads the record there is nothing
+        left on disk to tell the two apart — only the path. Classifying by path
+        means a deleted `.py` fires, which is the right direction anyway: code
+        leaving the tree is a change the suite should still vouch for.
+        """
+        hook = _load_hook_module()
+        path = self._write(
+            tmp_path,
+            json.dumps({"changes_referenced": [], "changes_unjudged": ["gone.py"]}),
+        )
+        assert hook._evidence_changed_judged_code(path) is True
+
+    def test_a_referenced_change_fires_even_where_the_path_is_unjudgeable(
+        self, tmp_path
+    ):
+        """The widening is strict: every record that fired before still fires.
+
+        `is_judgeable_path` calls anything under `.prawduct/` framework metadata
+        and therefore not review-needing, so a `.prawduct/`-resident Python file
+        in `changes_referenced` would go dark if the new predicate REPLACED the
+        old one. It is an OR, not a substitution, and this pins that.
+        """
+        hook = _load_hook_module()
+        path = self._write(
+            tmp_path,
+            json.dumps({"changes_referenced": [".prawduct/tools/gen.py"]}),
+        )
+        assert hook._evidence_changed_judged_code(path) is True
 
     def test_silent_when_field_absent(self, tmp_path):
         # A record written before the F4a overlay existed, or one whose overlay
