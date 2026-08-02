@@ -1364,6 +1364,42 @@ W-1 was filed as "8 statusless change-log entries across four scopes." I recount
 
 Fixing a false safety claim across ten sites, the same changeset introduced two fresh ones: an `all`-scope bullet promising the archive "stays reachable from `find`/`list`" (post-cutover `find` is W2-deferred for *every* item — established by the PR merged an hour earlier, precisely because it was adjacent), and "re-run with `--archive-scope all` to backfill, no duplicates" (true about duplicates, silent that the skip path reconciles status, so a backfill reopens anything closed on the service since cutover). Then the *correction* of one of those overclaims swung into a different wrong claim — asserting a backlog note "records the same gap" when it concluded the opposite — taking three commits to land accurate. **Two rules.** (1) A replacement sentence gets the same falsification query the original needed; being in the middle of a correction is the *highest*-risk moment for this class, not a safe one. (2) When successive edits to one passage alternate direction (overclaim → overcorrect → …), stop editing and go read the sources — the oscillation is the tell that you are reasoning from the passage instead of from what it describes, and a reviewer calling a further pass "churn, not improvement" is usually right. Discovered 2026-07-20 on `fix/archive-scope-preservation-claim` (cumulative + 5 verify-resolutions rounds, 15→0). Relates to [[Before writing any sentence of the shape "X now covers/catches/handles Y" or "there is no Y", run the one query that would falsify it]] and Validate Before Propagating (#15).
 
+**Second recurrence, 2026-08-02, `fix/drift-burndown` Chunk 02 — and it fired inside a sweep whose
+entire subject was false claims, with this rule already written.** Auditing 32 coverage-matrix rows,
+31 cells got a query and an answer. The Dependency-management cell got a conclusion: "`building.md`
+names a new dependency only as a size heuristic", written from the impression left by a grep I had
+run for something else — a grep whose output *contained* the line that falsifies it
+(`building.md:150` names external dependency as one of five triggers making a decision major). The
+Critic caught it as a warning: *the sweep reproduced its own target defect*. **What the rule was
+missing is the trigger.** "The fixing mood" is a state you cannot notice from inside; "I am writing
+a replacement sentence" is an event. The operative form: when the correction is drafted, run the
+query against **the replacement**, not against the claim being replaced — you have just read the
+source, so the correction feels checked, and reading is what produced the error. The syntactic tell,
+usable mid-sweep: *this cell got a conclusion where every other one got a query.* Corollary observed
+in the same chunk: the four corrections written after this fired were each grep-verified against the
+mechanism first, and all four passed the verify round.
+
+## A falsifying grep queries a PHRASING; only a reader queries a concept — the same stale state written in words your query does not contain is invisible, so the sites that survive a sweep are exactly the ones that paraphrase
+
+`fix/drift-burndown` Chunk 02 (#179), 2026-08-02. VRF-010 had verified three foreign-API readers
+live, and the closure had to be propagated to every record still encoding the pre-verification state.
+The falsifying query was the claim's own vocabulary — `fake-verified`, `shape-verified`, `fake only`
+— and it found the two golive-plan sites the item named plus the `project-state.yaml` claim. The
+Critic then found a **third** golive site the query could not reach: Chunk 05b's `Covers:` line,
+reading *"its foreign-API verification half **stays open**"*. Same state, same file, same release —
+zero shared vocabulary with the query.
+
+This is the limit of the standing *query the CONCEPT, not the phrasing* rule, and the limit is
+structural rather than a lapse: **a grep can only ever match a phrasing.** "Query the concept" is
+achievable only by (a) naming the *state* being asserted and then searching two or three vocabularies
+that share no word with each other — here, the claim's own words, the *consequence* words
+(`stays open`, `still open`, `unverified`), and the *entity* words (the item id, the reader names) —
+or (b) handing the concept to a reader, which is what independent review is and why it caught this.
+
+The cheap discipline: after a sweep, ask *what would this record say if it never used my search
+terms?* If you cannot answer, the sweep covered a phrasing and reported it as coverage. Relates to
+[[A completeness claim asserts the falsifying COMMAND now returns nothing]] and Independent Review (#14).
+
 ## Before writing any sentence of the shape "X now covers/catches/handles Y" or "there is no Y", run the one query that would falsify it — a coverage claim is the highest-frequency error class here and is almost always checkable in under a minute, so treat the SENTENCE as the trigger, not your confidence in it
 
 The claim-shape is the tripwire, not the topic: "this test now catches the class", "every reader is repointed", "there is nothing local to run this against", "the inventory is exhaustive". Six instances across 2026-07-19/20 — twice stating a repo/state didn't exist that did (one loop over sibling `project-state.yaml` files falsified it), twice describing a regex/test as covering a class it demonstrably could not (`[^.]` excluding the dots in `.prawduct/backlog.md`; an `op == "x"` derivation blind to `op in ("a","b")`), once repeating a docstring's rationale that the requirements had already corrected two days earlier, and once writing "fixing one and not the other would be the patch-the-flagged-line failure" while leaving the sibling copy in the same file. Being careful demonstrably does not work at this frequency; the check does. Fix-shape: (a) for a set/coverage claim, re-derive the set with the precise query right before writing it; (b) for an absence claim ("no X exists"), run the enumeration rather than reasoning from what you happened to see; (c) for a rationale read off a comment or docstring, verify the requirement it cites still says that — the nearest source is not the authoritative one; (d) for "I am avoiding anti-pattern P", actually run P's detector, because naming P is not running it.
