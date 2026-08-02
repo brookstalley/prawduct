@@ -97,7 +97,8 @@ The CLI groups by responsibility. Every subcommand is read-only unless marked mu
 
 Safe/idempotent notes: consolidation and fact-appends are **idempotent** (identity fixed at
 dispatch); state-mutating lifecycle commands (`migrate-plugin`, `init-product`, `coverage-scaffold`,
-`repo-disable`, `audit-learnings`) default to a **dry run** and require `--apply` to write.
+`repo-disable`, `audit-learnings`, `learnings-obligation`) default to a **dry run** and require
+`--apply` to write.
 
 ## Inputs & Outputs
 
@@ -110,7 +111,13 @@ dispatch); state-mutating lifecycle commands (`migrate-plugin`, `init-product`, 
 - **Machine-readable output (`--json`):** a defined subset emits structured JSON on stdout, each with
   a documented key set, consumed by a specific skill:
   - `coverage-status --json` / `coverage-scaffold --json` → doctor (`structural_recorded`,
-    `missing_artifacts[]`, `norms_unratified`, `active_layer`, `fix` / `applied`, `created[]`).
+    `discovery_expected`, `missing_artifacts[]`, `norms_unratified`, `active_layer`, `fix` /
+    `applied`, `created[]`). `discovery_expected` is the layer-0 staging half — false on a repo with
+    no product work yet, where `active_layer: null` means "nothing owed yet" rather than "chain
+    satisfied".
+  - `learnings-obligation --json` → doctor (`status` — one of `ok` / `missing` / `misplaced` /
+    `absent` / `unreadable` — plus `path`, `marker`, `marker_lines[]`, `first_rule_line`, `detail`,
+    `repairable`, `applied`, `insert_before_line`, `insert_text`).
   - `migrate-plugin --json` → migrate skill; `init-product --json` → onboard skill;
     `audit-learnings --json` → doctor; `repo-disable --json` → repo-disable skill.
   - `review-stats --json` → the cross-project telemetry aggregator, carrying a top-level

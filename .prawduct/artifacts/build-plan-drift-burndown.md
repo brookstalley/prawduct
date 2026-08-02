@@ -205,6 +205,28 @@ same defect shape #348 filed — a tracking reference naming no id — so the co
 Under-fires; costs advice, never soundness. The four carried-in test edits landed with the chunk as
 planned.
 
+**Chunk 04 BUILT 2026-08-02** (#241, #351) — the plan's last chunk, so its review is the
+**cumulative**. Both halves were "a surface that claims to mirror another surface and does not", and
+in both the fix was *where the answer lives*, not the answer. #241: `coverage_probes` now owns
+`discovery_expected` / `layer0_active` / `layer1_active`, and the report calls them instead of
+re-deriving a layer it claims to mirror. The design call worth keeping is the one a naive fix misses
+— layer 1 was reached by **falling through** layer 0's condition, so gating layer 0 alone would have
+handed the fresh repo to layer 1 while the layer-1 probe stayed silent: the same disagreement one
+layer down, disguised as its own fix. Both guards are red-verified independently. #351: the
+obligation block is homed in `lib/learnings_obligation.py` and consumed by `init_product`'s starter
+(byte-identical to what it shipped) and by `prawduct-hook learnings-obligation`, the detector +
+offered repair behind doctor Health Check #13.
+
+**Two existing coverage tests had encoded the #241 defect** — they built a repo with nothing but
+`.prawduct/project-state.yaml` and asserted layer 0 was active, which is the fresh-scaffold case the
+item is about. Corrected by giving them product work, so they assert the same thing for the right
+reason; the counts and the rest live in the change-log entry, not here.
+
+**Scope call: no ambient advisory for #351.** The item and the plan both name doctor, and the
+`doctor-vs-janitor.md` placement rule puts a "is a required marker present?" conformance question
+there. A probe would add a second surface to a batch whose subject is surfaces multiplying; if the
+fleet turns out not to run doctor, that is the evidence that buys the advisory.
+
 **Release deferral, reaffirmed 2026-08-02.** The owner was offered release-first and chose to keep
 burning down. The `develop`→`main` promotion is now **three batches deep** and `#533`'s filer stays
 blocked behind `ref: main` until it ships. This is a recorded decision, not an oversight — do not

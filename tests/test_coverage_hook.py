@@ -51,6 +51,19 @@ def _write_artifact(project_dir: Path, name: str, body: str = "# stub\n") -> Non
     (d / name).write_text(body, encoding="utf-8")
 
 
+def _write_product_work(project_dir: Path) -> None:
+    """Give the fixture a reason to owe discovery.
+
+    Layer 0 is staged behind product-definition work: a repo with no code and no
+    ``docs/`` has not started, so "you never said what this is" asks nothing of
+    anyone. Every fixture that expects layer 0 to be ACTIVE has to carry this —
+    without it the fixture is a freshly-onboarded empty repo, which is exactly the
+    state the layer is supposed to stay quiet in.
+    """
+    (project_dir / "src").mkdir(parents=True, exist_ok=True)
+    (project_dir / "src" / "app.py").write_text("def main():\n    ...\n", encoding="utf-8")
+
+
 # Structural blocks (6-space nested attributes record presence; null does not).
 _GATE_OPEN = "    has_human_interface:\n      modality: terminal\n"
 _API_RECORDED = "    exposes_programmatic_interface:\n      consumers: external\n"
@@ -75,12 +88,16 @@ _UNIVERSAL = [
 
 class TestCoverageStatus:
     def test_layer0_active_when_characteristics_unrecorded(self, tmp_path):
-        # Template-default structural (all null) → layer 0 owns the nudge.
+        # Template-default structural (all null) + product work → layer 0 owns the
+        # nudge. The product work is load-bearing, not scenery: layer 0 asks "you
+        # never said what this is", which is only a question once there is a "this".
         _write_state(tmp_path, _ALL_NULL)
+        _write_product_work(tmp_path)
         result = _run("coverage-status", tmp_path, "--json")
         assert result.returncode == 0
         data = json.loads(result.stdout)
         assert data["structural_recorded"] is False
+        assert data["discovery_expected"] is True
         assert data["active_layer"] == 0
         assert "discovery" in data["fix"]
 
@@ -113,10 +130,110 @@ class TestCoverageStatus:
 
     def test_human_output_names_the_active_layer(self, tmp_path):
         _write_state(tmp_path, _ALL_NULL)
+        _write_product_work(tmp_path)
         result = _run("coverage-status", tmp_path)
         assert result.returncode == 0
         assert "Layer 0" in result.stdout
         assert "Active nudge → Layer 0" in result.stdout
+
+
+# ---------------------------------------------------------------------------
+# The report and the ambient nudge answer for the same repo (#241)
+# ---------------------------------------------------------------------------
+
+
+class TestReportAgreesWithTheNudge:
+    """``coverage-status``'s entire claim is that it mirrors the ambient advisory.
+
+    It used to compute layer-0-active as *not recorded*, full stop, while the probe
+    it claims to mirror also requires product-definition work — so a freshly
+    onboarded empty repo was told its coverage was degraded by a report reading an
+    expectation table that was asking it for nothing (#241).
+
+    These assert **agreement between the two surfaces**, not a hardcoded layer per
+    fixture: a future staging change that moves both together should keep them
+    green, and one that moves only the report should turn them red. The direction of
+    the agreement is pinned separately, because "both silent" and "both firing"
+    agree equally well and only one of them is right per fixture.
+    """
+
+    def _nudged(self, project_dir: Path) -> bool:
+        """Does the ambient layer-0 advisory fire on this repo?"""
+        from lib import advisory_store, coverage_probes  # noqa: PLC0415
+
+        return bool(
+            coverage_probes.probe_discovery_not_captured(
+                advisory_store.load_project_state(project_dir),
+                advisory_store.make_codebase(project_dir),
+            )
+        )
+
+    def _reports_layer0(self, project_dir: Path) -> bool:
+        result = _run("coverage-status", project_dir, "--json")
+        assert result.returncode == 0, result.stderr
+        return json.loads(result.stdout)["active_layer"] == 0
+
+    def test_fresh_repo_with_no_product_work(self, tmp_path):
+        # The #241 fixture: onboarded, nothing built. The nudge is silent; before
+        # the fix the report said layer 0.
+        _write_state(tmp_path, _ALL_NULL)
+        assert self._reports_layer0(tmp_path) == self._nudged(tmp_path)
+        assert self._nudged(tmp_path) is False
+
+    def test_repo_with_code_and_no_characteristics(self, tmp_path):
+        _write_state(tmp_path, _ALL_NULL)
+        _write_product_work(tmp_path)
+        assert self._reports_layer0(tmp_path) == self._nudged(tmp_path)
+        assert self._nudged(tmp_path) is True
+
+    def test_repo_with_docs_only_work(self, tmp_path):
+        # docs/ markdown is product-definition work too — a spec-first repo owes
+        # discovery exactly like a code-first one.
+        _write_state(tmp_path, _ALL_NULL)
+        (tmp_path / "docs").mkdir()
+        (tmp_path / "docs" / "design.md").write_text("# Design\n", encoding="utf-8")
+        assert self._reports_layer0(tmp_path) == self._nudged(tmp_path)
+        assert self._nudged(tmp_path) is True
+
+    def test_repo_with_characteristics_recorded(self, tmp_path):
+        _write_state(tmp_path, _GATE_OPEN)
+        _write_product_work(tmp_path)
+        assert self._reports_layer0(tmp_path) == self._nudged(tmp_path)
+        assert self._nudged(tmp_path) is False
+
+    def test_layer1_does_not_inherit_a_silenced_layer0(self, tmp_path):
+        """The trap the fix had to avoid.
+
+        Layer 1 used to be reached by *falling through* layer 0's condition, so
+        gating layer 0 on product work would have handed the fresh repo straight to
+        layer 1 — every universal artifact is missing there — while the layer-1
+        probe stayed silent behind its own staging gate. Same disagreement, one
+        layer down, wearing the fix as a disguise.
+        """
+        from lib import advisory_store, coverage_probes  # noqa: PLC0415
+
+        _write_state(tmp_path, _ALL_NULL)
+        data = json.loads(_run("coverage-status", tmp_path, "--json").stdout)
+        codebase = advisory_store.make_codebase(tmp_path)
+        state = advisory_store.load_project_state(tmp_path)
+        layer1_nudged = bool(
+            coverage_probes.probe_strategy_artifact_missing(state, codebase)
+        )
+
+        assert data["missing_artifacts"], "fixture is not exercising the trap"
+        assert (data["active_layer"] == 1) == layer1_nudged
+        assert data["active_layer"] is None
+
+    def test_human_output_does_not_call_an_unstarted_chain_satisfied(self, tmp_path):
+        """The `--json` path never exercises the formatter (learning: a human-mode
+        branch that no test reads is where a new result type hides). "Satisfied" and
+        "not started" are different answers and must not render alike."""
+        _write_state(tmp_path, _ALL_NULL)
+        result = _run("coverage-status", tmp_path)
+        assert result.returncode == 0
+        assert "no product work yet" in result.stdout
+        assert "the coverage chain is satisfied" not in result.stdout
+        assert "Active nudge → Layer" not in result.stdout
 
 
 # ---------------------------------------------------------------------------

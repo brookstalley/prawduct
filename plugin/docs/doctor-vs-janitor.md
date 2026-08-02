@@ -20,7 +20,7 @@ full version.
 | Axis | doctor | janitor |
 |---|---|---|
 | **Subject** | prawduct scaffolding & recorded decisions (`.prawduct/`, `.claude/settings.json`, the CLAUDE.md anchor, the gitignore *contract*) | the product's own source, tests, docs, dependencies, git history |
-| **Action model** | report & present the exact edit; never auto-fixes (plus three bounded `prawduct-hook` operations: enable-gate, verify, audit-learnings) | survey, then fix through a full build plan + Critic |
+| **Action model** | report & present the exact edit; never auto-fixes (plus the bounded `prawduct-hook` operations it drives, each owner-invoked — the skill's Health Check flow is their one roster, so this row does not keep a second copy) | survey, then fix through a full build plan + Critic |
 | **Question type** | "is X present / recorded / correct?" — conformance, roughly binary | "is X well-built / current / proportionate?" — craft, graded |
 
 A softer fourth axis is **cadence**: doctor is point-in-time (after onboarding/migration, or when

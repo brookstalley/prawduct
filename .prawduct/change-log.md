@@ -3,6 +3,88 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-08-02: two doctor surfaces that answered confidently for a state the repo was not in
+
+<!-- prawduct: type=fix | scope=drift-burndown | chunks=04 -->
+
+Both halves are the same defect in different organs: a surface that claims to mirror another surface,
+and does not.
+
+**#241 — `coverage-status` graded a freshly-onboarded repo as degraded while the nudge it claims to
+mirror correctly stayed silent.** The report computed layer-0-active as *characteristics not
+recorded*, full stop. The layer-0 probe also requires **product-definition work** — a repo with no
+source and no `docs/` has not started, so "you never told governance what this is" asks nothing of
+anyone. So an owner who ran `/prawduct:doctor` on a fresh scaffold was sent to `/prawduct:methodology
+discovery` by a report reading an expectation table that was asking for nothing. Bounded and
+cosmetic in effect; worth fixing rather than documenting precisely *because* the report's own claim
+is that it reads the same table.
+
+The fix is not the gate, it is **where the gate lives**. `coverage_probes` now owns
+`discovery_expected` / `layer0_active` / `layer1_active`, and both the probes and the report call
+them — the report no longer re-derives any layer it claims to mirror. Two things fell out of that:
+
+- **The trap the naive fix walks into.** Layer 1 was reached by *falling through* layer 0's
+  condition, so gating layer 0 alone would have handed the fresh repo straight to layer 1 (every
+  universal artifact is missing there) while the layer-1 probe stayed silent behind its own staging
+  gate. Same disagreement, one layer down, wearing the fix as a disguise. `test_layer1_does_not_
+  inherit_a_silenced_layer0` is the pin, red-verified by reverting each guard independently.
+- **"Nothing owed yet" and "everything satisfied" are different answers.** With layer 0 correctly
+  silent, the human report's closing line said *the coverage chain is satisfied* to a repo that had
+  never been asked anything — a false clean bill replacing a false finding. Both output modes now
+  distinguish them: a new `discovery_expected` key in `--json` (additive; `api-contract.md` updated),
+  and a human line naming what starts the chain. The human path is separately tested, because a
+  `--json`-only suite never executes the formatter.
+
+**Two existing tests had encoded the defect and were corrected, not weakened.**
+`test_layer0_active_when_characteristics_unrecorded` and `test_human_output_names_the_active_layer`
+built a repo with `.prawduct/project-state.yaml` and nothing else — i.e. exactly the fresh scaffold
+#241 is about — and asserted layer 0 was active. They now carry product work, so they still assert
+layer-0-active and now assert it for the right reason. The new agreement tests assert the report and
+the probe **match each other** across four fixtures rather than matching a hardcoded layer, so a
+future staging change that moves both stays green and one that moves only the report goes red.
+
+**#351 — `/prawduct:learnings` pointed every product at a marker only new onboards ever received.**
+The skill deliberately *points* at the descent obligation in the product's own `learnings.md`
+(marked `prawduct:descent-obligation`) rather than restating it, so the statement has one home. Only
+`init_product`'s starter corpus ever wrote that marker, and only `if not learnings.is_file()` — so
+the defect is **closed for the empty set and open for the real one**: the live fleet is entirely
+already-onboarded, and nothing (not onboard, not migrate, not a re-run) backfills it. Three sites
+mentioned the marker; none of them was a detector.
+
+Now: `lib/learnings_obligation.py` holds the block, `init_product` composes its starter from it
+(verified byte-identical to what it shipped before), and `prawduct-hook learnings-obligation`
+detects and offers the repair as doctor **Health Check #13**.
+
+- **Position is not a refinement of presence, it is the other half of it.** A block appended to the
+  end of the file satisfies every presence check and is still wrong — the reader meets the
+  obligation *after* the rules it governs, which is the inertness the statement exists to prevent.
+  So `misplaced` is its own status, and the append-to-end variant is an explicit test rather than an
+  implied one.
+- **Insert-only, and that constrains the answer.** `learnings.md` is the product's own authored
+  corpus (place-once state the framework creates and never re-touches). Inserting a block the
+  framework already ships to new products is bounded and reviewable; deleting or moving a line the
+  owner wrote is not. The consequence is deliberate and slightly unsatisfying: a *misplaced* marker
+  is reported for the owner to move, never moved for them.
+- **The dry run is a confirmation seam, not a rehearsal.** The corpus warns that a dry run
+  validating identically to the real run is where drift hides — that rule is about a check standing
+  in for a later write by a *different actor*. Here the command is the operation, the target is a
+  file the framework did not author, and the security model wants an informed confirmation naming
+  what changes; printing the exact block at the exact line is that naming, and `--apply` is the yes.
+- **Tested against a fixture, never against this repo** — which has the marker, correctly placed,
+  and is exactly why the defect shipped. The framework's own state stands in for the propagated
+  contract only as long as nobody looks anywhere else.
+
+Exit codes follow `api-contract.md` § Error Model in both roles the command plays: as an advisory
+report the dry run exits 0 on a finding and 1 only when it could not grade (undecodable file); as a
+state-mutating writer `--apply` exits 0 on a write or an idempotent no-op and 1 when it refused.
+`absent` is a finding, not an ungraded check — a missing `learnings.md` is Health Check #5's.
+
+**One stale count fixed in passing, in the file this chunk edits.** `docs/doctor-vs-janitor.md` said
+doctor drives "three bounded `prawduct-hook` operations" and named three; there were already five.
+Replaced with a pointer to the Health Check flow rather than a corrected list — this batch's own
+subject is facts with too many homes, and fixing a stale enumeration by writing a fresher one is how
+it recurs.
+
 ## 2026-08-02: the green-is-evidence directive now fires off a language it does not have to know
 
 <!-- prawduct: type=fix | scope=drift-burndown | chunks=03 -->

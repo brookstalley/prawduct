@@ -3888,6 +3888,11 @@ def cmd_coverage_status(project_dir: Path, argv: list[str]) -> int:
     codebase = store.make_codebase(project_dir)
     recorded = cp.structural_characteristics_recorded(state_path)
     missing = cp.missing_expected_artifacts(codebase)  # [(name, characteristic|None)]
+    # Whether discovery is owed YET — a freshly-onboarded repo with no code and no
+    # docs owes nothing, which is why layer 0 stays silent there. Reported as its
+    # own field so "no active layer" doesn't render a fresh repo's not-started
+    # chain identically to a finished one's.
+    expected = cp.discovery_expected(codebase)
 
     # Layer 2 composes over the norm probe (its own gate is "strategy artifacts
     # exist AND registry unratified"). The probe is declared non-raising, but a
@@ -3901,11 +3906,14 @@ def cmd_coverage_status(project_dir: Path, argv: list[str]) -> int:
         print(f"NOTE: coverage-status layer-2 (norm ratification) check skipped: {exc}", file=sys.stderr)
         norms_unratified = None
 
-    # Which single layer currently owns the nudge (the chain stages).
-    if not recorded:
+    # Which single layer currently owns the nudge (the chain stages). Layers 0 and 1
+    # are asked of the probe module, never re-derived here: this report's whole claim
+    # is that it mirrors the ambient nudge, and it earns that only by calling the same
+    # predicates the probes fire on.
+    if cp.layer0_active(codebase):
         active_layer: int | None = 0
         fix: str | None = "record structural characteristics: /prawduct:methodology discovery"
-    elif missing:
+    elif cp.layer1_active(codebase):
         active_layer = 1
         fix = ("author each missing artifact (/prawduct:methodology planning), or drop stubs "
                "in one act: prawduct-hook coverage-scaffold --apply")
@@ -3920,6 +3928,7 @@ def cmd_coverage_status(project_dir: Path, argv: list[str]) -> int:
         import json as _json  # noqa: PLC0415
         print(_json.dumps({
             "structural_recorded": recorded,
+            "discovery_expected": expected,
             "missing_artifacts": [{"artifact": name, "characteristic": char} for name, char in missing],
             "norms_unratified": norms_unratified,
             "active_layer": active_layer,
@@ -3928,7 +3937,16 @@ def cmd_coverage_status(project_dir: Path, argv: list[str]) -> int:
         return 0
 
     print("Structural coverage (three-layer chain):")
-    print(f"  Layer 0 · discovery         : characteristics {'RECORDED' if recorded else 'NOT RECORDED'}")
+    if recorded:
+        print("  Layer 0 · discovery         : characteristics RECORDED")
+    elif expected:
+        print("  Layer 0 · discovery         : characteristics NOT RECORDED")
+    else:
+        # Unrecorded AND unowed. Printing the bare "NOT RECORDED" here reads as the
+        # finding it is not: nothing has been built yet, so there is nothing to
+        # characterise.
+        print("  Layer 0 · discovery         : characteristics NOT RECORDED "
+              "(not owed yet — no product work in this repo)")
     if missing:
         print(f"  Layer 1 · strategy artifacts : {len(missing)} expected artifact(s) missing")
         for name, char in missing:
@@ -3949,6 +3967,11 @@ def cmd_coverage_status(project_dir: Path, argv: list[str]) -> int:
         # whole chain is satisfied (the --json consumer discriminates on the
         # norms_unratified: null field; the human reader gets this explicit line).
         print("  Active nudge → none actionable: layers 0-1 satisfied; layer 2 (norms) could not be checked.")
+    elif not expected and not recorded:
+        # "Satisfied" would be a false clean bill: nothing has been asked of this
+        # repo yet. Name what starts the chain instead.
+        print("  Active nudge → none: no product work yet — the chain engages once "
+              "the repo has source code or docs/.")
     else:
         print("  Active nudge → none: the coverage chain is satisfied.")
     return 0
@@ -4350,6 +4373,65 @@ def cmd_update_gitignore(project_dir: Path) -> int:
     return 0
 
 
+def cmd_learnings_obligation(project_dir: Path, argv: list[str]) -> int:
+    """Check — and on ``--apply`` repair — the descent obligation in ``learnings.md``.
+
+    ``/prawduct:learnings`` points every product's reader at the obligation marked
+    ``prawduct:descent-obligation``; only ``init-product``'s starter corpus ever
+    wrote that marker, and it writes it only when the file does not exist. So the
+    entire already-onboarded fleet carries a pointer at nothing. This is the doctor
+    health check that detects it (``/prawduct:doctor`` Health Check #13) and the
+    repair that closes it.
+
+    Exit codes follow ``artifacts/api-contract.md`` § Error Model. **Dry run is an
+    advisory report:** 0 when it ran — a finding is not a failure — and 1 only when
+    it could not run (lib not importable, file undecodable). **``--apply`` is a
+    state-mutating writer:** 0 when it inserted or was an idempotent no-op, 1 when
+    it refused (nothing written). Unknown flags are 2.
+    """
+    rejected = _reject_unknown_args("learnings-obligation", argv, {"--apply", "--json"})
+    if rejected is not None:
+        return rejected
+    apply = "--apply" in argv
+    as_json = "--json" in argv
+
+    lib_root = _plugin_root()
+    if lib_root not in sys.path:
+        sys.path.insert(0, lib_root)
+    try:
+        from lib import learnings_obligation  # noqa: PLC0415 — lazy keeps top-level cheap
+    except ImportError as exc:
+        # Fail-closed for the writer, fail-open would be a false success; the dry
+        # run cannot run either, so both directions are 1 here ("could not run").
+        print(
+            f"error: learnings-obligation could not import the plugin lib/ ({exc})",
+            file=sys.stderr,
+        )
+        return 1
+
+    result = learnings_obligation.repair(project_dir, apply=apply)
+    status = result["status"]
+
+    if as_json:
+        print(json.dumps(result, indent=2))
+    else:
+        print(f"learnings-obligation ({'applied' if result['applied'] else 'dry-run'}): {status}")
+        print(f"  {result['detail']}")
+        if result["repairable"] and not result["applied"]:
+            # The informed confirmation: name the file, the exact line, and the
+            # exact text, so `--apply` is a yes to something the owner has read.
+            print(
+                f"  Would insert into {result['path']} above line "
+                f"{result['insert_before_line']} (--apply to write it):"
+            )
+            for line in (result["insert_text"] or "").split("\n"):
+                print(f"    | {line}")
+
+    if apply:
+        return 0 if result["applied"] or status == learnings_obligation.STATUS_OK else 1
+    return 1 if status == learnings_obligation.STATUS_UNREADABLE else 0
+
+
 def cmd_audit_learnings(project_dir: Path, argv: list[str]) -> int:
     """Audit the consumer's ``.prawduct/learnings.md`` lifecycle (F9).
 
@@ -4529,7 +4611,8 @@ _USAGE = (
     "coverage-status [--json]|coverage-scaffold [--apply] [--json]|"
     "migrate-plugin [--apply] [--json]|init-product <target> --name <name> [--backlog-repo owner/repo] [--apply] [--json]|"
     "update-gitignore|"
-    "audit-learnings [--apply] [--json]|repo-disable [--local] [--apply] [--json]}"
+    "audit-learnings [--apply] [--json]|learnings-obligation [--apply] [--json]|"
+    "repo-disable [--local] [--apply] [--json]}"
 )
 
 
@@ -4849,6 +4932,8 @@ def main() -> int:
         return cmd_update_gitignore(project_dir)
     elif command == "audit-learnings":
         return cmd_audit_learnings(project_dir, sys.argv[2:])
+    elif command == "learnings-obligation":
+        return cmd_learnings_obligation(project_dir, sys.argv[2:])
     elif command == "repo-disable":
         return cmd_repo_disable(project_dir, sys.argv[2:])
     else:
