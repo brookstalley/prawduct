@@ -6,6 +6,32 @@ No size constraint on this file — it's the deep reference, consulted via `/lea
 
 ---
 
+## A fix ships TWO artifacts that can independently be false — the change, and the evidence that it works. This branch put every defect in the second: a test that could not see the bug it pinned, then a comment asserting the rule its own assertion disproves. When you fix something, sweep the NEIGHBOURING PROSE in the same pass, or a reviewer finds it one comment at a time
+
+Measured across one chunk. Five review passes; the last three each returned a finding, and none was
+in an instruction:
+
+- The fix was correct; the **test** pinning it passed against the defect.
+- The test was fixed; a **comment fifteen lines above it** still asserted the rule the new assertion
+  disproves — and it was the authority a maintainer would cite to weaken that assertion.
+- Two more comments: a docstring prescribing a rule unconditionally after it became conditional, and
+  a note whose two constraints had their *scopes* backwards.
+
+The sibling of [[justify at the altitude of the decision]] one layer out. That rule is about reasons
+being wrong. This one is about **evidence** being wrong — and evidence is more dangerous, because a
+green test and a plausible comment both produce the felt experience of verification while providing
+none. You do not re-read them, because their whole job is to be the thing you trust.
+
+**Why prose specifically.** A comment beside a fix is written in the same minute as the fix, from
+inside the frame the fix just created, and it describes the code as the author now intends it rather
+than as it now is. When the fix *narrows* a rule — from "always X" to "X only on path A" — every
+sentence nearby that still says "always X" becomes false silently, and no test covers a comment.
+
+**The cheap countermeasure, and the reason it is worth doing:** when a fix changes a rule, grep the
+symbol's name across the module and read every prose hit in the same pass. It costs one search. Not
+doing it costs a review round *per comment*, because each fix commit moves HEAD past the verified
+tree and buys another coverage pass — so a two-line comment edit is a full round.
+
 ## A mutation test is only evidence if the MUTANT IS THE DEFECT — hand-reverting to "something wrong" tests nothing. Restore the code that actually shipped the bug, gate conditions included: drop a guard the real defect sat behind and the test exercises a path the bug never reached, passing against the very code it was written to catch
 
 Found by a `verify-resolutions` pass on work where I had *already* mutation-tested the fix and
