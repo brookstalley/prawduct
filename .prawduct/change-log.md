@@ -134,6 +134,29 @@ fixed a neighbouring surface. Both residuals were record corrections, both lande
 
 **3 findings** (2 warning, 1 note) — accepted: 3.
 
+### The second verify pass (0 blocking, 0 warnings, 3 notes)
+
+Both prior warnings verified `fixed` **by replaying the historical defect rather than reading the
+fix notes**: `git show f62cae1` establishes the five-skill breakage as
+`Bash(python3 bin/prawduct-hook backlog *)` in four `allowed-tools:` grants plus the same path in
+prose command position, and both forms are now extracted and both denied the fallback. That is the
+verification I owed R-3 the first time and did not do.
+
+**rev-20260802T182307Z-04d99660** — scope `drift-burndown`, chunk 01, 2026-08-02T18:23:07Z
+
+| Finding | Severity | State | Detail |
+|---|---|---|---|
+| R-1 | note | accepted | fixed: the plan's stale '8 tests' is gone; the plan now states no count and points at the change-log, which carries 7 functions / 9 cases |
+| R-2 | note | accepted | deferred to Chunk 03 with a written home in the plan: making form required is a test-file edit, and landing it now would move the reviewed tree and buy a fourth review round for a note while Chunk 01's gate is already satisfied |
+| R-3 | note | accepted | no action: the eight chunk-ref-missing entries are the known #552 naive-extractor class, verified as citations in DECISION prose for the third consecutive round |
+
+**3 findings** (3 note) — accepted: 3.
+
+**One claim the reviewer checked and let stand, worth recording because the number looks wrong:**
+"all fifteen in-tree invocations say `plugin/bin/prawduct-hook`" is 40 tree-wide (26 command-position
++ 14 grants); **15** is the count on the *shipped-plugin* surface (1 command in `adapter-mode.md` +
+14 grants), which is the intended scope. Three review rounds, 0 blocking in every one.
+
 Final coverage, measured at close: **101 references checked across 40 instruction files** (60
 command, 27 link, 14 grant), 0 offenders, 1 allowlisted file, 7 test functions / 9 cases. The
 invocation-form denial changed how references *resolve*, not which are extracted, so the count is

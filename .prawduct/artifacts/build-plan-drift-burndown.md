@@ -134,8 +134,8 @@ reported it unclaimed and buildable. `active_build_plan` still points at `build-
 **by design** and must not be repointed: the gates resolve the *branch's* plan by scope, and the
 golive plan is retained until the pending `develop`→`main` release regenerates it.
 
-**Chunk 01 BUILT 2026-08-02** (#193) — `tests/test_path_reference_resolution.py`, 8 tests, plus one
-live fix in a shipped file. **The plan's own Chunk 01 design was superseded before any code was
+**Chunk 01 CLOSED 2026-08-02** (#193) — `tests/test_path_reference_resolution.py` plus twelve live
+path fixes, one of them in a shipped file. Counts live in the change-log, not here. **The plan's own Chunk 01 design was superseded before any code was
 written**: the live-artifact predicate was dropped once form-based extraction reduced the surface
 from 195 unresolved references to 6, and the named allowlist came in at **one** file against a
 budget of four. The distinction that did the work — *a citation is not a reference* — is not in
@@ -379,6 +379,16 @@ leaves the id alone.
 - **Type:** doc-only
 
 ### Chunk 03: The directive that is dark everywhere it is needed (#348)
+
+**Carried in from Chunk 01's third verify round (note, not blocking):** in
+`tests/test_path_reference_resolution.py`, `_resolves(containing, raw, form="md-link")` defaults to
+the **permissive** form — the one form the `plugin/` fallback is granted to. The red-verification
+test at `test_a_broken_reference_is_caught_in_each_covered_form` is the single caller that omits the
+argument, so it exercises a call shape production never uses, and is harmless today only because its
+fixture path is not entitled to the fallback. **Make `form` required** and update that call site.
+Deferred to here rather than fixed at Chunk 01 close because it is a test-file edit: landing it then
+would have moved the reviewed tree and bought a fourth review round for a note, while Chunk 01's
+coverage gate was already satisfied. It rides this chunk's diff instead.
 
 - **Description:** `_GREEN_IS_EVIDENCE_DIRECTIVE` fires off `changes_referenced`, which is populated by
   `plugin/bin/test-reference-verify`, which skips every non-Python file. In a Swift/Go/TS/Rust/C#
