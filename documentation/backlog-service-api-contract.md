@@ -58,7 +58,7 @@ tier (§7).
 | Op | Acts on | Safe | Idem | Purpose | Parent |
 |---|---|---|---|---|---|
 | `file` (create) | new Item | – | **no** (unless keyed) | one-call create: `title`+`body` suffice, every other field defaultable; returns the ID **immediately**, dedup candidates **advisory-async** | AG2, AG3 |
-| `get` / `show` | one Item | ✓ | – | fetch one item (live; or cache w/ visible age) **with its comment thread** — the DM5 drill-down read (oldest-first `{author, created_at, body, url}`); a failed thread fetch **degrades** — payload `comments_count` + a warning, never a failed get (G2) | Q1, TF1, DM5 |
+| `get` / `show` | one Item | ✓ | – | fetch one item (live; or cache w/ visible age) **with its comment thread** — the DM5 drill-down read (oldest-first `{id, author, created_at, body, url}`; `id` is the native comment id, the stable handle should comment-level ops ever exist); a failed thread fetch **degrades** — payload `comments_count` + a warning, never a failed get (G2) | Q1, TF1, DM5 |
 | `update` | one Item | – | field-wise | field-wise edit; **optimistic CAS** on state/`updated_at` → `conflict` for retry | CC2 |
 | `status` (set) | one Item | – | **yes** | the crash-safe two-axis transition — maps to the Data Model's idempotent **`set-status`** primitive (re-run = no-op); a close also records **`closed_by`** (§2.6) | DM2, CC1, GV3 |
 | `claim` / `unclaim` | Item assignee | – | **yes** | atomic take-and-verify; TTL-reap surfaces `claim_conflict` (non-fatal) | CC3 |

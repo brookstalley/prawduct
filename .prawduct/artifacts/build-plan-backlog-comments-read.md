@@ -74,9 +74,12 @@ file-and-archive.
   item with the payload count and an empty thread (ERR-6).
 - `plugin/lib/backlog/cli.py`: human `get` renders the thread (author · date,
   body indented).
-- `plugin/skills/backlog/adapter-mode.md` `get` section +
-  `plugin/skills/backlog/SKILL.md`: the thread arrives with `get`; read it before
-  acting — clarifications and solution links land there (DM5 drill-down).
+- `plugin/skills/backlog/adapter-mode.md` `get` section: the thread arrives with
+  `get`; read it before acting — clarifications and solution links land there
+  (DM5 drill-down). *Deliberately NOT `SKILL.md`* (narrowed during the build,
+  recorded per Critic R-2): SKILL.md routes every Issues-backend operation to
+  adapter-mode.md, so a duplicate line there would violate the routing design
+  and drift.
 - `documentation/backlog-service-api-contract.md` §2.1 `get` row and
   `documentation/backlog-service-data-model.md` §1.3: the read side of DM5.
 - **Type:** feature (small-medium; one contract surface — the item shape gains

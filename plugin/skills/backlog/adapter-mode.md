@@ -103,7 +103,7 @@ When you need one item's full detail (a direct "show me PFX-XXXX", or before an 
 `prawduct-hook backlog get <id> --repo <r> --json` → render the item's fields + body from `data`.
 
 `get` also returns the item's **comment thread** — `data.comments`, oldest-first
-`{author, created_at, body, url}` — because comments are where an item evolves after filing: a
+`{id, author, created_at, body, url}` — because comments are where an item evolves after filing: a
 clarification, a narrowed scope, a link to the fix. **Read the thread before acting on an item**;
 the body alone may be stale. Every read (`get`/`list`/`pick`) carries `comments_count`, so a
 nonzero count on a list line is your cue to drill down with `get`. If the thread can't be fetched,

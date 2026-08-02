@@ -74,8 +74,9 @@ ref, no new stored field), with the block `closed_by` only as the **manual-close
 
 ### 1.3 Comment · 1.4 Claim · 1.5 Provenance · 1.6 Attachment
 - **Comment** → native issue comments (DM5); cache mirrors text only for Q1-fulltext/Q3. **Read
-  side (added 2026-08-02):** `get` returns the thread (oldest-first `{author, created_at, body,
-  url}`) — comments are where an item evolves after filing, so the drill-down read ships with the
+  side (added 2026-08-02):** `get` returns the thread (oldest-first `{id, author, created_at,
+  body, url}` — `id` is the native comment id, kept as the stable handle for any future
+  comment-level op) — comments are where an item evolves after filing, so the drill-down read ships with the
   single-item fetch; every decoded item carries `comments_count` from the native payload count.
 - **Claim** (Item facet) → `assignee` atomic take; block `claimed_at` = visible staleness; **default
   claim-staleness TTL** drives auto-unclaim/flag so `pick` can't starve (CC3, M11). Residual double-take
