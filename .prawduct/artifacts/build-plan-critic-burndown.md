@@ -156,8 +156,12 @@ corrected in the same pass (`skills/pr/SKILL.md`, `skills/critic/review-cycle.md
 has only moved the defect.
 
 `#228`'s two tests pin behaviour that did not change. Both were **verified red**, as were both
-directions of the `#536` predicate (stuck-off and stuck-on each fail four tests across both emission
-sites). Two findings worth carrying forward: `critic-begin` cannot be exercised in-process — it
+directions of the `#536` wording function (stuck-off and stuck-on each reddened four tests across
+both emission sites). **Correction, from the cumulative review:** an earlier draft of this paragraph
+claimed those four covered the *predicate*. They do not. The Stop-hook tests hand
+`session_review_verdict` a dict with `superseded` already set, so they pin **rendering**; a flipped
+`_verify_anchor_id` cannot redden them. The predicate's own guards are the three at the algebra and
+PR-gate level. Both properties are covered — the sentence merged them and credited the wrong tests. Two findings worth carrying forward: `critic-begin` cannot be exercised in-process — it
 refuses when the shell's cwd differs from the resolved project dir — so that test drives the real CLI
 in a subprocess against a **real bare-repo worktree**; and a first-draft assertion that merely
 compared the two exit messages for inequality **survived a genuine collapse** and was deleted rather

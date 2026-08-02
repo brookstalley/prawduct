@@ -500,28 +500,49 @@ class TestBlockingAndResolutions:
 # ---------------------------------------------------------------------------
 
 
-class TestSupersededBlockerLines:
-    """``gates.superseded_blocker_lines`` is the single home for wording that
-    two gates emit — the PR gate here and the Stop hook's. Pinned directly so a
-    drift between them is impossible to introduce at one site only."""
+class TestBlockingRemedyLines:
+    """``gates.blocking_remedy_lines`` is the single home for the remedy two
+    gates emit — the PR gate here and the Stop hook's. Pinned directly because
+    the three cases differ in WHICH route leads, and leading with the wrong one
+    is the defect this whole change exists to remove."""
 
-    def test_silent_when_every_blocker_is_still_reachable(self):
-        assert gates.superseded_blocker_lines(None) == []
-        assert gates.superseded_blocker_lines([]) == []
-        assert gates.superseded_blocker_lines([{"superseded": False}]) == []
-        # A pre-annotation entry (no key at all) must not be called superseded.
-        assert gates.superseded_blocker_lines([{"fid": "R-1"}]) == []
+    @staticmethod
+    def _text(unresolved):
+        return " ".join(gates.blocking_remedy_lines(unresolved))
 
-    def test_counts_only_the_superseded_entries(self):
-        lines = gates.superseded_blocker_lines(
+    def test_standard_remedy_when_every_blocker_is_reachable(self):
+        for reachable in (None, [], [{"superseded": False}], [{"fid": "R-1"}]):
+            text = self._text(reachable)
+            assert "verify-resolutions" in text, reachable
+            # A pre-annotation entry (no key at all) must not read as superseded.
+            assert "Superseded" not in text, reachable
+            assert "/prawduct:critic cumulative" not in text, reachable
+
+    def test_mixed_set_keeps_the_standard_remedy_and_adds_the_exception(self):
+        lines = gates.blocking_remedy_lines(
             [{"superseded": True}, {"superseded": False}, {"superseded": True}]
         )
-        assert lines[0].startswith("Superseded: 2 findings")
-        assert any("/prawduct:critic cumulative" in line for line in lines)
+        text = " ".join(lines)
+        # The standard route still leads — one of the three IS reachable by it.
+        assert lines[0].startswith("Fix them, then run /prawduct:critic verify-resolutions")
+        assert "Superseded: 2 findings" in text
+        assert "/prawduct:critic cumulative" in text
 
-    def test_reads_as_singular_for_one(self):
-        lines = gates.superseded_blocker_lines([{"superseded": True}])
-        assert lines[0].startswith("Superseded: 1 finding ")
+    def test_all_superseded_leads_with_the_spanning_review(self):
+        """The case the first pass got wrong: appending the exception after
+        'run verify-resolutions' hands the operator the one route that cannot
+        work as their FIRST instruction."""
+        for unresolved in ([{"superseded": True}], [{"superseded": True}] * 3):
+            lines = gates.blocking_remedy_lines(unresolved)
+            text = " ".join(lines)
+            assert lines[0].startswith("Superseded:"), lines
+            assert "/prawduct:critic cumulative" in text
+            # The unreachable route is never prescribed as the action to take.
+            assert "run /prawduct:critic verify-resolutions" not in text, lines
+
+    def test_reads_naturally_for_one_and_for_many(self):
+        assert "the blocker above sits" in self._text([{"superseded": True}])
+        assert "all 3 blockers above sit" in self._text([{"superseded": True}] * 3)
 
 
 # ---------------------------------------------------------------------------

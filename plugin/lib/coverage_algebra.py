@@ -297,6 +297,17 @@ def _verify_anchor_id(facts: list[dict], path: list[dict]) -> "str | None":
       every worktree of the clone, so a sibling's newer review would otherwise
       make a perfectly reachable finding look stranded. Path facts are on this
       interval's lineage by construction.
+
+    **The residual, stated rather than implied.** This is a faithful *proxy*
+    for the dispatcher's anchor, not the same value. Should the cache point at
+    a fact that is not on the composed path, an on-path blocker is reported
+    reachable and the message prescribes a verify pass that will demote rather
+    than clear it — the original defect in a narrower case. Nothing detects
+    that, and nothing here can: reading the cache to check is the very thing
+    D7 forbids a gate to do. It stays a proxy because the failure is soft (the
+    verdict never moves, only the advice) and because closing it properly means
+    giving the anchor a home in the shared store, which is a larger change than
+    a message correction.
     """
     on_path = {s.get("id") for s in path if s.get("kind") == "review"}
     newest = None

@@ -1815,19 +1815,18 @@ def cmd_stop(project_dir: Path, stop_input: dict | None = None) -> int:
                 for e in unresolved[:5]
             )
             more = f"    (+{len(unresolved) - 5} more)\n" if len(unresolved) > 5 else ""
-            # Same shared wording the PR gate prints, indented to this block —
-            # a superseded blocker cannot be cleared by the verify-resolutions
-            # route the line above prescribes.
-            superseded = "".join(
-                f"  {ln}\n" for ln in _gates().superseded_blocker_lines(unresolved)
+            # The whole remedy comes from the shared helper the PR gate also
+            # renders, indented to this block: it decides whether the standard
+            # verify-resolutions route applies, needs an exception appended, or
+            # must be replaced outright because every blocker is superseded.
+            remedy = "".join(
+                f"  {ln}\n" for ln in _gates().blocking_remedy_lines(unresolved)
             )
             blockers.append(_attributed("critic",
                 "CRITIC REVIEW (unresolved blocking findings): review coverage composes\n"
                 f"  over this session's changes, but carries {len(unresolved)} unresolved BLOCKING finding(s):\n"
-                + lines + more +
-                "  Fix them, then run /prawduct:critic verify-resolutions — it records the\n"
-                "  resolution facts and this same evidence passes (no full re-review).\n"
-                + superseded
+                + lines + more
+                + remedy
                 + _escape_hatch
             ))
         else:

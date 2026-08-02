@@ -597,8 +597,11 @@ def disposition_cmd(project_dir: Path, argv: list[str]) -> int:
     if result["severity"] == "blocking":
         # An owner ruling records the decision; it does not satisfy the gate.
         print(
-            "NOTE: this finding is BLOCKING — the gate stays blocked until a "
-            "/prawduct:critic verify-resolutions pass records a resolution fact.",
+            "NOTE: this finding is BLOCKING — the gate stays blocked until it is "
+            "cleared. A /prawduct:critic verify-resolutions pass recording a "
+            "resolution fact is the ordinary route; if the gate reports the "
+            "finding as superseded, only a spanning /prawduct:critic cumulative "
+            "clears it.",
             file=sys.stderr,
         )
     return 0

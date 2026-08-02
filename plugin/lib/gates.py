@@ -933,32 +933,56 @@ def validate_evidence(project_dir: Path) -> int:
     return 0
 
 
-def superseded_blocker_lines(unresolved: "list[dict] | None") -> list[str]:
-    """The extra remedy lines a blocking verdict needs when one of its findings
-    is superseded — i.e. carried by a review fact no verify-resolutions pass
-    will anchor to again (``coverage_algebra._verify_anchor_id``). Empty list
-    when every blocker is still reachable by the standard remedy.
+def blocking_remedy_lines(unresolved: "list[dict] | None") -> list[str]:
+    """The whole remedy a blocking verdict prescribes, as unindented lines.
 
-    Both blocking messages (this module's PR gate and the Stop hook's) render
-    these, because both otherwise prescribe *only* verify-resolutions — the
-    exact route that cannot clear a superseded blocker, which is the whole
-    defect: the underlying state already self-heals through a spanning review,
-    and nothing said so. Wording lives here rather than at either call site so
-    the two cannot drift; each caller owns only its own indentation.
+    Both blocking messages render this — this module's PR gate and the Stop
+    hook's — so the wording has one home and cannot drift at one site only.
+    Each caller owns nothing but its own indentation.
+
+    Three cases, because the standard remedy is *wrong* for a superseded
+    blocker: one carried by a review fact no verify-resolutions pass will
+    anchor to again (``coverage_algebra._verify_anchor_id``). A verify pass
+    resolves findings on the fact it anchors to, so it will never name that
+    round again, and the state clears only through a spanning review.
+
+    - none superseded → the standard fix-then-verify remedy.
+    - some superseded → the standard remedy, then the exception.
+    - **all** superseded → the spanning review LEADS. Appending the exception
+      after "run verify-resolutions" would hand the operator the one route
+      that cannot work as their first instruction, which is the original
+      defect in its total case rather than a fix for it.
 
     Advice, not verdict: a superseded blocker blocks exactly as hard as any
     other, and no exit code moves.
     """
-    n = sum(1 for e in (unresolved or []) if isinstance(e, dict) and e.get("superseded"))
+    entries = [e for e in (unresolved or []) if isinstance(e, dict)]
+    standard = [
+        "Fix them, then run /prawduct:critic verify-resolutions — it records the",
+        "resolution facts and this same evidence passes (no full re-review).",
+    ]
+    n = sum(1 for e in entries if e.get("superseded"))
     if not n:
-        return []
+        return standard
+
+    spanning = [
+        "Fix them, then run /prawduct:critic cumulative — a review spanning the",
+        "whole interval supplies a clean path when it records nothing blocking.",
+    ]
+    if n == len(entries):
+        lead = (
+            "Superseded: the blocker above sits on an earlier review round"
+            if n == 1
+            else f"Superseded: all {n} blockers above sit on earlier review rounds"
+        )
+        return [f"{lead} that no verify-resolutions pass will name again."] + spanning
+
     noun, verb = ("finding", "belongs") if n == 1 else ("findings", "belong")
-    return [
-        f"Superseded: {n} {noun} above {verb} to an earlier review round.",
-        "A verify-resolutions pass anchors to the most recent review only, so no",
-        "verify pass will name that round again. Run /prawduct:critic cumulative",
-        "instead — a review spanning the whole interval supplies a clean path when",
-        "it records nothing blocking.",
+    return standard + [
+        f"Superseded: {n} {noun} above {verb} to an earlier review round that no",
+        "verify-resolutions pass will name again. For those, run",
+        "/prawduct:critic cumulative instead — a review spanning the whole",
+        "interval supplies a clean path when it records nothing blocking.",
     ]
 
 
@@ -988,8 +1012,9 @@ def check_cumulative_critic(project_dir: Path) -> int:
       evidence then passes with no full re-review. A finding the message
       marks *superseded* is the exception, and the message says so: it
       sits on a round no verify pass anchors to again, so it clears only
-      through a spanning ``/prawduct:critic cumulative``
-      (:func:`superseded_blocker_lines`).
+      through a spanning ``/prawduct:critic cumulative``. When EVERY
+      blocker is superseded the message leads with that route instead
+      (:func:`blocking_remedy_lines`).
     - ``uncovered`` — no evidence path composes: run ``/prawduct:critic
       cumulative``. If a pre-commit review was followed by a SELECTIVE
       commit (only part of the reviewed state committed), the commit's
@@ -1058,12 +1083,7 @@ def check_cumulative_critic(project_dir: Path) -> int:
             )
         if len(unresolved) > 5:
             print(f"  (+{len(unresolved) - 5} more)", file=sys.stderr)
-        print(
-            "Fix them, then run /prawduct:critic verify-resolutions — it records "
-            "the resolution facts and this same evidence passes (no full re-review).",
-            file=sys.stderr,
-        )
-        for line in superseded_blocker_lines(unresolved):
+        for line in blocking_remedy_lines(unresolved):
             print(line, file=sys.stderr)
         return 1
 

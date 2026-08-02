@@ -69,6 +69,49 @@ attribution` asserts an unresolved entry by exact dict equality; the additive `s
 changed that contract, so the expectation now carries `"superseded": False`. The equality stays
 exact and the assertion is strictly stronger — it now pins the annotation as well.
 
+### The cumulative review (0 blocking, 6 warnings, 13 notes)
+
+**The first pass fixed the partial case and left the total one — the same defect, inverted.** The
+superseded clause was *appended* after "Fix them, then run verify-resolutions", so when **every**
+unresolved blocker is superseded the operator's first instruction was still the route that cannot
+work. That is `#536` in its total case, shipped inside `#536`'s own fix. The remedy is no longer
+assembled at the call sites at all: `blocking_remedy_lines` owns the whole block and decides which
+route *leads* — standard when nothing is superseded, standard-plus-exception when some are, and the
+spanning review alone when all are. Both gates now render whatever it returns, so neither can
+reintroduce a lead sentence of its own.
+
+**The prose sweep stopped two sites short, and the miss was the narrowed grep.** The concept query
+that found the three corrected surfaces was run over a phrase (`same evidence passes`), not the
+concept, so it never reached `lib/dispositions.py` — which *prints* the uncorrected claim, unhedged,
+at the moment an operator is handling a blocking finding. The same file already hedges the identical
+claim eleven lines earlier, which is what made the survivor look intentional. Corrected there, and in
+`methodology/building.md`, whose one-token budget headroom was met by making the sentence *accurate*
+rather than longer: it now names both routes in the same word count it used to name one.
+
+**A test of mine was deleted for the second time this chunk, and a claim of mine was corrected.**
+The build-plan Status paragraph said both directions of the predicate were verified red across four
+tests at both emission sites. They were not: the Stop-hook tests are handed a verdict dict with
+`superseded` already set, so they pin *rendering* and a flipped predicate cannot redden them. Both
+properties are covered; the sentence merged them and credited the wrong tests. The rendering tests
+now additionally assert the shared lines appear **verbatim**, which is what makes the one-home claim
+mechanical rather than aspirational — previously they matched a phrase, so inlined divergent wording
+at one site would have passed.
+
+**Three independent reviewers converged on one defect, and it was not in this chunk's code.** The
+`scope-trace:` retire rule was corrected twice in the build plan (`33d7a5d`) and neither correction
+reached the change-log — so the durable copy still stated the pre-correction denominator, bolded,
+and omitted the meta-filter without which the rule can never fire. Both are now here, in the record
+that outlives the plan. The adjacent spliced sentence from `4a71084` — two half-sentences welded,
+leading with the causal claim that commit existed to remove — is also repaired.
+
+**The predicate's residual is now stated in the code rather than only in a reflection.** The
+superseded test is a faithful *proxy* for the dispatcher's anchor, not the same value; should the
+per-worktree findings cache point at a fact off the composed path, an on-path blocker reads as
+reachable and gets sent to a verify pass that will demote rather than clear it. Nothing detects that,
+and nothing at this layer can — reading the cache to check is exactly what the derived-views norm
+forbids a gate to do. It stays a proxy because the failure is soft (advice moves, the verdict never
+does) and closing it properly means giving the anchor a home in the shared store.
+
 ## 2026-08-02: five prose defects from a 2026-06-09 review, and the question that set review depth
 
 <!-- prawduct: type=fix | scope=critic-burndown | chunks=02 -->
@@ -82,9 +125,8 @@ so the only route to declaring the field was a product owner opening a template 
 **The absent leg was the load-bearing one, because the fallback is silent by design.** A product that
 declares nothing is never reviewed *less* — the framework-shaped defaults still escalate and the
 older file-count rule stands underneath — so nothing fails, nothing prompts, and the product keeps
-the generic rule forever. What declaring surfaces actually buys is the raised size threshold: it is
-what declaring buys is **size-independence on the paths you name**: a diff touching one gets the
-deeper review however small it is. (Declaring also raises the file-count threshold governing
+the generic rule forever. What declaring buys is **size-independence on the paths you name**: a diff
+touching one gets the deeper review however small it is. (Declaring also raises the file-count threshold governing
 *everything else* — a separate effect running the other way; `review-cycle.md` owns both numbers.)
 An unasked question is an unanswered one. `discovery.md` now asks it as its own section, and the
 concerns registry has the row it never had.
@@ -196,8 +238,19 @@ was recorded as a rule two chunks before it happened again.
 and was silent on the first, so the plan now states a stopping rule per control — retire
 `cross-component-contract:` on zero BLOCKING findings across 20+ reviews **of boundary-crossing
 diffs** (not 20 reviews total; a check that never met its trigger has not been tested), and
-`scope-trace:` on zero findings across 30+ **`cumulative`** reviews. Stated in advance so the sweep
-inherits a baseline rather than a bare count.
+`scope-trace:` on zero findings across 30+ **`final`-or-`cumulative`** reviews — both modes, because
+the check lives in Goal 5, which `final` runs too, and a frame omitting a third of the firing
+opportunities would under-count the yield and retire the control early. Stated in advance so the
+sweep inherits a baseline rather than a bare count.
+
+**Both numerators need a filter, without which the rules are unsatisfiable from day one.** Every
+finding whose summary opens with a yield token so far is a finding *about* the control — its
+placement, its overlap, its uncountability — filed while this batch was reviewed, not a firing of the
+check against product code. "Retire if zero findings" would therefore never fire, because the query
+already returns several. So the retire query is: findings whose summary opens with the token **and
+whose `files` do not name the protocol files that define it** (`skills/critic/review-protocol.md`,
+`skills/critic/goals-1-3.md`, `skills/pr/review-protocol.md`). A finding filed against the control's
+own definition is meta-commentary; one filed against product code is a firing.
 
 **The first draft of that rule counted PR reviews, which the numerator cannot reach** — caught by the
 verify pass. PR findings never enter the shared evidence store (`evidence.KNOWN_KINDS` is

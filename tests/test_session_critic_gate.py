@@ -34,6 +34,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+import pytest
+
 ROOT = Path(__file__).resolve().parent.parent / "plugin"
 
 sys.path.insert(0, str(ROOT))
@@ -591,6 +593,10 @@ class TestSupersededAdviceReachesTheStopHook:
         _hook.cmd_stop(repo, {})
         return capsys.readouterr().err
 
+    @staticmethod
+    def _shared_lines(*, superseded: bool) -> list[str]:
+        return gates.blocking_remedy_lines([{"superseded": superseded}])
+
     def test_blocked_render_names_the_spanning_review(
         self, tmp_path, monkeypatch, capsys
     ):
@@ -608,3 +614,18 @@ class TestSupersededAdviceReachesTheStopHook:
         )
         assert "verify-resolutions" in err
         assert "/prawduct:critic cumulative" not in err
+
+    @pytest.mark.parametrize("superseded", [True, False])
+    def test_the_rendered_remedy_is_the_shared_one_verbatim(
+        self, tmp_path, monkeypatch, capsys, superseded
+    ):
+        """The drift guard the two tests above do NOT give: they match a phrase,
+        so a future edit that inlined divergent wording at ``cmd_stop`` would
+        keep passing as long as that phrase survived. Every shared line must
+        appear intact (indented) in the rendered block, which is what makes the
+        one-home claim mechanical rather than aspirational."""
+        err = self._run_stop(
+            self._blocking_session(tmp_path), monkeypatch, capsys, superseded=superseded
+        )
+        for line in self._shared_lines(superseded=superseded):
+            assert f"  {line}\n" in err, line
