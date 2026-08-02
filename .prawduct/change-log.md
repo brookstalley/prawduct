@@ -36,7 +36,8 @@ there are load-bearing, and both directions of error are wrong advice:
   worktree of the clone, so a sibling worktree's newer review would otherwise make a perfectly
   reachable finding look stranded. Path facts are on this interval's lineage by construction.
 
-**Both blocking messages render one shared wording** (`gates.superseded_blocker_lines`) — the PR
+**Both blocking messages render one shared wording** (`gates.superseded_blocker_lines`, renamed to
+`blocking_remedy_lines` by the review round below when it took over the whole remedy) — the PR
 gate's and the Stop hook's — because both otherwise prescribed verify-resolutions alone, and wording
 duplicated at two sites is wording that drifts at one. Each call site owns only its indentation. A
 **third** candidate site was found by the sweep and deliberately left alone: the session-start
@@ -244,13 +245,17 @@ opportunities would under-count the yield and retire the control early. Stated i
 sweep inherits a baseline rather than a bare count.
 
 **Both numerators need a filter, without which the rules are unsatisfiable from day one.** Every
-finding whose summary opens with a yield token so far is a finding *about* the control — its
+finding whose `title` opens with a yield token so far is a finding *about* the control — its
 placement, its overlap, its uncountability — filed while this batch was reviewed, not a firing of the
 check against product code. "Retire if zero findings" would therefore never fire, because the query
-already returns several. So the retire query is: findings whose summary opens with the token **and
-whose `files` do not name the protocol files that define it** (`skills/critic/review-protocol.md`,
+already returns several. So the retire query is: findings whose **`title`** opens with the token
+**and whose `files` do not name the protocol files that define it** (`skills/critic/review-protocol.md`,
 `skills/critic/goals-1-3.md`, `skills/pr/review-protocol.md`). A finding filed against the control's
-own definition is meta-commentary; one filed against product code is a firing.
+own definition is meta-commentary; one filed against product code is a firing. **`title`, not
+`summary`** — a Critic partial's `name` becomes the fact's `title`, while per-finding `summary` exists
+only in the per-worktree derived cache, which holds one fact and cannot answer a 30-review sweep.
+(The PR protocol opens `summary` because its record has no title field, and PR findings are excluded
+from this evidence anyway — see the paragraph below.)
 
 **The first draft of that rule counted PR reviews, which the numerator cannot reach** — caught by the
 verify pass. PR findings never enter the shared evidence store (`evidence.KNOWN_KINDS` is

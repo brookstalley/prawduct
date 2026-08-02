@@ -146,7 +146,7 @@ evidence store, and a second home would break the one-home norm. `#163`'s discov
 registry row both landed, closing the one absent leg of a four-leg pipeline.
 
 **Chunk 03 BUILT 2026-08-02** (#536, #228) — the batch's only code. `#536`'s superseded-blocker clause
-landed in both emission sites off **one shared wording function** (`gates.superseded_blocker_lines`),
+landed in both emission sites off **one shared remedy function** (`gates.blocking_remedy_lines`),
 with the predicate itself annotated onto the verdict in `coverage_algebra` rather than recomputed at
 either message. The sweep found a **third** candidate site — the session-start advisory in
 `briefing.py` — and it is deliberately untouched: it reports a count and names no route, by design,
