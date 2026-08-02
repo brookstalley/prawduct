@@ -207,7 +207,12 @@ Evolution rules we want to hold, so new versions stay rare:
   the same result into the dispatch manifest, so the CLI exists as the *by-hand* form — a builder
   answering the record checks before dispatch rather than paying a review round to be told. Its
   `--json` shape is the manifest's `record_lint` block verbatim, which is what makes it a contract:
-  a consumer reading either surface reads the same keys.
+  a consumer reading either surface reads the same keys. **Same keys is not enough — it must reach
+  the same answer**, so it derives `scope` the way `critic-begin` does (branch name against declared
+  plan scopes, pointer only as fallback) rather than resolving the plan its own way. A by-hand form
+  that grades a different plan than the dispatch will is answering a different question in the shape
+  of the real one. Its `counts` follow the same rule as the manifest's: an integer when a check ran,
+  `null` when it produced no answer.
 - **Internal / lifecycle surface** (called by the harness or by consolidation, not a public
   contract): `clear`, `stop`, `subagent-stop`, `critic-begin`, `critic-consolidate`, `build-index`.
 - **Deprecated:** `stamp-merged` (removal deferred to a major); `regen-views --check` (removal

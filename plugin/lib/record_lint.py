@@ -581,8 +581,11 @@ def _check_governed_by(
 
 
 def _check_chunk_refs(
-    project_dir: Path, prawduct_dir: Path, chunk_id: "str | None"
-) -> "tuple[list[dict], str | None, str | None]":
+    project_dir: Path,
+    prawduct_dir: Path,
+    chunk_id: "str | None",
+    scope: "str | None" = None,
+) -> "tuple[list[dict], str | None, str | None, str | None]":
     """The reviewed chunk's declared deliverables, existence-checked.
 
     Delegates wholly to ``buildplan_refs`` — the same parse and the same
@@ -601,22 +604,39 @@ def _check_chunk_refs(
     so the instant a chunk is marked ``[x]``, "current" is the next, unbuilt
     chunk, and grading it produces a confident answer about the wrong subject.
 
-    The third return value is the chunk actually graded (``None`` when none
-    was), so a zero count in the result can be read as an answer about a named
-    chunk rather than an answer about nothing.
+    **Whose plan.** ``scope`` comes from the same manifest and selects the plan,
+    via :func:`buildplan_refs.resolve_reviewed_plan`. Without it the plan came
+    from ``active_build_plan`` while the chunk came from the dispatch, and
+    nothing checked the two agreed: a review of one branch's chunk 03 graded a
+    different plan's chunk 03 and reported zero missing deliverables over a diff
+    that cited a path no longer present. A scope naming no plan is the
+    unchecked case — falling back to the pointer there is that same silent grade.
+
+    Returns ``(findings, gap, chunk_graded, plan_graded)``. The last two name the
+    subject, so a zero count reads as an answer about a named chunk of a named
+    plan rather than an answer about nothing.
     """
+    plan = buildplan_refs.resolve_reviewed_plan(project_dir, prawduct_dir, scope)
+    if plan.path is None and plan.gap:
+        return [], f"chunk-ref-missing unchecked — {plan.gap}", None, None
+
     assumed = False
     if chunk_id is None:
-        chunk_id = buildplan_refs._current_chunk_id_from_status(project_dir)
+        chunk_id = buildplan_refs._current_chunk_id_from_status(project_dir, plan.path)
         assumed = chunk_id is not None
     if chunk_id is None:
-        return [], None, None  # no chunk in scope — nothing declared to check
-    refs = buildplan_refs._parse_build_plan_chunk_refs(prawduct_dir, chunk_id)
+        return [], None, None, None  # no chunk in scope — nothing declared to check
+    refs = buildplan_refs._parse_build_plan_chunk_refs(
+        prawduct_dir, chunk_id, plan.path
+    )
     if refs["error"]:
+        # Name the plan. "chunk '03' not found in build-plan" is the same
+        # sentence whether the chunk is missing or the wrong file was opened,
+        # and those are very different problems for whoever reads it.
         return [], (
-            f"chunk-ref-missing unchecked — {refs['error']}; chunk {chunk_id}'s "
-            "deliverable check did not run"
-        ), None
+            f"chunk-ref-missing unchecked — {refs['error']} ({plan.rel}); chunk "
+            f"{chunk_id}'s deliverable check did not run"
+        ), None, None
     missing = buildplan_refs._verify_chunk_refs(project_dir, refs)
     findings = [
         _finding(
@@ -627,15 +647,25 @@ def _check_chunk_refs(
         )
         for entry in missing
     ]
-    gap = None
+    # An assumption about EITHER half — which chunk, or which plan — reads the
+    # same way to the reviewer and carries the same severity, so they share one
+    # line rather than emitting two the reader has to join up.
+    assumptions = []
     if assumed:
-        gap = (
-            f"chunk-ref-missing graded chunk {chunk_id}, inferred from build-plan "
-            "Status because the dispatch carried no chunk — Status names the first "
-            "UNCHECKED chunk, so this may be the next chunk rather than the "
-            "reviewed one"
+        assumptions.append(
+            f"chunk {chunk_id} was inferred from build-plan Status because the "
+            "dispatch carried no chunk — Status names the first UNCHECKED chunk, "
+            "so this may be the next chunk rather than the reviewed one"
         )
-    return findings, gap, chunk_id
+    if plan.source == "active-pointer" and plan.gap:
+        assumptions.append(plan.gap)
+    gap = None
+    if assumptions:
+        gap = (
+            f"chunk-ref-missing graded chunk {chunk_id} of {plan.rel}: "
+            + "; ".join(assumptions)
+        )
+    return findings, gap, chunk_id, plan.rel
 
 
 # ---------------------------------------------------------------------------
@@ -650,34 +680,49 @@ def lint_records(
     base_tree: str,
     head_tree: str,
     chunk_id: "str | None" = None,
+    scope: "str | None" = None,
 ) -> dict:
     """Run every check over the record subset of ``paths``.
 
-    Returns ``{"records", "chunk_graded", "findings", "unchecked", "counts"}``.
-    ``findings`` is advisory — it never gates. ``unchecked`` names each check
-    that could not run and why, so an unrun check is never mistaken for a clean
-    one, and ``chunk_graded`` names whose deliverables were checked so a zero
-    count is never mistaken for an answer about a different chunk.
+    Returns ``{"records", "chunk_graded", "plan_graded", "findings",
+    "unchecked", "counts"}``. ``findings`` is advisory — it never gates.
+    ``unchecked`` names each check that could not run and why, so an unrun check
+    is never mistaken for a clean one; ``chunk_graded`` and ``plan_graded`` name
+    whose deliverables were checked, so a zero count is never mistaken for an
+    answer about a different chunk or a different plan.
 
     ``chunk_id`` should be the reviewed chunk from the dispatch manifest. It is
     NOT inferred by default, because the build-plan Status resolves "current" to
     the first *unchecked* box — which, the moment a chunk is marked ``[x]``, is
     the NEXT chunk. A review of chunk 02 was silently graded against chunk 03's
     unbuilt deliverables exactly that way.
+
+    ``scope`` is the other half of the same manifest and selects the PLAN — see
+    :func:`_check_chunk_refs`. The two used to come from different places with
+    nothing checking they agreed.
     """
     records = records_in(paths)
     findings: list[dict] = []
     unchecked: list[str] = []
+    # Checks that produced no answer. Their counter is `None`, never `0` — a
+    # tally gets quoted far more often than the caveat beside it, so the number
+    # has to carry the distinction rather than the prose next to it.
+    no_answer: set[str] = set()
 
     # Chunk deliverables are checked whether or not a RECORD changed — a
     # code-only diff still has a reviewed chunk whose declared outputs must
     # exist by review time.
-    chunk_findings, chunk_gap, chunk_graded = _check_chunk_refs(
-        project_dir, prawduct_dir, chunk_id
+    chunk_findings, chunk_gap, chunk_graded, plan_graded = _check_chunk_refs(
+        project_dir, prawduct_dir, chunk_id, scope
     )
     findings.extend(chunk_findings)
     if chunk_gap:
         unchecked.append(chunk_gap)
+    if chunk_graded is None:
+        # Agrees with `chunk_graded` by construction: `review-cycle.md` already
+        # reads a null subject as "nothing was checked at all", and the counter
+        # said 0 in the same breath.
+        no_answer.add("chunk-ref-missing")
 
     added_by_path: dict = {}
     if records:
@@ -688,6 +733,7 @@ def lint_records(
                 f"not read the diff {base_tree[:12]}..{head_tree[:12]} over the "
                 "changed records"
             )
+            no_answer.update({"suite-total-claim", "learnings-entry-shape"})
         else:
             added_by_path = diffed
     for rel in records:
@@ -705,15 +751,17 @@ def lint_records(
         text = _read_text(project_dir / rel)
         if text is None:
             unchecked.append(f"governed-by-gap unchecked on {rel} — unreadable")
+            no_answer.add("governed-by-gap")
             continue
         findings.extend(_check_governed_by(project_dir, prawduct_dir, rel, text))
 
     return {
         "records": records,
         "chunk_graded": chunk_graded,
+        "plan_graded": plan_graded,
         "findings": findings,
         "unchecked": unchecked,
-        "counts": _count(findings),
+        "counts": _count(findings, no_answer),
     }
 
 
@@ -724,6 +772,7 @@ def lint_records_safe(
     base_tree: str,
     head_tree: str,
     chunk_id: "str | None" = None,
+    scope: "str | None" = None,
 ) -> dict:
     """:func:`lint_records`, but a crash degrades to a reported ``unchecked``
     instead of taking the caller down with it.
@@ -743,7 +792,7 @@ def lint_records_safe(
     """
     try:
         return lint_records(
-            project_dir, prawduct_dir, paths, base_tree, head_tree, chunk_id
+            project_dir, prawduct_dir, paths, base_tree, head_tree, chunk_id, scope
         )
     except Exception as exc:  # prawduct:allow prawduct/broad-except -- advice must never abort review dispatch; reported as unchecked, never swallowed
         return {
@@ -753,6 +802,7 @@ def lint_records_safe(
             # would pair a named subject with zero counts — the shape a clean
             # result has.
             "chunk_graded": None,
+            "plan_graded": None,
             "findings": [],
             # The `chunk-ref-missing unchecked` prefix is load-bearing:
             # `review-cycle.md` grades that string BLOCKING, inheriting the
@@ -765,16 +815,27 @@ def lint_records_safe(
                 f"({type(exc).__name__}: {exc}). The review proceeds; NO record "
                 "check was performed, including the deliverable check."
             ],
-            "counts": _count([]),
+            # Nothing ran, so nothing counted. Zeros here would be the crash
+            # reporting itself in the shape of a clean check.
+            "counts": _count([], set(CHECKS)),
         }
 
 
-def _count(findings: list[dict]) -> dict:
+def _count(findings: list[dict], no_answer: "set[str] | None" = None) -> dict:
     """Per-check tallies with every check present, so a zero is visibly a zero
-    rather than a missing key a consumer has to interpret."""
-    counts = {check: 0 for check in CHECKS}
+    rather than a missing key a consumer has to interpret.
+
+    A check in ``no_answer`` counts ``None``, not ``0``: it produced no answer,
+    and the two are different facts that a bare integer cannot tell apart. Every
+    consumer that renders these must read ``None`` as "did not run" — a
+    ``0``-vs-``None`` slip reads as clean, which is the direction that loses
+    governance.
+    """
+    skipped = no_answer or set()
+    counts: dict = {check: (None if check in skipped else 0) for check in CHECKS}
     for finding in findings:
-        counts[finding["check"]] = counts.get(finding["check"], 0) + 1
+        check = finding["check"]
+        counts[check] = (counts.get(check) or 0) + 1
     return counts
 
 

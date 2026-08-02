@@ -34,17 +34,20 @@ code. Correctness shapes the recommendation, never the need. Judge jurisdiction 
 applicability is recorded, never assumed. Stale registry → NOTE: `/prawduct:doctor`; never a downgrade.
 
 **Record checks are already answered — read the manifest's `record_lint`, never re-derive it.** Never
-recount what it counted: that is how a record defect buys a review round. `chunk-ref-missing` (a deliverable the reviewed chunk declares does not exist) →
-**BLOCKING**. `governed-by-gap` (a plan disposes of fewer norms than a cited artifact's `## Direction`
-carries, or cites an artifact that does not exist) → **WARNING** under Goal 2. `suite-total-claim` (a
-suite-total test count in durable prose) → **NOTE**. `learnings-entry-shape` (a `learnings.md`
-rule over 400 chars, or a narrative body — both belong in the detail file) → **NOTE**. **`unchecked` is not a pass, and only one shape blocks.** `chunk-ref-missing unchecked — …` is
+recount what it counted: that is how a record defect buys a review round. `chunk-ref-missing` (a
+deliverable the reviewed chunk declares does not exist) → **BLOCKING**. `governed-by-gap` (a plan
+disposes of fewer norms than a cited artifact's `## Direction` carries, or cites one that does not
+exist) → **WARNING** under Goal 2. `suite-total-claim` (a suite-total test count in durable prose) →
+**NOTE**. `learnings-entry-shape` (a `learnings.md` rule over 400 chars, or a narrative body — both
+belong in the detail file) → **NOTE**. **`unchecked` is not a pass, and only one shape blocks.**
+`chunk-ref-missing unchecked — …` is
 **BLOCKING**: the check could not run, which is indistinguishable from passing. `chunk-ref-missing
-graded chunk … inferred from build-plan Status` is an **assumption, not a failure** — it DID run
-(`chunk_graded` non-null), just possibly against the next chunk → **NOTE**. Blocking that shape is a
-false blocker with no remedy: a branch building no chunk has no `--chunk` to supply. Every other entry
-is a **NOTE** you must still state. `chunk_graded` names whose deliverables were checked; `null` means
-none were.
+graded chunk … of <plan>: …` is an **assumption, not a failure** — it DID run (`chunk_graded`
+non-null), but half of "whose deliverables" was guessed: the chunk inferred from build-plan Status
+(maybe the next one), or the plan from the `active_build_plan` pointer (maybe one this branch isn't
+building). The line names which → **NOTE**; blocking it is a false blocker no `--chunk` can clear.
+Every other entry is a **NOTE** you must still state. `chunk_graded`/`plan_graded` name the subject —
+chunk, and plan file. `null` there, or in any `counts` entry, means **no answer** — not a zero.
 
 ## 1. Nothing Is Broken
 

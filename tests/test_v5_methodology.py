@@ -43,7 +43,7 @@ def estimate_tokens(text: str) -> int:
 LAST_MEASURED_TOKENS = {
     "methodology/building.md": 4659,
     "skills/critic/review-protocol.md": 3616,
-    "skills/critic/goals-1-3.md": 1946,
+    "skills/critic/goals-1-3.md": 1983,
 }
 
 
@@ -721,6 +721,26 @@ class TestCriticGoals13:
         # each false one buys a 5-10 minute opus round, which is the P0 lever
         # this budget exists to protect. Partly funded in place by tightening
         # the re-derive sentence above it.
+        #
+        # 1946 -> 1983 (2026-08-01). Two facts a reviewer cannot act correctly
+        # without, both new to the manifest: `plan_graded` (the deliverable
+        # check now names WHICH PLAN it graded, because the chunk id and the
+        # plan used to resolve from different places), and the rule that a
+        # `null` in `counts` means the check produced NO ANSWER rather than
+        # found nothing. The second is the whole point of the 0 -> None change:
+        # a reviewer who reads a null as a zero reads a check that never ran as
+        # a clean one, which is the failure the change exists to remove, landing
+        # in the one file that reviewer is allowed to read.
+        #
+        # A trim WAS attempted and mostly failed: reflowing the check-severity
+        # paragraph returned 1 token (the estimator is word-based, so rewrapping
+        # buys nothing), and compressing the two new sentences returned 16 —
+        # both applied, so 53 tokens of content shipped as 37. The remaining 37
+        # came from headroom, which is now ~17 and the tightest in the file. The
+        # next editor here is trimming, not spending: the honest candidates are
+        # the chunk-`Type:` paragraph, which restates a table `review-cycle.md`
+        # owns, and the normative-authority block, which is the longest passage
+        # that is not a per-finding severity.
         tokens = estimate_tokens(self.content)
         assert tokens < 2000, f"goals-1-3.md is ~{tokens} tokens, should be <2000"
 

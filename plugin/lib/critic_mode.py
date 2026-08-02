@@ -16,9 +16,9 @@ does :func:`infer_mode` walk four inference rules in precedence order and
 return the first that fires:
 
   1. ``verify-resolutions`` — prior ``.critic-findings.json`` has
-     BLOCKING/WARNING findings + ``commit_reviewed`` anchor resolves +
-     uncommitted diff is non-empty AND is a subset of prior
-     ``files_reviewed``. Signal: builder is in the middle of fixing
+     BLOCKING/WARNING findings + ``commit_reviewed`` anchor resolves **and is
+     an ancestor of HEAD** + uncommitted diff is non-empty AND is a subset of
+     prior ``files_reviewed``. Signal: builder is in the middle of fixing
      findings from the last review.
   1b. ``verify-resolutions`` (post-cumulative fix, CRT-4J8W) — tree clean,
      prior record is a ``cumulative`` review, and the committed delta since
@@ -38,10 +38,19 @@ return the first that fires:
      AND uncommitted work is present (the builder is on the last chunk),
      OR no build plan + uncommitted diff has ≥5 files (medium+
      non-chunked work).
-  4. ``chunk`` when an active build plan grounds the choice (default
-     for mid-plan reviews); ``final`` otherwise (no plan + no other
-     rule fired — fail-safe to thoroughness, matching the SKILL's
-     historical "missing/unrecognized → final" norm).
+  4. ``chunk`` when a build plan grounds the choice **and the working tree
+     holds something to review** (default for mid-plan reviews);
+     ``cumulative`` when the tree is clean, since ``chunk``/``final`` scope to
+     the uncommitted diff and dispatching one would refuse on an empty
+     interval; ``final`` otherwise (no plan + no other rule fired — fail-safe
+     to thoroughness, matching the SKILL's historical
+     "missing/unrecognized → final" norm).
+
+The plan rule 4 grounds on is **this branch's**, not necessarily the
+``active_build_plan`` pointer's: a branch whose name matches a scope some plan
+declares is building that plan (``buildplan_refs.resolve_reviewed_plan``). A
+branch matching nothing keeps the pointer, and the rationale — which is what
+lands in ``mode_chosen_by`` — says the relation is assumed rather than shown.
 
 Deviation from build-plan rule 2: the spec reads "branch ahead of base by
 ≥2 commits AND no cumulative-mode record exists for the current HEAD"
@@ -146,7 +155,20 @@ def infer_mode(
     # readings is exactly what `resolve_chunk_progress` owns. Writing that
     # choice out here as well is what let the defect reach three consumers, so
     # this module asks rather than re-derives.
-    progress = buildplan_refs.resolve_chunk_progress(project_dir)
+    # Which plan this branch is building. The `active_build_plan` pointer answers
+    # "which plan is in progress in this repo", which on a repo running several
+    # plans across worktrees is a different question — and rule 4 used to ground
+    # `chunk` on whatever it named, so a branch with no plan of its own inherited
+    # an unrelated one's chunk count. When the branch names a scope some plan
+    # declares, that plan is the subject and the pointer is not consulted; when
+    # it names nothing, the pointer stands and rule 4 says so in its rationale
+    # rather than presenting an assumption as a finding.
+    plan = buildplan_refs.resolve_reviewed_plan(
+        project_dir,
+        prawduct_dir,
+        buildplan_refs.infer_scope_from_branch(project_dir, prawduct_dir),
+    )
+    progress = buildplan_refs.resolve_chunk_progress(project_dir, plan.path)
     total, complete = progress.total, progress.complete
     current_chunk_id = progress.current_id
 
@@ -158,7 +180,7 @@ def infer_mode(
     # always Chunk 01 (CRT-7B4M). Only a recognized token overrides; an absent /
     # blank / unrecognized field falls through to ordinary inference.
     plan_mode = (
-        _critic_mode_for_chunk(prawduct_dir, current_chunk_id)
+        _critic_mode_for_chunk(prawduct_dir, current_chunk_id, plan.path)
         if current_chunk_id is not None
         else None
     )
@@ -187,19 +209,114 @@ def infer_mode(
     if final_reason:
         return "final", f"rule-3 final: {final_reason}"
 
-    # Rule 4: chunk only when an active build plan grounds the choice;
-    # otherwise fall through to ``final`` (the historical fail-safe norm
-    # documented in the SKILL files). Without a plan there's no "chunk"
-    # for chunk-mode to scope to — defaulting to ``final`` matches the
-    # rule "missing/unrecognized → final" the SKILL has always promised.
+    # Rule 4: chunk only when a build plan grounds the choice AND there is
+    # something a working-tree-scoped mode could review; otherwise fall through
+    # to ``final`` (the historical fail-safe norm documented in the SKILL
+    # files). Without a plan there's no "chunk" for chunk-mode to scope to —
+    # defaulting to ``final`` matches the rule "missing/unrecognized → final"
+    # the SKILL has always promised.
+    #
+    # `chunk` and `final` both review the uncommitted diff (HEAD tree → captured
+    # working tree), so on a clean tree their interval is EMPTY and
+    # `critic-begin` refuses — correctly, but only after the round-trip. A mode
+    # that cannot review anything is not the answer to "what should I run",
+    # whichever rule matched. `cumulative` is the mode whose interval is
+    # committed, and it is what the refusal message named as the remedy.
+    if _working_tree_is_empty(project_dir):
+        redirect = _clean_tree_redirect(prawduct_dir, project_dir)
+        if redirect:
+            return "cumulative", f"rule-4 cumulative: {redirect}"
     if total > 0:
         return "chunk", (
-            "rule-4 chunk: active build plan, prior chunks committed, "
-            "no fix-in-progress signal, no cumulative precondition"
+            f"rule-4 chunk: {_plan_relation_note(plan)}, prior chunks "
+            "committed, no fix-in-progress signal, no cumulative precondition"
         )
     return "final", (
         "rule-4 final: no active build plan and no other rule fired — "
         "fail-safe to thoroughness"
+    )
+
+
+def _clean_tree_redirect(prawduct_dir: Path, project_dir: Path) -> str:
+    """Rationale for answering ``cumulative`` on a clean tree, or ``""``.
+
+    ``chunk`` and ``final`` both review HEAD-tree → working-tree, so with an
+    empty interval ``critic-begin`` refuses. Recommending one anyway costs a
+    round-trip and names no remedy the caller didn't already have.
+
+    The caller gates this on :func:`_working_tree_is_empty`, NOT on
+    :func:`_get_uncommitted_code_files` — those answer different questions, and
+    the difference is exactly a record-only work cycle. That helper drops every
+    path under ``.prawduct/``, while the interval comes from ``capture_tree``,
+    which stages everything tracked; so uncommitted plan and change-log edits ARE
+    reviewable content. Redirecting them to ``cumulative`` would note-and-exclude
+    the records just written and stamp "working tree is clean" into
+    ``mode_chosen_by`` — a durable field of the review fact — over a dirty tree.
+
+    **Only redirects when the redirect works.** ``cumulative`` needs a resolvable
+    base and at least one commit beyond it, or it refuses in its own way; and a
+    fresh cumulative record already covering HEAD means the bundle review was
+    just run, so re-recommending it is the noise rule 2 declines to make. When
+    none of that holds there is genuinely nothing dispatchable, and the caller
+    keeps the fail-safe answer with its honest refusal rather than a redirect to
+    a second refusal.
+    """
+    base_branch, _ = _resolve_base_branch(project_dir)
+    if not base_branch:
+        return ""
+    commits_ahead = buildplan_refs._commits_ahead_of_base(project_dir, base_branch)
+    if commits_ahead < 1:
+        return ""
+    if _fresh_cumulative_covers_head(prawduct_dir, project_dir):
+        return ""
+    return (
+        "working tree is clean, so chunk/final would dispatch an empty "
+        f"interval; branch is {commits_ahead} commit(s) ahead of {base_branch} "
+        "and no cumulative record covers current HEAD — the committed bundle "
+        "is cumulative's scope"
+    )
+
+
+def _fresh_cumulative_covers_head(prawduct_dir: Path, project_dir: Path) -> bool:
+    """True when the derived cache records a ``cumulative`` review of this exact
+    HEAD — i.e. the bundle review has already been run and re-recommending it
+    would be noise.
+
+    One home for the question: rule 2 skips on it, and rule 4's clean-tree
+    redirect must not undo that skip by routing to the mode rule 2 just declined.
+    """
+    head_sha = gitstate._git_head_sha(project_dir)
+    findings_path = prawduct_dir / ".critic-findings.json"
+    if not head_sha or not findings_path.is_file():
+        return False
+    try:
+        data = json.loads(findings_path.read_text())
+    except (json.JSONDecodeError, OSError):
+        return False
+    return (
+        data.get("commit_reviewed") == head_sha
+        and data.get("mode") == _MODE_CUMULATIVE_VERBOSE
+    )
+
+
+def _plan_relation_note(plan) -> str:
+    """How rule 4's grounding plan was chosen — confirmed, or assumed.
+
+    The relation is *confirmable* only when the branch names a scope some plan
+    declares; a branch whose name matches nothing cannot be shown related OR
+    unrelated, and declining there would demote every repo whose branch names
+    differ from its scopes. So the unconfirmable case keeps the pointer and says
+    so, which puts the assumption in ``mode_chosen_by`` — the record where a
+    reader can find it — instead of leaving it implied by a bare "active build
+    plan" (`nonfunctional-requirements.md` § Direction: a control emits its
+    yield observably or it can only be defended on principle).
+    """
+    if plan.source == "scope-named":
+        return f"build plan {plan.rel} declares this branch's scope {plan.scope!r}"
+    return (
+        f"active build plan {plan.rel or '(unresolved)'}, assumed related — this "
+        "branch's name matches no plan's declared scope, so the pointer stands "
+        "unconfirmed"
     )
 
 
@@ -241,7 +358,11 @@ def _rule_verify_resolutions_fires(
     if not prior_set:
         return False
 
+    # Resolving is not enough: a sibling branch's anchor resolves in the shared
+    # object store, and the delta from it would span the divergence.
     if not _commit_resolves(project_dir, commit_reviewed):
+        return False
+    if not _commit_is_ancestor(project_dir, commit_reviewed):
         return False
 
     diff_files = _get_uncommitted_code_files(project_dir)
@@ -251,8 +372,9 @@ def _rule_verify_resolutions_fires(
     # Subset check: every uncommitted file must be in the prior review's
     # surface. Even one file outside scope means the builder added new
     # work alongside the fix — that's a chunk/final case, not a verify
-    # pass. (Symmetric with ``_verify_resolutions_gate_check`` in
-    # bin/prawduct-hook; same "diff ⊆ scope" contract.)
+    # pass. The dispatch side enforces the same "diff ⊆ scope" contract in
+    # ``critic_consolidate.begin_review``, whose verify arm anchors on
+    # ``_prior_review_fact`` and refuses once ``_scope_widened`` trips.
     return diff_files.issubset(prior_set)
 
 
@@ -309,6 +431,10 @@ def _rule_postfix_fix_fires(prawduct_dir: Path, project_dir: Path) -> str:
     commit_reviewed = data["commit_reviewed"]  # non-empty str when anchor is not None
     if not _commit_resolves(project_dir, commit_reviewed):
         return ""
+    # Same reason as rule 1: an anchor off this lineage yields a cross-branch
+    # delta, and `_committed_files_since` below would take exactly that diff.
+    if not _commit_is_ancestor(project_dir, commit_reviewed):
+        return ""
     prior_files = data.get("files_reviewed")
     if not isinstance(prior_files, list) or not prior_files:
         return ""
@@ -333,12 +459,19 @@ def _rule_postfix_fix_fires(prawduct_dir: Path, project_dir: Path) -> str:
 def _rule_cumulative_fires(
     prawduct_dir: Path, project_dir: Path
 ) -> str:
-    """Rule 2: clean tree + ≥2 commits ahead + no fresh cumulative record.
+    """Rule 2: no code in flight + ≥2 commits ahead + no fresh cumulative record.
 
     Returns rationale string when the rule fires, empty string otherwise.
     """
-    # Clean working tree — see module docstring's deviation note for why
-    # this guard is added on top of the spec.
+    # No CODE in flight — deliberately the metadata-stripped predicate, not the
+    # strict :func:`_working_tree_is_empty` that rule 4's redirect uses. The two
+    # ask different questions and the difference is load-bearing in opposite
+    # directions: rule 4 asks "would a working-tree mode have anything to
+    # review", where uncommitted records ARE content; rule 2 asks "is the
+    # builder mid-work", where they are not. Tightening this one would mean a
+    # builder with an uncommitted change-log entry — the normal state just
+    # before a PR — could never be recommended the bundle review the PR gate
+    # wants. See the module docstring's deviation note for why the guard exists.
     if _get_uncommitted_code_files(project_dir):
         return ""
 
@@ -355,18 +488,8 @@ def _rule_cumulative_fires(
     # (The v2 chain-record arm — verify-resolutions + extends_cumulative —
     # died in the kernel-v3 chunk-06 vestige sweep: nothing writes the
     # field, so a record carrying it is v2-era state the gates ignore.)
-    head_sha = gitstate._git_head_sha(project_dir)
-    findings_path = prawduct_dir / ".critic-findings.json"
-    if head_sha and findings_path.is_file():
-        try:
-            data = json.loads(findings_path.read_text())
-        except (json.JSONDecodeError, OSError):
-            data = {}
-        if (
-            data.get("commit_reviewed") == head_sha
-            and data.get("mode") == _MODE_CUMULATIVE_VERBOSE
-        ):
-            return ""
+    if _fresh_cumulative_covers_head(prawduct_dir, project_dir):
+        return ""
 
     return (
         f"branch is {commits_ahead} commits ahead of {base_branch}, "
@@ -407,6 +530,31 @@ def _rule_final_fires(project_dir: Path, total: int, complete: int) -> str:
 # ---------------------------------------------------------------------------
 # Internal helpers — git + build-plan parsing
 # ---------------------------------------------------------------------------
+
+
+def _working_tree_is_empty(project_dir: Path) -> bool:
+    """True when the working tree holds NO uncommitted change at all.
+
+    The honest predicate for "a working-tree-scoped mode has nothing to review":
+    it counts metadata too, because ``capture_tree`` — which derives the actual
+    interval — stages everything tracked and does not strip ``.prawduct/``.
+    :func:`_get_uncommitted_code_files` answers the narrower "is there *code* in
+    flight", which the size-based rules want and this does not.
+
+    Fails toward NOT empty: a git failure returns False, so an unreadable state
+    keeps the caller on the fail-safe answer rather than redirecting on a
+    tree it could not read.
+    """
+    proc = subprocess.run(
+        ["git", "status", "--porcelain", "--untracked-files=all"],
+        cwd=str(project_dir),
+        capture_output=True,
+        text=True,
+        timeout=10,
+    )
+    if proc.returncode != 0:
+        return False
+    return not proc.stdout.strip()
 
 
 def _get_uncommitted_code_files(project_dir: Path) -> set[str]:
@@ -457,7 +605,12 @@ def _committed_files_since(project_dir: Path, sha: str) -> set[str]:
 
 
 def _commit_resolves(project_dir: Path, sha: str) -> bool:
-    """True iff ``sha`` resolves to a commit in this repo."""
+    """True iff ``sha`` resolves to a commit in this repo.
+
+    Necessary but NOT sufficient for an anchor — see :func:`_commit_is_ancestor`.
+    Worktrees of one clone share an object store, so this succeeds for any object
+    in it, a sibling branch's tip included.
+    """
     proc = subprocess.run(
         ["git", "rev-parse", "--verify", f"{sha}^{{commit}}"],
         cwd=str(project_dir),
@@ -465,6 +618,33 @@ def _commit_resolves(project_dir: Path, sha: str) -> bool:
         text=True,
         timeout=10,
     )
+    return proc.returncode == 0
+
+
+def _commit_is_ancestor(project_dir: Path, sha: str) -> bool:
+    """True iff ``sha`` is an ancestor of HEAD — i.e. on *this* lineage.
+
+    The guard :func:`_commit_resolves` is not. A record left by a sibling branch
+    survives a branch switch in the single-slot ``.critic-findings.json``, and
+    its anchor still resolves in the shared object store — so resolution alone
+    let a verify-resolutions dispatch latch onto a cross-branch anchor and diff
+    across the divergence, reviewing phantom changes this branch never made.
+
+    **Fails closed.** Only exit 0 is an ancestor; exit 1 (genuinely not one) and
+    any other failure — git missing, timeout, a malformed SHA — all return False,
+    so an anchor that cannot be *placed* is never trusted. The mirror shape is
+    ``coverage.py``'s and ``briefing.py``'s, which run the same plumbing command.
+    """
+    try:
+        proc = subprocess.run(
+            ["git", "merge-base", "--is-ancestor", sha, "HEAD"],
+            cwd=str(project_dir),
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return False
     return proc.returncode == 0
 
 
@@ -476,7 +656,9 @@ def _commit_resolves(project_dir: Path, sha: str) -> bool:
 # like every other consumer — `infer_mode` calls that directly.
 
 
-def _critic_mode_for_chunk(prawduct_dir: Path, chunk_id: str | None) -> str | None:
+def _critic_mode_for_chunk(
+    prawduct_dir: Path, chunk_id: str | None, plan_path: Path | None = None
+) -> str | None:
     """Return ``chunk_id``'s declared ``**Critic mode:**`` token, or ``None``.
 
     Finds that chunk's ``### Chunk <id>:`` detail section and reads its
@@ -496,7 +678,12 @@ def _critic_mode_for_chunk(prawduct_dir: Path, chunk_id: str | None) -> str | No
     if chunk_id is None:
         return None
 
-    plan_path = resolve_build_plan_path(prawduct_dir)
+    # ``plan_path`` is the plan `infer_mode` resolved for this branch; the
+    # pointer is the fallback. Reading a different plan here than the one the
+    # chunk id came from is how a chunk's declared mode gets read off the wrong
+    # file.
+    if plan_path is None:
+        plan_path = resolve_build_plan_path(prawduct_dir)
     if not plan_path.is_file():
         return None
     try:

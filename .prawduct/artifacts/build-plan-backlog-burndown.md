@@ -32,7 +32,7 @@ governed_by:
       - "prawduct guides and reviews; it never implements → inapplicable because every chunk edits the framework's own runtime, not a product's"
   - artifact: nonfunctional-requirements
     dispositions:
-      - "review wall-clock is P0; run-count is a lever → conforms, and it is why 16 items are 4 chunks rather than 16"
+      - "review wall-clock is P0; run-count is a lever → conforms, and it is why the batch is 4 chunks rather than one per item"
       - "proportionality ratchets both ways; a new control names the yield it expects and emits it observably → conforms *conditionally* — Chunk 02 adds one control (#327's degraded-reading notice), so that chunk must state its expected yield and make the notice countable. Done-when step 2 carries it"
       - "state-file growth surfaced as an advisory, never a hard block → inapplicable because no chunk changes a size threshold"
   - artifact: operational-spec
@@ -61,6 +61,12 @@ last_validated: null
 owner-reviewed fix-shape. No discovery is owed: every item was filed against observed behavior,
 and the batch was re-derived from the live tracker on 2026-08-01 with each item's *ask* re-read
 against current machinery rather than trusted from its citations.
+
+**#533 is the one exception and is confident for a different reason** (added to Chunk 04 on
+2026-08-01). It is a *feature* request from outside, so there is no repro to re-read — but it needs
+no discovery either: the filer named two live consumers, three candidate shapes, and their
+preference, and the value being published already exists and is already depended on. What is being
+decided is only whether to publish it, which the owner has answered.
 
 **Open assumptions / unknowns:**
 
@@ -124,9 +130,12 @@ against current machinery rather than trusted from its citations.
 
 ## Scope
 
-**In:** sixteen `stage: ready` items, re-derived by `refs:` co-location: **#528, #530** (Chunk 01);
+**In:** seventeen items, re-derived by `refs:` co-location: **#528, #530** (Chunk 01);
 **#201, #211, #224, #327, #333** (Chunk 02); **#206, #208, #218, #288, #344** (Chunk 03);
-**#209, #307, #313, #532** (Chunk 04). Plus two dispositions with no code: **#233, #352**.
+**#209, #307, #313, #532, #533** (Chunk 04). Plus two dispositions with no code: **#233, #352**.
+Sixteen were `stage: ready` at authoring; **#533 was added to Chunk 04 on 2026-08-01 at owner
+request** — an externally-filed feature, not a burn-down item, admitted because it shares the
+chunk's defining property (no surface in common with anything else in the batch).
 
 **Explicitly out, and why — do not quietly restore any of these:**
 
@@ -150,18 +159,26 @@ affected operator would meet it:
   (`python3 plugin/bin/prawduct-hook …`) and reading its output. A `$PATH` `prawduct-hook` resolves
   to a different tree and will silently verify the wrong code.
 
-**This plan is a live reproduction of two of its own items.** `active_build_plan` points at
+**This plan was a live reproduction of two of its own items.** `active_build_plan` points at
 `artifacts/build-plan-v3.2.0-golive.md`, which belongs to another worktree; this branch builds a
-different plan, and nothing checks the two agree. That is exactly #208 and #344. Until Chunk 03
-lands, every review on this branch would grade the golive plan's deliverables against this diff and
-report four zeros that read identically to a clean check.
+different plan, and nothing checked the two agree. That is exactly #208 and #344. Until Chunk 03
+landed, every review on this branch graded the golive plan's deliverables against this diff and
+reported zeros that read identically to a clean check.
 
-**Operating rule until Chunk 03 lands:** pass mode, scope and chunk explicitly on every dispatch —
-`python3 plugin/bin/prawduct-hook critic-begin --mode <m> --scope backlog-burndown --chunk NN`.
-Never let the mode be inferred here: this is a worktree on a branch, and inference trusts a
-possibly-stale session-start branch marker. Do **not** repoint `active_build_plan` — the pointer is
-single-slot, the golive plan is legitimately in progress, and repointing is the wrong fix (#344's
-own evidence says so).
+~~**Operating rule until Chunk 03 lands:** pass mode, scope and chunk explicitly on every
+dispatch — `python3 plugin/bin/prawduct-hook critic-begin --mode <m> --scope backlog-burndown
+--chunk NN`.~~ **Struck 2026-08-01 by Chunk 03, the `--scope` half genuinely and the rest by
+narrowing.** `critic-begin` now derives the scope itself when the dispatch omits it, by matching the
+branch name against the scopes plans declare — `fix/backlog-burndown` resolves to this plan, and the
+manifest, the review fact and the ledger event all name it. The workaround is no longer required,
+and passing `--scope` here would only re-assert what code already answers. What still binds: **pass
+`--mode` and `--chunk`.** `--mode` because inference reads a session-start branch marker that a
+worktree can outdate, and `--chunk` because record-lint otherwise infers it from Status, which on a
+`views_enabled` plan names the chunk *after* the one just built.
+
+Do **not** repoint `active_build_plan` — the pointer is single-slot, the golive plan is legitimately
+in progress, and repointing was never the fix (#344's own evidence says so). Chunk 03's whole shape
+is resolving *around* a correct pointer rather than correcting it.
 
 ## Project Structure
 
@@ -372,6 +389,47 @@ and the `new` exemption expiry consumes that function rather than re-deriving fr
     wider blast radius is records, not mode: an unbounded pointer has attributed a manifest, a review
     fact and a ledger event to an unrelated plan on three observed occasions. **"Clear the pointer" is
     not the fix** — the pointer was correct each time.
+  - **Design decisions taken at build time.** The acceptance criterion ("the record names
+    `backlog-burndown` *without* `--scope`") requires a scope the dispatch was not given, and #344's
+    two sentences — *prefer the scope-named plan* and *disagreement is the `unchecked` case* — read
+    as contradictory until you separate "which plan do I grade" from "what do I say about it". Both
+    resolutions are recorded here rather than inferred from the diff:
+    [DECISION: scope, when the dispatch omits it, is inferred from the branch name — its last
+    segment, accepted ONLY when it matches a `scope:` that some build plan in the artifacts
+    directory actually declares **and that plan still has an unchecked chunk** | it is a *match
+    against declared data*, not a guess: `fix/backlog-burndown` → `backlog-burndown` →
+    `build-plan-backlog-burndown.md`. A branch whose name matches nothing (the primary checkout on
+    `develop`) infers nothing and keeps today's behaviour exactly. The liveness clause was added
+    after Critic finding R-6: a long-lived repo accumulates dozens of released plans, and without it
+    a branch named `fix/gate-noise` would attribute to a plan that shipped months ago and could raise
+    a BLOCKING `chunk-ref-missing` about its deliverables. **The residual case, stated rather than
+    waved at:** a branch whose name matches an *unfinished* plan it is not building will be
+    attributed to that plan. A name is the only signal available, so nothing here can tell those
+    apart; the remedy is explicit `--scope`. An earlier draft of this block claimed the inference
+    "can only ever ADD attribution, never redirect it" — that is true of the no-match case only, and
+    the Critic caught the justification being stronger than the code. Alternatives rejected: parsing
+    the branch's change-log `scope=` tags (sounder, but an 830KB parse on an inference path), and
+    repointing `active_build_plan` (#344's own evidence says the pointer was correct) | user can veto]
+    [DECISION: a resolved scope-named plan is GRADED, and the `unchecked` case is reserved for a
+    scope that resolves NO plan | "prefer X" and "disagreement is unchecked" cannot both hold of the
+    same case. Preferring the scope-named plan means the pointer is simply not the subject — there is
+    no ambiguity left to report, and `plan_graded` now names the file so the choice is legible in the
+    record. What IS unresolvable is a dispatch naming a scope no plan declares: falling back to the
+    pointer there is exactly the silent grade of another plan this item was filed for | user can veto]
+    [DECISION: `counts[check]` is `None` when the check produced no answer and an integer when it
+    ran — and `chunk-ref-missing` is `None` exactly when `chunk_graded` is `None`, so the two fields
+    stop disagreeing | this is the counters half of the ask. No new `chunk-ref-missing unchecked —`
+    line is emitted for the ordinary no-chunk review: `review-cycle.md` grades that prefix BLOCKING,
+    and it names that exact false-blocker ("a branch that builds no chunk has no `--chunk` to
+    supply"). The null counter carries the honesty; the severity vocabulary is untouched | user can veto]
+    [DECISION: rule 4 confirms the plan relates to the branch when it CAN, and declares the
+    assumption in its rationale when it cannot — it never declines on an unconfirmable pointer | a
+    branch whose name matches a declared scope grounds inference on THAT plan (strictly better than
+    declining to `final`, and it makes mode inference and the record agree on the subject). A branch
+    that matches nothing cannot be shown unrelated either, and declining there would demote every
+    ordinary repo whose branch names differ from its scopes. The rationale lands in `mode_chosen_by`,
+    which is the observable-yield channel `nonfunctional-requirements.md` § Direction requires of a
+    new control | user can veto]
 - **Tests:** unit — tree-inequality intent detection across the vouching-commit flow; ancestor guard
   proving `_commit_resolves` is True while the ancestor check is False before asserting the demote;
   scope disagreement yields `unchecked` with counters that differ from a clean check; rule 4 declines
@@ -383,15 +441,17 @@ and the `new` exemption expiry consumes that function rather than re-deriving fr
   1. Acceptance criteria met and tests pass
   2. The Verification Strategy's operating rule is struck — record that the explicit-`--scope`
      workaround is no longer required, and why
-  3. `python3 plugin/bin/prawduct-hook critic-begin --mode chunk --scope backlog-burndown --chunk 03`,
-     review run, blocking findings resolved
+  3. `python3 plugin/bin/prawduct-hook critic-begin --mode chunk --chunk 03`, review run, blocking
+     findings resolved. **No `--scope`** — passing it here would contradict the acceptance
+     criterion directly above, which is that this very review resolves the scope without it.
   4. Committed with a change-log entry tagged `scope=backlog-burndown`
 
 ### Chunk 04: The independent tail
 
-- **Description:** Four small items that share no surface with each other — which is exactly why they
-  are batched last: no ordering constraint among them, and one review pass covers all four. Two are
-  hardening, one closes a norm's outstanding residue, one is a counting defect.
+- **Description:** Five small items that share no surface with each other — which is exactly why they
+  are batched last: no ordering constraint among them, and one review pass covers all five. Two are
+  hardening, one closes a norm's outstanding residue, one is a counting defect, and one publishes an
+  already-depended-on constant as a supported surface.
 - **Depends on:** Chunk 03
 - **Artifacts consumed:** `.prawduct/artifacts/observability-strategy.md` (§ Direction — the
   no-internal-identifier norm this chunk closes), `.prawduct/artifacts/api-contract.md` (§ Direction
@@ -427,23 +487,46 @@ and the `new` exemption expiry consumes that function rather than re-deriving fr
     the value did not match it — this restores the contract rather than repurposing it, and the
     alternative (a new key beside a knowingly-wrong one) leaves the wrong number as the default read
     | user can veto]
+  - **#533** — `plugin/bin/prawduct-hook`, `plugin/lib/migrate_plugin.py`: publish `INSTALL_REFERENCE`
+    as a stable surface via a `print-install-reference` subcommand emitting the dict as JSON on
+    stdout. It is the canonical statement of how a repo references the plugin, and it is a *private
+    module constant with no published form* — so two independent external consumers arrived at
+    AST-parsing it within a week of each other, one of them the tool that repaired the fleet after a
+    transcribed copy went stale. Both chose parsing over transcribing deliberately, because a copy
+    drifts silently; the fragile workaround is the only safe option currently offered. Today's
+    stability is an argument from **coupling, not promise** (`init_product.py` imports it, so a rename
+    breaks prawduct's own code), which is fine to rely on informally and not something to build a
+    fleet's install-correctness on. The subcommand is the cheapest of the three shapes the filer
+    proposed and their stated preference: no new file, and introspectable from a repo that has the
+    plugin installed but not vendored — the normal case. Lands as a new **Exposed API** row in
+    `api-contract.md`, since publishing it is the entire point and an unlisted public command is the
+    same defect one layer out. Added 2026-08-01 at owner request; the marketplace `ref` and
+    `autoUpdate` values ship exactly as the constant holds them — this publishes the value, it does
+    not re-decide it.
   - **Scope-out, stated so it is not silently dropped:** backfilling stage labels on the 64 stage-less
     **closed** items. They are already dispositioned and do not affect the pending figure.
 - **Tests:** unit — a malformed SHA in a fact produces no edge and no traceback; the shared paginator's
   cap trip raises rather than returning a prefix, across all four call sites; stage-less items appear
-  in the open count and in an untriaged bucket. Preferences — the no-internal-identifier guard, if one
-  exists, still passes over the four edited sites.
+  in the open count and in an untriaged bucket; `print-install-reference` emits JSON that round-trips
+  to `INSTALL_REFERENCE` **by comparison against the constant, never against a transcribed literal** —
+  a copy in the test is the same drift the item was filed about. Preferences — the
+  no-internal-identifier guard, if one exists, still passes over the four edited sites.
 - **Acceptance criteria:** `python3 plugin/bin/prawduct-hook backlog counts --repo brookstalley/prawduct`
   reconciles against `gh issue list --state open` exactly; the four operator-facing strings read as
-  plain language; full suite green.
+  plain language; `print-install-reference | python3 -c 'import json,sys; json.load(sys.stdin)'`
+  succeeds and its output equals the constant; full suite green.
 - **Type:** cumulative-final
 - **Done when:**
   1. Acceptance criteria met and tests pass
   2. Committed, then
-     `python3 plugin/bin/prawduct-hook critic-begin --mode cumulative --scope backlog-burndown --chunk 04`,
-     review run, blocking findings resolved
-  3. Each of the sixteen items closed via `/prawduct:backlog update <owner/repo#number> status=shipped`
+     `python3 plugin/bin/prawduct-hook critic-begin --mode cumulative --chunk 04`,
+     review run, blocking findings resolved. (`--scope` is no longer passed — Chunk 03 made the
+     branch name derive it; see the struck operating rule in § Verification Strategy.)
+  3. Each of the seventeen items closed via `/prawduct:backlog update <owner/repo#number> status=shipped`
      — the full id form is required; a bare number errors
+  3b. **Reply on #533** once it lands: the filer offered to send the PR and asked to be told, and has
+     two call sites plus a downstream contract test to retarget the day it ships. A published surface
+     nobody is told about leaves both consumers on the AST-parsing workaround this closes.
   4. Change-log entries tagged `scope=backlog-burndown`, then `regen-views`
 
 ## Early Feedback Milestone

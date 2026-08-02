@@ -3,6 +3,82 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-08-01: a review now knows which plan it is of, and which tree it looked at
+
+<!-- prawduct: type=fix | scope=backlog-burndown | chunks=03 -->
+
+Five defects in the Critic's dispatch path, all of the same family: **a question answered from two
+places with nothing checking they agree.** `#206`, `#208`, `#218`, `#288`, `#344`.
+
+**Which plan.** The chunk id came from the dispatch manifest and the plan came from
+`active_build_plan`. Those are different questions — the pointer means "which plan is in progress in
+this repo", which on a repo running several plans across worktrees is not "which plan is this review
+of". When they diverge the deliverable check grades another plan's chunk and answers zero, and zero
+is the shape of a clean result. `scope` was already a live local in `begin_review` and already
+written into the manifest; it is now threaded into `record_lint`, which prefers the plan that scope
+names. A scope naming *no* plan is the `unchecked` case, because falling back to the pointer there is
+the silent grade this closes.
+
+**And which plan the record says.** `critic-begin` now derives `scope` itself when the dispatch omits
+it — the branch name's last segment, accepted only when a plan under `artifacts/` declares it — and
+records the choice as `scope_chosen_by`. A branch matching nothing infers nothing, so the inference
+can only add attribution, never redirect it. That closes the manifest, the review fact and the ledger
+event in one change: the ledger already preferred the manifest's scope, and the fact always carried
+it. The `/prawduct:critic` SKILL no longer derives scope from the pointer, which is where the
+misattribution entered.
+
+**Counts stopped lying by omission.** A check that could not run counted `0`, identical to a check
+that ran clean — and a tally gets quoted without the caveat printed above it. Each entry in `counts`
+is now an integer or `null`, `chunk-ref-missing` is `null` exactly when `chunk_graded` is, and the
+dispatch line names what did not run instead of listing every check as run.
+
+**Which tree.** `verify-resolutions` chose its head anchor from a *commit-set* diff while the refusal
+guard tested a *tree* delta. The two disagree on exactly one flow, and it is the documented one: a
+review of a dirty tree vouches for the commit that materializes it verbatim, and that vouching commit
+made the commit set non-empty while the trees stayed identical — so the anchor moved to committed
+HEAD, the delta computed empty, and dispatch refused with "nothing changed since" over a working tree
+holding unreviewed work. Intent is now tree inequality. A commit that changes no content is not a
+change of intent. The refusal that remains names the anchor and both tree hashes.
+
+**Which lineage.** Anchors were checked for *resolution* only, and worktrees of one clone share an
+object store, so a sibling branch's anchor resolved fine and latched a pass onto a cross-branch
+delta. Rules 1 and 1b and the dispatch-side prior fact now require `merge-base --is-ancestor`,
+failing closed — not-an-ancestor and any git failure demote alike. (This does not close the
+same-lineage cross-bundle case, where the anchor genuinely *is* an ancestor.)
+
+**Mode inference.** Rule 4 returned `chunk` on a clean tree, whose interval is empty, so dispatch
+refused and the caller re-dispatched by hand. It now redirects to `cumulative` — but only when
+cumulative would itself have something to review, since swapping one refusal for another buys
+nothing. Rule 4 also grounds on *this branch's* plan when the branch names one, and says in its
+rationale when the pointer is standing unconfirmed; that rationale is what lands in `mode_chosen_by`.
+
+A docstring naming `_verify_resolutions_gate_check`, deleted in the kernel-v3 cutover, is repointed
+at the surviving mechanism.
+
+**What the Critic changed.** Four of its findings were the same species as the chunk's own subject —
+a question still answered from two places — which is why they are folded in here rather than
+deferred:
+
+- The branch→scope match now also requires the matched plan to have an **unchecked chunk**. Without
+  it every released plan a long-lived repo accumulates was a live target, so a branch named after a
+  shipped scope could attribute a review to it and raise a BLOCKING `chunk-ref-missing` about
+  deliverables that shipped months ago. The `[DECISION:]` block claiming the inference "can only ever
+  ADD attribution" was corrected too — that holds for the no-match case only, and the residual case
+  (a branch named after an *unfinished* plan it is not building) is now stated rather than implied.
+- Rule 4's clean-tree redirect asked "is there uncommitted **code**" while its premise is "is the
+  interval empty". Those differ by exactly a record-only work cycle: uncommitted plan and change-log
+  edits are in `chunk`'s interval, so the redirect would have excluded the records just written and
+  written "working tree is clean" into `mode_chosen_by` — a durable field of the review fact — over a
+  dirty tree. Rule 2 keeps the metadata-blind predicate deliberately, and now says why.
+- The Stop hook read the chunk's `Type:` through the pointer while `Critic mode:` came from the
+  branch's plan — two chunk-level fields from two plans, this chunk's defect one field over. Both now
+  resolve from one plan.
+- The `null`-count **renderings** — the operator-facing half of the whole change — had no test.
+
+**Scope admission.** #533 (publish `INSTALL_REFERENCE` as a stable surface) was added to Chunk 04 at
+owner request, taking the batch from sixteen items to seventeen. No code for it lands here; the plan
+carries the deliverable, its test shape and its acceptance criteria.
+
 ## 2026-08-01: regen-views is advice, not authority — one mode, and one bad scope no longer freezes every view
 
 <!-- prawduct: type=fix | scope=backlog-burndown | chunks=02 -->

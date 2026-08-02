@@ -38,6 +38,10 @@ ROOT = Path(__file__).resolve().parent.parent / "plugin"
 HOOK = ROOT / "bin" / "prawduct-hook"
 sys.path.insert(0, str(ROOT))
 from lib import critic_consolidate as cc  # noqa: E402
+# The anchor predicates the dispatch guard is built on. Imported rather than
+# re-implemented so a test asserting "the OLD guard would have passed" is
+# asserting it about the real one.
+from lib.critic_mode import _commit_is_ancestor, _commit_resolves  # noqa: E402
 from lib import evidence  # noqa: E402
 from lib import gates  # noqa: E402
 from lib import record_lint  # noqa: E402
@@ -1999,6 +2003,149 @@ class TestVerifyResolutionsDispatch:
         # working-tree-vs-committed-HEAD mismatch is surfaced, not silent.
         assert "vouches for the WORKING tree" in result.stderr
 
+    def _seed_clean_dirty_tree_review(self, repo: Path) -> str:
+        """A CLEAN review of a DIRTY working tree — the state
+        `review-cycle.md` says vouches for the commit that materializes it.
+
+        The fact records the working tree's hash as `head_tree` and no
+        `head_commit`, which is exactly what a dirty-tree dispatch writes.
+        Returns that tree hash.
+
+        The review's own bookkeeping is gitignored — the findings cache, the
+        partials and the ledger all land under `.prawduct/`, and consolidating
+        would otherwise dirty the tree by the act of recording that it reviewed
+        it, so no fixture could reach the state under test. Ignoring the whole
+        directory is broader than a real repo does; what it buys here is a tree
+        whose only content is the code under review.
+        """
+        _commit_file(repo, ".gitignore", ".prawduct/\n", "ignore review bookkeeping")
+        head = _commit_file(repo, "src/app.py", "x = 1\n", "init")
+        (repo / ".prawduct").mkdir(exist_ok=True)
+        (repo / "src/app.py").write_text("x = 2  # reviewed while dirty\n")
+        capture = evidence.capture_tree(repo)
+        reviewed_tree = capture["tree"]
+        _set_marker(repo)
+        _write_manifest(
+            repo, head, id="rev-prior-0001", head_tree=reviewed_tree,
+            head_commit=None,
+        )
+        _full_roster_partials(repo, head)  # clean: no findings at all
+        result = _run_consolidate(repo)
+        assert result.returncode == 0, f"seed failed: {result.stderr!r}"
+        return reviewed_tree
+
+    def test_the_vouching_commit_does_not_move_the_anchor(self, tmp_path):
+        """Committing the reviewed tree verbatim, then working on: the pass runs.
+
+        The anchor branch used to read a COMMIT-set diff while the refusal guard
+        read a TREE delta, and the two disagree here and nowhere else. The
+        vouching commit — the one `review-cycle.md` says the dirty-tree review
+        vouches FOR — made the commit set non-empty, moved the anchor to
+        committed HEAD, and left the tree delta empty. `critic-begin` then exited
+        1 saying "nothing changed since" while unreviewed work sat in the tree:
+        a refusal that reads as "everything is reviewed" and means "everything I
+        chose to look at is reviewed".
+        """
+        repo = tmp_path / "r"
+        _init_repo(repo)
+        reviewed_tree = self._seed_clean_dirty_tree_review(repo)
+
+        # The vouching commit: the reviewed content, committed verbatim.
+        vouching = _commit_file(repo, "src/app.py", "x = 2  # reviewed while dirty\n",
+                                "commit the reviewed tree")
+        assert _git(repo, "rev-parse", "HEAD^{tree}").stdout.strip() == reviewed_tree, (
+            "the fixture must commit the reviewed tree VERBATIM — that is the "
+            "whole mechanism"
+        )
+        # …then real, unreviewed work lands in the working tree.
+        (repo / "src/app.py").write_text("x = 3  # NOT reviewed by anyone\n")
+
+        result = _run_begin(repo, "--mode", "verify-resolutions")
+        assert result.returncode == 0, f"stderr={result.stderr!r}"
+        manifest = json.loads((repo / PARTIALS_REL / "manifest.json").read_text())
+        # Anchored at the WORKING tree: the commit changed no content, so it is
+        # not a change of intent.
+        assert manifest["base_tree"] == reviewed_tree
+        assert manifest["head_tree"] != reviewed_tree
+        assert manifest["head_commit"] is None
+        assert "src/app.py" in manifest["files_changed"], (
+            "the unreviewed work is IN the reviewed scope, which is the point"
+        )
+        assert vouching  # the commit exists; it simply does not move the anchor
+
+    def test_nothing_to_verify_names_the_tree_it_compared(self, tmp_path):
+        """The genuine no-op still refuses — with a message that says what it read.
+
+        Under the tree-inequality anchor an empty delta means the tree really is
+        unchanged, so this refusal is honest. It names the anchor and both tree
+        hashes anyway: the previous wording was true of the anchor and false of
+        the repo, and nothing in it let a builder tell which.
+        """
+        repo = tmp_path / "r"
+        _init_repo(repo)
+        reviewed_tree = self._seed_clean_dirty_tree_review(repo)
+        _commit_file(repo, "src/app.py", "x = 2  # reviewed while dirty\n",
+                     "commit the reviewed tree")
+
+        result = _run_begin(repo, "--mode", "verify-resolutions")
+        assert result.returncode == 1
+        assert "nothing to verify" in result.stderr
+        assert "the working tree" in result.stderr
+        assert reviewed_tree[:12] in result.stderr
+
+    def test_a_non_ancestor_prior_anchor_refuses_for_demotion(self, tmp_path):
+        """A sibling branch's review fact must not anchor this branch's pass.
+
+        The findings cache is single-slot and survives a branch switch, and
+        worktrees of one clone share an object store — so the anchor still
+        RESOLVES, which is all the old guard asked. The delta from it would span
+        the divergence and fill the review with changes this branch never made.
+        The `_commit_resolves` assertion below is the load-bearing half: without
+        it this test would stay green against a build that dropped the ancestor
+        check, because it would be proving nothing about which guard refused.
+        """
+        repo = tmp_path / "r"
+        _init_repo(repo)
+        _commit_file(repo, "src/app.py", "x = 1\n", "init")
+        (repo / ".prawduct").mkdir()
+
+        _git(repo, "checkout", "--quiet", "-b", "sibling")
+        sibling_tip = _commit_file(repo, "src/app.py", "x = 99  # sibling\n", "sibling")
+        sibling_tree = _git(repo, "rev-parse", "HEAD^{tree}").stdout.strip()
+        _git(repo, "checkout", "--quiet", "main")
+
+        # The prior fact belongs to the sibling: its anchor is that branch's tip.
+        prior_id = _seed_prior_review_with_blocker(
+            repo, sibling_tip, head_tree=sibling_tree, head_commit=sibling_tip
+        )
+        (repo / "src/app.py").write_text("x = 2  # my fix\n")
+
+        assert _commit_resolves(repo, sibling_tip), (
+            "the old guard passes this anchor — that is the defect"
+        )
+        assert not _commit_is_ancestor(repo, sibling_tip)
+
+        result = _run_begin(repo, "--mode", "verify-resolutions")
+        assert result.returncode == 1
+        assert "another lineage" in result.stderr, result.stderr
+        assert prior_id in result.stderr
+
+    def test_a_dirty_tree_fact_anchored_at_head_is_not_refused(self, tmp_path):
+        """Fail-closed must not tighten into stranding the builder.
+
+        A review of a dirty tree records no `head_commit`, so the anchor falls
+        back to `dispatch_commit` — which IS this branch's HEAD. That is the
+        ordinary fix-in-progress case, and refusing it would break dirty-tree
+        verify for everyone while looking like extra safety.
+        """
+        repo = tmp_path / "r"
+        _init_repo(repo)
+        head, _prior_id = self._seed_and_fix(repo)
+
+        assert _commit_is_ancestor(repo, head), "HEAD is trivially its own ancestor"
+        result = _run_begin(repo, "--mode", "verify-resolutions")
+        assert result.returncode == 0, f"stderr={result.stderr!r}"
+
     def test_verify_scope_widened_exits_2(self, tmp_path):
         repo = tmp_path / "r"
         _init_repo(repo)
@@ -2222,10 +2369,14 @@ class TestRecordLintInManifest:
     def test_manifest_carries_a_record_lint_block(self, tmp_path):
         _repo, manifest, _res = self._dispatch(tmp_path)
         lint = manifest["record_lint"]
-        assert set(lint) == {"records", "chunk_graded", "findings", "unchecked", "counts"}
+        assert set(lint) == {
+            "records", "chunk_graded", "plan_graded", "findings", "unchecked", "counts",
+        }
         # Every check is present with an explicit tally, so a zero is visibly a
-        # zero rather than a key a consumer has to interpret.
+        # zero rather than a key a consumer has to interpret — and a check that
+        # produced no answer is None, which a zero cannot be told apart from.
         assert set(lint["counts"]) == set(record_lint.CHECKS)
+
 
     def test_a_missing_declared_deliverable_lands_in_the_manifest(self, tmp_path):
         plan = (
@@ -2269,6 +2420,112 @@ class TestRecordLintInManifest:
         _repo, manifest, _res = self._dispatch(tmp_path)
         manifest.pop("record_lint")
         assert cc.build_fact_body(manifest, [])["record_lint"] is None
+
+
+class TestScopeAttribution:
+    """Which plan the RECORD says the review was of.
+
+    An unbounded `active_build_plan` has attributed the manifest, the review
+    fact and the ledger event to an unrelated plan — with the pointer correct
+    every time, which is why nothing here repoints it.
+    """
+
+    def _repo_with_scoped_plan(self, tmp_path, branch: str) -> Path:
+        repo = tmp_path / "r"
+        _init_repo(repo)
+        _commit_file(repo, "src/app.py", "x = 1\n", "init")
+        artifacts = repo / ".prawduct" / "artifacts"
+        artifacts.mkdir(parents=True)
+        (repo / ".prawduct" / "project-state.yaml").write_text(
+            "project_name: t\nactive_build_plan: artifacts/build-plan-other.md\n"
+        )
+        (artifacts / "build-plan-other.md").write_text(
+            "---\nartifact: build-plan\nscope: other\n---\n\n# Plan\n\n"
+            "## Status\n\n- [ ] Chunk 01: other\n\n"
+            "### Chunk 01: other\n\n- **Deliverables:** `src/app.py`\n"
+        )
+        (artifacts / "build-plan-mine.md").write_text(
+            "---\nartifact: build-plan\nscope: mine\n---\n\n# Plan\n\n"
+            "## Status\n\n- [ ] Chunk 01: mine\n\n"
+            "### Chunk 01: mine\n\n- **Deliverables:** `src/app.py`\n"
+        )
+        _commit_file(repo, ".prawduct/keep", "", "seed prawduct")
+        _git(repo, "checkout", "-b", branch, "--quiet")
+        (repo / "src/app.py").write_text("x = 2\n")
+        return repo
+
+    def test_scope_is_derived_from_the_branch_when_the_dispatch_omits_it(
+        self, tmp_path
+    ):
+        """No `--scope`, and the record still names this branch's plan.
+
+        Derived in code rather than left to the dispatching agent to read off
+        the pointer — that read is where the misattribution enters.
+        """
+        repo = self._repo_with_scoped_plan(tmp_path, "fix/mine")
+        result = _run_begin(repo, "--mode", "chunk", "--chunk", "01")
+        assert result.returncode == 0, f"stderr={result.stderr!r}"
+        manifest = json.loads((repo / PARTIALS_REL / "manifest.json").read_text())
+        assert manifest["scope"] == "mine"
+        assert manifest["scope_chosen_by"] == "branch-name"
+        assert manifest["record_lint"]["plan_graded"].endswith("build-plan-mine.md")
+
+    def test_an_explicit_scope_still_wins(self, tmp_path):
+        repo = self._repo_with_scoped_plan(tmp_path, "fix/mine")
+        result = _run_begin(repo, "--mode", "chunk", "--chunk", "01", "--scope", "other")
+        assert result.returncode == 0, f"stderr={result.stderr!r}"
+        manifest = json.loads((repo / PARTIALS_REL / "manifest.json").read_text())
+        assert manifest["scope"] == "other"
+        assert manifest["scope_chosen_by"] == "explicit-args"
+        assert manifest["record_lint"]["plan_graded"].endswith("build-plan-other.md")
+
+    def test_the_dispatch_line_names_the_subject_and_what_did_not_run(
+        self, tmp_path
+    ):
+        """The dispatch output is what the reviewing agent reads before assessing
+        anything, so it is where a null must not pass for a zero.
+
+        `record-lint clean … checks run: <every check>` was the old line, printed
+        whether or not each check ran — the report that vouched for work nobody
+        did, which is the thing record-lint exists to refuse.
+        """
+        repo = self._repo_with_scoped_plan(tmp_path, "fix/mine")
+        result = _run_begin(repo, "--mode", "chunk", "--chunk", "01")
+        assert result.returncode == 0, f"stderr={result.stderr!r}"
+        assert "record-lint graded chunk 01 of" in result.stdout
+        assert "build-plan-mine.md" in result.stdout
+        assert "scope mine, branch-name" in result.stdout
+
+    def test_a_dispatch_with_no_gradable_chunk_says_what_did_not_run(self, tmp_path):
+        """A check with no subject is reported as not-run, not as a clean pass."""
+        repo = tmp_path / "r"
+        _init_repo(repo)
+        _commit_file(repo, "src/app.py", "x = 1\n", "init")
+        (repo / ".prawduct" / "artifacts").mkdir(parents=True)
+        (repo / ".prawduct" / "project-state.yaml").write_text("project_name: t\n")
+        _commit_file(repo, ".prawduct/keep", "", "seed prawduct")
+        (repo / ".prawduct" / "artifacts" / "notes.md").write_text("# Notes\n\nplain\n")
+
+        result = _run_begin(repo, "--mode", "chunk")
+        assert result.returncode == 0, f"stderr={result.stderr!r}"
+        assert "NOT run: chunk-ref-missing" in result.stdout, result.stdout
+        manifest = json.loads((repo / PARTIALS_REL / "manifest.json").read_text())
+        assert manifest["record_lint"]["counts"]["chunk-ref-missing"] is None
+
+    def test_a_branch_matching_no_declared_scope_infers_nothing(self, tmp_path):
+        """The inference can only ADD attribution, never redirect it.
+
+        A branch name matching nothing leaves every caller on the behaviour it
+        had before — which is the whole safety argument for reading a branch
+        name at all.
+        """
+        repo = self._repo_with_scoped_plan(tmp_path, "fix/unrelated-name")
+        result = _run_begin(repo, "--mode", "chunk", "--chunk", "01")
+        assert result.returncode == 0, f"stderr={result.stderr!r}"
+        manifest = json.loads((repo / PARTIALS_REL / "manifest.json").read_text())
+        assert manifest["scope"] is None
+        assert manifest["scope_chosen_by"] == "not-resolved"
+        assert manifest["record_lint"]["plan_graded"].endswith("build-plan-other.md")
 
 
 # ---------------------------------------------------------------------------

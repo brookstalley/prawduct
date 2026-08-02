@@ -402,7 +402,15 @@ def _prior_review_fact(project_dir: Path, prawduct_dir: Path) -> tuple[dict | No
     """The review fact a verify-resolutions pass anchors to, located via the
     derived cache's ``fact_id`` pointer (D7 — this is what the pointer is
     for). Returns ``(fact, "")`` or ``(None, reason)`` — the caller fails
-    loud and the skill demotes to chunk/final."""
+    loud and the skill demotes to chunk/final.
+
+    **The anchor must be an ancestor of HEAD.** The single-slot cache survives a
+    branch switch, and a sibling branch's anchor still *resolves* in the shared
+    object store — so without this the pass would anchor to a tree off this
+    lineage and diff across the divergence, producing phantom findings over work
+    this branch never touched. Fails closed: not-an-ancestor and any git failure
+    both refuse, because an anchor we cannot place is one we cannot trust.
+    """
     cache = prawduct_dir / ".critic-findings.json"
     try:
         data = json.loads(cache.read_text())
@@ -416,8 +424,23 @@ def _prior_review_fact(project_dir: Path, prawduct_dir: Path) -> tuple[dict | No
         )
     store = evidence.read_facts(project_dir)
     for fact in evidence.facts_of_kind(store, "review"):
-        if fact.get("id") == fact_id:
-            return fact, ""
+        if fact.get("id") != fact_id:
+            continue
+        body = fact.get("body") or {}
+        # A dirty-tree review records no `head_commit`; its `dispatch_commit` is
+        # the commit it was dispatched from, and that is the anchor to place.
+        anchor = body.get("head_commit") or body.get("dispatch_commit")
+        if isinstance(anchor, str) and anchor.strip():
+            from . import critic_mode  # noqa: PLC0415 — lazy; avoids an import cycle
+
+            if not critic_mode._commit_is_ancestor(project_dir, anchor):
+                return None, (
+                    f"prior review fact {fact_id!r} anchors at {anchor[:12]}, "
+                    "which is not an ancestor of HEAD — it belongs to another "
+                    "lineage (a branch switch, or rewritten history), so the "
+                    "delta from it would span the divergence"
+                )
+        return fact, ""
     return None, f"prior review fact {fact_id!r} not found in the evidence store"
 
 
@@ -460,6 +483,20 @@ def begin_review(
             ),
         }
     prawduct_dir = gitstate.get_prawduct_dir(project_dir)
+
+    # Which plan this review is OF. An unbounded `active_build_plan` has
+    # attributed the manifest, the review fact and the ledger event to an
+    # unrelated plan — with the pointer *correct* every time, which is why this
+    # resolves around it rather than asking anyone to repoint it. Derived here,
+    # in code, rather than left to the dispatching agent to read off the
+    # pointer: that read is where the misattribution enters.
+    from . import buildplan_refs  # noqa: PLC0415 — lazy; pulls the plan readers
+
+    scope = (scope or "").strip() or None
+    scope_chosen_by = "explicit-args" if scope else None
+    if scope is None:
+        scope = buildplan_refs.infer_scope_from_branch(project_dir, prawduct_dir)
+        scope_chosen_by = "branch-name" if scope else "not-resolved"
 
     capture = evidence.capture_tree(project_dir)
     if capture.get("status") != "ok":
@@ -518,20 +555,27 @@ def begin_review(
         # composes to COMMITTED HEAD, the Stop-hook gate to the WORKING tree. A
         # single working-tree anchor left the PR gate ``uncovered`` whenever a
         # committed fix carried along a stray judgeable uncommitted file. Read
-        # intent from git: if the builder COMMITTED work since the prior review
-        # (the post-cumulative-fix / PR-gate case), anchor the review edge at
-        # committed HEAD so it composes to the PR gate's target and note-and-
-        # exclude any WIP, exactly like the cumulative branch. Otherwise
-        # (fix-in-progress in a dirty tree) keep the working-tree anchor so the
-        # Stop-hook gate composes and the PR gate legitimately stays pending until
-        # the fix is committed — preserving CRT-4J8W dirty-tree verify.
-        from . import critic_mode  # noqa: PLC0415 — lazy; avoids an import cycle
-        prior_commit = prior_body.get("head_commit") or prior_body.get("dispatch_commit")
-        committed_since = (
-            critic_mode._committed_files_since(project_dir, prior_commit)
-            if prior_commit else set()
-        )
-        if committed_since:
+        # intent from git: if the builder COMMITTED content that differs from the
+        # reviewed tree (the post-cumulative-fix / PR-gate case), anchor the
+        # review edge at committed HEAD so it composes to the PR gate's target
+        # and note-and-exclude any WIP, exactly like the cumulative branch.
+        # Otherwise (fix-in-progress in a dirty tree) keep the working-tree
+        # anchor so the Stop-hook gate composes and the PR gate legitimately
+        # stays pending until the fix is committed — preserving CRT-4J8W
+        # dirty-tree verify.
+        #
+        # Intent is TREE inequality, not the commit set. The two disagree in
+        # exactly the case that bites: a review of a dirty tree vouches for the
+        # commit that materializes it verbatim (`review-cycle.md` says so), and
+        # that vouching commit makes a commit-set diff non-empty while the trees
+        # are identical. The anchor then moved to committed HEAD, the delta
+        # computed EMPTY, and the refusal below announced "nothing changed since"
+        # over a working tree holding unreviewed work — a message that reads as
+        # "everything is reviewed" while meaning "everything I chose to look at
+        # is reviewed". A commit that changes no content is not a change of
+        # intent, and now nothing treats it as one.
+        committed_differs = capture["head_tree"] != base_tree
+        if committed_differs:
             head_tree = capture["head_tree"]  # committed HEAD — the PR-gate target
             head_commit = dispatch_commit
             if not capture["clean"]:
@@ -584,11 +628,19 @@ def begin_review(
             prior_counts.get("warning") or 0
         )
         if not delta and not actionable:
+            # Name the tree that was compared. Under the tree-inequality anchor
+            # above, an empty delta means the working tree AND committed HEAD
+            # both hold exactly the reviewed content — so this really is
+            # "nothing changed". The message says which tree it read anyway,
+            # because the previous wording was true of the anchor and false of
+            # the repo, and nothing in it let a builder tell the difference.
+            anchored = "committed HEAD" if committed_differs else "the working tree"
             return {
                 "status": "error",
                 "reason": (
                     "nothing to verify: the prior review has no blocking/warning "
-                    "findings and nothing changed since"
+                    f"findings, and {anchored} ({head_tree[:12]}) is the same tree "
+                    f"it reviewed ({base_tree[:12]})"
                 ),
             }
         files_reviewed = list(prior_files)
@@ -625,7 +677,7 @@ def begin_review(
     # ``unchecked`` rather than empty — see ``record_lint``.
     from . import record_lint  # noqa: PLC0415 — lazy; keeps the import graph flat
     lint = record_lint.lint_records_safe(
-        project_dir, prawduct_dir, files_changed, base_tree, head_tree, chunk
+        project_dir, prawduct_dir, files_changed, base_tree, head_tree, chunk, scope
     )
 
     manifest = {
@@ -643,6 +695,7 @@ def begin_review(
         "files_reviewed": files_reviewed,
         "tier": tier,
         "scope": scope,
+        "scope_chosen_by": scope_chosen_by,
         "chunk": chunk,
         "base_reviewed": base_reviewed,
         # Make the resolved target VISIBLE so a wrong-tree review is obvious
@@ -785,9 +838,9 @@ def validate_manifest(data) -> tuple[bool, str]:
     non-empty ``files_reviewed``, ``files_changed`` (a list, possibly empty —
     a same-tree verify-resolutions pass legitimately changes nothing).
     Nullable: ``base_commit``/``head_commit`` (a prior review of a dirty tree
-    has no commit), ``tier``/``scope``/``chunk``/``model``/``base_reviewed``,
-    ``worktree``/``branch`` (visibility fields; ``branch`` is None on a detached
-    HEAD — PDT-WT9K).
+    has no commit), ``tier``/``scope``/``scope_chosen_by``/``chunk``/``model``/
+    ``base_reviewed``, ``worktree``/``branch`` (visibility fields; ``branch`` is
+    None on a detached HEAD — PDT-WT9K).
 
     The v2 (model-written) manifest shape carries none of the v3 interval
     fields, so it fails here loudly — a stale cached skill hand-authoring a
@@ -814,8 +867,8 @@ def validate_manifest(data) -> tuple[bool, str]:
         return False, "missing 'files_reviewed' (non-empty list)"
     if not _str_list(data.get("files_changed")):
         return False, "'files_changed' must be a list of non-empty strings"
-    for opt in ("base_commit", "head_commit", "tier", "scope", "chunk", "model",
-                "base_reviewed", "worktree", "branch"):
+    for opt in ("base_commit", "head_commit", "tier", "scope", "scope_chosen_by",
+                "chunk", "model", "base_reviewed", "worktree", "branch"):
         val = data.get(opt)
         if val is not None and not _nonempty_str(val):
             return False, f"'{opt}' must be a non-empty string or null"
@@ -1043,6 +1096,10 @@ def build_fact_body(manifest: dict, partials: list[dict]) -> dict:
         "counts": {"blocking": blocking, "warning": warning, "note": note},
         "duration_seconds": max(durations) if durations else None,
         "scope": manifest.get("scope"),
+        # How the scope was decided, carried so attribution is auditable rather
+        # than merely asserted — a fact naming a plan should say whether the
+        # dispatch named it or the branch did.
+        "scope_chosen_by": manifest.get("scope_chosen_by"),
         "chunk": manifest.get("chunk"),
         "base_reviewed": manifest.get("base_reviewed"),
         # The record-lint control's YIELD, carried from the dispatch manifest
