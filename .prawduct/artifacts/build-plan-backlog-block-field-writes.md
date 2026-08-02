@@ -46,7 +46,13 @@ last_validated: 2026-08-02
 - [ ] Chunk 02: Instruction/spec coherence + the phantom-capability class guard
 Context: Plan authored 2026-08-02 from #550, itself found while triaging `incoming-bugs/`. `active_build_plan` repointed here from `artifacts/build-plan-v3.2.0-golive.md` — **the golive plan is still in flight** (its Chunks 01, 05, 07, 08, 09 unchecked), so repoint back when this merges.
 
-**Chunk 01 is complete** (commits `8176731`, `2876513`, plus the note fix) and reviewed clean — two `verify-resolutions` passes, ending 0 blocking / 0 warning. The checkboxes above stay `[ ]` on purpose: they are a derived view and only `status=shipped` flips them, so a statusless tagged change-log entry riding in the feature PR is the correct release-pending state, not a missed step. Next: Chunk 02, which must settle the `reviewed`-vs-`verified` collision recorded under Chunk 01 rather than assume it.
+**Both chunks are complete and the branch is PR-ready.** Cumulative gate satisfied at `c9f2bb8` (4 review facts, 0 unresolved blocking); the final `verify-resolutions` returned 0 blocking / 0 warning / 0 note. Suite green and record-lint clean — `prawduct-hook test-status` is the live answer; a count copied into prose is stale the next time a test lands.
+
+Review history, since the count is the interesting part: Chunk 01 took two resolution passes (a key allowlist that never constrained values, then a value guard narrower than the parser it protected). The cumulative returned 0 blocking / 8 warning, of which two were live defects — `--body` injection through an unterminated fence, and `--reviewed <date>` silently stamping today. Two further passes closed the residue, most of it in the test scaffolding rather than the shipped path. The recurring shape — a guard narrower than the mechanism it guards, three times, twice after the learning was written — is recorded in `learnings.md` and `.session-reflected`.
+
+Chunk 02's open question is answered: `reviewed:` and `verified` are one concept at two fidelities (TF2 asks for "re-checked by `<actor>` on `<date>`"; TF3 counts `reviewed:` stamps), `reviewed:` is the live encoding, and the actor half comes from the API identity rather than a forgeable block field.
+
+The checkboxes above stay `[ ]` on purpose: they are a derived view and only `status=shipped` flips them, so the two statusless tagged change-log entries riding in the feature PR are the correct release-pending state, not a missed step. **On merge, repoint `active_build_plan` back to the golive plan** — it is still in flight.
 
 ## Verification Strategy
 
