@@ -3,6 +3,35 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-08-02: the governance surfaces stop explaining the fix by the mechanism it replaced
+
+<!-- prawduct: type=fix | scope=critic-coordinator-await | chunks=03 -->
+
+**`#207`, propagation.** Four surfaces described the coordinator's asynchrony, and after Chunks
+01-02 each was wrong in a different degree. The subtle case is `reflection.md`, whose
+*conclusion* stayed true — your turn does still end with the review running — while its stated
+reason became false: it said the fork returns immediately. It does not; it waits for its three
+reviewers. What returns immediately is the **skill invocation**, because `/prawduct:critic` runs
+as a background fork. A rule whose reason is wrong is a rule the next reader edits away, so the
+mechanism is corrected everywhere it is stated rather than only where the conclusion changed.
+
+**`CLAUDE.md`, `session-digest.md` and `building.md` all told the reader to run
+`critic-consolidate` before reading the findings, on the ground that a `SubagentStop` trigger
+may not have fired.** That is no longer the primary path: the fork consolidates and reports its
+counts, and *that report is the findings*. The consolidate call survives on its remaining merit
+— it stops you reading the **previous** review's file — which is a smaller claim, and now the
+true one.
+
+**Both budgeted files absorbed their edits at zero cost.** `building.md` came back to 4659
+against its 4660 ceiling, token-neutral, after a first draft overshot by 7; `review-protocol.md`
+holds at 3615. No ceiling moved.
+
+**Discovered while writing this, and filed rather than fixed here:** a `SessionStart` hook can
+request `reloadSkills`, and prawduct's does not — which is why an edited skill body does not
+reach a fork until the CLI is restarted, `/clear` included. That is the mechanism behind this
+plan's one resolved assumption, and it belongs to framework-development ergonomics, not to
+`#207`.
+
 ## 2026-08-02: the cache-warm stopgap is retired, and the wait-side messages stop describing a wait
 
 <!-- prawduct: type=fix | scope=critic-coordinator-await | chunks=02 -->

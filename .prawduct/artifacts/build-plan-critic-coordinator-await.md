@@ -86,9 +86,25 @@ see Verification Strategy.
 - [ ] Chunk 02: Retire the cache-warm stopgap and re-true the wait-side messages
 - [ ] Chunk 03: Propagate the corrected model to the governance surfaces
 Context: Plan written 2026-08-02 on branch `fix/critic-coordinator-await` off `develop` at
-`fd9edea`; the pre-Chunk-01 baseline suite was green. Current suite counts live in
-`.prawduct/.test-evidence.json`, not here — a total restated in prose is stale the moment a
-chunk adds a test. Research is complete and recorded on #207. Next: Chunk 01.
+`fd9edea`. Current suite counts live in `.prawduct/.test-evidence.json`, not here — a total
+restated in prose is stale the moment a chunk adds a test. Research is complete and recorded on
+#207.
+
+**All three chunks are BUILT; the plan is not complete.** Chunks 01 (`fd0bd59`) and 02
+(`e08f7b1`) are committed and each carries a clean Critic round — 01 verified 0 blocking, 02
+returned 0 blocking with its 3 warnings fixed in the same pass. Chunk 03's edits are built and
+green.
+
+**What remains is Chunk 03's Done-when step 0, and it cannot be done from the session that
+built this.** Skill bodies are cached per session and prawduct's `SessionStart` hook does not
+request `reloadSkills`, so **`/clear` is not enough — the CLI must be restarted.** Then run
+`/prawduct:critic cumulative`; that review is this plan's live acceptance test.
+
+**Read the result this way, because the ambiguity the plan originally feared is gone.** The
+harness source already establishes that a `run_in_background: false` dispatch blocks. So if the
+fork returns having merely dispatched, that is evidence about the *session*, not about the fix
+— restart and re-run. The result that validates is a fork report carrying consolidated finding
+counts.
 
 ## Verification Strategy
 

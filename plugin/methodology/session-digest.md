@@ -38,10 +38,9 @@ inference as a vetoable assumption. Full model: `methodology/discovery.md` "Cali
   lead the code — departing from one is a decision to record (amend / ruling / bounded
   exception), never doc-drift to sync; amending a norm to match your own code is the tell.
 - **Invoke the Critic (`/prawduct:critic`) after medium+ work.** Never write Critic findings
-  yourself — the independence is the whole value. After a coordinator review (`final`/
-  `cumulative` given a three-reviewer roster), run `prawduct-hook
-  critic-consolidate` before reading the findings (idempotent no-op if the SubagentStop
-  trigger already landed them — never read a stale file).
+  yourself — the independence is the whole value. The reviewing fork consolidates and reports
+  its counts; that report is the findings. Run `prawduct-hook critic-consolidate` before
+  reading the findings file directly (idempotent — it is what stops you reading a stale one).
 - **Catch specific exceptions.** Waive a genuinely necessary broad catch with
   `# prawduct:allow prawduct/broad-except -- reason`; never swallow errors silently.
   (`prawduct:allow <scope>/<rule-id> -- reason` is the general intentional-waiver
