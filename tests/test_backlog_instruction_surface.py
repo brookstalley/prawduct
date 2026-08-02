@@ -246,3 +246,160 @@ def test_surfaces_claim_no_unbacked_adapter_guard():
         "guard. Either build the mechanism or stop naming it (BKL-8V3D / "
         "BKL-2Q7F).\n  - " + "\n  - ".join(offenders)
     )
+
+
+# --- Phantom CAPABILITIES (the sibling class of phantom guards) --------------
+#
+# Everything above catches an instruction surface promising a *safety mechanism*
+# the adapter lacks. This section catches the sibling: a surface instructing the
+# model to WRITE A FIELD no exposed op can write. Same defect shape — prose
+# describing an adapter that does not exist — and the reason it needed its own
+# check is that the guards above are scoped, by their own docstring, to "the
+# mutation-safety family", so a capability claim sailed straight through them.
+#
+# It went unnoticed for the whole GitHub-Issues cutover (#550). The importer
+# preserves every metadata key verbatim as a block field, one-way, while the
+# ongoing write surface covered only facets, title and body — so `refs`,
+# `reviewed`, `closed-by` and `accepted-by` were instructed but unwritable, and
+# `update --body` made it look like it worked by returning ok and discarding the
+# edit.
+#
+# The writable set is DERIVED, never listed here: a hand-kept list is a snapshot
+# of what someone thought of, and drifts silently the moment the CLI changes.
+#
+# HONEST LIMIT, stated rather than implied (Principle 5) — same discipline as the
+# mutation-safety half above. This catches two SHAPES of field-write instruction:
+# a command form (`update <id> foo=bar`) and a verb-led prose form
+# ("set `foo:` to …"). It does not catch arbitrary paraphrase. A real example it
+# misses: "write it into the metadata bar as `closed-by: <ref>`" — the backtick
+# span holds a value as well as the key, so the prose pattern does not fire. That
+# sentence was fixed by hand, not by this guard. Widening the value-tolerant case
+# was tried and rejected: `` `key: value` `` spans match ordinary documentation
+# prose constantly, and a check that cries wolf trains its reader to skip the one
+# real catch — the failure this module's own docstring warns about.
+
+# Fields with no flag of their own because a dedicated op owns them — writing
+# them through `update` would bypass that op's invariants (atomic take-and-
+# verify, edge symmetry, redirect-before-close). Curated for the same reason
+# IMPLEMENTED_ADAPTER_GUARDS is: an unknown name must be unbacked BY DEFAULT, so
+# adding one is a deliberate review moment rather than a heuristic's guess.
+OP_OWNED_FIELDS: frozenset[str] = frozenset({
+    "status",         # `status --to`
+    "assignee",       # `claim` / `unclaim` (the API identity, never caller-supplied)
+    "claimed_at",     # stamped by `claim`, cleared by `unclaim`
+    "related",        # `link` / `unlink`
+    "superseded_by",  # `merge`
+})
+
+# Tokens that match the `field=value` shape without being item fields at all.
+_NOT_ITEM_FIELDS: frozenset[str] = frozenset({
+    "repo", "to", "edge", "from", "archive", "restructure", "plan", "out",
+    "limit", "page", "per-page", "sort", "direction", "state", "assignee-filter",
+    "type", "scope", "chunks", "id", "key", "value", "name", "owner",
+    # Syntax placeholders, not field names: the `update` heading is literally
+    # spelled `update PFX-XXXX <field=value>`.
+    "field",
+})
+
+# "set `refs:` …" / "stamp `reviewed:` …" — a field write asserted in prose.
+_PROSE_FIELD_WRITE = re.compile(
+    r"\b(?:set|sets|setting|stamp|stamps|record|records|write|writes)\b[^.\n]{0,80}?"
+    r"`(?P<f>[a-z][a-z0-9_-]*):`"
+)
+# "update <id> closed-by=<scope>" — a field write asserted as a command form.
+_COMMAND_FIELD_WRITE = re.compile(r"(?<![\w-])(?P<f>[a-z][a-z0-9_-]{2,})=")
+_UPDATE_FORM = re.compile(r"\bupdate\b\s+(?:`)?(?:PFX-XXXX|<id>|&lt;id&gt;)")
+
+
+def _writable_field_names() -> frozenset[str]:
+    """Every field name the adapter can actually write, derived from the CLI.
+
+    A flag reaches `_parse_flags` only as a real string literal in its `valued=`
+    / `boolean=` set, so the CLI's non-docstring literals ARE the flag
+    vocabulary — the same authoritative signal `_cli_string_literals` already
+    relies on for evasion 1, reused rather than re-derived.
+    """
+    return frozenset(_cli_string_literals()) | OP_OWNED_FIELDS
+
+
+def _instructed_field_writes(surfaces=None) -> list[tuple[str, str]]:
+    """``(field, "path:lineno: line")`` for every field write an instruction asserts."""
+    found: list[tuple[str, str]] = []
+    for surface in surfaces if surfaces is not None else SURFACES:
+        for lineno, line in enumerate(
+            surface.read_text(encoding="utf-8").splitlines(), 1
+        ):
+            if not _in_adapter_context(surface, line):
+                continue
+            names = {m.group("f") for m in _PROSE_FIELD_WRITE.finditer(line)}
+            if _UPDATE_FORM.search(line):
+                names |= {m.group("f") for m in _COMMAND_FIELD_WRITE.finditer(line)}
+            # `relative_to` raises for a path outside PLUGIN, which the
+            # discrimination fixtures below deliberately are.
+            try:
+                rel = surface.relative_to(PLUGIN).as_posix()
+            except ValueError:
+                rel = surface.name
+            for name in sorted(names - _NOT_ITEM_FIELDS):
+                found.append((name, f"{rel}:{lineno}: {line.strip()[:110]}"))
+    return found
+
+
+def test_surfaces_instruct_no_unwritable_field():
+    """A surface must not tell the model to set a field no op can write.
+
+    The phantom-CAPABILITY class. `update --body` accepts an edited block and
+    silently discards it (`_body_update_preserving_block` re-appends the old one
+    by design), so an instruction to set an unwritable field does not fail — it
+    reports success and changes nothing, which is the worst available outcome.
+    """
+    writable = _writable_field_names()
+    offenders = [
+        where for field, where in _instructed_field_writes() if field not in writable
+    ]
+    assert not offenders, (
+        "A backlog instruction surface tells the model to set a field the adapter "
+        "cannot write. `update` writes only its declared flags; everything else in "
+        "the prawduct: block is import-only, and a --body edit carrying the field "
+        "is silently discarded. Either add the flag (lib/backlog/cli.py + core.py) "
+        "or redirect the instruction to the op that owns the field (#550).\n  - "
+        + "\n  - ".join(offenders)
+    )
+
+
+def test_the_capability_guard_actually_discriminates(tmp_path):
+    """The guard must FAIL on a surface claiming an unwritable field.
+
+    Without this, the check above passes just as happily when its regexes match
+    nothing at all — and a guard that cannot fail is indistinguishable from one
+    that is working. `added` is the fixture's phantom because it is a real block
+    field that is deliberately NOT writable (native `created_at` answers it), so
+    the fixture tests the actual predicate rather than a nonsense token.
+    """
+    fixture = tmp_path / "SKILL.md"
+    fixture.write_text(
+        "Run `prawduct-hook backlog update <id>` and always set `added:` to today.\n",
+        encoding="utf-8",
+    )
+    caught = [
+        f for f, _ in _instructed_field_writes([fixture])
+        if f not in _writable_field_names()
+    ]
+    assert "added" in caught, (
+        "the phantom-capability guard did not flag a surface instructing an "
+        "unwritable field — it is matching nothing and would pass on a real one"
+    )
+
+
+def test_the_capability_guard_does_not_flag_a_writable_field(tmp_path):
+    """The other half: it must stay silent on a field that IS writable, or the
+    real check would be noise the next reader learns to ignore."""
+    fixture = tmp_path / "SKILL.md"
+    fixture.write_text(
+        "Run `prawduct-hook backlog update <id>` and set `refs:` to the design doc.\n",
+        encoding="utf-8",
+    )
+    assert [
+        f for f, _ in _instructed_field_writes([fixture])
+        if f not in _writable_field_names()
+    ] == []

@@ -43,7 +43,7 @@ cache (§6) projects the same fields for the queries GitHub can't serve read-you
 | `status` | `submitted \| open \| in-progress \| shipped \| dropped` | open/closed **+ `state_reason`** (closed) **+ `status:` label** (open sub-states) — §4 | DM2, ready-work |
 | `stage` | `idea…ready` (soft) | **`stage:` label only** (not mirrored to block) | DM2, ready-work, `pick` |
 | `area` `effort` `impact` `source` `kind` | soft enums | **labels** (org Fields where owner is an org) | DM1 (`kind` = the soft-enum extension, not a DM1-named field) |
-| `reviewed` / verification | `{by, on}` | **`prawduct:` block `verified`** (round-trip) + **cache `reviewed`** (the TF2 date-range query) — *no label, no marker-comment* (M6) | TF2 |
+| `reviewed` / verification | date (`{by, on}` designed, unbuilt) | **`prawduct:` block `reviewed`** — the live encoding; `<actor>` comes from the API identity on the write, not the block. `verified` `{by, on}` + **cache `reviewed`** (the TF2 date-range query) stay designed-but-unbuilt (zero live items). *No label, no marker-comment* (M6). See §2 "`reviewed` vs `verified`" | TF2 |
 | `assignee` / claim | user/agent + `claimed_at` | issue **assignee** (claim) + block `claimed_at` (visible staleness) | CC3, ready-work |
 | `relationships` | §1.3 | native dependencies / sub-issues / refs | DM3, ready-work |
 | `provenance` | §1.5 | block (detail) + `source:<product>` label (the coarse XP2/Q4 filter) | XP2 |
@@ -65,7 +65,18 @@ ref, no new stored field), with the block `closed_by` only as the **manual-close
   `assignee`. Changing them is a label/state call (core budget), never a content-creation.
 - **Block-authoritative, unmirrored:** `verified`, `claimed_at`, `attachments`, `superseded_by`,
   `automated`/`worker` (the unattended-actor marker — Security §1a/CC4; self-asserted like all block
-  fields, trustworthy for audit only insofar as the acting API identity is).
+  fields, trustworthy for audit only insofar as the acting API identity is), and the four
+  **editorial** fields `refs`/`revisit`/`closed-by`/`reviewed` (§2).
+- **Writable vs import-only, within the block.** Block-authoritative does not mean writable — the
+  two axes are independent and conflating them is what left the editorial fields stranded for a
+  whole cutover. Writable through `update`: the four editorial fields. Writable only through the op
+  that owns the invariant: `claimed_at` (claim/unclaim), `related` (link/unlink), `superseded_by`
+  (merge). **Import-only, deliberately and permanently:** `id_aliases` and `v` (identity and schema
+  version — MG2 alias loss), `original_title`/`original_body` (write-once MG6 provenance),
+  `automated`/`worker` (caller-settable attribution *is* the SEC-6 forgery they guard against),
+  `provenance` (untrusted until triaged — Security §5), and `added` — for which the native
+  `created_at` is a better answer than any stored copy, being unforgeable and never in need of
+  update.
 - **Two justified mirrors** (each side serves a *distinct* consumer, not the same value twice):
   - `id:` — the **label** makes old refs *queryable/resolvable*; the **block `id_aliases`** is the
     export round-trip record.
@@ -106,8 +117,52 @@ automated: true                                          # unattended-actor mark
 worker: prawduct-hook                                    # the unattended worker id (paired with `automated`)
 original_title: Add the harbor map overlay               # pre-migration title, verbatim (MG6 — only when the scrub changed it)
 original_body: "line one\nline two"                      # pre-migration body, verbatim; JSON-string-encoded to one line
+refs: requirements-x.md#section, arch-y.md               # governing docs (item→doc; `related`/`superseded_by` are item→item)
+revisit: 2027-01-01 | <event trigger text>               # norm-exception / stopgap expiry clock
+closed-by: fix/some-branch                               # manual-close ship handle (§1.1 `closed_by`; NOTE the hyphen)
+reviewed: 2026-08-02                                     # TF2 re-confirmation date — see § Editorial fields below
 ```
 ````
+
+**Editorial fields (`refs` · `revisit` · `closed-by` · `reviewed`) — writable, not import-only.**
+These four carry a human/agent *judgment about the item* that GitHub has no native slot for. They
+entered the block through the importer's preserve-unknown-keys rule (§7 additive-only-forever) and
+were **write-once for the whole cutover**: the only writers were the importer and the ops owning one
+field apiece, so `update --body` carrying an edited block returned ok and discarded the edit. They
+are now written by `update --refs/--revisit/--closed-by/--reviewed` and `file --refs` (#550).
+Usage when that landed, across 388 blocks: `reviewed` 300 · `refs` 270 · `closed-by` 149 ·
+`revisit` 6.
+
+**`closed-by` is hyphenated in the block** while §1.1 names the field `closed_by` and the item
+projection exposes `closed_by`. That is deliberate and must not be "harmonised": 149 live items
+spell it with a hyphen and none with an underscore, so renaming the block key would orphan every
+one. The hyphen→underscore hop happens in `encode.decode_item` and only there.
+
+**Block values are single-line by construction, and this is a security property, not a formatting
+one.** The block is line-based and the parser reads *every* line inside the fence as a field, so a
+value carrying any separator `str.splitlines()` recognises does not store a multi-line value — it
+injects sibling fields, reaching `automated`/`worker` (SEC-6 attribution forgery) and `id_aliases`
+(MG2 permanent-alias loss) past any key-level allowlist. `encode.check_block_value` rejects such
+values at every write op, and derives its predicate from `splitlines()` itself rather than
+enumerating separators, so guard and parser cannot drift. Rejected rather than escaped:
+`format_text` would make any value safe but JSON-quotes it on disk, forking `closed-by` into two
+spellings against the items that carry it bare.
+
+**`reviewed` vs `verified` — one concept, two fidelities (resolved 2026-08-02).** §1.1's
+`reviewed`/verification row and the block's `reviewed:` date are **not** competing fields. TF2 asks
+for *"premise re-checked against code by `<actor>` on `<date>`"*, and TF3 counts `reviewed:` stamps
+as the observed workload — so `reviewed:` **is** TF2's stamp, in its date-only form. The richer
+`verified: [{by, on}]` shape sketched above remains designed-but-unbuilt: **zero live items carry
+it.** The live encoding is therefore the `reviewed:` date, with the `<actor>` half supplied by the
+GitHub API identity on the write (native, unforgeable, in the issue timeline) rather than
+self-asserted in the block — which is strictly better than storing it, since every block field is
+forgeable by any write-capable actor. Build `verified` only if a use case needs multiple retained
+verification events per item; a single latest-re-confirmation does not.
+
+**`reviewed` is never stamped as a side effect of another edit.** Native `updated_at` already
+records that an item was touched. A `reviewed:` that moved on every write would be a self-asserted
+copy of it; the field's entire value is that a label fix moves `updated_at` **without** asserting
+anyone re-read the item, which is the distinction the >90d staleness sweep depends on.
 
 **`original_title` / `original_body` (MG6 restructure preservation).** Written by the importer only
 when an owner-confirmed restructure plan changed the item at create (issue-standard §5); absent

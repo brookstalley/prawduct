@@ -331,6 +331,15 @@ Authn/authz live in the Security Model; this names the **API-boundary** failure 
   `history`, `node_id`, or another actor's **native** attribution. *But `prawduct:`-block fields are body
   text — self-set and forgeable by any write-capable actor* (Security §5/F3): the API treats them as
   **untrusted self-assertion**, trustworthy only insofar as the acting API identity is.
+  `update` writes `title`, `body`, the soft-enum facets, and the four **editorial** block fields
+  `--refs`/`--revisit`/`--closed-by` (valued; empty clears) and `--reviewed` (presence-only, stamps
+  today); `file` additionally accepts `--refs`. Every other block field is import-only or owned by
+  the op holding its invariant (Data Model §1.2) and is **rejected by name**, never silently ignored,
+  so a typo and a mass-assignment attempt are equally visible.
+  **The allowlist binds keys; a second guard binds values.** Block values are body text in a
+  line-based format, so a value carrying any `str.splitlines()` separator injects sibling fields —
+  reaching the very keys the allowlist just rejected. Such values are rejected at the op boundary,
+  by a predicate derived from the parser rather than an enumerated separator set.
 - **Excessive data exposure.** JSON returns **item fields only** — never tokens, auth state, or the
   cache path (§4).
 - **Resource / rate bounds.** Caller-drivable cost is bounded: `batch`/`import` **pace under the 80/min
