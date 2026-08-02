@@ -47,6 +47,10 @@
 
 **Entry:** 2026-07-30: Test evidence counts tests, not a reporter's opinion of how many there are
 
+### install-reference-drift
+
+**Entry:** 2026-07-30: A pinned install reference now announces itself instead of running silently
+
 See `.prawduct/change-log.md` for full details.
 
 ## v3.2.2

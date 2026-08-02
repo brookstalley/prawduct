@@ -1486,22 +1486,34 @@ status is what Chunk 02's record-lint is for.
 
 ## 2026-07-30: A pinned install reference now announces itself instead of running silently
 
-<!-- prawduct: type=feature | scope=install-reference-drift | release=unreleased | status=in-review -->
+<!-- prawduct: type=feature | scope=install-reference-drift | release=v3.2.3 | status=shipped -->
 
-**Why:** a repo whose `.claude/settings.json` pins `extraKnownMarketplaces.prawduct` to a fixed
-release ref (or sets `autoUpdate: false`) never receives another framework version. Nothing about
-that state is loud: the repo does not fail, the gates all pass, and the SessionStart banner
-faithfully reports a version that simply never moves. `/prawduct:doctor` Health Check #1 already
-asserts exactly this contract — but it is operator-invoked, per repo, and nobody health-checks a
-repo that appears to be working. **The gap was the trigger, not the assertion.**
+**Why:** a repo whose `.claude/settings.json` commits a pin of `extraKnownMarketplaces.prawduct` to
+a fixed release ref (or `autoUpdate: false`) hands that state to every fresh clone of it, and any
+clone that seeds from it stops receiving framework versions. Nothing about that state is loud: the
+repo does not fail, the gates all pass, and the SessionStart banner faithfully reports a version
+that simply never moves. `/prawduct:doctor` Health Check #1 already asserts exactly this contract —
+but it is operator-invoked, per repo, and nobody health-checks a repo that appears to be working.
+**The gap was the trigger, not the assertion.**
 
 Observed in the field on a machine with 15 governed repos (#120): 11 carried
 `ref: v2.1.5, autoUpdate: false`, and the machine had been stranded across seven releases —
 including one whose headline fix was a review-losing Critic defect. Five of those repos had the
-pinned entry **on disk but in no commit**, which is what identifies the writer: prawduct only ever
-writes `ref: "main"`, and writes it to be committed. The Claude Code CLI propagates the
-machine-level marketplace pin down into each repo, and a repo that then commits it re-seeds the
-machine on open — a loop, which is why hand-repairing either end alone reverts.
+pinned entry **on disk but in no commit**, which rules prawduct out as the writer: it only ever
+writes `ref: "main"`, and writes it to be committed.
+
+**The first diagnosis of *who* wrote it was wrong, and testing is what caught it.** The original
+entry named the Claude Code CLI, propagating a machine-level pin down into each repo, which a repo
+then re-seeded the machine from on open — a loop, offered as the reason hand-repairing either end
+alone reverts. **That loop does not exist.** The CLI does not write the machine pin down into
+repos, and a stale repo entry does not re-seed the machine; the writer in the reported case was the
+reporter's own session manager, outside this ecosystem entirely. Recorded rather than quietly
+replaced because the falsified mechanism is what #120 and this PR's own description asserted in
+public, so a reader arriving from either needs the correction to be findable — and because the
+inference *felt* like evidence (five uncommitted entries genuinely do rule out prawduct; they say
+nothing about which other tool wrote them). **Nothing about what the probe detects changes** — a
+repo can carry a stale committed reference indefinitely with nothing surfacing it, which was
+verified directly after the machine was repaired.
 
 **What landed.** `migrate_plugin.install_reference_drift()` reports how a present reference departs
 from the contract, reading `INSTALL_REFERENCE` itself rather than transcribing it — the same
@@ -1517,10 +1529,34 @@ onboarded. Firing is one advisory naming every drifted field, never one per fiel
 
 **Honest limit, carried in the advisory's own evidence.** The file that actually binds plugin
 resolution is `~/.claude/plugins/known_marketplaces.json`, which is machine-level and outside
-`${CLAUDE_PROJECT_DIR}` — the boundary the hook runtime does not cross (design §2). So this probe
-sees one end of a two-ended condition, and the advisory says so rather than implying that repairing
-the repo is sufficient. Closing the other end belongs in `/prawduct:doctor`, which is model-side and
-can read it; that half awaits a boundary ruling on #120.
+`${CLAUDE_PROJECT_DIR}` — the boundary the hook runtime does not cross (design §2). The committed
+reference and that file are **decoupled**, measured rather than assumed: a repo still reading
+`ref: v2.1.5` ran a clean v3.2.2 session, because the configured machine resolved the plugin and
+the repo entry never got a vote.
+
+So the limit is a **false negative, not a coupling**. A stranded machine whose repos all carry a
+correct reference produces no advisory here — the stranding lives somewhere this probe cannot see.
+What a drifted committed reference does cost is the *next* clone: it is what a fresh checkout or a
+new machine seeds from, which is `/prawduct:doctor` Health Check #1's own rationale ("contributors
+won't get governance on clone"). The advisory therefore states the clone cost and routes to doctor,
+which is model-side and can read the machine-level file — two complementary checks rather than two
+ends of one loop.
+
+**The operator-facing headline was restated to match, not just the footnotes.** The advisory's
+one-line summary read "this repo will not receive framework updates" — the loudest instance of the
+falsified premise, and false on precisely the machine most operators would read it on. It now reads
+"a fresh clone of this repo would be stranded at that version", and a test pins the old wording
+*out*. Correcting a module's explanation while leaving its headline asserting the disproved version
+would have shipped a file that contradicts itself in paragraph four.
+
+**A second evidence line was carrying it too, and only *running* the probe found that.** Evidence 2
+read "the repo keeps running an old framework" — sitting directly above the corrected evidence 3,
+which says the committed entry is inert on a configured machine. Two adjacent lines of the same
+advisory contradicting each other. Four passes of reading the diff did not surface it; rendering the
+advisory the way an operator receives it surfaced it immediately, because the contradiction only
+exists in the assembled output and never in any one hunk. The methodology already says to launch it
+and inspect the output rather than trust review — this is the cheapest possible instance of why, on
+a change whose entire subject was a claim that had already been believed once and was false.
 
 <!-- prawduct: type=fix | scope=record-mechanization | release=v3.2.1 | status=shipped -->
 

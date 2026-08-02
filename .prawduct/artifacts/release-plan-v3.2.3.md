@@ -36,6 +36,7 @@ than left standing, because a false premise in a version decision is worse than 
 | record-mechanization | ships | |
 | upgrade-discovery | ships | |
 | junit-leaf-counting | ships | |
+| install-reference-drift | ships | |
 
 `K withheld = 0` → **whole-develop promotion** (runbook Phase 2 steps 14–20), not the pruned path.
 The v3.1.2 pruning does not carry forward: v3.2.0 promoted whole-develop and re-established

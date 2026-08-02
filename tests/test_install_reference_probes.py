@@ -97,7 +97,11 @@ def test_fires_on_pinned_ref(tmp_path):
     assert out[0].type == "contract-drift"
     assert out[0].recommended_action == "/prawduct:doctor"
     assert "source.ref is 'v2.1.5'" in out[0].trigger_summary
-    assert "will not receive framework updates" in out[0].trigger_summary
+    # The consequence is the clone, not this machine — a configured machine resolves
+    # the plugin and the committed entry never gets a vote (measured, #120). Pinned
+    # because the overstatement it replaces reads as more urgent and is wrong.
+    assert "fresh clone" in out[0].trigger_summary
+    assert "will not receive framework updates" not in out[0].trigger_summary
 
 
 def test_fires_on_autoupdate_disabled(tmp_path):
@@ -148,14 +152,26 @@ def test_evidence_is_drift_set_independent(tmp_path):
     assert both[0].trigger_summary != one[0].trigger_summary
 
 
-def test_evidence_names_the_machine_level_file(tmp_path):
-    # The probe sees one end of a two-ended condition (#120). Repairing only the
-    # repo can be undone by the machine-level pin, so the advisory must say so.
+def test_evidence_states_the_clone_cost_not_a_machine_coupling(tmp_path):
+    # The committed reference and the machine-level file are DECOUPLED — measured
+    # in #120, where a repo pinned to v2.1.5 ran a clean v3.2.2 session. So the
+    # advisory must not claim a repo-only repair can be undone by the machine (an
+    # earlier draft did); it must name the real cost, which is what a fresh clone
+    # seeds from. Asserting the consequence and not just the filename is the point:
+    # the filename alone also appeared in the wording this replaced.
     entry = _contract_entry()
     entry["source"]["ref"] = "v2.1.5"
     _write_settings(tmp_path, entry)
     out = irp.probe_install_reference_drift(ProjectState({}), _cb(tmp_path))
-    assert any("known_marketplaces.json" in e for e in out[0].evidence)
+    # Both claims must ride the SAME line. Two separate any() checks passed while
+    # this line still carried the falsified "repairing only this repo can be undone
+    # by it" — a *different* line happened to say "clone", so the assertion never
+    # reached the one under test. Mutation-checked: reverting this line now fails.
+    machine_line = [e for e in out[0].evidence if "known_marketplaces.json" in e]
+    assert len(machine_line) == 1
+    assert "inert" in machine_line[0]
+    assert "clone" in machine_line[0]
+    assert "can be undone by it" not in machine_line[0]
 
 
 def test_contract_is_read_not_transcribed(tmp_path):
