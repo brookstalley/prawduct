@@ -919,20 +919,25 @@ def _completed_chunk_ids(project_dir: Path, content: str) -> set[str] | None:
     all-incomplete and a checkbox-based expiry would never fire on the only
     surface where it matters.
 
-    Completion is read as **the roster prefix strictly before ``current_id``**,
-    which is sound by construction under both readings: each computes "current"
-    as the FIRST item that is not done, so everything ahead of it is done. It is
-    deliberately not ``ordered[:progress.complete]`` — ``complete`` is a COUNT of
-    done items *anywhere* in the roster, so on a non-contiguous roster
-    (``[x] 01, [ ] 02, [x] 03`` — count 2) a prefix slice names 01 and 02, and 02
-    is not done. That would expire an exemption on an OPEN chunk, which is the
-    one direction this must never fail in.
+    The two readings get different treatment, because precision is free in one
+    and not in the other:
 
-    The prefix under-reports instead: a done item sitting after ``current_id``
-    keeps its exemption. That is the safe direction and is why the simpler rule
-    is preferred over reconstructing the per-item predicate, which lives inside
-    :func:`_git_aware_progress` as a closure over its git state and could not be
-    reused here without duplicating the whole precondition chain.
+    * **Checkbox reading** — the done-predicate IS the ``checked`` flag, already
+      in hand. Read it directly and be exact. An earlier version applied the
+      prefix rule here too and justified the imprecision as "the predicate lives
+      in a closure", which is true of the git path and false of this one; the
+      cost was real, since a checked chunk after ``current_id`` kept an
+      exemption it had no claim to.
+    * **Git-derived reading** — ``progress.complete`` is a COUNT of done items
+      *anywhere* in the roster, deliberately non-contiguous (see
+      :func:`_git_aware_progress` on why the union exists), and the per-item
+      predicate is a closure over that function's git state. Slicing by the count
+      names the wrong chunks: on ``01 open / 02 committed / 03 committed`` it
+      yields ``{01, 02}``, expiring the exemption on the chunk
+      ``resolve_chunk_progress`` simultaneously calls CURRENT. So take the roster
+      prefix strictly before ``current_id`` — sound by construction, since
+      "current" is the first item that is not done. It under-reports a done item
+      sitting after ``current_id``, which is the safe direction.
     """
     progress = _resolve_chunk_progress_from(project_dir, content)
     if not progress.has_status_items:
@@ -942,6 +947,10 @@ def _completed_chunk_ids(project_dir: Path, content: str) -> set[str] | None:
     if any(cid is None for cid in ordered):
         return None  # an unparseable roster entry — placement is unsafe
     normalized = [_normalize_chunk_id(cid) for cid in ordered]
+    if not progress.git_derived:
+        return {
+            cid for (checked, _text), cid in zip(items, normalized) if checked
+        }
     if progress.current_id is None:
         return set(normalized)  # nothing left open: every chunk is complete
     current = _normalize_chunk_id(progress.current_id)

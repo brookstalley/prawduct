@@ -2467,6 +2467,78 @@ def _make_scoped_product_repo(
     return product
 
 
+class TestSuppressionKeysOnTheWriteDriver:
+    """Suppression must key on whatever decides the WRITE, not on the raw
+    frontmatter, or it protects nothing in exactly the case needing protection.
+
+    A plan with no `scope:` key at all infers its scope from the most recent
+    change-log `scope=` tag (`_detect_active_scope`). `_plan_status_results`
+    ALWAYS includes the `active_build_plan` pointer's plan, so a keyless pointer
+    plan would sit at `scope=None`, never match `suppressed_scopes`, and be
+    written from the suppressed scope's tags — while the validation error that
+    was supposed to stop exactly that was being reported on stderr.
+    """
+
+    def _repo_with_keyless_pointer_plan(self, tmp_path: Path) -> Path:
+        product = tmp_path / "product"
+        artifacts = product / ".prawduct" / "artifacts"
+        artifacts.mkdir(parents=True)
+        (product / ".prawduct" / "project-state.yaml").write_text(
+            "views_enabled: true\nactive_build_plan: artifacts/build-plan.md\n"
+        )
+        # `chunks=09` resolves to scope `feat`, whose plan's roster holds only
+        # Chunk 01 -> a scope-local roster error for `feat`.
+        (product / ".prawduct" / "change-log.md").write_text(
+            "## 2026-07-02: bad roster\n"
+            "<!-- prawduct: chunks=09 | scope=feat | status=shipped -->\n"
+        )
+        (artifacts / "build-plan-feat.md").write_text(
+            "---\nartifact: build-plan\nscope: feat\n---\n## Status\n- [ ] Chunk 01: A\n"
+        )
+        # The pointer plan declares NO `scope:` key, so `_detect_active_scope`
+        # infers `feat` from the change-log — and it DOES carry a Chunk 09, so
+        # the suppressed scope's tag would really flip a box here.
+        (artifacts / "build-plan.md").write_text(
+            "---\nartifact: build-plan\n---\n## Status\n- [ ] Chunk 09: pointer\n"
+        )
+        return product
+
+    def test_keyless_pointer_plan_is_suppressed_with_its_inferred_scope(
+        self, tmp_path: Path
+    ):
+        product = self._repo_with_keyless_pointer_plan(tmp_path)
+        result = _run_regen(product)
+        assert result.returncode == 3, result.stdout + result.stderr
+        assert "chunks=09" in result.stderr
+        # The whole point: `feat`'s tags did not validate, so NO view belonging
+        # to `feat` may be written — and by detection this pointer plan is one.
+        # Keying suppression to the frontmatter left it at scope=None, unmatched,
+        # and flipped this box from the very tag the error was reported about.
+        plan = (
+            product / ".prawduct" / "artifacts" / "build-plan.md"
+        ).read_text()
+        assert "- [ ] Chunk 09: pointer" in plan
+
+    def test_exit_three_message_distinguishes_withheld_from_absent(
+        self, tmp_path: Path
+    ):
+        # The no-plan-file case names a scope that HAS no Status view — saying
+        # it was "withheld" sends an operator looking for a view that was never
+        # going to be written.
+        product = _make_scoped_product_repo(
+            tmp_path,
+            change_log=(
+                "## 2026-07-02: ghost\n"
+                "<!-- prawduct: chunks=01 | scope=ghost | status=merged -->\n"
+            ),
+            plan_status="## Status\n- [ ] Chunk 01: A\n",
+        )
+        result = _run_regen(product)
+        assert result.returncode == 3
+        assert "no ## Status view exists to write for scope='ghost'" in result.stderr
+        assert "withheld the ## Status view" not in result.stderr
+
+
 class TestRegenViewsFailClosed:
     """Validation severity after the regen-views-is-advice ruling (2026-08-01).
 

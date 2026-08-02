@@ -4251,7 +4251,10 @@ _USAGE = (
     "check-operator-verification|accept-operator-verification <rationale>|"
     "verify-operator-verification <vrf-id>|"
     "check-pr-doc-only|check-change-log-entry|check-releasability [--release vX.Y.Z]|"
-    "regen-views|stamp-merged|"
+    # Keep this block free of a close-paren character, in the strings AND in the
+    # comments: tests parse `_USAGE` by splitting on the first one, so any
+    # occurrence silently truncates the usage text they check. Use brackets.
+    "regen-views [--check DEPRECATED-full-regen]|stamp-merged|"
     "infer-critic-mode [args]|"
     "resolve-base|version|"
     "evidence {status|list [--kind <k>] [-n <count>]}|advisory <subcmd> [args]|"

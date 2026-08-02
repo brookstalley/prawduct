@@ -651,13 +651,18 @@ class TestNewQualifierExpiry:
     def test_git_derived_reading_drives_the_expiry_when_boxes_are_unflipped(
         self, tmp_path: Path
     ):
-        # The case the whole expiry exists for, and the one the count-slice bug
-        # lived in: `views_enabled` on a feature branch, so every checkbox is
-        # still `[ ]` and only the git log knows chunk 01 is done. A
-        # checkbox-based expiry would never fire here.
+        # The case the whole expiry exists for, AND the one the count-slice
+        # defect actually lived in — the roster is deliberately NON-CONTIGUOUS
+        # (01 and 03 committed, 02 open) so `progress.complete == 2` while
+        # `current_id == "02"`. A count-slice names {01, 02} and expires the
+        # exemption on the OPEN chunk; the prefix-before-current rule names {01}.
+        #
+        # An earlier version of this test used a contiguous done-set, where both
+        # rules agree — it passed against the defect it was written to catch.
         repo = tmp_path / "repo"
         prawduct = repo / ".prawduct"
         (prawduct / "artifacts").mkdir(parents=True)
+        (repo.parent / "_home").mkdir(exist_ok=True)
         (prawduct / "project-state.yaml").write_text(
             "views_enabled: true\nbase_branch: main\n"
         )
@@ -665,36 +670,56 @@ class TestNewQualifierExpiry:
         plan = prawduct / "artifacts" / "build-plan.md"
         plan.write_text(
             "---\nartifact: build-plan\nscope: demo\n---\n\n"
-            "## Status\n\n- [ ] Chunk 01: first\n- [ ] Chunk 02: second\n\n"
+            "## Status\n\n"
+            "- [ ] Chunk 01: first\n- [ ] Chunk 02: second\n- [ ] Chunk 03: third\n\n"
             "## Build Chunks\n\n"
             "### Chunk 01: first\n\n- creates new `lib/created.py`\n\n"
-            "### Chunk 02: second\n\n- creates new `lib/later.py`\n"
+            "### Chunk 02: second\n\n- creates new `lib/later.py`\n\n"
+            "### Chunk 03: third\n\n- creates new `lib/third.py`\n"
         )
+
+        # Sterile git env — the idiom `tests/test_buildplan_walkers.py` documents.
+        # Without it, a machine with global commit signing or a global
+        # `core.hooksPath` fails here in a way that reads as a parser bug.
+        env = {
+            "HOME": str(repo.parent / "_home"),
+            "PATH": "/usr/bin:/bin:/usr/local/bin:/opt/homebrew/bin",
+            "GIT_CONFIG_GLOBAL": "/dev/null",
+            "GIT_CONFIG_SYSTEM": "/dev/null",
+            "GIT_TERMINAL_PROMPT": "0",
+        }
 
         def _git(*args: str) -> None:
             subprocess.run(
-                ["git", *args], cwd=repo, check=True, timeout=20,
-                capture_output=True,
+                ["git", *args], cwd=str(repo), check=True, timeout=20,
+                capture_output=True, text=True, env=env,
             )
 
-        _git("init", "-q", "-b", "main")
-        _git("config", "user.email", "t@example.com")
-        _git("config", "user.name", "t")
+        _git("init", "--quiet", "-b", "main")
+        _git("config", "user.email", "test@example.com")
+        _git("config", "user.name", "Test")
+        _git("config", "commit.gpgsign", "false")
         _git("add", "-A")
-        _git("commit", "-q", "-m", "base")
-        _git("checkout", "-q", "-b", "feature/demo")
-        (repo / "marker.txt").write_text("x\n")
-        _git("add", "-A")
-        _git("commit", "-q", "-m", "feat(demo): land the parser (Chunk 01)")
+        _git("commit", "--quiet", "-m", "base")
+        _git("checkout", "--quiet", "-b", "feature/demo")
+        for marker, subject in (
+            ("a.txt", "feat(demo): land the parser (Chunk 01)"),
+            ("c.txt", "feat(demo): land the third piece (Chunk 03)"),
+        ):
+            (repo / marker).write_text("x\n")
+            _git("add", "-A")
+            _git("commit", "--quiet", "-m", subject)
 
         progress = _bpr.resolve_chunk_progress(repo)
         assert progress.git_derived, "fixture did not reach the git-derived path"
-        assert progress.current_id == "02"
+        assert progress.current_id == "02", "fixture did not produce an open chunk 02"
+        assert progress.complete == 2, "fixture is not the non-contiguous case"
 
-        # Chunk 01 is complete per git -> its exemption expired.
+        # 01 is committed and sits before current -> exemption expired.
         refs01 = _bpr._parse_build_plan_chunk_refs(prawduct, "01")
         assert [r["ref"] for r in refs01["file_paths"]] == ["lib/created.py"]
-        # Chunk 02 is the current chunk -> still exempt.
+        # 02 is CURRENT -> still exempt. This is the assertion the count-slice
+        # defect breaks, and the reason the roster has a third chunk.
         refs02 = _bpr._parse_build_plan_chunk_refs(prawduct, "02")
         assert refs02["file_paths"] == []
 

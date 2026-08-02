@@ -59,7 +59,7 @@ invisible to it and **must be tagged by hand** at Phase 1 step 3. Two here:
 | Change-log entry | Tag | Why unscoped |
 |---|---|---|
 | 2026-07-31: One home per fact, method prescriptions become advice, and the closing block gets a shape | `type=governance` | Three owner decisions (GOV-4T9P, GOV-2R8K, the closing-block shape). Norm decisions have no build plan and so no `## Status` roster to key. |
-| 2026-07-31: A turn that ends without saying where things stand… (CRT-9B4K) | `type=fix` | **Deliberate and documented in the entry itself.** Adding `scope=` would make it a release-pending scope with no plan file, which `views.diagnose_scope_plan_coverage` rejects — `regen-views` then returns 2 with *nothing* written. The tag would break every view regeneration, not just this entry. Verified by trying it, not by reading. |
+| 2026-07-31: A turn that ends without saying where things stand… (CRT-9B4K) | `type=fix` | **Deliberate and documented in the entry itself.** Adding `scope=` would make it a release-pending scope with no plan file, which `views.diagnose_scope_plan_coverage` rejects. **Updated 2026-08-01 (regen-views-is-advice ruling):** that is now a *scope-local* error — `regen-views` exits **3**, withholds nothing (there is no plan file, so that scope has no `## Status` view), and writes every other view. The original reason for leaving `scope=` off stands, but the consequence is no longer "breaks every view regeneration"; it is one non-zero exit and a named stderr line. |
 
 Tag both with `| release=v3.2.3 | status=shipped` and **no `scope=`**. This is the same one-level-down
 miss Phase 0 exists to catch, and it is REL-6Q4M's open blind spot — its fix has to cover the
