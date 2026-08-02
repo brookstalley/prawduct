@@ -1540,7 +1540,7 @@ gone stale is a pointed echo of this entry's other correction: the same "already
 failure, in the paragraph asserting the code was immune to it.
 
 Covering `enabledPlugins` then made the fixed summary clause wrong for the case it added —
-"stranded at that version" is not what a governance-off clone suffers — so the consequence branches:
+"stranded at that reference" is not what a governance-off clone suffers — so the consequence branches:
 stranding for a version drift, "runs with prawduct governance switched off" otherwise, stranding
 winning when both. Caught by rendering all four cases, the same way evidence line 2 was.
 
@@ -1612,7 +1612,7 @@ ends of one loop.
 **The operator-facing headline was restated to match, not just the footnotes.** The advisory's
 one-line summary read "this repo will not receive framework updates" — the loudest instance of the
 falsified premise, and false on precisely the machine most operators would read it on. It now reads
-"a fresh clone of this repo would be stranded at that version", and a test pins the old wording
+"a fresh clone of this repo would be stranded at that reference", and a test pins the old wording
 *out*. Correcting a module's explanation while leaving its headline asserting the disproved version
 would have shipped a file that contradicts itself in paragraph four.
 

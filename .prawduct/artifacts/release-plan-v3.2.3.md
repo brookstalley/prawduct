@@ -68,12 +68,23 @@ releasable: no release-pending scopes — nothing to classify
 ```
 
 Re-measured again when `junit-leaf-counting` joined as the sixth scope. **The counts above are from
-that measurement and are now one scope stale** — `install-reference-drift` joined as the seventh on
-2026-08-02, and the block was deliberately not re-run for it, because no row it could add names a
-blocker and the vacuity argument below is what actually carries the conclusion. This is the second
-time the sentence "the counts above are the current ones" has had to be walked back, which is the
-point the paragraph already makes: a measurement quoted in a plan goes stale every time the release
-grows, so treat the block as a snapshot with a date, not a standing fact.
+that measurement and are now two scopes stale**, in two different ways:
+
+- `install-reference-drift` joined as the seventh on 2026-08-02 and is classified in the table
+  above. The block was deliberately not re-run for it — no row it could add names a blocker, and the
+  vacuity argument below is what actually carries the conclusion.
+- **`backlog-burndown` landed on develop the same day (PR #545) and is NOT classified.**
+  `check-releasability --release v3.2.3` therefore returns **`not-releasable`** right now:
+  *"ERROR: unclassified scope(s) … backlog-burndown"*. That is real and must be cleared before the
+  release cuts — it is #545's bookkeeping debt, deliberately not absorbed here, because classifying
+  another branch's scope from this one guesses at a disposition its author has not stated.
+
+So the table is seven rows against eight release-pending scopes, and `K withheld = 0` describes the
+seven that are classified, not the corpus. This is the *third* time "the counts above are the
+current ones" has had to be walked back — which is the point the paragraph already makes, now with
+enough instances to stop treating it as bad luck: a measurement quoted in a plan goes stale every
+time the release grows. Treat the block as a snapshot with a date, and treat `check-releasability`
+as the live answer.
 
 Per `cut-and-publish-a-plugin-release.md` step 0, `no release-pending scopes — nothing to classify`
 takes the **same whole-develop promotion path** as `K withheld = 0`. The reasoning above still holds
