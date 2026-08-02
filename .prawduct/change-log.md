@@ -3,6 +3,161 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-08-02: three records that outlived what they describe — one home, one swept matrix, one closure that reached a quarter of its surfaces
+
+<!-- prawduct: type=fix | scope=drift-burndown | chunks=02 -->
+
+Three durable records asserting something the tree does not support. No code changed; every
+acceptance is a *falsifying query returning nothing*, because the edit is not the evidence — the
+record could be corrected at the named site and still be wrong two files away.
+
+**`#162` — the least-authority enumeration now has ONE home.** `architecture.md`'s reconciled-files
+norm was amended on 2026-07-30 to name `CLAUDE.md`; `security-model.md` and `api-contract.md`
+restated the same membership and were not updated *in the bundle that amended it*, so a reader
+reaching either first concluded the plugin violates its own least-authority norm by anchoring
+`CLAUDE.md`. The item asked for **both enumerations restated to match, with a falsifying grep carried
+alongside so a fourth copy cannot hide**. That was not built: it produces three synchronised copies
+and licenses a fourth, and the governing *every fact has one home* norm prescribes delete-one over
+update-both. Both siblings now carry a one-line pointer at the norm and state no membership — the
+grep is the acceptance check, not a durable mitigation, because with one home there is nothing for a
+fourth copy to hide behind.
+
+**The concept query found the fourth copy where nobody was looking — inside the home file.**
+`architecture.md`'s *never implements* norm carried its own Retroactivity enumeration of the same
+carve-out. It agreed with the norm above it, which is exactly why no coherence review had caught it:
+two enumerations in one document read as emphasis until one of them is amended. It is now a pointer.
+**Two hits were dispositioned rather than edited:** `build-plan-skills-cutover-awareness.md`'s
+`governed_by:` block quotes the norm's *pre-amendment* text as a dated disposition — a citation of
+what the author judged against, and rewriting it would falsify the record (the same
+records-versus-instructions line Chunk 01 drew); and `project-preferences.md`'s norm-index row is a
+title plus pointer with no membership, which is the reference shape the norm asks for.
+
+**`#196` — the concerns matrix was swept, and the number that matters is how many rows were wrong.**
+The filed row (Backend declaration before a governance read) attributed a Discovery rule to
+`discovery.md` and a repoint-vs-declare-dormant rule to `building.md`. `git log -S` over each phrase,
+scoped to the cited file across all branches, returns nothing — the text exists at HEAD only in this
+registry and in the item that filed it. So this is not drift from a deleted rule, it is **coverage
+recorded without ever being written**. BLD-4Q8W was the identical failure on another row, so the fix was two-part —
+correct the row, then check every other one.
+
+**Sweep result: 32 rows checked, 8 carrying a false claim, 12 claims in all — plus one row whose
+pointer was true but too vague to check.** Every cell citing a file, section, symbol, skill, test or
+state key was resolved against that target. Four classes, and they are not the same defect:
+
+- **Never written (6 cells / 4 rows)** — Backend declaration ×2, Accessibility's "building.md
+  (Principle 8 ref)", Deployment's "building.md (Principle 10)", and Cumulative-Critic gate's
+  "build-plan.md: Wave structure" + "building.md: cumulative pass at wave end". `building.md` has
+  never contained a Principle 8 or 10 reference, and the word *wave* appears in no template and no
+  methodology guide — until this fix, the phrase "wave end" existed nowhere in the repo except the
+  registry cell asserting it.
+- **Named a surface that no longer exists (3 cells / 2 rows)** — Discovery capture cited
+  `/prawduct:discovery`, a skill folded into `/prawduct:methodology <topic>` by the prose-diet fold
+  (`b4d569e`, 2026-07-03 — dated from the commit, because the registry's own Notes cell says
+  2026-07-04 and transcribing a date between records is how the drift in this batch started);
+  Derived views cited the file-sync auto-enable and the `v1_4_views_enabled` manifest key, both
+  retired with the sync engine at M4 (`views_enabled` in `project-state.yaml` is the live switch).
+- **A bare pointer to a file carrying nothing on the concern (2 cells / 2 rows)** — Security and Data
+  privacy each named `building.md` in the Builder column, which asks *does the build methodology
+  guide implementation?* For both the answer is no: that file carries no text on secrets, injection,
+  input validation or sensitive data. This class is the judgement call in the sweep — a bare file
+  name is vague rather than falsifiable, and it is recorded separately so it can be reverted on its
+  own if the owner reads those cells as "the general cycle applies".
+- **True, but too vague to check — corrected for precision, not for error (1 cell / 1 row)** —
+  Dependency management's bare `building.md`. It is not counted among the false claims above, and the
+  first pass counted it there, which is the next paragraph.
+
+**The sweep reproduced its own target defect once, and the Critic caught it.** The Dependency
+management cell was first corrected to **None** on the claim that `building.md` "names a new
+dependency only as a size heuristic". False: `building.md` § Decision Research names *external
+dependency* as one of the five triggers that make a decision major and therefore owed research and a
+recorded rationale, and Common Traps repeats it. The cell now reads **Partial** and cites that leg;
+what is genuinely absent is manifest, version-pinning and vulnerability guidance. The lesson is not
+"check harder" — it is that **a correction is a new claim with the same falsification duty as the one
+it replaces**, and a sweep is the highest-risk place to forget that, because the corrective mood
+generates claims faster than the checking reflex fires.
+
+**One stale Notes warning corrected**: the filed row warned that *every* enforcement surface it named
+was absent from `main` at v3.1.1. Three of the four have since shipped and are on `main` at v3.2.2
+(`tests/test_cutover_prose_coherence.py`, the `backlog-checks-dormant` advisory, the
+`backlog_service_repo` scalar). The fourth was never on any branch. A warning that goes stale in the
+safe direction is still a record that outlived what it describes.
+
+**Two cells were checked and deliberately left, because a sweep that does not say where it stopped
+reads as having covered everything.** (a) Performance's Builder cell says "building.md (implicit)" —
+a hedge is not a false attribution, and the cell is in fact *more* defensible than "implicit"
+suggests: the work-Type table carries "**Optimization**: Baseline measurement before changes,
+performance regression testing." (b) The filed row's Artifact cell describes `observability-strategy.md` § Direction
+as *"a dormant reader states dormancy, and names no internal id doing it"*; that file's norm is the
+no-internal-id half, and its Retroactivity line does name the dormancy NOTEs, so the parenthetical
+compresses two things into one rather than inventing one. Both judgments are recorded so they can be
+overturned cheaply.
+
+**A second mechanism now covers row 37's concern, and no second row was added.** The 2026-08-02
+cumulative review (`rev-20260802T185921Z-e1e348ce`, R-7) routed the decision here: this branch's
+Chunk 01 added `tests/test_path_reference_resolution.py`, which checks the same tree as
+`record_lint`'s chunk-ref arm under a **deliberately different** extraction rule — 6 hits against
+195 on this tree, which is why one plan yields eight BLOCKING `chunk-ref-missing` findings and a
+green resolution check. One concern gets one row: the mechanism and the disagreement are recorded in
+row 37, which already owns path-reference drift, and `#552` owns reconciling them. A second row for
+the same concern is the duplication this sweep exists to remove.
+
+**What the sweep teaches, and why the registry now carries a dated stamp:** a hand-maintained matrix
+records *intended* coverage at the moment a concern is added, and nothing afterwards re-reads the
+cited file. Coverage never written and coverage later deleted are indistinguishable in a cell — both
+render as green. That is why a reviewer consulting the registry to decide whether a concern is
+*already handled upstream* was being told three stages catch it when one did.
+
+**`#179` — VRF-010's closure reached one surface of four.** VRF-010 (verified 2026-07-28) exercised
+all three relationship/timeline readers against real GitHub, discharged MIG-3 and closed the
+functional audit's F1. The closure propagated to F1 and to `BKL-3N8Q`'s own body — which already
+records it, so nothing was appended there; a second copy is the defect this chunk is burning down.
+It did not reach `project-state.yaml`'s `integration_test_strategy`, which still called the shapes
+fake-verified, nor the golive plan, in **three** places: the Chunk 09 flip row still read *"partial,
+do NOT flip to shipped"* with an instruction to narrow the item's scope to the half VRF-010 had
+already proven; the release-gate ruling still cited the shapes as the live instance of "verified only
+against the in-process fake"; and Chunk 05b's `Covers:` line still said the foreign-API half *"stays
+open"* in the present tense. All three now record the discharge; the ruling's criterion is untouched,
+only its instance is closed. **The third was found by the Critic, not by the sweep** — the concept
+query that found the other two greps the *claim* ("fake-verified"), and that line encodes the same
+state in different words. A query over one phrasing finds one phrasing; this is the standing rule
+about querying the concept, failing in the one direction a grep cannot cover.
+
+**One edit outside the chunk's Deliverables, recorded so it is not a silent drift:** `learnings.md`'s
+"a disposition claiming fixed" rule was over the 400-character bound (`learnings-entry-shape`, raised
+by both `verify-records` and the cumulative review — no digit is quoted here because the three
+surfaces that reported it counted bytes, characters and characters-less-heading and disagreed). It was trimmed by one clause — *"and real
+defects on that surface make the false claim feel earned"* — which `learnings-detail.md` still carries
+in full under the matching heading. Length compression against a declared bound, nothing removed from
+the record.
+
+**Nothing was flipped to `shipped`.** The `[ ]`-until-release convention holds and D4 keeps a status
+call explicit and human-made. `BKL-3N8Q` (`brookstalley/prawduct#364`) was reconciled to shipped on
+2026-07-31, *outside* the Chunk 09 list, which is precisely why the list did not know: the row now
+records a closure that already happened, and Chunk 09 owes no flip for it. Its id stays cited by
+`project-state.yaml` under the do-not-renumber instruction — the surrounding claim was corrected, the
+id was not.
+
+**Two review rounds, 0 blocking in both — and both warnings in the first round were claims this
+chunk made about the tree that the tree did not support.** The chunk pass (2 warnings, 2 notes)
+caught the Dependency-management cell above and the third stale golive surface. The verify pass
+confirmed all four resolutions against the files on disk rather than against a diff, and found the
+class-label arithmetic that the first fix had left behind. It also surfaced a framework defect **by
+running into it**: `verify-resolutions` inverted its own review interval, because
+`critic_consolidate` decides "did a commit land since the prior review" by comparing trees, which
+cannot distinguish a commit landing from the prior fact having anchored *ahead* of HEAD — the normal
+shape after a `chunk`-mode review of a dirty tree. The manifest came out with the prior review's head
+and base swapped, so its resolution facts were persisted against a tree in which none of the fixes
+exist. Filed as `#554` rather than absorbed: this chunk is `doc-only` and that is a `plugin/lib/`
+change owing its own tests. Worth naming plainly — **resolutions weaken a gate, so this one is
+unsound rather than merely noisy.**
+
+**A fourth surface the item did not name, found by the concept query.** `functional-audit-v3.2.0.md`
+F1 is headed **CLOSED**, then says "the original text follows, for the record" — but only one
+paragraph of that original was blockquoted. The rest, including a present-tense "what genuinely
+remains fake-verified" and a per-reader table, read as current to anyone landing mid-entry. The
+original text is retained verbatim; what changed is that the boundary is now explicit, because a
+record that hides which half of itself is historical fails the same way as one that is simply wrong.
+
 ## 2026-08-02: a path reference is checked by the form that means "go here", not by looking like a path
 
 <!-- prawduct: type=feature | scope=drift-burndown | chunks=01 -->

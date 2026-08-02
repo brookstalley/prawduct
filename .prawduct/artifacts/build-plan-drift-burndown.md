@@ -158,6 +158,22 @@ what the code does not support, written by me, inside the batch whose subject is
 restated here — an earlier draft of this paragraph carried three post-fix numbers that were stale
 within the hour, which is the defect being burned down appearing in the burndown's own plan.
 
+**Chunk 02 CLOSED 2026-08-02** (#162, #196, #179) — doc-only, ten `.prawduct/` files, no code. Each
+item's acceptance was a falsifying query returning nothing, and in all three cases the query found a
+surface the item did not name: a **fourth copy of the least-authority enumeration inside the home
+file itself** (`architecture.md`'s sibling-norm Retroactivity line — it agreed with the norm above
+it, which is why no coherence review had caught it), a stale ⚠️ warning in the swept row claiming
+surfaces are absent from `main` that shipped two versions ago, and a **third** golive surface still
+reading "stays open". The registry sweep's own numbers live in the change-log, not here.
+
+**The concept query has one blind spot, and this chunk hit it.** It finds sites that encode a claim
+in the *words the query uses*. The golive plan's Chunk 05b `Covers:` line encodes the identical stale
+state in different words ("its foreign-API verification half stays open") and no `fake-verified`
+grep reaches it — the Critic found it, not the sweep. Two review rounds, 0 blocking in both; both
+first-round warnings were claims *this chunk* made about the tree that the tree did not support,
+which is the batch's own subject reproduced inside the correction. Three findings dispositioned
+accept-with-a-written-home into Chunk 03's carry-in block (below), one filed as `#554`.
+
 **Release deferral, reaffirmed 2026-08-02.** The owner was offered release-first and chose to keep
 burning down. The `develop`→`main` promotion is now **three batches deep** and `#533`'s filer stays
 blocked behind `ref: main` until it ships. This is a recorded decision, not an oversight — do not
@@ -380,15 +396,44 @@ leaves the id alone.
 
 ### Chunk 03: The directive that is dark everywhere it is needed (#348)
 
-**Carried in from Chunk 01's third verify round (note, not blocking):** in
-`tests/test_path_reference_resolution.py`, `_resolves(containing, raw, form="md-link")` defaults to
-the **permissive** form — the one form the `plugin/` fallback is granted to. The red-verification
-test at `test_a_broken_reference_is_caught_in_each_covered_form` is the single caller that omits the
-argument, so it exercises a call shape production never uses, and is harmless today only because its
-fixture path is not entitled to the fallback. **Make `form` required** and update that call site.
-Deferred to here rather than fixed at Chunk 01 close because it is a test-file edit: landing it then
-would have moved the reviewed tree and bought a fourth review round for a note, while Chunk 01's
-coverage gate was already satisfied. It rides this chunk's diff instead.
+**Carried in — four edits to `tests/test_path_reference_resolution.py`, none blocking, all deferred
+here for one reason: this is the code chunk that opens that file, and landing a test-file edit in a
+doc-only chunk moves the judgeable tree and buys a review round for a note.** The first came from
+Chunk 01's third verify round; the other three from the 2026-08-02 cumulative
+(`rev-20260802T185921Z-e1e348ce` R-1/R-5/R-6, all dispositioned accept-with-a-home).
+
+1. **Make `form` required.** `_resolves(containing, raw, form="md-link")` defaults to the
+   **permissive** form — the one form the `plugin/` fallback is granted to. Five call sites omit the
+   argument; four are relative (`./`, `../`) refs in
+   `test_relative_targets_resolve_against_the_containing_file`, where `form` is never consulted, and
+   the fifth is the red-verification test
+   `test_a_broken_reference_is_caught_in_each_covered_form` — the only caller for which the default
+   is actually *read*, so the only one exercising a call shape production never uses. It is harmless
+   today only because its fixture path is not entitled to the fallback. Make `form` required and
+   update all five call sites; the earlier draft of this note said "the single caller", and a builder
+   trusting that word edits one site and takes four reddened assertions.
+2. **"all fifteen in-tree invocations" names the wrong scope** (warning). The `_resolves` docstring
+   (~L186) and `test_the_plugin_fallback_is_denied_to_invocation_forms` (~L420) both say it. 15 is
+   the count inside `plugin/**.md` only; tree-wide the literal appears 132 times in tracked markdown.
+   This prose is load-bearing — it is the evidence for denying the `plugin/` fallback to invocation
+   forms — so a future reviewer re-measuring "in-tree" gets 132 and reads it as fabricated. Change
+   "in-tree" to "in the shipped plugin" in both places. **Leave the change-log entry alone**: it
+   already records the correction and it is append-only history.
+3. **Name the `_is_record` exemption's limitation in the module docstring.** The exemption is
+   container-scoped (`learnings.md`, `learnings-detail.md` wholesale) while its rationale is
+   role-scoped (*narrates defects, quoting the paths they occurred at*). That holds for
+   `learnings-detail.md`, which quotes a stale invocation as evidence; it does not hold for
+   `learnings.md:135`, which carries a live instruction to invoke `python3 plugin/bin/prawduct-hook`
+   and which `/prawduct:learnings` serves as current guidance — so a future relocation strands it
+   with the suite green, the exact defect class #193 exists for. Per-reference scoping is not worth
+   building now; an unexamined exemption is what is not acceptable.
+4. **Route grant tokens through `_is_repo_path`.** `_references` extracts `allowed-tools` grant
+   tokens on `_PATH_SHAPED.match(token) and "/" in token`, while command position additionally
+   requires `_is_repo_path` — whose own docstring says the pair exists to exclude `owner/repo`
+   arguments, which are path-shaped and name nothing on disk. Verified latent, not live: the only
+   slash-bearing grant token in tracked markdown today is `plugin/bin/prawduct-hook`. The moment a
+   skill grants `Bash(gh issue list --repo owner/name *)` the suite reddens on a non-defect, and the
+   cheapest-looking fix is an allowlist entry — burning one of four on a bug in the extractor.
 
 - **Description:** `_GREEN_IS_EVIDENCE_DIRECTIVE` fires off `changes_referenced`, which is populated by
   `plugin/bin/test-reference-verify`, which skips every non-Python file. In a Swift/Go/TS/Rust/C#

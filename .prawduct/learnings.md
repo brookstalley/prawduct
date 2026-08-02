@@ -354,6 +354,6 @@ dropping them.
 
 ## A sentence's RHETORICAL ROLE can select its content over a fact you already hold — the justification slot pulls whatever makes a decision sound principled, while the caveat slot states the truth correctly two sentences later. Check the load-bearing clause against the mechanism, separately from reading the paragraph for sense: reading for sense passes it, because that is what selected it
 
-## A disposition claiming "fixed" must restate the FINDING'S OWN predicate and show it false — arguing from what the change FOUND is satisfiable by fixing an adjacent surface, and real defects on that surface make the false claim feel earned. If the finding says *the check cannot see X*, the closing test asserts exactly that sentence. Tell: the fix note describes what the fix caught rather than what the finding said
+## A disposition claiming "fixed" must restate the FINDING'S OWN predicate and show it false — arguing from what the change FOUND is satisfiable by fixing an adjacent surface. If the finding says *the check cannot see X*, the closing test asserts exactly that sentence. Tell: the fix note describes what the fix caught rather than what the finding said
 
 ## Scope an exemption by the PROPERTY that justifies it, not by the container it lives in — an exemption justified by *naming* a file belongs to naming forms, not to every file under that directory, and the container is one cheap generalisation away from correct while looking complete. Tell: the boundary is a path prefix while the rationale is a verb

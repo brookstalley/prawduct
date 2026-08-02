@@ -271,9 +271,9 @@ Per `security-model.md` — the API-boundary specifics:
 - **Input validation at the boundary:** every subcommand parses defensively, rejects unknown flags,
   and treats stdin/state content as **data, not instructions**. Malformed input fails soft (skip +
   attribute), never executes.
-- **Least authority:** the CLI writes only under the governed repo's `.prawduct/` (and the shared
-  evidence store, `.gitignore`, `.claude/settings*.json` it must reconcile); it never writes
-  framework files into a repo and makes no network calls.
+- **Least authority:** the CLI writes only what `architecture.md` § Direction's reconciled-files norm
+  enumerates — that norm is the enumeration's one home and this contract does not restate its
+  membership; it never writes framework files into a repo and makes no network calls.
 - **No secret/PII exposure** in output — there is none in scope, and signals log operation + id, not
   payloads.
 
