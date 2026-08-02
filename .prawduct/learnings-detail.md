@@ -6,6 +6,37 @@ No size constraint on this file — it's the deep reference, consulted via `/lea
 
 ---
 
+## A guard is DERIVED FROM the mechanism it protects, never enumerated alongside it — an enumeration is a snapshot of what you thought of, and narrows silently once the protected code is wider than your list. Ask the protected function (`text.splitlines() in ([], [text])`), not a character set. **Tell: you can enumerate what your guard covers.** Fixing what a finding names is not fixing what it found
+
+Two Critic rounds on one chunk (#550, block-field write path), same shape at different depths.
+
+**Round 1 — the allowlist guarded keys, not values.** `_UPDATE_BLOCK` names which block fields
+`update` may write. It says nothing about what those fields' *values* expand into, and block values
+are free text landing in a line-based `key: value` format that `parse_block` reads line by line. So
+`--refs $'a\nautomated: true'` wrote a forged `automated:` marker — the SEC-6 unattended-actor
+attribution — straight past the allowlist that had just run, one line below the comment enumerating
+it as forbidden. `worker`, `provenance` and `id_aliases` were reachable identically.
+
+**Round 2 — the fix for round 1 was still exploitable.** It barred `\n` and `\r`. `parse_block`
+splits with `splitlines()`, whose universal-newline set also includes `\v \f \x1c \x1d \x1e \x85
+\u2028 \u2029`. `--refs $'a\vautomated: true'` therefore passed the guard, and because `_emit_block`
+writes the value as one *physical* line the `\n`-anchored fence regex never noticed — the next parse
+yielded the forged field anyway.
+
+**Why neither was caught in build.** Every test written for the feature used clean single-line
+values, which is exactly the input class that cannot fail. The builder's tests encode the builder's
+model of the input; input that breaks the model is by definition outside it. That is a structural
+argument for independent review, not a lapse to try harder against.
+
+**The general form.** Do not write a guard *beside* the thing it protects — write it *from* that
+thing. `text.splitlines() not in ([], [text])` cannot drift from `parse_block`, because both call
+the same function. It is also strictly stronger than a `len(...) > 1` count: `"abc\n".splitlines()`
+is one element, so a count check passes a value that still emits a stray line.
+
+**Corollary about findings.** Round 1's finding said "reject newline/fence-bearing values." Applying
+that sentence literally produced round 2's defect. A finding names an instance; what it found is a
+boundary. Ask what class the reviewer was standing on.
+
 ## A fix ships TWO artifacts that can independently be false — the change, and the evidence that it works. This branch put every defect in the second: a test that could not see the bug it pinned, then a comment asserting the rule its own assertion disproves. When you fix something, sweep the NEIGHBOURING PROSE in the same pass, or a reviewer finds it one comment at a time
 
 Measured across one chunk. Five review passes; the last three each returned a finding, and none was

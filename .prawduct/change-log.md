@@ -3,6 +3,64 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-08-02: the backlog block was write-once at import, and the first free-text write into it was injectable
+
+<!-- prawduct: type=fix | scope=backlog-block-field-writes | chunks=01 -->
+
+`#550`. The Issues adapter could write facet labels, title and human body — and nothing else. Every
+other field lives in the body's `prawduct:` block, whose only writers were the importer and the
+three ops that own a field apiece (`claim`/`unclaim` → `claimed_at`, `link`/`unlink` → `related`,
+`merge` → `superseded_by`). So `refs`, `revisit`, `closed-by` and `reviewed` crossed at the cutover
+and could never be updated again. Measured across all 398 issues, 388 of which carry a block:
+`added` 374 · `reviewed` 300 · `related` 288 · `refs` 270 · `closed-by` 149 · `closes`/`revisit` 6.
+That is the working vocabulary, not migration residue.
+
+**The failure was silent in the worst way — it looked like it worked.** `update --body` accepts a
+body carrying an edited block, returns `status: ok`, and changes nothing:
+`_body_update_preserving_block` strips whatever block the caller pasted and re-appends the old one
+verbatim. That is deliberate and correct — a naive full-body replace would drop the
+body-authoritative fields and lose permanent aliases — but it means the sanctioned path reported
+success while discarding the edit. Three live `skills/backlog/SKILL.md` instructions named writes
+no exposed op could perform, and `file` had no `--refs` at all, so a natively filed item could
+never carry one.
+
+`update` now takes `--refs`/`--revisit`/`--closed-by` (an empty value clears, so an expired
+`revisit:` can be removed rather than blanked) and `--reviewed`; `file` takes `--refs`.
+
+**`--reviewed` is a boolean stamping today, and is not implied by any other edit.** Both halves are
+deliberate. A caller-supplied date would let anyone assert a backdated re-confirmation, which is
+unfalsifiable and buys nothing — the only honest claim is *now*. And auto-stamping on every touch,
+which the skill's own prose asked for, would have made the field a self-asserted copy of native
+`updated_at`: the entire value of a separate field is that a label fix moves `updated_at` **without**
+claiming anyone re-read the item, so collapsing the two deletes the signal the staleness sweep wants.
+`added` stays read-only for the mirror-image reason — `created_at` already answers it, unforgeably —
+and `closes` keeps routing through `merge`/`link` rather than competing with `superseded_by`.
+
+**The interesting defect was one the key allowlist could not see.** `_UPDATE_BLOCK` guards which
+*keys* a caller may name; it says nothing about what their *values* expand into. Block values are
+free text landing in a line-based format, so `--refs $'a\nautomated: true'` wrote a forged
+unattended-actor marker — SEC-6 attribution, the exact field the allowlist forbids — straight past
+the check that had just run, with `worker`, `provenance` and `id_aliases` reachable identically.
+The first fix barred `\n` and `\r` and **was still exploitable**: `parse_block` splits with
+`splitlines()`, so `\v` walked through, and because the value is emitted as one *physical* line the
+`\n`-anchored fence regex never noticed. The guard now asks the parser instead of enumerating
+characters — legal iff `text.splitlines()` is `[]` or exactly `[text]` — which cannot drift from
+`parse_block`, and is strictly stronger than a `len() > 1` count that a trailing separator slips
+past. Rejected rather than escaped: `format_text` would make any value safe but JSON-quotes it on
+disk, forking `closed-by` into two spellings against 149 live items that carry it bare.
+
+`decode_item` also projects the four fields, so a write is confirmable from the response that
+performed it instead of by re-reading and re-parsing the body — the blindness that hid this for the
+whole cutover. Verified live against `#207`, not a fake: `refs` the only changed key, the
+10,611-character JSON-encoded `original_body` byte-identical, one fence, prose intact, `reviewed:`
+correctly unmoved.
+
+Left open on purpose: the block's `reviewed:` date is adjacent to data-model §1.1's
+`reviewed`/verification `{by, on}`, homed as block `verified`. Chunk 02 settles which against the
+TF2 requirement rather than resolving it by whichever file gets edited first.
+
+**Classification:** structural
+
 ## 2026-08-02: the untriaged, the truncated, the unpublished, and two hardening passes
 
 <!-- prawduct: type=fix | scope=backlog-burndown | chunks=04 -->

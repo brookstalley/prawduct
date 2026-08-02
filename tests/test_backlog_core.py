@@ -861,8 +861,17 @@ class TestBlockValueInjection:
         assert r["status"] == "error"
 
     def test_the_guard_tracks_the_parser_not_a_hardcoded_list(self, fake):
-        # Bind the predicate to `splitlines()` directly: if Python ever widens the
-        # universal-newline set, this fails rather than silently reopening the hole.
+        # What this actually protects: the guard must stay DERIVED from
+        # `splitlines()` rather than re-enumerating characters — which is exactly
+        # the defect the first version of the guard had (it listed \n and \r, and
+        # \v walked straight through). Refactor the predicate back to a literal
+        # set and this fails on the first codepoint the list forgets.
+        #
+        # It does NOT protect against Python widening the universal-newline set:
+        # the oracle below and the guard both delegate to `splitlines()`, so a
+        # widened set moves them in lockstep and this still passes. Guarding that
+        # would need an independently-maintained list — the very thing whose
+        # absence is the point.
         for cp in range(0x110000):
             ch = chr(cp)
             if len((f"a{ch}b").splitlines()) > 1:

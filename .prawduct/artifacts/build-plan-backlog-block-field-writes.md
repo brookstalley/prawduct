@@ -44,7 +44,9 @@ last_validated: 2026-08-02
 
 - [ ] Chunk 01: Block-field write path through `update` and `file`
 - [ ] Chunk 02: Instruction/spec coherence + the phantom-capability class guard
-Context: Plan authored 2026-08-02 from #550, itself found while triaging `incoming-bugs/`. `active_build_plan` repointed here from `artifacts/build-plan-v3.2.0-golive.md` — **the golive plan is still in flight** (its Chunks 01, 05, 07, 08, 09 unchecked), so repoint back when this merges. Nothing built yet. Next: Chunk 01.
+Context: Plan authored 2026-08-02 from #550, itself found while triaging `incoming-bugs/`. `active_build_plan` repointed here from `artifacts/build-plan-v3.2.0-golive.md` — **the golive plan is still in flight** (its Chunks 01, 05, 07, 08, 09 unchecked), so repoint back when this merges.
+
+**Chunk 01 is complete** (commits `8176731`, `2876513`, plus the note fix) and reviewed clean — two `verify-resolutions` passes, ending 0 blocking / 0 warning. The checkboxes above stay `[ ]` on purpose: they are a derived view and only `status=shipped` flips them, so a statusless tagged change-log entry riding in the feature PR is the correct release-pending state, not a missed step. Next: Chunk 02, which must settle the `reviewed`-vs-`verified` collision recorded under Chunk 01 rather than assume it.
 
 ## Verification Strategy
 

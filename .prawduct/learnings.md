@@ -24,6 +24,8 @@ dropping them.
 ## RULING (regen-views-is-advice) — when two norms reach one command, its OUTPUT decides the posture: a writer whose only product is a DERIVED VIEW fails soft one view at a time, because no gate reads a view to reach a verdict. Soft is not blanket — input it cannot interpret at all still fails closed. Skip-and-report a bad view, never write it half-right
 <!-- anchor: regen-views-is-advice — linked from architecture.md and data-model.md Rulings: -->
 
+## A guard is DERIVED FROM the mechanism it protects, never enumerated alongside it — an enumeration is a snapshot of what you thought of, and narrows silently once the protected code is wider than your list. Ask the protected function (`text.splitlines() in ([], [text])`), not a character set. **Tell: you can enumerate what your guard covers.** Fixing what a finding names is not fixing what it found
+
 ## `grep -rn <new symbol> tests/` before calling a behaviour change done — a guard with no test is one a regression deletes silently. Three rounds running found that, the last two in code written to FIX the previous instance: applying a rule to the finding in front of you is not applying it to the code you write while applying it
 
 ## Enumerate the sites answering a question by GREP, never by memory — and the grep is itself a site: it is a PREFIX of the real set wherever the code BUILDS the string rather than spelling it, or emits it somewhere the query cannot see. Widen it until it is falsifiable, then have someone else run it
