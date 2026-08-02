@@ -3,6 +3,76 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-08-01: regen-views is advice, not authority — one mode, and one bad scope no longer freezes every view
+
+<!-- prawduct: type=fix | scope=backlog-burndown | chunks=02 -->
+
+Six defects in how the runtime decides what a build plan is and what it says, plus the owner-requested
+collapse of `regen-views` to a single always-writing mode. `#201`, `#211`, `#224`, `#327`, `#333`.
+
+**The ruling came first, and it is the substantive change.** `#201`'s fourth leg asked to stop
+`regen-views` failing closed on one unresolvable scope — but the fatality was a *ratified* choice
+(VWS-6R4T), and two `## Direction` norms pointed opposite ways: `architecture.md`'s *authority fails
+closed; advice fails soft* against `data-model.md`'s *derived views are never authoritative*. Ruled at
+the category level: **a command's failure posture follows what it produces.** The authority norm's why
+is that a verdict must not be satisfiable by feeding it garbage, which reaches a command only where a
+verdict exists to corrupt; `regen-views` emits none and no gate reads its output. So it is advice, and
+the unit of atomicity moves from the **run** to the **view**. VWS-6R4T's actual content — *no silent
+partial flips* — is preserved, not reversed: a view whose inputs are invalid is skipped and reported,
+never written half-right. Recorded in `learnings.md` with precedence on both norms.
+
+Concretely: a scope-local error (no plan file, duplicate scope, a `chunks=` ID missing from its
+roster) now suppresses only that scope's `## Status` and exits **3**, while release-notes and
+scope-rollups — which have no plan-roster dependency at all — are still written. A global error
+(unrecognized `status=`, conflicting tag lines) still exits 2 with nothing written, because an entry
+that cannot be interpreted leaves a view half-right rather than absent.
+
+**Plan discovery was non-recursive at both glob sites**, so a repo organizing plans as
+`artifacts/plans/<id>/build-plan.md` had every one invisible — four surveyed repos carry 16 nested
+plans each, and the largest was safe only because `views_enabled` was unset. The two sites were
+line-for-line twins whose docstrings each warned they must not diverge; they had, on 2026-08-01. Both
+now consume one `iter_scoped_plan_candidates`, so the divergence is structurally impossible rather
+than documented. Duplicate-scope messages report paths relative to `artifacts/`, because nesting makes
+`build-plan.md` a near-certain name collision.
+
+**`--check` is deprecated, not deleted.** `api-contract.md`'s *deprecation is signalled, not silent*
+prescribes notice-then-remove-at-a-major, and the owner's requirement — views always regenerate — is
+met by making the flag write. It could never have caught anything anyway: `check_only` was consulted
+only *after* the validation block returned, so the two-step pre-flight every release plan prescribed
+was validate-and-stop followed by validate-and-stop-or-write. Worse, it exited 0 with writes still
+*pending*, so a clean check meant "the tags parse", not "the views are correct" — which is how one
+consumer lost six whole release-notes sections and ran `scope_rollups` at 34 keys instead of 62 while
+the check read clean. An unknown flag now exits 2, repairing a live violation of `api-contract.md`'s
+own rule.
+
+**`#327` adds one control, and states the yield it expects.** When the git-derived chunk reading bails
+on a `views_enabled` repo, the checkbox reading that takes over is the one known to be wrong, and
+nothing said so. The notice fires only on `views_enabled` **and** a plan with a roster **and** a bailed
+git path — the `views_enabled`-unset case is pure noise and stays silent — and it is emitted from
+deliberately-invoked surfaces (`verify-chunk-refs` on the inference path, `handoff preview`), never
+from `_git_aware_progress` on the SessionStart hot path. **Expected yield: rare.** It should fire only
+where a base branch cannot resolve or git is unavailable, so a steady-state repo on a feature branch
+should see it approximately never; a run of firings means base-branch resolution is broken, which is
+the finding. Countable by the stable token `degraded-chunk-reading` — `grep -c` over session logs is
+the retirement evidence, so the token must not be reworded.
+
+Two smaller ones. `#211`'s guard test **replicated** the production chunk-heading matcher and had
+drifted strictly narrower, failing plans that parse fine; it now consumes `_CHUNK_HEADING_RE` instead
+of widening a copy. `#333` extends the branch-prefix set to Conventional-Commits and bot prefixes —
+`missing-ref:` is BLOCKING, so a `feat/…` branch named in plan prose failed a review on its own name.
+The shape-rule alternative the item preferred was evaluated and **rejected**: "a token is a path only
+if it looks like a filename" stops verifying extensionless real paths, and this repo's most-cited path
+is `plugin/bin/prawduct-hook`.
+
+`#224` gets both halves. The `new` forward-ref exemption now **expires** when the chunk completes —
+re-derived through `resolve_chunk_progress`, never "first unchecked box", since under `views_enabled`
+the checkboxes do not flip until release and the expiry would never fire on the only surface that
+matters — and fails *toward* the exemption whenever completion is uncertain. Its scope narrowed from
+"anywhere in the section" to list items, which excludes the adjectival prose that motivated the item.
+The prescribed narrowing to the Deliverables block was **not** taken: real plans declare files they
+create in `- **Tests:**` and in acceptance criteria, and honouring the qualifier only in Deliverables
+would have turned every one of those into a false missing-ref.
+
 ## 2026-08-01: the migration runbook now verifies before it disposes, and tells the operator to mark the file it just killed
 
 <!-- prawduct: type=fix | scope=backlog-burndown | chunks=01 -->

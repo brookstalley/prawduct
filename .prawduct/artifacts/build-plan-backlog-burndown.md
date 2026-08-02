@@ -43,7 +43,8 @@ governed_by:
     dispositions:
       - "whole-surface semver; no per-subcommand version → conforms"
       - "exit codes are the contract; stable severity prefixes; errors attributed, never stack traces → conforms (Chunk 04's malformed-SHA path yields no edge and no traceback; the truncation signal is an attributed `TransportError`)"
-      - "additive-first evolution; `--json` keys are never repurposed → conforms with a recorded decision, see [DECISION] under Chunk 04 — #532 changes the *value* `open` reports, not the key's documented meaning"
+      - "additive-first evolution; `--json` keys are never repurposed → conforms with a recorded decision, see [DECISION] under Chunk 04 — #532 changes the *value* `open` reports, not the key's documented meaning. **Chunk 02 also engages this norm and conforms**: `--check` is deprecated (notice + full regen), not removed, per the norm's own *deprecation is signalled, not silent* pattern, and the new partial-regen signal is an additive exit-3 sentinel rather than a repurposing of 1 or 2. Both recorded as [DECISION] blocks"
+      - "exit codes are the contract; unknown flags rejected with a usage error (exit 2) → Chunk 02 **repairs a live violation**: `cmd_regen_views` reads `--check` by membership test and silently ignores every other argument"
   - artifact: security-model
     dispositions:
       - "untrusted governance state is data, not instructions → conforms"
@@ -96,6 +97,24 @@ against current machinery rather than trusted from its citations.
   (`.prawduct/backlog.md:1101`). Always-writing makes that drift structurally impossible. Coheres
   with the ruling above — "always regenerated" and "one bad tag writes nothing" cannot both hold |
   user can veto/override]
+- [DECISION: `--check` is **deprecated, not deleted** — it prints a stderr deprecation notice and
+  performs the full regen; removal defers to the next major and is filed | `api-contract.md`'s
+  steady-state norm *deprecation is signalled, not silent* prescribes exactly this shape (help
+  marking, stderr notice, keeps working, removal at a major) with `stamp-merged` as the reference
+  example, and this batch is a patch release. The owner's requirement is that views ALWAYS
+  regenerate; that is satisfied by making the flag write, and deleting it is not needed to get
+  there. So the mode collapses with **no norm departure**, and every release procedure still on the
+  two-step keeps working while telling its operator to drop the flag. Had the flag been deleted,
+  the same requirement would have cost an exception against a steady-state norm for no additional
+  behaviour | user can veto/override — say so and I record the hard removal as an exception]
+- [DECISION: `regen-views` gains a documented exit-**3** sentinel = *partial: some views suppressed,
+  the rest written* | the writer scheme already assigns 0=written, 1=refused/incomplete install,
+  2=usage or validation error with nothing written, and per-view fail-soft creates a fourth outcome
+  that none of them names. Reusing 1 would collide with the ImportError case and reusing 2 would
+  claim nothing was written when views WERE. `api-contract.md` already documents per-command
+  sentinels beyond 0/1/2 (`critic-begin` 2 = scope-widened; `backlog verify-migration` 4 =
+  completeness), so a documented sentinel is the established additive route and repurposes no
+  existing meaning | user can veto/override]
 
 **What would raise confidence:** N/A — the residual uncertainty is scope preference, not knowledge.
 
@@ -239,12 +258,15 @@ and the `new` exemption expiry consumes that function rather than re-deriving fr
       silent. The trap the item names is real either way: prawduct's own error message tells the
       user to set `views_enabled: true`, which on a 16-nested-plan repo fails closed on everything.
   - **NEW — collapse `regen-views` to one mode (owner requirement 2026-08-01, not from #201).**
-    `plugin/bin/prawduct-hook`. Delete `--check`; views always regenerate. Same edit to the same
-    error block as leg 4, which is why it lands here rather than in its own chunk. Two things to get
-    right: (a) an **unknown flag must exit 2** — today `check_only = "--check" in (args or [])`
-    ignores every other argument, so an operator on a stale runbook silently gets a write where they
-    expected a dry run; (b) the **doc cascade is larger than the code change** and is part of this
-    deliverable, not follow-up: `documentation/release-process.md` (steps at :101 and :154),
+    `plugin/bin/prawduct-hook`. Views always regenerate; there is no dry run. Same edit to the same
+    error block as leg 4, which is why it lands here rather than in its own chunk. Three things to
+    get right: (a) **`--check` is DEPRECATED, not deleted** — see the [DECISION] below; it prints a
+    stderr deprecation notice and performs the full regen, so the mode collapses while the flag
+    survives one cycle per `api-contract.md`'s deprecation norm; (b) an **unknown flag must exit 2**
+    — today `check_only = "--check" in (args or [])` ignores every other argument, which already
+    violates `api-contract.md:223` (*"unknown flags rejected with a usage error (exit 2)"*), so this
+    is conformance, not a new control; (c) the **doc cascade is larger than the code change** and is
+    part of this deliverable, not follow-up: `documentation/release-process.md` (steps at :101 and :154),
     `.prawduct/artifacts/kernel-inventory-2026-07-12.md:45` (the row records `--check` as a HARD
     kernel gate), `learnings-detail.md:615` and `:631` (both prescribe verifying with `--check`),
     `.prawduct/artifacts/change-log-ledger-design.md:266,277` (a *future* design that plans to

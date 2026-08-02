@@ -2468,10 +2468,18 @@ def _make_scoped_product_repo(
 
 
 class TestRegenViewsFailClosed:
-    """VWS-6R4T: any tag validation error aborts the whole regen — exit 2,
-    ERROR on stderr, NOTHING written (no silent partial flips)."""
+    """Validation severity after the regen-views-is-advice ruling (2026-08-01).
 
-    def test_roster_miss_errors_and_writes_nothing(self, tmp_path: Path):
+    VWS-6R4T's content is preserved — a view is never written half-right — but
+    its granularity moved from the RUN to the VIEW. A scope-attributed error
+    suppresses only its own `## Status` view (exit 3, other views written); an
+    error no single view owns still fails closed (exit 2, nothing written).
+    """
+
+    def test_roster_miss_suppresses_only_its_own_status_view(self, tmp_path: Path):
+        # The invariant VWS-6R4T actually protects: a plan whose roster cannot
+        # be trusted is NOT written half-right. What changed is that views with
+        # no plan-roster dependency are no longer collateral damage.
         product = _make_scoped_product_repo(
             tmp_path,
             change_log=(
@@ -2485,15 +2493,16 @@ class TestRegenViewsFailClosed:
             plan_status="## Status\n- [ ] Chunk 01: A\n- [ ] Chunk 02: B\n",
         )
         result = _run_regen(product)
-        assert result.returncode == 2, result.stdout + result.stderr
+        assert result.returncode == 3, result.stdout + result.stderr
         assert "chunks=07" in result.stderr
         assert "never flip" in result.stderr
-        # Fail closed across ALL views: plan untouched, release-notes absent.
+        # The offending scope's Status is suppressed — never written half-right.
         plan = (
             product / ".prawduct" / "artifacts" / "build-plan-feat.md"
         ).read_text()
         assert "- [ ] Chunk 01: A" in plan
-        assert not (product / ".prawduct" / "release-notes.md").exists()
+        # ...but release-notes has no plan-roster dependency and IS written.
+        assert (product / ".prawduct" / "release-notes.md").exists()
 
     def test_tolerant_id_variant_is_not_an_error_and_flips(self, tmp_path: Path):
         # chunks=1 against a `Chunk 01:` roster: the exact case the tolerant
@@ -2531,9 +2540,11 @@ class TestRegenViewsFailClosed:
         ).read_text()
         assert "- [ ] Chunk 01: A" in plan
 
-    def test_unreleased_scope_without_plan_errors(self, tmp_path: Path):
-        # Promoted from WARNING (REL-4T8N warn-and-skip): a merged scope with
-        # no plan file means its Status can never regenerate — fatal now.
+    def test_unreleased_scope_without_plan_is_scope_local(self, tmp_path: Path):
+        # A merged scope with no plan file still means its Status can never
+        # regenerate, and that is still LOUD. It is no longer fatal to the run:
+        # this is the exact case that stopped every view in a nested-plan repo
+        # from regenerating (#201's trap).
         product = _make_scoped_product_repo(
             tmp_path,
             change_log=(
@@ -2543,7 +2554,7 @@ class TestRegenViewsFailClosed:
             plan_status="## Status\n- [ ] Chunk 01: A\n",
         )
         result = _run_regen(product)
-        assert result.returncode == 2
+        assert result.returncode == 3
         assert "ghost" in result.stderr
         assert "no matching build-plan file" in result.stderr
 
@@ -2562,7 +2573,7 @@ class TestRegenViewsFailClosed:
         result = _run_regen(product)
         assert result.returncode == 0, result.stderr
 
-    def test_duplicate_scope_across_plans_errors(self, tmp_path: Path):
+    def test_duplicate_scope_across_plans_is_scope_local(self, tmp_path: Path):
         product = _make_scoped_product_repo(
             tmp_path,
             change_log=(
@@ -2575,14 +2586,179 @@ class TestRegenViewsFailClosed:
             "---\nartifact: build-plan\nscope: feat\n---\n## Status\n"
         )
         result = _run_regen(product)
-        assert result.returncode == 2
+        assert result.returncode == 3
         assert "duplicate scope" in result.stderr.lower()
+        # Ambiguous ownership means NEITHER file's Status is written — writing
+        # to the wrong one is the corruption the suppression exists to prevent.
+        plan = (
+            product / ".prawduct" / "artifacts" / "build-plan-feat.md"
+        ).read_text()
+        assert "- [ ] Chunk 01: A" in plan
+
+    def test_duplicate_scope_message_disambiguates_nested_same_name_plans(
+        self, tmp_path: Path
+    ):
+        # Recursive discovery makes `build-plan.md` a near-certain name
+        # collision across `plans/<id>/` directories, so a message naming two
+        # files called `build-plan.md` would be unactionable.
+        product = _make_scoped_product_repo(
+            tmp_path,
+            change_log="## 2026-07-02: e\n<!-- prawduct: scope=other -->\n",
+            plan_status="## Status\n- [ ] Chunk 01: A\n",
+        )
+        artifacts = product / ".prawduct" / "artifacts"
+        for sub in ("alpha", "beta"):
+            (artifacts / "plans" / sub).mkdir(parents=True)
+            (artifacts / "plans" / sub / "build-plan.md").write_text(
+                "---\nartifact: build-plan\nscope: dup\n---\n## Status\n"
+            )
+        result = _run_regen(product)
+        assert "duplicate scope" in result.stderr.lower()
+        assert "plans/alpha/build-plan.md" in result.stderr
+        assert "plans/beta/build-plan.md" in result.stderr
+
+    def test_global_error_still_fails_closed_with_nothing_written(
+        self, tmp_path: Path
+    ):
+        # An unrecognized `status=` means that entry never contributes its flip,
+        # which would leave the Status view silently HALF-RIGHT rather than
+        # absent — the bug class VWS-6R4T names, and still fail-closed.
+        product = _make_scoped_product_repo(
+            tmp_path,
+            change_log=(
+                "## 2026-07-02: typo\n"
+                "<!-- prawduct: chunks=01 | scope=feat | status=shippd |"
+                " release=v1.0.0 -->\n"
+            ),
+            plan_status="## Status\n- [ ] Chunk 01: A\n",
+        )
+        result = _run_regen(product)
+        assert result.returncode == 2, result.stdout + result.stderr
+        assert "shippd" in result.stderr
+        assert "every view" in result.stderr
+        assert not (product / ".prawduct" / "release-notes.md").exists()
 
 
-class TestRegenViewsCheckFlag:
-    """`regen-views --check`: validate + report, never write (VWS-6R4T)."""
+class TestRecursivePlanDiscovery:
+    """#201 leg 1: plans below the top level of `artifacts/` must be visible.
 
-    def test_check_clean_exits_zero_and_writes_nothing(self, tmp_path: Path):
+    The previous `glob("*.md")` saw only the top level, so a repo organizing
+    plans as `artifacts/plans/<id>/build-plan.md` had every one invisible — the
+    scope resolved to nothing, the coverage diagnostic errored, and the caller
+    then failed closed for the whole run. Four surveyed repos carry 16 nested
+    plans each (2026-07-21 fleet survey on the item).
+    """
+
+    def test_nested_plan_resolves_and_its_status_regenerates(self, tmp_path: Path):
+        product = _make_scoped_product_repo(
+            tmp_path,
+            change_log=(
+                "## 2026-07-02: nested\n"
+                "<!-- prawduct: chunks=01 | scope=nested | status=shipped -->\n"
+            ),
+            plan_status="## Status\n- [ ] Chunk 01: A\n",
+        )
+        nested = product / ".prawduct" / "artifacts" / "plans" / "n1"
+        nested.mkdir(parents=True)
+        (nested / "build-plan.md").write_text(
+            "---\nartifact: build-plan\nscope: nested\n---\n"
+            "## Status\n- [ ] Chunk 01: Nested work\n"
+        )
+        result = _run_regen(product)
+        assert result.returncode == 0, result.stdout + result.stderr
+        assert "- [x] Chunk 01: Nested work" in (nested / "build-plan.md").read_text()
+
+    def test_nested_plan_is_not_reported_as_missing(self, tmp_path: Path):
+        # The reported symptom: the error named a SCOPE TAG, so it read as "you
+        # tagged the change-log wrong", not "your plans are in a directory I do
+        # not scan."
+        product = _make_scoped_product_repo(
+            tmp_path,
+            change_log=(
+                "## 2026-07-02: nested pending\n"
+                "<!-- prawduct: chunks=01 | scope=nested | status=merged -->\n"
+            ),
+            plan_status="## Status\n- [ ] Chunk 01: A\n",
+        )
+        nested = product / ".prawduct" / "artifacts" / "plans" / "deep" / "deeper"
+        nested.mkdir(parents=True)
+        (nested / "build-plan.md").write_text(
+            "---\nartifact: build-plan\nscope: nested\n---\n"
+            "## Status\n- [ ] Chunk 01: A\n"
+        )
+        result = _run_regen(product)
+        assert result.returncode == 0, result.stdout + result.stderr
+        assert "no matching build-plan file" not in result.stderr
+
+
+class TestStatusLineChunkVariants:
+    """#201 leg 3 / VWS-2F9K: `CHUNK_LINE_RE` pinned the colon form.
+
+    A plan author who writes `## Chunk A — Name` as a body heading writes
+    `- [ ] **Chunk A** — Name` in Status. Those checkboxes could never flip and
+    nothing said why. The separator set is deliberately the same one
+    `buildplan_refs._CHUNK_ID_SEP` accepts for headings.
+    """
+
+    @pytest.mark.parametrize(
+        "status_line,expected",
+        [
+            ("- [ ] Chunk 01: A", "- [x] Chunk 01: A"),
+            ("- [ ] Chunk 01 — A", "- [x] Chunk 01 — A"),
+            ("- [ ] Chunk 01 – A", "- [x] Chunk 01 – A"),
+            ("- [ ] **Chunk 01** — A", "- [x] **Chunk 01** — A"),
+            ("- [ ] **Chunk 01**: A", "- [x] **Chunk 01**: A"),
+            ("- [ ] Chunk 01 (adapter)", "- [x] Chunk 01 (adapter)"),
+            ("- [ ] Chunk 01", "- [x] Chunk 01"),
+        ],
+    )
+    def test_authoring_variant_flips(
+        self, tmp_path: Path, status_line: str, expected: str
+    ):
+        product = _make_scoped_product_repo(
+            tmp_path,
+            change_log=(
+                "## 2026-07-02: v\n"
+                "<!-- prawduct: chunks=01 | scope=feat | status=shipped -->\n"
+            ),
+            plan_status=f"## Status\n{status_line}\n",
+        )
+        result = _run_regen(product)
+        assert result.returncode == 0, result.stdout + result.stderr
+        plan = (
+            product / ".prawduct" / "artifacts" / "build-plan-feat.md"
+        ).read_text()
+        assert expected in plan
+
+    def test_prose_starting_with_chunks_is_not_a_chunk_line(self, tmp_path: Path):
+        # Widening the matcher must not colonize ordinary Status prose.
+        product = _make_scoped_product_repo(
+            tmp_path,
+            change_log=(
+                "## 2026-07-02: v\n"
+                "<!-- prawduct: chunks=01 | scope=feat | status=shipped -->\n"
+            ),
+            plan_status="## Status\n- [ ] Chunk 01: A\n- [x] Chunks are grouped\n",
+        )
+        result = _run_regen(product)
+        assert result.returncode == 0, result.stdout + result.stderr
+        plan = (
+            product / ".prawduct" / "artifacts" / "build-plan-feat.md"
+        ).read_text()
+        # Untouched: not a chunk line, so regen must not flip it to `[ ]`.
+        assert "- [x] Chunks are grouped" in plan
+
+
+class TestRegenViewsSingleMode:
+    """One mode: views ALWAYS regenerate; `--check` is a deprecated alias.
+
+    The dry run validated identically to the real run (`check_only` was
+    consulted only after the validation block returned), so it could never catch
+    anything the real run did not — while exiting 0 with writes still pending,
+    which is how drift accumulated behind a clean check.
+    """
+
+    def test_check_flag_warns_and_performs_a_full_regen(self, tmp_path: Path):
         product = _make_scoped_product_repo(
             tmp_path,
             change_log=(
@@ -2594,18 +2770,15 @@ class TestRegenViewsCheckFlag:
         )
         result = _run_regen(product, "--check")
         assert result.returncode == 0, result.stderr
-        assert "check passed" in result.stdout
-        # Pending writes are REPORTED (not errors) and NOT applied.
-        assert "[check]" in result.stdout
+        assert "deprecated" in result.stderr.lower()
+        # The flag no longer suppresses the write — that is the whole point.
         plan = (
             product / ".prawduct" / "artifacts" / "build-plan-feat.md"
         ).read_text()
-        assert "- [ ] Chunk 01: A" in plan  # unflipped
-        assert not (product / ".prawduct" / "release-notes.md").exists()
+        assert "- [x] Chunk 01: A" in plan
+        assert (product / ".prawduct" / "release-notes.md").exists()
 
-    def test_check_with_violation_exits_two_and_writes_nothing(
-        self, tmp_path: Path
-    ):
+    def test_check_flag_still_reports_violations(self, tmp_path: Path):
         product = _make_scoped_product_repo(
             tmp_path,
             change_log=(
@@ -2615,8 +2788,21 @@ class TestRegenViewsCheckFlag:
             plan_status="## Status\n- [ ] Chunk 01: A\n",
         )
         result = _run_regen(product, "--check")
-        assert result.returncode == 2
+        assert result.returncode == 3
         assert "chunks=09" in result.stderr
+
+    def test_unknown_flag_is_a_usage_error(self, tmp_path: Path):
+        # `api-contract.md`: "unknown flags rejected with a usage error (exit
+        # 2)". The previous membership test ignored every other argument, so a
+        # typo'd flag silently ran a full regen.
+        product = _make_scoped_product_repo(
+            tmp_path,
+            change_log="## 2026-07-02: x\n<!-- prawduct: scope=feat -->\n",
+            plan_status="## Status\n- [ ] Chunk 01: A\n",
+        )
+        result = _run_regen(product, "--chekc")
+        assert result.returncode == 2
+        assert "unknown flag" in result.stderr.lower()
         assert not (product / ".prawduct" / "release-notes.md").exists()
 
 

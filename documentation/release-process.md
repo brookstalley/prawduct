@@ -98,10 +98,14 @@ When `develop` is ready to release as `vX.Y.Z`:
    ```
    <!-- prawduct: chunks=01,02,… | release=vX.Y.Z | status=shipped | scope=<plan-scope> -->
    ```
-4. **Regenerate derived views:** run `prawduct-hook regen-views --check` first — the
-   pre-flight validates every change-log tag against the plan roster without writing
-   anything (exit 2 + ERROR lines name any tag that would fail to flip); fix errors, then
-   run `prawduct-hook regen-views` for real. With `views_enabled`, the build
+4. **Regenerate derived views:** run `prawduct-hook regen-views`. There is no
+   pre-flight and no dry run — validation happens inside the single run, before any
+   write, so the old two-step `--check` then `regen-views` could not catch anything the
+   one command doesn't. **Read the exit code:** `0` = every view is current; `2` =
+   nothing written, fix the ERROR lines and re-run; `3` = PARTIAL — the named scopes'
+   `## Status` views were suppressed by their own validation errors while every other
+   view was written, so fix those and re-run to complete them. A `3` at release time is
+   a release blocker even though views were written. With `views_enabled`, the build
    plans' `## Status` checkboxes, release notes, and `scope_rollups` are a *derived view* of
    the change-log's `status=shipped` entries — they flip to `[x]` only at this release step.
    Do **not** hand-edit the checkboxes; `regen-views` would revert the edit.
@@ -151,7 +155,8 @@ promoting the VWS-3K7P typo-guard): `regen-views` exits 2 with an ERROR line and
 nothing, as it does for a `chunks=` ID missing from its plan's roster, an unreleased scope
 with no plan file, duplicate scopes, or conflicting tag lines. Entries with multiple
 non-conflicting tag lines are still unioned with a stderr WARNING (VWS-4D8J) — fix the
-format, but the output is correct. Run `regen-views --check` before tagging; it must exit 0.
+format, but the output is correct. Run `regen-views` before tagging; it must exit 0 — a `3`
+means some scope's `## Status` was suppressed and is not release-ready.
 
 ## Step 1 mechanics — promoting when `develop` and `main` have diverged
 

@@ -42,7 +42,7 @@ Classes: **HARD** = can block (exit ≠ 0 stops a flow), **ADV** = advisory
 | `check-operator-verification` / `accept-…` / `verify-…` | Human-verification obligations can't ship silently; overrides capture rationale | `/prawduct:pr` | HARD (opt-in) + BOOK |
 | `check-pr-doc-only` | Doc-only PR carveout signal | pr | ADV |
 | `check-change-log-entry` | Shipped change is recorded (REL-6C3W) | pr | HARD |
-| `regen-views [--check]` | Derived views never silently partial-flip (VWS-6R4T) | manual / release pre-flight | HARD on `--check` |
+| `regen-views` | Derived views never silently partial-flip (VWS-6R4T) | manual / release | ADV — exit 3 = partial (per-view suppression), 2 = nothing written |
 | `stamp-merged` | **DEPRECATED** — announces its own deprecation | none | vestigial |
 | `infer-critic-mode` | Skill picks mode without arbitrary-code Bash | critic | ADV |
 | `compute-verify-resolutions-scope` | Critic verify scope == the scope the stop gate enforces (no drift) | critic | ADV (feeds a gate) |

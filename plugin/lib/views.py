@@ -33,6 +33,7 @@ all other Chunk lines flip to ``[ ]`` so the view is fully derived.
 from __future__ import annotations
 
 import re
+from collections.abc import Iterator
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -46,8 +47,19 @@ from .core import (
 
 TAG_LINE_RE = re.compile(r"<!--\s*prawduct:\s*(.+?)\s*-->")
 H2_RE = re.compile(r"^##\s+(.+?)\s*$")
+# The Status-line twin of `buildplan_refs._CHUNK_ID_SEP`, and deliberately the
+# same separator set (`: — – ( -` or end-of-line) — a plan author who writes
+# `## Chunk A — Name` as a body heading writes `- [ ] **Chunk A** — Name` in
+# Status, and before VWS-2F9K/#201-leg-3 only the colon form matched here, so
+# those checkboxes could never flip and nothing said why. `**` is tolerated on
+# either side of the ID because bolding a chunk label is an authoring style, not
+# a different contract. The two regexes are NOT shared code: this one also has to
+# capture `prefix`/`state`/`rest` for rewriting, while the heading matcher only
+# reads. What must not drift is the separator set, which is why it is named here.
+_CHUNK_LINE_SEP = r"\s*(?:[:—–(-]|\*\*|$)"
 CHUNK_LINE_RE = re.compile(
-    r"^(?P<prefix>\s*-\s+)\[(?P<state>[ xX])\](?P<rest>\s+Chunk\s+(?P<id>[A-Za-z0-9_-]+):.*)$"
+    r"^(?P<prefix>\s*-\s+)\[(?P<state>[ xX])\]"
+    r"(?P<rest>\s+(?:\*\*\s*)?Chunk\s+(?P<id>[A-Za-z0-9_-]+)" + _CHUNK_LINE_SEP + r".*)$"
 )
 # Safe charset for a chunk ID, mirroring CHUNK_LINE_RE's `id` group. A chunk ID
 # is only ever a build-plan header token, so anything outside this set (a quote,
@@ -55,6 +67,46 @@ CHUNK_LINE_RE = re.compile(
 # corrupt the generated scope_rollups YAML (e.g. `chunks: ["0"a]`). Such IDs are
 # dropped before they reach a derived view.
 CHUNK_ID_SAFE_RE = re.compile(r"^[A-Za-z0-9_-]+$")
+
+
+class ScopedError(str):
+    """A validation error that knows which scope's view it suppresses.
+
+    Under the regen-views-is-advice ruling (2026-08-01) the unit of atomicity is
+    the **view**, not the run: an error that can only make one scope's
+    ``## Status`` view wrong must not stop release-notes and scope-rollups from
+    being written. To partition, the caller needs each error to say what it
+    affects — ``scope=None`` means "no single view owns this, treat it as
+    global."
+
+    It subclasses ``str`` rather than wrapping one so that every existing
+    consumer and assertion — ``== []``, ``in errors[0]``, printing — keeps
+    working on the message unchanged, and only the code that needs the
+    attribution reaches for ``.scope``. The alternative (a dataclass with a
+    ``.message``) would have meant rewriting assertions that currently pin real
+    behaviour, to buy nothing the caller can use.
+    """
+
+    scope: str | None
+
+    def __new__(cls, message: str, scope: str | None = None) -> "ScopedError":
+        obj = super().__new__(cls, message)
+        obj.scope = scope
+        return obj
+
+
+def _display_path(path: Path, artifacts_dir: Path) -> str:
+    """A plan path as written for a human, relative to ``artifacts/`` when possible.
+
+    Bare ``path.name`` was adequate while discovery was flat. Recursive
+    discovery makes ``build-plan.md`` a near-certain collision across
+    ``plans/<id>/`` directories, so a duplicate-scope message naming two files
+    called ``build-plan.md`` tells the operator nothing about which two.
+    """
+    try:
+        return str(path.relative_to(artifacts_dir))
+    except ValueError:
+        return path.name
 
 
 def normalize_chunk_id(chunk_id: str) -> str:
@@ -595,7 +647,9 @@ def _declares_non_build_plan_artifact(content: str) -> bool:
 def build_scope_to_plan_map(artifacts_dir: Path) -> dict[str, Path]:
     """Map each frontmatter ``scope:`` to its build-plan FILE under artifacts/.
 
-    Scans ``artifacts_dir/*.md`` and records ``{scope_value: path}`` for every
+    Scans ``artifacts_dir`` **recursively** (see
+    :func:`iter_scoped_plan_candidates`, which owns the scan) and records
+    ``{scope_value: path}`` for every
     file whose YAML frontmatter declares a non-empty ``scope:`` (parsed by
     :func:`_parse_build_plan_frontmatter_scope`) **and does not declare an
     ``artifact:`` type other than ``build-plan``** (see
@@ -614,27 +668,58 @@ def build_scope_to_plan_map(artifacts_dir: Path) -> dict[str, Path]:
     absent or holds no scope-tagged plans. Read-only.
     """
     result: dict[str, Path] = {}
+    for plan_path, scope in iter_scoped_plan_candidates(artifacts_dir):
+        if scope not in result:
+            result[scope] = plan_path
+    return result
+
+
+def iter_scoped_plan_candidates(artifacts_dir: Path) -> Iterator[tuple[Path, str]]:
+    """Yield ``(path, scope)`` for every scope-declaring build plan under ``artifacts_dir``.
+
+    The ONE home for "which files are build plans, and what scope does each
+    declare." :func:`build_scope_to_plan_map` and
+    :func:`diagnose_scope_plan_coverage` were line-for-line twins of this loop,
+    and both carried a docstring warning that letting them diverge would make
+    the diagnostic condemn a file the map never considered — which is exactly
+    what happened on 2026-08-01. A warning that a duplicate must be kept in sync
+    is worth less than not having the duplicate.
+
+    **Discovery is recursive** (VWS-4T9P / #201 leg 1). The previous
+    ``glob("*.md")`` saw only the top level, so a repo organizing plans as
+    ``artifacts/plans/<id>/build-plan.md`` had every one of them invisible: their
+    scopes resolved to nothing, the coverage diagnostic errored, and — because
+    the caller then failed closed for the whole run — release-notes and
+    scope-rollups died with them. Four surveyed repos carry 16 nested plans each
+    (2026-07-21 fleet survey on the item).
+
+    Ordering is by sorted path so the first-wins tie-break in both consumers
+    stays deterministic. Note this makes *directory depth* part of the tie-break
+    for a duplicated scope, which is why the duplicate-scope diagnostic reports
+    paths relative to ``artifacts_dir`` rather than bare filenames: nesting makes
+    ``build-plan.md`` a near-certain name collision across ``plans/<id>/``
+    directories, and a message naming two files called ``build-plan.md`` is
+    unactionable.
+    """
     if not artifacts_dir.is_dir():
-        return result
+        return
     # Named `plan_path` because these ARE build-plan candidates — consistency
     # with every other reader, and NOT load-bearing. The decoding rule reaches
     # this module file-scoped (`tests/preferences/test_build_plan_decoding.py`),
-    # so it no longer depends on a local's name; an earlier idiom-based version
-    # did, and missed this loop and its twin below for one round each.
-    for plan_path in sorted(artifacts_dir.glob("*.md")):
+    # so it no longer depends on a local's name.
+    for plan_path in sorted(artifacts_dir.rglob("*.md")):
         try:
             content = plan_path.read_text(encoding="utf-8")
         except (OSError, UnicodeDecodeError):
-            # One malformed file in artifacts/ must not blind the scope map to
+            # One malformed file under artifacts/ must not blind the scan to
             # every other plan. `UnicodeDecodeError` is a `ValueError`, so the
             # narrower `except OSError` here let it escape to `regen-views`.
             continue
         if _declares_non_build_plan_artifact(content):
             continue  # scope-tagged, but declares itself a non-plan artifact
         _present, scope = _parse_build_plan_frontmatter_scope(content)
-        if scope and scope not in result:
-            result[scope] = plan_path
-    return result
+        if scope:
+            yield plan_path, scope
 
 
 def collect_release_pending_scopes(entries: list[ChangeLogEntry]) -> list[str]:
@@ -667,12 +752,17 @@ def collect_release_pending_scopes(entries: list[ChangeLogEntry]) -> list[str]:
 
 def diagnose_scope_plan_coverage(
     change_log_content: str, artifacts_dir: Path
-) -> list[str]:
+) -> list[ScopedError]:
     """Flag release-pending scopes with no plan file + duplicate scopes.
 
-    Pure diagnostic (mirrors :func:`validate_status_values`): the caller
-    (``cmd_regen_views``) prints the returned strings on stderr and treats
-    them as fatal (fail closed — VWS-6R4T). Two cases:
+    Pure diagnostic (mirrors :func:`validate_status_values`). Every error it
+    returns is **scope-attributed** (:class:`ScopedError`), because both cases
+    can only make ONE scope's ``## Status`` view wrong: the caller suppresses
+    that view and still writes release-notes and scope-rollups, which have no
+    plan-roster dependency (the regen-views-is-advice ruling, 2026-08-01 —
+    ``learnings.md``). Until that ruling the caller treated these as fatal for
+    the whole run (VWS-6R4T), which is what let one unresolvable scope stop
+    every view in a 16-nested-plan repo from regenerating. Two cases:
 
     * An unreleased scope with NO matching build-plan file — its ``## Status``
       cannot be regenerated, a real release-process error. "Unreleased" covers
@@ -683,45 +773,34 @@ def diagnose_scope_plan_coverage(
       A ``status=shipped`` scope with no file is deliberately NOT flagged:
       its plan is a retired historical artifact or predates the ``scope:``
       frontmatter convention, so the absence is expected, not an error.
-    * Two ``artifacts/*.md`` files declaring the same ``scope:`` — ambiguous; the
-      map keeps the first by sorted filename.
+    * Two build-plan files declaring the same ``scope:`` — ambiguous; the
+      map keeps the first by sorted path.
 
-    **Both cases apply only to files this module considers build plans**, i.e.
-    those NOT declaring an ``artifact:`` type other than ``build-plan``
-    (:func:`_declares_non_build_plan_artifact`). This filter must stay identical
-    to :func:`build_scope_to_plan_map`'s or the diagnostic condemns a file the
-    map never considered — which is exactly what happened on 2026-08-01, when a
-    scope-tagged collapse-map artifact made this function fatal and stopped
-    ``regen-views`` writing views for EVERY scope.
+    **Both cases apply only to files this module considers build plans**, and
+    that determination now has ONE home —
+    :func:`iter_scoped_plan_candidates` — rather than a copy here that had to
+    stay identical to :func:`build_scope_to_plan_map`'s. It did not: on
+    2026-08-01 a scope-tagged collapse-map artifact made this function fatal and
+    stopped ``regen-views`` writing views for EVERY scope, because the
+    diagnostic condemned a file the map never considered.
 
     Returns ``[]`` when coverage is clean.
     """
-    warnings: list[str] = []
-    if artifacts_dir.is_dir():
-        first_seen: dict[str, str] = {}
-        for plan_path in sorted(artifacts_dir.glob("*.md")):
-            try:
-                content = plan_path.read_text(encoding="utf-8")
-            except (OSError, UnicodeDecodeError):
-                # A line-for-line twin of `build_scope_to_plan_map` above, and
-                # worse-guarded than it: `prawduct-hook` calls this bare with no
-                # global handler, so one non-UTF-8 file under `artifacts/`
-                # tracebacked out of `regen-views` — across a boundary whose
-                # error model forbids an internal stack trace crossing it.
-                continue
-            if _declares_non_build_plan_artifact(content):
-                continue  # must match `build_scope_to_plan_map` exactly, or the
-                # diagnostic condemns a file the map never considered
-            _present, scope = _parse_build_plan_frontmatter_scope(content)
-            if not scope:
-                continue
-            if scope in first_seen:
-                warnings.append(
-                    f"duplicate scope={scope!r}: {plan_path.name} also declares it "
-                    f"(keeping {first_seen[scope]}); one plan is malformed."
+    warnings: list[ScopedError] = []
+    first_seen: dict[str, Path] = {}
+    for plan_path, scope in iter_scoped_plan_candidates(artifacts_dir):
+        if scope in first_seen:
+            warnings.append(
+                ScopedError(
+                    f"duplicate scope={scope!r}: "
+                    f"{_display_path(plan_path, artifacts_dir)} also declares it "
+                    f"(keeping {_display_path(first_seen[scope], artifacts_dir)}); "
+                    f"one plan is malformed.",
+                    scope=scope,
                 )
-            else:
-                first_seen[scope] = plan_path.name
+            )
+        else:
+            first_seen[scope] = plan_path
 
     plan_map = build_scope_to_plan_map(artifacts_dir)
     seen: set[str] = set()
@@ -744,17 +823,26 @@ def diagnose_scope_plan_coverage(
         seen.add(scope)
         if scope not in plan_map:
             warnings.append(
-                f"change-log scope={scope!r} is {label} "
-                f"but has no matching build-plan file in artifacts/ — its "
-                f"## Status cannot be regenerated."
+                ScopedError(
+                    f"change-log scope={scope!r} is {label} "
+                    f"but has no matching build-plan file under artifacts/ "
+                    f"(searched recursively) — its ## Status cannot be "
+                    f"regenerated. Other views are unaffected and were written.",
+                    scope=scope,
+                )
             )
     return warnings
 
 
 def validate_chunk_roster(
     change_log_content: str, artifacts_dir: Path
-) -> list[str]:
-    """One error string per ``chunks=`` ID that can never flip a checkbox (VWS-6R4T).
+) -> list[ScopedError]:
+    """One error per ``chunks=`` ID that can never flip a checkbox (VWS-6R4T).
+
+    Scope-attributed (:class:`ScopedError`), like
+    :func:`diagnose_scope_plan_coverage`: a ``chunks=`` ID that matches no line
+    in its plan's roster can only make THAT plan's ``## Status`` view wrong, so
+    the caller suppresses that one view rather than the run.
 
     The silent-partial-flip failure class: a ``chunks=`` ID that matches no
     ``Chunk <id>:`` line in its plan's ``## Status`` section simply never
@@ -819,10 +907,14 @@ def validate_chunk_roster(
                 else "(empty — no chunk checkboxes in ## Status)"
             )
             errors.append(
-                f"change-log entry {entry.title!r} (line {entry.line_number}) "
-                f"has chunks={','.join(missing)} not present in "
-                f"{plan_path.name}'s ## Status roster [{roster_desc}] — these "
-                f"IDs will never flip a checkbox (scope={scope!r})."
+                ScopedError(
+                    f"change-log entry {entry.title!r} (line {entry.line_number}) "
+                    f"has chunks={','.join(missing)} not present in "
+                    f"{_display_path(plan_path, artifacts_dir)}'s ## Status roster "
+                    f"[{roster_desc}] — these IDs will never flip a checkbox "
+                    f"(scope={scope!r}).",
+                    scope=scope,
+                )
             )
     return errors
 
@@ -1114,6 +1206,14 @@ class ViewRegenResult:
     summary: str  # human-readable detail
     new_content: str | None = None  # new file content (None for noop)
     path_relative: str = ""  # path relative to prawduct_dir, for caller to write
+    # The scope this view belongs to, for `status` results — the plan's OWN
+    # frontmatter declaration, not a reverse lookup through the scope map, so a
+    # duplicate-scope repo still attributes each result to the file that claims
+    # it. `None` for the plan-independent views (release-notes, scope-rollups)
+    # and for a plan declaring no scope. The caller matches a scope-attributed
+    # validation error (:class:`ScopedError`) against this to suppress exactly
+    # one view instead of the whole run.
+    scope: str | None = None
 
 
 def _plan_status_results(
@@ -1198,6 +1298,7 @@ def _plan_status_results(
                 )
             )
             continue
+        _present, plan_scope = _parse_build_plan_frontmatter_scope(plan_content)
         status_new, status_changes = build_status_view(change_log_content, plan_content)
         if status_new is None:
             results.append(
@@ -1206,6 +1307,7 @@ def _plan_status_results(
                     action="noop",
                     summary=f"Status ({plan_rel}): up to date",
                     path_relative=plan_rel,
+                    scope=plan_scope,
                 )
             )
             continue
@@ -1226,6 +1328,7 @@ def _plan_status_results(
                 ),
                 new_content=status_new,
                 path_relative=plan_rel,
+                scope=plan_scope,
             )
         )
     return results

@@ -2748,6 +2748,13 @@ def cmd_verify_chunk_refs(project_dir: Path, chunk_id: str | None) -> int:
         # One canonical current-chunk resolution (shared with the stop hook and
         # the Critic helper); handles both the "### Chunk NN:" and
         # "## Chunk N (ID) — Name" Status-item forms.
+        # #327: announce a KNOWN-degraded reading before acting on it. Only on
+        # the inference path — an explicit chunk_id does not consume the
+        # progress reading, so warning there would be noise about something the
+        # caller already overrode.
+        notice = _buildplan_refs().degraded_progress_notice(project_dir)
+        if notice:
+            print(notice, file=sys.stderr)
         chunk_id = _buildplan_refs()._current_chunk_id_from_status(project_dir)
         if chunk_id is None:
             print("ok: no current chunk in Status; nothing to verify")
@@ -2941,28 +2948,69 @@ def cmd_regen_views(project_dir: Path, args: list[str] | None = None) -> int:
     No-op when `views_enabled: true` is absent (enabled by default in v1.4;
     sync auto-enables for existing repos and `false` is the explicit opt-out).
 
-    Validation is fail-CLOSED (VWS-6R4T): every change-log tag is validated
-    against the plan roster BEFORE any view is written, and any ERROR-class
-    finding (unrecognized status=, chunks= ID missing from the plan's Status
-    roster, unreleased scope with no plan file, duplicate scope, conflicting
-    tag lines) aborts the whole regen with exit 2 and nothing written — a
-    partial flip is the silent failure class this command must never produce.
+    **There is ONE mode: views always regenerate.** Validation still runs before
+    any write, but its granularity is the VIEW, not the run (the
+    regen-views-is-advice ruling, 2026-08-01 — `.prawduct/learnings.md`, with
+    precedence recorded on `architecture.md`'s authority-fails-closed norm and
+    `data-model.md`'s derived-views norm). Two error classes:
+
+    * **Scope-attributed** (`views.ScopedError`, from
+      `diagnose_scope_plan_coverage` and `validate_chunk_roster`) — can only make
+      ONE scope's `## Status` view wrong, so that view is suppressed and every
+      other view is still written. This is the coupling VWS-6R4T introduced: one
+      unresolvable scope used to stop release-notes and scope-rollups too, which
+      have no plan-roster dependency at all, and on a 16-nested-plan repo that
+      meant nothing regenerated, ever.
+    * **Global** (unrecognized `status=`, conflicting tag lines) — an entry that
+      cannot be interpreted leaves a view silently HALF-RIGHT rather than absent,
+      which is precisely the bug class VWS-6R4T names. Still fail-closed: exit 2,
+      nothing written.
+
     Mere tag-line multiplicity (union repair is correct) stays a WARNING.
 
-    `--check` computes + validates but writes NOTHING: the release pre-flight.
-    Exit 0 = tags validate (pending writes are reported, not errors); exit 2 =
-    validation errors.
+    `--check` is **deprecated**: it prints a notice and performs the full regen.
+    A dry run that validated identically to the real run never caught anything
+    the real run didn't, and because it exits 0 while writes are *pending*, a
+    clean check meant "the tags parse", not "the views are correct" — which is
+    how one consumer lost six whole release-notes sections while the check read
+    clean. Removal defers to the next major, per `api-contract.md`'s
+    deprecation-is-signalled-not-silent norm.
 
     Exit codes:
-      0 - success (views disabled, no changes needed, regen applied cleanly,
-          or --check with clean validation)
+      0 - every view is current (written, created, or already up to date)
       1 - the plugin lib/ could not be imported (incomplete install) — a
           state-mutating command must not report success on a broken install
           (mirrors accept/verify-operator-verification's ImportError handling)
-      2 - I/O or schema error (missing change-log or build-plan), or a tag
-          validation error (fail closed: no views written)
+      2 - nothing written: I/O or schema error (missing change-log or
+          build-plan), a global validation error, or a usage error
+      3 - PARTIAL: scope-attributed errors suppressed their own `## Status`
+          views; every other view WAS written and each suppression is named on
+          stderr. A documented per-command sentinel in the established style of
+          `critic-begin` 2 (scope-widened) and `backlog verify-migration` 4, so
+          neither 1 nor 2 changes meaning.
     """
-    check_only = "--check" in (args or [])
+    # `api-contract.md`: "unknown flags rejected with a usage error (exit 2)".
+    # The previous `"--check" in args` membership test silently ignored every
+    # other argument, so a typo'd flag ran a full regen while its author believed
+    # they were dry-running.
+    deprecated_check = False
+    for arg in args or []:
+        if arg == "--check":
+            deprecated_check = True
+            continue
+        print(
+            f"error: regen-views: unknown flag {arg!r} — regen-views takes no "
+            f"arguments (`--check` is deprecated and performs a full regen).",
+            file=sys.stderr,
+        )
+        return 2
+    if deprecated_check:
+        print(
+            "WARNING: `regen-views --check` is deprecated and now performs a FULL "
+            "regeneration — views always regenerate, there is no dry-run mode. "
+            "Drop the flag; it is removed in the next major.",
+            file=sys.stderr,
+        )
     # Ensure the plugin root is on sys.path so `from lib import views` resolves
     # both when invoked as a script and when imported via SourceFileLoader in tests.
     lib_root = _plugin_root()
@@ -3015,42 +3063,68 @@ def cmd_regen_views(project_dir: Path, args: list[str] | None = None) -> int:
         return 2
     parsed_entries = views.parse_change_log(change_log_text)
     artifacts_dir = prawduct_dir / "artifacts"
-    errors: list[str] = []
+
+    # GLOBAL errors — no single view owns them, and each one would leave a view
+    # silently half-right rather than absent. Fail closed (VWS-6R4T's actual
+    # content, which the advice ruling preserves).
+    global_errors: list[str] = []
     # Unrecognized status= (typo) — the entry would silently never flip.
-    errors.extend(views.validate_status_values(parsed_entries))
+    global_errors.extend(views.validate_status_values(parsed_entries))
     # Conflicting scalar values across tag lines — first-wins may be wrong.
-    errors.extend(views.validate_tag_conflicts(parsed_entries))
-    # Unreleased scope with no plan file + duplicate scope across plan files.
-    errors.extend(views.diagnose_scope_plan_coverage(change_log_text, artifacts_dir))
-    # chunks= IDs that match nothing in their plan's Status roster.
-    errors.extend(views.validate_chunk_roster(change_log_text, artifacts_dir))
+    global_errors.extend(views.validate_tag_conflicts(parsed_entries))
+
+    # SCOPE-ATTRIBUTED errors — each can only make its own scope's `## Status`
+    # view wrong. Unreleased scope with no plan file, duplicate scope across
+    # plan files, and chunks= IDs matching nothing in their plan's roster.
+    scoped_errors: list[views.ScopedError] = []
+    scoped_errors.extend(views.diagnose_scope_plan_coverage(change_log_text, artifacts_dir))
+    scoped_errors.extend(views.validate_chunk_roster(change_log_text, artifacts_dir))
+    # A scope-attributed error that carries no scope has nothing to suppress, so
+    # suppressing "the scope it names" would silently suppress nothing and the
+    # bad input would ride into a written view. Treat it as global — fail closed
+    # is the safe direction when attribution is missing.
+    global_errors.extend(e for e in scoped_errors if e.scope is None)
+    scoped_errors = [e for e in scoped_errors if e.scope is not None]
+
     for warning in views.validate_tag_line_multiplicity(parsed_entries):
         print(f"WARNING: {warning}", file=sys.stderr)
-    if errors:
-        for err in errors:
+
+    if global_errors:
+        for err in global_errors:
             print(f"ERROR: {err}", file=sys.stderr)
         print(
-            f"{len(errors)} validation error(s) — no views written. Fix the "
-            f"change-log tags (or plan roster) and re-run.",
+            f"{len(global_errors)} validation error(s) affecting every view — no "
+            f"views written. Fix the change-log tags and re-run.",
             file=sys.stderr,
         )
         return 2
 
-    if check_only:
-        for r in results:
-            print(f"[check] {r.summary}")
-        print("check passed: tags validate against the plan roster; nothing written.")
-        return 0
+    suppressed_scopes = {e.scope for e in scoped_errors}
+    for err in scoped_errors:
+        print(f"ERROR: {err}", file=sys.stderr)
+
+    kept = [
+        r
+        for r in results
+        if not (r.name == "status" and r.scope in suppressed_scopes)
+    ]
+    if suppressed_scopes:
+        print(
+            f"{len(scoped_errors)} scope-local validation error(s) — suppressed the "
+            f"## Status view for {', '.join(f'scope={s!r}' for s in sorted(suppressed_scopes))}. "
+            f"Every other view was regenerated; fix these and re-run to complete them.",
+            file=sys.stderr,
+        )
 
     try:
-        views.apply_regen(prawduct_dir, results)
+        views.apply_regen(prawduct_dir, kept)
     except OSError as e:
         print(f"ERROR writing view output: {e}", file=sys.stderr)
         return 2
 
-    for r in results:
+    for r in kept:
         print(r.summary)
-    return 0
+    return 3 if suppressed_scopes else 0
 
 
 def cmd_check_operator_verification(project_dir: Path) -> int:
@@ -3347,6 +3421,15 @@ def cmd_handoff(project_dir: Path, argv: list[str]) -> int:
             file=sys.stderr,
         )
         return 1
+
+    # #327: the preview's Resume line is derived from the chunk reading, so a
+    # known-degraded reading makes the thing being previewed wrong. Emitted here
+    # rather than inside `briefing.py` — the notice belongs to the deliberately
+    # invoked command, and the same renderer also serves the SessionStart hot
+    # path, where this must NOT fire.
+    notice = _buildplan_refs().degraded_progress_notice(project_dir)
+    if notice:
+        print(notice, file=sys.stderr)
 
     return briefing.handoff_cmd(project_dir, argv)
 
@@ -4147,7 +4230,7 @@ _USAGE = (
     "check-operator-verification|accept-operator-verification <rationale>|"
     "verify-operator-verification <vrf-id>|"
     "check-pr-doc-only|check-change-log-entry|check-releasability [--release vX.Y.Z]|"
-    "regen-views [--check]|stamp-merged|"
+    "regen-views|stamp-merged|"
     "infer-critic-mode [args]|"
     "resolve-base|version|"
     "evidence {status|list [--kind <k>] [-n <count>]}|advisory <subcmd> [args]|"

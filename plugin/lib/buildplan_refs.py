@@ -40,6 +40,7 @@ from __future__ import annotations
 
 import re
 import subprocess
+from collections.abc import Iterator
 from pathlib import Path
 from typing import NamedTuple
 
@@ -423,6 +424,56 @@ def _resolve_chunk_progress_from(project_dir: Path, content: str) -> ChunkProgre
     )
 
 
+# Stable, greppable token on every degraded-reading emission. The
+# proportionality norm requires a new control to be retirable on evidence, and a
+# finding that is printed and forgotten never can be: `grep -c` over session
+# logs is the counting mechanism, so the token must not drift or be reworded.
+DEGRADED_PROGRESS_TOKEN = "degraded-chunk-reading"
+
+
+def degraded_progress_notice(project_dir: Path) -> str | None:
+    """A notice when the chunk reading in force is the one known to be wrong.
+
+    Closes the gap :class:`ChunkProgress` names: when the git-derived path bails
+    (no base branch, git failure, a branch not ahead) the answer silently
+    becomes the checkbox reading, and on a ``views_enabled`` repo mid-branch
+    that is the reading known to be wrong. Nothing told anyone (#327).
+
+    Fires only when all three hold:
+
+    * ``views_enabled`` — the Status checkboxes are a derived view that does not
+      flip until release, so mid-branch they read all-incomplete;
+    * a plan with a Status roster was actually read (``has_status_items``), so
+      "there is no plan" is never reported as a degraded reading;
+    * the git-derived path bailed (``git_derived`` false).
+
+    Returns ``None`` otherwise. **Reporting the ``views_enabled``-unset case
+    would be pure noise** — there the checkbox reading is authoritative and a
+    ``git_derived=False`` answer is simply correct, which is most of them.
+
+    Deliberately NOT emitted from :func:`_git_aware_progress`, which is on the
+    SessionStart/Stop hot path: a per-invocation diagnostic there spends
+    wall-clock the nonfunctional budget protects and reaches an audience that
+    cannot act on it. Callers are deliberately-invoked surfaces only.
+    """
+    prawduct_dir = gitstate.get_prawduct_dir(project_dir)
+    if not read_bool_yaml_key(prawduct_dir / "project-state.yaml", "views_enabled"):
+        return None
+    progress = resolve_chunk_progress(project_dir)
+    if not progress.has_status_items or progress.git_derived:
+        return None
+    current = progress.current_text or "(none — plan reads complete)"
+    return (
+        f"WARNING: {DEGRADED_PROGRESS_TOKEN}: views_enabled is set, so this "
+        f"plan's ## Status checkboxes do not flip until release — and the "
+        f"git-derived reading bailed (no base branch resolved, git unavailable, "
+        f"or HEAD not ahead of base), so chunk progress fell back to those "
+        f"checkboxes. Reporting {current!r} as current; on a feature branch that "
+        f"is likely the FIRST chunk rather than the live one. Pass --chunk "
+        f"explicitly to anything that grades a chunk."
+    )
+
+
 def _plan_description_fallback(plan_path: Path, content: str) -> str:
     """Name the plan when it carries no ``# Build Plan`` H1.
 
@@ -557,6 +608,25 @@ def build_plan_is_complete(status: dict[str, str]) -> bool:
 
 _BUILD_PLAN_PATH_RE = re.compile(r"`([^`\s]+)`")
 _BUILD_PLAN_NEW_QUALIFIER_RE = re.compile(r"\bnew\s+`([^`\s]+)`")
+# #224(b): `new` is also an ordinary English adjective. Narrative prose ABOUT a
+# file — a `Context:` paragraph recording that a chunk "added new `x.py`" — is
+# not a declaration that THIS chunk creates it, but the qualifier matched any
+# `new` before any backticked token anywhere in the section, so one such
+# sentence silently exempted a real path from verification for the whole chunk.
+#
+# **The item prescribed scoping to a Deliverables list item; that is too narrow
+# and this departs from it deliberately.** Real plans in this repo declare
+# creations outside Deliverables as a matter of course —
+# `build-plan-api-design.md:177` names a new test file in `- **Tests:**` and
+# `:109` names one in acceptance criteria. Honouring the qualifier only inside
+# Deliverables would turn every one of those into a false missing-ref, which is
+# the failure the exemption exists to prevent. The distinction that actually
+# separates the two cases is STRUCTURAL rather than positional: a declaration is
+# a list item (`- new \`x\``, `1. new \`x\``), while the adjectival use that
+# motivated the item lives in running paragraphs. Scoping to list items excludes
+# the prose without breaking the fields plans really use, and #224(a) — the
+# expiry below — is what actually catches a file the chunk promised and skipped.
+_LIST_ITEM_RE = re.compile(r"^\s*(?:[-*+]\s|\d+[.)]\s)")
 # A trailing `:<line>`, `:<line>:<col>`, or `:<line>-<line>` on a backticked
 # token is a code-location citation (`lib/critic_mode.py:452`, `lib/foo.py:5-8`,
 # the editor-style `lib/foo.py:12:34`), not part of the filename.
@@ -592,9 +662,37 @@ _BUILD_PLAN_TRIVIAL_RATIONALE_RE = re.compile(
 # the same test: it names something in git, not on disk. A repo-root directory
 # literally called `refs/` would be shadowed, which is why the extension guard
 # below still applies (`refs/foo.py` stays checked).
+#
+# #333: the original set covered git-flow only, so every consumer on
+# Conventional-Commits branch naming (`feat/…`, `chore/…`) or with a dependency
+# bot got a spurious BLOCKING `missing-ref:` for a branch named in plan prose —
+# `missing-ref:` is BLOCKING in `skills/critic/review-protocol.md`, so this
+# failed a review on the branch name itself.
+#
+# **The shape-rule alternative was evaluated and rejected**, though the item and
+# the plan both proposed it as the better route. "A token is a path only if its
+# final segment carries an extension-shaped suffix" would drop the guessing
+# entirely — but it also stops verifying real extensionless paths, and this
+# repo's single most-cited path is one: `plugin/bin/prawduct-hook`. Trading a
+# spurious-finding class for a missed-finding class on the most-referenced file
+# in the tree is the wrong direction, so the allowlist stays and grows.
 _GIT_REF_PREFIXES = frozenset(
-    {"feature", "fix", "hotfix", "release", "bugfix", "support", "origin", "upstream",
-     "refs"}
+    {
+        # git-flow
+        "feature", "fix", "hotfix", "release", "bugfix", "support",
+        # remotes and raw refs
+        "origin", "upstream", "refs",
+        # Conventional-Commits branch naming, as enumerated by #333. Deliberately
+        # NOT `docs`, `test`, `build` or `style`: those are plausible top-level
+        # DIRECTORY names, and every prefix added here stops an extensionless
+        # token under it from being verified (`docs/requirements` would go
+        # unchecked). The set is entries whose collision risk with a real
+        # directory is near zero — `ci` and `perf` are the weakest two and are
+        # here because the item named them.
+        "feat", "chore", "refactor", "perf", "ci", "wip",
+        # dependency bots
+        "dependabot", "renovate",
+    }
 )
 
 # "Carries an extension" is not "contains a dot". A version-numbered branch —
@@ -744,6 +842,63 @@ def _chunk_section_lines(
     return in_section, section_lines
 
 
+def _normalize_chunk_id(chunk_id: str) -> str:
+    """Leading-zero-normalized chunk id (``01`` -> ``1``), for comparison only.
+
+    This module carries the same idiom inline at four other sites. They are
+    deliberately left alone rather than swept (adjacent-code refactor), but new
+    comparisons route through here so the copy count stops growing.
+    """
+    return chunk_id.lstrip("0") or "0"
+
+
+def _qualifier_scope_lines(
+    section_lines: list[tuple[int, str]],
+) -> Iterator[tuple[int, str]]:
+    """A chunk's LIST-ITEM lines — where a ``new `path`` declaration counts.
+
+    See ``_LIST_ITEM_RE`` for why this is list items rather than the
+    Deliverables block the item prescribed. Narrative paragraphs are excluded,
+    which is where the adjectival ``new`` that motivated #224(b) lives.
+    """
+    for line_num, line in section_lines:
+        if _LIST_ITEM_RE.match(line):
+            yield line_num, line
+
+
+def _completed_chunk_ids(project_dir: Path, content: str) -> set[str] | None:
+    """Normalized ids of the chunks this plan's progress reading says are DONE.
+
+    ``None`` means *cannot tell*, and callers must read it as "expire nothing"
+    — #224a fails toward the exemption on purpose, because a false missing-ref
+    fires on every review of an in-progress chunk while a missed one surfaces at
+    the next verify.
+
+    Precedence belongs to :func:`resolve_chunk_progress` and is not re-derived
+    here. That matters: under ``views_enabled`` the Status checkboxes are a
+    derived view that only flips at release, so on a feature branch they read
+    all-incomplete and a checkbox-based expiry would never fire on the only
+    surface where it matters. When the reading is git-derived, completion is a
+    COUNT, so the roster is taken in order; when it is the checkbox reading, the
+    checked flags are used directly, because checkboxes can legitimately be
+    checked out of order and a prefix slice would then name the wrong chunks.
+    """
+    progress = _resolve_chunk_progress_from(project_dir, content)
+    if not progress.has_status_items:
+        return None  # no roster to reason about
+    items = list(_iter_status_section_items(content))
+    ordered = [_chunk_id_from_item_text(text) for _checked, text in items]
+    if any(cid is None for cid in ordered):
+        return None  # an unparseable roster entry — placement is unsafe
+    if progress.git_derived:
+        return {_normalize_chunk_id(cid) for cid in ordered[: progress.complete]}
+    return {
+        _normalize_chunk_id(cid)
+        for (checked, _text), cid in zip(items, ordered)
+        if checked
+    }
+
+
 def _parse_build_plan_chunk_refs(prawduct_dir: Path, chunk_id: str) -> dict:
     """Extract backticked file-path references from a single chunk's section
     in ``.prawduct/artifacts/build-plan.md``.
@@ -783,14 +938,32 @@ def _parse_build_plan_chunk_refs(prawduct_dir: Path, chunk_id: str) -> dict:
     # for the WHOLE chunk section, not just the occurrence carrying the word.
     # Chunks routinely declare `new `path`` on Deliverables and then name the
     # same path again in a Done-when step; keying the exemption to that one
-    # occurrence made every re-reference a false missing-ref. Collected over all
-    # section lines first, and normalized the same way as the tokens below so a
-    # `new `path`` declaration also exempts a later `path:42` citation of it.
+    # occurrence made every re-reference a false missing-ref. Normalized the same
+    # way as the tokens below so a `new `path`` declaration also exempts a later
+    # `path:42` citation of it.
+    #
+    # Scoped to list items (#224b) — see `_LIST_ITEM_RE` for why not Deliverables.
     forward_refs: set[str] = {
         _ref_path_part(m.group(1))
-        for _, section_line in section_lines
+        for _, section_line in _qualifier_scope_lines(section_lines)
         for m in _BUILD_PLAN_NEW_QUALIFIER_RE.finditer(section_line)
     }
+    # #224(a): the exemption EXPIRES when the chunk completes. `new `path`` says
+    # "this chunk will create it" — once the chunk is done, a file that still
+    # does not exist is a real missing ref, and the un-expiring exemption meant a
+    # chunk could claim to create a file, not create it, and never be caught.
+    #
+    # Completion is re-derived through `resolve_chunk_progress`, never from "the
+    # first unchecked box": under `views_enabled` the checkboxes are a derived
+    # view that stays `[ ]` until release, so on a feature branch every chunk
+    # reads incomplete and the expiry would never fire on the only surface where
+    # it matters. `_completed_chunk_ids` returns None when it cannot tell, and
+    # None keeps every exemption — failing TOWARD the exemption, because a false
+    # missing-ref fires on every review of an in-progress chunk while a missed
+    # one surfaces at the next verify.
+    completed = _completed_chunk_ids(prawduct_dir.parent, content)
+    if completed is not None and _normalize_chunk_id(chunk_id) in completed:
+        forward_refs = set()
 
     seen: set[tuple[str, int]] = set()
     for line_num, line in section_lines:
