@@ -46,7 +46,8 @@ Write a single JSON file to `.prawduct/.critic-partials/<role>.json` (substitute
 and write **nothing else**. Do NOT write `.prawduct/.critic-findings.json`, do NOT run
 `prawduct-hook critic-consolidate`, and do NOT run `prawduct-hook critic-end` — a
 deterministic step external to you merges the partials and persists the canonical record.
-That decoupling is what makes the review survive the harness backgrounding subagents.
+Consolidation must happen exactly once, after every partial has landed: run early, it is a no-op;
+and a reviewer who writes the findings file corrupts the record the merge is about to produce.
 
 Partial schema (validated by `lib/critic_consolidate.py`; a malformed partial fails the
 whole consolidation closed, so match it exactly):

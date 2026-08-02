@@ -206,10 +206,39 @@ class TestCoordinatorProseRewritten:
         assert "critic-reviewer" in text
         assert "critic-consolidate" in text
 
-    def test_protocol_says_stop_no_resume(self):
-        text = REVIEW_PROTOCOL.read_text()
-        # The load-bearing behavior change: the coordinator does not resume to write.
-        assert "do not resume" in text.lower() or "no resume-to-aggregate" in text.lower()
+    def test_protocol_no_longer_tells_the_coordinator_to_stop(self):
+        """The inverse of what this test used to assert, and deliberately so.
+
+        It previously pinned `do not resume to aggregate` — the coordinator
+        dispatched and ended its turn, leaving consolidation to the
+        `SubagentStop` trigger. That instruction was the defect: the fork
+        returned holding 0/3 partials, so from the invoking session's seat a
+        healthy review and a dead one looked identical. The coordinator now
+        awaits its reviewers and consolidates in-turn, so the old phrasing must
+        not survive anywhere — a single stale copy is enough to send a
+        coordinator back to the broken path.
+        """
+        text = REVIEW_PROTOCOL.read_text().lower()
+        for stale in ("do not resume", "no resume-to-aggregate", "resume-to-aggregate"):
+            assert stale not in text, (
+                f"review-protocol.md still says {stale!r} — the coordinator now "
+                "waits for its reviewers and consolidates in-turn"
+            )
+
+    def test_protocol_directs_await_then_consolidate(self):
+        """The replacement behaviour, pinned positively.
+
+        Asserting only the absence of the old phrasing would pass on a file
+        that says nothing at all about what the coordinator does next.
+        """
+        coord = (
+            REVIEW_PROTOCOL.read_text()
+            .split("### Coordinator Pattern", 1)[1]
+            .split("## Output Format", 1)[0]
+        )
+        assert "`run_in_background: false`" in coord
+        assert "prawduct-hook critic-consolidate" in coord
+        assert "final message" in coord
 
     def test_protocol_coordinator_does_not_write_findings_inline(self):
         """The old step 3 ('persist .critic-findings.json') must be gone from the

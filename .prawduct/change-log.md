@@ -3,6 +3,51 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-08-02: the Critic coordinator waits for the reviewers it dispatched
+
+<!-- prawduct: type=fix | scope=critic-coordinator-await | chunks=01 -->
+
+**`#207` — the coordinator dispatched three reviewers, ended its turn holding 0/3 partials, and
+left the invoking session unable to tell a healthy review from a dead one.** Twelve days at
+`stage: research` because every prior reading was an inference from symptoms. Reading the
+installed harness settles it, and the root cause is one line up from where everyone looked: a
+`context: fork` skill's background flag resolves as `skill.background ?? true`, so
+`/prawduct:critic` — which declares no `background:` key — detaches the caller **at the Skill
+call**, before the fork has resolved its mode or dispatched anyone. Not reviewer death, which
+had already been shown once to be a misdiagnosis. The `!isInteractive` term in the same
+predicate is why headless runs behaved differently: fork skills run synchronously there.
+
+**Await-in-fork holds, so candidate fix (c) becomes the primary path.** A dispatch with
+`run_in_background: false` computes `isAsync = false` and blocks; the Agent tool declares
+itself concurrency-safe, so three synchronous dispatches in one message still overlap and the
+wall clock stays the slowest reviewer rather than their sum. Two readings the item had carried
+for weeks are retired with it: no 2-minute auto-background mechanism exists (the interval is 0
+unless an env var is set), and the backgrounded fork's 10-minute stall watchdog is reset by
+child progress, so a 9-minute await does not trip it.
+
+**The Coordinator Pattern is now dispatch → await → consolidate → report**, and the fork's
+final message carries consolidated counts — the thing the invoking session actually receives.
+The per-reviewer `SubagentStop` trigger and the session-end backstop survive as backstops, and
+step 3 handles losing the race to them: `remove_partials` clears the manifest with the
+partials, so whichever path loses lands on the already-consolidated branch and reports from
+the findings view.
+
+**One fact, one home — with a bounded exception recorded rather than taken silently.** The
+*sequence* lives only in `review-protocol.md` § Coordinator Pattern; `SKILL.md` step 7 routes
+there. The two *dispatch flags* are pinned on both surfaces, extending a standing decision
+(`TestCoordinatorDispatchIsConcurrent`) that an instruction pinned once reverts silently — the
+framework has watched ambient batching behaviour differ between sessions. The SKILL side is
+guarded by an **absence** assertion, because the first build of this chunk accreted the full
+contract there (92 → 131 words) and read perfectly well; only a test catches that direction.
+
+**Funded by trimming, not by a raise.** `review-protocol.md` went 3599 → 3615 tokens against
+its 3620 ceiling, paid for by cutting four restatements whose home is `SKILL.md` — the
+mode-resolution recipe, the `never silently downgrade` fall-through, the `designer-handoff`
+early exit (which fires before this file is read, so a copy here can never be reached in time
+to matter), and the activation steps that re-walked the sequence SKILL had just walked. That
+duplication is not incidental to the defect: it is why the async model took eight surfaces to
+state and no single edit could correct it.
+
 ## 2026-08-02: the gate named the one route that could not clear the finding it was naming
 
 <!-- prawduct: type=fix | scope=critic-burndown | chunks=03 -->

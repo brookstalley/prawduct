@@ -42,7 +42,7 @@ def estimate_tokens(text: str) -> int:
 #: lives here, where a wrong number fails instead of misleading.
 LAST_MEASURED_TOKENS = {
     "methodology/building.md": 4659,
-    "skills/critic/review-protocol.md": 3599,
+    "skills/critic/review-protocol.md": 3615,
     "skills/critic/goals-1-3.md": 1960,
 }
 
@@ -609,6 +609,20 @@ class TestCriticSkill:
         # carrying both "project-preferences" and "blocking", and that bullet is
         # the only line that satisfies it. Two separate editors have cut it and
         # put it back.
+        #
+        # 2026-08-02 rewrote the Coordinator Pattern from dispatch-and-stop to
+        # dispatch-await-consolidate-report. PAID FOR by the trim-or-relocate
+        # rule, not a raise, and every cut was the same shape -- a fact whose
+        # home is SKILL.md, restated here where it drifts: the mode-resolution
+        # recipe (SKILL step 1 owns it), the `Default: ... never silently
+        # downgrade` fall-through (SKILL step 1 states it verbatim), the
+        # designer-handoff early exit (fires in SKILL step 1, BEFORE this file
+        # is read, so a copy here can never be reached in time to matter), and
+        # steps 2/3/4/7 of "When You Are Activated", which walked the same
+        # sequence SKILL "Getting Started" had just walked. That duplication is
+        # not incidental to this change -- it is why the async model took eight
+        # surfaces to state and no single edit could correct it. 3599 -> 3614,
+        # headroom 21 -> 6.
         tokens = estimate_tokens(self.content)
         assert tokens < 3620, f"review-protocol.md is ~{tokens} tokens, should be <3620"
 

@@ -191,18 +191,29 @@ _PLUGIN_REVIEW_PROTOCOL = REPO_ROOT / "skills" / "critic" / "review-protocol.md"
 
 
 class TestCoordinatorDispatchIsConcurrent:
-    """The three coordinator reviewers must be dispatched in one message.
+    """The three coordinator reviewers go out in ONE message, each synchronous.
 
-    They are independent by construction — disjoint goals, per-role partial
-    files, and the protocol forbids resuming to aggregate — so serial dispatch
-    pays the pattern's whole cost (three agents, three context loads, a
-    consolidation step) and discards the wall-clock saving that is the only
-    thing it buys.
+    The two halves are independent and neither substitutes for the other, which
+    is why both are pinned on both surfaces:
 
-    This was never specified: the framework relied on the harness's ambient
-    "batch independent calls" behaviour, which is outside its control and has
-    been observed to differ between sessions. An unpinned instruction is how it
-    silently reverts, so both dispatch surfaces are asserted.
+    * **One message** buys concurrency. The reviewers are independent by
+      construction — disjoint goals, per-role partial files — so serial
+      dispatch pays the pattern's whole cost (three agents, three context
+      loads, a consolidation step) and discards the wall-clock saving that is
+      the only thing it buys.
+    * **`run_in_background: false`** buys the await, and it is the fix for the
+      defect this pattern shipped with: a backgrounded dispatch returns the
+      coordinator to a turn holding 0/3 partials with nothing to report, so the
+      invoking session sees a review that "ran and came back empty" and cannot
+      tell a healthy review from a dead one. Synchronous dispatch does not
+      serialise them — the harness's Agent tool is concurrency-safe, so one
+      message of synchronous calls still overlaps.
+
+    Neither was ever specified: the framework relied on the harness's ambient
+    defaults, which are outside its control (the background default is what bit
+    us) and have been observed to differ between sessions. An unpinned
+    instruction is how it silently reverts, so both dispatch surfaces are
+    asserted for both halves.
     """
 
     def test_review_protocol_step_2_demands_one_message(self):
@@ -213,3 +224,55 @@ class TestCoordinatorDispatchIsConcurrent:
     def test_skill_routing_bullet_demands_one_message(self):
         content = _PLUGIN_CRITIC_SKILL.read_text()
         assert "in a single message so they run concurrently" in content
+
+    def test_review_protocol_step_2_demands_synchronous_dispatch(self):
+        content = _PLUGIN_REVIEW_PROTOCOL.read_text()
+        assert "`run_in_background: false`" in content, (
+            "review-protocol.md's Coordinator Pattern must name "
+            "`run_in_background: false` — without it the coordinator returns "
+            "holding zero partials, which is the defect the pattern shipped with"
+        )
+
+    def test_skill_routing_bullet_demands_synchronous_dispatch(self):
+        content = _PLUGIN_CRITIC_SKILL.read_text()
+        assert "`run_in_background: false`" in content, (
+            "the SKILL routing bullet must name `run_in_background: false` too "
+            "— it is the surface the coordinator acts on, and an instruction "
+            "pinned on only one of two surfaces drifts"
+        )
+
+    def test_protocol_owns_the_sequence_and_the_skill_only_points_at_it(self):
+        """The split this pair of surfaces settles on, pinned so it cannot drift.
+
+        The two *dispatch flags* above are deliberately asserted twice — they
+        are single tokens that revert silently and cost a whole review when
+        they do. The *sequence* (wait → consolidate → report) is not: it has
+        one home, `review-protocol.md`'s Coordinator Pattern, which SKILL step
+        2 has already made every `final`/`cumulative` reviewer open before it
+        can reach the routing bullet.
+
+        Asserted as an absence on the SKILL side because that is the direction
+        this drifts: the coordinator bullet accreted the full contract once
+        already (92 → 131 words) and read perfectly well, which is exactly why
+        nothing but a test catches it. `architecture.md`'s one-home norm is the
+        authority — if changing the sequence needs two edits, one of them is
+        already wrong.
+        """
+        protocol = _PLUGIN_REVIEW_PROTOCOL.read_text()
+        assert "prawduct-hook critic-consolidate" in protocol
+        assert "final message" in protocol
+
+        bullet = (
+            _PLUGIN_CRITIC_SKILL.read_text()
+            .split("(coordinator)**", 1)[1]
+            .split("\n\n", 1)[0]
+        )
+        assert "Coordinator Pattern" in bullet, (
+            "the SKILL coordinator bullet must route to the protocol section "
+            "that owns the sequence"
+        )
+        assert "critic-consolidate" not in bullet, (
+            "the SKILL coordinator bullet restates the consolidate step — that "
+            "is review-protocol.md's to own. Point at the Coordinator Pattern "
+            "instead; only the two dispatch flags are pinned on both surfaces"
+        )

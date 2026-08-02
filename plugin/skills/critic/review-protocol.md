@@ -4,13 +4,11 @@ The Critic reviews changes against principles and specifications as a **separate
 
 ## When You Are Activated
 
-1. Resolve mode (full procedure: SKILL step 1). `$ARGUMENTS` token (`chunk` / `final` / `cumulative` / `verify-resolutions`) wins; else `prawduct-hook infer-critic-mode`; non-zero exit → `final`.
-2. Read `.prawduct/project-state.yaml`.
-3. Assess change scope/nature (git diff or read changed files).
-4. Read relevant `.prawduct/artifacts/`.
-5. Read `${CLAUDE_SKILL_DIR}/../../docs/principles.md` and `.prawduct/learnings.md` (the product's own) — `final` mode only.
-6. Mode decides *which* goals (see **Modes**); the signals below tune depth.
-7. Follow the dispatch manifest's roster (see Review Execution).
+SKILL steps 1-7 own the sequence you are already inside — mode, project state, manifest, diff, roster. Three things are this file's:
+
+1. Read the relevant `.prawduct/artifacts/`.
+2. Read `${CLAUDE_SKILL_DIR}/../../docs/principles.md` and `.prawduct/learnings.md` (the product's own) — `final` mode only.
+3. Mode decides *which* goals (see **Modes**); the signals below tune depth.
 
 ## Modes
 
@@ -19,9 +17,7 @@ The Critic reviews changes against principles and specifications as a **separate
 - **`final`** — all 7 goals + Learnings Cross-Check + Backlog Reconciliation + Framework-Specific Checks. Coordinator pattern eligible. Target 4-10 min.
 - **`cumulative`** — `final`-mode goals scoped to `merge-base...HEAD` (the full PR bundle). Required by `/prawduct:pr create`.
 
-**Default:** mode missing, unrecognized, or inference unconfident → `final` (canonical rule: `review-cycle.md`). Never silently downgrade.
-
-**Chunk type axis.** Chunks declare `Type:` (orthogonal to mode). `Type: designer-handoff` → output "Review skipped — Type: designer-handoff", exit clean (no findings file). Other types adjust per-goal protocol (`review-cycle.md` "Per-Chunk Type Protocol Selector"). Missing/unrecognized → `code`.
+**Chunk type axis.** Chunks declare `Type:` (orthogonal to mode); it adjusts per-goal protocol — `review-cycle.md` "Per-Chunk Type Protocol Selector". Missing/unrecognized → `code`. (The `designer-handoff` early exit fires in SKILL step 1, before this file is read.)
 
 ## Signals That Guide Your Review
 
@@ -140,11 +136,11 @@ The manifest is authoritative and you never re-derive it; the derivation rule (r
 
 ### Coordinator Pattern
 
-Persistence is **decoupled from the review** (the coordinator never resumes to aggregate): reviewers write partials; `critic-consolidate` merges them against the code-written manifest into the evidence fact + `.critic-findings.json` + the ledger anchor — no model authors any file the data plane trusts.
+Reviewers write partials; `critic-consolidate` merges them against the code-written manifest into the evidence fact + `.critic-findings.json` + the ledger anchor. You sequence that; you author no file the data plane trusts.
 
 1. **Assess** (coordinator): read project state and the manifest (review id, `commit_reviewed`, `files_changed`), run git diff, and determine signals (size, type, boundaries). Reviewers run on the **current session model** — do **not** pass a `model:` override; whatever model the session is on reviews the work. The manifest's `tier` is telemetry only and selects no model.
 
-2. **Dispatch** three **`critic-reviewer`** subagents (Agent tool, `subagent_type: critic-reviewer`) — **all three Agent calls in ONE message, concurrently.** With **no `model:` override** — they inherit the session model (`critic-reviewer` declares `model: inherit`). Each reviews ONLY its goals and writes ONLY its partial to `.critic-partials/<role>.json` — never `.critic-findings.json`, `critic-consolidate`, or `critic-end`. Prompt template (substitute `<ROLE>`/`<GOALS>`/`<SHA>` — the SHA is the manifest's `commit_reviewed`):
+2. **Dispatch** three **`critic-reviewer`** subagents (Agent tool, `subagent_type: critic-reviewer`) — **all three Agent calls in ONE message so they run concurrently, each with `run_in_background: false`.** One message buys the parallelism, the flag the await. Drop either and this turn ends holding zero partials. With **no `model:` override** — they inherit the session model (`critic-reviewer` declares `model: inherit`). Each reviews ONLY its goals and writes ONLY its partial to `.critic-partials/<role>.json` — never `.critic-findings.json`, `critic-consolidate`, or `critic-end`. Prompt template (substitute `<ROLE>`/`<GOALS>`/`<SHA>` — the SHA is the manifest's `commit_reviewed`):
 
    > "Critic reviewer (`<ROLE>`). Read `[critic path]` for goal definitions. Review ONLY <GOALS>. Project: `[dir]`. Changed files: [list]. Signals: [summary]. Commit under review: `<SHA>` — record it verbatim as `commit_reviewed`. NO tests/builds. Write ONLY your partial to `.critic-partials/<ROLE>.json`; nothing else."
 
@@ -152,7 +148,7 @@ Persistence is **decoupled from the review** (the coordinator never resumes to a
    - **design reviewer** (role `design`) — Goals 4, 7 + the Framework-Specific Checks when they apply.
    - **sustainability reviewer** (role `sustainability`) — Goals 5, 6 + the Learnings Cross-Check and Backlog Reconciliation (as NOTE findings in its partial).
 
-3. **Stop — do not resume to aggregate.** The `SubagentStop` hook runs `critic-consolidate` as each reviewer finishes (no-op until all roles report, then merges once). You do NOT write findings, append the ledger, or run `critic-end` — `critic-consolidate` does all three and clears the marker.
+3. **Wait, consolidate, report.** The calls block, so on return every partial is on disk. Run `prawduct-hook critic-consolidate` — it merges them, appends the fact, regenerates `.critic-findings.json`, anchors the ledger and clears the marker; you never write findings, append the ledger, or run `critic-end`. Make the consolidated counts your **final message** — that is the whole of what the invoking session receives. If consolidate reports no pending manifest, a `SubagentStop` trigger got there first: read `.critic-findings.json` and report from that. Never re-dispatch.
 
 ## Output Format
 
