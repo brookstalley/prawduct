@@ -220,6 +220,25 @@ class TestRepair:
         assert "could not write" in result["detail"]
         assert lo.check(tmp_path)["status"] == lo.STATUS_MISSING  # untouched
 
+    def test_an_encoding_failure_refuses_rather_than_raising(self, tmp_path, monkeypatch):
+        """The failure the shared writer newly made possible.
+
+        `core.atomic_write_text` encodes at the locale encoding (`#562`) while
+        `OBLIGATION_BLOCK` is non-ASCII, so on a non-UTF-8 locale the write raises
+        `UnicodeEncodeError` — which is not an `OSError`. Swapping to the shared
+        writer for atomicity moved that failure outside the handler that used to
+        catch every way this write could fail.
+        """
+        _product(tmp_path, _PREAMBLE + _RULES)
+
+        def _boom(path, text):
+            raise UnicodeEncodeError("ascii", "—", 0, 1, "ordinal not in range")
+
+        monkeypatch.setattr(lo.core, "atomic_write_text", _boom)
+        result = lo.repair(tmp_path, apply=True)
+        assert result["applied"] is False
+        assert "could not write" in result["detail"]
+
     def test_the_insertion_survives_the_round_trip_intact(self, tmp_path):
         # The block is non-ASCII (em-dashes). An encoding mismatch between the write
         # and the read would corrupt the owner's corpus, and the marker — pure

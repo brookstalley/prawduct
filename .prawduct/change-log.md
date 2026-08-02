@@ -88,7 +88,8 @@ deleted text named. The correction *is* the batch's sharpened rule landing insid
 
 ### The cumulative round: 0 blocking, 7 warnings, 10 notes — and the one that falsified a rationale
 
-Twelve fixed in one pass, three filed, two accepted (census below). Four are worth keeping.
+**Census (rendered, not recounted): 17 findings — 15 fixed, 2 waived.** Three of the fifteen were
+fixed *in part* and their residual filed: `#561`, `#562`, `#563`. Four findings are worth keeping.
 
 **The strictness I justified by consistency was not consistent** (R-2). `check()` graded `misplaced`
 if *any* occurrence of the marker sat below the first rule, and I defended that against my own
@@ -139,9 +140,48 @@ and not the third (R-1/R-6/R-14 — one edit, and the same shape `#162` closed t
 was never told to read it (R-13); a `--apply` run that refused being labelled "(dry-run)" (R-15);
 and a `cross-cutting-concerns.md` row for the descent obligation, which records the surface as
 **uneven on purpose** — writer, reader and detector, no discovery leg and no Critic leg (R-9).
-Accepted: the learnings cross-check and the backlog-reconciliation notice, both informational.
-Filed alongside: `#562`, the shared atomic writer writing at the locale encoding while every reader
-demands UTF-8 — latent until this chunk gave it a caller with non-ASCII content.
+Waived: the learnings cross-check and the backlog-reconciliation notice, both informational. Filed
+alongside: `#562`, the shared atomic writer writing at the locale encoding while every reader
+demands UTF-8 — latent until this chunk gave it a caller with non-ASCII content. **R-4 was fixed,
+not deferred** — `repair()` moved to `core.atomic_write_text` and the write-failure branch gained
+its first test; an earlier draft of this paragraph named only the follow-on item and read as if the
+finding itself had been shelved.
+
+### The verify round: 1 blocking, 2 warnings, 2 notes — three of them the batch's own subject again
+
+**The blocking one is the sharpest governance finding of the branch.** Retracting the false
+"printing discharges the yield obligation" claim left a *live departure* from a ratified norm
+standing on the record — and `docs/norms.md` § The Authority Rule says a departure has exactly four
+resolutions (conform, amend, ruling, bounded exception) and that "a builder-authored rationale
+sentence, alone, is not a recorded decision." My retraction was exactly that sentence, at length.
+Length is not the same as owner-visibility: a paragraph the owner must read the plan's front matter
+to find, with no `[DECISION: … | user can veto/override]` block, has no veto window. Now recorded as
+a **bounded exception** that expires when `#563` gives doctor a fact-emitting path. The correctness
+of the departure was never in question, and that is precisely why it needed deciding rather than
+explaining — a departure everyone agrees with is the one most likely to go unrecorded.
+
+**Two of the remaining four are corrections that reached one home out of three** — the shape this
+whole batch exists to burn down, twice in the pass that fixed it. "Layers 0↔1 are exact
+complements" was corrected in `docs/norms.md` and left standing in `skills/doctor/SKILL.md` and in
+`cmd_coverage_status`'s own docstring; the SKILL copy sat *eleven words* before the new clause it
+contradicts, in the same bullet the same commit rewrote. And `api-contract.md` still defined
+`discovery_expected: false` as "no product work yet" — verbatim the claim that commit deleted from
+the report, the probe docstring and the doctor prose. Both now say *mutually exclusive, and possibly
+neither*, and the contract documents all three states of the key including the `null` the new guard
+introduced (where `missing_artifacts: []` means *nothing was looked at*, not *nothing is missing*).
+
+**Swapping to the shared atomic writer moved a failure outside the handler that caught it.**
+`core.atomic_write_text` encodes at the locale encoding, so an encoding failure raises
+`UnicodeEncodeError` — not an `OSError`, so it escaped the `except OSError` and would have surfaced
+as a traceback instead of the designed refusal. The handler is now `(OSError, UnicodeError)` with a
+test. A fix that improves one property (atomicity) can silently narrow another (which failures the
+module can report), and only the second was invisible.
+
+**One self-inflicted record smudge, recorded rather than tidied.** After the verify round had
+already written resolution facts for all 17 findings, dispositions were *also* recorded by hand for
+the twelve that were fixed. The store is append-only, so both answers stand: the census resolves the
+state correctly (15 fixed / 2 waived) but flags every row `conflict`. A fixed finding is answered by
+the verify round's resolution fact; `disposition --accept|--file` is for the ones it cannot answer.
 
 ## 2026-08-02: the green-is-evidence directive now fires off a language it does not have to know
 

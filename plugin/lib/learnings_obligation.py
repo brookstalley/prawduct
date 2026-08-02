@@ -262,7 +262,12 @@ def repair(project_dir: str | Path, *, apply: bool = False) -> dict:
         # encoding rather than utf-8 — see `#562`; this block is non-ASCII, so it
         # is the caller that surfaces the gap.)
         core.atomic_write_text(path, body)
-    except OSError as exc:
+    except (OSError, UnicodeError) as exc:
+        # UnicodeError is here because the shared writer encodes at the LOCALE
+        # encoding (`#562`) while this block is non-ASCII: on a non-UTF-8 locale the
+        # failure is a UnicodeEncodeError, which is not an OSError. Catching only
+        # OSError would have turned this module's "reported, never half-applied"
+        # promise into a traceback for the one write failure it newly acquired.
         result.update({"repairable": False,
                        "detail": f"could not write {LEARNINGS_REL}: {exc}"})
         return result

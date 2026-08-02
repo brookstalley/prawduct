@@ -3864,7 +3864,8 @@ def cmd_coverage_status(project_dir: Path, argv: list[str]) -> int:
       - **Layer 2 (norms):** are the product's norms ratified?
 
     and names the highest-priority active layer as the primary fix. Layers 0 and 1
-    are exact complements (never both), but layer 2's gate is independent, so
+    are mutually exclusive (never both — and possibly neither, on a repo that has
+    not started), but layer 2's gate is independent, so
     during partial authoring layers 1 and 2 can both be active (docs/norms.md
     § Enforcement — proportionality, not a hard one-at-a-time invariant). ``--json``
     emits the structured status for the doctor skill; default is human-readable.

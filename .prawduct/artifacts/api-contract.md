@@ -112,9 +112,13 @@ dispatch); state-mutating lifecycle commands (`migrate-plugin`, `init-product`, 
   a documented key set, consumed by a specific skill:
   - `coverage-status --json` / `coverage-scaffold --json` → doctor (`structural_recorded`,
     `discovery_expected`, `missing_artifacts[]`, `norms_unratified`, `active_layer`, `fix` /
-    `applied`, `created[]`). `discovery_expected` is the layer-0 staging half — false on a repo with
-    no product work yet, where `active_layer: null` means "nothing owed yet" rather than "chain
-    satisfied".
+    `applied`, `created[]`). `discovery_expected` is the layer-0 staging half, and it has **three**
+    states, not two. **False** = no product work *this scan recognises* — it reads source by suffix
+    allowlist (`#561`), so a repo in an unlisted language reads the same as an empty one; with
+    `active_layer: null` that means "nothing owed yet", never "chain satisfied". **Null** on
+    `discovery_expected` or `structural_recorded` = the staging check **could not run**, and in that
+    state `missing_artifacts: []` means *nothing was looked at*, not *nothing is missing* — a
+    consumer must not read it as a clean layer 1.
   - `learnings-obligation --json` → doctor (`status` — one of `ok` / `missing` / `misplaced` /
     `absent` / `unreadable` — plus `path`, `marker`, `marker_lines[]`, `first_rule_line`, `detail`,
     `repairable`, `applied`, `insert_before_line`, `insert_text`).
