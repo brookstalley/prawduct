@@ -1562,7 +1562,24 @@ the profile the relay exclusion exists for. Recorded with the condition that wou
 **Wiring is tested now.** `test_register_runs_in_the_roster` called `irp.register()` directly, so
 deleting both `probe_families.register_all()` lines left the suite green and the probe dead in
 production — the exact incident `probe_families.py`'s own docstring records. Mutation-confirmed
-before and after.
+before and after, and renamed: "runs in the roster" claimed coverage it did not have.
+
+**The headline/footnote failure happened a third time — inside the fix for the second one.** Growing
+the check from two fields to five left two sites still describing a two-field contract: the module's
+opening summary (every *deeper* docstring was corrected; the first paragraph was not) and evidence
+line 1, which named `extraKnownMarketplaces.prawduct` as the mismatched thing — so a repo drifting
+only on `enabledPlugins`, a top-level sibling, was told a subtree that matches exactly does not.
+Both were caught by the verify pass, and both are the same error this entry opens by recording.
+
+Three instances, same shape, one change: correct the claim where it was noticed, leave it standing
+where it was merely *implied* by a summary. Worth naming as a rule rather than a third apology — **a
+correction is a search, not an edit.** The specific tell is that summaries and headlines are written
+last and read first, so they are simultaneously the least likely to be revisited and the most likely
+to be believed. The generalized fix here is structural, not vigilance: the opening paragraph no
+longer enumerates the contract at all, it points at `INSTALL_REFERENCE`, and evidence line 1 names
+the file rather than a subtree — neither can go stale when the contract grows again. (Evidence could
+not simply branch per drift-set: it is hashed into the advisory id, so it must stay
+drift-set-independent — `test_evidence_is_drift_set_independent` pins that.)
 
 **Honest limit, carried in the advisory's own evidence.** The file that actually binds plugin
 resolution is `~/.claude/plugins/known_marketplaces.json`, which is machine-level and outside

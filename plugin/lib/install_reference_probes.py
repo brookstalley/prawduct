@@ -1,12 +1,14 @@
 """Post-sync advisory probe for the committed install reference.
 
-One probe: it nudges repair when a repo's ``.claude/settings.json`` install
-reference has drifted from the contract prawduct writes
-(``lib.migrate_plugin.INSTALL_REFERENCE`` — ``ref: "main"``, ``autoUpdate: true``).
-A drifted reference means the repo commits a pin to a fixed release ref, or an
-opt-out of auto-update, and so hands that state to every fresh clone of it. See
-"Known limit" below for what it does *not* mean: on a machine that has already
-resolved the plugin, the committed entry is inert.
+One probe: it nudges repair when a repo's ``.claude/settings.json`` has drifted
+from the install contract prawduct writes — **every field of**
+``lib.migrate_plugin.INSTALL_REFERENCE``, which this module never enumerates
+because enumerating it is how the check went stale once already (see
+:func:`lib.migrate_plugin.install_reference_drift`). The drift is a pin to a
+fixed release ref, an opt-out of auto-update, a repointed marketplace repo,
+prawduct disabled outright — or any combination — and the repo hands that state
+to every fresh clone of it. See "Known limit" below for what it does *not* mean:
+on a machine that has already resolved the plugin, the committed entry is inert.
 
 **Why this needs an ambient nudge and not only a health check.**
 ``/prawduct:doctor`` Health Check #1 already asserts this exact contract, and it
@@ -120,8 +122,14 @@ def probe_install_reference_drift(state: ProjectState, codebase: Codebase):
         AdvisoryCandidate(
             type="contract-drift",
             evidence=(
-                ".claude/settings.json extraKnownMarketplaces.prawduct does not match the "
-                "install-reference contract (lib/migrate_plugin.py INSTALL_REFERENCE)",
+                # Names the FILE, not a subtree of it: `enabledPlugins` is a top-level
+                # sibling of `extraKnownMarketplaces`, so naming the latter read as a
+                # claim about a subtree that matches exactly on an enabledPlugins-only
+                # drift. Generalized rather than branched — evidence is hashed into the
+                # advisory id, so it must stay drift-set-independent (D14).
+                ".claude/settings.json does not match the install-reference contract "
+                "(lib/migrate_plugin.py INSTALL_REFERENCE); the drifted fields are named "
+                "in the summary above",
                 "the condition is silent wherever it does bite: a clone seeded from this "
                 "reference does not fail, its gates all pass, and its session banner reports "
                 "a version that simply never moves",
@@ -138,15 +146,20 @@ def probe_install_reference_drift(state: ProjectState, codebase: Codebase):
             # this fires on. Kept as one contract in two places rather than two
             # contracts: if a field is added here, add it there.
             recommended_action="/prawduct:doctor",
-            # `info`, deliberately, and the corrected mechanism is what settles it.
-            # `briefing._RELAY_PRIORITIES` is {warn, urgent}: `info` never reaches the
-            # person-facing relay. That is right here — the condition costs the CURRENT
-            # machine nothing (measured, see module docstring), it is self-resolving,
-            # and it re-fires every session until someone commits the fix. That profile
-            # is exactly what the relay exclusion exists for; a nudge that pages a
-            # person every session about a cost they will not pay today is the one that
-            # teaches them to skip the channel. Raise to `warn` only if the decoupling
-            # above is ever falsified in the other direction.
+            # `info`, deliberately. `briefing._RELAY_PRIORITIES` is {warn, urgent}, so
+            # this never reaches the person-facing relay. Right here, because the
+            # condition costs the CURRENT machine nothing — and that holds for every
+            # contract field, though for two different reasons worth keeping distinct:
+            #   - marketplace/source/autoUpdate drift: measured decoupling from the
+            #     machine-level file (see module docstring, #120).
+            #   - `enabledPlugins: false`: not measured, and does not need to be — this
+            #     probe only runs at all because the plugin IS loaded in this session,
+            #     so a committed `false` is self-evidently not binding here.
+            # It is also self-resolving and re-fires every session until someone commits
+            # the fix — exactly the profile the relay exclusion exists for; a nudge that
+            # pages a person every session about a cost they will not pay today is the
+            # one that teaches them to skip the channel. Raise to `warn` only if the
+            # decoupling is ever falsified in the other direction.
             priority="info",
         )
     ]

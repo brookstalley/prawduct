@@ -301,7 +301,12 @@ def test_probe_is_wired_into_the_composition_root(tmp_path):
     assert len(fired) == 1
 
 
-def test_register_runs_in_the_roster(tmp_path):
+def test_direct_register_is_idempotent_and_fires(tmp_path):
+    # Renamed from test_register_runs_in_the_roster: it calls irp.register()
+    # itself, so "runs in the roster" claimed the composition-root coverage that
+    # test_probe_is_wired_into_the_composition_root actually provides. What this
+    # one pins is narrower and still worth having — double registration does not
+    # double the candidates.
     entry = _contract_entry()
     entry["source"]["ref"] = "v2.1.5"
     _write_settings(tmp_path, entry)
