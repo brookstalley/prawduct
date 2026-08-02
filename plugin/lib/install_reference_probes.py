@@ -58,10 +58,15 @@ import time, so the infrastructure stays feature-agnostic.
 from __future__ import annotations
 
 from .advisory_store import AdvisoryCandidate, Codebase, ProjectState, register_probe
-from .migrate_plugin import install_reference_drift
+from .migrate_plugin import INSTALL_REFERENCE, install_reference_drift
 
 FEATURE = "install-reference"
 PROBE_VERSION = 1
+
+#: The one contract field whose drift is not a *version* problem — governance is
+#: off rather than pinned, so it earns a different consequence clause. Derived
+#: from the contract's own key so it tracks a rename.
+_ENABLED_PLUGINS_FIELD = f"enabledPlugins.{next(iter(INSTALL_REFERENCE['enabledPlugins']))}"
 
 
 def _fmt(value: object) -> str:
@@ -77,15 +82,27 @@ def _summary(drifted: list[dict]) -> str:
     fix changes which fields are drifted (D14).
 
     The consequence clause claims only what was measured (see module docstring):
-    a fresh clone is stranded. It deliberately does **not** say "this repo will
-    not receive framework updates" — that is false on a machine which already
-    resolved the plugin, and it is the machine most operators read this on, so
-    the overstatement would be discovered as a wrong nudge rather than a true one.
+    the cost lands on a fresh clone. It deliberately does **not** say "this repo
+    will not receive framework updates" — that is false on a machine which
+    already resolved the plugin, and it is the machine most operators read this
+    on, so the overstatement would be discovered as a wrong nudge rather than a
+    true one.
+
+    Two consequences, because the contract covers two different harms and one
+    sentence cannot honestly cover both: a drifted *version* strands the clone at
+    that version, while ``enabledPlugins: false`` leaves it with no governance at
+    all. When both drift, stranding is the more specific statement and is used.
     """
     parts = [f"{d['field']} is {_fmt(d['actual'])} (contract: {_fmt(d['expected'])})" for d in drifted]
+    version_drifted = any(d["field"] != _ENABLED_PLUGINS_FIELD for d in drifted)
+    consequence = (
+        "a fresh clone of this repo would be stranded at that reference"
+        if version_drifted
+        else "a fresh clone of this repo would run with prawduct governance switched off"
+    )
     return (
         "the committed prawduct install reference has drifted from the contract "
-        f"({'; '.join(parts)}) — a fresh clone of this repo would be stranded at that version"
+        f"({'; '.join(parts)}) — {consequence}"
     )
 
 
@@ -114,7 +131,22 @@ def probe_install_reference_drift(state: ProjectState, codebase: Codebase):
                 "drift travels to the next person even when it costs you nothing here",
             ),
             trigger_summary=_summary(drift["drifted"]),
+            # Doctor Health Check #1 asserts this whole contract — every field this
+            # probe can fire on, `autoUpdate` included. That was not true when this
+            # probe was written (HC#1 checked `enabledPlugins` and `ref` only), which
+            # made `/prawduct:doctor` report healthy on the `autoUpdate: false` repos
+            # this fires on. Kept as one contract in two places rather than two
+            # contracts: if a field is added here, add it there.
             recommended_action="/prawduct:doctor",
+            # `info`, deliberately, and the corrected mechanism is what settles it.
+            # `briefing._RELAY_PRIORITIES` is {warn, urgent}: `info` never reaches the
+            # person-facing relay. That is right here — the condition costs the CURRENT
+            # machine nothing (measured, see module docstring), it is self-resolving,
+            # and it re-fires every session until someone commits the fix. That profile
+            # is exactly what the relay exclusion exists for; a nudge that pages a
+            # person every session about a cost they will not pay today is the one that
+            # teaches them to skip the channel. Raise to `warn` only if the decoupling
+            # above is ever falsified in the other direction.
             priority="info",
         )
     ]

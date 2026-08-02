@@ -39,7 +39,7 @@ For the product's **own codebase craft** — code/docs/tests/dependency quality 
 
 Plugin-native — read the consumer's OWN `.prawduct/` and `.claude/` with Read / Glob; there is no framework path to resolve and nothing to sync. Check:
 
-1. **Install reference** — `.claude/settings.json` has `enabledPlugins["prawduct@prawduct"]: true` and an `extraKnownMarketplaces.prawduct` source pinned `ref: "main"`. (Missing → contributors won't get governance on clone.)
+1. **Install reference** — `.claude/settings.json` matches the whole install contract (`lib/migrate_plugin.py` `INSTALL_REFERENCE`): `enabledPlugins["prawduct@prawduct"]: true`, an `extraKnownMarketplaces.prawduct` source pinned `ref: "main"` at `repo: brookstalley/prawduct`, **and `autoUpdate: true`**. (Missing → contributors won't get governance on clone.) Check every field, not just the two most familiar: the ambient `install-reference` / `contract-drift` advisory routes here as its recommended action, so any field it can fire on and this check cannot repair is a nudge that reports healthy when you follow it.
 2. **Distribution recorded** — `project-state.yaml` has `distribution: plugin`. (Absent → a legacy file-sync hook may still be governing; recommend `/prawduct:migrate`.)
 3. **No stale file-sync residue** — no committed `tools/product-hook`, `tools/lib/`, framework `.claude/skills/critic/`, or `.prawduct/sync-manifest.json`. (Present → migration is incomplete; recommend `/prawduct:migrate`.)
 4. **Static governance anchor** — `CLAUDE.md` contains the `PRAWDUCT:ANCHOR` marker (the thin governed-by-plugin anchor a migrated repo keeps).

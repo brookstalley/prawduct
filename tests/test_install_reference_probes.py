@@ -40,14 +40,24 @@ def _cb(tmp_path):
     return Codebase(root=tmp_path)
 
 
-def _write_settings(tmp_path, entry, *, extra_top_level=None):
+_ENABLED_KEY = "prawduct@prawduct"
+
+
+def _write_settings(tmp_path, entry, *, extra_top_level=None, enabled=True):
     """Write ``.claude/settings.json`` with ``entry`` as the prawduct marketplace entry.
 
     ``entry=None`` writes a settings file with no prawduct entry at all.
+    ``enabled`` is the ``enabledPlugins["prawduct@prawduct"]`` half of the contract:
+    ``True`` matches it, ``False`` is governance switched off, ``None`` omits the key.
+    It defaults to the contract value so that every test writing a contract entry
+    describes a fully contract-satisfying repo — otherwise each would carry an
+    unrelated second drift and the inert cases could not be expressed at all.
     """
     data = dict(extra_top_level or {})
     if entry is not None:
         data["extraKnownMarketplaces"] = {"prawduct": entry}
+    if enabled is not None:
+        data["enabledPlugins"] = {_ENABLED_KEY: enabled}
     d = tmp_path / ".claude"
     d.mkdir(parents=True, exist_ok=True)
     (d / "settings.json").write_text(json.dumps(data, indent=2), encoding="utf-8")
@@ -174,26 +184,121 @@ def test_evidence_states_the_clone_cost_not_a_machine_coupling(tmp_path):
     assert "can be undone by it" not in machine_line[0]
 
 
-def test_contract_is_read_not_transcribed(tmp_path):
+def test_contract_is_read_not_transcribed(tmp_path, monkeypatch):
     # Repoint the contract; the drift check must follow it with no edit here.
+    # monkeypatch.setitem rather than a try/finally global swap: the restore is
+    # registered before the assertions run, so it survives paths a finally block
+    # has to be remembered for (an early return, a second mutation added later).
     entry = _contract_entry()
     _write_settings(tmp_path, entry)
     assert install_reference_drift(tmp_path)["drifted"] == []
 
-    original = INSTALL_REFERENCE["extraKnownMarketplaces"]["prawduct"]["source"]["ref"]
-    INSTALL_REFERENCE["extraKnownMarketplaces"]["prawduct"]["source"]["ref"] = "release"
-    try:
+    source = INSTALL_REFERENCE["extraKnownMarketplaces"]["prawduct"]["source"]
+    original = source["ref"]
+    monkeypatch.setitem(source, "ref", "release")
+
+    drift = install_reference_drift(tmp_path)
+    assert [d["field"] for d in drift["drifted"]] == ["source.ref"]
+    assert drift["drifted"][0]["expected"] == "release"
+    assert drift["drifted"][0]["actual"] == original
+
+
+def test_every_contract_leaf_is_compared(tmp_path):
+    """Corrupt each contract leaf in turn; each must produce exactly its own drift.
+
+    This is the property the "reads the contract" claim actually rests on, and the
+    one a hand-transcribed check cannot hold: the first revision compared
+    ``source.ref`` and ``autoUpdate`` only, so ``enabledPlugins`` — governance off
+    entirely — and a repointed ``source.repo`` were both silent while the docstring
+    claimed parity with ``core.gitignore_contract_drift``. Adding a leaf to
+    INSTALL_REFERENCE with no coverage now fails here rather than shipping unchecked.
+
+    Asserting equality (not membership) also pins the converse: corrupting one leaf
+    must not report any other as drifted.
+    """
+    from lib.migrate_plugin import _contract_leaves, _field_label
+
+    leaves = _contract_leaves(INSTALL_REFERENCE)
+    assert len(leaves) >= 5, "contract shrank unexpectedly; this test's premise is stale"
+
+    for leaf_path, _expected in leaves:
+        data = {
+            "extraKnownMarketplaces": {"prawduct": _contract_entry()},
+            "enabledPlugins": {_ENABLED_KEY: True},
+        }
+        node = data
+        for key in leaf_path[:-1]:
+            node = node[key]
+        node[leaf_path[-1]] = "___corrupted___"
+
+        d = tmp_path / ".claude"
+        d.mkdir(parents=True, exist_ok=True)
+        (d / "settings.json").write_text(json.dumps(data), encoding="utf-8")
+
         drift = install_reference_drift(tmp_path)
-        assert [d["field"] for d in drift["drifted"]] == ["source.ref"]
-        assert drift["drifted"][0]["expected"] == "release"
-        assert drift["drifted"][0]["actual"] == original
-    finally:
-        INSTALL_REFERENCE["extraKnownMarketplaces"]["prawduct"]["source"]["ref"] = original
+        assert drift["present"] is True, leaf_path
+        assert [x["field"] for x in drift["drifted"]] == [_field_label(leaf_path)], leaf_path
+
+
+def test_fires_when_governance_is_switched_off(tmp_path):
+    # enabledPlugins: false is a repo with NO governance — strictly worse than a
+    # version pin, and the case the two-field check could not see at all.
+    _write_settings(tmp_path, _contract_entry(), enabled=False)
+    out = irp.probe_install_reference_drift(ProjectState({}), _cb(tmp_path))
+    assert len(out) == 1
+    assert "enabledPlugins" in out[0].trigger_summary
+    # "stranded at that reference" is the WRONG consequence here — nothing is
+    # pinned to a version; the clone gets no governance at all. One sentence
+    # cannot honestly cover both harms, so the summary branches.
+    assert "governance switched off" in out[0].trigger_summary
+    assert "stranded" not in out[0].trigger_summary
+
+
+def test_version_drift_outranks_governance_drift_in_the_summary(tmp_path):
+    # Both drifted: stranding is the more specific claim and wins. Pinned because
+    # the branch is easy to invert and both strings look plausible either way.
+    entry = _contract_entry()
+    entry["source"]["ref"] = "v2.1.5"
+    _write_settings(tmp_path, entry, enabled=False)
+    out = irp.probe_install_reference_drift(ProjectState({}), _cb(tmp_path))
+    assert "stranded at that reference" in out[0].trigger_summary
+    assert "governance switched off" not in out[0].trigger_summary
+
+
+def test_fires_when_enabled_plugins_key_is_absent(tmp_path):
+    # Absent reads as drift here (unlike an absent marketplace entry, which means
+    # "not onboarded"): the repo IS onboarded, it just won't turn the plugin on.
+    _write_settings(tmp_path, _contract_entry(), enabled=None)
+    out = irp.probe_install_reference_drift(ProjectState({}), _cb(tmp_path))
+    assert len(out) == 1
+    assert "enabledPlugins" in out[0].trigger_summary
 
 
 def test_drift_reports_present_false_without_entry(tmp_path):
     _write_settings(tmp_path, None)
     assert install_reference_drift(tmp_path) == {"present": False, "drifted": []}
+
+
+def test_probe_is_wired_into_the_composition_root(tmp_path):
+    """The probe must fire through ``register_all()``, not just its own ``register()``.
+
+    ``test_register_runs_in_the_roster`` calls ``irp.register()`` directly, so it
+    stays green if the two ``probe_families.register_all()`` lines are deleted and
+    the probe is dead in production — which is the incident ``probe_families.py``'s
+    own docstring records. Nothing asserted the wiring until this test.
+    """
+    from lib.probe_families import register_all
+
+    entry = _contract_entry()
+    entry["source"]["ref"] = "v2.1.5"
+    _write_settings(tmp_path, entry)
+    register_all()
+    fired = [
+        c
+        for c in run_all_probes(ProjectState({}), make_codebase(tmp_path))
+        if c.feature == irp.FEATURE and c.type == "contract-drift"
+    ]
+    assert len(fired) == 1
 
 
 def test_register_runs_in_the_roster(tmp_path):

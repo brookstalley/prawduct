@@ -1523,9 +1523,46 @@ test repoints the constant to prove the check follows it. On top of it, an ambie
 drifted, cause-agnostic (state, not event) and self-resolving from the committed file itself, so a
 teammate's fix clears it for every clone on next sync.
 
-**Scope held deliberately narrow.** The probe is inert when there is **no** prawduct entry at all.
-Absence is doctor's Health Check #1 finding; a probe firing on it would nag every repo that has not
-onboarded. Firing is one advisory naming every drifted field, never one per field.
+**Scope held deliberately narrow — in one specific way, and review found it had been read as two.**
+The probe is inert when there is **no** prawduct entry at all. Absence is doctor's Health Check #1
+finding; a probe firing on it would nag every repo that has not onboarded. Firing is one advisory
+naming every drifted field, never one per field.
+
+**The check now walks the contract instead of naming two fields of it.** As submitted it compared
+`source.ref` and `autoUpdate` while its docstring claimed it "reads `INSTALL_REFERENCE` itself" with
+parity to `core.gitignore_contract_drift`. That claim was false in the way that matters:
+`_contract_diff` iterates its whole entry set, this transcribed two paths — so `enabledPlugins`
+(**governance switched off entirely**, strictly worse than a version pin) and a repointed
+`source.repo` were both completely silent. It now walks every leaf of the constant, so a field added
+to the contract is compared with no edit here, and a property test corrupts each leaf in turn and
+requires exactly its own drift back. That the *single-source claim itself* was the thing that had
+gone stale is a pointed echo of this entry's other correction: the same "already believed once"
+failure, in the paragraph asserting the code was immune to it.
+
+Covering `enabledPlugins` then made the fixed summary clause wrong for the case it added —
+"stranded at that version" is not what a governance-off clone suffers — so the consequence branches:
+stranding for a version drift, "runs with prawduct governance switched off" otherwise, stranding
+winning when both. Caught by rendering all four cases, the same way evidence line 2 was.
+
+**Doctor Health Check #1 widened, because the advisory's only action could not fix what it
+reported.** HC#1 asserted `enabledPlugins` and `ref` — never `autoUpdate`. So an `autoUpdate: false`
+repo fired this advisory every session, and running its sole recommended action reported *healthy*.
+The stated rationale ("doctor already asserts this exact contract") was false in both directions at
+once. HC#1 now asserts the whole `INSTALL_REFERENCE` contract and says why it must: any field the
+ambient probe can fire on and the health check cannot repair is a nudge that dead-ends the person
+who follows it.
+
+**`priority="info"` is now a recorded decision rather than an unexplained default.** `info` is
+excluded from `briefing._RELAY_PRIORITIES`, so this never reaches the person-facing relay — which
+looks wrong for a change whose whole argument is that the condition is silent to people. It is
+right, and the corrected mechanism is what settles it: the drift costs the current machine nothing,
+it is self-resolving, and it re-fires every session until someone commits the fix. That is precisely
+the profile the relay exclusion exists for. Recorded with the condition that would reverse it.
+
+**Wiring is tested now.** `test_register_runs_in_the_roster` called `irp.register()` directly, so
+deleting both `probe_families.register_all()` lines left the suite green and the probe dead in
+production — the exact incident `probe_families.py`'s own docstring records. Mutation-confirmed
+before and after.
 
 **Honest limit, carried in the advisory's own evidence.** The file that actually binds plugin
 resolution is `~/.claude/plugins/known_marketplaces.json`, which is machine-level and outside
@@ -1557,63 +1594,6 @@ advisory the way an operator receives it surfaced it immediately, because the co
 exists in the assembled output and never in any one hunk. The methodology already says to launch it
 and inspect the output rather than trust review — this is the cheapest possible instance of why, on
 a change whose entire subject was a claim that had already been believed once and was false.
-
-<!-- prawduct: type=fix | scope=record-mechanization | release=v3.2.1 | status=shipped -->
-
-**Why:** the coordinator pattern dispatches three `critic-reviewer` subagents, and nothing in the
-framework ever said to issue their Agent calls together. `review-protocol.md` step 2 and `SKILL.md`'s
-routing bullet both read as a numbered procedure, and `git log -S` confirms no commit ever added the
-words "parallel" or "concurrent" to the critic skill — so the fan-out was riding the harness's
-ambient "batch independent calls" behaviour rather than an instruction.
-
-That behaviour is outside this framework's control, and it varies. Measured here: this repo's own
-Chunk 01 review fanned out cleanly (partials at 17:14:49, 17:15:37, 17:15:56 — a 67-second spread
-across three ~10-minute reviews), while other sessions were observing serial dispatch consistently
-in the same period. **The defect is nondeterminism, not a fixed 3× regression** — and that is the
-worse failure, because a cost that appears only in some sessions defeats reproduction and never gets
-attributed. Serial dispatch pays the pattern's entire cost (three agents, three context loads, a
-consolidation step) and discards the wall-clock saving that is the only thing it buys.
-
-**What landed.** One clause in each of the two dispatch surfaces, plus a guardrail test asserting
-both — proved by mutation, since an unpinned instruction is exactly how this silently reverts.
-Unrelated to the open `critic-begin` in-flight-guard item, which is about two *dispatches* colliding;
-these three reviewers share one manifest and never call `critic-begin`.
-
-**A correction, and the defect it uncovered.** The first version of this entry claimed concurrency was
-"safe by construction". That is true of the **evidence fact** — per-role partial files with no shared
-write target, and an id-idempotent append — but it was too broad, and the review that checked it found
-where: `ledger.ledger_append` had **no idempotency key and no dedupe**, while `review-stats` counts its
-lines without de-duplicating by review. So one review could anchor two `review.critic` events and be
-counted twice — in the very instrument this plan's success criterion is measured with ("median rounds
-per logical change at or under 2").
-
-Then it reproduced on the review that flagged it: two events for `rev-20260729T233201Z-d91acd9e`, one
-second apart.
-
-**The first diagnosis of *why* was wrong, and the next review caught that too.** It claimed two
-callers by design — the Stop hook's self-heal and the Critic SKILL — made the double-anchor
-deterministic. But a successful consolidation ends in `remove_partials()`, which deletes the manifest,
-and the self-heal needs a manifest to act, so the sequential two-caller path is a **no-op**, not a
-double-anchor. (Two events one second apart were never a Stop boundary either.) The two reachable
-paths are **replay** — the same manifest and partials re-materializing after success, or a crash
-between the fact append and `remove_partials` — and **overlap**, two consolidations running past the
-manifest check at once.
-
-`review_event_exists` probes for an existing anchor before appending. That **closes replay
-completely** and **narrows overlap** from the whole consolidate body to the microseconds between
-probe and append — it is read-then-write with no lock, so "exactly once" is not what it buys, and
-mandating concurrent reviewer dispatch made overlap *more* reachable rather than less. Recorded
-precisely so a maintainer who sees it recur looks for the lock instead of hunting a third caller.
-Measured, and stated carefully because the obvious framing is wrong: of the 143 `review.*` ledger
-events carrying a `review.fact_id`, 142 are distinct — **exactly one surplus**
-(`rev-20260729T233201Z-d91acd9e`, still on disk and still inflating `review-stats`). A further **140 events carry no
-`fact_id`, and that is permanent rather than a historical tail**: 100 are `review.critic` events from
-before the field existed (clean cutover 2026-07-13, no interleaving), but the other 40 are
-`review.pr` events, whose payload has no such field at all — ten of them post-date the cutover, and
-the count grows by one with every PR review. So a total-minus-distinct subtraction is unsafe
-*permanently*, not just for the backlog; "N events for M reviews" never reads this ledger correctly,
-which is why the follow-up item's trigger is keyed on duplicated ids. The fix matters because the instrument is about to
-be relied on, not because the history is wrong.
 
 ## 2026-07-29: A self-contradicting security model, a tightened FILE bar, and a coverage relaxation that was built and reverted
 
