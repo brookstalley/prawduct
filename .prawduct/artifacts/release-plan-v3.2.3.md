@@ -286,7 +286,11 @@ published.
 > `critic-burndown` and `critic-death-signals` still carried no `release=` tag, so steps 4–6 had not
 > run either and three build plans' `## Status` sections were unflipped. The classification commit
 > (`d4d4f40`) had also not been pushed, so `origin/develop` did not even hold the classification.
-> **Phase 1 steps 1–11 are complete in the working tree; steps 12 (commit) and 13 (push) remain.**
+> **Phase 1 steps 1–11 were complete in the working tree; steps 12 (commit) and 13 (push) remained.**
+> *(Both have since run: `e064128`, pushed to `origin/develop` 2026-08-02. **The Phase 1 checkpoint
+> is reached.** Stated as a dated fact rather than a present-tense claim, deliberately — this
+> document already records three instances of a quoted measurement going stale, and a fourth
+> "everything is current now" would be the same defect again. The live test is below.)*
 > The claim was written against the intent rather than the tree. This is the same stale-measurement
 > failure the blocker-liveness section above documents three instances of, arriving in a new place:
 > the fix there was *treat `check-releasability` as the live answer*, and `check-releasability` was

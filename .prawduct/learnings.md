@@ -110,6 +110,8 @@ dropping them.
 
 ## Correcting a false claim is authoring a new claim — verify the replacement and the artifacts it cites, because the fixing mood generates claims faster than the checking reflex fires
 
+## Never write a present-tense state claim ("Phase 1 is complete", "the branch holds X") into a durable document — write the dated measurement plus the command that re-derives it, because the claim is false the moment the next step runs and a reader cannot tell when it was true. This is the WRITE side of [[When a durable plan asserts VCS state]] and it fires hardest *inside a correction*, where explanatory mode about someone else's stale claim coexists with authoring your own: v3.2.3's release plan recorded three stale-measurement instances, and the paragraph correcting the third asserted "Phase 1 is complete now" with the commit and push not yet run — [[Correcting a false claim is authoring a new claim]] did not fire because the replacement's *facts* were verified and only its summary sentence was not
+
 ## Before writing any sentence of the shape "X now covers/catches/handles Y" or "there is no Y", run the one query that would falsify it — a coverage claim is the highest-frequency error class here and is almost always checkable in under a minute, so treat the SENTENCE as the trigger, not your confidence in it
 
 ## Verify a review artifact's cited gaps against HEAD first — its file-state claims aged the moment it was written, some were never true. A `file:line` you did not resolve yourself is a claim, not a citation: its precision reads as evidence of having been read. Anchor on symbols and headings, not digits — one that visibly breaks gets fixed; one still arithmetically valid under a rewrite never does
@@ -164,7 +166,7 @@ dropping them.
 
 ## When a fresh-eyes review's advice about a CONVENTION conflicts with a durable learning + the process doc, the documented convention wins — re-verify before acting
 
-## A reviewer's NOTE/severity is a prior, not a verdict — re-scope any "harmless" change that touches a governance-gate input
+## A reviewer's NOTE/severity is a prior, not a verdict — re-scope any "harmless" change that touches a governance-gate input, and `grep` the value's READERS before concluding it isn't one: a field's comment block tells you what it is for and how it has failed, never who consumes it, so inheriting that framing feels like coverage and isn't (clearing `active_build_plan: null` was argued from its own long comment block — record-lint, Critic mode inference — and silently flipped the reflection gate to advisory and skipped the Critic gate entirely, caught only in review)
 
 ## A new framework-wide DEFAULT must land in the session digest — place-once preferences and the thin anchor don't reach migrated repos
 
