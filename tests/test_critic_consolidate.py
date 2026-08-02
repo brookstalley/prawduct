@@ -654,6 +654,84 @@ class TestIncompleteNoopLiveness:
                 missing, present, total, self._fresh_id(age))
             assert cc._BATCH_FIX_DIRECTIVE not in msg
 
+    # -- per-role started markers (the reviewer-written liveness signal) ------
+
+    def _prawduct_with_started(self, tmp_path, roles_minutes: dict) -> Path:
+        """A .prawduct dir whose partials dir holds a ``<role>.started`` marker
+        per entry, backdated by the given minutes via mtime."""
+        import os
+        prawduct = tmp_path / ".prawduct"
+        cc.partials_dir(prawduct).mkdir(parents=True)
+        now = datetime.now(timezone.utc).timestamp()
+        for role, minutes in roles_minutes.items():
+            marker = cc.started_path(prawduct, role)
+            marker.write_text(role)
+            os.utime(marker, (now - minutes * 60, now - minutes * 60))
+        return prawduct
+
+    def test_started_marker_annotates_the_missing_role(self, tmp_path):
+        prawduct = self._prawduct_with_started(tmp_path, {"design": 3.0})
+        msg = cc._incomplete_noop_message(
+            ["design", "sustainability"], 1, 3, self._fresh_id(4), prawduct)
+        assert re.search(r"design \(started 3\.\d min ago\)", msg)
+        # No marker → bare role name, no started claim.
+        assert "sustainability (started" not in msg
+
+    def test_fresh_started_marker_holds_wait_past_dispatch_grace(self, tmp_path):
+        # The observed field failure: reviewers (re)started late, so dispatch
+        # age blew past the grace window while every reviewer was demonstrably
+        # at work. A fresh started marker must keep the verdict on the wait
+        # side — dispatch age alone no longer declares death.
+        prawduct = self._prawduct_with_started(
+            tmp_path, {"correctness": 2.0, "design": 2.0})
+        msg = cc._incomplete_noop_message(
+            ["correctness", "design"], 1, 3, self._fresh_id(45), prawduct)
+        assert "may have died" not in msg
+        assert "NOT evidence the reviewers died" in msg
+
+    def test_stale_started_markers_advise_critic_end(self, tmp_path):
+        # A reviewer that started long ago and never wrote its partial is the
+        # genuine-death case — the marker's own age carries the verdict.
+        prawduct = self._prawduct_with_started(tmp_path, {"design": 40.0})
+        msg = cc._incomplete_noop_message(
+            ["design"], 2, 3, self._fresh_id(45), prawduct)
+        assert "may have died" in msg
+        assert "critic-end" in msg
+
+    def test_one_fresh_role_holds_the_whole_verdict_on_wait(self, tmp_path):
+        # Mixed state: one missing role has a fresh marker, the other none at a
+        # stale dispatch. Death advice requires EVERY missing role past grace
+        # on its own effective age — a live reviewer will report and shrink
+        # `missing`, after which the dead one's age decides alone.
+        prawduct = self._prawduct_with_started(tmp_path, {"correctness": 1.0})
+        msg = cc._incomplete_noop_message(
+            ["correctness", "design"], 1, 3, self._fresh_id(45), prawduct)
+        assert "may have died" not in msg
+
+    def test_single_pass_roster_ignores_started_markers(self, tmp_path):
+        # The single-pass reviewer IS the dispatching fork — there is no
+        # waiting caller mid-review, so the coordinator liveness story (and its
+        # markers) must not leak into that message.
+        prawduct = self._prawduct_with_started(tmp_path, {"reviewer": 2.0})
+        msg = cc._incomplete_noop_message(
+            ["reviewer"], 0, 1, self._fresh_id(2), prawduct)
+        assert "(started" not in msg
+        assert "consolidates when it finishes" in msg
+
+    def test_dispatch_surfaces_instruct_the_started_marker(self):
+        # The marker is written by the model, so the instruction lives in
+        # prose — bind BOTH dispatch surfaces (the agent definition every
+        # dispatched reviewer loads, and the coordinator's prompt template) to
+        # the filename convention started_path() reads, or the signal silently
+        # stops being written while the reader keeps trusting its absence.
+        convention = cc.started_path(Path("x"), "<role>").name  # "<role>.started"
+        assert convention == "<role>.started"
+        agent_doc = (ROOT / "agents" / "critic-reviewer.md").read_text()
+        protocol = (ROOT / "skills" / "critic" / "review-protocol.md").read_text()
+        assert "`.prawduct/.critic-partials/<role>.started`" in agent_doc
+        assert "FIRST" in agent_doc
+        assert ".critic-partials/<ROLE>.started" in protocol
+
 
 # ---------------------------------------------------------------------------
 # Unit: the batch-fix directive
@@ -1914,6 +1992,107 @@ class TestRosterKeyedToRiskSurface:
         assert "leftover" in result.stdout
         assert not (stale / "correctness.json").exists()
         assert (stale / "manifest.json").is_file()
+
+
+class TestBeginArchivesLeftovers:
+    """A leftover manifest at critic-begin belongs to a review that never
+    consolidated (consolidate removes everything on success). Deleting it
+    erased the only evidence that review ran — observed 2026-08-02 when a
+    premature death verdict led to a re-dispatch and the first review became
+    unreconstructable from disk. begin_review archives instead."""
+
+    ARCHIVE_REL = ".prawduct/.critic-partials-archive"
+
+    def _repo_with_leftovers(self, tmp_path, manifest_id: str | None):
+        repo = tmp_path / "r"
+        _init_repo(repo)
+        _commit_file(repo, "src/app.py", "x = 1\n", "init")
+        (repo / ".prawduct").mkdir()
+        stale = repo / PARTIALS_REL
+        stale.mkdir(parents=True)
+        if manifest_id is not None:
+            (stale / "manifest.json").write_text(json.dumps({"id": manifest_id}))
+        (stale / "correctness.json").write_text('{"role": "correctness"}')
+        (repo / "src/app.py").write_text("x = 2\n")  # dirty tree → reviewable
+        return repo
+
+    def test_prior_manifest_archived_under_its_review_id(self, tmp_path):
+        repo = self._repo_with_leftovers(tmp_path, "rev-20260802T190415Z-0e2cd074")
+        result = _run_begin(repo, "--mode", "chunk")
+        assert result.returncode == 0, f"stderr={result.stderr!r}"
+        archived = repo / self.ARCHIVE_REL / "rev-20260802T190415Z-0e2cd074"
+        assert json.loads((archived / "manifest.json").read_text())["id"] == (
+            "rev-20260802T190415Z-0e2cd074"
+        )
+        assert (archived / "correctness.json").is_file()
+        # The new dispatch proceeded normally on a clean partials dir.
+        new_manifest = json.loads((repo / PARTIALS_REL / "manifest.json").read_text())
+        assert new_manifest["id"] != "rev-20260802T190415Z-0e2cd074"
+        assert not (repo / PARTIALS_REL / "correctness.json").exists()
+        assert "archived" in result.stdout
+
+    def test_partials_without_a_manifest_archive_under_a_fallback_name(self, tmp_path):
+        # Partials can outlive their manifest (a late reviewer re-creates the
+        # dir after consolidation) — they still archive rather than vanish.
+        repo = self._repo_with_leftovers(tmp_path, manifest_id=None)
+        result = _run_begin(repo, "--mode", "chunk")
+        assert result.returncode == 0, f"stderr={result.stderr!r}"
+        adir = repo / self.ARCHIVE_REL
+        entries = [d for d in adir.iterdir() if d.is_dir()]
+        assert len(entries) == 1
+        assert entries[0].name.startswith("unmanifested-")
+        assert (entries[0] / "correctness.json").is_file()
+
+    def test_archive_prunes_to_the_newest_three(self, tmp_path):
+        import os
+        repo = self._repo_with_leftovers(tmp_path, "rev-20260802T190415Z-0e2cd074")
+        adir = repo / self.ARCHIVE_REL
+        now = datetime.now(timezone.utc).timestamp()
+        for i in range(3):
+            old = adir / f"rev-old-{i}"
+            old.mkdir(parents=True)
+            (old / "manifest.json").write_text("{}")
+            os.utime(old, (now - (i + 1) * 3600, now - (i + 1) * 3600))
+        result = _run_begin(repo, "--mode", "chunk")
+        assert result.returncode == 0, f"stderr={result.stderr!r}"
+        kept = sorted(d.name for d in adir.iterdir() if d.is_dir())
+        assert len(kept) == cc._ARCHIVE_KEEP == 3
+        assert "rev-20260802T190415Z-0e2cd074" in kept  # newest survives
+        assert "rev-old-2" not in kept  # oldest pruned
+
+    def test_archive_dir_is_gitignored_for_products(self):
+        from lib import core
+        assert ".prawduct/.critic-partials-archive/" in core.GITIGNORE_ENTRIES
+
+    def test_failed_archive_degrades_to_delete_never_blocks_dispatch(self, tmp_path):
+        # The archive is forensics, not a gate: when it cannot be written the
+        # dispatch must proceed exactly as the old delete behavior did. Forced
+        # here by pre-creating the archive path as a FILE, so dest.mkdir()
+        # raises OSError. The failure is named on stderr, not swallowed.
+        repo = self._repo_with_leftovers(tmp_path, "rev-20260802T190415Z-0e2cd074")
+        (repo / self.ARCHIVE_REL).write_text("not a directory")
+        result = _run_begin(repo, "--mode", "chunk")
+        assert result.returncode == 0, f"stderr={result.stderr!r}"
+        assert "archive failed" in result.stderr
+        assert "falling back to delete" in result.stderr
+        assert "archived" not in result.stdout  # no false preservation claim
+        # Old delete behavior held: leftovers gone, fresh dispatch on disk.
+        assert not (repo / PARTIALS_REL / "correctness.json").exists()
+        assert (repo / PARTIALS_REL / "manifest.json").is_file()
+
+    def test_remove_partials_clears_started_markers(self, tmp_path):
+        # remove_partials unlinks ALL children, .started markers included —
+        # pinned because a future narrowing to *.json would leave stale
+        # markers feeding the NEXT review's death verdict (the exact
+        # false-signal class this fix targets) with the suite still green.
+        prawduct = tmp_path / ".prawduct"
+        pdir = cc.partials_dir(prawduct)
+        pdir.mkdir(parents=True)
+        (pdir / "manifest.json").write_text("{}")
+        (pdir / "correctness.json").write_text("{}")
+        cc.started_path(prawduct, "correctness").write_text("correctness")
+        cc.remove_partials(prawduct)
+        assert not pdir.exists()
 
 
 class TestVerifyResolutionsDispatch:

@@ -146,7 +146,7 @@ Persistence is **decoupled from the review** (the coordinator never resumes to a
 
 2. **Dispatch** three **`critic-reviewer`** subagents (Agent tool, `subagent_type: critic-reviewer`) — **all three Agent calls in ONE message, concurrently.** With **no `model:` override** — they inherit the session model (`critic-reviewer` declares `model: inherit`). Each reviews ONLY its goals and writes ONLY its partial to `.critic-partials/<role>.json` — never `.critic-findings.json`, `critic-consolidate`, or `critic-end`. Prompt template (substitute `<ROLE>`/`<GOALS>`/`<SHA>` — the SHA is the manifest's `commit_reviewed`):
 
-   > "Critic reviewer (`<ROLE>`). Read `[critic path]` for goal definitions. Review ONLY <GOALS>. Project: `[dir]`. Changed files: [list]. Signals: [summary]. Commit under review: `<SHA>` — record it verbatim as `commit_reviewed`. NO tests/builds. Write ONLY your partial to `.critic-partials/<ROLE>.json`; nothing else."
+   > "Critic reviewer (`<ROLE>`). FIRST: write your liveness marker `.critic-partials/<ROLE>.started` (content: `<ROLE>`). Then read `[critic path]` for goal definitions. Review ONLY <GOALS>. Project: `[dir]`. Changed files: [list]. Signals: [summary]. Commit under review: `<SHA>` — record it verbatim as `commit_reviewed`. NO tests/builds. Write ONLY your partial to `.critic-partials/<ROLE>.json`; nothing else."
 
    - **correctness reviewer** (role `correctness`) — Goals 1, 2, 3.
    - **design reviewer** (role `design`) — Goals 4, 7 + the Framework-Specific Checks when they apply.

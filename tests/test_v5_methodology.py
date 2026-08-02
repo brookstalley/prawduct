@@ -42,7 +42,7 @@ def estimate_tokens(text: str) -> int:
 #: lives here, where a wrong number fails instead of misleading.
 LAST_MEASURED_TOKENS = {
     "methodology/building.md": 4659,
-    "skills/critic/review-protocol.md": 3599,
+    "skills/critic/review-protocol.md": 3611,
     "skills/critic/goals-1-3.md": 1960,
 }
 
@@ -609,6 +609,13 @@ class TestCriticSkill:
         # carrying both "project-preferences" and "blocking", and that bullet is
         # the only line that satisfies it. Two separate editors have cut it and
         # put it back.
+        #
+        # 3599 -> 3611 (2026-08-02) -- the coordinator prompt template gained
+        # the reviewer's FIRST-action liveness marker (`<ROLE>.started`), the
+        # signal that stops "no partial yet" reading as reviewer death. Paid by
+        # keeping the template line to the bare imperative; the rationale and
+        # full instruction live in agents/critic-reviewer.md, which every
+        # dispatched reviewer loads anyway. 9 tokens of headroom remain.
         tokens = estimate_tokens(self.content)
         assert tokens < 3620, f"review-protocol.md is ~{tokens} tokens, should be <3620"
 

@@ -3,6 +3,63 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-08-02: every signal a waiting caller could reach said the healthy review was dead
+
+<!-- prawduct: type=fix | scope=critic-death-signals | chunks=1 -->
+
+**"The Critic died" reports from consumers traced to three compounding false signals, not a dead
+review.** A field report (plugin 3.2.3, 2026-08-02) supplied the timeline: an agent checked
+liveness at ~8 minutes into a healthy coordinator review, found `.critic-active`'s `pid` dead
+(`ps -p` → gone), found zero partials, concluded death *inside* the grace window, re-dispatched —
+doubling review cost — and the re-dispatch clobbered the first manifest, erasing the only evidence
+the first review ran. The reviewers were alive the whole time. Three fixes, one per signal:
+
+- **The marker's `pid` field is gone** (`lib/critic_marker.py`). It recorded the short-lived
+  `critic-begin` hook process — dead within milliseconds of every dispatch — and nothing in the
+  framework ever read it back. It existed only to tell any reader who checked it that a healthy
+  review had died; that false signal outranked the v3.1.1 grace-window guidance in the field.
+  Liveness stays answered by `started_at` age (the staleness guard's actual input).
+- **Reviewers now write a per-role liveness marker** (`.critic-partials/<role>.started`, first
+  action, mtime is the signal — reviewers have no clock tool). `critic-consolidate`'s waiting
+  message reports it per missing role ("design (started 3.4 min ago)" vs a bare name), and the
+  death verdict keys on each role's own effective age — started-marker age when present, dispatch
+  age otherwise — firing only when *every* missing role is past the grace window on its own age.
+  A reviewer that started late (e.g. resumed against a moved HEAD) is no longer declared dead by
+  dispatch age; one dead reviewer among live ones still converges (the live ones report and leave
+  `missing`). The instruction is prose on both dispatch surfaces (the `critic-reviewer` agent
+  definition and the coordinator prompt template), bound to the code's filename convention by test.
+- **`critic-begin` archives an unconsolidated predecessor instead of deleting it**
+  (`.prawduct/.critic-partials-archive/<review-id>/`, newest 3 kept, gitignored for products). A
+  manifest still on disk at dispatch is a review that never consolidated — the one state whose
+  trace matters for exactly this diagnosis. Archiving is best-effort: a failed archive degrades to
+  the old delete, never to a blocked dispatch.
+
+Out of scope, deliberately: the reviewer-toolset SendMessage gap the same report noted (filed
+separately), the hard concurrent-dispatch guard (#171 — archiving narrows the damage; the guard
+question stays open), and CRT-3F7M's await-in-fork dispatch-model question (unchanged). Suite
+green; regression tests pin all three behaviors plus the prose⇄code convention binding.
+
+A closing observation for the record: this branch's own cumulative review was consolidated by the
+`SubagentStop` trigger — the first observed live firing of the CRT-2J8N-fixed matcher in this repo.
+
+**Review dispositions** — `rev-20260802T201307Z-8ade0188` (cumulative, 0 blocking / 3 warning / 7
+note), all fixes landed in `068a4ef`, verified clean (0/0/0) by `rev-20260802T202716Z-a37945a9`:
+
+| Finding | Severity | State | Detail |
+|---|---|---|---|
+| R-1 | warning | fixed | archive-failure degrade path is a shipped claim without a test |
+| R-2 | note | accepted | false positive — .critic-partials-archive/ is a runtime-created directory, not a chunk deliverable file; record-lint cannot see it by design |
+| R-3 | warning | fixed | Framework repo's own .gitignore missing .critic-partials-archive/ |
+| R-4 | warning | fixed | Plan-required test for started-marker clearing not shipped |
+| R-5 | note | accepted | fixed in 068a4ef (note dropped; the structured archived_leftovers line is the single channel) — verify pass rev-20260802T202716Z-a37945a9 confirms the landing in narrative; recorded as accept because its resolution facts were scoped to the prior warnings |
+| R-6 | note | accepted | the agent definition is the binding surface and states the two-file contract; the prompt template's ONLY-your-partial sentence follows an explicit FIRST-marker instruction in the same prompt, and the template is at 9 tokens of budget headroom — no room to restate what the agent doc already resolves |
+| R-7 | note | accepted | fixed in 068a4ef (OSError reason now printed to stderr before the delete fallback; SKILL.md says best-effort) — confirmed by verify pass a37945a9's narrative; accept records it because resolution facts covered warnings only |
+| R-8 | note | accepted | fixed in 068a4ef (plan Success wording reconciled to the shipped bare-name rendering) — confirmed by verify pass a37945a9's narrative; accept records it because resolution facts covered warnings only |
+| R-9 | note | accepted | informational — learnings cross-check clean, no action |
+| R-10 | note | accepted | informational — backlog reconciliation dormant on the GitHub Issues backend; follow-ups are being filed via /prawduct:backlog at this boundary |
+
+**10 findings** (3 warning, 7 note) — accepted: 7, fixed: 3.
+
 ## 2026-08-02: the gate named the one route that could not clear the finding it was naming
 
 <!-- prawduct: type=fix | scope=critic-burndown | chunks=03 -->
