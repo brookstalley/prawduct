@@ -25,7 +25,7 @@ import time
 from datetime import datetime, timezone
 
 from . import encode, ids, issuefmt, provision
-from .transport import RETRYABLE_DEFAULTS, Transport, TransportError
+from .transport import RETRYABLE_DEFAULTS, Transport, TransportError, paginate
 
 # The default claim-staleness TTL (CC3/M11). No upstream artifact pins a number,
 # so this is a build-time default: longer than any single agent work-cycle (a
@@ -909,17 +909,15 @@ def _related(transport: Transport, nid, target_canonical: str, *, add: bool) -> 
 # and ``reconcile-labels`` restore a deleted label — both keyed off one scan.
 
 
-_ALIAS_SCAN_MAX_PAGES: int = 100  # runaway guard, converged with transport/query
-
-
 def iter_alias_issues(transport: Transport, owner: str, repo: str):
     """Yield ``(number, pfxs, label_names, status)`` for every issue in the repo (all
     states, paginated): ``pfxs`` are the well-formed hand-minted ids recorded in the
     body block ``id_aliases``; ``label_names`` are the issue's current label names
     (so a caller can tell whether the matching ``id:PFX`` label is present); ``status``
     is the **decoded** status. Raises ``TransportError`` on a transport failure
-    (caught at each caller's boundary). Bounded by ``_ALIAS_SCAN_MAX_PAGES`` so a
-    pathological repo cannot spin forever.
+    (caught at each caller's boundary), including a page-cap trip — an alias scan
+    that stopped early would report an existing item as missing, which is the
+    opposite of the skip-not-duplicate guarantee it exists to provide.
 
     **Why the decoded status and not the raw ``state``.** The completeness gate has
     to answer "is this item on the target *at the status the source says it should
@@ -932,26 +930,25 @@ def iter_alias_issues(transport: Transport, owner: str, repo: str):
     surfaced here — this is a coverage scan, not a decoder audit, and the decode
     fails open to a safe value by design.
     """
-    page = 1
-    while page <= _ALIAS_SCAN_MAX_PAGES:
-        batch = transport.list_issues(owner, repo, state="all", per_page=100, page=page)
-        for issue in batch:
-            if encode.is_pull_request(issue):
-                continue  # PRs interleave the raw issues list (BKL-5T3J)
-            number = issue.get("number")
-            if number is None:
-                continue
-            block = encode.parse_block(issue.get("body"))
-            pfxs = [pfx for pfx in block.id_aliases() if ids.is_pfx(pfx)]
-            label_names = {
-                name for label in issue.get("labels", []) if (name := label.get("name"))
-            }
-            status, _decode_warnings = encode.decode_status(issue, sorted(label_names))
-            yield number, pfxs, label_names, status
-        if len(batch) < 100:
-            return
-        page += 1
-    log_diag(f"alias scan hit the {_ALIAS_SCAN_MAX_PAGES}-page cap; results truncated")
+    issues = paginate(
+        lambda page, size: transport.list_issues(
+            owner, repo, state="all", per_page=size, page=page
+        ),
+        what="alias scan",
+    )
+    for issue in issues:
+        if encode.is_pull_request(issue):
+            continue  # PRs interleave the raw issues list (BKL-5T3J)
+        number = issue.get("number")
+        if number is None:
+            continue
+        block = encode.parse_block(issue.get("body"))
+        pfxs = [pfx for pfx in block.id_aliases() if ids.is_pfx(pfx)]
+        label_names = {
+            name for label in issue.get("labels", []) if (name := label.get("name"))
+        }
+        status, _decode_warnings = encode.decode_status(issue, sorted(label_names))
+        yield number, pfxs, label_names, status
 
 
 # --- provision ---------------------------------------------------------------

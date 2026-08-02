@@ -479,18 +479,27 @@ and the `new` exemption expiry consumes that function rather than re-deriving fr
     there is one place to fail loud instead of four divergent caps. A cap trip raises an attributed
     `TransportError(unavailable, 'result truncated at N pages')` or surfaces through the envelope —
     today `export`, which is the backup path, cannot distinguish truncated from complete.
-  - **#532** — the backlog counting path: stage-less items are counted as open and surfaced as an
-    explicit untriaged bucket, the same surface-by-exception posture `/prawduct:doctor` uses. An
-    untriaged item must be *louder* than a triaged one, never quieter. `counts` already prints a
-    `(none)` stage bucket for the whole corpus, so the information sits one line from the undercount
-    it causes. **Collision constraint:** land the fix in the backlog query layer. `plugin/lib/briefing.py`
+  - **#532** — the backlog counting path: items with no prawduct provenance are counted as open and
+    surfaced as an explicit untriaged bucket, the same surface-by-exception posture
+    `/prawduct:doctor` uses. An untriaged item must be *louder* than a triaged one, never quieter.
+    ~~stage-less items are counted as open~~ **Corrected 2026-08-02 during the build: the item's
+    stated mechanism was wrong.** Stage-less items were *already* counted and land in the `(none)`
+    stage bucket — a stage-bucket bug cannot change a total, and the item's own evidence records
+    the total moving (374 → 383). What was dropped is anything failing `encode.is_prawduct_issue`:
+    no namespaced label **and** no `prawduct:` block, which is how a human-filed or product-filed
+    issue arrives. The original nine were excluded for that reason; adding `stage:` labels fixed
+    the count only because it incidentally granted provenance. **Collision constraint:** land the fix in the backlog query layer. `plugin/lib/briefing.py`
     is dirty on `feature/upgrade-discovery-relay` in the primary checkout — if the briefing surface
     must change, coordinate with that session first rather than editing it here.
-    [DECISION: #532 changes the value `open` reports for an unchanged corpus (158 → 167 on this repo)
-    without renaming the key | the key's documented meaning is "open items" and the defect was that
-    the value did not match it — this restores the contract rather than repurposing it, and the
-    alternative (a new key beside a knowingly-wrong one) leaves the wrong number as the default read
-    | user can veto]
+    [DECISION: #532 changes the value `open` reports for an unchanged corpus without renaming the
+    key | the key's documented meaning is "open items" and the defect was that the value did not
+    match it — this restores the contract rather than repurposing it, and the alternative (a new key
+    beside a knowingly-wrong one) leaves the wrong number as the default read | user can veto]
+    **Measured delta corrected 2026-08-02: 158 → 159, not the 158 → 167 predicted here.** The
+    prediction inherited the item's wrong mechanism and counted nine stage-less items; the real set
+    was the one issue with no provenance at all (#533). `open` now reconciles exactly with
+    `gh issue list --state open`. The decision's substance is unchanged — only the number was wrong,
+    and it was wrong because it was re-measured inside the frame it inherited.
   - **#533** — `plugin/bin/prawduct-hook`, `plugin/lib/migrate_plugin.py`: publish `INSTALL_REFERENCE`
     as a stable surface via a `print-install-reference` subcommand emitting the dict as JSON on
     stdout. It is the canonical statement of how a repo references the plugin, and it is a *private
@@ -509,15 +518,33 @@ and the `new` exemption expiry consumes that function rather than re-deriving fr
     not re-decide it.
   - **Scope-out, stated so it is not silently dropped:** backfilling stage labels on the 64 stage-less
     **closed** items. They are already dispositioned and do not affect the pending figure.
+  - **Deferred out of #532 during the build, filed rather than dropped** (added 2026-08-02, so the
+    deferrals live in an artifact rather than only in a commit message — a reviewer cannot verify a
+    tracker item from a review context and is right to fail closed on the claim):
+    - **#542** — *adopting* an untriaged issue into a real item (the write half). `stage: design`:
+      what stage an adopted issue gets, who decides `kind`/`area`, and whether an unattended sweep
+      may retitle a human's report are open questions, not implementation details. Owner-raised.
+    - **#543** — the session briefing must surface `untriaged` rather than absorbing it into
+      "N pending". **Blocked on coordination, not effort:** `plugin/lib/briefing.py` is dirty on
+      `feature/upgrade-discovery-relay` in the primary checkout, and this plan's own collision
+      constraint (above) says coordinate with that session before editing it. The number the
+      briefing prints is already correct; what is missing is the breakout.
+    - **#544** — `list --untriaged` and the anonymous-filing *quarantine* surface designed in
+      `backlog-service-api-contract.md` §9 are one query under two names.
 - **Tests:** unit — a malformed SHA in a fact produces no edge and no traceback; the shared paginator's
-  cap trip raises rather than returning a prefix, across all four call sites; stage-less items appear
-  in the open count and in an untriaged bucket; `print-install-reference` emits JSON that round-trips
+  cap trip raises rather than returning a prefix, across all four call sites; **issues with no
+  prawduct provenance** appear in the open count and in an untriaged bucket (~~stage-less items~~ —
+  corrected 2026-08-02, see the #532 deliverable above: stage-less items were already counted, and
+  a test written to the original wording would have passed against the defect);
+  `print-install-reference` emits JSON that round-trips
   to `INSTALL_REFERENCE` **by comparison against the constant, never against a transcribed literal** —
   a copy in the test is the same drift the item was filed about. Preferences — the
-  no-internal-identifier guard, if one exists, still passes over the four edited sites.
+  no-internal-identifier guard, if one exists, still passes over the edited sites.
 - **Acceptance criteria:** `python3 plugin/bin/prawduct-hook backlog counts --repo brookstalley/prawduct`
-  reconciles against `gh issue list --state open` exactly; the four operator-facing strings read as
-  plain language; `print-install-reference | python3 -c 'import json,sys; json.load(sys.stdin)'`
+  reconciles against `gh issue list --state open` exactly; **the seven** operator-facing strings read as
+  plain language (~~four~~ — the item inventoried four; three more surfaced only when the sweep was
+  widened past `print(...)` arguments, and the Critic blocked the first attempt for claiming
+  otherwise); `print-install-reference | python3 -c 'import json,sys; json.load(sys.stdin)'`
   succeeds and its output equals the constant; full suite green.
 - **Type:** cumulative-final
 - **Done when:**
@@ -560,11 +587,21 @@ things that exercise would otherwise have failed to confirm.
 - [ ] Chunk 03: Critic dispatch anchoring and review-record attribution
 - [ ] Chunk 04: The independent tail
 Context: Plan authored 2026-08-01 on `fix/backlog-burndown`, from a re-derivation of the 168 open
-tracker items by `refs:` co-location. **Chunks 01, 02 and 03 are built, reviewed and committed**;
-Chunk 04 is next, and now carries a fifth item (#533, added at owner request).
+tracker items by `refs:` co-location. **ALL FOUR CHUNKS ARE BUILT.** Chunks 01–03 merged to
+`develop` (PR #538); **Chunk 04 built, reviewed and committed 2026-08-02** — five items closed
+(#209, #307, #313, #532, #533, the last added at owner request), cumulative + verify rounds clean,
+suite 3297 passed. Chunk 04's type is `cumulative-final`, so its one `cumulative` served as the
+plan's final review; there is no separate `final` outstanding.
 `active_build_plan` still points at `artifacts/build-plan-v3.2.0-golive.md` and **must not be
 repointed** — that plan is in progress in the primary checkout, the pointer is single-slot, and
 repointing was the wrong fix for the attribution defect Chunk 03 closes by resolving *around* it.
 **Dispatch with `--mode <m> --chunk NN`, and NOT `--scope`** — Chunk 03 made the branch name derive
 it, and this line prescribing the old workaround is what the Critic caught twice; see
-§ Verification Strategy for what still binds and why. Next: Chunk 04.
+§ Verification Strategy for what still binds and why.
+
+**Next: release classification, not more building.** The plan file and pointer are **RETAINED** per
+gitflow — the `develop`→`main` release flips the statusless change-log entries to `status=shipped`
+and regenerates every scope-tagged plan's `## Status` in one pass, so deleting now would leave the
+release nothing to regenerate. `check-releasability` currently reports `backlog-burndown` as an
+**unclassified scope with no row in `release-plan-v3.2.3.md`** — that row is what gives the #533
+surface an owner on the way to `main`, which is where an external consumer is waiting for it.

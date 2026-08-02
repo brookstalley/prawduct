@@ -141,8 +141,13 @@ class TestClearGuardCLI:
         result = run_plugin_hook("clear", tmp_path, git_status=" M src/app.py")
 
         assert result.returncode == 2, result.stderr
+        # The refusal states the REASON, not the guard's internal id: an
+        # operator in a governed product cannot resolve "CRT-3X9D", and the id
+        # displaced the sentence that makes the message actionable. The id
+        # lives in the comment above the guard.
+        assert "independent reviewer" in result.stderr
+        assert "CRT-3X9D" not in result.stderr
         # Actionable override (the waiver-style correction path).
-        assert "CRT-3X9D" in result.stderr
         assert "--force" in result.stderr and "rm .prawduct/.critic-active" in result.stderr
         # No mutation occurred.
         assert (prawduct / ".session-reflected").read_text() == "builder reflection — must survive"

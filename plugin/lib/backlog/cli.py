@@ -59,7 +59,9 @@ _HELP = (
     "  list     --repo owner/repo [--status S] [--stage S] [--kind K] [--area A] "
     "[--effort E] [--impact I] [--source SRC] [--assignee A|none|*] "
     "[--state open|closed|all] [--sort created|updated] [--direction asc|desc] "
-    "[--per-page N] [--page N]\n"
+    "[--per-page N] [--page N] [--untriaged]\n"
+    "           --untriaged inverts the scope filter: shows only issues with no "
+    "prawduct labels or block\n"
     "  pick     --repo owner/repo [--limit N] [--claim] [--claim-ttl SECONDS]\n"
     "  counts   --repo owner/repo\n"
     "  refresh-counts   --repo owner/repo   (derive + persist the briefing snapshot)\n"
@@ -68,10 +70,15 @@ _HELP = (
     "  link     <id> --edge blocks|blocked-by|parent|child|related --to <target-id> [--repo owner/repo]\n"
     "  unlink   <id> --edge blocks|blocked-by|parent|child|related --to <target-id> [--repo owner/repo]\n"
     "  provision --repo owner/repo\n"
-    "  reconcile-labels --repo owner/repo   (GV6 taxonomy reconcile, coexistence-safe)\n"
+    # GV6. The id stays here, out of the operator's way: text emitted into a
+    # governed product carries the reason, never a prawduct-internal label.
+    "  reconcile-labels --repo owner/repo   "
+    "(add missing taxonomy labels; never removes or edits existing ones)\n"
     "  import   --repo owner/repo --from <backlog.md> [--archive <archive.md>] "
     "[--restructure <plan.json>] [--archive-scope all|open]   "
-    "(resumable/idempotent; plan applies at create — MG6)\n"
+    # MG6 — see the note on reconcile-labels above.
+    "(resumable/idempotent; a --restructure plan is applied as each issue "
+    "is created, not as a later edit)\n"
     "  restructure-preview --from <backlog.md> [--archive <archive.md>] "
     "--plan <plan.json> --out <preview.md> [--archive-scope all|open]   "
     "(offline before/after review artifact)\n"
@@ -326,6 +333,7 @@ def _run_list(rest: list[str], transport):
             "repo", "status", "stage", "kind", "area", "effort", "impact",
             "source", "assignee", "state", "sort", "direction", "per-page", "page",
         },
+        boolean={"untriaged"},
     )
     if err:
         return core.error("validation", err)
@@ -341,6 +349,19 @@ def _run_list(rest: list[str], transport):
         )
         if key in flags
     }
+    if "untriaged" in flags:
+        filters["untriaged"] = True
+        # --untriaged always scans every page (the set is small and its members
+        # are the NEWEST issues, so one ascending page is where they are not).
+        # Refuse an explicit page request rather than ignoring it: returning the
+        # whole set to someone who asked for page 2 is a confident wrong answer,
+        # and only this layer can tell a passed value from a default.
+        if "per-page" in flags or "page" in flags:
+            return core.error(
+                "validation",
+                "--untriaged scans every page, so --per-page/--page do not apply "
+                "— re-run without them to get the whole untriaged set",
+            )
     per_page, err = _int_flag(flags, "per-page", 100)
     if err:
         return core.error("validation", err)
@@ -1027,6 +1048,21 @@ def _print_human_ok(data) -> None:
         print(f"{data.get('repo')}: {data.get('total')} item(s)")
         print("  status: " + ", ".join(f"{k}={v}" for k, v in data.get("by_status", {}).items()))
         print("  stage:  " + ", ".join(f"{k}={v}" for k, v in data.get("by_stage", {}).items()))
+        # Surfaced by exception, and only when there are any: an untriaged item
+        # is one nobody has looked at, so it has to be louder than a triaged
+        # one, and it must come with the command that shows it — a bare number
+        # nobody can act on is how these accumulate.
+        if data.get("untriaged"):
+            print(
+                f"  untriaged: {data['untriaged']} issue(s) carry no prawduct "
+                "labels or block — filed by hand or by another product, and "
+                "nothing has triaged them yet"
+            )
+            # The full binary name, not a bare `backlog …`: an operator copies
+            # this line, and `backlog` alone is not a command.
+            print(
+                f"    see them: prawduct-hook backlog list --repo {data.get('repo')} --untriaged"
+            )
         if "persisted" in data:  # refresh-counts adds the snapshot outcome
             if data.get("persisted"):
                 print(f"  snapshot written ({data.get('fetched_at')})")

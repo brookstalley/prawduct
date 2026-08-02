@@ -370,11 +370,16 @@ class TestCounts:
         assert result["data"]["by_status"] == {"open": 2, "shipped": 1}
         assert result["data"]["by_stage"] == {"design": 1, "ready": 2}
 
-    def test_counts_ignore_non_prawduct(self, fake):
+    def test_counts_report_non_prawduct_as_untriaged_rather_than_dropping_them(self, fake):
+        # PROV-2 still governs `list`/decode — a plain issue is not an ITEM. But
+        # on the repo nominated as the backlog service it is still backlog, and
+        # dropping it from the rollup made the pending figure irreconcilable
+        # with `gh issue list` while hiding the least-triaged work.
         _file(fake, title="ours", stage="ready")
         _plain(fake, title="not ours")
         result = query.counts(fake, owner=OWNER, repo=REPO)
-        assert result["data"]["total"] == 1
+        assert result["data"]["total"] == 2
+        assert result["data"]["untriaged"] == 1
 
 
 # --- PROV-2 ------------------------------------------------------------------
@@ -411,6 +416,42 @@ class TestQueryCli:
         out = capsys.readouterr().out
         return code, json.loads(out)
 
+    def test_untriaged_flag_reaches_the_query_layer(self, fake, capsys):
+        """The flag wiring itself — `--untriaged` must become
+        filters["untriaged"], not be parsed and dropped."""
+        _file(fake, title="ours", stage="ready")
+        plain_id = _plain(fake, title="human report")
+        code, env = self._run(fake, ["list", "--repo", "octo/repo", "--untriaged"], capsys)
+        assert code == 0
+        assert [i["id"] for i in env["data"]["items"]] == [plain_id]
+
+    def test_untriaged_refuses_an_explicit_page_request(self, fake, capsys):
+        """It always full-scans, so honouring --page is impossible; returning
+        the whole set to someone who asked for page 2 would be a confident
+        wrong answer, so it refuses instead of ignoring."""
+        for flag in (["--page", "2"], ["--per-page", "10"]):
+            code, env = self._run(
+                fake, ["list", "--repo", "octo/repo", "--untriaged", *flag], capsys
+            )
+            assert code == 2, flag
+            assert env["error"]["code"] == "validation"
+            assert "--untriaged" in env["error"]["message"]
+
+    def test_counts_human_output_prints_a_runnable_drill_down(self, fake, capsys):
+        """The emitted command is copy-pasted by an operator, so it carries the
+        binary name. `backlog list …` alone is not a command."""
+        _plain(fake, title="human report")
+        cli.run(None, ["counts", "--repo", "octo/repo"], transport=fake)
+        out = capsys.readouterr().out
+        assert "untriaged: 1 issue(s)" in out
+        assert "prawduct-hook backlog list --repo octo/repo --untriaged" in out
+
+    def test_counts_human_output_stays_silent_with_nothing_untriaged(self, fake, capsys):
+        """Surface by exception: a zero line is noise on every future run."""
+        _file(fake, title="ours", stage="ready")
+        cli.run(None, ["counts", "--repo", "octo/repo"], transport=fake)
+        assert "untriaged" not in capsys.readouterr().out
+
     def test_list_requires_repo(self, fake, capsys):
         code, env = self._run(fake, ["list"], capsys)
         assert code == 2 and env["error"]["code"] == "validation"
@@ -427,3 +468,99 @@ class TestQueryCli:
     def test_bad_int_flag_is_validation_error(self, fake, capsys):
         code, env = self._run(fake, ["pick", "--repo", "octo/repo", "--limit", "xx"], capsys)
         assert code == 2 and env["error"]["code"] == "validation"
+
+
+class TestUntriagedIssuesAreCounted:
+    """An issue with no prawduct label and no ``prawduct:`` block used to be
+    absent from the rollup entirely, so the pending figure could not be
+    reconciled against ``gh issue list --state open`` — and the items nobody had
+    triaged were the only ones the tooling could not see. Human-filed reports
+    and reports from consuming products arrive in exactly that shape.
+    """
+
+    def test_untriaged_issue_is_counted_not_skipped(self, fake):
+        _file(fake, title="ours", stage="ready")
+        _plain(fake, title="filed by a human")
+        data = query.counts(fake, owner=OWNER, repo=REPO)["data"]
+        assert data["total"] == 2
+        assert data["by_status"]["open"] == 2
+        assert data["untriaged"] == 1
+
+    def test_untriaged_is_a_subset_of_by_status_never_an_addend(self, fake):
+        """Double-counting would make the figure wrong in the other direction —
+        these issues have a real GitHub state and decode like any other."""
+        for i in range(3):
+            _plain(fake, title=f"untriaged {i}")
+        data = query.counts(fake, owner=OWNER, repo=REPO)["data"]
+        assert data["untriaged"] == 3
+        assert sum(data["by_status"].values()) == data["total"] == 3
+
+    def test_no_untriaged_issues_reports_zero_not_absent(self, fake):
+        _file(fake, title="ours", stage="ready")
+        assert query.counts(fake, owner=OWNER, repo=REPO)["data"]["untriaged"] == 0
+
+    def test_pull_requests_are_never_untriaged_items(self, fake):
+        """PRs interleave the REST issues list and carry no block either — a
+        naive "no block means untriaged" count would report every PR in the
+        repo as backlog."""
+        fake.seed_pull_requests(OWNER, REPO, 4, state="open")
+        _file(fake, title="ours", stage="ready")
+        data = query.counts(fake, owner=OWNER, repo=REPO)["data"]
+        assert data["untriaged"] == 0
+        assert data["total"] == 1
+
+    def test_untriaged_issue_does_not_produce_decode_warnings(self, fake):
+        """It has no encoding, so it cannot have a malformed one — warning here
+        would report every ordinary GitHub issue as damaged."""
+        _plain(fake, title="human report")
+        assert query.counts(fake, owner=OWNER, repo=REPO)["warnings"] == []
+
+    def test_closed_untriaged_issues_are_not_counted_as_awaiting_triage(self):
+        """`untriaged` counts OPEN issues only, while total/by_status span every
+        state. A closed issue has been dispositioned — nobody needs to triage
+        it — and counting it would inflate a number whose whole meaning is
+        "work waiting", and disagree with the drill-down command printed one
+        line beneath it, which defaults to open."""
+        class _Fake:
+            def list_issues(self, owner, repo, *, state, per_page, page, labels=None, **kw):
+                if page > 1:
+                    return []
+                return [
+                    {"number": 1, "body": "no block", "labels": [], "state": "open"},
+                    {"number": 2, "body": "no block", "labels": [], "state": "closed"},
+                ]
+
+        data = query.counts(_Fake(), owner=OWNER, repo=REPO)["data"]
+        assert data["total"] == 2       # both counted in the corpus
+        assert data["untriaged"] == 1   # only the open one awaits triage
+
+    def test_list_untriaged_scans_every_page_not_just_the_first(self, fake):
+        """Untriaged items are typically the NEWEST, so an ascending first page
+        is exactly where they are not. Returning page 1 would answer "nothing
+        to triage" while items waited on page 2 — a short answer
+        indistinguishable from a complete one."""
+        for i in range(120):  # push the untriaged issue past raw page 1
+            _file(fake, title=f"ours {i}", stage="ready")
+        plain_id = _plain(fake, title="filed last, invisible on page 1")
+
+        first_page = query.list_items(
+            fake, owner=OWNER, repo=REPO, filters={}, per_page=100, page=1
+        )
+        assert plain_id not in [i["id"] for i in first_page["data"]["items"]]
+
+        result = query.list_items(fake, owner=OWNER, repo=REPO, filters={"untriaged": True})
+        assert [i["id"] for i in result["data"]["items"]] == [plain_id]
+        assert result["data"]["has_more"] is False
+
+    def test_list_untriaged_shows_exactly_what_list_drops(self, fake):
+        _file(fake, title="ours", stage="ready")
+        plain_id = _plain(fake, title="human report")
+        fake.seed_pull_requests(OWNER, REPO, 2, state="open")
+
+        normal = query.list_items(fake, owner=OWNER, repo=REPO, filters={})
+        untriaged = query.list_items(
+            fake, owner=OWNER, repo=REPO, filters={"untriaged": True}
+        )
+        assert [i["id"] for i in untriaged["data"]["items"]] == [plain_id]
+        assert plain_id not in [i["id"] for i in normal["data"]["items"]]
+        assert untriaged["data"]["count"] == 1  # no PRs

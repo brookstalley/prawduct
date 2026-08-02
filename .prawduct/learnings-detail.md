@@ -2080,3 +2080,56 @@ you fixed plus the legitimate contexts. For prose corrections this costs one gre
 above would have been caught by it. Relates to Root Cause Discipline (#16) and Honest Confidence (#5)
 — the false-about-itself case is the sharp one, because it converts a partial fix into an active
 misdirection.
+
+---
+
+## Enumerate the sites answering a question by GREP, never by memory — and the grep is itself a site
+
+A fix that threads a resolved value through the two call sites you remembered leaves the third
+reading the old source, and the comment you write above it ("both fields") is accurate for exactly
+one commit — the same shape as the bug being fixed, one field over.
+
+**Four instances, all on the branch that wrote this rule down.** The first two were value-threading.
+The third and fourth were the *query* carrying the defect it hunted:
+
+- A find-and-replace over quoted tree-id literals in `test_coverage_algebra.py` fixed sixteen of
+  seventeen fixtures. The seventeenth built its ids as `f"t{i}"` — a literal sweep is a **prefix**
+  of the real set wherever the code also *constructs* the string.
+- A sweep for prawduct-internal ids in emitted text scoped itself to literals passed **as
+  arguments** to `print`/`error`/`log_diag`/`TransportError`, and reported clean. Emitted text is
+  not a syntactic category: it missed a string returned and printed by its caller
+  (`_worktree_redirect_note` → `cmd_stop`), one appended to a list printed at session end (the
+  designer-handoff waiver note), and one assembled into a document written for a human (the
+  restructure-preview title). Two independent reviewers found the first; only widening to *every
+  non-docstring literal, read by eye* found the other two.
+
+So the rule has a second half. A completeness claim rests on a falsifying command, and the command
+is a mechanism that can be wrong in the same way the code is: too narrow, matching the shape you
+already have in mind. Widen it until it would catch a case you have not thought of, and treat a
+clean result from a query you wrote yourself as the weakest evidence available.
+See [[a completeness claim asserts the falsifying command]].
+
+---
+
+## A filed item's stated MECHANISM is a hypothesis, not a finding
+
+#532 was titled *"stage-less items vanish from counts"* and its Repro said so. That is not what
+happened. Stage-less items **were** counted and landed in the `(none)` stage bucket — which the
+item itself reported seeing at 64. What vanished was anything failing `is_prawduct_issue`: no
+namespaced label **and** no `prawduct:` block, which is how a human-filed or product-filed issue
+arrives.
+
+**The item's own evidence contained the disproof.** It recorded `total` moving 374 → 383 after
+labelling nine issues, and a stage-bucket bug cannot change a total. Nobody read it that way,
+including the reporter, because the correlation was clean: labels went on, the count went up.
+
+The catch came from measurement, not from re-reading. `gh issue list --state open` said 159 and
+`counts` said 158 — a **one**-item gap where the item predicted nine. That forced "which one?", and
+the answer (#533, filed by a human, no block) was the mechanism. The plan had already inherited the
+wrong number into a `[DECISION:]` block predicting 158 → 167, and would have shipped it into the
+change-log as measured fact.
+
+Pairs with [[when you correct an inherited number recount the SET]] — same failure, one rung
+earlier: that rule is about re-measuring inside an inherited frame; this one is about the frame
+arriving in the item text and reading like a finding because it sits under a "Problem" heading.
+

@@ -52,7 +52,7 @@ from collections import deque
 from typing import Callable
 
 from . import buildplan_refs
-from .gitstate import METADATA_PREFIXES
+from .gitstate import METADATA_PREFIXES, is_object_id
 
 DiffFn = Callable[[str, str], "list[str] | None"]
 KeyFn = Callable[[str], "str | None"]
@@ -167,10 +167,22 @@ def unresolved_blocking(review_fact: dict, resolved: set[tuple[str, str]]) -> li
 
 def review_edges(facts: list[dict]) -> list[dict]:
     """Valid edges from ``review`` facts:
-    ``{"src", "dst", "fact"}``. Validity — the fact recorded both trees and
-    every judgeable changed file is within its reviewed set; anything less
-    yields no edge (a partial or malformed fact must weaken coverage, never
-    strengthen it)."""
+    ``{"src", "dst", "fact"}``. Validity — the fact recorded both trees as
+    full-length git object ids and every judgeable changed file is within its
+    reviewed set; anything less yields no edge (a partial or malformed fact
+    must weaken coverage, never strengthen it).
+
+    The tree ids are shape-checked here rather than trusted because facts are
+    read back from a plain file on disk: a corrupted or hand-edited one can
+    carry any string, and these values become git argv downstream. Rejecting
+    the edge is the same direction as every other malformedness in this
+    function — it costs coverage, so it can only ever demand more review.
+
+    Rejection here is **silent by construction**: this module is pure (no I/O,
+    see the module docstring), so it has no channel to attribute on. The
+    attribution belongs to the layer that owns the store, and
+    ``evidence.tree_diff``/``tree_entries`` emit it when the same malformed id
+    reaches the git boundary — see ``evidence._attribute_bad_tree``."""
     edges = []
     for fact in facts:
         if fact.get("kind") != "review":
@@ -181,10 +193,8 @@ def review_edges(facts: list[dict]) -> list[dict]:
         files_changed = body.get("files_changed")
         files_reviewed = body.get("files_reviewed")
         if not (
-            isinstance(src, str)
-            and src
-            and isinstance(dst, str)
-            and dst
+            is_object_id(src)
+            and is_object_id(dst)
             and isinstance(files_changed, list)
             and isinstance(files_reviewed, list)
         ):

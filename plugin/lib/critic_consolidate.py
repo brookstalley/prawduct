@@ -822,9 +822,12 @@ def validate_partial(data) -> tuple[bool, str]:
             if rationale is not None and not _nonempty_str(rationale):
                 return False, f"resolution[{idx}] 'rationale' must be a non-empty string or null"
             if r["disposition"] == "waived" and not _nonempty_str(rationale):
+                # R7 — a waiver carries its justification. The requirement id
+                # stays here; the message states the reason instead, because
+                # an operator downstream cannot resolve "R7".
                 return False, (
-                    f"resolution[{idx}] disposition 'waived' requires a "
-                    "non-empty 'rationale' (R7)"
+                    f"resolution[{idx}] disposition 'waived' requires a non-empty "
+                    "'rationale' — a waived finding must record why it was waived"
                 )
     return True, ""
 
