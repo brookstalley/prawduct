@@ -3,6 +3,91 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-08-02: the untriaged, the truncated, the unpublished, and two hardening passes
+
+<!-- prawduct: type=fix | scope=backlog-burndown | chunks=04 -->
+
+Five items sharing no surface, which is why they batched last: `#209`, `#307`, `#313`, `#532`,
+`#533`.
+
+**Untriaged issues stopped being invisible** (`#532`). An issue carrying neither a prawduct
+namespaced label nor a `prawduct:` block was dropped from `counts` entirely, so the pending figure
+could not be reconciled against `gh issue list --state open` — and the items least likely to be
+looked at, the ones nobody has triaged, were the only ones the tooling could not see. The filed
+diagnosis said *stage-less items vanish*; that is not the mechanism. Stage-less items are counted
+and land in the `(none)` stage bucket. What vanishes is anything with **no prawduct provenance at
+all**, which is how a human's report and a consuming product's report both arrive. The nine items
+in the original observation were excluded for that reason, and labelling them fixed the count only
+because a `stage:` label incidentally granted provenance. On this repo the live gap was one issue
+(`#533`), not nine: `open` now reads 159 and `gh issue list --state open` reads 159.
+
+They are counted in `total`/`by_status` and named separately as `untriaged` — a **subset, not an
+addend**, since they have a real GitHub state and decode like any other issue; adding them to a
+total that already counts them would err in the other direction. `PROV-2` is unchanged: they are
+still not *items*, and `list`/decode still drop them. `list --untriaged` inverts that filter so
+they can be reached without the GitHub web UI, and it **scans every page**, because untriaged
+issues are typically the newest — a single ascending page would answer "nothing to triage" while
+items waited on page 2, which is the silent-truncation failure the same changeset fixes elsewhere.
+Counting them is only half the fix; a number nobody can act on is how nine of them accumulated over
+five months. The write half — adopting an untriaged issue into a real item — is deliberately **not**
+here: it is `#542`, at `stage: design`, because what stage an adopted issue gets and whether a sweep
+may retitle a human's report are open questions, not implementation details.
+
+**Four paginators became one, and a cap trip stopped lying** (`#313`). `transport._api_paged`,
+`query._all_issues`, `migrate._scan_all` and `core.iter_alias_issues` were near-identical loops
+carrying three different bounds (100/100/1000) and three different cap-trip behaviours, none of
+which failed loud: each returned the collected prefix, indistinguishable from a complete result,
+because a truncated list is a perfectly well-formed short list. That is worst in `export`, the
+backup path, where it makes a backup that lies about being complete. All four now route through
+`transport.paginate`, and a cap trip raises `TransportError(unavailable, …truncated…)` — every
+caller already converted `TransportError` into an attributed envelope, so the loud path needed no
+new error plumbing. The bound converged **upward**, to `export`'s 1000: lowering a cap that now
+trips loudly would turn repos that work today into hard failures, while raising one costs nothing,
+since a real repo terminates on a short page thousands of pages earlier. The cap is now purely a
+runaway guard, not a limit on results.
+
+**The install reference is published** (`#533`, owner-added). `migrate_plugin.INSTALL_REFERENCE` is
+the canonical statement of how a repo references the plugin, and it was a private module constant
+with no readable form — so two independent external consumers arrived at AST-parsing it within a
+week of each other, one of them the tool that repaired 11 repos after a hand-transcribed copy went
+stale. Both chose parsing over transcribing deliberately, because a copy drifts silently; the
+fragile option was the *safer* of the two on offer, which is the tell that the surface was missing
+rather than that the consumers were careless. `prawduct-hook print-install-reference` emits it as
+JSON on stdout. This publishes the value; it does not re-decide it.
+
+That trips the `api_versioning_approach` revisit trigger — *the first non-prawduct caller of
+`prawduct-hook`* — which asked for a stability tier and a `--version` handle before such a thing
+ships. Recorded as a **ruling**, not an amendment: the decision's content is unchanged, and both
+requirements are already met — the tier is `stable` and applies to exactly this one subcommand
+(everything else stays internal and unsupported), and `prawduct-hook version` is the version handle,
+since a per-subcommand one would be the ceremony the decision exists to avoid.
+
+**Tree ids are shape-checked before they reach git** (`#307`). The evidence store is a plain
+append-only file every worktree of a clone shares, so a corrupted or hand-edited fact can put any
+string where a tree id belongs. `gitstate.is_object_id` gates the two real widths — 40-hex SHA-1 and
+64-hex SHA-256 — with `fullmatch` rather than a `$`-anchored search, because `$` also matches before
+a trailing newline and a line-oriented file is exactly where a stray newline comes from. A
+non-conforming id yields **no edge** in `coverage_algebra.review_edges` and never reaches
+`evidence.tree_diff`/`tree_entries`, so it weakens coverage like any other malformedness and can
+only ever demand more review. argv is list-form with no shell, so this is hardening against git
+**option injection** and confusing failures, not an active hole.
+
+Worth recording: every fixture in `test_coverage_algebra.py` used symbolic tree ids (`t0`, `t1`)
+where production carries 40-hex, so seventeen tests failed the moment the check was real. They were
+fixed by making the fixtures carry production's shape, never by relaxing the check — and the
+`f"t{i}"`-built ids escaped the first sweep of quoted literals, which is the *enumerate by grep, not
+by memory* rule biting on the same branch that wrote it down.
+
+**Four operator-facing strings stopped naming ids nobody downstream can resolve** (`#209`).
+`cmd_clear`'s critic-active refusal, the backlog CLI's `reconcile-labels` and `import` usage lines,
+and `validate_partial`'s waived-disposition error each carried an internal id where the reason
+belonged; the id moved to the adjacent comment, which the norm permits. That closes the last of the
+inventory, so the `## Direction` norm in `observability-strategy.md` transitions
+**`in-transition` → `steady-state`** and its interim rule retires with it — there is no longer an
+untouched-site backlog for the rule to except. Recorded at the transition, because it is the norm's
+standing weakness: **enforcement is the reviewer's judgment, not a regex.** Id prefixes are
+open-ended, so a clean sweep means only "no *known-shaped* id survives".
+
 ## 2026-08-01: a review now knows which plan it is of, and which tree it looked at
 
 <!-- prawduct: type=fix | scope=backlog-burndown | chunks=03 -->

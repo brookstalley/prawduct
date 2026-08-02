@@ -41,11 +41,10 @@ from .core import (
     log_diag,
     ok,
 )
-from .transport import Transport, TransportError
+from .transport import Transport, TransportError, paginate
 
 # The structured facets ``list`` accepts as label filters (each an AND term).
 _LABEL_FACETS: tuple[str, ...] = ("stage", "kind", "area", "effort", "impact", "source")
-_MAX_PAGES: int = 100  # runaway guard for the internal full-scan paginator
 
 
 # --- list --------------------------------------------------------------------
@@ -98,6 +97,29 @@ def list_items(
             labels.append(st_label)
 
     assignee = filters.get("assignee")
+
+    if filters.get("untriaged"):
+        # The inverse of the PROV-2 scope filter: show exactly the issues
+        # `list` normally drops. Without this the only way to reach an
+        # untriaged item is the GitHub web UI, which is how nine of them
+        # accumulated unnoticed over five months — counting them is what makes
+        # them visible, but a count you cannot act on is only half the fix.
+        #
+        # **Scanned whole, not one page.** This is a surface-by-exception view
+        # of a set that should be near-empty, and its members are typically the
+        # NEWEST issues — so a single ascending page is precisely where they are
+        # not. Returning page 1 of the untriaged set would answer "nothing to
+        # triage" while items waited on page 2: a short answer indistinguishable
+        # from a complete one, the same failure the shared paginator's loud cap
+        # exists to prevent. `--per-page`/`--page` are therefore ignored here.
+        issues = _all_issues(transport, owner, repo, state=state, labels=labels or None)
+        if isinstance(issues, dict):
+            return issues  # an error envelope bubbled up from the scan
+        items, warnings = _decode_unscoped(issues, owner, repo)
+        if status_filter is not None:
+            items = [it for it in items if it["status"] == status_filter]
+        return ok({"items": items, "count": len(items), "has_more": False}, warnings)
+
     try:
         issues = transport.list_issues(
             owner,
@@ -258,7 +280,25 @@ def pick(
 
 
 def counts(transport: Transport, *, owner: str, repo: str) -> dict:
-    """Per-project rollups derived **on read** (Q5) — never persisted here."""
+    """Per-project rollups derived **on read** (Q5) — never persisted here.
+
+    **Untriaged issues are counted, not skipped.** An issue carrying neither a
+    prawduct-namespaced label nor a ``prawduct:`` body block is not a decoded
+    item (PROV-2 still holds — see :func:`list_items`, which drops them), but in
+    a repo nominated as the backlog service it is unmistakably *backlog*: it is
+    an open issue on the backlog tracker that nobody has triaged. Excluding it
+    from the rollup made the pending figure impossible to reconcile against
+    ``gh issue list --state open``, and made the least-attended items — the ones
+    filed by humans and by consuming products, which arrive with no block —
+    the *only* ones invisible to the tooling. An untriaged item must be louder
+    than a triaged one, never quieter, so it is counted here and reported
+    separately as ``untriaged``.
+
+    ``untriaged`` is a strict subset of the ``by_status`` tally, not an addend:
+    these issues have a real GitHub state, so they decode to a real status the
+    same way every other issue does. Adding them to a total that already counts
+    them would double-count.
+    """
     issues = _all_issues(transport, owner, repo, state="all", labels=None)
     if isinstance(issues, dict):
         return issues
@@ -266,12 +306,20 @@ def counts(transport: Transport, *, owner: str, repo: str) -> dict:
     by_status: dict[str, int] = {}
     by_stage: dict[str, int] = {}
     total = 0
+    untriaged = 0
     warnings: list[str] = []
     for issue in issues:
-        if not encode.is_prawduct_issue(issue):
-            continue  # PROV-2
+        if encode.is_pull_request(issue):
+            continue  # PRs interleave the raw issues list and are never items
+        scoped = encode.is_prawduct_issue(issue)
+        if not scoped:
+            untriaged += 1
         item, decode_warnings = encode.decode_item(issue)
-        warnings.extend(decode_warnings)
+        # Decode advisories are about *item* encoding; an untriaged issue has no
+        # encoding to be wrong about, so warning on it would report every
+        # ordinary GitHub issue as malformed.
+        if scoped:
+            warnings.extend(decode_warnings)
         total += 1
         by_status[item["status"]] = by_status.get(item["status"], 0) + 1
         stage_key = item["stage"] or "(none)"
@@ -280,6 +328,7 @@ def counts(transport: Transport, *, owner: str, repo: str) -> dict:
     data = {
         "repo": f"{owner}/{repo}",
         "total": total,
+        "untriaged": untriaged,
         "by_status": dict(sorted(by_status.items())),
         "by_stage": dict(sorted(by_stage.items())),
     }
@@ -351,31 +400,48 @@ def _decode_scope(issues: list[dict], owner: str, repo: str) -> tuple[list[dict]
     return items, warnings
 
 
+def _decode_unscoped(issues: list[dict], owner: str, repo: str) -> tuple[list[dict], list[str]]:
+    """Decode only the issues :func:`_decode_scope` drops — the untriaged ones.
+
+    Pull requests are excluded here as everywhere: they interleave the REST
+    issues list and are never items, triaged or not. Decode advisories are not
+    collected — an issue with no prawduct encoding cannot have a malformed one,
+    so surfacing them would flag every ordinary GitHub issue as damaged.
+    """
+    items: list[dict] = []
+    for issue in issues:
+        if encode.is_pull_request(issue) or encode.is_prawduct_issue(issue):
+            continue
+        canonical = f"{owner}/{repo}#{issue.get('number')}"
+        item, _decode_warnings = encode.decode_item(issue, canonical_id=canonical)
+        items.append(item)
+    return items, []
+
+
 def _all_issues(
     transport: Transport, owner: str, repo: str, *, state: str, labels: list[str] | None
 ) -> list[dict] | dict:
     """Fetch **every** matching issue across pages (for whole-set ops — ``pick``,
     ``counts``). Returns the issue list, or an error **envelope** to bubble up.
-    Bounded by ``_MAX_PAGES`` so a pathological repo can never spin forever."""
-    collected: list[dict] = []
-    page = 1
-    per_page = 100
-    while page <= _MAX_PAGES:
-        try:
-            batch = transport.list_issues(
-                owner, repo, state=state, labels=labels or None, per_page=per_page, page=page
+
+    A page-cap trip arrives as a ``TransportError`` from the shared paginator and
+    converts to an envelope here like any other transport failure — so a scan
+    that could not be completed reports as unavailable rather than as a short
+    list, which ``counts`` would otherwise publish as a smaller backlog."""
+    try:
+        return list(
+            paginate(
+                lambda page, size: transport.list_issues(
+                    owner, repo, state=state, labels=labels or None, per_page=size, page=page
+                ),
+                what="list scan",
             )
-        except TransportError as exc:
-            return from_transport_error(exc)
-        except (OSError, json.JSONDecodeError) as exc:  # ERR-6
-            log_diag(f"unexpected transport failure on list scan: {type(exc).__name__}")
-            return error("unavailable", "the backend request failed unexpectedly")
-        collected.extend(batch)
-        if len(batch) < per_page:
-            return collected
-        page += 1
-    log_diag(f"list scan hit the {_MAX_PAGES}-page cap; results truncated")
-    return collected
+        )
+    except TransportError as exc:
+        return from_transport_error(exc)
+    except (OSError, json.JSONDecodeError) as exc:  # ERR-6
+        log_diag(f"unexpected transport failure on list scan: {type(exc).__name__}")
+        return error("unavailable", "the backend request failed unexpectedly")
 
 
 def _claim_eligibility(item: dict, now: datetime, ttl_seconds: int) -> str | None:

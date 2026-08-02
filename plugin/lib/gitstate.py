@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import subprocess
 from pathlib import Path
 
@@ -418,6 +419,31 @@ def _git_head_sha(project_dir: Path) -> str:
     except Exception:  # prawduct:allow prawduct/broad-except -- git failure must not crash hook
         pass
     return ""
+
+
+#: A git object id in its two real hex widths: SHA-1 (40) and SHA-256 (64).
+#: ``fullmatch`` rather than a ``$``-anchored search on purpose — ``$`` also
+#: matches before a trailing newline, so ``"<40 hex>\n"`` would pass a check
+#: written the obvious way, and a value read from a line-oriented file is
+#: exactly where a stray newline comes from.
+_OBJECT_ID_RE = re.compile(r"[0-9a-f]{40}|[0-9a-f]{64}")
+
+
+def is_object_id(value: object) -> bool:
+    """Whether ``value`` is a full-length git object id.
+
+    The shape gate a tree id passes before it may reach a git argv or
+    contribute a coverage edge. Tree ids arrive from the evidence store, which
+    is a plain append-only file shared by every worktree of the clone, so a
+    corrupted or hand-edited fact can put an arbitrary string where a tree id
+    belongs. argv is list-form with no shell, so the exposure is a token git
+    reads as an OPTION (``--upload-pack=…``) rather than shell injection —
+    hardening and clearer failures, not an active hole.
+
+    Abbreviated ids are rejected deliberately: everything prawduct writes is
+    full-length, so a short id means the value did not come from here.
+    """
+    return isinstance(value, str) and _OBJECT_ID_RE.fullmatch(value) is not None
 
 
 def git_path_is_ignored(project_dir: Path, rel_path: str) -> bool:

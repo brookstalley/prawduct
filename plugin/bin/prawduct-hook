@@ -899,8 +899,11 @@ def cmd_clear(project_dir: Path, argv: list[str] | None = None) -> int:
             print(
                 "PRAWDUCT: `clear` refused — a Critic review appears to be in progress "
                 f"(marker .prawduct/.critic-active, started ~{age_min}m ago). Session-mutating "
+                # The guard's id (CRT-3X9D) stays in the comment above: an
+                # operator downstream cannot resolve it, and it displaces the
+                # sentence that makes the message actionable.
                 "commands are blocked so an independent reviewer cannot clobber the session it is "
-                "reviewing (CRT-3X9D).\n"
+                "reviewing.\n"
                 "  If the Critic has finished or crashed and this marker is stale, clear it:\n"
                 "    rm .prawduct/.critic-active        # then retry\n"
                 "  or override this one invocation:\n"
@@ -4040,6 +4043,45 @@ def cmd_version() -> int:
     return 0
 
 
+def cmd_print_install_reference() -> int:
+    """Print the canonical install reference as JSON on stdout; exit 0, or 1 if
+    the constant cannot be imported.
+
+    **The published form of how a repo references this plugin.** The value
+    itself is not new — ``migrate_plugin.INSTALL_REFERENCE`` has been the one
+    statement of it all along, and ``init_product`` merges the same dict into a
+    repo's ``.claude/settings.json``. What was missing was any way to *read* it
+    without importing a private module: no export, no JSON, no subcommand. Two
+    independent external consumers therefore arrived at AST-parsing the
+    constant within a week of each other, one of them the tool that repaired 11
+    repos after a hand-transcribed copy went stale. Both picked parsing over
+    transcribing deliberately, because a copy drifts silently — so the fragile
+    option was the *safer* of the two on offer, which is the tell that the
+    surface was missing rather than that the consumers were careless.
+
+    A subcommand rather than a committed JSON file or a documented import: the
+    hook binary is already on PATH, so this is introspectable from a repo that
+    has the plugin installed but not vendored, which is the normal case.
+
+    This publishes the value; it does not re-decide it. The marketplace ``ref``
+    and ``autoUpdate`` ship exactly as the constant holds them, and a consumer
+    reading this gets whatever the installed plugin believes — which is the
+    entire point, since a consumer that pinned its own copy is the failure
+    being closed. Emitted with sorted keys and a trailing newline so a caller
+    can diff two versions' output directly.
+    """
+    lib_root = _plugin_root()
+    if lib_root not in sys.path:
+        sys.path.insert(0, lib_root)
+    try:
+        from lib.migrate_plugin import INSTALL_REFERENCE  # noqa: PLC0415 — lazy, like every other lib reader
+    except ImportError as exc:
+        print(f"error: could not read the install reference: {exc}", file=sys.stderr)
+        return 1
+    print(json.dumps(INSTALL_REFERENCE, indent=2, sort_keys=True))
+    return 0
+
+
 def cmd_stamp_merged(project_dir: Path) -> int:
     """Stamp ``status=merged`` onto statusless tagged change-log entries.
 
@@ -4404,7 +4446,7 @@ _USAGE = (
     "check-pr-doc-only|check-change-log-entry|check-releasability [--release vX.Y.Z]|"
     "regen-views [--check, deprecated]|stamp-merged|"
     "infer-critic-mode [args]|"
-    "resolve-base|version|"
+    "resolve-base|version|print-install-reference|"
     "evidence {status|list [--kind <k>] [-n <count>]}|advisory <subcmd> [args]|"
     "disposition <review-id> <fid> {--accept <reason>|--file <backlog-id>} [--owner-ruling <text>]|"
     "render-dispositions [--review <id>|--scope <s>] [--json]|"
@@ -4713,6 +4755,8 @@ def main() -> int:
         return cmd_bug_inbox(project_dir)
     elif command == "version":
         return cmd_version()
+    elif command == "print-install-reference":
+        return cmd_print_install_reference()
     elif command == "advisory":
         return cmd_advisory(project_dir, sys.argv[2:])
     elif command == "backlog":

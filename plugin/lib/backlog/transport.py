@@ -106,10 +106,58 @@ class TransportError(Exception):
         self.details = details or {}
 
 
-# The page-loop backstop for _api_paged (labels/timeline/sub-issues): 100 pages
-# × 100/page = 10k entries — far above any real dataset, so the bound only stops
-# a pathological endpoint from spinning forever.
-_PAGED_MAX_PAGES = 100
+#: Page size for every paged list read. GitHub's REST maximum.
+PAGE_SIZE = 100
+
+#: The one page-loop backstop, shared by every paged read (1000 × 100 = 100k
+#: entries). Purely a runaway guard: it exists so a pathological endpoint or a
+#: server that never returns a short page cannot spin forever, NOT to bound
+#: results — hitting it raises, so the bound can no longer silently shorten an
+#: answer. It is set at the most permissive of the four values it replaced
+#: (``export``'s), because lowering a cap that trips loudly would turn repos
+#: that work today into hard failures, while raising one costs nothing: a real
+#: repo terminates on a short page thousands of pages earlier.
+MAX_PAGES = 1000
+
+
+def paginate(fetch_page, *, per_page: int = PAGE_SIZE, max_pages: int = MAX_PAGES, what: str = "results"):
+    """Yield every item of a paged GitHub list endpoint, page by page.
+
+    ``fetch_page(page, per_page)`` returns one **raw** page. The one paginator
+    the whole backlog service shares — it replaced four near-identical loops
+    that had drifted to three different caps and three different cap-trip
+    behaviours, none of which failed loud.
+
+    **A cap trip raises rather than returning a prefix.** A truncated result
+    that is indistinguishable from a complete one is the failure worth naming:
+    ``export`` is the backup path, so a silently short backup is a backup that
+    lies, and a caller cannot detect it because the short list is a perfectly
+    well-formed short list. Every caller already converts ``TransportError``
+    into an attributed envelope at its boundary, so the loud path costs no new
+    error plumbing — it reuses the one that was already there.
+
+    **Termination is on a short RAW page.** Callers filter (pull requests
+    interleave the REST issues list; non-prawduct issues are out of scope), and
+    a filtered view can be short while the real page was full — terminating on
+    it would silently drop every later page. So this yields raw items and the
+    caller filters downstream, never the reverse.
+    """
+    page = 1
+    while page <= max_pages:
+        batch = fetch_page(page, per_page)
+        if not isinstance(batch, list):
+            batch = []
+        yield from batch
+        if len(batch) < per_page:
+            return
+        page += 1
+    raise TransportError(
+        "unavailable",
+        f"{what} truncated at the {max_pages}-page read limit — "
+        f"the result is incomplete and has not been returned",
+        retryable=False,
+        details={"max_pages": max_pages, "per_page": per_page},
+    )
 
 
 # --- Non-interactive environment (INV-2, Security §1a) -----------------------
@@ -595,28 +643,23 @@ class GhTransport(Transport):
 
     # -- subprocess plumbing ----------------------------------------------
 
-    def _api_paged(self, path: str, *, per_page: int = 100) -> list:
+    def _api_paged(self, path: str, *, per_page: int = PAGE_SIZE) -> list:
         """Fetch every page of a REST **list** endpoint with an explicit page loop.
 
         NOT ``gh --paginate``: that flag emits each page as a **separate JSON
         document**, so a single ``json.loads`` over the concatenation fails the
         moment a result exceeds one page (BKL-2V6N — fatal for ``list_labels``
-        once a migrated repo carries hundreds of ``id:PFX`` aliases). The loop
-        terminates on a short **raw** page (never a filtered view — BKL-5T3J),
-        bounded by ``_PAGED_MAX_PAGES`` so a pathological endpoint cannot spin
-        forever. ``per_page`` is injectable so a live spike can force multi-page
+        once a migrated repo carries hundreds of ``id:PFX`` aliases). Paging
+        itself is :func:`paginate`, shared with the three whole-repo scans, so
+        the terminator and the cap trip behave identically everywhere.
+        ``per_page`` is injectable so a live spike can force multi-page
         behavior against a small real dataset."""
         sep = "&" if "?" in path else "?"
-        collected: list = []
-        page = 1
-        while page <= _PAGED_MAX_PAGES:
-            result = self._api(["api", f"{path}{sep}per_page={per_page}&page={page}"])
-            batch = result if isinstance(result, list) else []
-            collected.extend(batch)
-            if len(batch) < per_page:
-                return collected
-            page += 1
-        return collected
+
+        def fetch(page: int, size: int):
+            return self._api(["api", f"{path}{sep}per_page={size}&page={page}"])
+
+        return list(paginate(fetch, per_page=per_page, what=f"{path} results"))
 
     def _api(self, args: list[str], *, input_json: str | None = None):
         """Run ``gh <args>`` and parse JSON stdout, or raise ``TransportError``."""

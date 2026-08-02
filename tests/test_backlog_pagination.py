@@ -3,8 +3,14 @@
 **BKL-2V6N:** ``gh --paginate`` emits each page as a SEPARATE JSON document, so
 a single ``json.loads`` fails past one page. ``_api_paged`` replaces it with an
 explicit ``per_page``/``page`` loop — these tests pin per-page requests, raw
-short-page termination, and the ``_PAGED_MAX_PAGES`` backstop for
+short-page termination, and the ``transport.MAX_PAGES`` backstop for
 ``list_labels`` / ``list_timeline`` / ``list_sub_issues``.
+
+**BKL-6W9R:** that loop was one of *four* near-identical ones carrying three
+different caps (100/100/1000) and three different cap-trip behaviours, none of
+which failed loud — so a truncated result was indistinguishable from a complete
+one, worst of all in ``export``, the backup path. All four now route through
+``transport.paginate``, and a cap trip raises rather than returning a prefix.
 
 **BKL-5T3J:** the REST issues list interleaves pull requests. The transport now
 returns pages RAW (a ``pull_request`` key marks PRs) so every
@@ -104,16 +110,22 @@ class TestApiPaged:
         )
         assert len(gh2.list_sub_issues(OWNER, REPO, 1)) == 105
 
-    def test_page_cap_bounds_a_pathological_endpoint(self):
+    def test_page_cap_raises_rather_than_returning_a_prefix(self):
+        """A cap trip is a failure, not a short answer. Returning the collected
+        prefix made a truncated result indistinguishable from a complete one —
+        a well-formed short list the caller has no way to question."""
         class _Endless(_PagedGh):
             def _run(self, args, *, input_json=None):
                 self.requests.append(args[1])
                 return json.dumps([{"name": "x"}] * 100)  # always a full page
 
         gh = _Endless([])
-        labels = gh.list_labels(OWNER, REPO)
-        assert len(gh.requests) == tp._PAGED_MAX_PAGES
-        assert len(labels) == tp._PAGED_MAX_PAGES * 100
+        with pytest.raises(tp.TransportError) as exc:
+            gh.list_labels(OWNER, REPO)
+        assert len(gh.requests) == tp.MAX_PAGES
+        assert exc.value.code == "unavailable"
+        assert "truncated" in exc.value.message
+        assert exc.value.details["max_pages"] == tp.MAX_PAGES
 
 
 # --- BKL-5T3J: raw pages + decode-layer PR filtering -------------------------
@@ -214,7 +226,10 @@ class TestPrInterleaving:
         assert by_number[in_progress] == "in-progress"  # NOT collapsed with open
         assert by_number[plain] == "open"
 
-    def test_iter_alias_issues_bounds_a_pathological_repo(self, capsys):
+    def test_iter_alias_issues_raises_on_a_pathological_repo(self):
+        """An alias scan that stopped early would report an existing item as
+        missing — the importer would then create a duplicate instead of
+        skipping. So the cap raises out of the generator rather than ending it."""
         class _Endless:
             def __init__(self):
                 self.pages = 0
@@ -226,11 +241,10 @@ class TestPrInterleaving:
                 ]
 
         endless = _Endless()
-        rows = list(core.iter_alias_issues(endless, OWNER, REPO))
-        assert endless.pages == core._ALIAS_SCAN_MAX_PAGES
-        assert len(rows) == core._ALIAS_SCAN_MAX_PAGES * 100
-        # Cap trips loudly, never as silent truncation.
-        assert "alias scan hit" in capsys.readouterr().err
+        with pytest.raises(tp.TransportError) as exc:
+            list(core.iter_alias_issues(endless, OWNER, REPO))
+        assert endless.pages == tp.MAX_PAGES
+        assert "truncated" in exc.value.message
 
     def test_list_op_filters_prs_from_items(self, fake):
         fake.seed_pull_requests(OWNER, REPO, 4, state="open", labels=["area:cli"])
@@ -393,3 +407,68 @@ class TestPerPageClamp:
             fake, owner=OWNER, repo=REPO, filters={}, per_page=150, page=1
         )
         assert result["data"]["has_more"] is True
+
+
+# --- BKL-6W9R: ONE shared paginator, converged bounds, loud cap trip ---------
+
+
+class _EndlessIssues:
+    """A backend that never returns a short page — the pathological shape the
+    cap exists for."""
+
+    def __init__(self):
+        self.pages = 0
+
+    def list_issues(self, owner, repo, *, state, per_page, page, labels=None):
+        self.pages += 1
+        return [{"number": n, "body": "", "labels": []} for n in range(per_page)]
+
+
+class TestSharedPaginator:
+    """Four near-identical loops with three different caps and three different
+    cap-trip behaviours became one function. These pin the shared contract and
+    that each of the four call sites actually routes through it."""
+
+    def test_terminates_on_a_short_raw_page(self):
+        pages = [[1] * 100, [1] * 100, [1] * 7]
+        seen = []
+
+        def fetch(page, size):
+            seen.append(page)
+            return pages[page - 1]
+
+        assert len(list(tp.paginate(fetch))) == 207
+        assert seen == [1, 2, 3]
+
+    def test_a_full_final_page_costs_one_more_probe(self):
+        """An exactly-per_page result is indistinguishable from a truncated one
+        until the next page comes back empty — so the walk must not stop early."""
+        pages = [[1] * 100, []]
+        assert list(tp.paginate(lambda p, s: pages[p - 1])) == [1] * 100
+
+    def test_non_list_page_is_treated_as_empty_not_crashed(self):
+        assert list(tp.paginate(lambda p, s: {"message": "Not Found"})) == []
+
+    def test_cap_is_shared_not_per_call_site(self):
+        """The bug was divergence: 100 / 100 / 1000 / 100 with three different
+        cap-trip behaviours. One constant is the fix, so pin that it is one."""
+        assert tp.MAX_PAGES == 1000
+        assert tp.PAGE_SIZE == 100
+
+    def test_query_scan_cap_becomes_an_error_envelope(self):
+        """``counts``/``pick`` return envelopes, so the raise converts at the
+        boundary — an incomplete scan reports unavailable rather than publishing
+        a smaller backlog than the repo actually has."""
+        result = query.counts(_EndlessIssues(), owner=OWNER, repo=REPO)
+        assert result["status"] == "error"
+        assert result["error"]["code"] == "unavailable"
+        assert "truncated" in result["error"]["message"]
+
+    def test_export_scan_cap_becomes_an_error_envelope(self, tmp_path):
+        """``export`` is the backup path — the one place a silently short result
+        is worst, because a truncated backup is a backup that lies."""
+        result = migrate.export_backlog(
+            _EndlessIssues(), owner=OWNER, repo=REPO, dest=tmp_path / "out"
+        )
+        assert result["status"] == "error"
+        assert "truncated" in result["error"]["message"]

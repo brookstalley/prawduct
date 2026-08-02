@@ -45,7 +45,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from . import core, encode, ids, legacy, provision, restructure
-from .transport import Transport, TransportError
+from .transport import Transport, TransportError, paginate
 
 # The facet metadata keys the importer consumes as `<facet>:value` labels (§3).
 # `status` is the status axis (§4). Every *other* metadata key — and an invalid
@@ -1498,20 +1498,18 @@ def _export_record(
 
 
 def _scan_all(transport: Transport, owner: str, repo: str) -> list[dict]:
-    """Every issue in the repo across pages (state=all), bounded so a pathological
-    repo can never spin forever. Raises ``TransportError`` on failure (caught by the
-    caller's envelope boundary)."""
-    collected: list[dict] = []
-    page = 1
-    per_page = 100
-    while page <= 1000:  # a very high backstop; a real repo is far smaller
-        batch = transport.list_issues(owner, repo, state="all", per_page=per_page, page=page)
-        collected.extend(batch)
-        if len(batch) < per_page:
-            return collected
-        page += 1
-    _diag("export scan hit the page cap; results truncated")
-    return collected
+    """Every issue in the repo across pages (state=all). Raises ``TransportError``
+    on failure — including a page-cap trip, which matters most here: this feeds
+    ``export``, the backup path, where a silently truncated result is a backup
+    that lies about being complete. Caught by the caller's envelope boundary."""
+    return list(
+        paginate(
+            lambda page, size: transport.list_issues(
+                owner, repo, state="all", per_page=size, page=page
+            ),
+            what="export scan",
+        )
+    )
 
 
 def _write_json(path: Path, data: dict) -> None:

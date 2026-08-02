@@ -29,7 +29,9 @@ Prawduct exposes **two related programmatic surfaces**, both local:
 `settings.json`; prawduct's own **skills** (internal) call the wider CLI. Note the asymmetry that
 shapes every decision below: the *hook* contract is external and its shape is set by Claude Code;
 the *rest of the CLI* is an **internal** surface consumed by skills that ship in the same plugin
-version. There is no supported third-party consumer of `prawduct-hook` today.
+version. **One exception as of 2026-08-02:** `print-install-reference` is the first subcommand
+supported for third-party callers — see the ruling under Direction. Every other subcommand remains
+internal, and calling one from outside prawduct is unsupported rather than merely undocumented.
 
 The canonical contract lives in: `hooks/hooks.json` (which events invoke which subcommands), the CLI
 usage string and each subcommand's argv parsing, and the `--json` output shapes documented here and
@@ -43,6 +45,11 @@ in `docs/governance-telemetry.md`.
 - **Whole-surface semantic versioning on the plugin; the internal CLI subcommand surface carries no per-subcommand version; persisted data that outlives a plugin version (the evidence store) is independently schema-versioned with forward-incompatibility detection.** (recorded decision `api_versioning_approach`)
   Why: the plugin semver is the auto-update cache key and the one versioning handle a consumer sees; the CLI is an internal surface carried at the same version as its skill callers, so per-subcommand versioning would be ceremony without a consumer; the evidence store is the one contract that must survive across versions, so it is versioned independently and a schema-ahead fact blocks loudly. Revisit trigger: the first non-prawduct caller of `prawduct-hook` — add a stability tier + a `--version` handle before it ships.
   Status: steady-state (mirrored in `project-state.yaml` `design_decisions.api_versioning_approach` / `api_versioning_decided`).
+
+  **Ruling 2026-08-02 — the revisit trigger fired, and the answer is a narrow tier, not a new versioning scheme.** `print-install-reference` (#533) ships *for* non-prawduct callers, so the trigger's "first non-prawduct caller" condition is met deliberately rather than by accident. The trigger asks for a stability tier and a `--version` handle before such a thing ships; both are satisfied without amending the decision:
+    - **Stability tier — `stable`, and it applies to exactly one subcommand.** `print-install-reference` emits a JSON object on stdout, exit 0; keys are additive-only and never repurposed (already the third Direction norm), and removal would require a major. It is deliberately the *easiest possible* thing to promise: the command reads one constant and prints it, so there is no behaviour to regress independently of the value it publishes. Everything else in the CLI stays **internal/unstable** — the asymmetry above is the contract, and a consumer that binds to another subcommand gets no promise.
+    - **`--version` handle — the existing `prawduct-hook version`.** It already prints the bare plugin semver, which is the one versioning handle a consumer sees (the decision's own rationale), so a caller can gate on plugin version today. A per-subcommand `--version` would be the ceremony this decision exists to avoid; adding one for a single stable command would make the surface *less* uniform, not more.
+  Why a ruling rather than an amendment: the recorded decision's content is unchanged — whole-surface semver, no per-subcommand version, evidence store versioned independently. What changed is that the surface now has one externally-supported member, which the decision anticipated and asked to be *stated* rather than avoided. Next revisit trigger: a **second** subcommand needing the stable tier, or any request to bind a third party to a `--json` shape — either means the tier needs a real definition rather than a one-command exception.
 - **Exit codes are the contract, on a documented and consistent scheme; message severity is a stable prefix vocabulary; errors are attributed, never raised as stack traces across the boundary.** (recorded decision `api_error_model_approach`)
   Why: skills bind to exit codes, not parsed text, so a stable exit-code scheme + prefix vocabulary is what lets a narrow command be allowlisted instead of arbitrary `python3 -c`; a leaked stack trace across the boundary is an unattributed failure a caller cannot act on.
   Status: steady-state. Current state: applied inline per subcommand rather than centralized behind named constants — this artifact is the canonical statement, and new subcommands cite it rather than inventing a return convention.
@@ -77,6 +84,13 @@ The CLI groups by responsibility. Every subcommand is read-only unless marked mu
   `jurisdiction`.
 - **Repo lifecycle** — `migrate-plugin`, `init-product`, `update-gitignore`, `audit-learnings`,
   `repo-disable`, `bug-inbox` (all dry-run-by-default where they mutate).
+- **Published surfaces** (read-only, and the only ones third parties may bind to) —
+  `version` (bare plugin semver on stdout) and `print-install-reference` (the canonical
+  `.claude/settings.json` install reference as JSON on stdout, sorted keys, exit 0; exit 1 with an
+  attributed stderr message if the constant is unreadable, and **nothing on stdout** in that case,
+  so a caller can never merge a partial reference). `print-install-reference` publishes
+  `migrate_plugin.INSTALL_REFERENCE` verbatim — it is the readable form of the value
+  `init-product` and `migrate-plugin` already merge into a repo, not a second copy of it.
 
 Safe/idempotent notes: consolidation and fact-appends are **idempotent** (identity fixed at
 dispatch); state-mutating lifecycle commands (`migrate-plugin`, `init-product`, `coverage-scaffold`,

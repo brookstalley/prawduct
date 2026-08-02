@@ -461,8 +461,12 @@ def tree_diff(project_dir: Path, tree_a: str, tree_b: str) -> "list[str] | None"
     failure) — never guessed, matching ``coverage_algebra.DiffFn``'s
     contract. This is the diff the gates inject into the algebra and the
     dispatch side uses for its ``files_changed`` snapshot, so the recorded
-    set and the composed edge-validity check agree by construction."""
-    if not (isinstance(tree_a, str) and tree_a and isinstance(tree_b, str) and tree_b):
+    set and the composed edge-validity check agree by construction.
+
+    A tree id that is not a full-length object id never reaches git argv — it
+    is a malformed fact, and a malformed fact yields no answer here for the
+    same reason it yields no edge in the algebra."""
+    if not (gitstate.is_object_id(tree_a) and gitstate.is_object_id(tree_b)):
         return None
     rc, out, _err = run_git(project_dir, "diff", "--name-only", tree_a, tree_b)
     if rc != 0:
@@ -491,8 +495,12 @@ def tree_entries(project_dir: Path, tree: str) -> "list[tuple[str, str, str]] | 
     its default output, and a quoted path classifies differently from the
     real one — the same trap ``gitstate.parse_porcelain_line`` exists to
     absorb, met here before it can bite.
+
+    Shape-gated like :func:`tree_diff`: a tree id that is not a full-length
+    object id is unreadable by definition, so it denies a free edge rather
+    than being handed to git.
     """
-    if not (isinstance(tree, str) and tree):
+    if not gitstate.is_object_id(tree):
         return None
     rc, out, _err = run_git(project_dir, "ls-tree", "-r", "-z", "--full-tree", tree)
     if rc != 0:
