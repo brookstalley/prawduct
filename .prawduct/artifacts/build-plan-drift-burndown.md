@@ -205,8 +205,12 @@ same defect shape #348 filed — a tracking reference naming no id — so the co
 Under-fires; costs advice, never soundness. The four carried-in test edits landed with the chunk as
 planned.
 
-**Chunk 04 BUILT 2026-08-02** (#241, #351) — the plan's last chunk, so its review is the
-**cumulative**. Both halves were "a surface that claims to mirror another surface and does not", and
+**Chunk 04 CLOSED 2026-08-02** (#241, #351) — the plan's last chunk, so its review was the
+**cumulative**: 0 blocking / 7 warnings / 10 notes, then a verify round that found **1 blocking
+introduced by the fix pass** (a retracted compliance claim left a live norm departure carried by a
+rationale paragraph rather than a `[DECISION]` block), then a clean round. 15 fixed, 2 waived, three
+residuals filed (`#561`, `#562`, `#563`). Composed coverage now spans `merge-base..HEAD`; the branch
+is PR-ready and `/prawduct:pr` runs when the owner asks. Figures and findings live in the change-log. Both halves were "a surface that claims to mirror another surface and does not", and
 in both the fix was *where the answer lives*, not the answer. #241: `coverage_probes` now owns
 `discovery_expected` / `layer0_active` / `layer1_active`, and the report calls them instead of
 re-deriving a layer it claims to mirror. The design call worth keeping is the one a naive fix misses
