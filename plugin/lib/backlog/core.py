@@ -230,6 +230,21 @@ def get_item(
         return error("unavailable", "the backend request failed unexpectedly")
 
     item, warnings = encode.decode_item(issue, canonical_id=nid.canonical)
+    # The DM5 drill-down: `get` is the one read that carries the comment thread,
+    # because clarifications and solution links land there after filing. Skipped
+    # when the payload count says there is nothing to fetch; a failed fetch
+    # degrades to the payload count + a warning, never a failed get (ERR-6).
+    item["comments"] = []
+    if issue.get("comments") != 0:
+        try:
+            item["comments"] = transport.list_comments(nid.owner, nid.repo, nid.number)
+            item["comments_count"] = len(item["comments"])
+        except (TransportError, OSError, json.JSONDecodeError) as exc:  # ERR-6
+            log_diag(f"comment fetch failed on get: {type(exc).__name__}")
+            warnings.append(
+                "the comment thread could not be fetched — the item may carry "
+                "discussion (clarifications, solution links) you are not seeing"
+            )
     superseded = item.get("superseded_by")
     if superseded:
         # A merged-away source: follow the redirect chain so the caller learns

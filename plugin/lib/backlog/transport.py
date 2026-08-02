@@ -324,6 +324,12 @@ class Transport:
     ) -> dict:
         raise NotImplementedError
 
+    def list_comments(self, owner: str, repo: str, number: int) -> list[dict]:
+        """The comment thread on ``number`` — the DM5 drill-down read that pairs
+        with ``create_comment``. Returns oldest-first
+        ``[{id, author, created_at, body, url}]`` across every page."""
+        raise NotImplementedError
+
 
 class GhTransport(Transport):
     """The real transport: drives ``gh`` as a subprocess."""
@@ -656,6 +662,26 @@ class GhTransport(Transport):
             ],
             input_json=json.dumps({"body": body}),
         )
+
+    def list_comments(self, owner: str, repo: str, number: int) -> list[dict]:
+        """The comment thread on ``number`` (DM5 drill-down). REST returns
+        oldest-first; each comment is reduced to the fields the item read
+        carries — same reduction posture as ``list_timeline``."""
+        result = self._api_paged(f"repos/{owner}/{repo}/issues/{number}/comments")
+        out: list[dict] = []
+        for comment in result:
+            if not isinstance(comment, dict):
+                continue
+            out.append(
+                {
+                    "id": comment.get("id"),
+                    "author": (comment.get("user") or {}).get("login"),
+                    "created_at": comment.get("created_at"),
+                    "body": comment.get("body"),
+                    "url": comment.get("html_url"),
+                }
+            )
+        return out
 
     # -- subprocess plumbing ----------------------------------------------
 

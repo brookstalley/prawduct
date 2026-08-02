@@ -581,6 +581,10 @@ def decode_item(issue: dict, *, canonical_id: str | None = None) -> tuple[dict, 
         "claimed_at": block.claimed_at(),
         "automated": block.get("automated") == "true",
         "url": issue.get("html_url"),
+        # The native comment count rides the issue payload, so every read path
+        # (get/list/pick) can show "this item has discussion" for free; the
+        # thread itself is fetched only by `get` (DM5 drill-down).
+        "comments_count": issue.get("comments") or 0,
         "labels": labels,
         "id_aliases": block.id_aliases(),
         "superseded_by": block.superseded_by(),

@@ -3,6 +3,37 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-08-02: `get` reads the comment thread — the DM5 drill-down had a write op but no read
+
+<!-- prawduct: type=feature | scope=backlog-comments-read | chunks=01 -->
+
+**An issue clarified by a comment was invisible to every backlog-skill agent.** DM5 contracts
+comments as "the drill-down channel" and `comment` writes them natively, but no read op returned
+them: `get_item` fetched only the issue payload, the decoded item carried neither thread nor count,
+and the skill's `allowed-tools` confine agents to `prawduct-hook backlog` ops — so a scope-narrowing
+clarification or a solution link landed on the issue and every agent kept acting on the stale body.
+(Q1 full-text-over-comments was deferred to the read-through cache; the drill-down *read* never
+needed one — it is one REST call on a single-item `get`.)
+
+**Changes:**
+- `Transport.list_comments` + the `GhTransport` impl (`_api_paged` over the comments endpoint,
+  reduced to `{id, author, created_at, body, url}` — the `list_timeline` reduction posture).
+- `core.get_item` attaches the thread; the call is skipped when the payload `comments` count is 0,
+  and a failed fetch degrades (warning + payload count + empty thread, never a failed get — ERR-6).
+- `encode.decode_item` gains `comments_count` from the native payload count, so every read
+  (`get`/`list`/`pick`) shows "this item has discussion" for free.
+- Human `get` renders the thread; JSON carries it in `data.comments`.
+- `adapter-mode.md` `get` section: read the thread before acting on an item; a nonzero
+  `comments_count` on a list line is the cue to drill down; a degraded fetch is not "no comments".
+- Contract docs updated in step: API contract §2.1 `get` row, Data Model §1.1 `comments` row +
+  §1.3 read-path rule.
+- Fake models the native `comments` count; L1 tests cover thread-on-get, zero-comment skip,
+  degraded fetch, count fidelity, pagination reduction, and both render modes. Verified live
+  against `brookstalley/prawduct#128` (a real issue whose comment re-verifies the bug — exactly
+  the scenario that motivated the change).
+
+**Classification:** feature
+
 ## 2026-08-02: the gate named the one route that could not clear the finding it was naming
 
 <!-- prawduct: type=fix | scope=critic-burndown | chunks=03 -->
