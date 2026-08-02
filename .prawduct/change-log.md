@@ -160,6 +160,16 @@ a **bounded exception** that expires when `#563` gives doctor a fact-emitting pa
 of the departure was never in question, and that is precisely why it needed deciding rather than
 explaining — a departure everyone agrees with is the one most likely to go unrecorded.
 
+**And the PR review caught the same defect one layer further out: the exception had a clock nothing
+could wind.** The `Live exception:` line written for that fix cited `#563` and glossed the trigger as
+its `revisit:` field — a field `#563` does not carry and, it turns out, *cannot*: the Issues adapter
+takes no `--revisit` flag, and `update --body` strips a caller-pasted `prawduct:` block by design
+(`_body_update_preserving_block`), so the only `revisit` accessor left is on the frozen markdown
+model. An artifact asserting a mechanism the tree does not support — this branch's own subject,
+appearing inside the amendment that closes it. The line now states the trigger as prose and says why
+it can only be prose, the walker is named (the janitor's Norm Health sweep reading `#563`, which is
+what walks every event-bound trigger anyway), and the missing write path is filed as `#564`.
+
 **Two of the remaining four are corrections that reached one home out of three** — the shape this
 whole batch exists to burn down, twice in the pass that fixed it. "Layers 0↔1 are exact
 complements" was corrected in `docs/norms.md` and left standing in `skills/doctor/SKILL.md` and in
