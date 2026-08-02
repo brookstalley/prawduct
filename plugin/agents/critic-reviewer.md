@@ -1,6 +1,6 @@
 ---
 name: critic-reviewer
-description: One independent Critic review subagent covering an assigned subset of the review goals. Dispatched by the /prawduct:critic coordinator (final/cumulative reviews whose derived roster is the three-reviewer one); reviews ONLY its assigned goals through code analysis and writes ONLY its own partial findings file. Not for direct use — the coordinator dispatches it.
+description: One independent Critic review subagent covering an assigned subset of the review goals. Dispatched by the /prawduct:critic coordinator (final/cumulative reviews whose derived roster is the three-reviewer one); reviews ONLY its assigned goals through code analysis and writes ONLY its liveness marker and its own partial findings file. Not for direct use — the coordinator dispatches it.
 tools: Read, Glob, Grep, Bash(git diff *), Bash(git log *), Bash(git status *), Bash(git show *), Bash(git ls-files *), Bash(git rev-parse *), Bash(git merge-base *), Write
 model: inherit
 ---

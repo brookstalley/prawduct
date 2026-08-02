@@ -2064,6 +2064,36 @@ class TestBeginArchivesLeftovers:
         from lib import core
         assert ".prawduct/.critic-partials-archive/" in core.GITIGNORE_ENTRIES
 
+    def test_failed_archive_degrades_to_delete_never_blocks_dispatch(self, tmp_path):
+        # The archive is forensics, not a gate: when it cannot be written the
+        # dispatch must proceed exactly as the old delete behavior did. Forced
+        # here by pre-creating the archive path as a FILE, so dest.mkdir()
+        # raises OSError. The failure is named on stderr, not swallowed.
+        repo = self._repo_with_leftovers(tmp_path, "rev-20260802T190415Z-0e2cd074")
+        (repo / self.ARCHIVE_REL).write_text("not a directory")
+        result = _run_begin(repo, "--mode", "chunk")
+        assert result.returncode == 0, f"stderr={result.stderr!r}"
+        assert "archive failed" in result.stderr
+        assert "falling back to delete" in result.stderr
+        assert "archived" not in result.stdout  # no false preservation claim
+        # Old delete behavior held: leftovers gone, fresh dispatch on disk.
+        assert not (repo / PARTIALS_REL / "correctness.json").exists()
+        assert (repo / PARTIALS_REL / "manifest.json").is_file()
+
+    def test_remove_partials_clears_started_markers(self, tmp_path):
+        # remove_partials unlinks ALL children, .started markers included —
+        # pinned because a future narrowing to *.json would leave stale
+        # markers feeding the NEXT review's death verdict (the exact
+        # false-signal class this fix targets) with the suite still green.
+        prawduct = tmp_path / ".prawduct"
+        pdir = cc.partials_dir(prawduct)
+        pdir.mkdir(parents=True)
+        (pdir / "manifest.json").write_text("{}")
+        (pdir / "correctness.json").write_text("{}")
+        cc.started_path(prawduct, "correctness").write_text("correctness")
+        cc.remove_partials(prawduct)
+        assert not pdir.exists()
+
 
 class TestVerifyResolutionsDispatch:
     def _seed_and_fix(self, repo: Path) -> tuple[str, str]:

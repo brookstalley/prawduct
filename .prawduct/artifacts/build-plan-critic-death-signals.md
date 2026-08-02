@@ -36,8 +36,8 @@ sentence, and the fix set was chosen by the owner ("we have to fix this now").
   window — re-dispatched, doubled review cost, and the first review left no trace.
 - **Success:** No signal a waiting caller can reach affirmatively fakes death: the marker
   carries no PID; `critic-consolidate`'s waiting message reports per-role started ages
-  from reviewer-written `<role>.started` markers ("design started 3.4 min ago" vs "no
-  start marker"); the death verdict keys on each role's own started age when a marker
+  from reviewer-written `<role>.started` markers ("design (started 3.4 min ago)" vs a
+  bare role name when no marker exists); the death verdict keys on each role's own started age when a marker
   exists, so late-started reviewers aren't declared dead by dispatch age; and
   `critic-begin` archives an unconsolidated predecessor manifest instead of deleting it.
 - **Out of scope:** The SendMessage channel gap the same report noted (filed separately);

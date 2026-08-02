@@ -413,7 +413,14 @@ def _archive_leftovers(prawduct_dir: Path) -> Path | None:
         dest.mkdir(parents=True, exist_ok=True)
         for child in children:
             child.rename(dest / child.name)
-    except OSError:
+    except OSError as exc:
+        # Name the reason before degrading — a silent fallback would make
+        # "why is the archive empty?" undiagnosable after the fact.
+        print(
+            f"critic-begin: leftover archive failed ({exc}) — "
+            "falling back to delete",
+            file=sys.stderr,
+        )
         return None
     # Prune to the newest _ARCHIVE_KEEP by mtime — best-effort, an unprunable
     # archive must not fail the dispatch.
@@ -805,13 +812,10 @@ def begin_review(
         # consolidated (consolidate removes everything on success). Deleting
         # it would erase the only trace that review ran — archive first, then
         # sweep whatever archiving left behind.
+        # No note appended for the archive: the CLI already renders
+        # `archived_leftovers` as its own stdout line, and a note here printed
+        # the same fact twice (once per channel).
         archived = _archive_leftovers(prawduct_dir)
-        if archived is not None:
-            notes.append(
-                f"a prior dispatch was never consolidated — its manifest/partials"
-                f" are archived at {archived} (newest {_ARCHIVE_KEEP} kept),"
-                " not deleted"
-            )
         remove_partials(prawduct_dir)
         cleared = True
     pdir.mkdir(parents=True, exist_ok=True)
