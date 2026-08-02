@@ -587,11 +587,21 @@ things that exercise would otherwise have failed to confirm.
 - [ ] Chunk 03: Critic dispatch anchoring and review-record attribution
 - [ ] Chunk 04: The independent tail
 Context: Plan authored 2026-08-01 on `fix/backlog-burndown`, from a re-derivation of the 168 open
-tracker items by `refs:` co-location. **Chunks 01, 02 and 03 are built, reviewed and committed**;
-Chunk 04 is next, and now carries a fifth item (#533, added at owner request).
+tracker items by `refs:` co-location. **ALL FOUR CHUNKS ARE BUILT.** Chunks 01–03 merged to
+`develop` (PR #538); **Chunk 04 built, reviewed and committed 2026-08-02** — five items closed
+(#209, #307, #313, #532, #533, the last added at owner request), cumulative + verify rounds clean,
+suite 3297 passed. Chunk 04's type is `cumulative-final`, so its one `cumulative` served as the
+plan's final review; there is no separate `final` outstanding.
 `active_build_plan` still points at `artifacts/build-plan-v3.2.0-golive.md` and **must not be
 repointed** — that plan is in progress in the primary checkout, the pointer is single-slot, and
 repointing was the wrong fix for the attribution defect Chunk 03 closes by resolving *around* it.
 **Dispatch with `--mode <m> --chunk NN`, and NOT `--scope`** — Chunk 03 made the branch name derive
 it, and this line prescribing the old workaround is what the Critic caught twice; see
-§ Verification Strategy for what still binds and why. Next: Chunk 04.
+§ Verification Strategy for what still binds and why.
+
+**Next: release classification, not more building.** The plan file and pointer are **RETAINED** per
+gitflow — the `develop`→`main` release flips the statusless change-log entries to `status=shipped`
+and regenerates every scope-tagged plan's `## Status` in one pass, so deleting now would leave the
+release nothing to regenerate. `check-releasability` currently reports `backlog-burndown` as an
+**unclassified scope with no row in `release-plan-v3.2.3.md`** — that row is what gives the #533
+surface an owner on the way to `main`, which is where an external consumer is waiting for it.
