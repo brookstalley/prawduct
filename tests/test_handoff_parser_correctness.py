@@ -247,7 +247,13 @@ class TestViewsEnabledCurrentChunk:
             current_id="02", current_text="Chunk 02: Parser correctness"
         )
         monkeypatch.setattr(
-            critic_mode.buildplan_refs, "resolve_chunk_progress", lambda _d: redirected
+            critic_mode.buildplan_refs,
+            "resolve_chunk_progress",
+            # Accepts the plan-path argument `infer_mode` now passes (it resolves
+            # this branch's plan rather than trusting the pointer). The stub
+            # ignores it: what is under test is that the ANSWER comes from the
+            # owner, not which file the owner was pointed at.
+            lambda _d, _plan_path=None: redirected,
         )
         assert critic_mode.infer_mode(repo)[1] != "plan-override: final", (
             "infer_mode ignored the resolver — it is re-deriving which chunk is "

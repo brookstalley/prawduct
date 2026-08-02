@@ -20,6 +20,8 @@ ported runtime:
 from __future__ import annotations
 
 import ast
+import importlib.machinery
+import importlib.util
 import json
 import os
 import re
@@ -1425,6 +1427,208 @@ class TestFromJunitIngest:
         assert junit.is_file()  # report read, not consumed
 
 
+class TestJunitLeafCounting:
+    """#128: counts come from leaf `<testcase>` elements, not the `tests=` attribute.
+
+    The attribute's meaning is reporter-specific, and the two live conventions
+    cannot both be served by summing it:
+
+    | reporter   | `tests=` counts   | summing top-level | summing every suite |
+    |------------|-------------------|-------------------|---------------------|
+    | Ant-style  | all descendants   | correct           | double-counts       |
+    | node:test  | direct children   | **undercounts**   | correct             |
+
+    A leaf `<testcase>` appears exactly once however the suites nest, so counting
+    leaves is correct under both with no reporter detection. Each convention is a
+    first-class test here, since a fix for either one alone silently reintroduces
+    the other.
+    """
+
+    def _repo(self, tmp_path) -> Path:
+        repo = tmp_path / "leaf"
+        repo.mkdir()
+        (repo / ".prawduct").mkdir()
+        (repo / "test_sample.py").write_text("def test_ok():\n    assert True\n")
+        _git(repo, "init", "-b", "main")
+        _git(repo, "add", "-A")
+        _git(repo, "commit", "-m", "c1")
+        return repo
+
+    def _write(self, repo: Path, xml: str) -> Path:
+        path = repo / "report.xml"
+        path.write_text('<?xml version="1.0" encoding="utf-8"?>\n' + xml)
+        return path
+
+    def _record(self, repo: Path, xml: str) -> dict:
+        junit = self._write(repo, xml)
+        _run_in(repo, "test-evidence", "record", "--from-junit", str(junit))
+        return json.loads((repo / ".prawduct" / ".test-evidence.json").read_text())
+
+    # Two child describes holding 3 leaves each; the outer suite declares 2.
+    NODE_STYLE = """
+<testsuites>
+  <testsuite name="outer" tests="2" failures="0" errors="0" skipped="0" time="1.0">
+    <testsuite name="a" tests="3" failures="0" errors="0" skipped="0" time="0.5">
+      <testcase name="a1"/><testcase name="a2"/><testcase name="a3"/>
+    </testsuite>
+    <testsuite name="b" tests="3" failures="0" errors="0" skipped="0" time="0.5">
+      <testcase name="b1"/><testcase name="b2"/><testcase name="b3"/>
+    </testsuite>
+  </testsuite>
+</testsuites>
+"""
+
+    def test_nested_describes_are_not_undercounted(self, tmp_path):
+        # The reported bug: 6 real tests recorded as 2, scaling with nest depth.
+        ev = self._record(self._repo(tmp_path), self.NODE_STYLE)
+        assert (ev["passed"], ev["failed"], ev["skipped"]) == (6, 0, 0)
+
+    def test_ant_style_descendant_counts_are_not_double_counted(self, tmp_path):
+        # Same tree, Ant semantics: outer declares 6 (its descendants). Summing
+        # every suite's attribute would report 12; leaves report 6.
+        ev = self._record(
+            self._repo(tmp_path), self.NODE_STYLE.replace('name="outer" tests="2"',
+                                                          'name="outer" tests="6"')
+        )
+        assert (ev["passed"], ev["failed"], ev["skipped"]) == (6, 0, 0)
+
+    def test_flat_suite_is_unchanged(self, tmp_path):
+        # pytest's shape — one suite, leaves directly beneath. The common case
+        # must not move.
+        ev = self._record(self._repo(tmp_path), """
+<testsuites><testsuite name="pytest" tests="4" failures="1" errors="0" skipped="1" time="2.5">
+  <testcase name="t1"/><testcase name="t2"/>
+  <testcase name="t3"><failure message="boom"/></testcase>
+  <testcase name="t4"><skipped/></testcase>
+</testsuite></testsuites>
+""")
+        assert (ev["passed"], ev["failed"], ev["skipped"]) == (2, 1, 1)
+
+    def test_status_is_classified_per_leaf_with_error_precedence(self, tmp_path):
+        # A case carrying BOTH <error> and <failure> counts once, as an error —
+        # otherwise `failed` exceeds the number of tests that actually ran.
+        ev = self._record(self._repo(tmp_path), """
+<testsuites><testsuite name="m" tests="4" failures="9" errors="9" skipped="9" time="1.0">
+  <testcase name="p"/>
+  <testcase name="both"><error message="e"/><failure message="f"/></testcase>
+  <testcase name="f"><failure message="f"/></testcase>
+  <testcase name="s"><skipped/></testcase>
+</testsuite></testsuites>
+""")
+        # 1 passed, 1 error + 1 failure = 2 failed, 1 skipped — and the wrong
+        # suite-level attributes (9/9/9) are ignored entirely.
+        assert (ev["passed"], ev["failed"], ev["skipped"]) == (1, 2, 1)
+
+    def test_summary_only_report_falls_back_to_attributes(self, tmp_path):
+        # Some CI aggregators emit suite attributes with no <testcase> children.
+        # Recording a confident 0 would be worse than the bug being fixed, so the
+        # attribute sum remains the fallback when there are no leaves anywhere.
+        ev = self._record(self._repo(tmp_path), """
+<testsuites><testsuite name="agg" tests="10" failures="2" errors="1" skipped="3" time="9.0"/></testsuites>
+""")
+        assert (ev["passed"], ev["failed"], ev["skipped"]) == (4, 3, 3)
+
+    def test_multiple_roots_still_aggregate(self, tmp_path):
+        # The multi-root behaviour that top-level summing was introduced for must
+        # survive leaf counting: two sibling suites, three leaves each.
+        ev = self._record(self._repo(tmp_path), """
+<testsuites>
+  <testsuite name="one" tests="3" failures="0" errors="0" skipped="0" time="1.0">
+    <testcase name="x1"/><testcase name="x2"/><testcase name="x3"/>
+  </testsuite>
+  <testsuite name="two" tests="3" failures="1" errors="0" skipped="0" time="1.0">
+    <testcase name="y1"/><testcase name="y2"/>
+    <testcase name="y3"><failure message="b"/></testcase>
+  </testsuite>
+</testsuites>
+""")
+        assert (ev["passed"], ev["failed"], ev["skipped"]) == (5, 1, 0)
+
+    def _record_many(self, repo: Path, *xmls: str) -> dict:
+        args = []
+        for i, xml in enumerate(xmls):
+            path = repo / f"report{i}.xml"
+            path.write_text('<?xml version="1.0" encoding="utf-8"?>\n' + xml)
+            args += ["--from-junit", str(path)]
+        _run_in(repo, "test-evidence", "record", *args)
+        return json.loads((repo / ".prawduct" / ".test-evidence.json").read_text())
+
+    def test_summary_only_suite_survives_alongside_a_populated_one(self, tmp_path):
+        # One report can mix shapes: a populated suite plus one that died before
+        # emitting any <testcase> and carries only attributes. Choosing
+        # leaf-vs-attribute once for the whole ingest drops the second entirely —
+        # and with it a real error.
+        ev = self._record(self._repo(tmp_path), """
+<testsuites>
+  <testsuite name="ok" tests="2" failures="0" errors="0" skipped="0" time="1.0">
+    <testcase name="a"/><testcase name="b"/>
+  </testsuite>
+  <testsuite name="died" tests="1" failures="0" errors="1" skipped="0" time="0.0"/>
+</testsuites>
+""")
+        # 2 leaves plus the summary-only suite's 1 error. A global switch reports
+        # (2, 0, 0) here — a broken run recorded as green.
+        assert (ev["passed"], ev["failed"], ev["skipped"]) == (2, 1, 0)
+
+    def test_mixed_multi_report_ingest_keeps_every_failure(self, tmp_path):
+        # `--from-junit` is repeatable — the documented multi-environment on-ramp.
+        # One runner emitting leaves and another emitting a summary-only report is
+        # the shape that turns a global leaf/attribute switch into a FALSE GREEN:
+        # `failed` drives this command's exit status AND `tests_are_current`, so a
+        # dropped failing environment would let the stop gate pass.
+        ev = self._record_many(
+            self._repo(tmp_path),
+            """
+<testsuites><testsuite name="leafy" tests="2" failures="0" errors="0" skipped="0" time="1.0">
+  <testcase name="a"/><testcase name="b"/>
+</testsuite></testsuites>
+""",
+            """
+<testsuites><testsuite name="summary" tests="5" failures="2" errors="0" skipped="0" time="3.0"/></testsuites>
+""",
+        )
+        assert (ev["passed"], ev["failed"], ev["skipped"]) == (5, 2, 0)
+
+    def test_skipped_loses_to_failure_in_the_precedence_chain(self, tmp_path):
+        # The precedence rule claims `skipped` loses to BOTH <error> and <failure>.
+        # The error half is pinned above; this pins the failure half, so reordering
+        # the chain to test `skipped` first cannot pass silently.
+        ev = self._record(self._repo(tmp_path), """
+<testsuites><testsuite name="p" tests="2" failures="0" errors="0" skipped="0" time="1.0">
+  <testcase name="ok"/>
+  <testcase name="both"><skipped/><failure message="f"/></testcase>
+</testsuite></testsuites>
+""")
+        # The dual case is a failure, never a skip: (1, 1, 0), not (1, 0, 1).
+        assert (ev["passed"], ev["failed"], ev["skipped"]) == (1, 1, 0)
+
+    def test_malformed_count_attribute_exits_two_not_traceback(self, tmp_path):
+        # Every other bad-report path here exits 2 with a named cause. A
+        # non-numeric `tests=` must not be the one that tracebacks instead.
+        repo = self._repo(tmp_path)
+        junit = self._write(repo, """
+<testsuites><testsuite name="bad" tests="oops" failures="0" errors="0" skipped="0" time="1.0"/></testsuites>
+""")
+        res = _run_in(repo, "test-evidence", "record", "--from-junit", str(junit))
+        assert res.returncode == 2, res.stderr
+        assert "malformed count attribute" in res.stderr
+        assert "Traceback" not in res.stderr
+
+    def test_empty_count_attribute_reads_zero(self, tmp_path):
+        # `tests=""` is absent-with-extra-steps, not malformed: it must read 0 and
+        # let the run record, rather than taking the exit-2 path a non-numeric
+        # value earns. Without that distinction this report fails to record at all.
+        ev = self._record(self._repo(tmp_path), """
+<testsuites>
+  <testsuite name="leafy" tests="1" failures="0" errors="0" skipped="0" time="1.0">
+    <testcase name="a"/>
+  </testsuite>
+  <testsuite name="blank" tests="" failures="" errors="" skipped="" time="0.0"/>
+</testsuites>
+""")
+        assert (ev["passed"], ev["failed"], ev["skipped"]) == (1, 0, 0)
+
+
 class TestFromCountsIngest:
     """`record --from-counts passed=N failed=M skipped=K [duration=S]` records
     counts supplied directly — the language-/runner-agnostic on-ramp for a
@@ -2130,6 +2334,204 @@ class TestJurisdictionSubcommand:
         )
         assert result.returncode == 0, result.stderr
         assert ".prawduct/artifacts/telemetry-strategy.md" in result.stdout
+
+
+# =============================================================================
+# Green-is-evidence directive — a rule DELIVERED at its moment, not stored
+# =============================================================================
+
+
+def _load_hook_module():
+    """Import bin/prawduct-hook as a module.
+
+    The script guards its entry point with ``if __name__ == "__main__"``, so
+    importing runs definitions only. Needed because the trigger under test is a
+    pure function whose end-to-end path runs a subprocess overlay — testing it
+    only through that path would leave the assertion unable to distinguish "the
+    trigger is wrong" from "the overlay populated nothing," which is the exact
+    fixture-cannot-reach-the-subject failure this directive warns about.
+    """
+    # bin/prawduct-hook is deliberately extensionless (it is invoked as a bare
+    # command on the Bash PATH), so spec_from_file_location cannot infer a
+    # loader and returns None. Supply SourceFileLoader explicitly.
+    loader = importlib.machinery.SourceFileLoader(
+        "prawduct_hook_under_test", str(HOOK)
+    )
+    spec = importlib.util.spec_from_file_location(
+        "prawduct_hook_under_test", HOOK, loader=loader
+    )
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+class TestGreenIsEvidenceDelivery:
+    """The PRINT SITE, end to end — not the predicate behind it.
+
+    `TestGreenIsEvidenceTrigger` below covers `_evidence_changed_judged_code`
+    and pins phrases in the constant, and every one of those stayed green while
+    the wiring in `cmd_test_evidence` was unverified: inverting the condition,
+    or deleting the concatenation outright, changed nothing the suite could see.
+    A directive nobody proved reaches stdout is a directive that can silently
+    stop being delivered — and the constant's own first clause is *"confirm the
+    fixture actually REACHES the subject,"* which is the rule that gap violated.
+    """
+
+    def _repo(self, tmp_path) -> Path:
+        """A committed baseline. Callers then make the change under test.
+
+        Two fixture mistakes are designed out here, both found by these tests
+        failing. (1) Files written BEFORE the baseline commit leave an empty
+        diff, so `changes_referenced` is empty and the positive case cannot
+        fire. (2) The test file must live under `tests/` — the F4a overlay
+        discovers test roots there unless `tests_dirs:` says otherwise, and
+        without that it reports no coverage rather than a judged change.
+        """
+        repo = tmp_path / "gie"
+        repo.mkdir(parents=True)
+        (repo / ".prawduct").mkdir()
+        (repo / ".prawduct" / "project-state.yaml").write_text(
+            f"test_command: {sys.executable} -m pytest --junit-xml={{junit_xml}} -q\n"
+        )
+        (repo / "tests").mkdir()
+        (repo / "tests" / "test_baseline.py").write_text(
+            "def test_ok():\n    assert True\n"
+        )
+        (repo / "README.md").write_text("seed\n")
+        _git(repo, "init", "-b", "main")
+        _git(repo, "add", "-A")
+        _git(repo, "commit", "-m", "baseline")
+        return repo
+
+    def _judged_change(self, repo: Path) -> None:
+        """A changed `.py` whose symbol a test references — the one shape the
+        overlay puts into `changes_referenced`."""
+        (repo / "widget.py").write_text("def widget_fn():\n    return 1\n")
+        (repo / "tests" / "test_widget.py").write_text(
+            "def test_widget_fn():\n    assert 'widget_fn'\n"
+        )
+
+    def _docs_only_change(self, repo: Path) -> None:
+        """The cycle the directive claims to stay silent on. NOT 'no source
+        file' — an uncommitted `tests/test_*.py` is itself a judged change,
+        because it declares symbols that appear in a test file (itself), which
+        is how the first cut of this negative case fired the directive it was
+        written to prove absent."""
+        (repo / "README.md").write_text("seed\nmore prose\n")
+
+    def test_directive_reaches_stdout_when_judged_code_changed(self, tmp_path):
+        repo = self._repo(tmp_path)
+        self._judged_change(repo)
+        res = _run_in(repo, "test-evidence", "record")
+        assert res.returncode == 0, res.stderr
+        ev = json.loads((repo / ".prawduct" / ".test-evidence.json").read_text())
+        assert ev["changes_referenced"], (
+            "fixture did not produce a judged change, so this test cannot "
+            "distinguish 'directive missing' from 'trigger never held'"
+        )
+        hook = _load_hook_module()
+        assert hook._GREEN_IS_EVIDENCE_DIRECTIVE in res.stdout
+
+    def test_directive_absent_on_a_docs_only_cycle(self, tmp_path):
+        repo = self._repo(tmp_path)
+        self._docs_only_change(repo)
+        res = _run_in(repo, "test-evidence", "record")
+        assert res.returncode == 0, res.stderr
+        ev = json.loads((repo / ".prawduct" / ".test-evidence.json").read_text())
+        assert not ev["changes_referenced"]
+        hook = _load_hook_module()
+        assert hook._GREEN_IS_EVIDENCE_DIRECTIVE not in res.stdout
+        # And the record still went out — advice fails soft, so its absence
+        # must not take the confirmation with it.
+        assert "recorded:" in res.stdout
+
+    def test_the_directive_never_changes_the_exit_code(self, tmp_path):
+        """Acceptance criterion, asserted rather than assumed: the firing and
+        non-firing runs agree on exit status, so the advice rides the record
+        instead of grading it."""
+        fired = self._repo(tmp_path / "a")
+        self._judged_change(fired)
+        silent = self._repo(tmp_path / "b")
+        self._docs_only_change(silent)
+        a = _run_in(fired, "test-evidence", "record")
+        b = _run_in(silent, "test-evidence", "record")
+        hook = _load_hook_module()
+        assert hook._GREEN_IS_EVIDENCE_DIRECTIVE in a.stdout
+        assert hook._GREEN_IS_EVIDENCE_DIRECTIVE not in b.stdout
+        assert a.returncode == b.returncode == 0
+
+
+class TestGreenIsEvidenceTrigger:
+    """`_evidence_changed_judged_code` decides whether the directive prints.
+
+    The rule it carries has existed in `learnings.md` in general form for a long
+    time (line 292, "anything one command could check is a CLAIM") and does not
+    fire from there. Delivering it at `test-evidence record` — the moment green
+    stops being an observation and becomes evidence the gates read — is the
+    whole point, so the trigger must be exact in BOTH directions: a directive
+    that prints on every invocation is one the reader learns to skip.
+    """
+
+    def _write(self, tmp_path, payload: str) -> Path:
+        path = tmp_path / ".test-evidence.json"
+        path.write_text(payload)
+        return path
+
+    def test_fires_when_judged_code_changed(self, tmp_path):
+        hook = _load_hook_module()
+        path = self._write(tmp_path, json.dumps({"changes_referenced": ["lib/a.py"]}))
+        assert hook._evidence_changed_judged_code(path) is True
+
+    def test_silent_when_nothing_judged_changed(self, tmp_path):
+        hook = _load_hook_module()
+        path = self._write(tmp_path, json.dumps({"changes_referenced": []}))
+        assert hook._evidence_changed_judged_code(path) is False
+
+    def test_silent_when_field_absent(self, tmp_path):
+        # A record written before the F4a overlay existed, or one whose overlay
+        # was skipped (test-reference-verify missing), carries no field at all.
+        # NOT "a restamp": `--no-rerun` re-runs the overlay and repopulates the
+        # field against the current tree, so a restamp with judged changes in
+        # the diff DOES fire. That claim was wrong in four places at once.
+        hook = _load_hook_module()
+        path = self._write(tmp_path, json.dumps({"passed": 3}))
+        assert hook._evidence_changed_judged_code(path) is False
+
+    @pytest.mark.parametrize(
+        "payload",
+        [
+            "{not json at all",              # malformed
+            json.dumps(["a", "list"]),       # valid JSON, wrong shape
+            json.dumps({"changes_referenced": "lib/a.py"}),  # str, not list
+        ],
+        ids=["malformed", "not-a-dict", "field-not-a-list"],
+    )
+    def test_advice_fails_soft_on_unusable_records(self, tmp_path, payload):
+        # Architecture norm: authority fails closed, ADVICE fails soft. The
+        # evidence is already written and schema-valid by this point, so an
+        # uncomputable trigger omits a hint — it must never raise into a
+        # recording run.
+        hook = _load_hook_module()
+        assert hook._evidence_changed_judged_code(self._write(tmp_path, payload)) is False
+
+    def test_missing_file_is_false_not_an_error(self, tmp_path):
+        hook = _load_hook_module()
+        assert hook._evidence_changed_judged_code(tmp_path / "absent.json") is False
+
+    def test_directive_names_the_check_not_the_virtue(self):
+        """The text must stay actionable prose, not an exhortation.
+
+        Pins the three failure modes it exists to prevent — an unreachable
+        fixture, a non-discriminating assertion, and a machine-dependent branch
+        — plus the one-directional-mutation caveat that is the reason a builder
+        who already ran a mutation pass still needs to read it.
+        """
+        hook = _load_hook_module()
+        text = hook._GREEN_IS_EVIDENCE_DIRECTIVE
+        assert "REACHES the subject" in text
+        assert "cannot tell the two orderings apart" in text
+        assert "happens to exist on this machine" in text
+        assert "blind to what your change broke beside it" in text
 
 
 # =============================================================================

@@ -785,8 +785,15 @@ def _has_build_plan_in_state(prawduct_dir: Path) -> bool:
         return False
 
 
-def _has_active_build_plan_file(prawduct_dir: Path) -> bool:
-    """Return True if build-plan.md has at least one incomplete chunk.
+def _has_active_build_plan_file(
+    prawduct_dir: Path, plan_path: "Path | None" = None
+) -> bool:
+    """Return True if the build plan has at least one incomplete chunk.
+
+    ``plan_path`` names the plan to read, defaulting to the ``active_build_plan``
+    pointer. The Stop hook and the SessionStart advisory both pass the BRANCH's
+    plan, so the gate's "should I run" and its "what does the chunk declare"
+    cannot answer about different files.
 
     A completed plan (all [x]) or a missing file both return False — only an
     in-progress plan with remaining work triggers governance gates.
@@ -802,7 +809,7 @@ def _has_active_build_plan_file(prawduct_dir: Path) -> bool:
     finding-resolution sessions happen. Under ``views_enabled`` a flipped box
     means *shipped*, so "unflipped" is the right reading of "still governed."
     """
-    total, complete = buildplan_refs._count_build_plan_chunks(prawduct_dir)
+    total, complete = buildplan_refs._count_build_plan_chunks(prawduct_dir, plan_path)
     return total > 0 and complete < total
 
 

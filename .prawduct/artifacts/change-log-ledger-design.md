@@ -88,7 +88,9 @@ one key twice into a dict.
 2. **Release-notes source** — grouped by `release=`.
 3. **Release state machine** — statusless → `shipped`, swept at promotion.
 4. **Build-plan status derivation** — `chunks=` ticks checkboxes in plan files.
-5. **Gate input** — `check-change-log-entry` at the PR boundary; `regen-views --check` fails closed.
+5. **Gate input** — `check-change-log-entry` at the PR boundary; `regen-views` fails closed on a
+   global tag error (exit 2, nothing written) and suppresses a single scope's view on a
+   scope-local one (exit 3).
 
 Jobs 2–5 are typed relational data. Stored as prose, they have no schema, no uniqueness constraint,
 and no transaction — so selection degrades to positional greps, which is exactly REL-7D4X,
@@ -263,8 +265,13 @@ governance surfaces; it makes one of them typed.
    the cutover is two commits, not one: a mechanical **normalization** commit along those two axes
    (sized by `tests/spikes/change_log_roundtrip.py`), which is reviewable as pure formatting because
    `parse_change_log` output is unchanged by construction; then cut over with both paths live and
-   `regen-views --check` asserting byte-identity against the *normalized* file. Delete the parser only
-   after a full release cycle runs on the new path.
+   a byte-identity assertion against the *normalized* file. Delete the parser only
+   after a full release cycle runs on the new path. **This step needs a mechanism that does
+   not exist:** it was written against `regen-views --check`, and `--check` is gone — views
+   always regenerate, so there is no non-writing surface to assert equality from. Building
+   this cutover means adding a purpose-made comparison (a `--json` render dump, or a spike
+   script like `tests/spikes/change_log_roundtrip.py` already is) rather than reviving a dry
+   run, whose removal is what stopped drift accumulating behind a clean check.
 
 ## 8. Costs and risks — the honest objections
 
@@ -274,7 +281,8 @@ governance surfaces; it makes one of them typed.
   un-migrated repo). **This is the single largest cost and the main argument against.**
 - **~30 tests in `test_views.py` target `parse_change_log` directly.** They are the contract and must
   be rewritten deliberately, not deleted.
-- **Rendering must be deterministic** or `regen-views --check` becomes a false-positive generator.
+- **Rendering must be deterministic** or the byte-identity assertion above becomes a
+  false-positive generator.
 - **194 files in one directory** is a legibility change; `changes/` will want per-year subdirectories
   before long.
 - **Not during a release.** Doing this while v3.2.0 is in flight would repeat the v3.1.2 mistake of

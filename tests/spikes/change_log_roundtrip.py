@@ -12,7 +12,9 @@ What it answers, in one pass:
 
   * Can a per-change fact (YAML frontmatter + prose body) round-trip every real
     change-log entry, both structurally (what consumer queries Q1-Q7 read) and
-    byte-for-byte (what a `regen-views --check` cutover gate would assert)?
+    byte-for-byte (what a cutover gate would assert — note the `regen-views
+    --check` this was written against no longer exists; views always
+    regenerate, so the cutover needs a purpose-made comparison)?
   * How large is the one-time normalization that byte-identity requires, and is
     the key-order set disjoint from the blank-layout set?
   * Do release records reconstruct from the existing tags without partition

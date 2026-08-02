@@ -1,12 +1,23 @@
 """Scrub-decision drift — are the recorded migration dispositions still current?
 
+**ONE-WAY AGAINST THIS REPO AS OF 2026-08-01 — the verdict here is now vacuous.** The
+cutover froze `.prawduct/backlog.md`, and this instrument resolves its source through
+that file, so what it calls "the corpus" is a fixed snapshot rather than a living set.
+`CURRENT` became structurally unavoidable rather than measured: the unsurveyed set is
+empty because nothing can be added to it, not because everything was surveyed. **Do not
+read a verdict from this against prawduct's own backlog.** `BKL-9F6T` owns the
+date-keyed replacement that works post-cutover. Kept runnable and otherwise unmodified
+because it is still sound against *any other* repo's markdown backlog — which is the
+case the fleet migration needs it for, and the reason deleting it would be wrong.
+
 `.prawduct/artifacts/migration-scrub-decisions.md` records owner-approved merge and
 drop dispositions against a corpus snapshot, and tells its reader to *"regenerate it
 if the source drifts materially before the run."* This is that regeneration check.
 
 Committed rather than discarded for the same reason as the dispositions' own caveat
-("144 items at 964d03b; re-derive at use"): the corpus grows continuously, so any
-transcribed count is stale by the next filing. Run this before executing the scrub.
+("144 items at 964d03b; re-derive at use"): on a *live* markdown backlog the corpus
+grows continuously, so any transcribed count is stale by the next filing. Run this
+before executing the scrub — in a repo whose backlog is still markdown.
 
     python3 tests/spikes/backlog_scrub_drift.py            # vs the recorded snapshot
     python3 tests/spikes/backlog_scrub_drift.py 4e08a6c    # vs any other ref
@@ -49,7 +60,18 @@ from lib.backlog import legacy  # noqa: E402
 
 BACKLOG = ".prawduct/backlog.md"
 DECISIONS = ".prawduct/artifacts/migration-scrub-decisions.md"
-SNAPSHOT = "964d03b"  # the ref the recorded dispositions were derived against
+# The ref the recorded dispositions were derived against. Advanced 964d03b -> 5a169b2
+# on 2026-08-01, when Survey 3 screened the WHOLE open corpus rather than closing a
+# coverage gap in it — so from that commit there is no unsurveyed set left to derive.
+# Advancing is only ever legitimate after the covering survey's dispositions are
+# owner-confirmed; doing it first silently declares an unreviewed corpus surveyed.
+#
+# This constant is on its way out, and the reason is worth stating where the next
+# reader meets it: a git-ref baseline resolves through `git show <ref>:<backlog>`, so
+# it stops meaning anything the moment the markdown becomes frozen history and the
+# live corpus is GitHub Issues. A date evaluates identically on both backends. The
+# replacement is owned by BKL-9F6T, not by this spike.
+SNAPSHOT = "5a169b2"
 
 # The two tables differ in shape: merges are `| duplicate | survivor | reason |`,
 # drops are `| item | reason |` with prose in the second column. Match each on its

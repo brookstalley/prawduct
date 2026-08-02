@@ -913,13 +913,25 @@ _ALIAS_SCAN_MAX_PAGES: int = 100  # runaway guard, converged with transport/quer
 
 
 def iter_alias_issues(transport: Transport, owner: str, repo: str):
-    """Yield ``(number, pfxs, label_names)`` for every issue in the repo (all
+    """Yield ``(number, pfxs, label_names, status)`` for every issue in the repo (all
     states, paginated): ``pfxs`` are the well-formed hand-minted ids recorded in the
     body block ``id_aliases``; ``label_names`` are the issue's current label names
-    (so a caller can tell whether the matching ``id:PFX`` label is present). Raises
-    ``TransportError`` on a transport failure (caught at each caller's boundary).
-    Bounded by ``_ALIAS_SCAN_MAX_PAGES`` so a pathological repo cannot spin
-    forever."""
+    (so a caller can tell whether the matching ``id:PFX`` label is present); ``status``
+    is the **decoded** status. Raises ``TransportError`` on a transport failure
+    (caught at each caller's boundary). Bounded by ``_ALIAS_SCAN_MAX_PAGES`` so a
+    pathological repo cannot spin forever.
+
+    **Why the decoded status and not the raw ``state``.** The completeness gate has
+    to answer "is this item on the target *at the status the source says it should
+    be*", and reconstructing that from ``state`` means re-implementing the decoder's
+    rules — closed + ``state_reason``, open sub-state labels — at a second site,
+    where they can drift from :func:`encode.decode_status`. Yielding it costs
+    nothing: this scan already fetches with ``state="all"`` and already parses each
+    body, so the state and labels the decode needs are in hand and were previously
+    discarded. Decode advisories (a torn or unrecognized encoding) are *not*
+    surfaced here — this is a coverage scan, not a decoder audit, and the decode
+    fails open to a safe value by design.
+    """
     page = 1
     while page <= _ALIAS_SCAN_MAX_PAGES:
         batch = transport.list_issues(owner, repo, state="all", per_page=100, page=page)
@@ -934,7 +946,8 @@ def iter_alias_issues(transport: Transport, owner: str, repo: str):
             label_names = {
                 name for label in issue.get("labels", []) if (name := label.get("name"))
             }
-            yield number, pfxs, label_names
+            status, _decode_warnings = encode.decode_status(issue, sorted(label_names))
+            yield number, pfxs, label_names, status
         if len(batch) < 100:
             return
         page += 1
@@ -997,7 +1010,7 @@ def _restore_alias_labels(transport: Transport, owner: str, repo: str) -> list[s
     definition, then adds it to the issue); returns the ``owner/repo#n → id:PFX``
     restorations made. A repo with no drift restores nothing (idempotent)."""
     restored: list[str] = []
-    for number, pfxs, label_names in iter_alias_issues(transport, owner, repo):
+    for number, pfxs, label_names, _status in iter_alias_issues(transport, owner, repo):
         for pfx in pfxs:
             label = ids.alias_label(pfx)
             if label in label_names:

@@ -195,6 +195,116 @@ _CACHE_WARM_DIRECTIVE = (
     " expire and re-reads its whole context when the partials land."
 )
 
+#: Appended wherever a caller meets a review that HAS findings — the moment the
+#: fix strategy is chosen, and the only moment at which stating it changes what
+#: happens next.
+#:
+#: The pump it closes is measured and cross-repo (CRT-3W6P): fixing findings one
+#: at a time and committing each fix moves the tree per fix, so every commit
+#: reopens the coverage gap and buys another 5-10 minute delta round — and each
+#: round then reviews the prose the previous round's fix wrote. Observed at four
+#: rounds on a ~40-line change here, and independently at four rounds in a
+#: consuming repo on v3.2.1, where 100% of rounds 2-3's new findings were
+#: self-inflicted by the fixing.
+#:
+#: It ships from the runtime rather than from a guide because the guide is read
+#: hours earlier if at all: on the coordinator path the reviewing fork never
+#: writes a findings summary, so `critic-consolidate` output plus
+#: `.critic-findings.json` is the ONLY surface the builder is guaranteed to meet.
+#: Same reasoning as :data:`_CACHE_WARM_DIRECTIVE`.
+#:
+#: **Disposition, not "fix everything."** Only unresolved BLOCKING findings gate
+#: anything (``coverage_algebra.unresolved_blocking``); warnings and notes gate
+#: nothing and are the builder's to fix, accept or file. An earlier draft said
+#: "Fix them ALL", which on the common ``0 blocking, 9 warning, 16 note`` review
+#: instructed exactly the reflexive fixing that ``methodology/building.md`` and
+#: ``skills/critic/review-cycle.md`` tell the builder to stop — a contradiction
+#: landing on the surface with the most authority at the decision moment. The
+#: verify pass is likewise stated as a *coverage consequence*, not an
+#: obligation: a review with nothing blocking and no judgeable fix needs no
+#: second pass at all.
+#:
+#: The free-write list restates ``coverage_algebra.is_judgeable_path`` and would
+#: drift from it silently, so ``TestBatchFixDirective`` in
+#: ``tests/test_critic_consolidate.py`` parses the backticked path tokens out of
+#: this string and drives its assertions from the text — drift in EITHER
+#: direction fails (a predicate change, or an edit to this list alone).
+_BATCH_FIX_DIRECTIVE = (
+    " Disposition them ALL in ONE pass — land every fix you are going to make in"
+    " ONE commit, and accept or file the rest. Only unresolved BLOCKING findings"
+    " gate anything; if that commit touches judgeable files, ONE"
+    " `/prawduct:critic verify-resolutions` re-covers it. A fix-commit-verify"
+    " cycle per finding multiplies 5-10 minute rounds, and each round reviews the"
+    " prose the previous fix wrote. Free to write at any time (they do not move"
+    " coverage): everything under `.prawduct/` — change-log, backlog,"
+    " project-state, build plans, regen-views output — plus"
+    " `.claude/settings.json` and `.md` files OUTSIDE `skills/`,"
+    " `methodology/`, `templates/` and a root `CLAUDE.md`. Everything else"
+    " moves the tree and must land BEFORE the verify pass: code, config, data,"
+    " tests, and those governance-protected `.md` files (a comment-only edit to"
+    " a code file counts)."
+)
+
+
+#: Delivered at `verify-resolutions` DISPATCH — before the reviewer judges each
+#: prior finding, not after it has.
+#:
+#: Public because its print site is ``cmd_critic_begin`` in ``bin/prawduct-hook``;
+#: it lives here so the two directives the review data plane emits are read and
+#: edited together.
+#:
+#: **Why dispatch and not consolidation.** The obvious slot is beside
+#: :data:`_BATCH_FIX_DIRECTIVE` in :func:`consolidate`, on a "this review
+#: recorded resolutions" trigger. That slot is downstream of the claim on every
+#: path that can carry one. ``verify-resolutions`` is always single-pass
+#: (:func:`_derive_roster` returns :data:`SINGLE_PASS_ROSTER` for it
+#: unconditionally), so the reviewing fork writes its ``resolutions`` into the
+#: partial and THEN runs consolidate itself — the directive would reach
+#: an agent that has already made the claim and is one step from exiting. Nor
+#: does it carry to the builder: the Critic skill is ``context: fork``, and the
+#: fork's report-back instruction (``skills/critic/goals-1-3.md``) enumerates
+#: findings and a summary, not the consolidator's stdout. Dispatch is the same
+#: reader in the same review, one step earlier, and upstream of the claim.
+#:
+#: **Why the rule is worth a directive at all.** A resolution is the only
+#: reviewer output that WEAKENS a gate: ``coverage_algebra.resolution_index``
+#: admits both ``fixed`` and ``waived``, and either one lifts a blocking finding
+#: out of ``unresolved_blocking`` with nothing downstream re-checking it. It is
+#: also the judgment most cheaply made from memory — the reviewer read the fix
+#: commit minutes ago and remembers it landing.
+#:
+#: The no-execution clause is not filler. The Critic cannot run the suite (its
+#: ``allowed-tools`` grant no test runner — CRT-3X9D), so "the test passes now"
+#: is a resolution rationale it structurally cannot have verified;
+#: ``TestResolutionIsAClaimDirective`` pins every command this text names
+#: against that grant so a future edit cannot instruct the impossible.
+#:
+#: **Every clause after the general statement is the descent, and it is
+#: load-bearing.** An upleveled rule earns its durability by being general and
+#: loses all of its effect there: a reader agrees with "a resolution is a claim"
+#: and writes the same unchecked ``fixed`` it was going to write, because
+#: nothing made it recognize THIS disposition as an instance. So the general
+#: sentence is followed by the act to perform ("name the evidence you read"),
+#: instances concrete enough to pattern-match against, and an explicit
+#: instruction to spend it on the case in hand — aimed at the finding the
+#: reader is surest about, which is the one a general rule never reaches.
+RESOLUTION_IS_A_CLAIM_DIRECTIVE = (
+    "PRAWDUCT: a resolution is a claim about the tree, and it WEAKENS a gate —"
+    " `fixed` and `waived` BOTH lift a blocking finding out of"
+    " `unresolved_blocking`, and nothing downstream re-checks either. For each"
+    " prior finding, name the evidence you read before writing the disposition:"
+    " the search that comes back empty, the `git show` of the hunk, the file and"
+    " line you opened — not that the fix commit looked right, and not that you"
+    " are confident. You cannot run the suite from here, so \"the test passes"
+    " now\" is never something you verified. A finding you could not settle from"
+    " the tree is LEFT OUT of `resolutions`: omitting it keeps it blocking,"
+    " which is the answer that fails closed. Two that read as resolved and are"
+    " not — a diff read instead of the file it changed, and a finding whose"
+    " second site is in a file this delta does not touch. Spend this on the"
+    " finding you feel surest about: a rule you agree with and do not apply to"
+    " the disposition actually in front of you has done nothing."
+)
+
 _REVIEW_ID_TS = re.compile(r"^rev-(\d{8}T\d{6}Z)-")
 
 
@@ -292,7 +402,15 @@ def _prior_review_fact(project_dir: Path, prawduct_dir: Path) -> tuple[dict | No
     """The review fact a verify-resolutions pass anchors to, located via the
     derived cache's ``fact_id`` pointer (D7 — this is what the pointer is
     for). Returns ``(fact, "")`` or ``(None, reason)`` — the caller fails
-    loud and the skill demotes to chunk/final."""
+    loud and the skill demotes to chunk/final.
+
+    **The anchor must be an ancestor of HEAD.** The single-slot cache survives a
+    branch switch, and a sibling branch's anchor still *resolves* in the shared
+    object store — so without this the pass would anchor to a tree off this
+    lineage and diff across the divergence, producing phantom findings over work
+    this branch never touched. Fails closed: not-an-ancestor and any git failure
+    both refuse, because an anchor we cannot place is one we cannot trust.
+    """
     cache = prawduct_dir / ".critic-findings.json"
     try:
         data = json.loads(cache.read_text())
@@ -306,8 +424,23 @@ def _prior_review_fact(project_dir: Path, prawduct_dir: Path) -> tuple[dict | No
         )
     store = evidence.read_facts(project_dir)
     for fact in evidence.facts_of_kind(store, "review"):
-        if fact.get("id") == fact_id:
-            return fact, ""
+        if fact.get("id") != fact_id:
+            continue
+        body = fact.get("body") or {}
+        # A dirty-tree review records no `head_commit`; its `dispatch_commit` is
+        # the commit it was dispatched from, and that is the anchor to place.
+        anchor = body.get("head_commit") or body.get("dispatch_commit")
+        if isinstance(anchor, str) and anchor.strip():
+            from . import critic_mode  # noqa: PLC0415 — lazy; avoids an import cycle
+
+            if not critic_mode._commit_is_ancestor(project_dir, anchor):
+                return None, (
+                    f"prior review fact {fact_id!r} anchors at {anchor[:12]}, "
+                    "which is not an ancestor of HEAD — it belongs to another "
+                    "lineage (a branch switch, or rewritten history), so the "
+                    "delta from it would span the divergence"
+                )
+        return fact, ""
     return None, f"prior review fact {fact_id!r} not found in the evidence store"
 
 
@@ -350,6 +483,20 @@ def begin_review(
             ),
         }
     prawduct_dir = gitstate.get_prawduct_dir(project_dir)
+
+    # Which plan this review is OF. An unbounded `active_build_plan` has
+    # attributed the manifest, the review fact and the ledger event to an
+    # unrelated plan — with the pointer *correct* every time, which is why this
+    # resolves around it rather than asking anyone to repoint it. Derived here,
+    # in code, rather than left to the dispatching agent to read off the
+    # pointer: that read is where the misattribution enters.
+    from . import buildplan_refs  # noqa: PLC0415 — lazy; pulls the plan readers
+
+    scope = (scope or "").strip() or None
+    scope_chosen_by = "explicit-args" if scope else None
+    if scope is None:
+        scope = buildplan_refs.resolve_branch_plan(project_dir, prawduct_dir).scope
+        scope_chosen_by = "branch-name" if scope else "not-resolved"
 
     capture = evidence.capture_tree(project_dir)
     if capture.get("status") != "ok":
@@ -408,20 +555,27 @@ def begin_review(
         # composes to COMMITTED HEAD, the Stop-hook gate to the WORKING tree. A
         # single working-tree anchor left the PR gate ``uncovered`` whenever a
         # committed fix carried along a stray judgeable uncommitted file. Read
-        # intent from git: if the builder COMMITTED work since the prior review
-        # (the post-cumulative-fix / PR-gate case), anchor the review edge at
-        # committed HEAD so it composes to the PR gate's target and note-and-
-        # exclude any WIP, exactly like the cumulative branch. Otherwise
-        # (fix-in-progress in a dirty tree) keep the working-tree anchor so the
-        # Stop-hook gate composes and the PR gate legitimately stays pending until
-        # the fix is committed — preserving CRT-4J8W dirty-tree verify.
-        from . import critic_mode  # noqa: PLC0415 — lazy; avoids an import cycle
-        prior_commit = prior_body.get("head_commit") or prior_body.get("dispatch_commit")
-        committed_since = (
-            critic_mode._committed_files_since(project_dir, prior_commit)
-            if prior_commit else set()
-        )
-        if committed_since:
+        # intent from git: if the builder COMMITTED content that differs from the
+        # reviewed tree (the post-cumulative-fix / PR-gate case), anchor the
+        # review edge at committed HEAD so it composes to the PR gate's target
+        # and note-and-exclude any WIP, exactly like the cumulative branch.
+        # Otherwise (fix-in-progress in a dirty tree) keep the working-tree
+        # anchor so the Stop-hook gate composes and the PR gate legitimately
+        # stays pending until the fix is committed — preserving CRT-4J8W
+        # dirty-tree verify.
+        #
+        # Intent is TREE inequality, not the commit set. The two disagree in
+        # exactly the case that bites: a review of a dirty tree vouches for the
+        # commit that materializes it verbatim (`review-cycle.md` says so), and
+        # that vouching commit makes a commit-set diff non-empty while the trees
+        # are identical. The anchor then moved to committed HEAD, the delta
+        # computed EMPTY, and the refusal below announced "nothing changed since"
+        # over a working tree holding unreviewed work — a message that reads as
+        # "everything is reviewed" while meaning "everything I chose to look at
+        # is reviewed". A commit that changes no content is not a change of
+        # intent, and now nothing treats it as one.
+        committed_differs = capture["head_tree"] != base_tree
+        if committed_differs:
             head_tree = capture["head_tree"]  # committed HEAD — the PR-gate target
             head_commit = dispatch_commit
             if not capture["clean"]:
@@ -474,11 +628,19 @@ def begin_review(
             prior_counts.get("warning") or 0
         )
         if not delta and not actionable:
+            # Name the tree that was compared. Under the tree-inequality anchor
+            # above, an empty delta means the working tree AND committed HEAD
+            # both hold exactly the reviewed content — so this really is
+            # "nothing changed". The message says which tree it read anyway,
+            # because the previous wording was true of the anchor and false of
+            # the repo, and nothing in it let a builder tell the difference.
+            anchored = "committed HEAD" if committed_differs else "the working tree"
             return {
                 "status": "error",
                 "reason": (
                     "nothing to verify: the prior review has no blocking/warning "
-                    "findings and nothing changed since"
+                    f"findings, and {anchored} ({head_tree[:12]}) is the same tree "
+                    f"it reviewed ({base_tree[:12]})"
                 ),
             }
         files_reviewed = list(prior_files)
@@ -515,7 +677,7 @@ def begin_review(
     # ``unchecked`` rather than empty — see ``record_lint``.
     from . import record_lint  # noqa: PLC0415 — lazy; keeps the import graph flat
     lint = record_lint.lint_records_safe(
-        project_dir, prawduct_dir, files_changed, base_tree, head_tree, chunk
+        project_dir, prawduct_dir, files_changed, base_tree, head_tree, chunk, scope
     )
 
     manifest = {
@@ -533,6 +695,7 @@ def begin_review(
         "files_reviewed": files_reviewed,
         "tier": tier,
         "scope": scope,
+        "scope_chosen_by": scope_chosen_by,
         "chunk": chunk,
         "base_reviewed": base_reviewed,
         # Make the resolved target VISIBLE so a wrong-tree review is obvious
@@ -675,9 +838,9 @@ def validate_manifest(data) -> tuple[bool, str]:
     non-empty ``files_reviewed``, ``files_changed`` (a list, possibly empty —
     a same-tree verify-resolutions pass legitimately changes nothing).
     Nullable: ``base_commit``/``head_commit`` (a prior review of a dirty tree
-    has no commit), ``tier``/``scope``/``chunk``/``model``/``base_reviewed``,
-    ``worktree``/``branch`` (visibility fields; ``branch`` is None on a detached
-    HEAD — PDT-WT9K).
+    has no commit), ``tier``/``scope``/``scope_chosen_by``/``chunk``/``model``/
+    ``base_reviewed``, ``worktree``/``branch`` (visibility fields; ``branch`` is
+    None on a detached HEAD — PDT-WT9K).
 
     The v2 (model-written) manifest shape carries none of the v3 interval
     fields, so it fails here loudly — a stale cached skill hand-authoring a
@@ -704,8 +867,8 @@ def validate_manifest(data) -> tuple[bool, str]:
         return False, "missing 'files_reviewed' (non-empty list)"
     if not _str_list(data.get("files_changed")):
         return False, "'files_changed' must be a list of non-empty strings"
-    for opt in ("base_commit", "head_commit", "tier", "scope", "chunk", "model",
-                "base_reviewed", "worktree", "branch"):
+    for opt in ("base_commit", "head_commit", "tier", "scope", "scope_chosen_by",
+                "chunk", "model", "base_reviewed", "worktree", "branch"):
         val = data.get(opt)
         if val is not None and not _nonempty_str(val):
             return False, f"'{opt}' must be a non-empty string or null"
@@ -933,6 +1096,10 @@ def build_fact_body(manifest: dict, partials: list[dict]) -> dict:
         "counts": {"blocking": blocking, "warning": warning, "note": note},
         "duration_seconds": max(durations) if durations else None,
         "scope": manifest.get("scope"),
+        # How the scope was decided, carried so attribution is auditable rather
+        # than merely asserted — a fact naming a plan should say whether the
+        # dispatch named it or the branch did.
+        "scope_chosen_by": manifest.get("scope_chosen_by"),
         "chunk": manifest.get("chunk"),
         "base_reviewed": manifest.get("base_reviewed"),
         # The record-lint control's YIELD, carried from the dispatch manifest
@@ -1077,6 +1244,63 @@ def _incomplete_noop_message(missing: list[str], present: int, total: int,
     return line
 
 
+def _already_consolidated_note(prawduct_dir: Path) -> str:
+    """What the "no pending manifest" no-op should add about the review that
+    already landed.
+
+    This branch is the COORDINATOR path's normal case, not an error: the
+    SubagentStop trigger consolidated while the main agent was elsewhere, and
+    CLAUDE.md tells that agent to run ``critic-consolidate`` before reading the
+    findings precisely so it never reads a stale file. Bare "nothing to
+    consolidate" answers a question it did not ask. Naming the review that IS
+    recorded — and, when it has findings, how to fix them without buying extra
+    rounds — is the answer to the question it did ask.
+
+    Says "newest recorded", never "yours" — nothing here can tell whether the
+    recorded review is the caller's or a bystander's. It CAN tell how old it is
+    (:func:`dispatch_age_minutes` parses the same id shape sixty lines up), so it
+    says: an unqualified "holds N findings" about a week-old review, followed by
+    a disposition directive, would manufacture the very round this exists to
+    prevent.
+
+    **Absence of the note means "clean", so a failure must never render as
+    absence** — that is the swallow-into-``""`` shape ``learnings.md`` warns
+    about by name, and here it would report a truncated cache as a clean review
+    to the one caller CLAUDE.md routes through this branch. Read/parse/shape
+    failures therefore say so; only a genuinely finding-free cache is silent.
+    Diagnostics stay advisory (``architecture.md``: advice fails soft — which
+    says do not block, not do not report).
+    """
+    cache = prawduct_dir / ".critic-findings.json"
+    if not cache.exists():
+        return ""
+    try:
+        # ValueError covers JSONDecodeError AND the UnicodeDecodeError a
+        # byte-truncated cache raises from read_text() — the case the "must not
+        # crash an informational no-op" contract promises and a narrower
+        # (OSError, JSONDecodeError) missed.
+        record = json.loads(cache.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as exc:
+        return f" (`.prawduct/{cache.name}` exists but is unreadable: {exc} — not a clean-review signal.)"
+    if not isinstance(record, dict) or not isinstance(record.get("findings"), list):
+        return f" (`.prawduct/{cache.name}` is not a findings record — not a clean-review signal.)"
+    findings = record["findings"]
+    if not findings:
+        return ""
+    fact_id = record.get("fact_id") or "unknown"
+    # DISPATCH age, from the id's own stamp — not the time the fact was
+    # recorded, which is later by however long the review took (ten minutes on a
+    # coordinator run). Labelled for what it is; the caller's question is "how
+    # stale is this?", which the dispatch time answers just as well.
+    age = dispatch_age_minutes(str(fact_id))
+    age_note = f", dispatched {age:.0f} min ago" if age is not None else ""
+    return (
+        f" The newest recorded review ({fact_id}{age_note}) holds {len(findings)}"
+        f" finding(s) — read `.prawduct/{cache.name}`; if they are already"
+        " dispositioned, this is history, not work." + _BATCH_FIX_DIRECTIVE
+    )
+
+
 def consolidate(project_dir: Path) -> int:
     """Merge complete reviewer partials into evidence facts + the derived
     cache. Idempotent.
@@ -1102,7 +1326,10 @@ def consolidate(project_dir: Path) -> int:
     prawduct_dir = gitstate.get_prawduct_dir(project_dir)
     mpath = manifest_path(prawduct_dir)
     if not mpath.is_file():
-        print("no-op: no pending review manifest — nothing to consolidate.")
+        print(
+            "no-op: no pending review manifest — nothing to consolidate."
+            + _already_consolidated_note(prawduct_dir)
+        )
         return 0
 
     try:
@@ -1339,6 +1566,9 @@ def consolidate(project_dir: Path) -> int:
         f"{dupe_note} "
         f"from {len(partials)} reviewer(s) → fact {review_id}{res_note} + "
         f"{findings_path.name} + ledger anchor; marker cleared."
+        # Only when there is something to fix — a clean pass that ended with a
+        # fix strategy attached would read as work it does not have.
+        + (_BATCH_FIX_DIRECTIVE if all_findings else "")
     )
     return 0
 

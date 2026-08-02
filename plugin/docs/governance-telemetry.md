@@ -29,7 +29,7 @@ kind-named key (`review` for `review.*`):
 ```
 
 - `schema_version` is **per line** — a long-lived ledger can mix versions.
-- `scope` is the build-plan feature key (passed explicitly by the reviewer;
+- `scope` is the build-plan feature key (derived by `critic-begin` from the branch name, or passed explicitly as an override;
   the `active_build_plan` pointer is only the fallback).
 - `duration_seconds` and `actor.model` are nullable — recorded, never invented.
 - v1 emits `review.critic` (the Critic, after writing its findings file) and

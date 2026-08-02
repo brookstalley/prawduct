@@ -189,7 +189,30 @@ class TestPrInterleaving:
         fake.seed_pull_requests(OWNER, REPO, 105, labels=["id:DIS-9999"])
         number = _issue_with_alias(fake, "DIS-0001", title="the item")
         seen = list(core.iter_alias_issues(fake, OWNER, REPO))
-        assert [n for n, _pfxs, _labels in seen] == [number]
+        assert [n for n, _pfxs, _labels, _status in seen] == [number]
+
+    def test_iter_alias_issues_yields_the_decoded_status_not_the_raw_state(self, fake):
+        """The scan already fetches `state="all"` and already parses each body, so
+        the status is free — and it must be the *decoded* one. Raw `state` cannot
+        distinguish shipped from dropped (both are `closed`) nor open from
+        in-progress, so a consumer given `state` would have to re-implement the
+        decoder's rules at a second site where they can drift."""
+        shipped = _issue_with_alias(fake, "DIS-0001", title="shipped item")
+        core.set_status(fake, id_raw=f"{OWNER}/{REPO}#{shipped}", target="shipped")
+        dropped = _issue_with_alias(fake, "DIS-0002", title="dropped item")
+        core.set_status(fake, id_raw=f"{OWNER}/{REPO}#{dropped}", target="dropped")
+        in_progress = _issue_with_alias(fake, "DIS-0003", title="in-progress item")
+        core.set_status(fake, id_raw=f"{OWNER}/{REPO}#{in_progress}", target="in-progress")
+        plain = _issue_with_alias(fake, "DIS-0004", title="open item")
+
+        by_number = {
+            number: status
+            for number, _pfxs, _labels, status in core.iter_alias_issues(fake, OWNER, REPO)
+        }
+        assert by_number[shipped] == "shipped"
+        assert by_number[dropped] == "dropped"  # NOT collapsed with shipped
+        assert by_number[in_progress] == "in-progress"  # NOT collapsed with open
+        assert by_number[plain] == "open"
 
     def test_iter_alias_issues_bounds_a_pathological_repo(self, capsys):
         class _Endless:

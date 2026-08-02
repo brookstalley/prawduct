@@ -26,6 +26,7 @@ so pyc-cache doesn't leak, GIT_CONFIG neutralized).
 from __future__ import annotations
 
 import json
+import re
 import subprocess
 import sys
 from datetime import datetime, timedelta, timezone
@@ -37,6 +38,10 @@ ROOT = Path(__file__).resolve().parent.parent / "plugin"
 HOOK = ROOT / "bin" / "prawduct-hook"
 sys.path.insert(0, str(ROOT))
 from lib import critic_consolidate as cc  # noqa: E402
+# The anchor predicates the dispatch guard is built on. Imported rather than
+# re-implemented so a test asserting "the OLD guard would have passed" is
+# asserting it about the real one.
+from lib.critic_mode import _commit_is_ancestor, _commit_resolves  # noqa: E402
 from lib import evidence  # noqa: E402
 from lib import gates  # noqa: E402
 from lib import record_lint  # noqa: E402
@@ -636,6 +641,377 @@ class TestIncompleteNoopLiveness:
         assert "may have died" in msg
         assert cc._CACHE_WARM_DIRECTIVE not in msg
 
+    def test_wait_side_never_carries_the_fix_strategy(self):
+        # The batch directive answers "how do I fix these?"; a caller with no
+        # findings in hand yet has not asked it. Emitting it on the wait side
+        # would have the reader planning fixes for findings they cannot read.
+        for missing, present, total, age in (
+            (["correctness"], 1, 3, 2),
+            (["reviewer"], 0, 1, 2),
+            (["sustainability"], 2, 3, 45),
+        ):
+            msg = cc._incomplete_noop_message(
+                missing, present, total, self._fresh_id(age))
+            assert cc._BATCH_FIX_DIRECTIVE not in msg
+
+
+# ---------------------------------------------------------------------------
+# Unit: the batch-fix directive
+# ---------------------------------------------------------------------------
+
+
+#: Every path class the directive can name, mapped to (representative path,
+#: expected JUDGEABILITY) — True means "costs a review round", i.e. the directive
+#: must place it in the costly clause. Adding a class to the directive without
+#: adding it here fails ``test_directive_names_no_unpinned_path_class``, which is
+#: the half that makes the drift guard bidirectional.
+_DIRECTIVE_PATH_CLASSES = {
+    ".prawduct/": (".prawduct/change-log.md", False),
+    "`.claude/settings.json`": (".claude/settings.json", False),
+    # The suffix class: `.md` OUTSIDE the protected dirs below is free. Product
+    # docs and READMEs are the common case, and the whole point of the four
+    # protected entries is that they are the exception to this line.
+    "`.md`": ("docs/architecture.md", False),
+    "`skills/`": ("plugin/skills/critic/review-cycle.md", True),
+    "`methodology/`": ("plugin/methodology/building.md", True),
+    "`templates/`": ("plugin/templates/runbook.md", True),
+    "`CLAUDE.md`": ("CLAUDE.md", True),
+}
+
+
+class TestBatchFixDirective:
+    """The directive states which writes are free mid-review. That is a prose
+    restatement of ``coverage_algebra.is_judgeable_path``, so these tests parse
+    the directive's own text and drive the assertions from it — drift in either
+    direction fails, not just a predicate change.
+
+    Why bidirectional matters: asserting hardcoded paths against the predicate
+    catches a predicate that narrows, but leaves the cheaper mistake unguarded —
+    editing the free-list alone (adding `docs/`, dropping `.claude/settings.json`)
+    would keep the suite green while shipping a runtime message that tells a
+    builder to commit mid-review and lose their coverage."""
+
+    def test_directive_dispositions_rather_than_mandating_fixes(self):
+        # Only unresolved BLOCKING gates anything. "Fix them ALL" contradicted
+        # building.md's "warnings and notes gate nothing — disposition each
+        # rather than reflexively fixing", on the surface with the most
+        # authority at the moment the builder decides.
+        d = cc._BATCH_FIX_DIRECTIVE
+        assert "Disposition them ALL in ONE pass" in d
+        assert "accept or file the rest" in d
+        assert "Fix them ALL" not in d
+        assert "ONE commit" in d
+        assert "ONE `/prawduct:critic verify-resolutions`" in d
+        # The verify pass is a coverage consequence, not an obligation.
+        assert "if that commit touches judgeable files" in d
+
+    #: Where the directive stops claiming things are free. NOT "Everything else"
+    #: — that marks the costly *sentence*, but the free sentence already turns
+    #: negative before it: "`.md` files OUTSIDE `skills/`, `methodology/`,
+    #: `templates/` and a root `CLAUDE.md`". Those four are named inside the free
+    #: clause as EXCLUSIONS, so a naive split reads them as free claims. Every
+    #: token from `OUTSIDE` onward is a costly claim.
+    _FREE_CLAUSE_ENDS_AT = "OUTSIDE"
+    _COSTLY_SENTENCE_MARKER = "Everything else"
+
+    def _clause_says_free(self, token: str) -> bool:
+        """True if the directive names ``token`` while still claiming free."""
+        directive = cc._BATCH_FIX_DIRECTIVE
+        return directive.index(token) < directive.index(self._FREE_CLAUSE_ENDS_AT)
+
+    def test_directive_free_and_costly_claims_match_the_predicate(self):
+        """Each path class is classified as the directive's own PROSE claims.
+
+        Derived from clause placement, not from a flag in the table beside it.
+        With a hardcoded flag, *moving* a token between clauses — dropping
+        `templates/` into the free list — left the suite green while shipping a
+        message that tells a builder to edit a governance-protected file
+        mid-review and lose their coverage: the higher-cost direction.
+        """
+        from lib import coverage_algebra
+
+        directive = cc._BATCH_FIX_DIRECTIVE
+        for marker in (self._FREE_CLAUSE_ENDS_AT, self._COSTLY_SENTENCE_MARKER):
+            assert marker in directive, (
+                "the directive no longer carries the clause boundary the tests "
+                f"split on ({marker!r}) — every placement check below would read "
+                "the wrong region. Restore it or update the marker."
+            )
+        for token, (path, expected_judgeable) in _DIRECTIVE_PATH_CLASSES.items():
+            assert token in directive, (
+                f"_DIRECTIVE_PATH_CLASSES pins {token!r}, but the directive no "
+                "longer names it — drop the entry or restore the text"
+            )
+            claimed_free = self._clause_says_free(token)
+            assert claimed_free is not expected_judgeable, (
+                f"the directive now places {token} in the "
+                f"{'free' if claimed_free else 'costly'} clause, but the table "
+                f"expects {'costly' if expected_judgeable else 'free'} — a token "
+                "moved between clauses. Confirm against is_judgeable_path before "
+                "updating either."
+            )
+            assert coverage_algebra.is_judgeable_path(path) is expected_judgeable, (
+                f"the directive classifies {token} as "
+                f"{'costly' if expected_judgeable else 'free'} to write "
+                f"mid-review, but is_judgeable_path({path!r}) now disagrees. "
+                "Amend both together: a wrong 'free' claim costs a reader their "
+                "coverage, and a wrong 'costly' claim sends them to a round they "
+                "did not owe."
+            )
+
+    def test_directive_names_no_unpinned_path_class(self):
+        """A path token in the directive that no entry above pins fails here.
+
+        This is the half that catches an edit to the prose ALONE — the drift
+        direction the first version of these tests missed entirely.
+        """
+        # Backticked tokens that look like paths (contain `/` or end in `.md`
+        # /`.json`), minus the ones that are commands or files-to-read.
+        tokens = set(re.findall(r"`([^`]+)`", cc._BATCH_FIX_DIRECTIVE))
+        pathish = {
+            t for t in tokens
+            if ("/" in t or t.endswith((".md", ".json", ".yaml")))
+            and not t.startswith("/prawduct:")
+        }
+        pinned = set(_DIRECTIVE_PATH_CLASSES)
+        # `.prawduct/` is pinned unbackticked in the map key; normalize.
+        pinned_bare = {p.strip("`") for p in pinned}
+        unpinned = {t for t in pathish if t not in pinned_bare}
+        assert not unpinned, (
+            f"_BATCH_FIX_DIRECTIVE names path class(es) {sorted(unpinned)} that "
+            "no _DIRECTIVE_PATH_CLASSES entry pins against is_judgeable_path. "
+            "Add each with a representative path and its expected judgeability."
+        )
+
+    def test_directive_names_the_comment_only_trap(self):
+        # The single most expensive misread of "free": a `.py` comment edit
+        # looks like prose and is judgeable. coverage_algebra's docstring
+        # records the ruling; the runtime message has to carry it too.
+        assert "comment-only edit to" in cc._BATCH_FIX_DIRECTIVE
+
+    def test_unbackticked_free_surfaces_still_match_the_predicate(self):
+        # The directive also names free surfaces in prose rather than backticks
+        # ("everything under `.prawduct/` — change-log, backlog, project-state,
+        # build plans, regen-views output"). Pin the concrete files those words
+        # denote; the token scan above cannot see them.
+        from lib import coverage_algebra
+
+        for path in (
+            ".prawduct/backlog.md",
+            ".prawduct/project-state.yaml",
+            ".prawduct/artifacts/build-plan-demo.md",
+            ".prawduct/release-notes.md",   # regen-views output
+        ):
+            assert not coverage_algebra.is_judgeable_path(path)
+
+
+# ---------------------------------------------------------------------------
+# Unit: the resolution-is-a-claim directive
+# ---------------------------------------------------------------------------
+
+
+#: Shell binaries a reviewer-facing directive could plausibly name. Any
+#: backticked token in the directive whose first word is one of these is a
+#: COMMAND claim and gets checked against the Critic skill's own `allowed-tools`
+#: grant. Deliberately over-broad: an entry the directive never names costs
+#: nothing, while a missing entry silently exempts the command it would catch.
+_COMMAND_HEADS = (
+    "git", "grep", "rg", "pytest", "python", "python3", "prawduct-hook",
+    "wc", "find", "ls", "cat", "sed", "awk", "make", "npm", "node", "bash",
+)
+
+_CRITIC_SKILL = ROOT / "skills" / "critic" / "SKILL.md"
+
+
+def _critic_bash_grants() -> list[str]:
+    """Literal command prefixes the Critic skill's `allowed-tools` grants.
+
+    `!Bash(...)` deny entries are excluded — skill-frontmatter deny is not
+    reliably enforced (see `tests/test_critic_skill_metadata.py`), so treating
+    one as a grant would be the wrong direction, and treating it as a *denial*
+    would let the allow-list look narrower than it is. Neither: only the
+    pure-allow entries define what the reviewer can actually run.
+    """
+    content = _CRITIC_SKILL.read_text(encoding="utf-8")
+    m = re.search(r"^allowed-tools:\s*(.+)$", content, re.MULTILINE)
+    assert m is not None, f"{_CRITIC_SKILL} has no `allowed-tools:` frontmatter"
+    grants = re.findall(r"(?<!!)Bash\(([^)]+)\)", m.group(1))
+    assert grants, "parsed no Bash grants — the frontmatter shape changed"
+    return [g.split("*")[0].strip() for g in grants]
+
+
+def _reviewer_can_run(command: str) -> bool:
+    """True when `command` falls under some Critic Bash grant.
+
+    Prefix match in both directions: the grant `git show ` covers the bare
+    token `git show`, and it also covers `git show HEAD`.
+    """
+    return any(
+        command.startswith(prefix) or prefix.startswith(command)
+        for prefix in _critic_bash_grants()
+    )
+
+
+class TestResolutionIsAClaimDirective:
+    """The directive delivered at `verify-resolutions` DISPATCH.
+
+    Three properties, none of them "the right words are present":
+
+    1. Its claims about the gate are TRUE — asserted against
+       `coverage_algebra`, not against the sentence that makes them. A runtime
+       message stating a false property of the gate is worse than silence.
+    2. Every command it names is one the reviewer can actually run. Its reader
+       is tool-restricted; advice it cannot follow is discovered mid-review,
+       holding a claim it now has no way to check.
+    3. It descends. An upleveled rule is durable because it is general and
+       inert for the same reason — the reader agrees with it and writes the
+       same unchecked disposition. The act, the instances, and the spend-it-here
+       instruction are what convert agreement into a changed decision, so they
+       are pinned as deliverables rather than as style.
+    """
+
+    def test_the_gate_claims_it_makes_are_true(self):
+        """`fixed` and `waived` BOTH resolve; omission is the only fail-closed
+        answer. Driven from the algebra so a third disposition, or a change to
+        which ones resolve, fails here instead of shipping a message that sends
+        reviewers to an escape hatch that does not exist."""
+        from lib import coverage_algebra
+
+        fact = {
+            "id": "rev-x",
+            "body": {"findings": [
+                {"fid": "R-1", "severity": "blocking", "title": "t"}
+            ]},
+        }
+        # The directive's core promise: no resolution fact → still blocking.
+        assert [
+            f["fid"] for f in coverage_algebra.unresolved_blocking(fact, set())
+        ] == ["R-1"], (
+            "the directive tells reviewers that leaving a finding out of "
+            "`resolutions` keeps it blocking. It no longer does."
+        )
+        # And why omission is the ONLY fail-closed answer: every recognized
+        # disposition clears it, so "waive it when unsure" would weaken the
+        # very gate this text warns about.
+        for disposition in sorted(coverage_algebra._RESOLVING_DISPOSITIONS):
+            resolved = coverage_algebra.resolution_index([{
+                "kind": "resolution",
+                "body": {
+                    "finding": {"review_id": "rev-x", "fid": "R-1"},
+                    "disposition": disposition,
+                },
+            }])
+            assert coverage_algebra.unresolved_blocking(fact, resolved) == [], (
+                f"{disposition!r} no longer resolves — the directive names it "
+                "as one of the two that lift a blocker"
+            )
+            assert f"`{disposition}`" in cc.RESOLUTION_IS_A_CLAIM_DIRECTIVE, (
+                f"{disposition!r} resolves a blocking finding but the directive "
+                "does not name it. A reviewer told only about `fixed` reads the "
+                "unnamed one as the safe answer for a finding it could not check."
+            )
+
+    def test_names_no_command_the_reviewer_cannot_run(self):
+        """The Critic's `allowed-tools` is pure-allow and grants no test runner
+        (CRT-3X9D). "Run the suite" is therefore not advice — it is an
+        instruction the reader must discover it cannot follow, mid-review.
+        """
+        tokens = set(re.findall(r"`([^`]+)`", cc.RESOLUTION_IS_A_CLAIM_DIRECTIVE))
+        commands = {t for t in tokens if t.split()[0] in _COMMAND_HEADS}
+        for command in sorted(commands):
+            assert _reviewer_can_run(command), (
+                f"the directive tells the reviewer to run {command!r}, which no "
+                "Bash grant in skills/critic/SKILL.md covers. Name evidence the "
+                "reader can actually produce, or widen the grant deliberately."
+            )
+
+    def test_the_command_check_would_catch_an_ungranted_command(self):
+        """Negative control for the check above.
+
+        Without this, `test_names_no_command_the_reviewer_cannot_run` passes
+        just as happily when the token scan matches nothing at all — which is
+        what a typo in `_COMMAND_HEADS`, or a directive rewritten to drop its
+        backticks, would produce. Pin that the matcher discriminates.
+        """
+        assert not _reviewer_can_run("pytest -q")
+        assert not _reviewer_can_run("grep -rn foo")  # the TOOL is granted; bash grep is not
+        assert _reviewer_can_run("git show")
+        assert _reviewer_can_run("git diff --stat")
+
+    def test_the_directive_descends_rather_than_only_stating_a_rule(self):
+        """Structure, not wording.
+
+        An upleveled rule is agreed with and not applied unless it also carries
+        the descent: the act to perform, and instances concrete enough to
+        pattern-match against. That is a property of the text's SHAPE, and it
+        is what this asserts.
+
+        An earlier cut asserted four exact phrases — "surest about", "actually
+        in front of you", "name the evidence you read". Those had no mechanism
+        behind them; they froze wording chosen an hour earlier and would fail
+        for every improvement to the sentence while passing for any defect that
+        kept the words. `learnings.md` already carries the rule ("assert the
+        PROPERTY, not one spelling of it"), and it did not fire — in the
+        changeset whose thesis is that stored rules do not fire. Deleted rather
+        than elaborated.
+        """
+        d = cc.RESOLUTION_IS_A_CLAIM_DIRECTIVE
+        # An imperative: the reader is told to produce something, not to feel
+        # something. Any of these verbs satisfies it; the point is that one is
+        # present, not which.
+        assert any(verb in d for verb in ("name ", "say ", "state ", "run ")), (
+            "the directive states a rule but never tells the reader what to DO "
+            "with a specific finding — agreement is not application"
+        )
+        # NOT asserting "it carries concrete instances." The draft of this test
+        # tried `d.count(", and ") >= 2`, which is a conjunction count, not an
+        # instance count — it passes for any prose with two `and`s and fails for
+        # a rewrite that uses semicolons. Substituting a fragile proxy for a
+        # property you cannot express is the same defect as pinning a spelling,
+        # so the claim is left to review rather than faked in CI.
+        #
+        # It must point at the case in hand rather than the rule in
+        # general. Detected as a second-person present-tense reference to the
+        # reader's own situation, which is what distinguishes descent from
+        # exhortation.
+        assert "you" in d and ("this " in d or " in front of " in d), (
+            "the directive no longer aims at the decision the reader is making "
+            "right now, which is the whole difference between a rule that "
+            "fires and one that is agreed with"
+        )
+
+    def test_delivery_is_upstream_of_the_claim(self):
+        """WHERE this prints is the chunk's substance, so it is pinned here.
+
+        `verify-resolutions` is always single-pass, so the reviewing fork
+        writes its `resolutions` into the partial and only THEN runs
+        consolidate. Emitting there — beside `_BATCH_FIX_DIRECTIVE`, the
+        obvious slot — would reach an agent that has already made the claim and
+        is one step from exiting, and would never reach the builder at all
+        (the Critic skill is `context: fork`, and `goals-1-3.md`'s report-back
+        enumerates findings and a summary, not consolidate's stdout).
+
+        Asserted against the modules rather than the docstring: `critic-begin`
+        must reference it, `consolidate` must not.
+        """
+        begin_src = HOOK.read_text(encoding="utf-8")
+        assert "RESOLUTION_IS_A_CLAIM_DIRECTIVE" in begin_src, (
+            "the dispatch command no longer emits the directive — it is "
+            "delivered at critic-begin precisely because that is the last "
+            "moment before the reviewer writes its resolutions"
+        )
+        consolidate_src = (
+            ROOT / "lib" / "critic_consolidate.py"
+        ).read_text(encoding="utf-8")
+        body = consolidate_src.split("def consolidate(", 1)
+        assert len(body) == 2, "consolidate() not found — update this guard"
+        assert "RESOLUTION_IS_A_CLAIM_DIRECTIVE" not in body[1], (
+            "the directive is now also emitted from consolidate(), which runs "
+            "AFTER the reviewer has written its resolutions. A directive there "
+            "cannot change the claim it is about. Delete it, or move the "
+            "delivery deliberately and rewrite this test's rationale."
+        )
+
 
 # ---------------------------------------------------------------------------
 # Unit: pending_state
@@ -721,6 +1097,180 @@ class TestConsolidateIntegration:
         # Marker cleared + partials removed.
         assert not (repo / MARKER_REL).is_file()
         assert not (repo / PARTIALS_REL).exists()
+
+    def test_consolidated_with_findings_carries_the_fix_strategy(self, tmp_path):
+        """A review that lands findings states the fix strategy in the same
+        breath. This is the single-pass path's delivery: the reviewing fork
+        runs consolidate itself, so this stdout IS what the builder reads."""
+        repo = tmp_path / "r"
+        _init_repo(repo)
+        head = _commit_file(repo, "src/app.py", "x = 1\n", "init")
+        _set_marker(repo)
+        _write_manifest(repo, head)
+        _full_roster_partials(repo, head, findings_by_role={
+            "correctness": [{"name": "A", "goal": "Nothing Is Broken",
+                             "severity": "blocking", "recommendation": "Fix"}],
+            "design": [{"name": "B", "goal": "The Design Is Sound",
+                        "severity": "warning", "recommendation": "Reconsider"}],
+        })
+        result = _run_consolidate(repo)
+        assert result.returncode == 0, f"stderr={result.stderr!r}"
+        assert "consolidated:" in result.stdout
+        assert cc._BATCH_FIX_DIRECTIVE in result.stdout
+
+    def test_clean_pass_does_not_carry_the_fix_strategy(self, tmp_path):
+        """Zero findings, zero fix advice — a clean review that ended with
+        batching instructions reads as work the builder does not have."""
+        repo = tmp_path / "r"
+        _init_repo(repo)
+        head = _commit_file(repo, "src/app.py", "x = 1\n", "init")
+        _set_marker(repo)
+        _write_manifest(repo, head)
+        _full_roster_partials(repo, head)
+        result = _run_consolidate(repo)
+        assert result.returncode == 0, f"stderr={result.stderr!r}"
+        assert "consolidated: 0 blocking" in result.stdout
+        assert cc._BATCH_FIX_DIRECTIVE not in result.stdout
+
+    def test_already_consolidated_noop_reports_the_recorded_findings(self, tmp_path):
+        """The COORDINATOR path's normal case. The SubagentStop trigger
+        consolidated while the main agent was elsewhere; that agent then runs
+        consolidate before reading the cache (CLAUDE.md's staleness guard) and
+        lands here. A bare "nothing to consolidate" answers the wrong question
+        and drops the fix strategy on the one path that has no other channel
+        for it — the reviewing fork returns after dispatch without a summary."""
+        repo = tmp_path / "r"
+        _init_repo(repo)
+        head = _commit_file(repo, "src/app.py", "x = 1\n", "init")
+        _set_marker(repo)
+        _write_manifest(repo, head)
+        _full_roster_partials(repo, head, findings_by_role={
+            "correctness": [{"name": "A", "goal": "Nothing Is Broken",
+                             "severity": "blocking", "recommendation": "Fix"}],
+        })
+        assert _run_consolidate(repo).returncode == 0   # the trigger's run
+        second = _run_consolidate(repo)                 # the main agent's run
+        assert second.returncode == 0, f"stderr={second.stderr!r}"
+        assert "no-op: no pending review manifest" in second.stdout
+        assert "holds 1 finding(s)" in second.stdout
+        assert "rev-test-0001" in second.stdout
+        # The path must be readable as-is: the caller's next action is to open
+        # it, and a bare basename is not a path from the project root.
+        assert f"`{FINDINGS_REL}`" in second.stdout
+        assert cc._BATCH_FIX_DIRECTIVE in second.stdout
+
+    def test_noop_stays_bare_when_the_recorded_review_was_clean(self, tmp_path):
+        repo = tmp_path / "r"
+        _init_repo(repo)
+        head = _commit_file(repo, "src/app.py", "x = 1\n", "init")
+        _set_marker(repo)
+        _write_manifest(repo, head)
+        _full_roster_partials(repo, head)
+        assert _run_consolidate(repo).returncode == 0
+        second = _run_consolidate(repo)
+        assert second.returncode == 0
+        assert "no-op: no pending review manifest" in second.stdout
+        assert "finding(s)" not in second.stdout
+        assert cc._BATCH_FIX_DIRECTIVE not in second.stdout
+
+    def test_noop_survives_an_unreadable_findings_cache(self, tmp_path):
+        """A corrupt cache must not crash an informational no-op — AND must not
+        pass silently, because absence of the note is the "clean review" signal.
+
+        Returning "" here would report a corrupt cache as a clean review to the
+        exact caller CLAUDE.md routes through this branch. The diagnostic is what
+        makes absence mean only "clean"; without this assertion a revert to
+        ``return ""`` passes green and reinstates the swallow-into-empty-string
+        defect.
+        """
+        repo = tmp_path / "r"
+        _init_repo(repo)
+        (repo / ".prawduct").mkdir(parents=True, exist_ok=True)
+        (repo / FINDINGS_REL).write_text("{not json")
+        result = _run_consolidate(repo)
+        assert result.returncode == 0, f"stderr={result.stderr!r}"
+        assert "no-op: no pending review manifest" in result.stdout
+        assert "unreadable" in result.stdout
+        assert "not a clean-review signal" in result.stdout
+        assert cc._BATCH_FIX_DIRECTIVE not in result.stdout
+
+    def test_noop_reports_a_byte_corrupted_cache_rather_than_crashing(self, tmp_path):
+        # read_text() raises UnicodeDecodeError — a ValueError, NOT an OSError
+        # and not a JSONDecodeError. The original narrower catch would traceback
+        # on the branch the SubagentStop hook reaches.
+        repo = tmp_path / "r"
+        _init_repo(repo)
+        (repo / ".prawduct").mkdir(parents=True, exist_ok=True)
+        (repo / FINDINGS_REL).write_bytes(b"\xff\xfe not utf-8")
+        result = _run_consolidate(repo)
+        assert result.returncode == 0, f"stderr={result.stderr!r}"
+        assert "unreadable" in result.stdout
+        assert "not a clean-review signal" in result.stdout
+
+    def test_noop_reports_a_wrong_shaped_cache_rather_than_reading_it_as_clean(
+        self, tmp_path
+    ):
+        # Valid JSON, wrong shape: parses fine, has no findings list. Silence
+        # here would be indistinguishable from a genuinely clean review.
+        repo = tmp_path / "r"
+        _init_repo(repo)
+        (repo / ".prawduct").mkdir(parents=True, exist_ok=True)
+        (repo / FINDINGS_REL).write_text('["not", "a", "record"]')
+        result = _run_consolidate(repo)
+        assert result.returncode == 0, f"stderr={result.stderr!r}"
+        assert "not a findings record" in result.stdout
+        assert "not a clean-review signal" in result.stdout
+
+    def test_noop_stays_silent_when_no_cache_exists_at_all(self, tmp_path):
+        # A repo that has never been reviewed is not a corrupt one — no
+        # diagnostic, or every first-ever consolidate cries wolf.
+        repo = tmp_path / "r"
+        _init_repo(repo)
+        (repo / ".prawduct").mkdir(parents=True, exist_ok=True)
+        result = _run_consolidate(repo)
+        assert result.returncode == 0, f"stderr={result.stderr!r}"
+        assert result.stdout.strip() == (
+            "no-op: no pending review manifest — nothing to consolidate."
+        )
+
+    def test_noop_note_states_the_age_and_qualifies_dispositioned_findings(
+        self, tmp_path
+    ):
+        """The note names a review it cannot prove is the caller's, so it says
+        how old it is and that already-dispositioned findings are history.
+
+        Uses a REAL minted id: the neighbouring fixtures use ``rev-test-0001``,
+        which ``_REVIEW_ID_TS`` never matches, so the age branch is unreachable
+        with them — the gap that let this ship untested.
+        """
+        repo = tmp_path / "r"
+        _init_repo(repo)
+        (repo / ".prawduct").mkdir(parents=True, exist_ok=True)
+        (repo / FINDINGS_REL).write_text(json.dumps({
+            "fact_id": cc.mint_review_id(),
+            "findings": [{"fid": "R-1", "severity": "warning", "summary": "x"}],
+        }))
+        result = _run_consolidate(repo)
+        assert result.returncode == 0, f"stderr={result.stderr!r}"
+        assert "holds 1 finding(s)" in result.stdout
+        assert "dispatched 0 min ago" in result.stdout
+        assert "already dispositioned, this is history, not work" in result.stdout
+        assert cc._BATCH_FIX_DIRECTIVE in result.stdout
+
+    def test_noop_note_omits_the_age_when_the_id_carries_no_timestamp(self, tmp_path):
+        # Hand-written ids have no parseable stamp; the note must degrade to no
+        # age claim rather than invent or crash on one.
+        repo = tmp_path / "r"
+        _init_repo(repo)
+        (repo / ".prawduct").mkdir(parents=True, exist_ok=True)
+        (repo / FINDINGS_REL).write_text(json.dumps({
+            "fact_id": "rev-test-0001",
+            "findings": [{"fid": "R-1", "severity": "note", "summary": "x"}],
+        }))
+        result = _run_consolidate(repo)
+        assert result.returncode == 0, f"stderr={result.stderr!r}"
+        assert "holds 1 finding(s)" in result.stdout
+        assert "min ago" not in result.stdout
 
     def test_missing_role_is_noop_names_role(self, tmp_path):
         repo = tmp_path / "r"
@@ -1453,6 +2003,167 @@ class TestVerifyResolutionsDispatch:
         # working-tree-vs-committed-HEAD mismatch is surfaced, not silent.
         assert "vouches for the WORKING tree" in result.stderr
 
+    def _seed_clean_dirty_tree_review(self, repo: Path) -> str:
+        """A CLEAN review of a DIRTY working tree — the state
+        `review-cycle.md` says vouches for the commit that materializes it.
+
+        The fact records the working tree's hash as `head_tree` and no
+        `head_commit`, which is exactly what a dirty-tree dispatch writes.
+        Returns that tree hash.
+
+        The review's own bookkeeping is gitignored — the findings cache, the
+        partials and the ledger all land under `.prawduct/`, and consolidating
+        would otherwise dirty the tree by the act of recording that it reviewed
+        it, so no fixture could reach the state under test. Ignoring the whole
+        directory is broader than a real repo does; what it buys here is a tree
+        whose only content is the code under review.
+        """
+        _commit_file(repo, ".gitignore", ".prawduct/\n", "ignore review bookkeeping")
+        head = _commit_file(repo, "src/app.py", "x = 1\n", "init")
+        (repo / ".prawduct").mkdir(exist_ok=True)
+        (repo / "src/app.py").write_text("x = 2  # reviewed while dirty\n")
+        capture = evidence.capture_tree(repo)
+        reviewed_tree = capture["tree"]
+        _set_marker(repo)
+        _write_manifest(
+            repo, head, id="rev-prior-0001", head_tree=reviewed_tree,
+            head_commit=None,
+        )
+        _full_roster_partials(repo, head)  # clean: no findings at all
+        result = _run_consolidate(repo)
+        assert result.returncode == 0, f"seed failed: {result.stderr!r}"
+        return reviewed_tree
+
+    def test_the_vouching_commit_does_not_move_the_anchor(self, tmp_path):
+        """Committing the reviewed tree verbatim, then working on: the pass runs.
+
+        The anchor branch used to read a COMMIT-set diff while the refusal guard
+        read a TREE delta, and the two disagree here and nowhere else. The
+        vouching commit — the one `review-cycle.md` says the dirty-tree review
+        vouches FOR — made the commit set non-empty, moved the anchor to
+        committed HEAD, and left the tree delta empty. `critic-begin` then exited
+        1 saying "nothing changed since" while unreviewed work sat in the tree:
+        a refusal that reads as "everything is reviewed" and means "everything I
+        chose to look at is reviewed".
+        """
+        repo = tmp_path / "r"
+        _init_repo(repo)
+        reviewed_tree = self._seed_clean_dirty_tree_review(repo)
+
+        # The vouching commit: the reviewed content, committed verbatim.
+        vouching = _commit_file(repo, "src/app.py", "x = 2  # reviewed while dirty\n",
+                                "commit the reviewed tree")
+        assert _git(repo, "rev-parse", "HEAD^{tree}").stdout.strip() == reviewed_tree, (
+            "the fixture must commit the reviewed tree VERBATIM — that is the "
+            "whole mechanism"
+        )
+        # …then real, unreviewed work lands in the working tree.
+        (repo / "src/app.py").write_text("x = 3  # NOT reviewed by anyone\n")
+
+        result = _run_begin(repo, "--mode", "verify-resolutions")
+        assert result.returncode == 0, f"stderr={result.stderr!r}"
+        manifest = json.loads((repo / PARTIALS_REL / "manifest.json").read_text())
+        # Anchored at the WORKING tree: the commit changed no content, so it is
+        # not a change of intent.
+        assert manifest["base_tree"] == reviewed_tree
+        assert manifest["head_tree"] != reviewed_tree
+        assert manifest["head_commit"] is None
+        assert "src/app.py" in manifest["files_changed"], (
+            "the unreviewed work is IN the reviewed scope, which is the point"
+        )
+        assert vouching  # the commit exists; it simply does not move the anchor
+
+    def test_nothing_to_verify_names_the_tree_it_compared(self, tmp_path):
+        """The genuine no-op still refuses — with a message that says what it read.
+
+        Under the tree-inequality anchor an empty delta means the tree really is
+        unchanged, so this refusal is honest. It names the anchor and both tree
+        hashes anyway: the previous wording was true of the anchor and false of
+        the repo, and nothing in it let a builder tell which.
+        """
+        repo = tmp_path / "r"
+        _init_repo(repo)
+        reviewed_tree = self._seed_clean_dirty_tree_review(repo)
+        _commit_file(repo, "src/app.py", "x = 2  # reviewed while dirty\n",
+                     "commit the reviewed tree")
+
+        result = _run_begin(repo, "--mode", "verify-resolutions")
+        assert result.returncode == 1
+        assert "nothing to verify" in result.stderr
+        assert "the working tree" in result.stderr
+        assert reviewed_tree[:12] in result.stderr
+
+    def test_a_non_ancestor_prior_anchor_refuses_for_demotion(self, tmp_path):
+        """A sibling branch's review fact must not anchor this branch's pass.
+
+        The findings cache is single-slot and survives a branch switch, and
+        worktrees of one clone share an object store — so the anchor still
+        RESOLVES, which is all the old guard asked. The delta from it would span
+        the divergence and fill the review with changes this branch never made.
+        The `_commit_resolves` assertion below is the load-bearing half: without
+        it this test would stay green against a build that dropped the ancestor
+        check, because it would be proving nothing about which guard refused.
+        """
+        repo = tmp_path / "r"
+        _init_repo(repo)
+        _commit_file(repo, "src/app.py", "x = 1\n", "init")
+        (repo / ".prawduct").mkdir()
+
+        _git(repo, "checkout", "--quiet", "-b", "sibling")
+        sibling_tip = _commit_file(repo, "src/app.py", "x = 99  # sibling\n", "sibling")
+        sibling_tree = _git(repo, "rev-parse", "HEAD^{tree}").stdout.strip()
+        _git(repo, "checkout", "--quiet", "main")
+
+        # The prior fact belongs to the sibling: its anchor is that branch's tip.
+        prior_id = _seed_prior_review_with_blocker(
+            repo, sibling_tip, head_tree=sibling_tree, head_commit=sibling_tip
+        )
+        (repo / "src/app.py").write_text("x = 2  # my fix\n")
+
+        assert _commit_resolves(repo, sibling_tip), (
+            "the old guard passes this anchor — that is the defect"
+        )
+        assert not _commit_is_ancestor(repo, sibling_tip)
+
+        result = _run_begin(repo, "--mode", "verify-resolutions")
+        assert result.returncode == 1
+        assert "another lineage" in result.stderr, result.stderr
+        assert prior_id in result.stderr
+
+    def test_a_dirty_tree_fact_falling_back_to_dispatch_commit_is_not_refused(
+        self, tmp_path
+    ):
+        """Fail-closed must not tighten into stranding the builder.
+
+        A review of a dirty tree records **no `head_commit`**, so the anchor
+        falls back to `dispatch_commit`. That fallback is the branch the guard
+        could most easily break, so the fixture must actually reach it: an
+        earlier version of this test seeded `head_commit=head` and never left the
+        first branch, pinning a case its own name did not describe. On a branch
+        that landed a commit for tests which "proved" a fix while passing against
+        the defect, a test misdescribing its own fixture is that hazard one layer
+        up.
+        """
+        repo = tmp_path / "r"
+        _init_repo(repo)
+        reviewed_tree = self._seed_clean_dirty_tree_review(repo)
+        prior = next(
+            f for f in _store_facts(repo, "review") if f["id"] == "rev-prior-0001"
+        )
+        assert prior["body"]["head_commit"] is None, (
+            "the fixture must reach the dispatch_commit fallback, not the "
+            "head_commit branch — that is the whole point of this test"
+        )
+        anchor = prior["body"]["dispatch_commit"]
+        assert _commit_is_ancestor(repo, anchor)
+
+        # Real unreviewed work, so the pass has something to verify.
+        (repo / "src/app.py").write_text("x = 3  # further fix\n")
+        result = _run_begin(repo, "--mode", "verify-resolutions")
+        assert result.returncode == 0, f"stderr={result.stderr!r}"
+        manifest = json.loads((repo / PARTIALS_REL / "manifest.json").read_text())
+        assert manifest["base_tree"] == reviewed_tree
+
     def test_verify_scope_widened_exits_2(self, tmp_path):
         repo = tmp_path / "r"
         _init_repo(repo)
@@ -1463,6 +2174,123 @@ class TestVerifyResolutionsDispatch:
         result = _run_begin(repo, "--mode", "verify-resolutions")
         assert result.returncode == 2
         assert "scope-widened" in result.stderr
+
+
+class TestResolutionDirectiveDelivery:
+    """End-to-end: the directive reaches the reviewer at dispatch, on that one
+    mode, and changes no exit code.
+
+    The trigger is narrow on purpose. A directive that prints on every dispatch
+    is one the reader learns to skip, and `verify-resolutions` is the only mode
+    whose output can weaken a gate — the other three cannot carry `resolutions`
+    at all (consolidate fails closed on a resolutions payload in any other
+    mode).
+    """
+
+    def _seed_and_fix(self, repo: Path) -> str:
+        """Prior review fact with a blocker at the initial commit's real tree,
+        then an uncommitted fix — the state a verify-resolutions dispatch needs.
+        """
+        head = _commit_file(repo, "src/app.py", "x = 1\n", "init")
+        head_tree = _git(repo, "rev-parse", "HEAD^{tree}").stdout.strip()
+        (repo / ".prawduct").mkdir(exist_ok=True)
+        _seed_prior_review_with_blocker(
+            repo, head, head_tree=head_tree, head_commit=head
+        )
+        (repo / "src/app.py").write_text("x = 2  # fixed\n")
+        return head
+
+    def test_verify_resolutions_dispatch_delivers_it(self, tmp_path):
+        repo = tmp_path / "r"
+        _init_repo(repo)
+        self._seed_and_fix(repo)
+        result = _run_begin(repo, "--mode", "verify-resolutions")
+        assert result.returncode == 0, f"stderr={result.stderr!r}"
+        assert cc.RESOLUTION_IS_A_CLAIM_DIRECTIVE in result.stdout
+
+    def test_it_is_the_last_thing_in_the_dispatch_output(self, tmp_path):
+        """Position is a deliverable, not a detail. This is a long tool result —
+        manifest line, worktree line, record-lint block, marker line — and the
+        reader acts on what it read last. Anything appended after this would
+        push the one instruction in the message off the bottom.
+        """
+        repo = tmp_path / "r"
+        _init_repo(repo)
+        self._seed_and_fix(repo)
+        result = _run_begin(repo, "--mode", "verify-resolutions")
+        assert result.returncode == 0, f"stderr={result.stderr!r}"
+        assert result.stdout.rstrip().endswith(
+            cc.RESOLUTION_IS_A_CLAIM_DIRECTIVE.rstrip()
+        ), (
+            "something now prints after the directive. Move it above, or move "
+            "the directive back to last — the reader acts on the tail."
+        )
+
+    @pytest.mark.parametrize("mode", ["chunk", "final", "cumulative"])
+    def test_no_other_mode_delivers_it(self, tmp_path, mode):
+        """These modes cannot record resolutions, so the advice is noise — and
+        noise is what teaches a reader to skip the line that matters.
+        """
+        repo = tmp_path / "r"
+        _init_repo(repo)
+        _commit_file(repo, "src/app.py", "x = 1\n", "init")
+        (repo / ".prawduct").mkdir()
+        if mode == "cumulative":
+            # cumulative scopes a COMMITTED bundle against the merge base, so a
+            # dirty tree on the base branch is an empty diff and it refuses to
+            # dispatch at all — which would pass this assertion for the wrong
+            # reason (no dispatch rather than no directive).
+            _git(repo, "checkout", "-q", "-b", "feature/demo")
+            _commit_file(repo, "src/feat.py", "z = 1\n", "feature work")
+        else:
+            (repo / "src/app.py").write_text("x = 2\n")
+        result = _run_begin(repo, "--mode", mode)
+        assert result.returncode == 0, f"stderr={result.stderr!r}"
+        assert cc.RESOLUTION_IS_A_CLAIM_DIRECTIVE not in result.stdout
+
+    def test_a_refused_dispatch_delivers_nothing(self, tmp_path):
+        """No prior review → exit 1 and the skill re-dispatches as chunk/final.
+        Advice for a review that is not happening would be read as if it were.
+        """
+        repo = tmp_path / "r"
+        _init_repo(repo)
+        _commit_file(repo, "src/app.py", "x = 1\n", "init")
+        (repo / ".prawduct").mkdir()
+        (repo / "src/app.py").write_text("x = 2\n")
+        result = _run_begin(repo, "--mode", "verify-resolutions")
+        assert result.returncode == 1
+        assert cc.RESOLUTION_IS_A_CLAIM_DIRECTIVE not in result.stdout
+
+    def test_a_widened_dispatch_delivers_nothing(self, tmp_path):
+        """Exit 2 — the dispatch is demoted to `final`, which records no
+        resolutions. Keyed off the manifest's mode rather than the `--mode`
+        argument, so a demoted dispatch never reaches the print at all.
+        """
+        repo = tmp_path / "r"
+        _init_repo(repo)
+        self._seed_and_fix(repo)
+        for i in range(2 * 1 + 6):
+            (repo / f"src/new_{i}.py").write_text(f"n = {i}\n")
+        result = _run_begin(repo, "--mode", "verify-resolutions")
+        assert result.returncode == 2
+        assert cc.RESOLUTION_IS_A_CLAIM_DIRECTIVE not in result.stdout
+
+    def test_the_dispatch_it_annotates_is_otherwise_unchanged(self, tmp_path):
+        """Advice fails soft: it rides an existing report and alters nothing
+        about it. Same exit code, same manifest, same marker as the dispatch
+        tests above assert without it.
+        """
+        repo = tmp_path / "r"
+        _init_repo(repo)
+        self._seed_and_fix(repo)
+        result = _run_begin(repo, "--mode", "verify-resolutions")
+        assert result.returncode == 0, f"stderr={result.stderr!r}"
+        manifest = json.loads((repo / PARTIALS_REL / "manifest.json").read_text())
+        assert manifest["mode"] == VERIFY_MODE
+        assert manifest["roster"] == ["reviewer"]
+        ok, reason = cc.validate_manifest(manifest)
+        assert ok, reason
+        assert (repo / MARKER_REL).is_file()
 
 
 class TestWorktreeVisibility:
@@ -1559,10 +2387,14 @@ class TestRecordLintInManifest:
     def test_manifest_carries_a_record_lint_block(self, tmp_path):
         _repo, manifest, _res = self._dispatch(tmp_path)
         lint = manifest["record_lint"]
-        assert set(lint) == {"records", "chunk_graded", "findings", "unchecked", "counts"}
+        assert set(lint) == {
+            "records", "chunk_graded", "plan_graded", "findings", "unchecked", "counts",
+        }
         # Every check is present with an explicit tally, so a zero is visibly a
-        # zero rather than a key a consumer has to interpret.
+        # zero rather than a key a consumer has to interpret — and a check that
+        # produced no answer is None, which a zero cannot be told apart from.
         assert set(lint["counts"]) == set(record_lint.CHECKS)
+
 
     def test_a_missing_declared_deliverable_lands_in_the_manifest(self, tmp_path):
         plan = (
@@ -1606,6 +2438,112 @@ class TestRecordLintInManifest:
         _repo, manifest, _res = self._dispatch(tmp_path)
         manifest.pop("record_lint")
         assert cc.build_fact_body(manifest, [])["record_lint"] is None
+
+
+class TestScopeAttribution:
+    """Which plan the RECORD says the review was of.
+
+    An unbounded `active_build_plan` has attributed the manifest, the review
+    fact and the ledger event to an unrelated plan — with the pointer correct
+    every time, which is why nothing here repoints it.
+    """
+
+    def _repo_with_scoped_plan(self, tmp_path, branch: str) -> Path:
+        repo = tmp_path / "r"
+        _init_repo(repo)
+        _commit_file(repo, "src/app.py", "x = 1\n", "init")
+        artifacts = repo / ".prawduct" / "artifacts"
+        artifacts.mkdir(parents=True)
+        (repo / ".prawduct" / "project-state.yaml").write_text(
+            "project_name: t\nactive_build_plan: artifacts/build-plan-other.md\n"
+        )
+        (artifacts / "build-plan-other.md").write_text(
+            "---\nartifact: build-plan\nscope: other\n---\n\n# Plan\n\n"
+            "## Status\n\n- [ ] Chunk 01: other\n\n"
+            "### Chunk 01: other\n\n- **Deliverables:** `src/app.py`\n"
+        )
+        (artifacts / "build-plan-mine.md").write_text(
+            "---\nartifact: build-plan\nscope: mine\n---\n\n# Plan\n\n"
+            "## Status\n\n- [ ] Chunk 01: mine\n\n"
+            "### Chunk 01: mine\n\n- **Deliverables:** `src/app.py`\n"
+        )
+        _commit_file(repo, ".prawduct/keep", "", "seed prawduct")
+        _git(repo, "checkout", "-b", branch, "--quiet")
+        (repo / "src/app.py").write_text("x = 2\n")
+        return repo
+
+    def test_scope_is_derived_from_the_branch_when_the_dispatch_omits_it(
+        self, tmp_path
+    ):
+        """No `--scope`, and the record still names this branch's plan.
+
+        Derived in code rather than left to the dispatching agent to read off
+        the pointer — that read is where the misattribution enters.
+        """
+        repo = self._repo_with_scoped_plan(tmp_path, "fix/mine")
+        result = _run_begin(repo, "--mode", "chunk", "--chunk", "01")
+        assert result.returncode == 0, f"stderr={result.stderr!r}"
+        manifest = json.loads((repo / PARTIALS_REL / "manifest.json").read_text())
+        assert manifest["scope"] == "mine"
+        assert manifest["scope_chosen_by"] == "branch-name"
+        assert manifest["record_lint"]["plan_graded"].endswith("build-plan-mine.md")
+
+    def test_an_explicit_scope_still_wins(self, tmp_path):
+        repo = self._repo_with_scoped_plan(tmp_path, "fix/mine")
+        result = _run_begin(repo, "--mode", "chunk", "--chunk", "01", "--scope", "other")
+        assert result.returncode == 0, f"stderr={result.stderr!r}"
+        manifest = json.loads((repo / PARTIALS_REL / "manifest.json").read_text())
+        assert manifest["scope"] == "other"
+        assert manifest["scope_chosen_by"] == "explicit-args"
+        assert manifest["record_lint"]["plan_graded"].endswith("build-plan-other.md")
+
+    def test_the_dispatch_line_names_the_subject_and_what_did_not_run(
+        self, tmp_path
+    ):
+        """The dispatch output is what the reviewing agent reads before assessing
+        anything, so it is where a null must not pass for a zero.
+
+        `record-lint clean … checks run: <every check>` was the old line, printed
+        whether or not each check ran — the report that vouched for work nobody
+        did, which is the thing record-lint exists to refuse.
+        """
+        repo = self._repo_with_scoped_plan(tmp_path, "fix/mine")
+        result = _run_begin(repo, "--mode", "chunk", "--chunk", "01")
+        assert result.returncode == 0, f"stderr={result.stderr!r}"
+        assert "record-lint graded chunk 01 of" in result.stdout
+        assert "build-plan-mine.md" in result.stdout
+        assert "scope mine, branch-name" in result.stdout
+
+    def test_a_dispatch_with_no_gradable_chunk_says_what_did_not_run(self, tmp_path):
+        """A check with no subject is reported as not-run, not as a clean pass."""
+        repo = tmp_path / "r"
+        _init_repo(repo)
+        _commit_file(repo, "src/app.py", "x = 1\n", "init")
+        (repo / ".prawduct" / "artifacts").mkdir(parents=True)
+        (repo / ".prawduct" / "project-state.yaml").write_text("project_name: t\n")
+        _commit_file(repo, ".prawduct/keep", "", "seed prawduct")
+        (repo / ".prawduct" / "artifacts" / "notes.md").write_text("# Notes\n\nplain\n")
+
+        result = _run_begin(repo, "--mode", "chunk")
+        assert result.returncode == 0, f"stderr={result.stderr!r}"
+        assert "NOT run: chunk-ref-missing" in result.stdout, result.stdout
+        manifest = json.loads((repo / PARTIALS_REL / "manifest.json").read_text())
+        assert manifest["record_lint"]["counts"]["chunk-ref-missing"] is None
+
+    def test_a_branch_matching_no_declared_scope_infers_nothing(self, tmp_path):
+        """The inference can only ADD attribution, never redirect it.
+
+        A branch name matching nothing leaves every caller on the behaviour it
+        had before — which is the whole safety argument for reading a branch
+        name at all.
+        """
+        repo = self._repo_with_scoped_plan(tmp_path, "fix/unrelated-name")
+        result = _run_begin(repo, "--mode", "chunk", "--chunk", "01")
+        assert result.returncode == 0, f"stderr={result.stderr!r}"
+        manifest = json.loads((repo / PARTIALS_REL / "manifest.json").read_text())
+        assert manifest["scope"] is None
+        assert manifest["scope_chosen_by"] == "not-resolved"
+        assert manifest["record_lint"]["plan_graded"].endswith("build-plan-other.md")
 
 
 # ---------------------------------------------------------------------------

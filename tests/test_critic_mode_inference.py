@@ -26,7 +26,7 @@ REPO_ROOT = Path(__file__).resolve().parent.parent / "plugin"
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from lib import infer_mode  # noqa: E402 — sys.path mutated above
+from lib import buildplan_refs, critic_mode, infer_mode  # noqa: E402 — sys.path mutated above
 
 
 # ---------------------------------------------------------------------------
@@ -344,6 +344,97 @@ class TestRule1VerifyResolutions:
         mode, _ = infer_mode(tmp_path, None)
         assert mode != "verify-resolutions"
 
+    def test_does_not_fire_when_anchor_is_non_ancestor(self, tmp_path: Path):
+        """A sibling branch's anchor RESOLVES but is not on this lineage.
+
+        The single-slot findings cache survives a branch switch, and worktrees of
+        one clone share an object store — so the old guard (`_commit_resolves`)
+        passed a sibling tip and the pass diffed across the divergence, reviewing
+        changes this branch never made. The assertions below prove the OLD guard
+        would have passed before asserting the demote: without that pair the test
+        would stay green against a build that dropped the ancestor check.
+        """
+        _init_repo(tmp_path)
+        _write(tmp_path, "src/app.py", "# base\n")
+        _commit(tmp_path, "base")
+
+        _checkout_new_branch(tmp_path, "feature/sibling")
+        _write(tmp_path, "src/app.py", "# sibling work\n")
+        sibling_tip = _commit(tmp_path, "sibling")
+
+        _git(tmp_path, "checkout", "main", "--quiet")
+        _checkout_new_branch(tmp_path, "feature/mine")
+        _write(tmp_path, "src/app.py", "# my v1\n")
+        _commit(tmp_path, "mine")
+        _write(tmp_path, "src/app.py", "# my v2 (fix in progress)\n")
+
+        _write_findings(
+            tmp_path / ".prawduct",
+            commit_reviewed=sibling_tip,
+            files_reviewed=["src/app.py"],
+        )
+
+        assert critic_mode._commit_resolves(tmp_path, sibling_tip) is True, (
+            "the old guard passes this anchor — that is the defect"
+        )
+        assert critic_mode._commit_is_ancestor(tmp_path, sibling_tip) is False
+
+        mode, _ = infer_mode(tmp_path, None)
+        assert mode != "verify-resolutions"
+
+    def test_rule_1b_does_not_fire_when_anchor_is_non_ancestor(self, tmp_path: Path):
+        """Rule 1b takes `<anchor>..HEAD` too, so it needs the same guard.
+
+        Rule 1's test proves the guard exists; it does not prove this call site
+        has it. `_committed_files_since` below the check is exactly the two-way
+        diff that spans a divergence, so an unguarded 1b recommends a verify pass
+        over a sibling branch's commits.
+        """
+        _init_repo(tmp_path)
+        _write(tmp_path, "README.md", "x\n")
+        _commit(tmp_path, "initial")
+
+        _checkout_new_branch(tmp_path, "feature/sibling")
+        _write(tmp_path, "src/sib.py", "# sibling\n")
+        sibling_tip = _commit(tmp_path, "sibling work")
+
+        _git(tmp_path, "checkout", "main", "--quiet")
+        _checkout_new_branch(tmp_path, "feature/mine")
+        _write(tmp_path, "src/a.py", "# a\n")
+        _commit(tmp_path, "feat: a")
+        _write(tmp_path, "src/a.py", "# a fixed\n")
+        _commit(tmp_path, "fix: post-cumulative")  # clean tree, committed delta
+
+        _write_findings(
+            tmp_path / ".prawduct",
+            mode="cumulative (bundle review, ready for merge)",
+            commit_reviewed=sibling_tip,
+            files_reviewed=["src/a.py"],
+            include_finding=False,
+        )
+
+        assert critic_mode._commit_resolves(tmp_path, sibling_tip) is True, (
+            "the old guard passes this anchor — that is the defect"
+        )
+        assert critic_mode._commit_is_ancestor(tmp_path, sibling_tip) is False
+
+        mode, _ = infer_mode(tmp_path, None)
+        assert mode != "verify-resolutions"
+
+    def test_ancestor_check_fails_closed_on_git_failure(self, tmp_path: Path):
+        """Not-an-ancestor and a broken git are the same answer: refuse.
+
+        An anchor we cannot PLACE is one we cannot trust, so exit 1 and every
+        other failure demote alike. A malformed SHA exercises the non-zero,
+        non-1 path without mocking the subprocess away.
+        """
+        _init_repo(tmp_path)
+        _write(tmp_path, "src/app.py", "# v1\n")
+        _commit(tmp_path, "v1")
+
+        assert critic_mode._commit_is_ancestor(tmp_path, "not-a-sha") is False
+        assert critic_mode._commit_is_ancestor(tmp_path, "") is False
+
 
 # ---------------------------------------------------------------------------
 # Rule 2 — cumulative
@@ -529,6 +620,17 @@ class TestRule2Cumulative:
         assert mode != "cumulative"
 
     def test_does_not_fire_when_only_one_commit_ahead(self, tmp_path: Path):
+        """Rule 2's own ≥2-commit threshold holds — the rule does not fire.
+
+        The ANSWER is still `cumulative`, from rule 4: the tree is clean, so
+        chunk/final would dispatch an empty interval and refuse, and one commit
+        ahead of a resolvable base is a reviewable bundle. This assertion used to
+        read `mode != "cumulative"`, conflating "rule 2 declined" with "the
+        answer isn't cumulative" — the same statement until rule 4 learned that a
+        clean tree cannot be reviewed by a working-tree-scoped mode, and a
+        standalone fix branch with all work committed is exactly the case that
+        cost a wasted dispatch. It pins the rule now, which is what it meant.
+        """
         _init_repo(tmp_path)
         _write(tmp_path, "README.md", "x\n")
         _commit(tmp_path, "initial")
@@ -536,8 +638,10 @@ class TestRule2Cumulative:
         _write(tmp_path, "src/a.py", "# a\n")
         _commit(tmp_path, "feat: a")  # only 1 ahead
 
-        mode, _ = infer_mode(tmp_path, None)
-        assert mode != "cumulative"
+        mode, rationale = infer_mode(tmp_path, None)
+        assert not rationale.startswith("rule-2"), rationale
+        assert mode == "cumulative"
+        assert rationale.startswith("rule-4 cumulative:")
 
     def test_does_not_fire_when_cumulative_record_covers_head(self, tmp_path: Path):
         """A fresh cumulative-mode findings file for current HEAD
@@ -592,20 +696,26 @@ class TestRule2Cumulative:
         mode, _ = infer_mode(tmp_path, None)
         assert mode == "cumulative"
 
-    def test_does_not_fire_when_no_base_branch(self, tmp_path: Path):
-        """Detached/orphan branch without main/master/develop → cumulative
-        can't detect base. No active plan + no diff signal → rule-4
-        fail-safe → final."""
+    def test_does_not_fire_without_main_master_or_develop(self, tmp_path: Path):
+        """Rule 2 declines on a branch with no conventional base branch.
+
+        Not because the base is unresolvable — `_resolve_base_branch` falls back
+        to `HEAD~1`, so it resolves here and this test's original name and
+        docstring both asserted a mechanism that has not held. It declines
+        because `HEAD~1..HEAD` is one commit, under rule 2's ≥2 threshold. The
+        answer is rule 4's clean-tree redirect, and pinning the *rationale* is
+        what keeps the reason from silently becoming a different one again.
+        """
         _init_repo(tmp_path, branch="feature/standalone")
         _write(tmp_path, "src/a.py", "# a\n")
         _commit(tmp_path, "a")
         _write(tmp_path, "src/b.py", "# b\n")
         _commit(tmp_path, "b")
 
-        mode, _ = infer_mode(tmp_path, None)
-        # No main/master/develop → cumulative can't detect base; no plan,
-        # clean tree → rule-4 fail-safe → final.
-        assert mode == "final"
+        mode, rationale = infer_mode(tmp_path, None)
+        assert not rationale.startswith("rule-2"), rationale
+        assert mode == "cumulative"
+        assert rationale.startswith("rule-4 cumulative:")
 
 
 # ---------------------------------------------------------------------------
@@ -763,6 +873,264 @@ class TestRule4ChunkDefault:
         mode, rationale = infer_mode(tmp_path, None)
         assert mode == "chunk"
         assert rationale.startswith("rule-4 chunk:")
+
+    def test_clean_tree_does_not_recommend_an_empty_working_tree_interval(
+        self, tmp_path: Path
+    ):
+        """A plan grounds `chunk`, but a clean tree cannot BE chunk-reviewed.
+
+        `chunk` and `final` both scope to HEAD-tree → working-tree, so on a clean
+        tree `critic-begin` refuses with an empty diff. Recommending one anyway
+        is a round-trip that names no remedy the caller lacked — the observed
+        case was a standalone fix branch with all work committed, which the
+        skill then re-dispatched as `cumulative` by hand.
+        """
+        _init_repo(tmp_path)
+        _write(tmp_path, "README.md", "x\n")
+        _write_build_plan(
+            tmp_path / ".prawduct",
+            [("x", "Chunk 1"), (" ", "Chunk 2"), (" ", "Chunk 3")],
+        )
+        _commit(tmp_path, "initial")
+        _checkout_new_branch(tmp_path, "fix/standalone")
+        _write(tmp_path, "src/fix.py", "# fix\n")
+        # EVERYTHING committed, records included. An uncommitted plan or
+        # change-log would leave the interval non-empty — `capture_tree` stages
+        # them — so a fixture that left them dirty would be exercising the
+        # metadata blind spot rather than the clean-tree case.
+        _commit(tmp_path, "fix: it")
+
+        mode, rationale = infer_mode(tmp_path, None)
+        assert mode == "cumulative"
+        assert "empty interval" in rationale
+
+    def test_uncommitted_records_alone_still_have_something_to_review(
+        self, tmp_path: Path
+    ):
+        """A record-only work cycle is not a clean tree.
+
+        Uncommitted plan and change-log edits ARE in `chunk`'s interval, so
+        redirecting them to `cumulative` would note-and-exclude the records just
+        written and stamp "working tree is clean" into `mode_chosen_by` — a
+        durable field of the review fact — over a dirty tree.
+        """
+        _init_repo(tmp_path)
+        _write(tmp_path, "README.md", "x\n")
+        _write_build_plan(
+            tmp_path / ".prawduct",
+            [("x", "Chunk 1"), (" ", "Chunk 2"), (" ", "Chunk 3")],
+        )
+        _commit(tmp_path, "initial")
+        _checkout_new_branch(tmp_path, "fix/records")
+        _write(tmp_path, "src/fix.py", "# fix\n")
+        _commit(tmp_path, "fix: it")
+        # Code committed; only the records are in flight.
+        _write(tmp_path, ".prawduct/change-log.md", "# Change Log\n\n## New entry\n")
+
+        mode, rationale = infer_mode(tmp_path, None)
+        assert mode == "chunk", rationale
+        assert "empty interval" not in rationale
+
+    def test_no_redirect_when_cumulative_would_refuse_too(self, tmp_path: Path):
+        """The redirect only fires when the redirect TARGET works.
+
+        Zero commits beyond the base means cumulative's interval is empty as
+        well, so swapping one refusal for another buys nothing — the fail-safe
+        answer and its honest refusal stand.
+
+        A GUARD, not evidence: it passes against the pre-fix code too, by
+        design. What it pins is that the redirect beside it stays bounded.
+        """
+        _init_repo(tmp_path)
+        _write(tmp_path, "README.md", "x\n")
+        _commit(tmp_path, "initial")
+        _write_build_plan(
+            tmp_path / ".prawduct",
+            [("x", "Chunk 1"), (" ", "Chunk 2"), (" ", "Chunk 3")],
+        )
+
+        mode, rationale = infer_mode(tmp_path, None)
+        assert mode == "chunk"
+        assert rationale.startswith("rule-4 chunk:")
+
+    def test_working_tree_probe_fails_toward_not_empty(
+        self, tmp_path: Path, monkeypatch
+    ):
+        """The probe's docstring promises "any git failure returns False".
+
+        The raise class is the half a `returncode` check misses: an absent
+        binary (OSError) or the timeout. Returning False there keeps rule 4 on
+        its fail-safe answer instead of redirecting on a tree it could not read
+        — an unguarded call would propagate out of `infer_mode` instead.
+
+        Lives here rather than beside the rule-1 anchor tests because rule 4 is
+        the only caller, and uses `monkeypatch` rather than a hand-rolled
+        reassignment so the stdlib module object is restored by the fixture
+        rather than by this test remembering to.
+        """
+        _init_repo(tmp_path)
+        _write(tmp_path, "README.md", "x\n")
+        _commit(tmp_path, "initial")
+        # Unpatched first: proves the call is REACHED, so the False below is the
+        # guard answering and not a short circuit above it.
+        assert critic_mode._working_tree_is_empty(tmp_path) is True
+
+        for boom in (OSError("no git"), subprocess.TimeoutExpired("git", 10)):
+            def _raise(*_a, _exc=boom, **_k):
+                raise _exc
+
+            monkeypatch.setattr(critic_mode.subprocess, "run", _raise)
+            assert critic_mode._working_tree_is_empty(tmp_path) is False
+            monkeypatch.undo()
+
+    def test_grounds_on_the_branchs_own_plan_not_the_pointer(self, tmp_path: Path):
+        """Rule 4 names the plan it grounded on, and prefers this branch's.
+
+        `active_build_plan` answers "which plan is in progress in this repo" —
+        on a repo running several plans across worktrees that is a different
+        question, and rule 4 used to inherit whichever plan it named. The
+        pointer's plan here has one chunk left (which would make rule 3 fire);
+        the branch's plan has three, so an inference reading the pointer answers
+        `final` and one reading the branch answers `chunk`.
+        """
+        _init_repo(tmp_path)
+        _write(tmp_path, "README.md", "x\n")
+        _commit(tmp_path, "initial")
+        _checkout_new_branch(tmp_path, "feature/mine")
+
+        artifacts = tmp_path / ".prawduct" / "artifacts"
+        artifacts.mkdir(parents=True, exist_ok=True)
+        (artifacts / "build-plan-other.md").write_text(
+            "---\nartifact: build-plan\nscope: other\n---\n\n"
+            "# Build Plan\n\n## Status\n\n- [x] Chunk 01: done\n- [ ] Chunk 02: last\n"
+        )
+        (artifacts / "build-plan-mine.md").write_text(
+            "---\nartifact: build-plan\nscope: mine\n---\n\n"
+            "# Build Plan\n\n## Status\n\n"
+            "- [x] Chunk 01: done\n- [ ] Chunk 02: current\n- [ ] Chunk 03: later\n"
+        )
+        (tmp_path / ".prawduct" / "project-state.yaml").write_text(
+            "active_build_plan: artifacts/build-plan-other.md\n"
+        )
+        _write(tmp_path, "src/work.py", "# in progress\n")
+
+        mode, rationale = infer_mode(tmp_path, None)
+        assert mode == "chunk", rationale
+        assert "build-plan-mine.md" in rationale
+        assert "declares this branch's scope 'mine'" in rationale
+
+    def test_a_branch_named_after_a_finished_plan_does_not_match(self, tmp_path: Path):
+        """The liveness narrowing: a matched plan must still have work in it.
+
+        A long-lived repo accumulates dozens of released plans, all of them
+        scope-declaring. Without this, a branch named after any of them
+        attributes its review to a plan that shipped long ago — and record-lint
+        would then raise a BLOCKING `chunk-ref-missing` about deliverables that
+        shipped with it. Deleting `_has_unfinished_chunk` must not leave a green
+        suite, which is why the fully-ticked plan here is otherwise identical to
+        the one the sibling test matches on.
+        """
+        _init_repo(tmp_path)
+        _write(tmp_path, "README.md", "x\n")
+        _commit(tmp_path, "initial")
+        _checkout_new_branch(tmp_path, "fix/shipped")
+
+        artifacts = tmp_path / ".prawduct" / "artifacts"
+        artifacts.mkdir(parents=True, exist_ok=True)
+        (artifacts / "build-plan-shipped.md").write_text(
+            "---\nartifact: build-plan\nscope: shipped\n---\n\n"
+            "# Plan\n\n## Status\n\n- [x] Chunk 01: done\n- [x] Chunk 02: also done\n"
+        )
+        (artifacts / "build-plan-live.md").write_text(
+            "---\nartifact: build-plan\nscope: live\n---\n\n"
+            "# Plan\n\n## Status\n\n- [x] Chunk 01: done\n- [ ] Chunk 02: current\n"
+        )
+
+        prawduct = tmp_path / ".prawduct"
+        assert buildplan_refs.infer_scope_from_branch(tmp_path, prawduct) is None, (
+            "a released plan is not what this branch is building"
+        )
+
+        # Control: the identical branch shape DOES match a plan with work left,
+        # so the assertion above is about liveness and not about the fixture.
+        _git(tmp_path, "checkout", "-b", "fix/live", "--quiet")
+        assert buildplan_refs.infer_scope_from_branch(tmp_path, prawduct) == "live"
+
+    def test_archived_plans_do_not_shadow_their_live_siblings(self, tmp_path: Path):
+        """Discovery went recursive; `archive/` had to stop being discoverable.
+
+        The scan is `sorted()` and first-wins, and `artifacts/archive/x.md` sorts
+        BEFORE `artifacts/x.md` — so an archived copy would win the scope and
+        regenerate the retired plan instead of the live one. Every record check
+        already honours the archive convention; discovery did not.
+        """
+        _init_repo(tmp_path)
+        _write(tmp_path, "README.md", "x\n")
+        _commit(tmp_path, "initial")
+        _checkout_new_branch(tmp_path, "fix/shadowed")
+
+        artifacts = tmp_path / ".prawduct" / "artifacts"
+        (artifacts / "archive").mkdir(parents=True, exist_ok=True)
+        # Same scope, both files. The archived one sorts first.
+        (artifacts / "archive" / "build-plan-shadowed.md").write_text(
+            "---\nartifact: build-plan\nscope: shadowed\n---\n\n"
+            "# Retired\n\n## Status\n\n- [ ] Chunk 01: retired work\n"
+        )
+        (artifacts / "build-plan-shadowed.md").write_text(
+            "---\nartifact: build-plan\nscope: shadowed\n---\n\n"
+            "# Live\n\n## Status\n\n- [ ] Chunk 01: live work\n"
+        )
+
+        plan = buildplan_refs.resolve_branch_plan(tmp_path, tmp_path / ".prawduct")
+        assert plan.scope == "shadowed"
+        assert plan.path.name == "build-plan-shadowed.md"
+        # By PARENT, not by substring: `tmp_path` embeds the test's own name,
+        # which contains "archived" — a substring check would fail here for a
+        # reason that has nothing to do with the behaviour under test.
+        assert plan.path.parent.name == "artifacts", (
+            f"an archived plan shadowed its live sibling: {plan.path}"
+        )
+        assert plan.path.read_text().startswith("---\nartifact: build-plan")
+        assert "# Live" in plan.path.read_text()
+
+    def test_has_unfinished_chunk_edge_readings(self, tmp_path: Path):
+        """The two readings the docstring promises, pinned so they stay true.
+
+        A plan with no Status section reads unfinished — an unparseable plan is
+        not evidence of completion. An unreadable one reads finished, because a
+        file we cannot open is not something to attribute a review to.
+        """
+        plan = tmp_path / "p.md"
+        plan.write_text("# Plan\n\nNo Status section at all.\n")
+        assert buildplan_refs._has_unfinished_chunk(plan) is True
+
+        plan.write_text("# Plan\n\n## Status\n\n- [x] Chunk 01: done\n")
+        assert buildplan_refs._has_unfinished_chunk(plan) is False
+
+        assert buildplan_refs._has_unfinished_chunk(tmp_path / "absent.md") is False
+
+    def test_an_unconfirmable_pointer_is_named_as_an_assumption(self, tmp_path: Path):
+        """A branch matching no declared scope cannot be shown related OR
+        unrelated — so the pointer stands and the rationale says it is assumed.
+
+        Declining here would demote every repo whose branch names differ from
+        its scopes; asserting relation silently is what misattributed three
+        review records. The rationale is the record: it lands in
+        `mode_chosen_by`.
+        """
+        _init_repo(tmp_path)
+        _write(tmp_path, "README.md", "x\n")
+        _commit(tmp_path, "initial")
+        _checkout_new_branch(tmp_path, "feature/no-plan-of-its-own")
+        _write_build_plan(
+            tmp_path / ".prawduct", [("x", "Chunk 1"), (" ", "Chunk 2"), (" ", "Chunk 3")]
+        )
+        _write(tmp_path, "src/work.py", "# in progress\n")
+
+        mode, rationale = infer_mode(tmp_path, None)
+        assert mode == "chunk"
+        assert "assumed related" in rationale
+        assert "matches no plan's declared scope" in rationale
 
 
 # ---------------------------------------------------------------------------

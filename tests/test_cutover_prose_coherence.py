@@ -501,3 +501,61 @@ class TestBackendScopedProseInTheBacklogSkill:
         end = flat.index('"', start)  # the NOTE's closing quote
         note = flat[start:end]
         assert "W2" not in note, "the emitted find NOTE names an internal id"
+
+
+class TestCompletenessGateListsAreEnumeratedConsistently:
+    """`verify-migration`'s exit-4 verdict is a set of named lists, each with its
+    own remedy, and the migration runbook enumerates them twice — once opening
+    Step 6 and once closing it. Prose has no compiler, and both copies drifted in
+    one session: `status_mismatch` was added to the opening while the closing
+    paragraph still said "the four lists", and then `duplicate_alias` repeated the
+    same miss one list later. Each time the operator hitting the *new* list at the
+    cutover gate was pointed at a paragraph explaining a list that was empty in
+    front of them.
+
+    So the enumeration is derived from the gate itself rather than restated here:
+    a sixth list added to `verify_migration` without a runbook bullet fails this,
+    which is the only place it can fail before an irreversible run.
+    """
+
+    def _gate_lists(self) -> set[str]:
+        """The list-valued keys of the gate's own verdict — the source of truth."""
+        import sys
+
+        sys.path.insert(0, str(REPO_ROOT))
+        from lib.backlog import migrate  # noqa: PLC0415 — path set above
+
+        verdict = migrate.verify_migration(
+            _StubTransport(), owner="o", repo="r", content="# Backlog\n\n## Open\n"
+        )
+        data = verdict.get("data") or verdict["error"]["details"]
+        return {k for k, v in data.items() if isinstance(v, list)}
+
+    def test_every_gate_list_has_a_runbook_bullet(self):
+        scrub = _read("skills/backlog/migration-scrub.md")
+        missing = [name for name in self._gate_lists() if f"**`{name}`**" not in scrub]
+        assert not missing, (
+            f"{missing} returned by verify-migration with no bullet in the Step 6 "
+            "remedy list — an operator hitting it is told nothing about how to clear it"
+        )
+
+    def test_the_two_enumerations_agree_on_the_count(self):
+        """The opening says "N lists"; the closing says "the N lists". They drifted
+        apart twice, in the same direction, because only the opening was edited."""
+        flat = " ".join(_read("skills/backlog/migration-scrub.md").split())
+        spelled = {3: "three", 4: "four", 5: "five", 6: "six", 7: "seven"}
+        want = spelled[len(self._gate_lists())]
+        stale = [w for w in spelled.values() if w != want and f"the {w} lists" in flat]
+        assert not stale, (
+            f"the gate returns {want} lists, but the runbook still says "
+            f"{['the ' + s + ' lists' for s in stale]}"
+        )
+        assert f"{want} lists" in flat, f"neither enumeration says {want!r}"
+
+
+class _StubTransport:
+    """An empty repo: the gate's scan yields nothing, so every list comes back
+    empty and the verdict still carries all of their names."""
+
+    def list_issues(self, owner, repo, *, state, per_page, page, labels=None):
+        return []
