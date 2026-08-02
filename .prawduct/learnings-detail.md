@@ -2182,3 +2182,30 @@ assertion is what decides. The prose figures were removed and the table left own
 branch, so every edit to a budgeted file pays a mandatory update whose only function is to force the
 author to notice. That may be worth it, but it is exact-number churn by construction and should be
 decided deliberately rather than inherited.
+
+## A rule you must RECALL at the right moment is its weakest form
+
+Three failures in one work cycle, all of the same shape: the rule was **in context** and the instance
+went unrecognised.
+
+1. Deleted a bullet a budget comment explicitly warns against deleting — while reading that comment.
+2. Missed the second site on three of four review warnings, against a *second-site sweep* rule this
+   same branch wrote two chunks earlier.
+3. Wrote a retire rule counting PR reviews from a store PR findings never reach — about a hundred
+   lines below my own paragraph explaining that this ledger is per-worktree and gitignored, which I
+   had just applied correctly to a different item.
+
+The tempting conclusion is "read more carefully." The evidence says otherwise: **every catch came
+from something that runs.** The suite caught both bad cuts. `render-dispositions` caught a
+disposition claiming a fix I had not yet made. Two independent reviewers caught a schema assumption.
+Nothing was caught by remembering a rule at the moment it applied — including rules authored minutes
+earlier, because familiarity reads as compliance.
+
+So the operational form is not vigilance but conversion: when a rule governs a class of claim that a
+query could settle, spend the effort building the query rather than restating the rule. This is
+exactly what the stable-token mechanism does for control yield — it turns "did this check ever fire?"
+from a memory into a grep — and why the structured `check:` field is the better version still.
+
+Corollary for review economics: this is an argument for *mechanising*, not for more review rounds.
+Two of the three failures were caught by a reviewer, which is expensive; the first was caught by a
+test, which is free and repeats forever.

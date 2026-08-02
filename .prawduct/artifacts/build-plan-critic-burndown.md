@@ -120,12 +120,24 @@ scope; #165 is excluded on its own unfired revisit trigger (measured — see Ope
 repointed: the gates resolve the *branch's* plan by scope, and `build-plan-backlog-burndown.md` is
 retained until the pending `develop`→`main` release regenerates it.
 
-**Chunk 01 BUILT 2026-08-02** (#97, #293). Both controls landed with **no ceiling raised**, and both
-budgeted files came out *smaller* than they went in despite gaining a check (readings live in
-`LAST_MEASURED_TOKENS`, which owns them — restating figures in prose is what staled the last set). Funded
-by upleveling per the owner's standing rule: raise a budget only if provably better for the framework
-AND no headroom remains in cutting detail, dates, worked examples, and definitions the reader never
-applies. Next: Chunk 02.
+**Chunk 01 CLOSED 2026-08-02** (#97, #293) — built, reviewed, verified, gate satisfied. Three commits:
+`8903a9b` (the chunk), `99dd8b2` (the cumulative review's findings), `4e75d03` (the verify pass's).
+`check-cumulative-critic` reports coverage composed with 0 unresolved blocking.
+
+Both controls landed with **no ceiling raised**, and both budgeted files came out *smaller* than they
+went in despite gaining a check (readings live in `LAST_MEASURED_TOKENS`, which owns them — restating
+figures in prose is what staled the last set). Funded by upleveling per the owner's standing rule:
+raise a budget only if provably better for the framework AND no headroom remains in cutting detail,
+dates, worked examples, and definitions the reader never applies.
+
+**Two review rounds, 0 blocking in both.** The cumulative pass (4 warnings, 13 notes) caught that the
+PR half of the yield mechanism named a field that does not exist — two reviewers found it
+independently. The verify pass (1 warning, 2 notes) caught that the retire rule written to fix *that*
+round counted a denominator its numerator cannot reach. Both were prose asserting something the code
+does not support; neither was a logic error in shipped behaviour, which is now thirteen consecutive
+rounds of that pattern across this and the previous branch.
+
+Filed rather than built: `#547`, `#548`, `#549`. Next: **Chunk 02** (#264, #163).
 
 ## Scaffolding
 
