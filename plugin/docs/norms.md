@@ -292,7 +292,7 @@ audit sees them.
 | Prompt time | work-model tripwires | a norm-shaped requirement entering undocumented |
 | Planning | `governed_by:` reconciliation, seeded by `prawduct-hook jurisdiction` | jurisdiction + the per-norm disposition lines (incl. *inapplicable because X*); departures surfaced as decisions before code |
 | Review (event-domain) | Critic Goals 3/4 + Learnings Cross-Check; PR reviewer | departure without a recorded decision (Critic: BLOCKING, all forms, where ratified norms exist; NOTE in a norm-less product — see Severity above; PR reviewer: WARNING at its layer); the amend tell incl. doc-only; flip follow-ups present; norm-staleness signals (→ NOTE recommending `/prawduct:doctor`). The Critic considers jurisdiction independently — `governed_by:` is an input, not a boundary. |
-| Session sync (time-domain, cheap) | advisory probes | the mechanical hooks, canonically: **dated `revisit:` expiries; backlog-id literals in Status/Why lines whose items are shipped/archived (dead why); in-transition tracking items unedited past the window (stall); structural presence** (strategy artifacts with no Direction anywhere / missing Enforcement columns → unratified; Norm Health sweep overdue while Direction sections exist) |
+| Session sync (time-domain, cheap) | advisory probes | the mechanical hooks, canonically: **dated `revisit:` expiries; backlog-id literals in Status/Why lines whose items are shipped/archived (dead why); in-transition tracking items unedited past the window (stall); structural presence** (strategy artifacts with no Direction *entry* anywhere — a bare heading is not one — or missing Enforcement columns → unratified; Norm Health sweep overdue while norms exist under *either* homing) |
 | Periodic (time-domain, deep) | janitor Norm Health theme | erosion distance + trend, decay in prose whys, event-bound triggers walked, registry hygiene — the re-affirm-or-retire fork |
 | Repair | `/prawduct:doctor` | ratification flow (below) + registry integrity: whys present, mechanisms exist, in-transition entries carry tracking ids, classification currency |
 
@@ -368,8 +368,9 @@ puts in the owner's hands.
 - **Day one, automatically:** reviewers apply the normative/descriptive test to unmarked prose
   (conservatively — ambiguity resolves by ruling or marking, not silently), and the amend tell
   needs no markers at all. A one-shot `norm-registry-unratified` advisory fires when
-  strategy-class artifacts exist with no Direction sections (or the Enforcement table lacks
-  norm columns), pointing at the fix.
+  strategy-class artifacts exist with no Direction **entry** — a heading with nothing normative
+  under it does not clear it, since the `Why:` is what separates a norm from a roadmap bullet
+  (§ Anatomy) — or the Enforcement table lacks norm columns, pointing at the fix.
 - **On demand, owner-ratified:** the `/prawduct:doctor` ratification flow reads the product's
   strategy artifacts, preferences, and learnings; proposes candidate norms (statement + why +
   status, citing backlog ids in whys where the rationale rests on tracked work); **triages**

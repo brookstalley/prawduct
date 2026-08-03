@@ -3,6 +3,68 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-08-03: the cumulative round — a survey that ran short, and three cascades that stopped early
+
+<!-- prawduct: type=fix | scope=silent-gates | chunks=03 -->
+
+Cumulative review of the bundle: **0 blocking, 7 warnings, 14 notes across 3 reviewers.** Nothing
+gated. Ten fixed, one filed, ten accepted — dispositioned in one pass, as facts.
+
+**The one that changed shipped behaviour: the `atomic_write_text` survey enumerated 7 of 11 call
+sites.** Two reviewers found it independently. The missing four are all in
+`plugin/bin/prawduct-hook`, which is **extensionless**, so the `grep --include='*.py'` that produced
+the "seven callers" claim could not see them. This repo already carries the rule — *enumerate the
+sites by grep, never by memory, and the grep is itself a site: it is a PREFIX of the real set* — and
+the extension filter is exactly that prefix.
+
+The claim built on that survey was also false: the entry asserted utf-8 "matches every reader — they
+all open `encoding='utf-8'`", and they did not. `operator_verification` wrote through the shared
+writer and read back with a bare `read_text()`. That pair was **self-inverse while both used the
+locale encoding** and became asymmetric the moment the default changed — so on a non-UTF-8 locale a
+status mutation would transcode a committed product file. Fixed at the reader (`_load_queue` and the
+`operator_verification_required` state read now decode utf-8), and the docstring now says what is
+actually true: the writer alone does not settle a round trip, and each reader must ask for utf-8 too.
+
+**Three cascades had stopped one file short**, all the same class as the `doctor/SKILL.md` edit that
+shipped with Chunk 02:
+
+- `docs/norms.md` still described the pre-fix triggers — and at `:370` told an owner that adding a
+  `## Direction` heading clears the advisory, which is precisely the roadmap-heading behaviour
+  Chunk 02 removed.
+- `skills/critic/review-cycle.md` recorded the old anchoring rule: it documents tree-inequality as
+  the discriminator without the mirror reading Chunk 01 added, so the protocol doc and the code
+  disagreed about when the head anchor moves.
+- The `[DECISION]` leaving the wrongly-anchored resolution facts in the ledger named those fact ids
+  **only in the build plan**, which is deleted at release — so the one durable record of which facts
+  are mis-anchored would have vanished with it. Now named in Chunk 01's entry.
+
+**A second markdown-table parser where the plan said to reuse the first.** `_has_enforcement_norm_rows`
+re-derived the norm-index location that `_norm_index_lacks_columns` owns, and with *different*
+acceptance rules — the first `Preference`-headed table versus the first one carrying the norm
+columns. A preferences file with two such tables therefore got contradictory nudges out of a single
+read: "your index lacks the norm columns" and "norms are homed in your index", simultaneously. Both
+now go through one `_norm_index_header` locator, pinned by a two-table test.
+
+- **The template prose was written about the template.** `project-preferences.md` is copied verbatim
+  into every product, so "the table ships empty" is a note about the framework's own file that lands
+  in a file where it is not true. Reworded as an instruction to the product author: every populated
+  row *is* a homed norm, so never leave an example row in it.
+- **Filed rather than absorbed: `#570`.** The emptied template reaches **new onboards only** —
+  `init_product` and `core.write_template` skip existing destinations, so every already-onboarded
+  repo keeps the scaffold rows and reproduces Chunk 02's blocking finding across the installed base.
+  That needs a doctor detect-and-repair, which is a chunk's worth of work and cannot be absorbed into
+  a closing burndown.
+- **An owner decision is open, not cleared.** The plan recorded the widened sweep guard as
+  fleet-visible with `user can veto`, and nothing in this bundle records that veto being waived —
+  because nothing did. It does not gate: the advisory is `info` and prints rather than gates, and
+  merging to `develop` is not the publishing step.
+- **A lint and a policy disagree, and the entry was not degraded to satisfy the lint.** Record-lint
+  scored two `learnings-entry-shape` notes for entries carrying their evidence inline;
+  `learnings.md`'s own header mandates exactly that ("entries carry their instances inline… rules are
+  collapsed by merging statements and unioning instances, never by dropping them"), on the ground
+  that a general statement is what makes a rule storable *and* inert. Accepted with the conflict
+  named rather than trimmed away.
+
 ## 2026-08-03: two runtime assumptions that were invisible where they were written
 
 <!-- prawduct: type=fix | scope=silent-gates | chunks=03 -->
@@ -163,8 +225,10 @@ retyped.
   short-circuits before the new conjunction is reached.
 - **The wrongly-anchored facts already in the ledger stay there.** Facts are immutable and
   append-only; rewriting history to make the ledger look correct would break the property that makes
-  it evidence. The affected review has since been superseded by a clean cumulative and a 0/0/0 verify
-  on the same branch.
+  it evidence. The affected review is `rev-20260802T191628Z-ddd15904` (drift-burndown Chunk 02) and
+  its four resolution facts — named here rather than only in the build plan, which is deleted at
+  release, so the one durable record of which facts are mis-anchored does not vanish with it. That
+  review has since been superseded by a clean cumulative and a 0/0/0 verify on the same branch.
 
 Closes #554.
 

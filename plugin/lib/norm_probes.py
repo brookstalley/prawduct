@@ -355,29 +355,48 @@ def _extract_ids(line: str) -> list[str]:
     return _BACKLOG_ID_RE.findall(line)
 
 
-def _norm_index_lacks_columns(codebase: Codebase) -> bool:
-    """True when the preferences Enforcement index table exists but lacks the norm columns.
-
-    The index table is identified by its header row: a markdown table row whose
-    first cell starts with ``Preference`` (the ratified header reads
-    ``Preference / norm``; the pre-norm template read ``Preference``). Lacking
-    either :data:`_NORM_INDEX_COLUMNS` cell means the table predates the norm
-    index. No preferences file, or no such table, fails toward silence — there
-    is nothing to extend, and structural absence of the registry is the first
-    trigger arm's job. The first matching header decides (one index table per
-    preferences file, per the template)."""
+def _preferences_lines(codebase: Codebase) -> list[str]:
+    """The product's `project-preferences.md`, split into lines (``[]`` if absent)."""
     text = _read_text(codebase.root / ".prawduct" / "artifacts" / "project-preferences.md")
-    if not text:
-        return False
-    for line in text.splitlines():
+    return text.splitlines() if text else []
+
+
+def _norm_index_header(lines: list[str]) -> "tuple[int, list[str]] | None":
+    """Locate the Enforcement **index** table: ``(header line number, cells)``.
+
+    The index table is identified by its header row — a markdown table row whose
+    first cell starts with ``Preference`` (the ratified header reads
+    ``Preference / norm``; the pre-norm template read ``Preference``). The FIRST
+    matching header decides, per the template's one-index-table-per-file shape.
+
+    One locator, deliberately: both the "does the index carry the norm columns"
+    question and the "does it carry a populated norm row" question must be
+    answered about the SAME table. Locating it twice with different acceptance
+    rules — the first ``Preference`` header vs. the first one carrying the
+    columns — lets a file with two such tables get contradictory nudges out of a
+    single read.
+    """
+    for idx, line in enumerate(lines):
         stripped = line.strip()
         if not stripped.startswith("|"):
             continue
         cells = [c.strip() for c in stripped.strip("|").split("|")]
-        if not cells or not cells[0].startswith("Preference"):
-            continue
-        return not all(col in cells for col in _NORM_INDEX_COLUMNS)
-    return False
+        if cells and cells[0].startswith("Preference"):
+            return idx, cells
+    return None
+
+
+def _norm_index_lacks_columns(codebase: Codebase) -> bool:
+    """True when the preferences Enforcement index table exists but lacks the norm columns.
+
+    Lacking either :data:`_NORM_INDEX_COLUMNS` cell means the table predates the
+    norm index. No preferences file, or no such table, fails toward silence —
+    there is nothing to extend, and structural absence of the registry is the
+    first trigger arm's job."""
+    header = _norm_index_header(_preferences_lines(codebase))
+    if header is None:
+        return False
+    return not all(col in header[1] for col in _NORM_INDEX_COLUMNS)
 
 
 def _has_enforcement_norm_rows(codebase: Codebase) -> bool:
@@ -393,29 +412,28 @@ def _has_enforcement_norm_rows(codebase: Codebase) -> bool:
     columns with nothing under them are the *shape* of a registry, not a
     registry, and treating the header as sufficient would nag every repo whose
     template ships it. The header separator row is skipped, and a non-table line
-    ends the table so a later table gets its own header scan.
+    ends the table.
+
+    Reads the index through the shared :func:`_norm_index_header` locator, so
+    this and :func:`_norm_index_lacks_columns` are always answering about the
+    same table.
     """
-    text = _read_text(codebase.root / ".prawduct" / "artifacts" / "project-preferences.md")
-    if not text:
+    lines = _preferences_lines(codebase)
+    header = _norm_index_header(lines)
+    if header is None:
         return False
-    cols: list[int] | None = None
-    for line in text.splitlines():
+    start, cells = header
+    if not all(col in cells for col in _NORM_INDEX_COLUMNS):
+        return False
+    cols = [cells.index(col) for col in _NORM_INDEX_COLUMNS]
+    for line in lines[start + 1:]:
         stripped = line.strip()
         if not stripped.startswith("|"):
-            cols = None
-            continue
-        cells = [c.strip() for c in stripped.strip("|").split("|")]
-        if cols is None:
-            if (
-                cells
-                and cells[0].startswith("Preference")
-                and all(col in cells for col in _NORM_INDEX_COLUMNS)
-            ):
-                cols = [cells.index(col) for col in _NORM_INDEX_COLUMNS]
-            continue
-        if all(c and set(c) <= {"-", ":"} for c in cells):
+            break  # the table ended
+        row = [c.strip() for c in stripped.strip("|").split("|")]
+        if all(c and set(c) <= {"-", ":"} for c in row):
             continue  # the header separator row
-        if max(cols) < len(cells) and all(cells[i] for i in cols):
+        if max(cols) < len(row) and all(row[i] for i in cols):
             return True
     return False
 

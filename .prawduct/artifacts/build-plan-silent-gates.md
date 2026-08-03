@@ -109,7 +109,8 @@ which is what made the cleared state survivable in the first place.
 ## Scaffolding
 
 Not applicable — this plan changes four sites in an existing, fully scaffolded repo. `pytest -q`
-from the repo root runs everything; the suite stood at 3297 passing on the predecessor branch.
+from the repo root runs everything. The evidence store records pass/fail per tree, so this plan
+quotes no suite total — a prose copy is a hand-maintained duplicate that drifts.
 
 ### Verification Strategy
 

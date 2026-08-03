@@ -126,8 +126,7 @@ def atomic_write_text(
 ) -> None:
     """Write ``text`` to ``path`` atomically: tmp sibling + ``os.replace``.
 
-    ``encoding`` defaults to **utf-8**, matching every reader of these files —
-    they all open ``encoding="utf-8"``. It previously defaulted to ``None``,
+    ``encoding`` defaults to **utf-8**. It previously defaulted to ``None``,
     i.e. ``locale.getpreferredencoding(False)``, which made the round trip
     lossy on any non-UTF-8 locale and raised ``UnicodeEncodeError`` outright on
     non-ASCII content. That stayed latent only because the early callers wrote
@@ -135,6 +134,16 @@ def atomic_write_text(
     routinely carries em-dashes. The defect is invisible on a UTF-8 machine,
     which is why it survived so long — the guarding test forces the locale in a
     subprocess rather than asserting in-process.
+
+    **The writer alone does not settle the round trip — each reader must ask
+    for utf-8 too.** There are 11 call sites (four of them in the extensionless
+    ``bin/prawduct-hook``, which a ``*.py``-filtered grep does not see), and
+    their readers were not uniformly utf-8: ``operator_verification`` wrote
+    through here and read back with a bare ``read_text()``. That pair was
+    self-inverse while both used the locale encoding and became asymmetric the
+    moment this default changed — transcoding a committed product file on the
+    next status mutation. Fixed at that reader. Before adding a call site,
+    check what reads the file back.
 
     ``newline`` still defaults to ``None`` (universal-newline translation) and
     is a separate concern: it exists for the one caller whose target is **not**

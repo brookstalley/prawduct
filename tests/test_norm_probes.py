@@ -786,3 +786,37 @@ class TestPostCutoverRetirement:
             _direction_artifact("- **X.**\n  Status: in-transition — export tracked in OBS-4C1K\n"),
         )
         assert np.probe_stalled_transition(ProjectState(dict(self._CUTOVER)), _cb(tmp_path)) == []
+
+
+class TestNormIndexLocatorIsShared:
+    """Both index questions must be answered about the SAME table.
+
+    Locating the index twice with different acceptance rules — the first
+    `Preference`-headed table for one question, the first one *carrying the norm
+    columns* for the other — lets a file with two such tables produce
+    contradictory nudges out of a single read: "your index lacks the norm
+    columns" and "norms are homed in your index", simultaneously.
+    """
+
+    _TWO_TABLES = (
+        "# Project Preferences\n\n## Enforcement\n\n"
+        "| Preference | Mechanism | Enforcement artifact |\n|---|---|---|\n"
+        "| naming | Critic | reviewer reads the diff |\n\n"
+        "| Preference / norm | Mechanism | Enforcement artifact | Audit home | Why |\n"
+        "|---|---|---|---|---|\n"
+        "| imports | Test | `tests/preferences/test_imports.py` | janitor | uniformity |\n"
+    )
+
+    def test_both_questions_read_the_first_index_table(self, tmp_path):
+        _write_artifact(tmp_path, "project-preferences.md", self._TWO_TABLES)
+        cb = _cb(tmp_path)
+        # The first table predates the norm columns, so that is the answer to
+        # both questions — not "lacks columns" AND "carries norms" at once.
+        assert np._norm_index_lacks_columns(cb) is True
+        assert np._has_enforcement_norm_rows(cb) is False
+
+    def test_locator_returns_none_without_a_preferences_file(self, tmp_path):
+        cb = _cb(tmp_path)
+        assert np._norm_index_header(np._preferences_lines(cb)) is None
+        assert np._norm_index_lacks_columns(cb) is False
+        assert np._has_enforcement_norm_rows(cb) is False
