@@ -54,6 +54,16 @@ and a refusal a hook cannot act on breaks SessionStart in every framework checko
   now names the repair alongside the janitor sweep since a repo carrying template rows owes no sweep
   at all (R-4), and `docs/norms.md` brought into line with the field-bearing entry definition (R-7).
 
+**Filed rather than fixed: `#571`.** Establishing where the `unwritable` status belonged surfaced a
+live defect in the sibling this chunk cites as its precedent: `learnings_obligation.repair()` catches
+the write failure but leaves `status` at whatever `check()` found, so doctor Health Check #13 relays
+a *failed repair* as "no marker" — indistinguishable from the state before the owner ran it, and the
+exact failure the `unwritable` split was made to avoid. Not fixed here: it changes a shipped health
+check's behaviour and deserves its own review rather than a drive-by in a disposition round. The id
+is recorded **here** because the deferral originally lived only in a commit body, which a later
+review correctly could not verify — a decision whose only witness is a commit message is not a
+record.
+
 Accepted with reasons recorded as facts: the four `learnings-entry-shape` notes (the lint and
 `learnings.md`'s own stated policy disagree, and degrading the entries is the wrong way to settle
 it), the two-algorithms note (the *marker* has one home; the algorithms answer different questions
