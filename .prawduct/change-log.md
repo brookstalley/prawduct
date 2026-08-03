@@ -52,6 +52,21 @@ section was written about, one band down. This repo was itself the case in point
 The directive now carries the *shape* of the relay rather than only the instruction to relay, because
 "tell the user about these" is what leaves the model inventing the owner's half.
 
+**And a fleet-visible behaviour change that came out of reviewing the above.** An active advisory
+whose probe fired again was returned untouched, on the reading that a re-fire is a no-op. It is a
+no-op for *state* — same id, same `triggered_at`, same place in the store, which is what idempotency
+asks for. It is not a no-op for the text, and probes are written on the opposite assumption: the
+advisory id hashes `evidence` precisely so volatile detail can live in `trigger_summary` without
+churning the id under a partial fix. So every live count a probe computed — "16 entries missing",
+"349 pending items" — was frozen at first trigger and re-read to the owner every session afterwards.
+The number whose job is to prove an advisory is current was the stalest field in the store.
+
+Derived presentation (`trigger_summary`, `evidence`, both actions, `prerequisite_of`,
+`alternative_actions`, `priority`) now refreshes on every re-fire; identity, `triggered_at`, and
+sticky dismissals do not. Two consequences for readers of a governed product: an active advisory's
+text can now change under a stable id, and improved probe copy reaches the repos that have been
+living with an advisory longest instead of only the ones that had not yet tripped it.
+
 ## 2026-08-02: two doctor surfaces that answered confidently for a state the repo was not in
 
 <!-- prawduct: type=fix | scope=drift-burndown | chunks=04 | release=v3.2.3 | status=shipped -->

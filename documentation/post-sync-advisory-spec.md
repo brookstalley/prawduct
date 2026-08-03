@@ -269,14 +269,15 @@ ADVISORIES (post-sync, 3 active):
     agent → /llm-strategy review summarizer
 
   Dismiss any of these: /prawduct:advisory dismiss <id>
-  Dismissed since last session: 1 (run /prawduct-advisory list --dismissed to see)
+  Dismissed since last session: 1 (run /prawduct:advisory list --state=dismissed to see)
   Resolved since last session: 0
 ```
 
 The per-entry `(id: …)` is what the block-level dismissal hint consumes — moving the hint out of every
 entry (§5.1) must not take the id with it, or the reader is told how to dismiss and not which one.
-(The emitted command is `/prawduct:advisory`; the prose in §6 still uses this spec's original
-`/prawduct-advisory` spelling from before the command became a plugin skill.)
+(Every command inside this example block is the string the code actually emits, `/prawduct:advisory`
+included. The spec's *prose* elsewhere still carries the original `/prawduct-advisory` spelling from
+before the command became a plugin skill; an example that quotes output has to match the output.)
 
 The briefing prints to stdout, which is the **agent-facing** channel
 (`observability-strategy.md` § Direction), so this block is data for the runtime, not copy for the
@@ -285,12 +286,12 @@ owner — hence the neutral `owner →` / `agent →` labels rather than "you"/"
 
 ### 5.1 Verbosity rules
 
-- **Default**: show summary + `owner →` + `agent →` per active advisory, capped at 5 most-recent + highest-priority.
+- **Default**: show summary + `owner →` + `agent →` per active advisory.
 - **Fallback**: when a stored advisory has no `owner_action` (written before v0.3, or a probe not yet updated), render `owner → Approve the action below, or dismiss the advisory.` Never omit the line — a missing owner action must read as "nothing but approval is needed", not as "this advisory has no owner".
-- **Truncation**: if more than 5 active, show first 5 + "... and N more (run /prawduct-advisory list)."
+- **Display cap — 5, and it is a floor rather than a ceiling.** The block shows the first 5, extended as far as needed to include every active `warn`/`urgent`. Ordering can push a high-priority advisory down behind prerequisites pulled ahead of it, and the block must never hide something worth interrupting a person for in order to hold a line budget. The extended slice stays a contiguous prefix, so the overflow count and the `after →` annotations remain accurate.
+- **Truncation**: when more active advisories remain beyond the displayed slice, append "... and N more (run /prawduct-advisory list)." — N counted against what was actually displayed, not against a fixed 5.
 - **Dismissal hint**: once per block, not once per advisory. Repeating a 60-character hint under every entry was the largest single term in the block's size and taught nothing after the first reading.
 - **Ordering**: urgent → warn → info, then by `triggered_at` descending within priority — and then each advisory pulled behind its own prerequisites (§5.3). Priority is the ordering; prerequisites displace only what they must.
-- **Display cap is a floor for consequential advisories**: the block shows 5, extended as far as needed to include every active `warn`/`urgent`. Ordering can push a high-priority advisory down behind prerequisites pulled ahead of it, and the block must never hide something worth interrupting a person for in order to hold a line budget.
 - **Suppression**: if all advisories are `info` priority and total count is unchanged from the last session, can be collapsed to one line: "ADVISORIES: 3 active (unchanged) — run /prawduct-advisory list."
 
 ### 5.2 Empty state

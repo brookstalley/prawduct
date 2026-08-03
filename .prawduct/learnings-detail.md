@@ -2455,3 +2455,26 @@ stale. The corrected sentence now carries an explicit *do not re-introduce a lit
 **Adjacent instance worth carrying.** `check-releasability` could not have caught the CHANGELOG defect
 at all — it grades **classification**, not **description**. A green gate remains evidence only about
 what that gate measures.
+
+## Committing a chunk BEFORE invoking the Critic makes a `final`-mode review grade the WORKING TREE
+
+Three files were dirty at session start on `feat/advisory-actionability`, left over from prior work:
+`build-plan-backlog-burndown.md`, `security-model.md`, `backlog-service-upstream-filing.md`. They were
+looked at, judged not-mine-to-touch, and left — without following the thought through to what they
+would do to a review.
+
+Chunk 01 was then committed and `/prawduct:critic` invoked. `final` mode is working-tree scoped, so
+the tree it graded contained only those three files. The review came back articulate and useful: 0
+blocking, 3 warnings, real cross-checks against the live tracker, a defensible disposition note. Every
+word of it was about someone else's uncommitted work, and the three-module Python chunk sitting in
+`HEAD` was never opened.
+
+What made it nearly invisible is that a wrong-changeset review does not look degraded — it looks like
+a clean review. The only tell was in its own signals line: "doc-only changeset, 3 files, 0 judgeable"
+against a chunk that had changed `advisory_store.py`, `briefing.py` and `upstream_probes.py`. Reading
+that line against the diff you believe you built is the check, and it costs one glance.
+
+Repair was `/prawduct:critic cumulative`, scoped to `merge-base...HEAD`, which excludes uncommitted
+files by construction and found a real blocking defect in the actual chunk on the first pass. The
+strays were recorded in the handoff notes rather than fixed — they belong to whoever owns that work,
+and the earlier review's findings about them are real and still standing.
