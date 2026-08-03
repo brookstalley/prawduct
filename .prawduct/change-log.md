@@ -5,7 +5,7 @@
 
 ## 2026-08-02: two doctor surfaces that answered confidently for a state the repo was not in
 
-<!-- prawduct: type=fix | scope=drift-burndown | chunks=04 -->
+<!-- prawduct: type=fix | scope=drift-burndown | chunks=04 | release=v3.2.3 | status=shipped -->
 
 Both halves are the same defect in different organs: a surface that claims to mirror another surface,
 and does not.
@@ -253,7 +253,7 @@ the verify round's resolution fact; `disposition --accept|--file` is for the one
 
 ## 2026-08-02: the green-is-evidence directive now fires off a language it does not have to know
 
-<!-- prawduct: type=fix | scope=drift-burndown | chunks=03 -->
+<!-- prawduct: type=fix | scope=drift-burndown | chunks=03 | release=v3.2.3 | status=shipped -->
 
 `_GREEN_IS_EVIDENCE_DIRECTIVE` triggered off `changes_referenced`, which `bin/test-reference-verify`
 populates by grepping **Python** symbols. In a Swift/Go/Rust/C#/TS product that field is empty on
@@ -337,7 +337,7 @@ allowlist entry on a bug in the extractor.
 
 ## 2026-08-02: three records that outlived what they describe — one home, one swept matrix, one closure that reached a quarter of its surfaces
 
-<!-- prawduct: type=fix | scope=drift-burndown | chunks=02 -->
+<!-- prawduct: type=fix | scope=drift-burndown | chunks=02 | release=v3.2.3 | status=shipped -->
 
 Three durable records asserting something the tree does not support. No code changed; every
 acceptance is a *falsifying query returning nothing*, because the edit is not the evidence — the
@@ -492,7 +492,7 @@ record that hides which half of itself is historical fails the same way as one t
 
 ## 2026-08-02: a path reference is checked by the form that means "go here", not by looking like a path
 
-<!-- prawduct: type=feature | scope=drift-burndown | chunks=01 -->
+<!-- prawduct: type=feature | scope=drift-burndown | chunks=01 | release=v3.2.3 | status=shipped -->
 
 **`#193` — nothing verified that intra-repo path references RESOLVE.**
 `tests/test_plugin_packaging.py` pins where files may *live* and is blind to a reference pointing at

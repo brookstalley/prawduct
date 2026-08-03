@@ -121,10 +121,10 @@ answers and neither blocks a chunk from starting.
      Do NOT hand-flip the checkboxes. Stays [ ] on this branch until the release ships —
      a built chunk is recorded in Context below, not by its checkbox. -->
 
-- [ ] Chunk 01: The detector, and the scope decision that keeps it honest (#193)
-- [ ] Chunk 02: Three records that outlived what they describe (#162, #196, #179)
-- [ ] Chunk 03: The directive that is dark everywhere it is needed (#348)
-- [ ] Chunk 04: Two doctor surfaces that disagree with reality (#241, #351)
+- [x] Chunk 01: The detector, and the scope decision that keeps it honest (#193)
+- [x] Chunk 02: Three records that outlived what they describe (#162, #196, #179)
+- [x] Chunk 03: The directive that is dark everywhere it is needed (#348)
+- [x] Chunk 04: Two doctor surfaces that disagree with reality (#241, #351)
 
 Context: Plan authored 2026-08-02 on `fix/drift-burndown` off `develop` at `fd9edea`, from the
 owner's choice of the drift cluster over surface-reduction and a docs sweep. Seven items, all

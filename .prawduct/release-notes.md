@@ -7,6 +7,12 @@
 
 ## v3.2.3
 
+### drift-burndown
+
+**Entry:** 2026-08-02: two doctor surfaces that answered confidently for a state the repo was not in
+
+**Chunks shipped:** 01, 02, 03, 04
+
 ### critic-death-signals
 
 **Entry:** 2026-08-02: every signal a waiting caller could reach said the healthy review was dead

@@ -592,6 +592,9 @@ scope_rollups:
   doctor-janitor:
     chunks: ["01"]
     releases: ["v2.2.0"]
+  drift-burndown:
+    chunks: ["01", "02", "03", "04"]
+    releases: ["v3.2.3"]
   evidence-deferral:
     chunks: ["01", "02"]
     releases: ["v2.0.5"]

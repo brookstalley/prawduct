@@ -44,6 +44,7 @@ than left standing, because a false premise in a version decision is worse than 
 | backlog-burndown | ships | |
 | critic-burndown | ships | |
 | critic-death-signals | ships | |
+| drift-burndown | ships | |
 
 `K withheld = 0` → **whole-develop promotion** (runbook Phase 2 steps 14–20), not the pruned path.
 The v3.1.2 pruning does not carry forward: v3.2.0 promoted whole-develop and re-established
@@ -113,8 +114,15 @@ gate's
 orphan check carries a **`ships`-only re-run exemption** for rows whose entries already carry this
 release's tag — the same asymmetry the runbook spells out for `withheld` rows, where the identical
 situation is an error rather than an exemption. So `K withheld = 0` still selects whole-develop
-promotion, and the ten rows still partition the corpus; the header count just answers a narrower
+promotion, and the table's rows still partition the corpus; the header count just answers a narrower
 question than "what is in this release" and should not be quoted as if it answered the wider one.
+
+> **This paragraph said "the ten rows" until 2026-08-02, when the eleventh row made it false**
+> (Critic W-4). The edit that added `drift-burndown` corrected one sentence its own change falsified
+> (in `plugin/CHANGELOG.md`) and left this one standing three sections above it — the *same* defect,
+> in the same commit, caught only by review. The count is now stated relationally rather than as a
+> number, because the number is the part that goes stale and the claim never needed it. **Do not
+> re-introduce a literal count here**; `check-releasability` prints the live one.
 
 **Why classifying the other two branches' scopes is bookkeeping here and not the guess the bullet
 above refused to make.** That refusal was correct *while they were in flight* — a disposition is the
@@ -127,6 +135,59 @@ pruned cherry-pick path.
 
 The stale-counts lesson holds and this entry is another instance of it, not an exception: these
 counts are a snapshot dated 2026-08-02, and `check-releasability` remains the live answer.
+
+**Eleventh scope, 2026-08-02 (later session) — `drift-burndown`, arriving after the Phase 1
+checkpoint was declared reached.** PR #566 merged to `develop` as `6f443a2` and the gate went **red**:
+`ERROR: unclassified scope(s) … drift-burndown`. Classified `ships` by the runbook's step-2 **code
+test** rather than by position — `git show v3.2.2:<path>` fails for both files the scope creates
+(`plugin/lib/learnings_obligation.py`, `tests/test_path_reference_resolution.py`) and the
+`learnings-obligation` subcommand appears 0 times in `v3.2.2`'s `prawduct-hook` against 5 here, so the
+code is absent from the previous release's tree.
+
+> **The first draft of this paragraph cited step 2 while running a different test** (Critic W-2). It
+> ran `git merge-base --is-ancestor 6f443a2 v3.2.2` — an **ancestry** test — and called it the
+> step-2 code test, which is **content-based** by construction (`git show <prev-tag>:<path>`). The two
+> agree here and would diverge exactly where it matters: under the pruned cherry-pick path this same
+> document contemplates, a cherry-picked commit is not an ancestor while its content *is* in the
+> tree, so the substitute returns "unreleased" for work that shipped. The conclusion was right and the
+> warrant was not, which in a document that reads as precedent is the more durable defect. The content
+> test above was then actually run rather than the citation merely softened.
+
+Phase 1 steps 3–6 were then re-run **for this scope alone**: four change-log
+entries tagged, `regen-views` exit 0 flipping `[01, 02, 03, 04]`, re-run idempotent. Steps 7–9 and 11
+were correctly *not* re-run (version files already read `3.2.3`; `active_build_plan` already `null`).
+Step 10 was filled, and doing so required **correcting a sentence this same release falsifies**: the
+v3.2.3 consumer notes carried "known limitation … does not fire in a Swift, Rust, C# or TypeScript
+product yet" about the *green is evidence* directive, which `drift-burndown` Chunk 03 fixes. A release
+whose notes state a limitation and ship its fix in the same breath is a record that was true when
+drafted and false when published. Gate now returns **exit 0, 11 scopes tagged `release=v3.2.3`**.
+
+**This is the fifth instance, and it is not the same defect as the other four.** Those were each a
+*quoted measurement* going stale, and the fix recorded for them — treat `check-releasability` as the
+live answer — is right and was followed.
+
+**One earlier instance was already this shape and was filed under the wrong heading** (Critic N-5).
+The version-decision correction at the top of this document — "the original rationale said *nothing
+goes live*, and the `upgrade-discovery` scope falsifies it" — is not a stale measurement either. It is
+**prose falsified by a scope that joined later**, exactly like the two corrections this edit made. So
+the pattern has *two* prior instances of the arriving-scope shape, not zero, and the runbook item
+below is better supported than "fifth instance" alone suggests: the failure is not confined to counts,
+it reaches **any** claim a release document makes about what the release contains.
+
+This one is different in kind from the four counting instances: **nothing was quoted stale.**
+Steps 3–6 and 10 had genuinely completed, and then `develop` accepted a merge. The structural cause is
+that **Phase 1 reads as a linear one-pass sequence while the release window stays open to merges**, so
+steps 3–6 and 10 are not steps that complete once — they are a **condition that must hold at the moment
+Phase 2 runs**, and nothing re-checks it there. Note the second-order shape: step 10's gap could not
+have been caught by re-running the gate at all, because `check-releasability` grades *classification*,
+not *description* — the same "a green gate is evidence about what that gate measures" lesson this
+document already records against the Phase 1 tagging miss.
+
+**Filed, not fixed here** (a runbook edit mid-release is its own change needing its own review), and it
+joins the two step-11 debts recorded below as **one runbook edit, three items**: (1) make Phase 2 step
+14 re-run `check-releasability` as a hard precondition — or freeze `develop` at the Phase 1 checkpoint;
+(2) make step 11's pointer-clearing conditional on the named plan having no unchecked chunks; (3) state
+in step 11 that clearing the pointer hands the rest of the release to an ungated session.
 
 Per `cut-and-publish-a-plugin-release.md` step 0, `no release-pending scopes — nothing to classify`
 takes the **same whole-develop promotion path** as `K withheld = 0`. The reasoning above still holds
@@ -253,6 +314,27 @@ nothing ever read it back — it existed only to tell a reader that a healthy re
 reviewers now write a **per-role liveness marker** so "zero partials" no longer reads as "nobody
 started"; and a re-dispatch **archives rather than clobbers**, so evidence survives.
 
+**`drift-burndown` (Chunks 01–04).** Seven triaged drift items on one theme: **a durable record
+asserting something the tree does not support.** Two are fleet-visible and neither is observable from
+this repo's own suite. **A directive was dark in every non-Python product** (`#348`) — *green is
+evidence only about what could have made it red*, one of the two rules this release moved into the
+code path, triggered off a field populated by grepping **Python** symbols, so in a Swift/Go/Rust/C#/TS
+product it never fired, and dark is the one failure a directive cannot report about itself. It now
+also triggers on any changed path that needs review coverage via `coverage_algebra.is_judgeable_path`
+— an OR, not a substitution, so the widening is strict by construction. This narrows a claim other
+scopes lean on: code-delivered directives are the only proven path by which prawduct ships a general
+learning into a consuming product, and that path was Python-only until now. **`/prawduct:learnings`
+pointed every product at a marker only new onboards ever received** (`#351`) — the descent obligation
+has one home in the product's own `learnings.md`, but only `init_product` wrote it and only into a
+file that did not yet exist, so the defect is **closed for the empty set and open for the real one**:
+the live fleet is entirely already-onboarded. Now detected and repaired as doctor **Health Check #13**,
+insert-only, with *misplaced* its own status — a marker appended after the rules it governs passes
+every presence check and is still inert. Alongside: `coverage-status` stopped grading a fresh scaffold
+as degraded against a table asking nothing of it (`#241`), and `#193` adds the mechanical detector for
+the largest instance class — intra-repo path references checked by the **form** that means "go read
+this" (tool grants, command position, markdown links) rather than by looking like a path, which found
+one live broken link in a shipped file and cost a one-file allowlist against a budget of four.
+
 ## OWNER RELEASE GATE — blocking, held at the Phase 1 checkpoint
 
 `build-plan-v3.2.0-golive.md` Chunk 09 items 7 and 8 bind on this release by their own terms
@@ -278,8 +360,15 @@ started"; and a re-dispatch **archives rather than clobbers**, so evidence survi
    audience"). Publishing is the irreversible step; merging to `develop` was not. Either land
    `BKL-8W2M` before Phase 2, or record an explicit second acceptance of the amplified version.
 
-**Status: PARTIAL as of 2026-08-02 — items 2 and 3 discharged, item 1 open and BLOCKING.** Nothing
-published.
+**Status: ALL THREE DISCHARGED as of 2026-08-02** — a dated fact, not a running state. Nothing was
+published as of that date. **The live test for whether Phase 2 has since run is
+`git tag -l v3.2.3`** — empty means it has not; a tag means this release is out and this whole
+document is history. Written as a re-derivable test rather than a present tense on purpose: this
+document records five instances of a state claim that was true when typed and false when read.
+
+Full evidence per item at `.prawduct/operator-verification.md` § VRF-014; that section's header
+records which *kind* of evidence discharged each, which is worth reading before treating this line as
+a blanket clearance.
 
 > **Correction 2026-08-02 (later session): "`origin/develop` fully prepped" was not true when
 > written.** Phase 1 step 3 was outstanding — eight change-log entries across `backlog-burndown`,
@@ -316,12 +405,23 @@ minor annoyance, with `BKL-8W2M` intended within days. Recorded with its residua
 (desensitization of the `warn` channel, bounded by shipping `BKL-8W2M`, and to be re-taken rather
 than assumed if that slips) at **`.prawduct/operator-verification.md` § VRF-014 item 3**.
 
-**Item 1 alone remains blocking.** Exercise the candidate in sibling repos via `--plugin-dir`, then
-record the result in `.prawduct/operator-verification.md` alongside VRF-014 — naming which sibling
-repos were exercised and what was checked — and only then run Phase 2. **Phase 2 must not run on
-items 2 and 3 alone**: those two were discharged by argument and by decision respectively, and
-neither put the candidate plugin in front of a consuming repo. Item 1 is the only gate item that
-executes anything.
+**Item 1 is discharged 2026-08-02 by owner attestation** — the owner **states** the candidate was
+exercised in sibling repos (*"already exerised. we're good."*) and, asked directly whether that
+exercise predated or followed PR #566, selected **"After — it covered today's tip"**. Both are
+attestations, and this paragraph deliberately does not restate either as an observed fact: nothing
+in this repo measured the exercise. That confirmation is load-bearing
+rather than ceremonial: item 1's scope had grown after VRF-014 last recorded it, because
+`drift-burndown` Chunk 03 makes a directive fire outside Python (invisible to this repo's Python
+suite) and Chunk 04 adds doctor Health Check #13 (visible only in an already-onboarded consuming
+repo) — precisely the class item 1 exists to catch.
+
+**What the record carries, and what it does not.** This item asked for the exercised repos to be
+named and the checks enumerated; VRF-014 holds an owner attestation plus the timing confirmation
+instead, with that gap stated in place rather than papered over. The distinction the earlier draft of
+this section drew still holds and is worth keeping: items 2 and 3 were discharged **by argument and by
+decision**, and neither put the candidate in front of a consuming repo — item 1 is the only one that
+executed anything, which is why its discharge is what unblocks Phase 2 rather than the count reaching
+three.
 
 ## Runbook departure — `active_build_plan`: recorded, then withdrawn
 

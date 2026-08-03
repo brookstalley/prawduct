@@ -785,10 +785,24 @@ is untouched by this — a paged list still costs 1 point regardless of page cou
 
 ## VRF-014 — v3.2.3 OWNER RELEASE GATE — go/no-go evidence
 
-**Status: PARTIAL — items 2 and 3 discharged, item 1 still open and BLOCKING.** The three gate items live in
+**Status:** verified
+
+**All three items discharged as of 2026-08-02** — a dated fact; `git tag -l v3.2.3` is the live test
+for whether the release has since published. *(The `**Status:** verified` line above is the shape
+`_STATUS_LINE_RE` in `plugin/lib/operator_verification.py` actually parses — a bare token on its own
+line. The previous prose-in-the-bold form fell through to `pending`, so `check-operator-verification`
+read this discharged entry as still blocking. Critic N-7; six sibling entries carry the same shape and
+are left alone rather than swept in a release commit.)*
+
+The three gate items live in
 `.prawduct/artifacts/release-plan-v3.2.3.md` § OWNER RELEASE GATE. Recorded here per that section's
 own instruction ("Record the result in `.prawduct/operator-verification.md` … then run Phase 2").
-Phase 2 must NOT run on this record alone.
+
+**Each item was discharged by a different kind of evidence, and the difference is the point.** Item 2
+by a verified scope argument (the carve-out names an unbuilt capability), item 3 by an explicit second
+acceptance of a named residual risk, item 1 by owner attestation with its timing confirmed against
+`6f443a2`. Read each section for what it does and does not establish before treating this header as a
+blanket clearance — the header is a roll-up, not the evidence.
 
 ### Item 2 — "GitHub Issues is working great" — **DISCHARGED 2026-08-02**
 
@@ -833,10 +847,32 @@ backlog to its own Issues.* Note the exposure there is broader than private repo
 consumer's bug body into a public repo," making content-minimization (`BKL-7Q4M`) live at Chunk 06
 rather than deferrable to W3.
 
-### Item 1 — exercise the candidate in sibling repos via `--plugin-dir` — **PENDING**
+### Item 1 — exercise the candidate in sibling repos via `--plugin-dir` — **DISCHARGED 2026-08-02, by owner attestation**
 
-Not started. Requires naming which sibling repos were exercised and what was checked. This release
-changes fleet-visible governance that is invisible to this repo's own suite.
+**Owner statement (2026-08-02):** *"already exerised. we're good."*
+
+**Owner answer on timing (2026-08-02), verbatim — this is the load-bearing half, so it is quoted
+rather than narrated.** Asked *"Did the sibling-repo exercise happen before or after PR #566
+(drift-burndown) merged to develop today?"*, the owner selected:
+
+> **"After — it covered today's tip"**
+> *(option text: "The exercise loaded a candidate that already included drift-burndown.")*
+
+**Why that question was asked rather than assumed.** This item's scope had *grown* after VRF-014 last
+recorded it: `drift-burndown` merged as PR #566 (`6f443a2`) the same day, and two of its chunks are
+exactly the class item 1 exists to catch — Chunk 03 makes the *green is evidence* directive fire
+outside Python (invisible to this repo's own suite, which is Python), and Chunk 04 adds doctor
+**Health Check #13**, which by construction only shows up in an already-onboarded *consuming* repo. So
+the exercise is attested against the release as it now stands, not an earlier candidate.
+
+**Where this record is weaker than the item's own template asks, stated so a later reader is not
+misled.** The item's text calls for *"naming which sibling repos were exercised and what was
+checked,"* and this record carries an owner attestation plus a timing confirmation instead of that
+enumeration. No per-surface result is recorded for the two post-#566 surfaces above; they are inside
+the exercised tree by the owner's confirmation, and nothing here measured them individually. That is
+the owner's call to make and it is made — recorded at this granularity deliberately rather than
+upgraded by inference, because writing repo names or check results that were not stated would be the
+precise defect this file exists to prevent.
 
 ### Item 3 — migration advisory fleet-wide with `BKL-8W2M` unbuilt — **DISCHARGED 2026-08-02, by explicit second acceptance**
 
