@@ -667,7 +667,36 @@ def begin_review(
         # "everything is reviewed" while meaning "everything I chose to look at
         # is reviewed". A commit that changes no content is not a change of
         # intent, and now nothing treats it as one.
-        committed_differs = capture["head_tree"] != base_tree
+        #
+        # Tree inequality has a SECOND reading, and it is the mirror image of the
+        # one above rather than another instance of it. "The committed tree
+        # differs from the tree the prior review saw" is true when a commit
+        # landed AFTER that review (the anchor is BEHIND — the case this branch
+        # was written for), and equally true when the prior review vouched for a
+        # DIRTY tree and nothing has been committed since (the anchor is AHEAD).
+        # The second is not an edge case: it is the ordinary shape of a
+        # `chunk`-mode review, whose fact records `head_commit: null` and a
+        # `head_tree` matching no commit. Read as a committed delta it INVERTS
+        # the edge — base becomes the dirty snapshot that is ahead, head the
+        # committed tree that is behind — so `files_changed` describes the fix
+        # being deleted, `record_lint` grades pre-fix content, and, load-bearing,
+        # the resolution facts are persisted against a tree in which none of the
+        # fixes exist. Resolutions lift BLOCKING findings, so that is unsound
+        # rather than merely noisy.
+        #
+        # The discriminator was already in the prior fact and simply not read: a
+        # fact carrying no `head_commit` vouched for a working tree, and if HEAD
+        # still stands where that review dispatched, nothing has been committed
+        # since. (The fact spells the dispatch anchor `dispatch_commit`; the
+        # manifest spells the same value `commit_reviewed`.)
+        prior_dispatch = prior_body.get("dispatch_commit")
+        anchor_is_ahead = (
+            prior_body.get("head_commit") is None
+            and isinstance(prior_dispatch, str)
+            and bool(prior_dispatch)
+            and prior_dispatch == dispatch_commit
+        )
+        committed_differs = capture["head_tree"] != base_tree and not anchor_is_ahead
         if committed_differs:
             head_tree = capture["head_tree"]  # committed HEAD — the PR-gate target
             head_commit = dispatch_commit

@@ -29,7 +29,7 @@ from lib.advisory_store import (
     make_codebase,
     run_all_probes,
 )
-from lib import norm_probes as np
+from lib import core, norm_probes as np
 
 
 @pytest.fixture(autouse=True)
@@ -99,6 +99,40 @@ _PREFS_WITH_NORM_COLUMNS = (
     "|---|---|---|---|---|\n"
     "| naming | Critic | reviewer reads the diff | janitor | consistency |\n"
 )
+
+# The norm columns exist but no norm has been entered under them: the SHAPE of a
+# registry rather than a registry. Distinguishing this from the populated table
+# is what keeps "norms are homed here" from meaning "someone added two columns".
+# Two shapes, because they exercise different code: a header with no data rows
+# at all, and — the discriminating one — data rows whose norm cells are BLANK.
+# Only the second reaches the populated-cell check; a fixture with no rows exits
+# the loop before it and passes whether that check exists or not.
+_PREFS_NORM_COLUMNS_NO_ROWS = (
+    "# Project Preferences\n\n## Enforcement\n\n"
+    "| Preference / norm | Mechanism | Enforcement artifact | Audit home | Why |\n"
+    "|---|---|---|---|---|\n"
+)
+_PREFS_NORM_COLUMNS_EMPTY_CELLS = (
+    "# Project Preferences\n\n## Enforcement\n\n"
+    "| Preference / norm | Mechanism | Enforcement artifact | Audit home | Why |\n"
+    "|---|---|---|---|---|\n"
+    "| naming | Critic | reviewer reads the diff |  |  |\n"
+    "| imports | Test | `tests/preferences/test_imports.py` |  |  |\n"
+)
+
+
+def _roadmap_direction_artifact() -> str:
+    """A `## Direction` section holding a ROADMAP — bold bullets, no `Why:`.
+
+    The exact shape the field report hit: a prioritized list of undone work
+    under the heading the norm machinery keys on. `docs/norms.md` § Anatomy
+    makes `Why` required, so none of these bullets is a norm entry.
+    """
+    return (
+        "# Architecture\n\nDescriptive prose.\n\n## Direction\n\n"
+        "- **Ship the importer.** Targeted for Q3.\n"
+        "- **Then the exporter.** Q4, depends on the importer.\n"
+    )
 
 
 # =============================================================================
@@ -434,6 +468,66 @@ class TestNormRegistryUnratifiedProbe:
         state = ProjectState({np.RATIFIED_FACT: "2026-07-16"})
         assert np.probe_norm_registry_unratified(state, _cb(tmp_path)) == []
 
+    # --- first arm keys on an ENTRY, not on the heading ----------------------
+
+    def test_fires_when_direction_heading_carries_no_entries(self, tmp_path):
+        """A heading with nothing normative under it is not a ratified registry.
+
+        Presence of the heading was the whole test, so a section empty of the
+        thing being checked did not fail the check — it passed it silently. The
+        field case: the repo's only `## Direction` section was a prioritized
+        list of undone work, which satisfied the arm completely and would have
+        left doctor check #10 reporting findings against a roadmap
+        indefinitely.
+        """
+        _write_artifact(tmp_path, "architecture.md", _roadmap_direction_artifact())
+        out = np.probe_norm_registry_unratified(ProjectState({}), _cb(tmp_path))
+        assert len(out) == 1
+        assert "no `## Direction` section is ratified" in out[0].trigger_summary
+
+    def test_emphasised_why_markers_are_recognised_as_entries(self, tmp_path):
+        """Owner decision 2026-08-03: emphasis is tolerated.
+
+        This test previously asserted the OPPOSITE and was rewritten, not
+        deleted — the boundary it pinned still needs a pin, it just moved. The
+        reason it moved: since Chunk 02 the `Why:` marker decides whether a norm
+        registry EXISTS, not merely whether an entry has decayed, so a product
+        writing `**Why:**` silently lost four signals for a formatting choice
+        `docs/norms.md` never forbade.
+
+        `_FIELD_OR_ITEM_RE` had to widen alongside `_WHY_RE`: without it the
+        emphasised marker is not a line start, soft-wraps onto the bullet above,
+        and the `^`-anchored `_WHY_RE` can never see it however tolerant it is.
+        """
+        for marker in ("**Why:**", "__Why:__", "*Why:*", "_Why:_"):
+            _write_artifact(
+                tmp_path,
+                "architecture.md",
+                _direction_artifact(f"- **X.**\n  {marker} because of the reason.\n"),
+            )
+            assert np.probe_norm_registry_unratified(ProjectState({}), _cb(tmp_path)) == [], (
+                f"{marker} must count as a norm entry"
+            )
+
+    def test_a_word_that_merely_starts_with_why_is_not_a_marker(self, tmp_path):
+        """The widened match must not swallow prose. `Why not:` is not `Why:`."""
+        _write_artifact(
+            tmp_path,
+            "architecture.md",
+            _direction_artifact("- **X.**\n  Why not: this is a different field.\n"),
+        )
+        out = np.probe_norm_registry_unratified(ProjectState({}), _cb(tmp_path))
+        assert len(out) == 1, "`Why not:` is not the `Why:` marker"
+
+    def test_silent_when_one_artifact_has_a_real_entry_among_roadmaps(self, tmp_path):
+        # The arm asks whether ANY artifact carries a norm — one real entry
+        # elsewhere answers it, so a roadmap section is not itself disqualifying.
+        _write_artifact(tmp_path, "architecture.md", _roadmap_direction_artifact())
+        _write_artifact(
+            tmp_path, "security-model.md", _direction_artifact("- **X.**\n  Why: because.\n")
+        )
+        assert np.probe_norm_registry_unratified(ProjectState({}), _cb(tmp_path)) == []
+
     def test_advisory_id_stable_across_arms(self, tmp_path):
         # Arm 1 (no Direction anywhere) and arm 2 (Direction present, columns
         # missing) must share one advisory id — the evidence is arm-independent.
@@ -504,6 +598,112 @@ class TestNormHealthSweepOverdueProbe:
             }
         )
         assert np.probe_norm_health_sweep_overdue(state, _cb(tmp_path)) == []
+
+    # --- the guard asks whether norms exist under EITHER homing --------------
+
+    def test_fires_when_norms_homed_only_in_the_enforcement_table(self, tmp_path):
+        """No Direction heading anywhere, norms in the preferences table.
+
+        A legitimate homing under `docs/norms.md` § Where Norms Live — that
+        table IS the product's norm index. Gating the reminder on a Direction
+        heading gave such a repo no time-domain norm audit at all, ever, with
+        no signal that it was missing. The janitor sweep already covers table
+        rows, so the coverage existed; only the reminder was gated.
+        """
+        _write_artifact(tmp_path, "architecture.md", "# Architecture\n\nProse, no Direction.\n")
+        _write_artifact(tmp_path, "project-preferences.md", _PREFS_WITH_NORM_COLUMNS)
+        out = np.probe_norm_health_sweep_overdue(ProjectState({}), _cb(tmp_path))
+        assert len(out) == 1
+        assert out[0].type == "norm-health-sweep-overdue"
+        assert out[0].recommended_action == "/prawduct:janitor"
+
+    def test_fires_for_table_homed_norms_after_a_roadmap_rename(self, tmp_path):
+        """The field sequence: fixing defect 1 must not silence this probe.
+
+        Renaming the misleading roadmap section left the repo with zero
+        Direction headings — which, under the old guard, would have silenced
+        this probe permanently *in the same commit that created the norm it
+        exists to audit*, while the session's own "all probes return []" check
+        reported the short-circuit as health.
+        """
+        _write_artifact(tmp_path, "architecture.md", "# Architecture\n\nRoadmap renamed away.\n")
+        _write_artifact(tmp_path, "project-preferences.md", _PREFS_WITH_NORM_COLUMNS)
+        state = ProjectState({np.SWEEP_STAMP: _days_ago(np.SWEEP_WINDOW_DAYS + 5)})
+        assert len(np.probe_norm_health_sweep_overdue(state, _cb(tmp_path))) == 1
+
+    def test_silent_when_table_has_norm_columns_but_no_rows(self, tmp_path):
+        # Columns are the SHAPE of a registry, not a registry. Without this the
+        # widened guard would nag every repo whose template carries the header.
+        _write_artifact(tmp_path, "architecture.md", "# Architecture\n\nProse.\n")
+        _write_artifact(tmp_path, "project-preferences.md", _PREFS_NORM_COLUMNS_NO_ROWS)
+        assert np.probe_norm_health_sweep_overdue(ProjectState({}), _cb(tmp_path)) == []
+
+    def test_silent_when_norm_rows_exist_but_their_norm_cells_are_blank(self, tmp_path):
+        """Rows under the norm columns, with nothing in them.
+
+        This is the case that actually reaches the populated-cell check — the
+        header-only fixture above exits the row loop before it, so it passes
+        whether that check exists or not. A pre-norm table that gained the two
+        columns but was never filled in is a real migration state, and reading
+        it as "norms are homed here" would nag a repo that has ratified nothing.
+        """
+        _write_artifact(tmp_path, "architecture.md", "# Architecture\n\nProse.\n")
+        _write_artifact(tmp_path, "project-preferences.md", _PREFS_NORM_COLUMNS_EMPTY_CELLS)
+        assert np.probe_norm_health_sweep_overdue(ProjectState({}), _cb(tmp_path)) == []
+
+    def test_silent_when_neither_homing_carries_norms(self, tmp_path):
+        # The over-fire guard: a pre-norm table plus a roadmap-only Direction
+        # section is a repo with NO norms, and a genuine absence must stay quiet.
+        _write_artifact(tmp_path, "architecture.md", _roadmap_direction_artifact())
+        _write_artifact(tmp_path, "project-preferences.md", _PREFS_WITHOUT_NORM_COLUMNS)
+        assert np.probe_norm_health_sweep_overdue(ProjectState({}), _cb(tmp_path)) == []
+
+    def test_silent_against_the_shipped_preferences_template(self, tmp_path):
+        """A freshly-onboarded repo has no norms — read the REAL template to say so.
+
+        `init_product` copies `templates/project-preferences.md` verbatim (only
+        `{{PRODUCT_NAME}}`/`{{PRAWDUCT_VERSION}}` are substituted), and the
+        template's state file carries neither a sweep stamp nor a ratification
+        date. So if the shipped norm-index table contains any row this predicate
+        reads as populated, `norm-health-sweep-overdue` fires on the **first
+        session sync of every new product** — nagging a repo that has ratified
+        nothing, which is the exact over-fire the widened guard was written to
+        avoid.
+
+        This reads the template through :data:`core.TEMPLATES_DIR` rather than a
+        hand-written fixture on purpose: the two hand-written over-fire fixtures
+        above resemble what I *expected* the template to look like, and both
+        stayed green while the shipped file said otherwise. Template and
+        predicate can only be kept honest by testing them against each other.
+        """
+        template = (core.TEMPLATES_DIR / "project-preferences.md").read_text(encoding="utf-8")
+        _write_artifact(tmp_path, "project-preferences.md", template)
+        _write_artifact(tmp_path, "architecture.md", "# Architecture\n\nProse, no Direction.\n")
+
+        assert np._has_enforcement_norm_rows(_cb(tmp_path)) is False, (
+            "the shipped norm-index table must ship EMPTY — a populated row is a "
+            "homed norm, and the template's rows would be every new product's"
+        )
+        assert np._norms_exist(_cb(tmp_path)) is False
+        assert np.probe_norm_health_sweep_overdue(ProjectState({}), _cb(tmp_path)) == []
+
+    def test_the_advisory_names_the_repair_route_not_only_the_sweep(self, tmp_path):
+        """The pointer to Health Check #14 must live where a surface renders it.
+
+        It was first set on `alternative_actions`, which briefing, `advisory
+        list` and `advisory show` all ignore — so the fix was inert while
+        looking complete. `trigger_summary` is rendered AND is not hashed into
+        `compute_id`, so it is the one field that can carry this without
+        resurrecting the advisory in every repo that dismissed it. Without this
+        test a reword silently deletes the only rendered pointer to the repair.
+        """
+        _write_artifact(tmp_path, "architecture.md", _direction_artifact("- **X.**\n  Why: because.\n"))
+        out = np.probe_norm_health_sweep_overdue(ProjectState({}), _cb(tmp_path))
+        assert len(out) == 1
+        assert "norm-index-scaffold" in out[0].trigger_summary, (
+            "a repo whose rows are leftover template scaffold owes no sweep — "
+            "the summary must offer the repair, not only the audit"
+        )
 
     def test_window_boundary_is_inclusive(self, tmp_path):
         # age == SWEEP_WINDOW_DAYS is still "fresh" (the guard is `<=`); one day past fires.
@@ -614,3 +814,212 @@ class TestPostCutoverRetirement:
             _direction_artifact("- **X.**\n  Status: in-transition — export tracked in OBS-4C1K\n"),
         )
         assert np.probe_stalled_transition(ProjectState(dict(self._CUTOVER)), _cb(tmp_path)) == []
+
+
+class TestNormIndexLocatorIsShared:
+    """Both index questions must be answered about the SAME table.
+
+    Locating the index twice with different acceptance rules — the first
+    `Preference`-headed table for one question, the first one *carrying the norm
+    columns* for the other — lets a file with two such tables produce
+    contradictory nudges out of a single read: "your index lacks the norm
+    columns" and "norms are homed in your index", simultaneously.
+    """
+
+    _TWO_TABLES = (
+        "# Project Preferences\n\n## Enforcement\n\n"
+        "| Preference | Mechanism | Enforcement artifact |\n|---|---|---|\n"
+        "| naming | Critic | reviewer reads the diff |\n\n"
+        "| Preference / norm | Mechanism | Enforcement artifact | Audit home | Why |\n"
+        "|---|---|---|---|---|\n"
+        "| imports | Test | `tests/preferences/test_imports.py` | janitor | uniformity |\n"
+    )
+
+    def test_both_questions_read_the_first_index_table(self, tmp_path):
+        _write_artifact(tmp_path, "project-preferences.md", self._TWO_TABLES)
+        cb = _cb(tmp_path)
+        # The first table predates the norm columns, so that is the answer to
+        # both questions — not "lacks columns" AND "carries norms" at once.
+        assert np._norm_index_lacks_columns(cb) is True
+        assert np._has_enforcement_norm_rows(cb) is False
+
+    def test_locator_returns_none_without_a_preferences_file(self, tmp_path):
+        cb = _cb(tmp_path)
+        assert np._norm_index_header(np._preferences_lines(cb)) is None
+        assert np._norm_index_lacks_columns(cb) is False
+        assert np._has_enforcement_norm_rows(cb) is False
+
+
+class TestOneDefinitionOfANormEntry:
+    """#568 — `record_lint` and `norm_probes` must agree what a norm entry is.
+
+    They disagreed exactly in the roadmap case: `direction_norm_count` counted
+    every top-level bullet, `_has_direction_entry` required a field, so a
+    `## Direction` section holding a prioritised list of undone work made the
+    `governed_by` under-disposition lint demand dispositions for items the
+    probes correctly ignored. One fact, one home.
+    """
+
+    # Blank lines and trailing prose are deliberate. An earlier cut had two
+    # ADJACENT bullets then EOF, so no line ever followed a pending bullet and
+    # a mutation that counts every bullet still returned 0 — a fixture that
+    # could not reach the code path it was written to discriminate. Real
+    # roadmaps are spaced; so is this one now.
+    _ROADMAP = (
+        "# Architecture\n\n## Direction\n\n"
+        "- **Ship the importer.** Targeted for Q3.\n"
+        "  Blocked on the schema freeze.\n"
+        "\n"
+        "- **Then the exporter.** Q4.\n"
+        "\n"
+        "Not a bullet at all.\n"
+    )
+    _NORMS = (
+        "# Architecture\n\n## Direction\n\n"
+        "- **Bare marker.**\n  Why: canonical form.\n"
+        "- **Emphasised marker.**\n  **Why:** authors write this too.\n"
+        "- **Whyless but ratified-shaped.**\n  Status: steady-state.\n"
+    )
+
+    def test_roadmap_counts_zero_in_both(self, tmp_path):
+        from lib import record_lint
+
+        assert record_lint.direction_norm_count(self._ROADMAP) == 0
+        assert np._has_direction_entry(self._ROADMAP) is False
+
+    def test_field_bearing_entries_count_in_both(self, tmp_path):
+        from lib import record_lint
+
+        assert record_lint.direction_norm_count(self._NORMS) == 3, (
+            "emphasised markers and a whyless-but-Status-bearing entry all count"
+        )
+        assert np._has_direction_entry(self._NORMS) is True
+
+    def test_a_whyless_entry_is_still_an_entry(self, tmp_path):
+        """Load-bearing for doctor Health Check #10.
+
+        That check reports "every Direction entry carries a **Why**". A
+        Why-only definition would make it vacuous — the whyless entries it
+        exists to flag would stop being entries at all — which is why the
+        shared definition is field-bearing rather than Why-bearing.
+        """
+        from lib import record_lint
+
+        whyless = "## Direction\n\n- **X.**\n  Status: steady-state.\n"
+        assert record_lint.direction_norm_count(whyless) == 1
+        assert np._has_direction_entry(whyless) is True
+
+
+class TestEmphasisAcrossEveryNormField:
+    """#569 widened `Why:`; the other fields had to move with it.
+
+    An earlier cut widened the `Status:` PREFIX to accept `_{1,2}` but left the
+    `in-transition` closer accepting only `*`. `__Status:__ in-transition` then
+    counted as a norm entry and was scanned by dead-why, while
+    `probe_stalled_transition` could never see it — the defect this chunk exists
+    to fix, surviving one field over. Prefix and closer are now the same class.
+    """
+
+    MARKERS = ("Why:", "**Why:**", "__Why:__", "*Why:*", "_Why:_")
+    STATUS = ("Status:", "**Status:**", "__Status:__", "*Status:*", "_Status:_")
+
+    def test_every_emphasis_form_of_why_is_an_entry(self, tmp_path):
+        for m in self.MARKERS:
+            body = _direction_artifact(f"- **X.**\n  {m} because.\n")
+            assert np._has_direction_entry(body) is True, f"{m} must be an entry"
+
+    def test_every_emphasis_form_of_status_is_an_entry(self, tmp_path):
+        for m in self.STATUS:
+            body = _direction_artifact(f"- **X.**\n  {m} steady-state.\n")
+            assert np._has_direction_entry(body) is True, f"{m} must be an entry"
+
+    def test_stalled_transition_fires_through_every_status_emphasis(self, tmp_path):
+        """Drives the PROBE, not the regex.
+
+        An earlier cut asserted `_IN_TRANSITION_RE.search(...)` directly, which
+        pins the implementation rather than the behaviour: it stays green if the
+        constant keeps its emphasis while the probe stops reaching it. If the
+        entry counts but the transition scan cannot read it, a stalled norm goes
+        unaudited while every other check treats it as live.
+        """
+        for m in self.STATUS:
+            _write_backlog(
+                tmp_path, _item("MIG-4C1K", extra=f"added: {_days_ago(400)}")
+            )
+            _write_artifact(
+                tmp_path,
+                "observability-strategy.md",
+                _direction_artifact(
+                    "- **All telemetry rides OpenTelemetry.**\n"
+                    "  Why: one substrate for causality.\n"
+                    f"  {m} in-transition — tracked by MIG-4C1K.\n"
+                ),
+            )
+            out = np.probe_stalled_transition(ProjectState({}), _cb(tmp_path))
+            assert len(out) == 1, (
+                f"stalled-transition must reach `{m} in-transition` — the "
+                "closer must not be narrower than the prefix"
+            )
+
+    def test_emphasis_on_the_value_is_seen_too(self, tmp_path):
+        """`Status: **in-transition**` — emphasis on the VALUE, not the marker.
+
+        The first cut allowed optional emphasis only immediately after the
+        colon, so this form was entry-visible and stall-invisible: the same
+        defect as the `__Status:__` case, one position over. Written as a
+        separate test because it is a separate position, and the earlier bug
+        proves per-form patching is how this gets missed.
+        """
+        for value in ("**in-transition**", "__in-transition__", "*in-transition*"):
+            _write_backlog(
+                tmp_path, _item("MIG-4C1K", extra=f"added: {_days_ago(400)}")
+            )
+            _write_artifact(
+                tmp_path,
+                "observability-strategy.md",
+                _direction_artifact(
+                    "- **All telemetry rides OpenTelemetry.**\n"
+                    "  Why: one substrate for causality.\n"
+                    f"  Status: {value} — tracked by MIG-4C1K.\n"
+                ),
+            )
+            out = np.probe_stalled_transition(ProjectState({}), _cb(tmp_path))
+            assert len(out) == 1, f"stalled-transition must reach `Status: {value}`"
+
+    def test_dead_why_fires_through_every_emphasis_form(self, tmp_path):
+        """`_WHY_RE`/`_STATUS_RE` have ONE consumer, and it is this probe.
+
+        The marker-matrix tests above route through `_has_direction_entry` →
+        `_FIELD_MARKER_RE`, a *different constant*. So `_WHY_RE` and
+        `_STATUS_RE` could lose their emphasis tolerance with the whole suite
+        green while `probe_dead_why` went silent for `**Why:**` — testing the
+        constant I was thinking about instead of the one the behaviour routes
+        through. This drives the probe.
+        """
+        for m in self.MARKERS + self.STATUS:
+            _write_backlog(
+                tmp_path, _item("MIG-4C1K", section="Archive", status="shipped")
+            )
+            _write_artifact(
+                tmp_path,
+                "observability-strategy.md",
+                _direction_artifact(
+                    "- **All telemetry rides OpenTelemetry.**\n"
+                    f"  {m} the MIG-4C1K migration made a second system redundant.\n"
+                ),
+            )
+            out = np.probe_dead_why(ProjectState({}), _cb(tmp_path))
+            assert len(out) == 1, f"dead-why must reach a `{m}` line"
+
+    def test_both_consumers_agree_across_the_marker_matrix(self, tmp_path):
+        """The plan's 'marker matrix x BOTH consumers' — the second consumer.
+
+        The first cut delivered the matrix against `norm_probes` only, which is
+        exactly the asymmetry #568 is about.
+        """
+        from lib import record_lint
+
+        for m in self.MARKERS + self.STATUS:
+            body = f"## Direction\n\n- **X.**\n  {m} value.\n\n- **Y.**\n  {m} value.\n\nTail.\n"
+            assert record_lint.direction_norm_count(body) == 2, f"record_lint: {m}"
+            assert np._has_direction_entry(body) is True, f"norm_probes: {m}"

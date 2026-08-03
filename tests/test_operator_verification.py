@@ -517,3 +517,78 @@ class TestPrawductHookOperatorVerification:
         assert "rationale" in cp.stderr.lower()
 
 
+
+
+# =============================================================================
+# encoding round trip — the writer and the reader must agree
+# =============================================================================
+
+
+class TestQueueEncodingRoundTrip:
+    """`_write_queue` and `_load_queue` must use the same encoding.
+
+    They were self-inverse by accident: both used the locale encoding, so a
+    mangled write was mangled back on read and nothing was observably wrong.
+    When the shared writer's default became utf-8, a bare `read_text()` here
+    would have made the pair asymmetric — and this queue is a **committed
+    product file**, so the next status mutation would rewrite it transcoded.
+
+    Runs under a forced non-UTF-8 locale in a subprocess: on a UTF-8 host both
+    halves agree whatever they ask for, so an in-process assertion passes
+    identically against the broken code. The reader guard is invisible without
+    this, which is how it shipped untested in the first place.
+    """
+
+    _ENV_KEYS = {
+        "LC_ALL": "C",
+        "LANG": "C",
+        "PYTHONUTF8": "0",
+        "PYTHONCOERCECLOCALE": "0",
+    }
+
+    def test_non_ascii_survives_write_then_read_under_c_locale(self, tmp_path):
+        import os
+
+        queue = tmp_path / "operator-verification.md"
+        # An em-dash and an accent: exactly what this queue's prose carries.
+        preamble = "# Operator verification\n\nEntries below — verify each.\n\n"
+        script = (
+            "from pathlib import Path\n"
+            "from lib import operator_verification as ov\n"
+            f"q = Path({str(queue)!r})\n"
+            f"ov._write_queue(q, {preamble!r}, [])\n"
+            "pre, entries = ov._load_queue(q)\n"
+            "assert '\\u2014' in pre, 'em-dash did not survive the round trip'\n"
+            "print('ok')\n"
+        )
+        env = {**os.environ, **self._ENV_KEYS, "PYTHONPATH": str(REPO_ROOT)}
+        result = subprocess.run(
+            [sys.executable, "-c", script], capture_output=True, text=True, env=env
+        )
+        assert result.returncode == 0, (
+            "the queue write/read pair disagrees about encoding under a "
+            f"non-UTF-8 locale. stderr={result.stderr!r}"
+        )
+        assert queue.read_bytes().decode("utf-8").startswith("# Operator verification")
+
+    def test_readers_ask_for_utf8_in_source(self):
+        """Source pin, mirroring the writer's pin in test_atomic_state_writes.
+
+        A behavioural test cannot see a reader that is never reached on this
+        host; the source pin can, and it is what makes a reverted guard fail
+        somewhere rather than nowhere.
+        """
+        src = (REPO_ROOT / "lib" / "operator_verification.py").read_text(encoding="utf-8")
+        assert 'queue_path.read_text(encoding="utf-8")' in src, (
+            "_load_queue must decode utf-8 — it reads back what _write_queue "
+            "wrote through the shared utf-8 writer"
+        )
+        assert 'state_path.read_text(encoding="utf-8")' in src, (
+            "the operator_verification_required read must decode utf-8"
+        )
+        # Receiver-qualified so the assertion cannot be satisfied or broken by
+        # prose: the docstring above the fix names ``read_text()`` on purpose.
+        assert "queue_path.read_text()" not in src, (
+            "a bare read_text() reintroduces the locale-encoding asymmetry"
+        )
+        assert "state_path.read_text()" not in src

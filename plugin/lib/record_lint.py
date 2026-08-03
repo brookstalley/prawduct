@@ -431,19 +431,47 @@ def _read_text(path: Path) -> "str | None":
         return None
 
 
+def _norm_field_re():
+    """The norm-entry field marker, IMPORTED from its one home in ``norm_probes``.
+
+    #568 was two definitions of a norm entry disagreeing; closing it with a
+    second *copy* of the marker would have re-created the same defect in a
+    slower-acting form — the copies agree today and drift on the first edit
+    (`architecture.md` § Direction: every fact has one home). Imported lazily
+    because ``norm_probes`` pulls the advisory-store and backlog readers, and
+    this module's top level is on the record-lint path.
+    """
+    from .norm_probes import _FIELD_MARKER_RE  # noqa: PLC0415 — lazy; heavy deps
+
+    return _FIELD_MARKER_RE
+
+
 def direction_norm_count(text: str) -> "int | None":
     """Number of norm entries in a document's ``## Direction`` section, or
     ``None`` when it has no such section.
 
-    A norm is a top-level list bullet directly inside the section; its
-    ``Why:``/``Status:``/amendment lines are indented continuations and are not
-    counted. The section opens at a heading whose text is exactly ``Direction``
-    and closes at the next heading of equal-or-higher level, so prose that
-    merely mentions ``## Direction`` never opens one.
+    A norm is a top-level list bullet **that carries a norm FIELD** — the same
+    definition :func:`lib.norm_probes._has_direction_entry` uses, and the one
+    ``docs/norms.md`` § Anatomy states ("a norm captured without its why is
+    unenforceable at the edges and immortal at the center"; ``Why`` is required,
+    ``Status`` optional). The section opens at a heading whose text is exactly
+    ``Direction`` and closes at the next heading of equal-or-higher level, so
+    prose that merely mentions ``## Direction`` never opens one.
+
+    **Counting bare bullets was a second, incompatible definition of the same
+    thing.** The two disagreed exactly in the roadmap case — a ``## Direction``
+    section holding a prioritised list of undone work — where the probes
+    correctly saw no norms and this counted one per bullet, so the
+    ``governed_by`` under-disposition lint demanded dispositions for items that
+    are not norms. One fact, one home: the marker is imported from
+    :mod:`lib.norm_probes` rather than restated here, so a norm entry is a
+    field-bearing entry everywhere and the two cannot drift apart on an edit.
     """
+    field_re = _norm_field_re()
     in_section = False
     section_level = 0
     count: "int | None" = None
+    pending_bullet = False
     for line in text.splitlines():
         heading = _HEADING_RE.match(line)
         if heading:
@@ -453,9 +481,18 @@ def direction_norm_count(text: str) -> "int | None":
                 count = 0 if count is None else count
             elif in_section and level <= section_level:
                 in_section = False
+            pending_bullet = False
             continue
-        if in_section and re.match(r"^[-*]\s+\S", line):
+        if not in_section:
+            continue
+        if re.match(r"^[-*]\s+\S", line):
+            # A new top-level bullet: whatever the previous one was, it is
+            # settled — it counted when its Why arrived, or never.
+            pending_bullet = True
+            continue
+        if pending_bullet and field_re.match(line):
             count = (count or 0) + 1
+            pending_bullet = False
     return count
 
 

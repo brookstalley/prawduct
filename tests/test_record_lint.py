@@ -681,11 +681,22 @@ class TestDirectionNormCount:
         assert record_lint.direction_norm_count(text) is None
 
     def test_section_closes_at_the_next_equal_level_heading(self):
-        text = "## Direction\n\n- one\n\n## Elsewhere\n\n- two\n- three\n"
+        # Bullets carry a norm field because a norm entry IS a field-bearing
+        # bullet; the bare `- one` these fixtures used encoded the older
+        # count-every-bullet definition as a side effect of testing heading
+        # levels. Assertions unchanged — only the scaffolding is now well-formed.
+        text = (
+            "## Direction\n\n- one\n  Why: because.\n\n"
+            "## Elsewhere\n\n- two\n  Why: x.\n- three\n  Why: y.\n"
+        )
         assert record_lint.direction_norm_count(text) == 1
 
     def test_a_deeper_heading_does_not_close_the_section(self):
-        text = "## Direction\n\n- one\n\n### Sub\n\n- two\n\n## Elsewhere\n\n- three\n"
+        text = (
+            "## Direction\n\n- one\n  Why: because.\n\n"
+            "### Sub\n\n- two\n  Why: also.\n\n"
+            "## Elsewhere\n\n- three\n  Why: nope.\n"
+        )
         assert record_lint.direction_norm_count(text) == 2
 
 

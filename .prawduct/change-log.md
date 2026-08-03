@@ -3,6 +3,500 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-08-03: the final cumulative — a deliverable with no test, and six records that had drifted
+
+<!-- prawduct: type=fix | scope=silent-gates | chunks=06 -->
+
+Final cumulative over the whole branch — 16 commits, 24 files, three reviewers: **1 blocking, 9
+warnings, 9 notes.** Eleven fixed, eight accepted.
+
+**The blocking one is the branch's own lesson arriving once more.** Chunk 06 names
+`plugin/bin/prawduct-hook` as a deliverable and models itself explicitly on `learnings-obligation` —
+whose test file drives its command through dry-run, apply, absent, unreadable and unknown-arg. I
+tested only the lib. Roughly fifty lines shipped executing in no test: both exit-code mappings, the
+`Would delete from … line N` confirmation block, `--json`, unknown-arg rejection, and the `main()`
+dispatch arm. Choosing a precedent and then not following the part of it that is the test file is a
+specific and repeatable way to miss coverage.
+
+**Two reviewers converged independently on the same structural defect (R-9 / R-16):** the skew
+guard's `_HARNESS_INVOKED_COMMANDS` is a hand-transcribed copy of `hooks/hooks.json`, and its drift
+is silent in the *unsafe* direction — a hook entry point that falls out of the set starts refusing,
+and a refusal a hook cannot act on breaks SessionStart in every framework checkout. Now derived from
+`hooks.json` by a test that parses the file, red-verified by dropping an entry point from the set.
+
+- **The refusal named a command the caller could not run (R-3).** `/prawduct:critic`'s
+  `allowed-tools` lists only the bare `prawduct-hook` forms, so the skew guard's advice — "run
+  `python3 <repo>/plugin/bin/prawduct-hook`" — was unactionable for the one caller that hits it most.
+  The repo-local forms are now allowed. A remedy the reader cannot execute is a refusal with extra
+  steps.
+- **`Status: **in-transition**` was entry-visible and stall-invisible (R-2)** — emphasis was
+  tolerated after the label but not around the value, which is the `__Status:__` defect Chunk 05's
+  own entry records, one position over. Fixed as "optional emphasis anywhere between marker and
+  token" rather than patched per-form, because per-form patching is precisely how the first one was
+  missed.
+- **A failed repair would have crashed the health check that relays it (R-15).**
+  `atomic_write_text` propagates `OSError` by design — each caller owns its failure policy — and this
+  caller had none, so a write failure tracebacked out of doctor Health Check #14 instead of degrading
+  to a finding. That is fail-soft inverted at the one site built to be fail-soft.
+- **A missing `project-preferences.md` was graded healthy by every check in the flow (R-8).** Check
+  #14 deferred it to Check #5, which enumerates five other paths and never looks at this one. Now a
+  finding where it is actually detected.
+- **The owner's acceptance lived only in a file the release deletes (R-17).** The
+  advisory-amplification decision was recorded in the build plan; build plans are deleted at release,
+  and a ruling that survives only in a deleted file is a decision nobody can later show was taken.
+  Now in the change-log, where the earlier entry's "this decision is open" is also corrected — it was
+  true when written and answered an hour later.
+- **The history pin would have gone silent exactly when it stopped working (R-5 / R-12).** The
+  `SCAFFOLD_ROWS` test pinned the constants against a branch-local SHA and `pytest.skip`ped when it
+  could not resolve — so a squash or rebase would have retired the pin without a word. Now a content
+  search across all history that **fails** rather than skips.
+- Also fixed: `norm-index-scaffold` added to the api-contract enumeration (R-10), the sweep advisory
+  now names the repair alongside the janitor sweep since a repo carrying template rows owes no sweep
+  at all (R-4), and `docs/norms.md` brought into line with the field-bearing entry definition (R-7).
+
+**Filed rather than fixed: `#571`.** Establishing where the `unwritable` status belonged surfaced a
+live defect in the sibling this chunk cites as its precedent: `learnings_obligation.repair()` catches
+the write failure but leaves `status` at whatever `check()` found, so doctor Health Check #13 relays
+a *failed repair* as "no marker" — indistinguishable from the state before the owner ran it, and the
+exact failure the `unwritable` split was made to avoid. Not fixed here: it changes a shipped health
+check's behaviour and deserves its own review rather than a drive-by in a disposition round. The id
+is recorded **here** because the deferral originally lived only in a commit body, which a later
+review correctly could not verify — a decision whose only witness is a commit message is not a
+record.
+
+Accepted with reasons recorded as facts: the four `learnings-entry-shape` notes (the lint and
+`learnings.md`'s own stated policy disagree, and degrading the entries is the wrong way to settle
+it), the two-algorithms note (the *marker* has one home; the algorithms answer different questions
+and diverge only on input nothing produces), the registry-row and thrice-stated-rule notes (both are
+real doc-structure improvements with no code in them), and the two informational ones.
+
+## 2026-08-03: the template fix that never reached the installed base
+
+<!-- prawduct: type=fix | scope=silent-gates | chunks=06 -->
+
+`#567`'s blocking finding was closed by shipping the Enforcement norm index **empty**, because its
+two illustrative rows carried non-empty `Audit home` / `Why` cells and so read as homed norms. That
+fix reaches **new onboards only**: `init_product` and `core.write_template` copy a template only
+into a destination that does not exist. Every already-onboarded repo still carries those rows, still
+reads as having a ratified norm registry, and is still nudged about a Norm Health sweep it owes
+nothing to. This is not new work — it is the honest completion of Chunk 02, and without it that
+chunk's fix is true of the template and false of the fleet.
+
+`prawduct-hook norm-index-scaffold` detects the leftover rows and offers to remove them; doctor
+Health Check #14 relays it. Same shape as Health Check #13 (`learnings-obligation`), which is the
+established pattern for a defect that lives in already-onboarded repos and that a template change
+cannot reach: report a status, offer a repair, never apply it unasked.
+
+**Detection is exact-match against the rows prawduct actually shipped**, never a guess at what a
+placeholder looks like. Sniffing for italics-in-parentheses was considered and rejected when the same
+choice arose in `#567` — it bakes a formatting convention into a governance predicate, and a real
+norm's *why* may legitimately be italic. Exact-match cannot mistake an authored row for a scaffold
+one, and a scaffold row a human has since edited is theirs and is left alone. The two row strings are
+byte-identical across the entire template lineage (checked back through the `plugin/` move), so the
+set is small, closed, and complete — and a test pins the constants against git history, because
+getting one byte wrong would make the detector silently find nothing in every repo forever, which is
+the quietest possible failure and this branch's subject exactly.
+
+- **Verified end-to-end against a real legacy repo, not a fixture.** Materialised a repo from the
+  pre-fix template revision: `_norms_exist` → `True` and the sweep advisory fires; after the repair,
+  `_norms_exist` → `False` and it goes quiet. That is the chunk's whole reason for existing,
+  measured rather than argued.
+- **A test caught the repair silently re-line-ending a product's file.** The first cut read with
+  universal newlines, so a CRLF file came back as `\n`-only and the delete-only guarantee held
+  line-by-line while every line's ending was rewritten. Reading with `newline=""` fixes it; the
+  guard is red-verified by reverting it. This is the same concern Chunk 03's `newline=""` opt-out
+  exists for, arriving in the one place that writes an authored file.
+- **`unreadable` is its own status, degraded-because-ungraded.** A check that could not run is
+  otherwise indistinguishable from one that ran and found nothing — the failure mode the whole scope
+  is named after.
+- **The skill's `allowed-tools` had to list the new command.** A health check whose command the
+  skill may not invoke is a check that reports nothing, which would have reproduced the defect in
+  the surface built to fix it.
+
+Closes #570.
+
+## 2026-08-03: one definition of a norm entry, and the test that refused to be weakened
+
+<!-- prawduct: type=fix | scope=silent-gates | chunks=05 -->
+
+Two issue numbers, one decision surface: what IS a Direction norm entry, mechanically. **#568** —
+`record_lint.direction_norm_count` counted every top-level bullet while `norm_probes` (since Chunk
+02) required a field, so the two disagreed exactly in the roadmap case and the `governed_by`
+under-disposition lint demanded dispositions for items that are not norms. **#569** — the marker
+regex anchored on a bare `Why:`, so a product writing `**Why:**` lost all four norm signals silently.
+Sequencing them apart costs more: converge first and you converge onto a predicate still blind to
+emphasis, then re-touch both call sites.
+
+**A failing test changed the definition, and the design is better for it.** The plan, the owner
+conversation and two docstrings all said "a norm entry is a `Why:`-bearing entry". Then a
+`governed-by-gap` test went red on a fixture whose bullet carried `Status:` and no `Why:`. Editing
+that fixture would have shipped a real defect: **doctor Health Check #10 exists to report "every
+Direction entry carries a Why", and a Why-only definition makes it vacuous** — the whyless entries
+it is meant to flag stop being entries at all. Requiredness is a property the checks assert *about*
+entries, not the test for whether something *is* one. The shared definition is therefore
+**field-bearing** (`Why` / `Status` / `Rulings` / `Retroactivity`), which still excludes the roadmap
+case #567 was about, since a prioritised list of undone work carries no fields.
+
+Two other fixtures *were* edited in the same pass and the distinction is the point: the
+section-boundary tests' bare `- one` bullets were incidental scaffolding, not the contract under
+test, and their assertions are untouched. The line is whether the fixture expresses the test's
+intent or merely carries it.
+
+**Emphasis tolerance is an owner decision (2026-08-03), taken deliberately.** `**Why:**`, `__Why:__`,
+`*Why:*` and `_Why:_` now count, as do the same forms of the other fields. This necessarily moves
+`dead-why` and `stalled-transition`, which share the regex — that is the point, not a side effect.
+`_FIELD_OR_ITEM_RE` had to widen alongside `_WHY_RE`: without it an emphasised marker is not a line
+start, so it soft-wraps onto the bullet above and the `^`-anchored marker can never see it however
+tolerant it is. Widening either alone accomplishes nothing.
+
+- **#569's defect survived #569's fix, one field over.** The first cut widened the `Status:` prefix
+  to accept `_{1,2}` but left the `in-transition` closer accepting only `*`, so `__Status:__
+  in-transition` counted as an entry and was scanned by dead-why while `probe_stalled_transition`
+  could never see it — a stalled norm going unaudited while every other check treated it as live.
+  Prefix and closer are now the same class, pinned across all five emphasis forms of both fields —
+  **through the probes, not their constants.** The first cut asserted `_IN_TRANSITION_RE.search(...)`
+  directly and routed its marker matrix through `_has_direction_entry`, which reads a *different*
+  constant (`_FIELD_MARKER_RE`); `_WHY_RE` and `_STATUS_RE` have exactly one consumer between them —
+  `probe_dead_why` — and no test reached it, so both could have lost emphasis tolerance with the
+  suite green. Testing the constant you are thinking about instead of the one the behaviour routes
+  through is the same defect as a fixture that cannot reach its branch, one level finer.
+- **The marker has one home, not two copies.** Closing "two definitions disagree" with a second
+  *copy* of the regex would have re-created the defect in a slower-acting form — copies agree today
+  and drift on the first edit. `record_lint` imports `_FIELD_MARKER_RE` from `norm_probes` (lazily;
+  that module pulls the advisory-store and backlog readers and this one sits on the record-lint
+  path).
+- **The lib-skew refusal added in Chunk 04's follow-up was unpinned.** It had only an advisory-path
+  test, so dropping the data-plane refusal left the file green — and that is the half which can
+  refuse the very invocation the plan's Verification Strategy prescribes. Now pinned, and
+  mutation-verified alongside the `in-transition` closer.
+- **#332's input, re-derived after the change rather than before it:** 28 norm entries across 7
+  artifacts, `governed-by-gap` 0. Old and new definitions yield **identical** counts on every
+  artifact in this repo, because every Direction entry here already carries a field — so #332's
+  count does not move. Recorded so the next reader does not re-run it to learn nothing changed.
+- **The fourth degenerate fixture this session, caught by mutation.** The shared-definition roadmap
+  corpus had two adjacent bullets then EOF, so no line ever followed a pending bullet and a mutation
+  that counts every bullet returned 0 as well — the test passed against the code it was written to
+  reject. Minimal fixtures are frequently degenerate: they exercise the entry condition and not the
+  branch. A fixture is validated by the mutation failing, never by the test passing.
+
+Closes #568, #569.
+
+## 2026-08-03: the binary that is not the one this repo carries
+
+<!-- prawduct: type=fix | scope=silent-gates | chunks=04 -->
+
+Inside a framework checkout, a bare `prawduct-hook` on `$PATH` resolves to whatever plugin the
+environment installed — the install cache, or, in this clone, **a sibling worktree's checkout on
+`develop`**. The observed consequence is the worst failure mode this system has: `critic-begin` ran
+the foreign binary and wrote **no** kernel-v3 manifest — no error, no manifest — and the
+`SubagentStop` `critic-consolidate` no-opped the same way, leaving reviews unpersisted. A governance
+write that reports nothing while doing nothing is this branch's subject exactly, one layer out from
+`#154`: *which binary am I actually running*.
+
+**The guard keys on binary identity, not version equality, and that is a departure from what `#227`
+prescribed.** The issue asked the binary to compare its self-reported version against the repo's
+expected lineage. That test is blind in the common case and was blind to the live instance: at the
+time of writing, the installed plugin and this worktree both report `3.2.3` while the worktree's
+`lib/` has diverged across an entire branch. A checkout is *routinely* ahead of its own manifest
+between releases, so version comparison would have passed the very skew it was written to catch.
+"Am I the binary this repo carries" is exact and needs no lineage bookkeeping.
+
+Posture follows what the command produces, per `architecture.md` § Direction: an agent-invoked
+governance write refuses (exit 1, naming the binary to run); everything else emits a loud stderr
+note and proceeds. Neither is silent, which is the entire point.
+
+- **Two blocking findings, and the review caught the one that mattered most.** The first cut
+  computed the running root from `_plugin_root()`, which prefers `$CLAUDE_PLUGIN_ROOT` — so it keyed
+  on the *environment*, not the binary, while its own `[DECISION]` block committed to identity. Both
+  directions failed whenever that variable is set: the correct repo-local invocation would refuse
+  with advice to run exactly what you just ran; and a foreign binary invoked with the variable
+  pointed at this repo would compare equal and pass — `#227` itself, wearing the guard as a
+  disguise. Now `Path(__file__).resolve().parent.parent`.
+
+  (This bullet read "whenever that variable is exported — *which it is, into the Bash tool env,
+  whenever the plugin is enabled*" until the PR review. That parenthetical was asserted, never
+  measured, and the guard's own docstring records the opposite from an actual measurement: the var
+  is set in the *hook* process, whether it reaches an agent's Bash env varies, and it was measured
+  **unset** in the session that built the guard. Measured unset again at the PR boundary. The
+  finding it justifies is unaffected — keying on the environment instead of the binary is wrong at
+  any frequency — but the change-log outlives the build plan, so an unsupported claim here is the
+  one that persists. On the branch whose subject is a record asserting health it never measured.)
+- **The second would have broken every framework checkout on the day it shipped.**
+  `hooks/hooks.json` invokes `${CLAUDE_PLUGIN_ROOT}/bin/prawduct-hook` for SessionStart, Stop,
+  SubagentStop and UserPromptSubmit — the install cache, which inside a framework checkout is
+  foreign **by design**; that is the governance model, not a mistake. `clear` and `subagent-stop`
+  were in the refusing set, so the guard would have returned 1 from every SessionStart in every such
+  repo: no briefing, no session reset, no marker sweep. It is also unactionable — a hook cannot be
+  told to invoke a repo-local binary. Harness entry points now take the note and never refuse.
+- **The classification was inverted and is now made on the right axis.** `stop` performs a
+  review-fact write through its abandoned-review self-heal yet was advisory, while `subagent-stop` —
+  whose own comment reads "always advisory, never propagate consolidate's exit code as a block" —
+  refused. The axis is **who invokes it** first (a refusal a hook cannot act on is not a safety
+  device), and only then what it writes. `ledger-append`, a documented sole-writer of the ledger,
+  joins the refusing set.
+- **The tests pinned the wrong thing and were rebuilt.** The first matrix always ran *this*
+  worktree's binary and varied only `$CLAUDE_PLUGIN_ROOT` — it pinned the env-var implementation
+  that was the blocking defect, so fixing the defect turned one of its own tests red. Tests now
+  materialise a real hook under a foreign plugin root and run *that*, deciding "foreign" the same
+  way the guard decides it: by where the file lives. Two tests were added for the inversion
+  specifically — the env var can neither vouch for a foreign binary nor condemn the repo-local one.
+- **Which mutation owns which test.** The over-fire assertions check marker *absence*, and an
+  absence assertion cannot tell "correctly quiet" from "no guard exists". They are pinned by
+  mutations that make the guard wrongly fire: dropping the product-repo exemption turns both
+  product-repo tests red; letting harness hooks refuse turns all three hook tests red; reverting to
+  the env-var root turns the two identity tests red.
+- **The fix cannot reach backwards.** A guard shipped inside the binary cannot protect an invocation
+  of a binary that predates it, so the incident binary keeps no-opping until a release carries this
+  into the install. The value lands at the next release, not at merge.
+
+Closes #227.
+
+## 2026-08-03: the cumulative round — a survey that ran short, and three cascades that stopped early
+
+<!-- prawduct: type=fix | scope=silent-gates | chunks=03 -->
+
+Cumulative review of the bundle: **0 blocking, 7 warnings, 14 notes across 3 reviewers.** Nothing
+gated. Ten fixed, one filed, ten accepted — dispositioned in one pass, as facts.
+
+**The one that changed shipped behaviour: the `atomic_write_text` survey enumerated 7 of 11 call
+sites.** Two reviewers found it independently. The missing four are all in
+`plugin/bin/prawduct-hook`, which is **extensionless**, so the `grep --include='*.py'` that produced
+the "seven callers" claim could not see them. This repo already carries the rule — *enumerate the
+sites by grep, never by memory, and the grep is itself a site: it is a PREFIX of the real set* — and
+the extension filter is exactly that prefix.
+
+The claim built on that survey was also false: the entry asserted utf-8 "matches every reader — they
+all open `encoding='utf-8'`", and they did not. `operator_verification` wrote through the shared
+writer and read back with a bare `read_text()`. That pair was **self-inverse while both used the
+locale encoding** and became asymmetric the moment the default changed — so on a non-UTF-8 locale a
+status mutation would transcode a committed product file. Fixed at the reader (`_load_queue` and the
+`operator_verification_required` state read now decode utf-8), and the docstring now says what is
+actually true: the writer alone does not settle a round trip, and each reader must ask for utf-8 too.
+
+**Three cascades had stopped one file short**, all the same class as the `doctor/SKILL.md` edit that
+shipped with Chunk 02:
+
+- `docs/norms.md` still described the pre-fix triggers — and at `:370` told an owner that adding a
+  `## Direction` heading clears the advisory, which is precisely the roadmap-heading behaviour
+  Chunk 02 removed.
+- `skills/critic/review-cycle.md` recorded the old anchoring rule: it documents tree-inequality as
+  the discriminator without the mirror reading Chunk 01 added, so the protocol doc and the code
+  disagreed about when the head anchor moves.
+- The `[DECISION]` leaving the wrongly-anchored resolution facts in the ledger named those fact ids
+  **only in the build plan**, which is deleted at release — so the one durable record of which facts
+  are mis-anchored would have vanished with it. Now named in Chunk 01's entry.
+
+**A second markdown-table parser where the plan said to reuse the first.** `_has_enforcement_norm_rows`
+re-derived the norm-index location that `_norm_index_lacks_columns` owns, and with *different*
+acceptance rules — the first `Preference`-headed table versus the first one carrying the norm
+columns. A preferences file with two such tables therefore got contradictory nudges out of a single
+read: "your index lacks the norm columns" and "norms are homed in your index", simultaneously. Both
+now go through one `_norm_index_header` locator, pinned by a two-table test.
+
+- **The template prose was written about the template.** `project-preferences.md` is copied verbatim
+  into every product, so "the table ships empty" is a note about the framework's own file that lands
+  in a file where it is not true. Reworded as an instruction to the product author: every populated
+  row *is* a homed norm, so never leave an example row in it.
+- **Filed rather than absorbed: `#570`.** The emptied template reaches **new onboards only** —
+  `init_product` and `core.write_template` skip existing destinations, so every already-onboarded
+  repo keeps the scaffold rows and reproduces Chunk 02's blocking finding across the installed base.
+  That needs a doctor detect-and-repair, which is a chunk's worth of work and cannot be absorbed into
+  a closing burndown.
+- **That owner decision was subsequently ANSWERED — 2026-08-03, accept.** When this entry was
+  written the acceptance was outstanding; the owner was then asked directly and chose *"accept — it's
+  the defect being fixed"*, over gating the amplification behind `#570` or vetoing the widening.
+  Recorded here as well as in the plan deliberately: the plan is deleted at release, and an owner
+  ruling that survives only in a deleted file is a decision nobody can later show was taken. The
+  residual risk it carried — already-onboarded repos seeing the advisory *spuriously* — is what
+  `#570` makes **closable**, in Chunk 06 of this same plan. Not closed: the repair is offered, never
+  applied unasked, so a legacy repo keeps seeing it until an owner runs doctor Health Check #14.
+  (Corrected here as well as in the plan, since this bullet exists precisely because the plan is
+  deleted at release — leaving the overstatement in the durable copy would have been the same defect
+  the bullet is about.)
+- **The reader fix is pinned two ways, and the pin is the durable part.** A locale-forced
+  `_write_queue` → `_load_queue` round trip carrying an em-dash, plus a receiver-qualified source pin
+  asserting both `read_text(encoding="utf-8")` call sites. The behavioural test cannot see a reader
+  that is never reached on a UTF-8 host; the source pin can, which is what makes a reverted guard
+  fail somewhere rather than nowhere. Both go red when the guard is reverted.
+- **A lint and a policy disagree, and the entry was not degraded to satisfy the lint.** Record-lint
+  scored two `learnings-entry-shape` notes for entries carrying their evidence inline;
+  `learnings.md`'s own header mandates exactly that ("entries carry their instances inline… rules are
+  collapsed by merging statements and unioning instances, never by dropping them"), on the ground
+  that a general statement is what makes a rule storable *and* inert. Accepted with the conflict
+  named rather than trimmed away.
+
+## 2026-08-03: two runtime assumptions that were invisible where they were written
+
+<!-- prawduct: type=fix | scope=silent-gates | chunks=03 -->
+
+Two independent one-site fixes, batched because they are the same class: a runtime assumption that
+holds on the machine it was written on and fails elsewhere, silently.
+
+**`core.atomic_write_text` wrote at the locale encoding while every reader opens utf-8.** The
+`encoding` parameter defaulted to `None` — `locale.getpreferredencoding(False)` — so on any
+non-UTF-8 locale the round trip was lossy, and non-ASCII content raised `UnicodeEncodeError` at the
+write. It stayed latent because the early callers write JSON at `ensure_ascii=True`, which is ASCII
+either way. `briefing.py`'s `.session-handoff.md` write is not one of those, and that file routinely
+carries em-dashes. The default is now `utf-8`. `newline` deliberately stays `None`: line-ending
+translation is a separate concern with one real opt-out (`learnings_obligation.repair`, writing into
+a product's authored file), and flipping both at once would bundle an unrequested change.
+
+Verified across all seven call sites before changing the signature, not after: five write ASCII JSON,
+one already passes `encoding="utf-8"` explicitly, and none passes `encoding=None`, so narrowing the
+type from `str | None` to `str` breaks no caller.
+
+**`audit_learnings_cmd.run_sentinel` spawned a bare `python3`.** Under any virtualenv that is a
+different interpreter from the one running the audit — usually one without pytest, or without the
+product importable — so every sentinel reported failing. The consequence is worse than a noisy
+diagnostic: the audit decides which learnings are *structurally enforced*, so a false-failing
+sentinel argues for retiring a rule that is in fact still enforced. Now `sys.executable`, matching
+the convention already applied elsewhere under `plugin/`; list-form args preserved, no shell.
+
+- **The encoding test had to force the locale, because the defect is invisible on a UTF-8 machine.**
+  An in-process assertion would have passed identically against the broken code — the exact
+  "fixture that cannot reach the guard" failure this branch already paid for once. The test spawns a
+  subprocess under `LC_ALL=C PYTHONUTF8=0 PYTHONCOERCECLOCALE=0`, an environment first *confirmed* to
+  reproduce (`getpreferredencoding` → `US-ASCII`, bare write → `UnicodeEncodeError`) rather than
+  assumed to. Red-verified: it fails on the old default with the real traceback.
+- **The suite already runs under a venv**, which is `#154`'s exact scenario — the sentinel defect was
+  live in this very repo's own test environment.
+
+Closes #562, #154.
+
+## 2026-08-03: a Direction heading is not a norm registry, and its absence is not health
+
+<!-- prawduct: type=fix | scope=silent-gates | chunks=02 -->
+
+Two defects in `norm_probes.py`, pulling in opposite directions, both rooted in treating a
+`## Direction` **heading** as proof that a norm registry exists. Field-reported from an onboarding of
+an unrelated product; the reporting session walked into both in sequence, the second *while fixing
+the first*.
+
+**A heading with nothing under it certified as a ratified registry.** `_has_direction_heading`
+matched heading text alone, so `probe_norm_registry_unratified`'s first arm was satisfied by the
+heading's mere presence. The reporting repo's only `## Direction` section was a prioritized list of
+undone work — a roadmap, zero norm entries — and it satisfied the arm completely, which would have
+left doctor check #10 reporting findings against that roadmap indefinitely. This is the same shape as
+an unfilled template counting as a present artifact: **a section empty of the thing being checked
+does not fail the check, it passes it**, because presence is what was measured. The arm now keys on a
+`Why:`-bearing entry — `docs/norms.md` § Anatomy makes Why *required*, while Status is optional and a
+bold Statement is not mechanically distinguishable from any bold bullet.
+
+**The absence of a heading silenced the time-domain audit permanently.** `_any_direction` gated
+`probe_norm_health_sweep_overdue` and never re-opened. A product that homes its norms entirely in the
+preferences Enforcement table — a legitimate homing under `docs/norms.md` § Where Norms Live, where
+that table *is* the norm index — got no norm-health reminder at all, ever, with no signal that it was
+missing. The guard now asks whether norms exist under **either** homing. This is the learnings rule
+`advice fails soft is not advice fails silent` arriving in a new organ: a probe returning `[]`
+because its guard short-circuited is not degrading to a note, it is manufacturing the false success
+it exists to prevent. The field session's own "all probes return `[]`" check would have reported that
+short-circuit as health — in the same commit that created the norm those probes exist to audit.
+
+**Scoped deliberately to one guard.** The first draft of the plan also promised to "close
+`probe_dead_why` and `probe_stalled_transition` on the same predicate." That is incoherent — a
+predicate answers *whether* norms exist; those two are starved for *lines to scan*, which no
+predicate supplies. The issue's own Scope section settles it: the janitor sweep already covers table
+rows, so the coverage exists and only the *reminder* was gated. Corrected in the plan before building
+rather than discovered after.
+
+- **The Critic caught this over-firing on every new product.** `plugin/templates/project-preferences.md`
+  shipped the norm-index table with two *illustrative* rows whose `Audit home`/`Why` cells were
+  non-empty placeholders (`janitor` / `*(the constraint's rationale)*`), and `init_product` copies
+  that file verbatim. So the widened guard read a brand-new repo as having a norm registry and fired
+  `norm-health-sweep-overdue` on its first session sync — inverting this chunk's own acceptance
+  criterion. **Both of my over-fire fixtures were hand-written and neither resembled the shipped
+  file, so the suite stayed green.** The template now ships the table **empty**, with the two row
+  shapes described in prose, and a test reads the real template through `core.TEMPLATES_DIR` so
+  template and predicate cannot drift apart again. Fixing this in the template rather than by
+  teaching the predicate to sniff "placeholder-shaped" text was deliberate: that would bake a
+  formatting convention into a governance predicate, and a real norm's why may legitimately be
+  italic.
+- **The advisory's `evidence` string is an identity key and was left verbatim.**
+  `advisory_store.compute_id` hashes the evidence list, so editing the wording mints a new advisory
+  id and resurrects the advisory in every repo that had dismissed it — and a widened trigger does not
+  revoke a dismissal. It now under-describes its own trigger, and `/prawduct:advisory show` renders
+  it verbatim, so a table-homed repo is pointed at `## Direction` sections it lacks. Accepted: the
+  id-free `trigger_summary` already reads "while norms exist", which is homing-agnostic and correct,
+  so the stale text is in the secondary line rather than the headline. Correcting it means bumping
+  `PROBE_VERSION`, which is module-level and shared by all five norm probes — superseding four
+  unrelated advisories to fix one line of prose.
+- **`Why:` at line start is now the global discriminator for "a registry exists"**, not just
+  per-entry decay detection, so a product writing `**Why:**` would lose the ratification signal and
+  the sweep reminder as well. Behaviour is unchanged and consistent with `dead-why` and
+  `stalled-transition`, which share the regex; a near-miss test now pins the boundary so a deliberate
+  widening turns it red rather than passing unnoticed. **Filed as `#569`.**
+- **Two definitions of "a norm entry" now coexist.** `record_lint.direction_norm_count` counts every
+  top-level bullet in a Direction section while the probes count `Why:`-bearing lines, so they
+  disagree exactly in the roadmap case this entry is about. Out of scope here because it moves a
+  different gate's behaviour. **Filed as `#568`.** Both ids are named here rather than only in the
+  build plan, which the release deletes.
+- **The cascade into `doctor/SKILL.md` was required, not scope creep.** Its step 5 said a dateless
+  "no norms to ratify" outcome is fine because "with no `## Direction` sections there is no sweep to
+  seed" — a rationale this change falsifies. Doctor check #10 already recognised both homings, so the
+  widening brings the probe into agreement with the skill rather than diverging from it.
+
+Closes #567.
+
+## 2026-08-03: the review interval that ran backwards whenever the prior review saw a dirty tree
+
+<!-- prawduct: type=fix | scope=silent-gates | chunks=01 -->
+
+`verify-resolutions` decided whether a commit had landed since the prior review with a single test:
+does the committed tree differ from the tree that review saw? That question has **two** answers that
+look identical and mean opposite things. A commit landed afterwards, so the anchor is *behind* — the
+case the branch was written for. Or the prior review vouched for a **dirty** tree and nothing has
+been committed since, so the anchor is *ahead*. The second is not an edge case: it is the ordinary
+shape of a `chunk`-mode review, whose fact records `head_commit: null` and a `head_tree` matching no
+commit. **Measured 2026-08-03: 136 of 402 review facts in this clone's store — roughly a third — are
+that shape.** Stated as a dated snapshot because the count moves with every review: it was 135/401
+when the chunk review measured it and 136/402 four minutes later, the difference being that review's
+own fact, which is itself dirty-shaped. The proportion is the durable claim; the live answer is a
+`kind == "review"` query over `<git-common-dir>/prawduct/evidence.jsonl`. That same query says
+**zero** facts lack `dispatch_commit`, so the guard below engages on every fact in the store rather
+than degrading to the old behaviour on some of them.
+
+Read as a committed delta, the edge inverts — base becomes the dirty snapshot that is ahead, head the
+committed tree that is behind. Three consequences, ascending: `files_changed` describes the chunk
+being *deleted* rather than its content; `record_lint` grades pre-fix committed content and reports
+findings already discharged on disk; and — the load-bearing one — **the resolution facts are
+persisted against a tree in which none of the fixes exist.** A resolution lifts a BLOCKING finding,
+so this was unsound, not merely noisy. Observed on `fix/drift-burndown` 2026-08-02: a manifest
+interval of `base 927fe38 -> head 505a04a5`, diffing to −198 lines, while stderr asserted that a
+committed delta existed.
+
+The discriminator was already in the prior fact and simply not read: a fact carrying no `head_commit`
+vouched for a working tree, and if HEAD still stands where that review dispatched, nothing has been
+committed since. The fix is that conjunction. It changes behaviour **only** when the working tree is
+dirty — on a clean tree both branches compute the same `head_tree` and `head_commit` — so it repairs
+the inversion without perturbing the clean-tree path, and no fact-schema field is added, removed or
+retyped.
+
+- **The field is spelled differently in the two places it lives.** The issue prescribed comparing
+  against the prior fact's `commit_reviewed`; the *fact* body spells that value `dispatch_commit`
+  (`manifest` uses `commit_reviewed`). Following the prescription literally would have read `None`
+  off every fact, made the conjunct vacuously false, and left the defect in place while looking
+  fixed. Read the schema, not the prose about it.
+- **The Critic caught the guard closing this finding being itself untested.** `anchor_is_ahead` has
+  two conjuncts; deleting the second left the entire suite green, because every existing dirty-prior
+  fixture either never moves HEAD or commits the reviewed tree *verbatim* — so both sides of the
+  conjunct agreed in every covered case. The absent cell was **dirty prior × content-changing landed
+  commit**, which is exactly what the conjunct exists for: without it that case anchors at the
+  working tree, and a stray judgeable uncommitted file then leaves the PR gate `uncovered` — CRT-7H2W
+  re-opened one prior-fact-shape over, where the clean-prior test guarding it cannot see. Pinned by
+  `test_dirty_prior_with_a_landed_commit_still_anchors_committed_head`, red-verified by removing the
+  conjunct and confirming that test and **no other** goes red.
+- **The mirror case is preserved deliberately.** The existing vouching-commit test — a commit that
+  changes no content is not a change of intent — still passes through tree equality, which
+  short-circuits before the new conjunction is reached.
+- **The wrongly-anchored facts already in the ledger stay there.** Facts are immutable and
+  append-only; rewriting history to make the ledger look correct would break the property that makes
+  it evidence. The affected review is `rev-20260802T191628Z-ddd15904` (drift-burndown Chunk 02) and
+  its four resolution facts — named here rather than only in the build plan, which is deleted at
+  release, so the one durable record of which facts are mis-anchored does not vanish with it. That
+  review has since been superseded by a clean cumulative and a 0/0/0 verify on the same branch.
+
+Closes #554.
+
 ## 2026-08-02: two doctor surfaces that answered confidently for a state the repo was not in
 
 <!-- prawduct: type=fix | scope=drift-burndown | chunks=04 | release=v3.2.3 | status=shipped -->

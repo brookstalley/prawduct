@@ -37,6 +37,7 @@ from __future__ import annotations
 
 import re
 import subprocess
+import sys
 from dataclasses import dataclass, field
 from datetime import date, datetime
 from pathlib import Path
@@ -331,7 +332,14 @@ def resolve_supersession_target(
 def run_sentinel(
     product_dir: Path, sentinel: str, *, timeout: int = 120
 ) -> tuple[bool, str]:
-    """Run ``python3 -m pytest <sentinel> -q`` from ``product_dir``.
+    """Run ``<this interpreter> -m pytest <sentinel> -q`` from ``product_dir``.
+
+    Spawns :data:`sys.executable`, not a bare ``python3``. Under any virtualenv
+    the PATH ``python3`` is a different interpreter from the one running the
+    audit — usually one without pytest, or without the product importable — so
+    every sentinel reported failing. That matters more than a noisy diagnostic:
+    the audit decides which learnings are structurally enforced, and a
+    false-failing sentinel argues for retiring a rule that is still enforced.
 
     Returns ``(passed, excerpt)``. The excerpt is the trailing portion of
     pytest's combined stdout/stderr (last ~20 lines) so callers can surface
@@ -343,7 +351,7 @@ def run_sentinel(
     """
     try:
         result = subprocess.run(
-            ["python3", "-m", "pytest", sentinel, "-q"],
+            [sys.executable, "-m", "pytest", sentinel, "-q"],
             cwd=str(product_dir),
             capture_output=True,
             text=True,

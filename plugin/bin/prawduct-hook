@@ -4466,6 +4466,66 @@ def cmd_learnings_obligation(project_dir: Path, argv: list[str]) -> int:
     return 1 if status == learnings_obligation.STATUS_UNREADABLE else 0
 
 
+def cmd_norm_index_scaffold(project_dir: Path, argv: list[str]) -> int:
+    """Detect — and on ``--apply`` remove — leftover template scaffold rows (#570).
+
+    `#567` stopped the norm-index table shipping illustrative rows, but
+    `init_product`/`core.write_template` skip existing destinations, so the fix
+    reaches new onboards only. Every already-onboarded repo keeps rows whose
+    `Audit home`/`Why` cells are non-empty placeholders, reads as having a
+    ratified registry, and gets nudged about a Norm Health sweep it owes nothing
+    to. This is the doctor health check that detects it and the repair that
+    closes it, on the Health-Check-#13 pattern.
+
+    Exit codes follow ``artifacts/api-contract.md`` § Error Model. **Dry run is
+    an advisory report:** 0 when it ran — a finding is not a failure — and 1 only
+    when it could not run. **``--apply`` is a state-mutating writer:** 0 when it
+    removed rows or was an idempotent no-op, 1 when it refused. Unknown flags 2.
+    """
+    rejected = _reject_unknown_args("norm-index-scaffold", argv, {"--apply", "--json"})
+    if rejected is not None:
+        return rejected
+    apply = "--apply" in argv
+    as_json = "--json" in argv
+
+    lib_root = _plugin_root()
+    if lib_root not in sys.path:
+        sys.path.insert(0, lib_root)
+    try:
+        from lib import norm_index_scaffold  # noqa: PLC0415 — lazy keeps top-level cheap
+    except ImportError as exc:
+        print(
+            f"error: norm-index-scaffold could not import the plugin lib/ ({exc})",
+            file=sys.stderr,
+        )
+        return 1
+
+    result = norm_index_scaffold.repair(project_dir, apply=apply)
+    status = result["status"]
+
+    if as_json:
+        print(json.dumps(result, indent=2))
+    else:
+        # Labelled from the MODE asked for, not from whether a write happened —
+        # `--apply` on an `ok` repo writes nothing, and calling that "dry-run"
+        # invites the reader to conclude they forgot the flag.
+        print(f"norm-index-scaffold ({'apply' if apply else 'dry-run'}): {status}")
+        print(f"  {result['detail']}")
+        if status == norm_index_scaffold.STATUS_LEFTOVER and not result["applied"]:
+            # The informed confirmation: name the file and the exact rows, so
+            # `--apply` is a yes to something the owner has actually read.
+            print(f"  Would delete from {result['path']} (--apply to write):")
+            for line_no in result["rows"]:
+                print(f"    line {line_no}")
+
+    if apply:
+        return 0 if result["applied"] or status == norm_index_scaffold.STATUS_OK else 1
+    # Dry run cannot produce UNWRITABLE — `repair(apply=False)` returns before
+    # the write — so listing it here would be unreachable code implying a state
+    # this path can reach.
+    return 1 if status == norm_index_scaffold.STATUS_UNREADABLE else 0
+
+
 def cmd_audit_learnings(project_dir: Path, argv: list[str]) -> int:
     """Audit the consumer's ``.prawduct/learnings.md`` lifecycle (F9).
 
@@ -4646,6 +4706,7 @@ _USAGE = (
     "migrate-plugin [--apply] [--json]|init-product <target> --name <name> [--backlog-repo owner/repo] [--apply] [--json]|"
     "update-gitignore|"
     "audit-learnings [--apply] [--json]|learnings-obligation [--apply] [--json]|"
+    "norm-index-scaffold [--apply] [--json]|"
     "repo-disable [--local] [--apply] [--json]}"
 )
 
@@ -4866,6 +4927,173 @@ def cmd_jurisdiction(project_dir: Path, argv: list[str]) -> int:
     return 0
 
 
+# --- Framework-checkout binary skew (#227) --------------------------------
+# Inside a framework checkout, a bare `prawduct-hook` on $PATH resolves to
+# whatever plugin the environment installed — the plugin cache, or a sibling
+# worktree's checkout. The observed failure is the worst one available here:
+# `critic-begin` ran the foreign binary and wrote NO kernel-v3 manifest, with
+# no error, and the SubagentStop `critic-consolidate` no-opped the same way,
+# leaving reviews unpersisted.
+#
+# The discriminator is binary IDENTITY, not version equality. Comparing
+# self-reported versions is blind in the common case, because a checkout is
+# routinely ahead of its own manifest between releases — the skew that
+# prompted this had the installed plugin and the checkout both reporting
+# 3.2.3 while lib/ had diverged. "Am I the binary this repo carries" is exact
+# and needs no lineage bookkeeping.
+#
+# Posture follows what the command produces (architecture.md § Direction):
+# a governance WRITE fails closed, everything else degrades to a loud note.
+# Neither is silent, which is the entire point.
+
+SKEW_MARKER = "plugin-binary-skew"
+
+# Entry points the HARNESS invokes, from `hooks/hooks.json`. These always run
+# `${CLAUDE_PLUGIN_ROOT}/bin/prawduct-hook` — the install cache — so inside any
+# framework checkout they are foreign BY DESIGN; that is the governance model,
+# not a mistake. A refusal here is also unactionable: a hook cannot be told to
+# invoke a repo-local binary. Refusing would return 1 from every SessionStart in
+# every framework checkout — no briefing, no session reset, no marker sweep —
+# so these get the loud note and nothing else. `stop` and `subagent-stop` are
+# here even though `stop`'s abandoned-review self-heal DOES write a fact: who
+# invokes it decides whether refusing is even possible, and only then does what
+# it writes decide the severity of saying so.
+_HARNESS_INVOKED_COMMANDS = frozenset({
+    "clear",
+    "subagent-stop",
+    "stop",
+    "user-prompt-submit",
+    "build-index",
+})
+
+# Agent-invoked, state-mutating governance writes. A wrong-version write here
+# does not merely misreport — it corrupts or silently omits a persisted fact
+# that later gates compose over, and the caller CAN re-invoke the right binary,
+# which is what makes refusing actionable.
+#
+# DECIDED: this is an ALLOWLIST, so an unlisted command defaults to advisory —
+# the permissive side. The fail-closed alternative (refuse everything not known
+# read-only) was rejected because the read-only set is the larger, faster-moving
+# one: every new report, probe and query would silently start refusing inside
+# every framework checkout until someone remembered to exempt it, and that
+# failure is invisible until a session breaks. Getting the permissive default
+# wrong costs one command's worth of silence, which the loud NOTE still covers;
+# getting the restrictive default wrong costs the whole tool. Reviewed as a
+# staleness risk (no mechanical pin exists — the set is semantic, not derivable
+# from a file the way `_HARNESS_INVOKED_COMMANDS` is from `hooks.json`), and
+# accepted on that asymmetry rather than by omission.
+_DATA_PLANE_COMMANDS = frozenset({
+    "critic-begin",
+    "critic-consolidate",
+    "critic-end",
+    "disposition",
+    "ledger-append",
+})
+
+
+def _repo_plugin_dir(project_dir: Path) -> "Path | None":
+    """The plugin directory THIS repo carries, or None if it carries none.
+
+    A repo is a framework checkout iff it holds `plugin/.claude-plugin/plugin.json`.
+    Product repos hold none and are therefore untouched by the guard — they
+    legitimately run the installed binary, and firing there would break every
+    governed repo in the fleet.
+    """
+    try:
+        candidate = Path(project_dir) / "plugin"
+        if (candidate / ".claude-plugin" / "plugin.json").is_file():
+            return candidate.resolve()
+    except OSError:
+        return None
+    return None
+
+
+def _lib_skew(project_dir: Path) -> "tuple[Path, Path] | None":
+    """``(repo's plugin dir, lib root)`` when the LIB comes from elsewhere.
+
+    Identity has two halves and fixing only one leaves the defect standing.
+    :func:`_binary_skew` answers "which script is executing"; this answers
+    "whose ``lib/`` will it import", because :func:`_plugin_root` — which seeds
+    ``sys.path`` for every lazy lib accessor, including the ones `critic-begin`
+    and `critic-consolidate` run through — prefers ``$CLAUDE_PLUGIN_ROOT` over
+    the script's own location. Where the two diverge, the repo-local binary
+    executes another plugin's governance code: #227's consequence surviving on
+    the exact command the skew refusal tells you to run.
+    """
+    repo_plugin = _repo_plugin_dir(project_dir)
+    if repo_plugin is None:
+        return None
+    try:
+        lib_root = Path(_plugin_root()).resolve()
+    except OSError:
+        return None
+    if lib_root == repo_plugin:
+        return None
+    return repo_plugin, lib_root
+
+
+def _binary_skew(project_dir: Path) -> "tuple[Path, Path] | None":
+    """``(repo's plugin dir, running plugin dir)`` when they differ, else None."""
+    repo_plugin = _repo_plugin_dir(project_dir)
+    if repo_plugin is None:
+        return None
+    try:
+        # The RUNNING SCRIPT's own root — deliberately NOT `_plugin_root()`,
+        # which prefers $CLAUDE_PLUGIN_ROOT. That var is set in the *hook*
+        # process; whether it reaches an agent's Bash env varies, and it was
+        # MEASURED unset in the framework session that built this guard — so
+        # treat "it is always exported" as false rather than load-bearing.
+        # Keying on it fails in both directions when it IS set: the correct
+        # repo-local invocation would refuse
+        # (with advice to run what you just ran), and a genuinely foreign
+        # binary invoked with the var pointed at this repo would compare equal
+        # and pass — which is #227 itself, wearing the guard as a disguise.
+        running = Path(__file__).resolve().parent.parent
+    except OSError:
+        return None
+    if running == repo_plugin:
+        return None
+    return repo_plugin, running
+
+
+def _check_binary_skew(command: str, project_dir: Path) -> int:
+    """0 to proceed; 1 when a data-plane write must refuse.
+
+    Emits on stderr either way — the failure this closes was defined by its
+    silence, so a quiet pass would reproduce it one severity down.
+    """
+    skew = _binary_skew(project_dir)
+    kind = "binary"
+    if skew is None:
+        # The script can be the right one while its `lib/` is not.
+        skew = _lib_skew(project_dir)
+        kind = "lib"
+    if skew is None:
+        return 0
+    repo_plugin, running = skew
+    local = repo_plugin / "bin" / "prawduct-hook"
+    what = (
+        f"running {running}" if kind == "binary"
+        else f"running this repo's script but importing lib/ from {running} "
+             "($CLAUDE_PLUGIN_ROOT)"
+    )
+    detail = (
+        f"{SKEW_MARKER}: {what}, but this repo carries {repo_plugin}. "
+        f"Run `python3 {local}` with $CLAUDE_PLUGIN_ROOT unset or pointed here. "
+        "(Versions are NOT the test — a checkout is routinely ahead of its own "
+        "manifest, so identical versions prove nothing about the code.)"
+    )
+    if command in _DATA_PLANE_COMMANDS and command not in _HARNESS_INVOKED_COMMANDS:
+        print(
+            f"BLOCKED: refusing `{command}` — {detail} A governance write on a "
+            "foreign binary is how a review silently persists nothing.",
+            file=sys.stderr,
+        )
+        return 1
+    print(f"NOTE: {detail}", file=sys.stderr)
+    return 0
+
+
 def main() -> int:
     if len(sys.argv) < 2:
         print(_USAGE, file=sys.stderr)
@@ -4873,6 +5101,11 @@ def main() -> int:
 
     command = sys.argv[1]
     project_dir = get_project_dir()
+
+    # Before dispatch, so it covers every command — including `subagent-stop`,
+    # the path a fix touching only `critic-begin` would miss (#227).
+    if _check_binary_skew(command, project_dir) != 0:
+        return 1
 
     if command == "clear":
         return cmd_clear(project_dir, sys.argv[2:])
@@ -4966,6 +5199,8 @@ def main() -> int:
         return cmd_update_gitignore(project_dir)
     elif command == "audit-learnings":
         return cmd_audit_learnings(project_dir, sys.argv[2:])
+    elif command == "norm-index-scaffold":
+        return cmd_norm_index_scaffold(project_dir, sys.argv[2:])
     elif command == "learnings-obligation":
         return cmd_learnings_obligation(project_dir, sys.argv[2:])
     elif command == "repo-disable":

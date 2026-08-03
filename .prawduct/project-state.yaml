@@ -35,7 +35,7 @@ backlog_service_repo: brookstalley/prawduct
 # Last full backlog grooming (stamped by /prawduct:backlog list/pick/groom).
 # Timestamp, not a count — counts are always re-derived (D14). Resolves the
 # backlog-overdue-grooming advisory.
-backlog_last_groomed_at: 2026-08-02
+backlog_last_groomed_at: 2026-08-03
 
 # Distribution model. `plugin` = this repo is governed by the Prawduct plugin
 # (v2.0.0), not file-sync. Set in Chunk 13 when the repo cut over to dogfood its
@@ -382,7 +382,13 @@ views_enabled: true
 # building them (07 and 08 were deferred out of v3.2.0 and never re-cut), and pointing
 # at a dormant plan is what produced all three stale-pointer incidents above. Next
 # work comes from /prawduct:backlog pick, which sets this.
-active_build_plan: null
+# Set 2026-08-03 on branch fix/silent-gates, doing exactly what the line above
+# prescribes: /prawduct:backlog pick produced the roster, the owner chose the
+# cluster, and the pointer now names the plan actually under build. This is the
+# first set since the slot was cleared, so it inherits none of the staleness the
+# incidents above record — and the gates resolve this branch's plan by `scope:`
+# anyway, which is what made the cleared state survivable.
+active_build_plan: artifacts/build-plan-silent-gates.md
 
 # =============================================================================
 # BUILD-PLAN REF ROOT (opt-in)

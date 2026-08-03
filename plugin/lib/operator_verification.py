@@ -229,7 +229,7 @@ def is_operator_verification_required(state_path: Path) -> bool:
     if not state_path.is_file():
         return False
     try:
-        content = state_path.read_text()
+        content = state_path.read_text(encoding="utf-8")
     except OSError:
         return False
     for raw in content.splitlines():
@@ -242,9 +242,16 @@ def is_operator_verification_required(state_path: Path) -> bool:
 
 
 def _load_queue(queue_path: Path) -> tuple[str, list[VerificationEntry]]:
+    """Read the queue as utf-8 — the encoding :func:`_write_queue` writes.
+
+    The two were previously self-inverse by accident: both used the locale
+    encoding, so a mangled write was mangled back on read. Now that the shared
+    writer is utf-8, a bare ``read_text()`` here would make the pair asymmetric
+    and transcode a committed product file on the next status mutation.
+    """
     if not queue_path.is_file():
         return "", []
-    return parse_operator_verification(queue_path.read_text())
+    return parse_operator_verification(queue_path.read_text(encoding="utf-8"))
 
 
 def _write_queue(
