@@ -3,6 +3,55 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-08-03: an advisory that told the agent what to run and the owner nothing
+
+<!-- prawduct: type=feature | scope=advisory-actionability | chunks=01 -->
+
+Two real briefings — one from each of two governed products — showed the same shape four times over:
+a problem stated crisply, and no route out of it that a person could take. `AdvisoryCandidate`
+carried one action field, and the briefing rendered it behind a literal `→ Run` prefix, so three
+different things reached the wrong reader through one label. Agent commands (`prawduct-hook
+update-gitignore`) relayed to a person as something to open a terminal and type. Prose instructions
+rendered as `→ Run Review each listed item…`. And a probe that deliberately has nothing to do
+rendered as `→ Run no action needed`.
+
+An advisory has **two audiences**, so it now states two actions. `recommended_action` keeps its name
+and narrows to what the runtime executes; `owner_action` is what the person decides, approves or
+supplies, in plain sentences, never containing a command. Both are authored by the probe — the only
+place that knows the answer. A model asked to derive "what should the owner do?" from a trigger
+summary is generating where retrieval was available, and what it generates is a command that does
+not exist. The field is additive rather than a rename: `.advisories.json` is a live per-clone store
+across the fleet, and a rename orphans every stored entry, so a stored advisory without the field
+renders a generic approval line rather than no line at all.
+
+**Severity is not sequence, and the block was recommending the wrong order.** Triaging the
+incoming-bug drop-box files each report into the backlog; migrating that backlog onto the issue
+service is a one-shot irreversible bulk write. Triage is `info`, the migration nudge is `warn`, so
+priority ordering printed migrate-first in every product carrying both. A probe now declares
+`prerequisite_of` edges and the briefing pulls a prerequisite up to just ahead of what it feeds,
+annotating the dependent with why. Ordering only — both advisories still render, both stay
+independently dismissable — which is deliberately weaker than the suppression the structural-coverage
+chain uses on itself, because suppressing here would take a `warn` dark on account of an unrelated
+`info`.
+
+**The pull-up is not a toposort, and the difference was found by looking at the output.** The first
+implementation was a textbook ready queue; rendering the four real advisories through it showed the
+`warn` landing beneath all three unrelated `info` entries, because draining the ready set releases
+every unconstrained node before the dependent. One edge, and the most severe item in the block is
+silently demoted. Each advisory is now emitted after its own prerequisites and otherwise in arrival
+order, so only the prerequisite moves.
+
+**The relay now covers every priority**, in full for `warn`/`urgent` and one compact line each for
+the rest. This reverses a recorded decision in `observability-strategy.md`, and the amendment is in
+that artifact with the owner's reasoning: the original why was tune-out from volume, which is
+answered by capping volume rather than by dropping a severity band. What it did not weigh is that an
+advisory printed only to the agent's channel is not quiet but undelivered — the same failure that
+section was written about, one band down. This repo was itself the case in point, carrying one
+`info` advisory that no session ever relayed.
+
+The directive now carries the *shape* of the relay rather than only the instruction to relay, because
+"tell the user about these" is what leaves the model inventing the owner's half.
+
 ## 2026-08-02: two doctor surfaces that answered confidently for a state the repo was not in
 
 <!-- prawduct: type=fix | scope=drift-burndown | chunks=04 | release=v3.2.3 | status=shipped -->

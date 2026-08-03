@@ -30,8 +30,11 @@ The scenarios this design must make answerable:
 4. **"Is review costing too much?"** → `review-stats` aggregates the governance ledger into
    wall-clock, run-count, and finding-yield numbers (this is how the P0 wall-clock budget in
    `nonfunctional-requirements.md` is actually watched).
-5. **"What nudges am I ignoring?"** → `/prawduct:advisory list` on demand; and for `warn`/`urgent`,
-   the relay raises them unasked, so ignoring one is a choice rather than an accident.
+5. **"What nudges am I ignoring?"** → `/prawduct:advisory list` on demand; and the relay raises every
+   active advisory unasked — in full for `warn`/`urgent`, one compact line each for `info` — so
+   ignoring one is a choice rather than an accident. Each states what the *owner* must decide and
+   what the *agent* will run, as two separate fields authored by the probe
+   (`documentation/post-sync-advisory-spec.md` §3.6).
 
 If those five are answerable from the terminal and the committed/local state, observability has
 done its job.
@@ -57,8 +60,22 @@ reads. Two properties are load-bearing:
   to say; a digest rule is re-read every session to cover the minority that have news, and sits far
   from the content it governs. This mirrors the same release's learnings change — deliver the rule
   where it applies rather than parking it in a file to be read later.
-- **`warn`/`urgent` only.** Relaying `info` every session is nagging, and a channel that nags gets
-  tuned out — which would cost the `warn` case the audience it exists for.
+- **Every active advisory, with verbosity scaled by priority** — `warn`/`urgent` relayed in full,
+  `info` as one compact line each.
+
+  *Amended: 2026-08-03, owner decision.* The property this replaces read **"`warn`/`urgent` only —
+  relaying `info` every session is nagging, and a channel that nags gets tuned out, which would cost
+  the `warn` case the audience it exists for."*
+  `[DECISION: the relay covers every priority, and volume is bounded by per-priority verbosity
+  instead of by dropping a severity band | the original why is tune-out from volume, and it is
+  answered by capping volume; what it did not weigh is that an unrelayed advisory is not quiet but
+  undelivered — the same failure this whole section was written about, one severity band down. Three
+  of four advisories active on a real product when this was decided were `info`, including one
+  reporting that the repo's .gitignore had drifted | user can veto/override]`
+  The risk is bounded, not dismissed: one line per `info` advisory in the first reply only; `info`
+  advisories stay dismissible per-clone; and if the block does become noise, the evidence is owners
+  dismissing `info` advisories in bulk — which is observable, where a never-relayed advisory's
+  failure is not observable at all. Revisit on that evidence.
 
 **Rejected: routing advisories to stderr by consequence.** Tempting, since the norm already provides
 the split and stderr is the person's channel. Rejected because the relay covers advisories,
@@ -66,6 +83,15 @@ headlines, and gate activations through one mechanism, whereas channel-routing w
 advisory third and add a second way for the same signal to reach the same person. Revisit if the
 relay proves unreliable in practice — the evidence to watch for is an owner surprised by a `warn`
 they were never told about.
+
+**The relay carries an action for each audience.** A directive that says *"tell the owner about
+this"* still leaves the model to decide what the owner is supposed to *do*, and the answer it
+generates is unreliable in a specific way: it reads a trigger summary, sees no action, and either
+invents a command or hands the person a `prawduct-hook` invocation they will not run. So the two
+audiences are separated in the data, not at relay time — the probe authors `owner_action` (decide,
+approve, supply) and `recommended_action` (the command the runtime executes), and the relay passes
+both through rather than deriving either
+(`documentation/post-sync-advisory-spec.md` §3.6, §5.4, §7.2).
 
 ## Direction
 

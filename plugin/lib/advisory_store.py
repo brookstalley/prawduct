@@ -86,17 +86,43 @@ _SCAN_SKIP_DIRS = {".git", ".hg", "node_modules", "__pycache__", ".venv", "venv"
 class AdvisoryCandidate:
     """One advisory a probe wants to raise.
 
-    A probe sets ``type``, ``evidence``, ``trigger_summary``,
-    ``recommended_action`` (and optionally ``priority`` / ``alternative_actions``).
-    ``feature`` and ``probe_version`` are stamped from the registration by
-    :func:`run_all_probes`, so a probe body need not repeat them. The ``id`` and
-    ``triggered_at`` are computed by the store at write time, not by the probe.
+    A probe sets ``type``, ``evidence``, ``trigger_summary``, and **both** action
+    fields (and optionally ``priority`` / ``alternative_actions`` /
+    ``prerequisite_of``). ``feature`` and ``probe_version`` are stamped from the
+    registration by :func:`run_all_probes`, so a probe body need not repeat them.
+    The ``id`` and ``triggered_at`` are computed by the store at write time, not
+    by the probe.
+
+    **An advisory has two audiences, so it states two actions.** A single action
+    field served both and reached neither: agent commands relayed to a person read
+    as an instruction to type ``prawduct-hook`` (which owners do not run), while
+    probes with no command to offer filled the same field with prose, which the
+    briefing then rendered behind a literal "Run" prefix.
+
+    - ``recommended_action`` — what the RUNTIME executes. One command: a slash
+      command or a ``prawduct-hook`` invocation. Empty when the probe has no
+      command to offer; never prose describing what someone should consider.
+    - ``owner_action`` — what the PERSON decides, approves, or supplies, in one or
+      two plain sentences, and never containing a command. Where saying yes costs
+      something irreversible, this is the field that says so, because the owner
+      reads this sentence and nothing else before approving.
+
+    Both are authored here rather than derived at relay time: the probe is the only
+    place that knows the answer, and a model asked to infer "what should the owner
+    do?" from a trigger summary invents commands that do not exist.
     """
 
     type: str
     evidence: tuple[str, ...] = ()
     trigger_summary: str = ""
     recommended_action: str = ""
+    owner_action: str = ""
+    #: Advisories that should be actioned AFTER this one, as
+    #: ``(("<feature>:<type>", "<name of this work>, so <why it comes first>"), …)``.
+    #: Declared on the EARLIER advisory — the probe that knows why its work feeds
+    #: the other one. Ordering only, never gating: both advisories still render and
+    #: both stay independently dismissable.
+    prerequisite_of: tuple[tuple[str, str], ...] = ()
     alternative_actions: tuple[str, ...] = ()
     priority: str = "info"
     feature: str = ""
@@ -442,6 +468,33 @@ def _utcnow_iso() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
+def _valid_prerequisites(declared) -> list[tuple[str, str]]:
+    """The well-formed ``(dependent_key, because)`` pairs in a probe's declaration.
+
+    Fail-soft, per `architecture.md` § Direction — *authority fails closed; advice
+    fails soft*. Advisories are advice, so a probe that mis-declares an edge loses
+    its ordering hint and nothing else; it must never cost the session its whole
+    advisory block. Strings are rejected outright rather than iterated, because
+    iterating one yields characters and would silently turn a typo into edges.
+    """
+    pairs: list[tuple[str, str]] = []
+    if declared is None or isinstance(declared, (str, bytes)):
+        return pairs
+    try:
+        entries = list(declared)
+    except TypeError:
+        return pairs
+    for entry in entries:
+        if isinstance(entry, (str, bytes)) or not isinstance(entry, (list, tuple)):
+            continue
+        if len(entry) != 2:
+            continue
+        key, because = entry
+        if isinstance(key, str) and key and isinstance(because, str):
+            pairs.append((key, because))
+    return pairs
+
+
 def _new_advisory(candidate: AdvisoryCandidate, *, advisory_id: str, now: str, sync_version: str) -> dict:
     priority = candidate.priority if candidate.priority in VALID_PRIORITIES else "info"
     return {
@@ -454,6 +507,14 @@ def _new_advisory(candidate: AdvisoryCandidate, *, advisory_id: str, now: str, s
         "trigger_summary": candidate.trigger_summary,
         "evidence": list(candidate.evidence[:EVIDENCE_CAP]),
         "recommended_action": candidate.recommended_action,
+        "owner_action": candidate.owner_action,
+        # Persisted as self-describing objects rather than 2-element arrays: the
+        # store is read by eye during triage, and `["backlog:x", "because…"]` gives
+        # the reader no way to tell which slot is which.
+        "prerequisite_of": [
+            {"type": key, "because": because}
+            for key, because in _valid_prerequisites(candidate.prerequisite_of)
+        ],
         "alternative_actions": list(candidate.alternative_actions),
         "priority": priority,
         "state": "active",

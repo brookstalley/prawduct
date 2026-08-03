@@ -382,7 +382,10 @@ views_enabled: true
 # building them (07 and 08 were deferred out of v3.2.0 and never re-cut), and pointing
 # at a dormant plan is what produced all three stale-pointer incidents above. Next
 # work comes from /prawduct:backlog pick, which sets this.
-active_build_plan: null
+# Set 2026-08-03 on branch feat/advisory-actionability: this branch builds the
+# advisory-actionability plan (owner/agent action split, prerequisite ordering,
+# relay rewrite). Clear or repoint at the release, per the pattern above.
+active_build_plan: artifacts/build-plan-advisory-actionability.md
 
 # =============================================================================
 # BUILD-PLAN REF ROOT (opt-in)

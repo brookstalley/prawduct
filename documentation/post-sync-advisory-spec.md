@@ -1,6 +1,7 @@
 # Post-Sync Advisory Infrastructure — Spec
 
-**Status:** v0.2 (2026-05-28) — **Phase 1 built and shipped in framework v1.6.0** (2026-05-29); **Phase 2 (backlog) lean core shipped in v1.7.0** (2026-05-29). Phase 1: storage, lifecycle, schema, session-briefing integration, sync integration, and the `/prawduct-advisory` CLI, tested end-to-end via a synthetic probe. Phase 2: the first **production** probe — `legacy-backlog-format` (§8.2) — is now registered against the infrastructure (the mechanism carries a real signal), with the other three backlog probes deferred on proportionality grounds (see `documentation/backlog-system-requirements.md`). Phase 3 (prompts) probes remain unbuilt — no prompt-strategy advisories yet.
+**Status:** v0.3 (2026-08-03) — **Phase 1 built and shipped in framework v1.6.0** (2026-05-29); **Phase 2 (backlog) lean core shipped in v1.7.0** (2026-05-29). Phase 1: storage, lifecycle, schema, session-briefing integration, sync integration, and the `/prawduct-advisory` CLI, tested end-to-end via a synthetic probe. Phase 2: the first **production** probe — `legacy-backlog-format` (§8.2) — is now registered against the infrastructure (the mechanism carries a real signal), with the other three backlog probes deferred on proportionality grounds (see `documentation/backlog-system-requirements.md`). Phase 3 (prompts) probes remain unbuilt — no prompt-strategy advisories yet.
+**Changes from v0.2 (actionability — §3.6, §5, §7.2):** An advisory now states **two** actions, because it has two audiences: `owner_action` (the decision, approval, or input only the person can supply) and `recommended_action` (the command the *agent* runs, unchanged in name and meaning). Advisories may declare `prerequisite_of` edges so the briefing orders a prerequisite ahead of the work that consumes it. The session-briefing rendering and the relay directive are rewritten against both (§5, §5.4). Owner-facing text never contains a command for the person to type — see the actionability rules in §7.2.
 **Changes from v0.1:** Q1-Q4 resolved per user feedback. Unified command renamed `/advisory` → `/prawduct-advisory` to reflect that advisories are framework infrastructure (the `prawduct-` prefix marks framework-level commands; user-project commands like `/backlog` and `/llm-strategy` do not carry it). Explicit separation of `project-state.yaml` (committed, shared) and `.advisories.json` (gitignored, per-clone). Probe versioning + supersession. Resolution-condition concept. Compact retention form for non-active entries.
 **Scope:** Shared infrastructure used by the backlog and prompts features to surface migration signals to the user after a sync, without forcing setup or blocking work. This spec describes the storage, lifecycle, schema, session-briefing format, and dismissal mechanism.
 **Out of scope:** Per-feature probe logic (lives in each feature's own build plan), build plan for this infrastructure (separate deliverable).
@@ -66,7 +67,9 @@ Both features need this shape. Specifying it once, in shared infrastructure, pre
         "api/src/clients/openai_client.py:1 — imports openai",
         "config/models.yaml:3 — contains 'claude-haiku-4-5' substring"
       ],
+      "owner_action": "Confirm this product really does call an LLM at runtime — the answer decides whether a prompt strategy is required, and it is not inferable from the imports alone.",
       "recommended_action": "/llm-strategy detect",
+      "prerequisite_of": [],
       "alternative_actions": [
         "/llm-strategy init",
         "/llm-strategy dismiss-advisory prompts-llm-sdk-detected-v1-d3f9a2"
@@ -106,7 +109,9 @@ The second entry illustrates the **compact form** used for non-active advisories
 | `triggered_by_sync_version` | string | The framework version of the sync that first triggered. |
 | `trigger_summary` | string | Human-readable, one sentence, suitable for session briefing. |
 | `evidence` | array of strings | File:line citations or other concrete signals. ≤5 entries to keep the briefing scannable; more available via `/prawduct-advisory show <id>`. |
-| `recommended_action` | string | Single primary action (a slash command or short instruction). |
+| `recommended_action` | string | **The agent's action** — the single command the AI runtime runs to address the advisory (a slash command, or a `prawduct-hook` invocation). Never something the person is asked to type. |
+| `owner_action` | string | **The owner's action** — the decision, approval, or input only the person can supply, in plain language and in one or two sentences. Never contains a command (§7.2). Empty is legal on a stored advisory written before this field existed; the briefing substitutes a generic approval line rather than rendering nothing. |
+| `prerequisite_of` | array of strings | `<feature>:<type>` keys of advisories that should be actioned **after** this one, when both are active. Declared on the *earlier* advisory — the probe that knows why its work feeds the other. Ordering only: neither advisory is suppressed or blocked (§5.3). |
 | `alternative_actions` | array of strings | Other actions the user might take (including dismissal). |
 | `priority` | enum | `info` (default), `warn`, `urgent`. Affects session-briefing ordering and verbosity. `urgent` is rare and reserved for things like "model used in this project is past retirement date." |
 | `state` | enum | `active`, `dismissed`, `resolved`. |
@@ -151,6 +156,29 @@ These fields are populated by user actions (e.g., `/llm-strategy detect` writes 
 - *"Have I already dealt with this nag? (developer-level, local)"* → `.advisories.json`
 
 A team-wide *dismissal* mechanism (e.g., "the whole team agrees to not run `/llm-strategy detect` on this project — we know it uses LLMs but we're tracking that elsewhere") could be added later as a `dismissed_advisory_classes: []` array in `project-state.yaml`. Out of scope for v1 (per Q2 lean).
+
+### 3.6 Two actions, because there are two audiences
+
+Through v0.2 an advisory carried one action field, and the briefing rendered it as `→ Run <action>`.
+That conflated three different things under one label, and every one of them reached the wrong reader:
+
+- **agent commands** (`/prawduct:backlog scrub`, `prawduct-hook update-gitignore`) — correct content,
+  but relayed to a person it reads as an instruction to open a terminal and type a framework-internal
+  command. Owners do not run `prawduct-hook`; the runtime does.
+- **prose instructions** ("Review each listed item: renew the exception…") — rendered as
+  `→ Run Review each listed item…`, which is not a command at all.
+- **explicit non-actions** ("no action needed — these checks return when …") — rendered as
+  `→ Run no action needed`.
+
+The split fixes all three at the source rather than asking the model to sort them out at relay time.
+`recommended_action` keeps its name and narrows to its true meaning (**what the runtime executes**);
+`owner_action` is added for **what the person must decide, approve, or supply**. Both are authored by
+the probe, which is the only place that actually knows the answer — a model asked to derive "what
+should the owner do?" from a trigger summary is generating where retrieval was available, and will
+happily invent a command that does not exist.
+
+The field is kept additive rather than renamed: `.advisories.json` is a per-clone store already
+carrying `recommended_action` on live entries across the fleet, and a rename would orphan them.
 
 ---
 
@@ -219,27 +247,86 @@ The existing session-start briefing (the SessionStart hook wired in `hooks/hooks
 
 ```
 ADVISORIES (post-sync, 3 active):
-  • [prompt-management] Detected vendor SDK imports but `uses_llm_inference` not set.
-    → Run /llm-strategy detect (or /prawduct-advisory dismiss prompts-llm-sdk-detected-v1-d3f9a2)
-  • [backlog] 43 legacy-format items in .prawduct/backlog.md.
-    → Run /backlog migrate (or /prawduct-advisory dismiss backlog-legacy-format-v1-a1b2c3)
+  • [report-bug] 3 untriaged bug reports in incoming-bugs/.
+    owner → Nothing to decide — say go, and each report is triaged into the backlog and archived.
+    agent → /prawduct:backlog
+  • [backlog] 43 pending items in the markdown backlog and no backlog service repo.
+    after → incoming-bug triage, so the whole backlog migrates in one reviewed batch
+    owner → Decide whether to migrate now. This writes ~43 real GitHub issues; GitHub has no
+            ordinary issue delete and never reuses numbers, so it cannot be undone.
+    agent → /prawduct:backlog scrub
   • [prompt-management] Role `summarizer` overdue for review since 2026-04-15.
-    → Run /llm-strategy review summarizer
+    owner → Confirm the role's prompt still matches what it is used for, or say it has drifted.
+    agent → /llm-strategy review summarizer
 
+  Dismiss any of these: /prawduct-advisory dismiss <id>
   Dismissed since last session: 1 (run /prawduct-advisory list --dismissed to see)
   Resolved since last session: 0
 ```
 
+The briefing prints to stdout, which is the **agent-facing** channel
+(`observability-strategy.md` § Direction), so this block is data for the runtime, not copy for the
+owner — hence the neutral `owner →` / `agent →` labels rather than "you"/"I". The relay directive
+(§5.4) is what turns it into something the owner reads.
+
 ### 5.1 Verbosity rules
 
-- **Default**: show summary + recommended action per active advisory, capped at 5 most-recent + highest-priority.
+- **Default**: show summary + `owner →` + `agent →` per active advisory, capped at 5 most-recent + highest-priority.
+- **Fallback**: when a stored advisory has no `owner_action` (written before v0.3, or a probe not yet updated), render `owner → Approve the action below, or dismiss the advisory.` Never omit the line — a missing owner action must read as "nothing but approval is needed", not as "this advisory has no owner".
 - **Truncation**: if more than 5 active, show first 5 + "... and N more (run /prawduct-advisory list)."
-- **Priority ordering**: urgent → warn → info, then by `triggered_at` descending within priority.
+- **Dismissal hint**: once per block, not once per advisory. Repeating a 60-character hint under every entry was the largest single term in the block's size and taught nothing after the first reading.
+- **Ordering**: prerequisites first (§5.3), then urgent → warn → info, then by `triggered_at` descending within priority.
 - **Suppression**: if all advisories are `info` priority and total count is unchanged from the last session, can be collapsed to one line: "ADVISORIES: 3 active (unchanged) — run /prawduct-advisory list."
 
 ### 5.2 Empty state
 
 When no active advisories, omit the section entirely. Don't print "ADVISORIES: 0 active" — that's noise.
+
+### 5.3 Prerequisite ordering
+
+Priority ranks advisories by *severity*, which is not the same as *sequence*, and where the two
+disagree the briefing was recommending the wrong order. The live instance: triaging the incoming-bug
+drop-box files each report into the backlog, and migrating the markdown backlog to GitHub Issues is a
+one-shot reviewed bulk write — so triage belongs first, or the stragglers arrive afterward by a
+different path and outside the batch that was reviewed. Triage is `info`; the migration nudge is
+`warn`; so severity ordering printed them backwards, in every product carrying both.
+
+A probe declares `prerequisite_of: ("<feature>:<type>", …)` naming the advisories its work feeds.
+Within the active set the briefing then:
+
+1. sorts by priority as before, and
+2. moves any advisory ahead of the ones it is a prerequisite of, preserving relative order otherwise
+   (a stable topological pass over the active set only), and
+3. annotates the dependent with `after → <plain-language name of the prerequisite>, <why>`.
+
+**Ordering, not gating.** Both advisories render, both stay dismissible independently, and neither
+blocks. This is deliberately weaker than the layer-0/layer-1 *suppression* the structural-coverage
+probes use on their own chain: suppression is right when the later nudge would be premature, and
+wrong here, where a `warn`-priority signal would go dark because an unrelated `info` one fired.
+
+**Fails soft** (`architecture.md` § Direction — *authority fails closed; advice fails soft*): an edge
+naming a type that is not in the active set is simply inert; an edge naming an unknown type is
+ignored; a cycle falls back to plain priority order. None of these are errors, and none may prevent
+the block from rendering — a briefing that refuses to print because two probes disagree about
+sequence has converted advice into an outage.
+
+### 5.4 The relay directive
+
+The briefing is on the agent's channel, so an advisory that is never relayed was never delivered.
+The directive (`briefing.ADVISORY_RELAY_TEXT`) instructs the runtime to surface active advisories in
+its first reply of the session, and must carry four rules:
+
+1. **Relay every active advisory**, not a selection.
+2. **State both actions** — what the owner must decide or approve, and what the agent will run —
+   drawn from the two fields, not re-derived from the summary.
+3. **Never hand the owner a command to type.** Commands are the agent's; the owner's line is a
+   decision, an approval, or an input. A relay that tells a person to run `prawduct-hook …` has
+   restated the defect this revision exists to remove.
+4. **Preserve the given order**, including any `after →` annotation.
+
+Verbosity scales with priority so that relaying everything does not become nagging (§10 Q6):
+`warn`/`urgent` are relayed in full; `info` advisories get one compact line each carrying the owner
+action, with detail available on request.
 
 ---
 
@@ -330,9 +417,47 @@ def prompt_strategy_required(state: ProjectState, codebase: Codebase) -> list[Ad
         type="prompt-strategy-required",
         evidence=evidence,
         trigger_summary="LLM-usage signals detected but `uses_llm_inference` is not set.",
+        owner_action=(
+            "Confirm whether this product actually calls an LLM at runtime — the imports "
+            "suggest it, but only you can say, and the answer decides whether a prompt "
+            "strategy is required."
+        ),
         recommended_action="/llm-strategy detect",
     )]
 ```
+
+### 7.2 Authoring the two actions
+
+**`recommended_action` — what the runtime executes.** One command. A slash command or a
+`prawduct-hook` invocation, nothing else. If a probe has no command to offer, the field is empty and
+the advisory is owner-only (e.g. a decision to record); it must not be filled with prose describing
+what someone should think about, which is what produced `→ Run Review each listed item…`.
+
+**`owner_action` — what the person decides.** One or two plain sentences answering *"what do you
+need from me?"*. The recurring shapes:
+
+| Shape | When | Example |
+|---|---|---|
+| **Approve** | The agent can do all of it; the only missing input is go-ahead | "Say go — this edits a committed file, so you will see a diff to review before anything is staged." |
+| **Decide** | An irreversible, costly, or preference-bearing choice | "Decide whether to migrate now. This writes ~349 real GitHub issues and cannot be undone." |
+| **Supply** | The agent needs facts only the owner has | "Tell me which of these the product actually needs, and for the rest, why they do not apply — a one-line reason is a valid answer." |
+| **Nothing** | Genuinely no owner action; the advisory reports an accepted state | "Nothing to do — this reports a known interim state. Dismiss it if you would rather not see it again." |
+
+Three rules make the field checkable rather than decorative:
+
+- **No commands in owner text.** No slash command, no shell invocation, no `prawduct-hook`. If the
+  owner's contribution is "run this", the real owner action is *approve* and the command belongs in
+  `recommended_action`.
+- **Name the cost of saying yes**, where there is one — irreversibility, a bulk write, a diff on a
+  committed file. This is the sentence that makes the difference between an informed yes and a
+  reflexive one, and it is the reason the field is authored by the probe rather than the model.
+- **No prawduct-internal identifiers** (`observability-strategy.md` § Direction) — the owner reading
+  this in a downstream product cannot resolve a requirement or check label. Plain language in the
+  field; the trace stays in the adjacent comment.
+
+**Both actions, or state why not.** A probe emitting neither field gives the reader a problem with no
+route out of it — which is the `strategy-artifact-missing` advisory's original failure, where the
+briefing announced seven missing files and said nothing about what to do about any of them.
 
 ---
 
@@ -430,6 +555,29 @@ Some probes might find dozens of file:line citations (e.g., "hard-coded model ID
 
 **Lean:** keep the 5-cap for the in-store evidence array, but `/prawduct-advisory show <id>` can re-run the probe to surface the full evidence list. The store doesn't need to retain all 30 file:line citations forever. Confirm during build plan.
 
+### Q6: Does the relay cover `info` advisories? — RESOLVED v0.3
+
+Through v0.2 the relay fired only for `warn`/`urgent`, on the reasoning that relaying `info` every
+session is nagging and a channel that nags gets tuned out — costing the `warn` case the audience it
+exists for (`observability-strategy.md` § How the owner actually learns).
+
+**Decision (owner, 2026-08-03): the relay covers every active advisory, with verbosity scaled by
+priority** — `warn`/`urgent` in full, `info` as one compact line each. The original reasoning was
+about *volume*, and it is answered by bounding volume rather than by dropping a whole severity band:
+an `info` advisory that is only ever printed to the agent's channel is not quiet, it is undelivered,
+and it costs a probe's authoring and a session's tokens to reach nobody. Three of the four advisories
+active on a real product at the time of this decision were `info`, including the one telling it its
+`.gitignore` had drifted.
+
+The tune-out risk is real and not dismissed; it is bounded three ways instead. Volume: one line per
+`info` advisory, in the first reply only. Dismissal: `info` advisories are dismissible per-clone and
+stay dismissed. Cost visibility: if the block does become noise, the evidence will be owners
+dismissing `info` advisories in bulk, which is observable — where an unrelayed advisory's failure is
+not observable at all.
+
+Recorded as an amendment against the observability strategy's relay-scope reasoning, per
+`docs/norms.md` § Amendment.
+
 ---
 
 ## 11. Success criteria
@@ -445,6 +593,11 @@ Some probes might find dozens of file:line citations (e.g., "hard-coded model ID
 | A8 | Probe-version bump produces clean supersession (old advisory marked `resolved_by: probe-update` with `superseded_by` set; new advisory created cleanly) | Author probe v1, trigger, bump to v2, sync, verify supersession |
 | A9 | Resolution condition reading from `project-state.yaml` correctly auto-clears advisories when a teammate's commit lands | Setup: dev A triggers advisory; dev B writes resolution fact to project-state.yaml and pushes; dev A pulls + syncs; advisory auto-resolves |
 | A7 | Schema-version bump allows old stores to be read and migrated forward | Author a v0 store, sync should migrate to v1 or warn cleanly |
+| A10 | Every registered probe emits both actions, and no `owner_action` contains a command | Sweep every `AdvisoryCandidate` construction under `lib/*_probes.py`: `owner_action` non-empty, and free of `/` slash commands, `prawduct-hook`, and shell verbs |
+| A11 | A stored advisory with no `owner_action` still renders an owner line | Write a v0.2-shaped entry into the store; briefing shows the generic approval fallback, not a missing line |
+| A12 | A prerequisite is ordered ahead of its dependent even when the dependent outranks it on priority | Activate the untriaged-reports (`info`) and backlog-migration (`warn`) advisories together; triage renders first, migration carries the `after →` annotation |
+| A13 | Prerequisite resolution fails soft | Declare an edge to an unknown type, and a cycle; briefing renders in priority order with no error and no missing block |
+| A14 | The relay fires for an `info`-only active set | Activate one `info` advisory; the relay directive is present in the briefing |
 
 ---
 
