@@ -3,6 +3,44 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-08-03: two runtime assumptions that were invisible where they were written
+
+<!-- prawduct: type=fix | scope=silent-gates | chunks=03 -->
+
+Two independent one-site fixes, batched because they are the same class: a runtime assumption that
+holds on the machine it was written on and fails elsewhere, silently.
+
+**`core.atomic_write_text` wrote at the locale encoding while every reader opens utf-8.** The
+`encoding` parameter defaulted to `None` — `locale.getpreferredencoding(False)` — so on any
+non-UTF-8 locale the round trip was lossy, and non-ASCII content raised `UnicodeEncodeError` at the
+write. It stayed latent because the early callers write JSON at `ensure_ascii=True`, which is ASCII
+either way. `briefing.py`'s `.session-handoff.md` write is not one of those, and that file routinely
+carries em-dashes. The default is now `utf-8`. `newline` deliberately stays `None`: line-ending
+translation is a separate concern with one real opt-out (`learnings_obligation.repair`, writing into
+a product's authored file), and flipping both at once would bundle an unrequested change.
+
+Verified across all seven call sites before changing the signature, not after: five write ASCII JSON,
+one already passes `encoding="utf-8"` explicitly, and none passes `encoding=None`, so narrowing the
+type from `str | None` to `str` breaks no caller.
+
+**`audit_learnings_cmd.run_sentinel` spawned a bare `python3`.** Under any virtualenv that is a
+different interpreter from the one running the audit — usually one without pytest, or without the
+product importable — so every sentinel reported failing. The consequence is worse than a noisy
+diagnostic: the audit decides which learnings are *structurally enforced*, so a false-failing
+sentinel argues for retiring a rule that is in fact still enforced. Now `sys.executable`, matching
+the convention already applied elsewhere under `plugin/`; list-form args preserved, no shell.
+
+- **The encoding test had to force the locale, because the defect is invisible on a UTF-8 machine.**
+  An in-process assertion would have passed identically against the broken code — the exact
+  "fixture that cannot reach the guard" failure this branch already paid for once. The test spawns a
+  subprocess under `LC_ALL=C PYTHONUTF8=0 PYTHONCOERCECLOCALE=0`, an environment first *confirmed* to
+  reproduce (`getpreferredencoding` → `US-ASCII`, bare write → `UnicodeEncodeError`) rather than
+  assumed to. Red-verified: it fails on the old default with the real traceback.
+- **The suite already runs under a venv**, which is `#154`'s exact scenario — the sentinel defect was
+  live in this very repo's own test environment.
+
+Closes #562, #154.
+
 ## 2026-08-03: a Direction heading is not a norm registry, and its absence is not health
 
 <!-- prawduct: type=fix | scope=silent-gates | chunks=02 -->

@@ -29,6 +29,7 @@ import json
 import os
 import stat
 import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -58,6 +59,56 @@ class TestAtomicWriteText:
         target = tmp_path / "f.txt"
         core.atomic_write_text(target, "x")
         assert list(tmp_path.iterdir()) == [target]
+
+    def test_writes_utf8_under_a_non_utf8_locale(self, tmp_path):
+        """The shared writer must not write at the locale encoding.
+
+        Every reader of these state files opens `encoding="utf-8"`, so a
+        locale-encoded write is lossy on the round trip and raises outright on
+        non-ASCII. This has been latent because the existing callers write JSON
+        at `ensure_ascii=True`; `.session-handoff.md` does not, and it routinely
+        carries em-dashes.
+
+        Runs in a subprocess with the locale forced, because **the defect is
+        invisible on a UTF-8 machine** — an in-process assertion here would
+        pass identically against the broken code. Verified that this env really
+        does reproduce it: `locale.getpreferredencoding(False)` returns
+        `US-ASCII` and the bare write raises `UnicodeEncodeError`.
+        """
+        target = tmp_path / "handoff.md"
+        script = (
+            "from pathlib import Path\n"
+            "from lib import core\n"
+            f"core.atomic_write_text(Path({str(target)!r}), 'em\\u2014dash \\u00e9\\n')\n"
+        )
+        env = {
+            **os.environ,
+            "LC_ALL": "C",
+            "LANG": "C",
+            "PYTHONUTF8": "0",
+            "PYTHONCOERCECLOCALE": "0",
+            "PYTHONPATH": str(ROOT),
+        }
+        result = subprocess.run(
+            [sys.executable, "-c", script], capture_output=True, text=True, env=env
+        )
+        assert result.returncode == 0, (
+            "atomic_write_text raised under a non-UTF-8 locale — it is still "
+            f"writing at the locale encoding. stderr={result.stderr!r}"
+        )
+        assert target.read_bytes().decode("utf-8") == "em—dash é\n"
+
+    def test_explicit_encoding_and_newline_still_honoured(self, tmp_path):
+        """The utf-8 default must not swallow a caller's explicit arguments.
+
+        `learnings_obligation.repair` writes into a product's *authored* file
+        and passes `newline=""` so the bytes around its insertion are not
+        re-line-ended. That opt-out is independent of the encoding default and
+        has to survive it.
+        """
+        target = tmp_path / "authored.md"
+        core.atomic_write_text(target, "a\r\nb\n", encoding="utf-8", newline="")
+        assert target.read_bytes() == b"a\r\nb\n"
 
     def test_oserror_propagates_and_target_untouched(self, tmp_path):
         """Caller owns failure policy, so the helper must raise — and the

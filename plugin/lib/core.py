@@ -122,18 +122,24 @@ def log(msg: str) -> None:
 
 
 def atomic_write_text(
-    path: Path, text: str, *, encoding: str | None = None, newline: str | None = None
+    path: Path, text: str, *, encoding: str = "utf-8", newline: str | None = None
 ) -> None:
     """Write ``text`` to ``path`` atomically: tmp sibling + ``os.replace``.
 
-    ``encoding`` and ``newline`` pass straight through to ``write_text`` and
-    both default to ``None``, which is today's behaviour verbatim — the locale
-    encoding and universal-newline translation. They exist for the one caller
-    whose target is **not** framework state: a write into a product's authored
-    file must not silently re-encode or re-line-end the bytes around its
-    insertion. Framework state files are ASCII-and-LF by construction, so the
-    defaults are harmless there; ``#562`` tracks making utf-8 the default for
-    every caller rather than an opt-in for the one that noticed.
+    ``encoding`` defaults to **utf-8**, matching every reader of these files —
+    they all open ``encoding="utf-8"``. It previously defaulted to ``None``,
+    i.e. ``locale.getpreferredencoding(False)``, which made the round trip
+    lossy on any non-UTF-8 locale and raised ``UnicodeEncodeError`` outright on
+    non-ASCII content. That stayed latent only because the early callers wrote
+    JSON at ``ensure_ascii=True``; ``.session-handoff.md`` does not, and it
+    routinely carries em-dashes. The defect is invisible on a UTF-8 machine,
+    which is why it survived so long — the guarding test forces the locale in a
+    subprocess rather than asserting in-process.
+
+    ``newline`` still defaults to ``None`` (universal-newline translation) and
+    is a separate concern: it exists for the one caller whose target is **not**
+    framework state, where a write into a product's authored file must not
+    re-line-end the bytes around its insertion.
 
     The shared writer for ``.prawduct/`` state files (STH-8M3V; same pattern
     as the hook's ``.test-evidence.json`` writer). Their readers fail open on
