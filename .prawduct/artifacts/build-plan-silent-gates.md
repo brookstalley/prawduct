@@ -79,7 +79,25 @@ v3.2.3 shipped. Scope chosen by the owner from a `/prawduct:backlog pick` roster
 than their file locations. #556 was offered in the same roster and **deliberately excluded** —
 its own issue body says the fix is either an evidence-record schema change or a git diff on the
 `test-evidence record` hot path, "larger design calls than a trigger widening," so it is a design
-question wearing an `effort:S` label. Nothing built yet. Next: Chunk 01.
+question wearing an `effort:S` label.
+
+**ALL THREE CHUNKS ARE BUILT** (2026-08-03). Chunk 01 `5bc1d31`, Chunk 02 `3bfd4bf`, Chunk 03
+`b3f2880`, plus `ed4456f` / `a388720` for record and learnings corrections. Each of 01 and 02 ran
+its `chunk` review and a `verify-resolutions` round: Chunk 01 closed 1 blocking + 1 note, verify
+0/0/0; Chunk 02 closed 1 blocking + 3 notes, verify 0/0/0 with all four resolutions recorded. All
+four tracker items are closed by the change-log entries — #554, #567, #562, #154.
+
+`develop` was merged in **before** the cumulative (`bacef70`, clean — one new doc file), which is
+this plan's own governance checkpoint and the thing #565 exists to make automatic. Chunk 03 is
+`Type: cumulative-final`, so its `/prawduct:critic cumulative` is the plan's single final review and
+also the `/prawduct:pr create` gate — there is no separate `final` outstanding.
+
+Two findings were filed rather than absorbed: **#568** (`record_lint.direction_norm_count` counts
+Direction norms by bullet while `norm_probes` counts them by `Why:` — two definitions in one
+codebase) and **#569** (`**Why:**` makes a norm invisible to all four norm probes; current behaviour
+pinned by a near-miss test so a deliberate widening turns it red).
+
+**Next: the cumulative review, then a PR only if the user asks.**
 
 `active_build_plan` names this plan. The slot was **empty**, not occupied: v3.2.3's Phase 1
 step 11 cleared it to `null` and left the instruction "next work comes from
