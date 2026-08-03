@@ -2406,3 +2406,52 @@ non-invocation form.
 
 **Tell.** The exemption's boundary is expressed as a path prefix while its rationale is expressed as
 a verb. When those two shapes disagree, the prefix is the approximation.
+
+## Citing a named procedure is a claim that you ran it
+
+**v3.2.3 release prep, Critic W-2.** Classifying `drift-burndown` into the release, I wrote that it
+was classified "by the runbook's step-2 **code test**" and ran
+`git merge-base --is-ancestor 6f443a2 v3.2.2`. Step 2's test is content-based —
+`git show <prev-tag>:<path>` — stated in a call-out box I had read earlier in the same session.
+
+**Why the substitution is not harmless.** The two tests agree under whole-develop promotion and
+diverge exactly under the pruned cherry-pick path the same release plan contemplates: a cherry-picked
+commit is not an ancestor while its content *is* in the previous release's tree, so ancestry reports
+"unreleased" for work that shipped. The conclusion was right; the warrant was not. In a document that
+reads as precedent that is the more durable defect — the next reader re-derives conclusions and copies
+warrants.
+
+**The mechanism.** Two independent recalls ran and neither was checked. I reached for the test I *use*
+for "did this land" (ancestry) and attached the authority I *remembered* having read (step 2). Each
+recall supplied the other's confidence. Retrieval-over-generation names the fix, and the file had been
+open twenty minutes earlier; the step whose name I borrowed was the one thing I did not re-open.
+
+**Repair shape matters.** The cheap fix — hedge the citation to say what actually ran — leaves the
+classification resting on the substitute. The content test was run instead, and both files the scope
+creates are absent from `v3.2.2` (`learnings-obligation` appears 0 times there against 5 on `develop`).
+
+**Tell.** A sentence names a numbered step, a runbook, or a spec section as the warrant for a check
+you performed from memory. If you cannot quote the step, you are citing your recollection of it.
+
+## An edit that changes a count falsifies more sentences than the one you noticed
+
+**Same commit, Critic W-4.** Adding an eleventh row to the release classification table falsified two
+sentences. I caught the consumer CHANGELOG stating as a "known limitation" the exact thing
+`drift-burndown` Chunk 03 fixes — a genuine catch, and a release that ships a limitation and its fix in
+the same notes is a real defect. Three sections above, in the same file and the same commit, "the ten
+rows still partition the corpus" went untouched.
+
+**The structural cause.** Finding one falsified sentence *feels like completing a search* rather than
+starting one. The catch arrives with the satisfaction of thoroughness and generates no pressure to
+enumerate; the instance found is simply the one being read at the time. This is the same commit
+correcting one instance of a defect and committing another instance of it — the shape this repo has
+now recorded repeatedly under different headings.
+
+**The cheap mechanism, not applied.** When an edit changes a count or a set, grep the document for the
+old value before committing. Better: state the relation rather than the number ("the table's rows still
+partition the corpus"), since the claim never needed the count and the count is the part that goes
+stale. The corrected sentence now carries an explicit *do not re-introduce a literal count here*.
+
+**Adjacent instance worth carrying.** `check-releasability` could not have caught the CHANGELOG defect
+at all — it grades **classification**, not **description**. A green gate remains evidence only about
+what that gate measures.
