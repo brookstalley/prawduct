@@ -86,7 +86,8 @@ The CLI groups by responsibility. Every subcommand is read-only unless marked mu
 - **Coverage & jurisdiction** — `coverage-status`, `coverage-scaffold` (mutating with `--apply`),
   `jurisdiction`.
 - **Repo lifecycle** — `migrate-plugin`, `init-product`, `update-gitignore`, `audit-learnings`,
-  `learnings-obligation`, `repo-disable`, `bug-inbox` (all dry-run-by-default where they mutate).
+  `learnings-obligation`, `norm-index-scaffold`, `repo-disable`, `bug-inbox` (all
+  dry-run-by-default where they mutate).
 - **Published surfaces** (read-only, and the only ones third parties may bind to) —
   `version` (bare plugin semver on stdout) and `print-install-reference` (the canonical
   `.claude/settings.json` install reference as JSON on stdout, sorted keys, exit 0; exit 1 with an
@@ -97,7 +98,8 @@ The CLI groups by responsibility. Every subcommand is read-only unless marked mu
 
 Safe/idempotent notes: consolidation and fact-appends are **idempotent** (identity fixed at
 dispatch); state-mutating lifecycle commands (`migrate-plugin`, `init-product`, `coverage-scaffold`,
-`repo-disable`, `audit-learnings`, `learnings-obligation`) default to a **dry run** and require
+`repo-disable`, `audit-learnings`, `learnings-obligation`, `norm-index-scaffold`) default to a
+**dry run** and require
 `--apply` to write.
 
 ## Inputs & Outputs
@@ -119,6 +121,10 @@ dispatch); state-mutating lifecycle commands (`migrate-plugin`, `init-product`, 
     `discovery_expected` or `structural_recorded` = the staging check **could not run**, and in that
     state `missing_artifacts: []` means *nothing was looked at*, not *nothing is missing* — a
     consumer must not read it as a clean layer 1.
+  - `norm-index-scaffold --json` → consumed by `/prawduct:doctor` Health Check #14 (`status` —
+    one of `ok` / `leftover` / `absent` / `unreadable`; plus `rows`, `path`, `detail`, `applied`,
+    `removed`). Dry run exits 0 when it ran and 1 only when it could not; `--apply` exits 0 on a
+    write or idempotent no-op and 1 on refusal.
   - `learnings-obligation --json` → **no skill consumer today** (`status` — one of `ok` / `missing` /
     `misplaced` / `absent` / `unreadable` — plus `path`, `marker`, `marker_lines[]`,
     `first_rule_line`, `detail`, `repairable`, `applied`, `insert_before_line`, `insert_text`).

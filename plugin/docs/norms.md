@@ -369,8 +369,12 @@ puts in the owner's hands.
   (conservatively — ambiguity resolves by ruling or marking, not silently), and the amend tell
   needs no markers at all. A one-shot `norm-registry-unratified` advisory fires when
   strategy-class artifacts exist with no Direction **entry** — a heading with nothing normative
-  under it does not clear it, since the `Why:` is what separates a norm from a roadmap bullet
-  (§ Anatomy) — or the Enforcement table lacks norm columns, pointing at the fix.
+  under it does not clear it, since an entry is a bullet carrying one of the anatomy's FIELDS
+  (`Why` / `Status` / `Rulings` / `Retroactivity`), which is what separates a norm from a
+  roadmap bullet — or the Enforcement table lacks norm columns, pointing at the fix.
+  (Field-bearing rather than `Why`-bearing although `Why` is the *required* field: the doctor's
+  registry-integrity check exists to report entries **missing** a why, and a `Why`-only test
+  would make it vacuous by removing those entries from the set it grades.)
 - **On demand, owner-ratified:** the `/prawduct:doctor` ratification flow reads the product's
   strategy artifacts, preferences, and learnings; proposes candidate norms (statement + why +
   status, citing backlog ids in whys where the rationale rests on tracked work); **triages**

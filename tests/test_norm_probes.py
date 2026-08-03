@@ -943,6 +943,31 @@ class TestEmphasisAcrossEveryNormField:
                 "closer must not be narrower than the prefix"
             )
 
+    def test_emphasis_on_the_value_is_seen_too(self, tmp_path):
+        """`Status: **in-transition**` — emphasis on the VALUE, not the marker.
+
+        The first cut allowed optional emphasis only immediately after the
+        colon, so this form was entry-visible and stall-invisible: the same
+        defect as the `__Status:__` case, one position over. Written as a
+        separate test because it is a separate position, and the earlier bug
+        proves per-form patching is how this gets missed.
+        """
+        for value in ("**in-transition**", "__in-transition__", "*in-transition*"):
+            _write_backlog(
+                tmp_path, _item("MIG-4C1K", extra=f"added: {_days_ago(400)}")
+            )
+            _write_artifact(
+                tmp_path,
+                "observability-strategy.md",
+                _direction_artifact(
+                    "- **All telemetry rides OpenTelemetry.**\n"
+                    "  Why: one substrate for causality.\n"
+                    f"  Status: {value} — tracked by MIG-4C1K.\n"
+                ),
+            )
+            out = np.probe_stalled_transition(ProjectState({}), _cb(tmp_path))
+            assert len(out) == 1, f"stalled-transition must reach `Status: {value}`"
+
     def test_dead_why_fires_through_every_emphasis_form(self, tmp_path):
         """`_WHY_RE`/`_STATUS_RE` have ONE consumer, and it is this probe.
 

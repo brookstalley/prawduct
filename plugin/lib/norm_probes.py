@@ -192,7 +192,13 @@ _STATUS_RE = re.compile(rf"^\s*{_EMPH}Status:")
 # `Status:` but only `*` after it, so `__Status:__ in-transition` counted as
 # a norm entry and was scanned by dead-why while stalled-transition could
 # never see it — #569's own defect surviving #569's fix, one field over.
-_IN_TRANSITION_RE = re.compile(rf"Status:{_EMPH}\s*in-transition")
+# Emphasis can sit on either side of the colon AND around the value:
+# `**Status:** in-transition`, `Status: **in-transition**`. An earlier cut
+# allowed it only immediately after the colon, so `Status: **in-transition**`
+# was entry-visible and stall-invisible — the same defect as the `__Status:__`
+# case one position over, which is why this is written as "optional emphasis
+# anywhere between the marker and the token" rather than patched per-form.
+_IN_TRANSITION_RE = re.compile(rf"Status:{_EMPH}\s*{_EMPH}in-transition")
 
 # A bare ISO date, matched in full — a partial/free-text ``revisit:`` trigger must
 # NOT parse as a date (it belongs to the janitor sweep, not this probe).
@@ -720,6 +726,12 @@ def probe_norm_health_sweep_overdue(state: ProjectState, codebase: Codebase):
                 "erosion and decay go unmeasured."
             ),
             recommended_action="/prawduct:janitor",
+            # A repo that is here because it still carries the TEMPLATE's
+            # scaffold rows owes no sweep at all — the fix is the repair, not
+            # the audit. The probe cannot tell the two apart (it sees populated
+            # rows either way), so it names both routes rather than sending
+            # every reader to the one that is wrong for some of them.
+            alternative_actions=("/prawduct:doctor (Health Check #14 — leftover norm-index scaffold rows)",),
             priority="info",
         )
     ]

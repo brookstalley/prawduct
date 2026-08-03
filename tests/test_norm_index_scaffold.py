@@ -125,16 +125,28 @@ class TestCheck:
         import subprocess
 
         repo = Path(__file__).resolve().parent.parent
-        shipped = subprocess.run(
-            ["git", "show", "3bfd4bf~1:plugin/templates/project-preferences.md"],
-            cwd=str(repo), capture_output=True, text=True,
-        )
-        if shipped.returncode != 0:
-            pytest.skip("shallow clone — the pre-fix template revision is unavailable")
-        lines = {line.rstrip() for line in shipped.stdout.splitlines()}
+        # Searched by CONTENT across all history rather than pinned to a
+        # branch-local SHA. The first cut named `3bfd4bf~1`, which stops
+        # resolving the moment this branch is squashed or rebased — and it
+        # degraded to `pytest.skip`, so the pin would have gone SILENT exactly
+        # when it stopped working. A pin that disappears quietly is the defect
+        # this whole scope is named after.
         for row in nis.SCAFFOLD_ROWS:
-            assert row.rstrip() in lines, (
-                f"SCAFFOLD_ROWS carries a row the template never shipped: {row[:60]}"
+            found = subprocess.run(
+                ["git", "log", "--all", "-S", row.rstrip(), "--oneline",
+                 "--", "plugin/templates/project-preferences.md"],
+                cwd=str(repo), capture_output=True, text=True,
+            )
+            if found.returncode != 0:
+                pytest.fail(
+                    "git history is unavailable, so this pin cannot run — "
+                    "reported rather than skipped, because a silently skipped "
+                    f"pin is indistinguishable from a passing one. {found.stderr}"
+                )
+            assert found.stdout.strip(), (
+                "SCAFFOLD_ROWS carries a row the template never shipped — the "
+                "detector is exact-match, so one wrong byte makes it find "
+                f"nothing in every repo forever: {row[:60]}"
             )
 
 
@@ -191,3 +203,99 @@ class TestRepair:
         out = nis.repair(tmp_path, apply=True)
         assert out["status"] == nis.STATUS_UNREADABLE
         assert out["applied"] is False
+
+
+# =============================================================================
+# the subcommand — the binary is a named deliverable, so it gets driven
+# =============================================================================
+
+import json
+import subprocess
+
+ROOT = Path(__file__).resolve().parent.parent / "plugin"
+HOOK = ROOT / "bin" / "prawduct-hook"
+
+
+def _run(project_dir: Path, *args: str) -> subprocess.CompletedProcess:
+    home = project_dir.parent / "_home"
+    home.mkdir(exist_ok=True)
+    env = {
+        "HOME": str(home),
+        "CLAUDE_PLUGIN_ROOT": str(ROOT),
+        "CLAUDE_PROJECT_DIR": str(project_dir),
+        "PATH": "/usr/bin:/bin:/usr/sbin:/sbin",
+        "PYTHONDONTWRITEBYTECODE": "1",
+    }
+    return subprocess.run(
+        ["python3", str(HOOK), "norm-index-scaffold", *args],
+        capture_output=True, text=True, env=env, timeout=30,
+    )
+
+
+class TestCommand:
+    """The chunk names `plugin/bin/prawduct-hook` as a deliverable, so the
+    command is driven rather than only its lib.
+
+    The first cut tested the lib alone and left ~50 lines — both exit-code
+    mappings, the confirmation block, `--json`, unknown-arg rejection and the
+    dispatch arm — executing in no test at all, against the very pattern this
+    chunk models itself on (`test_learnings_obligation.py::TestCommand`).
+    """
+
+    def test_dry_run_reports_the_finding_and_exits_zero(self, tmp_path):
+        # An advisory report: a finding is not a failure state.
+        path = _write_prefs(tmp_path, _HEADER + _ROW_ORDINARY + "\n")
+        before = path.read_bytes()
+        result = _run(tmp_path, "--json")
+        assert result.returncode == 0
+        data = json.loads(result.stdout)
+        assert data["status"] == nis.STATUS_LEFTOVER
+        assert data["applied"] is False
+        assert path.read_bytes() == before, "a dry run must not touch the file"
+
+    def test_the_human_dry_run_names_the_rows_it_would_delete(self, tmp_path):
+        # `--json`-only tests never execute the formatter, and this formatter IS
+        # the informed confirmation required before editing a file the framework
+        # did not author.
+        _write_prefs(tmp_path, _HEADER + _ROW_ORDINARY + "\n" + _ROW_POINTER + "\n")
+        result = _run(tmp_path)
+        assert result.returncode == 0
+        assert "dry-run" in result.stdout
+        assert "Would delete from" in result.stdout
+        assert "line 7" in result.stdout and "line 8" in result.stdout
+
+    def test_apply_writes_and_exits_zero(self, tmp_path):
+        path = _write_prefs(tmp_path, _HEADER + _ROW_ORDINARY + "\n")
+        result = _run(tmp_path, "--apply", "--json")
+        assert result.returncode == 0
+        data = json.loads(result.stdout)
+        assert data["applied"] is True and data["removed"] == 1
+        assert _ROW_ORDINARY not in path.read_text(encoding="utf-8")
+
+    def test_apply_on_a_clean_repo_is_an_idempotent_zero(self, tmp_path):
+        _write_prefs(tmp_path, _HEADER)
+        result = _run(tmp_path, "--apply")
+        assert result.returncode == 0, "an idempotent no-op is not a failure"
+        assert "apply" in result.stdout and nis.STATUS_OK in result.stdout
+
+    def test_absent_preferences_exits_zero(self, tmp_path):
+        (tmp_path / ".prawduct").mkdir()
+        result = _run(tmp_path)
+        assert result.returncode == 0
+        assert nis.STATUS_ABSENT in result.stdout
+
+    def test_undecodable_exits_one_because_it_could_not_run(self, tmp_path):
+        d = tmp_path / ".prawduct" / "artifacts"
+        d.mkdir(parents=True)
+        (d / "project-preferences.md").write_bytes(b"\xff\xfe \xff")
+        result = _run(tmp_path)
+        assert result.returncode == 1, (
+            "could-not-run is exit 1; reporting 0 would make a declined check "
+            "indistinguishable from one that ran and found nothing"
+        )
+        assert nis.STATUS_UNREADABLE in result.stdout
+
+    def test_unknown_flag_is_a_usage_error(self, tmp_path):
+        _write_prefs(tmp_path, _HEADER)
+        result = _run(tmp_path, "--delete-everything")
+        assert result.returncode == 2, "usage errors are 2 per the error model"

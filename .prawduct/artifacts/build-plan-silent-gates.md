@@ -120,8 +120,16 @@ Direction norms by bullet while `norm_probes` counts them by `Why:` — two defi
 codebase) and **#569** (`**Why:**` makes a norm invisible to all four norm probes; current behaviour
 pinned by a near-miss test so a deliberate widening turns it red).
 
-**Next: Chunk 05, then Chunk 06 — whose `cumulative` IS the plan's final review — then a PR
-only if the user asks.** (This line read "next: the cumulative review" while chunks 05 and 06
+**ALL SIX CHUNKS BUILT (2026-08-03).** Batch two: Chunk 04 `a7daa93`, Chunk 05 `42b48b5`
+(+ `d4ed44e`), Chunk 06 `0eeeb41`. Each of 04 and 05 ran a `chunk` review plus `verify-resolutions`
+to 0/0/0; Chunk 05 needed two verify rounds. Base was current at Chunk 06 (no sync needed —
+`origin/develop` had not moved since `bacef70`). Chunk 06's `cumulative` is the plan's single final
+review and the `/prawduct:pr create` gate; it re-spans the whole branch, batch one included.
+
+Seven tracker items closed across both batches: #554, #567, #562, #154 (batch one, closed on the
+tracker at owner request), #227, #568, #569, #570 (batch two, closed by their change-log entries).
+
+**Next: a PR only if the user asks.** (This line read "next: the cumulative review" while chunks 05 and 06
 were unbuilt: true when batch one closed, false the moment batch two was added. A Status
 block that describes the previous batch is the same defect this plan is about.)
 

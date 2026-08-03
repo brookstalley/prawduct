@@ -167,7 +167,23 @@ def repair(project_dir: str | Path, *, apply: bool = False) -> dict:
         }
     # newline="" so the file's own line endings survive untouched; utf-8
     # because every reader of a product artifact opens utf-8.
-    core.atomic_write_text(path, "".join(kept), encoding="utf-8", newline="")
+    #
+    # `atomic_write_text` propagates OSError by design — each caller owns its
+    # failure policy. This caller's policy is a `{status: ...}` return, because
+    # doctor Health Check #14 RELAYS this result: a traceback escaping here
+    # would crash the health check rather than degrade it to a finding, which
+    # is the fail-soft half of `architecture.md` § Direction inverted.
+    try:
+        core.atomic_write_text(path, "".join(kept), encoding="utf-8", newline="")
+    except OSError as exc:
+        return {
+            "status": STATUS_UNREADABLE,
+            "path": str(path),
+            "rows": state["rows"],
+            "detail": f"could not write {path}: {exc} — nothing was changed",
+            "applied": False,
+            "removed": 0,
+        }
     return {
         "status": STATUS_OK,
         "path": str(path),

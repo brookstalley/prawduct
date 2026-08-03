@@ -3,6 +3,63 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-08-03: the final cumulative — a deliverable with no test, and six records that had drifted
+
+<!-- prawduct: type=fix | scope=silent-gates | chunks=06 -->
+
+Final cumulative over the whole branch — 16 commits, 24 files, three reviewers: **1 blocking, 9
+warnings, 9 notes.** Eleven fixed, eight accepted.
+
+**The blocking one is the branch's own lesson arriving once more.** Chunk 06 names
+`plugin/bin/prawduct-hook` as a deliverable and models itself explicitly on `learnings-obligation` —
+whose test file drives its command through dry-run, apply, absent, unreadable and unknown-arg. I
+tested only the lib. Roughly fifty lines shipped executing in no test: both exit-code mappings, the
+`Would delete from … line N` confirmation block, `--json`, unknown-arg rejection, and the `main()`
+dispatch arm. Choosing a precedent and then not following the part of it that is the test file is a
+specific and repeatable way to miss coverage.
+
+**Two reviewers converged independently on the same structural defect (R-9 / R-16):** the skew
+guard's `_HARNESS_INVOKED_COMMANDS` is a hand-transcribed copy of `hooks/hooks.json`, and its drift
+is silent in the *unsafe* direction — a hook entry point that falls out of the set starts refusing,
+and a refusal a hook cannot act on breaks SessionStart in every framework checkout. Now derived from
+`hooks.json` by a test that parses the file, red-verified by dropping an entry point from the set.
+
+- **The refusal named a command the caller could not run (R-3).** `/prawduct:critic`'s
+  `allowed-tools` lists only the bare `prawduct-hook` forms, so the skew guard's advice — "run
+  `python3 <repo>/plugin/bin/prawduct-hook`" — was unactionable for the one caller that hits it most.
+  The repo-local forms are now allowed. A remedy the reader cannot execute is a refusal with extra
+  steps.
+- **`Status: **in-transition**` was entry-visible and stall-invisible (R-2)** — emphasis was
+  tolerated after the label but not around the value, which is the `__Status:__` defect Chunk 05's
+  own entry records, one position over. Fixed as "optional emphasis anywhere between marker and
+  token" rather than patched per-form, because per-form patching is precisely how the first one was
+  missed.
+- **A failed repair would have crashed the health check that relays it (R-15).**
+  `atomic_write_text` propagates `OSError` by design — each caller owns its failure policy — and this
+  caller had none, so a write failure tracebacked out of doctor Health Check #14 instead of degrading
+  to a finding. That is fail-soft inverted at the one site built to be fail-soft.
+- **A missing `project-preferences.md` was graded healthy by every check in the flow (R-8).** Check
+  #14 deferred it to Check #5, which enumerates five other paths and never looks at this one. Now a
+  finding where it is actually detected.
+- **The owner's acceptance lived only in a file the release deletes (R-17).** The
+  advisory-amplification decision was recorded in the build plan; build plans are deleted at release,
+  and a ruling that survives only in a deleted file is a decision nobody can later show was taken.
+  Now in the change-log, where the earlier entry's "this decision is open" is also corrected — it was
+  true when written and answered an hour later.
+- **The history pin would have gone silent exactly when it stopped working (R-5 / R-12).** The
+  `SCAFFOLD_ROWS` test pinned the constants against a branch-local SHA and `pytest.skip`ped when it
+  could not resolve — so a squash or rebase would have retired the pin without a word. Now a content
+  search across all history that **fails** rather than skips.
+- Also fixed: `norm-index-scaffold` added to the api-contract enumeration (R-10), the sweep advisory
+  now names the repair alongside the janitor sweep since a repo carrying template rows owes no sweep
+  at all (R-4), and `docs/norms.md` brought into line with the field-bearing entry definition (R-7).
+
+Accepted with reasons recorded as facts: the four `learnings-entry-shape` notes (the lint and
+`learnings.md`'s own stated policy disagree, and degrading the entries is the wrong way to settle
+it), the two-algorithms note (the *marker* has one home; the algorithms answer different questions
+and diverge only on input nothing produces), the registry-row and thrice-stated-rule notes (both are
+real doc-structure improvements with no code in them), and the two informational ones.
+
 ## 2026-08-03: the template fix that never reached the installed base
 
 <!-- prawduct: type=fix | scope=silent-gates | chunks=06 -->
@@ -227,10 +284,13 @@ now go through one `_norm_index_header` locator, pinned by a two-table test.
   repo keeps the scaffold rows and reproduces Chunk 02's blocking finding across the installed base.
   That needs a doctor detect-and-repair, which is a chunk's worth of work and cannot be absorbed into
   a closing burndown.
-- **An owner decision is open, not cleared.** The plan recorded the widened sweep guard as
-  fleet-visible with `user can veto`, and nothing in this bundle records that veto being waived —
-  because nothing did. It does not gate: the advisory is `info` and prints rather than gates, and
-  merging to `develop` is not the publishing step.
+- **That owner decision was subsequently ANSWERED — 2026-08-03, accept.** When this entry was
+  written the acceptance was outstanding; the owner was then asked directly and chose *"accept — it's
+  the defect being fixed"*, over gating the amplification behind `#570` or vetoing the widening.
+  Recorded here as well as in the plan deliberately: the plan is deleted at release, and an owner
+  ruling that survives only in a deleted file is a decision nobody can later show was taken. The
+  residual risk it carried — already-onboarded repos seeing the advisory *spuriously* — is what
+  `#570` closes, in Chunk 06 of this same plan.
 - **The reader fix is pinned two ways, and the pin is the durable part.** A locale-forced
   `_write_queue` → `_load_queue` round trip carrying an em-dash, plus a receiver-qualified source pin
   asserting both `read_text(encoding="utf-8")` call sites. The behavioural test cannot see a reader

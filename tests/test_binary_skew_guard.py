@@ -337,3 +337,53 @@ class TestLibSkewRefusesOnTheDataPlane:
         assert "importing lib/ from" in combined, (
             "and it must name LIB, not the binary — different fixes"
         )
+
+
+class TestCommandSetsAgreeWithTheirSourceOfTruth:
+    """`_HARNESS_INVOKED_COMMANDS` hand-transcribes `hooks/hooks.json`.
+
+    Two reviewers flagged this independently. A hand-maintained copy of another
+    file's contents is the defect this whole scope is about — it agrees today
+    and drifts on the first edit, and the drift is silent in the *unsafe*
+    direction: a hook entry point that falls out of the set starts REFUSING, and
+    a refusal a hook cannot act on breaks SessionStart in every framework
+    checkout. Derived from the file rather than restated.
+    """
+
+    def _hook_commands(self) -> set[str]:
+        import json as _json
+
+        data = _json.loads((ROOT / "hooks" / "hooks.json").read_text(encoding="utf-8"))
+        found = set()
+        for entries in data.get("hooks", {}).values():
+            for entry in entries:
+                for hook in entry.get("hooks", []):
+                    cmd = hook.get("command", "")
+                    if "bin/prawduct-hook" not in cmd:
+                        continue
+                    # The verb is the token right after the binary path.
+                    parts = cmd.split()
+                    for idx, tok in enumerate(parts):
+                        if "prawduct-hook" in tok and idx + 1 < len(parts):
+                            found.add(parts[idx + 1].strip('"'))
+                            break
+        return found
+
+    def test_every_hooks_json_entry_point_is_exempt_from_refusal(self):
+        import re as _re
+
+        src = (ROOT / "bin" / "prawduct-hook").read_text(encoding="utf-8")
+        block = _re.search(
+            r"_HARNESS_INVOKED_COMMANDS = frozenset\(\{(.*?)\}\)", src, _re.S
+        )
+        assert block, "the harness-invoked set moved or was renamed"
+        declared = set(_re.findall(r'"([^"]+)"', block.group(1)))
+
+        from_hooks = self._hook_commands()
+        assert from_hooks, "parsed no commands out of hooks.json — the test is blind"
+        missing = from_hooks - declared
+        assert not missing, (
+            f"hooks.json invokes {sorted(missing)}, which the guard would REFUSE. "
+            "A hook cannot be told to run a repo-local binary, so refusing there "
+            "breaks SessionStart in every framework checkout."
+        )
