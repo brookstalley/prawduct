@@ -3,6 +3,660 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-08-02: two doctor surfaces that answered confidently for a state the repo was not in
+
+<!-- prawduct: type=fix | scope=drift-burndown | chunks=04 -->
+
+Both halves are the same defect in different organs: a surface that claims to mirror another surface,
+and does not.
+
+**#241 — `coverage-status` graded a freshly-onboarded repo as degraded while the nudge it claims to
+mirror correctly stayed silent.** The report computed layer-0-active as *characteristics not
+recorded*, full stop. The layer-0 probe also requires **product-definition work** — a repo with no
+source and no `docs/` has not started, so "you never told governance what this is" asks nothing of
+anyone. So an owner who ran `/prawduct:doctor` on a fresh scaffold was sent to `/prawduct:methodology
+discovery` by a report reading an expectation table that was asking for nothing. Bounded and
+cosmetic in effect; worth fixing rather than documenting precisely *because* the report's own claim
+is that it reads the same table.
+
+The fix is not the gate, it is **where the gate lives**. `coverage_probes` now owns
+`discovery_expected` / `layer0_active` / `layer1_active`, and both the probes and the report call
+them — the report no longer re-derives any layer it claims to mirror. Two things fell out of that:
+
+- **The trap the naive fix walks into.** Layer 1 was reached by *falling through* layer 0's
+  condition, so gating layer 0 alone would have handed the fresh repo straight to layer 1 (every
+  universal artifact is missing there) while the layer-1 probe stayed silent behind its own staging
+  gate. Same disagreement, one layer down, wearing the fix as a disguise. `test_layer1_does_not_
+  inherit_a_silenced_layer0` is the pin, red-verified by reverting each guard independently.
+- **"Nothing owed yet" and "everything satisfied" are different answers.** With layer 0 correctly
+  silent, the human report's closing line said *the coverage chain is satisfied* to a repo that had
+  never been asked anything — a false clean bill replacing a false finding. Both output modes now
+  distinguish them: a new `discovery_expected` key in `--json` (additive; `api-contract.md` updated),
+  and a human line naming what starts the chain. The human path is separately tested, because a
+  `--json`-only suite never executes the formatter.
+
+**Two existing tests had encoded the defect and were corrected, not weakened.**
+`test_layer0_active_when_characteristics_unrecorded` and `test_human_output_names_the_active_layer`
+built a repo with `.prawduct/project-state.yaml` and nothing else — i.e. exactly the fresh scaffold
+#241 is about — and asserted layer 0 was active. They now carry product work, so they still assert
+layer-0-active and now assert it for the right reason. The new agreement tests assert the report and
+the probe **match each other** across four fixtures rather than matching a hardcoded layer, so a
+future staging change that moves both stays green and one that moves only the report goes red.
+
+**#351 — `/prawduct:learnings` pointed every product at a marker only new onboards ever received.**
+The skill deliberately *points* at the descent obligation in the product's own `learnings.md`
+(marked `prawduct:descent-obligation`) rather than restating it, so the statement has one home. Only
+`init_product`'s starter corpus ever wrote that marker, and only `if not learnings.is_file()` — so
+the defect is **closed for the empty set and open for the real one**: the live fleet is entirely
+already-onboarded, and nothing (not onboard, not migrate, not a re-run) backfills it. Three sites
+mentioned the marker; none of them was a detector.
+
+Now: `lib/learnings_obligation.py` holds the block, `init_product` composes its starter from it
+(verified byte-identical to what it shipped before), and `prawduct-hook learnings-obligation`
+detects and offers the repair as doctor **Health Check #13**.
+
+- **Position is not a refinement of presence, it is the other half of it.** A block appended to the
+  end of the file satisfies every presence check and is still wrong — the reader meets the
+  obligation *after* the rules it governs, which is the inertness the statement exists to prevent.
+  So `misplaced` is its own status, and the append-to-end variant is an explicit test rather than an
+  implied one.
+- **Insert-only, and that constrains the answer.** `learnings.md` is the product's own authored
+  corpus (place-once state the framework creates and never re-touches). Inserting a block the
+  framework already ships to new products is bounded and reviewable; deleting or moving a line the
+  owner wrote is not. The consequence is deliberate and slightly unsatisfying: a *misplaced* marker
+  is reported for the owner to move, never moved for them.
+- **The dry run is a confirmation seam, not a rehearsal.** The corpus warns that a dry run
+  validating identically to the real run is where drift hides — that rule is about a check standing
+  in for a later write by a *different actor*. Here the command is the operation, the target is a
+  file the framework did not author, and the security model wants an informed confirmation naming
+  what changes; printing the exact block at the exact line is that naming, and `--apply` is the yes.
+- **Tested against a fixture, never against this repo** — which has the marker, correctly placed,
+  and is exactly why the defect shipped. The framework's own state stands in for the propagated
+  contract only as long as nobody looks anywhere else.
+
+Exit codes follow `api-contract.md` § Error Model in both roles the command plays: as an advisory
+report the dry run exits 0 on a finding and 1 only when it could not grade (undecodable file); as a
+state-mutating writer `--apply` exits 0 on a write or an idempotent no-op and 1 when it refused.
+`absent` is a finding, not an ungraded check — a missing `learnings.md` is Health Check #5's.
+
+**One stale count fixed in passing, in the file this chunk edits.** `docs/doctor-vs-janitor.md` said
+doctor drives "three bounded `prawduct-hook` operations" and named three; there were already five.
+Replaced with a pointer rather than a corrected list — this batch's own subject is facts with too
+many homes, and fixing a stale enumeration by writing a fresher one is how it recurs. (The first
+pointer was itself wrong: it aimed at the Health Check flow, which contains neither operation the
+deleted text named. The correction *is* the batch's sharpened rule landing inside the correction.)
+
+### The cumulative round: 0 blocking, 7 warnings, 10 notes — and the one that falsified a rationale
+
+**Census (rendered, not recounted): 17 findings — 15 fixed, 2 waived.** Three of the fifteen were
+fixed *in part* and their residual filed: `#561`, `#562`, `#563`. Four findings are worth keeping.
+
+**The strictness I justified by consistency was not consistent** (R-2). `check()` graded `misplaced`
+if *any* occurrence of the marker sat below the first rule, and I defended that against my own
+doubt by saying it matched the framework repo's existing position guard. It does not: that guard
+reads `next(...)` — the **first** occurrence. So the check I shipped was stricter than the thing I
+cited as authority for it, and the cost lands on the exact reader it was for: a product that writes
+a rule *about* the obligation earns `misplaced`, which is the one status the repair declines, so
+doctor reports degraded and offers nothing. A dead-end verdict on a healthy corpus is how a check
+teaches its reader to skip it. Now first-occurrence, matching the guard, with both directions pinned
+(a prose mention below the rules is `ok`; a corpus whose *only* marker is below them is not).
+
+**The fix for #241 walked into the defect it fixes, one layer down** (R-5), and this one is filed
+rather than closed. The report was made to agree with the nudge by teaching it the *nudge's*
+predicate — which bottoms out in a source-suffix allowlist with no `.cs`, `.tsx`, `.php`, `.dart`.
+Before the fix a C#-only repo got the correct layer-0 advice from the report by accident; after it,
+the report says it found no product work. Agreement was achieved by making the report wrong in the
+same place the nudge already was. Chunk 03 of this very batch argued at length that an extension
+allowlist "would have reproduced this defect one language at a time" and reused a classify-by-
+exclusion predicate to avoid it — then Chunk 04 promoted the allowlist into a public probe, a
+report line and a `--json` key. **Fixed here: the report no longer renders the predicate as a claim
+about the repo** ("no product work in this repo" → "no source code or `docs/` that this scan
+recognises"), pinned by a `.cs`-only fixture. **Filed as `#561`:** the classification itself is
+shared with another gate, so widening it is its own change with its own review.
+
+**A control that names its yield and cannot emit it has not discharged the norm** (R-11). The plan
+disposed the ratified proportionality norm by saying Chunk 04's yield "is the degraded-count that
+surface already prints" — which is *verbatim* the case the norm rules out ("printed and forgotten …
+can never be retired on evidence, only defended on principle"). Doctor emits no fact, no counter, no
+ledger line, so the janitor's Norm Health sweep will have zero firing data for #13. The plan now
+states the exact expected yield (every pre-marker repo fires once and then never again, because the
+repair is idempotent — a *second* firing is evidence the repair did not hold), says plainly that the
+emission half is **unmet rather than carved out**, and files the gap as `#563`. Naming a norm as
+`conforms` when the mechanism it requires does not exist is a compliance claim, and this batch is
+about those.
+
+**A report that promises not to crash has to be made not to crash** (R-3, R-10). `cmd_coverage_status`
+documents that a faulty sub-check degrades to "unknown"; layer 2 was guarded, layers 0-1 were not,
+and this chunk handed them a tree-walking, lazy-importing predicate. The probes' fail-softness comes
+from the advisory *runner*, which is not on the report's path. Both layers now resolve through one
+guarded `coverage_probes.layer_status` call — which also stops the report re-walking the tree for
+each predicate, and the population that paid for the repeat was exactly the one with nothing to
+find. Pinned by a fault-injection fixture, red-verified by removing the guard.
+
+Also fixed: `learnings-obligation` reaching two of `api-contract.md`'s three subcommand enumerations
+and not the third (R-1/R-6/R-14 — one edit, and the same shape `#162` closed two chunks ago); the
+`unreadable` status left unrouted in Health Check #13, so an undecodable corpus read as healthy
+(R-8/R-12); `discovery_expected` published with doctor named as its consumer while the doctor prose
+was never told to read it (R-13); a `--apply` run that refused being labelled "(dry-run)" (R-15);
+and a `cross-cutting-concerns.md` row for the descent obligation, which records the surface as
+**uneven on purpose** — writer, reader and detector, no discovery leg and no Critic leg (R-9).
+Waived: the learnings cross-check and the backlog-reconciliation notice, both informational. Filed
+alongside: `#562`, the shared atomic writer writing at the locale encoding while every reader
+demands UTF-8 — latent until this chunk gave it a caller with non-ASCII content. **R-4 was fixed,
+not deferred** — `repair()` moved to `core.atomic_write_text` and the write-failure branch gained
+its first test; an earlier draft of this paragraph named only the follow-on item and read as if the
+finding itself had been shelved.
+
+### The verify round: 1 blocking, 2 warnings, 2 notes — three of them the batch's own subject again
+
+**The blocking one is the sharpest governance finding of the branch.** Retracting the false
+"printing discharges the yield obligation" claim left a *live departure* from a ratified norm
+standing on the record — and `docs/norms.md` § The Authority Rule says a departure has exactly four
+resolutions (conform, amend, ruling, bounded exception) and that "a builder-authored rationale
+sentence, alone, is not a recorded decision." My retraction was exactly that sentence, at length.
+Length is not the same as owner-visibility: a paragraph the owner must read the plan's front matter
+to find, with no `[DECISION: … | user can veto/override]` block, has no veto window. Now recorded as
+a **bounded exception** that expires when `#563` gives doctor a fact-emitting path. The correctness
+of the departure was never in question, and that is precisely why it needed deciding rather than
+explaining — a departure everyone agrees with is the one most likely to go unrecorded.
+
+**And the PR review caught the same defect one layer further out: the exception had a clock nothing
+could wind.** The `Live exception:` line written for that fix cited `#563` and glossed the trigger as
+its `revisit:` field — a field `#563` does not carry and, it turns out, *cannot*: the Issues adapter
+takes no `--revisit` flag, and `update --body` strips a caller-pasted `prawduct:` block by design
+(`_body_update_preserving_block`), so the only `revisit` accessor left is on the frozen markdown
+model. An artifact asserting a mechanism the tree does not support — this branch's own subject,
+appearing inside the amendment that closes it. The line now states the trigger as prose and says why
+it can only be prose, the walker is named (the janitor's Norm Health sweep reading `#563`, which is
+what walks every event-bound trigger anyway), and the missing write path is filed as `#564`.
+
+**The merge-round cumulative (`rev-20260802T234453Z-63a1f4f1`, 0 blocking / 7 warning / 9 note) then
+found the batch's own subject in the batch's own code.** Ten fixed, six accepted.
+
+*The repair promised an insertion and delivered a rewrite.* `learnings_obligation` read the owner's
+corpus with `splitlines()` and wrote it back through a shared writer that encodes at the **locale**
+encoding — so on cp1252 or latin-1 the em dashes in the inserted block encode cleanly, the write
+*succeeds*, and every non-ASCII character the owner wrote is silently re-encoded out of UTF-8; the
+next `check()` then reports `unreadable` against a corpus the repair broke (R-8). Newline
+translation and `splitlines()`'s six extra separators did the same damage in the other direction
+(R-1). Both contradicted the sentence the module states about itself — *it never rewrites, reorders,
+or deletes an existing line* — and the dry-run confirmation showed the owner only the insertion, so
+they said yes to one thing and could receive another. The repair now **splices the block into the
+raw text at a byte offset**, so everything outside the insertion is the owner's bytes verbatim, and
+`core.atomic_write_text` takes explicit `encoding`/`newline` (additive; defaults unchanged, `#562`
+still owns making utf-8 the default for every caller). Four fixtures, each red-verified by reverting
+the specific guard: CRLF endings, the separators `splitlines()` eats, an unterminated corpus, and
+the encode pinned at the call. The existing fidelity test could not have caught any of it — both
+sides of its comparison were already newline-normalised.
+
+*And the corrections that reached most of their homes.* The "layers 0↔1 are exact complements"
+retraction had reached two sites of three: `docs/norms.md` still opened the staging section with the
+claim it corrects nine lines later, and a test comment cited that very line (R-3, R-7). The
+least-authority enumeration turned out to have a **fifth** copy — in `README.md` and
+`documentation/project-structure.md`, both saying the hook "reads/writes only `.prawduct/`", which
+is false on three counts the norm itself enumerates. Chunk 02's falsifying query was scoped to
+`.prawduct/` and stopped one directory short of the file a trust-evaluating reader meets first
+(R-6). Both now point instead of restate.
+
+*Two more surfaces answering for a state nothing checked* — the fourth and fifth instances of #241's
+shape in one batch: doctor #11 read `discovery_expected: false` as "not engaged" with no branch for
+`null` ("could not run"), and `coverage-status` named Layer 2 as *the* fix without saying that the
+two layers upstream of it were never evaluated (R-2, R-10). Both now decline instead of answering.
+And the plan's own Context claimed `active_build_plan` "still points at `build-plan-v3.2.0-golive.md`
+by design" — false when written, and false on the three branches before it. Rewritten to state the
+rule *without* naming the slot's value, so it cannot go stale again (R-12).
+
+Accepted with reasons recorded: R-4 and R-15 (clean, informational), R-5 (the norm explicitly carves
+out instruction prose a skill reads but never speaks), R-9 (`#561` owns the allowlist widening; this
+batch adds the registry row that would have surfaced it), R-14 (transitively closed by `#564`), R-16
+(backlog reconciliation has no Issues-mode path; done out-of-band via the adapter). Two notes were
+taken as work rather than accepted: `cross-cutting-concerns.md` gains a **language-agnostic file
+classification** row — this bundle contained two classifiers answering "is this file product code?"
+by opposite methods, and `#348` and `#561` are the same concern found twice, months apart, by
+accident (R-11) — and `api-contract.md` now names `learnings-obligation --json` as **unconsumed on
+purpose** rather than asserting a doctor binding that does not exist (R-13).
+
+**The verify round then caught the fix for R-10 committing the defect it was fixing.** All seven
+warnings verified resolved, and one new warning: the layer-2 caveat was *added behaviour no test
+exercised*. The only test on the staging-unavailable path built a repo where `norms_unratified` was
+false, so control landed on the pre-existing branch and the assertion was a substring both branches
+satisfy — delete the new caveat and the suite stays green, restoring the exact overclaim R-10 named.
+A guard that cannot go red is this batch's subject wearing a fix as a disguise, so it was closed
+rather than accepted: the sitecustomize harness is now a shared helper (both cases exercise the same
+failure rather than two hand-rolled approximations), a second fixture writes an unratified strategy
+artifact so layer 2 is the only gradeable layer, and the redundant `active_layer is not None`
+conjunct — which the reviewer noted *invited* the deleting edit — is gone. Red-verified by deleting
+the branch.
+
+**Two of the remaining four are corrections that reached one home out of three** — the shape this
+whole batch exists to burn down, twice in the pass that fixed it. "Layers 0↔1 are exact
+complements" was corrected in `docs/norms.md` and left standing in `skills/doctor/SKILL.md` and in
+`cmd_coverage_status`'s own docstring; the SKILL copy sat *eleven words* before the new clause it
+contradicts, in the same bullet the same commit rewrote. And `api-contract.md` still defined
+`discovery_expected: false` as "no product work yet" — verbatim the claim that commit deleted from
+the report, the probe docstring and the doctor prose. Both now say *mutually exclusive, and possibly
+neither*, and the contract documents all three states of the key including the `null` the new guard
+introduced (where `missing_artifacts: []` means *nothing was looked at*, not *nothing is missing*).
+
+**Swapping to the shared atomic writer moved a failure outside the handler that caught it.**
+`core.atomic_write_text` encodes at the locale encoding, so an encoding failure raises
+`UnicodeEncodeError` — not an `OSError`, so it escaped the `except OSError` and would have surfaced
+as a traceback instead of the designed refusal. The handler is now `(OSError, UnicodeError)` with a
+test. A fix that improves one property (atomicity) can silently narrow another (which failures the
+module can report), and only the second was invisible.
+
+**One self-inflicted record smudge, recorded rather than tidied.** After the verify round had
+already written resolution facts for all 17 findings, dispositions were *also* recorded by hand for
+the twelve that were fixed. The store is append-only, so both answers stand: the census resolves the
+state correctly (15 fixed / 2 waived) but flags every row `conflict`. A fixed finding is answered by
+the verify round's resolution fact; `disposition --accept|--file` is for the ones it cannot answer.
+
+## 2026-08-02: the green-is-evidence directive now fires off a language it does not have to know
+
+<!-- prawduct: type=fix | scope=drift-burndown | chunks=03 -->
+
+`_GREEN_IS_EVIDENCE_DIRECTIVE` triggered off `changes_referenced`, which `bin/test-reference-verify`
+populates by grepping **Python** symbols. In a Swift/Go/Rust/C#/TS product that field is empty on
+every run, so the directive was **silently dark in every non-Python product** — and dark is the one
+failure a directive cannot report. That violates a standing Direction norm (*prawduct must never be
+specific to Python; gates dispatch per file by language, never per repo*), and it narrows a claim
+other items lean on: code-delivered directives are the only proven path by which prawduct ships a
+general learning into a consuming product, so an exemplar that works on Python alone makes that path
+narrower than the items citing it assume.
+
+**The trigger is now `changes_referenced` non-empty OR any `changes_unjudged` path that needs review
+coverage**, per `coverage_algebra.is_judgeable_path`. Three things about that choice:
+
+- **Reuse, not a new list.** `is_judgeable_path` is the single canonical answer to "does this file
+  need review coverage?" — the predicate CRT-5D8Q unified after three sites answered it three ways.
+  Matching source extensions instead would have reproduced this very defect one language at a time;
+  the predicate classifies by *exclusion* (framework metadata and unprotected `.md` are out,
+  everything else is in), so a language nobody has heard of fires it rather than going dark.
+- **An OR, not a substitution**, so the widening is strict by construction. A `.prawduct/`-resident
+  Python file can sit in `changes_referenced` while `is_judgeable_path` calls it metadata; replacing
+  the old clause would have taken that case dark while claiming to widen. Pinned by test.
+- **The silence still holds, and one carve-out is load-bearing in a non-obvious way.**
+  `changes_unjudged` carries a lot of `.prawduct/` in practice, because the methodology *requires*
+  each chunk to update the change-log and the build plan — governed work puts framework metadata in
+  its own changed set by construction. Measured while recording this chunk's evidence: 26 unjudged
+  entries, **none judgeable — 16 under `.prawduct/`, the other 10 unprotected prose**
+  (`documentation/`, `plugin/docs/principles.md`, seven `tests/scenarios/*.md`). Two *different*
+  branches of the predicate hold those groups out, which matters to anyone weighing a relaxation:
+  the metadata carve-out is the larger share, not the whole story. Reading the field wholesale would
+  print the directive on cycles that changed no product code at all, which is the failure the
+  original comment named ("a directive that prints every time is one the reader learns to skip").
+
+  **This claim was wrong TWICE, and the second time is the instructive one.** It said
+  `.prawduct/.test-evidence.json` is in the changed set of *every* invocation, so the directive would
+  otherwise print 100% of the time. False in any onboarded repo: `lib/core.py` scaffolds that path
+  into `.gitignore` and `_changed_files` builds its untracked half with `--exclude-standard`, so it
+  enters neither half. It was measured in a scratch repo that had no `.gitignore` — an
+  unrepresentative fixture generalised into a measured-sounding number, which would have over-priced
+  the carve-out for whoever next weighs relaxing it. **The replacement was then wrong the same way**
+  — "all 26 under `.prawduct/`" was written without re-reading the record it cited, where 10 of the
+  26 are prose held out by a different branch. The verify round caught it. The rule *a correction is
+  a new claim* was written into this very entry and then not applied to the sentence composed beside
+  it, which is the sharper lesson: knowing a rule is not what fires it, and a retraction is the
+  moment of highest risk, not lowest, because the retracting author feels most careful.
+
+Red-verified in both senses the chunk demanded: the new integration case asserts the fixture's
+*shape* (`changes_referenced` empty, `Widget.swift` in `changes_unjudged`) before its outcome,
+because a Python fixture would pass on the old trigger and prove nothing.
+
+**The comment that said "tracked separately" while naming no item now names one — and the residual
+it names is real.** A Python file declaring symbols no test mentions appears in **neither**
+`changes_referenced` nor `changes_unjudged` (the verifier withholds it from both on purpose — it is
+the gap `verify-coverage` exists to catch), so the evidence record does not carry the whole changed
+set and no trigger composed from those two fields can. Verified in a scratch repo, not inferred.
+Filed as `#556` rather than absorbed: closing it needs an evidence-schema change or a second git
+diff on this path, both larger than a trigger widening, and the chunk's scope boundary is explicit
+that a needed coverage floor is a finding to file. It under-fires, so it costs advice, never
+soundness.
+
+**Four carried-in edits to `tests/test_path_reference_resolution.py`** landed here rather than in
+the doc-only chunk that found them, because this is the chunk that opens that file and a test-file
+edit in a doc-only chunk moves the judgeable tree to buy a review round for a note. (1) `_resolves`'
+`form` parameter loses its default: it defaulted to `md-link`, the one form the `plugin/` fallback is
+*granted* to, so an omitted argument silently bought the most permissive behaviour at the five call
+sites least likely to have considered it. (2) "all fifteen **in-tree** invocations" named the wrong
+scope in two places — 15 is the count inside the shipped plugin, and tree-wide the literal appears
+well over a hundred times in tracked markdown, so a reviewer re-measuring would read a load-bearing
+count as fabricated. Re-counted both scopes rather than trusting the note, which had said 132. The
+tree-wide figure is deliberately left unpinned here: the precise count drifted between the note and
+the build, and any exact number written into an append-only record invalidates itself, since this
+very entry adds another occurrence. The plugin-scope 15 verifies exactly and is the one the code
+comment leans on. (3) The record exemption is
+container-scoped while its rationale (*narrates defects*) is role-scoped: it holds for
+`learnings-detail.md`, but `learnings.md` also carries live instructions — one rule tells the reader
+to invoke `python3 plugin/bin/prawduct-hook`, served as current guidance — so a relocation strands
+them with the suite green. Per-reference scoping is not worth building for one instance; an
+unexamined exemption reads as an examined one, so it is now named. (4) `allowed-tools` grant tokens
+route through `_is_repo_path` like command position already did, so the first skill to grant
+`Bash(gh issue list --repo owner/name *)` does not redden the suite on a non-defect and spend an
+allowlist entry on a bug in the extractor.
+
+## 2026-08-02: three records that outlived what they describe — one home, one swept matrix, one closure that reached a quarter of its surfaces
+
+<!-- prawduct: type=fix | scope=drift-burndown | chunks=02 -->
+
+Three durable records asserting something the tree does not support. No code changed; every
+acceptance is a *falsifying query returning nothing*, because the edit is not the evidence — the
+record could be corrected at the named site and still be wrong two files away.
+
+**`#162` — the least-authority enumeration now has ONE home.** `architecture.md`'s reconciled-files
+norm was amended on 2026-07-30 to name `CLAUDE.md`; `security-model.md` and `api-contract.md`
+restated the same membership and were not updated *in the bundle that amended it*, so a reader
+reaching either first concluded the plugin violates its own least-authority norm by anchoring
+`CLAUDE.md`. The item asked for **both enumerations restated to match, with a falsifying grep carried
+alongside so a fourth copy cannot hide**. That was not built: it produces three synchronised copies
+and licenses a fourth, and the governing *every fact has one home* norm prescribes delete-one over
+update-both. Both siblings now carry a one-line pointer at the norm and state no membership — the
+grep is the acceptance check, not a durable mitigation, because with one home there is nothing for a
+fourth copy to hide behind.
+
+**The concept query found the fourth copy where nobody was looking — inside the home file.**
+`architecture.md`'s *never implements* norm carried its own Retroactivity enumeration of the same
+carve-out. It agreed with the norm above it, which is exactly why no coherence review had caught it:
+two enumerations in one document read as emphasis until one of them is amended. It is now a pointer.
+**Two hits were dispositioned rather than edited:** `build-plan-skills-cutover-awareness.md`'s
+`governed_by:` block quotes the norm's *pre-amendment* text as a dated disposition — a citation of
+what the author judged against, and rewriting it would falsify the record (the same
+records-versus-instructions line Chunk 01 drew); and `project-preferences.md`'s norm-index row is a
+title plus pointer with no membership, which is the reference shape the norm asks for.
+
+**`#196` — the concerns matrix was swept, and the number that matters is how many rows were wrong.**
+The filed row (Backend declaration before a governance read) attributed a Discovery rule to
+`discovery.md` and a repoint-vs-declare-dormant rule to `building.md`. `git log -S` over each phrase,
+scoped to the cited file across all branches, returns nothing — the text exists at HEAD only in this
+registry and in the item that filed it. So this is not drift from a deleted rule, it is **coverage
+recorded without ever being written**. BLD-4Q8W was the identical failure on another row, so the fix was two-part —
+correct the row, then check every other one.
+
+**Sweep result: 32 rows checked, 8 carrying a false claim, 12 claims in all — plus one row whose
+pointer was true but too vague to check.** Every cell citing a file, section, symbol, skill, test or
+state key was resolved against that target. Four classes, and they are not the same defect:
+
+- **Never written (6 cells / 4 rows)** — Backend declaration ×2, Accessibility's "building.md
+  (Principle 8 ref)", Deployment's "building.md (Principle 10)", and Cumulative-Critic gate's
+  "build-plan.md: Wave structure" + "building.md: cumulative pass at wave end". `building.md` has
+  never contained a Principle 8 or 10 reference, and the word *wave* appears in no template and no
+  methodology guide — until this fix, the phrase "wave end" existed nowhere in the repo except the
+  registry cell asserting it.
+- **Named a surface that no longer exists (3 cells / 2 rows)** — Discovery capture cited
+  `/prawduct:discovery`, a skill folded into `/prawduct:methodology <topic>` by the prose-diet fold
+  (`b4d569e`, 2026-07-03 — dated from the commit, because the registry's own Notes cell says
+  2026-07-04 and transcribing a date between records is how the drift in this batch started);
+  Derived views cited the file-sync auto-enable and the `v1_4_views_enabled` manifest key, both
+  retired with the sync engine at M4 (`views_enabled` in `project-state.yaml` is the live switch).
+- **A bare pointer to a file carrying nothing on the concern (2 cells / 2 rows)** — Security and Data
+  privacy each named `building.md` in the Builder column, which asks *does the build methodology
+  guide implementation?* For both the answer is no: that file carries no text on secrets, injection,
+  input validation or sensitive data. This class is the judgement call in the sweep — a bare file
+  name is vague rather than falsifiable, and it is recorded separately so it can be reverted on its
+  own if the owner reads those cells as "the general cycle applies".
+- **True, but too vague to check — corrected for precision, not for error (1 cell / 1 row)** —
+  Dependency management's bare `building.md`. It is not counted among the false claims above, and the
+  first pass counted it there, which is the next paragraph.
+
+**The sweep reproduced its own target defect once, and the Critic caught it.** The Dependency
+management cell was first corrected to **None** on the claim that `building.md` "names a new
+dependency only as a size heuristic". False: `building.md` § Decision Research names *external
+dependency* as one of the five triggers that make a decision major and therefore owed research and a
+recorded rationale, and Common Traps repeats it. The cell now reads **Partial** and cites that leg;
+what is genuinely absent is manifest, version-pinning and vulnerability guidance. The lesson is not
+"check harder" — it is that **a correction is a new claim with the same falsification duty as the one
+it replaces**, and a sweep is the highest-risk place to forget that, because the corrective mood
+generates claims faster than the checking reflex fires.
+
+**One stale Notes warning corrected**: the filed row warned that *every* enforcement surface it named
+was absent from `main` at v3.1.1. Three of the four have since shipped and are on `main` at v3.2.2
+(`tests/test_cutover_prose_coherence.py`, the `backlog-checks-dormant` advisory, the
+`backlog_service_repo` scalar). The fourth was never on any branch. A warning that goes stale in the
+safe direction is still a record that outlived what it describes.
+
+**Two cells were checked and deliberately left, because a sweep that does not say where it stopped
+reads as having covered everything.** (a) Performance's Builder cell says "building.md (implicit)" —
+a hedge is not a false attribution, and the cell is in fact *more* defensible than "implicit"
+suggests: the work-Type table carries "**Optimization**: Baseline measurement before changes,
+performance regression testing." (b) The filed row's Artifact cell describes `observability-strategy.md` § Direction
+as *"a dormant reader states dormancy, and names no internal id doing it"*; that file's norm is the
+no-internal-id half, and its Retroactivity line does name the dormancy NOTEs, so the parenthetical
+compresses two things into one rather than inventing one. Both judgments are recorded so they can be
+overturned cheaply.
+
+**A second mechanism now covers row 37's concern, and no second row was added.** The 2026-08-02
+cumulative review (`rev-20260802T185921Z-e1e348ce`, R-7) routed the decision here: this branch's
+Chunk 01 added `tests/test_path_reference_resolution.py`, which checks the same tree as
+`record_lint`'s chunk-ref arm under a **deliberately different** extraction rule — 6 hits against
+195 on this tree, which is why one plan yields eight BLOCKING `chunk-ref-missing` findings and a
+green resolution check. One concern gets one row: the mechanism and the disagreement are recorded in
+row 37, which already owns path-reference drift, and `#552` owns reconciling them. A second row for
+the same concern is the duplication this sweep exists to remove.
+
+**What the sweep teaches, and why the registry now carries a dated stamp:** a hand-maintained matrix
+records *intended* coverage at the moment a concern is added, and nothing afterwards re-reads the
+cited file. Coverage never written and coverage later deleted are indistinguishable in a cell — both
+render as green. That is why a reviewer consulting the registry to decide whether a concern is
+*already handled upstream* was being told three stages catch it when one did.
+
+**`#179` — VRF-010's closure reached one surface of four.** VRF-010 (verified 2026-07-28) exercised
+all three relationship/timeline readers against real GitHub, discharged MIG-3 and closed the
+functional audit's F1. The closure propagated to F1 and to `BKL-3N8Q`'s own body — which already
+records it, so nothing was appended there; a second copy is the defect this chunk is burning down.
+It did not reach `project-state.yaml`'s `integration_test_strategy`, which still called the shapes
+fake-verified, nor the golive plan, in **three** places: the Chunk 09 flip row still read *"partial,
+do NOT flip to shipped"* with an instruction to narrow the item's scope to the half VRF-010 had
+already proven; the release-gate ruling still cited the shapes as the live instance of "verified only
+against the in-process fake"; and Chunk 05b's `Covers:` line still said the foreign-API half *"stays
+open"* in the present tense. All three now record the discharge; the ruling's criterion is untouched,
+only its instance is closed. **The third was found by the Critic, not by the sweep** — the concept
+query that found the other two greps the *claim* ("fake-verified"), and that line encodes the same
+state in different words. A query over one phrasing finds one phrasing; this is the standing rule
+about querying the concept, failing in the one direction a grep cannot cover.
+
+**One edit outside the chunk's Deliverables, recorded so it is not a silent drift:** `learnings.md`'s
+"a disposition claiming fixed" rule was over the 400-character bound (`learnings-entry-shape`, raised
+by both `verify-records` and the cumulative review — no digit is quoted here because the three
+surfaces that reported it counted bytes, characters and characters-less-heading and disagreed). It was trimmed by one clause — *"and real
+defects on that surface make the false claim feel earned"* — which `learnings-detail.md` still carries
+in full under the matching heading. Length compression against a declared bound, nothing removed from
+the record.
+
+**Nothing was flipped to `shipped`.** The `[ ]`-until-release convention holds and D4 keeps a status
+call explicit and human-made. `BKL-3N8Q` (`brookstalley/prawduct#364`) was reconciled to shipped on
+2026-07-31, *outside* the Chunk 09 list, which is precisely why the list did not know: the row now
+records a closure that already happened, and Chunk 09 owes no flip for it. Its id stays cited by
+`project-state.yaml` under the do-not-renumber instruction — the surrounding claim was corrected, the
+id was not.
+
+**Two review rounds, 0 blocking in both — and both warnings in the first round were claims this
+chunk made about the tree that the tree did not support.** The chunk pass (2 warnings, 2 notes)
+caught the Dependency-management cell above and the third stale golive surface. The verify pass
+confirmed all four resolutions against the files on disk rather than against a diff, and found the
+class-label arithmetic that the first fix had left behind. It also surfaced a framework defect **by
+running into it**: `verify-resolutions` inverted its own review interval, because
+`critic_consolidate` decides "did a commit land since the prior review" by comparing trees, which
+cannot distinguish a commit landing from the prior fact having anchored *ahead* of HEAD — the normal
+shape after a `chunk`-mode review of a dirty tree. The manifest came out with the prior review's head
+and base swapped, so its resolution facts were persisted against a tree in which none of the fixes
+exist. Filed as `#554` rather than absorbed: this chunk is `doc-only` and that is a `plugin/lib/`
+change owing its own tests. Worth naming plainly — **resolutions weaken a gate, so this one is
+unsound rather than merely noisy.**
+
+**A fourth surface the item did not name, found by the concept query.** `functional-audit-v3.2.0.md`
+F1 is headed **CLOSED**, then says "the original text follows, for the record" — but only one
+paragraph of that original was blockquoted. The rest, including a present-tense "what genuinely
+remains fake-verified" and a per-reader table, read as current to anyone landing mid-entry. The
+original text is retained verbatim; what changed is that the boundary is now explicit, because a
+record that hides which half of itself is historical fails the same way as one that is simply wrong.
+
+## 2026-08-02: a path reference is checked by the form that means "go here", not by looking like a path
+
+<!-- prawduct: type=feature | scope=drift-burndown | chunks=01 -->
+
+**`#193` — nothing verified that intra-repo path references RESOLVE.**
+`tests/test_plugin_packaging.py` pins where files may *live* and is blind to a reference pointing at
+a path that no longer exists. The `plugin/` relocation shipped `bin/prawduct-hook` in five skills'
+instruction prose **and in their `allowed-tools:` grants** with the suite green throughout, because
+nothing executes front-matter. Third recurrence of *relocating a source file: sweep every READER of
+the old path*, which is what promotes a rule to a mechanism.
+
+**The design turns on a distinction the item did not name: a citation is not a reference.** The
+obvious extractor — every backticked path token — cannot tell a path a reader is told to *use* from
+one the prose is *talking about*. Measured before writing any code, it produced **195** unresolved
+references across 37 artifact files, **102 of them in three completed plans** that correctly describe
+the pre-`plugin/` tree. Absorbing that into an allowlist produces a check whose exception list is
+longer than its catch, and `docs/norms.md` warns that a probe which misfires trains its reader to
+ignore the one real catch.
+
+**The existing sibling check named the fix.** `test_no_shipped_file_points_at_an_unshipped_plugin_
+root_path` keys on `${CLAUDE_PLUGIN_ROOT}/…` — a *form* that unambiguously means *go read this*. The
+same idea gives three high-signal forms, in the sweep order of how silently each fails:
+`allowed-tools:` grants, command position (inline and fenced), and markdown links. Re-measured on
+that basis across all 233 tracked `.md` files: **1 unresolved link, 5 unresolved commands, 0 grants**
+— and the 195-citation problem disappears, because citations are never extracted. **The planned
+live-artifact predicate was dropped as unnecessary before it was built.**
+
+**The one link failure was a live defect in a shipped file.** `plugin/docs/principles.md` linked to
+`[learnings file](../.prawduct/learnings.md)`, which from `plugin/docs/` resolves to
+`plugin/.prawduct/learnings.md` — absent here and equally absent in a consumer's plugin cache, where
+the reader wants the *product's* learnings file. It is the class the `${CLAUDE_PLUGIN_ROOT}` guard
+already catches, arriving in the one form that guard cannot see. Fixed by making it a plain
+reference, since the file lives in the product's repo and no relative path from the plugin reaches it.
+
+**Records versus instructions, rather than an allowlist.** A file whose job is to say *what
+happened* legitimately names the tree as it stood: the change-log entry that ran `tools/product-hook`
+was correct when written. A file whose job is to *instruct* has no such licence. That predicate — the
+append-only records, `.prawduct/archive/**`, and the version-named pre-v3 plans, which the naming
+convention itself marks as shipped-era — costs **zero** entries for six historical plans naming the
+pre-v2 CLI. The named allowlist is **one** file: a requirements doc forward-referencing a config that
+does not exist yet. The bound is asserted at four.
+
+**Two extractor defects were found by the tests rather than by review.** The first: requiring a file
+extension in command position **would have missed `plugin/bin/prawduct-hook`** — the extensionless
+path whose relocation earned this item. Fixed with a directory-vocabulary branch that deliberately
+includes *removed* directories (`tools/`, `agents/`, a root `bin/`), because a set derived from the
+current tree can only name directories that still exist, which is the wrong half of the defect class.
+The second: a markdown link **quoted inside a code span** was followed as a link — so the check
+reddened on the very build plan specifying it, which quotes the broken link as evidence. Both are the
+citation/reference rule reasserting itself one level down.
+
+**Census figures have one home — this entry.** They are a historical measurement, and the test file
+and build plan reference them rather than restating them. Naive extractor: **195** unresolved across
+37 artifact files, **102** of those in three completed plans. Form-based extractor at chunk close:
+**101 references checked across 40 instruction files** (60 command, 27 link, 14 grant), 31 files
+skipped as records, **0 offenders**, **1** allowlisted file against a budget of four.
+
+### The chunk review (0 blocking, 4 warnings, 1 note)
+
+**The `plugin/` root fallback was hiding the very relocation this test cites as its reason to
+exist.** Applied at every file, it resolves `bin/prawduct-hook` against `plugin/bin/prawduct-hook`,
+so the motivating five-skill breakage was invisible to the check written to prevent its recurrence.
+
+**The first fix scoped it by FILE and shipped claiming that closed the finding. It did not**, and
+the verify pass caught it: the motivating defect lived in five *skills'* prose and grants, skills
+live under `plugin/`, and `plugin/` was inside the scope the first fix retained. Two of the three
+covered forms, on the exact files, of the exact class, still resolved — and the change-log asserted
+the opposite, in a batch whose subject is records asserting what the code does not support. Second
+instance of that pattern on this branch's own work, and the first where the author was the source.
+
+**The closing fix scopes by FORM as well as by file**, on a distinction the first pass missed: the
+fallback earns its place for *naming* a file — docs under `plugin/` refer to siblings the way the
+plugin ships them (`skills/critic/review-cycle.md`, `methodology/building.md`, dozens more), and
+build plans do the same under the declared `build_plan_ref_root: plugin`. It earns nothing for
+*running* one, because a reader executes from a working directory, which in this repo means
+`plugin/bin/prawduct-hook` — what all fifteen in-tree invocations say. The fallback is therefore
+denied to the two invocation forms (`command`, `allowed-tools`), pinned by a test so restoring the
+wider form reddens rather than merely being unwritten.
+
+**Scoping bought eleven real fixes across two surfaces.** Seven `tests/scenarios/*.md` instructed a
+reader to run `python3 bin/prawduct-hook init-product …` from the repo root, where no such file has
+existed since the relocation; four build plans did the same in command position, while their bare
+`` `bin/prawduct-hook` `` *file* references were left alone as legitimate under the declared root.
+
+**The non-vacuity floor guarded the wrong quantity.** It counted references *extracted*, which
+includes those skipped as records — so widening the record predicate far enough would take the check
+fully dark with every test still green. The two escape hatches were asymmetric: the allowlist is
+bounded and demands a reason per entry, while the record predicate is unbounded and unasserted, which
+made it the cheapest door for quietly greening a future red. The floor now counts references
+**checked**, with a second floor on contributing files.
+
+**A version-shaped exclusion outran its own rationale.** `_HISTORICAL_ARTIFACT` was written for the
+pre-v3 `v1`/`v2` plan convention but matched any version-named artifact, silently exempting all four
+`release-plan-v3.2.*` files — including the pending one this batch's own plan calls live. Narrowed to
+`v[12]`; zero offenders either way, so the wider pattern bought no green and gave up real coverage.
+
+**Not fixed, filed as `#552`:** `verify-chunk-refs` still uses the naive token extractor this
+chunk's thesis rejects, which is why record-lint raised eight `chunk-ref-missing` entries against a
+correct build plan — six of them the citations the plan enumerates *by name* as its adversarial
+case. The reviewer recorded a deliberate departure from the protocol's BLOCKING mapping rather than
+manufacture a fix round against a correct record. Two extractors now disagree about one tree, and
+the naive one is the one wired to a gate.
+
+**rev-20260802T174847Z-2a761657** — scope `drift-burndown`, chunk 01, 2026-08-02T17:55:06Z
+
+| Finding | Severity | State | Detail |
+|---|---|---|---|
+| R-1 | warning | accepted | fixed: _scan() now skips record/allowlisted files before extraction and returns only CHECKED references; the floor guards that quantity plus a second floor on contributing files |
+| R-2 | warning | accepted | fixed: _HISTORICAL_ARTIFACT narrowed to the pre-v3 v[12] convention, so all four release-plan-v3.2.* files including the pending one are now checked; zero offenders either way |
+| R-3 | warning | accepted | fixed beyond the ask: the plugin/ fallback is scoped to plugin-internal files and to build plans under .prawduct/artifacts/ (declared build_plan_ref_root), which surfaced and fixed seven live bin/prawduct-hook defects in tests/scenarios/*.md |
+| R-4 | warning | filed | `brookstalley/prawduct#552` |
+| R-5 | note | accepted | fixed: census figures now have one home (the change-log entry); the test docstring and build plan reference it instead of restating, and the colliding 102s are gone |
+
+**5 findings** (4 warning, 1 note) — accepted: 4, filed: 1.
+
+### The verify pass (0 blocking, 2 warnings, 1 note)
+
+It verified the resolutions **against the tree rather than against the fix notes**, which is the
+only reason the R-3 miss was caught: the disposition said "fixed beyond the ask" and the code had
+fixed a neighbouring surface. Both residuals were record corrections, both landed here.
+
+**rev-20260802T180909Z-3791bed3** — scope `drift-burndown`, chunk 01, 2026-08-02T18:09:09Z
+
+| Finding | Severity | State | Detail |
+|---|---|---|---|
+| R-1 | warning | accepted | fixed properly this round: the plugin/ fallback is now scoped by FORM as well as file — denied to command and allowed-tools — so a skill invoking the pre-relocation bin/prawduct-hook is caught; pinned by test_the_plugin_fallback_is_denied_to_invocation_forms, and four more live command-position defects in build plans were fixed |
+| R-2 | warning | accepted | fixed: the build plan no longer restates any post-fix coverage figure; the change-log is the single home and the plan says so, with the stale 102/41/46 removed |
+| R-3 | note | accepted | acknowledged, no action: the record-lint chunk-ref-missing entries are the known #552 false-positive class, already filed with the departure recorded |
+
+**3 findings** (2 warning, 1 note) — accepted: 3.
+
+### The second verify pass (0 blocking, 0 warnings, 3 notes)
+
+Both prior warnings verified `fixed` **by replaying the historical defect rather than reading the
+fix notes**: `git show f62cae1` establishes the five-skill breakage as
+`Bash(python3 bin/prawduct-hook backlog *)` in four `allowed-tools:` grants plus the same path in
+prose command position, and both forms are now extracted and both denied the fallback. That is the
+verification I owed R-3 the first time and did not do.
+
+**rev-20260802T182307Z-04d99660** — scope `drift-burndown`, chunk 01, 2026-08-02T18:23:07Z
+
+| Finding | Severity | State | Detail |
+|---|---|---|---|
+| R-1 | note | accepted | fixed: the plan's stale '8 tests' is gone; the plan now states no count and points at the change-log, which carries 7 functions / 9 cases |
+| R-2 | note | accepted | deferred to Chunk 03 with a written home in the plan: making form required is a test-file edit, and landing it now would move the reviewed tree and buy a fourth review round for a note while Chunk 01's gate is already satisfied |
+| R-3 | note | accepted | no action: the eight chunk-ref-missing entries are the known #552 naive-extractor class, verified as citations in DECISION prose for the third consecutive round |
+
+**3 findings** (3 note) — accepted: 3.
+
+**One claim the reviewer checked and let stand, worth recording because the number looks wrong:**
+"all fifteen in-tree invocations say `plugin/bin/prawduct-hook`" is 40 tree-wide (26 command-position
++ 14 grants); **15** is the count on the *shipped-plugin* surface (1 command in `adapter-mode.md` +
+14 grants), which is the intended scope. Three review rounds, 0 blocking in every one.
+
+Final coverage, measured at close: **101 references checked across 40 instruction files** (60
+command, 27 link, 14 grant), 0 offenders, 1 allowlisted file, 7 test functions / 9 cases. The
+invocation-form denial changed how references *resolve*, not which are extracted, so the count is
+unchanged from the chunk-review figure above — a draft of this line asserted it had dropped, which
+would have been the fourth unmeasured number in a change-log about unmeasured numbers.
+
+**Red-verified, including one guard that was quietly load-bearing on a doomed file.** Each form has
+a synthetic failing fixture; the repo-wide check was red on `principles.md` before the fix. The
+code-span rule was initially pinned only by this batch's own build plan quoting the link — a guard
+with an expiry date, and exactly the *branch that depends on a file which happens to exist* shape the
+green-is-evidence directive names. It now has a synthetic case, verified red by disabling the
+code-span strip.
+
 ## 2026-08-02: every signal a waiting caller could reach said the healthy review was dead
 
 <!-- prawduct: type=fix | scope=critic-death-signals | chunks=1 | release=v3.2.3 | status=shipped -->

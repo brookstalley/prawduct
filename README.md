@@ -244,7 +244,7 @@ prawduct/
 │   ├── .claude-plugin/plugin.json    # name: prawduct, version (mirrors VERSION)
 │   ├── hooks/hooks.json        # SessionStart (banner + briefing + digest), Stop (Critic + reflection gates)
 │   ├── skills/                 # framework skills → /prawduct:* (onboard, doctor, critic, pr, runbook, …)
-│   ├── bin/prawduct-hook       # runtime governance (Python; reads/writes only ${CLAUDE_PROJECT_DIR}/.prawduct/)
+│   ├── bin/prawduct-hook       # runtime governance (Python; writes the governed repo's own state + the files architecture.md § Direction names)
 │   ├── lib/                    # governance + scaffolding/migration modules (init_product, migrate_plugin, …)
 │   ├── methodology/ templates/ agents/   # read by skills/hooks via ${CLAUDE_PLUGIN_ROOT}
 │   ├── docs/                   # only the guides skills route to (principles, norms, waivers, runbook-authoring, …)

@@ -77,12 +77,12 @@ TST-4K2P/7M3K/2H9P stay `promoted` until the PR ships them (user drives `/pr`).
 
 N/A — this modifies existing framework machinery in an established repo. Test
 runner, coverage tooling, and project structure already exist (`tests/`,
-pytest-xdist, `python3 bin/prawduct-hook`). No new dependencies.
+pytest-xdist, `python3 plugin/bin/prawduct-hook`). No new dependencies.
 
 ### Verification Strategy
 
 Beyond the unit suite: exercise the **repo-local** hook directly
-(`python3 bin/prawduct-hook test-evidence record …` and `… test-status`) — per the
+(`python3 plugin/bin/prawduct-hook test-evidence record …` and `… test-status`) — per the
 learning that the bare `prawduct-hook` on PATH is the released plugin cache and
 shows stale behavior. For Chunk 02, verify a single suite run (not two) by
 observing process behavior / timing. Confirm `test-status` still reports `current`
@@ -128,7 +128,7 @@ on a freshly-recorded clean tree after each chunk.
   still passes (freshness path untouched).
 - **Acceptance criteria:** `python3 -m pytest -q` green; `git_sha` appears nowhere
   in `bin/`, `lib/`, `hooks/`, `skills/`, `methodology/` except (optionally) a
-  historical note; a fresh `python3 bin/prawduct-hook test-evidence record` writes a
+  historical note; a fresh `python3 plugin/bin/prawduct-hook test-evidence record` writes a
   record with no `git_sha` and `… test-status` reports `current`.
 - **Type:** code
 - **Done when:**

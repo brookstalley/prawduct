@@ -97,7 +97,7 @@ exist. No new dependencies.
 ### Verification Strategy
 
 Beyond the unit suite: exercise the **repo-local** hook directly
-(`python3 bin/prawduct-hook test-evidence record --from-counts …`, `… --no-rerun`)
+(`python3 plugin/bin/prawduct-hook test-evidence record --from-counts …`, `… --no-rerun`)
 — the bare `prawduct-hook` on PATH is the released plugin cache and shows stale
 behavior. Confirm `test-status` still reports `current` after each ingest mode.
 

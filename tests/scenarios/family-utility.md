@@ -13,7 +13,7 @@
 
 1. Create an isolated project directory for the evaluation:
    ```bash
-   python3 bin/prawduct-hook init-product /tmp/eval-family-utility --name "Score Night" --apply
+   python3 plugin/bin/prawduct-hook init-product /tmp/eval-family-utility --name "Score Night" --apply
    ```
 
 ### Running the evaluation

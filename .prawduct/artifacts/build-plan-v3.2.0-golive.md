@@ -397,8 +397,11 @@ node_id-across-transfer not run (`--transfer-to` omitted). Chunk stays `[ ]` (re
 **Goal:** Fix two `pick` defects that Chunk 06 would otherwise make permanent and universal across the
 whole migrated backlog. Added 2026-07-28, after a pre-Chunk-06 read of the migration path.
 
-**Covers:** the `pick`-path slice of BKL-3N8Q (not the whole item — its foreign-API verification half
-stays open) and the PROBE-LAT N+1 that VRF-009 recorded but did not fix.
+**Covers:** the `pick`-path slice of BKL-3N8Q — which at the time was not the whole item, its
+foreign-API verification half being open then; **that half was discharged by VRF-010 on 2026-07-28
+and the item was reconciled shipped 2026-07-31** (corrected here 2026-08-02: the line read "stays
+open" in the present tense long after it did not) — and the PROBE-LAT N+1 that VRF-009 recorded but
+did not fix.
 **Depends on:** —  ·  **Type:** code (bugfix)  ·  **Critic mode:** chunk (`plugin/lib/backlog/**` is
 governance-protected → full Critic + `/prawduct:pr`)
 
@@ -794,11 +797,13 @@ literals below are a record, not instructions; items 6–7 carry forward.)*
      It is an NFR and explicitly deferred by the ruling. W1 (raw-HTTP fast-path / scoped query) stays
      out of v3.2.0. Record the number in the release note as a known, accepted characteristic rather
      than letting a dogfood session rediscover it as a surprise.
-   - **What DOES gate: anything verified only against the in-process fake.** `BKL-3N8Q` records that
-     the relationship/timeline foreign-API shapes are **fake-verified only** and the `verify-api` step
-     has never run. That is precisely the "functionally broken for a supported scenario" case the
+   - **What DOES gate: anything verified only against the in-process fake.** `BKL-3N8Q` recorded that
+     the relationship/timeline foreign-API shapes were **fake-verified only** and the `verify-api` step
+     had never run. That is precisely the "functionally broken for a supported scenario" case the
      ruling names — if a real payload shape differs from the fake, `pick` reports blocked items as
-     ready with a confident verdict, and no test in the suite can see it.
+     ready with a confident verdict, and no test in the suite can see it. **The criterion stands; this
+     instance of it closed on 2026-07-28** — VRF-010 ran all three readers against real GitHub and the
+     shapes matched (`.prawduct/operator-verification.md` VRF-010; `functional-audit-v3.2.0.md` F1).
 
    **The acceptance set is therefore a supported-scenario functional audit, not a feature checklist.**
    Enumerate the scenarios v3.2.0 claims to support, and for each name the functional requirements it
@@ -878,7 +883,7 @@ re-derivation from memory samples instead of enumerating. **Append to this list 
 | BKL-2Q7F · ONB-3F9P · BKL-5N9W · BKL-6J2X | Chunk 03 | → `shipped` |
 | BKL-6X5D part (b) | Chunk 04 | → `shipped` *(part (i) stays deferred — adopter-scale, not pulled in)* |
 | — | Chunk 05 | *(no backlog IDs — C1/C2)* |
-| BKL-3N8Q — **partial, do NOT flip to shipped** | Chunk 05b | Append a note recording that the `pick`-path half (the vacuous "no open blockers" verdict) is fixed, and **narrow the item's remaining scope** to its foreign-API verification half — `list_blocked_by`/`list_sub_issues`/`list_timeline` are still shape-verified against the fake only, which is the half that needs the unrun `verify-api` step. Its `refs:` line-anchors into `query.py` (`:180`, `:368-369`) are stale after this chunk; re-anchor by symbol (`pick`, `_why`, `_blocker_clause`) per this repo's own preference. **Its id is cited by `project-state.yaml design_decisions.infrastructure_dependencies.integration_test_strategy` — do not renumber.** |
+| BKL-3N8Q (`brookstalley/prawduct#364`) — **nothing owed here; already reconciled** | Chunk 05b | **Corrected 2026-08-02.** This row read *"partial, do NOT flip to shipped"* and instructed a scope-narrowing to the item's foreign-API half. That instruction is spent: the `pick`-path half shipped in Chunk 05b, the live-shape half was discharged by **VRF-010** (verified 2026-07-28), and the item was reconciled to `shipped` on 2026-07-31 (`closed-by: v3.2.0-golive`) — outside this list, which is why the list did not know. Chunk 09 owes no flip for it. Nothing here flips anything: this row now records a closure that already happened. **Its id is still cited by `project-state.yaml design_decisions.infrastructure_dependencies.integration_test_strategy` — do not renumber.** |
 | **BKL-72AS** | Chunk 05c | → `shipped` — *(added 2026-07-29: Chunk 05c's body ends "Backlog flip owed at Chunk 09 — see § Deferred to Chunk 09" and § Status lists 05c between 05b and 06, but this table had no 05c row and named BKL-72AS nowhere. Under the `[ ]`-until-release convention this table is the ONLY thing that flips an item, so the chunk's own pointer resolved to nothing and the item would have survived the release still reading open. Found by the cumulative review that also caught the accumulate-as-you-happen rule this row exists to honour.)* |
 | BKL-6M4T · **BKL-8K2N** | Chunk 06 | → `shipped` — *(BKL-8K2N added 2026-07-28: it was in no flip list and no chunk's `closes` line, while its own body reads **GATES CHUNK 06** and ~95 lines of its work already shipped in `aaf068f`. Nothing would have flipped it. Its remaining half is the progress heartbeat — without it the ~900-issue irreversible run emits nothing for 18–40 min, since `rest_point_waits: 0` means the throttle announcements never fire and the runbook invokes import without `--json`.)* |
 | **BKL-7D3V** · **BKL-6J2X** | Chunk 07 | → `shipped` — **ACTIVE AGAIN (2026-07-28, hard-cutover ruling).** Struck as out-of-release earlier the same day, then restored when the ruling put Chunk 07 back: the advisory lift closes the decision item **and** retires the hold it discharges, and a hard cutover needs that advisory firing. *(Corrected 2026-07-24: this row read "no backlog IDs" while the traceability table already credited Chunk 07 with closing BKL-7D3V.)* |

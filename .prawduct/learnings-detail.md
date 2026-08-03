@@ -6,6 +6,30 @@ No size constraint on this file — it's the deep reference, consulted via `/lea
 
 ---
 
+## A sample you sliced for DISPLAY is not the set — if the command that formed your impression carried a `[:8]` or a `head`, re-run it unsliced before writing "all/every/entirely", because the slice is invisible in the output you read back. A RETRACTION is where this bites hardest
+
+A Critic warning retracted a claim I had measured in an unrepresentative scratch repo. Fixing it, I
+wrote the *replacement* at three sites: "26 unjudged entries, all under `.prawduct/`". The verify
+round read the record I had cited — 16 under `.prawduct/`, 10 unprotected prose, held out by a
+different branch of the predicate. The conclusion survived; the characterisation misled the exact
+reader the passage addressed, someone weighing whether to relax the metadata carve-out and now told
+it was the whole story rather than 62% of it.
+
+The false "all" was not carelessness in the sentence. It came from a diagnostic I had run earlier
+whose output I sliced — `print(... [:8])` — to keep the terminal readable. Eight `.prawduct/` paths
+were visible and eighteen more were not, some of them different in kind. Nothing in the output says
+"18 omitted"; the slice erases itself, so the impression it leaves is indistinguishable from having
+seen the whole set.
+
+Why this is not covered by the existing rule (`learnings.md`: *anything one command could check is a
+CLAIM… a CORRECTION is itself a completeness claim*): that rule was quoted **in the same commit**
+that carried the false replacement, and did not prevent it. It already records that quoting the
+parent rule demonstrably does not prevent recurrence. So the useful addition is not another
+exhortation to be careful but a mechanical trigger with a visible tell — the `[:8]` or `head` in
+your own scrollback — and the observation that a retraction is the highest-risk moment, because the
+author replacing a false claim feels most careful and is therefore least likely to re-open the
+artifact being cited.
+
 ## An exception APPENDED to standing advice still leads with the advice — so before appending, ask whether the exception can cover the WHOLE set, and if it can, it must be able to REPLACE the lead sentence rather than follow it
 
 `#536` was filed because a superseded blocker could only be cleared by a spanning review, while the
@@ -1364,6 +1388,42 @@ W-1 was filed as "8 statusless change-log entries across four scopes." I recount
 
 Fixing a false safety claim across ten sites, the same changeset introduced two fresh ones: an `all`-scope bullet promising the archive "stays reachable from `find`/`list`" (post-cutover `find` is W2-deferred for *every* item — established by the PR merged an hour earlier, precisely because it was adjacent), and "re-run with `--archive-scope all` to backfill, no duplicates" (true about duplicates, silent that the skip path reconciles status, so a backfill reopens anything closed on the service since cutover). Then the *correction* of one of those overclaims swung into a different wrong claim — asserting a backlog note "records the same gap" when it concluded the opposite — taking three commits to land accurate. **Two rules.** (1) A replacement sentence gets the same falsification query the original needed; being in the middle of a correction is the *highest*-risk moment for this class, not a safe one. (2) When successive edits to one passage alternate direction (overclaim → overcorrect → …), stop editing and go read the sources — the oscillation is the tell that you are reasoning from the passage instead of from what it describes, and a reviewer calling a further pass "churn, not improvement" is usually right. Discovered 2026-07-20 on `fix/archive-scope-preservation-claim` (cumulative + 5 verify-resolutions rounds, 15→0). Relates to [[Before writing any sentence of the shape "X now covers/catches/handles Y" or "there is no Y", run the one query that would falsify it]] and Validate Before Propagating (#15).
 
+**Second recurrence, 2026-08-02, `fix/drift-burndown` Chunk 02 — and it fired inside a sweep whose
+entire subject was false claims, with this rule already written.** Auditing 32 coverage-matrix rows,
+31 cells got a query and an answer. The Dependency-management cell got a conclusion: "`building.md`
+names a new dependency only as a size heuristic", written from the impression left by a grep I had
+run for something else — a grep whose output *contained* the line that falsifies it
+(`building.md:150` names external dependency as one of five triggers making a decision major). The
+Critic caught it as a warning: *the sweep reproduced its own target defect*. **What the rule was
+missing is the trigger.** "The fixing mood" is a state you cannot notice from inside; "I am writing
+a replacement sentence" is an event. The operative form: when the correction is drafted, run the
+query against **the replacement**, not against the claim being replaced — you have just read the
+source, so the correction feels checked, and reading is what produced the error. The syntactic tell,
+usable mid-sweep: *this cell got a conclusion where every other one got a query.* Corollary observed
+in the same chunk: the four corrections written after this fired were each grep-verified against the
+mechanism first, and all four passed the verify round.
+
+## A falsifying grep queries a PHRASING; only a reader queries a concept — the same stale state written in words your query does not contain is invisible, so the sites that survive a sweep are exactly the ones that paraphrase
+
+`fix/drift-burndown` Chunk 02 (#179), 2026-08-02. VRF-010 had verified three foreign-API readers
+live, and the closure had to be propagated to every record still encoding the pre-verification state.
+The falsifying query was the claim's own vocabulary — `fake-verified`, `shape-verified`, `fake only`
+— and it found the two golive-plan sites the item named plus the `project-state.yaml` claim. The
+Critic then found a **third** golive site the query could not reach: Chunk 05b's `Covers:` line,
+reading *"its foreign-API verification half **stays open**"*. Same state, same file, same release —
+zero shared vocabulary with the query.
+
+This is the limit of the standing *query the CONCEPT, not the phrasing* rule, and the limit is
+structural rather than a lapse: **a grep can only ever match a phrasing.** "Query the concept" is
+achievable only by (a) naming the *state* being asserted and then searching two or three vocabularies
+that share no word with each other — here, the claim's own words, the *consequence* words
+(`stays open`, `still open`, `unverified`), and the *entity* words (the item id, the reader names) —
+or (b) handing the concept to a reader, which is what independent review is and why it caught this.
+
+The cheap discipline: after a sweep, ask *what would this record say if it never used my search
+terms?* If you cannot answer, the sweep covered a phrasing and reported it as coverage. Relates to
+[[A completeness claim asserts the falsifying COMMAND now returns nothing]] and Independent Review (#14).
+
 ## Before writing any sentence of the shape "X now covers/catches/handles Y" or "there is no Y", run the one query that would falsify it — a coverage claim is the highest-frequency error class here and is almost always checkable in under a minute, so treat the SENTENCE as the trigger, not your confidence in it
 
 The claim-shape is the tripwire, not the topic: "this test now catches the class", "every reader is repointed", "there is nothing local to run this against", "the inventory is exhaustive". Six instances across 2026-07-19/20 — twice stating a repo/state didn't exist that did (one loop over sibling `project-state.yaml` files falsified it), twice describing a regex/test as covering a class it demonstrably could not (`[^.]` excluding the dots in `.prawduct/backlog.md`; an `op == "x"` derivation blind to `op in ("a","b")`), once repeating a docstring's rationale that the requirements had already corrected two days earlier, and once writing "fixing one and not the other would be the patch-the-flagged-line failure" while leaving the sibling copy in the same file. Being careful demonstrably does not work at this frequency; the check does. Fix-shape: (a) for a set/coverage claim, re-derive the set with the precise query right before writing it; (b) for an absence claim ("no X exists"), run the enumeration rather than reasoning from what you happened to see; (c) for a rationale read off a comment or docstring, verify the requirement it cites still says that — the nearest source is not the authoritative one; (d) for "I am avoiding anti-pattern P", actually run P's detector, because naming P is not running it.
@@ -2287,3 +2347,62 @@ decision rests on — and check that one against the mechanism, separately from 
 for sense. Reading for sense will pass it, because it reads well; that is the property that selected
 it. Pairs with [[A rule you must RECALL at the right moment is its weakest form]]: that rule covers
 rules you fail to apply, this one covers facts you apply *away from* where they are needed.
+
+## A disposition claiming "fixed" must restate the finding's own predicate
+
+**Where it came from.** `fix/drift-burndown` Chunk 01 (#193), 2026-08-02. The chunk review's R-3
+said: *the `plugin/` root fallback means the check cannot see the root-`bin/` → `plugin/bin/`
+relocation its own docstring cites as the reason it exists.* The fallback resolves a bare
+`bin/prawduct-hook` against `plugin/bin/prawduct-hook`, so the motivating defect was invisible.
+
+**What I did.** Scoped the fallback by FILE — allowed only for files under `plugin/` and for build
+plans under `.prawduct/artifacts/` (which carry a declared `build_plan_ref_root: plugin`). That
+immediately surfaced **seven real defects**: every `tests/scenarios/*.md` told a reader to run
+`python3 bin/prawduct-hook init-product …` from the repo root, where no such file has existed since
+the relocation. I fixed them, dispositioned R-3 as "fixed beyond the ask", and wrote in the
+change-log: *"the reviewer asked for a hedge on the claim; the claim turned out to be fixable
+instead."*
+
+**Why it was wrong.** The motivating defect lived in five **skills'** prose and `allowed-tools:`
+grants. Skills live at `plugin/skills/*/SKILL.md` — **inside the scope I retained**. Two of the
+three covered forms, on the exact files, of the exact class, still resolved. The finding was
+untouched. The verify pass caught it by checking the tree rather than the fix notes.
+
+**The mechanism of the error.** I verified *the fix I made* instead of *the finding as stated*. My
+question was "did offenders appear, and are they real?" — which returns yes for a neighbouring
+surface. R-3's question was "can the check see this specific relocation, in these specific files?"
+Seven genuine fixes made the false claim feel earned; had the scoping found nothing I would have
+looked harder.
+
+**Aggravating context.** This shipped inside a batch whose subject is *records asserting what the
+code does not support*, in the chunk building the detector for that class. The failure mode does not
+care that you are writing about it.
+
+**The closing fix, and why it is better than the hedge R-3 asked for.** Scope by FORM as well as
+file. The fallback is justified by *naming* a file — plugin docs refer to siblings the way the
+plugin ships them (`skills/critic/review-cycle.md`, `methodology/building.md`, dozens more) — and is
+justified for nothing when *running* one, because a reader executes from a working directory, which
+in this repo means `plugin/bin/prawduct-hook` (all fifteen in-tree invocations say so). Denied to
+`command` and `allowed-tools`. That bought four more live fixes in build plans and is pinned by
+`test_the_plugin_fallback_is_denied_to_invocation_forms`, red-verified by restoring the wider form.
+
+**The rule.** A "fixed" disposition restates the finding's predicate and demonstrates it false,
+ideally as an assertion. Tell: the fix note argues from what the change caught rather than from what
+the finding said.
+
+## Scope an exemption by the property that justifies it, not by the container
+
+**Same chunk, the structural half of the above.** The `plugin/` fallback's rationale is a verb —
+*naming* a file — but the boundary I wrote was a path prefix: `containing.startswith("plugin/")`.
+Those coincide for most files and diverge exactly where the defect lives, because a skill both names
+sibling files (legitimate) and invokes executables (not). Container-scoping looked complete: it had
+a stated rationale, a declared config backing half of it (`build_plan_ref_root`), and it produced
+real catches.
+
+**The generalisation trap.** Going from "plugin docs name paths as the plugin ships them" to "files
+under `plugin/` get the fallback" is one step, feels like the same sentence, and silently widens the
+exemption from a *form* to a *location*. The correct boundary needed both: entitled file **and**
+non-invocation form.
+
+**Tell.** The exemption's boundary is expressed as a path prefix while its rationale is expressed as
+a verb. When those two shapes disagree, the prefix is the approximation.

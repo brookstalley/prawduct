@@ -135,7 +135,7 @@ one chunk (batch-durable-edits learning); token-budget guardrail tests are antic
   on-demand authoring aid invoked from the planning flow, not a tripwire.
 - **Tests:** unit — known-term overlap ranks the right artifact first; floor words never match;
   empty/no-match returns empty (negative path); repo-local invocation via `python3
-  bin/prawduct-hook` against THIS repo's artifacts returns sane candidates (check-own-signals
+  plugin/bin/prawduct-hook` against THIS repo's artifacts returns sane candidates (check-own-signals
   learning).
 - **Acceptance (as corrected at build):** running the subcommand on this plan's own text ranks
   `docs/norms.md` first among candidates. The originally-written acceptance named
@@ -302,7 +302,7 @@ Doc chunks verify by **tabletop replay**: run the stress scenarios (discodon lau
 billboard, single→multi-user flip, stalled migration, collision, retroactivity, erosion, decay)
 against the edited prose and confirm each is caught by the rule the Chunk 1 index says catches it.
 Code chunks verify by unit tests including negative paths, plus repo-local execution
-(`python3 bin/prawduct-hook …`) against this repo's own state — probes must be silent here today.
+(`python3 plugin/bin/prawduct-hook …`) against this repo's own state — probes must be silent here today.
 Chunk 4 additionally runs the token-budget guardrail tests.
 
 ## Governance Checkpoints

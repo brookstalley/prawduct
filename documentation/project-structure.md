@@ -18,7 +18,7 @@ prawduct/
 ├── skills/                            # framework skills → /prawduct:* (critic, pr, doctor, migrate, building, discovery, …)
 │   ├── critic/                        # bundled Critic protocol (context:fork skill — review-protocol.md, review-cycle.md, framework-checks.md)
 │   └── pr/                            # bundled PR-reviewer protocol (review-protocol.md)
-├── bin/prawduct-hook                  # plugin runtime governance (Python; reads/writes only ${CLAUDE_PROJECT_DIR}/.prawduct/)
+├── bin/prawduct-hook                  # plugin runtime governance (Python; writes the governed repo's own state + the files architecture.md § Direction's reconciled-files norm names)
 ├── lib/                               # plugin governance + scaffolding/migration (init_product, migrate_plugin, core, views, critic_mode, advisory, …)
 ├── methodology/                       # Narrative guides (bundled; read via ${CLAUDE_PLUGIN_ROOT})
 │   ├── discovery.md                   # How to explore a problem space

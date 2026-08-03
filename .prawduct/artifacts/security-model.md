@@ -57,10 +57,12 @@ Prawduct executes on the user's machine — Python hooks fire on SessionStart/St
 SubagentStop, and skills invoke the `prawduct-hook` CLI. Running someone else's plugin is a trust
 decision, and prawduct's job is to be worthy of it. The posture we hold:
 
-- **Least authority over the machine.** The plugin reads and writes **only** the governed repo's
-  `.prawduct/` (per-worktree) and the clone's shared evidence store inside `.git`, plus the
-  `.gitignore` and `.claude/settings*.json` it must reconcile. Plugin code itself is read-only from
-  the repo's perspective; the framework never writes framework files into a repo.
+- **Least authority over the machine.** The plugin writes nothing into a governed repo beyond what
+  `architecture.md` § Direction's reconciled-files norm enumerates, and never framework files. That
+  norm is the enumeration's one home and this posture deliberately points at it rather than
+  restating a membership that would then drift — which it did: the 2026-07-30 amendment adding
+  `CLAUDE.md` reached the norm and not the two copies. Plugin code itself is read-only from the
+  repo's perspective.
 - **Zero external dependencies, no network.** The governance runtime is standard-library Python with
   no third-party packages and makes no network calls — the entire coordination substrate is process
   spawn + local files + git. This shrinks the supply-chain surface to prawduct's own code plus git.

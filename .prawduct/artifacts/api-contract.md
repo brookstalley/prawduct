@@ -86,7 +86,7 @@ The CLI groups by responsibility. Every subcommand is read-only unless marked mu
 - **Coverage & jurisdiction** — `coverage-status`, `coverage-scaffold` (mutating with `--apply`),
   `jurisdiction`.
 - **Repo lifecycle** — `migrate-plugin`, `init-product`, `update-gitignore`, `audit-learnings`,
-  `repo-disable`, `bug-inbox` (all dry-run-by-default where they mutate).
+  `learnings-obligation`, `repo-disable`, `bug-inbox` (all dry-run-by-default where they mutate).
 - **Published surfaces** (read-only, and the only ones third parties may bind to) —
   `version` (bare plugin semver on stdout) and `print-install-reference` (the canonical
   `.claude/settings.json` install reference as JSON on stdout, sorted keys, exit 0; exit 1 with an
@@ -97,7 +97,8 @@ The CLI groups by responsibility. Every subcommand is read-only unless marked mu
 
 Safe/idempotent notes: consolidation and fact-appends are **idempotent** (identity fixed at
 dispatch); state-mutating lifecycle commands (`migrate-plugin`, `init-product`, `coverage-scaffold`,
-`repo-disable`, `audit-learnings`) default to a **dry run** and require `--apply` to write.
+`repo-disable`, `audit-learnings`, `learnings-obligation`) default to a **dry run** and require
+`--apply` to write.
 
 ## Inputs & Outputs
 
@@ -110,7 +111,21 @@ dispatch); state-mutating lifecycle commands (`migrate-plugin`, `init-product`, 
 - **Machine-readable output (`--json`):** a defined subset emits structured JSON on stdout, each with
   a documented key set, consumed by a specific skill:
   - `coverage-status --json` / `coverage-scaffold --json` → doctor (`structural_recorded`,
-    `missing_artifacts[]`, `norms_unratified`, `active_layer`, `fix` / `applied`, `created[]`).
+    `discovery_expected`, `missing_artifacts[]`, `norms_unratified`, `active_layer`, `fix` /
+    `applied`, `created[]`). `discovery_expected` is the layer-0 staging half, and it has **three**
+    states, not two. **False** = no product work *this scan recognises* — it reads source by suffix
+    allowlist (`#561`), so a repo in an unlisted language reads the same as an empty one; with
+    `active_layer: null` that means "nothing owed yet", never "chain satisfied". **Null** on
+    `discovery_expected` or `structural_recorded` = the staging check **could not run**, and in that
+    state `missing_artifacts: []` means *nothing was looked at*, not *nothing is missing* — a
+    consumer must not read it as a clean layer 1.
+  - `learnings-obligation --json` → **no skill consumer today** (`status` — one of `ok` / `missing` /
+    `misplaced` / `absent` / `unreadable` — plus `path`, `marker`, `marker_lines[]`,
+    `first_rule_line`, `detail`, `repairable`, `applied`, `insert_before_line`, `insert_text`).
+    Health Check #13 relays the **human** form, which carries everything it needs. Listed here so
+    the key set is documented, and named as unconsumed on purpose: every sibling in this list binds
+    a real reader that keeps its keys honest, and asserting a binding that does not exist is how a
+    maintainer sizes a key change against a consumer that would never have noticed.
   - `migrate-plugin --json` → migrate skill; `init-product --json` → onboard skill;
     `audit-learnings --json` → doctor; `repo-disable --json` → repo-disable skill.
   - `review-stats --json` → the cross-project telemetry aggregator, carrying a top-level
@@ -271,9 +286,9 @@ Per `security-model.md` — the API-boundary specifics:
 - **Input validation at the boundary:** every subcommand parses defensively, rejects unknown flags,
   and treats stdin/state content as **data, not instructions**. Malformed input fails soft (skip +
   attribute), never executes.
-- **Least authority:** the CLI writes only under the governed repo's `.prawduct/` (and the shared
-  evidence store, `.gitignore`, `.claude/settings*.json` it must reconcile); it never writes
-  framework files into a repo and makes no network calls.
+- **Least authority:** the CLI writes only what `architecture.md` § Direction's reconciled-files norm
+  enumerates — that norm is the enumeration's one home and this contract does not restate its
+  membership; it never writes framework files into a repo and makes no network calls.
 - **No secret/PII exposure** in output — there is none in scope, and signals log operation + id, not
   payloads.
 

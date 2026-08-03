@@ -150,6 +150,19 @@ def _coverage():
     return coverage
 
 
+def _coverage_algebra():
+    """Lazy-import the pure judgeability/coverage algebra (lib/coverage_algebra).
+    Same lazy idiom as _coverage() — seeds sys.path so the hook's top level stays
+    lib-free; the module is I/O- and git-free and pulls only its light siblings
+    (buildplan_refs, gitstate, core)."""
+    lib_root = _plugin_root()
+    if lib_root not in sys.path:
+        sys.path.insert(0, lib_root)
+    from lib import coverage_algebra  # noqa: PLC0415 — lazy keeps top-level cheap + lib-free
+
+    return coverage_algebra
+
+
 def _release_readiness():
     """Lazy-import the Phase 0 releasability gate (lib/release_readiness).
     Same lazy idiom as _coverage() — seeds sys.path so the hook's top level
@@ -2051,10 +2064,13 @@ def cmd_stop(project_dir: Path, stop_input: dict | None = None) -> int:
 #: ``lib/critic_consolidate.py`` is the same move for the same reason, and is
 #: the precedent this follows.
 #:
-#: Printed ONLY when the merged record shows judged code changed
-#: (``changes_referenced`` non-empty) — a docs-only cycle, or a run that touched
-#: no source, stays silent, because a directive that prints every time is one
-#: the reader learns to skip.
+#: Printed ONLY when the merged record shows the cycle changed code tests
+#: should vouch for — a docs-only cycle, or a run that touched no source, stays
+#: silent, because a directive that prints every time is one the reader learns
+#: to skip. The trigger is language-agnostic (see
+#: ``_evidence_changed_judged_code``): it fires off ``changes_referenced``, and
+#: ALSO off any ``changes_unjudged`` path that needs review coverage, which is
+#: how a Swift/Go/Rust/C#/TS product reaches it at all.
 #:
 #: **Not "a restamp stays silent."** An earlier draft of this comment, the plan,
 #: and the change-log all said so, and it is false: ``--no-rerun`` takes the same
@@ -2063,14 +2079,25 @@ def cmd_stop(project_dir: Path, stop_input: dict | None = None) -> int:
 #: ``test_refreshes_changes_referenced_against_current_tree``). So a restamp with
 #: judged changes in the diff fires, correctly: the builder did just change
 #: judged code, and how the counts got there is not the question this directive
-#: asks. The only real trigger is "nothing judged changed."
+#: asks. The only thing that silences it is "nothing needing review coverage
+#: changed" — which since the widening below is a claim about the changed FILES,
+#: not about whether a Python symbol grep happened to match.
 #:
-#: **Known limitation, recorded where the reader meets it.** ``changes_referenced``
-#: is populated by ``bin/test-reference-verify``, which matches Python symbols
-#: only. In a Swift/Rust/C#/TypeScript product the field is always empty, so this
-#: directive never fires there — the field is a proxy for "judged code changed"
-#: and is narrower than the phrase. Widening the trigger is tracked separately;
-#: until then, do not read a silent run in a non-Python repo as "nothing changed."
+#: **Known limitation, recorded where the reader meets it, WITH its id.** One
+#: population still cannot reach this directive: a Python file declaring symbols
+#: no test mentions appears in NEITHER ``changes_referenced`` nor
+#: ``changes_unjudged`` — ``bin/test-reference-verify`` withholds it from both on
+#: purpose, since it is the gap ``verify-coverage`` exists to catch. So the record does
+#: not carry the whole changed set and no trigger composed from those two fields
+#: can. That is brookstalley/prawduct#556 — closing it means a schema change or a
+#: second git diff on this path, both larger than this trigger. The direction is
+#: the safe one: it under-fires, costing advice rather than soundness.
+#:
+#: The predecessor limitation — "empty in every non-Python product, so the
+#: directive is dark there" — is CLOSED (#348), and this comment previously said
+#: it was "tracked separately" while naming no item, which is how it stayed open
+#: long enough to be worth this warning: a tracking reference that points at no
+#: id is not a tracking reference.
 _GREEN_IS_EVIDENCE_DIRECTIVE = (
     "\nGreen is evidence only about what could have made it red. For each test"
     " you just added or changed, name the change that would flip it — and"
@@ -2087,12 +2114,35 @@ _GREEN_IS_EVIDENCE_DIRECTIVE = (
 
 
 def _evidence_changed_judged_code(evidence_path: Path) -> bool:
-    """True when the MERGED evidence record shows judged code changed.
+    """True when the MERGED evidence record shows changed code tests should vouch for.
 
     Read back from disk rather than from the in-memory record: the F4a overlay
-    (``bin/test-reference-verify --merge-into``) writes ``changes_referenced``
+    (``bin/test-reference-verify --merge-into``) writes the coverage fields
     into the FILE after the base record is written, so the dict the caller
     holds still carries the empty seed.
+
+    **Two senses of "judged" meet in this function — do not conflate them.**
+    ``changes_unjudged`` means *the symbol-grep overlay had no signal for this
+    file* (it is not Python, declares no symbols, or was deleted).
+    ``coverage_algebra.is_judgeable_path`` means *a change here needs review
+    coverage*. A Swift file is unjudged in the first sense and judgeable in the
+    second, which is exactly the population this trigger has to reach.
+
+    Reusing ``is_judgeable_path`` rather than matching source extensions is
+    deliberate: it is the single canonical answer to "does this file need
+    review coverage?" (the predicate CRT-5D8Q unified), and it classifies by
+    exclusion — framework metadata and unprotected ``.md`` are out, everything
+    else is in — so a language nobody has heard of fires the directive instead
+    of silently going dark. An extension allowlist would have reproduced this
+    defect one language at a time.
+
+    **The cost was weighed, not overlooked.** Classifying by exclusion also
+    admits files with no testable behaviour: a cycle touching only
+    ``.gitignore``, ``LICENSE``, a CI yaml or a binary asset now prints the
+    directive where it used to stay quiet. That is the price of the failure
+    direction being right — over-firing costs a reader two seconds, while the
+    under-firing it replaced cost an entire language its directive, silently and
+    unobservably.
 
     Advice fails soft. Every unreadable, malformed, or unexpectedly-shaped
     record answers False — the evidence is already written and schema-valid, so
@@ -2106,7 +2156,22 @@ def _evidence_changed_judged_code(evidence_path: Path) -> bool:
     if not isinstance(merged, dict):
         return False
     referenced = merged.get("changes_referenced")
-    return isinstance(referenced, list) and bool(referenced)
+    if isinstance(referenced, list) and referenced:
+        return True
+    # Second clause, and the reason this fires off Python at all. Kept as an OR
+    # rather than a replacement so the widening is strict by construction: a
+    # `.prawduct/`-resident Python file can sit in `changes_referenced` while
+    # `is_judgeable_path` calls it framework metadata, and substituting the new
+    # predicate would take that case dark.
+    unjudged = merged.get("changes_unjudged")
+    if not isinstance(unjudged, list):
+        return False
+    try:
+        is_judgeable = _coverage_algebra().is_judgeable_path
+    except ImportError:
+        # Broken install — advice fails soft, same as an unreadable record.
+        return False
+    return any(isinstance(p, str) and is_judgeable(p) for p in unjudged)
 
 
 def _parse_evidence_counts(tokens: list[str]) -> tuple[dict | None, str]:
@@ -3805,7 +3870,8 @@ def cmd_coverage_status(project_dir: Path, argv: list[str]) -> int:
       - **Layer 2 (norms):** are the product's norms ratified?
 
     and names the highest-priority active layer as the primary fix. Layers 0 and 1
-    are exact complements (never both), but layer 2's gate is independent, so
+    are mutually exclusive (never both — and possibly neither, on a repo that has
+    not started), but layer 2's gate is independent, so
     during partial authoring layers 1 and 2 can both be active (docs/norms.md
     § Enforcement — proportionality, not a hard one-at-a-time invariant). ``--json``
     emits the structured status for the doctor skill; default is human-readable.
@@ -3825,10 +3891,24 @@ def cmd_coverage_status(project_dir: Path, argv: list[str]) -> int:
         print(f"NOTE: coverage-status unavailable (plugin lib/ not importable: {exc})", file=sys.stderr)
         return 0
 
-    state_path = project_dir / ".prawduct" / "project-state.yaml"
     codebase = store.make_codebase(project_dir)
-    recorded = cp.structural_characteristics_recorded(state_path)
-    missing = cp.missing_expected_artifacts(codebase)  # [(name, characteristic|None)]
+    # Layers 0-1 in one evaluation (each predicate walks the tree; layer_status pays
+    # for each once). Guarded like layer 2 below and for the same reason — this
+    # function promises a health REPORT, and a report that raises has failed harder
+    # than one that says "unknown". `staging` reads None-per-key when it could not
+    # run, and every consumer below discriminates on that.
+    staging: dict = {}
+    try:
+        staging = cp.layer_status(codebase)
+    except Exception as exc:  # prawduct:allow prawduct/broad-except -- report must not crash; degrade layers 0-1 to unknown + log
+        print(f"NOTE: coverage-status layers 0-1 (staging) check skipped: {exc}", file=sys.stderr)
+    recorded = staging.get("structural_recorded")
+    missing = staging.get("missing") or []  # [(name, characteristic|None)]
+    # Whether discovery is owed YET. False means "no product work this scan
+    # RECOGNISES" (the source-suffix allowlist, #561), never "this repo is empty" —
+    # every rendering below is worded to that, because the one population it is
+    # wrong about is a repo full of source in an unlisted language.
+    expected = staging.get("discovery_expected")
 
     # Layer 2 composes over the norm probe (its own gate is "strategy artifacts
     # exist AND registry unratified"). The probe is declared non-raising, but a
@@ -3842,11 +3922,14 @@ def cmd_coverage_status(project_dir: Path, argv: list[str]) -> int:
         print(f"NOTE: coverage-status layer-2 (norm ratification) check skipped: {exc}", file=sys.stderr)
         norms_unratified = None
 
-    # Which single layer currently owns the nudge (the chain stages).
-    if not recorded:
+    # Which single layer currently owns the nudge (the chain stages). Layers 0 and 1
+    # are asked of the probe module, never re-derived here: this report's whole claim
+    # is that it mirrors the ambient nudge, and it earns that only by composing the
+    # same predicates the probes fire on.
+    if staging.get("layer0_active"):
         active_layer: int | None = 0
         fix: str | None = "record structural characteristics: /prawduct:methodology discovery"
-    elif missing:
+    elif staging.get("layer1_active"):
         active_layer = 1
         fix = ("author each missing artifact (/prawduct:methodology planning), or drop stubs "
                "in one act: prawduct-hook coverage-scaffold --apply")
@@ -3861,6 +3944,7 @@ def cmd_coverage_status(project_dir: Path, argv: list[str]) -> int:
         import json as _json  # noqa: PLC0415
         print(_json.dumps({
             "structural_recorded": recorded,
+            "discovery_expected": expected,
             "missing_artifacts": [{"artifact": name, "characteristic": char} for name, char in missing],
             "norms_unratified": norms_unratified,
             "active_layer": active_layer,
@@ -3869,27 +3953,54 @@ def cmd_coverage_status(project_dir: Path, argv: list[str]) -> int:
         return 0
 
     print("Structural coverage (three-layer chain):")
-    print(f"  Layer 0 · discovery         : characteristics {'RECORDED' if recorded else 'NOT RECORDED'}")
-    if missing:
-        print(f"  Layer 1 · strategy artifacts : {len(missing)} expected artifact(s) missing")
-        for name, char in missing:
-            suffix = "" if char is None else f"  (required — {char} recorded)"
-            print(f"       - {name}{suffix}")
+    if not staging:
+        print("  Layer 0 · discovery         : unknown (staging check unavailable)")
+        print("  Layer 1 · strategy artifacts : unknown (staging check unavailable)")
     else:
-        print("  Layer 1 · strategy artifacts : all expected artifacts present")
+        if recorded:
+            print("  Layer 0 · discovery         : characteristics RECORDED")
+        elif expected:
+            print("  Layer 0 · discovery         : characteristics NOT RECORDED")
+        else:
+            # Unrecorded AND nothing recognised to characterise. A bare "NOT
+            # RECORDED" reads as the finding it is not — but the scan sees source
+            # by suffix, so the honest claim is about what it FOUND, not about what
+            # is there (#561).
+            print("  Layer 0 · discovery         : characteristics NOT RECORDED "
+                  "(not owed yet — no source code or docs/ that this scan recognises)")
+        if missing:
+            print(f"  Layer 1 · strategy artifacts : {len(missing)} expected artifact(s) missing")
+            for name, char in missing:
+                suffix = "" if char is None else f"  (required — {char} recorded)"
+                print(f"       - {name}{suffix}")
+        else:
+            print("  Layer 1 · strategy artifacts : all expected artifacts present")
     if norms_unratified is None:
         print("  Layer 2 · norm ratification : unknown (norm check unavailable)")
     elif norms_unratified:
         print("  Layer 2 · norm ratification : norms not yet ratified")
     else:
         print("  Layer 2 · norm ratification : ratified or not yet applicable")
-    if active_layer is not None:
+    if active_layer == 2 and not staging:
+        # Layer 2 is real, but it sits DOWNSTREAM of two layers that were never
+        # evaluated — naming it "the" fix would claim a chain position nothing
+        # checked. Same refusal the mirror case below already makes.
+        print(f"  Active nudge → Layer 2: {fix}")
+        print("    (layers 0-1 could not be checked, so this may not be the first thing owed)")
+    elif active_layer is not None:
         print(f"  Active nudge → Layer {active_layer}: {fix}")
+    elif not staging:
+        print("  Active nudge → none actionable: layers 0-1 could not be checked.")
     elif norms_unratified is None:
         # Layers 0-1 satisfied, but layer 2 couldn't be checked — don't claim the
         # whole chain is satisfied (the --json consumer discriminates on the
         # norms_unratified: null field; the human reader gets this explicit line).
         print("  Active nudge → none actionable: layers 0-1 satisfied; layer 2 (norms) could not be checked.")
+    elif not expected and not recorded:
+        # "Satisfied" would be a false clean bill: nothing has been asked of this
+        # repo yet. Name what starts the chain instead.
+        print("  Active nudge → none: no product work found yet — the chain engages "
+              "once the repo has source code or docs/.")
     else:
         print("  Active nudge → none: the coverage chain is satisfied.")
     return 0
@@ -4291,6 +4402,70 @@ def cmd_update_gitignore(project_dir: Path) -> int:
     return 0
 
 
+def cmd_learnings_obligation(project_dir: Path, argv: list[str]) -> int:
+    """Check — and on ``--apply`` repair — the descent obligation in ``learnings.md``.
+
+    ``/prawduct:learnings`` points every product's reader at the obligation marked
+    ``prawduct:descent-obligation``; only ``init-product``'s starter corpus ever
+    wrote that marker, and it writes it only when the file does not exist. So the
+    entire already-onboarded fleet carries a pointer at nothing. This is the doctor
+    health check that detects it (``/prawduct:doctor`` Health Check #13) and the
+    repair that closes it.
+
+    Exit codes follow ``artifacts/api-contract.md`` § Error Model. **Dry run is an
+    advisory report:** 0 when it ran — a finding is not a failure — and 1 only when
+    it could not run (lib not importable, file undecodable). **``--apply`` is a
+    state-mutating writer:** 0 when it inserted or was an idempotent no-op, 1 when
+    it refused (nothing written). Unknown flags are 2.
+    """
+    rejected = _reject_unknown_args("learnings-obligation", argv, {"--apply", "--json"})
+    if rejected is not None:
+        return rejected
+    apply = "--apply" in argv
+    as_json = "--json" in argv
+
+    lib_root = _plugin_root()
+    if lib_root not in sys.path:
+        sys.path.insert(0, lib_root)
+    try:
+        from lib import learnings_obligation  # noqa: PLC0415 — lazy keeps top-level cheap
+    except ImportError as exc:
+        # Fail-closed for the writer, fail-open would be a false success; the dry
+        # run cannot run either, so both directions are 1 here ("could not run").
+        print(
+            f"error: learnings-obligation could not import the plugin lib/ ({exc})",
+            file=sys.stderr,
+        )
+        return 1
+
+    result = learnings_obligation.repair(project_dir, apply=apply)
+    status = result["status"]
+
+    if as_json:
+        print(json.dumps(result, indent=2))
+    else:
+        # Labelled from the MODE the operator asked for, not from whether a write
+        # happened: `--apply` against a refused status (misplaced, absent,
+        # unreadable) writes nothing, and calling that run "dry-run" invites the
+        # reader to conclude they forgot the flag and re-run it. `status`/`detail`
+        # say what actually happened.
+        print(f"learnings-obligation ({'apply' if apply else 'dry-run'}): {status}")
+        print(f"  {result['detail']}")
+        if result["repairable"] and not result["applied"]:
+            # The informed confirmation: name the file, the exact line, and the
+            # exact text, so `--apply` is a yes to something the owner has read.
+            print(
+                f"  Would insert into {result['path']} above line "
+                f"{result['insert_before_line']} (--apply to write it):"
+            )
+            for line in (result["insert_text"] or "").split("\n"):
+                print(f"    | {line}")
+
+    if apply:
+        return 0 if result["applied"] or status == learnings_obligation.STATUS_OK else 1
+    return 1 if status == learnings_obligation.STATUS_UNREADABLE else 0
+
+
 def cmd_audit_learnings(project_dir: Path, argv: list[str]) -> int:
     """Audit the consumer's ``.prawduct/learnings.md`` lifecycle (F9).
 
@@ -4470,7 +4645,8 @@ _USAGE = (
     "coverage-status [--json]|coverage-scaffold [--apply] [--json]|"
     "migrate-plugin [--apply] [--json]|init-product <target> --name <name> [--backlog-repo owner/repo] [--apply] [--json]|"
     "update-gitignore|"
-    "audit-learnings [--apply] [--json]|repo-disable [--local] [--apply] [--json]}"
+    "audit-learnings [--apply] [--json]|learnings-obligation [--apply] [--json]|"
+    "repo-disable [--local] [--apply] [--json]}"
 )
 
 
@@ -4790,6 +4966,8 @@ def main() -> int:
         return cmd_update_gitignore(project_dir)
     elif command == "audit-learnings":
         return cmd_audit_learnings(project_dir, sys.argv[2:])
+    elif command == "learnings-obligation":
+        return cmd_learnings_obligation(project_dir, sys.argv[2:])
     elif command == "repo-disable":
         return cmd_repo_disable(project_dir, sys.argv[2:])
     else:
