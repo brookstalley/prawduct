@@ -2182,6 +2182,135 @@ class TestVerifyResolutionsDispatch:
         # working-tree-vs-committed-HEAD mismatch is surfaced, not silent.
         assert "vouches for the WORKING tree" in result.stderr
 
+    def _seed_dirty_tree_review_with_blocker(
+        self, repo: Path
+    ) -> tuple[str, str, str]:
+        """A review of a DIRTY tree that left a blocker — then a fix, uncommitted.
+
+        This is the ordinary shape of a `chunk`-mode review: the fact records the
+        working tree's hash as ``head_tree`` and **no** ``head_commit``, so the
+        anchor it leaves is AHEAD of committed HEAD. Returns
+        ``(head commit, reviewed tree, prior id)``.
+
+        `.prawduct/` is gitignored for the same reason as the clean-review
+        fixture: consolidating writes the ledger and the findings cache, which
+        would otherwise dirty the tree by the act of recording that it reviewed
+        it.
+        """
+        _commit_file(repo, ".gitignore", ".prawduct/\n", "ignore review bookkeeping")
+        head = _commit_file(repo, "src/app.py", "x = 1\n", "init")
+        (repo / ".prawduct").mkdir(exist_ok=True)
+        (repo / "src/app.py").write_text("x = 2  # reviewed while dirty\n")
+        reviewed_tree = evidence.capture_tree(repo)["tree"]
+        prior_id = _seed_prior_review_with_blocker(
+            repo, head, head_tree=reviewed_tree, head_commit=None
+        )
+        # The builder fixes the blocker WITHOUT committing — the case the issue
+        # describes, and the case `review-cycle.md` explicitly permits.
+        (repo / "src/app.py").write_text("x = 2  # reviewed while dirty, then fixed\n")
+        return head, reviewed_tree, prior_id
+
+    def test_uncommitted_fix_after_dirty_tree_review_runs_the_interval_forward(
+        self, tmp_path
+    ):
+        """A prior anchor that is AHEAD of HEAD is not a committed delta.
+
+        `committed_differs` asked only whether the captured committed tree
+        differs from the prior fact's ``head_tree``. That is true in two
+        opposite situations: a commit landed after the prior review (anchor
+        BEHIND — the case the code was written for), and the prior review
+        vouched for a dirty tree and nothing has been committed since (anchor
+        AHEAD — this case, and the normal shape of a `chunk`-mode review).
+
+        Taking the committed-HEAD branch here inverts the edge: base becomes the
+        dirty snapshot that is ahead, head becomes the committed tree that is
+        behind, and the recorded delta describes the fix being *deleted*. The
+        load-bearing consequence is that the resolution facts this pass writes
+        are anchored to a tree in which the fixes do not exist — and a
+        resolution lifts a BLOCKING finding.
+        """
+        repo = tmp_path / "r"
+        _init_repo(repo)
+        head, reviewed_tree, prior_id = self._seed_dirty_tree_review_with_blocker(repo)
+
+        result = _run_begin(repo, "--mode", "verify-resolutions")
+        assert result.returncode == 0, f"stderr={result.stderr!r}"
+        manifest = json.loads((repo / PARTIALS_REL / "manifest.json").read_text())
+
+        committed_tree = _git(repo, "rev-parse", "HEAD^{tree}").stdout.strip()
+        working_tree = evidence.capture_tree(repo)["tree"]
+        assert committed_tree != reviewed_tree, (
+            "fixture precondition: the prior anchor must be AHEAD of committed "
+            "HEAD, which is what makes the two situations indistinguishable"
+        )
+
+        # Nothing was committed, so this pass vouches for the WORKING tree.
+        assert manifest["head_commit"] is None
+        assert manifest["head_tree"] == working_tree
+        assert manifest["head_tree"] != committed_tree
+        assert manifest["base_tree"] == reviewed_tree
+
+        # The edge runs forward: base is the tree the prior review saw, head is
+        # the tree carrying the fix. Diffing it must show the fix, not its
+        # removal.
+        diff = _git(
+            repo, "diff", manifest["base_tree"], manifest["head_tree"]
+        ).stdout
+        assert "then fixed" in diff, (
+            "the interval must show the fix ARRIVING; a swapped edge shows it "
+            "being deleted"
+        )
+        assert manifest["commit_reviewed"] == head
+        assert prior_id  # the fact this pass chains from
+
+    def test_dirty_prior_with_a_landed_commit_still_anchors_committed_head(
+        self, tmp_path
+    ):
+        """A commit that CHANGES content moves the anchor — dirty prior or not.
+
+        `anchor_is_ahead` has two conjuncts, and the second — HEAD still
+        standing where the prior review dispatched — is what stops the first
+        from over-reaching. Against a dirty prior fact (`head_commit: null`) the
+        first conjunct is already true on its own, so dropping the second would
+        force the working-tree anchor even after a real fix landed. A stray
+        judgeable uncommitted file would then leave the PR gate `uncovered`:
+        CRT-7H2W re-opened one prior-fact-shape over, where
+        `test_committed_fix_with_dirty_wip_anchors_committed_head` cannot see it
+        because its prior fact is clean.
+
+        This is the (dirty prior × content-changing landed commit) cell of the
+        four-way matrix; the other three are covered above.
+        """
+        repo = tmp_path / "r"
+        _init_repo(repo)
+        head, reviewed_tree, _prior_id = self._seed_dirty_tree_review_with_blocker(repo)
+
+        # The fix LANDS as a commit, carrying content the prior review never saw.
+        fix = _commit_file(
+            repo,
+            "src/app.py",
+            "x = 2  # reviewed while dirty, then fixed\n",
+            "fix blocker",
+        )
+        committed_tree = _git(repo, "rev-parse", "HEAD^{tree}").stdout.strip()
+        assert fix != head, "fixture precondition: HEAD must have moved"
+        assert committed_tree != reviewed_tree, (
+            "fixture precondition: the landed commit must CHANGE content — a "
+            "verbatim vouching commit is the other case, covered separately"
+        )
+        (repo / "src/extra.py").write_text("y = 3\n")  # judgeable uncommitted WIP
+
+        result = _run_begin(repo, "--mode", "verify-resolutions")
+        assert result.returncode == 0, f"stderr={result.stderr!r}"
+        manifest = json.loads((repo / PARTIALS_REL / "manifest.json").read_text())
+
+        # A commit landed, so this pass anchors the PR-gate target, and the WIP
+        # is noted-and-excluded rather than silently swept in.
+        assert manifest["head_commit"] == fix
+        assert manifest["head_tree"] == committed_tree
+        assert manifest["base_tree"] == reviewed_tree
+        assert "anchored to committed HEAD" in result.stderr
+
     def _seed_clean_dirty_tree_review(self, repo: Path) -> str:
         """A CLEAN review of a DIRTY working tree — the state
         `review-cycle.md` says vouches for the commit that materializes it.

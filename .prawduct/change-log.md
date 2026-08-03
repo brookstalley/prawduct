@@ -3,6 +3,58 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-08-03: the review interval that ran backwards whenever the prior review saw a dirty tree
+
+<!-- prawduct: type=fix | scope=silent-gates | chunks=01 -->
+
+`verify-resolutions` decided whether a commit had landed since the prior review with a single test:
+does the committed tree differ from the tree that review saw? That question has **two** answers that
+look identical and mean opposite things. A commit landed afterwards, so the anchor is *behind* — the
+case the branch was written for. Or the prior review vouched for a **dirty** tree and nothing has
+been committed since, so the anchor is *ahead*. The second is not an edge case: it is the ordinary
+shape of a `chunk`-mode review, whose fact records `head_commit: null` and a `head_tree` matching no
+commit. **135 of the 401 review facts in this clone's store are that shape.**
+
+Read as a committed delta, the edge inverts — base becomes the dirty snapshot that is ahead, head the
+committed tree that is behind. Three consequences, ascending: `files_changed` describes the chunk
+being *deleted* rather than its content; `record_lint` grades pre-fix committed content and reports
+findings already discharged on disk; and — the load-bearing one — **the resolution facts are
+persisted against a tree in which none of the fixes exist.** A resolution lifts a BLOCKING finding,
+so this was unsound, not merely noisy. Observed on `fix/drift-burndown` 2026-08-02: a manifest
+interval of `base 927fe38 -> head 505a04a5`, diffing to −198 lines, while stderr asserted that a
+committed delta existed.
+
+The discriminator was already in the prior fact and simply not read: a fact carrying no `head_commit`
+vouched for a working tree, and if HEAD still stands where that review dispatched, nothing has been
+committed since. The fix is that conjunction. It changes behaviour **only** when the working tree is
+dirty — on a clean tree both branches compute the same `head_tree` and `head_commit` — so it repairs
+the inversion without perturbing the clean-tree path, and no fact-schema field is added, removed or
+retyped.
+
+- **The field is spelled differently in the two places it lives.** The issue prescribed comparing
+  against the prior fact's `commit_reviewed`; the *fact* body spells that value `dispatch_commit`
+  (`manifest` uses `commit_reviewed`). Following the prescription literally would have read `None`
+  off every fact, made the conjunct vacuously false, and left the defect in place while looking
+  fixed. Read the schema, not the prose about it.
+- **The Critic caught the guard closing this finding being itself untested.** `anchor_is_ahead` has
+  two conjuncts; deleting the second left the entire suite green, because every existing dirty-prior
+  fixture either never moves HEAD or commits the reviewed tree *verbatim* — so both sides of the
+  conjunct agreed in every covered case. The absent cell was **dirty prior × content-changing landed
+  commit**, which is exactly what the conjunct exists for: without it that case anchors at the
+  working tree, and a stray judgeable uncommitted file then leaves the PR gate `uncovered` — CRT-7H2W
+  re-opened one prior-fact-shape over, where the clean-prior test guarding it cannot see. Pinned by
+  `test_dirty_prior_with_a_landed_commit_still_anchors_committed_head`, red-verified by removing the
+  conjunct and confirming that test and **no other** goes red.
+- **The mirror case is preserved deliberately.** The existing vouching-commit test — a commit that
+  changes no content is not a change of intent — still passes through tree equality, which
+  short-circuits before the new conjunction is reached.
+- **The wrongly-anchored facts already in the ledger stay there.** Facts are immutable and
+  append-only; rewriting history to make the ledger look correct would break the property that makes
+  it evidence. The affected review has since been superseded by a clean cumulative and a 0/0/0 verify
+  on the same branch.
+
+Closes #554.
+
 ## 2026-08-02: two doctor surfaces that answered confidently for a state the repo was not in
 
 <!-- prawduct: type=fix | scope=drift-burndown | chunks=04 | release=v3.2.3 | status=shipped -->
