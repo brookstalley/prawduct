@@ -3,6 +3,75 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-08-03: a Direction heading is not a norm registry, and its absence is not health
+
+<!-- prawduct: type=fix | scope=silent-gates | chunks=02 -->
+
+Two defects in `norm_probes.py`, pulling in opposite directions, both rooted in treating a
+`## Direction` **heading** as proof that a norm registry exists. Field-reported from an onboarding of
+an unrelated product; the reporting session walked into both in sequence, the second *while fixing
+the first*.
+
+**A heading with nothing under it certified as a ratified registry.** `_has_direction_heading`
+matched heading text alone, so `probe_norm_registry_unratified`'s first arm was satisfied by the
+heading's mere presence. The reporting repo's only `## Direction` section was a prioritized list of
+undone work — a roadmap, zero norm entries — and it satisfied the arm completely, which would have
+left doctor check #10 reporting findings against that roadmap indefinitely. This is the same shape as
+an unfilled template counting as a present artifact: **a section empty of the thing being checked
+does not fail the check, it passes it**, because presence is what was measured. The arm now keys on a
+`Why:`-bearing entry — `docs/norms.md` § Anatomy makes Why *required*, while Status is optional and a
+bold Statement is not mechanically distinguishable from any bold bullet.
+
+**The absence of a heading silenced the time-domain audit permanently.** `_any_direction` gated
+`probe_norm_health_sweep_overdue` and never re-opened. A product that homes its norms entirely in the
+preferences Enforcement table — a legitimate homing under `docs/norms.md` § Where Norms Live, where
+that table *is* the norm index — got no norm-health reminder at all, ever, with no signal that it was
+missing. The guard now asks whether norms exist under **either** homing. This is the learnings rule
+`advice fails soft is not advice fails silent` arriving in a new organ: a probe returning `[]`
+because its guard short-circuited is not degrading to a note, it is manufacturing the false success
+it exists to prevent. The field session's own "all probes return `[]`" check would have reported that
+short-circuit as health — in the same commit that created the norm those probes exist to audit.
+
+**Scoped deliberately to one guard.** The first draft of the plan also promised to "close
+`probe_dead_why` and `probe_stalled_transition` on the same predicate." That is incoherent — a
+predicate answers *whether* norms exist; those two are starved for *lines to scan*, which no
+predicate supplies. The issue's own Scope section settles it: the janitor sweep already covers table
+rows, so the coverage exists and only the *reminder* was gated. Corrected in the plan before building
+rather than discovered after.
+
+- **The Critic caught this over-firing on every new product.** `plugin/templates/project-preferences.md`
+  shipped the norm-index table with two *illustrative* rows whose `Audit home`/`Why` cells were
+  non-empty placeholders (`janitor` / `*(the constraint's rationale)*`), and `init_product` copies
+  that file verbatim. So the widened guard read a brand-new repo as having a norm registry and fired
+  `norm-health-sweep-overdue` on its first session sync — inverting this chunk's own acceptance
+  criterion. **Both of my over-fire fixtures were hand-written and neither resembled the shipped
+  file, so the suite stayed green.** The template now ships the table **empty**, with the two row
+  shapes described in prose, and a test reads the real template through `core.TEMPLATES_DIR` so
+  template and predicate cannot drift apart again. Fixing this in the template rather than by
+  teaching the predicate to sniff "placeholder-shaped" text was deliberate: that would bake a
+  formatting convention into a governance predicate, and a real norm's why may legitimately be
+  italic.
+- **The advisory's `evidence` string is an identity key and was left verbatim.**
+  `advisory_store.compute_id` hashes the evidence list, so editing the wording mints a new advisory
+  id and resurrects the advisory in every repo that had dismissed it — and a widened trigger does not
+  revoke a dismissal. It now under-describes its own trigger, and `/prawduct:advisory show` renders
+  it verbatim, so a table-homed repo is pointed at `## Direction` sections it lacks. Accepted: the
+  id-free `trigger_summary` already reads "while norms exist", which is homing-agnostic and correct,
+  so the stale text is in the secondary line rather than the headline. Correcting it means bumping
+  `PROBE_VERSION`, which is module-level and shared by all five norm probes — superseding four
+  unrelated advisories to fix one line of prose.
+- **`Why:` at line start is now the global discriminator for "a registry exists"**, not just
+  per-entry decay detection, so a product writing `**Why:**` would lose the ratification signal and
+  the sweep reminder as well. Behaviour is unchanged and consistent with `dead-why` and
+  `stalled-transition`, which share the regex; a near-miss test now pins the boundary so a deliberate
+  widening turns it red rather than passing unnoticed.
+- **The cascade into `doctor/SKILL.md` was required, not scope creep.** Its step 5 said a dateless
+  "no norms to ratify" outcome is fine because "with no `## Direction` sections there is no sweep to
+  seed" — a rationale this change falsifies. Doctor check #10 already recognised both homings, so the
+  widening brings the probe into agreement with the skill rather than diverging from it.
+
+Closes #567.
+
 ## 2026-08-03: the review interval that ran backwards whenever the prior review saw a dirty tree
 
 <!-- prawduct: type=fix | scope=silent-gates | chunks=01 -->

@@ -58,8 +58,9 @@ Design note — per-probe lock-in (fires / clears / reader-action)
 
 - **norm-registry-unratified** — *Fires:* one-shot post-upgrade — a strategy-class
   artifact exists (:data:`STRATEGY_CLASS_ARTIFACTS`) AND the registry is
-  unratified on either arm: (a) no ``## Direction`` section exists in ANY
-  ``.prawduct/artifacts/*.md``, or (b) the preferences Enforcement index table
+  unratified on either arm: (a) no ``## Direction`` **entry** exists in ANY
+  ``.prawduct/artifacts/*.md`` (the heading alone is not one), or (b) the
+  preferences Enforcement index table
   lacks the norm columns (:data:`_NORM_INDEX_COLUMNS` — ratification began but
   the index cannot carry it). Both arms are gated on a strategy-class artifact
   existing (``docs/norms.md`` § Adoption scopes the advisory so): a product with
@@ -72,7 +73,8 @@ Design note — per-probe lock-in (fires / clears / reader-action)
   flow. The evidence string is arm-independent so the advisory id stays stable
   as the firing arm changes; the live arm(s) are named in ``trigger_summary``.
 
-- **norm-health-sweep-overdue** — *Fires:* ``## Direction`` sections exist AND
+- **norm-health-sweep-overdue** — *Fires:* norms exist under either homing
+  (``## Direction`` entries or populated preferences Enforcement rows) AND
   neither the janitor Norm Health sweep stamp :data:`SWEEP_STAMP` nor the
   ratification date (:data:`RATIFIED_FACT`'s leading date) falls within
   :data:`SWEEP_WINDOW_DAYS`. The stamp is a committed top-level project-state
@@ -233,8 +235,13 @@ def _leading_date(value) -> date | None:
 
     For the ``norm_registry_ratified`` fact, whose contract leads with the
     ratification date but often carries a descriptive suffix. A dateless answer
-    ("none — no norms to ratify") returns ``None`` — and that answer means no
-    ``## Direction`` sections exist, so its caller never reaches here anyway."""
+    ("none — no norms to ratify") returns ``None``, which simply contributes no
+    baseline date — the sweep probe then falls back to :data:`SWEEP_STAMP`
+    alone. (An earlier version of this note claimed such an answer meant no
+    ``## Direction`` sections existed and that the caller never reached here.
+    It does reach here: the answer is a recorded human judgement, not a
+    structural fact, and since the sweep guard now also admits norms homed in
+    the preferences Enforcement index, the two can disagree outright.)"""
     if not isinstance(value, str):
         return None
     match = _LEADING_DATE_RE.match(value.strip())
@@ -316,18 +323,32 @@ def _direction_lines(text: str) -> list[str]:
     return out
 
 
-def _has_direction_heading(text: str) -> bool:
-    """True if the text carries a real ``## Direction`` heading (not prose)."""
-    for line in text.splitlines():
-        heading = _HEADING_RE.match(line)
-        if heading and heading.group(2).strip() == "Direction":
-            return True
-    return False
+def _has_direction_entry(text: str) -> bool:
+    """True if the text carries a real ``## Direction`` **entry**, not just the heading.
+
+    The heading alone is not evidence of a norm registry. ``docs/norms.md``
+    § Anatomy of a Norm makes ``Why`` **required** — "a norm captured without
+    its why is unenforceable at the edges and immortal at the center" — while
+    ``Status`` is optional and the bold Statement is not mechanically
+    distinguishable from any other bold bullet. So a ``Why:`` line is the
+    minimum that separates a norm entry from a roadmap item, and it is what
+    this keys on.
+
+    Matching on the heading alone meant a section **empty of the thing being
+    checked did not fail the check, it passed it silently** — the same shape as
+    an unfilled template counting as a present artifact. Observed in the wild:
+    a repo whose only ``## Direction`` section was a prioritized list of undone
+    work certified as a ratified registry.
+
+    :func:`_direction_lines` already yields exactly the right lines — heading
+    lines excluded, soft-wraps joined — so this needs no parsing of its own.
+    """
+    return any(_WHY_RE.match(line) for line in _direction_lines(text))
 
 
-def _any_direction(codebase: Codebase) -> bool:
-    """True if ANY generated artifact carries a ``## Direction`` heading."""
-    return any(_has_direction_heading(_read_text(p)) for p in _artifact_paths(codebase))
+def _any_direction_entry(codebase: Codebase) -> bool:
+    """True if ANY generated artifact carries a ``## Direction`` norm entry."""
+    return any(_has_direction_entry(_read_text(p)) for p in _artifact_paths(codebase))
 
 
 def _extract_ids(line: str) -> list[str]:
@@ -357,6 +378,64 @@ def _norm_index_lacks_columns(codebase: Codebase) -> bool:
             continue
         return not all(col in cells for col in _NORM_INDEX_COLUMNS)
     return False
+
+
+def _has_enforcement_norm_rows(codebase: Codebase) -> bool:
+    """True when the preferences Enforcement index table carries a populated norm row.
+
+    ``docs/norms.md`` § Where Norms Live makes that table the product's norm
+    **index** — "each norm has a row assigning its enforcement mechanism and its
+    audit home" — so a populated row is a norm homed there exactly as a
+    ``## Direction`` entry is one homed in an artifact. A product may home its
+    norms entirely this way and carry no Direction section at all.
+
+    Requires the norm columns AND a data row whose cells for them are non-empty:
+    columns with nothing under them are the *shape* of a registry, not a
+    registry, and treating the header as sufficient would nag every repo whose
+    template ships it. The header separator row is skipped, and a non-table line
+    ends the table so a later table gets its own header scan.
+    """
+    text = _read_text(codebase.root / ".prawduct" / "artifacts" / "project-preferences.md")
+    if not text:
+        return False
+    cols: list[int] | None = None
+    for line in text.splitlines():
+        stripped = line.strip()
+        if not stripped.startswith("|"):
+            cols = None
+            continue
+        cells = [c.strip() for c in stripped.strip("|").split("|")]
+        if cols is None:
+            if (
+                cells
+                and cells[0].startswith("Preference")
+                and all(col in cells for col in _NORM_INDEX_COLUMNS)
+            ):
+                cols = [cells.index(col) for col in _NORM_INDEX_COLUMNS]
+            continue
+        if all(c and set(c) <= {"-", ":"} for c in cells):
+            continue  # the header separator row
+        if max(cols) < len(cells) and all(cells[i] for i in cols):
+            return True
+    return False
+
+
+def _norms_exist(codebase: Codebase) -> bool:
+    """True when the product homes norms under EITHER homing.
+
+    ``docs/norms.md`` § Where Norms Live gives norms two homes — ``## Direction``
+    entries in strategy-class artifacts, and rows in the preferences Enforcement
+    index. Asking only about the first is what made the time-domain audit
+    unreachable for a repo that legitimately uses only the second: not a soft
+    degradation but permanent silence, with no signal that the probe was inert.
+    "Advice fails soft" is not "advice fails silent".
+
+    Deliberately NOT used by :func:`probe_norm_registry_unratified`'s first arm,
+    which asks a different question. That arm asks whether *architectural
+    direction* has been ratified, and its answer lives in Direction sections by
+    definition; this asks whether there are *any* norms to audit.
+    """
+    return _any_direction_entry(codebase) or _has_enforcement_norm_rows(codebase)
 
 
 # =============================================================================
@@ -504,8 +583,9 @@ def probe_stalled_transition(state: ProjectState, codebase: Codebase):
 def probe_norm_registry_unratified(state: ProjectState, codebase: Codebase):
     """Fire once post-upgrade: strategy-class artifacts exist but the registry is unratified.
 
-    Two trigger arms, one stable advisory: (a) no ``## Direction`` section exists
-    in ANY artifact — nothing is ratified; (b) the preferences Enforcement index
+    Two trigger arms, one stable advisory: (a) no ``## Direction`` **entry**
+    exists in ANY artifact — a heading with nothing normative under it is not a
+    registry (:func:`_has_direction_entry`); (b) the preferences Enforcement index
     table lacks the norm columns (:func:`_norm_index_lacks_columns`) —
     ratification began but the index cannot carry it. Both arms are gated on a
     strategy-class artifact existing. Suppressed when the shared-state
@@ -518,7 +598,7 @@ def probe_norm_registry_unratified(state: ProjectState, codebase: Codebase):
     if not any(p.name in STRATEGY_CLASS_ARTIFACTS for p in paths):
         return []
     arms: list[str] = []
-    if not any(_has_direction_heading(_read_text(p)) for p in paths):
+    if not any(_has_direction_entry(_read_text(p)) for p in paths):
         arms.append("no `## Direction` section is ratified in any artifact")
     if _norm_index_lacks_columns(codebase):
         arms.append("the preferences Enforcement table lacks the norm columns (Audit home / Why)")
@@ -545,15 +625,19 @@ def probe_norm_health_sweep_overdue(state: ProjectState, codebase: Codebase):
     """Fire when norms exist but the janitor Norm Health sweep is overdue / never run.
 
     Reads the committed :data:`SWEEP_STAMP` (the janitor theme writes it; this
-    probe is read-only). Guarded on ``## Direction`` sections existing, so an
-    unratified repo never sees it. The effective "last full engagement" is the
+    probe is read-only). Guarded on norms existing under **either** homing
+    (:func:`_norms_exist`), so a repo with no norms never sees it while a repo
+    that homes them only in the preferences Enforcement index still does. The
+    earlier guard asked only about ``## Direction`` headings, which gave a
+    table-homed product no time-domain norm audit at all, ever, with no signal
+    that the probe was inert. The effective "last full engagement" is the
     NEWER of the sweep stamp and the ratification date (:data:`RATIFIED_FACT`):
     ratifying the registry is itself a deep pass over every norm, so a
     freshly-ratified repo is not overdue for a sweep until the window elapses —
     otherwise ratification would trip this nudge the same day it clears
     ``norm-registry-unratified``. Absent-or-stale on both fires; either being
     fresh suppresses. Points at ``/prawduct:janitor`` (Norm Health)."""
-    if not _any_direction(codebase):
+    if not _norms_exist(codebase):
         return []
     engaged = [
         d
@@ -567,6 +651,15 @@ def probe_norm_health_sweep_overdue(state: ProjectState, codebase: Codebase):
     return [
         AdvisoryCandidate(
             type="norm-health-sweep-overdue",
+            # This string is an IDENTITY KEY, not prose: `advisory_store.compute_id`
+            # hashes the evidence list, so editing it mints a new id and every repo
+            # that dismissed this advisory sees it return. It now under-describes the
+            # trigger — the guard also fires on norms homed in the preferences
+            # Enforcement index, not only on `## Direction` sections — and is left
+            # verbatim anyway, because a dismissal means "I don't want this nudge" and
+            # a widened trigger does not revoke that. Say it accurately in
+            # `trigger_summary` (which is id-free) and, when the wording must change,
+            # bump PROBE_VERSION so the supersession is deliberate.
             evidence=("norms exist (`## Direction` sections) but the janitor Norm Health sweep is overdue or never run",),
             trigger_summary=(
                 f"Norm Health sweep overdue (>{SWEEP_WINDOW_DAYS}d or never run) while norms exist — "

@@ -27,9 +27,9 @@ governed_by:
       - "`backlog_service_repo` selects which backlog store is authoritative; once set, `.prawduct/backlog.md` is frozen history → conforms as *process*: all four items were read and triaged through `/prawduct:backlog` against `brookstalley/prawduct`, and the frozen markdown was never consulted"
   - artifact: nonfunctional-requirements
     dispositions:
-      - "proportionality ratchets both ways — a control names the yield it expects **and emits that yield observably**, so there is something to measure it against later → **conforms, and it is the second reason Chunk 02 matters.** A probe silenced by a short-circuited guard emits no yield at all, so it can never be retired on evidence, only defended on principle — the exact state this norm forbids. Chunk 02 restores three probes to a state where their yield is observable"
+      - "proportionality ratchets both ways — a control names the yield it expects **and emits that yield observably**, so there is something to measure it against later → **conforms, and it is the second reason Chunk 02 matters.** A probe silenced by a short-circuited guard emits no yield at all, so it can never be retired on evidence, only defended on principle — the exact state this norm forbids. Chunk 02 restores the sweep reminder to a state where its yield is observable — and with it the janitor sweep that covers what the other two probes read"
       - "review wall-clock is a P0 constraint: cost = unit-cost × run-count, and both factors are levers → **conforms, and Chunk 01 reduces run-count.** The inverted interval makes `record_lint` report findings already discharged on disk, which costs a re-review round per occurrence"
-      - "no probe or gate on the hot path may block or noticeably delay session start → **binds Chunk 02 and constrains the fix.** The three probes run on the advisory hot path; the widened guard must not add a filesystem walk beyond the artifact reads already performed. `_artifact_paths` is already read once per probe pass — the fix reuses it, and the Enforcement-table read is one additional file at most"
+      - "no probe or gate on the hot path may block or noticeably delay session start → **binds Chunk 02 and constrains the fix.** The norm probes run on the advisory hot path; the widened guard must not add a filesystem walk beyond the artifact reads already performed. `_artifact_paths` is already read once per probe pass — the fix reuses it, and the Enforcement-table read is one additional file at most"
       - "state-file growth past its size threshold is surfaced as an advisory warning, never a hard block → inapplicable because no chunk changes a state file's size posture"
 last_validated: null
 ---
@@ -109,7 +109,7 @@ Beyond tests, two of the three chunks need the framework exercised rather than u
   working-tree anchor and a forward delta.
 - **Chunk 02** — exercise both defects against scratch repos: one whose only `## Direction`
   section is a roadmap (arm (a) must now fire), and one that homes norms solely in the
-  Enforcement table (the three probes must now be reachable).
+  Enforcement table (the sweep reminder must now be reachable).
 
 **Invoke the worktree, not the PATH binary.** `prawduct-hook` on `$PATH` is the *installed*
 plugin cache, not this checkout — every live verification runs `python3 plugin/bin/prawduct-hook`
@@ -205,11 +205,11 @@ user can override and ask for a corrective fact to be appended instead]`
     the restored reminder sends you to.
   - `tests/test_norm_probes.py` — red-verified cases for both defects: a roadmap-only Direction
     section (arm (a) must fire), a Why-bearing entry (arm (a) must stay quiet), a repo with zero
-    Direction headings but populated Enforcement norm rows (all three probes reachable), and a
-    repo with neither homing (all three legitimately quiet — the fix must not turn a genuine
+    Direction headings but populated Enforcement norm rows (the sweep reminder reachable), and a
+    repo with neither homing (legitimately quiet — the fix must not turn a genuine
     absence into a nag).
 - **Tests:** unit — the homing matrix (Direction entries / Enforcement rows / both / neither)
-  × the three probes, plus the arm-(a) entry-vs-heading pair. The "neither" row is the one that
+  × the sweep reminder, plus the arm-(a) entry-vs-heading pair. The "neither" row is the one that
   keeps this from becoming an over-fire, and it is the case a careless fix breaks.
 - **Acceptance criteria:** `pytest -q` passes; the two scratch-repo exercises in § Verification
   Strategy behave as described; a repo with no norms under either homing still sees nothing.

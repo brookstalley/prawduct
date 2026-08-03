@@ -29,7 +29,7 @@ from lib.advisory_store import (
     make_codebase,
     run_all_probes,
 )
-from lib import norm_probes as np
+from lib import core, norm_probes as np
 
 
 @pytest.fixture(autouse=True)
@@ -99,6 +99,40 @@ _PREFS_WITH_NORM_COLUMNS = (
     "|---|---|---|---|---|\n"
     "| naming | Critic | reviewer reads the diff | janitor | consistency |\n"
 )
+
+# The norm columns exist but no norm has been entered under them: the SHAPE of a
+# registry rather than a registry. Distinguishing this from the populated table
+# is what keeps "norms are homed here" from meaning "someone added two columns".
+# Two shapes, because they exercise different code: a header with no data rows
+# at all, and — the discriminating one — data rows whose norm cells are BLANK.
+# Only the second reaches the populated-cell check; a fixture with no rows exits
+# the loop before it and passes whether that check exists or not.
+_PREFS_NORM_COLUMNS_NO_ROWS = (
+    "# Project Preferences\n\n## Enforcement\n\n"
+    "| Preference / norm | Mechanism | Enforcement artifact | Audit home | Why |\n"
+    "|---|---|---|---|---|\n"
+)
+_PREFS_NORM_COLUMNS_EMPTY_CELLS = (
+    "# Project Preferences\n\n## Enforcement\n\n"
+    "| Preference / norm | Mechanism | Enforcement artifact | Audit home | Why |\n"
+    "|---|---|---|---|---|\n"
+    "| naming | Critic | reviewer reads the diff |  |  |\n"
+    "| imports | Test | `tests/preferences/test_imports.py` |  |  |\n"
+)
+
+
+def _roadmap_direction_artifact() -> str:
+    """A `## Direction` section holding a ROADMAP — bold bullets, no `Why:`.
+
+    The exact shape the field report hit: a prioritized list of undone work
+    under the heading the norm machinery keys on. `docs/norms.md` § Anatomy
+    makes `Why` required, so none of these bullets is a norm entry.
+    """
+    return (
+        "# Architecture\n\nDescriptive prose.\n\n## Direction\n\n"
+        "- **Ship the importer.** Targeted for Q3.\n"
+        "- **Then the exporter.** Q4, depends on the importer.\n"
+    )
 
 
 # =============================================================================
@@ -434,6 +468,56 @@ class TestNormRegistryUnratifiedProbe:
         state = ProjectState({np.RATIFIED_FACT: "2026-07-16"})
         assert np.probe_norm_registry_unratified(state, _cb(tmp_path)) == []
 
+    # --- first arm keys on an ENTRY, not on the heading ----------------------
+
+    def test_fires_when_direction_heading_carries_no_entries(self, tmp_path):
+        """A heading with nothing normative under it is not a ratified registry.
+
+        Presence of the heading was the whole test, so a section empty of the
+        thing being checked did not fail the check — it passed it silently. The
+        field case: the repo's only `## Direction` section was a prioritized
+        list of undone work, which satisfied the arm completely and would have
+        left doctor check #10 reporting findings against a roadmap
+        indefinitely.
+        """
+        _write_artifact(tmp_path, "architecture.md", _roadmap_direction_artifact())
+        out = np.probe_norm_registry_unratified(ProjectState({}), _cb(tmp_path))
+        assert len(out) == 1
+        assert "no `## Direction` section is ratified" in out[0].trigger_summary
+
+    def test_bold_why_marker_is_not_recognised_as_an_entry(self, tmp_path):
+        """Pins the field-marker boundary: `**Why:**` does not count.
+
+        `_WHY_RE` anchors on a bare `Why:` at line start, matching the canonical
+        capitalization in `docs/norms.md` § Anatomy. That was always the rule
+        for `dead-why` and `stalled-transition`; this chunk makes the same
+        marker decide whether a registry exists **at all**, so a product writing
+        `**Why:**` now loses the ratification signal and the sweep reminder as
+        well as decay detection.
+
+        Asserting current behaviour rather than changing it: widening the regex
+        would move `dead-why` and `stalled-transition` too, which is beyond this
+        chunk. Filed for a decision — this test is here so the boundary is
+        visible and a deliberate widening turns it red rather than passing
+        unnoticed.
+        """
+        _write_artifact(
+            tmp_path,
+            "architecture.md",
+            _direction_artifact("- **X.**\n  **Why:** bolded field marker.\n"),
+        )
+        out = np.probe_norm_registry_unratified(ProjectState({}), _cb(tmp_path))
+        assert len(out) == 1, "a bolded Why: reads as no entry — the known boundary"
+
+    def test_silent_when_one_artifact_has_a_real_entry_among_roadmaps(self, tmp_path):
+        # The arm asks whether ANY artifact carries a norm — one real entry
+        # elsewhere answers it, so a roadmap section is not itself disqualifying.
+        _write_artifact(tmp_path, "architecture.md", _roadmap_direction_artifact())
+        _write_artifact(
+            tmp_path, "security-model.md", _direction_artifact("- **X.**\n  Why: because.\n")
+        )
+        assert np.probe_norm_registry_unratified(ProjectState({}), _cb(tmp_path)) == []
+
     def test_advisory_id_stable_across_arms(self, tmp_path):
         # Arm 1 (no Direction anywhere) and arm 2 (Direction present, columns
         # missing) must share one advisory id — the evidence is arm-independent.
@@ -504,6 +588,94 @@ class TestNormHealthSweepOverdueProbe:
             }
         )
         assert np.probe_norm_health_sweep_overdue(state, _cb(tmp_path)) == []
+
+    # --- the guard asks whether norms exist under EITHER homing --------------
+
+    def test_fires_when_norms_homed_only_in_the_enforcement_table(self, tmp_path):
+        """No Direction heading anywhere, norms in the preferences table.
+
+        A legitimate homing under `docs/norms.md` § Where Norms Live — that
+        table IS the product's norm index. Gating the reminder on a Direction
+        heading gave such a repo no time-domain norm audit at all, ever, with
+        no signal that it was missing. The janitor sweep already covers table
+        rows, so the coverage existed; only the reminder was gated.
+        """
+        _write_artifact(tmp_path, "architecture.md", "# Architecture\n\nProse, no Direction.\n")
+        _write_artifact(tmp_path, "project-preferences.md", _PREFS_WITH_NORM_COLUMNS)
+        out = np.probe_norm_health_sweep_overdue(ProjectState({}), _cb(tmp_path))
+        assert len(out) == 1
+        assert out[0].type == "norm-health-sweep-overdue"
+        assert out[0].recommended_action == "/prawduct:janitor"
+
+    def test_fires_for_table_homed_norms_after_a_roadmap_rename(self, tmp_path):
+        """The field sequence: fixing defect 1 must not silence this probe.
+
+        Renaming the misleading roadmap section left the repo with zero
+        Direction headings — which, under the old guard, would have silenced
+        this probe permanently *in the same commit that created the norm it
+        exists to audit*, while the session's own "all probes return []" check
+        reported the short-circuit as health.
+        """
+        _write_artifact(tmp_path, "architecture.md", "# Architecture\n\nRoadmap renamed away.\n")
+        _write_artifact(tmp_path, "project-preferences.md", _PREFS_WITH_NORM_COLUMNS)
+        state = ProjectState({np.SWEEP_STAMP: _days_ago(np.SWEEP_WINDOW_DAYS + 5)})
+        assert len(np.probe_norm_health_sweep_overdue(state, _cb(tmp_path))) == 1
+
+    def test_silent_when_table_has_norm_columns_but_no_rows(self, tmp_path):
+        # Columns are the SHAPE of a registry, not a registry. Without this the
+        # widened guard would nag every repo whose template carries the header.
+        _write_artifact(tmp_path, "architecture.md", "# Architecture\n\nProse.\n")
+        _write_artifact(tmp_path, "project-preferences.md", _PREFS_NORM_COLUMNS_NO_ROWS)
+        assert np.probe_norm_health_sweep_overdue(ProjectState({}), _cb(tmp_path)) == []
+
+    def test_silent_when_norm_rows_exist_but_their_norm_cells_are_blank(self, tmp_path):
+        """Rows under the norm columns, with nothing in them.
+
+        This is the case that actually reaches the populated-cell check — the
+        header-only fixture above exits the row loop before it, so it passes
+        whether that check exists or not. A pre-norm table that gained the two
+        columns but was never filled in is a real migration state, and reading
+        it as "norms are homed here" would nag a repo that has ratified nothing.
+        """
+        _write_artifact(tmp_path, "architecture.md", "# Architecture\n\nProse.\n")
+        _write_artifact(tmp_path, "project-preferences.md", _PREFS_NORM_COLUMNS_EMPTY_CELLS)
+        assert np.probe_norm_health_sweep_overdue(ProjectState({}), _cb(tmp_path)) == []
+
+    def test_silent_when_neither_homing_carries_norms(self, tmp_path):
+        # The over-fire guard: a pre-norm table plus a roadmap-only Direction
+        # section is a repo with NO norms, and a genuine absence must stay quiet.
+        _write_artifact(tmp_path, "architecture.md", _roadmap_direction_artifact())
+        _write_artifact(tmp_path, "project-preferences.md", _PREFS_WITHOUT_NORM_COLUMNS)
+        assert np.probe_norm_health_sweep_overdue(ProjectState({}), _cb(tmp_path)) == []
+
+    def test_silent_against_the_shipped_preferences_template(self, tmp_path):
+        """A freshly-onboarded repo has no norms — read the REAL template to say so.
+
+        `init_product` copies `templates/project-preferences.md` verbatim (only
+        `{{PRODUCT_NAME}}`/`{{PRAWDUCT_VERSION}}` are substituted), and the
+        template's state file carries neither a sweep stamp nor a ratification
+        date. So if the shipped norm-index table contains any row this predicate
+        reads as populated, `norm-health-sweep-overdue` fires on the **first
+        session sync of every new product** — nagging a repo that has ratified
+        nothing, which is the exact over-fire the widened guard was written to
+        avoid.
+
+        This reads the template through :data:`core.TEMPLATES_DIR` rather than a
+        hand-written fixture on purpose: the two hand-written over-fire fixtures
+        above resemble what I *expected* the template to look like, and both
+        stayed green while the shipped file said otherwise. Template and
+        predicate can only be kept honest by testing them against each other.
+        """
+        template = (core.TEMPLATES_DIR / "project-preferences.md").read_text(encoding="utf-8")
+        _write_artifact(tmp_path, "project-preferences.md", template)
+        _write_artifact(tmp_path, "architecture.md", "# Architecture\n\nProse, no Direction.\n")
+
+        assert np._has_enforcement_norm_rows(_cb(tmp_path)) is False, (
+            "the shipped norm-index table must ship EMPTY — a populated row is a "
+            "homed norm, and the template's rows would be every new product's"
+        )
+        assert np._norms_exist(_cb(tmp_path)) is False
+        assert np.probe_norm_health_sweep_overdue(ProjectState({}), _cb(tmp_path)) == []
 
     def test_window_boundary_is_inclusive(self, tmp_path):
         # age == SWEEP_WINDOW_DAYS is still "fresh" (the guard is `<=`); one day past fires.
