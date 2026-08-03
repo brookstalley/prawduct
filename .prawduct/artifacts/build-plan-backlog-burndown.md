@@ -524,6 +524,20 @@ and the `new` exemption expiry consumes that function rather than re-deriving fr
     - **#542** — *adopting* an untriaged issue into a real item (the write half). `stage: design`:
       what stage an adopted issue gets, who decides `kind`/`area`, and whether an unattended sweep
       may retitle a human's report are open questions, not implementation details. Owner-raised.
+
+      **Superseded 2026-08-03 (owner ruling). The paragraph above is left standing as the record of
+      what was true when #532 deferred this; the item has since moved, and #542 is the source of
+      truth.** All three questions are answered. Adoption is an **attended** `backlog adopt <id>`
+      op: the scheduled sweep was **declined, not deferred**, which is what collapses the other two
+      — an attended operator supplies the `stage` explicitly (no default, because defaulting to
+      `idea` would make an adopted item *quieter* than an unadopted one), and proposes `kind`/`area`
+      for a human to confirm (the G1 split). The retitle proceeds with the original preserved in
+      `original_title:`, on the ruling that same-tracker curation sits outside the egress-scoped
+      "content never leaves its owner" posture. #542 is now `stage: ready`, `effort: S` (the drop is
+      a consequence of declining the sweep, not a re-estimate), and adoption is **in MG5's scope**:
+      an MG5 `file-upstream` arrival lands label-less and inert for the same reason by a different
+      road, so counting without a route out would re-open on the write side the hole #532 closed on
+      the read side.
     - **#543** — the session briefing must surface `untriaged` rather than absorbing it into
       "N pending". **Blocked on coordination, not effort:** `plugin/lib/briefing.py` is dirty on
       `feature/upgrade-discovery-relay` in the primary checkout, and this plan's own collision
