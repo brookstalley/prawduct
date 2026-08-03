@@ -132,8 +132,17 @@ to 0/0/0; Chunk 05 needed two verify rounds. Base was current at Chunk 06 (no sy
 `origin/develop` had not moved since `bacef70`). Chunk 06's `cumulative` is the plan's single final
 review and the `/prawduct:pr create` gate; it re-spans the whole branch, batch one included.
 
-Seven tracker items closed across both batches: #554, #567, #562, #154 (batch one, closed on the
-tracker at owner request), #227, #568, #569, #570 (batch two, closed by their change-log entries).
+Eight tracker items closed across both batches: #554, #567, #562, #154 (batch one, closed on the
+tracker at owner request), #227, #568, #569, #570 (batch two, closed at the PR boundary).
+
+(Both halves of that sentence were wrong until the PR ran. It said **Seven** while listing eight —
+a count restated from memory rather than from the list beside it, which is the second time this
+plan has shipped that exact defect; the first is its own `ed4456f`. And it claimed batch two was
+"closed by their change-log entries", which named a mechanism that does not close anything: a
+change-log entry documents the work, `/prawduct:backlog update … status=shipped` closes the item,
+and on the Issues backend those are different systems. The four sat OPEN on the tracker while this
+line asserted otherwise — a record asserting health the tree does not support, on the branch whose
+whole subject is that defect. `/prawduct:pr` Step 1d caught it, which is the gate working.)
 
 **Next: a PR only if the user asks.** (This line read "next: the cumulative review" while chunks 05 and 06
 were unbuilt: true when batch one closed, false the moment batch two was added. A Status
