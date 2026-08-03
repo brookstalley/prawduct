@@ -120,7 +120,10 @@ Direction norms by bullet while `norm_probes` counts them by `Why:` — two defi
 codebase) and **#569** (`**Why:**` makes a norm invisible to all four norm probes; current behaviour
 pinned by a near-miss test so a deliberate widening turns it red).
 
-**Next: the cumulative review, then a PR only if the user asks.**
+**Next: Chunk 05, then Chunk 06 — whose `cumulative` IS the plan's final review — then a PR
+only if the user asks.** (This line read "next: the cumulative review" while chunks 05 and 06
+were unbuilt: true when batch one closed, false the moment batch two was added. A Status
+block that describes the previous batch is the same defect this plan is about.)
 
 `active_build_plan` names this plan. The slot was **empty**, not occupied: v3.2.3's Phase 1
 step 11 cleared it to `null` and left the instruction "next work comes from
@@ -332,16 +335,19 @@ user can override and ask for a corrective fact to be appended instead]`
     and their siblings) **refuses, exit 1**, naming the repo-local path to run instead. A read-only
     or advisory command degrades to a loud stderr NOTE and proceeds, because a refusal there would
     break ordinary use for no soundness gain. Neither is silent.
-  - `.prawduct/artifacts/build-plan-silent-gates.md` § Verification Strategy — **delete** the
-    hand-written "Invoke the worktree, not the PATH binary" paragraph. It is a procedural workaround
-    for this exact defect; left standing after the fix it becomes the next reader's false constraint.
+  - `.prawduct/artifacts/build-plan-silent-gates.md` § Verification Strategy — **retire** the
+    hand-written "Invoke the worktree, not the PATH binary" paragraph: it must stop *instructing*,
+    because a procedural workaround left standing after its bug is fixed becomes the next reader's
+    false constraint. Rewritten to a dated pointer rather than deleted — see the `[DECISION]` below,
+    which records why the interpretive key for pre-guard evidence is worth keeping.
   - `tests/` — the guard's matrix, red-verified.
 - **Tests:** unit — framework checkout × (running the repo-local binary / running a foreign one) ×
   (data-plane command / advisory command); plus the **product-repo case**, which must be entirely
   unaffected. That last one is the over-fire guard and is the case a careless fix breaks.
 - **Acceptance criteria:** `pytest -q` passes; running a foreign binary's data-plane command inside
   this worktree refuses loudly instead of no-opping; a product repo (no `plugin/` manifest) sees no
-  behaviour change at all; the workaround paragraph is gone from the plan.
+  behaviour change at all; the workaround paragraph no longer instructs (retired to a dated pointer
+  per the `[DECISION]` below, not deleted).
 - **Done when:**
   1. Acceptance criteria met and tests pass, each new guard red-verified
   2. `/prawduct:critic` run and blocking findings resolved

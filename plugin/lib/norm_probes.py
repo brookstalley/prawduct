@@ -153,13 +153,46 @@ _HEADING_RE = re.compile(r"^(#{1,6})\s+(.*\S)\s*$")
 # list item (``- `` / ``* ``) or a capitalized ``Field:`` label (``Why:``,
 # ``Status:``, ``Retroactivity:``, ``Rulings:``). Anything else non-blank is a
 # markdown soft-wrap continuation of the previous logical line.
-_FIELD_OR_ITEM_RE = re.compile(r"^\s*(?:[-*]\s|[A-Z][A-Za-z-]*:)")
+#
+# The label may carry markdown emphasis (``**Why:**``, ``_Why:_``). Without
+# that, an emphasised marker is not a line start, so it soft-wraps onto the
+# bullet above and :data:`_WHY_RE` — anchored at ``^`` — can never see it. The
+# two must widen together or widening either alone accomplishes nothing.
+# ``**Statement.**`` is unaffected: the label alternative needs a single word
+# followed immediately by a colon, and a bold statement has neither.
+_FIELD_OR_ITEM_RE = re.compile(r"^\s*(?:[-*]\s|(?:\*{1,2}|_{1,2})?[A-Z][A-Za-z-]*:)")
 
 # Norm-entry field markers (docs/norms.md § Anatomy). Case-sensitive to the
-# canonical capitalization — these are machine-readable markers, not prose.
-_WHY_RE = re.compile(r"^\s*Why:")
-_STATUS_RE = re.compile(r"^\s*Status:")
-_IN_TRANSITION_RE = re.compile(r"Status:\s*in-transition")
+# canonical capitalization — these are machine-readable markers, not prose —
+# but tolerant of markdown emphasis around them.
+#
+# Emphasis tolerance is an owner decision (2026-08-03), not a convenience: since
+# the `Why:` marker began deciding whether a norm registry EXISTS (not merely
+# whether an entry has decayed), a product writing ``**Why:**`` lost the
+# ratification signal, the Norm Health sweep reminder, dead-why and
+# stalled-transition — four signals, silently, for a formatting choice the spec
+# never forbade. `docs/norms.md` § Anatomy still shows the bare form as
+# canonical; this reads what authors write.
+_EMPH = r"(?:\*{1,2}|_{1,2})?"
+_WHY_RE = re.compile(rf"^\s*{_EMPH}Why:")
+
+# What makes a bullet a NORM ENTRY rather than a list item: it carries one of
+# the anatomy's fields. Deliberately NOT `Why:` alone, though `Why` is the
+# required field — because doctor Health Check #10 exists to report "every
+# Direction entry carries a Why", and a Why-only definition makes that check
+# vacuous: the whyless entries it is meant to flag would stop being entries.
+# The roadmap case #567 is about is still excluded, since a prioritised list of
+# undone work carries no fields at all.
+_NORM_FIELDS = ("Why", "Status", "Rulings", "Retroactivity")
+_FIELD_MARKER_RE = re.compile(
+    rf"^\s*{_EMPH}(?:{'|'.join(_NORM_FIELDS)}):"
+)
+_STATUS_RE = re.compile(rf"^\s*{_EMPH}Status:")
+# The closer must mirror the PREFIX. An earlier cut accepted `_{1,2}` before
+# `Status:` but only `*` after it, so `__Status:__ in-transition` counted as
+# a norm entry and was scanned by dead-why while stalled-transition could
+# never see it — #569's own defect surviving #569's fix, one field over.
+_IN_TRANSITION_RE = re.compile(rf"Status:{_EMPH}\s*in-transition")
 
 # A bare ISO date, matched in full — a partial/free-text ``revisit:`` trigger must
 # NOT parse as a date (it belongs to the janitor sweep, not this probe).
@@ -326,13 +359,16 @@ def _direction_lines(text: str) -> list[str]:
 def _has_direction_entry(text: str) -> bool:
     """True if the text carries a real ``## Direction`` **entry**, not just the heading.
 
-    The heading alone is not evidence of a norm registry. ``docs/norms.md``
-    § Anatomy of a Norm makes ``Why`` **required** — "a norm captured without
-    its why is unenforceable at the edges and immortal at the center" — while
-    ``Status`` is optional and the bold Statement is not mechanically
-    distinguishable from any other bold bullet. So a ``Why:`` line is the
-    minimum that separates a norm entry from a roadmap item, and it is what
-    this keys on.
+    The heading alone is not evidence of a norm registry. An entry is a bullet
+    carrying one of the anatomy's **fields** (:data:`_NORM_FIELDS`) — that is
+    what separates a norm from a roadmap item, whose bullets carry none.
+
+    Field-bearing rather than ``Why``-bearing, although ``docs/norms.md``
+    § Anatomy makes ``Why`` the *required* field: doctor Health Check #10
+    exists to report "every Direction entry carries a Why", and a Why-only
+    definition makes that check vacuous, since the whyless entries it is meant
+    to flag would stop being entries at all. Requiredness is a property the
+    checks assert ABOUT entries, not the test for whether something IS one.
 
     Matching on the heading alone meant a section **empty of the thing being
     checked did not fail the check, it passed it silently** — the same shape as
@@ -343,7 +379,7 @@ def _has_direction_entry(text: str) -> bool:
     :func:`_direction_lines` already yields exactly the right lines — heading
     lines excluded, soft-wraps joined — so this needs no parsing of its own.
     """
-    return any(_WHY_RE.match(line) for line in _direction_lines(text))
+    return any(_FIELD_MARKER_RE.match(line) for line in _direction_lines(text))
 
 
 def _any_direction_entry(codebase: Codebase) -> bool:

@@ -15,6 +15,13 @@ plugin and this worktree both report `3.2.3` while the worktree's `lib/` has
 diverged substantially. "Am I the binary this repo carries" is exact and needs
 no lineage bookkeeping.
 
+Identity has **two axes** and closing one leaves the defect standing: which
+script is executing (`__file__`), and whose `lib/` it will import
+(`_plugin_root()`, which prefers `$CLAUDE_PLUGIN_ROOT`). The repo-local script
+running another plugin's governance code is #227's consequence surviving on the
+exact command the binary-skew refusal prescribes, so both are reported, with
+different messages because they have different fixes.
+
 Posture follows what the command produces (`architecture.md` § Direction —
 authority fails closed, advice fails soft): a governance **write** refuses, and
 everything else degrades to a loud stderr note. Neither is silent, which is the
@@ -64,11 +71,12 @@ def _make_product_repo(root: Path) -> Path:
 def _install_binary_at(plugin_dir: Path, version: str = "9.9.9") -> Path:
     """Materialise a REAL runnable hook under `plugin_dir`, and return it.
 
-    The guard keys on the running script's own location, so a test that only
-    varies `$CLAUDE_PLUGIN_ROOT` pins the wrong thing entirely — it exercises
-    the env-var implementation that was the chunk's blocking defect. Copying
-    the actual binary means "foreign" and "repo-local" are decided the same way
-    the guard decides them: by where the file lives.
+    The BINARY axis keys on the running script's own location, so a test that
+    only varies `$CLAUDE_PLUGIN_ROOT` pins the wrong thing entirely — it
+    exercises the env-var implementation that was the chunk's blocking defect.
+    Copying the actual binary means "foreign" and "repo-local" are decided the
+    same way the guard decides them: by where the file lives. The env var
+    remains meaningful on the separate LIB axis.
     """
     (plugin_dir / "bin").mkdir(parents=True, exist_ok=True)
     (plugin_dir / ".claude-plugin").mkdir(parents=True, exist_ok=True)
@@ -84,8 +92,11 @@ def _run(repo: Path, *args: str, binary: Path | None = None,
          plugin_root: str | None = None):
     """Run `binary` (default: this worktree's hook) with cwd inside `repo`.
 
-    `plugin_root` still sets `$CLAUDE_PLUGIN_ROOT` — kept so the tests can prove
-    the guard IGNORES it, which is the whole content of the identity decision.
+    `plugin_root` still sets `$CLAUDE_PLUGIN_ROOT`. It is NOT true that the
+    guard ignores it — that was this harness's original claim and two tests
+    here now disprove it. The var cannot decide whether the *binary* is
+    foreign (that is `__file__`), but it does decide which `lib/` the process
+    imports, and `_lib_skew` reports that separately. Two axes, two messages.
     """
     env = {**os.environ}
     env.pop("CLAUDE_PLUGIN_ROOT", None)
@@ -167,27 +178,45 @@ class TestFrameworkCheckoutSkew:
             "the one this repo carries"
         )
 
-    def test_env_var_cannot_condemn_the_repo_local_binary(self, tmp_path):
-        """The mirror: the correct invocation must not refuse because of the env.
+    def test_env_var_does_not_condemn_the_binary_but_lib_skew_is_reported(
+        self, tmp_path
+    ):
+        """The repo-local script with a foreign `lib/` is reported as LIB skew.
 
-        `$CLAUDE_PLUGIN_ROOT` is exported into the Bash tool env whenever the
-        plugin is enabled, so an env-keyed guard would refuse the very command
-        its own error message tells you to run.
+        An earlier cut of this test asserted plain silence here, on the reasoning
+        that "the repo's own binary is never foreign whatever the env says".
+        That was half right and dangerous: the binary is indeed not foreign, but
+        `_plugin_root()` seeds `sys.path`, so this invocation runs the repo's
+        script over ANOTHER plugin's governance code — #227's consequence
+        surviving on the exact command the binary-skew refusal prescribes.
+
+        So: not condemned as a foreign binary, and not silent either.
         """
         repo = _make_framework_checkout(tmp_path / "fw")
         local = _install_binary_at(repo / "plugin")
-        # A real elsewhere-plugin: `version` reads its manifest through
-        # `_plugin_root()`, so pointing the env at an empty path would fail the
-        # command for an unrelated reason and prove nothing about the guard.
         _install_binary_at(tmp_path / "installed")
 
         result = _run(
             repo, "version", binary=local, plugin_root=str(tmp_path / "installed"),
         )
-        assert result.returncode == 0
-        assert _SKEW_MARKER not in result.stderr, (
-            "the repo's own binary is never foreign, whatever the env says"
+        assert result.returncode == 0, "an advisory command still runs"
+        assert _SKEW_MARKER in result.stderr, (
+            "importing another plugin's lib/ must not pass silently"
         )
+        assert "importing lib/ from" in result.stderr, (
+            "and it must say LIB, not blame the binary — the two have different "
+            "fixes, and naming the wrong one sends the reader to the wrong place"
+        )
+
+    def test_repo_local_script_and_lib_is_wholly_silent(self, tmp_path):
+        """Both halves right: no noise. The guard must not nag correct use."""
+        repo = _make_framework_checkout(tmp_path / "fw")
+        local = _install_binary_at(repo / "plugin")
+        result = _run(
+            repo, "version", binary=local, plugin_root=str(repo / "plugin"),
+        )
+        assert result.returncode == 0
+        assert _SKEW_MARKER not in result.stderr
 
     def test_advisory_command_notes_but_proceeds(self, tmp_path):
         """Advice fails soft: loud, but not a refusal."""
@@ -235,6 +264,20 @@ class TestHarnessInvokedHooksNeverRefuse:
         result = _run(repo, "subagent-stop", binary=foreign)
         assert "BLOCKED: refusing `subagent-stop`" not in result.stderr
 
+    def test_harness_hook_still_says_it_is_foreign(self, tmp_path):
+        """Positive assertion for "neither is silent".
+
+        The exclusion tests all check that a refusal is ABSENT, which cannot
+        distinguish "noted and proceeded" from "said nothing at all" — and
+        saying nothing is precisely the defect #227 is about, one severity down.
+        """
+        repo = _make_framework_checkout(tmp_path / "fw")
+        foreign = _install_binary_at(tmp_path / "installed")
+        result = _run(repo, "subagent-stop", binary=foreign)
+        assert _SKEW_MARKER in result.stderr, (
+            "a harness hook must still report the skew even though it proceeds"
+        )
+
     def test_stop_does_not_refuse(self, tmp_path):
         """`stop` writes a fact via the abandoned-review self-heal, and is
         still harness-invoked — who invokes it decides whether refusing is
@@ -265,3 +308,32 @@ class TestProductRepoUnaffected:
         result = _run(repo, "version", binary=foreign)
         assert result.returncode == 0
         assert _SKEW_MARKER not in result.stderr
+
+
+class TestLibSkewRefusesOnTheDataPlane:
+    """The repo-local script importing a foreign `lib/` is still a skew.
+
+    `_lib_skew` was added to close a review finding and initially had only an
+    advisory-command test, so dropping its data-plane refusal left the file
+    green. This is the half that can refuse the very invocation the plan's
+    Verification Strategy prescribes, which makes it the half most worth pinning.
+    """
+
+    def test_data_plane_refuses_when_lib_comes_from_elsewhere(self, tmp_path):
+        repo = _make_framework_checkout(tmp_path / "fw")
+        local = _install_binary_at(repo / "plugin")
+        _install_binary_at(tmp_path / "installed")
+
+        result = _run(
+            repo, "critic-consolidate",
+            binary=local, plugin_root=str(tmp_path / "installed"),
+        )
+        combined = result.stdout + result.stderr
+        assert result.returncode == 1, (
+            "the script is this repo's, but the governance code it would "
+            "execute is not — that must fail closed like any other skew"
+        )
+        assert _SKEW_MARKER in combined
+        assert "importing lib/ from" in combined, (
+            "and it must name LIB, not the binary — different fixes"
+        )

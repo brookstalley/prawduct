@@ -4935,6 +4935,30 @@ def _repo_plugin_dir(project_dir: Path) -> "Path | None":
     return None
 
 
+def _lib_skew(project_dir: Path) -> "tuple[Path, Path] | None":
+    """``(repo's plugin dir, lib root)`` when the LIB comes from elsewhere.
+
+    Identity has two halves and fixing only one leaves the defect standing.
+    :func:`_binary_skew` answers "which script is executing"; this answers
+    "whose ``lib/`` will it import", because :func:`_plugin_root` — which seeds
+    ``sys.path`` for every lazy lib accessor, including the ones `critic-begin`
+    and `critic-consolidate` run through — prefers ``$CLAUDE_PLUGIN_ROOT` over
+    the script's own location. Where the two diverge, the repo-local binary
+    executes another plugin's governance code: #227's consequence surviving on
+    the exact command the skew refusal tells you to run.
+    """
+    repo_plugin = _repo_plugin_dir(project_dir)
+    if repo_plugin is None:
+        return None
+    try:
+        lib_root = Path(_plugin_root()).resolve()
+    except OSError:
+        return None
+    if lib_root == repo_plugin:
+        return None
+    return repo_plugin, lib_root
+
+
 def _binary_skew(project_dir: Path) -> "tuple[Path, Path] | None":
     """``(repo's plugin dir, running plugin dir)`` when they differ, else None."""
     repo_plugin = _repo_plugin_dir(project_dir)
@@ -4942,9 +4966,12 @@ def _binary_skew(project_dir: Path) -> "tuple[Path, Path] | None":
         return None
     try:
         # The RUNNING SCRIPT's own root — deliberately NOT `_plugin_root()`,
-        # which prefers $CLAUDE_PLUGIN_ROOT. That env var is exported into the
-        # Bash tool env whenever the plugin is enabled, so keying on it fails
-        # in both directions: the correct repo-local invocation would refuse
+        # which prefers $CLAUDE_PLUGIN_ROOT. That var is set in the *hook*
+        # process; whether it reaches an agent's Bash env varies, and it was
+        # MEASURED unset in the framework session that built this guard — so
+        # treat "it is always exported" as false rather than load-bearing.
+        # Keying on it fails in both directions when it IS set: the correct
+        # repo-local invocation would refuse
         # (with advice to run what you just ran), and a genuinely foreign
         # binary invoked with the var pointed at this repo would compare equal
         # and pass — which is #227 itself, wearing the guard as a disguise.
@@ -4963,13 +4990,23 @@ def _check_binary_skew(command: str, project_dir: Path) -> int:
     silence, so a quiet pass would reproduce it one severity down.
     """
     skew = _binary_skew(project_dir)
+    kind = "binary"
+    if skew is None:
+        # The script can be the right one while its `lib/` is not.
+        skew = _lib_skew(project_dir)
+        kind = "lib"
     if skew is None:
         return 0
     repo_plugin, running = skew
     local = repo_plugin / "bin" / "prawduct-hook"
+    what = (
+        f"running {running}" if kind == "binary"
+        else f"running this repo's script but importing lib/ from {running} "
+             "($CLAUDE_PLUGIN_ROOT)"
+    )
     detail = (
-        f"{SKEW_MARKER}: running {running}, but this repo carries {repo_plugin}. "
-        f"Run `python3 {local}` instead. "
+        f"{SKEW_MARKER}: {what}, but this repo carries {repo_plugin}. "
+        f"Run `python3 {local}` with $CLAUDE_PLUGIN_ROOT unset or pointed here. "
         "(Versions are NOT the test — a checkout is routinely ahead of its own "
         "manifest, so identical versions prove nothing about the code.)"
     )

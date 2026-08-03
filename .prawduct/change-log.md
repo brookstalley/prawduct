@@ -3,6 +3,66 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-08-03: one definition of a norm entry, and the test that refused to be weakened
+
+<!-- prawduct: type=fix | scope=silent-gates | chunks=05 -->
+
+Two issue numbers, one decision surface: what IS a Direction norm entry, mechanically. **#568** —
+`record_lint.direction_norm_count` counted every top-level bullet while `norm_probes` (since Chunk
+02) required a field, so the two disagreed exactly in the roadmap case and the `governed_by`
+under-disposition lint demanded dispositions for items that are not norms. **#569** — the marker
+regex anchored on a bare `Why:`, so a product writing `**Why:**` lost all four norm signals silently.
+Sequencing them apart costs more: converge first and you converge onto a predicate still blind to
+emphasis, then re-touch both call sites.
+
+**A failing test changed the definition, and the design is better for it.** The plan, the owner
+conversation and two docstrings all said "a norm entry is a `Why:`-bearing entry". Then a
+`governed-by-gap` test went red on a fixture whose bullet carried `Status:` and no `Why:`. Editing
+that fixture would have shipped a real defect: **doctor Health Check #10 exists to report "every
+Direction entry carries a Why", and a Why-only definition makes it vacuous** — the whyless entries
+it is meant to flag stop being entries at all. Requiredness is a property the checks assert *about*
+entries, not the test for whether something *is* one. The shared definition is therefore
+**field-bearing** (`Why` / `Status` / `Rulings` / `Retroactivity`), which still excludes the roadmap
+case #567 was about, since a prioritised list of undone work carries no fields.
+
+Two other fixtures *were* edited in the same pass and the distinction is the point: the
+section-boundary tests' bare `- one` bullets were incidental scaffolding, not the contract under
+test, and their assertions are untouched. The line is whether the fixture expresses the test's
+intent or merely carries it.
+
+**Emphasis tolerance is an owner decision (2026-08-03), taken deliberately.** `**Why:**`, `__Why:__`,
+`*Why:*` and `_Why:_` now count, as do the same forms of the other fields. This necessarily moves
+`dead-why` and `stalled-transition`, which share the regex — that is the point, not a side effect.
+`_FIELD_OR_ITEM_RE` had to widen alongside `_WHY_RE`: without it an emphasised marker is not a line
+start, so it soft-wraps onto the bullet above and the `^`-anchored marker can never see it however
+tolerant it is. Widening either alone accomplishes nothing.
+
+- **#569's defect survived #569's fix, one field over.** The first cut widened the `Status:` prefix
+  to accept `_{1,2}` but left the `in-transition` closer accepting only `*`, so `__Status:__
+  in-transition` counted as an entry and was scanned by dead-why while `probe_stalled_transition`
+  could never see it — a stalled norm going unaudited while every other check treated it as live.
+  Prefix and closer are now the same class, pinned across all five emphasis forms of both fields.
+- **The marker has one home, not two copies.** Closing "two definitions disagree" with a second
+  *copy* of the regex would have re-created the defect in a slower-acting form — copies agree today
+  and drift on the first edit. `record_lint` imports `_FIELD_MARKER_RE` from `norm_probes` (lazily;
+  that module pulls the advisory-store and backlog readers and this one sits on the record-lint
+  path).
+- **The lib-skew refusal added in Chunk 04's follow-up was unpinned.** It had only an advisory-path
+  test, so dropping the data-plane refusal left the file green — and that is the half which can
+  refuse the very invocation the plan's Verification Strategy prescribes. Now pinned, and
+  mutation-verified alongside the `in-transition` closer.
+- **#332's input, re-derived after the change rather than before it:** 28 norm entries across 7
+  artifacts, `governed-by-gap` 0. Old and new definitions yield **identical** counts on every
+  artifact in this repo, because every Direction entry here already carries a field — so #332's
+  count does not move. Recorded so the next reader does not re-run it to learn nothing changed.
+- **The fourth degenerate fixture this session, caught by mutation.** The shared-definition roadmap
+  corpus had two adjacent bullets then EOF, so no line ever followed a pending bullet and a mutation
+  that counts every bullet returned 0 as well — the test passed against the code it was written to
+  reject. Minimal fixtures are frequently degenerate: they exercise the entry condition and not the
+  branch. A fixture is validated by the mutation failing, never by the test passing.
+
+Closes #568, #569.
+
 ## 2026-08-03: the binary that is not the one this repo carries
 
 <!-- prawduct: type=fix | scope=silent-gates | chunks=04 -->

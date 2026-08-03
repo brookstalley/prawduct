@@ -485,29 +485,39 @@ class TestNormRegistryUnratifiedProbe:
         assert len(out) == 1
         assert "no `## Direction` section is ratified" in out[0].trigger_summary
 
-    def test_bold_why_marker_is_not_recognised_as_an_entry(self, tmp_path):
-        """Pins the field-marker boundary: `**Why:**` does not count.
+    def test_emphasised_why_markers_are_recognised_as_entries(self, tmp_path):
+        """Owner decision 2026-08-03: emphasis is tolerated.
 
-        `_WHY_RE` anchors on a bare `Why:` at line start, matching the canonical
-        capitalization in `docs/norms.md` § Anatomy. That was always the rule
-        for `dead-why` and `stalled-transition`; this chunk makes the same
-        marker decide whether a registry exists **at all**, so a product writing
-        `**Why:**` now loses the ratification signal and the sweep reminder as
-        well as decay detection.
+        This test previously asserted the OPPOSITE and was rewritten, not
+        deleted — the boundary it pinned still needs a pin, it just moved. The
+        reason it moved: since Chunk 02 the `Why:` marker decides whether a norm
+        registry EXISTS, not merely whether an entry has decayed, so a product
+        writing `**Why:**` silently lost four signals for a formatting choice
+        `docs/norms.md` never forbade.
 
-        Asserting current behaviour rather than changing it: widening the regex
-        would move `dead-why` and `stalled-transition` too, which is beyond this
-        chunk. Filed for a decision — this test is here so the boundary is
-        visible and a deliberate widening turns it red rather than passing
-        unnoticed.
+        `_FIELD_OR_ITEM_RE` had to widen alongside `_WHY_RE`: without it the
+        emphasised marker is not a line start, soft-wraps onto the bullet above,
+        and the `^`-anchored `_WHY_RE` can never see it however tolerant it is.
         """
+        for marker in ("**Why:**", "__Why:__", "*Why:*", "_Why:_"):
+            _write_artifact(
+                tmp_path,
+                "architecture.md",
+                _direction_artifact(f"- **X.**\n  {marker} because of the reason.\n"),
+            )
+            assert np.probe_norm_registry_unratified(ProjectState({}), _cb(tmp_path)) == [], (
+                f"{marker} must count as a norm entry"
+            )
+
+    def test_a_word_that_merely_starts_with_why_is_not_a_marker(self, tmp_path):
+        """The widened match must not swallow prose. `Why not:` is not `Why:`."""
         _write_artifact(
             tmp_path,
             "architecture.md",
-            _direction_artifact("- **X.**\n  **Why:** bolded field marker.\n"),
+            _direction_artifact("- **X.**\n  Why not: this is a different field.\n"),
         )
         out = np.probe_norm_registry_unratified(ProjectState({}), _cb(tmp_path))
-        assert len(out) == 1, "a bolded Why: reads as no entry — the known boundary"
+        assert len(out) == 1, "`Why not:` is not the `Why:` marker"
 
     def test_silent_when_one_artifact_has_a_real_entry_among_roadmaps(self, tmp_path):
         # The arm asks whether ANY artifact carries a norm — one real entry
@@ -820,3 +830,113 @@ class TestNormIndexLocatorIsShared:
         assert np._norm_index_header(np._preferences_lines(cb)) is None
         assert np._norm_index_lacks_columns(cb) is False
         assert np._has_enforcement_norm_rows(cb) is False
+
+
+class TestOneDefinitionOfANormEntry:
+    """#568 — `record_lint` and `norm_probes` must agree what a norm entry is.
+
+    They disagreed exactly in the roadmap case: `direction_norm_count` counted
+    every top-level bullet, `_has_direction_entry` required a field, so a
+    `## Direction` section holding a prioritised list of undone work made the
+    `governed_by` under-disposition lint demand dispositions for items the
+    probes correctly ignored. One fact, one home.
+    """
+
+    # Blank lines and trailing prose are deliberate. An earlier cut had two
+    # ADJACENT bullets then EOF, so no line ever followed a pending bullet and
+    # a mutation that counts every bullet still returned 0 — a fixture that
+    # could not reach the code path it was written to discriminate. Real
+    # roadmaps are spaced; so is this one now.
+    _ROADMAP = (
+        "# Architecture\n\n## Direction\n\n"
+        "- **Ship the importer.** Targeted for Q3.\n"
+        "  Blocked on the schema freeze.\n"
+        "\n"
+        "- **Then the exporter.** Q4.\n"
+        "\n"
+        "Not a bullet at all.\n"
+    )
+    _NORMS = (
+        "# Architecture\n\n## Direction\n\n"
+        "- **Bare marker.**\n  Why: canonical form.\n"
+        "- **Emphasised marker.**\n  **Why:** authors write this too.\n"
+        "- **Whyless but ratified-shaped.**\n  Status: steady-state.\n"
+    )
+
+    def test_roadmap_counts_zero_in_both(self, tmp_path):
+        from lib import record_lint
+
+        assert record_lint.direction_norm_count(self._ROADMAP) == 0
+        assert np._has_direction_entry(self._ROADMAP) is False
+
+    def test_field_bearing_entries_count_in_both(self, tmp_path):
+        from lib import record_lint
+
+        assert record_lint.direction_norm_count(self._NORMS) == 3, (
+            "emphasised markers and a whyless-but-Status-bearing entry all count"
+        )
+        assert np._has_direction_entry(self._NORMS) is True
+
+    def test_a_whyless_entry_is_still_an_entry(self, tmp_path):
+        """Load-bearing for doctor Health Check #10.
+
+        That check reports "every Direction entry carries a **Why**". A
+        Why-only definition would make it vacuous — the whyless entries it
+        exists to flag would stop being entries at all — which is why the
+        shared definition is field-bearing rather than Why-bearing.
+        """
+        from lib import record_lint
+
+        whyless = "## Direction\n\n- **X.**\n  Status: steady-state.\n"
+        assert record_lint.direction_norm_count(whyless) == 1
+        assert np._has_direction_entry(whyless) is True
+
+
+class TestEmphasisAcrossEveryNormField:
+    """#569 widened `Why:`; the other fields had to move with it.
+
+    An earlier cut widened the `Status:` PREFIX to accept `_{1,2}` but left the
+    `in-transition` closer accepting only `*`. `__Status:__ in-transition` then
+    counted as a norm entry and was scanned by dead-why, while
+    `probe_stalled_transition` could never see it — the defect this chunk exists
+    to fix, surviving one field over. Prefix and closer are now the same class.
+    """
+
+    MARKERS = ("Why:", "**Why:**", "__Why:__", "*Why:*", "_Why:_")
+    STATUS = ("Status:", "**Status:**", "__Status:__", "*Status:*", "_Status:_")
+
+    def test_every_emphasis_form_of_why_is_an_entry(self, tmp_path):
+        for m in self.MARKERS:
+            body = _direction_artifact(f"- **X.**\n  {m} because.\n")
+            assert np._has_direction_entry(body) is True, f"{m} must be an entry"
+
+    def test_every_emphasis_form_of_status_is_an_entry(self, tmp_path):
+        for m in self.STATUS:
+            body = _direction_artifact(f"- **X.**\n  {m} steady-state.\n")
+            assert np._has_direction_entry(body) is True, f"{m} must be an entry"
+
+    def test_in_transition_is_seen_through_every_status_emphasis(self, tmp_path):
+        """The closer must not be narrower than the prefix.
+
+        Directly pins the half-implemented case: if the entry counts but the
+        transition scan cannot read it, a stalled in-transition norm goes
+        unaudited while every other check treats it as live.
+        """
+        for m in self.STATUS:
+            line = f"  {m} in-transition — tracked by BKL-1A2B."
+            assert np._IN_TRANSITION_RE.search(line), (
+                f"stalled-transition must see `{m} in-transition`"
+            )
+
+    def test_both_consumers_agree_across_the_marker_matrix(self, tmp_path):
+        """The plan's 'marker matrix x BOTH consumers' — the second consumer.
+
+        The first cut delivered the matrix against `norm_probes` only, which is
+        exactly the asymmetry #568 is about.
+        """
+        from lib import record_lint
+
+        for m in self.MARKERS + self.STATUS:
+            body = f"## Direction\n\n- **X.**\n  {m} value.\n\n- **Y.**\n  {m} value.\n\nTail.\n"
+            assert record_lint.direction_norm_count(body) == 2, f"record_lint: {m}"
+            assert np._has_direction_entry(body) is True, f"norm_probes: {m}"
