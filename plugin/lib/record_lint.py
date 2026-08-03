@@ -463,8 +463,9 @@ def direction_norm_count(text: str) -> "int | None":
     section holding a prioritised list of undone work — where the probes
     correctly saw no norms and this counted one per bullet, so the
     ``governed_by`` under-disposition lint demanded dispositions for items that
-    are not norms. One fact, one home: a norm entry is a ``Why:``-bearing entry,
-    everywhere.
+    are not norms. One fact, one home: the marker is imported from
+    :mod:`lib.norm_probes` rather than restated here, so a norm entry is a
+    field-bearing entry everywhere and the two cannot drift apart on an edit.
     """
     field_re = _norm_field_re()
     in_section = False

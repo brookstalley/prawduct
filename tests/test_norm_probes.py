@@ -915,18 +915,58 @@ class TestEmphasisAcrossEveryNormField:
             body = _direction_artifact(f"- **X.**\n  {m} steady-state.\n")
             assert np._has_direction_entry(body) is True, f"{m} must be an entry"
 
-    def test_in_transition_is_seen_through_every_status_emphasis(self, tmp_path):
-        """The closer must not be narrower than the prefix.
+    def test_stalled_transition_fires_through_every_status_emphasis(self, tmp_path):
+        """Drives the PROBE, not the regex.
 
-        Directly pins the half-implemented case: if the entry counts but the
-        transition scan cannot read it, a stalled in-transition norm goes
+        An earlier cut asserted `_IN_TRANSITION_RE.search(...)` directly, which
+        pins the implementation rather than the behaviour: it stays green if the
+        constant keeps its emphasis while the probe stops reaching it. If the
+        entry counts but the transition scan cannot read it, a stalled norm goes
         unaudited while every other check treats it as live.
         """
         for m in self.STATUS:
-            line = f"  {m} in-transition — tracked by BKL-1A2B."
-            assert np._IN_TRANSITION_RE.search(line), (
-                f"stalled-transition must see `{m} in-transition`"
+            _write_backlog(
+                tmp_path, _item("MIG-4C1K", extra=f"added: {_days_ago(400)}")
             )
+            _write_artifact(
+                tmp_path,
+                "observability-strategy.md",
+                _direction_artifact(
+                    "- **All telemetry rides OpenTelemetry.**\n"
+                    "  Why: one substrate for causality.\n"
+                    f"  {m} in-transition — tracked by MIG-4C1K.\n"
+                ),
+            )
+            out = np.probe_stalled_transition(ProjectState({}), _cb(tmp_path))
+            assert len(out) == 1, (
+                f"stalled-transition must reach `{m} in-transition` — the "
+                "closer must not be narrower than the prefix"
+            )
+
+    def test_dead_why_fires_through_every_emphasis_form(self, tmp_path):
+        """`_WHY_RE`/`_STATUS_RE` have ONE consumer, and it is this probe.
+
+        The marker-matrix tests above route through `_has_direction_entry` →
+        `_FIELD_MARKER_RE`, a *different constant*. So `_WHY_RE` and
+        `_STATUS_RE` could lose their emphasis tolerance with the whole suite
+        green while `probe_dead_why` went silent for `**Why:**` — testing the
+        constant I was thinking about instead of the one the behaviour routes
+        through. This drives the probe.
+        """
+        for m in self.MARKERS + self.STATUS:
+            _write_backlog(
+                tmp_path, _item("MIG-4C1K", section="Archive", status="shipped")
+            )
+            _write_artifact(
+                tmp_path,
+                "observability-strategy.md",
+                _direction_artifact(
+                    "- **All telemetry rides OpenTelemetry.**\n"
+                    f"  {m} the MIG-4C1K migration made a second system redundant.\n"
+                ),
+            )
+            out = np.probe_dead_why(ProjectState({}), _cb(tmp_path))
+            assert len(out) == 1, f"dead-why must reach a `{m}` line"
 
     def test_both_consumers_agree_across_the_marker_matrix(self, tmp_path):
         """The plan's 'marker matrix x BOTH consumers' — the second consumer.

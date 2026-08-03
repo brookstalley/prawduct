@@ -41,7 +41,13 @@ tolerant it is. Widening either alone accomplishes nothing.
   to accept `_{1,2}` but left the `in-transition` closer accepting only `*`, so `__Status:__
   in-transition` counted as an entry and was scanned by dead-why while `probe_stalled_transition`
   could never see it — a stalled norm going unaudited while every other check treated it as live.
-  Prefix and closer are now the same class, pinned across all five emphasis forms of both fields.
+  Prefix and closer are now the same class, pinned across all five emphasis forms of both fields —
+  **through the probes, not their constants.** The first cut asserted `_IN_TRANSITION_RE.search(...)`
+  directly and routed its marker matrix through `_has_direction_entry`, which reads a *different*
+  constant (`_FIELD_MARKER_RE`); `_WHY_RE` and `_STATUS_RE` have exactly one consumer between them —
+  `probe_dead_why` — and no test reached it, so both could have lost emphasis tolerance with the
+  suite green. Testing the constant you are thinking about instead of the one the behaviour routes
+  through is the same defect as a fixture that cannot reach its branch, one level finer.
 - **The marker has one home, not two copies.** Closing "two definitions disagree" with a second
   *copy* of the regex would have re-created the defect in a slower-acting form — copies agree today
   and drift on the first edit. `record_lint` imports `_FIELD_MARKER_RE` from `norm_probes` (lazily;
