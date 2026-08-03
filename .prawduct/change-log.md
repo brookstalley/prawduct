@@ -3,6 +3,68 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-08-03: the binary that is not the one this repo carries
+
+<!-- prawduct: type=fix | scope=silent-gates | chunks=04 -->
+
+Inside a framework checkout, a bare `prawduct-hook` on `$PATH` resolves to whatever plugin the
+environment installed — the install cache, or, in this clone, **a sibling worktree's checkout on
+`develop`**. The observed consequence is the worst failure mode this system has: `critic-begin` ran
+the foreign binary and wrote **no** kernel-v3 manifest — no error, no manifest — and the
+`SubagentStop` `critic-consolidate` no-opped the same way, leaving reviews unpersisted. A governance
+write that reports nothing while doing nothing is this branch's subject exactly, one layer out from
+`#154`: *which binary am I actually running*.
+
+**The guard keys on binary identity, not version equality, and that is a departure from what `#227`
+prescribed.** The issue asked the binary to compare its self-reported version against the repo's
+expected lineage. That test is blind in the common case and was blind to the live instance: at the
+time of writing, the installed plugin and this worktree both report `3.2.3` while the worktree's
+`lib/` has diverged across an entire branch. A checkout is *routinely* ahead of its own manifest
+between releases, so version comparison would have passed the very skew it was written to catch.
+"Am I the binary this repo carries" is exact and needs no lineage bookkeeping.
+
+Posture follows what the command produces, per `architecture.md` § Direction: an agent-invoked
+governance write refuses (exit 1, naming the binary to run); everything else emits a loud stderr
+note and proceeds. Neither is silent, which is the entire point.
+
+- **Two blocking findings, and the review caught the one that mattered most.** The first cut
+  computed the running root from `_plugin_root()`, which prefers `$CLAUDE_PLUGIN_ROOT` — so it keyed
+  on the *environment*, not the binary, while its own `[DECISION]` block committed to identity. Both
+  directions failed: the correct repo-local invocation would refuse whenever that variable is
+  exported (which it is, into the Bash tool env, whenever the plugin is enabled) with advice to run
+  exactly what you just ran; and a foreign binary invoked with the variable pointed at this repo
+  would compare equal and pass — `#227` itself, wearing the guard as a disguise. Now
+  `Path(__file__).resolve().parent.parent`.
+- **The second would have broken every framework checkout on the day it shipped.**
+  `hooks/hooks.json` invokes `${CLAUDE_PLUGIN_ROOT}/bin/prawduct-hook` for SessionStart, Stop,
+  SubagentStop and UserPromptSubmit — the install cache, which inside a framework checkout is
+  foreign **by design**; that is the governance model, not a mistake. `clear` and `subagent-stop`
+  were in the refusing set, so the guard would have returned 1 from every SessionStart in every such
+  repo: no briefing, no session reset, no marker sweep. It is also unactionable — a hook cannot be
+  told to invoke a repo-local binary. Harness entry points now take the note and never refuse.
+- **The classification was inverted and is now made on the right axis.** `stop` performs a
+  review-fact write through its abandoned-review self-heal yet was advisory, while `subagent-stop` —
+  whose own comment reads "always advisory, never propagate consolidate's exit code as a block" —
+  refused. The axis is **who invokes it** first (a refusal a hook cannot act on is not a safety
+  device), and only then what it writes. `ledger-append`, a documented sole-writer of the ledger,
+  joins the refusing set.
+- **The tests pinned the wrong thing and were rebuilt.** The first matrix always ran *this*
+  worktree's binary and varied only `$CLAUDE_PLUGIN_ROOT` — it pinned the env-var implementation
+  that was the blocking defect, so fixing the defect turned one of its own tests red. Tests now
+  materialise a real hook under a foreign plugin root and run *that*, deciding "foreign" the same
+  way the guard decides it: by where the file lives. Two tests were added for the inversion
+  specifically — the env var can neither vouch for a foreign binary nor condemn the repo-local one.
+- **Which mutation owns which test.** The over-fire assertions check marker *absence*, and an
+  absence assertion cannot tell "correctly quiet" from "no guard exists". They are pinned by
+  mutations that make the guard wrongly fire: dropping the product-repo exemption turns both
+  product-repo tests red; letting harness hooks refuse turns all three hook tests red; reverting to
+  the env-var root turns the two identity tests red.
+- **The fix cannot reach backwards.** A guard shipped inside the binary cannot protect an invocation
+  of a binary that predates it, so the incident binary keeps no-opping until a release carries this
+  into the install. The value lands at the next release, not at merge.
+
+Closes #227.
+
 ## 2026-08-03: the cumulative round — a survey that ran short, and three cascades that stopped early
 
 <!-- prawduct: type=fix | scope=silent-gates | chunks=03 -->

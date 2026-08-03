@@ -4866,6 +4866,124 @@ def cmd_jurisdiction(project_dir: Path, argv: list[str]) -> int:
     return 0
 
 
+# --- Framework-checkout binary skew (#227) --------------------------------
+# Inside a framework checkout, a bare `prawduct-hook` on $PATH resolves to
+# whatever plugin the environment installed — the plugin cache, or a sibling
+# worktree's checkout. The observed failure is the worst one available here:
+# `critic-begin` ran the foreign binary and wrote NO kernel-v3 manifest, with
+# no error, and the SubagentStop `critic-consolidate` no-opped the same way,
+# leaving reviews unpersisted.
+#
+# The discriminator is binary IDENTITY, not version equality. Comparing
+# self-reported versions is blind in the common case, because a checkout is
+# routinely ahead of its own manifest between releases — the skew that
+# prompted this had the installed plugin and the checkout both reporting
+# 3.2.3 while lib/ had diverged. "Am I the binary this repo carries" is exact
+# and needs no lineage bookkeeping.
+#
+# Posture follows what the command produces (architecture.md § Direction):
+# a governance WRITE fails closed, everything else degrades to a loud note.
+# Neither is silent, which is the entire point.
+
+SKEW_MARKER = "plugin-binary-skew"
+
+# Entry points the HARNESS invokes, from `hooks/hooks.json`. These always run
+# `${CLAUDE_PLUGIN_ROOT}/bin/prawduct-hook` — the install cache — so inside any
+# framework checkout they are foreign BY DESIGN; that is the governance model,
+# not a mistake. A refusal here is also unactionable: a hook cannot be told to
+# invoke a repo-local binary. Refusing would return 1 from every SessionStart in
+# every framework checkout — no briefing, no session reset, no marker sweep —
+# so these get the loud note and nothing else. `stop` and `subagent-stop` are
+# here even though `stop`'s abandoned-review self-heal DOES write a fact: who
+# invokes it decides whether refusing is even possible, and only then does what
+# it writes decide the severity of saying so.
+_HARNESS_INVOKED_COMMANDS = frozenset({
+    "clear",
+    "subagent-stop",
+    "stop",
+    "user-prompt-submit",
+    "build-index",
+})
+
+# Agent-invoked, state-mutating governance writes. A wrong-version write here
+# does not merely misreport — it corrupts or silently omits a persisted fact
+# that later gates compose over, and the caller CAN re-invoke the right binary,
+# which is what makes refusing actionable.
+_DATA_PLANE_COMMANDS = frozenset({
+    "critic-begin",
+    "critic-consolidate",
+    "critic-end",
+    "disposition",
+    "ledger-append",
+})
+
+
+def _repo_plugin_dir(project_dir: Path) -> "Path | None":
+    """The plugin directory THIS repo carries, or None if it carries none.
+
+    A repo is a framework checkout iff it holds `plugin/.claude-plugin/plugin.json`.
+    Product repos hold none and are therefore untouched by the guard — they
+    legitimately run the installed binary, and firing there would break every
+    governed repo in the fleet.
+    """
+    try:
+        candidate = Path(project_dir) / "plugin"
+        if (candidate / ".claude-plugin" / "plugin.json").is_file():
+            return candidate.resolve()
+    except OSError:
+        return None
+    return None
+
+
+def _binary_skew(project_dir: Path) -> "tuple[Path, Path] | None":
+    """``(repo's plugin dir, running plugin dir)`` when they differ, else None."""
+    repo_plugin = _repo_plugin_dir(project_dir)
+    if repo_plugin is None:
+        return None
+    try:
+        # The RUNNING SCRIPT's own root — deliberately NOT `_plugin_root()`,
+        # which prefers $CLAUDE_PLUGIN_ROOT. That env var is exported into the
+        # Bash tool env whenever the plugin is enabled, so keying on it fails
+        # in both directions: the correct repo-local invocation would refuse
+        # (with advice to run what you just ran), and a genuinely foreign
+        # binary invoked with the var pointed at this repo would compare equal
+        # and pass — which is #227 itself, wearing the guard as a disguise.
+        running = Path(__file__).resolve().parent.parent
+    except OSError:
+        return None
+    if running == repo_plugin:
+        return None
+    return repo_plugin, running
+
+
+def _check_binary_skew(command: str, project_dir: Path) -> int:
+    """0 to proceed; 1 when a data-plane write must refuse.
+
+    Emits on stderr either way — the failure this closes was defined by its
+    silence, so a quiet pass would reproduce it one severity down.
+    """
+    skew = _binary_skew(project_dir)
+    if skew is None:
+        return 0
+    repo_plugin, running = skew
+    local = repo_plugin / "bin" / "prawduct-hook"
+    detail = (
+        f"{SKEW_MARKER}: running {running}, but this repo carries {repo_plugin}. "
+        f"Run `python3 {local}` instead. "
+        "(Versions are NOT the test — a checkout is routinely ahead of its own "
+        "manifest, so identical versions prove nothing about the code.)"
+    )
+    if command in _DATA_PLANE_COMMANDS and command not in _HARNESS_INVOKED_COMMANDS:
+        print(
+            f"BLOCKED: refusing `{command}` — {detail} A governance write on a "
+            "foreign binary is how a review silently persists nothing.",
+            file=sys.stderr,
+        )
+        return 1
+    print(f"NOTE: {detail}", file=sys.stderr)
+    return 0
+
+
 def main() -> int:
     if len(sys.argv) < 2:
         print(_USAGE, file=sys.stderr)
@@ -4873,6 +4991,11 @@ def main() -> int:
 
     command = sys.argv[1]
     project_dir = get_project_dir()
+
+    # Before dispatch, so it covers every command — including `subagent-stop`,
+    # the path a fix touching only `critic-begin` would miss (#227).
+    if _check_binary_skew(command, project_dir) != 0:
+        return 1
 
     if command == "clear":
         return cmd_clear(project_dir, sys.argv[2:])

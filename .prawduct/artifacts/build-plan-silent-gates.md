@@ -153,10 +153,13 @@ Beyond tests, two of the three chunks need the framework exercised rather than u
   section is a roadmap (arm (a) must now fire), and one that homes norms solely in the
   Enforcement table (the sweep reminder must now be reachable).
 
-**Invoke the worktree, not the PATH binary.** `prawduct-hook` on `$PATH` is the *installed*
-plugin cache, not this checkout — every live verification runs `python3 plugin/bin/prawduct-hook`
-from the repo root. A green run of the PATH binary is evidence about the installed plugin and
-nothing else.
+**Invoke the worktree, not the PATH binary — now enforced, not remembered.** This paragraph used
+to carry the procedure by hand: `prawduct-hook` on `$PATH` is a foreign plugin (in this clone, the
+sibling worktree's checkout on `develop`), so a green run of it is evidence about that plugin and
+nothing else. Chunk 04 makes the binary say so itself — a governance write on a foreign binary
+refuses, everything else emits a loud note — so the rule no longer depends on a reader finding this
+line. Kept as a pointer rather than deleted outright: the *reason* still matters when reading older
+evidence recorded before the guard existed.
 
 ## Build Chunks
 
@@ -343,6 +346,17 @@ user can override and ask for a corrective fact to be appended instead]`
   1. Acceptance criteria met and tests pass, each new guard red-verified
   2. `/prawduct:critic` run and blocking findings resolved
   3. Committed and the change-log entry tagged `scope=silent-gates`
+
+`[DECISION: the § Verification Strategy workaround paragraph is RETAINED as a pointer, not deleted |
+the deliverable and acceptance criterion both said delete it, and the reason for deleting stands —
+a procedural workaround left standing after its bug is fixed becomes the next reader's false
+constraint. What deletion would also destroy is the *interpretive key* for this branch's own
+evidence: every measurement recorded before Chunk 04 was taken under the hand-followed rule, and a
+reader of those records needs to know the rule was manual then and enforced now. The paragraph was
+rewritten to say exactly that and nothing more — it no longer instructs, it dates. Recorded here
+rather than argued in body prose, which is what the Critic correctly flagged: an unmet acceptance
+criterion resolved by judgement is a decision, and this plan's convention is that decisions are
+written down | user can override and have it deleted outright]`
 
 `[DECISION: the guard keys on binary IDENTITY, not on the version comparison #227 prescribes |
 #227's stated Expected is "the invoked binary compares its self-reported version against the repo's
