@@ -208,11 +208,19 @@ note and proceeds. Neither is silent, which is the entire point.
 - **Two blocking findings, and the review caught the one that mattered most.** The first cut
   computed the running root from `_plugin_root()`, which prefers `$CLAUDE_PLUGIN_ROOT` — so it keyed
   on the *environment*, not the binary, while its own `[DECISION]` block committed to identity. Both
-  directions failed: the correct repo-local invocation would refuse whenever that variable is
-  exported (which it is, into the Bash tool env, whenever the plugin is enabled) with advice to run
-  exactly what you just ran; and a foreign binary invoked with the variable pointed at this repo
-  would compare equal and pass — `#227` itself, wearing the guard as a disguise. Now
-  `Path(__file__).resolve().parent.parent`.
+  directions failed whenever that variable is set: the correct repo-local invocation would refuse
+  with advice to run exactly what you just ran; and a foreign binary invoked with the variable
+  pointed at this repo would compare equal and pass — `#227` itself, wearing the guard as a
+  disguise. Now `Path(__file__).resolve().parent.parent`.
+
+  (This bullet read "whenever that variable is exported — *which it is, into the Bash tool env,
+  whenever the plugin is enabled*" until the PR review. That parenthetical was asserted, never
+  measured, and the guard's own docstring records the opposite from an actual measurement: the var
+  is set in the *hook* process, whether it reaches an agent's Bash env varies, and it was measured
+  **unset** in the session that built the guard. Measured unset again at the PR boundary. The
+  finding it justifies is unaffected — keying on the environment instead of the binary is wrong at
+  any frequency — but the change-log outlives the build plan, so an unsupported claim here is the
+  one that persists. On the branch whose subject is a record asserting health it never measured.)
 - **The second would have broken every framework checkout on the day it shipped.**
   `hooks/hooks.json` invokes `${CLAUDE_PLUGIN_ROOT}/bin/prawduct-hook` for SessionStart, Stop,
   SubagentStop and UserPromptSubmit — the install cache, which inside a framework checkout is

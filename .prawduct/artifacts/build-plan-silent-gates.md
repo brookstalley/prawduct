@@ -38,9 +38,11 @@ last_validated: null
 
 **Level:** High
 
-**Why:** All four defects are field-verified with repros, and three of the four name their own
-fix in the issue body. Each site was read in this worktree and located by structural pattern
-before the plan was written — not taken from the issue's line numbers, two of which are stale.
+**Why:** All eight defects are field-verified with repros, and most name their own fix in the
+issue body. Each site was read in this worktree and located by structural pattern before its
+chunk was written — not taken from the issue's line numbers, two of which are stale. (Read
+"four" until the PR review: true of batch one, never updated when batch two added #227, #568,
+#569 and #570.)
 Problem, success, and scope are each statable in one sentence.
 
 **Open assumptions / unknowns:**
@@ -157,7 +159,8 @@ which is what made the cleared state survivable in the first place.
 
 ## Scaffolding
 
-Not applicable — this plan changes four sites in an existing, fully scaffolded repo. `pytest -q`
+Not applicable — this plan changes existing sites in an already fully scaffolded repo (four when
+written, eight after batch two; the count was never load-bearing here). `pytest -q`
 from the repo root runs everything. The evidence store records pass/fail per tree, so this plan
 quotes no suite total — a prose copy is a hand-maintained duplicate that drifts.
 
@@ -169,7 +172,10 @@ red, restore. This is not ceremony: the predecessor branch had three of four rev
 an under-tested guard, twice in code written to close a finding, and its own forward notes name
 red-verification as the rule that would have caught it.
 
-Beyond tests, two of the three chunks need the framework exercised rather than unit-tested:
+Beyond tests, two of batch one's three chunks need the framework exercised rather than unit-tested
+(batch two's chunks carry their equivalent in their own "Done when" steps — each new guard
+red-verified — rather than here; this sentence read "two of the three chunks" until the PR review,
+which was true only while three was the total):
 
 - **Chunk 01** — reproduce the defect end-to-end before fixing it: run a `chunk`-mode review with
   a dirty tree, fix findings without committing, run `verify-resolutions`, and confirm the
@@ -482,11 +488,23 @@ batch one's was, which is the accepted cost of a second batch before the PR.
 round for the opposite order: the review passed, the PR reviewer then found a `change-log.md`
 conflict with `develop`, and merging `develop` moved the coverage graph's start node so the whole
 composed chain went `uncovered`. Filed as #565 against `/prawduct:pr` itself; until that lands,
-this plan does it by hand — check `develop` before Chunk 03's cumulative, not after it.
+this plan does it by hand — check `develop` before **Chunk 06's** cumulative, not after it.
 
 - After Chunk 01: confirm the interval fix composes with the gates that read the resulting facts
   (`check-cumulative-critic`, the Stop-hook gate) before widening into the probe work.
 - After Chunk 02: confirm the widened guard has not turned a genuine absence of norms into a
   standing nag — the "neither homing" case is the one to look at.
-- After Chunk 03 (cumulative): full-bundle review; confirm the encoding default did not change
-  any caller's bytes except the two intended.
+- After Chunk 03: confirm the encoding default did not change any caller's bytes except the two
+  intended.
+- After Chunk 04: confirm the skew guard's refusing set cannot strand a hook entry point — the
+  failure is unactionable by definition, since a hook cannot re-run itself the way the advice says.
+- After Chunk 05: confirm the converged entry definition did not move `Health Check #10` to
+  vacuous, and that the emphasis widening turns the near-miss pin red rather than silent.
+- After Chunk 06 (cumulative): full-bundle review over the whole branch, batch one included; the
+  `/prawduct:pr create` gate.
+
+(This list stopped at Chunk 03 and marked it `(cumulative)` until the PR review, and the sync
+paragraph above still named Chunk 03 — both true for batch one, both false from the moment batch
+two moved the `cumulative-final` marker to Chunk 06. The Status block records that move; these
+sections were not brought along. Same defect the Status block corrects twice inline, one section
+over.)
