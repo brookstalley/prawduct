@@ -52,7 +52,16 @@ Problem, success, and scope are each statable in one sentence.
   bold Statement is not mechanically distinguishable from any bold roadmap bullet. Grounded in
   the spec rather than in the suggestion, but it is still an interpretation of what the spec
   makes machine-checkable.
-- `[ASSUMPTION: widening the sweep guard is fleet-visible and that is intended | MED impact | user can veto]`
+- `[ASSUMPTION: widening the sweep guard is fleet-visible and that is intended | MED impact | RESOLVED — owner ACCEPTED 2026-08-03]`
+  **Accepted, not lapsed.** The owner was asked directly and chose "accept — it's the defect being
+  fixed", over the alternatives of gating the amplification behind `#570` shipping or vetoing the
+  widening outright. Recorded here because an assumption that merely stops being mentioned is
+  indistinguishable from one nobody ever answered, and this branch's own subject is records that
+  assert what the tree does not support. Residual risk, stated rather than assumed away: repos
+  homing norms only in the Enforcement table begin seeing an `info` advisory they never saw before,
+  and already-onboarded repos carrying leftover scaffold rows may see it *spuriously* until `#570`
+  lands — which is Chunk 06 of this same plan, so the window is this branch, not a release cycle.
+  Original text follows.
   — Chunk 02 makes `norm-health-sweep-overdue` reachable in repos that home norms only in the
   preferences Enforcement table. Those repos are silent today and will begin seeing an `info`
   advisory. That is the defect being fixed, not a side effect; recorded because "a previously
@@ -73,6 +82,9 @@ Problem, success, and scope are each statable in one sentence.
 - [ ] Chunk 01: The inverted verify-resolutions interval (#554)
 - [ ] Chunk 02: Direction detection — a heading is not a registry, and its absence is not health (#567)
 - [ ] Chunk 03: The mechanical tail — one encoding default, one interpreter (#562, #154)
+- [ ] Chunk 04: The binary that is not the one this repo carries (#227)
+- [ ] Chunk 05: One definition of a Direction norm entry, tolerant of emphasis (#568, #569)
+- [ ] Chunk 06: The template fix that never reached the installed base (#570)
 Context: Plan authored 2026-08-03 on `fix/silent-gates`, cut from `develop` at `596d761` after
 v3.2.3 shipped. Scope chosen by the owner from a `/prawduct:backlog pick` roster; the theme is
 **a check that reports health it did not measure**, which is what unifies the four items rather
@@ -88,9 +100,20 @@ its `chunk` review and a `verify-resolutions` round: Chunk 01 closed 1 blocking 
 four tracker items are closed by the change-log entries — #554, #567, #562, #154.
 
 `develop` was merged in **before** the cumulative (`bacef70`, clean — one new doc file), which is
-this plan's own governance checkpoint and the thing #565 exists to make automatic. Chunk 03 is
-`Type: cumulative-final`, so its `/prawduct:critic cumulative` is the plan's single final review and
-also the `/prawduct:pr create` gate — there is no separate `final` outstanding.
+this plan's own governance checkpoint and the thing #565 exists to make automatic.
+
+**Batch two — chunks 04-06, added 2026-08-03 at owner request** ("another batch before we PR").
+Batch one's four items are closed on the tracker (`status=shipped`), and its cumulative
+(`rev-20260803T123949Z-31a4b0af`) plus two verify rounds are recorded facts that stay valid for
+the span they covered. The `cumulative-final` marker moves from Chunk 03 to **Chunk 06**, which
+is now the plan's single final review and the `/prawduct:pr create` gate. Note the cost the
+owner accepted: that final cumulative re-spans the WHOLE branch, and review quality degrades
+across a large diff — so each new chunk takes its own `chunk` review rather than deferring
+everything to the end.
+
+Batch two was picked against the same theme, and **#227 displaced two of this branch's own
+filings on merit** — a roster ranked it above them, which is worth recording because the
+alternative was anchoring on what this branch happened to file.
 
 Two findings were filed rather than absorbed: **#568** (`record_lint.direction_norm_count` counts
 Direction norms by bullet while `norm_probes` counts them by `Why:` — two definitions in one
@@ -275,19 +298,142 @@ user can override and ask for a corrective fact to be appended instead]`
   filesystem per the coverage preference.
 - **Acceptance criteria:** `pytest -q` passes; no caller's observable output changes except the
   two bugs being fixed.
-- **Type:** cumulative-final
-  <!-- Last chunk: its review IS the one `/prawduct:critic cumulative` over
-       merge-base..HEAD — commit first, run it once, no separate `final`. -->
+- **Type:** code
+  <!-- Was `cumulative-final` while this was the last chunk. The owner asked for a second
+     batch before the PR, so chunks 04-06 follow and the marker moves to Chunk 06. The
+     cumulative that ran here (`rev-20260803T123949Z-31a4b0af`) is a recorded fact and stays
+     valid for the span it covered; it is simply no longer the plan's LAST review. -->
 - **Done when:**
   1. Acceptance criteria met and tests pass, each new guard red-verified
   2. Committed, then `/prawduct:critic cumulative` run and blocking findings resolved
   3. The change-log entry tagged `scope=silent-gates`
 
+### Chunk 04: The binary that is not the one this repo carries (#227)
+
+- **Description:** Inside a framework-repo worktree, a bare `prawduct-hook` on `$PATH` resolves to
+  the **installed plugin cache**, not the repo-local `plugin/bin/prawduct-hook`. The observed
+  consequence is the worst failure mode available in this system: `critic-begin` ran the stale
+  binary and **silently wrote no kernel-v3 manifest** — no error, no manifest — and the
+  `SubagentStop`-triggered `critic-consolidate` no-ops the same way, leaving a review unpersisted.
+  A governance write that reports nothing while doing nothing is this branch's theme exactly, one
+  layer out from #154 (`python3` vs `sys.executable`): *which binary am I actually running*.
+- **Depends on:** none
+- **Artifacts consumed:** `architecture.md` § Direction (authority fails closed; advice fails soft)
+- **Deliverables:**
+  - `plugin/bin/prawduct-hook` — a framework-checkout skew guard. The discriminator is **binary
+    identity, not version equality**: does the running binary live under the `plugin/` directory
+    *this repo carries*? A repo is a framework checkout iff it has `plugin/.claude-plugin/plugin.json`;
+    product repos have none and are untouched by this, which is the whole safety argument.
+  - The guard's **posture follows what the command produces**, per the governing norm. A
+    state-mutating governance write (the Critic data plane — `critic-begin`, `critic-consolidate`,
+    and their siblings) **refuses, exit 1**, naming the repo-local path to run instead. A read-only
+    or advisory command degrades to a loud stderr NOTE and proceeds, because a refusal there would
+    break ordinary use for no soundness gain. Neither is silent.
+  - `.prawduct/artifacts/build-plan-silent-gates.md` § Verification Strategy — **delete** the
+    hand-written "Invoke the worktree, not the PATH binary" paragraph. It is a procedural workaround
+    for this exact defect; left standing after the fix it becomes the next reader's false constraint.
+  - `tests/` — the guard's matrix, red-verified.
+- **Tests:** unit — framework checkout × (running the repo-local binary / running a foreign one) ×
+  (data-plane command / advisory command); plus the **product-repo case**, which must be entirely
+  unaffected. That last one is the over-fire guard and is the case a careless fix breaks.
+- **Acceptance criteria:** `pytest -q` passes; running a foreign binary's data-plane command inside
+  this worktree refuses loudly instead of no-opping; a product repo (no `plugin/` manifest) sees no
+  behaviour change at all; the workaround paragraph is gone from the plan.
+- **Done when:**
+  1. Acceptance criteria met and tests pass, each new guard red-verified
+  2. `/prawduct:critic` run and blocking findings resolved
+  3. Committed and the change-log entry tagged `scope=silent-gates`
+
+`[DECISION: the guard keys on binary IDENTITY, not on the version comparison #227 prescribes |
+#227's stated Expected is "the invoked binary compares its self-reported version against the repo's
+expected lineage". **That test would not have caught this session.** The installed plugin and this
+worktree both report `3.2.3`, while the worktree's `lib/` has diverged substantially — so version
+equality held and the code differed, which is precisely the skew being guarded against. A checkout
+is *routinely* ahead of its own manifest between releases, so version comparison is not merely
+weaker here, it is blind in the common case. Identity — "am I the binary this repo carries" — is
+exact and needs no lineage bookkeeping. Recorded rather than silently substituted, per *goals and
+verification bind; prescribed method is advice* | user can override and ask for the version check]`
+
+### Chunk 05: One definition of a Direction norm entry, tolerant of emphasis (#568, #569)
+
+- **Description:** One decision surface wearing two issue numbers. **#568:** `record_lint.direction_norm_count`
+  counts every top-level bullet in a `## Direction` section as a norm, while `norm_probes._has_direction_entry`
+  (Chunk 02) requires a `Why:`-bearing line — two definitions of "a norm entry" in one codebase, and
+  they disagree exactly in the roadmap case Chunk 02 was about. **#569:** the marker regex anchors on
+  a **bare** `Why:`, so a product writing `**Why:**` loses all four norm signals silently. These
+  sequence together or cost more: converge the definition first and you converge onto a predicate
+  still blind to emphasis, then re-touch both call sites to widen it.
+- **Depends on:** Chunk 02 (which created the second definition)
+- **Artifacts consumed:** `docs/norms.md` § Anatomy of a Norm, `architecture.md` § Direction
+  (every fact has one home)
+- **Deliverables:**
+  - `plugin/lib/norm_probes.py` — the field-marker match tolerates emphasis (`**Why:**`, `__Why:__`,
+    `*Why:*`) as well as the bare canonical form. **Owner decision, taken 2026-08-03: tolerate.**
+    This necessarily moves `probe_dead_why` and `probe_stalled_transition` too, since they share the
+    regex — that is the point, not a side effect.
+  - `plugin/lib/record_lint.py` — `direction_norm_count` converges on the same definition rather
+    than counting bare bullets, so the `governed_by` under-disposition lint stops demanding
+    dispositions for roadmap items. One definition, one home.
+  - `tests/test_norm_probes.py` — `test_bold_why_marker_is_not_recognised_as_an_entry` **goes red by
+    design and is rewritten**, not deleted: it becomes the assertion that emphasis IS tolerated. The
+    boundary it pinned still needs a pin — a genuine non-marker (`Why not:`, prose mentioning `Why:`
+    mid-sentence) must still fail.
+  - `tests/` — the shared-definition pin: one test asserting `record_lint` and `norm_probes` agree
+    on a corpus containing a roadmap section, a bare-marker norm and an emphasised-marker norm.
+- **Tests:** unit — the marker matrix (bare / bolded / italic / underscored / non-marker) × both
+  consumers; regression — a roadmap section counts zero norms in both.
+- **Acceptance criteria:** `pytest -q` passes; the two consumers return the same count on the shared
+  corpus; **#332**'s "6 of 10 Direction norms carry no disposition" count is re-derived after this
+  lands, never before — it is computed by the lint this chunk changes.
+- **Done when:**
+  1. Acceptance criteria met and tests pass, each new guard red-verified
+  2. `/prawduct:critic` run and blocking findings resolved
+  3. Committed and the change-log entry tagged `scope=silent-gates`
+
+### Chunk 06: The template fix that never reached the installed base (#570)
+
+- **Description:** Chunk 02's blocking finding was fixed by shipping the norm-index table empty in
+  `templates/project-preferences.md` — but `init_product` and `core.write_template` skip existing
+  destinations, so that fix reaches **new onboards only**. Every already-onboarded repo keeps the
+  scaffold rows whose non-empty `Audit home`/`Why` cells make `_has_enforcement_norm_rows` return
+  True, and the over-fire Chunk 02 closed is still live across the installed base. This chunk is not
+  new work; it is the honest completion of Chunk 02.
+- **Depends on:** Chunk 02
+- **Artifacts consumed:** `docs/norms.md` § Where Norms Live, `docs/doctor-vs-janitor.md`
+- **Deliverables:**
+  - new `plugin/lib/norm_index_scaffold.py` (or the nearest existing home) — detect leftover
+    scaffold rows in a repo's Enforcement norm index, and offer an `--apply` repair that clears
+    them. Modelled on `learnings_obligation` / Health Check #13, which is the established shape for
+    exactly this problem: a defect in already-onboarded repos that a template change cannot reach.
+  - `plugin/bin/prawduct-hook` — the subcommand, reporting `ok` / `leftover` / `absent` /
+    `unreadable`, with `unreadable` **degraded-because-ungraded** rather than passing.
+  - `plugin/skills/doctor/SKILL.md` — Health Check #14, **offered never auto-applied**: this edits a
+    product's authored preferences file, so the repair takes an informed confirmation naming what
+    changes, exactly as #13 does.
+  - `tests/` — detection against the real shipped template *and* against a pre-fix copy carrying the
+    scaffold rows, so template and detector are pinned against each other (the rule Chunk 02 paid
+    for).
+- **Tests:** unit — leftover / filled / empty / absent / unreadable; the repair is insert-and-clear
+  only and never reorders or rewrites an authored row.
+- **Acceptance criteria:** `pytest -q` passes; a repo carrying the old scaffold rows is detected and
+  repairable; a repo with genuine norms is untouched; the shipped template reads `ok`.
+- **Type:** cumulative-final
+  <!-- Now the plan's last chunk (the marker moved here from Chunk 03 when batch two was
+       added): its review IS the one `/prawduct:critic cumulative` over merge-base..HEAD,
+       which re-spans the WHOLE branch, batch one included. Commit first, run once. -->
+- **Done when:**
+  1. Acceptance criteria met and tests pass, each new guard red-verified
+  2. Base synced from `origin/develop` **before** the review, not after
+  3. Committed, then `/prawduct:critic cumulative` run and blocking findings resolved
+  4. The change-log entry tagged `scope=silent-gates`
+
 ## Governance Checkpoints
 
 **Commit & PR cadence:** commit per chunk after its Critic review passes — per-chunk commit is
 what scopes `chunk`-mode reviews, and batching would give the mid-plan reviews an unbounded diff.
-Chunk 03's `cumulative` makes the branch PR-ready; `/prawduct:pr create` runs when the user asks.
+**Chunk 06's** `cumulative` makes the branch PR-ready; `/prawduct:pr create` runs when the user
+asks. It re-spans the whole branch — batch one's chunks included — so it is a larger review than
+batch one's was, which is the accepted cost of a second batch before the PR.
 
 **Sync base before reviewing, not after.** The predecessor branch paid a full extra cumulative
 round for the opposite order: the review passed, the PR reviewer then found a `change-log.md`
