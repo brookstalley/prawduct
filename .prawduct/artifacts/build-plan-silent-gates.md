@@ -192,8 +192,17 @@ user can override and ask for a corrective fact to be appended instead]`
     norm rows in the preferences Enforcement table. The table is already located by
     `_norm_index_lacks_columns` via its `Preference`-prefixed header row; the new reader answers
     "does it carry a populated norm row", reusing that location rather than re-deriving it.
-    `probe_dead_why` and `probe_stalled_transition` reach the same starvation through
-    `_direction_lines` — close them on the same predicate, not by a second mechanism.
+
+    **Corrected 2026-08-03, before building.** This deliverable originally also said to "close
+    `probe_dead_why` and `probe_stalled_transition` on the same predicate." That is incoherent: a
+    predicate answers *whether* norms exist, and those two probes are starved for want of *lines to
+    scan*, not for want of a guard — no predicate can feed them. The plan was written from #567's
+    Problem section without reconciling it against the issue's own Scope section, which already
+    settles it: *"The janitor sweep already covers table rows, so the **coverage** exists; only the
+    **reminder** is gated on a heading."* So the single guard is the whole fix, and those two probes
+    correctly need nothing. What remains true is that a table-homed repo gets no *probe-level*
+    dead-why or stalled-transition signal — that is the janitor sweep's job, and the sweep is what
+    the restored reminder sends you to.
   - `tests/test_norm_probes.py` — red-verified cases for both defects: a roadmap-only Direction
     section (arm (a) must fire), a Why-bearing entry (arm (a) must stay quiet), a repo with zero
     Direction headings but populated Enforcement norm rows (all three probes reachable), and a

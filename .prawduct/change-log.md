@@ -13,7 +13,13 @@ look identical and mean opposite things. A commit landed afterwards, so the anch
 case the branch was written for. Or the prior review vouched for a **dirty** tree and nothing has
 been committed since, so the anchor is *ahead*. The second is not an edge case: it is the ordinary
 shape of a `chunk`-mode review, whose fact records `head_commit: null` and a `head_tree` matching no
-commit. **135 of the 401 review facts in this clone's store are that shape.**
+commit. **Measured 2026-08-03: 136 of 402 review facts in this clone's store — roughly a third — are
+that shape.** Stated as a dated snapshot because the count moves with every review: it was 135/401
+when the chunk review measured it and 136/402 four minutes later, the difference being that review's
+own fact, which is itself dirty-shaped. The proportion is the durable claim; the live answer is a
+`kind == "review"` query over `<git-common-dir>/prawduct/evidence.jsonl`. That same query says
+**zero** facts lack `dispatch_commit`, so the guard below engages on every fact in the store rather
+than degrading to the old behaviour on some of them.
 
 Read as a committed delta, the edge inverts — base becomes the dirty snapshot that is ahead, head the
 committed tree that is behind. Three consequences, ascending: `files_changed` describes the chunk
