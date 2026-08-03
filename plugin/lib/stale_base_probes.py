@@ -72,11 +72,14 @@ def probe_unpromoted_release_prep(state: ProjectState, codebase: Codebase):
                 f"local {local} carries an unpushed release-prep commit ahead of "
                 f"{diag['remote']}",
             ),
+            # States the condition, not the instruction: this line is relayed to the
+            # owner, and "push before running coverage gates" told the one reader who
+            # runs neither to do both — directly above an owner line that asks only
+            # for a go-ahead.
             trigger_summary=(
                 f"local {local} is {ahead} commit{plural} ahead of {diag['remote']} "
-                f"with an unpushed {diag['release_prep_subject']!r} — push before "
-                f"running coverage gates to avoid a false `uncovered` on "
-                f"already-reviewed work"
+                f"with an unpushed {diag['release_prep_subject']!r}, so coverage gates "
+                f"will read already-reviewed work as `uncovered`"
             ),
             # `ahead`, not "the commit": the probe already knows the count and renders a
             # plural for its summary, so a hardcoded singular would have the owner

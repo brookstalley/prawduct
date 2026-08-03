@@ -261,6 +261,40 @@ def test_owner_action_contains_no_command(site):
     )
 
 
+# A rule checked only against copy that already conforms is a rule that passes when
+# it matches nothing — which is precisely how this module shipped enforcing two of
+# §7.2's three banned forms without noticing. These cases pin each arm against text
+# that must fail and text that must not, so deleting or weakening a pattern reddens
+# here rather than going quiet against the 18 conforming sites.
+_OWNER_TEXT_CASES = (
+    ("Say go and I will run git push origin main.", True, "shell invocation"),
+    ("Approve and I will run prawduct-hook update-gitignore.", True, "prawduct-hook"),
+    ("Run /prawduct:doctor and it is fixed.", True, "slash command"),
+    ("Deliberate over-reach: your git history is fine.", True, "executable as a noun"),
+    ("Say go — you will see a diff to review before anything is staged.", False, ""),
+    ("This creates 349 real GitHub issues and cannot be undone.", False, "GitHub is not git"),
+    ("The items in .prawduct/backlog.md are folded in.", False, "a path is not a command"),
+    ("Renew it with a fresh date, or let it lapse.", False, ""),
+)
+
+
+def _owner_text_violates(text: str) -> bool:
+    """The three §7.2 arms, exactly as the site rule applies them."""
+    return (
+        any(banned in text for banned in _OWNER_BANNED_SUBSTRINGS)
+        or bool(_SLASH_COMMAND_RE.search(text))
+        or bool(_SHELL_INVOCATION_RE.search(text))
+    )
+
+
+@pytest.mark.parametrize("text,should_reject,why", _OWNER_TEXT_CASES)
+def test_owner_text_rule_catches_each_banned_form(text, should_reject, why):
+    assert _owner_text_violates(text) is should_reject, (
+        f"owner-text rule {'missed' if should_reject else 'over-matched'} "
+        f"({why or 'plain copy'}): {text!r}"
+    )
+
+
 # =============================================================================
 # Rule 3 — recommended_action is one command, or nothing
 # =============================================================================
