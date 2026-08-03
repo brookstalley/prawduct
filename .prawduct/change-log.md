@@ -58,6 +58,11 @@ now go through one `_norm_index_header` locator, pinned by a two-table test.
   fleet-visible with `user can veto`, and nothing in this bundle records that veto being waived —
   because nothing did. It does not gate: the advisory is `info` and prints rather than gates, and
   merging to `develop` is not the publishing step.
+- **The reader fix is pinned two ways, and the pin is the durable part.** A locale-forced
+  `_write_queue` → `_load_queue` round trip carrying an em-dash, plus a receiver-qualified source pin
+  asserting both `read_text(encoding="utf-8")` call sites. The behavioural test cannot see a reader
+  that is never reached on a UTF-8 host; the source pin can, which is what makes a reverted guard
+  fail somewhere rather than nowhere. Both go red when the guard is reverted.
 - **A lint and a policy disagree, and the entry was not degraded to satisfy the lint.** Record-lint
   scored two `learnings-entry-shape` notes for entries carrying their evidence inline;
   `learnings.md`'s own header mandates exactly that ("entries carry their instances inline… rules are

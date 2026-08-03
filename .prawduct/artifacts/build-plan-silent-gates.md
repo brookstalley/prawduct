@@ -242,8 +242,12 @@ user can override and ask for a corrective fact to be appended instead]`
 - **Description:** Two independent one-site fixes, batched because neither justifies a chunk and
   both are the same class — a runtime assumption that is invisible where it was written and wrong
   elsewhere. *#562:* `core.atomic_write_text` writes at `locale.getpreferredencoding(False)` while
-  every reader opens `encoding="utf-8"`; on a non-UTF-8 locale the round trip is lossy and
-  non-ASCII raises `UnicodeEncodeError` at the write. *#154:* the audit-learnings sentinel runner
+  its readers open `encoding="utf-8"`; on a non-UTF-8 locale the round trip is lossy and
+  non-ASCII raises `UnicodeEncodeError` at the write. **Corrected 2026-08-03 — this sentence
+  originally read "every reader", which is false and was the premise the whole survey rested on.**
+  There are 11 call sites, not the 7 a `--include='*.py'` grep found, and the readers are mixed:
+  several under `plugin/lib/` still use a bare `read_text()`. Corrected at the origin so the plan
+  does not outlive its own error. *#154:* the audit-learnings sentinel runner
   spawns a hardcoded `python3`, so under a venv every learning sentinel falsely reports failing.
 - **Depends on:** none
 - **Artifacts consumed:** `project-preferences.md` (subprocess safety — list args, never
