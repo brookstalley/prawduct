@@ -827,7 +827,17 @@ def assemble_session_briefing(project_dir: Path, staleness: list[str]) -> str:
     if active_adv or resolved_since or dismissed_since:
         if active_adv:
             lines.append(f"ADVISORIES (post-sync, {len(active_adv)} active):")
-            for position, adv in enumerate(active_adv[:5]):
+            # The 5-cap is a floor for consequential advisories, not a ceiling.
+            # Ordering can pull prerequisites ahead of a `warn` and push it past
+            # the cap — and "the block never hides something worth interrupting a
+            # person for" is the older invariant and the one that outranks a line
+            # budget. Extending the prefix keeps the slice contiguous, so the
+            # overflow count and the annotation positions stay honest.
+            display_count = 5
+            for index, adv in enumerate(active_adv):
+                if adv.get("priority") in _RELAY_IN_FULL_PRIORITIES:
+                    display_count = max(display_count, index + 1)
+            for position, adv in enumerate(active_adv[:display_count]):
                 feature = adv.get("feature", "?")
                 summary = adv.get("trigger_summary", "")
                 aid = adv.get("id", "")
@@ -843,9 +853,10 @@ def assemble_session_briefing(project_dir: Path, staleness: list[str]) -> str:
                 action = adv.get("recommended_action", "")
                 if action:
                     lines.append(f"    agent → {action}")
-            if len(active_adv) > 5:
+            if len(active_adv) > display_count:
                 lines.append(
-                    f"  ... and {len(active_adv) - 5} more (run /prawduct:advisory list)"
+                    f"  ... and {len(active_adv) - display_count} more "
+                    f"(run /prawduct:advisory list)"
                 )
             # Once per block, not once per advisory: the hint is identical every
             # time and taught nothing after its first reading, while costing a

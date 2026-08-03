@@ -275,7 +275,8 @@ owner — hence the neutral `owner →` / `agent →` labels rather than "you"/"
 - **Fallback**: when a stored advisory has no `owner_action` (written before v0.3, or a probe not yet updated), render `owner → Approve the action below, or dismiss the advisory.` Never omit the line — a missing owner action must read as "nothing but approval is needed", not as "this advisory has no owner".
 - **Truncation**: if more than 5 active, show first 5 + "... and N more (run /prawduct-advisory list)."
 - **Dismissal hint**: once per block, not once per advisory. Repeating a 60-character hint under every entry was the largest single term in the block's size and taught nothing after the first reading.
-- **Ordering**: prerequisites first (§5.3), then urgent → warn → info, then by `triggered_at` descending within priority.
+- **Ordering**: urgent → warn → info, then by `triggered_at` descending within priority — and then each advisory pulled behind its own prerequisites (§5.3). Priority is the ordering; prerequisites displace only what they must.
+- **Display cap is a floor for consequential advisories**: the block shows 5, extended as far as needed to include every active `warn`/`urgent`. Ordering can push a high-priority advisory down behind prerequisites pulled ahead of it, and the block must never hide something worth interrupting a person for in order to hold a line budget.
 - **Suppression**: if all advisories are `info` priority and total count is unchanged from the last session, can be collapsed to one line: "ADVISORIES: 3 active (unchanged) — run /prawduct-advisory list."
 
 ### 5.2 Empty state
@@ -295,9 +296,16 @@ A probe declares `prerequisite_of: ("<feature>:<type>", …)` naming the advisor
 Within the active set the briefing then:
 
 1. sorts by priority as before, and
-2. moves any advisory ahead of the ones it is a prerequisite of, preserving relative order otherwise
-   (a stable topological pass over the active set only), and
+2. emits each advisory after its own prerequisites and otherwise in the order it arrived — a
+   **pull-up**, which moves a prerequisite to just ahead of what it feeds and leaves everything else
+   where priority put it, and
 3. annotates the dependent with `after → <plain-language name of the prerequisite>, <why>`.
+
+**Why a pull-up and not a topological sort.** A textbook ready-queue toposort releases every
+unconstrained node before any dependent, so a single `info`→`warn` edge among three unrelated `info`
+advisories lands the `warn` *below all three* — one edge silently demoting the most severe item in
+the block. This was not theoretical: it is what the first implementation did, caught by rendering the
+four advisories a real product reported. Only the prerequisite may move, and only far enough.
 
 **Ordering, not gating.** Both advisories render, both stay dismissible independently, and neither
 blocks. This is deliberately weaker than the layer-0/layer-1 *suppression* the structural-coverage

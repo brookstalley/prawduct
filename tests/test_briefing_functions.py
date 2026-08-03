@@ -884,6 +884,30 @@ class TestAdvisoryPrerequisiteOrdering:
             "the warn keeps its rank over unrelated infos, which keep theirs"
         )
 
+    def test_prerequisites_cannot_push_a_warn_past_the_display_cap(self, tmp_path, monkeypatch):
+        """The cap is a floor for consequential advisories.
+
+        `TestAdvisoryRelayDirective` pins that the cap can never hide something
+        worth interrupting a person for — an invariant that predates ordering and
+        that ordering could otherwise break, since enough prerequisites pulled
+        ahead of a `warn` push it out of the visible slice while the relay still
+        claims to have relayed everything above.
+        """
+        prereqs = [
+            self._adv(
+                f"pre{i}", f"p{i}", "info",
+                prerequisite_of=[{"type": "backlog:migrate", "because": f"pre{i} first"}],
+            )
+            for i in range(5)
+        ]
+        out = self._render(
+            tmp_path, monkeypatch, self._adv("backlog", "migrate", "warn"), *prereqs
+        )
+        assert "• [backlog]" in out, "a warn behind five prerequisites is still displayed"
+        # The prefix stretched rather than the warn being dropped, so nothing is
+        # reported as hidden.
+        assert "... and" not in out
+
     def test_priority_order_survives_where_no_edge_forces_otherwise(self, tmp_path, monkeypatch):
         out = self._render(
             tmp_path, monkeypatch,

@@ -52,9 +52,9 @@ backlog service shipped: announced at the crossing, on the agent's channel, with
 that would have nudged it registered as a no-op.
 
 The mechanism that closes it is a **relay directive** at each emission site — `banner.RELAY_MARKER`
-for a version crossing, `briefing.ADVISORY_RELAY_TEXT` for an active `warn`/`urgent` advisory. Each
-instructs the agent to surface the news in conversation, which is the one channel the owner reliably
-reads. Two properties are load-bearing:
+for a version crossing, `briefing.ADVISORY_RELAY_TEXT` for any active advisory. Each instructs the
+agent to surface the news in conversation, which is the one channel the owner reliably reads. Two
+properties are load-bearing:
 
 - **At the emission site, not in the session digest.** A directive fires only when there is something
   to say; a digest rule is re-read every session to cover the minority that have news, and sits far
