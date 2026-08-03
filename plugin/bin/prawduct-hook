@@ -3981,7 +3981,13 @@ def cmd_coverage_status(project_dir: Path, argv: list[str]) -> int:
         print("  Layer 2 · norm ratification : norms not yet ratified")
     else:
         print("  Layer 2 · norm ratification : ratified or not yet applicable")
-    if active_layer is not None:
+    if active_layer is not None and active_layer == 2 and not staging:
+        # Layer 2 is real, but it sits DOWNSTREAM of two layers that were never
+        # evaluated — naming it "the" fix would claim a chain position nothing
+        # checked. Same refusal the mirror case below already makes.
+        print(f"  Active nudge → Layer 2: {fix}")
+        print("    (layers 0-1 could not be checked, so this may not be the first thing owed)")
+    elif active_layer is not None:
         print(f"  Active nudge → Layer {active_layer}: {fix}")
     elif not staging:
         print("  Active nudge → none actionable: layers 0-1 could not be checked.")

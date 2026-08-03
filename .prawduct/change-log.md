@@ -170,6 +170,52 @@ appearing inside the amendment that closes it. The line now states the trigger a
 it can only be prose, the walker is named (the janitor's Norm Health sweep reading `#563`, which is
 what walks every event-bound trigger anyway), and the missing write path is filed as `#564`.
 
+**The merge-round cumulative (`rev-20260802T234453Z-63a1f4f1`, 0 blocking / 7 warning / 9 note) then
+found the batch's own subject in the batch's own code.** Ten fixed, six accepted.
+
+*The repair promised an insertion and delivered a rewrite.* `learnings_obligation` read the owner's
+corpus with `splitlines()` and wrote it back through a shared writer that encodes at the **locale**
+encoding — so on cp1252 or latin-1 the em dashes in the inserted block encode cleanly, the write
+*succeeds*, and every non-ASCII character the owner wrote is silently re-encoded out of UTF-8; the
+next `check()` then reports `unreadable` against a corpus the repair broke (R-8). Newline
+translation and `splitlines()`'s six extra separators did the same damage in the other direction
+(R-1). Both contradicted the sentence the module states about itself — *it never rewrites, reorders,
+or deletes an existing line* — and the dry-run confirmation showed the owner only the insertion, so
+they said yes to one thing and could receive another. The repair now **splices the block into the
+raw text at a byte offset**, so everything outside the insertion is the owner's bytes verbatim, and
+`core.atomic_write_text` takes explicit `encoding`/`newline` (additive; defaults unchanged, `#562`
+still owns making utf-8 the default for every caller). Four fixtures, each red-verified by reverting
+the specific guard: CRLF endings, the separators `splitlines()` eats, an unterminated corpus, and
+the encode pinned at the call. The existing fidelity test could not have caught any of it — both
+sides of its comparison were already newline-normalised.
+
+*And the corrections that reached most of their homes.* The "layers 0↔1 are exact complements"
+retraction had reached two sites of three: `docs/norms.md` still opened the staging section with the
+claim it corrects nine lines later, and a test comment cited that very line (R-3, R-7). The
+least-authority enumeration turned out to have a **fifth** copy — in `README.md` and
+`documentation/project-structure.md`, both saying the hook "reads/writes only `.prawduct/`", which
+is false on three counts the norm itself enumerates. Chunk 02's falsifying query was scoped to
+`.prawduct/` and stopped one directory short of the file a trust-evaluating reader meets first
+(R-6). Both now point instead of restate.
+
+*Two more surfaces answering for a state nothing checked* — the fourth and fifth instances of #241's
+shape in one batch: doctor #11 read `discovery_expected: false` as "not engaged" with no branch for
+`null` ("could not run"), and `coverage-status` named Layer 2 as *the* fix without saying that the
+two layers upstream of it were never evaluated (R-2, R-10). Both now decline instead of answering.
+And the plan's own Context claimed `active_build_plan` "still points at `build-plan-v3.2.0-golive.md`
+by design" — false when written, and false on the three branches before it. Rewritten to state the
+rule *without* naming the slot's value, so it cannot go stale again (R-12).
+
+Accepted with reasons recorded: R-4 and R-15 (clean, informational), R-5 (the norm explicitly carves
+out instruction prose a skill reads but never speaks), R-9 (`#561` owns the allowlist widening; this
+batch adds the registry row that would have surfaced it), R-14 (transitively closed by `#564`), R-16
+(backlog reconciliation has no Issues-mode path; done out-of-band via the adapter). Two notes were
+taken as work rather than accepted: `cross-cutting-concerns.md` gains a **language-agnostic file
+classification** row — this bundle contained two classifiers answering "is this file product code?"
+by opposite methods, and `#348` and `#561` are the same concern found twice, months apart, by
+accident (R-11) — and `api-contract.md` now names `learnings-obligation --json` as **unconsumed on
+purpose** rather than asserting a doctor binding that does not exist (R-13).
+
 **Two of the remaining four are corrections that reached one home out of three** — the shape this
 whole batch exists to burn down, twice in the pass that fixed it. "Layers 0↔1 are exact
 complements" was corrected in `docs/norms.md` and left standing in `skills/doctor/SKILL.md` and in

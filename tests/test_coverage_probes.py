@@ -596,7 +596,9 @@ def test_layer1_and_layer2_overlap_during_partial_authoring(tmp_path):
     # to clear. While authoring is partial — one strategy artifact written, the rest
     # still owed, no `## Direction` yet — layer 1 (author the rest) and layer 2 (ratify
     # what exists) BOTH speak: two distinct asks, not a double-nag on one. Only the
-    # 0↔1 boundary is an exact complement (docs/norms.md § Structural-coverage staging).
+    # 0↔1 boundary is mutually exclusive — though possibly neither, since each layer
+    # adds a condition beyond the shared predicate (docs/norms.md § Structural-coverage
+    # staging).
     _write_code(tmp_path)
     _open_gate(tmp_path)  # characteristics recorded → layer 0 clears
     _write_artifact(tmp_path, "security-model.md", "# Security Model\n\nProse, no Direction.\n")

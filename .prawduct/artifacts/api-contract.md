@@ -119,9 +119,13 @@ dispatch); state-mutating lifecycle commands (`migrate-plugin`, `init-product`, 
     `discovery_expected` or `structural_recorded` = the staging check **could not run**, and in that
     state `missing_artifacts: []` means *nothing was looked at*, not *nothing is missing* — a
     consumer must not read it as a clean layer 1.
-  - `learnings-obligation --json` → doctor (`status` — one of `ok` / `missing` / `misplaced` /
-    `absent` / `unreadable` — plus `path`, `marker`, `marker_lines[]`, `first_rule_line`, `detail`,
-    `repairable`, `applied`, `insert_before_line`, `insert_text`).
+  - `learnings-obligation --json` → **no skill consumer today** (`status` — one of `ok` / `missing` /
+    `misplaced` / `absent` / `unreadable` — plus `path`, `marker`, `marker_lines[]`,
+    `first_rule_line`, `detail`, `repairable`, `applied`, `insert_before_line`, `insert_text`).
+    Health Check #13 relays the **human** form, which carries everything it needs. Listed here so
+    the key set is documented, and named as unconsumed on purpose: every sibling in this list binds
+    a real reader that keeps its keys honest, and asserting a binding that does not exist is how a
+    maintainer sizes a key change against a consumer that would never have noticed.
   - `migrate-plugin --json` → migrate skill; `init-product --json` → onboard skill;
     `audit-learnings --json` → doctor; `repo-disable --json` → repo-disable skill.
   - `review-stats --json` → the cross-project telemetry aggregator, carrying a top-level

@@ -10,7 +10,9 @@ artifacts is currently missing.
 This module owns the chain's two staged nudges: **layer 0**
 (:func:`probe_discovery_not_captured` — structural characteristics never recorded)
 and **layer 1** (:func:`probe_strategy_artifact_missing` — characteristics recorded
-but expected artifacts absent), complements on the shared staging predicate.
+but expected artifacts absent). They partition the shared staging predicate but each
+adds a second condition of its own, so they are mutually exclusive and possibly
+neither — silence from both is the chain not yet engaged, not the chain satisfied.
 
 **Layer 1 — strategy-class artifact coverage.** The seven
 strategy-class artifacts (``docs/norms.md`` § Where Norms Live) split into two

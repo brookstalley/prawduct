@@ -17,6 +17,7 @@ from __future__ import annotations
 import json
 import subprocess
 from pathlib import Path
+from unittest import mock
 
 import pytest
 
@@ -38,6 +39,25 @@ _RULES = (
     "## Never swallow an exception\n\n"
     "When catching, name the type because a bare catch hides the next bug.\n"
 )
+
+
+def _product_raw(tmp_path: Path, learnings: str) -> Path:
+    """A product whose corpus is written VERBATIM — no newline translation.
+
+    `_product` goes through `write_text`'s default `newline=None`, which maps
+    every ``\\n`` to ``os.linesep`` on write. The byte-fidelity tests need the
+    bytes they asked for, not the platform's opinion of them.
+    """
+    (tmp_path / ".prawduct").mkdir(parents=True, exist_ok=True)
+    with (tmp_path / lo.LEARNINGS_REL).open("w", encoding="utf-8", newline="") as handle:
+        handle.write(learnings)
+    return tmp_path
+
+
+def _read_raw(tmp_path: Path) -> str:
+    """The corpus back, verbatim — translation off on the way in too."""
+    with (tmp_path / lo.LEARNINGS_REL).open(encoding="utf-8", newline="") as handle:
+        return handle.read()
 
 
 def _product(tmp_path: Path, learnings: str | None) -> Path:
@@ -174,6 +194,70 @@ class TestRepair:
         for line in original.splitlines():
             assert any(candidate == line for candidate in cursor), f"lost line: {line!r}"
 
+    def test_the_repair_preserves_crlf_endings_on_lines_it_did_not_touch(self, tmp_path):
+        # "Never rewrites an existing line" is a claim about BYTES, not about
+        # content. Rebuilding the file from `splitlines()` re-emits every line
+        # with a fresh ending, so a CRLF corpus comes back LF and the owner's
+        # diff shows a whole-file rewrite instead of one insertion.
+        original = (_PREAMBLE + _RULES).replace("\n", "\r\n")
+        _product_raw(tmp_path, original)
+        lo.repair(tmp_path, apply=True)
+        after = _read_raw(tmp_path)
+
+        assert "\n" not in after.replace("\r\n", ""), "an LF-only line ending appeared"
+        for line in original.split("\r\n"):
+            if line:
+                assert f"{line}\r\n" in after, f"line lost its ending: {line!r}"
+
+    def test_the_repair_preserves_separators_that_splitlines_would_eat(self, tmp_path):
+        # `str.splitlines()` breaks on \v, \f, \x1c-\x1e, \x85, U+2028 and U+2029.
+        # Rejoining on \n replaces each with a newline — a character the owner
+        # wrote, silently substituted on a line the repair never meant to touch.
+        exotic = "  \x0b\x0c\x1c\x1d\x1e\x85"
+        original = _PREAMBLE + f"\nA line holding {exotic} separators.\n" + _RULES
+        _product_raw(tmp_path, original)
+        lo.repair(tmp_path, apply=True)
+        after = _read_raw(tmp_path)
+
+        assert f"A line holding {exotic} separators." in after
+        assert after.count(" ") == 1 and after.count("\x85") == 1
+
+    def test_the_repair_leaves_an_unterminated_corpus_byte_identical_around_it(self, tmp_path):
+        # A corpus with no trailing newline still gets exactly one added — you
+        # cannot append below an unterminated line — and nothing else moves.
+        original = (_PREAMBLE + _RULES).rstrip("\n")
+        _product_raw(tmp_path, original)
+        lo.repair(tmp_path, apply=True)
+        after = _read_raw(tmp_path)
+
+        head, block, tail = after.partition(lo.OBLIGATION_BLOCK)
+        assert block, "the block was not inserted"
+        assert not after.endswith("\n"), "a trailing newline the owner did not write"
+        assert original.startswith(head.rstrip("\n")), "bytes before the block changed"
+        assert original.endswith(tail), "bytes after the block changed"
+
+    def test_the_repair_encodes_the_owners_corpus_as_utf8_not_the_locale(self, tmp_path):
+        # The shared writer defaults to the LOCALE encoding (`#562`). On cp1252 or
+        # latin-1 this block's em dashes encode cleanly, so the write SUCCEEDS and
+        # silently re-encodes every non-ASCII character the owner wrote — after
+        # which check() reports `unreadable` against a corpus the repair broke.
+        # Pinned at the call, because a passing round-trip on a UTF-8 host proves
+        # nothing about the hosts where this fails.
+        seen = {}
+        real = lo.core.atomic_write_text
+
+        def spy(path, text, **kwargs):
+            seen.update(kwargs)
+            return real(path, text, **kwargs)
+
+        _product_raw(tmp_path, _PREAMBLE + "\nAn — em dash, a ü, a 漢.\n" + _RULES)
+        with mock.patch.object(lo.core, "atomic_write_text", spy):
+            lo.repair(tmp_path, apply=True)
+
+        assert seen.get("encoding") == "utf-8"
+        assert seen.get("newline") == ""
+        assert "An — em dash, a ü, a 漢." in _read_raw(tmp_path)
+
     def test_repairing_twice_is_an_idempotent_no_op(self, tmp_path):
         _product(tmp_path, _PREAMBLE + _RULES)
         lo.repair(tmp_path, apply=True)
@@ -211,7 +295,7 @@ class TestRepair:
         # can believe it.
         _product(tmp_path, _PREAMBLE + _RULES)
 
-        def _boom(path, text):
+        def _boom(path, text, **kwargs):
             raise OSError("disk full")
 
         monkeypatch.setattr(lo.core, "atomic_write_text", _boom)
@@ -221,18 +305,17 @@ class TestRepair:
         assert lo.check(tmp_path)["status"] == lo.STATUS_MISSING  # untouched
 
     def test_an_encoding_failure_refuses_rather_than_raising(self, tmp_path, monkeypatch):
-        """The failure the shared writer newly made possible.
+        """A `UnicodeEncodeError` is not an `OSError`, so it needs naming.
 
-        `core.atomic_write_text` encodes at the locale encoding (`#562`) while
-        `OBLIGATION_BLOCK` is non-ASCII, so on a non-UTF-8 locale the write raises
-        `UnicodeEncodeError` — which is not an `OSError`. Swapping to the shared
-        writer for atomicity moved that failure outside the handler that used to
-        catch every way this write could fail.
+        With the encode pinned to utf-8 this is no longer the locale gap (`#562`)
+        it was filed as — it is a genuine "this text cannot be encoded", e.g. a
+        lone surrogate carried in from elsewhere. Rare, but the module promises
+        "reported, never half-applied", and a traceback is not a report.
         """
         _product(tmp_path, _PREAMBLE + _RULES)
 
-        def _boom(path, text):
-            raise UnicodeEncodeError("ascii", "—", 0, 1, "ordinal not in range")
+        def _boom(path, text, **kwargs):
+            raise UnicodeEncodeError("utf-8", "\ud800", 0, 1, "surrogates not allowed")
 
         monkeypatch.setattr(lo.core, "atomic_write_text", _boom)
         result = lo.repair(tmp_path, apply=True)

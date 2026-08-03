@@ -83,12 +83,65 @@ def _first_rule_index(lines: list[str]) -> int | None:
     return next((i for i, line in enumerate(lines) if line.startswith("## ")), None)
 
 
-def _read_lines(path: Path) -> list[str] | None:
-    """The file's lines, or ``None`` when it cannot be read as text."""
+def _read_text(path: Path) -> str | None:
+    """The file's exact decoded text, or ``None`` when it cannot be read.
+
+    ``newline=""`` disables universal-newline translation, so a CRLF corpus
+    arrives with its ``\\r`` intact instead of silently becoming LF in memory
+    and LF on disk at the next write. This is the OWNER'S authored corpus, and
+    :func:`repair` writes it back — a read that normalises is a write that
+    rewrites every line.
+    """
     try:
-        return path.read_text(encoding="utf-8").splitlines()
+        with path.open(encoding="utf-8", newline="") as handle:
+            return handle.read()
     except (OSError, UnicodeDecodeError):
         return None
+
+
+def _split_lines(text: str) -> list[str]:
+    """``text`` as lines, splitting on ``\\n`` ONLY — never ``splitlines()``.
+
+    :func:`repair` turns a line index into a **byte offset** into the raw text
+    (``sum(len(line) + 1)``), so the split has to account for exactly one
+    character per break. ``str.splitlines()`` breaks that twice over: it also
+    splits on ``\\v``, ``\\f``, ``\\x1c``-``\\x1e``, ``\\x85``, ``U+2028`` and
+    ``U+2029``, and it consumes ``\\r\\n`` as a single break though it is two
+    characters — either way the arithmetic drifts and the block lands somewhere
+    the dry run did not name. Splitting on ``\\n`` leaves the exotic separators
+    inside their line and leaves a CRLF line's ``\\r`` as its last character, so
+    the ending travels with the line it belongs to.
+
+    (Under an earlier design that rebuilt the file from this list, the same
+    choice mattered for a second reason — a rejoin on ``\\n`` would have replaced
+    every one of those separators with a newline. The raw-text splice removed
+    that hazard; the offset one is why the rule still stands.)
+
+    The trailing ``""`` that ``split`` produces for a file ending in a newline is
+    dropped, so indices mean what ``_insertion`` and the 1-based
+    ``insert_before_line`` assume.
+    """
+    lines = text.split("\n")
+    if lines and lines[-1] == "":
+        lines.pop()
+    return lines
+
+
+def _line_ending(text: str) -> str:
+    """The corpus's own line ending, so an inserted block matches it.
+
+    CRLF only when the file is *consistently* CRLF; a mixed file gets ``\\n``,
+    because guessing on a file that already disagrees with itself would just
+    pick a side.
+    """
+    crlf = text.count("\r\n")
+    return "\r\n" if crlf and crlf == text.count("\n") else "\n"
+
+
+def _read_lines(path: Path) -> list[str] | None:
+    """The file's lines, or ``None`` when it cannot be read as text."""
+    text = _read_text(path)
+    return None if text is None else _split_lines(text)
 
 
 def check(project_dir: str | Path) -> dict:
@@ -239,11 +292,12 @@ def repair(project_dir: str | Path, *, apply: bool = False) -> dict:
         return result
 
     path = Path(project_dir) / LEARNINGS_REL
-    lines = _read_lines(path)
-    if lines is None:  # raced between check() and here
+    raw = _read_text(path)
+    if raw is None:  # raced between check() and here
         result.update({"status": STATUS_UNREADABLE, "repairable": False,
                        "detail": f"{LEARNINGS_REL} became unreadable; nothing written."})
         return result
+    lines = _split_lines(raw)
 
     at, text = _insertion(lines)
     result["insert_before_line"] = at + 1
@@ -251,23 +305,36 @@ def repair(project_dir: str | Path, *, apply: bool = False) -> dict:
     if not apply:
         return result
 
-    updated = lines[:at] + text.split("\n") + lines[at:]
-    body = "\n".join(updated) + "\n"
+    # Splice the block into the RAW text at a character offset rather than
+    # rebuilding the file from a list of lines. Everything outside the insertion
+    # is then the owner's bytes verbatim — their line endings, their trailing
+    # newline or lack of one, any separator character `splitlines()` would have
+    # eaten. Rebuilding cannot promise that: it re-emits every line, so the
+    # insert-only constraint this module states about itself would hold for the
+    # *content* of each line and quietly fail for its bytes.
+    eol = _line_ending(raw)
+    offset = min(sum(len(line) + 1 for line in lines[:at]), len(raw))
+    head, tail = raw[:offset], raw[offset:]
+    if head and not head.endswith("\n"):
+        head += eol  # an unterminated last line has to be closed before appending
+    body = head + text.replace("\n", eol) + eol + tail
     try:
         # Atomic (tmp sibling + os.replace) via the shared writer, not because a
         # reader of this file fails open — nothing reads it as state — but because
         # the file is the OWNER'S authored corpus. A torn write on the framework's
         # own state costs a regenerated file; here it costs prose nobody else has.
-        # Old-or-new for one import. (`core.atomic_write_text` writes at the locale
-        # encoding rather than utf-8 — see `#562`; this block is non-ASCII, so it
-        # is the caller that surfaces the gap.)
-        core.atomic_write_text(path, body)
+        # utf-8 and newline="" are passed EXPLICITLY: the shared writer's defaults
+        # are the locale encoding and newline translation (`#562`), which on a
+        # cp1252 or latin-1 host would encode this block cleanly and silently
+        # re-encode every non-ASCII character the OWNER wrote — a corruption that
+        # succeeds, leaving the next check() to report `unreadable` against a
+        # corpus this repair broke.
+        core.atomic_write_text(path, body, encoding="utf-8", newline="")
     except (OSError, UnicodeError) as exc:
-        # UnicodeError is here because the shared writer encodes at the LOCALE
-        # encoding (`#562`) while this block is non-ASCII: on a non-UTF-8 locale the
-        # failure is a UnicodeEncodeError, which is not an OSError. Catching only
-        # OSError would have turned this module's "reported, never half-applied"
-        # promise into a traceback for the one write failure it newly acquired.
+        # With the encode pinned to utf-8, UnicodeError is no longer the locale
+        # gap — it is a genuine "this text cannot be encoded" (a lone surrogate
+        # carried in from elsewhere). Rare, but this module promises "reported,
+        # never half-applied", and a traceback is not a report.
         result.update({"repairable": False,
                        "detail": f"could not write {LEARNINGS_REL}: {exc}"})
         return result

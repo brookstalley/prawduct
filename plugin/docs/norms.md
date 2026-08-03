@@ -305,8 +305,9 @@ three-layer chain that stages a product from "we don't yet know what this is" to
 ratified," so a fresh product never gets three simultaneous nags. The layers key off one shared
 boundary — whether `classification.structural` records at least one characteristic
 (`lib/coverage_probes.structural_characteristics_recorded`) — plus layer 2's *independent*
-artifact-existence gate. The 0↔1 boundary is an exact complement (never both); 1→2 is sequential
-but not mutually exclusive (see below):
+artifact-existence gate. The 0↔1 boundary is mutually exclusive **and possibly neither** — each layer
+adds a second condition beyond the boundary predicate, so a repo can sit outside both; 1→2 is
+sequential but not mutually exclusive (see below):
 
 | Layer | Fires when | Nudge |
 |---|---|---|

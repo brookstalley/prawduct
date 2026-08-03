@@ -130,9 +130,14 @@ Context: Plan authored 2026-08-02 on `fix/drift-burndown` off `develop` at `fd9e
 owner's choice of the drift cluster over surface-reduction and a docs sweep. Seven items, all
 claimed on the tracker at authoring time (24h TTL) — **claiming is new practice this batch**, and it
 exists because #550 was independently built to completion on a sibling branch while the pick agent
-reported it unclaimed and buildable. `active_build_plan` still points at `build-plan-v3.2.0-golive.md`
-**by design** and must not be repointed: the gates resolve the *branch's* plan by scope, and the
-golive plan is retained until the pending `develop`→`main` release regenerates it.
+reported it unclaimed and buildable. **`active_build_plan` is not this branch's to repoint**, and the
+rule is deliberately written without naming what the slot holds — an earlier revision said it "still
+points at `build-plan-v3.2.0-golive.md` by design", which was false when written and had been false
+on the three branches before it, because a sibling branch repoints the slot whenever one is in
+flight (at this branch's base and HEAD it holds `build-plan-critic-death-signals.md`). The rule does
+not depend on the answer: the gates resolve the *branch's* plan by **scope**, so the slot names
+whichever plan some other branch has in flight and is only a fallback for unscoped plans. Read the
+slot if you need its current value; do not trust a plan's prose for it.
 
 **Chunk 01 CLOSED 2026-08-02** (#193) — `tests/test_path_reference_resolution.py` plus twelve live
 path fixes, one of them in a shipped file. Counts live in the change-log, not here. **The plan's own Chunk 01 design was superseded before any code was
