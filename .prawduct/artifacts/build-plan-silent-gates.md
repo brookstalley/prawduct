@@ -60,7 +60,13 @@ Problem, success, and scope are each statable in one sentence.
   assert what the tree does not support. Residual risk, stated rather than assumed away: repos
   homing norms only in the Enforcement table begin seeing an `info` advisory they never saw before,
   and already-onboarded repos carrying leftover scaffold rows may see it *spuriously* until `#570`
-  lands — which is Chunk 06 of this same plan, so the window is this branch, not a release cycle.
+  lands — which is Chunk 06 of this same plan. **Corrected: that does not close the window, it
+  only makes it closable.** The repair is *offered*, never applied unasked (it edits a
+  product's authored preferences file), so an already-onboarded repo carrying leftover scaffold
+  rows keeps seeing the advisory until an owner runs `/prawduct:doctor` Health Check #14. The
+  original wording — "the window is this branch, not a release cycle" — described the fix
+  landing rather than the fleet being repaired, which are different events and this branch's
+  own subject.
   Original text follows.
   — Chunk 02 makes `norm-health-sweep-overdue` reachable in repos that home norms only in the
   preferences Enforcement table. Those repos are silent today and will begin seeing an `info`

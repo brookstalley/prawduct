@@ -4520,7 +4520,10 @@ def cmd_norm_index_scaffold(project_dir: Path, argv: list[str]) -> int:
 
     if apply:
         return 0 if result["applied"] or status == norm_index_scaffold.STATUS_OK else 1
-    return 1 if status == norm_index_scaffold.STATUS_UNREADABLE else 0
+    return 1 if status in (
+        norm_index_scaffold.STATUS_UNREADABLE,
+        norm_index_scaffold.STATUS_UNWRITABLE,
+    ) else 0
 
 
 def cmd_audit_learnings(project_dir: Path, argv: list[str]) -> int:
@@ -4967,6 +4970,18 @@ _HARNESS_INVOKED_COMMANDS = frozenset({
 # does not merely misreport — it corrupts or silently omits a persisted fact
 # that later gates compose over, and the caller CAN re-invoke the right binary,
 # which is what makes refusing actionable.
+#
+# DECIDED: this is an ALLOWLIST, so an unlisted command defaults to advisory —
+# the permissive side. The fail-closed alternative (refuse everything not known
+# read-only) was rejected because the read-only set is the larger, faster-moving
+# one: every new report, probe and query would silently start refusing inside
+# every framework checkout until someone remembered to exempt it, and that
+# failure is invisible until a session breaks. Getting the permissive default
+# wrong costs one command's worth of silence, which the loud NOTE still covers;
+# getting the restrictive default wrong costs the whole tool. Reviewed as a
+# staleness risk (no mechanical pin exists — the set is semantic, not derivable
+# from a file the way `_HARNESS_INVOKED_COMMANDS` is from `hooks.json`), and
+# accepted on that asymmetry rather than by omission.
 _DATA_PLANE_COMMANDS = frozenset({
     "critic-begin",
     "critic-consolidate",

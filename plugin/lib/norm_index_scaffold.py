@@ -47,6 +47,10 @@ STATUS_OK = "ok"
 STATUS_LEFTOVER = "leftover"
 STATUS_ABSENT = "absent"
 STATUS_UNREADABLE = "unreadable"
+# Distinct from `unreadable`: the file was read fine and the WRITE failed.
+# Folding the two together made one status mean two conditions while doctor
+# Health Check #14 and the api-contract described only the first.
+STATUS_UNWRITABLE = "unwritable"
 
 
 def _read_text(path: Path) -> str | None:
@@ -177,7 +181,7 @@ def repair(project_dir: str | Path, *, apply: bool = False) -> dict:
         core.atomic_write_text(path, "".join(kept), encoding="utf-8", newline="")
     except OSError as exc:
         return {
-            "status": STATUS_UNREADABLE,
+            "status": STATUS_UNWRITABLE,
             "path": str(path),
             "rows": state["rows"],
             "detail": f"could not write {path}: {exc} — nothing was changed",

@@ -122,7 +122,7 @@ dispatch); state-mutating lifecycle commands (`migrate-plugin`, `init-product`, 
     state `missing_artifacts: []` means *nothing was looked at*, not *nothing is missing* — a
     consumer must not read it as a clean layer 1.
   - `norm-index-scaffold --json` → consumed by `/prawduct:doctor` Health Check #14 (`status` —
-    one of `ok` / `leftover` / `absent` / `unreadable`; plus `rows`, `path`, `detail`, `applied`,
+    one of `ok` / `leftover` / `absent` / `unreadable` / `unwritable`; plus `rows`, `path`, `detail`, `applied`,
     `removed`). Dry run exits 0 when it ran and 1 only when it could not; `--apply` exits 0 on a
     write or idempotent no-op and 1 on refusal.
   - `learnings-obligation --json` → **no skill consumer today** (`status` — one of `ok` / `missing` /

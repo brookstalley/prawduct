@@ -196,6 +196,41 @@ class TestRepair:
         assert out["applied"] is False and out["removed"] == 0
         assert path.read_bytes() == before
 
+    def test_a_failed_write_returns_a_status_instead_of_raising(self, tmp_path, monkeypatch):
+        """The failure policy `atomic_write_text` requires each caller to own.
+
+        That helper propagates `OSError` by design. Doctor Health Check #14
+        RELAYS this result, so a traceback escaping here crashes the health
+        check rather than degrading it to a finding — fail-soft inverted at a
+        fail-soft site.
+
+        This test exists because the policy shipped with none: the module cites
+        `learnings_obligation` as its precedent, and that precedent's test file
+        monkeypatches the writer to raise. Following a precedent's *code* while
+        skipping its *tests* is how ~50 untested lines got here once already in
+        this same chunk.
+        """
+        _write_prefs(tmp_path, _HEADER + _ROW_ORDINARY + "\n")
+
+        def _boom(*args, **kwargs):
+            raise OSError(13, "Permission denied")
+
+        monkeypatch.setattr(nis.core, "atomic_write_text", _boom)
+        out = nis.repair(tmp_path, apply=True)
+        assert out["status"] == nis.STATUS_UNWRITABLE, (
+            "a write failure is not a read failure — one status meaning both "
+            "leaves doctor #14 and the api-contract describing only the first"
+        )
+        assert out["applied"] is False and out["removed"] == 0
+        assert "nothing was changed" in out["detail"]
+
+    def test_write_failure_and_read_failure_are_different_statuses(self, tmp_path):
+        d = tmp_path / ".prawduct" / "artifacts"
+        d.mkdir(parents=True)
+        (d / "project-preferences.md").write_bytes(b"\xff\xfe \xff")
+        assert nis.repair(tmp_path, apply=True)["status"] == nis.STATUS_UNREADABLE
+        assert nis.STATUS_UNREADABLE != nis.STATUS_UNWRITABLE
+
     def test_repair_declines_on_an_undecodable_file(self, tmp_path):
         d = tmp_path / ".prawduct" / "artifacts"
         d.mkdir(parents=True)
