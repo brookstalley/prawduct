@@ -164,7 +164,12 @@ rather than discovered after.
   per-entry decay detection, so a product writing `**Why:**` would lose the ratification signal and
   the sweep reminder as well. Behaviour is unchanged and consistent with `dead-why` and
   `stalled-transition`, which share the regex; a near-miss test now pins the boundary so a deliberate
-  widening turns it red rather than passing unnoticed.
+  widening turns it red rather than passing unnoticed. **Filed as `#569`.**
+- **Two definitions of "a norm entry" now coexist.** `record_lint.direction_norm_count` counts every
+  top-level bullet in a Direction section while the probes count `Why:`-bearing lines, so they
+  disagree exactly in the roadmap case this entry is about. Out of scope here because it moves a
+  different gate's behaviour. **Filed as `#568`.** Both ids are named here rather than only in the
+  build plan, which the release deletes.
 - **The cascade into `doctor/SKILL.md` was required, not scope creep.** Its step 5 said a dateless
   "no norms to ratify" outcome is fine because "with no `## Direction` sections there is no sweep to
   seed" — a rationale this change falsifies. Doctor check #10 already recognised both homings, so the

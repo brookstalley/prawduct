@@ -63,11 +63,17 @@ class TestAtomicWriteText:
     def test_writes_utf8_under_a_non_utf8_locale(self, tmp_path):
         """The shared writer must not write at the locale encoding.
 
-        Every reader of these state files opens `encoding="utf-8"`, so a
-        locale-encoded write is lossy on the round trip and raises outright on
-        non-ASCII. This has been latent because the existing callers write JSON
-        at `ensure_ascii=True`; `.session-handoff.md` does not, and it routinely
+        A locale-encoded write is lossy on the round trip and raises outright
+        on non-ASCII. This has been latent because most callers write JSON at
+        `ensure_ascii=True`; `.session-handoff.md` does not, and it routinely
         carries em-dashes.
+
+        The writer is only half the round trip and this test only pins that
+        half — several readers under `plugin/lib/` still use a bare
+        `read_text()`. Where a reader pairs with a write through this helper
+        the pair must agree, or a default change turns a self-inverse pair
+        asymmetric; `operator_verification` is that case and is pinned
+        separately in `tests/test_operator_verification.py`.
 
         Runs in a subprocess with the locale forced, because **the defect is
         invisible on a UTF-8 machine** — an in-process assertion here would
