@@ -5,7 +5,7 @@
 
 ## 2026-08-03: an advisory that told the agent what to run and the owner nothing
 
-<!-- prawduct: type=feature | scope=advisory-actionability | chunks=01 -->
+<!-- prawduct: type=feature | scope=advisory-actionability | chunks=01,02 -->
 
 Two real briefings — one from each of two governed products — showed the same shape four times over:
 a problem stated crisply, and no route out of it that a person could take. `AdvisoryCandidate`
@@ -66,6 +66,38 @@ Derived presentation (`trigger_summary`, `evidence`, both actions, `prerequisite
 sticky dismissals do not. Two consequences for readers of a governed product: an active advisory's
 text can now change under a stable id, and improved probe copy reaches the repos that have been
 living with an advisory longest instead of only the ones that had not yet tripped it.
+
+**Every advisory now answers "what do you need from me?"** The schema landed above made two audiences
+*possible*; the remaining seventeen construction sites across seven probe modules now actually say
+something to each. The three that prompted the work read differently as a result: the
+strategy-artifact nudge offers the declining route first-class ("a one-line *not relevant here,
+because …* is a complete answer — it is the reason that is missing, not the document") rather than
+listing seven absent files and stopping; the `.gitignore` nudge stops putting a framework binary in
+front of the one reader who never runs one; and the backlog migration states, in the sentence the
+owner actually reads, that it creates N real GitHub issues and cannot be undone — GitHub has no
+ordinary issue delete and never reuses a number. That last one is a security-model obligation
+discharged, not a copy improvement: approval given without the volume and the irreversibility in
+front of it is uninformed approval.
+
+Four `recommended_action` values were prose or an explicit non-action rather than a command, and are
+now a command or empty — an owner-only advisory being a valid shape. **The narrowing is enforced
+rather than aspirational:** a new authoring lint sweeps every `AdvisoryCandidate` construction under
+`lib/*_probes.py` and fails on a missing owner action, a command of any of §7.2's three banned forms
+inside owner-facing text, prose in the agent's field, or a `prerequisite_of` edge naming a probe
+nobody registers. That last check earns its place by covering a hole nothing else could: an edge to
+an unknown key is inert *by design* at render time, so a typo in one would otherwise be silent
+forever.
+
+Two rules were also applied one field further up than planned. `trigger_summary` is relayed to the
+owner too, so three of them that ended with "run `<command>`" now state the condition and leave the
+route to the two fields that have an audience each.
+
+**Spec §7.2 was widened, and the direction matters.** It enumerated `recommended_action` as "a slash
+command or a `prawduct-hook` invocation, nothing else" while a conforming `git push origin <branch>`
+had been shipping in the stale-base probe the whole time. The field's *meaning* — what the runtime
+executes — was never at issue, so the illustration moved to match reality rather than the reverse.
+Worth flagging explicitly because widening a rule to accommodate existing code is the shape of
+laundering; what clears it here is sequence, the value predating the rule that failed to describe it.
 
 ## 2026-08-02: two doctor surfaces that answered confidently for a state the repo was not in
 

@@ -100,8 +100,9 @@ class AdvisoryCandidate:
     briefing then rendered behind a literal "Run" prefix.
 
     - ``recommended_action`` — what the RUNTIME executes. One command: a slash
-      command or a ``prawduct-hook`` invocation. Empty when the probe has no
-      command to offer; never prose describing what someone should consider.
+      command, a ``prawduct-hook`` invocation, or a plain shell command it can run
+      as-is. Empty when the probe has no command to offer — an owner-only advisory
+      is a valid shape — but never prose describing what someone should consider.
     - ``owner_action`` — what the PERSON decides, approves, or supplies, in one or
       two plain sentences, and never containing a command. Where saying yes costs
       something irreversible, this is the field that says so, because the owner

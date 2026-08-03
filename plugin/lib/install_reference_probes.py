@@ -142,6 +142,17 @@ def probe_install_reference_drift(state: ProjectState, codebase: Codebase):
                 "drift travels to the next person even when it costs you nothing here",
             ),
             trigger_summary=_summary(drift["drifted"]),
+            # The owner line has to answer "why should I care, if nothing here is
+            # broken?" — because on THIS machine nothing is (the comment on priority
+            # below spells out why). The cost is borne by the next person to clone,
+            # which is a thing only the person deciding whether to commit a fix can
+            # weigh, and it is invisible from where they are sitting.
+            owner_action=(
+                "Say go — this edits a committed file, so you will see a diff to review "
+                "before anything is staged. It changes nothing about how this machine "
+                "runs; what it fixes is what a fresh clone or a new teammate's machine "
+                "would set itself up from."
+            ),
             # Doctor Health Check #1 asserts this whole contract — every field this
             # probe can fire on, `autoUpdate` included. That was not true when this
             # probe was written (HC#1 checked `enabledPlugins` and `ref` only), which

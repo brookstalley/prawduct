@@ -312,15 +312,25 @@ class TestChecksDormantProbe:
         # trigger_summary says the checks ARE dormant, so the action must not read as
         # though they already work. It also lands in a downstream product's briefing,
         # where prawduct's internal requirement ids mean nothing.
+        #
+        # RE-POINTED at the two-audience split (post-sync-advisory-spec.md v0.3, §3.6):
+        # every assertion below is the one this test always made, moved to the field
+        # that now carries operator-facing text. `recommended_action` narrowed to "the
+        # command the RUNTIME executes", and this advisory has none — its old value was
+        # the prose "no action needed …", which the briefing rendered as the nonsense
+        # `→ Run no action needed`. That narrowing is asserted here too rather than
+        # merely assumed, because a well-meaning edit refilling the field with prose
+        # would restore exactly the defect the split removed.
         out = bp.probe_checks_dormant(
             ProjectState({"backlog_service_repo": "acme/widgets"}), _cb(tmp_path)
         )
-        action = out[0].recommended_action
+        action = out[0].owner_action
         assert "dormant" in out[0].trigger_summary
         assert "are restored" not in action
         for internal_id in ("GV8", "W1"):
             assert internal_id not in action
         assert "dismiss" in action.lower()
+        assert out[0].recommended_action == ""
 
     def test_dormancy_is_said_out_loud_against_this_repo(self):
         # Repo-coupled tripwire (deliberately NOT hermetic), RE-AIMED 2026-08-01 by

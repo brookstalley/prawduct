@@ -110,6 +110,12 @@ def probe_api_versioning_undecided(state: ProjectState, codebase: Codebase):
                 "choose a versioning + deprecation scheme (or a dated deferral, or "
                 "\"none — internal-only\") and record it to silence this nudge"
             ),
+            owner_action=(
+                "Decide how this product's interface is allowed to change: versioned, free "
+                "to break with notice, or internal-only where the question does not really "
+                "arise. Any of those is a fine answer — leaving it unrecorded is the only "
+                "one that costs something later, when a caller breaks and nobody agreed it could."
+            ),
             recommended_action="/prawduct:methodology discovery",
             priority="info",
         )

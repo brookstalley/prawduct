@@ -78,6 +78,15 @@ def probe_unpromoted_release_prep(state: ProjectState, codebase: Codebase):
                 f"running coverage gates to avoid a false `uncovered` on "
                 f"already-reviewed work"
             ),
+            # `ahead`, not "the commit": the probe already knows the count and renders a
+            # plural for its summary, so a hardcoded singular would have the owner
+            # approving N commits believing it was one — the precise failure the
+            # cost-of-yes rule exists to prevent, in the one field they read.
+            owner_action=(
+                f"Say go and the {ahead} unpushed commit{plural} on {local} go{'' if plural else 'es'} "
+                f"up to {diag['remote']}. It is work that was already reviewed here; pushing it "
+                "just stops the coverage gates from re-flagging it as unreviewed."
+            ),
             recommended_action=f"git push origin {local}",
             priority="warn",
         )

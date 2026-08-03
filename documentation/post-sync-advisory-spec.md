@@ -462,10 +462,19 @@ def prompt_strategy_required(state: ProjectState, codebase: Codebase) -> list[Ad
 
 ### 7.2 Authoring the two actions
 
-**`recommended_action` — what the runtime executes.** One command. A slash command or a
-`prawduct-hook` invocation, nothing else. If a probe has no command to offer, the field is empty and
-the advisory is owner-only (e.g. a decision to record); it must not be filled with prose describing
-what someone should think about, which is what produced `→ Run Review each listed item…`.
+**`recommended_action` — what the runtime executes.** One command: a slash command, a
+`prawduct-hook` invocation, or a plain shell command the runtime can run as-is (the stale-base
+probe's `git push origin <branch>`), and nothing else. If a probe has no command to offer, the field
+is empty and the advisory is owner-only (e.g. a decision to record); it must not be filled with prose
+describing what someone should think about, which is what produced `→ Run Review each listed item…`.
+
+*The shell-command arm was added 2026-08-03, correcting an enumeration that v0.3 wrote as "a slash
+command or a `prawduct-hook` invocation, nothing else" while a conforming `git push origin <branch>`
+was already shipping. The field's **meaning** is unchanged and was never at issue — what the runtime
+executes — so this widens the illustration to match it rather than the reverse. The distinction the
+field actually draws is command vs. prose, and the authoring lint checks it as such: a first token
+that is a slash command or a named executable, against an allowlist that a new entry must be
+consciously added to.*
 
 **`owner_action` — what the person decides.** One or two plain sentences answering *"what do you
 need from me?"*. The recurring shapes:

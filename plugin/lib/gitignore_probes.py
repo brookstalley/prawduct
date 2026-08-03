@@ -46,10 +46,16 @@ PROBE_VERSION = 1
 
 
 def _summary(missing: list[str], incorrectly_ignored: list[str]) -> str:
-    """Human-facing one-liner naming the live drift counts and the fix.
+    """Human-facing one-liner naming the live drift counts.
 
     The counts live here (not in the evidence) so the advisory id stays stable as
     the drift set shrinks under a partial fix — see :func:`probe_gitignore_contract_drift`.
+
+    **States the condition, not the fix.** This line is relayed into conversation, so
+    a "run prawduct-hook update-gitignore" tail — which it used to carry — put a
+    framework binary in front of the one reader who never runs one, and did it in the
+    sentence they read first. The fix now has its two proper homes: what the owner
+    decides (`owner_action`) and what the runtime executes (`recommended_action`).
     """
     parts: list[str] = []
     if missing:
@@ -60,7 +66,7 @@ def _summary(missing: list[str], incorrectly_ignored: list[str]) -> str:
         parts.append(f"{len(incorrectly_ignored)} committed {noun} wrongly ignored")
     return (
         ".gitignore has drifted from the prawduct session-file contract "
-        f"({'; '.join(parts)}) — run prawduct-hook update-gitignore to reconcile"
+        f"({'; '.join(parts)})"
     )
 
 
@@ -86,6 +92,16 @@ def probe_gitignore_contract_drift(state: ProjectState, codebase: Codebase):
                 "(lib/core.py GITIGNORE_ENTRIES / RETIRED_GITIGNORE_ENTRIES)",
             ),
             trigger_summary=_summary(missing, incorrectly_ignored),
+            # The owner is not asked to run the fixer. `prawduct-hook` is a framework
+            # binary the runtime invokes; put it in front of a person and it reads as
+            # an instruction to open a terminal and type something they have never
+            # heard of. What is genuinely theirs is the approval, because the file is
+            # committed — which is also why this is an advisory and not an auto-fix.
+            owner_action=(
+                "Say go — this reconciles a committed file, adding the entries prawduct "
+                "needs and clearing ones that wrongly hide tracked files, so you will see "
+                "a diff to review before anything is staged."
+            ),
             recommended_action="prawduct-hook update-gitignore",
             alternative_actions=("/prawduct:doctor",),
             priority="info",
