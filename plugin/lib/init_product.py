@@ -34,7 +34,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from . import core
+from . import core, learnings_obligation
 from .migrate_plugin import (
     ANCHOR_SENTINEL,
     DISTRIBUTION_VALUE,
@@ -57,8 +57,24 @@ _STATE_TEMPLATES: list[tuple[str, str]] = [
 
 _SCAFFOLD_DIRS = (".prawduct", ".prawduct/artifacts", ".prawduct/.pr-reviews")
 
-_LEARNINGS_REL = ".prawduct/learnings.md"
-_LEARNINGS_STARTER = "# Learnings\n\nAccumulated wisdom from building this product.\n"
+_LEARNINGS_REL = learnings_obligation.LEARNINGS_REL
+
+#: The starter corpus carries the descent obligation from the very first
+#: session, because `/prawduct:learnings` instructs its caller to apply "the
+#: obligation marked `prawduct:descent-obligation`" — a pointer that resolves
+#: in the framework repo and, before this, nowhere else. Every onboarded
+#: product got an instruction aimed at a file that had no such marker.
+#: The block itself is `learnings_obligation.OBLIGATION_BLOCK`, shared with the
+#: doctor repair that backfills it into a product onboarded before this existed —
+#: scaffold and repair must plant the same thing, or a reworded obligation reaches
+#: new products and skips repaired ones.
+_LEARNINGS_STARTER = (
+    "# Learnings\n\n"
+    "Accumulated wisdom from building this product. Entries use "
+    '"When X, do Y because Z" format, and each rule carries its instances '
+    "inline — they are what a reader pattern-matches their own case against.\n\n"
+    + learnings_obligation.OBLIGATION_BLOCK
+)
 
 
 def _subs(name: str) -> dict[str, str]:

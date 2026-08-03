@@ -24,6 +24,8 @@ governed_by:
       - "plugin writes only its own .prawduct/ state, the evidence store, and reconciled config → conforms — new facts go to the evidence store; the renderer writes nothing unasked"
       - "Python-implemented, never Python-specific; per-file dispatch; unpopulated language reported unchecked (born 2026-07-29) → conforms — record-lint reads records (markdown, YAML, JSON) and backlog ids, not product source, so it classifies no language and encodes no grammar. Chunk 02's `verify-chunk-refs` work touches file *paths* only. If a later chunk needs to decide whether a referenced path is source, it must route through the shared classifier rather than growing a private suffix list."
       - "prawduct guides and reviews, never implements; never re-implements a rule an ecosystem's tooling owns (born 2026-07-29) → conforms — record-lint checks prawduct's OWN governance records for internal consistency, which no linter models and no ecosystem tool owns; it emits findings for the builder rather than editing anything, and writes no product code, config or tooling"
+      - "goals and verification bind, prescribed method is advice (born 2026-07-31) → conforms retroactively, and this plan already worked that way before the norm existed. Chunks 02, 03 and 04 each departed from a stated deliverable and recorded the reason at the chunk: two lint checks were built and then DELETED for measuring zero true positives, `verify-chunk-refs` moved from a reviewer instruction to dispatch, and the ≤80-line payload target was missed at 125 because trimming to it would have deleted checks. All three are the norm's shape — the acceptance criterion was met by a better route than the one written down. Disposition added 2026-07-31 when the norm's birth raised architecture's count to 7; nothing in this plan changes."
+      - "one home per fact; every other mention is a reference (born 2026-07-31) → conforms — record-lint is the norm's mechanism half applied to records: `suite-total-claim` exists precisely because a suite total kept a prose copy of a figure a mechanism owns, and `governed-by-gap` catches a plan restating a norm roster instead of disposing of it. Disposition added 2026-07-31 when the norm's birth raised architecture's count to 8; nothing in this plan changes"
   - artifact: nonfunctional-requirements
     dispositions:
       - "review wall-clock is P0 — BOTH levers, run-count and per-mode payload (amended 2026-07-29) → conforms — this plan is that norm's implementation arm on both arms: Chunk 02 cuts record-triggered round *count*, Chunk 03 cuts per-mode reviewer *payload*. The disposition previously read 'run-count is the lever' and was updated with the amendment, not around it."
@@ -63,7 +65,7 @@ enumerated before fields are designed (Chunk 01 step 0), and two tuning values a
 - [ASSUMPTION: disposition facts extend evidence.jsonl rather than a new store — same lifetime, same sharing, same schema machinery | HIGH impact | user can override]
 - [~~ASSUMPTION: the coordinator threshold moves from 5 changed files to 12 *judgeable* files~~ — **FALSIFIED 2026-07-30** by the validation it called for. Judgeable-count keying demotes 54% of historical blocking findings; the shipped rule is risk-surface-first with judgeable ≥ 12 as a secondary escalator, and repos declaring no risk surfaces keep the 5-file rule unchanged. See Chunk 04.]
 - [ASSUMPTION: suite-total test counts in durable prose are deleted outright, not lint-verified — nothing consumes them; the evidence store already holds pass/fail per tree | MED impact | user can override] — **resolved 2026-07-30, and the premise was half wrong.** The deletion set on the plugin surface was **empty**: `grep -rnE '[0-9]{3,6} *(tests?|passing|green)' plugin --include='*.md'` returned nothing before the sweep, and no template, methodology step or skill instruction ever *demanded* a count. The habit lives in agents, not in an instruction, so there was nothing to delete and the whole value is in the tripwire. Both halves are now pinned by `tests/preferences/test_no_suite_total_claims.py` (exhibit side and demand side, each mutation-proved).
-- [ASSUMPTION: the change-log ledger is spiked here and implemented in a follow-on plan, since it is a plugin-wide breaking change needing its own migrate path and release | HIGH impact | user can override — pulling implementation into this plan roughly doubles it]
+- [ASSUMPTION: the change-log ledger is spiked here and implemented in a follow-on plan, since it is a plugin-wide breaking change needing its own migrate path and release | HIGH impact | user can override — pulling implementation into this plan roughly doubles it] — **CONFIRMED 2026-07-31 by Chunk 05, and the split earned its keep.** The spike returned **GO on the design, HOLD on the schedule** (`change-log-ledger-design.md` §11.7): the format validates against the whole corpus, but *when* it runs is gated on which fleet migration is proven end-to-end first (backlog-to-Issues vs change-log-to-ledger) — a question this plan has no standing to answer. Had implementation been pulled in, the plan would now be blocked on an unowned scheduling choice instead of closing. The spike also forced two design corrections that would have been found mid-implementation: facts need explicit `title`/`date` (the id slug is lossy), and cutover cannot be byte-identity against today's file, so it becomes normalize-then-cut.
 
 **What would raise confidence:** Chunk 01 step 0 (consumer-query enumeration) resolves the schema
 unknown; Chunk 04's review-stats measurement resolves the threshold.
@@ -74,7 +76,7 @@ unknown; Chunk 04's review-stats measurement resolves the threshold.
 - [x] Chunk 02: Subtraction sweep and deterministic record-lint
 - [x] Chunk 03: Per-mode reviewer payload
 - [x] Chunk 04: Coordinator roster keyed to risk surface
-- [ ] Chunk 05: Change-log ledger spike and go/no-go
+- [x] Chunk 05: Change-log ledger spike and go/no-go
 Context: Plan authored 2026-07-29 from the ship-day retrospective (v3.2.0 + discodon). **Chunk 01
 complete 2026-07-29** — `disposition` fact kind + `render-dispositions`; step 0's consumer-query
 enumeration is recorded in the chunk's own section and is the schema-lock-in checkpoint's subject.
@@ -179,6 +181,22 @@ The framework's own repo is the test bed: every chunk's deliverable runs against
 Plan-level success is measured by `prawduct-hook review-stats` on the next comparable working day:
 record-class findings under 20% of total (from 57%), median rounds per logical change at or under
 2, chunk/verify-resolutions wall-clock at or under 3 minutes.
+
+**Baselines — derivations, not digits** (checked at the Chunk 05 checkpoint 2026-07-31; each is a
+command because a transcribed count goes stale at the next merge):
+
+| metric | target | baseline source |
+|---|---|---|
+| record-class finding share | < 20% | 57% of 151 findings, 2026-07-29 — the retrospective's measurement, stated in Requirements Confidence |
+| median rounds per logical change | ≤ 2 | `prawduct-hook review-stats --json` → median of `by_scope[].reviews`. **Read 3 across 71 scopes on 2026-07-31**, so the metric starts above target |
+| chunk / verify-resolutions wall-clock | ≤ 3 min | the per-mode median table under the "After Chunk 03" checkpoint, over every review fact carrying a `duration_seconds` |
+
+**One definitional caveat on the middle row**, recorded rather than resolved: `by_scope` counts *all*
+review roles, so a scope's total includes its PR reviews alongside its Critic rounds. That is the
+right denominator only if "round" means every review a logical change paid for. If the intent was
+Critic rounds alone, the re-measurement must split by role — and must split the *baseline* the same
+way, or the comparison is against a different quantity. Fix the definition before the re-read, not
+after seeing it.
 
 ## Build Chunks
 
@@ -495,6 +513,13 @@ review makes the branch PR-ready.
   cut by Chunk 02) is not.
 - After Chunk 05 (cumulative): full-bundle review; verify the success metrics section of
   Verification Strategy has its baseline recorded so the next working day can be compared.
+
+  **Done 2026-07-31 — and one of the three baselines was missing.** Record-class share (57%) and the
+  wall-clock table were both already on the record; **median rounds per logical change had no baseline
+  and no stated derivation**, so "compare on the next working day" was uncheckable for that metric.
+  All three now sit in one table under Verification Strategy, each expressed as the command that
+  derives it rather than a transcribed figure. The checkpoint earned its place by running late enough
+  to catch this and early enough to fix it before the plan retires.
 
 ## Related open backlog items
 

@@ -409,6 +409,28 @@ def run_git(project_dir: Path, *args: str, env: dict | None = None) -> tuple[int
     return proc.returncode, proc.stdout.strip(), proc.stderr.strip()
 
 
+def _attribute_bad_tree(value: object) -> None:
+    """Name a shape-rejected tree id on stderr — skip WITH attribution, this
+    module's posture for malformed input.
+
+    Truncated and repr'd: the value came from a file on disk and is untrusted,
+    so it is never pasted raw into a message. Deduped per process, because a
+    single corrupt fact is probed once per gate pass per composition path and
+    the tenth copy of the same line teaches nothing."""
+    key = repr(value)[:80]
+    if key in _ATTRIBUTED_BAD_TREES:
+        return
+    _ATTRIBUTED_BAD_TREES.add(key)
+    print(
+        f"evidence: ignoring a fact whose tree id is not a git object id ({key}) — "
+        "it contributes no review coverage; the store may have been hand-edited",
+        file=sys.stderr,
+    )
+
+
+_ATTRIBUTED_BAD_TREES: set[str] = set()
+
+
 def capture_tree(project_dir: Path) -> dict:
     """Capture the working tree (tracked changes + untracked, gitignored
     excluded) as a tree object in the shared odb, via a TEMPORARY index.
@@ -461,9 +483,18 @@ def tree_diff(project_dir: Path, tree_a: str, tree_b: str) -> "list[str] | None"
     failure) — never guessed, matching ``coverage_algebra.DiffFn``'s
     contract. This is the diff the gates inject into the algebra and the
     dispatch side uses for its ``files_changed`` snapshot, so the recorded
-    set and the composed edge-validity check agree by construction."""
-    if not (isinstance(tree_a, str) and tree_a and isinstance(tree_b, str) and tree_b):
-        return None
+    set and the composed edge-validity check agree by construction.
+
+    A tree id that is not a full-length object id never reaches git argv — it
+    is a malformed fact, and a malformed fact yields no answer here for the
+    same reason it yields no edge in the algebra. Rejection is **attributed**
+    to stderr per this module's error posture: a store holding an unreadable
+    tree id is corrupted, and silently answering ``None`` would present that as
+    an ordinary "cannot compute"."""
+    for value in (tree_a, tree_b):
+        if not gitstate.is_object_id(value):
+            _attribute_bad_tree(value)
+            return None
     rc, out, _err = run_git(project_dir, "diff", "--name-only", tree_a, tree_b)
     if rc != 0:
         return None
@@ -491,8 +522,13 @@ def tree_entries(project_dir: Path, tree: str) -> "list[tuple[str, str, str]] | 
     its default output, and a quoted path classifies differently from the
     real one — the same trap ``gitstate.parse_porcelain_line`` exists to
     absorb, met here before it can bite.
+
+    Shape-gated like :func:`tree_diff`: a tree id that is not a full-length
+    object id is unreadable by definition, so it denies a free edge rather
+    than being handed to git, and the rejection is attributed.
     """
-    if not (isinstance(tree, str) and tree):
+    if not gitstate.is_object_id(tree):
+        _attribute_bad_tree(tree)
         return None
     rc, out, _err = run_git(project_dir, "ls-tree", "-r", "-z", "--full-tree", tree)
     if rc != 0:

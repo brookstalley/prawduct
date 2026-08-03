@@ -43,7 +43,7 @@ The payload is a **label-less GitHub issue** plus one trimmed provenance marker.
 
 The `[prawduct]` prefix is the **intake signal** the receiving side keys off (§6) — it is settable by collaborator and non-collaborator alike, so it works for both the third-party filer and the dogfood (owner-as-collaborator) case. `<component>` is a prawduct surface (skill / hook / gate / `prawduct-hook` subcommand / `lib/` / methodology), never a product-side name.
 
-**Body** — fixed sections, ~120 visible words, product-content-free:
+**Body** — fixed sections, ~175 visible words (the issue standard §2 budget, `issuefmt.BODY_MAX_WORDS`), product-content-free:
 
 | Section | Content | Minimization rule |
 |---|---|---|

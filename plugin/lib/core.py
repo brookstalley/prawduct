@@ -79,6 +79,7 @@ GITIGNORE_ENTRIES = [
     ".prawduct/.critic-active",
     ".prawduct/.critic-findings.json",
     ".prawduct/.critic-partials/",
+    ".prawduct/.critic-partials-archive/",
     ".prawduct/.governance-ledger.jsonl",
     ".prawduct/.handoff-notes.md",
     ".prawduct/.test-evidence.json",
@@ -120,8 +121,19 @@ def log(msg: str) -> None:
     print(msg, file=sys.stderr)
 
 
-def atomic_write_text(path: Path, text: str) -> None:
+def atomic_write_text(
+    path: Path, text: str, *, encoding: str | None = None, newline: str | None = None
+) -> None:
     """Write ``text`` to ``path`` atomically: tmp sibling + ``os.replace``.
+
+    ``encoding`` and ``newline`` pass straight through to ``write_text`` and
+    both default to ``None``, which is today's behaviour verbatim — the locale
+    encoding and universal-newline translation. They exist for the one caller
+    whose target is **not** framework state: a write into a product's authored
+    file must not silently re-encode or re-line-end the bytes around its
+    insertion. Framework state files are ASCII-and-LF by construction, so the
+    defaults are harmless there; ``#562`` tracks making utf-8 the default for
+    every caller rather than an opt-in for the one that noticed.
 
     The shared writer for ``.prawduct/`` state files (STH-8M3V; same pattern
     as the hook's ``.test-evidence.json`` writer). Their readers fail open on
@@ -135,7 +147,11 @@ def atomic_write_text(path: Path, text: str) -> None:
     the next write overwrites it.
     """
     tmp = path.with_name(path.name + ".tmp")
-    tmp.write_text(text)
+    # `open` rather than `write_text(newline=…)`: the latter wants Python 3.10+,
+    # and the hook runs under whatever `python3` a product's PATH resolves to —
+    # 3.9.6 on a stock macOS. `open` has taken both keywords since forever.
+    with tmp.open("w", encoding=encoding, newline=newline) as handle:
+        handle.write(text)
     os.replace(tmp, path)
 
 

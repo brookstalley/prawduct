@@ -5,6 +5,78 @@
      be overwritten on next regen. See change-log.md for full per-release
      bodies; this file is a digest. -->
 
+## v3.2.3
+
+### drift-burndown
+
+**Entry:** 2026-08-02: two doctor surfaces that answered confidently for a state the repo was not in
+
+**Chunks shipped:** 01, 02, 03, 04
+
+### critic-death-signals
+
+**Entry:** 2026-08-02: every signal a waiting caller could reach said the healthy review was dead
+
+**Chunks shipped:** 1
+
+### critic-burndown
+
+**Entry:** 2026-08-02: the gate named the one route that could not clear the finding it was naming
+
+**Chunks shipped:** 01, 02, 03
+
+### backlog-burndown
+
+**Entry:** 2026-08-02: the untriaged, the truncated, the unpublished, and two hardening passes
+
+**Chunks shipped:** 01, 02, 03, 04
+
+### upgrade-discovery
+
+**Entry:** 2026-08-01: Everything prawduct says about itself, it says to the model — so a shipped capability reached nobody
+
+**Chunks shipped:** 01, 02, 03
+
+### v3.2.0-golive
+
+**Entry:** 2026-08-01: prawduct's backlog is on GitHub Issues — 371 items, 0 stranded, and the tripwire that fired at the cutover was re-aimed rather than silenced
+
+**Chunks shipped:** 06
+
+### learnings-firing
+
+**Entry:** 2026-08-01: The collapse — two families become nine rules, and every instance survives
+
+**Chunks shipped:** 01, 02, 03
+
+### 2026-07-31: One home per fact, method prescriptions become advice, and the closing block gets a shape
+
+**Entry:** 2026-07-31: One home per fact, method prescriptions become advice, and the closing block gets a shape
+
+### 2026-07-31: A turn that ends without saying where things stand, and a fix strategy that arrives after the fixing (CRT-9B4K + an unfiled owner report)
+
+**Entry:** 2026-07-31: A turn that ends without saying where things stand, and a fix strategy that arrives after the fixing (CRT-9B4K + an unfiled owner report)
+
+### backlog-service-v1
+
+**Entry:** 2026-07-31: The completeness gate can see an item that arrived at the wrong status (BKL-7V2D)
+
+### record-mechanization
+
+**Entry:** 2026-07-31: Learnings lost three rules to the guard built to protect them
+
+**Chunks shipped:** 05
+
+### junit-leaf-counting
+
+**Entry:** 2026-07-30: Test evidence counts tests, not a reporter's opinion of how many there are
+
+### install-reference-drift
+
+**Entry:** 2026-07-30: A pinned install reference now announces itself instead of running silently
+
+See `.prawduct/change-log.md` for full details.
+
 ## v3.2.2
 
 ### 2026-07-30: The third learnings compaction, and the first one built to be the last

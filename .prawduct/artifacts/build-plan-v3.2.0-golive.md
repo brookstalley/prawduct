@@ -17,9 +17,17 @@ governed_by:
     dispositions:
       - "The adapter never manages a token — `gh` owns the credential → conforms (Chunk 02/08 resolve the session `gh` identity; no managed token introduced)"
       - "Authority fails closed; advice fails soft → conforms, but on DIFFERENT evidence than originally cited (corrected 2026-07-24, cumulative Critic). The original rationale — 'the file-upstream/migration guards refuse-and-explain on any failed check' — cited evidence that does not exist: file-upstream is unbuilt (Chunk 08) and there is no adapter-side migration guard at all. What actually backs the disposition: advice fails soft (every advisory probe is non-blocking, and the briefing degrades visibly rather than serving stale markdown as live), and authority fails closed where authority exists (transport errors are typed and refuse rather than falling back; `_cost` raises on an unclassified verb). The conclusion stands; the stated reason did not."
+      - "An independent reviewer never mutates the session it reviews → inapplicable, because Chunk 06 touches no Critic surface. The review OF this bundle runs under the existing guard unchanged, which is a different claim and not this norm's subject."
+      - "The plugin writes nothing into a governed repo except its own `.prawduct/` state, the shared evidence store, and the files it must reconcile → conforms, and this chunk is the sharpest test of it so far. The migration's writes go to GitHub Issues on the owner-named target and to `.prawduct/` state (`backlog_service_repo`); nothing else in the repo is touched, and the source `backlog.md` is read, never mutated — which is precisely what makes the rollback recorded in VRF-006 possible at all."
+      - "Prawduct is written in Python and must never be specific to Python → inapplicable, because this chunk adds no language dispatch. Recorded rather than skipped because the check is one an auditor would expect on a chunk this size, and 'no bearing' is the honest answer."
+      - "Prawduct guides and reviews; it never implements → conforms. The migration operates on prawduct's own governance state, not on product code: no product code, config or tooling was authored, and the restructure rewrites backlog RECORDS, which are governance artifacts."
+      - "Goals and verification bind; prescribed method is advice → conforms, and this chunk EXERCISED the norm rather than merely complying with it. `migration-scrub.md` prescribes Step 4→5 as dispose-then-verify; following it literally would have turned 24 owner-approved merges into a false `status_mismatch` exit 4, because the gate reads SOURCE status. The verification goal (nothing stranded) was met by running the gate first; the prescribed route was departed from and the reason recorded, then filed as #528 so the runbook is corrected rather than the departure being left as folklore."
+      - "Every fact has one home; every other mention is a reference to it → conforms, with one instance caught in-branch. The migration's settled numbers have one home (VRF-006); the change-log and the decisions artifact reference it. A hardcoded suite total in the decisions artifact was flagged by `record_lint`'s own `suite-total-claim` control on this branch and removed — the norm's mechanism catching a violation of the norm, which is the intended shape."
   - artifact: api-contract
     dispositions:
       - "Exit codes are the contract; stable prefix vocabulary → conforms (new error vocab `filing-disabled`/`target-not-pinned`/`self-file`/`approval-mismatch` are additive, exit-class-typed)"
+      - "Whole-surface semantic versioning; persisted data that outlives a plugin version carries its own schema version → conforms, and the second limb is the one that bears here. The migration writes a persisted corpus that will outlive many plugin versions, and it is versioned where the norm requires: the `prawduct:` body block is adapter-owned and schema-versioned, and the `id:PFX` alias label is the permanent key. No per-subcommand version was introduced."
+      - "Additive-first evolution: flag names, exit-code meanings and `--json` keys are never repurposed → conforms. Chunk 06 added no CLI surface at all; it consumed the existing `import`/`verify-migration`/`merge`/`status` ops as shipped. The `--restructure` flag and `--archive-scope` predate this chunk. Note for whoever picks up #529: giving `promoted` a decodable state would touch the status enum, and that IS an additive-first question — a new enum value is additive, repurposing `in-progress` would not be."
 last_validated: 2026-07-24
 ---
 
@@ -56,7 +64,7 @@ completing cleanly. Neither blocks authoring the rest of the plan.
 - [ ] Chunk 05: SPIKE-S2 live dry-run + MG4 scrub workflow (C1 + C2) — live dry-run run 2026-07-24 (VRF-009, §9 S2 settled), `[ ]` until release
 - [x] Chunk 05b: `pick` honesty + fan-out cost, ahead of the migration — built 2026-07-28, `[ ]` until release
 - [x] Chunk 05c: multi-hyphen ids absorbed, so the completeness gate and the recorded scrub decisions stop contradicting each other — built 2026-07-28, `[ ]` until release
-- [ ] Chunk 06: The real prawduct migration + VRF-006 (C4) — irreversible, operator-run
+- [x] Chunk 06: The real prawduct migration + VRF-006 (C4) — irreversible, operator-run — **ran 2026-08-01**: 371 created / 0 skipped / 0 collisions, `verify-migration` exit 0, 42 dispositions applied 42-of-42; `[ ]` until release (derived — the release flips it from the change-log tag, so do not hand-check it)
 - [ ] Chunk 07: Briefing/gates repoint through the adapter (C5) — scoping audit 2026-07-24 finds all four original done-whens already satisfied; the chunk's real content is now the **advisory lift** (done-when #5, owner decision BKL-7D3V) — ~~DEFERRED out of v3.2.0 2026-07-28~~ **BACK IN 2026-07-28 (same day), by the hard-cutover ruling**: the advisory lift is the mechanism that tells the fleet to migrate, and a hard cutover that never announces itself is not a cutover. Deferring it was correct under "07/08 add governed surface"; it is wrong under a hard cutover
 - [ ] Chunk 08: MG5 / upstream filing — file-upstream op, report-bug rewrite, drop-box retirement (splittable 08a/08b) — **DEFERRED out of v3.2.0 2026-07-28** (same reason; the § Direction norm amendment it carries defers with it)
 - [ ] Chunk 09: Release mechanics — version bump, change-log flip, regen-views, tag; VRF-002/003 post-tag — **re-cut twice on 2026-07-28**: "01–08" → "01–06 + 05b" at the narrowing, then → **"01–07 + 05b"** when the hard-cutover ruling returned Chunk 07 the same day. Chunk 08 stays out (depending on it would make this chunk permanently unsatisfiable). The authority is the chunk body's `Depends on:`
@@ -82,9 +90,21 @@ three residuals that are explicitly not blockers.
 **Correction 2026-07-28:** this paragraph read "Next: **Chunk 05 live half**" for four days after that
 half had landed — the chunk body and `operator-verification.md` (VRF-009 `verified`) both already said
 so. The § Status summary drifted from the chunk bodies it summarizes, which is the same two-trackers
-failure the § below diagnoses, reproduced *inside* the surviving tracker. Next is **Chunk 01** — VRF-005
+failure the § below diagnoses, reproduced *inside* the surviving tracker. ~~Next is **Chunk 01** — VRF-005
 /007/008 drained against `samsung-frame-art-loader`, plus the BKL-4W7H `promoted → shipped` flip — then
-**Chunk 06** (the irreversible real migration).
+**Chunk 06** (the irreversible real migration).~~
+
+**Correction 2026-08-01 — Chunk 06 RAN; the struck sentence above called it upcoming.** It was false
+from `144a0a5` onward. The migration executed 2026-08-01; the Chunk 06 body carries the completion
+record and the two sub-clauses that were deliberately left unverified. **This is the second time this
+paragraph has drifted from the chunk bodies it summarizes** — the 2026-07-28 correction directly above
+records the first. A failure that repeats after being named once is evidence the hand-curated summary
+is the wrong mechanism, not that the author was careless twice. Chunk 01 is still undrained but is no
+longer what comes next: the v3.2.3 release ceremony is, with Chunk 07 and Chunk 08 (upstream filing)
+sequenced behind it. **Chunk 07 is *probably* verification-only** — its scoping audit found all four
+original done-whens already satisfied but says "very likely" and "confirm before building," and that
+hedge is load-bearing, so it is repeated here rather than flattened. (Its done-when #5, the advisory
+lift, is separately **struck** — see the Chunk 07 body.)
 
 **Release scope narrowed 2026-07-28 (owner decision).** v3.2.0 stops after **Chunk 06**. Chunks 07
 (advisory lift) and 08 (upstream filing) *add* governed surface and are deferred behind a
@@ -377,8 +397,11 @@ node_id-across-transfer not run (`--transfer-to` omitted). Chunk stays `[ ]` (re
 **Goal:** Fix two `pick` defects that Chunk 06 would otherwise make permanent and universal across the
 whole migrated backlog. Added 2026-07-28, after a pre-Chunk-06 read of the migration path.
 
-**Covers:** the `pick`-path slice of BKL-3N8Q (not the whole item — its foreign-API verification half
-stays open) and the PROBE-LAT N+1 that VRF-009 recorded but did not fix.
+**Covers:** the `pick`-path slice of BKL-3N8Q — which at the time was not the whole item, its
+foreign-API verification half being open then; **that half was discharged by VRF-010 on 2026-07-28
+and the item was reconciled shipped 2026-07-31** (corrected here 2026-08-02: the line read "stays
+open" in the present tense long after it did not) — and the PROBE-LAT N+1 that VRF-009 recorded but
+did not fix.
 **Depends on:** —  ·  **Type:** code (bugfix)  ·  **Critic mode:** chunk (`plugin/lib/backlog/**` is
 governance-protected → full Critic + `/prawduct:pr`)
 
@@ -512,6 +535,26 @@ this is why Chunks 02–05 gate it.
 4. The `backlog-service-migration-required` advisory resolves *as a consequence* (not separate work).
 5. Recorded to `.prawduct/operator-verification.md` with a rollback note (per MG1, rollback = close, not
    delete).
+
+**RAN 2026-08-01 — all five done-whens met.** `371 created, 0 skipped, 0 collision(s) of 371 source
+item(s)` (152 restructured by plan), `≥6548 REST points; no throttling`. `verify-migration` returned
+**exit 0 with all five conflict lists empty** and `source_items 371 = aliased 371` — the precondition
+Step 6 refuses to take on trust. The `WARNING: N item(s) imported but NOT reconciled` line was
+**absent**, so every status reconcile landed on the first pass. `backlog_service_repo:
+brookstalley/prawduct` is recorded and `.prawduct/backlog.md` is frozen history from here. 42
+owner-confirmed dispositions then applied 42-of-42 clean, leaving the tracker at **155 open / 149
+shipped / 67 dropped**, which is VRF-006's settled identity `155 + 149 + 67 = 371` — the imported set
+exactly. *(An earlier draft of this line added "plus 9 pre-existing natives." Dropped: it is unsourced,
+appears in no settled-facts block, and sits in tension with an identity that already accounts for all
+371.)* Recorded as **VRF-006** with a three-step
+rollback note — rollback means *neutralise*, not undo, because GitHub has no issue-delete.
+
+**Two sub-clauses are explicitly NOT verified, recorded rather than claimed.** Done-when 3's "no
+duplicates on a re-run" was **not performed**: the alias-keyed skip path reconciles status, so a re-run
+would reopen all 42 disposed items. Filed as `#528` together with the ordering defect it shares a fix
+with — `verify-migration` must run *before* post-import disposals, and the runbook's Step 4→5 says the
+opposite. Done-when 4 resolved as a consequence as designed, but `promoted` has no Issues-backend
+equivalent and decoded to `open` for 3 items (`#529`).
 
 ---
 
@@ -665,7 +708,28 @@ error vocab (`filing-disabled`, `target-not-pinned`, `self-file`, `approval-mism
 
 ### Chunk 09: Release mechanics — bump · change-log · regen · tag
 
-**Goal:** Ship v3.2.0. The version bump *is* the release trigger.
+**Goal:** ~~Ship v3.2.0. The version bump *is* the release trigger.~~ **Ship the release that carries
+Chunk 06 — which is v3.2.3, not v3.2.0.**
+
+> **SUPERSEDED 2026-08-01 — read before executing any step below.** This chunk was written when v3.2.0
+> was the release that would carry Chunk 06. It is not. **v3.2.0, v3.2.1 and v3.2.2 have all shipped**
+> (`git tag --list` confirms all three); they carried Chunks 01–05c, and every `scope=v3.2.0-golive`
+> change-log entry *except Chunk 06's two* already reads `release=v3.2.0 | status=shipped`. Chunk 06
+> landed after v3.2.0 and is release-pending.
+>
+> **Executing the done-whens below as written would do real damage.** Step 1 would bump `3.2.2`
+> *backwards* to `3.2.0`; step 2 would stamp Chunk 06's entries into an already-published release,
+> mis-deriving both the § Status view and `scope_rollups`; step 4 would fail outright on the existing
+> `v3.2.0` tag.
+>
+> **What governs the real ceremony:** `.prawduct/runbooks/cut-and-publish-a-plugin-release.md`
+> (Phases 0–2) plus `artifacts/release-plan-v3.2.3.md` (classification table, version decision, recorded
+> departures). The steps below are retained as the **record of what the v3.2.0 ceremony was specified to
+> do**, not as instructions — every version literal in them is historical.
+>
+> **Two items carry forward unchanged**, being release-shape-independent: item 6 (the post-tag VRF-002 /
+> VRF-003 pair) and item 7 (the **OWNER RELEASE GATE** — nothing reaches `main` until the owner has
+> exercised the candidate in sibling repos via `--plugin-dir`). Both bind on v3.2.3.
 
 **Covers:** ship-list items 13–17.
 **Depends on:** Chunks 01–07 + 05b *(re-cut twice on 2026-07-28: "01–08" → "01–06 + 05b" at the
@@ -673,7 +737,8 @@ narrowing, then → "01–07 + 05b" when the hard-cutover ruling returned Chunk 
 depending on it would make Chunk 09 permanently unsatisfiable.)*
 **Type:** code (version + change-log) + release ceremony
 
-**Done when:**
+**Done when:** *(historical — the v3.2.0 ceremony's specification, superseded above. The version
+literals below are a record, not instructions; items 6–7 carry forward.)*
 1. Bump `VERSION` + `.claude-plugin/plugin.json` → 3.2.0 (A2). **Both files** — note they live under
    `plugin/` (`plugin/VERSION`, `plugin/.claude-plugin/plugin.json`), not at the repo root.
 2. Flip **every** unreleased change-log entry to `status=shipped` + `release=v3.2.0` — enumerate, don't
@@ -732,11 +797,13 @@ depending on it would make Chunk 09 permanently unsatisfiable.)*
      It is an NFR and explicitly deferred by the ruling. W1 (raw-HTTP fast-path / scoped query) stays
      out of v3.2.0. Record the number in the release note as a known, accepted characteristic rather
      than letting a dogfood session rediscover it as a surprise.
-   - **What DOES gate: anything verified only against the in-process fake.** `BKL-3N8Q` records that
-     the relationship/timeline foreign-API shapes are **fake-verified only** and the `verify-api` step
-     has never run. That is precisely the "functionally broken for a supported scenario" case the
+   - **What DOES gate: anything verified only against the in-process fake.** `BKL-3N8Q` recorded that
+     the relationship/timeline foreign-API shapes were **fake-verified only** and the `verify-api` step
+     had never run. That is precisely the "functionally broken for a supported scenario" case the
      ruling names — if a real payload shape differs from the fake, `pick` reports blocked items as
-     ready with a confident verdict, and no test in the suite can see it.
+     ready with a confident verdict, and no test in the suite can see it. **The criterion stands; this
+     instance of it closed on 2026-07-28** — VRF-010 ran all three readers against real GitHub and the
+     shapes matched (`.prawduct/operator-verification.md` VRF-010; `functional-audit-v3.2.0.md` F1).
 
    **The acceptance set is therefore a supported-scenario functional audit, not a feature checklist.**
    Enumerate the scenarios v3.2.0 claims to support, and for each name the functional requirements it
@@ -816,7 +883,7 @@ re-derivation from memory samples instead of enumerating. **Append to this list 
 | BKL-2Q7F · ONB-3F9P · BKL-5N9W · BKL-6J2X | Chunk 03 | → `shipped` |
 | BKL-6X5D part (b) | Chunk 04 | → `shipped` *(part (i) stays deferred — adopter-scale, not pulled in)* |
 | — | Chunk 05 | *(no backlog IDs — C1/C2)* |
-| BKL-3N8Q — **partial, do NOT flip to shipped** | Chunk 05b | Append a note recording that the `pick`-path half (the vacuous "no open blockers" verdict) is fixed, and **narrow the item's remaining scope** to its foreign-API verification half — `list_blocked_by`/`list_sub_issues`/`list_timeline` are still shape-verified against the fake only, which is the half that needs the unrun `verify-api` step. Its `refs:` line-anchors into `query.py` (`:180`, `:368-369`) are stale after this chunk; re-anchor by symbol (`pick`, `_why`, `_blocker_clause`) per this repo's own preference. **Its id is cited by `project-state.yaml design_decisions.infrastructure_dependencies.integration_test_strategy` — do not renumber.** |
+| BKL-3N8Q (`brookstalley/prawduct#364`) — **nothing owed here; already reconciled** | Chunk 05b | **Corrected 2026-08-02.** This row read *"partial, do NOT flip to shipped"* and instructed a scope-narrowing to the item's foreign-API half. That instruction is spent: the `pick`-path half shipped in Chunk 05b, the live-shape half was discharged by **VRF-010** (verified 2026-07-28), and the item was reconciled to `shipped` on 2026-07-31 (`closed-by: v3.2.0-golive`) — outside this list, which is why the list did not know. Chunk 09 owes no flip for it. Nothing here flips anything: this row now records a closure that already happened. **Its id is still cited by `project-state.yaml design_decisions.infrastructure_dependencies.integration_test_strategy` — do not renumber.** |
 | **BKL-72AS** | Chunk 05c | → `shipped` — *(added 2026-07-29: Chunk 05c's body ends "Backlog flip owed at Chunk 09 — see § Deferred to Chunk 09" and § Status lists 05c between 05b and 06, but this table had no 05c row and named BKL-72AS nowhere. Under the `[ ]`-until-release convention this table is the ONLY thing that flips an item, so the chunk's own pointer resolved to nothing and the item would have survived the release still reading open. Found by the cumulative review that also caught the accumulate-as-you-happen rule this row exists to honour.)* |
 | BKL-6M4T · **BKL-8K2N** | Chunk 06 | → `shipped` — *(BKL-8K2N added 2026-07-28: it was in no flip list and no chunk's `closes` line, while its own body reads **GATES CHUNK 06** and ~95 lines of its work already shipped in `aaf068f`. Nothing would have flipped it. Its remaining half is the progress heartbeat — without it the ~900-issue irreversible run emits nothing for 18–40 min, since `rest_point_waits: 0` means the throttle announcements never fire and the runbook invokes import without `--json`.)* |
 | **BKL-7D3V** · **BKL-6J2X** | Chunk 07 | → `shipped` — **ACTIVE AGAIN (2026-07-28, hard-cutover ruling).** Struck as out-of-release earlier the same day, then restored when the ruling put Chunk 07 back: the advisory lift closes the decision item **and** retires the hold it discharges, and a hard cutover needs that advisory firing. *(Corrected 2026-07-24: this row read "no backlog IDs" while the traceability table already credited Chunk 07 with closing BKL-7D3V.)* |

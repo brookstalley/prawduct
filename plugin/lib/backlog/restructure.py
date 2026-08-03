@@ -238,7 +238,9 @@ def render_preview(
     lint_total = sum(len(e["lint"]) for e in entries)
 
     lines: list[str] = [
-        "# Restructure preview — MG6 pre-pass (owner review artifact)",
+        # This document is written for the owner to review, so the pre-pass's
+        # internal id (MG6) stays in this comment rather than in its title.
+        "# Restructure preview — before/after, for owner review before import",
         "",
         f"Source: {source_label}",
         "",

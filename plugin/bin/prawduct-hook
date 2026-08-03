@@ -150,6 +150,19 @@ def _coverage():
     return coverage
 
 
+def _coverage_algebra():
+    """Lazy-import the pure judgeability/coverage algebra (lib/coverage_algebra).
+    Same lazy idiom as _coverage() — seeds sys.path so the hook's top level stays
+    lib-free; the module is I/O- and git-free and pulls only its light siblings
+    (buildplan_refs, gitstate, core)."""
+    lib_root = _plugin_root()
+    if lib_root not in sys.path:
+        sys.path.insert(0, lib_root)
+    from lib import coverage_algebra  # noqa: PLC0415 — lazy keeps top-level cheap + lib-free
+
+    return coverage_algebra
+
+
 def _release_readiness():
     """Lazy-import the Phase 0 releasability gate (lib/release_readiness).
     Same lazy idiom as _coverage() — seeds sys.path so the hook's top level
@@ -443,6 +456,7 @@ _SESSION_GITIGNORED_PATHS = (
     ".prawduct/.critic-active",
     ".prawduct/.critic-findings.json",
     ".prawduct/.critic-partials",
+    ".prawduct/.critic-partials-archive",
     ".prawduct/.governance-ledger.jsonl",
     ".prawduct/.handoff-notes.md",
     ".prawduct/.test-evidence.json",
@@ -899,8 +913,11 @@ def cmd_clear(project_dir: Path, argv: list[str] | None = None) -> int:
             print(
                 "PRAWDUCT: `clear` refused — a Critic review appears to be in progress "
                 f"(marker .prawduct/.critic-active, started ~{age_min}m ago). Session-mutating "
+                # The guard's id (CRT-3X9D) stays in the comment above: an
+                # operator downstream cannot resolve it, and it displaces the
+                # sentence that makes the message actionable.
                 "commands are blocked so an independent reviewer cannot clobber the session it is "
-                "reviewing (CRT-3X9D).\n"
+                "reviewing.\n"
                 "  If the Critic has finished or crashed and this marker is stale, clear it:\n"
                 "    rm .prawduct/.critic-active        # then retry\n"
                 "  or override this one invocation:\n"
@@ -1150,7 +1167,12 @@ def cmd_critic_begin(project_dir: Path, argv: list[str]) -> int:
         print(f"critic-begin: {result['reason']}", file=sys.stderr)
         return 2 if result.get("kind") == "scope-widened" else 1
 
-    if result["cleared_leftovers"]:
+    if result.get("archived_leftovers"):
+        print(
+            "PRAWDUCT: a prior review's leftover .critic-partials were archived "
+            f"to {result['archived_leftovers']} (not deleted)."
+        )
+    elif result["cleared_leftovers"]:
         print("PRAWDUCT: cleared leftover .critic-partials from a prior review.")
     for note in result["notes"]:
         print(f"PRAWDUCT NOTE: {note}", file=sys.stderr)
@@ -1173,23 +1195,40 @@ def cmd_critic_begin(project_dir: Path, argv: list[str]) -> int:
     # and so a reviewer is never asked to re-derive one.
     lint = manifest.get("record_lint") or {}
     lint_lines = _record_lint().format_findings(lint)
+    # The clause lists are DERIVED, never restated. A hand-written one went out
+    # naming two checks the same commit deleted — a clean report vouching for
+    # work nobody did, which is precisely the silence-as-pass record-lint exists
+    # to refuse, relocated from the library into its own report line. Derived
+    # from `counts` rather than from CHECKS, because a `None` count is a check
+    # that produced NO ANSWER, and listing it as run is that same lie by omission.
+    counts = lint.get("counts") or {}
+    ran = ", ".join(c for c, n in counts.items() if n is not None)
+    skipped = ", ".join(c for c, n in counts.items() if n is None)
+    subject = lint.get("plan_graded")
     if lint_lines:
         print(
             f"PRAWDUCT: record-lint — {len(lint.get('findings') or [])} finding(s) "
-            f"across {len(lint.get('records') or [])} changed record(s). "
-            "Advisory: fix or disposition them; they gate nothing."
+            f"across {len(lint.get('records') or [])} changed record(s)"
+            + (f"; {skipped} produced NO answer" if skipped else "")
+            + ". Advisory: fix or disposition them; they gate nothing."
         )
         for line in lint_lines:
             print(f"  {line}")
     elif lint.get("records"):
-        # The clause list is DERIVED, never restated. A hand-written one went out
-        # naming two checks the same commit deleted — a clean report vouching for
-        # work nobody did, which is precisely the silence-as-pass this module
-        # exists to refuse, relocated from the library into its own report line.
-        ran = ", ".join(_record_lint().CHECKS)
         print(
             f"PRAWDUCT: record-lint clean across {len(lint['records'])} changed "
-            f"record(s) — checks run: {ran}."
+            f"record(s) — checks run: {ran or '(none)'}"
+            + (f"; NOT run: {skipped}" if skipped else "")
+            + "."
+        )
+    if subject:
+        # Name the subject the deliverable check graded. A review whose record
+        # names one plan while its lint graded another is the failure this
+        # dispatch line makes visible at the moment it can still be corrected.
+        print(
+            f"PRAWDUCT: record-lint graded chunk {lint.get('chunk_graded')} of "
+            f"{subject} (scope {manifest.get('scope') or '(none)'}, "
+            f"{manifest.get('scope_chosen_by')})."
         )
 
     siblings = [
@@ -1206,6 +1245,16 @@ def cmd_critic_begin(project_dir: Path, argv: list[str]) -> int:
         )
     if _critic_marker().write_marker(prawduct_dir):
         print("PRAWDUCT: critic-active marker set (session-mutating clear is guarded).")
+
+    # LAST, and only on the one mode that can weaken a gate. The reviewer reads
+    # this dispatch output before assessing anything (SKILL.md step 4) and
+    # writes its `resolutions` several steps later — so this is the last thing
+    # in the tool result at the only moment the advice can still change the
+    # claim. Keyed off the manifest's own mode rather than the raw --mode
+    # argument: `begin_review` is what canonicalizes the token, and a
+    # verify-resolutions dispatch that got demoted never reaches here at all.
+    if manifest["mode"] == consolidate.MODE_TOKEN_TO_VERBOSE["verify-resolutions"]:
+        print(consolidate.RESOLUTION_IS_A_CLAIM_DIRECTIVE)
     return 0
 
 
@@ -1366,9 +1415,11 @@ def _worktree_redirect_note(project_dir: Path) -> str | None:
         return None
     branch = _gitstate().current_branch(project_dir)
     branch_str = f" for branch '{branch}'" if branch else ""
+    # The redirect's id (STH-4K7N) stays here: this string is printed to hook
+    # stderr in a governed product, where an operator cannot resolve it.
     return (
         f"WORKTREE: .prawduct/ state resolved to worktree {project_dir}{branch_str}, "
-        f"not CLAUDE_PROJECT_DIR ({env_dir}) — the Stop gates read THIS worktree (STH-4K7N)."
+        f"not CLAUDE_PROJECT_DIR ({env_dir}) — the Stop gates read THIS worktree."
     )
 
 
@@ -1456,7 +1507,19 @@ def cmd_stop(project_dir: Path, stop_input: dict | None = None) -> int:
 
     # Determine if there's an active build plan (used by both gates).
     # "Active" means incomplete chunks remain — a completed plan (all [x]) does not count.
-    has_build_plan = _gates()._has_active_build_plan_file(prawduct_dir) or _gates()._has_build_plan_in_state(prawduct_dir)
+    #
+    # Resolved from the BRANCH's plan, the same one the Type-driven carveouts
+    # below read. Asking "is there governed work" of the pointer while asking
+    # "what does that work declare" of the branch is one question answered from
+    # two places — the defect class this bundle exists to close, at the gate that
+    # decides whether the others run at all. Falls back to the pointer whenever
+    # the branch names no declared scope, so repos whose branch names differ from
+    # their scopes are unaffected.
+    gate_plan = _buildplan_refs().resolve_branch_plan(project_dir, prawduct_dir).path
+    has_build_plan = (
+        _gates()._has_active_build_plan_file(prawduct_dir, gate_plan)
+        or _gates()._has_build_plan_in_state(prawduct_dir)
+    )
 
     # Gate 1: Reflection
     # - With active build plan: BLOCKING (structured work deserves reflection)
@@ -1545,9 +1608,20 @@ def cmd_stop(project_dir: Path, stop_input: dict | None = None) -> int:
     # trivial-declaration contract is independent.
     trivial_block_reason = ""
     if has_changes and has_build_plan:
-        current_chunk_id = _buildplan_refs()._current_chunk_id_from_status(project_dir)
+        # Resolve WHICH plan once, then read all three chunk-level fields from
+        # it: the current chunk id, its `Type:`, and its trivial rationale.
+        # `active_build_plan` names the plan in progress in this repo; on a repo
+        # running several plans across worktrees that is not the plan this
+        # branch is building, and the gate's Type-driven carveouts would be
+        # decided by a chunk of a plan the session never touched. Falls back to
+        # the pointer whenever the branch names no declared scope, so a repo
+        # whose branch names differ from its scopes is unaffected.
+        _bpr = _buildplan_refs()  # `gate_plan` resolved once, above
+        current_chunk_id = _bpr._current_chunk_id_from_status(project_dir, gate_plan)
         if current_chunk_id is not None:
-            chunk_type, type_error = _buildplan_refs()._parse_build_plan_chunk_type(prawduct_dir, current_chunk_id)
+            chunk_type, type_error = _bpr._parse_build_plan_chunk_type(
+                prawduct_dir, current_chunk_id, gate_plan
+            )
             # v1.5.1 Chunk 04(a): surface typo'd Type values. Pre-fix, the
             # parser's "unknown type: ..." message was discarded so the author
             # never saw it. Surfacing in waiver_notes makes the typo visible
@@ -1561,15 +1635,18 @@ def cmd_stop(project_dir: Path, stop_input: dict | None = None) -> int:
             if chunk_type == "designer-handoff" and not doc_only:
                 designer_handoff_skip = True
                 waiver_notes.append(
-                    f"critic: skipped (Chunk {current_chunk_id} declares Type: designer-handoff — v1.4 F6 carveout)"
+                    # Waiver notes are printed at session end; the carveout's
+                    # requirement id (v1.4 F6) stays in this comment.
+                    f"critic: skipped (Chunk {current_chunk_id} declares Type: designer-handoff "
+                    "— a visual handoff is reviewed by a human, not by code analysis)"
                 )
             elif chunk_type == "trivial":
                 fileset_ok, fileset_reason = _gates()._is_trivial_fileset_eligible(project_dir)
                 if not fileset_ok:
                     trivial_block_reason = fileset_reason
                 else:
-                    _, rationale_error = _buildplan_refs()._parse_build_plan_chunk_trivial_rationale(
-                        prawduct_dir, current_chunk_id
+                    _, rationale_error = _bpr._parse_build_plan_chunk_trivial_rationale(
+                        prawduct_dir, current_chunk_id, gate_plan
                     )
                     if rationale_error:
                         trivial_block_reason = rationale_error
@@ -1757,12 +1834,18 @@ def cmd_stop(project_dir: Path, stop_input: dict | None = None) -> int:
                 for e in unresolved[:5]
             )
             more = f"    (+{len(unresolved) - 5} more)\n" if len(unresolved) > 5 else ""
+            # The whole remedy comes from the shared helper the PR gate also
+            # renders, indented to this block: it decides whether the standard
+            # verify-resolutions route applies, needs an exception appended, or
+            # must be replaced outright because every blocker is superseded.
+            remedy = "".join(
+                f"  {ln}\n" for ln in _gates().blocking_remedy_lines(unresolved)
+            )
             blockers.append(_attributed("critic",
                 "CRITIC REVIEW (unresolved blocking findings): review coverage composes\n"
                 f"  over this session's changes, but carries {len(unresolved)} unresolved BLOCKING finding(s):\n"
-                + lines + more +
-                "  Fix them, then run /prawduct:critic verify-resolutions — it records the\n"
-                "  resolution facts and this same evidence passes (no full re-review).\n"
+                + lines + more
+                + remedy
                 + _escape_hatch
             ))
         else:
@@ -1968,6 +2051,127 @@ def cmd_stop(project_dir: Path, stop_input: dict | None = None) -> int:
 # =============================================================================
 # test-evidence command (TST-6V2N — the WRITER for test-status's reader)
 # =============================================================================
+
+
+#: Delivered at the moment the builder stamps "the suite is green" into the
+#: record the gates read — the one point where green stops being an observation
+#: and becomes evidence someone else will rely on.
+#:
+#: This text lives in code rather than in `learnings.md` deliberately. The
+#: general form of this rule has been in that file for a long time and does not
+#: fire: a rule read at session start competes with the whole rest of the
+#: context by the time the test gets written. `_BATCH_FIX_DIRECTIVE` in
+#: ``lib/critic_consolidate.py`` is the same move for the same reason, and is
+#: the precedent this follows.
+#:
+#: Printed ONLY when the merged record shows the cycle changed code tests
+#: should vouch for — a docs-only cycle, or a run that touched no source, stays
+#: silent, because a directive that prints every time is one the reader learns
+#: to skip. The trigger is language-agnostic (see
+#: ``_evidence_changed_judged_code``): it fires off ``changes_referenced``, and
+#: ALSO off any ``changes_unjudged`` path that needs review coverage, which is
+#: how a Swift/Go/Rust/C#/TS product reaches it at all.
+#:
+#: **Not "a restamp stays silent."** An earlier draft of this comment, the plan,
+#: and the change-log all said so, and it is false: ``--no-rerun`` takes the same
+#: path as every other mode — it rebuilds the record and re-runs the F4a overlay,
+#: which repopulates ``changes_referenced`` against the CURRENT tree (pinned by
+#: ``test_refreshes_changes_referenced_against_current_tree``). So a restamp with
+#: judged changes in the diff fires, correctly: the builder did just change
+#: judged code, and how the counts got there is not the question this directive
+#: asks. The only thing that silences it is "nothing needing review coverage
+#: changed" — which since the widening below is a claim about the changed FILES,
+#: not about whether a Python symbol grep happened to match.
+#:
+#: **Known limitation, recorded where the reader meets it, WITH its id.** One
+#: population still cannot reach this directive: a Python file declaring symbols
+#: no test mentions appears in NEITHER ``changes_referenced`` nor
+#: ``changes_unjudged`` — ``bin/test-reference-verify`` withholds it from both on
+#: purpose, since it is the gap ``verify-coverage`` exists to catch. So the record does
+#: not carry the whole changed set and no trigger composed from those two fields
+#: can. That is brookstalley/prawduct#556 — closing it means a schema change or a
+#: second git diff on this path, both larger than this trigger. The direction is
+#: the safe one: it under-fires, costing advice rather than soundness.
+#:
+#: The predecessor limitation — "empty in every non-Python product, so the
+#: directive is dark there" — is CLOSED (#348), and this comment previously said
+#: it was "tracked separately" while naming no item, which is how it stayed open
+#: long enough to be worth this warning: a tracking reference that points at no
+#: id is not a tracking reference.
+_GREEN_IS_EVIDENCE_DIRECTIVE = (
+    "\nGreen is evidence only about what could have made it red. For each test"
+    " you just added or changed, name the change that would flip it — and"
+    " confirm the fixture actually REACHES the subject, because a setup that"
+    " never gets to the code passes forever. Three that pass identically when"
+    " the thing they name is broken: a fixture whose input cannot trigger the"
+    " guard, an assertion that cannot tell the two orderings apart, and a"
+    " branch that depends on a file which happens to exist on this machine."
+    " Mutation answers this only for the line you ADDED — reverting removes the"
+    " damage alongside the fix, so it is blind to what your change broke beside"
+    " it; pair it with branch coverage of every path in the function you"
+    " touched."
+)
+
+
+def _evidence_changed_judged_code(evidence_path: Path) -> bool:
+    """True when the MERGED evidence record shows changed code tests should vouch for.
+
+    Read back from disk rather than from the in-memory record: the F4a overlay
+    (``bin/test-reference-verify --merge-into``) writes the coverage fields
+    into the FILE after the base record is written, so the dict the caller
+    holds still carries the empty seed.
+
+    **Two senses of "judged" meet in this function — do not conflate them.**
+    ``changes_unjudged`` means *the symbol-grep overlay had no signal for this
+    file* (it is not Python, declares no symbols, or was deleted).
+    ``coverage_algebra.is_judgeable_path`` means *a change here needs review
+    coverage*. A Swift file is unjudged in the first sense and judgeable in the
+    second, which is exactly the population this trigger has to reach.
+
+    Reusing ``is_judgeable_path`` rather than matching source extensions is
+    deliberate: it is the single canonical answer to "does this file need
+    review coverage?" (the predicate CRT-5D8Q unified), and it classifies by
+    exclusion — framework metadata and unprotected ``.md`` are out, everything
+    else is in — so a language nobody has heard of fires the directive instead
+    of silently going dark. An extension allowlist would have reproduced this
+    defect one language at a time.
+
+    **The cost was weighed, not overlooked.** Classifying by exclusion also
+    admits files with no testable behaviour: a cycle touching only
+    ``.gitignore``, ``LICENSE``, a CI yaml or a binary asset now prints the
+    directive where it used to stay quiet. That is the price of the failure
+    direction being right — over-firing costs a reader two seconds, while the
+    under-firing it replaced cost an entire language its directive, silently and
+    unobservably.
+
+    Advice fails soft. Every unreadable, malformed, or unexpectedly-shaped
+    record answers False — the evidence is already written and schema-valid, so
+    a trigger that cannot be computed omits a hint rather than failing a
+    recording run.
+    """
+    try:
+        merged = json.loads(evidence_path.read_text())
+    except (OSError, ValueError):
+        return False
+    if not isinstance(merged, dict):
+        return False
+    referenced = merged.get("changes_referenced")
+    if isinstance(referenced, list) and referenced:
+        return True
+    # Second clause, and the reason this fires off Python at all. Kept as an OR
+    # rather than a replacement so the widening is strict by construction: a
+    # `.prawduct/`-resident Python file can sit in `changes_referenced` while
+    # `is_judgeable_path` calls it framework metadata, and substituting the new
+    # predicate would take that case dark.
+    unjudged = merged.get("changes_unjudged")
+    if not isinstance(unjudged, list):
+        return False
+    try:
+        is_judgeable = _coverage_algebra().is_judgeable_path
+    except ImportError:
+        # Broken install — advice fails soft, same as an unreadable record.
+        return False
+    return any(isinstance(p, str) and is_judgeable(p) for p in unjudged)
 
 
 def _parse_evidence_counts(tokens: list[str]) -> tuple[dict | None, str]:
@@ -2463,10 +2667,29 @@ def cmd_test_evidence(project_dir: Path, argv: list[str]) -> int:
         # pytest emits one <testsuite>, but `test_command` invites arbitrary
         # runners (jest-junit, go-junit-report, merged CI reports) whose
         # <testsuites> roots carry many — reading only the first silently
-        # undercounted the evidence the freshness and Critic gates trust. Direct
-        # children only (not iter()) so Ant-style nested suites aren't
-        # double-counted. Multi-environment products contribute one root per
-        # declared command; the sums span all of them.
+        # undercounted the evidence the freshness and Critic gates trust.
+        # Multi-environment products contribute one root per declared command;
+        # the sums span all of them.
+        #
+        # Counts come from LEAF <testcase> elements wherever a suite has them,
+        # not from the `tests=` attribute, because that attribute's meaning is
+        # reporter-specific and the two conventions cannot both be served by
+        # summing it (#128):
+        #
+        #   Ant-style   `tests=` counts all DESCENDANTS  → summing every suite
+        #                                                  double-counts
+        #   node:test   `tests=` counts DIRECT CHILDREN  → summing only
+        #                                                  top-level suites
+        #                                                  undercounts, and the
+        #                                                  error scales with
+        #                                                  nesting depth
+        #
+        # Reading only top-level suites fixed the first and preserved the
+        # second: a node:test suite whose 2 child describes hold 6 tests
+        # recorded 2. A leaf <testcase> appears exactly once however the suites
+        # nest, so counting leaves is correct under both conventions and needs
+        # no reporter detection. `failed`/`skipped` are classified per leaf for
+        # the same reason; `passed` stays the remainder.
         suites = []
         for root in roots:
             suites += [root] if root.tag == "testsuite" else root.findall("testsuite")
@@ -2476,10 +2699,67 @@ def cmd_test_evidence(project_dir: Path, argv: list[str]) -> int:
                 file=sys.stderr,
             )
             return 2
-        total = sum(int(s.get("tests", "0")) for s in suites)
-        failures = sum(int(s.get("failures", "0")) for s in suites)
-        errors = sum(int(s.get("errors", "0")) for s in suites)
-        skipped = sum(int(s.get("skipped", "0")) for s in suites)
+        def _attr_int(suite, name: str) -> int:
+            """A count attribute as int. Absent or empty reads 0; malformed raises
+            ValueError, which the caller turns into the command's exit-2 diagnostic
+            rather than a traceback."""
+            raw = (suite.get(name) or "").strip()
+            return int(raw) if raw else 0
+
+        # The leaf-vs-attribute choice is made PER TOP-LEVEL SUITE, never once for
+        # the whole ingest. The condition the fallback exists for — attributes with
+        # no <testcase> children — is a property of an individual suite, so deciding
+        # globally makes every summary-only suite contribute 0 the moment any other
+        # suite carries leaves. That is a false GREEN rather than an undercount:
+        # `failed` drives both this command's exit status and `tests_are_current`
+        # in lib/gates.py, so a dropped failing environment would let the stop gate
+        # pass on evidence that never saw it. Two reachable shapes — repeated
+        # --from-junit (the documented multi-command on-ramp), and one report mixing
+        # a populated suite with a <testsuite errors="1"> that died before emitting
+        # any <testcase>.
+        total = failures = errors = skipped = 0
+        try:
+            for s in suites:
+                leaves = list(s.iter("testcase"))
+                if leaves:
+                    total += len(leaves)
+                    # Precedence, most severe first: a case carrying both <error>
+                    # and <failure> counts once, as an error. `skipped` loses to
+                    # both — a case that errored is not a skip, whatever else it
+                    # carries.
+                    errors += sum(1 for c in leaves if c.find("error") is not None)
+                    failures += sum(
+                        1
+                        for c in leaves
+                        if c.find("error") is None and c.find("failure") is not None
+                    )
+                    skipped += sum(
+                        1
+                        for c in leaves
+                        if c.find("error") is None
+                        and c.find("failure") is None
+                        and c.find("skipped") is not None
+                    )
+                else:
+                    # Summary-only suite: its attributes are the only evidence it
+                    # carries, so recording a confident 0 would discard a whole
+                    # environment. Ant-style double-counting cannot arise here — a
+                    # suite reaching this branch has no descendant leaves at all.
+                    total += _attr_int(s, "tests")
+                    failures += _attr_int(s, "failures")
+                    errors += _attr_int(s, "errors")
+                    skipped += _attr_int(s, "skipped")
+        except ValueError as exc:
+            print(
+                "error: malformed count attribute on a <testsuite> in the test "
+                f"report ({exc})",
+                file=sys.stderr,
+            )
+            return 2
+        # Duration stays suite-level: the suite's `time` is the wall clock this
+        # field has always reported. Summing <testcase time=> would change the
+        # field's meaning — per-case times are elapsed-per-test and, under any
+        # parallel runner, add up to more than the wall clock actually spent.
         duration = sum(float(s.get("time", "0") or "0") for s in suites)
         passed = total - failures - errors - skipped
         failed = failures + errors
@@ -2614,6 +2894,11 @@ def cmd_test_evidence(project_dir: Path, argv: list[str]) -> int:
     print(
         f"recorded: {passed} passed, {failed} failed, {skipped} skipped "
         f"in {record['duration_seconds']}s ({record['timestamp']})"
+        + (
+            _GREEN_IS_EVIDENCE_DIRECTIVE
+            if _evidence_changed_judged_code(evidence_path)
+            else ""
+        )
     )
     # Exit status mirrors the suite when we ran it (every declared command must
     # exit 0); in ingest mode there is no process, so derive it from the
@@ -2664,6 +2949,13 @@ def cmd_verify_chunk_refs(project_dir: Path, chunk_id: str | None) -> int:
         # One canonical current-chunk resolution (shared with the stop hook and
         # the Critic helper); handles both the "### Chunk NN:" and
         # "## Chunk N (ID) — Name" Status-item forms.
+        # #327: announce a KNOWN-degraded reading before acting on it. Only on
+        # the inference path — an explicit chunk_id does not consume the
+        # progress reading, so warning there would be noise about something the
+        # caller already overrode.
+        notice = _buildplan_refs().degraded_progress_notice(project_dir)
+        if notice:
+            print(notice, file=sys.stderr)
         chunk_id = _buildplan_refs()._current_chunk_id_from_status(project_dir)
         if chunk_id is None:
             print("ok: no current chunk in Status; nothing to verify")
@@ -2698,7 +2990,8 @@ def cmd_verify_chunk_refs(project_dir: Path, chunk_id: str | None) -> int:
 def cmd_verify_records(project_dir: Path, argv: list[str]) -> int:
     """Run the deterministic record-lint checks over changed governance records.
 
-    Usage: verify-records [--base <tree-ish>] [--head <tree-ish>] [--chunk <id>] [--json]
+    Usage: verify-records [--base <tree-ish>] [--head <tree-ish>] [--chunk <id>]
+                          [--scope <s>] [--json]
 
     Defaults to the same interval the Critic reviews (the repo's base branch
     through the working tree), so running it by hand answers the same question
@@ -2709,6 +3002,15 @@ def cmd_verify_records(project_dir: Path, argv: list[str]) -> int:
     is inferred from build-plan Status and the inference is REPORTED, because
     Status names the first *unchecked* chunk — which is the next one, not the
     finished one, the moment a box is ticked.
+
+    ``--scope`` names which PLAN those deliverables are declared in. Without it
+    the scope is derived exactly as ``critic-begin`` derives it — from the branch
+    name, matched against the scopes build plans declare — falling back to the
+    ``active_build_plan`` pointer only when that matches nothing. Deriving it the
+    same way is the point: this form exists so a builder can answer the record
+    checks *before* dispatch instead of paying a review round to be told, and one
+    that grades a different plan than the dispatch will is answering a different
+    question, confidently.
 
     **Advice, not authority — so exit 0 on findings.** Record-lint reports to
     the builder; the review gates keep composing over facts, and a lint finding
@@ -2725,7 +3027,7 @@ def cmd_verify_records(project_dir: Path, argv: list[str]) -> int:
             as_json = True
             i += 1
             continue
-        if arg not in ("--base", "--head", "--chunk"):
+        if arg not in ("--base", "--head", "--chunk", "--scope"):
             print(f"verify-records: unknown argument {arg!r}", file=sys.stderr)
             return 2
         if i + 1 >= len(argv):
@@ -2794,8 +3096,16 @@ def cmd_verify_records(project_dir: Path, argv: list[str]) -> int:
         return 1
 
     record_lint = _record_lint()
+    scope = opts.get("scope")
+    if not scope:
+        # The same derivation `critic-begin` uses, so the by-hand answer and the
+        # dispatched one are about the same plan.
+        from lib import buildplan_refs  # noqa: PLC0415 — lazy; plan readers
+
+        scope = buildplan_refs.resolve_branch_plan(project_dir, prawduct_dir).scope
     result = record_lint.lint_records_safe(
-        project_dir, prawduct_dir, changed, base_tree, head_tree, opts.get("chunk")
+        project_dir, prawduct_dir, changed, base_tree, head_tree,
+        opts.get("chunk"), scope,
     )
     if as_json:
         print(json.dumps(result, indent=2))
@@ -2804,11 +3114,17 @@ def cmd_verify_records(project_dir: Path, argv: list[str]) -> int:
         print(line)
     total = len(result["findings"])
     graded = result.get("chunk_graded")
-    subject = f"chunk {graded}" if graded else "no chunk in scope"
+    plan = result.get("plan_graded")
+    subject = f"chunk {graded} of {plan}" if graded else "no chunk in scope"
+    # A count of `None` prints as `did-not-run`, never as a number. The word is
+    # the point: a `None` sitting beside integers still scans as a
+    # tally, and a tally of nothing is what reads as clean.
+    tallies = ", ".join(
+        f"{k}={'did-not-run' if v is None else v}" for k, v in result["counts"].items()
+    )
     print(
         f"ok: {len(result['records'])} record(s) linted, deliverables of {subject}, "
-        f"{total} finding(s) "
-        f"({', '.join(f'{k}={v}' for k, v in result['counts'].items())})"
+        f"{total} finding(s) ({tallies})"
     )
     return 0
 
@@ -2857,28 +3173,70 @@ def cmd_regen_views(project_dir: Path, args: list[str] | None = None) -> int:
     No-op when `views_enabled: true` is absent (enabled by default in v1.4;
     sync auto-enables for existing repos and `false` is the explicit opt-out).
 
-    Validation is fail-CLOSED (VWS-6R4T): every change-log tag is validated
-    against the plan roster BEFORE any view is written, and any ERROR-class
-    finding (unrecognized status=, chunks= ID missing from the plan's Status
-    roster, unreleased scope with no plan file, duplicate scope, conflicting
-    tag lines) aborts the whole regen with exit 2 and nothing written — a
-    partial flip is the silent failure class this command must never produce.
+    **There is ONE mode: views always regenerate.** Validation still runs before
+    any write, but its granularity is the VIEW, not the run (the
+    regen-views-is-advice ruling, 2026-08-01 — `.prawduct/learnings.md`, with
+    precedence recorded on `architecture.md`'s authority-fails-closed norm and
+    `data-model.md`'s derived-views norm). Two error classes:
+
+    * **Scope-attributed** (`views.ScopedError`, from
+      `diagnose_scope_plan_coverage` and `validate_chunk_roster`) — can only make
+      ONE scope's `## Status` view wrong, so that view is suppressed and every
+      other view is still written. This is the coupling VWS-6R4T introduced: one
+      unresolvable scope used to stop release-notes and scope-rollups too, which
+      have no plan-roster dependency at all. One consumer lost whole
+      release-notes sections to it; the repos carrying the most nested plans
+      were merely LATENT, safe only because `views_enabled` was unset.
+    * **Global** (unrecognized `status=`, conflicting tag lines) — an entry that
+      cannot be interpreted leaves a view silently HALF-RIGHT rather than absent,
+      which is precisely the bug class VWS-6R4T names. Still fail-closed: exit 2,
+      nothing written.
+
     Mere tag-line multiplicity (union repair is correct) stays a WARNING.
 
-    `--check` computes + validates but writes NOTHING: the release pre-flight.
-    Exit 0 = tags validate (pending writes are reported, not errors); exit 2 =
-    validation errors.
+    `--check` is **deprecated**: it prints a notice and performs the full regen.
+    A dry run that validated identically to the real run never caught anything
+    the real run didn't, and because it exits 0 while writes are *pending*, a
+    clean check meant "the tags parse", not "the views are correct" — which is
+    how one consumer lost six whole release-notes sections while the check read
+    clean. Removal defers to the next major, per `api-contract.md`'s
+    deprecation-is-signalled-not-silent norm.
 
     Exit codes:
-      0 - success (views disabled, no changes needed, regen applied cleanly,
-          or --check with clean validation)
+      0 - every view is current (written, created, or already up to date)
       1 - the plugin lib/ could not be imported (incomplete install) — a
           state-mutating command must not report success on a broken install
           (mirrors accept/verify-operator-verification's ImportError handling)
-      2 - I/O or schema error (missing change-log or build-plan), or a tag
-          validation error (fail closed: no views written)
+      2 - nothing written: I/O or schema error (missing change-log or
+          build-plan), a global validation error, or a usage error
+      3 - PARTIAL: scope-attributed errors suppressed their own `## Status`
+          views; every other view WAS written and each suppression is named on
+          stderr. A documented per-command sentinel in the established style of
+          `critic-begin` 2 (scope-widened) and `backlog verify-migration` 4, so
+          neither 1 nor 2 changes meaning.
     """
-    check_only = "--check" in (args or [])
+    # `api-contract.md`: "unknown flags rejected with a usage error (exit 2)".
+    # The previous `"--check" in args` membership test silently ignored every
+    # other argument, so a typo'd flag ran a full regen while its author believed
+    # they were dry-running.
+    deprecated_check = False
+    for arg in args or []:
+        if arg == "--check":
+            deprecated_check = True
+            continue
+        print(
+            f"error: regen-views: unknown flag {arg!r} — regen-views takes no "
+            f"arguments (`--check` is deprecated and performs a full regen).",
+            file=sys.stderr,
+        )
+        return 2
+    if deprecated_check:
+        print(
+            "WARNING: `regen-views --check` is deprecated and now performs a FULL "
+            "regeneration — views always regenerate, there is no dry-run mode. "
+            "Drop the flag; it is removed in the next major.",
+            file=sys.stderr,
+        )
     # Ensure the plugin root is on sys.path so `from lib import views` resolves
     # both when invoked as a script and when imported via SourceFileLoader in tests.
     lib_root = _plugin_root()
@@ -2931,42 +3289,88 @@ def cmd_regen_views(project_dir: Path, args: list[str] | None = None) -> int:
         return 2
     parsed_entries = views.parse_change_log(change_log_text)
     artifacts_dir = prawduct_dir / "artifacts"
-    errors: list[str] = []
+
+    # GLOBAL errors — no single view owns them, and each one would leave a view
+    # silently half-right rather than absent. Fail closed (VWS-6R4T's actual
+    # content, which the advice ruling preserves).
+    global_errors: list[str] = []
     # Unrecognized status= (typo) — the entry would silently never flip.
-    errors.extend(views.validate_status_values(parsed_entries))
+    global_errors.extend(views.validate_status_values(parsed_entries))
     # Conflicting scalar values across tag lines — first-wins may be wrong.
-    errors.extend(views.validate_tag_conflicts(parsed_entries))
-    # Unreleased scope with no plan file + duplicate scope across plan files.
-    errors.extend(views.diagnose_scope_plan_coverage(change_log_text, artifacts_dir))
-    # chunks= IDs that match nothing in their plan's Status roster.
-    errors.extend(views.validate_chunk_roster(change_log_text, artifacts_dir))
+    global_errors.extend(views.validate_tag_conflicts(parsed_entries))
+
+    # SCOPE-ATTRIBUTED errors — each can only make its own scope's `## Status`
+    # view wrong. Unreleased scope with no plan file, duplicate scope across
+    # plan files, and chunks= IDs matching nothing in their plan's roster.
+    scoped_errors: list[views.ScopedError] = []
+    scoped_errors.extend(views.diagnose_scope_plan_coverage(change_log_text, artifacts_dir))
+    scoped_errors.extend(views.validate_chunk_roster(change_log_text, artifacts_dir))
+    # A scope-attributed error that carries no scope has nothing to suppress, so
+    # suppressing "the scope it names" would silently suppress nothing and the
+    # bad input would ride into a written view. Treat it as global — fail closed
+    # is the safe direction when attribution is missing.
+    global_errors.extend(e for e in scoped_errors if e.scope is None)
+    scoped_errors = [e for e in scoped_errors if e.scope is not None]
+
     for warning in views.validate_tag_line_multiplicity(parsed_entries):
         print(f"WARNING: {warning}", file=sys.stderr)
-    if errors:
-        for err in errors:
+
+    if global_errors:
+        for err in global_errors:
             print(f"ERROR: {err}", file=sys.stderr)
         print(
-            f"{len(errors)} validation error(s) — no views written. Fix the "
-            f"change-log tags (or plan roster) and re-run.",
+            f"{len(global_errors)} validation error(s) affecting every view — no "
+            f"views written. Fix the change-log tags and re-run.",
             file=sys.stderr,
         )
         return 2
 
-    if check_only:
-        for r in results:
-            print(f"[check] {r.summary}")
-        print("check passed: tags validate against the plan roster; nothing written.")
-        return 0
+    suppressed_scopes = {e.scope for e in scoped_errors}
+    for err in scoped_errors:
+        print(f"ERROR: {err}", file=sys.stderr)
+
+    kept = [
+        r
+        for r in results
+        if not (r.name == "status" and r.scope in suppressed_scopes)
+    ]
+    if suppressed_scopes:
+        # Report what was actually withheld, not what was matched. The
+        # no-plan-file case names a scope that HAS no Status view — there was
+        # nothing to suppress, and claiming otherwise tells an operator to go
+        # look for a view that was never going to be written.
+        withheld = sorted(
+            {r.scope for r in results if r.name == "status" and r.scope in suppressed_scopes}
+        )
+        unresolvable = sorted(suppressed_scopes - set(withheld))
+        parts = []
+        if withheld:
+            parts.append(
+                "withheld the ## Status view for "
+                + ", ".join(f"scope={s!r}" for s in withheld)
+            )
+        if unresolvable:
+            parts.append(
+                "no ## Status view exists to write for "
+                + ", ".join(f"scope={s!r}" for s in unresolvable)
+            )
+        print(
+            f"{len(scoped_errors)} scope-local validation error(s) — "
+            + "; ".join(parts)
+            + ". Every other view was regenerated; fix these and re-run to "
+            "complete them.",
+            file=sys.stderr,
+        )
 
     try:
-        views.apply_regen(prawduct_dir, results)
+        views.apply_regen(prawduct_dir, kept)
     except OSError as e:
         print(f"ERROR writing view output: {e}", file=sys.stderr)
         return 2
 
-    for r in results:
+    for r in kept:
         print(r.summary)
-    return 0
+    return 3 if suppressed_scopes else 0
 
 
 def cmd_check_operator_verification(project_dir: Path) -> int:
@@ -3264,6 +3668,15 @@ def cmd_handoff(project_dir: Path, argv: list[str]) -> int:
         )
         return 1
 
+    # #327: the preview's Resume line is derived from the chunk reading, so a
+    # known-degraded reading makes the thing being previewed wrong. Emitted here
+    # rather than inside `briefing.py` — the notice belongs to the deliberately
+    # invoked command, and the same renderer also serves the SessionStart hot
+    # path, where this must NOT fire.
+    notice = _buildplan_refs().degraded_progress_notice(project_dir)
+    if notice:
+        print(notice, file=sys.stderr)
+
     return briefing.handoff_cmd(project_dir, argv)
 
 
@@ -3457,7 +3870,8 @@ def cmd_coverage_status(project_dir: Path, argv: list[str]) -> int:
       - **Layer 2 (norms):** are the product's norms ratified?
 
     and names the highest-priority active layer as the primary fix. Layers 0 and 1
-    are exact complements (never both), but layer 2's gate is independent, so
+    are mutually exclusive (never both — and possibly neither, on a repo that has
+    not started), but layer 2's gate is independent, so
     during partial authoring layers 1 and 2 can both be active (docs/norms.md
     § Enforcement — proportionality, not a hard one-at-a-time invariant). ``--json``
     emits the structured status for the doctor skill; default is human-readable.
@@ -3477,10 +3891,24 @@ def cmd_coverage_status(project_dir: Path, argv: list[str]) -> int:
         print(f"NOTE: coverage-status unavailable (plugin lib/ not importable: {exc})", file=sys.stderr)
         return 0
 
-    state_path = project_dir / ".prawduct" / "project-state.yaml"
     codebase = store.make_codebase(project_dir)
-    recorded = cp.structural_characteristics_recorded(state_path)
-    missing = cp.missing_expected_artifacts(codebase)  # [(name, characteristic|None)]
+    # Layers 0-1 in one evaluation (each predicate walks the tree; layer_status pays
+    # for each once). Guarded like layer 2 below and for the same reason — this
+    # function promises a health REPORT, and a report that raises has failed harder
+    # than one that says "unknown". `staging` reads None-per-key when it could not
+    # run, and every consumer below discriminates on that.
+    staging: dict = {}
+    try:
+        staging = cp.layer_status(codebase)
+    except Exception as exc:  # prawduct:allow prawduct/broad-except -- report must not crash; degrade layers 0-1 to unknown + log
+        print(f"NOTE: coverage-status layers 0-1 (staging) check skipped: {exc}", file=sys.stderr)
+    recorded = staging.get("structural_recorded")
+    missing = staging.get("missing") or []  # [(name, characteristic|None)]
+    # Whether discovery is owed YET. False means "no product work this scan
+    # RECOGNISES" (the source-suffix allowlist, #561), never "this repo is empty" —
+    # every rendering below is worded to that, because the one population it is
+    # wrong about is a repo full of source in an unlisted language.
+    expected = staging.get("discovery_expected")
 
     # Layer 2 composes over the norm probe (its own gate is "strategy artifacts
     # exist AND registry unratified"). The probe is declared non-raising, but a
@@ -3494,11 +3922,14 @@ def cmd_coverage_status(project_dir: Path, argv: list[str]) -> int:
         print(f"NOTE: coverage-status layer-2 (norm ratification) check skipped: {exc}", file=sys.stderr)
         norms_unratified = None
 
-    # Which single layer currently owns the nudge (the chain stages).
-    if not recorded:
+    # Which single layer currently owns the nudge (the chain stages). Layers 0 and 1
+    # are asked of the probe module, never re-derived here: this report's whole claim
+    # is that it mirrors the ambient nudge, and it earns that only by composing the
+    # same predicates the probes fire on.
+    if staging.get("layer0_active"):
         active_layer: int | None = 0
         fix: str | None = "record structural characteristics: /prawduct:methodology discovery"
-    elif missing:
+    elif staging.get("layer1_active"):
         active_layer = 1
         fix = ("author each missing artifact (/prawduct:methodology planning), or drop stubs "
                "in one act: prawduct-hook coverage-scaffold --apply")
@@ -3513,6 +3944,7 @@ def cmd_coverage_status(project_dir: Path, argv: list[str]) -> int:
         import json as _json  # noqa: PLC0415
         print(_json.dumps({
             "structural_recorded": recorded,
+            "discovery_expected": expected,
             "missing_artifacts": [{"artifact": name, "characteristic": char} for name, char in missing],
             "norms_unratified": norms_unratified,
             "active_layer": active_layer,
@@ -3521,27 +3953,54 @@ def cmd_coverage_status(project_dir: Path, argv: list[str]) -> int:
         return 0
 
     print("Structural coverage (three-layer chain):")
-    print(f"  Layer 0 · discovery         : characteristics {'RECORDED' if recorded else 'NOT RECORDED'}")
-    if missing:
-        print(f"  Layer 1 · strategy artifacts : {len(missing)} expected artifact(s) missing")
-        for name, char in missing:
-            suffix = "" if char is None else f"  (required — {char} recorded)"
-            print(f"       - {name}{suffix}")
+    if not staging:
+        print("  Layer 0 · discovery         : unknown (staging check unavailable)")
+        print("  Layer 1 · strategy artifacts : unknown (staging check unavailable)")
     else:
-        print("  Layer 1 · strategy artifacts : all expected artifacts present")
+        if recorded:
+            print("  Layer 0 · discovery         : characteristics RECORDED")
+        elif expected:
+            print("  Layer 0 · discovery         : characteristics NOT RECORDED")
+        else:
+            # Unrecorded AND nothing recognised to characterise. A bare "NOT
+            # RECORDED" reads as the finding it is not — but the scan sees source
+            # by suffix, so the honest claim is about what it FOUND, not about what
+            # is there (#561).
+            print("  Layer 0 · discovery         : characteristics NOT RECORDED "
+                  "(not owed yet — no source code or docs/ that this scan recognises)")
+        if missing:
+            print(f"  Layer 1 · strategy artifacts : {len(missing)} expected artifact(s) missing")
+            for name, char in missing:
+                suffix = "" if char is None else f"  (required — {char} recorded)"
+                print(f"       - {name}{suffix}")
+        else:
+            print("  Layer 1 · strategy artifacts : all expected artifacts present")
     if norms_unratified is None:
         print("  Layer 2 · norm ratification : unknown (norm check unavailable)")
     elif norms_unratified:
         print("  Layer 2 · norm ratification : norms not yet ratified")
     else:
         print("  Layer 2 · norm ratification : ratified or not yet applicable")
-    if active_layer is not None:
+    if active_layer == 2 and not staging:
+        # Layer 2 is real, but it sits DOWNSTREAM of two layers that were never
+        # evaluated — naming it "the" fix would claim a chain position nothing
+        # checked. Same refusal the mirror case below already makes.
+        print(f"  Active nudge → Layer 2: {fix}")
+        print("    (layers 0-1 could not be checked, so this may not be the first thing owed)")
+    elif active_layer is not None:
         print(f"  Active nudge → Layer {active_layer}: {fix}")
+    elif not staging:
+        print("  Active nudge → none actionable: layers 0-1 could not be checked.")
     elif norms_unratified is None:
         # Layers 0-1 satisfied, but layer 2 couldn't be checked — don't claim the
         # whole chain is satisfied (the --json consumer discriminates on the
         # norms_unratified: null field; the human reader gets this explicit line).
         print("  Active nudge → none actionable: layers 0-1 satisfied; layer 2 (norms) could not be checked.")
+    elif not expected and not recorded:
+        # "Satisfied" would be a false clean bill: nothing has been asked of this
+        # repo yet. Name what starts the chain instead.
+        print("  Active nudge → none: no product work found yet — the chain engages "
+              "once the repo has source code or docs/.")
     else:
         print("  Active nudge → none: the coverage chain is satisfied.")
     return 0
@@ -3709,6 +4168,45 @@ def cmd_version() -> int:
     if not version:
         return 1
     print(version)
+    return 0
+
+
+def cmd_print_install_reference() -> int:
+    """Print the canonical install reference as JSON on stdout; exit 0, or 1 if
+    the constant cannot be imported.
+
+    **The published form of how a repo references this plugin.** The value
+    itself is not new — ``migrate_plugin.INSTALL_REFERENCE`` has been the one
+    statement of it all along, and ``init_product`` merges the same dict into a
+    repo's ``.claude/settings.json``. What was missing was any way to *read* it
+    without importing a private module: no export, no JSON, no subcommand. Two
+    independent external consumers therefore arrived at AST-parsing the
+    constant within a week of each other, one of them the tool that repaired 11
+    repos after a hand-transcribed copy went stale. Both picked parsing over
+    transcribing deliberately, because a copy drifts silently — so the fragile
+    option was the *safer* of the two on offer, which is the tell that the
+    surface was missing rather than that the consumers were careless.
+
+    A subcommand rather than a committed JSON file or a documented import: the
+    hook binary is already on PATH, so this is introspectable from a repo that
+    has the plugin installed but not vendored, which is the normal case.
+
+    This publishes the value; it does not re-decide it. The marketplace ``ref``
+    and ``autoUpdate`` ship exactly as the constant holds them, and a consumer
+    reading this gets whatever the installed plugin believes — which is the
+    entire point, since a consumer that pinned its own copy is the failure
+    being closed. Emitted with sorted keys and a trailing newline so a caller
+    can diff two versions' output directly.
+    """
+    lib_root = _plugin_root()
+    if lib_root not in sys.path:
+        sys.path.insert(0, lib_root)
+    try:
+        from lib.migrate_plugin import INSTALL_REFERENCE  # noqa: PLC0415 — lazy, like every other lib reader
+    except ImportError as exc:
+        print(f"error: could not read the install reference: {exc}", file=sys.stderr)
+        return 1
+    print(json.dumps(INSTALL_REFERENCE, indent=2, sort_keys=True))
     return 0
 
 
@@ -3904,6 +4402,70 @@ def cmd_update_gitignore(project_dir: Path) -> int:
     return 0
 
 
+def cmd_learnings_obligation(project_dir: Path, argv: list[str]) -> int:
+    """Check — and on ``--apply`` repair — the descent obligation in ``learnings.md``.
+
+    ``/prawduct:learnings`` points every product's reader at the obligation marked
+    ``prawduct:descent-obligation``; only ``init-product``'s starter corpus ever
+    wrote that marker, and it writes it only when the file does not exist. So the
+    entire already-onboarded fleet carries a pointer at nothing. This is the doctor
+    health check that detects it (``/prawduct:doctor`` Health Check #13) and the
+    repair that closes it.
+
+    Exit codes follow ``artifacts/api-contract.md`` § Error Model. **Dry run is an
+    advisory report:** 0 when it ran — a finding is not a failure — and 1 only when
+    it could not run (lib not importable, file undecodable). **``--apply`` is a
+    state-mutating writer:** 0 when it inserted or was an idempotent no-op, 1 when
+    it refused (nothing written). Unknown flags are 2.
+    """
+    rejected = _reject_unknown_args("learnings-obligation", argv, {"--apply", "--json"})
+    if rejected is not None:
+        return rejected
+    apply = "--apply" in argv
+    as_json = "--json" in argv
+
+    lib_root = _plugin_root()
+    if lib_root not in sys.path:
+        sys.path.insert(0, lib_root)
+    try:
+        from lib import learnings_obligation  # noqa: PLC0415 — lazy keeps top-level cheap
+    except ImportError as exc:
+        # Fail-closed for the writer, fail-open would be a false success; the dry
+        # run cannot run either, so both directions are 1 here ("could not run").
+        print(
+            f"error: learnings-obligation could not import the plugin lib/ ({exc})",
+            file=sys.stderr,
+        )
+        return 1
+
+    result = learnings_obligation.repair(project_dir, apply=apply)
+    status = result["status"]
+
+    if as_json:
+        print(json.dumps(result, indent=2))
+    else:
+        # Labelled from the MODE the operator asked for, not from whether a write
+        # happened: `--apply` against a refused status (misplaced, absent,
+        # unreadable) writes nothing, and calling that run "dry-run" invites the
+        # reader to conclude they forgot the flag and re-run it. `status`/`detail`
+        # say what actually happened.
+        print(f"learnings-obligation ({'apply' if apply else 'dry-run'}): {status}")
+        print(f"  {result['detail']}")
+        if result["repairable"] and not result["applied"]:
+            # The informed confirmation: name the file, the exact line, and the
+            # exact text, so `--apply` is a yes to something the owner has read.
+            print(
+                f"  Would insert into {result['path']} above line "
+                f"{result['insert_before_line']} (--apply to write it):"
+            )
+            for line in (result["insert_text"] or "").split("\n"):
+                print(f"    | {line}")
+
+    if apply:
+        return 0 if result["applied"] or status == learnings_obligation.STATUS_OK else 1
+    return 1 if status == learnings_obligation.STATUS_UNREADABLE else 0
+
+
 def cmd_audit_learnings(project_dir: Path, argv: list[str]) -> int:
     """Audit the consumer's ``.prawduct/learnings.md`` lifecycle (F9).
 
@@ -3959,8 +4521,19 @@ def cmd_audit_learnings(project_dir: Path, argv: list[str]) -> int:
     for p in promotions:
         print(f"  promote: {p['title']} (confirmations={p['confirmations']})")
     for r in retirements:
-        state = "retired" if r.get("applied") else ("ready" if r.get("passed") else "blocked")
-        print(f"  retire[{state}]: {r['title']} (sentinel={r['sentinel']})")
+        # Two retirement routes, and the readiness question differs per route:
+        # a sentinel candidate is ready when its test passes, a supersession
+        # when its pointer resolved. Reading `passed` for both would report
+        # every resolvable supersession as "blocked" (its `passed` is None by
+        # construction) — a clean candidate rendered as a problem.
+        if r.get("reason") == "superseded-by":
+            ready = r.get("resolved_to") is not None
+            why = f"superseded-by={r.get('resolved_to') or r.get('superseded_by')}"
+        else:
+            ready = bool(r.get("passed"))
+            why = f"sentinel={r['sentinel']}"
+        state = "retired" if r.get("applied") else ("ready" if ready else "blocked")
+        print(f"  retire[{state}]: {r['title']} ({why})")
     for s in stale:
         print(f"  stale: {s['title']} ({s['age_days']}d, confirmations={s['confirmations']})")
     for e in errors:
@@ -4035,6 +4608,17 @@ def cmd_repo_disable(project_dir: Path, argv: list[str]) -> int:
     return 0
 
 
+# Two constraints, both learned by breaking a test. They have DIFFERENT scopes,
+# and getting that backwards is why this note was wrong on its first attempt:
+# 1. Scope: the block below only. No close-paren character anywhere inside it —
+#    not in the strings, not in a comment. Several tests read the block by
+#    splitting the source on the first one, so any occurrence silently truncates
+#    the text they check. Use brackets. A paren up here is harmless, because the
+#    truncation starts after the assignment.
+# 2. Scope: this note TOO. Nothing here or below may write the constant's name,
+#    because the tests slice between its FIRST and SECOND occurrence in the whole
+#    file — so naming it in this comment would make the window be this comment.
+#    That is the only reason the sentences above talk around it.
 _USAGE = (
     "Usage: prawduct-hook "
     "{clear [--session-start|--force|--brief-only]|critic-begin --mode <m>|critic-end|critic-consolidate|"
@@ -4045,23 +4629,24 @@ _USAGE = (
     "test-evidence record [--from-junit <r>|--from-counts passed=N failed=M skipped=K|--no-rerun] [-- pytest args]|"
     "check-cumulative-critic|"
     "verify-chunk-refs [chunk_id]|"
-    "verify-records [--base <t>] [--head <t>] [--chunk <id>] [--json]|verify-coverage|"
+    "verify-records [--base <t>] [--head <t>] [--chunk <id>] [--scope <s>] [--json]|verify-coverage|"
     "ledger-append --event <kind> [--scope <s>] [--chunk <id>] [--model <id>]|"
     "handoff preview|"
     "review-stats [--json]|classify-diff-risk [<base>]|"
     "check-operator-verification|accept-operator-verification <rationale>|"
     "verify-operator-verification <vrf-id>|"
     "check-pr-doc-only|check-change-log-entry|check-releasability [--release vX.Y.Z]|"
-    "regen-views [--check]|stamp-merged|"
+    "regen-views [--check, deprecated]|stamp-merged|"
     "infer-critic-mode [args]|"
-    "resolve-base|version|"
+    "resolve-base|version|print-install-reference|"
     "evidence {status|list [--kind <k>] [-n <count>]}|advisory <subcmd> [args]|"
     "disposition <review-id> <fid> {--accept <reason>|--file <backlog-id>} [--owner-ruling <text>]|"
     "render-dispositions [--review <id>|--scope <s>] [--json]|"
     "coverage-status [--json]|coverage-scaffold [--apply] [--json]|"
     "migrate-plugin [--apply] [--json]|init-product <target> --name <name> [--backlog-repo owner/repo] [--apply] [--json]|"
     "update-gitignore|"
-    "audit-learnings [--apply] [--json]|repo-disable [--local] [--apply] [--json]}"
+    "audit-learnings [--apply] [--json]|learnings-obligation [--apply] [--json]|"
+    "repo-disable [--local] [--apply] [--json]}"
 )
 
 
@@ -4363,6 +4948,8 @@ def main() -> int:
         return cmd_bug_inbox(project_dir)
     elif command == "version":
         return cmd_version()
+    elif command == "print-install-reference":
+        return cmd_print_install_reference()
     elif command == "advisory":
         return cmd_advisory(project_dir, sys.argv[2:])
     elif command == "backlog":
@@ -4379,6 +4966,8 @@ def main() -> int:
         return cmd_update_gitignore(project_dir)
     elif command == "audit-learnings":
         return cmd_audit_learnings(project_dir, sys.argv[2:])
+    elif command == "learnings-obligation":
+        return cmd_learnings_obligation(project_dir, sys.argv[2:])
     elif command == "repo-disable":
         return cmd_repo_disable(project_dir, sys.argv[2:])
     else:

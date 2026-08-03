@@ -262,22 +262,26 @@ def _status_chunk_ids(content: str) -> list[str]:
 
 
 def _parseable_body_chunk_ids(content: str) -> set[str]:
-    """Leading-zero-normalized IDs of parseable ``### Chunk <id>:`` headings.
+    """Leading-zero-normalized IDs of chunk headings **the production parser accepts**.
 
-    Replicates the matcher the production parsers use: three-hash + ``Chunk ``
-    + a colon. A ``#### Chunk`` (four-hash), a missing colon, or an em-dash
-    heading is NOT counted — which is exactly the silent-defeat we guard.
+    #211: this used to REPLICATE the matcher (hard-coded three-hash + a literal
+    colon) and had drifted strictly narrower than production, which accepts
+    ``##`` or ``###`` and any of ``: — – ( -`` or end-of-line
+    (``_CHUNK_HEADING_RE``, broadened by BLD-5J8N for the em-dash research-plan
+    form). A guard narrower than the thing it guards fails plans that parse
+    perfectly well.
+
+    The fix is to CONSUME the production regex rather than widen a copy of it —
+    `plugin/lib/buildplan_refs.py` owns the chunk-heading contract, and a second
+    implementation of an owned contract is what drifted in the first place. Do
+    NOT re-narrow `_CHUNK_ID_SEP` to match what this used to accept: that would
+    re-break the em-dash form on purpose enabled earlier.
     """
     found: set[str] = set()
     for line in content.splitlines():
-        stripped = line.strip()
-        if not stripped.startswith("### Chunk "):
-            continue
-        rest = stripped[len("### Chunk "):]
-        if ":" not in rest:  # parsers split on ":" — no colon, no match
-            continue
-        head = rest.split(":", 1)[0].strip()
-        found.add(head.lstrip("0") or "0")
+        match = _bpr._CHUNK_HEADING_RE.match(line.strip())
+        if match:
+            found.add(match.group(1).lstrip("0") or "0")
     return found
 
 
@@ -289,15 +293,138 @@ def _assert_status_chunks_parse(content: str) -> None:
         if (cid.lstrip("0") or "0") not in body
     ]
     assert not unresolved, (
-        f"Status chunk IDs with no parseable `### Chunk <id>:` heading: "
-        f"{unresolved}. A `#### Chunk`/missing-colon/wrong-depth heading "
-        f"silently defeats the `### Chunk ` parsers — fix the heading depth/form."
+        f"Status chunk IDs with no parseable chunk heading: {unresolved}. "
+        f"`buildplan_refs._CHUNK_HEADING_RE` accepts `##` or `###` + `Chunk "
+        f"<id>` + one of `: — – ( -` or end-of-line; a `#### Chunk` (wrong "
+        f"depth) or a separator outside that set silently defeats every chunk "
+        f"parser — fix the heading depth/form."
     )
 
 
+class TestGuardMatchesProductionHeadingContract:
+    """#211: the guard must not be narrower than the parser it guards.
+
+    It replicated the matcher as three-hash + a literal colon while production
+    accepted `##`/`###` and five separators, so a plan using an authoring form
+    the runtime parses fine failed the guard. Consuming `_CHUNK_HEADING_RE`
+    makes the drift structurally impossible; these cases pin that it is really
+    consumed, so re-introducing a copy fails here.
+    """
+
+    @pytest.mark.parametrize(
+        "heading",
+        [
+            "### Chunk 01: Name",
+            "## Chunk 01: Name",
+            "### Chunk 01 — Name",
+            "## Chunk 01 — Name",
+            "### Chunk 01 – Name",
+            "### Chunk 01 (adapter)",
+            "### Chunk 01 - Name",
+            "### Chunk 01",
+        ],
+    )
+    def test_production_accepted_forms_are_accepted_by_the_guard(self, heading: str):
+        assert _parseable_body_chunk_ids(heading + "\n") == {"1"}
+
+    def test_wrong_depth_is_still_rejected(self):
+        # The silent-defeat the guard exists for: `####` is outside `#{2,3}`.
+        assert _parseable_body_chunk_ids("#### Chunk 01: Name\n") == set()
+
+
+class TestChunkContractsAgreeAcrossModules:
+    """The Status-line matcher and the heading/item matchers share a separator
+    contract, and widening one side alone is a new defect rather than a partial
+    fix: a bold Status line whose box flips in `views` but whose id
+    `buildplan_refs` cannot parse makes the plan read as having NO current
+    chunk, so `verify-chunk-refs` exits 0 having verified nothing — strictly
+    worse than the uniformly-invisible pre-state.
+    """
+
+    def test_separator_sets_are_identical(self):
+        import importlib
+        views = importlib.import_module("lib.views")
+        assert views._CHUNK_LINE_SEP == _bpr._CHUNK_ID_SEP
+
+    @pytest.mark.parametrize(
+        "item_text,expected",
+        [
+            ("Chunk 01: A", "01"),
+            ("Chunk 01 — A", "01"),
+            ("**Chunk 01** — A", "01"),
+            ("**Chunk 01**: A", "01"),
+            ("Chunk 01", "01"),
+        ],
+    )
+    def test_item_matcher_accepts_every_status_form_views_flips(
+        self, item_text: str, expected: str
+    ):
+        assert _bpr._chunk_id_from_item_text(item_text) == expected
+
+    def test_bold_status_line_round_trips(self):
+        # The end-to-end shape of the defect: views must match the LINE and
+        # buildplan_refs must parse the ID out of the same line's text.
+        import importlib
+        views = importlib.import_module("lib.views")
+        line = "- [ ] **Chunk 03** — the adapter"
+        m = views.CHUNK_LINE_RE.match(line)
+        assert m is not None, "views does not match the bold Status form"
+        assert m.group("id") == "03"
+        assert _bpr._chunk_id_from_item_text(line[5:].strip()) == "03"
+
+
+class TestGitRefPrefixes:
+    """#333: `missing-ref:` is BLOCKING, so a branch name in plan prose that is
+    not recognized as a ref fails a review on the branch name itself."""
+
+    @pytest.mark.parametrize(
+        "token",
+        [
+            "feat/backlog-burndown",
+            "chore/deps",
+            "refactor/views",
+            "perf/pacer",
+            "ci/matrix",
+            "wip/spike",
+            "dependabot/pip/urllib3-2.0.7",
+            "renovate/lock-file-maintenance",
+            # pre-existing git-flow coverage must not regress
+            "feature/upgrade-discovery-relay",
+            "release/v3.2.0",
+            "origin/develop",
+        ],
+    )
+    def test_branch_token_is_not_treated_as_a_file_path(self, token: str):
+        assert not _bpr._looks_like_file_path(token)
+
+    @pytest.mark.parametrize(
+        "token",
+        [
+            # A real extensionless path under a ref-shaped first segment stays
+            # checked only when it carries an extension — this is the coverage
+            # the rejected shape-rule alternative would have dropped wholesale.
+            "feat/module.py",
+            "ci/config.yml",
+            # Ordinary source paths are unaffected.
+            "plugin/lib/views.py",
+            "documentation/release-process.md",
+            # THE load-bearing case for rejecting the shape-rule alternative:
+            # this repo's most-cited path carries no extension, so "a token is a
+            # path only if its final segment looks like a filename" would stop
+            # verifying it. If this ever stops being checked, the rationale in
+            # `_GIT_REF_PREFIXES` is void and needs rewriting, not patching.
+            "plugin/bin/prawduct-hook",
+        ],
+    )
+    def test_real_paths_are_still_checked(self, token: str):
+        assert _bpr._looks_like_file_path(token)
+
+
 class TestActiveBuildPlanChunkHeadingsParse:
-    """Guard: the active build plan's `## Status` chunk IDs each map to a
-    parseable `### Chunk <id>:` body heading (three-hash, colon form).
+    """Guard: the active build plan's `## Status` chunk IDs each map to a body
+    heading the production parser accepts (`buildplan_refs._CHUNK_HEADING_RE` —
+    `##`/`###` plus any of `: — – ( -` or end-of-line, consumed here rather than
+    replicated; #211).
 
     Scope is **test-only** for this batch; a runtime-check-for-any-product
     variant (the hook flagging the active plan at session start) is deferred —
@@ -378,6 +505,317 @@ def _project_with_chunk(tmp_path: Path, chunk_body: str) -> tuple[Path, Path]:
     )
     (prawduct / "artifacts" / "build-plan.md").write_text(plan)
     return project, prawduct
+
+
+def _project_with_status_and_chunk(
+    tmp_path: Path, status: str, chunk_body: str
+) -> tuple[Path, Path]:
+    """Like `_project_with_chunk` but with a real `## Status` roster, so
+    `resolve_chunk_progress` has something to read."""
+    project = tmp_path / "proj"
+    prawduct = project / ".prawduct"
+    (prawduct / "artifacts").mkdir(parents=True)
+    (prawduct / "project-state.yaml").write_text("")
+    plan = (
+        "---\nartifact: build-plan\n---\n\n"
+        f"## Status\n\n{status}\n"
+        "## Build Chunks\n\n"
+        "### Chunk 01: a chunk\n\n" + chunk_body + "\n## Next Section\n"
+    )
+    (prawduct / "artifacts" / "build-plan.md").write_text(plan)
+    return project, prawduct
+
+
+class TestDegradedProgressNotice:
+    """#327: when the git-derived reading bails on a `views_enabled` repo, the
+    checkbox reading that takes over is the one known to be wrong — and nothing
+    said so. The narrowing matters as much as the notice: reporting the
+    `views_enabled`-unset case would be pure noise.
+    """
+
+    def _repo(self, tmp_path: Path, *, views_enabled: bool, status: str) -> Path:
+        project = tmp_path / "proj"
+        prawduct = project / ".prawduct"
+        (prawduct / "artifacts").mkdir(parents=True)
+        (prawduct / "project-state.yaml").write_text(
+            "views_enabled: true\n" if views_enabled else "views_enabled: false\n"
+        )
+        (prawduct / "artifacts" / "build-plan.md").write_text(
+            "---\nartifact: build-plan\n---\n\n"
+            f"## Status\n\n{status}\n"
+            "## Build Chunks\n\n### Chunk 01: a chunk\n\n- does a thing\n"
+        )
+        return project
+
+    def test_fires_when_views_enabled_and_git_path_bailed(self, tmp_path: Path):
+        # tmp_path is not a git work tree, so the git-derived path bails — the
+        # exact condition the notice exists for.
+        project = self._repo(
+            tmp_path, views_enabled=True, status="- [ ] Chunk 01: a chunk\n"
+        )
+        notice = _bpr.degraded_progress_notice(project)
+        assert notice is not None
+        assert _bpr.DEGRADED_PROGRESS_TOKEN in notice
+
+    def test_silent_when_views_not_enabled(self, tmp_path: Path):
+        # The checkbox reading IS authoritative here, so a bailed git path is
+        # simply correct — and it is most of them.
+        project = self._repo(
+            tmp_path, views_enabled=False, status="- [ ] Chunk 01: a chunk\n"
+        )
+        assert _bpr.degraded_progress_notice(project) is None
+
+    def test_silent_when_there_is_no_plan(self, tmp_path: Path):
+        project = tmp_path / "proj"
+        (project / ".prawduct" / "artifacts").mkdir(parents=True)
+        (project / ".prawduct" / "project-state.yaml").write_text(
+            "views_enabled: true\n"
+        )
+        assert _bpr.degraded_progress_notice(project) is None
+
+    def test_silent_when_plan_has_no_status_roster(self, tmp_path: Path):
+        # "plan read, git path bailed" must be distinguishable from "no plan" —
+        # `has_status_items` already draws that line with no new plumbing.
+        project = self._repo(tmp_path, views_enabled=True, status="")
+        assert _bpr.degraded_progress_notice(project) is None
+
+    def test_notice_is_countable(self, tmp_path: Path):
+        # The proportionality norm: a control whose findings are printed and
+        # forgotten can never be retired on evidence, so the token is stable and
+        # greppable rather than a reworded sentence.
+        project = self._repo(
+            tmp_path, views_enabled=True, status="- [ ] Chunk 01: a chunk\n"
+        )
+        notice = _bpr.degraded_progress_notice(project)
+        assert notice.count(_bpr.DEGRADED_PROGRESS_TOKEN) == 1
+        assert _bpr.DEGRADED_PROGRESS_TOKEN == "degraded-chunk-reading"
+
+
+class TestNewQualifierExpiry:
+    """#224(a): `new `path`` is a forward reference only while the chunk is open.
+
+    An exemption that never expires means a chunk can promise to create a file,
+    not create it, and never be caught.
+    """
+
+    def test_exemption_holds_while_the_chunk_is_open(self, tmp_path: Path):
+        _project, prawduct = _project_with_status_and_chunk(
+            tmp_path,
+            "- [ ] Chunk 01: a chunk\n",
+            "- creates new `lib/created.py`\n",
+        )
+        refs = _bpr._parse_build_plan_chunk_refs(prawduct, "01")
+        assert refs["file_paths"] == []
+
+    def test_exemption_expires_once_the_chunk_is_complete(self, tmp_path: Path):
+        _project, prawduct = _project_with_status_and_chunk(
+            tmp_path,
+            "- [x] Chunk 01: a chunk\n",
+            "- creates new `lib/created.py`\n",
+        )
+        refs = _bpr._parse_build_plan_chunk_refs(prawduct, "01")
+        assert [r["ref"] for r in refs["file_paths"]] == ["lib/created.py"]
+
+    def test_uncertain_completion_fails_toward_the_exemption(self, tmp_path: Path):
+        # No `## Status` roster at all — nothing to reason about, so nothing
+        # expires. A false missing-ref fires on every review of an open chunk;
+        # a missed one surfaces at the next verify.
+        _project, prawduct = _project_with_chunk(
+            tmp_path, "- creates new `lib/created.py`\n"
+        )
+        refs = _bpr._parse_build_plan_chunk_refs(prawduct, "01")
+        assert refs["file_paths"] == []
+
+    def test_non_contiguous_roster_never_expires_an_open_chunk(
+        self, tmp_path: Path
+    ):
+        # `- [x] 01, - [ ] 02, - [x] 03` on the CHECKBOX path. This roster is
+        # chosen to be wrong under BOTH rival rules, and each assertion below
+        # kills a different one:
+        #   * a count-slice (`progress.complete` is 2) names 01 and 02, expiring
+        #     the exemption on 02 — which is OPEN;
+        #   * a uniform prefix-before-`current_id` names only 01, letting 03 —
+        #     which is CHECKED, i.e. done under the reading in force — keep an
+        #     exemption it has no claim to.
+        # So on this path the `checked` flags are read directly. The prefix rule
+        # applies to the GIT-derived path only, where the per-item predicate is
+        # not available; `test_git_derived_reading_drives_the_expiry…` covers it.
+        project = tmp_path / "proj"
+        prawduct = project / ".prawduct"
+        (prawduct / "artifacts").mkdir(parents=True)
+        (prawduct / "project-state.yaml").write_text("")
+        (prawduct / "artifacts" / "build-plan.md").write_text(
+            "---\nartifact: build-plan\n---\n\n"
+            "## Status\n\n"
+            "- [x] Chunk 01: first\n- [ ] Chunk 02: open\n- [x] Chunk 03: later\n\n"
+            "## Build Chunks\n\n"
+            "### Chunk 02: open\n\n- creates new `lib/open.py`\n\n"
+            "### Chunk 03: later\n\n- creates new `lib/later.py`\n"
+        )
+        # Chunk 02 is OPEN — exempt under any correct rule. This is the
+        # assertion the count-slice defect breaks.
+        assert _bpr._parse_build_plan_chunk_refs(prawduct, "02")["file_paths"] == []
+        # Chunk 03 is CHECKED, i.e. complete under the reading actually in force,
+        # but it sits AFTER `current_id`. A uniform prefix-before-current rule
+        # under-reports it and lets it keep an exemption it has no claim to —
+        # so on the checkbox path the `checked` flags are read directly, and
+        # this is the assertion that tells the two rules apart.
+        refs03 = _bpr._parse_build_plan_chunk_refs(prawduct, "03")
+        assert [r["ref"] for r in refs03["file_paths"]] == ["lib/later.py"]
+
+    def test_git_derived_reading_drives_the_expiry_when_boxes_are_unflipped(
+        self, tmp_path: Path
+    ):
+        # The case the whole expiry exists for, AND the one the count-slice
+        # defect actually lived in — the roster is deliberately NON-CONTIGUOUS
+        # (01 and 03 committed, 02 open) so `progress.complete == 2` while
+        # `current_id == "02"`. A count-slice names {01, 02} and expires the
+        # exemption on the OPEN chunk; the prefix-before-current rule names {01}.
+        #
+        # An earlier version of this test used a contiguous done-set, where both
+        # rules agree — it passed against the defect it was written to catch.
+        repo = tmp_path / "repo"
+        prawduct = repo / ".prawduct"
+        (prawduct / "artifacts").mkdir(parents=True)
+        (repo.parent / "_home").mkdir(exist_ok=True)
+        (prawduct / "project-state.yaml").write_text(
+            "views_enabled: true\nbase_branch: main\n"
+        )
+        (prawduct / "change-log.md").write_text("# Change Log\n")
+        plan = prawduct / "artifacts" / "build-plan.md"
+        plan.write_text(
+            "---\nartifact: build-plan\nscope: demo\n---\n\n"
+            "## Status\n\n"
+            "- [ ] Chunk 01: first\n- [ ] Chunk 02: second\n- [ ] Chunk 03: third\n\n"
+            "## Build Chunks\n\n"
+            "### Chunk 01: first\n\n- creates new `lib/created.py`\n\n"
+            "### Chunk 02: second\n\n- creates new `lib/later.py`\n\n"
+            "### Chunk 03: third\n\n- creates new `lib/third.py`\n"
+        )
+
+        # Sterile git env — the idiom `tests/test_buildplan_walkers.py` documents.
+        # Without it, a machine with global commit signing or a global
+        # `core.hooksPath` fails here in a way that reads as a parser bug.
+        env = {
+            "HOME": str(repo.parent / "_home"),
+            "PATH": "/usr/bin:/bin:/usr/local/bin:/opt/homebrew/bin",
+            "GIT_CONFIG_GLOBAL": "/dev/null",
+            "GIT_CONFIG_SYSTEM": "/dev/null",
+            "GIT_TERMINAL_PROMPT": "0",
+        }
+
+        def _git(*args: str) -> None:
+            subprocess.run(
+                ["git", *args], cwd=str(repo), check=True, timeout=20,
+                capture_output=True, text=True, env=env,
+            )
+
+        _git("init", "--quiet", "-b", "main")
+        _git("config", "user.email", "test@example.com")
+        _git("config", "user.name", "Test")
+        _git("config", "commit.gpgsign", "false")
+        _git("add", "-A")
+        _git("commit", "--quiet", "-m", "base")
+        _git("checkout", "--quiet", "-b", "feature/demo")
+        for marker, subject in (
+            ("a.txt", "feat(demo): land the parser (Chunk 01)"),
+            ("c.txt", "feat(demo): land the third piece (Chunk 03)"),
+        ):
+            (repo / marker).write_text("x\n")
+            _git("add", "-A")
+            _git("commit", "--quiet", "-m", subject)
+
+        progress = _bpr.resolve_chunk_progress(repo)
+        assert progress.git_derived, "fixture did not reach the git-derived path"
+        assert progress.current_id == "02", "fixture did not produce an open chunk 02"
+        assert progress.complete == 2, "fixture is not the non-contiguous case"
+
+        # 01 is committed and sits before current -> exemption expired.
+        refs01 = _bpr._parse_build_plan_chunk_refs(prawduct, "01")
+        assert [r["ref"] for r in refs01["file_paths"]] == ["lib/created.py"]
+        # 02 is CURRENT -> still exempt. This is the assertion the count-slice
+        # defect breaks, and the reason the roster has a third chunk.
+        refs02 = _bpr._parse_build_plan_chunk_refs(prawduct, "02")
+        assert refs02["file_paths"] == []
+
+    def test_unparseable_roster_entry_fails_toward_the_exemption(
+        self, tmp_path: Path
+    ):
+        _project, prawduct = _project_with_status_and_chunk(
+            tmp_path,
+            "- [x] Chunk 01: a chunk\n- [x] not a chunk line at all\n",
+            "- creates new `lib/created.py`\n",
+        )
+        refs = _bpr._parse_build_plan_chunk_refs(prawduct, "01")
+        assert refs["file_paths"] == []
+
+    def test_completed_chunk_still_exempts_a_file_that_now_exists(
+        self, tmp_path: Path
+    ):
+        # Expiry is not "always report" — the file the chunk promised was
+        # created, so there is nothing to report.
+        project, prawduct = _project_with_status_and_chunk(
+            tmp_path,
+            "- [x] Chunk 01: a chunk\n",
+            "- creates new `lib/created.py`\n",
+        )
+        (project / "lib").mkdir()
+        (project / "lib" / "created.py").write_text("x = 1\n")
+        refs = _bpr._parse_build_plan_chunk_refs(prawduct, "01")
+        # The ref is now CHECKED (the exemption expired)...
+        assert [r["ref"] for r in refs["file_paths"]] == ["lib/created.py"]
+        # ...and passes, because the chunk really did create it. Expiry surfaces
+        # the ref for verification; it does not assert the file is missing.
+        assert _bpr._verify_chunk_refs(project, refs) == []
+
+
+class TestNewQualifierScope:
+    """#224(b): `new` before a backticked token is not always a declaration."""
+
+    def test_list_item_declaration_exempts(self, tmp_path: Path):
+        _project, prawduct = _project_with_chunk(
+            tmp_path, "- new `lib/created.py` — the parser\n"
+        )
+        assert _bpr._parse_build_plan_chunk_refs(prawduct, "01")["file_paths"] == []
+
+    def test_numbered_list_item_declaration_exempts(self, tmp_path: Path):
+        _project, prawduct = _project_with_chunk(
+            tmp_path, "1. new `lib/created.py` — the parser\n"
+        )
+        assert _bpr._parse_build_plan_chunk_refs(prawduct, "01")["file_paths"] == []
+
+    def test_wrapped_list_item_continuation_still_exempts(self, tmp_path: Path):
+        # A list item does not end at its first newline, and this repo's plans
+        # wrap deliverable bullets — the declaration routinely lands on a
+        # continuation line. Matching per-line dropped the exemption for the
+        # DOMINANT declaration form and would have emitted BLOCKING
+        # `missing-ref:` on open chunks.
+        _project, prawduct = _project_with_chunk(
+            tmp_path,
+            "- **Deliverables:**\n"
+            "  - the parser rewrite, which lands as\n"
+            "    new `lib/created.py` alongside the existing walk\n",
+        )
+        assert _bpr._parse_build_plan_chunk_refs(prawduct, "01")["file_paths"] == []
+
+    def test_narrative_prose_does_not_exempt(self, tmp_path: Path):
+        # The defect: one adjectival sentence in a paragraph silently exempted a
+        # real path from verification for the WHOLE chunk section.
+        _project, prawduct = _project_with_chunk(
+            tmp_path,
+            "Context: this reworks the new `lib/created.py` behaviour.\n",
+        )
+        refs = _bpr._parse_build_plan_chunk_refs(prawduct, "01")
+        assert [r["ref"] for r in refs["file_paths"]] == ["lib/created.py"]
+
+    def test_declaration_still_exempts_outside_deliverables(self, tmp_path: Path):
+        # Why this is scoped to list items and not to the Deliverables block:
+        # real plans name files they create in `- **Tests:**` and in acceptance
+        # criteria, and those are legitimate forward references.
+        _project, prawduct = _project_with_chunk(
+            tmp_path, "- **Tests:** the new `tests/test_created.py` above\n"
+        )
+        assert _bpr._parse_build_plan_chunk_refs(prawduct, "01")["file_paths"] == []
 
 
 class TestVerifyChunkRefsPathSymbol:

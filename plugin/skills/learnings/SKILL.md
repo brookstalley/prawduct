@@ -42,6 +42,13 @@ $ARGUMENTS
 
 **After the subagent returns:** Display its response to the user. Do not add commentary or expand on it — the response is ready to use as-is.
 
+**Then spend what it returned.** Apply the descent obligation stated in `.prawduct/learnings.md`'s
+header, marked `prawduct:descent-obligation` (its home — do not restate it here): for each rule
+returned, name the decision you are about
+to make and say what that rule changes about it, or that it does not apply. Rules are looked up to
+be spent, not acknowledged — a lookup whose result you agreed with and did not apply cost context
+and bought nothing.
+
 ## Important
 
 - This is a **read-only lookup**. Do not modify any files.

@@ -364,45 +364,34 @@ def probe_checks_dormant(state: ProjectState, codebase: Codebase):
     ]
 
 
-#: The migration path is not yet proven end-to-end, so the fleet-wide
-#: ``backlog-service-migration-required`` ``warn`` is **held**: it stays a registered
-#: probe (its firing logic below is intact and unit-tested via direct calls) but the
-#: live roster wires in a no-op, so no un-migrated repo is routed to
-#: ``/prawduct:backlog scrub`` at session start.
-#:
-#: Why held: the advisory's ``recommended_action`` is the scrub runbook, and until
-#: the runbook binds an owner-confirmed target repo, is honest about its (absent)
-#: dry-run, and runs under a narrowed adapter grant, a fleet-wide nudge is an
-#: automated route from every un-migrated repo into an irreversible, unpinned bulk
-#: write (100-250 real GitHub issues, no clean delete). The three runbook fixes plus
-#: at least one proven real migration (prawduct's own) are the precondition.
-#:
-#: To lift: register :func:`probe_migration_required` directly here instead of
-#: :func:`_probe_migration_required_held`, and flip
-#: ``TestMigrationRequiredProbe`` back to asserting the live roster surfaces it.
-#: Tracked by BKL-6J2X.
-def _probe_migration_required_held(state: ProjectState, codebase: Codebase):
-    """Held no-op standing in for :func:`probe_migration_required` in the live
-    roster. Returns nothing so the advisory never fires fleet-wide while the
-    migration path is unproven (BKL-6J2X). The real probe is kept intact for the
-    day the hold lifts; this wrapper is the only thing the roster sees."""
-    return []
-
-
 def register() -> None:
     """Register the six backlog probes. Idempotent (register_probe overwrites).
 
-    ``backlog-service-migration-required`` is registered **held** — a no-op stands
-    in for :func:`probe_migration_required` until the migration path is proven
-    (see :func:`_probe_migration_required_held`; BKL-6J2X). Still six probes: the
-    hold swaps the wired function, not the registration.
+    ``backlog-service-migration-required`` fires live. It spent several releases
+    wired to a no-op while the migration path was unproven, because its
+    ``recommended_action`` routes into an irreversible bulk write (100-250 real
+    GitHub issues; GitHub has no ordinary issue-delete and never reuses numbers),
+    and a fleet-wide nudge toward that is not a cosmetic default. The stated
+    conditions for wiring it up were: the scrub runbook binds an owner-confirmed
+    target repo, is honest about its absent dry-run, and runs under a narrowed
+    adapter grant — plus at least one proven real end-to-end migration. All are
+    discharged, and the owner ruled it live rather than leaving the probe's default
+    to decide by silence.
+
+    **What makes it safe is not the probe — it is that the advisory now reaches a
+    person.** The briefing prints to stdout, the agent-facing channel, so before
+    the relay directive this advisory could route the *model* toward those writes
+    with nobody informed. It is a `warn`, so it trips the relay
+    (``briefing.ADVISORY_RELAY_TEXT``) and the migration becomes the owner's call,
+    which is the only form in which it was ever meant to be offered. Do not
+    silence the relay for `warn` without re-deciding this.
     """
     register_probe(FEATURE, "legacy-backlog-format", PROBE_VERSION, probe_legacy_backlog_format)
     register_probe(
         FEATURE,
         "backlog-service-migration-required",
         PROBE_VERSION,
-        _probe_migration_required_held,
+        probe_migration_required,
     )
     register_probe(FEATURE, "backlog-checks-dormant", PROBE_VERSION, probe_checks_dormant)
     register_probe(FEATURE, "external-backlog-detected", PROBE_VERSION, probe_external_backlog)

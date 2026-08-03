@@ -41,9 +41,9 @@ def estimate_tokens(text: str) -> int:
 #: record *why* an edit was affordable, which no test can); the current reading
 #: lives here, where a wrong number fails instead of misleading.
 LAST_MEASURED_TOKENS = {
-    "methodology/building.md": 4652,
-    "skills/critic/review-protocol.md": 3616,
-    "skills/critic/goals-1-3.md": 1901,
+    "methodology/building.md": 4659,
+    "skills/critic/review-protocol.md": 3611,
+    "skills/critic/goals-1-3.md": 1960,
 }
 
 
@@ -102,6 +102,24 @@ class TestBuildingMethodology:
         assert "Uninvestigated decisions" in self.content
         assert "Boundary blindness" in self.content
 
+    def test_resolve_findings_dispositions_rather_than_mandating_fixes(self):
+        """The guide half of the disposition rule, pinned like the runtime half.
+
+        `TestBatchFixDirective` in tests/test_critic_consolidate.py pins
+        `_BATCH_FIX_DIRECTIVE`; nothing pinned this file's copy, and this
+        surface took the regression twice on one branch — "Fix them ALL" in
+        the runtime string, then "Fix them all in ONE commit" here — both
+        caught by a reviewer, neither by a test. The defect is specifically a
+        SELF-contradiction: the reflexive-fix instruction sits ~two paragraphs
+        above the rule saying warnings and notes gate nothing, so both halves
+        are asserted together and the pair is what fails.
+        """
+        assert "Disposition them ALL in ONE pass" in self.content
+        assert "Warnings and notes gate nothing" in self.content
+        # The exact phrasings the runtime's own comment records rejecting.
+        assert "Fix them all in ONE commit" not in self.content
+        assert "Fix them ALL" not in self.content
+
     def test_retrieval_over_generation_anchors(self):
         """The cheap-check gate and its Common Trap survive future token-diet
         trims — Principle 24's operational anchors, pinned so the newest prose
@@ -142,6 +160,75 @@ class TestBuildingMethodology:
         assert "Never ask whether to prepare one" in slim
         # The why travels with the always-injected surface, not the on-demand one.
         assert "cold cache" in digest
+
+    def test_standing_block_is_on_every_surface_that_claims_it(self):
+        """State / Next / Clear, the in-flight rule, and one shared trigger.
+
+        Four prose copies carry this rule, and the split is deliberate — the
+        injected digests reach product sessions, the guides are read on demand.
+        But `building.md`'s token budget was FUNDED by relocating this rule's
+        rationale into the digests and `reflection.md`, and that funding argument
+        only holds while the destinations actually carry it. Without this pin, a
+        later trim of any destination silently unfunds a trim already taken here.
+
+        Also pins the trigger, which shipped undefined: "every stopping-place
+        turn" appeared nowhere else in the plugin, and since every assistant turn
+        hands control back, one reasonable reading was "every turn" — which
+        appends the block to trivial Q&A and reproduces by volume the burying it
+        exists to prevent.
+        """
+        surfaces = {
+            "methodology/building.md": self.content,
+            "methodology/reflection.md": read_file("methodology/reflection.md"),
+            "methodology/session-digest.md": read_file("methodology/session-digest.md"),
+            "methodology/session-digest-slim.md": read_file(
+                "methodology/session-digest-slim.md"
+            ),
+        }
+        for name, text in surfaces.items():
+            assert "standing block" in text, f"{name} no longer names the standing block"
+            # The labels are backticked, not bolded: a code span is the only
+            # coloured token near the bottom of a turn, so the eye finds it
+            # without reading. Owner-requested 2026-07-31 — the block was
+            # correct and complete and still scanned as prose.
+            for label in ("`STATE`", "`NEXT`", "`CLEAR`"):
+                assert label in text, f"{name} dropped the {label} line"
+            # Deliberately NOT asserting `**State**` is absent. `reflection.md`
+            # keeps a bolded "what each line owes" list that *explains* the
+            # three lines rather than being the emitted shape, and forbidding
+            # the string would delete useful structure to satisfy a proxy. The
+            # positive assertion above already fails on a revert: drop the
+            # backticked labels and it goes red.
+            # The SHAPE is the deliverable, not only the words. Three answers
+            # run together stop being separately findable, which is most of
+            # what the block is for — so every surface has to say so.
+            assert "separate paragraph" in text or "three paragraphs" in text, (
+                f"{name} no longer requires the three lines to be separate "
+                "paragraphs — without that they render as one run-on block"
+            )
+            # The `---` rule: the only horizontal break in the turn, so it
+            # separates the block from the wall of text above before the reader
+            # has parsed a word. Owner-requested 2026-07-31, and pinned on every
+            # surface because the DIGESTS are what reach product sessions — a
+            # rule that lived only in the on-demand guides would be a one-off
+            # for this repo.
+            assert "`---`" in text, (
+                f"{name} dropped the `---` rule that precedes the block"
+            )
+            # NOT asserting the word "backtick". Every surface already shows the
+            # labels backticked and the assertion above checks that literal, so
+            # requiring the word too is a second statement of one fact — the
+            # thing `architecture.md`'s one-home norm exists to stop, and it
+            # would fail a surface that demonstrates the shape instead of
+            # narrating it.
+            assert "Safe to `/clear`." in text, f"{name} dropped the safe line"
+            assert "Not safe to `/clear` yet" in text, f"{name} dropped the unsafe line"
+            # Outstanding includes work that is RUNNING, not merely unstarted —
+            # the reported failure was signalling safe while reviewers were live.
+            assert "in flight" in text, f"{name} dropped the in-flight rule"
+            # One trigger, stated the same way, or the surfaces disagree about
+            # when the block is owed.
+            assert "work outstanding" in text, f"{name} states a different trigger"
 
     def test_handoff_notes_are_reconciled_not_appended(self):
         """A handoff is reconciled against reality on every write, not grown.
@@ -288,6 +375,47 @@ class TestBuildingMethodology:
         # the moment it applies, instead of from a guide read hours earlier;
         # a relocate whose destination already existed. 4669 -> 4648,
         # headroom 21 -> 12.
+        #
+        # 2026-07-31 replaced the one-line "Safe to /clear" close with the
+        # three-line standing block (State / Next / Clear) and added the
+        # batch-fix clause. Owner report, and it reshaped the requirement
+        # twice: the rule already existed, but agents were burying a correct
+        # signal mid-summary, and what a user wants after a 30-120 minute wait
+        # is not a safety verdict alone — it is state, the next action and who
+        # owns it, then the verdict. PAID FOR by the trim-or-relocate rule, not
+        # a raise: 4652 -> 4725 on the first draft, then back under budget with
+        # room to spare (the live figure is in LAST_MEASURED_TOKENS above; this
+        # chain deliberately stops short of it, because an endpoint written here
+        # is a hand-maintained copy of a machine-held number and goes stale on
+        # the next edit — which is what happened twice in this branch alone).
+        # Fundings, each a
+        # relocate to a surface the reader cannot skip rather than a cut:
+        # (1) the block's RATIONALE (why three lines, the three failure modes,
+        # what counts as "outstanding") went to reflection.md, which owns the
+        # work-cycle boundary, and to BOTH digests, which are always injected —
+        # this file keeps the three line-labels and a pointer; (2) the
+        # fix-strategy detail (which writes stay free mid-review) went to
+        # `critic_consolidate._BATCH_FIX_DIRECTIVE`, which the runtime emits
+        # with the findings themselves, so this file keeps one clause;
+        # (3) "Two session files" dropped the rescued-hop gloss that
+        # session-digest.md states, and step 7 its blind-append gloss that both
+        # digests state — checked, not assumed; (4) the evidence-model paragraph
+        # condensed to a pointer at review-cycle.md, the file that owns it;
+        # (5) the Verify/Code bullet dropped a parenthetical re-listing the
+        # ingest flags named one clause earlier, and Persist-plans a clause
+        # that line 11 already states. Two trims were REVERTED because tests
+        # pinned them as contracts (the seven goal names, "Never blind-append")
+        # — the funding was found elsewhere rather than the tests weakened.
+        # One correction rode along and cost nothing: the Blocking/Warnings
+        # paragraph said warnings "should be addressed", which review-cycle.md
+        # § "The review loop terminates" names BY FILE as the cause of the
+        # round pump — it now says warnings and notes gate nothing and are
+        # dispositioned. The next addition trims or relocates — read the live
+        # headroom off LAST_MEASURED_TOKENS against the assertion below rather
+        # than from this narrative, which is history. A figure written here was
+        # stale twice in one branch (4655 survived a trim to 4646, and this line
+        # said "Headroom 5" above an assertion permitting 14) — the same
+        # copy-forward this table was built to end.
         tokens = estimate_tokens(self.content)
         assert tokens < 4660, f"building.md is ~{tokens} tokens, should be <4660"
 
@@ -455,65 +583,39 @@ class TestCriticSkill:
         assert "Instruction Clarity" in self.content
 
     def test_token_budget(self):
-        # Ceiling 3530 (was 3450, was 3350). The prose-diet audit found this
-        # file LEAN -- every goal bullet is a specific, severity-mapped check.
-        # 3450 held until the norm-lifecycle consolidation (2026-07-16,
-        # owner-approved GOV-7Q4N): the Normative-authority block landed in the
-        # Review Goals preamble, PAID FOR partly by deleting Goal 6's
-        # observability-strategy line and merging Goal 4's preferences check
-        # into it (four scattered divergence checks became one rule; canonical
-        # detail lives in docs/norms.md, this file carries only the pointer
-        # form). Net ~3524 est (words x1.3). Ceiling 3530 -- still UNDER the
-        # diet's own post-diet +10% formula (~3533), so the diet stays locked,
-        # with near-zero headroom BY DESIGN: the next addition must trim or
-        # relocate, not bump past the formula.
+        # Ceiling 3620. This file is the `final` / `cumulative` payload, and the
+        # prose-diet audit found it LEAN -- every goal bullet is a specific,
+        # severity-mapped check, so there is no slack to reclaim by rewording.
         #
-        # 3530 -> 3620 (2026-07-28, OWNER RULING). A deliberate departure from
-        # the "trim or relocate, not bump" rule directly above, and from
-        # MET-3Q8V's "stay green without raising budgets" success line. What
-        # was added: the WARNING/NOTE consequence test and the record-only NOTE
-        # default (see review-cycle.md "The review loop terminates").
+        # The standing rule, and the only part of this comment that decides
+        # anything: THE NEXT ADDITION TRIMS OR RELOCATES, IT DOES NOT BUMP.
+        # Raising the ceiling requires showing the framework is provably better
+        # for the raise AND that no headroom remains in upleveling -- cutting
+        # detail, dates, worked examples, and definitions the reader never
+        # applies. The ceiling has been raised exactly once, by owner ruling,
+        # for a rule that removes more review work than it costs; every other
+        # addition has been funded in place.
         #
-        # Why the ruling went this way rather than trimming. The addition is
-        # NEGATIVE-cost governance: it exists to stop the Critic rating record
-        # prose WARNING, which is what converts a finding into a fix commit and
-        # a fix commit into the next review round. Measured on the session that
-        # produced it -- four review rounds, ~40 min, on a ~40-line code change,
-        # the last round required by no gate. Trimming an existing goal bullet
-        # to fit would have removed a real check to make room for a rule that
-        # removes far more work than it costs. Three compression passes were
-        # attempted first and landed +43 over; the trim-or-relocate rule was
-        # applied before it was overridden, not instead of.
+        # Three cuts that funded real additions, kept because they generalize:
+        # a definition another file owns and the reader is told to open is not
+        # worth restating here (Framework-Specific Checks now names the four
+        # checks and points at framework-checks.md); a message the reviewer can
+        # compose is not worth quoting verbatim; and history -- what a mechanism
+        # USED to do -- is never worth carrying in an instruction payload.
         #
-        # This does NOT reopen the diet. Headroom is again a few words BY
-        # DESIGN, and the next addition trims or relocates first -- the rule
-        # above stands; it was overridden once, on the record, for this.
+        # One trap, learned twice: Goal 4's `**Norms**` bullet READS as a pure
+        # restatement of the Normative-authority preamble and is not safe to
+        # delete. test_project_preferences_blocking contracts on a single LINE
+        # carrying both "project-preferences" and "blocking", and that bullet is
+        # the only line that satisfies it. Two separate editors have cut it and
+        # put it back.
         #
-        # 2026-07-30: the record-lint bullet landed and the ceiling did NOT
-        # move -- the rule above was applied, not overridden a second time. It
-        # paid for itself: the `verify-chunk-refs` instruction was DELETED,
-        # because that check now runs at dispatch and rides the manifest's
-        # `record_lint`, so a reviewer executing it by hand is duplicated work.
-        # No check was removed to make room -- one moved into code, and the
-        # bullet that replaced it is shorter than the one it replaced.
-        #
-        # An opportunistic trim was ATTEMPTED and reverted: compressing Goal
-        # 4's `**Norms**` bullet to a pointer (it restates the
-        # Normative-authority preamble) broke test_project_preferences_blocking
-        # above, which contracts on one LINE carrying both
-        # "project-preferences" and "blocking". Reverted rather than
-        # re-plumbed: funding a budget overrun by shortening an unrelated
-        # governance rule is the move the paragraph above forbids, and the
-        # test caught it doing exactly that.
-        #
-        # 2026-07-30 (record-mechanization Chunk 04): the roster bullets now name
-        # a *risk surface*, a term this file had no definition for, so a reader
-        # met a load-bearing term with nowhere to resolve it. The full
-        # definition went to review-cycle.md — which owns the roster table and
-        # is not on the chunk-mode payload path — and this file kept a
-        # one-clause gloss plus the pointer. First wording overran (3623 of
-        # 3620); trimmed to the gloss rather than funded by a raise. 3572 ->
-        # 3614, headroom 48 -> 6.
+        # 3599 -> 3611 (2026-08-02) -- the coordinator prompt template gained
+        # the reviewer's FIRST-action liveness marker (`<ROLE>.started`), the
+        # signal that stops "no partial yet" reading as reviewer death. Paid by
+        # keeping the template line to the bare imperative; the rationale and
+        # full instruction live in agents/critic-reviewer.md, which every
+        # dispatched reviewer loads anyway. 9 tokens of headroom remain.
         tokens = estimate_tokens(self.content)
         assert tokens < 3620, f"review-protocol.md is ~{tokens} tokens, should be <3620"
 
@@ -558,27 +660,30 @@ class TestCriticGoals13:
         )
 
     def test_token_budget(self):
-        # Ceiling 2000. The plan targeted "<=80 lines" and this landed at 125;
-        # the gap is entirely SELF-CONTAINMENT, which is the other half of the
-        # same acceptance criterion. The line estimate did not account for
-        # inlining the record-lint severity table, the chunk-`Type:` protocol
-        # selector, the normative-authority preamble and the partial schema --
-        # every one of which was a pointer-chase into review-cycle.md, and
-        # pointer-chases are the payload this file removes. Hitting 80 lines
-        # would have meant deleting checks, which the trim-or-relocate rule on
-        # review-protocol.md's own budget exists to forbid. Checks kept, target
-        # missed, recorded here rather than quietly restated.
+        # Ceiling 2000. This file is the chunk / verify-resolutions payload and
+        # orders its reader to open nothing else, so every pointer-chase it
+        # would cause has to be inlined here instead -- which is why it is long,
+        # and why the ceiling is the thing that governs rather than a line count.
         #
-        # Headroom is ~125 tokens BY DESIGN, and the rule is the same one
-        # review-protocol.md carries: the next addition trims or relocates, it
-        # does not bump. A check that belongs to goals 1-3 arriving here is
-        # funded by compressing prose in this file, never by dropping a check.
-        # 2026-07-30: +26 for `learnings-entry-shape`'s severity, which the
-        # check shipped without — a reviewer told to "raise them at the
-        # severities given there" met a finding class with no verdict, and all
-        # three coordinator reviewers found it independently. Paid from
-        # headroom rather than a trim: the file is 99 under its ceiling and the
-        # alternative was a check that cannot be graded. 1875 -> 1901.
+        # The standing rule, and the only part of this comment that decides
+        # anything: THE NEXT ADDITION TRIMS OR RELOCATES, IT DOES NOT BUMP. A
+        # check belonging to goals 1-3 is funded by compressing prose here,
+        # never by dropping a check and never by raising the ceiling. Raising it
+        # requires showing the framework is provably better for the raise AND
+        # that no headroom is left in upleveling -- cutting detail, dates,
+        # worked examples and definitions the reader never applies.
+        #
+        # Two cuts that paid for real additions, kept because they generalize:
+        # a definition the machine already emits is not worth restating (the
+        # reviewer is told to read `record_lint`'s own message and raise it), and
+        # neither is a rationale explaining why this file is short, addressed to
+        # a maintainer, inside the file whose purpose is minimum reviewer
+        # payload.
+        #
+        # Standing trim candidates when the next editor needs room: the
+        # chunk-`Type:` paragraph, which restates a table `review-cycle.md` owns,
+        # and the normative-authority block, the longest passage that is not a
+        # per-finding severity.
         tokens = estimate_tokens(self.content)
         assert tokens < 2000, f"goals-1-3.md is ~{tokens} tokens, should be <2000"
 

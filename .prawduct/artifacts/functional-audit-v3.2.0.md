@@ -46,7 +46,14 @@ parse correctly; `export` serialized the real native graph. **MIG-3 is live-prov
 time** — this run had the graph SPIKE-S2 and VRF-009 both lacked, discharging VRF-009's "UNPROVEN,
 not failed." Cost: 3 issues, 2 links. BKL-3N8Q is now fully dischargeable.
 
-One new finding fell out — see **F8**. The original text follows, for the record.
+One new finding fell out — see **F8**.
+
+**Everything below this line is F1's original pre-closure text, retained verbatim for the record and
+superseded by the closure above.** Read it as the state on 2026-07-27, not as current: its
+present-tense claims — "what genuinely remains fake-verified", the per-reader table, "cost to close
+is small" — are exactly what VRF-010 discharged. Only the blockquoted paragraph was marked as
+historical before; the prose after it was not, so a reader landing mid-entry found a live-sounding
+claim under a heading that says CLOSED.
 
 
 

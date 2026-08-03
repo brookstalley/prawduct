@@ -75,13 +75,28 @@ already done). Counts are **derived by the adapter** — never persist one yours
 (top `area:` tags, a stale-item count) come from `list`; run it if asked rather than approximating
 from `counts`.
 
+**Surface `untriaged` by exception.** `data.untriaged` counts OPEN issues on the backlog repo
+carrying neither a namespaced label nor a `prawduct:` block — filed by a human or by another
+governed product, and never triaged. When it is non-zero, say so **above** the rollup and offer
+`list --untriaged`, because an untriaged item is the one nobody has looked at and must read louder
+than a triaged one, not quieter. When it is zero, say nothing. It is a **subset** of the open
+count, not an addend — never add the two.
+
 ### list [filters]
 `prawduct-hook backlog list --repo <r> --json [--status S] [--stage S] [--kind K] [--area A]
 [--effort E] [--impact I] [--source SRC] [--assignee A|none|*] [--state open|closed|all]
-[--sort created|updated] [--direction asc|desc] [--per-page N] [--page N]` → render the tabular view
+[--sort created|updated] [--direction asc|desc] [--per-page N] [--page N] [--untriaged]` → render the
+tabular view
 (`ID · title · effort · impact · area · status`) from `data`'s items. Map the human/`--flag` filters
 onto the adapter flags; **claimed-item exclusion is `--assignee none`** (the issue assignee *is* the
 claim). Keep the render lean — a handful of rows, most-relevant first.
+
+`--untriaged` **inverts** the scope filter: it returns only the issues `list` normally drops (the
+ones `counts.untriaged` counts), so it is how you show an operator what needs triage without
+sending them to the GitHub web UI. It scans every page and **refuses** `--per-page`/`--page`
+(re-run without them); every other filter still applies. These are not items yet — they have no
+stage, kind or area — so render `ID · title` and treat the missing facets as *untriaged*, not as
+missing data.
 
 ### get <id> — view one item
 When you need one item's full detail (a direct "show me PFX-XXXX", or before an `update`):

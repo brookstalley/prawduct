@@ -70,6 +70,19 @@ class TestCriticMarkerUnit:
         assert active is True
         assert age is not None and age < 60  # just written
 
+    def test_marker_payload_carries_no_pid(self, tmp_path):
+        # The marker is written by the short-lived critic-begin hook process,
+        # so any pid it records is dead by the time a reader checks it —
+        # `ps -p <pid>` then reads as "the review died" on every healthy
+        # review (field report 2026-08-02: that false signal outranked the
+        # grace-window guidance and triggered a duplicate dispatch). Nothing
+        # in the framework reads the field; the marker must not carry it.
+        prawduct = _prawduct(tmp_path)
+        cm.write_marker(prawduct)
+        payload = json.loads((prawduct / cm.MARKER_NAME).read_text())
+        assert "pid" not in payload
+        assert "started_at" in payload  # liveness stays answered by age
+
     def test_write_marker_noop_outside_repo(self, tmp_path):
         # The Critic only runs in an onboarded repo; outside one this is a no-op.
         missing = tmp_path / "nope" / ".prawduct"
@@ -141,8 +154,13 @@ class TestClearGuardCLI:
         result = run_plugin_hook("clear", tmp_path, git_status=" M src/app.py")
 
         assert result.returncode == 2, result.stderr
+        # The refusal states the REASON, not the guard's internal id: an
+        # operator in a governed product cannot resolve "CRT-3X9D", and the id
+        # displaced the sentence that makes the message actionable. The id
+        # lives in the comment above the guard.
+        assert "independent reviewer" in result.stderr
+        assert "CRT-3X9D" not in result.stderr
         # Actionable override (the waiver-style correction path).
-        assert "CRT-3X9D" in result.stderr
         assert "--force" in result.stderr and "rm .prawduct/.critic-active" in result.stderr
         # No mutation occurred.
         assert (prawduct / ".session-reflected").read_text() == "builder reflection — must survive"

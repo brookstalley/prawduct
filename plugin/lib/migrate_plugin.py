@@ -168,6 +168,98 @@ def claude_anchor_pending(project_dir: Path) -> bool:
     return block is not None or ANCHOR_SENTINEL not in content
 
 
+#: Where the marketplace entry lives inside the contract. Presence of *this*
+#: subtree is what "the repo has onboarded" means, which is why it is the one
+#: path named explicitly rather than walked.
+_MARKETPLACE_ENTRY_PATH = ("extraKnownMarketplaces", "prawduct")
+
+
+def _contract_leaves(node: dict, path: tuple = ()) -> list[tuple[tuple, object]]:
+    """Every ``(path, expected_value)`` leaf in a contract subtree, depth-first.
+
+    Walking the constant is what makes the drift check single-source: a field
+    added to :data:`INSTALL_REFERENCE` is compared with no edit here. Transcribing
+    field paths instead is how a check silently stops covering half its contract.
+    """
+    leaves: list[tuple[tuple, object]] = []
+    for key, value in node.items():
+        if isinstance(value, dict):
+            leaves.extend(_contract_leaves(value, path + (key,)))
+        else:
+            leaves.append((path + (key,), value))
+    return leaves
+
+
+def _dig(data: object, path: tuple):
+    """Read ``path`` out of nested dicts; ``None`` if any hop is absent or not a dict."""
+    node = data
+    for key in path:
+        if not isinstance(node, dict):
+            return None
+        node = node.get(key)
+    return node
+
+
+def _field_label(path: tuple) -> str:
+    """Operator-facing name for a contract path.
+
+    Marketplace-entry leaves read relative to the entry (``source.ref``,
+    ``autoUpdate``) because that is the object the operator is looking at in
+    ``settings.json``; anything else keeps its full path (``enabledPlugins.…``).
+    """
+    if path[: len(_MARKETPLACE_ENTRY_PATH)] == _MARKETPLACE_ENTRY_PATH:
+        return ".".join(path[len(_MARKETPLACE_ENTRY_PATH) :])
+    return ".".join(path)
+
+
+def install_reference_drift(project_dir: str | Path) -> dict:
+    """Report how a repo's committed install reference departs from the contract.
+
+    The contract is :data:`INSTALL_REFERENCE` itself — *walked*, never
+    transcribed — so this check cannot outlive a change to the value prawduct
+    writes, and cannot silently cover only part of it. This is the same
+    single-source property :func:`lib.core.gitignore_contract_drift` gives the
+    ``.gitignore`` contract, and it is a real parity claim: that function
+    iterates its whole entry set, and so does this one. An earlier revision
+    compared two hand-named field paths while making the same claim, which left
+    ``enabledPlugins`` — a repo with governance switched off entirely, strictly
+    worse than a version pin — completely unchecked.
+
+    Scope is deliberately narrow in one specific way: it answers "does the
+    *present* entry disagree with the contract", not "is an entry present at
+    all." A repo with no ``extraKnownMarketplaces.prawduct`` entry reports
+    ``present: False`` and no drift — that absence is `/prawduct:doctor` Health
+    Check #1's finding, and a probe firing on it would nag every repo that has
+    not onboarded yet. Note this gates on the *marketplace entry* only: once a
+    repo has onboarded, every contract leaf is compared, ``enabledPlugins``
+    included.
+
+    Returns ``{"present": bool, "drifted": [{"field", "expected", "actual"}, ...]}``.
+    Unreadable or malformed settings report ``present: False`` — an unparseable
+    file is not evidence of drift, and guessing at one is how a nudge earns its
+    dismissal.
+    """
+    path = Path(project_dir) / ".claude" / "settings.json"
+    if not path.is_file():
+        return {"present": False, "drifted": []}
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {"present": False, "drifted": []}
+    if not isinstance(data, dict):
+        return {"present": False, "drifted": []}
+
+    if not isinstance(_dig(data, _MARKETPLACE_ENTRY_PATH), dict):
+        return {"present": False, "drifted": []}
+
+    drifted = [
+        {"field": _field_label(leaf_path), "expected": expected, "actual": _dig(data, leaf_path)}
+        for leaf_path, expected in _contract_leaves(INSTALL_REFERENCE)
+        if _dig(data, leaf_path) != expected
+    ]
+    return {"present": True, "drifted": drifted}
+
+
 # =============================================================================
 # Edit-in-place transforms (each returns True iff it changed the file)
 # =============================================================================

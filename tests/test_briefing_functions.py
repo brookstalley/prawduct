@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import subprocess
 from pathlib import Path
 
@@ -431,7 +432,14 @@ class TestCheckPreviousSessionGates:
         monkeypatch.setattr(briefing.gates, "session_changes_all_non_judgeable", lambda d, s=None: doc_only)
         monkeypatch.setattr(briefing.gitstate, "git_has_code_changes", lambda d, s=None: code)
         monkeypatch.setattr(briefing.gates, "_read_gates_waived", lambda d: waivers or {})
-        monkeypatch.setattr(briefing.gates, "_has_active_build_plan_file", lambda d: build_plan)
+        # Accepts the plan-path argument the briefing now passes (it resolves the
+        # BRANCH's plan, the same one the Stop gate reads, so the advisory cannot
+        # go silent where the gate blocks). The stub ignores it: what is under
+        # test is the advisory's reaction, not which file it was pointed at.
+        monkeypatch.setattr(
+            briefing.gates, "_has_active_build_plan_file",
+            lambda d, _plan_path=None: build_plan,
+        )
         monkeypatch.setattr(briefing.gates, "_has_build_plan_in_state", lambda d: False)
         monkeypatch.setattr(
             briefing.gates, "session_review_verdict", lambda d: {"status": "uncovered", "reason": "no facts"}
@@ -627,6 +635,116 @@ class TestAssembleSessionBriefingSections:
         assert "ADVISORIES (post-sync, 1 active):" in out
         assert "• [feat] do x" in out
         assert "→ Run /prawduct:doctor (or /prawduct:advisory dismiss ADV-1)" in out
+
+
+class TestAdvisoryRelayDirective:
+    """The briefing renders to stdout — the agent-facing channel — so an advisory
+    is an instruction the model reads, never a nudge the owner reads. A `warn`
+    that needs an owner decision therefore has to be relayed into conversation or
+    it goes unanswered every session while appearing, from the inside, delivered.
+
+    Scoped to `warn`/`urgent`: relaying `info` every session is nagging, which
+    trains the reader to tune the channel out and costs more than it buys.
+    """
+
+    def _state(self, tmp_path: Path, body: str) -> Path:
+        pr = tmp_path / ".prawduct"
+        pr.mkdir(parents=True, exist_ok=True)
+        (pr / "project-state.yaml").write_text(body)
+        return pr
+
+    def _advisories(self, monkeypatch, *advisories):
+        monkeypatch.setattr(
+            briefing.gitstate, "_read_advisory_store", lambda d: {"advisories": list(advisories)}
+        )
+
+    def _adv(self, priority: str, aid: str = "ADV-1") -> dict:
+        return {
+            "id": aid, "state": "active", "feature": "feat",
+            "trigger_summary": "do x", "recommended_action": "/prawduct:doctor",
+            "priority": priority, "triggered_at": "2026-01-01",
+        }
+
+    def test_warn_triggers_the_relay(self, tmp_path, monkeypatch):
+        self._state(tmp_path, "")
+        self._advisories(monkeypatch, self._adv("warn"))
+        assert briefing.ADVISORY_RELAY_MARKER in briefing.assemble_session_briefing(tmp_path, [])
+
+    def test_urgent_triggers_the_relay(self, tmp_path, monkeypatch):
+        self._state(tmp_path, "")
+        self._advisories(monkeypatch, self._adv("urgent"))
+        assert briefing.ADVISORY_RELAY_MARKER in briefing.assemble_session_briefing(tmp_path, [])
+
+    def test_info_only_is_silent(self, tmp_path, monkeypatch):
+        self._state(tmp_path, "")
+        self._advisories(monkeypatch, self._adv("info"), self._adv("info", "ADV-2"))
+        assert briefing.ADVISORY_RELAY_MARKER not in briefing.assemble_session_briefing(tmp_path, [])
+
+    def test_no_active_advisories_is_silent(self, tmp_path, monkeypatch):
+        self._state(tmp_path, "")
+        self._advisories(monkeypatch)
+        assert briefing.ADVISORY_RELAY_MARKER not in briefing.assemble_session_briefing(tmp_path, [])
+
+    def test_resolved_advisory_does_not_trigger_the_relay(self, tmp_path, monkeypatch):
+        # State, not priority, decides: a resolved `warn` has nothing to relay.
+        self._state(tmp_path, "")
+        resolved = self._adv("warn") | {"state": "resolved", "resolved_at": "2026-01-02"}
+        self._advisories(monkeypatch, resolved)
+        assert briefing.ADVISORY_RELAY_MARKER not in briefing.assemble_session_briefing(tmp_path, [])
+
+    def test_relay_is_last_in_the_block(self, tmp_path, monkeypatch):
+        # The directive refers to everything above it, so trailing block content
+        # would make it read as covering only the part it precedes. Its banner twin
+        # is pinned by an equivalent test; this site was moved to satisfy a review
+        # finding with nothing holding it there, so the position is pinned now.
+        # `dismissed`/`resolved` are the lines that follow the advisory list, so a
+        # regression puts them after the directive.
+        self._state(tmp_path, "")
+        (tmp_path / ".prawduct" / ".session-start").write_text("2026-01-01T00:00:00Z")
+        dismissed = self._adv("info", "ADV-D") | {
+            "state": "dismissed", "dismissed_at": "2026-01-02T00:00:00Z"
+        }
+        self._advisories(monkeypatch, self._adv("warn"), dismissed)
+        out = briefing.assemble_session_briefing(tmp_path, [])
+        block_lines = out.splitlines()
+        assert "Dismissed since last session" in out, "fixture must produce a trailing line"
+        relay_at = block_lines.index(briefing.ADVISORY_RELAY_TEXT)
+        dismissed_at = next(
+            i for i, ln in enumerate(block_lines) if "Dismissed since last session" in ln
+        )
+        assert relay_at > dismissed_at, "relay must follow every line of its block"
+
+    def test_display_cap_can_never_hide_a_consequential_advisory(self, tmp_path, monkeypatch):
+        # The block displays 5 of N. That cap can only mislead if a relay-priority
+        # advisory is ever pushed out of the visible set — which the priority sort
+        # forbids: `urgent`/`warn` rank ahead of `info`, so the only thing that can
+        # displace a `warn` is an `urgent`, itself worth relaying. This pins the
+        # sort, not the relay: reorder it to newest-first and a `warn` buried under
+        # six fresh `info`s would be relayed but never shown, so the person is told
+        # to look at something they cannot see.
+        self._state(tmp_path, "")
+        infos = [self._adv("info", f"ADV-{i}") for i in range(6)]
+        monkeypatch.setattr(briefing.gitstate, "_read_advisory_store", lambda d: {
+            "advisories": infos + [self._adv("warn", "ADV-LATE")]
+        })
+        out = briefing.assemble_session_briefing(tmp_path, [])
+        assert briefing.ADVISORY_RELAY_MARKER in out
+        assert "... and 2 more" in out, "expected 7 active with 5 displayed"
+        # Bound the "displayed" set by the overflow line rather than by the relay's
+        # position: the relay moved once already, and a proxy that tracks it would
+        # keep passing while measuring something else.
+        overflow_at = next(
+            i for i, ln in enumerate(out.splitlines()) if "... and 2 more" in ln
+        )
+        shown = "\n".join(out.splitlines()[:overflow_at])
+        assert "ADV-LATE" in shown, "a warn must be inside the displayed set, not just relayed"
+
+    def test_relay_names_no_internal_identifier(self, tmp_path, monkeypatch):
+        self._state(tmp_path, "")
+        self._advisories(monkeypatch, self._adv("warn"))
+        out = briefing.assemble_session_briefing(tmp_path, [])
+        line = next(ln for ln in out.splitlines() if briefing.ADVISORY_RELAY_MARKER in ln)
+        assert not re.search(r"\b[A-Z]{2,4}-[A-Z0-9]{3,4}\b", line), line
 
 
 # --------------------------------------------------------------------------- #

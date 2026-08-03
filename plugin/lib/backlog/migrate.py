@@ -45,7 +45,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from . import core, encode, ids, legacy, provision, restructure
-from .transport import Transport, TransportError
+from .transport import Transport, TransportError, paginate
 
 # The facet metadata keys the importer consumes as `<facet>:value` labels (§3).
 # `status` is the status axis (§4). Every *other* metadata key — and an invalid
@@ -818,7 +818,15 @@ def import_items(
     hard-stopping into a fresh re-run that re-hits the unelapsed window. Returns an
     envelope; on a non-rate-limit failure (or an exhausted rate-limit budget) it
     returns a **resumable** error carrying the progress so far — a re-run completes
-    the rest (no rollback, M6)."""
+    the rest (no rollback, M6).
+
+    A status reconcile that fails for a *non*-rate-limit reason does not abort the
+    run (:func:`_reconcile_status` explains why the two budgets are treated
+    differently); it lands in ``status_unreconciled`` — carried in ``data`` on
+    success and in ``error.details`` on either resumable cut, because a deferral
+    accrued before a cut is no more recoverable than the audit warnings beside it.
+    Every entry there is an item that exists on the target at the **wrong status**,
+    which is a thing only ``verify-migration`` can turn into a hard stop."""
     pacer = pacer or Pacer()
     backoff = backoff or RateLimitBackoff()
     # Meter every downstream transport METHOD call against the 900-pts/min budget
@@ -830,6 +838,7 @@ def import_items(
     created: list[dict] = []
     skipped: list[dict] = []
     warnings: list[str] = []
+    unreconciled: list[dict] = []
     if checkpoint is not None:
         warnings.extend(checkpoint.warnings)
 
@@ -841,7 +850,8 @@ def import_items(
             # partial attempt never double-counts: outcomes are applied here, once,
             # only after the record fully lands.
             outcome = _import_one_with_retry(
-                transport, owner, repo, record, pacer, alias_index, backoff, warnings
+                transport, owner, repo, record, pacer, alias_index, backoff, warnings,
+                unreconciled,
             )
             if outcome["outcome"] == "collision":
                 collisions.append(outcome["collision"])
@@ -861,6 +871,7 @@ def import_items(
                 "created": created,
                 "skipped": skipped,
                 "collisions": collisions,
+                "status_unreconciled": unreconciled,
                 "resumable": True,
                 "pacing": pacing_summary(pacer, backoff),
             }
@@ -886,6 +897,7 @@ def import_items(
                 "created": created,
                 "skipped": skipped,
                 "collisions": collisions,
+                "status_unreconciled": unreconciled,
                 "resumable": True,
                 "pacing": pacing_summary(pacer, backoff),
             },
@@ -895,11 +907,21 @@ def import_items(
 
     for collision in collisions:
         warnings.append(f"alias collision skipped: {collision}")
+    if unreconciled:
+        # A count, not just the per-item audit lines above it: those scroll past in a
+        # 900-item run, and the difference between "imported" and "imported AND at its
+        # target status" is exactly what a green completeness gate used to hide.
+        # `verify-migration` is the authority that turns this into a hard stop.
+        warnings.append(
+            f"{len(unreconciled)} item(s) imported but NOT reconciled to their target "
+            "status — re-run the import to converge them, then verify-migration"
+        )
     data = {
         "repo": f"{owner}/{repo}",
         "created": created,
         "skipped": skipped,
         "collisions": collisions,
+        "status_unreconciled": unreconciled,
         "total_source": len(records),
         "pacing": pacing_summary(pacer, backoff),
     }
@@ -915,17 +937,31 @@ def _import_one_with_retry(
     alias_index: "_AliasIndex",
     backoff: RateLimitBackoff,
     warnings: list[str],
+    unreconciled: list[dict],
 ) -> dict:
     """Import ONE record, **pausing-and-retrying the whole idempotent record** on a
     ``rate_limited`` failure (bounded by ``backoff.max_retries``). Any other failure —
     or an exhausted rate-limit budget — propagates to ``import_items``' resumable
     handler. The successful attempt's warnings merge into ``warnings`` exactly once;
-    a retried attempt's partial warnings are discarded, never doubled (BKL-3K9N)."""
+    a retried attempt's partial warnings are discarded, never doubled (BKL-3K9N).
+    ``unreconciled`` accrues the same way and for the same reason: a status reconcile
+    deferred on one attempt and completed by the retry must not still be reported as
+    deferred.
+
+    One reporting consequence of replaying the *whole* record: when the 429 lands on
+    the **close**, the create has already succeeded, so the replay's find-or-create
+    takes the skip branch and the record is reported ``skipped`` rather than
+    ``created``. The counts describe what each successful attempt found, and they
+    still sum to the source total; a run whose close stretch was rate-limited will
+    simply attribute those items to ``skipped``."""
     attempt = 0
     while True:
         try:
-            outcome = _import_one_record(transport, owner, repo, record, pacer, alias_index)
+            outcome = _import_one_record(
+                transport, owner, repo, record, pacer, alias_index, warnings
+            )
             warnings.extend(outcome.pop("warnings"))
+            unreconciled.extend(outcome.pop("unreconciled"))
             return outcome
         except TransportError as exc:
             if exc.code == "rate_limited" and attempt < backoff.max_retries:
@@ -942,13 +978,25 @@ def _import_one_record(
     record: ImportRecord,
     pacer: Pacer,
     alias_index: "_AliasIndex",
+    run_warnings: list[str],
 ) -> dict:
     """Idempotently import ONE record: find-or-create by its key label, self-heal a
     human-deleted alias, reconcile status. Returns an outcome dict —
-    ``created``/``skipped``/``collision`` — with the warnings it accrued (kept local
-    so a rate-limit replay of the whole record can't double-count). Every step is
-    idempotent, so replaying the whole record after a pause is safe."""
+    ``created``/``skipped``/``collision`` — with the warnings and deferred status
+    reconciles it accrued (both kept local so a rate-limit replay of the whole record
+    can't double-count). Every step is idempotent, so replaying the whole record
+    after a pause is safe.
+
+    **The alias self-heal line is the one exception, and goes to ``run_warnings``.**
+    Everything else here is retry-local by design, but the heal is a *persisted
+    write*: once the ``id:PFX`` label is restored, a replay finds it on the fast
+    label path, never re-heals, and never re-emits the line — and a later resume
+    can't either, for the same reason. Discarding it with a retried attempt would
+    lose it permanently, which is exactly the loss BKL-9V2W's envelope fix exists to
+    prevent. It can fire at most once per record per run, so promoting it cannot
+    double-count."""
     warnings: list[str] = []
+    unreconciled: list[dict] = []
     key_label = record.key_label()
     existing = _find_by_key(transport, owner, repo, key_label)
     healed = False
@@ -965,6 +1013,7 @@ def _import_one_record(
             "outcome": "collision",
             "collision": {"key": key_label, "refs": [f"{owner}/{repo}#{n}" for n in existing]},
             "warnings": warnings,
+            "unreconciled": unreconciled,
         }
     if existing:
         # The skip authority is the on-GitHub alias — its `id:PFX` label, or (when a
@@ -974,23 +1023,25 @@ def _import_one_record(
         # match self-heals the missing label so the alias resolves again and the next
         # run skips on the fast label path.
         if healed:
-            _restore_alias_label(transport, owner, repo, existing[0], key_label, warnings)
+            _restore_alias_label(transport, owner, repo, existing[0], key_label, run_warnings)
         # Reconcile only the status, so a resumed item created-but-crashed before its
         # close still converges (CRASH-4).
-        _reconcile_status(transport, owner, repo, existing[0], record, warnings)
+        _reconcile_status(transport, owner, repo, existing[0], record, warnings, unreconciled)
         return {
             "outcome": "skipped",
             "entry": {"key": key_label, "id": _canon(owner, repo, existing[0])},
             "warnings": warnings,
+            "unreconciled": unreconciled,
         }
 
     issue = _create_item(transport, owner, repo, record, pacer)
     number = issue.get("number")
-    _reconcile_status(transport, owner, repo, number, record, warnings)
+    _reconcile_status(transport, owner, repo, number, record, warnings, unreconciled)
     return {
         "outcome": "created",
         "entry": {"key": key_label, "id": _canon(owner, repo, number), "pfx": record.pfx},
         "warnings": warnings,
+        "unreconciled": unreconciled,
     }
 
 
@@ -1032,7 +1083,7 @@ class _AliasIndex:
 
     def _build(self) -> dict[str, list[int]]:
         index: dict[str, list[int]] = {}
-        for number, pfxs, _labels in core.iter_alias_issues(
+        for number, pfxs, _labels, _status in core.iter_alias_issues(
             self._transport, self._owner, self._repo
         ):
             for pfx in pfxs:
@@ -1073,11 +1124,40 @@ def _create_item(
 
 
 def _reconcile_status(
-    transport: Transport, owner: str, repo: str, number: int | None, record: ImportRecord, warnings: list
+    transport: Transport,
+    owner: str,
+    repo: str,
+    number: int | None,
+    record: ImportRecord,
+    warnings: list,
+    unreconciled: list[dict],
 ) -> None:
     """Bring an item to its target status idempotently (only when it differs — a
     freshly-created ``open`` item needs no write). Reuses the crash-safe
-    ``core.set_status`` so the two-axis transition has exactly one implementation."""
+    ``core.set_status`` so the two-axis transition has exactly one implementation.
+
+    A deferred reconcile appends to BOTH ``warnings`` (the per-item audit line) and
+    ``unreconciled`` (the structured record the run counts) — one event, recorded
+    here rather than reassembled by each caller, so the two can never disagree
+    about whether a deferral happened.
+
+    **A rate-limited close is re-raised, never deferred.** ``core.set_status``
+    catches ``TransportError`` and returns an envelope, so a 429 on the close was
+    invisible to the reactive backoff built for exactly this stretch — the
+    pause-and-retry only ever saw *creates*, while an ``--archive-scope all`` run
+    closes about as many items as it creates. Re-raising puts the close on the same
+    retry contract as the create: the whole record replays (every step is
+    idempotent, so a replay is safe), and an exhausted budget falls through to the
+    resumable envelope exactly as a rate-limited create does.
+
+    **Every other failure still defers to the resume**, deliberately: a *create*
+    failure aborts because the content budget is the scarce, risky path, while a
+    status reconcile is core-budget and transient, so the item stays open and the
+    resume's reconcile converges it. What changes is that the deferral is no longer
+    *only* prose in ``warnings`` — it is also counted, so a run that left items
+    unreconciled cannot report plain success with the only evidence buried in an
+    audit line nobody reads.
+    """
     if number is None:
         return
     canonical = _canon(owner, repo, number)
@@ -1086,8 +1166,28 @@ def _reconcile_status(
     if decoded.get("status") == record.status:
         return
     result = core.set_status(transport, id_raw=canonical, target=record.status)
-    if result.get("status") != "ok":
-        warnings.append(f"status reconcile deferred for {canonical}: {result.get('error', {}).get('code')}")
+    if result.get("status") == "ok":
+        return
+    failure = result.get("error", {})
+    code = failure.get("code")
+    if code == "rate_limited":
+        # Reconstructed losslessly — `from_transport_error` carries code, message,
+        # retryable and details across, so the backoff still reads its Retry-After.
+        # The phase and the item are PREPENDED rather than used as an empty-message
+        # fallback: this exception is the only evidence that a 429 storm hit the
+        # close stretch rather than the creates, and that distinction is the whole
+        # reason the close was put on the retry contract.
+        raise TransportError(
+            code,
+            f"status reconcile for {canonical} → {record.status}: "
+            + (failure.get("message") or "secondary rate limit"),
+            retryable=failure.get("retryable"),
+            details=failure.get("details"),
+        )
+    warnings.append(f"status reconcile deferred for {canonical}: {code}")
+    unreconciled.append(
+        {"id": canonical, "pfx": record.pfx, "target": record.status, "code": code}
+    )
 
 
 # --- export ------------------------------------------------------------------
@@ -1118,6 +1218,32 @@ def verify_migration(
     ``id:PFX`` alias, so a raw count comparison passes while source items are
     still stranded — which is precisely how the observed repo looked (17 issues,
     2 aliases, 9 source items).
+
+    **Coverage is necessary but not sufficient — the status has to match too.**
+    An item can be present and correctly keyed and still not be migrated: the
+    import defers a failed status reconcile so the run can continue, which leaves
+    the issue on the target at the wrong status. Under ``--archive-scope all`` a
+    rate-limited or flaky close stretch does that in bulk, and a coverage-only
+    comparison reports 100% while every archived item sits open. So the gate reads
+    the **decoded** status off the same scan (``core.iter_alias_issues``, which
+    already fetches all states) and reports any divergence from the source's target
+    as ``status_mismatch``. This is the F9 failure mode through a *third* door — the
+    gate green, the migration not done — after F9 itself and the unaliasable-id
+    class.
+
+    **Two target issues recording one id are ``duplicate_alias``, never
+    ``status_mismatch``.** The lists are partitioned by *remedy*, not by symptom, and
+    that pair diverges: a mismatch clears on a re-import, an ambiguous alias cannot
+    (see :func:`_incompleteness_remedy`). Folding them together would put "re-run the
+    import" in front of an operator for whom it is a no-op — the same defect this
+    docstring already records above, where a scope mismatch produced "a false
+    conflict … on a gate whose prescribed remedy can never clear it."
+
+    A mismatch is deliberately **not** carved out for items a human may have
+    legitimately moved on the target since import: the gate runs immediately after
+    the import in one operator session, and a false positive here is safe (it says
+    incomplete, and re-running the import is idempotent) where a false negative is
+    the thing being fixed.
 
     **An item whose id is not a valid PFX is reported, not excluded.** Alias
     coverage can only speak for items an alias can key, so deriving the source
@@ -1164,13 +1290,40 @@ def verify_migration(
     collided = [f"{c['pfx']} ({c['title']})" for c in collisions]
 
     try:
-        aliased: set[str] = set()
-        for _number, pfxs, _labels in core.iter_alias_issues(transport, owner, repo):
-            aliased.update(pfxs)
+        aliased: dict[str, str] = {}
+        # PFXs claimed by two issues whose decoded statuses DISAGREE. The importer's
+        # collision branch cannot speak for these: it fires on two issues carrying the
+        # same `id:PFX` **label**, while this scan derives `pfxs` from the body block
+        # `id_aliases` — a deliberately different source of truth (`_AliasIndex` exists
+        # because the label can be deleted while the block record survives). So a
+        # block-only duplicate is invisible there, and resolving it by whichever page
+        # GitHub returned first would let this verdict flip with page order on the gate
+        # guarding ~900 irreversible writes. Reported instead: at most one of the two
+        # can match the source, so the item is not verifiably at its target either way.
+        ambiguous: set[str] = set()
+        for _number, pfxs, _labels, status in core.iter_alias_issues(transport, owner, repo):
+            for pfx in pfxs:
+                if pfx in aliased and aliased[pfx] != status:
+                    ambiguous.add(pfx)
+                aliased.setdefault(pfx, status)
     except TransportError as exc:
         return core.from_transport_error(exc)
 
     missing = [p for p in source if p not in aliased]
+    # An ambiguous alias is its own recoverability class and must NOT ride in
+    # `status_mismatch`: that list's remedy is "re-run the import", which cannot
+    # clear this one. The labelled issue already matches, so the re-run's
+    # `_find_by_key` returns it and `_reconcile_status` writes nothing; the
+    # block-only duplicate carries no label, so `_AliasIndex` is never consulted and
+    # it is never touched. The next scan sees the same disagreement and exits 4
+    # again — a full ~900-write re-run that converges on nothing. Only a target-side
+    # deduplication fixes it.
+    duplicate_alias = [p for p in source if p in ambiguous]
+    status_mismatch = [
+        f"{r.pfx} (source: {r.status}, target: {aliased[r.pfx]})"
+        for r in records
+        if r.pfx and r.pfx in aliased and r.pfx not in ambiguous and aliased[r.pfx] != r.status
+    ]
     data = {
         "repo": f"{owner}/{repo}",
         "source_items": len(records),
@@ -1178,20 +1331,28 @@ def verify_migration(
         "missing": missing,
         "unaliasable": unaliasable,
         "collisions": collided,
+        "status_mismatch": status_mismatch,
+        "duplicate_alias": duplicate_alias,
     }
-    if missing or unaliasable or collided:
+    if missing or unaliasable or collided or status_mismatch or duplicate_alias:
         return core.error(
             "conflict",
             f"{len(records)} source item(s) in scope, {data['aliased']} verifiably "
             f"keyed to an issue on {owner}/{repo} — the migration is incomplete; "
-            + _incompleteness_remedy(missing, unaliasable, collided),
+            + _incompleteness_remedy(
+                missing, unaliasable, collided, status_mismatch, duplicate_alias
+            ),
             details=data,
         )
     return core.ok(data)
 
 
 def _incompleteness_remedy(
-    missing: list[str], unaliasable: list[str], collided: list[str]
+    missing: list[str],
+    unaliasable: list[str],
+    collided: list[str],
+    status_mismatch: list[str],
+    duplicate_alias: list[str],
 ) -> str:
     """The operator-facing next step, which differs by *why* an item is absent.
 
@@ -1201,8 +1362,16 @@ def _incompleteness_remedy(
     changes both the key and the title, so a re-import after the rename **mints a
     second issue** instead of adopting the first. A ``collided`` one is not an
     import problem at all — two source items claim one alias, so the source has to
-    be disambiguated before any re-run can help. Saying "re-run import" for all
-    three would be wrong for the two that re-running cannot fix."""
+    be disambiguated before any re-run can help. A ``status_mismatch`` item is
+    present and correctly keyed but sitting at the wrong status — a re-run fixes it
+    (the skip branch still reconciles the status axis), which puts it in the same
+    recoverability class as ``missing`` and not with the two that re-running cannot
+    fix. A ``duplicate_alias`` item is the one that looks like ``status_mismatch``
+    and behaves like ``collided``: two issues on the *target* record the same PFX at
+    different statuses, and a re-import touches neither — the labelled one already
+    matches so nothing is written, and the unlabelled one is never looked up — so
+    the only fix is a target-side deduplication. Saying "re-run import" for all five
+    would be wrong for three of them."""
     parts = []
     if missing:
         parts.append(
@@ -1222,6 +1391,25 @@ def _incompleteness_remedy(
             f"the {len(collided)} item(s) in `collisions` share a PFX with an earlier "
             "item, so the import dropped them rather than merging two items onto one "
             "alias — give each a distinct PFX in the source, then re-import"
+        )
+    if status_mismatch:
+        parts.append(
+            f"the {len(status_mismatch)} item(s) in `status_mismatch` are on the target "
+            "at the WRONG status — the issue exists and is keyed, but a status "
+            "reconcile never landed (see `status_unreconciled` in the import result); "
+            "re-run the import, which reconciles the status axis on already-migrated "
+            "items too"
+        )
+    if duplicate_alias:
+        parts.append(
+            f"the {len(duplicate_alias)} item(s) in `duplicate_alias` are recorded by "
+            "TWO issues on the target whose statuses disagree, so no import can decide "
+            "which is authoritative — **do not re-run the import**, which writes to "
+            "neither (the labelled issue already matches; the block-only one is never "
+            "looked up). Find the pair by searching the target for the id, then "
+            "deduplicate there by ISSUE NUMBER — `merge owner/repo#<n> --into "
+            "owner/repo#<m>` — and verify again. The bare PFX cannot spell this "
+            "merge: both ends resolve through the alias label to the same issue"
         )
     return "; ".join(parts)
 
@@ -1310,20 +1498,18 @@ def _export_record(
 
 
 def _scan_all(transport: Transport, owner: str, repo: str) -> list[dict]:
-    """Every issue in the repo across pages (state=all), bounded so a pathological
-    repo can never spin forever. Raises ``TransportError`` on failure (caught by the
-    caller's envelope boundary)."""
-    collected: list[dict] = []
-    page = 1
-    per_page = 100
-    while page <= 1000:  # a very high backstop; a real repo is far smaller
-        batch = transport.list_issues(owner, repo, state="all", per_page=per_page, page=page)
-        collected.extend(batch)
-        if len(batch) < per_page:
-            return collected
-        page += 1
-    _diag("export scan hit the page cap; results truncated")
-    return collected
+    """Every issue in the repo across pages (state=all). Raises ``TransportError``
+    on failure — including a page-cap trip, which matters most here: this feeds
+    ``export``, the backup path, where a silently truncated result is a backup
+    that lies about being complete. Caught by the caller's envelope boundary."""
+    return list(
+        paginate(
+            lambda page, size: transport.list_issues(
+                owner, repo, state="all", per_page=size, page=page
+            ),
+            what="export scan",
+        )
+    )
 
 
 def _write_json(path: Path, data: dict) -> None:

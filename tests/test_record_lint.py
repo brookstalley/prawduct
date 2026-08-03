@@ -406,6 +406,114 @@ class TestChunkRefs:
         assert inferred["chunk_graded"] == "03", "Status points at the NEXT chunk"
         assert [f["check"] for f in inferred["findings"]] == ["chunk-ref-missing"]
 
+    def _repo_with_two_scoped_plans(self, tmp_path, name: str):
+        """Two plans, both declaring a scope, with the pointer aimed at the one
+        the review is NOT about — the shape that cost a true positive.
+
+        `pointed` chunk 03 declares a deliverable that exists; `reviewed` chunk
+        03 declares one that does not. So grading the pointer's plan reports a
+        confident zero over a diff with a missing deliverable in it.
+        """
+        repo = _make_repo(tmp_path, name=name)
+        artifacts = repo / ".prawduct" / "artifacts"
+        (artifacts / "build-plan-pointed.md").write_text(
+            "---\nartifact: build-plan\nscope: pointed\n---\n\n"
+            "# Plan\n\n## Status\n\n- [ ] Chunk 03: pointed\n\n"
+            "### Chunk 03: pointed\n\n- **Deliverables:** `code.py`\n"
+        )
+        (artifacts / "build-plan-reviewed.md").write_text(
+            "---\nartifact: build-plan\nscope: reviewed\n---\n\n"
+            "# Plan\n\n## Status\n\n- [ ] Chunk 03: reviewed\n\n"
+            "### Chunk 03: reviewed\n\n- **Deliverables:** `src/absent.py`\n"
+        )
+        (repo / ".prawduct" / "project-state.yaml").write_text(
+            "project_name: t\nactive_build_plan: artifacts/build-plan-pointed.md\n"
+        )
+        return repo, _commit(repo, "two plans")
+
+    def test_the_dispatched_scope_selects_the_plan_not_the_pointer(self, tmp_path):
+        """The measured defect: the chunk came from the dispatch and the plan
+        came from `active_build_plan`, and nothing checked they agreed.
+
+        The deliverable check grades the pointer's plan while the reviewed plan
+        cites deliverables that do not exist, and reports 0 — the check that
+        exists to catch "a declared deliverable that isn't there" reporting
+        clean on a diff full of them.
+        """
+        repo, head = self._repo_with_two_scoped_plans(tmp_path, "scoped")
+
+        pointed = record_lint.lint_records(
+            repo, repo / ".prawduct", [], head, head, chunk_id="03"
+        )
+        assert pointed["findings"] == [], "the pointer's plan is genuinely clean"
+        assert pointed["plan_graded"].endswith("build-plan-pointed.md")
+
+        reviewed = record_lint.lint_records(
+            repo, repo / ".prawduct", [], head, head, chunk_id="03", scope="reviewed"
+        )
+        assert reviewed["plan_graded"].endswith("build-plan-reviewed.md")
+        assert [f["check"] for f in reviewed["findings"]] == ["chunk-ref-missing"]
+        assert "src/absent.py" in reviewed["findings"][0]["detail"]
+        assert reviewed["counts"]["chunk-ref-missing"] == 1
+
+    def test_a_scope_naming_no_plan_is_unchecked_not_a_fallback(self, tmp_path):
+        """A scope no plan declares cannot be resolved — and falling back to the
+        pointer is precisely the silent grade of another plan.
+
+        The counter must say so too: a zero here reads exactly like "checked the
+        deliverables, all present", and a tally gets quoted without its caveat.
+        """
+        repo, head = self._repo_with_two_scoped_plans(tmp_path, "noplan")
+        result = record_lint.lint_records(
+            repo, repo / ".prawduct", [], head, head, chunk_id="03", scope="ghost"
+        )
+        assert result["plan_graded"] is None
+        assert result["chunk_graded"] is None
+        assert result["findings"] == []
+        assert result["counts"]["chunk-ref-missing"] is None, (
+            "a zero would read identically to a clean check"
+        )
+        assert any("chunk-ref-missing unchecked" in r for r in result["unchecked"])
+        assert any("'ghost'" in r for r in result["unchecked"])
+
+    def test_the_pointer_assumption_is_reported_when_plans_are_ambiguous(
+        self, tmp_path
+    ):
+        """Supplying `--chunk` without `--scope` still assumes a plan.
+
+        `_check_chunk_refs`'s older `assumed` flag could not see this: it fires
+        only when the dispatch carried NO chunk, so an explicitly-supplied chunk
+        graded against the wrong plan produced no gap line at all.
+        """
+        repo, head = self._repo_with_two_scoped_plans(tmp_path, "ambiguous")
+        result = record_lint.lint_records(
+            repo, repo / ".prawduct", [], head, head, chunk_id="03"
+        )
+        assert result["chunk_graded"] == "03"
+        assert any("active_build_plan pointer" in r for r in result["unchecked"])
+        # NOT the BLOCKING prefix: the check ran, against a named plan.
+        assert not any(
+            r.startswith("chunk-ref-missing unchecked") for r in result["unchecked"]
+        )
+
+    def test_a_single_plan_repo_reports_no_pointer_assumption(self, tmp_path):
+        """With one plan there was nothing to choose between, and a note on
+        every review of every such repo is how a channel stops being read.
+
+        A GUARD, not evidence: it passes against the pre-fix code too. What it
+        pins is that the assumption line beside it stays bounded.
+        """
+        plan = (
+            "# Plan\n\n## Status\n\n- [ ] Chunk 01: do it\n\n"
+            "### Chunk 01: do it\n\n- **Deliverables:** `code.py`\n"
+        )
+        repo, head = self._repo_with_plan(tmp_path, plan, "singleplan")
+        result = record_lint.lint_records(
+            repo, repo / ".prawduct", [], head, head, chunk_id="01"
+        )
+        assert result["unchecked"] == []
+        assert result["counts"]["chunk-ref-missing"] == 0
+
     def test_an_inferred_chunk_is_reported_as_an_assumption(self, tmp_path):
         """Inference is allowed but never silent — a zero from the wrong chunk
         reads exactly like a zero from the right one."""
@@ -649,9 +757,19 @@ class TestUncheckedReporting:
         assert result == {
             "records": [],
             "chunk_graded": None,
+            "plan_graded": None,
             "findings": [],
             "unchecked": [],
-            "counts": {check: 0 for check in record_lint.CHECKS},
+            # `chunk-ref-missing` is None, not 0: no chunk was in scope, so the
+            # check produced no answer — the same fact `chunk_graded: None`
+            # already carried while the counter beside it said zero. The other
+            # rest ran over an empty record set and honestly found nothing.
+            "counts": {
+                "chunk-ref-missing": None,
+                "governed-by-gap": 0,
+                "suite-total-claim": 0,
+                "learnings-entry-shape": 0,
+            },
         }
 
     def test_a_crash_degrades_to_unchecked_never_taking_dispatch_down(self, tmp_path, monkeypatch):
@@ -668,7 +786,10 @@ class TestUncheckedReporting:
             repo, repo / ".prawduct", ["a.md"], _tree(repo), _tree(repo), "02"
         )
         assert result["findings"] == []
-        assert result["counts"] == {check: 0 for check in record_lint.CHECKS}
+        # Every counter is None. Zeros here would be the crash reporting itself
+        # in the shape of a clean check, and a tally gets quoted without the
+        # caveat line above it.
+        assert result["counts"] == {check: None for check in record_lint.CHECKS}
         assert any("record-lint did not run" in r for r in result["unchecked"])
         assert any("git exploded" in r for r in result["unchecked"]), "the cause is named"
         # The crash must reach the reviewer at the DELIVERABLE check's severity:
@@ -707,8 +828,36 @@ class TestResultShape:
         assert set(result["counts"]) == set(record_lint.CHECKS)
         assert result["counts"]["suite-total-claim"] == 1
         assert result["counts"]["governed-by-gap"] == 0
-        assert result["counts"]["chunk-ref-missing"] == 0
+        # No plan in this fixture, so no chunk was graded — None, not a zero
+        # that reads as "checked the deliverables and they were all there".
+        assert result["counts"]["chunk-ref-missing"] is None
+        assert result["chunk_graded"] is None
         assert result["records"] == [".prawduct/artifacts/notes.md"]
+
+    def test_a_partial_run_withholds_its_tally(self):
+        """A check can be BOTH skipped and productive, and the tally must withhold.
+
+        `governed-by-gap` lands in `no_answer` per unreadable plan while other,
+        readable plans still contribute findings. Reporting that partial as a
+        bare integer says "this check ran and found N" — the exact confusion the
+        None exists to remove, reachable through the increment loop rather than
+        the initialiser. Nothing is lost: the findings stay in `findings`, and
+        only the count withholds, because a count over some of the inputs is not
+        a count.
+        """
+        counts = record_lint._count(
+            [{"check": "governed-by-gap", "path": "b.md", "line": 1, "detail": "x"}],
+            {"governed-by-gap"},
+        )
+        assert counts["governed-by-gap"] is None, (
+            "a check that produced no answer for one input must not report an "
+            "integer because another input produced findings"
+        )
+        # A check that genuinely ran still counts normally.
+        assert record_lint._count(
+            [{"check": "suite-total-claim", "path": "a.md", "line": 1, "detail": "x"}],
+            {"governed-by-gap"},
+        )["suite-total-claim"] == 1
 
     def test_retired_checks_are_absent_from_the_contract(self):
         """`dangling-ref` and `unknown-backlog-id` were measured at zero true
@@ -809,6 +958,59 @@ class TestVerifyRecordsCLI:
         assert result.returncode == 0, result.stderr
         assert "not an onboarded repo" in result.stdout
 
+    def test_a_null_count_renders_as_did_not_run_never_as_a_tally(self, tmp_path):
+        """The rendering is where the `0` -> `None` change is actually kept.
+
+        The data contract is pinned elsewhere; this pins the only surface an
+        operator reads. A tidy-up back to `f"{k}={v}"` would print
+        `chunk-ref-missing=None` beside three integers — which scans as a tally,
+        and a tally of nothing is what reads as clean — with the suite green.
+        """
+        repo = _make_repo(tmp_path, name="nullrender")
+        _git(repo, "branch", "-M", "main")
+        _git(repo, "checkout", "-q", "-b", "work")
+        (repo / ".prawduct" / "artifacts" / "notes.md").write_text("# Notes\n\nplain\n")
+        _commit(repo, "work")
+
+        result = _run_hook(repo, "verify-records")
+        assert result.returncode == 0, result.stderr
+        # No build plan in this fixture, so the deliverable check has no subject.
+        assert "chunk-ref-missing=did-not-run" in result.stdout
+        assert "chunk-ref-missing=None" not in result.stdout
+        assert "chunk-ref-missing=0" not in result.stdout
+        # The checks that DID run still report real integers.
+        assert "governed-by-gap=0" in result.stdout
+        assert "no chunk in scope" in result.stdout
+
+    def test_it_derives_the_same_scope_the_dispatch_would(self, tmp_path):
+        """The by-hand form exists to pre-answer the record checks. Grading a
+        different plan than `critic-begin` will makes it answer a different
+        question — confidently, and in the shape of the real answer."""
+        repo = _make_repo(tmp_path, name="scopeparity")
+        artifacts = repo / ".prawduct" / "artifacts"
+        (artifacts / "build-plan-pointed.md").write_text(
+            "---\nartifact: build-plan\nscope: pointed\n---\n\n"
+            "# Plan\n\n## Status\n\n- [ ] Chunk 01: pointed\n\n"
+            "### Chunk 01: pointed\n\n- **Deliverables:** `code.py`\n"
+        )
+        (artifacts / "build-plan-mine.md").write_text(
+            "---\nartifact: build-plan\nscope: mine\n---\n\n"
+            "# Plan\n\n## Status\n\n- [ ] Chunk 01: mine\n\n"
+            "### Chunk 01: mine\n\n- **Deliverables:** `code.py`\n"
+        )
+        (repo / ".prawduct" / "project-state.yaml").write_text(
+            "project_name: t\nactive_build_plan: artifacts/build-plan-pointed.md\n"
+        )
+        _commit(repo, "plans")
+        _git(repo, "branch", "-M", "main")
+        _git(repo, "checkout", "-q", "-b", "fix/mine")
+        (artifacts / "notes.md").write_text("# Notes\n\nnothing numeric\n")
+        _commit(repo, "work")
+
+        result = _run_hook(repo, "verify-records", "--chunk", "01", "--json")
+        assert result.returncode == 0, result.stderr
+        assert json.loads(result.stdout)["plan_graded"].endswith("build-plan-mine.md")
+
 
 class TestLearningsEntryShape:
     """`learnings.md` is the rule index; the narrative lives in detail.
@@ -841,9 +1043,76 @@ class TestLearningsEntryShape:
         assert not self._findings(tmp_path, f"## {rule}")
 
     def test_fires_on_a_narrative_body(self, tmp_path):
-        """The channel the sweep was built for."""
+        """The channel the sweep was built for.
+
+        This body sits directly under its heading, which is also where a
+        continuation would sit — so it gets the both-remedies message rather
+        than the bare move instruction. `test_prose_after_intervening_body_...`
+        covers the position where the plain instruction is safe.
+        """
         entry = "## When X do Y because Z\n\nHere is a paragraph of narrative evidence."
-        assert self._findings(tmp_path, entry)
+        findings = self._findings(tmp_path, entry)
+        assert findings
+        assert "move it to learnings-detail.md" in findings[0]["detail"]
+
+    def test_a_line_under_the_heading_offers_both_remedies_with_the_guard(self, tmp_path):
+        """The two remedies are opposite and one of them destroys the rule.
+
+        A continuation told to "move to detail" leaves the heading truncated
+        mid-sentence, and the loss is silent — the entry still parses and still
+        reads as a rule up to the dangling word. Three rules were lost that way
+        and repaired on 2026-07-31 from learnings-detail.md, where the move had
+        parked the text. Nothing can classify continuation-vs-evidence reliably,
+        so position decides which ADVICE is safe: adjacent to the heading, the
+        bare "move it" instruction is never issued alone.
+        """
+        entry = "## When a guard test pins a safety claim, assert the PROPERTY — a test that\n\nmatches a literal passes for every rewording of the same defect"
+        findings = self._findings(tmp_path, entry)
+        assert findings, "a body line must still be reported"
+        message = findings[0]["detail"]
+        assert "join it onto the heading" in message
+        assert "must still read as a complete rule" in message
+
+    def test_a_backtick_initial_continuation_is_not_told_to_move(self, tmp_path):
+        """The case test this replaced got this exactly backwards.
+
+        `islower()` is False for a continuation resuming with code punctuation,
+        so the old discriminator handed it the destructive instruction — the
+        same one that truncated three rules.
+        """
+        entry = "## When a plan resolves by scope name, never a version, because\n\n`regen-views` silently skips Status flipping otherwise"
+        message = self._findings(tmp_path, entry)[0]["detail"]
+        assert "must still read as a complete rule" in message
+        assert message.count("belongs in learnings-detail.md") == 0
+
+    def test_every_line_of_a_wrapped_rule_gets_the_same_remedy(self, tmp_path):
+        """A hard-wrapped rule is one sentence, so it needs ONE instruction.
+
+        Rules in this file run to several hundred characters on a single
+        physical line; wrapping one at terminal width yields a heading plus
+        several body lines. An earlier fix checked only the immediate
+        predecessor, so line 2 was guarded and line 3 was told to move — the
+        same sentence, opposite remedies, in one report. An author following
+        both truncates the rule, which is the original defect reintroduced one
+        line deeper.
+        """
+        entry = (
+            "## When a release has two documents tracking its state, one is already wrong\n"
+            "— designate a single live tracker and demote the other to a decision record;\n"
+            "and author each build chunk from the TREE, never from the upstream plan,\n"
+            "because a plan derived from a plan describes intent the code may have overtaken"
+        )
+        details = [f["detail"] for f in self._findings(tmp_path, entry)]
+        assert len(details) == 3, f"expected one finding per wrapped line, got {len(details)}"
+        assert all("must still read as a complete rule" in d for d in details), details
+        assert not any("(a move, never a deletion)" in d for d in details), details
+
+    def test_prose_after_intervening_body_still_says_move(self, tmp_path):
+        """Where a continuation cannot be, the plain instruction is safe."""
+        entry = ("## When X do Y because Z\n\nFirst narrative paragraph of evidence.\n\n"
+                 "Second narrative paragraph, which cannot be continuing the heading.")
+        details = [f["detail"] for f in self._findings(tmp_path, entry)]
+        assert any("belongs in learnings-detail.md" in d for d in details)
 
     def test_quiet_on_structural_lines(self, tmp_path):
         """Separators, comments and wiki-links are not narrative."""
@@ -904,4 +1173,67 @@ class TestEveryCheckCarriesASeverity:
             assert not missing, (
                 f"{rel} documents no severity for {missing} — a reviewer meets "
                 "the finding with no verdict. Add a row, or remove the check."
+            )
+
+    def test_both_unchecked_shapes_are_graded_on_every_reviewer_surface(self):
+        """The two `unchecked` shapes are told apart by PREFIX, on both surfaces.
+
+        `_check_chunk_refs` emits two textually distinct strings and only one
+        means the check could not run. Compressing them to "a
+        `chunk-ref-missing` entry is BLOCKING" — which `goals-1-3.md` did, and
+        which is the natural casualty of a token-diet pass on a file with ~50
+        tokens of headroom — turns the *assumption* shape into a BLOCKING with
+        no remedy available: a branch that builds no chunk has no `--chunk` to
+        supply. That fired on real reviews before it was caught, and a blocker
+        is the one severity that gates.
+
+        Keyed off the strings the emitters actually produce, so the pin tracks
+        the code rather than the prose that describes it.
+        """
+        import sys
+        root = Path(__file__).resolve().parent.parent
+        sys.path.insert(0, str(root / "plugin"))
+        from lib import record_lint
+
+        from lib import buildplan_refs
+
+        # Both shapes must still be what the code emits, or the anchors below
+        # are pinning prose against a contract that moved. The assumption shape
+        # has two causes — an inferred chunk and an inferred plan — assembled
+        # from two modules, and a surface naming only one leaves the other to be
+        # read as a clean grade.
+        emitter_src = Path(record_lint.__file__).read_text()
+        assert "chunk-ref-missing unchecked — " in emitter_src
+        assert "chunk-ref-missing graded chunk " in emitter_src
+        assert "inferred from build-plan Status" in emitter_src
+        assert "active_build_plan pointer" in Path(buildplan_refs.__file__).read_text()
+
+        for rel in ("plugin/skills/critic/review-cycle.md",
+                    "plugin/skills/critic/goals-1-3.md"):
+            text = (root / rel).read_text()
+            assert "chunk-ref-missing unchecked" in text, (
+                f"{rel} no longer names the cannot-run shape by its prefix — a "
+                "reviewer cannot tell which `unchecked` entry blocks."
+            )
+            assert "inferred from build-plan Status" in text, (
+                f"{rel} dropped the assumption shape, so the compressed reading "
+                "('any chunk-ref-missing entry is BLOCKING') returns and with it "
+                "a false blocker that no --chunk value can clear."
+            )
+            assert "active_build_plan` pointer" in text, (
+                f"{rel} names only the chunk half of the assumption. The plan "
+                "half is the one that graded another plan's chunk and reported "
+                "zero over deliverables that were not there."
+            )
+            # The assumption shape must be graded NOTE somewhere after it is
+            # named — the specific severity, not merely a mention.
+            tail = text[text.index("inferred from build-plan Status"):]
+            assert "NOTE" in tail[:600], (
+                f"{rel} names the assumption shape but does not grade it NOTE "
+                "nearby; an ungraded mention is how the BLOCKING reading wins."
+            )
+            # …and a null count must never be presentable as a zero.
+            assert "not a zero" in text, (
+                f"{rel} does not tell the reviewer that a `null` count differs "
+                "from a `0` — the reading a quoted tally invites."
             )

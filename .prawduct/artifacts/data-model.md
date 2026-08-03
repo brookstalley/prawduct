@@ -61,6 +61,7 @@ out where reality still lags.
 - **Derived views are disposable and never authoritative — no gate reads a view to reach a verdict.**
   Why: a view (`.critic-findings.json` and kin) exists for human/agent read-speed and may be regenerated or deleted at will; letting a gate trust one would smuggle mutable, model-adjacent state back into the authority path.
   Status: steady-state.
+  Rulings: [[regen-views-is-advice]] — collides with `architecture.md`'s *authority fails closed; advice fails soft*. **Precedence: this norm wins where a command's only output is a view**, so a view *writer* is advice and fails soft. Extends this norm from who may **read** a view to what posture its **writer** holds. Bounded: fail-soft is per-view — a view whose inputs are invalid is skipped and reported, never written half-right (VWS-6R4T's *no silent partial flips*, preserved with the atomicity unit moved from the run to the view).
 - **A fact written by a newer schema than the reader is surfaced as a loud block, never silently dropped.**
   Why: forward-incompatibility must be visible — silently skipping an ahead-of-schema fact would let a gate render a verdict on incomplete evidence.
   Status: steady-state. Mechanism: `evidence status` exit 2 (schema-ahead).
