@@ -111,7 +111,7 @@ The second entry illustrates the **compact form** used for non-active advisories
 | `evidence` | array of strings | File:line citations or other concrete signals. ≤5 entries to keep the briefing scannable; more available via `/prawduct-advisory show <id>`. |
 | `recommended_action` | string | **The agent's action** — the single command the AI runtime runs to address the advisory (a slash command, or a `prawduct-hook` invocation). Never something the person is asked to type. |
 | `owner_action` | string | **The owner's action** — the decision, approval, or input only the person can supply, in plain language and in one or two sentences. Never contains a command (§7.2). Empty is legal on a stored advisory written before this field existed; the briefing substitutes a generic approval line rather than rendering nothing. |
-| `prerequisite_of` | array of strings | `<feature>:<type>` keys of advisories that should be actioned **after** this one, when both are active. Declared on the *earlier* advisory — the probe that knows why its work feeds the other. Ordering only: neither advisory is suppressed or blocked (§5.3). |
+| `prerequisite_of` | array of objects | Advisories that should be actioned **after** this one, when both are active. Each entry is `{"type": "<feature>:<type>", "because": "<name of this work>, so <why it comes first>"}` — a probe declares them as `(key, because)` **pairs**, never bare strings, and a bare string is dropped rather than iterated into characters. The `because` text is what the dependent renders as its `after →` line, so it lives with the probe that knows the reason. Declared on the *earlier* advisory. Ordering only: neither advisory is suppressed or blocked (§5.3). |
 | `alternative_actions` | array of strings | Other actions the user might take (including dismissal). |
 | `priority` | enum | `info` (default), `warn`, `urgent`. Affects session-briefing ordering and verbosity. `urgent` is rare and reserved for things like "model used in this project is past retirement date." |
 | `state` | enum | `active`, `dismissed`, `resolved`. |
@@ -231,7 +231,16 @@ carrying `recommended_action` on live entries across the fleet, and a rename wou
 Resolution is the inverse of triggering. After running all probes, sync diffs:
 - IDs in the previous advisory store but not in this run's probe output → mark resolved (with `resolved_by: sync`).
 - IDs in this run's probe output but not in the store → write as new active advisory.
-- IDs in both → no-op.
+- IDs in both, still `active` → **state** is a no-op (same id, same `triggered_at`, same position — which is what idempotency A2 asks for), but the **derived presentation refreshes** from the fresh candidate: `trigger_summary`, `evidence`, `owner_action`, `recommended_action`, `prerequisite_of`, `alternative_actions`, `priority`.
+- IDs in both, `dismissed` → untouched. A dismissal is sticky and refreshing its text would re-open a settled question.
+
+**Why the refresh, given §3.3 makes the id deliberately independent of the volatile detail.** Those two
+rules are a pair, and only one of them had been implemented. The id hashes `evidence` precisely so a
+probe can put live counts in `trigger_summary` without churning the id under a partial fix — but if a
+re-fire leaves the stored entry untouched, that count is frozen at first trigger and re-read to the
+owner every session afterwards. The number whose job is to prove the advisory is current becomes the
+stalest field in the store. The same freeze is what would otherwise keep improved probe copy away from
+exactly the repos that have been living with an advisory the longest.
 
 This requires probes to be **deterministic** given the same project state — the trigger hash must be stable.
 
@@ -247,22 +256,27 @@ The existing session-start briefing (the SessionStart hook wired in `hooks/hooks
 
 ```
 ADVISORIES (post-sync, 3 active):
-  • [report-bug] 3 untriaged bug reports in incoming-bugs/.
+  • [report-bug] 3 untriaged bug reports in incoming-bugs/. (id: report-bug-untriaged-v1-9f2c31)
     owner → Nothing to decide — say go, and each report is triaged into the backlog and archived.
     agent → /prawduct:backlog
-  • [backlog] 43 pending items in the markdown backlog and no backlog service repo.
+  • [backlog] 43 pending items in the markdown backlog and no backlog service repo. (id: backlog-migration-required-v1-a1b2c3)
     after → incoming-bug triage, so the whole backlog migrates in one reviewed batch
     owner → Decide whether to migrate now. This writes ~43 real GitHub issues; GitHub has no
             ordinary issue delete and never reuses numbers, so it cannot be undone.
     agent → /prawduct:backlog scrub
-  • [prompt-management] Role `summarizer` overdue for review since 2026-04-15.
+  • [prompt-management] Role `summarizer` overdue for review since 2026-04-15. (id: prompts-overdue-role-review-v1-77e0b4)
     owner → Confirm the role's prompt still matches what it is used for, or say it has drifted.
     agent → /llm-strategy review summarizer
 
-  Dismiss any of these: /prawduct-advisory dismiss <id>
+  Dismiss any of these: /prawduct:advisory dismiss <id>
   Dismissed since last session: 1 (run /prawduct-advisory list --dismissed to see)
   Resolved since last session: 0
 ```
+
+The per-entry `(id: …)` is what the block-level dismissal hint consumes — moving the hint out of every
+entry (§5.1) must not take the id with it, or the reader is told how to dismiss and not which one.
+(The emitted command is `/prawduct:advisory`; the prose in §6 still uses this spec's original
+`/prawduct-advisory` spelling from before the command became a plugin skill.)
 
 The briefing prints to stdout, which is the **agent-facing** channel
 (`observability-strategy.md` § Direction), so this block is data for the runtime, not copy for the
@@ -292,7 +306,18 @@ one-shot reviewed bulk write — so triage belongs first, or the stragglers arri
 different path and outside the batch that was reviewed. Triage is `info`; the migration nudge is
 `warn`; so severity ordering printed them backwards, in every product carrying both.
 
-A probe declares `prerequisite_of: ("<feature>:<type>", …)` naming the advisories its work feeds.
+A probe declares the edges as `(key, because)` pairs — the reason travels with the edge, because the
+probe that knows the work is the one that knows why it comes first:
+
+```python
+prerequisite_of=(
+    (
+        "backlog:backlog-service-migration-required",
+        "incoming-bug triage, so the whole backlog migrates in one reviewed batch",
+    ),
+)
+```
+
 Within the active set the briefing then:
 
 1. sorts by priority as before, and

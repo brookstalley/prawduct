@@ -571,7 +571,11 @@ ADVISORY_RELAY_MARKER = "⇒ "
 #: by dropping a whole severity band (owner decision 2026-08-03, recorded in
 #: `.prawduct/artifacts/observability-strategy.md` § How the owner actually learns —
 #: that artifact previously ruled warn/urgent only).
-_RELAY_IN_FULL_PRIORITIES = frozenset({"warn", "urgent"})
+#: Named for the property, not for one consumer: these are the priorities that
+#: must reach the person in full whatever else the block is doing. Two mechanisms
+#: depend on that — the relay directive names them in its prose (relay these in
+#: full, the rest compactly) and the display cap stretches to cover them.
+_CONSEQUENTIAL_PRIORITIES = frozenset({"warn", "urgent"})
 
 #: Owner line for a stored advisory that predates the two-audience schema, or a
 #: probe not yet carrying it. Never omitted: a missing line would read as "this
@@ -835,7 +839,7 @@ def assemble_session_briefing(project_dir: Path, staleness: list[str]) -> str:
             # overflow count and the annotation positions stay honest.
             display_count = 5
             for index, adv in enumerate(active_adv):
-                if adv.get("priority") in _RELAY_IN_FULL_PRIORITIES:
+                if adv.get("priority") in _CONSEQUENTIAL_PRIORITIES:
                     display_count = max(display_count, index + 1)
             for position, adv in enumerate(active_adv[:display_count]):
                 feature = adv.get("feature", "?")

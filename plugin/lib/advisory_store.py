@@ -495,6 +495,52 @@ def _valid_prerequisites(declared) -> list[tuple[str, str]]:
     return pairs
 
 
+#: Fields on a stored advisory that are pure functions of the probe and the repo
+#: state it read — its presentation, as opposed to its identity and lifecycle.
+#: Refreshed on every sync while an advisory stays active (:func:`_refreshed_active`).
+_DERIVED_DISPLAY_FIELDS = (
+    "trigger_summary",
+    "evidence",
+    "owner_action",
+    "recommended_action",
+    "prerequisite_of",
+    "alternative_actions",
+    "priority",
+)
+
+
+def _refreshed_active(advisory: dict, candidate: AdvisoryCandidate, *, now: str = "", sync_version: str = "") -> dict:
+    """An already-active advisory, with its derived presentation brought current.
+
+    **Identity is not presentation, and this path used to conflate them.** An
+    active advisory whose probe fires again was returned untouched, on the reading
+    that a re-fire is a no-op. It is a no-op for *state* — the entry keeps its id,
+    its `triggered_at`, and its place in the store, which is what idempotency
+    (spec A2) actually asks for. It is not a no-op for the text, and probes are
+    written on the opposite assumption: the id hashes ``evidence`` precisely so
+    volatile detail can live in ``trigger_summary`` without churning the id, so
+    every live count a probe computes ("16 entries missing", "349 pending items")
+    was frozen at first trigger and re-read to the owner every session afterwards.
+    The number that is meant to prove the advisory is current was the stalest thing
+    in it.
+
+    So the derived fields refresh and the identity/lifecycle fields do not. That
+    also makes probe copy reach advisories that are already active — without it, a
+    rewritten owner action only ever appears on repos that had not yet tripped the
+    probe, which is the minority and never the ones that have been living with it.
+    """
+    refreshed = dict(advisory)
+    fresh = _new_advisory(
+        candidate,
+        advisory_id=advisory.get("id", ""),
+        now=now or advisory.get("triggered_at") or "",
+        sync_version=sync_version or advisory.get("triggered_by_sync_version") or "",
+    )
+    for field in _DERIVED_DISPLAY_FIELDS:
+        refreshed[field] = fresh[field]
+    return refreshed
+
+
 def _new_advisory(candidate: AdvisoryCandidate, *, advisory_id: str, now: str, sync_version: str) -> dict:
     priority = candidate.priority if candidate.priority in VALID_PRIORITIES else "info"
     return {
@@ -625,7 +671,7 @@ def reconcile(store: dict, candidates: Iterable[AdvisoryCandidate], *, now: str 
                     _new_advisory(cand_by_id[advisory_id], advisory_id=advisory_id, now=now, sync_version=sync_version)
                 )
             else:
-                result.append(advisory)  # active → idempotent no-op
+                result.append(_refreshed_active(advisory, cand_by_id[advisory_id]))
         elif state == "active":
             target = supersedes.get((advisory.get("feature"), advisory.get("type")))
             resolved = dict(advisory)
