@@ -3,6 +3,51 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-08-03: the template fix that never reached the installed base
+
+<!-- prawduct: type=fix | scope=silent-gates | chunks=06 -->
+
+`#567`'s blocking finding was closed by shipping the Enforcement norm index **empty**, because its
+two illustrative rows carried non-empty `Audit home` / `Why` cells and so read as homed norms. That
+fix reaches **new onboards only**: `init_product` and `core.write_template` copy a template only
+into a destination that does not exist. Every already-onboarded repo still carries those rows, still
+reads as having a ratified norm registry, and is still nudged about a Norm Health sweep it owes
+nothing to. This is not new work — it is the honest completion of Chunk 02, and without it that
+chunk's fix is true of the template and false of the fleet.
+
+`prawduct-hook norm-index-scaffold` detects the leftover rows and offers to remove them; doctor
+Health Check #14 relays it. Same shape as Health Check #13 (`learnings-obligation`), which is the
+established pattern for a defect that lives in already-onboarded repos and that a template change
+cannot reach: report a status, offer a repair, never apply it unasked.
+
+**Detection is exact-match against the rows prawduct actually shipped**, never a guess at what a
+placeholder looks like. Sniffing for italics-in-parentheses was considered and rejected when the same
+choice arose in `#567` — it bakes a formatting convention into a governance predicate, and a real
+norm's *why* may legitimately be italic. Exact-match cannot mistake an authored row for a scaffold
+one, and a scaffold row a human has since edited is theirs and is left alone. The two row strings are
+byte-identical across the entire template lineage (checked back through the `plugin/` move), so the
+set is small, closed, and complete — and a test pins the constants against git history, because
+getting one byte wrong would make the detector silently find nothing in every repo forever, which is
+the quietest possible failure and this branch's subject exactly.
+
+- **Verified end-to-end against a real legacy repo, not a fixture.** Materialised a repo from the
+  pre-fix template revision: `_norms_exist` → `True` and the sweep advisory fires; after the repair,
+  `_norms_exist` → `False` and it goes quiet. That is the chunk's whole reason for existing,
+  measured rather than argued.
+- **A test caught the repair silently re-line-ending a product's file.** The first cut read with
+  universal newlines, so a CRLF file came back as `\n`-only and the delete-only guarantee held
+  line-by-line while every line's ending was rewritten. Reading with `newline=""` fixes it; the
+  guard is red-verified by reverting it. This is the same concern Chunk 03's `newline=""` opt-out
+  exists for, arriving in the one place that writes an authored file.
+- **`unreadable` is its own status, degraded-because-ungraded.** A check that could not run is
+  otherwise indistinguishable from one that ran and found nothing — the failure mode the whole scope
+  is named after.
+- **The skill's `allowed-tools` had to list the new command.** A health check whose command the
+  skill may not invoke is a check that reports nothing, which would have reproduced the defect in
+  the surface built to fix it.
+
+Closes #570.
+
 ## 2026-08-03: one definition of a norm entry, and the test that refused to be weakened
 
 <!-- prawduct: type=fix | scope=silent-gates | chunks=05 -->

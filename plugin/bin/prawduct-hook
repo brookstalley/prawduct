@@ -4466,6 +4466,63 @@ def cmd_learnings_obligation(project_dir: Path, argv: list[str]) -> int:
     return 1 if status == learnings_obligation.STATUS_UNREADABLE else 0
 
 
+def cmd_norm_index_scaffold(project_dir: Path, argv: list[str]) -> int:
+    """Detect — and on ``--apply`` remove — leftover template scaffold rows (#570).
+
+    `#567` stopped the norm-index table shipping illustrative rows, but
+    `init_product`/`core.write_template` skip existing destinations, so the fix
+    reaches new onboards only. Every already-onboarded repo keeps rows whose
+    `Audit home`/`Why` cells are non-empty placeholders, reads as having a
+    ratified registry, and gets nudged about a Norm Health sweep it owes nothing
+    to. This is the doctor health check that detects it and the repair that
+    closes it, on the Health-Check-#13 pattern.
+
+    Exit codes follow ``artifacts/api-contract.md`` § Error Model. **Dry run is
+    an advisory report:** 0 when it ran — a finding is not a failure — and 1 only
+    when it could not run. **``--apply`` is a state-mutating writer:** 0 when it
+    removed rows or was an idempotent no-op, 1 when it refused. Unknown flags 2.
+    """
+    rejected = _reject_unknown_args("norm-index-scaffold", argv, {"--apply", "--json"})
+    if rejected is not None:
+        return rejected
+    apply = "--apply" in argv
+    as_json = "--json" in argv
+
+    lib_root = _plugin_root()
+    if lib_root not in sys.path:
+        sys.path.insert(0, lib_root)
+    try:
+        from lib import norm_index_scaffold  # noqa: PLC0415 — lazy keeps top-level cheap
+    except ImportError as exc:
+        print(
+            f"error: norm-index-scaffold could not import the plugin lib/ ({exc})",
+            file=sys.stderr,
+        )
+        return 1
+
+    result = norm_index_scaffold.repair(project_dir, apply=apply)
+    status = result["status"]
+
+    if as_json:
+        print(json.dumps(result, indent=2))
+    else:
+        # Labelled from the MODE asked for, not from whether a write happened —
+        # `--apply` on an `ok` repo writes nothing, and calling that "dry-run"
+        # invites the reader to conclude they forgot the flag.
+        print(f"norm-index-scaffold ({'apply' if apply else 'dry-run'}): {status}")
+        print(f"  {result['detail']}")
+        if status == norm_index_scaffold.STATUS_LEFTOVER and not result["applied"]:
+            # The informed confirmation: name the file and the exact rows, so
+            # `--apply` is a yes to something the owner has actually read.
+            print(f"  Would delete from {result['path']} (--apply to write):")
+            for line_no in result["rows"]:
+                print(f"    line {line_no}")
+
+    if apply:
+        return 0 if result["applied"] or status == norm_index_scaffold.STATUS_OK else 1
+    return 1 if status == norm_index_scaffold.STATUS_UNREADABLE else 0
+
+
 def cmd_audit_learnings(project_dir: Path, argv: list[str]) -> int:
     """Audit the consumer's ``.prawduct/learnings.md`` lifecycle (F9).
 
@@ -4646,6 +4703,7 @@ _USAGE = (
     "migrate-plugin [--apply] [--json]|init-product <target> --name <name> [--backlog-repo owner/repo] [--apply] [--json]|"
     "update-gitignore|"
     "audit-learnings [--apply] [--json]|learnings-obligation [--apply] [--json]|"
+    "norm-index-scaffold [--apply] [--json]|"
     "repo-disable [--local] [--apply] [--json]}"
 )
 
@@ -5126,6 +5184,8 @@ def main() -> int:
         return cmd_update_gitignore(project_dir)
     elif command == "audit-learnings":
         return cmd_audit_learnings(project_dir, sys.argv[2:])
+    elif command == "norm-index-scaffold":
+        return cmd_norm_index_scaffold(project_dir, sys.argv[2:])
     elif command == "learnings-obligation":
         return cmd_learnings_obligation(project_dir, sys.argv[2:])
     elif command == "repo-disable":
