@@ -687,6 +687,24 @@ class TestNormHealthSweepOverdueProbe:
         assert np._norms_exist(_cb(tmp_path)) is False
         assert np.probe_norm_health_sweep_overdue(ProjectState({}), _cb(tmp_path)) == []
 
+    def test_the_advisory_names_the_repair_route_not_only_the_sweep(self, tmp_path):
+        """The pointer to Health Check #14 must live where a surface renders it.
+
+        It was first set on `alternative_actions`, which briefing, `advisory
+        list` and `advisory show` all ignore — so the fix was inert while
+        looking complete. `trigger_summary` is rendered AND is not hashed into
+        `compute_id`, so it is the one field that can carry this without
+        resurrecting the advisory in every repo that dismissed it. Without this
+        test a reword silently deletes the only rendered pointer to the repair.
+        """
+        _write_artifact(tmp_path, "architecture.md", _direction_artifact("- **X.**\n  Why: because.\n"))
+        out = np.probe_norm_health_sweep_overdue(ProjectState({}), _cb(tmp_path))
+        assert len(out) == 1
+        assert "norm-index-scaffold" in out[0].trigger_summary, (
+            "a repo whose rows are leftover template scaffold owes no sweep — "
+            "the summary must offer the repair, not only the audit"
+        )
+
     def test_window_boundary_is_inclusive(self, tmp_path):
         # age == SWEEP_WINDOW_DAYS is still "fresh" (the guard is `<=`); one day past fires.
         _write_artifact(tmp_path, "architecture.md", _direction_artifact("- **X.**\n  Why: because.\n"))

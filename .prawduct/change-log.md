@@ -290,7 +290,11 @@ now go through one `_norm_index_header` locator, pinned by a two-table test.
   Recorded here as well as in the plan deliberately: the plan is deleted at release, and an owner
   ruling that survives only in a deleted file is a decision nobody can later show was taken. The
   residual risk it carried — already-onboarded repos seeing the advisory *spuriously* — is what
-  `#570` closes, in Chunk 06 of this same plan.
+  `#570` makes **closable**, in Chunk 06 of this same plan. Not closed: the repair is offered, never
+  applied unasked, so a legacy repo keeps seeing it until an owner runs doctor Health Check #14.
+  (Corrected here as well as in the plan, since this bullet exists precisely because the plan is
+  deleted at release — leaving the overstatement in the durable copy would have been the same defect
+  the bullet is about.)
 - **The reader fix is pinned two ways, and the pin is the durable part.** A locale-forced
   `_write_queue` → `_load_queue` round trip carrying an em-dash, plus a receiver-qualified source pin
   asserting both `read_text(encoding="utf-8")` call sites. The behavioural test cannot see a reader

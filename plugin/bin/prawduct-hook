@@ -4520,10 +4520,10 @@ def cmd_norm_index_scaffold(project_dir: Path, argv: list[str]) -> int:
 
     if apply:
         return 0 if result["applied"] or status == norm_index_scaffold.STATUS_OK else 1
-    return 1 if status in (
-        norm_index_scaffold.STATUS_UNREADABLE,
-        norm_index_scaffold.STATUS_UNWRITABLE,
-    ) else 0
+    # Dry run cannot produce UNWRITABLE — `repair(apply=False)` returns before
+    # the write — so listing it here would be unreachable code implying a state
+    # this path can reach.
+    return 1 if status == norm_index_scaffold.STATUS_UNREADABLE else 0
 
 
 def cmd_audit_learnings(project_dir: Path, argv: list[str]) -> int:

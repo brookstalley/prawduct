@@ -330,6 +330,32 @@ class TestCommand:
         )
         assert nis.STATUS_UNREADABLE in result.stdout
 
+    def test_apply_that_cannot_write_exits_one(self, tmp_path):
+        """`--apply` is a state-mutating writer: refused means exit 1.
+
+        R-1 asked for both exit-code mappings and this half was skipped — the
+        same "ported the precedent's code, not its cases" gap the round was
+        about. Made unwritable by taking the directory's write permission,
+        which is the real shape of the failure rather than a monkeypatch.
+        """
+        import os
+        import stat
+
+        d = tmp_path / ".prawduct" / "artifacts"
+        path = _write_prefs(tmp_path, _HEADER + _ROW_ORDINARY + "\n")
+        before = path.read_bytes()
+        mode = d.stat().st_mode
+        os.chmod(d, stat.S_IRUSR | stat.S_IXUSR)  # r-x: cannot create the tmp sibling
+        try:
+            result = _run(tmp_path, "--apply", "--json")
+        finally:
+            os.chmod(d, mode)
+        assert result.returncode == 1, (
+            "a write that did not happen must not report success"
+        )
+        assert nis.STATUS_UNWRITABLE in result.stdout
+        assert path.read_bytes() == before, "and it must have changed nothing"
+
     def test_unknown_flag_is_a_usage_error(self, tmp_path):
         _write_prefs(tmp_path, _HEADER)
         result = _run(tmp_path, "--delete-everything")
