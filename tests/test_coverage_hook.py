@@ -274,57 +274,91 @@ class TestReportAgreesWithTheNudge:
         predicate reaches.
         """
         _write_state(tmp_path, _ALL_NULL)
-        broken = tmp_path.parent / "_broken_lib"
-        broken.mkdir(exist_ok=True)
-        # A sitecustomize that lets `lib.coverage_probes` import normally and then
-        # breaks the one call the report makes. Poisoning `lib.gitstate` outright
-        # would not reach this branch — the hook resolves its project dir through
-        # gitstate before dispatching, so the crash would land upstream of the code
-        # under test, which is its own lesson about fixtures that never arrive.
-        (broken / "sitecustomize.py").write_text(
-            "import importlib, importlib.abc, importlib.util, sys\n"
-            "TARGET = 'lib.coverage_probes'\n"
-            "class _Wrap(importlib.abc.MetaPathFinder, importlib.abc.Loader):\n"
-            "    busy = False\n"
-            "    def find_spec(self, name, path=None, target=None):\n"
-            "        if name != TARGET or _Wrap.busy:\n"
-            "            return None\n"
-            "        return importlib.util.spec_from_loader(name, self)\n"
-            "    def create_module(self, spec):\n"
-            "        _Wrap.busy = True\n"
-            "        try:\n"
-            "            mod = importlib.import_module(TARGET)\n"
-            "        finally:\n"
-            "            _Wrap.busy = False\n"
-            "        def _boom(*a, **k):\n"
-            "            raise RuntimeError('staging predicate is broken')\n"
-            "        mod.layer_status = _boom\n"
-            "        return mod\n"
-            "    def exec_module(self, module):\n"
-            "        pass\n"
-            "sys.meta_path.insert(0, _Wrap())\n",
-            encoding="utf-8",
-        )
-        home = tmp_path.parent / "_home"
-        home.mkdir(exist_ok=True)
-        result = subprocess.run(
-            ["python3", str(HOOK), "coverage-status"],
-            capture_output=True, text=True, timeout=30,
-            env={
-                "HOME": str(home),
-                "CLAUDE_PLUGIN_ROOT": str(ROOT),
-                "CLAUDE_PROJECT_DIR": str(tmp_path),
-                "PATH": "/usr/bin:/bin:/usr/sbin:/sbin",
-                "PYTHONPATH": str(broken),
-                "PYTHONDONTWRITEBYTECODE": "1",
-            },
-        )
+        result = _run_with_broken_staging(tmp_path)
         assert result.returncode == 0, result.stderr
         assert "Traceback" not in result.stderr
         assert "unknown (staging check unavailable)" in result.stdout
         assert "layers 0-1 could not be checked" in result.stdout
         # And it must not silently claim a clean chain while unable to check it.
         assert "the coverage chain is satisfied" not in result.stdout
+
+    def test_layer_2_names_itself_as_unreliable_when_layers_0_1_could_not_be_checked(
+        self, tmp_path
+    ):
+        """The mirror of the case above, and the one that needed a second look.
+
+        With the staging check broken AND the norm registry unratified, layer 2 is
+        the only layer that *can* be graded — so the report names it as the active
+        nudge. But layer 2 sits DOWNSTREAM of two layers nothing evaluated, and
+        "here is your fix" for a chain position no one checked is the same
+        overclaim `#241` was filed for. The caveat is the refusal; this fixture is
+        what makes deleting it go red, because the sibling assertion above passes
+        on both branches.
+        """
+        _write_state(tmp_path, _ALL_NULL)
+        _write_product_work(tmp_path)
+        # A strategy-class artifact with no `## Direction` — exists, unratified.
+        _write_artifact(tmp_path, "security-model.md", "# Security Model\n\nProse.\n")
+
+        result = _run_with_broken_staging(tmp_path)
+        assert result.returncode == 0, result.stderr
+        assert "Traceback" not in result.stderr
+        assert "Active nudge → Layer 2" in result.stdout
+        assert "layers 0-1 could not be checked" in result.stdout
+        assert "may not be the first thing owed" in result.stdout
+
+
+def _run_with_broken_staging(tmp_path: Path) -> subprocess.CompletedProcess:
+    """Run `coverage-status` with `coverage_probes.layer_status` raising.
+
+    Shared by the two staging-unavailable cases so they exercise the SAME
+    failure, not two hand-rolled approximations of it.
+    """
+    broken = tmp_path.parent / "_broken_lib"
+    broken.mkdir(exist_ok=True)
+    # A sitecustomize that lets `lib.coverage_probes` import normally and then
+    # breaks the one call the report makes. Poisoning `lib.gitstate` outright
+    # would not reach this branch — the hook resolves its project dir through
+    # gitstate before dispatching, so the crash would land upstream of the code
+    # under test, which is its own lesson about fixtures that never arrive.
+    (broken / "sitecustomize.py").write_text(
+        "import importlib, importlib.abc, importlib.util, sys\n"
+        "TARGET = 'lib.coverage_probes'\n"
+        "class _Wrap(importlib.abc.MetaPathFinder, importlib.abc.Loader):\n"
+        "    busy = False\n"
+        "    def find_spec(self, name, path=None, target=None):\n"
+        "        if name != TARGET or _Wrap.busy:\n"
+        "            return None\n"
+        "        return importlib.util.spec_from_loader(name, self)\n"
+        "    def create_module(self, spec):\n"
+        "        _Wrap.busy = True\n"
+        "        try:\n"
+        "            mod = importlib.import_module(TARGET)\n"
+        "        finally:\n"
+        "            _Wrap.busy = False\n"
+        "        def _boom(*a, **k):\n"
+        "            raise RuntimeError('staging predicate is broken')\n"
+        "        mod.layer_status = _boom\n"
+        "        return mod\n"
+        "    def exec_module(self, module):\n"
+        "        pass\n"
+        "sys.meta_path.insert(0, _Wrap())\n",
+        encoding="utf-8",
+    )
+    home = tmp_path.parent / "_home"
+    home.mkdir(exist_ok=True)
+    return subprocess.run(
+        ["python3", str(HOOK), "coverage-status"],
+        capture_output=True, text=True, timeout=30,
+        env={
+            "HOME": str(home),
+            "CLAUDE_PLUGIN_ROOT": str(ROOT),
+            "CLAUDE_PROJECT_DIR": str(tmp_path),
+            "PATH": "/usr/bin:/bin:/usr/sbin:/sbin",
+            "PYTHONPATH": str(broken),
+            "PYTHONDONTWRITEBYTECODE": "1",
+        },
+    )
 
 
 # ---------------------------------------------------------------------------

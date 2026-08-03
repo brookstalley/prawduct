@@ -216,6 +216,18 @@ by opposite methods, and `#348` and `#561` are the same concern found twice, mon
 accident (R-11) — and `api-contract.md` now names `learnings-obligation --json` as **unconsumed on
 purpose** rather than asserting a doctor binding that does not exist (R-13).
 
+**The verify round then caught the fix for R-10 committing the defect it was fixing.** All seven
+warnings verified resolved, and one new warning: the layer-2 caveat was *added behaviour no test
+exercised*. The only test on the staging-unavailable path built a repo where `norms_unratified` was
+false, so control landed on the pre-existing branch and the assertion was a substring both branches
+satisfy — delete the new caveat and the suite stays green, restoring the exact overclaim R-10 named.
+A guard that cannot go red is this batch's subject wearing a fix as a disguise, so it was closed
+rather than accepted: the sitecustomize harness is now a shared helper (both cases exercise the same
+failure rather than two hand-rolled approximations), a second fixture writes an unratified strategy
+artifact so layer 2 is the only gradeable layer, and the redundant `active_layer is not None`
+conjunct — which the reviewer noted *invited* the deleting edit — is gone. Red-verified by deleting
+the branch.
+
 **Two of the remaining four are corrections that reached one home out of three** — the shape this
 whole batch exists to burn down, twice in the pass that fixed it. "Layers 0↔1 are exact
 complements" was corrected in `docs/norms.md` and left standing in `skills/doctor/SKILL.md` and in
