@@ -57,6 +57,32 @@ base_branch: develop
 # Stdlib-only repo: the hook's python3 IS the project environment.
 test_command: python3 -m pytest tests/ --junit-xml={junit_xml} -q
 
+# Files carrying the release version, read by `check-released` FROM THE TAG'S
+# TREE — which files carried a release's version is a fact about that release,
+# not about the checkout you happen to be standing in. Declaring them is what
+# lets a disagreement be a FAILURE: undeclared, `check-released` falls back to
+# guessing this same layout, and a guess about someone else's product may only
+# reach `ok` or `unverifiable` (see `lib/release_verification.py`).
+#
+# Prawduct declares its own three because it is a product like any other, and
+# because the check would otherwise never exercise its declared path here.
+# Releases tagged before this key existed carry no declaration in their trees
+# and keep grading through the fallback — correctly, and without a false red.
+#
+# `format` names a structural shape, never a language; `key` is descended
+# literally, so nothing infers which table of a manifest wins. Reading `toml`
+# delegates to stdlib `tomllib` (3.11+); on the 3.10 floor that one entry
+# reports `unverifiable` while the other two still verify.
+release_version_files:
+  - path: plugin/VERSION
+    format: bare
+  - path: plugin/.claude-plugin/plugin.json
+    format: json
+    key: version
+  - path: pyproject.toml
+    format: toml
+    key: project.version
+
 # =============================================================================
 # CLASSIFICATION — structural characteristics (methodology/discovery.md)
 # =============================================================================
@@ -400,6 +426,25 @@ views_enabled: true
 # plans are RETAINED on disk: they are release-pending under gitflow and the
 # develop->main promotion regenerates the Status of every scope-tagged plan.
 # Nothing is in flight to orphan. Next work sets this via /prawduct:backlog pick.
+# Set 2026-08-04 on branch fix/release-verification-false-reds, the first set
+# since the slot was cleared at the review-loop-carriers merge. Same discipline
+# as every line above: this branch builds the plan named here, review-loop-carriers
+# merged to develop before it started, and nothing is orphaned by the move. The
+# CLEARED note above records the state this replaces — it is history now, not the
+# current reading.
+#
+# CLEARED 2026-08-04 in the release-verification-false-reds PR, at that plan's
+# completion rather than at the next merge conflict. Both its chunks are built
+# and reviewed, so carrying the pointer into develop would land precisely the
+# dormant-pointer state all three incidents above record — a finished plan that
+# record-lint, the stop-hook gate, regen-views and Critic mode inference each
+# report confidently about. The plan file itself is **RETAINED**: it is
+# release-pending under gitflow, and the develop->main promotion regenerates the
+# Status of every scope-tagged plan. Clearing the slot costs that nothing,
+# because this plan carries `scope: release-verification-false-reds` and the
+# gates resolve it by scope — which is the property the line above names as
+# what made the cleared state survivable last time. Next work sets this via
+# /prawduct:backlog pick.
 active_build_plan:
 
 # =============================================================================

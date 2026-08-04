@@ -3,6 +3,112 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-08-04: the product declares which files carry its version — and where in them
+
+<!-- prawduct: type=fix | scope=release-verification-false-reds | chunks=02 -->
+
+Closes the remaining two false reds in `check-released` (#576, #580) with one mechanism, and
+retires the surface `architecture.md`'s LNG-5W8R names in its retroactivity list.
+
+`_VERSION_FILES` was prawduct's own layout applied to every governed product. A product using
+setuptools-scm, or carrying a tooling-only `pyproject.toml`, was graded against a layout it never
+claimed and told `not-released`. Products now declare `release_version_files:` — path, format,
+and the **key path** where the version lives.
+
+**The posture splits on provenance, and that split is the requirement.** A *declared* file that is
+absent, or present without the declared key, is a real defect and reaches `failed` — the product
+said it ships that file. Undeclared, the built-in tuple is a **guess**, so it may only reach `ok`
+or `unverifiable`, never `failed`. Without the asymmetry declaration is cosmetic and the guess
+keeps failing products for someone else's layout. A disagreement found through the guess is still
+reported in full, with the one edit that would make it a failure named.
+
+**The declaration is read from the tag's tree**, not the checkout — the rule this module already
+states for the version files themselves, applied to the statement about them. Which files carried
+a release's version is a fact about that release. So reorganising a layout cannot retroactively
+fail an old release, and a release cut before the key existed grades through the fallback, which
+by construction cannot produce a false red.
+
+**#580 is closed by declaration, not by a better parser.** `_version_from` scanned for the first
+line-level `version =` and the comment called the ordering a guarantee; TOML makes no such promise,
+and the measured repro is the reverse ordering — `[tool.myplugin] version = "9.9.9"` above
+`[project]` returned 9.9.9. With `key: project.version` the product names the authoritative table
+and both orderings now return the same answer.
+
+Reading TOML **delegates to stdlib `tomllib`** rather than hand-rolling, which is LNG-5W8R's own
+interim rule ("new gate code delegates first") — so the repair *deletes* the parser that norm
+names instead of teaching it about tables. `tomllib` is 3.11+ and `requires-python` is `>=3.10`;
+on that floor a `toml` entry reports `unverifiable`, never `failed`, because an interpreter's
+stdlib is not evidence about a release. `[DECISION: delegate TOML reading to tomllib and degrade
+on 3.10, rather than grow the hand-rolled reader to honour a key path | honouring a declared key
+path requires tracking table headers, which is broader parsing and the exact ratchet LNG-5W8R
+exists to prevent; delegation discharges the retroactivity entry instead of deepening it, and the
+3.10 cost is an honest unverifiable on one of three files | user chose this over the
+section-aware hand-rolled reader, 2026-08-04]`
+
+**A test asserted the defect as a contract.** `test_toml_takes_the_first_assignment` pinned
+`[project]` above `[tool.other]` and its docstring called the ordering a guarantee. Correcting it
+is not weakening it — the assertion was true only of the example it chose; both orderings are now
+exercised, and the answer no longer depends on order at all.
+
+Three new guards initially could not fail for the regression they named, and were rebuilt before
+commit: a non-mapping descent test that only passed a top-level list (which the membership test
+survives without the `isinstance` guard), a block-terminator test whose trailing items were
+discarded anyway, and a `[]` early-return that could not change an answer by any route — deleted
+rather than left as a guard that only looked like one. Writing the missing multi-finding test also
+caught the soft-failure detail calling files "did agree" while they had just disagreed.
+
+**The verify pass returned one blocking finding, and it was the useful kind.** A test asserting
+the fallback's reason-split was built on `pyproject.toml` and would have gone red on the 3.10 CI
+leg, where that entry is `blocked` and the check never reaches the OK detail the test greps. It
+was that fix's only test, so on the floor leg the repair went from covered to red. Rebuilt on a
+`json` file, since the split has nothing to do with TOML.
+
+Simulating the missing loader across the whole file then showed the reviewer had caught **one of
+five**: every fixture built from `_make_repo` carries a toml entry, so four pre-existing
+happy-path tests asserted a full three-file verification that is only true on 3.11+. Those now
+declare the dependency, and a companion pins what the floor leg actually sees — degraded, never
+failed, with the two readable files still verified. That is the cost of the delegation decision
+made visible in the suite rather than discovered by CI.
+
+Also fixed from the same review round, found while verifying the filed follow-up rather than
+transcribing it: `_read_declaration` treated a full-line comment at column 0 as the end of the
+block, silently dropping every entry below it — a product annotating its declaration would lose a
+version file and the check would report `ok` over the survivors. Backlog #590 tracks reconciling
+all four of this repo's minimal-YAML readers, two of which truncate this way and two of which do
+not; #591 tracks the title-normalizer bug that filing #590 tripped.
+
+## 2026-08-04: a check that could not ask does not answer
+
+<!-- prawduct: type=fix | scope=release-verification-false-reds | chunks=01 -->
+
+`prawduct-hook check-released` ships as a new capability in v3.2.4, and three paths made it
+state a confident `not-released` about a release it never assessed. This closes the first.
+
+`git rev-parse <tag>^{commit}` exits **128** for two unrelated states — the tag is absent, and
+this is not a git repository — and `check_tag_on_main` read every non-zero as the first.
+Measured: running it from any non-repo directory printed `ERROR: tag-on-main: tag v3.2.4 does
+not resolve to a commit`, verdict `not-released`, exit 1. A finding about a release, from an
+environment that could not look at one. The module's own docstrings say twice that a false red
+is worse than no check, because it is the reading that teaches people to ignore the check.
+
+`_outside_repo_reason` now asks *why* the directory cannot answer, and only after a non-zero
+has already occurred, so the happy path costs nothing. **Three outcomes, not two** — "git is not
+installed" and "not a git repository" reach the same verdict but are not the same diagnosis, and
+an operator told the wrong one goes looking in the wrong place.
+
+Fixed one level down in the same spirit: `check_version_files` reached the right verdict by
+accident and named the wrong cause. Outside a repository every `git show` fails per-file exactly
+as an absent path does, so all three files "skipped" and the branch reported *"a different
+product layout"* — sending a product owner to inspect a layout that is fine. Advice failing soft
+is not advice failing silent.
+
+**#580 is deliberately not fixed here.** The first draft made the TOML branch table-aware;
+`architecture.md`'s in-transition LNG-5W8R norm forbids exactly that ("no gate acquires a
+language-specific parser") and names this file in its retroactivity list, with the remedy
+owner-ruled as *product declaration rather than broader parsing*. It moves to Chunk 02 and is
+closed by the same declaration that closes #576. Surfaced by `/prawduct:learnings` at plan time,
+before any code was written — which is where a norm is supposed to bite.
+
 ## 2026-08-04: a count nothing reads is not worth writing — or correcting
 
 <!-- prawduct: type=fix | scope=review-loop-carriers | chunks=03 -->

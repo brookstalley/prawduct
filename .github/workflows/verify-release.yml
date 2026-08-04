@@ -72,6 +72,12 @@ jobs:
         # consumer invokes it. Pinning an interpreter here would test a nicer
         # environment than the one that matters.
         #
+        # One check does depend on that interpreter: a `toml` entry in
+        # `release_version_files:` is read through stdlib `tomllib` (3.11+), and
+        # below that it reports *unverifiable* — exit 3, a red build. The runner
+        # image is well above the floor, so this is a note for whoever debugs a
+        # future 3, not a live hazard.
+        #
         # The repo-local hook, not a PATH-resolved one: `prawduct-hook` on PATH is
         # whatever plugin copy is installed, which is a different tree from the one
         # under test.
