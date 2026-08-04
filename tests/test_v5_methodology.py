@@ -732,7 +732,7 @@ class TestCriticSkill:
         # dispatched reviewer loads anyway. 9 tokens of headroom remain.
         #
         # 3611 -> 3612 (2026-08-04) -- the reviewer must relay consolidate's
-        # `NEXT:` line, the only carrier of the loop-termination rule with a
+        # `NEXT-ACTION:` line, the only carrier of the loop-termination rule
         # reader in the BUILDER role. Paid in full by the fourth application of
         # this comment's own first rule: the `resolutions` schema arm was
         # restated here for a mode that does not read this file, and where

@@ -1157,17 +1157,32 @@ def check_cumulative_critic(project_dir: Path) -> int:
             f"NOTE: coverage composes all the way to review {churn['fact_id']} "
             f"(taken on this branch, after the merge-base, 0 unresolved BLOCKING), "
             f"and every judgeable change since it is in a file that review's OWN "
-            f"findings named ({shown}). So the whole of this gap is your fix churn, "
-            f"not unreviewed work — the {churn['warning']} warning + {churn['note']} "
-            f"note finding(s) you were closing gated nothing, and no gate required "
-            f"those commits. ONE `/prawduct:critic verify-resolutions` closes it; fix "
-            f"nothing further first, or you will re-open it. For anything still "
-            f"undecided, `prawduct-hook disposition {churn['fact_id']} <fid> --accept "
-            f"\"<reason>\"` records a won't-fix, moves no tree, and needs no review.",
+            f"findings named ({shown}). That is FILE-level evidence for fix churn: "
+            f"it rules out work in a file that review never saw, not new work "
+            f"written into one it named. If those commits were only the fixes you "
+            f"were closing, they were optional — the {churn['warning']} warning + "
+            f"{churn['note']} note "
+            f"finding(s) gated nothing. ONE `/prawduct:critic verify-resolutions` "
+            f"closes it; fix nothing further first, or you will re-open it. For "
+            f"anything still undecided, `prawduct-hook disposition "
+            f"{churn['fact_id']} <fid> --accept \"<reason>\"` records a won't-fix, "
+            f"moves no tree, and needs no review.",
             file=sys.stderr,
         )
+    # The generic routes stay available but stop being the LAST imperative when
+    # the churn NOTE fired: an agent reading a stderr block commonly acts on the
+    # final instruction, and unqualified that is the 4-10 minute round this
+    # control exists to displace. The sibling stale-base NOTE solves the same
+    # problem with the same instrument — qualifying its own advice rather than
+    # suppressing the block, so no remedy is lost when the diagnosis is wrong.
+    lead = (
+        "If that diagnosis does not fit — you bundled new work into those commits, "
+        "or the gap is something else — the general routes are: run "
+        if churn is not None and churn.get("status") == "churn"
+        else "Run "
+    )
     print(
-        "Run /prawduct:critic cumulative — it reviews the whole span and records "
+        lead + "/prawduct:critic cumulative — it reviews the whole span and records "
         "the fact composition needs. If a pre-commit review was followed by a "
         "selective commit (only part of the reviewed state committed), the "
         "commit's tree was never reviewed — /prawduct:critic verify-resolutions "

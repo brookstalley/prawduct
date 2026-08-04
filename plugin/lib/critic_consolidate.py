@@ -320,7 +320,7 @@ def next_action_line(fact_id: "str | None", blocking: int, warning: int, note: i
         " ONLY if that commit touched judgeable files. A batch confined to"
         " `.prawduct/` prose, `.claude/settings.json`, or `.md` outside `skills/`,"
         " `methodology/`, `templates/` and a root `CLAUDE.md` moves no coverage and"
-        " needs no pass at all — which on framework work is the common case."
+        " needs no pass at all."
         " Do NOT start another round to 'close coverage' before committing, and do"
         " not infer that you need one from gate output printed before your fix —"
         " commit, then re-run the gate and let it answer."
@@ -400,22 +400,18 @@ RESOLUTION_IS_A_CLAIM_DIRECTIVE = (
 #: rounds on one consumer branch (CRT-3W6P), where rounds five onward were
 #: entirely non-gating findings the previous round's fixing had created.
 #:
-#: **Why narrowing here loses nothing that gated.**
-#: ``coverage_algebra.unresolved_blocking`` is the only severity any gate reads;
-#: WARNING and NOTE are advisory at the Stop gate and at the PR gate alike.
+#: **The argument for the narrowing is NOT restated here.** It lives in
+#: ``skills/critic/review-cycle.md`` § "A re-review does not manufacture work" —
+#: why this mode and not the others, what it does not cost (only
+#: ``unresolved_blocking`` is read by any gate), what it does cost (an
+#: observation is not a recorded fact), the escalation history, and the
+#: half-emitted yield. Both audiences are maintainers and both copies were
+#: full-length, which is the shape ``architecture.md``'s one-home norm names: on
+#: the next change to the argument — #585 landing makes "yield is half-emitted"
+#: false — the loser is whichever reader met the stale copy.
 #:
-#: **The five-class carve-out is a RATING, not a citation — and saying otherwise
-#: was false.** An earlier draft claimed the five "are already BLOCKING-rated in
-#: ``goals-1-3.md``". Two are not. Security is mixed there: injection, secrets
-#: and exploitable input validation block, but *auth/authz on new endpoints* and
-#: *known-vulnerable dependencies* are **WARNING** — so the same reviewer was
-#: told both "rate these as you would in any mode" (⇒ WARNING) and "BLOCKING or
-#: not a finding" (⇒ demote to prose). And fix-by-fudging is not rated in
-#: ``goals-1-3.md`` at all; its workaround leg was rated only in
-#: ``review-cycle.md``, which a `verify-resolutions` reviewer is forbidden to
-#: open — leaving the rating to exist solely inside the directive vouching for
-#: it, which is circular. So this text now *escalates* those cases explicitly
-#: for this mode and says so, rather than claiming a rating that is not there.
+#: What stays here is what an editor of THIS STRING needs and that section does
+#: not own:
 #:
 #: **The demotion binds on severity, not on class membership.** The list ADDS to
 #: what the protocol blocks and never narrows it. Stating it the other way round
@@ -425,30 +421,19 @@ RESOLUTION_IS_A_CLAIM_DIRECTIVE = (
 #: contract breaks, unlisted dependencies, norm departures. On the carrier the
 #: reviewer reads last before rating, that reading is the expensive one.
 #:
-#: **The cost, stated rather than hidden.** A demoted observation is not a
-#: recorded fact, so it cannot be `disposition`ed and a later reader of the
-#: store will not find it. What bounds it is narrower than it first looks, and
-#: the weaker reading is the honest one: `verify-resolutions` is never a first
-#: review (``critic-begin`` demotes when no usable prior fact exists), so the
-#: tree *beneath* the fix was fully reviewed — but the fix delta's own content
-#: was not, and post-cumulative fixes route here too. The real bound is that the
-#: builder still reads the observations in the fork's report, which is why this
-#: text names a structural destination (`### Observations`) rather than "in
-#: prose": ``goals-1-3.md``'s report contract enumerates findings and a summary
-#: with no slot for anything else, and its clean-pass line says "No issues
-#: found" — so a pass that demoted three observations was instructed to report
-#: silence, defeating the very bound the design rests on.
+#: **Two of the five classes are an ESCALATION and this text must keep saying
+#: so.** ``goals-1-3.md`` rates *auth/authz on new endpoints* and
+#: *known-vulnerable dependencies* WARNING and does not rate fix-by-fudging at
+#: all, so for this mode the rating exists nowhere but here — dropping the
+#: wording demotes those classes by silence, and claiming they are "already
+#: BLOCKING-rated" (an earlier draft did) is circular as well as false.
+#: ``test_the_escalated_carve_out_classes_are_named_as_escalations`` pins both
+#: halves, per clause rather than per line.
 #:
-#: **Yield is only half-emitted, deliberately.** The reviewer is told to state a
-#: demotion count, so the number reaches the builder. It does NOT reach the
-#: evidence store: ``build_fact_body`` carries `findings`/`counts` and drops the
-#: reviewer's prose, so verify-mode W/N will read zero post-release — true by
-#: construction and therefore evidence of nothing. Under-firing stays detectable
-#: via ``review-stats``; over-firing does not. `nonfunctional-requirements.md`'s
-#: observable-yield Direction binds here, and a structured field on the fact
-#: body is the fix — deferred deliberately rather than improvised into a fix
-#: batch, because a persisted format is lock-in and self-reported counts have a
-#: design question of their own (backlog, filed from this review).
+#: **The structural destination is part of the string, not decoration.**
+#: ``goals-1-3.md``'s report contract enumerates findings and a summary with no
+#: slot for anything else, so "in prose" was not enough — the text names an
+#: `### Observations` heading and asks for a count, and both are pinned.
 #:
 #: **The descent is load-bearing, for the reason
 #: :data:`RESOLUTION_IS_A_CLAIM_DIRECTIVE`'s docstring gives at length.** A

@@ -7,7 +7,8 @@ governed_by:
   - artifact: nonfunctional-requirements
     dispositions:
       - "Review wall-clock is a P0 constraint; reviewer payload is a lever → conforms, and this plan is the lever pulled. Every carrier added is paid for: the gate line and the severity narrowing are ~17-35 words of prose each, with the worked instances in code that costs the reviewer nothing until dispatch. Neither protocol ceiling was raised; both additions were funded by trims the files' own budget comments designate."
-      - "State-file growth past its size threshold is an advisory that prompts compaction, never a hard block → inapplicable, because the norm's subject is accumulated `.prawduct/` STATE (learnings.md, the ledger), and this plan touches none of it. Worth stating precisely rather than skipping, because Chunk 03 does trim three files against ceilings that DO fail a test: `building.md`, `review-protocol.md` and `goals-1-3.md` are shipped reviewer payload, not state. Payload is paid for on every review and is authored, so a ceiling is affordable and a bump is a decision; state accumulates as a by-product of working, where a hard block would stop the work that produced it. Different objects, opposite correct answers."
+      - "State-file growth past its size threshold is an advisory that prompts compaction, never a hard block → CONFORMS; recorded as inapplicable on first writing, and that premise was wrong. The plan does touch a state file: `fact_to_cache_record` now carries `next_action`, and `ledger_append` copies that record verbatim into each `review.critic` event, so every ledger line grows by the string — on an append-only file pruned by hand. The disposition survives on the norm's actual obligation rather than on non-applicability: the norm forbids a HARD BLOCK on size, and nothing here adds one; growth is surfaced advisorily as before. Corrected rather than quietly re-worded, because the original reasoning would have licensed the next writer to skip the question entirely. Worth stating precisely either way, because Chunk 03 does trim three files against ceilings that DO fail a test: `building.md`, `review-protocol.md` and `goals-1-3.md` are shipped reviewer payload, not state. Payload is paid for on every review and is authored, so a ceiling is affordable and a bump is a decision; state accumulates as a by-product of working, where a hard block would stop the work that produced it. Different objects, opposite correct answers."
+      - "Adding a control names the yield it expects AND emits that yield observably → **Chunk 01's `diagnose_fix_churn` is a second DEPARTURE**, and its absence from this disposition was itself the gap: the norm is retroactive to controls added from 2026-07-29, so a control this plan introduced went ungraded while its siblings were graded. The advisory fires into `check_cumulative_critic`'s stderr and lands in no store, so post-release nobody can say whether it fired, how often, or wrongly — the same unobservable-over-firing shape as Chunk 02, and it cannot be retired or defended on evidence. Not mitigated in-scope: unlike the demotion count, there is no builder-facing number to ask for, and the honest fix is a persisted signal, which is the lock-in question already FILED for Chunk 02's half. Recorded here rather than fixed, and the two departures should be closed together by that one design. Its degraded path is not the gap — `unavailable` vs `None` is distinguished and the gate says which."
       - "Adding a control names the yield it expects AND emits that yield observably → DEPARTURE, recorded. Chunk 02's narrowing emits yield only half-way. Under-firing is detectable (`review-stats` groups by mode, so a verify-resolutions row still carrying warnings proves the rule never landed); over-firing is not, because a demoted OBSERVATION lives in the fork's report and `build_fact_body` carries `findings`/`counts` but drops the reviewer's prose. Verify-mode W/N will read zero post-release — true by construction, evidence of nothing. Mitigated in-scope by having the directive ask for a demotion count, so the number reaches the builder. The structured field that would make it telemetry-visible is a persisted-format change (lock-in, per `building.md`'s Decision Research) with a real design question of its own — self-reported vs. derived — so it is FILED rather than improvised into a fix batch. Surfaced by this chunk's own review, which is the norm working. **Chunk 03 CONFORMS on the same norm, and the contrast is the point.** Its yield is the count-shaped finding, which is persisted: findings live in the evidence store with their titles and recommendations, so the rate is a query over `<git-common-dir>/prawduct/evidence.jsonl` — match findings whose subject is a count, over total findings, before and after the release. Nothing new has to be recorded for it to be answerable, which is exactly what Chunk 02 lacked. Per this chunk's own rule the query is cited rather than its output: a baseline written here would be a prose copy of a number the store already owns."
   - artifact: observability-strategy
     dispositions:
@@ -115,7 +116,7 @@ designed first; this plan makes the loop terminate without needing it.
 
 - [x] Chunk 01: The exit condition and the fix-churn diagnosis reach the builder
 - [x] Chunk 02: `verify-resolutions` adjudicates; it does not re-review
-- [ ] Chunk 03: Contestable counts, on both sides
+- [x] Chunk 03: Contestable counts, on both sides
 
 Context: Plan authored 2026-08-04 on `fix/review-loop-carriers`, cut from `develop` at
 `dbb42f3`, after reading the ten-round consumer transcript and both evidence stores.
@@ -255,10 +256,17 @@ are pinned by test, because nothing else can observe them.
     offer. (2) The obvious home, `## Severity`, sits *below* all three goal sections, so
     a reviewer assigns every WARNING before reaching it — the section would have been
     present and inert (the `SKILL.md`-header precedent: ordering beats presence). The
-    classes that matter in a fix delta are already BLOCKING-rated (weakened tests,
-    dropped requirements, untested changed behavior, security, fix-by-fudging) and stay
-    so, enforced across the file boundary by
-    `test_the_classes_it_exempts_are_still_blocking_in_the_protocol`.
+    classes that matter in a fix delta (weakened tests, dropped requirements, untested
+    changed behavior, security, fix-by-fudging) stay BLOCKING in this mode. **As first
+    written this line claimed they were "already BLOCKING-rated" in `goals-1-3.md`, and
+    the chunk's own review proved that false for two of five** — auth/authz on new
+    endpoints and known-vulnerable dependencies are WARNING there, and fix-by-fudging is
+    not rated in that file at all. Half the carve-out is therefore an *escalation* and
+    the directive says so. Enforced across the file boundary by two guards, split so
+    neither half can drift silently: `test_the_carve_out_classes_the_protocol_rates_are
+    _still_blocking` (the citation half) and `test_the_escalated_carve_out_classes_are
+    _named_as_escalations` (the escalation half, which pins the protocol's *lower*
+    rating so stale wording fails).
   - `plugin/lib/critic_consolidate.py` — `VERIFY_RATES_BLOCKING_ONLY_DIRECTIVE`, a
     dispatch-time directive beside `RESOLUTION_IS_A_CLAIM_DIRECTIVE`, printed by
     `critic-begin` for this mode. It carries what the ceiling displaced: the worked
@@ -350,13 +358,14 @@ file's budget comment.
 batch because it owed a review anyway — which is the rule Chunk 02 installed, used):
 `goals-1-3.md`'s two unpinned narrowing clauses now have tests; the escalated-carve-out
 guard is judged per CLAUSE, closing the line-vs-clause slack its sibling had just fixed
-one method over (verified: the pre-fix assertion passes with `auth/authz` promoted to
+one method over (verified: the pre-fix assertion passes with the auth-and-authz case promoted to
 BLOCKING, the new one fails); the imperative check is derived from the directive's
 closing sentence instead of a four-verb whitelist that matched one verb and would have
 gone red on any correct rewording; and the plan's nine undispositioned `## Direction`
-norms are recorded, taking `governed-by-gap` to 0. The plan's own `3505 passed` went
+norms are recorded, taking `governed-by-gap` to 0. The plan's own stale suite total went
 with them — a suite-total claim in the plan shipping the rule against suite-total
-claims, caught by `record_lint` on the tree that fixes it.
+claims, caught by `record_lint` on the tree that fixes it, and now citing
+`prawduct-hook test-status` instead of a figure.
 - **Acceptance criteria:** the doc-only protocol no longer directs reviewers to hunt
   counts; a reviewer correcting an inert count produces a NOTE that tells the builder not
   to change it.

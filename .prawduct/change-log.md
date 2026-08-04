@@ -3,6 +3,52 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-08-04: a count nothing reads is not worth writing — or correcting
+
+<!-- prawduct: type=fix | scope=review-loop-carriers | chunks=03 -->
+
+Chunks 01 and 02 made the loop terminate: the exit condition reaches the builder, and a re-review
+stopped manufacturing the next round's work. This closes the narrowest recurring *supply* of that
+work — the contestable count, measured at roughly one finding in eleven across the window this plan
+was cut from — on both sides at once.
+
+**Builder side.** `building.md` gains a rule beside the self-contained-comments rule, because they
+are one failure with two carriers: a durable artifact holding something that decays. A build id
+dangles when the plan is deleted; a count goes stale on the next commit. The rule turns on whether
+anything *branches* on the number — ask what gets decided differently if it is wrong by two. If
+nothing: omit it, make it relational, or cite the command that regenerates it. Numbers something
+relies on stay exact, which is why "avoid counts" would have been the wrong rule.
+
+**Reviewer side.** Both Critic protocol files cap a finding whose only subject is an inert count at
+NOTE, and require the qualifier that actually stops the fix commit: the true figure, that nothing
+reads it, and that no edit is wanted. A bare "rate it NOTE" still hands the builder a defect report,
+and builders fix defect reports — which is the commit that buys the next round.
+
+**And the protocol stops asking.** `numeric counts` leaves the doc-only Goal 1 target list, which had
+made the count finding an *instruction* rather than an accident. Removed from both carriers —
+`goals-1-3.md` and `review-cycle.md`'s Per-Chunk Type selector — because leaving one gives a reviewer
+who consults it an explicit mandate to hunt exactly what the cap demotes.
+
+**Placement went the opposite way from Chunk 02, deliberately.** That chunk fought to keep its
+narrowing OUT of `## Severity`, which sits below all three goal sections. The cap goes IN it. The
+narrowing governs *whether to report at all*, decided continuously while reading the goals; a
+severity cap is a *lookup* made once at write-up, and the NOTE legend already owns the cap's parent
+rule. Both placements are asserted by test rather than assumed.
+
+**No ceiling was raised.** All three budgeted files started at or near zero headroom. The one entry
+worth reading: `goals-1-3.md`'s first funding attempt cut a record-lint explanation that the file's
+own adjacent instruction appeared to argue for — and a guard failed whose docstring names that exact
+edit as the predicted casualty of a token diet there. Naming one of two guess-paths leaves the other
+readable as a clean grade. The dangerous trim is not the one you cannot justify; it is the one the
+surrounding prose seems to endorse.
+
+**Two inherited guards were weaker than they read**, both caught by review rather than CI. The
+escalated-carve-out test asserted a severity against a *line* carrying five verdicts, so promoting
+auth/authz to BLOCKING left it green — the same line-vs-clause slack its sibling had just been split
+to close, one method over. And an imperative check listed four verbs of which one ever matched. Both
+now assert the property; both were verified red under the failure and green under legitimate
+rewordings.
+
 ## 2026-08-04: a re-review answers one question — it does not manufacture the next round's work
 
 <!-- prawduct: type=fix | scope=review-loop-carriers | chunks=02 -->
@@ -18,12 +64,19 @@ OBSERVATION in prose, where it informs without becoming work.
 do. Only `verify-resolutions` reviews a delta the framework itself asked for — so it is the only mode
 where suppressing non-gating findings removes churn rather than review.
 
-**The carve-out is what makes it safe, and it is pinned across the file boundary.** The classes that
-genuinely go wrong in a fix delta are already BLOCKING-rated in `goals-1-3.md` — a weakened or
-deleted test, a dropped requirement, changed behavior with no test, security in changed code,
-fix-by-fudging. The directive promising they stay rated lives in `critic_consolidate.py`; the ratings
-live in a markdown file. `test_the_classes_it_exempts_are_still_blocking_in_the_protocol` drives from
-the protocol's own BLOCKING lines, so a downgrade there fails the directive that vouches for it.
+**The carve-out is what makes it safe, and it is pinned across the file boundary.** Five classes stay
+BLOCKING in this mode — a weakened or deleted test, a dropped requirement, changed behavior with no
+test, security in changed code, fix-by-fudging. **As first written this paragraph said they were
+"already BLOCKING-rated in `goals-1-3.md`", and the chunk's own review proved that false for two of
+five**: auth/authz on new endpoints and known-vulnerable dependencies are WARNING there, and
+fix-by-fudging is not rated in that file at all (its workaround leg was rated only in
+`review-cycle.md`, which this mode's reviewer may not open). So half the carve-out is a *citation*
+and half is an *escalation*, and the directive now says which is which — a safety argument resting on
+a false claim is not a safety argument. Two guards, split so neither half drifts silently:
+`test_the_carve_out_classes_the_protocol_rates_are_still_blocking` drives from the protocol's own
+BLOCKING lines, and `test_the_escalated_carve_out_classes_are_named_as_escalations` pins the
+protocol's *lower* rating so the escalation wording cannot go stale unnoticed. Both judge per clause,
+not per line.
 
 **Placement was the design, not a detail — and the cheap slot was the wrong one.** `## Severity` is
 the obvious home and sits *below* all three goal sections, so a reviewer walking Goal 1 → 2 → 3 has

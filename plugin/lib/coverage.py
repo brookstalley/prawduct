@@ -215,6 +215,22 @@ def diagnose_fix_churn(
       must **compose from the base tree up to the anchor's tree**; only the
       anchor→HEAD leg may be the churn.
 
+    **The bound this does NOT prove, stated beside the two it does.** The
+    subset test is ``set(judgeable delta) <= {files the anchor's findings
+    named}`` — *file* granularity. It rules out work in a file that review
+    never looked at; it cannot tell a fix from substantial new work written
+    into a file some finding merely named. The consequence is asymmetric and
+    lands downstream: the remedy this feeds is ``verify-resolutions``, which
+    since CRT-3W6P rates new findings BLOCKING-only, so a false positive here
+    routes genuinely unreviewed content to the narrowest review in the
+    framework. That is bounded rather than open — the carve-out keeps
+    weakened tests, dropped requirements, untested changed behavior, security
+    and fix-by-fudging blocking in that mode — but it is a real bound, and the
+    caller's message must not assert content-level certainty on file-level
+    evidence. Closing it properly needs a content discriminator (hunk overlap
+    against the findings' own line ranges), which the findings record does not
+    carry today.
+
     Returns ``None`` when the condition does not hold, and a dict otherwise::
 
         {"status": "churn", "fact_id", "delta_files", "named_files",

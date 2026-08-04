@@ -522,6 +522,55 @@ class TestNextActionLine:
     reviewer forks — and the builder did read the findings. So the field must
     say what gates, in the record the builder already opens."""
 
+    def test_the_free_write_list_agrees_with_the_classifier_that_owns_it(self):
+        """The zero-blocking line tells a builder which batches need no verify
+        pass. That is a prose COPY of a rule owned by
+        `coverage_algebra.is_judgeable_path`, and nothing related the two — the
+        wording was pinned, its truth was not.
+
+        Consequence if they drift: `METADATA_PREFIXES` or the protected-path set
+        moves, and this line keeps telling a builder to skip a pass that coverage
+        now requires — a false claim in the one carrier this whole change argues
+        the builder actually reads, and one that ends with an uncovered PR gate.
+
+        So each path the sentence names is asserted non-judgeable against the
+        classifier, with a judgeable counterexample so the check cannot pass by
+        the classifier answering "no" to everything.
+        """
+        from lib import coverage_algebra
+
+        line = cc.next_action_line("rev-1", 0, 1, 1)
+        for free in (
+            ".prawduct/change-log.md",
+            ".prawduct/artifacts/build-plan-x.md",
+            ".claude/settings.json",
+            "docs/notes.md",
+        ):
+            assert not coverage_algebra.is_judgeable_path(free), (
+                f"next_action_line tells the builder {free!r} moves no coverage, "
+                "but the classifier now judges it — the advice would skip a pass "
+                "the PR gate requires"
+            )
+        for judged in (
+            "plugin/skills/critic/goals-1-3.md",
+            "plugin/methodology/building.md",
+            "plugin/templates/build-plan.md",
+            "plugin/lib/gates.py",
+            # The sentence reads "`.md` outside `skills/`, `methodology/`,
+            # `templates/` AND a root `CLAUDE.md`" — the root file is EXCLUDED
+            # from the free list, not a member of it. Written here because the
+            # first draft of this test read it the other way and went red, which
+            # is the strongest argument for the pin existing at all.
+            "CLAUDE.md",
+        ):
+            assert coverage_algebra.is_judgeable_path(judged), (
+                f"{judged!r} is no longer judgeable, so the sentence's carve-out "
+                "is wider than it reads (and this test's negatives are vacuous)"
+            )
+        # The sentence must still be the one making the claim, or the pins above
+        # are guarding prose that moved.
+        assert "moves no coverage" in line and "`.prawduct/` prose" in line
+
     def test_blocking_names_one_commit_and_one_verify_pass(self):
         line = cc.next_action_line("rev-1", 2, 5, 3)
         assert "2 BLOCKING" in line
@@ -580,7 +629,7 @@ class TestNextActionLine:
 
 
 class TestNextLineRelayContract:
-    """`NEXT:` is code-owned and relay-only — the design that made this
+    """`NEXT-ACTION:` is code-owned and relay-only — the design that made this
     affordable inside two files at their token ceilings.
 
     The alternative was quoting both gate-line variants in each protocol: ~160

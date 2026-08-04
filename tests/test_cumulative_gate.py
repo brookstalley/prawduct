@@ -465,12 +465,30 @@ class TestFixChurnDiagnosis:
         rc, _out, err = _run_gate(repo, capsys)
         assert rc == 1
         assert "uncovered" in err
-        assert "is your fix churn, not unreviewed work" in err
+        assert "fix churn" in err
         assert rid in err
         assert "feature.py" in err
+        # The claim must not exceed the evidence. The subset test is FILE
+        # granular, so it cannot tell a fix from new work written into a file
+        # some finding merely named — and the remedy it routes to
+        # (`verify-resolutions`) records BLOCKING findings only, so an
+        # overclaim here sends genuinely unreviewed content to the narrowest
+        # review in the framework. The message says what it actually proved.
+        assert "FILE-level evidence" in err
+        assert "is your fix churn, not unreviewed work" not in err, (
+            "the gate asserts content-level certainty on file-level evidence again"
+        )
         # Both routes out are named, and the cheap one is named first.
         assert "prawduct-hook disposition" in err
         assert err.index("fix churn") < err.index("/prawduct:critic cumulative")
+        # ...and the generic route no longer CONTRADICTS the cheap one. Ordering
+        # was pinned; agreement was not, and an agent reading a stderr block
+        # commonly acts on the last imperative — which unqualified is the 4-10
+        # minute round this control exists to displace.
+        assert "If that diagnosis does not fit" in err
+        assert err.index("If that diagnosis does not fit") < err.index(
+            "/prawduct:critic cumulative"
+        ), "the generic block is unqualified again, so the last imperative wins"
         # The counts it quotes come from the fact, not from a guess.
         assert "1 warning + 1 note" in err
 
