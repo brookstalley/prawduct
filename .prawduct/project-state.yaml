@@ -388,7 +388,10 @@ views_enabled: true
 # first set since the slot was cleared, so it inherits none of the staleness the
 # incidents above record — and the gates resolve this branch's plan by `scope:`
 # anyway, which is what made the cleared state survivable.
-active_build_plan: artifacts/build-plan-silent-gates.md
+# Set 2026-08-04 on branch feat/release-integrity, same discipline as the line
+# above: this branch builds the release-integrity plan, and silent-gates merged
+# to develop before it started. Nothing is orphaned by the move.
+active_build_plan: artifacts/build-plan-release-integrity.md
 
 # =============================================================================
 # BUILD-PLAN REF ROOT (opt-in)

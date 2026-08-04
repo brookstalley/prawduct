@@ -111,8 +111,10 @@ that user.
   freshness is Claude Code's to control: a stale snapshot makes the probe say nothing rather than
   say something wrong. Under-reporting is the acceptable direction; it is still a real ceiling on
   what Chunk 03 can promise.
-- `[ASSUMPTION: publishing a Release on tag push is acceptable automation | HIGH impact | user must rule]`
-  See Chunk 05's [DECISION]. This is the one item in the plan I do not think I should decide.
+- ~~`[ASSUMPTION: publishing a Release on tag push is acceptable automation]`~~ **Resolved by owner
+  ruling 2026-08-04: auto-verify, manual publish.** Chunk 05 builds the verification half only.
+  The security-model norm is satisfied without an exception being needed — no irreversible
+  outward-facing act sits on a trigger.
 
 ## Verification strategy
 
@@ -179,19 +181,48 @@ pattern, so the count of files to touch is 8 and the count of edits is at least 
 
 **Type:** code
 
+> **Design corrected 2026-08-04 before any code, by reading the precedent.**
+> The plan originally put the whole check in an advisory probe reading the marketplace snapshot
+> under `~/.claude/plugins/`. **That violates the runtime boundary**: no probe reads machine-level
+> state, verified by absence — `expanduser` and `Path.home()` appear nowhere in
+> `plugin/lib/*_probes.py`, and the two `~/.claude` hits in `install_reference_probes.py` are both
+> prose. That module is the closest precedent and it documents *declining this exact read*,
+> routing the machine-level half to `/prawduct:doctor`, "which is model-side and can read the
+> machine-level file." The two halves are complementary checks, not two ends of one loop — and
+> this chunk copies that structure rather than breaking the boundary it established.
+
+**The split, and what each half can honestly claim**
+
+- **Ambient half — advisory probe, project-dir only.** Fires on *version regression*: the running
+  plugin's version is **lower** than `.prawduct/.prawduct-version`, the marker the banner already
+  maintains in this repo. An install that goes backwards is the cache-pin symptom, and both inputs
+  are already inside the boundary — the plugin's own manifest and the repo's own marker.
+- **Authoritative half — `/prawduct:doctor` health check, model-side.** Compares the running
+  version against the marketplace snapshot's manifest. This is the half that answers "you are
+  behind," and it is the half that must not live in a probe.
+
+**The limitation, stated rather than discovered later.** The ambient half cannot see a repo that
+has been stale since *before* it ever saw a newer version — which is the documented discodon shape
+(pinned at 3.0.4, never saw 3.1.0; its marker reads 3.0.4 too). That case is only reachable by the
+doctor half, and therefore only when someone runs doctor. **This does not fully close the loop, and
+the plan should not claim it does.**
+
 **Deliverables**
-- New `plugin/lib/staleness_probes.py`, registered in `probe_families.register_all()` following
-  the established lazy-import pattern.
-- An advisory comparing the running version against the marketplace snapshot's manifest;
-  silent when it cannot read a comparator, and it names its consequence when it degrades.
+- New `plugin/lib/staleness_probes.py`, registered in `probe_families.register_all()` via the
+  established lazy-import pattern; regression check only; no machine-level read.
+- A new `/prawduct:doctor` health check for the behind-latest comparison.
+- Advisory and health-check text carries the consequence in plain language and no internal ids.
 
 **Done when**
-1. The probe reads only files already on disk — no network, no directory walk.
-2. Tests cover: newer available, equal, comparator unreadable, and malformed manifest.
-3. At least one test reads a **real** manifest, not only a hand-written fixture.
-4. Verified it stays silent against this repo, and that this repo is genuinely out of the target
-   state rather than the probe being narrowed until quiet.
-5. `/prawduct:critic` passes.
+1. The probe reads nothing outside the project dir and the plugin root — asserted by a test, not
+   by inspection, so a later edit cannot quietly reintroduce the read.
+2. Probe tests cover: regression, equal, ahead, absent marker, malformed marker.
+3. At least one test reads a **real** artifact rather than only a hand-written fixture.
+4. Verified silent against this repo, *and* confirmed this repo is genuinely out of the target
+   state — not that the probe was narrowed until quiet.
+5. The doctor half is exercised against this machine's install, which is currently stale
+   (3.2.3 recorded at the prep commit) and is therefore a live positive case.
+6. `/prawduct:critic` passes.
 
 ## Chunk 04 — `check-released`, the mirror of `check-releasability`
 
@@ -219,22 +250,20 @@ someone remembers. That gap is independent of releases and is the larger half of
 **Deliverables**
 - A workflow running the suite on push and PR.
 - A tag-push workflow running Chunk 04's `check-released`.
-- `[DECISION: whether that workflow also *publishes* the Release, or only verifies it | the
-  security-model norm requires explicit owner approval at the operation level for an irreversible,
-  outward-facing act, and a tag-push trigger has no human at the moment of publish — but the
-  argument for automating it is that a manual step is a step that gets skipped, which is exactly
-  how thirty releases shipped with none | **owner ruling needed — I am not deciding this one.**
-  My recommendation: verify-only in CI, keep publishing manual. The runbook step now exists and
-  `check-released` turns a forgotten step into a red build, which buys most of the benefit without
-  putting an irreversible outward act on a trigger.]`
-- Whichever way that goes, the pruned-release case must not auto-publish: its CHANGELOG section
-  describes the whole cut, so publishing it verbatim announces withheld work.
+- `[DECISION: CI verifies the Release; it never publishes one | **owner ruling, 2026-08-04.**
+  Publishing notifies watchers and is not cleanly retractable, and `security-model.md` § Direction
+  requires explicit owner approval at the operation level for such an act — a tag-push trigger has
+  no human at the moment of publish. A red build on a forgotten publish step buys most of the
+  benefit at none of that cost | ruled, not assumed]`
+- **No publish step is built.** A forgotten publish surfaces as a failing `check-released`, which
+  is the intended mechanism. The pruned-release hazard — its CHANGELOG section describes the whole
+  cut, so publishing verbatim would announce withheld work — is therefore moot in CI and stays a
+  human-read warning in `runbooks/promote-a-pruned-release.md`.
 
 **Done when**
 1. The suite runs green in CI on a real push.
 2. `check-released` runs on tag push and is red for a deliberately broken input.
-3. The owner ruling above is recorded before the publish half is built, or the publish half is
-   descoped and said so.
+3. The workflow contains no publish step, and a reader can tell that is deliberate.
 4. `/prawduct:critic` passes.
 
 ---
