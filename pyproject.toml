@@ -13,6 +13,21 @@ dev = [
     "pyyaml>=6.0",
 ]
 
+# The dev extra above is the only home for the test dependencies, and a CI job
+# that re-listed them would be a second one. `pip install ".[dev]"` is how CI
+# reads it — which means this repo has to be *installable*, and until this stanza
+# existed it was not: setuptools' flat-layout discovery finds `plugin/` beside
+# other top-level directories and refuses to guess. Nothing is packaged
+# (`packages = []`) because nothing here is importable-as-installed — tests reach
+# `plugin/` through `tests/conftest.py`'s path shim. The install exists to carry
+# the dependency list, not the code.
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+packages = []
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = [

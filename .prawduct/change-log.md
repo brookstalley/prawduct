@@ -3,6 +3,94 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-08-04: the suite stops running only when someone remembers
+
+<!-- prawduct: type=feature | scope=release-integrity | chunks=05 -->
+
+This repository had no `.github/` of any kind. Every release it ever cut shipped on a suite that ran when a
+human chose to run it, and eleven `tests/preferences/` guards were documented with an audit home of
+"CI (test)" against a runner that did not exist. `.github/workflows/tests.yml` runs the suite on
+every push and every pull request; `.github/workflows/verify-release.yml` runs `check-released` on
+every tag push.
+
+**The suite workflow filters nothing — not by branch, not by path.** The economy on offer was
+skipping doc-only changes, and it reproduces a hole this repo has already fallen into:
+`tests/test_norm_probes.py` reads the live `project-state.yaml`, so a `.md`-and-`.prawduct/**`
+change really can turn the suite red, and both existing fast paths already miss it. A branch that
+never opens a PR is likewise the branch nobody is watching. Runs are cheap; the hole is not.
+
+**The first CI run was red, and that is the entry's most useful sentence.** Both matrix legs were
+green locally before the workflow was written — 3.10 and 3.14, full suite, twice — and CI still
+failed three tests that no local run could have shown. `test_plugin_packaging` demands every tracked
+top-level directory be shipped or explicitly excluded, and `.github/` became tracked only at commit
+time, *after* the last local suite run; `test_norm_index_scaffold` searches git history by content,
+which a depth-1 checkout answers "never shipped" with a straight face; and
+`test_operator_verification`'s C-locale round trip passed its non-ASCII source through `python -c`,
+which Linux decodes with the locale's ASCII codec and macOS always decodes as UTF-8 — a test that
+could only ever fail on a platform this project had never run it on. Fixed respectively by recording
+the deliberate exclusion, by `fetch-depth: 0` plus a shallow-clone guard that says so instead of
+accusing the code, and by handing the subprocess a UTF-8 source *file* so only ASCII crosses the
+command line. Three latent defects, first push, none of them in the feature.
+
+**The matrix runs the declared floor and current — 3.10 and 3.14.**
+`requires-python = ">=3.10"` had been a claim nothing exercised.
+A matrix cannot be computed from a constraint expression, so the floor is copied; a new
+`tests/preferences/test_ci_workflow_conventions.py` fails if the copy and `pyproject.toml` drift in
+either direction, and equally if a future edit inlines `-n auto` into the run step or replaces
+`pip install ".[dev]"` with a hand-listed dependency set. That install did not work before this
+change: setuptools' flat-layout discovery finds `plugin/` beside other top-level directories and
+refuses to build, so `pyproject.toml` gained a `[build-system]` stanza and `packages = []` — the
+repo is installable and packages nothing, because the install exists to carry the dependency list,
+not the code.
+
+**CI verifies the release; it never publishes one** (owner ruling, 2026-08-04). Publishing notifies
+watchers and is not cleanly retractable, and `security-model.md` § Direction requires explicit owner
+approval at the operation level for an act like that — a tag-push trigger has no human present when
+it fires. A forgotten publish is meant to surface as a red build instead. The guard test fails on
+`gh release create` and on the three common publish actions, because that ruling is invisible in the
+diff of the edit that would remove it. `--allow-unverifiable` is absent for the same reason: exit 3
+exists so that "could not reach the Releases page" is not green.
+
+The tag job fetches `origin/main` explicitly. `actions/checkout` leaves no such ref on a tag build,
+and without it the containment check correctly degrades to unverifiable — a permanently red job
+reporting nothing about the release. `workflow_dispatch` takes a tag input so the check can be
+exercised, including against a deliberately bogus tag, without pushing a junk tag to prove it works.
+
+## 2026-08-04: the check that would have been red for every release this repo ever cut
+
+<!-- prawduct: type=feature | scope=release-integrity | chunks=04 -->
+
+`prawduct-hook check-released vX.Y.Z` verifies a release from the outside: every version file
+present in the tag's tree agrees with it — read **at the tag's own tree**, and a file the product
+does not carry is skipped rather than reported missing — the tag is contained in `origin/main`, and a GitHub Release
+exists. Run it against `v3.2.2` and it fails — as it does for every release before this one,
+because a pushed tag lands on `/tags` and the Releases page stayed empty for every one of them. That
+is the defect users reported as "no tag on GitHub", and nothing in the release process could see
+it: every check was a git command run by the person doing the release, so nothing ever asked what
+a consumer receives.
+
+**Version agreement is read through `git show <tag>:<path>`, never the working tree.** What a
+release shipped is a fact about the tree that release names; the checkout you are standing in is a
+different question, and it answers confidently and wrongly from a feature branch. A test pins this
+by moving the working tree to a different version and asserting the gate still reads the tag's.
+
+**Three outcomes, not two — and the third is the whole point.** Exit **0** verified, **1** a check
+failed, **3** nothing failed but a check could not run (no `gh`, no `origin/main`). Both ways of
+folding that third state into the other two are wrong in the environment this command exists for.
+Folded into *failed*, a fresh clone or a fork reports a broken release. Folded into *passed* — which
+is how it first shipped in review — a tag-push CI job goes green over an empty Releases page, since
+`actions/checkout` leaves no `origin/main` and a step without a token gets a `gh` that cannot
+answer. That is the original defect with a passing check on top. `--allow-unverifiable` collapses 3
+to 0 for an operator who deliberately wants the local subset. Relatedly, a `gh` failure that is not
+literally "release not found" is never read as absence: a refused question is not a missing
+release.
+
+Two defects were caught by scrubbing the change rather than by the suite, and both were the
+confident-wrong-answer shape: the `pyproject.toml` parser matched any key *starting with*
+`version`, so a `versioning` key would have been read as the release version; and the
+`origin/main` containment check never established that the reference existed before asking what it
+contained.
+
 ## 2026-08-03: the final cumulative — a deliverable with no test, and six records that had drifted
 
 <!-- prawduct: type=fix | scope=silent-gates | chunks=06 -->
