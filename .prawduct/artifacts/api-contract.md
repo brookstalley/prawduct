@@ -160,6 +160,11 @@ raised as stack traces across the boundary.** The intended scheme:
 | **State-mutating writer** (e.g. `disposition`) | written, or an idempotent no-op | **refused** — validation failed, nothing written | **usage error** |
 | **Usage / arg error** (any subcommand) | — | — | **usage error** |
 
+`check-released --json` emits `{release, verdict, checks[]{check, state, detail}}`, where
+`verdict` is one of `released` | `not-released` | `unverified` and each `state` is
+`ok` | `failed` | `unverifiable`. Registered here because the `--json` emitters are enumerated in
+this section, and a payload documented only by its exit code is a shape a caller has to reverse-engineer.
+
 **One gate carries a third outcome, added 2026-08-04.** `check-released` exits **3** for
 *unverified*: nothing failed, but a check could not run — no `gh`, or no `origin/main` in a
 shallow checkout. It is a distinct code rather than folded into 0 or 1 because both foldings are

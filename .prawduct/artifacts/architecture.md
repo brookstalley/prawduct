@@ -354,7 +354,11 @@ opts into the backlog service:
 5. **`gh` subprocess → GitHub Issues REST** — *opt-in only*, present when `backlog_service_repo` is
    set. Sole egress lives in `lib/backlog/transport.py`; the counts cache under
    `<git-common-dir>/prawduct/` is a disposable, network-independent read-through of channel 2, never
-   an authority. Absent this opt-in, the **governance runtime** makes no network call.
+   an authority. This opt-in is the only network surface a *governance verdict* depends on — but
+   it is **not** the only network call the runtime makes: `cmd_stop` runs `gh pr list` on the Stop
+   hook regardless of `backlog_service_repo`. The earlier phrasing here ("absent this opt-in,
+   prawduct makes no network call") was simply false, and survived because nothing tested it.
+   `security-model.md` enumerates all three sites; this section deliberately keeps no second copy.
 
    **One non-governance egress, added 2026-08-04.** `prawduct-hook check-released` shells to
    `gh` to ask whether a Release exists. It is an operator/CI command: it never runs on a

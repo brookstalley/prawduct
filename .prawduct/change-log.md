@@ -7,8 +7,9 @@
 
 <!-- prawduct: type=feature | scope=release-integrity | chunks=04 -->
 
-`prawduct-hook check-released vX.Y.Z` verifies a release from the outside: the three version files
-agree **at the tag's own tree**, the tag is contained in `origin/main`, and a GitHub Release
+`prawduct-hook check-released vX.Y.Z` verifies a release from the outside: every version file
+present in the tag's tree agrees with it — read **at the tag's own tree**, and a file the product
+does not carry is skipped rather than reported missing — the tag is contained in `origin/main`, and a GitHub Release
 exists. Run it against `v3.2.2` and it fails — as it does for every release before this one,
 because a pushed tag lands on `/tags` and the Releases page stayed empty for thirty of them. That
 is the defect users reported as "no tag on GitHub", and nothing in the release process could see
