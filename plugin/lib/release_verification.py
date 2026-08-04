@@ -176,6 +176,14 @@ def _outside_repo_reason(project_dir: Path) -> str | None:
     is to install git. That is precisely the defect being repaired in
     :func:`check_version_files`, so making it here would have been the same
     error one frame over.
+
+    In practice the :data:`MISSING` leg is unreachable from either call site
+    today — both consult this only after an earlier ``_run`` returned a tuple,
+    which already proves git exists — so it is defensive, not load-bearing, and
+    no test drives it. It stays because deleting it would route a sentinel into
+    ``probe[0]``, where a string indexes without raising and answers the wrong
+    question quietly. Reachability is stated here rather than left implied by
+    the argument above it, which reads as though all three legs were live.
     """
     probe = _run(["git", "rev-parse", "--git-dir"], project_dir)
     if probe == MISSING:
@@ -315,7 +323,12 @@ def _read_version(spec: VersionFile, content: str) -> _Read:
         # ValueError, so one specific catch covers both loaders.
         return _Read(None, f"is not valid {spec.fmt}")
     if not spec.key:
-        return _Read(None, f"declares no key path, which {spec.fmt} needs")
+        # `blocked`, exactly like an unknown `format:` above — the same authoring
+        # slip in the same declaration, and it would be incoherent for one to
+        # report "could not read" and the other to fail the release. Without the
+        # key there is no question to ask of this file, and R1's rule is that a
+        # check which could not ask must not answer.
+        return _Read(None, f"declares no key path, which {spec.fmt} needs", blocked=True)
     value = _descend(data, spec.key)
     if value is None or value == "":
         return _Read(None, f"has no {spec.key}")
@@ -366,6 +379,14 @@ def check_version_files(project_dir: Path, tag: str) -> tuple[str, str]:
     problems: list[str] = []
     blocked: list[str] = []
     checked: list[str] = []
+    # Two different reasons a guessed file contributed nothing, kept apart
+    # because the OK detail names them and they are not interchangeable: one
+    # says the file is not in the tree, the other says it is. Folding them let
+    # the detail claim "not in this tree" about a `pyproject.toml` sitting right
+    # there — the wrong-cause defect this plan fixed one level up, in the branch
+    # that used to blame a product's layout for a non-repository.
+    absent: list[str] = []
+    no_version: list[str] = []
     for spec in specs:
         shown = _run(["git", "show", f"{tag}:{spec.path}"], project_dir)
         if shown == MISSING:
@@ -375,7 +396,9 @@ def check_version_files(project_dir: Path, tag: str) -> tuple[str, str]:
         if shown[0] != 0:
             if declared is not None:
                 problems.append(f"{spec.path}: declared, but not in {tag}'s tree")
-            continue  # under the guess, absent means "not this product's layout"
+            else:
+                absent.append(spec.path)  # not this product's layout
+            continue
         read = _read_version(spec, shown[1])
         if read.blocked:
             blocked.append(f"{spec.path}: {read.problem}")
@@ -383,7 +406,9 @@ def check_version_files(project_dir: Path, tag: str) -> tuple[str, str]:
         if read.value is None:
             if declared is not None:
                 problems.append(f"{spec.path}: declared to carry the version but {read.problem}")
-            continue  # under the guess, an unreadable file is not this product's
+            else:
+                no_version.append(spec.path)  # present, but not a version file here
+            continue
         if read.value != expected:
             problems.append(f"{spec.path}: says {read.value}, tag says {expected}")
             continue
@@ -436,9 +461,10 @@ def check_version_files(project_dir: Path, tag: str) -> tuple[str, str]:
     # where a "3" should be. Skipping an absent file stays correct (this module
     # ships to products with other layouts); reporting the skip silently does not.
     detail = f"{len(checked)} version file(s) agree at {tag}: {', '.join(checked)}"
-    skipped = [spec.path for spec in specs if spec.path not in checked]
-    if skipped:
-        detail += f" — not in this tree: {', '.join(skipped)}"
+    if absent:
+        detail += f" — not in this tree: {', '.join(absent)}"
+    if no_version:
+        detail += f" — present but carrying no version: {', '.join(no_version)}"
     return OK, detail
 
 

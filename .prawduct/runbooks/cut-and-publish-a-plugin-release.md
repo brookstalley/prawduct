@@ -527,7 +527,8 @@ mean the withheld work shipped.*
   and exits 0. It checks the three things this phase just did — version files agreeing
   at the tag's tree, the tag contained in `origin/main`, the Release published — so run
   it instead of re-typing them. **Exit 3 is not a pass:** it means a check could not run
-  (no `gh`, no `origin/main`), and the Releases page may still be empty. Repo-local on purpose —
+  (no `gh`, no `origin/main`, or a declared `toml` version file on a pre-3.11 python3 — this
+  repo declares one), and the Releases page may still be empty. Repo-local on purpose —
   the *installed* plugin is the previous release and does not carry this subcommand.
 - The `verify-release` workflow run for the tag is green
   (`gh run list --workflow verify-release.yml --limit 1`). It runs the same command with a token,

@@ -88,10 +88,16 @@ distrust the check, which the module's own docstring names as the durable cost.
 
 Every requirement is verified by driving the **real** failure path, never a monkeypatched
 return — the producer-side lesson `review-loop-carriers` paid a BLOCKING finding for. R1
-runs the check from a genuine non-repository directory; R3 calls `_version_from` with the
-adversarial table ordering from #580's repro; R2 builds a fixture product whose declared
-and undeclared layouts differ. `tomllib` is **not available** (`requires-python >=3.10`,
-CI matrix runs 3.10), so the TOML fix is hand-rolled and must be tested on that floor.
+runs the check from a genuine non-repository directory; R3 reads the adversarial table ordering
+from #580's repro **in both directions**, since one ordering alone cannot tell a key-path
+descent from the positional scan it replaced; R2 builds a fixture product whose declared
+and undeclared layouts differ. `tomllib` is **not available on the 3.10 floor**
+(`requires-python >=3.10`, CI matrix runs 3.10). This paragraph originally concluded "so the
+TOML fix is hand-rolled and must be tested on that floor" — the opposite of what shipped, and
+corrected here rather than left to read as a dropped constraint. Hand-rolling is what LNG-5W8R
+forbids, and honouring a declared key path would have meant *growing* that parser; the read
+delegates to `tomllib` and reports **unverifiable** below 3.11, so the floor is exercised as a
+degraded path rather than as a second parser.
 
 ## Status
 
@@ -160,8 +166,15 @@ release runbook asks whether everything is *fit* to ship, not merely present.
     Research), so the field shape is designed in this chunk against its future consumer
     queries, not improvised: the only consumer is `check_version_files`, and the only
     questions it asks are *which paths* and *how is each parsed*.
-  - `plugin/lib/release_verification.py` — `check_version_files` reads the declaration via
-    `advisory_store.load_project_state` (the path `release_readiness.py` already uses). The
+  - `plugin/lib/release_verification.py` — `check_version_files` reads the declaration from
+    **the tag's own tree** (`git show <tag>:.prawduct/project-state.yaml`), through a
+    minimal-YAML block reader in this module. **Corrected during the build, not silently
+    deviated from** ("goals and verification bind; prescribed method is advice"): this line
+    prescribed `advisory_store.load_project_state`, which parses only column-0 *scalars* from
+    the **checkout** — so it could not have read a nested list at all, and reading the checkout
+    would answer "which files carried this release's version" from whatever branch you happen to
+    be standing on, the exact confusion this module was built to refuse. Owner-ruled at build
+    time in favour of the tag's tree. The
     posture splits on provenance: a **declared** file that is present and unparseable is
     `FAILED` (the product said it carries the version), while under the **undeclared**
     fallback the built-in tuple is a *guess* and can only produce `OK` or `UNVERIFIABLE` —

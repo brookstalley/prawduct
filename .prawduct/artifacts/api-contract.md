@@ -174,8 +174,9 @@ raised as stack traces across the boundary.** The intended scheme:
 this section, and a payload documented only by its exit code is a shape a caller has to reverse-engineer.
 
 **One gate carries a third outcome, added 2026-08-04.** `check-released` exits **3** for
-*unverified*: nothing failed, but a check could not run — no `gh`, or no `origin/main` in a
-shallow checkout. It is a distinct code rather than folded into 0 or 1 because both foldings are
+*unverified*: nothing failed, but a check could not run — no `gh`, no `origin/main` in a
+shallow checkout, or a declared `toml` version file on a pre-3.11 interpreter (no `tomllib`).
+It is a distinct code rather than folded into 0 or 1 because both foldings are
 wrong in the environment the command exists for. Folded into 1 it reports a broken release on a
 fresh clone; folded into 0 it reports success on a tag-push CI job, which has no `origin/main` by
 default and may have no token — precisely the case where an unpublished Release must turn the

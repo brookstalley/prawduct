@@ -208,6 +208,19 @@ class TestVersionParsing:
         """
         assert _read("json", content, key).value is None
 
+    def test_a_declared_entry_missing_its_key_is_blocked_not_failed(self):
+        """The same authoring slip as a missing `format:`, so the same posture.
+
+        A `json`/`toml` entry with no `key:` used to reach FAILED while one with
+        no `format:` reached UNVERIFIABLE — identical mistakes, opposite
+        verdicts, and the FAILED leg contradicts R1: without a key there is no
+        question to ask of the file, and a check that could not ask must not
+        answer.
+        """
+        read = _read("json", '{"version": "3.2.0"}', key="")
+        assert read.blocked is True
+        assert read.value is None
+
     def test_an_unreadable_format_is_blocked_not_merely_absent(self):
         """`blocked` is what keeps a runtime limitation out of the FAILED lane.
 
@@ -292,6 +305,38 @@ class TestDeclarationReading:
         declaration it never made."""
         text = "# release_version_files:\n#   - path: pyproject.toml\n"
         assert rv._read_declaration(text) is None
+
+    def test_this_repo_s_own_declaration_parses_to_its_real_layout(self):
+        """Every other case here is synthesised; this one reads the shipped file.
+
+        Chunk 02's acceptance criteria include prawduct keeping its own verdict,
+        and a declaration that silently loses an entry would still report `ok` —
+        over two files instead of three, distinguishable from a complete check
+        only by a digit. Pinned against `_FALLBACK_VERSION_FILES` rather than a
+        literal list: prawduct's declaration and the built-in guess describe the
+        same repo, so if one is ever edited without the other, that is the bug.
+        """
+        state_file = Path(__file__).resolve().parent.parent / ".prawduct" / "project-state.yaml"
+        parsed = rv._read_declaration(state_file.read_text(encoding="utf-8"))
+        assert parsed == list(rv._FALLBACK_VERSION_FILES), (
+            "this repo's declared version files drifted from the layout the "
+            "fallback assumes for it — one of the two was edited alone"
+        )
+
+    def test_the_shipped_template_declares_nothing(self):
+        """The template carries the key as a commented-out schema legend.
+
+        If it ever ships uncommented, every scaffolded product inherits a
+        declaration it never made — and a declaration is exactly what turns a
+        version mismatch into a failed release.
+        """
+        template = Path(__file__).resolve().parent.parent / "plugin" / "templates"
+        text = (template / "project-state.yaml").read_text(encoding="utf-8")
+        assert "release_version_files:" in text, "the schema legend went missing"
+        assert rv._read_declaration(text) is None, (
+            "the template ships an ACTIVE declaration; scaffolded products would "
+            "be held to prawduct's example layout"
+        )
 
     def test_an_entry_without_a_path_is_dropped_but_one_without_a_format_is_kept(self):
         """Opposite handling, on purpose. A pathless entry names no file and
@@ -500,6 +545,35 @@ class TestVersionFiles:
         # "2" where a "3" belongs. Red if the naming clause is dropped.
         assert "not in this tree: pyproject.toml" in detail
 
+    def test_a_present_file_carrying_no_version_is_not_called_absent(self, tmp_path):
+        """The skip is reported with the reason it actually had.
+
+        A tooling-only `pyproject.toml` contributes nothing under the guess —
+        correctly, that is #576 — but it is *present*, and the detail used to
+        lump it in with genuinely absent files and announce "not in this tree"
+        about a file sitting right there. Same wrong-cause defect this plan
+        fixed one level up, where a non-repository was reported as a question
+        about the product's layout: the verdict was right and the reason was
+        not, and a soft failure still owes its reader the real one.
+        """
+        repo = tmp_path / "mixed"
+        repo.mkdir()
+        _git(repo, "init", "-q", "-b", "main")
+        _git(repo, "config", "user.email", "t@example.com")
+        _git(repo, "config", "user.name", "T")
+        _write(repo / "plugin" / "VERSION", "1.0.0\n")
+        _write(repo / "pyproject.toml", '[project]\nname = "x"\ndynamic = ["version"]\n')
+        _git(repo, "add", "-A")
+        _git(repo, "commit", "-qm", "scm-versioned")
+        _git(repo, "tag", "v1.0.0")
+        state, detail = rv.check_version_files(repo, "v1.0.0")
+        assert state == rv.OK
+        assert "present but carrying no version: pyproject.toml" in detail
+        assert "not in this tree: plugin/.claude-plugin/plugin.json" in detail
+        assert "not in this tree" not in detail.split("present but carrying no version")[1], (
+            "a file that is in the tree is still being announced as missing from it"
+        )
+
     def test_tree_with_no_known_version_file_is_unverifiable(self, tmp_path):
         repo = tmp_path / "bare"
         repo.mkdir()
@@ -523,6 +597,67 @@ class TestVersionFiles:
         repo = _make_repo(tmp_path, version="3.2.0")
         _write(repo / "plugin" / "VERSION", "9.9.9\n")
         assert rv.check_version_files(repo, "v3.2.0")[0] == rv.OK
+
+
+class TestVersionFilesWhenGitCannotAnswer:
+    """A broken toolchain is not evidence about a release.
+
+    **Neither `_run` site in `check_version_files` had a test**, and this chunk
+    added a second one (the declaration read) in front of the loop. Both must
+    degrade, because a `MISSING`/`ERRORED` sentinel falling through to
+    `shown[0]` indexes the *string* — `"m" != 0` is True — and every file would
+    be silently read as absent from the tree, which is a wrong answer wearing a
+    confident face.
+
+    Monkeypatched, unlike the non-repository tests beside them: an uninstalled
+    or hung git cannot be staged for real, which is the same split the suite
+    already draws for `check_tag_on_main`.
+    """
+
+    _CASES = [
+        (rv.MISSING, "git is not installed"),
+        (rv.ERRORED, "git could not read the tag's tree"),
+    ]
+
+    @pytest.mark.parametrize(("sentinel", "expected"), _CASES)
+    def test_git_unavailable_at_the_declaration_read(
+        self, tmp_path, monkeypatch, sentinel, expected
+    ):
+        monkeypatch.setattr(rv, "_run", lambda *a, **k: sentinel)
+        state, detail = rv.check_version_files(tmp_path, "v1.0.0")
+        assert state == rv.UNVERIFIABLE
+        assert expected in detail
+
+    @pytest.mark.parametrize(("sentinel", "expected"), _CASES)
+    def test_git_unavailable_at_a_version_file_read(
+        self, tmp_path, monkeypatch, sentinel, expected
+    ):
+        """The declaration read answers, then git stops answering.
+
+        Reaching the loop's guard needs the first call to succeed, so the stub
+        is selective — a blanket one returns at the declaration read and the
+        per-file branch is never entered, which is how both went untested.
+        """
+
+        def fake(args, cwd):
+            if args[-1].endswith("project-state.yaml"):
+                return (1, "", "")  # no declaration in this tree
+            return sentinel
+
+        monkeypatch.setattr(rv, "_run", fake)
+        state, detail = rv.check_version_files(tmp_path, "v1.0.0")
+        assert state == rv.UNVERIFIABLE
+        assert expected in detail
+        # **`expected` alone cannot tell this branch from the fallback.** Delete
+        # the guards and the sentinel string indexes as a non-zero exit, every
+        # file reads as absent, and the no-files branch asks
+        # `_outside_repo_reason` — which, with git equally unavailable there,
+        # answers "git is not installed" too. The MISSING case passed under
+        # exactly that mutation until this line: same words, wrong route, and
+        # the difference is the trailing clause only the other branch appends.
+        assert "no tree to read version files from" not in detail, (
+            "the per-file guard was skipped; this answer came from the no-files branch"
+        )
 
 
 class TestVersionFilesOutsideARepo:
