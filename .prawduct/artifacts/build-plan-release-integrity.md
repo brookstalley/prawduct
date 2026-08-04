@@ -243,9 +243,25 @@ the plan should not claim it does.**
 
 **Type:** code
 
+> **The GitHub Release check is a network call, and `architecture.md` § Direction says the
+> governance runtime takes none.** Not a blocker, but it must be decided rather than typed.
+> `[DECISION: `check-released` is an operator/CI command, not a session gate — it never runs on
+> the hot path, never blocks a session, and carries no session governance verdict, so the
+> local-first norm's subject does not cover it. But the norm is not waved away either: the
+> **local** checks (version files, tag on `main`, install resolution) run with no network and
+> fail closed, and the Release check is a **separately reported third state** — verified /
+> failed / unverifiable-because-`gh`-is-absent — so a machine without `gh` gets a usable answer
+> instead of a false red. In CI `gh` is always present, which is where the check is authoritative
+> | user can veto: the alternative is putting the Release check behind an explicit `--remote`
+> flag, which is more orthodox but makes the CI invocation the non-default one]`
+
 **Deliverables**
 - `prawduct-hook check-released vX.Y.Z`: version files agree with the tag, tag is on `main`,
-  a GitHub Release exists, the local install resolves to the released tree. One exit code.
+  a GitHub Release exists, the local install resolves to the released tree.
+- Body in `lib/`, thin `cmd_` wrapper in `bin/prawduct-hook` — the established shape for every
+  neighbouring subcommand, and what the precedent's tests import.
+- Explicit arg scan; unknown tokens are usage errors (exit 2), never ignored — copied from
+  `check_releasability`, whose comment records why the `in argv` shortcut is wrong here.
 - Dispatch arm, usage string, and the human-readable output path — not only `--json`.
 
 **Done when**
