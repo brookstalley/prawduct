@@ -3,6 +3,86 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-08-04: the cumulative's findings — a false positive that would have sent unreviewed work to merge
+
+<!-- prawduct: type=fix | scope=review-loop-carriers | chunks=01 -->
+
+Cumulative over Chunk 01, three reviewers: **0 blocking, 7 warnings, 11 notes.** Ten fixed in one
+batch, eight accepted. The gate needed none of it — which is the rule this branch is building, and
+the reason the whole batch is one commit and one verify pass rather than ten rounds.
+
+**The one that mattered was the one I asked about and looked for in the wrong place.** I asked the
+reviewers to check `diagnose_fix_churn`'s failure direction against renames, deletions, submodules
+and odd path shapes. None of those defeat it. The false positive comes in through the *lineage
+filter*: `merge-base --is-ancestor <fact> HEAD` is satisfied by **every fact on the base branch**,
+and one clone's evidence store is shared by all its worktrees. So a branch with no review of its own
+anchors on the last review of `develop` — and since reviews in a real repo name the same hot files
+over and over, a whole unreviewed branch can land inside the subset test and be reported to its
+builder as their own churn. Chunk 02 of this very plan was a live candidate.
+
+The anchor must now also be a **strict descendant of the merge-base**: a review at or before it
+never saw this branch. That also repairs a claim the docstring made and could not keep — *"a merge
+fails the subset test and diagnoses as nothing"* — because after merging the base in, a base-side
+fact can become *nearer* to HEAD by commit distance than the branch's own review, switching the
+anchor and dropping the merged lines out of the delta entirely. **The plan named a merge test; what
+shipped was a plain commit to an unnamed file**, which exercises the subset test and never touches
+anchor selection. The real merge case is now a test, and it fails without the filter.
+
+**Second half of the same finding: the diagnosis proved one leg and the message described the whole
+span.** `uncovered` means composition failed *somewhere* between base and HEAD, not necessarily on
+the last leg — an earlier dirty-tree review or selective commit leaves a hole below an anchor whose
+own delta is pure churn. The message then promised that one verify pass closes a gap it does not
+close. Coverage must now compose from the base tree up to the anchor before anything is claimed
+about the span, and the wording says what is proven.
+
+**The carrier proved itself on its own first review, and then showed its two holes.** That review's
+returned report ends with the `NEXT-ACTION:` line verbatim — the relay works. But all three
+reviewers independently hit the zero-blocking text, which is the strongest signal a coordinator
+review produces:
+
+- It ordered a verify pass **unconditionally**, printed directly beneath `_BATCH_FIX_DIRECTIVE`,
+  which conditions it on touching judgeable files. On framework work the non-blocking findings
+  concentrate in `.prawduct/` prose — all non-judgeable — so **the most common fix batch is exactly
+  the one that needs no pass**, and the line that now travels furthest picked the round-generating
+  phrasing. It now carries the condition, and says the common case out loud.
+- The clean-pass variant asserted "no further review is required" with no coverage caveat, while its
+  two siblings carried one. A clean `chunk` mid-plan still owes a final at end of cycle, and
+  `_critic_session_satisfies_gate` fires an advisory saying so — two code-owned surfaces asserting
+  opposite things in one session, with the newer one saying stop. The caveat is now a shared
+  constant every zero-blocking branch carries, pinned across all four count shapes.
+
+**And the relay order sat where the shorthand could swallow it.** In `goals-1-3.md` the order landed
+immediately before `No findings: "…"`, so the shorthand read as a total replacement — dropping the
+carrier in precisely the zero-blocking case that is most of these reviews, in the two
+always-single-pass modes. Reordered and made explicitly unconditional. The token pins could not have
+caught it: they assert the words are in the file, which is not the same as the instruction having
+effect.
+
+**Three more, each a gap between a producer and a consumer.** `_summarize_critic_findings` renders
+the handoff's Critic section from this same record and dropped `next_action` — so the cross-session
+builder, who is *definitionally* the one who lost the reviewer's report, inherited "Findings: 4
+warning" with nothing saying warnings gate nothing. That is the state the measured ten-round failure
+started from. The `NEXT:` prefix collided with the session digest's standing-block `NEXT`, which
+contracts for brevity — an agent holding both had a standing instruction to compress the line it was
+told to relay verbatim; it is `NEXT-ACTION:` now. And the emission was pinned only by a source-text
+grep, which passes for a print that is unreachable or conditional — it is asserted against real
+stdout, in the clean-pass test where an editor mirroring the batch directive's `if all_findings`
+would break it.
+
+**`diagnose_fix_churn` said nothing when it could not run.** Four return paths were genuine
+conditions and four were degradations, rendering identically — and `learnings.md` names that shape
+by name: *"'Advice fails soft' is not 'advice fails silent' — a degraded advisory path must still
+name its consequence, or it manufactures the false success it was meant to prevent."* The precedent
+was in the file I was editing. It now returns a status, and the gate says the check was unavailable
+rather than going quiet.
+
+**Accepted, not fixed (8):** two duplicates of fixes above; the perf note (the merge-base filter cut
+the candidate set anyway); the never-raises docstring; the two-definitions-of-prior-review note
+(deliberate — the two anchors answer different questions and unifying them would make one wrong);
+the stop-hook's parallel message path (real, but the measured loop ran against the PR gate); and the
+Issues-backend backlog gap. Each is a recorded fact, not a sentence — `prawduct-hook
+render-dispositions` prints the census rather than anyone counting by hand.
+
 ## 2026-08-04: the loop-termination rule shipped, and reached nobody who could act on it
 
 <!-- prawduct: type=fix | scope=review-loop-carriers | chunks=01 -->

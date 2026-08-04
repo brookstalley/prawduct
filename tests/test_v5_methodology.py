@@ -43,7 +43,7 @@ def estimate_tokens(text: str) -> int:
 LAST_MEASURED_TOKENS = {
     "methodology/building.md": 4659,
     "skills/critic/review-protocol.md": 3612,
-    "skills/critic/goals-1-3.md": 1994,
+    "skills/critic/goals-1-3.md": 1992,
 }
 
 
@@ -693,16 +693,25 @@ class TestCriticGoals13:
         # per-finding severity. (The chunk-`Type:` paragraph was the other
         # standing candidate and has now been spent — see below.)
         #
-        # 1960 -> 1994 (2026-08-04) -- the reviewer must relay consolidate's
-        # `NEXT:` line, the only carrier of the loop-termination rule with a
-        # reader in the BUILDER role: measured on a released version, one
+        # 1960 -> 1992 (2026-08-04) -- the reviewer must relay consolidate's
+        # `NEXT-ACTION:` line, the only carrier of the loop-termination rule
+        # with a reader in the BUILDER role: measured on a released version, one
         # consumer branch ran ten Critic rounds while the rule sat in two files
         # that branch never opened and in a directive that printed into seven
-        # reviewer forks and zero builder contexts. Bought at 34 tokens rather
+        # reviewer forks and zero builder contexts. Bought at 32 tokens rather
         # than ~160 by having CODE own the wording (`next_action_line`) and the
         # prose only order the relay -- the ceiling held without a bump, which
-        # is this comment's standing rule. Paid by compressing the chunk-`Type:`
-        # paragraph, the candidate named directly above.
+        # is this comment's standing rule.
+        #
+        # Paid twice, because the first version of the relay order sat where the
+        # no-findings shorthand swallowed it -- dropping the carrier in exactly
+        # the clean-pass case it exists for -- and making it unconditional cost
+        # more than the order itself. Funded by compressing the chunk-`Type:`
+        # paragraph, and by cutting a regrown instance of the very clause this
+        # comment already records cutting once: a rationale addressed to a
+        # MAINTAINER ("following a pointer at review time is the payload this
+        # file exists to remove") inside the file whose purpose is minimum
+        # reviewer payload.
         tokens = estimate_tokens(self.content)
         assert tokens < 2000, f"goals-1-3.md is ~{tokens} tokens, should be <2000"
 

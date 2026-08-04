@@ -1072,6 +1072,16 @@ def _summarize_critic_findings(prawduct_dir: Path) -> str | None:
                 parts.append(f"  BLOCKING: {f.get('summary', 'no summary')}")
             for f in warnings[:3]:
                 parts.append(f"  WARNING: {f.get('summary', 'no summary')}")
+        # The cross-session builder is DEFINITIONALLY the one who lost the
+        # reviewer's report, so the two in-session carriers of the
+        # loop-termination rule (the relayed `NEXT-ACTION:` line, and reading
+        # the findings file because building.md routed you there) have both
+        # already failed by the time this is read. Inheriting "Findings: 4
+        # warning" with no statement that warnings gate nothing is the exact
+        # state the measured ten-round failure started from.
+        next_action = data.get("next_action")
+        if next_action:
+            parts.append(f"  NEXT-ACTION: {next_action}")
         return "\n".join(parts)
     except Exception:  # prawduct:allow prawduct/broad-except -- findings summarization is best-effort
         return None

@@ -1120,21 +1120,39 @@ def check_cumulative_critic(project_dir: Path) -> int:
     # surfaced there: the reader acts on the first route they meet, and the
     # generic route here is a 4-10 minute round that will hand them the next
     # one's findings.
-    churn = coverage.diagnose_fix_churn(project_dir, read.get("facts", []), head_tree)
-    if churn is not None:
+    churn = coverage.diagnose_fix_churn(
+        project_dir,
+        read.get("facts", []),
+        head_tree,
+        base_tree,
+        resolved.get("merge_base", ""),
+    )
+    if churn is not None and churn.get("status") == "unavailable":
+        # A degraded advisory that says nothing is indistinguishable from one
+        # that found nothing, and the builder then runs the round this control
+        # exists to prevent with no record that it never ran (learnings.md:
+        # "'Advice fails soft' is not 'advice fails silent'").
+        print(
+            f"NOTE: the fix-churn diagnosis could not run ({churn['reason']}) — "
+            f"this is not a finding that your gap is genuine work, only that the "
+            f"cheap check was unavailable.",
+            file=sys.stderr,
+        )
+    elif churn is not None:
         shown = ", ".join(churn["delta_files"][:4])
         if len(churn["delta_files"]) > 4:
             shown += f" (+{len(churn['delta_files']) - 4} more)"
         print(
-            f"NOTE: every judgeable change between review {churn['fact_id']} and HEAD "
-            f"is in a file that review's OWN findings named ({shown}), and that review "
-            f"left 0 unresolved BLOCKING. So this gap is your fix churn, not unreviewed "
-            f"work — the {churn['warning']} warning + {churn['note']} note finding(s) "
-            f"you were closing gated nothing, and no gate required those commits. "
-            f"ONE `/prawduct:critic verify-resolutions` closes this gap; fix nothing "
-            f"further first, or you will re-open it. For anything still undecided, "
-            f"`prawduct-hook disposition {churn['fact_id']} <fid> --accept \"<reason>\"` "
-            f"records a won't-fix, moves no tree, and needs no review at all.",
+            f"NOTE: coverage composes all the way to review {churn['fact_id']} "
+            f"(taken on this branch, after the merge-base, 0 unresolved BLOCKING), "
+            f"and every judgeable change since it is in a file that review's OWN "
+            f"findings named ({shown}). So the whole of this gap is your fix churn, "
+            f"not unreviewed work — the {churn['warning']} warning + {churn['note']} "
+            f"note finding(s) you were closing gated nothing, and no gate required "
+            f"those commits. ONE `/prawduct:critic verify-resolutions` closes it; fix "
+            f"nothing further first, or you will re-open it. For anything still "
+            f"undecided, `prawduct-hook disposition {churn['fact_id']} <fid> --accept "
+            f"\"<reason>\"` records a won't-fix, moves no tree, and needs no review.",
             file=sys.stderr,
         )
     print(

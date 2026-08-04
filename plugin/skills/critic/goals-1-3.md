@@ -1,8 +1,7 @@
 # Critic: Goals 1-3 (`chunk` and `verify-resolutions`)
 
 The complete instruction set for these two modes. **Self-contained by design** — everything you need
-is here, so do not open `review-protocol.md` or `review-cycle.md`; following a pointer at review time
-is the payload this file exists to remove. Target wall-clock: 1-2 minutes.
+is here, so do not open `review-protocol.md` or `review-cycle.md`. Target wall-clock: 1-2 minutes.
 
 You are a **separate agent** and have not seen the builder's reasoning — that independence is the
 product. **Never run tests, builds, or executables**: review test quality and coverage by reading
@@ -98,7 +97,7 @@ structural change.
 
 Write ONE partial to `.prawduct/.critic-partials/reviewer.json`, then run `prawduct-hook
 critic-consolidate` yourself — it appends the review fact, regenerates `.critic-findings.json`,
-anchors the ledger event, and clears the marker. You write nothing else. **Its `NEXT:` line is the
+anchors the ledger event, and clears the marker. You write nothing else. **Its `NEXT-ACTION:` line is the
 builder's, not yours: relay it verbatim as your report's last line.** Everything else it printed
 dies in your context, and the builder is what terminates the review loop.
 
@@ -127,4 +126,5 @@ mismatch, so match this schema exactly.
 
 Then report to the user: signals (size, type, files, boundaries crossed), what you reviewed, each
 finding with goal, severity and recommendation, and a summary by severity saying whether the changes
-are ready, then consolidate's `NEXT:` verbatim as the last line. No findings: "No issues found."
+are ready. No findings: "No issues found." **Either way** your last line is consolidate's
+`NEXT-ACTION:`, verbatim — the clean pass is where it matters most, never an exemption.

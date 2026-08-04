@@ -247,6 +247,23 @@ _BATCH_FIX_DIRECTIVE = (
 )
 
 
+#: Carried by EVERY zero-blocking variant, including the clean pass.
+#:
+#: "The review is over" and "you may merge" are different claims, and only the
+#: first is this function's to make: a clean `chunk` mid-plan still owes a
+#: `final`/`cumulative` at end of cycle (`review-cycle.md`'s table, and the
+#: advisory `_critic_session_satisfies_gate` fires for exactly that case), and
+#: `check-cumulative-critic` still needs spanning coverage. Omitting it from
+#: the clean branch let two code-owned surfaces assert opposite things in one
+#: session, with the newer one saying "stop" — so it is a constant rather than
+#: a phrase each branch remembers to repeat.
+_COVERAGE_IS_A_SEPARATE_QUESTION = (
+    " (Whether the PR gate is satisfied, and whether the work cycle still owes a"
+    " final/cumulative, are separate questions about coverage — ask them by"
+    " running the gate, not by reviewing again.)"
+)
+
+
 def next_action_line(fact_id: "str | None", blocking: int, warning: int, note: int) -> str:
     """The one sentence the BUILDER needs, computed from the fact's own counts
     and written into ``.critic-findings.json`` by :func:`fact_to_cache_record`.
@@ -286,19 +303,24 @@ def next_action_line(fact_id: "str | None", blocking: int, warning: int, note: i
     if not (warning or note):
         return (
             "0 blocking, 0 other findings — THE REVIEW IS OVER and there is nothing"
-            " to disposition. Proceed; no further review is required by this work."
+            " to disposition. Nothing in THIS review requires another round."
+            + _COVERAGE_IS_A_SEPARATE_QUESTION
         )
     ref = fact_id or "<review-id>"
     return (
         f"0 blocking — THE REVIEW IS OVER. The {warning} warning + {note} note"
         " finding(s) gate NOTHING: no gate reads them, so nothing in THIS review"
-        " requires another round. (Whether the PR gate is satisfied is a separate"
-        " question about coverage — ask it by running the gate, not by reviewing"
-        " again.) Disposition each finding instead of reflexively fixing it —"
+        " requires another round."
+        + _COVERAGE_IS_A_SEPARATE_QUESTION
+        + " Disposition each finding instead of reflexively fixing it —"
         " accept is the default for anything nobody will realistically action:"
         f' `prawduct-hook disposition {ref} <fid> --accept "<reason>"`, which needs'
         " no review and moves no tree. If you do choose to fix some, batch them into"
-        " ONE commit and re-cover with ONE `/prawduct:critic verify-resolutions`."
+        " ONE commit — and re-cover with ONE `/prawduct:critic verify-resolutions`"
+        " ONLY if that commit touched judgeable files. A batch confined to"
+        " `.prawduct/` prose, `.claude/settings.json`, or `.md` outside `skills/`,"
+        " `methodology/`, `templates/` and a root `CLAUDE.md` moves no coverage and"
+        " needs no pass at all — which on framework work is the common case."
         " Do NOT start another round to 'close coverage' before committing, and do"
         " not infer that you need one from gate output printed before your fix —"
         " commit, then re-run the gate and let it answer."
@@ -1800,12 +1822,12 @@ def consolidate(project_dir: Path) -> int:
     # The single-pass reviewer runs this command itself, so everything above
     # lands in the REVIEWER's context and dies there — the builder never sees a
     # word of it. This one line is the part that has to travel: both protocol
-    # files tell the reviewer to relay `NEXT:` verbatim as their closing line.
+    # files tell the reviewer to relay `NEXT-ACTION:` verbatim as their closing line.
     # Code owns the wording so it cannot be paraphrased into something weaker,
     # and so it stays identical to the `next_action` the builder reads in
     # `.critic-findings.json` on the coordinator path.
     print(
-        "NEXT: "
+        "NEXT-ACTION: "
         + next_action_line(
             review_id,
             counts.get("blocking", 0),

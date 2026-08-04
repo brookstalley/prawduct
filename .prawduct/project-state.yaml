@@ -388,7 +388,7 @@ views_enabled: true
 # first set since the slot was cleared, so it inherits none of the staleness the
 # incidents above record — and the gates resolve this branch's plan by `scope:`
 # anyway, which is what made the cleared state survivable.
-active_build_plan: artifacts/build-plan-silent-gates.md
+active_build_plan: artifacts/build-plan-review-loop-carriers.md
 
 # =============================================================================
 # BUILD-PLAN REF ROOT (opt-in)

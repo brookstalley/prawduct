@@ -548,6 +548,29 @@ class TestNextActionLine:
         assert "nothing" in line
         assert "disposition" not in line.split("nothing to disposition")[-1]
 
+    def test_every_zero_blocking_variant_carries_the_coverage_caveat(self):
+        # "The review is over" and "you may merge" are different claims. A
+        # clean `chunk` mid-plan still owes a final/cumulative at end of cycle
+        # — `_critic_session_satisfies_gate` fires an advisory saying exactly
+        # that — so a variant asserting the first without disclaiming the
+        # second puts two code-owned surfaces in contradiction, with the newer
+        # one saying "stop". The caveat is a shared constant precisely so a
+        # branch cannot forget it.
+        for counts in ((0, 0, 0), (0, 4, 7), (0, 0, 2), (0, 1, 0)):
+            line = cc.next_action_line("rev-1", *counts)
+            assert cc._COVERAGE_IS_A_SEPARATE_QUESTION in line, counts
+
+    def test_the_verify_pass_is_conditioned_on_judgeable_files(self):
+        # `_BATCH_FIX_DIRECTIVE` prints immediately above this line and
+        # conditions the pass on "if that commit touches judgeable files". On
+        # framework work the non-blocking findings concentrate in `.prawduct/`
+        # prose — all non-judgeable — so the most common fix batch is exactly
+        # the one needing no pass, and an unconditional order buys the round
+        # this whole change exists to prevent.
+        line = cc.next_action_line("rev-1", 0, 3, 0)
+        assert "ONLY if that commit touched judgeable files" in line
+        assert "needs no pass at all" in line
+
     def test_missing_fact_id_degrades_to_a_placeholder(self):
         # A record with no id must still produce a runnable-shaped instruction
         # rather than the string "None".
@@ -585,8 +608,25 @@ class TestNextLineRelayContract:
     def test_both_protocols_order_the_relay(self):
         for name in self.PROTOCOLS:
             text = self._text(name)
-            assert "NEXT:" in text, name
+            assert "NEXT-ACTION:" in text, name
             assert "verbatim" in text, name
+
+    def test_goals_1_3_relay_survives_the_clean_pass_shorthand(self):
+        """The relay order must not sit where the no-findings shorthand can
+        swallow it — and `goals-1-3.md` serves the two always-single-pass
+        modes, where the measured data put most reviews at zero blocking. So
+        the clean pass is the relay's highest-value case, and the one a reader
+        is likeliest to shortcut. Modelling the READER, not just the artifact:
+        the words being present in the file is what the other pins assert, and
+        it is not the same as the instruction having effect."""
+        text = self._text("goals-1-3.md")
+        shorthand = text.index("No issues found")
+        relay = text.index("your last line is consolidate's")
+        assert relay > shorthand, (
+            "the relay order precedes the no-findings shorthand, so the "
+            "shorthand reads as a total replacement and drops the carrier"
+        )
+        assert "Either way" in text
 
     def test_both_protocols_say_why_the_relay_is_not_optional(self):
         # Without the reason, a token-diet pass reads the order as redundant
@@ -599,12 +639,16 @@ class TestNextLineRelayContract:
             assert "dies in your context" in text, name
             assert "terminates the review loop" in text, name
 
-    def test_consolidate_emits_the_line_it_orders_relayed(self):
-        # The contract is only real if the command actually prints the token
-        # the protocols name. Pinned here rather than in an integration test so
-        # a rename of the prefix fails at the two ends together.
-        src = (ROOT / "lib" / "critic_consolidate.py").read_text()
-        assert '"NEXT: "' in src
+    def test_the_prefix_does_not_collide_with_the_standing_block(self):
+        # `NEXT` is already framework-wide: the turn-closing standing block
+        # (session digest, building.md, reflection.md) defines it as "the ONE
+        # next action" — one line. This line is a paragraph that must be
+        # relayed verbatim, so an agent holding both contracts would have a
+        # standing instruction to compress the very text it was told to copy.
+        for name in self.PROTOCOLS:
+            text = self._text(name)
+            assert "NEXT-ACTION:" in text, name
+            assert re.search(r"(?<!-)\bNEXT:", text) is None, name
 
 
 # ---------------------------------------------------------------------------
@@ -1309,6 +1353,14 @@ class TestConsolidateIntegration:
         assert result.returncode == 0, f"stderr={result.stderr!r}"
         assert "consolidated: 0 blocking" in result.stdout
         assert cc._BATCH_FIX_DIRECTIVE not in result.stdout
+        # ...but the relay line is UNCONDITIONAL, and the clean pass is the
+        # case it matters most in — "the review is over" is the whole message.
+        # The batch directive two lines above is deliberately `if all_findings`;
+        # an editor mirroring that condition onto this print would kill the
+        # clean-pass variant while every prose pin stayed green, so the producer
+        # is asserted against real stdout rather than against source text.
+        assert "NEXT-ACTION: " in result.stdout
+        assert "THE REVIEW IS OVER" in result.stdout
 
     def test_already_consolidated_noop_reports_the_recorded_findings(self, tmp_path):
         """The COORDINATOR path's normal case. The SubagentStop trigger

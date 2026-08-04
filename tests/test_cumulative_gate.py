@@ -545,6 +545,124 @@ class TestFixChurnDiagnosis:
         assert rc == 1
         assert "fix churn" not in err
 
+    def test_base_branch_fact_never_anchors_an_unreviewed_branch(self, tmp_path, capsys):
+        # The dangerous false positive. `merge-base --is-ancestor <fact> HEAD`
+        # is satisfied by EVERY fact on the base branch, and one clone's store
+        # is shared by all its worktrees — so a branch with no review of its
+        # own would anchor on the last review of `main`. Reviews in a real repo
+        # name the same hot files over and over, so a whole unreviewed branch
+        # can land inside the subset test and be reported as churn. The anchor
+        # must be a strict descendant of the merge-base: a review at or before
+        # it never saw this branch.
+        repo = tmp_path / "repo"
+        repo.mkdir()
+        _git(repo, "init", "-q", "-b", "main")
+        _commit(repo, "feature.py", "x = 1\n", "c1")
+        _fact(  # a review OF MAIN that happens to name feature.py
+            repo,
+            _tree(repo, "HEAD~0"),
+            _tree(repo),
+            ["feature.py"],
+            findings=[{"fid": "R-1", "severity": "warning", "title": "w",
+                       "files": ["feature.py"]}],
+            counts={"blocking": 0, "warning": 1, "note": 0},
+            head_commit=_git(repo, "rev-parse", "HEAD"),
+        )
+        _git(repo, "checkout", "-q", "-b", "feature")
+        _commit(repo, "feature.py", "entirely new unreviewed work\n", "f1")
+        rc, _out, err = _run_gate(repo, capsys)
+        assert rc == 1
+        assert "uncovered" in err
+        assert "fix churn" not in err
+
+    def test_merge_of_the_base_does_not_switch_the_anchor_to_a_base_fact(
+        self, tmp_path, capsys
+    ):
+        # CRT-3W6P's counter-example, delivered as an actual merge. After
+        # merging the base in, a base-side fact can be NEARER to HEAD by commit
+        # distance than the branch's own review — which would switch the anchor
+        # and drop the merged-in lines out of the delta, exactly reversing the
+        # answer. The merge-base filter is what holds here.
+        repo = _branch_repo(tmp_path)
+        _fact(  # the branch's own review, at f1
+            repo,
+            _tree(repo, "main"),
+            _tree(repo),
+            ["feature.py"],
+            findings=[{"fid": "R-1", "severity": "warning", "title": "w",
+                       "files": ["feature.py"]}],
+            counts={"blocking": 0, "warning": 1, "note": 0},
+            head_commit=_git(repo, "rev-parse", "HEAD"),
+        )
+        _git(repo, "checkout", "-q", "main")
+        _commit(repo, "code.py", "x = 2  # base moved on\n", "base work")
+        _fact(  # a base-side review naming the same file the branch touches
+            repo,
+            _tree(repo, "HEAD~1"),
+            _tree(repo),
+            ["code.py"],
+            findings=[{"fid": "R-1", "severity": "warning", "title": "w",
+                       "files": ["feature.py"]}],
+            counts={"blocking": 0, "warning": 1, "note": 0},
+            head_commit=_git(repo, "rev-parse", "HEAD"),
+        )
+        _git(repo, "checkout", "-q", "feature")
+        _git(repo, "merge", "-q", "--no-ff", "-m", "merge main", "main")
+        _commit(repo, "feature.py", "y = 3  # fix\n", "fix the warning")
+        rc, _out, err = _run_gate(repo, capsys)
+        assert rc == 1
+        # The merge brought unreviewed base work into the span. Whatever the
+        # gate says, it must not say this gap is only the builder's churn.
+        assert "fix churn" not in err
+
+    def test_a_gap_below_the_anchor_is_not_reported_as_churn(self, tmp_path, capsys):
+        # `uncovered` means composition failed SOMEWHERE in base→HEAD, not
+        # necessarily on the last leg. With an unreviewed commit below the
+        # anchor, the last leg can be pure churn while the real gap is
+        # upstream — and then "ONE verify-resolutions closes this gap; fix
+        # nothing further first" is advice that does not close it.
+        repo = _branch_repo(tmp_path)
+        _commit(repo, "feature.py", "y = 2\nunreviewed = True\n", "f2 — never reviewed")
+        _fact(  # anchor sits ABOVE the unreviewed f2, so base→anchor has a hole
+            repo,
+            _tree(repo, "HEAD~1"),
+            _tree(repo),
+            ["feature.py"],
+            findings=[{"fid": "R-1", "severity": "warning", "title": "w",
+                       "files": ["feature.py"]}],
+            counts={"blocking": 0, "warning": 1, "note": 0},
+            head_commit=_git(repo, "rev-parse", "HEAD"),
+        )
+        _commit(repo, "feature.py", "y = 3\nunreviewed = True\n", "fix the warning")
+        rc, _out, err = _run_gate(repo, capsys)
+        assert rc == 1
+        assert "fix churn" not in err
+
+    def test_a_degraded_diagnosis_says_so_rather_than_going_quiet(self, tmp_path, capsys):
+        # "Advice fails soft" is not "advice fails silent" (learnings.md): a
+        # control that could not run must not render identically to one that
+        # ran and found nothing, or the builder pays the round it exists to
+        # prevent with no record that it never fired.
+        repo = _branch_repo(tmp_path)
+        rc = gates.check_cumulative_critic(repo)  # warm the normal path first
+        capsys.readouterr()
+        import lib.coverage as cov_mod
+
+        real = cov_mod.diagnose_fix_churn
+        try:
+            cov_mod.diagnose_fix_churn = lambda *a, **k: {
+                "status": "unavailable",
+                "reason": "ancestry check failed (fatal: bad object)",
+            }
+            rc, _out, err = _run_gate(repo, capsys)
+        finally:
+            cov_mod.diagnose_fix_churn = real
+        assert rc == 1
+        assert "could not run" in err
+        assert "ancestry check failed" in err
+        # And it must not be mistaken for a verdict about the work.
+        assert "not a finding that your gap is genuine work" in err
+
 
 # ---------------------------------------------------------------------------
 # Blocking findings and resolutions (D5 join)
