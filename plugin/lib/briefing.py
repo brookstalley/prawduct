@@ -1083,8 +1083,22 @@ def _summarize_critic_findings(prawduct_dir: Path) -> str | None:
         if next_action:
             parts.append(f"  NEXT-ACTION: {next_action}")
         return "\n".join(parts)
-    except Exception:  # prawduct:allow prawduct/broad-except -- findings summarization is best-effort
-        return None
+    except Exception as exc:  # prawduct:allow prawduct/broad-except -- a briefing must render whatever the record turns out to be; the failure is reported, never swallowed
+        # `is_file()` already passed, so we are here because a record that EXISTS
+        # could not be read. Returning None would drop the whole `## Critic
+        # Findings` section and render identically to "no review has run" — and
+        # the reader is definitionally the builder who lost the reviewer's
+        # report, which is the one context where that difference decides whether
+        # a round gets run. Same rule the sibling advisory in
+        # `coverage.diagnose_fix_churn` follows: "'advice fails soft' is not
+        # 'advice fails silent'" — a degraded path names its consequence.
+        return (
+            f"the findings record at {findings_path.name} could not be read "
+            f"({type(exc).__name__}: {str(exc)[:80]}) — this is NOT a statement "
+            "that the review was clean. Re-run `prawduct-hook critic-consolidate` "
+            "to regenerate it from the evidence store, or read the store directly "
+            "with `prawduct-hook evidence list`."
+        )
 
 
 # The machine marker. Every generated handoff carries it as its first body

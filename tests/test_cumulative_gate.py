@@ -711,6 +711,65 @@ class TestFixChurnDiagnosis:
         # And it must not be mistaken for a verdict about the work.
         assert "not a finding that your gap is genuine work" in err
 
+    def test_the_producer_itself_returns_unavailable_when_git_cannot_answer(
+        self, tmp_path
+    ):
+        """The test above pins the gate's RENDERING of a degraded diagnosis, and
+        it gets the signal from a monkeypatched stand-in — so it proves nothing
+        about the function that has to produce it.
+
+        That is the shape Goal 1 names: a fixture that synthesizes the
+        producer's signal proves the consumer reads it, never that the producer
+        emits it. Five sites in `diagnose_fix_churn` return
+        `{"status": "unavailable"}`, and the `None`-vs-`unavailable` split
+        exists *because* a prior round found the function silent when it could
+        not run. Without this, a refactor collapsing those returns to `None`
+        keeps the whole suite green and restores that defect.
+
+        Driven through the real git failure rather than a patched return: a fact
+        whose `head_commit` names no object makes `merge-base --is-ancestor`
+        exit 128, which is neither the 0 ("ancestor") nor the 1 ("not an
+        ancestor") the loop treats as an answer.
+        """
+        from lib import coverage
+
+        repo = _branch_repo(tmp_path)
+        head_tree = _tree(repo, "HEAD")
+        bogus = {
+            "kind": "review",
+            "id": "rev-bogus",
+            "ts": "2026-08-04T00:00:00Z",
+            "body": {
+                "head_tree": "0" * 40,
+                "head_commit": "deadbeef" * 5,
+                "findings": [],
+            },
+        }
+        out = coverage.diagnose_fix_churn(
+            repo, [bogus], head_tree, "1" * 40, "2" * 40,
+            diff_fn=lambda *a, **k: [], key_fn=lambda f: f.get("id"),
+        )
+        assert out is not None, (
+            "the producer went silent on a git failure — `None` here is read by "
+            "the gate as 'ran and found nothing', which is the exact collapse "
+            "the unavailable/None split was introduced to prevent"
+        )
+        assert out["status"] == "unavailable"
+        assert "ancestry check failed" in out["reason"], out["reason"]
+
+    def test_the_producer_returns_unavailable_on_missing_span_endpoints(self, tmp_path):
+        """The cheapest of the five `unavailable` sites, and the only one
+        reachable without git failing — pinned here so the guard above is not
+        the sole witness that this return shape exists at all."""
+        from lib import coverage
+
+        repo = _branch_repo(tmp_path)
+        out = coverage.diagnose_fix_churn(
+            repo, [], "", "b" * 40, "c" * 40,
+            diff_fn=lambda *a, **k: [], key_fn=lambda f: f.get("id"),
+        )
+        assert out == {"status": "unavailable", "reason": "missing span endpoints"}
+
 
 # ---------------------------------------------------------------------------
 # Blocking findings and resolutions (D5 join)

@@ -87,6 +87,7 @@ LAST_MEASURED_TOKENS = {
     "methodology/building.md": 4657,
     "skills/critic/review-protocol.md": 3589,
     "skills/critic/goals-1-3.md": 1994,
+    "skills/critic/review-cycle.md": 9471,
 }
 
 
@@ -1223,6 +1224,28 @@ class TestCriticSkillRoutesByMode:
 
 
 class TestReviewCycle:
+    def test_token_budget(self):
+        # Ceiling 9600. Added 2026-08-04 because this file was the only
+        # `final`/`cumulative` payload with no bound, and the gap was being
+        # SPENT: `review-protocol.md`'s relocated "Extending This Skill" and the
+        # verify-narrowing argument both landed here justified by "review-cycle
+        # carries no ceiling", while the ceiling test one file over passed on a
+        # token DROP. Relocation across an unguarded boundary is a bump wearing
+        # a trim's clothing -- the P0 wall-clock norm is about the payload a
+        # reviewer loads, and `SKILL.md` lists this file as part of it (
+        # `test_payload_at_most_half_the_full_protocol` counts it too).
+        #
+        # The ceiling is deliberately loose relative to its siblings: this file
+        # is ~2.6x review-protocol.md and a tight bound would force an immediate
+        # diet that nothing has argued for. It exists to make the NEXT growth a
+        # decision, not to relitigate the current size. Same standing rule as
+        # every other budget comment here: THE NEXT ADDITION TRIMS OR RELOCATES,
+        # IT DOES NOT BUMP -- and "relocate to the unbudgeted file" is no longer
+        # an available move anywhere in this skill.
+        content = read_file("skills/critic/review-cycle.md")
+        tokens = estimate_tokens(content)
+        assert tokens < 9600, f"review-cycle.md is ~{tokens} tokens, should be <9600"
+
     def test_structure(self):
         content = read_file("skills/critic/review-cycle.md")
         for level in ["Trivial", "Small", "Medium", "Large"]:
