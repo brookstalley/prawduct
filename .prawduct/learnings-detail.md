@@ -2455,3 +2455,32 @@ stale. The corrected sentence now carries an explicit *do not re-introduce a lit
 **Adjacent instance worth carrying.** `check-releasability` could not have caught the CHANGELOG defect
 at all — it grades **classification**, not **description**. A green gate remains evidence only about
 what that gate measures.
+
+## A green suite is evidence about the ONE environment that ran it
+
+Added 2026-08-04, when this repo gained its first CI (`release-integrity` Chunk 05). The full suite
+had been run three times locally first — on 3.12, 3.10 and 3.14 — precisely so the first push would
+be a confirmation. It was red on both legs anyway, and none of the three causes was reachable from a
+maintainer's macOS checkout:
+
+1. **A guard reading `git ls-files` answers differently across `git commit`.**
+   `tests/test_plugin_packaging.py` asserts every tracked top-level directory either ships or is
+   explicitly excluded. `.github/` became *tracked* at commit time — after the last local run — so
+   the guard could not see the thing it exists to guard until CI did. *"I ran the suite" and "I ran
+   the suite against what I am about to commit" are different claims.*
+2. **A test that searches git history by content reads a shallow clone as "never shipped".**
+   `actions/checkout` defaults to `fetch-depth: 1`; `tests/test_norm_index_scaffold.py` runs
+   `git log --all -S <row>` and got empty output, which it reported as a wrong scaffold row — an
+   accusation against the code for a truncated checkout. Its author *had* anticipated unavailable
+   history, but only via `returncode != 0`, and a shallow clone returns 0. The anticipated failure
+   mode and the real one differed by one exit code. Fixed with `fetch-depth: 0` **and** an explicit
+   `git rev-parse --is-shallow-repository` check, because the workflow line alone leaves the next
+   shallow runner lying.
+3. **Non-ASCII source through `python -c` dies under `LC_ALL=C` on Linux.** macOS always decodes
+   argv as UTF-8; Linux uses the locale's codec, so an em-dash arrives as surrogates and the
+   interpreter exits before reaching the assertion. Pass source as a **file** — source files are
+   UTF-8 by language definition regardless of locale — so only ASCII crosses the command line.
+
+**The generalisation.** All three are the same failure as the defect that scope existed to fix:
+nothing verified what a *different* consumer receives. A single execution environment makes every
+assumption it satisfies invisible.

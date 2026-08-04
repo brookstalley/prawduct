@@ -128,8 +128,8 @@ When `develop` is ready to release as `vX.Y.Z`:
 5. **Tag the release:** `git tag vX.Y.Z` (and push the tag).
 
 6. **Publish the GitHub Release — the tag is not the release.** A pushed tag lands on `/tags`;
-   the Releases page is a separate surface and it stayed empty for this repository's first
-   every tag this repo had ever pushed, which is what consumers reported as "no tag on GitHub".
+   the Releases page is a separate surface and it stayed empty for every tag this repo had ever
+   pushed, which is what consumers reported as "no tag on GitHub".
 
    ```
    awk '/^## vX.Y.Z$/{f=1;next} /^## v/{f=0} f' plugin/CHANGELOG.md > /tmp/notes-vX.Y.Z.md
