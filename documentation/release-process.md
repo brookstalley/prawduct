@@ -139,6 +139,11 @@ When `develop` is ready to release as `vX.Y.Z`:
 7. **Verify what actually shipped:** `./plugin/bin/prawduct-hook check-released vX.Y.Z`.
    Exit **0** verified · **1** a check failed · **3** nothing failed but a check could not run.
    **A 3 is not a pass.**
+
+   Pushing the tag also fires `.github/workflows/verify-release.yml`, which runs the same command
+   with a token and goes red on any non-zero — so a forgotten step 6 surfaces as a failed build
+   even if nobody runs step 7. CI verifies; it never publishes. Run the command anyway: it answers
+   in seconds, and the workflow only tells you *afterwards*.
 8. **Confirm the banner.** On the next session against the new `main`, the version-delta banner
    shows `v(old) → vX.Y.Z` plus the crossed releases' change-log highlights, and announces any
    gate newly active in the range.
@@ -222,7 +227,9 @@ what they report as "no tag on GitHub" — so the publish step is part of the pr
 optional flourish. `check-released` verifies all of it (version files agreeing at the tag's own
 tree, the tag contained in `origin/main`, the Release present) and is the one command to run
 afterwards. Note the exit codes: **0** verified, **1** something failed, **3** nothing failed but a
-check could not run — a `3` is not a pass.
+check could not run — a `3` is not a pass. The tag push runs the same check in CI
+(`.github/workflows/verify-release.yml`), which is the backstop for the release nobody verified by
+hand; it never publishes a Release, by owner ruling.
 
 **Pruned** — used for **v3.1.1 and v3.1.2**. The candidate is built as the previous release's tree
 plus `git diff <cut-point>..develop` applied with `--3way`, published by ref

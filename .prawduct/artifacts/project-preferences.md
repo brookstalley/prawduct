@@ -65,6 +65,11 @@ Each preference is enforced by one of three mechanisms. This table is the source
 | **Critic** | `/critic` review (Goal 4: Norms) | Judgment-required rules (boundary detection, semantic naming, "appropriate" anything) | No false-confidence test. Cost: requires a reviewer per chunk; misses violations between reviews. |
 | **Session config** | Read by Claude/methodology at session boundaries (e.g., `building.md` reads `Branching`; `/pr` reads `PR creation`) | Workflow-level decisions (when to branch, when to PR) | Configuration, not enforcement. Validated by user observing Claude's behavior, not by a test or a reviewer. |
 
+**"CI (test)" became literal on 2026-08-04.** Every row below claiming that audit home spent its
+life describing a runner that did not exist — the suite ran when someone remembered, which is not an
+audit home. `.github/workflows/tests.yml` now runs it on every push and every pull request, so a
+test row is enforced by something other than habit.
+
 This is the product's **norm index** (`docs/norms.md`): each row assigns an enforcement mechanism, an **audit home** (which time-domain organ catches drift — `janitor` for judgment norms with no machine-readable hook; `advisory` only when a mechanical hook is named), and a terse **why**. It has two parts: **code-level preferences** (below) and **architectural Direction norms** (the pointer table after it, indexing the `## Direction` sections in the strategy artifacts).
 
 ### Code-level preferences
@@ -82,6 +87,7 @@ This is the product's **norm index** (`docs/norms.md`): each row assigns an enfo
 | No suite-total test claim in durable plugin prose, and no surface that asks for one | Test | `tests/preferences/test_no_suite_total_claims.py` | CI (test) | the evidence store records pass/fail per tree, so a prose copy is a hand-maintained duplicate that drifts and buys review rounds correcting itself; the sweep found the surface already clean and no instruction demanding a count, so the guard IS the deliverable — the habit lives in agents, not in a template to delete |
 | Critic skill structure: both mode names present in the canonical instruction files | Test | `tests/preferences/test_critic_skill_structure.py` | CI (test) | losing the terminology fails safe to `final`, which *masks* the regression by always running the full review |
 | Reviewers run on the session model — no intelligent model switching | Test | `tests/preferences/test_reviewer_model_dispatch_prose.py` | CI (test) | risk-tier→model mapping escalated on almost any declared risk surface; the pin is against re-introduction |
+| CI workflows restate no fact that lives in `pyproject.toml`, and the release workflow never publishes | Test | `tests/preferences/test_ci_workflow_conventions.py` | CI (test) | the Python floor and the dev extra each have one home, and a matrix copy that drifts tests a version nobody supports; the no-publish rule is an owner ruling that is invisible in the diff of the edit that removes it |
 | Public functions in `lib/` referenced in tests | Critic | Goal 1 (test-coverage adequacy) — the dedicated `test_public_function_coverage` scanner was retired with `tools/lib/` (M4); restore a `lib/`-scoped scanner if drift appears | Critic + janitor | untested public API drifts in silently |
 | Naming (snake_case / PascalCase / UPPER_SNAKE) | Critic *(would be linter; no linter configured — see "Linting" above)* | Reviewer reads diff against this preference | Critic + janitor | readability; no linter configured |
 | Error handling (return-value based; exceptions at boundaries) | Critic | Reviewer judges what counts as a "boundary" per the definition above | Critic + janitor | return-value discipline; exceptions only escape at boundaries |

@@ -294,6 +294,10 @@ amended 2026-07-29). Step 10 is that test.
 - `./plugin/bin/prawduct-hook check-released vX.Y.Z` exits 0. **Exit 3 is not a pass** — a check
   could not run. (Repo-local on purpose: the *installed* plugin is the previous release, which
   does not carry this subcommand.)
+- The `verify-release` workflow run for the tag is green
+  (`gh run list --workflow verify-release.yml --limit 1`) — the same check, run with a token, on
+  the release nobody verified by hand. It publishes nothing: the pruned-release hazard below is a
+  human-read warning precisely because no automation touches the Release text.
 - Your own install holds the released tree — these two print the **same** 40-character sha:
 
   ```

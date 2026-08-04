@@ -1,0 +1,73 @@
+# Verify a release from the outside — the consumer's view, not the operator's.
+#
+# Every check in the release runbook was a git command run by the person doing
+# the release, and every one of them passed for thirty consecutive releases while
+# the page a consumer actually lands on stayed empty. This job asks the question
+# none of them did: did the whole thing arrive?
+#
+# **This workflow never publishes.** That is an owner ruling (2026-08-04), not an
+# omission, and not a step left for later. Publishing a Release notifies watchers
+# and is not cleanly retractable; `security-model.md` § Direction requires
+# explicit owner approval, at the operation level, for an act like that — and a
+# tag-push trigger has no human present at the moment it fires. A forgotten
+# publish is meant to surface here as a red build, which buys most of the benefit
+# at none of that cost. If you are reading this looking for the publish step:
+# there isn't one, and adding one needs a new ruling.
+#
+# `--allow-unverifiable` is likewise absent on purpose. `check-released` exits 3
+# when nothing failed but something could not be checked, and CI fails on any
+# non-zero — which is the whole point of that exit code existing. A run that
+# could not reach the Releases page must not be green.
+
+name: verify-release
+
+on:
+  push:
+    tags:
+      - "v*"
+  # So the check can be exercised — against a real tag, or a deliberately bogus
+  # one — without pushing a junk tag to prove it works.
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Tag to verify (e.g. v3.2.4)"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      # `inputs.tag` is empty on a tag push, which falls through to the tag that
+      # triggered it.
+      TAG: ${{ inputs.tag || github.ref_name }}
+      # `gh release view` is the only networked check. Without a token it reports
+      # unverifiable rather than failed — correct for a laptop, useless here, so
+      # CI supplies one and the check becomes authoritative.
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          # Full history and all tags. `check-released` reads the version files
+          # out of the tag's own tree (`git show <tag>:<path>`) — a shallow
+          # checkout cannot answer, and a shallow checkout that says "cannot
+          # answer" is a red build about the fetch, not the release.
+          fetch-depth: 0
+
+      - name: Fetch the release surface
+        # Containment is checked against `origin/main`, and `actions/checkout`
+        # leaves no such ref on a tag build. Absent it, `check-released` correctly
+        # degrades to unverifiable — exit 3, a red build reporting nothing useful.
+        # This step is what makes the containment check answerable; it is a no-op
+        # if the ref is already present.
+        run: git fetch --no-tags origin +refs/heads/main:refs/remotes/origin/main
+
+      - name: Verify the release arrived
+        # The repo-local hook, not a PATH-resolved one: `prawduct-hook` on PATH is
+        # whatever plugin copy is installed, which is a different tree from the one
+        # under test.
+        run: ./plugin/bin/prawduct-hook check-released "$TAG"

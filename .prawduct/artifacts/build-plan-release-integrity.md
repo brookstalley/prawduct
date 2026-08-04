@@ -304,6 +304,30 @@ someone remembers. That gap is independent of releases and is the larger half of
   cut, so publishing verbatim would announce withheld work — is therefore moot in CI and stays a
   human-read warning in `runbooks/promote-a-pruned-release.md`.
 
+> **Built 2026-08-04 — four things the plan did not anticipate, recorded rather than typed past.**
+>
+> 1. **`pip install ".[dev]"` did not work, and now does.** Measured, not assumed: setuptools'
+>    flat-layout discovery finds `plugin/` beside other top-level directories and refuses to build,
+>    so the install that reads the `dev` extra failed. Fixed with a `[build-system]` stanza and
+>    `packages = []` in `pyproject.toml` — the repo is installable but packages nothing, because
+>    nothing here is importable-as-installed. The alternative was listing the four test
+>    dependencies in the workflow, which is the second home the *every fact has one home* norm
+>    forbids, and this chunk is the reason that norm was consulted.
+> 2. **The matrix tests the declared floor, and a guard test makes the copy checked.** A matrix
+>    cannot be computed from `requires-python = ">=3.10"`, so `3.10` is duplicated in
+>    `tests.yml`; `tests/preferences/test_ci_workflow_conventions.py` fails if the two drift in
+>    either direction. Without the floor leg, `>=3.10` was a claim nothing exercised. Both legs
+>    (3.10 and 3.14) were run locally to green before the workflow was written, so the first CI
+>    run is a confirmation rather than an experiment.
+> 3. **No path filters.** The obvious economy — skip the suite for `.md` / `.prawduct/**` changes
+>    — reproduces COV-4H7N exactly: `tests/test_norm_probes.py` reads the live
+>    `project-state.yaml`, so a docs-and-state change genuinely can turn the suite red. The filter
+>    would hide the one class of break the fast paths already miss.
+> 4. **`verify-release.yml` also takes a manual `tag` input.** Done-when 2 asks for a red run on a
+>    deliberately broken input, and the honest way to get one is not to push a junk tag to a public
+>    repo. `workflow_dispatch` exercises the same job against any tag, which is also what an
+>    operator wants when re-checking an older release.
+
 **Done when**
 1. The suite runs green in CI on a real push.
 2. `check-released` runs on tag push and is red for a deliberately broken input.

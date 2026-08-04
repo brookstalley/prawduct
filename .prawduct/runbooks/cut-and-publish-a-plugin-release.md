@@ -529,6 +529,11 @@ mean the withheld work shipped.*
   it instead of re-typing them. **Exit 3 is not a pass:** it means a check could not run
   (no `gh`, no `origin/main`), and the Releases page may still be empty. Repo-local on purpose —
   the *installed* plugin is the previous release and does not carry this subcommand.
+- The `verify-release` workflow run for the tag is green
+  (`gh run list --workflow verify-release.yml --limit 1`). It runs the same command with a token,
+  so it is the check that still happens on the release where someone skipped the bullet above.
+  A red run here means the release is incomplete — it never means CI failed to publish something,
+  because CI does not publish.
 - Your own install holds the released tree, not the prep tree — these two print the
   **same** 40-character sha:
 

@@ -3,6 +3,46 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-08-04: the suite stops running only when someone remembers
+
+<!-- prawduct: type=feature | scope=release-integrity | chunks=05 -->
+
+This repository had no `.github/` of any kind. Thirty releases shipped on a suite that ran when a
+human chose to run it, and eleven `tests/preferences/` guards were documented with an audit home of
+"CI (test)" against a runner that did not exist. `.github/workflows/tests.yml` runs the suite on
+every push and every pull request; `.github/workflows/verify-release.yml` runs `check-released` on
+every tag push.
+
+**The suite workflow filters nothing — not by branch, not by path.** The economy on offer was
+skipping doc-only changes, and it reproduces a hole this repo has already fallen into:
+`tests/test_norm_probes.py` reads the live `project-state.yaml`, so a `.md`-and-`.prawduct/**`
+change really can turn the suite red, and both existing fast paths already miss it. A branch that
+never opens a PR is likewise the branch nobody is watching. Runs are cheap; the hole is not.
+
+**The matrix runs the declared floor and current — 3.10 and 3.14 — and both were green locally
+before the workflow was written.** `requires-python = ">=3.10"` had been a claim nothing exercised.
+A matrix cannot be computed from a constraint expression, so the floor is copied; a new
+`tests/preferences/test_ci_workflow_conventions.py` fails if the copy and `pyproject.toml` drift in
+either direction, and equally if a future edit inlines `-n auto` into the run step or replaces
+`pip install ".[dev]"` with a hand-listed dependency set. That install did not work before this
+change: setuptools' flat-layout discovery finds `plugin/` beside other top-level directories and
+refuses to build, so `pyproject.toml` gained a `[build-system]` stanza and `packages = []` — the
+repo is installable and packages nothing, because the install exists to carry the dependency list,
+not the code.
+
+**CI verifies the release; it never publishes one** (owner ruling, 2026-08-04). Publishing notifies
+watchers and is not cleanly retractable, and `security-model.md` § Direction requires explicit owner
+approval at the operation level for an act like that — a tag-push trigger has no human present when
+it fires. A forgotten publish is meant to surface as a red build instead. The guard test fails on
+`gh release create` and on the three common publish actions, because that ruling is invisible in the
+diff of the edit that would remove it. `--allow-unverifiable` is absent for the same reason: exit 3
+exists so that "could not reach the Releases page" is not green.
+
+The tag job fetches `origin/main` explicitly. `actions/checkout` leaves no such ref on a tag build,
+and without it the containment check correctly degrades to unverifiable — a permanently red job
+reporting nothing about the release. `workflow_dispatch` takes a tag input so the check can be
+exercised, including against a deliberately bogus tag, without pushing a junk tag to prove it works.
+
 ## 2026-08-04: the check that would have been red for thirty releases
 
 <!-- prawduct: type=feature | scope=release-integrity | chunks=04 -->
