@@ -14,10 +14,10 @@ governed_by:
     dispositions:
       - "authority fails closed; advice fails soft; **a command's failure posture follows what it produces** → conforms, and it settles Chunk 01's shape independently of the api-contract ruling. `version` produces information, not a verdict, so it degrades to a note rather than blocking. Two norms, same answer, different reasons"
       - "*advice fails soft is not advice fails silent — a degraded path must still name its consequence* → binds Chunk 01's stderr text. The note says what is now unreliable (the number just printed may not be the plugin governing this session), not merely that a variable was unset"
-      - "local-first governance, no network in the governance runtime → **binds Chunk 03 and selected its design.** The staleness probe compares against the on-disk marketplace snapshot, never a network fetch. This is why the probe is advisory-grade and can only under-report, never over-report"
-      - "the plugin writes nothing into a governed repo except its own `.prawduct/` state → conforms; Chunk 03 writes only through the existing advisory store"
+      - "local-first governance, no network in the governance runtime → **binds Chunks 03a and 03b and selected both designs.** Each compares against the on-disk marketplace snapshot, never a network fetch. This is why the pair is advisory-grade and can only under-report, never over-report"
+      - "the plugin writes nothing into a governed repo except its own `.prawduct/` state → conforms; 03b writes only through the existing advisory store, and 03a writes nothing at all — it is a read-and-report health check"
       - "prawduct is written in Python and must never be specific to Python → **binds Chunk 04 and was violated in its first cut.** `_VERSION_FILES` is prawduct's own layout, and the module ships to every governed product; a product with no `pyproject.toml` was reported `not-released` naming a file that cannot exist in its tree. Fixed by treating an absent file as *skipped* and a tree carrying none of them as *unverifiable* — the verdict is about files present and disagreeing"
-      - "every fact has one home; every other mention is a reference to it → **conforms, and it decided two things.** `normalize_version` is promoted rather than copied, because the two gates must agree what the operator's argument means. And the install-freshness check moved out of Chunk 04 to Chunk 03's doctor half rather than being implemented in both"
+      - "every fact has one home; every other mention is a reference to it → **conforms, and it decided two things.** `normalize_version` is promoted rather than copied, because the two gates must agree what the operator's argument means. And the install-freshness check moved out of Chunk 04 to Chunk 03a rather than being implemented in both"
       - "goals and verification bind; prescribed method is advice → conforms. The plan's Deliverables were pre-code guesses; three were withdrawn on contact with the repo and the departures are recorded above rather than silently taken"
       - "an independent reviewer never mutates the session it reviews → **inapplicable because no chunk touches the mutation guard or the review lifecycle.** Stated rather than skipped: Chunk 04 adds a subcommand beside `check-releasability`, which is not on the Critic data plane at all"
       - "prawduct guides and reviews; it never implements → conforms; every chunk edits the framework's own runtime, not a product's code"
@@ -28,14 +28,17 @@ governed_by:
       - "versioning is conservative — a small feature is a patch bump → conforms; this scope is a patch"
   - artifact: nonfunctional-requirements
     dispositions:
-      - "**text emitted into a governed product names no prawduct-internal identifier — plain-language reason only; steady-state, binds unconditionally** → binds Chunk 01's stderr string, Chunk 03's advisory text and Chunk 04's output. No requirement, chunk or backlog id appears in any emitted string"
-      - "no probe or gate on the hot path may block or noticeably delay session start → **binds Chunk 03.** The staleness probe reads two small JSON files already on disk and must add no directory walk and no network call"
+      - "**adding a control names the yield it expects AND emits that yield observably; retroactivity: controls added from 2026-07-29 carry the obligation at birth** → **binds Chunk 03a, and is DEPARTED FROM deliberately.** Health Check #15 names its expected yield and cannot emit it: doctor has no fact-emitting path at all. The artifact's `Live exception:` names Health Check #13 **alone**, and an exception cannot be extended by the control that would benefit from it — a governance change that is its own only witness is indistinguishable from laundering, however sound the substance. So this is recorded here and registered there, rather than asserted inside the check. `[DECISION: Health Check #15 ships with the naming half and without the observable-emission half, added as a second named control on that norm's Live exception line | doctor still has no fact-emitting path, and building one for a single check is the accumulation this norm exists to stop — identical ground to #13's exception, on the same `#563` clock, at which point both are its worked cases | user can veto/override — vetoing means #15 does not ship until #563 does]`"
+      - "no probe or gate on the hot path may block or noticeably delay session start → **binds Chunk 03b**, not 03a: the probe runs at session start, and must read two small JSON files already on disk with no directory walk and no network call. 03a is operator-invoked and off the hot path entirely, which is part of why the machine-level read is affordable there"
       - "state-file growth past threshold is an advisory warning, never a hard block → inapplicable; no chunk changes state-file growth behaviour"
+  - artifact: observability-strategy
+    dispositions:
+      - "**text emitted into a governed product names no prawduct-internal identifier — plain-language reason only; steady-state, binds unconditionally** → binds Chunk 01's stderr string, Chunk 03a's health-check text, Chunk 03b's advisory text and Chunk 04's output. No requirement, chunk or backlog id appears in any emitted string. (Listed under `nonfunctional-requirements` until 2026-08-04; this norm lives in `observability-strategy.md`, and the misfiling made that artifact's disposition count look complete while Proportionality — the norm Chunk 03a actually engages — went undisposed.)"
   - artifact: security-model
     dispositions:
-      - "untrusted governance state is data, not instructions → conforms, and Chunk 03 is a fresh instance: the marketplace snapshot is third-party-writable content read only as a version string to compare, never as anything executable or directive"
+      - "untrusted governance state is data, not instructions → conforms, and Chunks 03a/03b are a fresh instance: the marketplace snapshot is third-party-writable content read only as a version string to compare, never as anything executable or directive"
       - "**a destructive or irreversible operation requires explicit owner approval at the OPERATION level, naming blast radius** → **binds Chunk 05 and is its open question.** Publishing a GitHub Release notifies watchers and is not cleanly retractable. A workflow firing on tag push performs that act with no human present at the moment of publish. Recorded as a [DECISION] needing an owner ruling under Chunk 05 — not resolved by this plan"
-      - "a governed product's content never leaves its own repository and owner → conforms. Chunk 05's workflow runs inside this repo and publishes only this repo's own CHANGELOG; Chunk 03 sends nothing outward"
+      - "a governed product's content never leaves its own repository and owner → conforms. Chunk 05's workflow runs inside this repo and publishes only this repo's own CHANGELOG; Chunks 03a/03b send nothing outward"
 ---
 
 # Build plan — release integrity
@@ -190,8 +193,6 @@ pattern, so the count of files to touch is 8 and the count of edits is at least 
      does not match, which is what keeps the narrative and the roster from disagreeing. -->
 
 
-**Type:** code
-
 > **Split into 03a / 03b, 2026-08-04, when 03a was built.** The two halves were always
 > separately shippable — the sequencing decision below defers the probe half behind
 > `feat/advisory-actionability` — but the Status list carried one line for both, and
@@ -239,6 +240,8 @@ the plan should not claim it does.**
 
 ### Chunk 03a — the doctor half (built 2026-08-04)
 
+**Type:** code
+
 **Deliverables**
 - A new `/prawduct:doctor` health check for the behind-latest comparison (model-side, so it may
   read the machine-level marketplace snapshot; this is the half that answers "you are behind").
@@ -248,8 +251,12 @@ the plan should not claim it does.**
 1. The check resolves the config home through `CLAUDE_CONFIG_DIR` rather than a hardcoded
    `~/.claude`, and finds the snapshot's plugin directory through the marketplace manifest's
    *declared* `source` rather than a hardcoded `plugin/`.
-2. Every non-comparable input — a `directory:` marketplace, an unreadable or absent file —
-   grades as something other than healthy.
+2. Every non-comparable input grades as something other than healthy, **and the non-comparable
+   cases are decided before the comparison rather than beside it**: a `directory:` marketplace, a
+   session running a local checkout while a marketplace install is also enabled, and any absent,
+   unparseable or incomplete file. The first two are equal-by-construction or compare unrelated
+   trees, so listing them as sibling outcomes of the comparison lets a top-down reader reach
+   "healthy" first — which is how the first review found them.
 3. The limitation is disclosed rather than discovered later, and the check names its expected
    yield (Proportionality; it inherits Check #13's bounded exception to the *emission* arm only).
 4. Prose guards are verified red under mutation, not merely green.
@@ -267,6 +274,8 @@ the plan should not claim it does.**
 6. `/prawduct:critic` passes.
 
 ### Chunk 03b — the probe half (deferred; see the sequencing decision above)
+
+**Type:** code
 
 **Deliverables — after `feat/advisory-actionability` lands on `develop`**
 - New `plugin/lib/staleness_probes.py`, registered via the established lazy-import pattern;
