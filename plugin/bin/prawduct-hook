@@ -175,6 +175,18 @@ def _release_readiness():
     return release_readiness
 
 
+def _release_verification():
+    """Lazy-import the post-release verification gate (lib/release_verification).
+    Same lazy idiom as _release_readiness(), which it mirrors at the other end
+    of the release."""
+    lib_root = _plugin_root()
+    if lib_root not in sys.path:
+        sys.path.insert(0, lib_root)
+    from lib import release_verification  # noqa: PLC0415 — lazy keeps top-level cheap + lib-free
+
+    return release_verification
+
+
 def _gates():
     """Lazy-import the session-end gate helpers + evidence/critic validators
     (lib/gates). Same lazy idiom as _gitstate(). cmd_stop (the inline hot-path
@@ -3564,6 +3576,42 @@ def cmd_check_releasability(project_dir: Path, args: list[str] | None = None) ->
     return _release_readiness().check_releasability(project_dir, release)
 
 
+def cmd_check_released(project_dir: Path, args: list[str] | None = None) -> int:
+    """Post-release verification: did the whole release actually arrive?
+
+    The mirror of ``check-releasability``. Thin wrapper; the body lives in
+    ``lib.release_verification``, reached lazily so the hook's top level stays
+    lib-free."""
+    usage = "usage: prawduct-hook check-released vX.Y.Z [--json] [--allow-unverifiable]"
+    release = None
+    json_output = False
+    allow_unverifiable = False
+    argv = list(args or [])
+    # Explicit scan for the same reason check-releasability uses one: a swallowed
+    # token would verify a DIFFERENT release than the operator named, and this
+    # gate's whole job is to refuse to guess. Unknown tokens are usage errors.
+    for token in argv:
+        if token == "--json":
+            json_output = True
+            continue
+        if token == "--allow-unverifiable":
+            allow_unverifiable = True
+            continue
+        if token.startswith("-"):
+            print(f"unknown argument: {token}\n{usage}", file=sys.stderr)
+            return 2
+        if release is not None:
+            print(f"unexpected second version: {token}\n{usage}", file=sys.stderr)
+            return 2
+        release = token
+    if not release:
+        print(f"{usage}\na version argument is required", file=sys.stderr)
+        return 2
+    return _release_verification().check_released(
+        project_dir, release, json_output, allow_unverifiable
+    )
+
+
 def cmd_test_status(project_dir: Path) -> int:
     """Report whether ``.test-evidence.json`` covers the current tree. Thin
     wrapper — body lives in ``lib.gates.test_status`` (STH-9V4K ch.6)."""
@@ -4702,6 +4750,7 @@ _USAGE = (
     "check-operator-verification|accept-operator-verification <rationale>|"
     "verify-operator-verification <vrf-id>|"
     "check-pr-doc-only|check-change-log-entry|check-releasability [--release vX.Y.Z]|"
+    "check-released vX.Y.Z [--json] [--allow-unverifiable]|"
     "regen-views [--check, deprecated]|stamp-merged|"
     "infer-critic-mode [args]|"
     "resolve-base|version|print-install-reference|"
@@ -5166,6 +5215,8 @@ def main() -> int:
         return cmd_check_change_log_entry(project_dir)
     elif command == "check-releasability":
         return cmd_check_releasability(project_dir, sys.argv[2:])
+    elif command == "check-released":
+        return cmd_check_released(project_dir, sys.argv[2:])
     elif command == "check-pr-doc-only":
         return cmd_check_pr_doc_only(project_dir)
     elif command == "stamp-merged":

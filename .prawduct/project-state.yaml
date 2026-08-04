@@ -146,7 +146,7 @@ design_decisions:
         client: "the `gh` CLI, driven as a subprocess (list-form args, never a shell)"
         scope: "opt-in per product — reached only when `backlog_service_repo` is set; unset means the markdown backend and zero network calls"
         credential: "`gh` owns it (`~/.config/gh`); the adapter never reads, stores, or forwards a token, and redacts token-shaped patterns from all surfaced output (SEC-1)"
-        egress_boundary: "lib/backlog/transport.py is the sole egress site; subprocess use is confined there by design"
+        egress_boundary: "three egress sites: lib/backlog/transport.py (opt-in backlog backend); lib/release_verification.py (check-released shells to gh for the Releases page, operator/CI-invoked, added 2026-08-04); and a gh pr list in cmd_stop in bin/prawduct-hook, which DOES run on the Stop hook path. The first two scrub secrets from foreign-CLI stderr before echoing it"
     mock_boundary: "tests/fakes/fake_github.py implements the transport seam for the offline suite"
     integration_test_strategy: "offline suite runs entirely against the fake; the rest of the L5 smoke set queued in build-plan-backlog-service.md stays deferred by owner decision to an owner-run session. The relationship/timeline shapes (`list_blocked_by`, `list_sub_issues`, `list_timeline`) are NO LONGER fake-verified only — VRF-010 ran all three against real GitHub on 2026-07-28 and the fake's shapes matched; the evidence has one home, `.prawduct/operator-verification.md` VRF-010. BKL-3N8Q, cited here by a stable id that must not be renumbered, was reconciled to shipped on that evidence 2026-07-31 and is now an archived item — a weaker pointer than it was, kept because the id is the citation."
     status: active
@@ -388,7 +388,19 @@ views_enabled: true
 # first set since the slot was cleared, so it inherits none of the staleness the
 # incidents above record — and the gates resolve this branch's plan by `scope:`
 # anyway, which is what made the cleared state survivable.
-active_build_plan: artifacts/build-plan-review-loop-carriers.md
+# Set 2026-08-04 on branch feat/release-integrity, same discipline as the line
+# above: this branch builds the release-integrity plan, and silent-gates merged
+# to develop before it started. Nothing is orphaned by the move.
+#
+# CLEARED 2026-08-04 resolving the review-loop-carriers -> develop merge, where
+# both sides had repointed this slot (branch: review-loop-carriers, develop:
+# release-integrity). Taking either verbatim would name a plan that has finished
+# building, which is the dormant-pointer state all three incidents above record
+# — so neither side won and the slot is empty, per the v3.2.3 precedent. Both
+# plans are RETAINED on disk: they are release-pending under gitflow and the
+# develop->main promotion regenerates the Status of every scope-tagged plan.
+# Nothing is in flight to orphan. Next work sets this via /prawduct:backlog pick.
+active_build_plan:
 
 # =============================================================================
 # BUILD-PLAN REF ROOT (opt-in)

@@ -378,6 +378,8 @@ dropping them.
 
 ## A guardrail whose anchors come from your MENTAL MODEL of a file is a second copy of the claim, not a check on it — derive them by reading the file, line by line, as you write the test, because otherwise the test encodes the same error the claim does and goes green over it. Tell: you can write the anchors without opening the file
 
+## A green suite is evidence about the ONE environment that ran it — a suite only ever run by its maintainer has untested dependencies on that machine rather than no dependencies, and the second environment is what finds them. Expect the first CI run to be red and treat that as the run working; the recurring shapes are in [learnings-detail.md]
+
 ## When you fix a defect of a named class, re-run that class's own check against your fix — the fix is the likeliest place to reintroduce the class, because attention sits on the content of the claim and not on its mechanics. A citation repaired by renaming it, then line-wrapped inside its backticks, is still unresolvable to the grep that would find it
 
 ## When a trim is justified by the surrounding prose's OWN instruction, that is exactly when to run the suite before trusting it — the dangerous cut is not the one you cannot justify but the one the file appears to endorse. A record-lint explanation read as redundant under its own "raise it, don't restate it" rule, and was the only witness to a two-shape contract

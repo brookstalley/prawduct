@@ -561,9 +561,21 @@ class TestQueueEncodingRoundTrip:
             "assert '\\u2014' in pre, 'em-dash did not survive the round trip'\n"
             "print('ok')\n"
         )
+        # The script goes to a FILE, not to `-c`. Under `LC_ALL=C` on Linux,
+        # Python decodes argv with the C locale's ASCII codec, so the em-dash in
+        # this source arrives as surrogates and the interpreter dies with
+        # "Unable to decode the command from the command line" before reaching
+        # the assertion — the test failing for its own delivery mechanism rather
+        # than for the encoding behaviour it exists to check. macOS hides this
+        # by always decoding argv as UTF-8, which is why it took a Linux CI
+        # runner to surface. Source *files* are UTF-8 by language definition
+        # (PEP 3120) regardless of locale, so the intent survives intact and
+        # only ASCII crosses the command line.
+        runner = tmp_path / "roundtrip.py"
+        runner.write_text(script, encoding="utf-8")
         env = {**os.environ, **self._ENV_KEYS, "PYTHONPATH": str(REPO_ROOT)}
         result = subprocess.run(
-            [sys.executable, "-c", script], capture_output=True, text=True, env=env
+            [sys.executable, str(runner)], capture_output=True, text=True, env=env
         )
         assert result.returncode == 0, (
             "the queue write/read pair disagrees about encoding under a "

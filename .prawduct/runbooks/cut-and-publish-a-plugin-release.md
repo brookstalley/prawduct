@@ -383,9 +383,18 @@ installed consumer, unrecallably. This phase is the second question (REL-8P6M).*
 ### Checkpoint
 
 `origin/develop` now holds the whole release: bumped version, shipped
-change-log tags, regenerated views, cleared plan pointer. Nothing is published
-yet. Everything up to here is undone by an ordinary commit on `develop`, so
-this is a safe place to stop and come back.
+change-log tags, regenerated views, cleared plan pointer. Everything up to here
+is undone by an ordinary commit on `develop`, so this is a safe place to stop
+and come back.
+
+> ⚠️ **Safe for consumers; not free for you.** Step 8 just published the update *cache
+> key*. Claude Code caches the plugin under `plugins/cache/prawduct/prawduct/<version>/`
+> and keys it on that string alone. A `ref: main` install cannot see the new key yet, so
+> consumers are unaffected. But a marketplace whose `source` is `directory:` — **your own
+> machine** — resolves whichever branch is checked out, so it can cache the *prep* tree
+> under the release's key. The key does not change when Phase 2 lands the real tree, so
+> that install never refreshes, and the longer you sit here the longer you are testing a
+> plugin that is not the one shipping. `Done when` catches it.
 
 ---
 
@@ -484,6 +493,25 @@ the by-hand blocker check — `main`'s tree is a deliberately chosen subset of `
     > *Chained on purpose: if the tag already exists, `git tag` fails and the
     > push must not run.*
 
+21. Publish the GitHub Release, using step 10's whole CHANGELOG section as the notes:
+
+    ```
+    awk '/^## vX.Y.Z$/{f=1;next} /^## v/{f=0} f' plugin/CHANGELOG.md > /tmp/notes-vX.Y.Z.md
+    gh release create vX.Y.Z --title vX.Y.Z --notes-file /tmp/notes-vX.Y.Z.md
+    ```
+
+    **Expected:** one line — the release URL, ending `/releases/tag/vX.Y.Z`.
+    **If the notes look truncated or carry the previous release's text:** the `awk`
+    boundary missed. Check that `## vX.Y.Z` is on its own line in `plugin/CHANGELOG.md`
+    with nothing trailing it, then re-run with `gh release edit` rather than `create`.
+
+    > *Why the whole section, not just the headline: `plugin/CHANGELOG.md` ships **inside**
+    > the plugin, so it is unreadable to anyone who has not installed it. The Releases page
+    > is the only public copy. A pushed tag alone lands on `/tags` and nowhere else, leaving
+    > `/releases` reading "no releases published" — which is both where a consumer whose
+    > banner just announced an update goes to find out what changed, and the first thing
+    > someone evaluating prawduct sees.*
+
 ---
 
 ## Done when
@@ -495,12 +523,45 @@ mean the withheld work shipped.*
 - After `git fetch origin`, `git diff --stat origin/main origin/develop` prints
   nothing.
 - `git ls-remote --tags origin` shows a line ending `refs/tags/vX.Y.Z`.
+- `./plugin/bin/prawduct-hook check-released vX.Y.Z` prints `released: vX.Y.Z — 3 of 3 verified`
+  and exits 0. It checks the three things this phase just did — version files agreeing
+  at the tag's tree, the tag contained in `origin/main`, the Release published — so run
+  it instead of re-typing them. **Exit 3 is not a pass:** it means a check could not run
+  (no `gh`, no `origin/main`), and the Releases page may still be empty. Repo-local on purpose —
+  the *installed* plugin is the previous release and does not carry this subcommand.
+- The `verify-release` workflow run for the tag is green
+  (`gh run list --workflow verify-release.yml --limit 1`). It runs the same command with a token,
+  so it is the check that still happens on the release where someone skipped the bullet above.
+  A red run here means the release is incomplete — it never means CI failed to publish something,
+  because CI does not publish. **First run only:** this workflow has never executed against a real
+  tag (it registers only from the default branch, so it could not run before the promotion that
+  ships it). On that one release, read a red run as *either* an incomplete release *or* a defect in
+  the workflow, and confirm against `./plugin/bin/prawduct-hook check-released vX.Y.Z` above before
+  acting. Delete this paragraph once it has passed once — that deletion is an acceptance criterion
+  of **#581**, which tracks exercising this workflow at the first promotion.
+- Your own install holds the released tree, not the prep tree — these two print the
+  **same** 40-character sha:
+
+  ```
+  echo "released:  $(git rev-parse vX.Y.Z^{commit})"
+  echo "installed: $(python3 -c "import json,os,pathlib;p=pathlib.Path(os.environ.get('CLAUDE_CONFIG_DIR','~/.claude')).expanduser()/'plugins/installed_plugins.json';print(json.loads(p.read_text())['plugins']['prawduct@prawduct'][0]['gitCommitSha'])")"
+  ```
 
 ## If this doesn't work
 
 - **If a step doesn't match what you're seeing:** stop where you are.
   Everything before step 19 is undoable, so stopping costs nothing but time,
   and a step that doesn't make sense is a defect in this document, not in you.
+- **If the two shas in `Done when` differ:** your install cached the prep tree under
+  this release's version key during the Phase 1–2 gap, and will not refresh on its
+  own because the key never changed. The release itself is fine and consumers are
+  unaffected — this is a `directory:` marketplace symptom, local to you. Fix it before
+  you test anything against "the release."
+
+  > 🚧 **UNVERIFIED** — the remedy is to delete the cache directory named by
+  > `installPath` in `plugins/installed_plugins.json` and start a new session. The
+  > *detection* above is measured; this re-resolve has not been executed. Confirm the
+  > shas match afterwards before trusting it.
 - **Escalate to:** this repo has one maintainer, so escalating means stopping —
   leave `develop` as it is and come back to it. An unfinished release is
   invisible to consumers.
