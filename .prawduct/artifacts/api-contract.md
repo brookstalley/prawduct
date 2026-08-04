@@ -78,7 +78,8 @@ The CLI groups by responsibility. Every subcommand is read-only unless marked mu
 - **Session handoff** — `handoff preview`: renders the handoff the next session would receive,
   through the same function `clear` uses, without writing it or consuming the forward notes.
 - **PR / release gates & views** — `check-pr-doc-only`, `check-change-log-entry`,
-  `check-releasability [--release vX.Y.Z]`, `resolve-base`,
+  `check-releasability [--release vX.Y.Z]`, `check-released vX.Y.Z [--json] [--allow-unverifiable]`,
+  `resolve-base`,
   `regen-views` (mutating), `stamp-merged` (deprecated, mutating).
 - **Operator verification** — `check-operator-verification`, `accept-operator-verification`,
   `verify-operator-verification` (both mutating).
@@ -158,6 +159,16 @@ raised as stack traces across the boundary.** The intended scheme:
 | **CLI advisory report** (`verify-records`) | ran — findings, if any, are on stdout | **could not run** (unresolvable interval, unreadable state) | usage error |
 | **State-mutating writer** (e.g. `disposition`) | written, or an idempotent no-op | **refused** — validation failed, nothing written | **usage error** |
 | **Usage / arg error** (any subcommand) | — | — | **usage error** |
+
+**One gate carries a third outcome, added 2026-08-04.** `check-released` exits **3** for
+*unverified*: nothing failed, but a check could not run — no `gh`, or no `origin/main` in a
+shallow checkout. It is a distinct code rather than folded into 0 or 1 because both foldings are
+wrong in the environment the command exists for. Folded into 1 it reports a broken release on a
+fresh clone; folded into 0 it reports success on a tag-push CI job, which has no `origin/main` by
+default and may have no token — precisely the case where an unpublished Release must turn the
+build red. Its `--json` `verdict` therefore has three values: `released`, `not-released`,
+`unverified`. `--allow-unverifiable` collapses 3 to 0 for an operator who wants the local subset.
+CI binds to the exit code, so any non-zero is red without special-casing.
 
 Fail-direction is deliberate and per-purpose:
 

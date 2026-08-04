@@ -269,11 +269,15 @@ amended 2026-07-29). Step 10 is that test.
 
     **Expected:** a file whose first line is the release headline.
 
+    > *Why the whole section and not just the headline: `plugin/CHANGELOG.md` ships inside the
+    > plugin, so the Releases page is its only public copy. A pushed tag lands on `/tags` and
+    > nowhere else.*
+
     > ⚠️ **This is a pruned release. Open `/tmp/notes-vX.Y.Z.md` and delete every paragraph
     > describing withheld work.** The CHANGELOG section was written against the whole cut;
     > publishing it verbatim announces a feature that is not in the tree.
 
-15a. Publish, using the file you just edited:
+16. Publish, using the file you just edited:
 
     ```
     gh release create vX.Y.Z --title vX.Y.Z --notes-file /tmp/notes-vX.Y.Z.md
@@ -281,16 +285,15 @@ amended 2026-07-29). Step 10 is that test.
 
     **Expected:** one line — the release URL, ending `/releases/tag/vX.Y.Z`.
 
-    > *Why the whole section: `plugin/CHANGELOG.md` ships inside the plugin, so the Releases
-    > page is its only public copy. A pushed tag lands on `/tags` and nowhere else.*
-
 ---
 
 ## Done when
 
 - `git show origin/main:plugin/VERSION` prints the new number.
 - `git ls-remote --tags origin` shows a line ending `refs/tags/vX.Y.Z`.
-- `prawduct-hook check-released vX.Y.Z` exits 0. **Exit 3 is not a pass** — a check could not run.
+- `./plugin/bin/prawduct-hook check-released vX.Y.Z` exits 0. **Exit 3 is not a pass** — a check
+  could not run. (Repo-local on purpose: the *installed* plugin is the previous release, which
+  does not carry this subcommand.)
 - Your own install holds the released tree — these two print the **same** 40-character sha:
 
   ```

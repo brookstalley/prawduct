@@ -163,7 +163,13 @@ def check_version_files(project_dir: Path, tag: str) -> tuple[str, str]:
         elif found != expected:
             problems.append(f"{rel_path}: says {found}, tag says {expected}")
     if not checked:
-        return UNVERIFIABLE, f"no known version file present in {tag}'s tree"
+        # Two very different causes land here — a product with a different
+        # layout, and a tag this clone has not fetched. Say both rather than
+        # asserting the first, which reads as a finding about the product.
+        return UNVERIFIABLE, (
+            f"no known version file present in {tag}'s tree "
+            "(a different product layout, or a tag this clone has not fetched)"
+        )
     if problems:
         return FAILED, "; ".join(problems)
     return OK, f"{len(checked)} version file(s) agree at {tag}"
@@ -180,7 +186,11 @@ def check_tag_on_main(project_dir: Path, tag: str) -> tuple[str, str]:
     resolved = _run(["git", "rev-parse", f"{tag}^{{commit}}"], project_dir)
     if resolved == MISSING:
         return UNVERIFIABLE, "git is not installed"
-    if resolved == ERRORED or resolved[0] != 0:
+    if resolved == ERRORED:
+        # git ran and did not complete. That is not evidence about the tag, and
+        # reporting it as one would blame the release for a broken toolchain.
+        return UNVERIFIABLE, "git could not resolve the tag"
+    if resolved[0] != 0:
         return FAILED, f"tag {tag} does not resolve to a commit"
     commit = resolved[1]
     # Establish that the reference EXISTS before asking what it contains.

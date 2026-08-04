@@ -33,9 +33,12 @@ what we want to be true.
 3. **Local-first, no network, no daemon — in governance.** Coordination is process-spawn +
    atomically-written files + the git object database. There is no socket, port, or long-running
    server. This is a deliberate constraint: a governance layer that required infrastructure would
-   not survive contact with "I just want to code." The one network surface is the **opt-in** backlog
-   backend (`backlog_service_repo`), which reaches GitHub Issues through the `gh` CLI; it is off by
-   default, degrades to the markdown backend, and no gate or review verdict depends on it.
+   not survive contact with "I just want to code." The **principal** network surface is the
+   **opt-in** backlog backend (`backlog_service_repo`), which reaches GitHub Issues through the
+   `gh` CLI; it is off by default, degrades to the markdown backend, and no gate or review verdict
+   depends on it. It is not the only one — the full list, including one call that does run on a
+   hook path, is enumerated in `security-model.md` and `project-state.yaml`'s `egress_boundary`.
+   Kept as a pointer rather than a second copy, so the two cannot drift.
 
 4. **Coordination is decoupled, idempotent, and fail-closed.** The processes that produce a review
    (coordinator, reviewers, consolidator) are never all alive at once; they communicate through

@@ -126,6 +126,19 @@ When `develop` is ready to release as `vX.Y.Z`:
    Chunk-ID matching is tolerant (`chunks=1` flips `Chunk 01`; case and `-`/`_`
    variants match).
 5. **Tag the release:** `git tag vX.Y.Z` (and push the tag).
+
+5a. **Publish the GitHub Release — the tag is not the release.** A pushed tag lands on `/tags`;
+    the Releases page is a separate surface and it stayed empty for this repository's first
+    thirty tags, which is what consumers reported as "no tag on GitHub".
+
+    ```
+    awk '/^## vX.Y.Z$/{f=1;next} /^## v/{f=0} f' plugin/CHANGELOG.md > /tmp/notes-vX.Y.Z.md
+    gh release create vX.Y.Z --title vX.Y.Z --notes-file /tmp/notes-vX.Y.Z.md
+    ```
+
+5b. **Verify what actually shipped:** `./plugin/bin/prawduct-hook check-released vX.Y.Z`.
+    Exit **0** verified · **1** a check failed · **3** nothing failed but a check could not run.
+    **A 3 is not a pass.**
 6. **Confirm the banner.** On the next session against the new `main`, the version-delta banner
    shows `v(old) → vX.Y.Z` plus the crossed releases' change-log highlights, and announces any
    gate newly active in the range.

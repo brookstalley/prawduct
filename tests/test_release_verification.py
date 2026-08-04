@@ -188,6 +188,18 @@ class TestTagOnMain:
         assert state == rv.FAILED
         assert "does not resolve" in detail
 
+    def test_git_that_cannot_complete_is_unverifiable_not_a_tag_verdict(self, tmp_path, monkeypatch):
+        """A broken toolchain is not evidence about the release.
+
+        Also a regression guard: an edit meant to add this branch deleted the
+        unresolvable-tag branch instead, and every check here still passed
+        because nothing exercised the ERRORED path.
+        """
+        monkeypatch.setattr(rv, "_run", lambda *a, **k: rv.ERRORED)
+        state, detail = rv.check_tag_on_main(tmp_path, "v1.0.0")
+        assert state == rv.UNVERIFIABLE
+        assert "could not resolve" in detail
+
     def test_absent_origin_main_is_unverifiable_not_failed(self, tmp_path):
         """A clone that cannot answer must not answer "broken".
 
@@ -243,6 +255,30 @@ class TestGithubRelease:
         monkeypatch.setattr(rv, "_run", lambda *a, **k: (1, "", "HTTP 503 upstream"))
         state, _ = rv.check_github_release(tmp_path, "v1")
         assert state == rv.UNVERIFIABLE
+
+
+class TestScrub:
+    """The credential scrub is a claim `security-model.md` now makes in prose.
+
+    Untested, deleting the `_scrub` call kept the whole suite green — which is
+    how a security assertion outlives the code behind it. Red if the call site
+    is removed, and red if the `except ImportError` fallback starts swallowing
+    a real scrub.
+    """
+
+    _BAIT = "ghp_ABCDEFGHIJKLMNOPQRSTUVWXYZ012345"
+
+    def test_scrub_removes_a_planted_token(self):
+        assert self._BAIT not in rv._scrub(f"gh: bad credentials for {self._BAIT}")
+
+    def test_gh_error_detail_is_scrubbed_before_it_is_reported(self, tmp_path, monkeypatch):
+        """The path that actually reaches stderr and the --json payload."""
+        monkeypatch.setattr(
+            rv, "_run", lambda *a, **k: (1, "", f"HTTP 401 using token {self._BAIT}")
+        )
+        state, detail = rv.check_github_release(tmp_path, "v1")
+        assert state == rv.UNVERIFIABLE
+        assert self._BAIT not in detail
 
 
 class TestCheckReleased:

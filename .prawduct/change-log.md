@@ -20,13 +20,16 @@ release shipped is a fact about the tree that release names; the checkout you ar
 different question, and it answers confidently and wrongly from a feature branch. A test pins this
 by moving the working tree to a different version and asserting the gate still reads the tag's.
 
-**Failure posture is split, because the checks are not the same kind of claim.** The local checks
-produce a verdict and fail closed. The Releases-page check needs the network, which the governance
-runtime does not take — this is an operator/CI command carrying no session verdict, so it may, but
-a machine without `gh` reports **unverifiable** rather than failed. A false red on a release check
-is worse than no check: it is the reading that teaches people to ignore it. The same reasoning
-covers a clone with no `origin/main` — a fresh checkout, a fork, a shallow CI fetch — which now
-reports that it cannot answer instead of reporting a broken release.
+**Three outcomes, not two — and the third is the whole point.** Exit **0** verified, **1** a check
+failed, **3** nothing failed but a check could not run (no `gh`, no `origin/main`). Both ways of
+folding that third state into the other two are wrong in the environment this command exists for.
+Folded into *failed*, a fresh clone or a fork reports a broken release. Folded into *passed* — which
+is how it first shipped in review — a tag-push CI job goes green over an empty Releases page, since
+`actions/checkout` leaves no `origin/main` and a step without a token gets a `gh` that cannot
+answer. That is the original defect with a passing check on top. `--allow-unverifiable` collapses 3
+to 0 for an operator who deliberately wants the local subset. Relatedly, a `gh` failure that is not
+literally "release not found" is never read as absence: a refused question is not a missing
+release.
 
 Two defects were caught by scrubbing the change rather than by the suite, and both were the
 confident-wrong-answer shape: the `pyproject.toml` parser matched any key *starting with*
