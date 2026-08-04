@@ -212,12 +212,32 @@ class TestVersionFilesOutsideARepo:
 
     def test_a_real_repo_missing_the_files_still_says_layout(self, tmp_path):
         """The pre-existing message is correct for the case it was written for,
-        and must survive the new branch above."""
-        repo = _make_repo(tmp_path, version="3.2.0")
-        state, detail = rv.check_version_files(repo, "v3.2.0")
-        assert state in (rv.OK, rv.UNVERIFIABLE)
-        if state == rv.UNVERIFIABLE:
-            assert "product layout" in detail
+        and must survive the new branch above.
+
+        **The first cut of this test asserted nothing.** It used `_make_repo`,
+        which carries all three version files and therefore returns `OK`
+        deterministically — so the only load-bearing line sat inside
+        `if state == rv.UNVERIFIABLE:` and never ran. A test that cannot reach
+        its subject passes forever, and Chunk 02 rewrites `check_version_files`
+        wholesale believing this path is guarded. Now built on a repo that
+        genuinely holds no version file, and asserted unconditionally.
+        """
+        repo = tmp_path / "bare"
+        repo.mkdir()
+        _git(repo, "init", "-q", "-b", "main")
+        _git(repo, "config", "user.email", "t@example.com")
+        _git(repo, "config", "user.name", "T")
+        _write(repo / "readme.md", "hi\n")
+        _git(repo, "add", "-A")
+        _git(repo, "commit", "-qm", "x")
+        _git(repo, "tag", "v1.0.0")
+        state, detail = rv.check_version_files(repo, "v1.0.0")
+        assert state == rv.UNVERIFIABLE
+        assert "product layout" in detail, (
+            "inside a real repository the no-files case must still report the "
+            "layout question — the non-repo branch is stealing this path"
+        )
+        assert "not a git repository" not in detail
 
 
 class TestTagOnMain:
@@ -380,6 +400,32 @@ class TestCheckReleased:
         out = capsys.readouterr().out
         assert "released: v3.2.0" in out
         assert "3 of 3 verified" in out
+
+    def test_a_non_repository_composes_to_unverified_not_not_released(
+        self, tmp_path, monkeypatch, capsys
+    ):
+        """The acceptance criterion is about the COMPOSED verdict, and the
+        per-check tests do not reach it.
+
+        `check_released` aggregates three states into one exit code, and the
+        rule that decides the criterion — `if failed: not-released` before
+        `elif unverifiable: unverified` — lives here, not in the checks. So a
+        single check regressing to `FAILED` flips the whole verdict back to the
+        #579 behaviour while every per-check test stays green.
+
+        `gh` is stubbed absent so the network is never touched; the two local
+        checks run for real against an empty directory, which is the repro.
+        """
+        self._stub_gh(monkeypatch, rv.MISSING)
+        code = rv.check_released(tmp_path, "v3.2.4")
+        assert code == rv.EXIT_UNVERIFIABLE, (
+            f"a non-repository composed to exit {code}; exit 1 is the false red "
+            "this chunk exists to remove, and exit 0 would hide it entirely"
+        )
+        err = capsys.readouterr().err
+        assert "unverified: v3.2.4" in err
+        assert "not-released" not in err
+        assert "not a git repository" in err
 
     def test_accepts_bare_version(self, tmp_path, monkeypatch):
         repo = _make_repo(tmp_path, version="3.2.0")

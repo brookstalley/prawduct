@@ -106,22 +106,32 @@ def _scrub(text: str) -> str:
     return scrub_secrets(text)
 
 
-def _in_git_repo(project_dir: Path) -> bool:
-    """Whether ``project_dir`` sits inside a git working tree.
+def _outside_repo_reason(project_dir: Path) -> str | None:
+    """Why ``project_dir`` cannot answer a git question, or ``None`` if it can.
 
     Exists because ``git rev-parse`` exits **128** for two unrelated states — the
-    ref does not exist, and this is not a repository — and every caller that
-    reads the first meaning out of a bare non-zero is stating a finding about
-    the release from an environment that could not ask the question. A false red
-    on a release check is worse than no check, because it is the reading that
-    teaches people to ignore it (this module's own docstrings, twice).
+    ref does not exist, and this is not a repository — and a caller that reads
+    the first meaning out of a bare non-zero states a finding about the release
+    from an environment that could not ask the question. A false red on a
+    release check is worse than no check, because it is the reading that teaches
+    people to ignore it (this module's own docstrings, twice).
 
-    ``git`` missing or hanging answers ``False``: the callers turn that into
-    ``UNVERIFIABLE`` too, so the conservative direction is the same one, and a
-    separate outcome here would buy nothing they could act on differently.
+    **Three outcomes, not two**, and the reason is the same one this commit
+    applies one function down. A first cut returned ``bool`` and folded "git is
+    not installed" into "not a git repository", defending the collapse on the
+    grounds that both callers turn it into ``UNVERIFIABLE`` anyway. Equal
+    verdicts are not equal diagnoses: an operator told "not a git repository"
+    inside their own checkout goes looking at the checkout, and the actual fix
+    is to install git. That is precisely the defect being repaired in
+    :func:`check_version_files`, so making it here would have been the same
+    error one frame over.
     """
     probe = _run(["git", "rev-parse", "--git-dir"], project_dir)
-    return not isinstance(probe, str) and probe[0] == 0
+    if probe == MISSING:
+        return "git is not installed"
+    if probe == ERRORED:
+        return "git did not complete"
+    return None if probe[0] == 0 else "not a git repository"
 
 
 def _version_from(kind: str, content: str) -> str | None:
@@ -188,10 +198,9 @@ def check_version_files(project_dir: Path, tag: str) -> tuple[str, str]:
         # naming the wrong cause is the same defect one level down — "advice
         # fails soft" is not "advice fails silent", and a soft failure still
         # owes its reader the real reason.
-        if not _in_git_repo(project_dir):
-            return UNVERIFIABLE, (
-                "not a git repository — no tree to read version files from"
-            )
+        blocked = _outside_repo_reason(project_dir)
+        if blocked is not None:
+            return UNVERIFIABLE, f"{blocked} — no tree to read version files from"
         return UNVERIFIABLE, (
             f"no known version file present in {tag}'s tree "
             "(a different product layout, or a tag this clone has not fetched)"
@@ -231,10 +240,10 @@ def check_tag_on_main(project_dir: Path, tag: str) -> tuple[str, str]:
         # non-zero here is not yet evidence about the tag. Ask which one it was.
         # This mirrors the `origin/main` existence probe below: establish that the
         # question CAN be asked before reading an answer into the silence.
-        if not _in_git_repo(project_dir):
+        blocked = _outside_repo_reason(project_dir)
+        if blocked is not None:
             return UNVERIFIABLE, (
-                "not a git repository — this directory cannot answer whether "
-                f"{tag} exists"
+                f"{blocked} — this directory cannot answer whether {tag} exists"
             )
         return FAILED, f"tag {tag} does not resolve to a commit"
     commit = resolved[1]

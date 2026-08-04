@@ -400,6 +400,12 @@ views_enabled: true
 # plans are RETAINED on disk: they are release-pending under gitflow and the
 # develop->main promotion regenerates the Status of every scope-tagged plan.
 # Nothing is in flight to orphan. Next work sets this via /prawduct:backlog pick.
+# Set 2026-08-04 on branch fix/release-verification-false-reds, the first set
+# since the slot was cleared at the review-loop-carriers merge. Same discipline
+# as every line above: this branch builds the plan named here, review-loop-carriers
+# merged to develop before it started, and nothing is orphaned by the move. The
+# CLEARED note above records the state this replaces — it is history now, not the
+# current reading.
 active_build_plan: artifacts/build-plan-release-verification-false-reds.md
 
 # =============================================================================

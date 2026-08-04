@@ -107,8 +107,12 @@ release runbook asks whether everything is *fit* to ship, not merely present.
 
 ### Chunk 01: A check that could not ask does not answer
 
-- **Description:** Close the two mechanical false-reds. Both are the check misreading its
-  own input rather than the release being broken.
+- **Description:** Close the mechanical false-red in `check_tag_on_main` — the check
+  misreading its own input rather than the release being broken — and, as a recorded
+  addition, the misattributed *cause* in `check_version_files`. **An earlier draft said
+  "the two mechanical false-reds", counting #580 here; LNG-5W8R moved that one to Chunk
+  02 (see R3), and this line is corrected rather than left to read as a dropped
+  deliverable.**
 - **Depends on:** none
 - **Deliverables:**
   - `plugin/lib/release_verification.py` — `check_tag_on_main` establishes that it is in a
@@ -117,6 +121,16 @@ release runbook asks whether everything is *fit* to ship, not merely present.
     precedent is in-file, and its comment already states this rule). A non-repository, or
     git failing, reports `UNVERIFIABLE` naming the real cause; a genuinely absent tag stays
     `FAILED`.
+  - `plugin/lib/release_verification.py` — `check_version_files`'s no-files branch
+    names the real cause. **Not in the original deliverable list; added during the build
+    and recorded here rather than left to be discovered.** It is a sibling of R1 rather
+    than an instance of it: R1 is about the *state* (this path already returned
+    `UNVERIFIABLE`), and what changed is the *reason* — outside a repository every
+    `git show` fails per-file exactly as an absent path does, so all three files
+    "skipped" and the branch reported a layout question, sending a product owner to
+    inspect a layout that is fine. Traced to R1's parent norm rather than to R1: "advice
+    fails soft" is not "advice fails silent" (`learnings.md`), which governs the reason a
+    soft failure gives, not only its exit code.
   - **NOT in this chunk, and recorded so the omission is not read as a drop:** the
     table-blind TOML read (#580). The first draft fixed it here by making the parser
     table-aware; LNG-5W8R forbids exactly that, so it moves to Chunk 02 and is solved by
