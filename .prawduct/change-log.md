@@ -32,6 +32,17 @@ Checks #11, #13 and #14; and a running plugin **newer** than the snapshot is a s
 the snapshot is stale, not the install — because reporting "you are behind" there sends someone to
 update something already ahead.
 
+**It ships departing from a ratified norm, owner-ruled.** Proportionality requires a new control to
+name its expected yield *and* emit it observably. #15 names it and cannot emit it — doctor has no
+fact-emitting path, the same ground Health Check #13's existing exception rests on, on the same
+`#563` clock. The first draft claimed to *inherit* #13's exception, which the Critic blocked: that
+exception named #13 alone, and the claim was written inside the check that benefited from it. The
+relief now lives in a recorded decision and on the norm's own `Live exception:` line. Owner ruling
+2026-08-04 — "the proportionality is fine if we can't emit, keep the norm" — which grants the
+exception **without relaxing the requirement**, so the qualifying condition stays narrow: a surface
+with no emission path at all. A later control does not join that list by resembling the two on it,
+and a test now fails if the norm text is softened in place of extending the list.
+
 Doctor gains one new tool grant, `Bash(printenv CLAUDE_CONFIG_DIR)`. Nothing else in the skill needs
 Bash, and the check cannot work without it: an environment variable is not a load-time prose
 placeholder the way `${CLAUDE_SKILL_DIR}` is, so without the grant the reader can only assume

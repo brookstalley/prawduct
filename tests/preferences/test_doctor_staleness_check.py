@@ -303,6 +303,29 @@ class TestExceptionIsNotSelfGranted:
             "learns #15 holds an exception, so its named yield is never measured"
         )
 
+    def test_the_norm_itself_was_not_relaxed(self) -> None:
+        """The owner granted an exception and kept the requirement (ruling 2026-08-04).
+
+        Those are different acts with the same immediate effect and opposite
+        long-run ones: an exception is a named, clocked list that a sweep can
+        discharge, while a relaxed requirement silently covers every control
+        added afterwards. The pressure to "fix" this by softening the norm text
+        instead of adding to the list is exactly what the ruling declined.
+
+        Verified red by rewriting the norm's emission clause to "and emits that
+        yield observably where practical".
+        """
+        norm = (
+            Path(__file__).resolve().parent.parent.parent
+            / ".prawduct" / "artifacts" / "nonfunctional-requirements.md"
+        ).read_text(encoding="utf-8")
+        assert "and emits that yield observably**" in norm, (
+            "the Proportionality norm must still require observable emission unconditionally — "
+            "#13 and #15 are bounded exceptions on a clocked list, and softening the requirement "
+            "instead would exempt every control added after it, which is what the owner's "
+            "'keep the norm' ruling declined"
+        )
+
 
 class TestLimitationIsStated:
     def test_cache_key_blind_spot_is_disclosed(self) -> None:
