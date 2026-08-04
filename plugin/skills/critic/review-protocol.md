@@ -178,7 +178,7 @@ Persistence is **decoupled from the review** (the coordinator never resumes to a
 
 If no findings: "No issues found. Changes are ready to proceed."
 
-**Record your judgment (single-pass only — coordinator reviewers get this schema from their agent definition):** write ONE partial to `.prawduct/.critic-partials/reviewer.json`, then run `prawduct-hook critic-consolidate` (it appends the review fact, regenerates `.critic-findings.json`, anchors the ledger event, and clears the marker — you write nothing else):
+**Record your judgment (single-pass only — coordinator reviewers get this schema from their agent definition):** write ONE partial to `.prawduct/.critic-partials/reviewer.json`, then run `prawduct-hook critic-consolidate` (it appends the review fact, regenerates `.critic-findings.json`, anchors the ledger event, and clears the marker — you write nothing else). **Its `NEXT:` line is the builder's: relay it verbatim as your report's last line** — everything else it prints dies in your context, and the builder terminates the review loop:
 
 ```json
 {
@@ -190,14 +190,11 @@ If no findings: "No issues found. Changes are ready to proceed."
   "findings": [
     {"name": "<short title>", "goal": "Nothing Is Unintended", "severity": "warning", "recommendation": "<what to do>", "files": ["file1"]}
   ],
-  "resolutions": [
-    {"review_id": "<prior fact id>", "fid": "R-1", "disposition": "fixed"}
-  ],
   "summary": "N warnings. Changes ready to proceed."
 }
 ```
 
-`files` (per finding): attribution; omit when not file-specific. `findings` is `[]` for a clean pass. `resolutions` — `verify-resolutions` mode ONLY: your judgment on each prior blocking/warning finding, joined by `(review_id, fid)` from the prior findings record; `disposition` is `fixed` or `waived` (`waived` requires a `rationale`). Consolidation validates every entry and fails closed on a mismatch, so match this schema exactly.
+`files` (per finding): attribution; omit when not file-specific. `findings` is `[]` for a clean pass. Match this schema exactly — consolidation validates every entry and fails closed. No `resolutions` key in these modes: it is `verify-resolutions`-only, and emitting one here fails consolidation.
 
 ## Review Cycle
 

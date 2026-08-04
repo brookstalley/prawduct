@@ -247,6 +247,64 @@ _BATCH_FIX_DIRECTIVE = (
 )
 
 
+def next_action_line(fact_id: "str | None", blocking: int, warning: int, note: int) -> str:
+    """The one sentence the BUILDER needs, computed from the fact's own counts
+    and written into ``.critic-findings.json`` by :func:`fact_to_cache_record`.
+
+    **Why this field exists at all.** Every other carrier of the
+    loop-termination rule is a *pull* carrier, and the builder that most needs
+    it is the one least likely to pull. ``methodology/building.md`` states the
+    rule under "Resolve findings", but a builder reaches it only by entering a
+    build plan — and a branch with no plan (an ordinary framework fix, an
+    ad-hoc lane) never does. ``skills/critic/review-cycle.md`` states it more
+    fully and is read by nobody in the builder role. :data:`_BATCH_FIX_DIRECTIVE`
+    is the runtime carrier and *cannot reach the builder on the single-pass
+    path*: ``verify-resolutions`` and ``chunk`` are always single-pass, so the
+    reviewing fork runs ``critic-consolidate`` itself and the directive prints
+    into the reviewer's context, not the builder's. The docstring above
+    :data:`RESOLUTION_IS_A_CLAIM_DIRECTIVE` already records that reasoning for
+    its own sake; this is the same gap answered where it can be closed.
+
+    Measured on a released version (v3.2.3), one consumer branch: ten Critic
+    rounds, of which rounds five onward were the builder fixing WARNINGs that
+    gated nothing. The transcript contains zero reads of either prose carrier
+    and zero occurrences of the batch-fix directive, against seven occurrences
+    inside reviewer forks. The builder did read the findings — so the findings
+    file is the carrier that had a reader and no message.
+
+    ``.critic-findings.json`` is a derived VIEW (D7): no gate reads it, so a
+    line here can never weaken one. It is advice delivered where the decision
+    is made."""
+    if blocking:
+        return (
+            f"{blocking} BLOCKING finding(s) gate this work — nothing else here does."
+            " Fix them, land EVERY fix you are going to make in ONE commit, then run"
+            " ONE `/prawduct:critic verify-resolutions`. Decide the WARNING/NOTE"
+            " findings in that SAME pass (fix / accept / file) — deferring them to a"
+            " later round is what turns one review into several."
+        )
+    if not (warning or note):
+        return (
+            "0 blocking, 0 other findings — THE REVIEW IS OVER and there is nothing"
+            " to disposition. Proceed; no further review is required by this work."
+        )
+    ref = fact_id or "<review-id>"
+    return (
+        f"0 blocking — THE REVIEW IS OVER. The {warning} warning + {note} note"
+        " finding(s) gate NOTHING: no gate reads them, so nothing in THIS review"
+        " requires another round. (Whether the PR gate is satisfied is a separate"
+        " question about coverage — ask it by running the gate, not by reviewing"
+        " again.) Disposition each finding instead of reflexively fixing it —"
+        " accept is the default for anything nobody will realistically action:"
+        f' `prawduct-hook disposition {ref} <fid> --accept "<reason>"`, which needs'
+        " no review and moves no tree. If you do choose to fix some, batch them into"
+        " ONE commit and re-cover with ONE `/prawduct:critic verify-resolutions`."
+        " Do NOT start another round to 'close coverage' before committing, and do"
+        " not infer that you need one from gate output printed before your fix —"
+        " commit, then re-run the gate and let it answer."
+    )
+
+
 #: Delivered at `verify-resolutions` DISPATCH — before the reviewer judges each
 #: prior finding, not after it has.
 #:
@@ -1292,6 +1350,10 @@ def fact_to_cache_record(fact: dict) -> dict:
             f"across {len(roster)} reviewer(s). {verdict}"
         ),
         "fact_id": fact.get("id"),
+        # The builder's copy of the loop-termination rule, computed from the
+        # counts just read. See `next_action_line` for why the findings file is
+        # the carrier that had a reader and no message.
+        "next_action": next_action_line(fact.get("id"), blocking, warning, note),
         # Recomputed from the fact's own findings, so this advisory grouping
         # adds nothing to the persisted schema and keeps no model in the write
         # path. Additive key: `--json` readers tolerate unknown fields.
@@ -1734,6 +1796,22 @@ def consolidate(project_dir: Path) -> int:
         # Only when there is something to fix — a clean pass that ended with a
         # fix strategy attached would read as work it does not have.
         + (_BATCH_FIX_DIRECTIVE if all_findings else "")
+    )
+    # The single-pass reviewer runs this command itself, so everything above
+    # lands in the REVIEWER's context and dies there — the builder never sees a
+    # word of it. This one line is the part that has to travel: both protocol
+    # files tell the reviewer to relay `NEXT:` verbatim as their closing line.
+    # Code owns the wording so it cannot be paraphrased into something weaker,
+    # and so it stays identical to the `next_action` the builder reads in
+    # `.critic-findings.json` on the coordinator path.
+    print(
+        "NEXT: "
+        + next_action_line(
+            review_id,
+            counts.get("blocking", 0),
+            counts.get("warning", 0),
+            counts.get("note", 0),
+        )
     )
     return 0
 

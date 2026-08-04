@@ -1114,6 +1114,29 @@ def check_cumulative_critic(project_dir: Path) -> int:
             f"{stale['local']}'s tree.",
             file=sys.stderr,
         )
+    # A gap whose whole content is the builder's own non-blocking fixes needs a
+    # different first sentence than a gap that is unreviewed work. Surface it
+    # BEFORE the generic remedy for the same reason the stale-base NOTE is
+    # surfaced there: the reader acts on the first route they meet, and the
+    # generic route here is a 4-10 minute round that will hand them the next
+    # one's findings.
+    churn = coverage.diagnose_fix_churn(project_dir, read.get("facts", []), head_tree)
+    if churn is not None:
+        shown = ", ".join(churn["delta_files"][:4])
+        if len(churn["delta_files"]) > 4:
+            shown += f" (+{len(churn['delta_files']) - 4} more)"
+        print(
+            f"NOTE: every judgeable change between review {churn['fact_id']} and HEAD "
+            f"is in a file that review's OWN findings named ({shown}), and that review "
+            f"left 0 unresolved BLOCKING. So this gap is your fix churn, not unreviewed "
+            f"work — the {churn['warning']} warning + {churn['note']} note finding(s) "
+            f"you were closing gated nothing, and no gate required those commits. "
+            f"ONE `/prawduct:critic verify-resolutions` closes this gap; fix nothing "
+            f"further first, or you will re-open it. For anything still undecided, "
+            f"`prawduct-hook disposition {churn['fact_id']} <fid> --accept \"<reason>\"` "
+            f"records a won't-fix, moves no tree, and needs no review at all.",
+            file=sys.stderr,
+        )
     print(
         "Run /prawduct:critic cumulative — it reviews the whole span and records "
         "the fact composition needs. If a pre-commit review was followed by a "

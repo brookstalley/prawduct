@@ -3,6 +3,68 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-08-04: the loop-termination rule shipped, and reached nobody who could act on it
+
+<!-- prawduct: type=fix | scope=review-loop-carriers | chunks=01 -->
+
+v3.2.3 already says the right thing about when a review is over — `methodology/building.md`
+under "Resolve findings" and `skills/critic/review-cycle.md` § "The review loop terminates" both
+state that zero blocking ends it, that WARNING and NOTE gate nothing, and that fixes belong in one
+commit. A consuming repo on that exact version then ran **ten Critic rounds on one branch**, rounds
+five onward spent fixing warnings that gated nothing.
+
+**Every carrier was a pull carrier.** The transcript contains zero reads of `building.md` and zero
+of `review-cycle.md`: the branch had no build plan (`record_lint` recorded exactly that), so the
+builder never entered the build cycle that would have made it read either. The one runtime carrier,
+`_BATCH_FIX_DIRECTIVE`, appeared in **seven reviewer-fork contexts and zero builder contexts** —
+because `verify-resolutions` and `chunk` are always single-pass, so the reviewing fork runs
+`critic-consolidate` itself and the directive prints where the reviewer will read it and the
+builder never will. That gap was already written down: the docstring above
+`RESOLUTION_IS_A_CLAIM_DIRECTIVE` says the directive "does not carry to the builder" and gives the
+reason. Knowing it was not enough to close it.
+
+Meanwhile the two things that *did* reach the builder both said *review again* — the gate's
+`uncovered:` remedy names two routes, both full reviews; and findings arrive as recommendations
+with no statement of what gates.
+
+**Measured across both evidence stores since the v3.2.3 tag:** 92 review facts in one repo and 96 in
+this one; 30 of that first repo's 806 findings were blocking. Sixty of its 92 reviews were
+zero-blocking `verify-resolutions` rounds, the longest run nine consecutive. Five of the
+ten-round branch's nine verify invocations open with the words "close coverage to committed HEAD".
+
+**Three carriers now push instead of waiting to be pulled.**
+
+- **`.critic-findings.json` gained `next_action`** — code-computed from the fact's own counts, in
+  the file the builder opens by contract. Zero blocking: the review is over, these gate nothing,
+  here is the `disposition … --accept` command with this review's id already substituted.
+- **`critic-consolidate` prints that same line as `NEXT:`**, and both protocol files order the
+  reviewer to relay it verbatim as their report's last line. This is what closes the single-pass
+  hole: the reviewer is the one running the command, so the only way its output reaches the builder
+  is if the reviewer carries it.
+- **The cumulative gate diagnoses fix churn.** When every judgeable change between the newest review
+  on HEAD's lineage and HEAD sits in a file that review's own findings named, and that review left
+  nothing blocking, the gate now says so before offering the generic remedy — and names
+  `disposition`, which moves no tree and needs no review.
+
+**The discriminator is what moved the tree, never a round counter.** CRT-3W6P's counter-example is a
+post-merge round that a counter would have called waste and was not, because a merge had brought
+thousands of unreviewed lines into functions the branch had already touched. A merge fails the
+subset test and diagnoses as nothing; so does partial overlap, an unresolved blocker, a sibling
+worktree's fact, and a review with no file attribution. Every one of those is a test, because the
+failure that matters is telling a builder their gap is self-inflicted when it is real.
+
+**Both protocol files were at their token ceilings, and neither ceiling moved.** Quoting the two
+gate-line variants in each file would have cost ~160 tokens apiece. Having code own the wording and
+the prose order only the relay cost 34 and 1. `goals-1-3.md` paid by compressing the chunk-`Type:`
+paragraph — a standing trim candidate its own budget comment names. `review-protocol.md` paid by
+dropping the `resolutions` schema arm, which it restated for a mode that does not read it and where
+emitting one *fails consolidation closed* — not redundancy but an invitation to an error.
+
+Parent requirement #167 (CRT-3W6P) stays open: its `critic-begin` **refusal** is deliberately not
+built here. Refusing a round leaves coverage open with no way to close it, so the PR gate would
+block with no remedy — a worse failure than the loop. This makes the loop terminate without needing
+one.
+
 ## 2026-08-03: the final cumulative — a deliverable with no test, and six records that had drifted
 
 <!-- prawduct: type=fix | scope=silent-gates | chunks=06 -->

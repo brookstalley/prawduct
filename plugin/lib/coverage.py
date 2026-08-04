@@ -164,6 +164,114 @@ def diagnose_stale_remote_base(project_dir: Path, base_ref: str) -> dict | None:
     }
 
 
+def diagnose_fix_churn(
+    project_dir: Path, facts: "list[dict]", head_tree: str
+) -> "dict | None":
+    """Detect the gap a builder dug for themselves: the only judgeable change
+    between the newest review of this lineage and HEAD is edits to files that
+    review's **own findings named**, and that review left nothing blocking.
+
+    This is the ``uncovered`` case that should not have existed. The gate's
+    generic remedy names only full reviews, so a builder staring at it runs
+    one — and that round reviews the prose the last fix wrote, finds something
+    true about it, and buys the next round. Measured on a released version,
+    one consumer branch reached ten rounds this way; across two evidence
+    stores in the same window, most reviews were zero-blocking re-reviews.
+    Naming the condition is what lets the message offer ``disposition``
+    instead of a fourth reviewer.
+
+    The discriminator is deliberately **what moved the tree**, never a round
+    counter — CRT-3W6P's own counter-example is a round that looked like waste
+    and was not, because a merge had brought thousands of unreviewed lines into
+    functions the branch already touched. A merge fails the subset test below
+    and diagnoses as nothing, which is the required answer.
+
+    Returns ``None`` — say nothing — unless every condition holds; the failure
+    direction matters, since telling a builder their gap is self-inflicted when
+    it is real would send them to merge unreviewed work. Otherwise::
+
+        {"fact_id", "delta_files", "named_files", "warning", "note"}
+
+    Never raises: any git failure, missing tree, or shape mismatch returns
+    ``None`` and the caller keeps its generic path.
+    """
+    from . import coverage_algebra, evidence  # noqa: PLC0415 -- lazy: matches diagnose_stale_remote_base's import posture; avoids an import cycle at module load
+
+    if not head_tree or not isinstance(facts, list):
+        return None
+
+    resolved = coverage_algebra.resolution_index(facts)
+    candidates = []
+    for fact in facts:
+        if fact.get("kind") != "review":
+            continue
+        body = fact.get("body") or {}
+        fact_head_tree = body.get("head_tree")
+        head_commit = body.get("head_commit")
+        # A dirty-tree review records `head_commit: null` — it vouches for a
+        # tree no commit materialized, so "is it behind HEAD?" has no answer
+        # and the lineage filter below cannot run. Skip rather than guess.
+        if not fact_head_tree or not head_commit or fact_head_tree == head_tree:
+            continue
+        rc, _, _ = evidence.run_git(
+            project_dir, "merge-base", "--is-ancestor", head_commit, "HEAD"
+        )
+        if rc != 0:
+            # Another branch's fact. The store is shared by every worktree of a
+            # clone, so this filter is what keeps a sibling branch's review from
+            # anchoring a diagnosis about this one.
+            continue
+        rc, distance, _ = evidence.run_git(
+            project_dir, "rev-list", "--count", f"{head_commit}..HEAD"
+        )
+        if rc != 0 or not distance.isdigit():
+            continue
+        candidates.append((int(distance), fact.get("ts") or "", fact))
+
+    if not candidates:
+        return None
+    # "Newest" means nearest to HEAD *on the lineage*, not latest by clock. The
+    # store is shared across every worktree of a clone, so wall-clock order is
+    # not this branch's order — a sibling worktree's review can carry a later
+    # timestamp than the one that actually vouches for the commit below HEAD.
+    # Timestamp breaks ties only when two facts sit at the same distance.
+    nearest = min(c[0] for c in candidates)
+    newest = max((c for c in candidates if c[0] == nearest), key=lambda c: c[1])[2]
+
+    # A round that IS required stays required: an unresolved blocker means the
+    # builder owes a verify pass regardless of what moved the tree.
+    if coverage_algebra.unresolved_blocking(newest, resolved):
+        return None
+
+    body = newest.get("body") or {}
+    delta = evidence.tree_diff(project_dir, body["head_tree"], head_tree)
+    if delta is None:
+        return None
+    judgeable = coverage_algebra.judgeable_files(delta)
+    if not judgeable:
+        # Nothing judgeable moved — this composes as a free edge and is not the
+        # uncovered case at all. Whatever brought the caller here, it is not
+        # this.
+        return None
+
+    named: set[str] = set()
+    for finding in body.get("findings") or []:
+        for path in finding.get("files") or []:
+            if isinstance(path, str) and path:
+                named.add(path)
+    if not named or not set(judgeable) <= named:
+        return None
+
+    counts = body.get("counts") or {}
+    return {
+        "fact_id": newest.get("id"),
+        "delta_files": sorted(judgeable),
+        "named_files": sorted(named),
+        "warning": counts.get("warning", 0),
+        "note": counts.get("note", 0),
+    }
+
+
 def resolve_merge_base_tree(project_dir: Path) -> dict:
     """Resolve base branch → merge-base commit → that commit's tree SHA —
     the shared prelude of every gate/dispatch that anchors an interval at

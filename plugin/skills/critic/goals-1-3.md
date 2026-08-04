@@ -17,12 +17,12 @@ code. Both modes are **always single-pass** — no subagents, no coordinator.
 3. Read the `.prawduct/artifacts/` a change touches — its build plan, and any artifact it cites.
 4. Run `prawduct-hook test-status` and `prawduct-hook verify-coverage` (Goal 1). Nothing else executes.
 
-**Chunk `Type:`** (a separate axis from mode; missing or unrecognized ⇒ `code`, full protocol —
-never honor an unknown Type). `code`: all three goals full. `doc-only`: Goal 1 is prose and numeric
-counts only, Goal 2 is requirement coverage of prose deliverables, Goal 3 is scope discipline, and
-the test-evidence check is skipped. `trivial`: full, plus Goal 3's rationale-vs-diff sub-check.
-`cleanup`: Goal 1 structural-only (no broken refs), Goal 2 requirement coverage, Goal 3 scope
-discipline tolerating a zero diff; test-evidence skipped. `designer-handoff` never reaches you.
+**Chunk `Type:`** (separate axis from mode; missing or unrecognized ⇒ `code` — never honor an
+unknown Type). `code`: all three goals full. `doc-only`: Goal 1 prose and numeric counts only,
+Goal 2 requirement coverage of prose deliverables, Goal 3 scope discipline; test-evidence skipped.
+`trivial`: full, plus Goal 3's rationale-vs-diff sub-check. `cleanup`: Goal 1 structural-only (no
+broken refs), Goal 2 requirement coverage, Goal 3 scope discipline tolerating a zero diff;
+test-evidence skipped. `designer-handoff` never reaches you.
 
 **Normative authority** (`docs/norms.md`). Direction sections, preferences rows, project-state
 classification, **and unmarked prose recording a decision** bind; descriptions track (test: would
@@ -98,7 +98,9 @@ structural change.
 
 Write ONE partial to `.prawduct/.critic-partials/reviewer.json`, then run `prawduct-hook
 critic-consolidate` yourself — it appends the review fact, regenerates `.critic-findings.json`,
-anchors the ledger event, and clears the marker. You write nothing else.
+anchors the ledger event, and clears the marker. You write nothing else. **Its `NEXT:` line is the
+builder's, not yours: relay it verbatim as your report's last line.** Everything else it printed
+dies in your context, and the builder is what terminates the review loop.
 
 ```json
 {
@@ -125,4 +127,4 @@ mismatch, so match this schema exactly.
 
 Then report to the user: signals (size, type, files, boundaries crossed), what you reviewed, each
 finding with goal, severity and recommendation, and a summary by severity saying whether the changes
-are ready. No findings: "No issues found. Changes are ready to proceed."
+are ready, then consolidate's `NEXT:` verbatim as the last line. No findings: "No issues found."

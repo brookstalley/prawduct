@@ -126,21 +126,27 @@ def _fact(
     files_reviewed: "list[str] | None" = None,
     findings: "list[dict] | None" = None,
     mode: str = "chunk (lighter pass, not ready for push)",
+    head_commit: "str | None" = None,
+    counts: "dict | None" = None,
 ) -> str:
     fact_id = f"rev-test-{next(_ids):04d}"
-    result = evidence.append_fact(
-        repo,
-        "review",
-        fact_id,
-        {
-            "base_tree": base_tree,
-            "head_tree": head_tree,
-            "files_changed": list(files),
-            "files_reviewed": list(files_reviewed if files_reviewed is not None else files),
-            "findings": findings or [],
-            "mode": mode,
-        },
-    )
+    body = {
+        "base_tree": base_tree,
+        "head_tree": head_tree,
+        "files_changed": list(files),
+        "files_reviewed": list(files_reviewed if files_reviewed is not None else files),
+        "findings": findings or [],
+        "mode": mode,
+    }
+    # `head_commit` is written by `build_fact_body` on every real consolidation;
+    # it is optional here because most of this file's cases compose purely by
+    # tree and never need the commit. `diagnose_fix_churn` does — it is the only
+    # thing that can place a fact on HEAD's lineage.
+    if head_commit is not None:
+        body["head_commit"] = head_commit
+    if counts is not None:
+        body["counts"] = counts
+    result = evidence.append_fact(repo, "review", fact_id, body)
     assert result["status"] == "appended", result
     return fact_id
 
@@ -387,6 +393,157 @@ class TestStaleBaseHint:
         assert rc == 1
         assert "uncovered" in err
         assert "behind local" not in err
+
+
+class TestFixChurnDiagnosis:
+    """An ``uncovered`` gap whose whole content is the builder's own
+    non-blocking fixes must SAY so and name ``disposition`` — otherwise the
+    only route the message offers is another 4-10 minute round, which reviews
+    the prose the last fix wrote and supplies the next round's findings. The
+    ten-round consumer branch that motivated this reached round 5+ entirely
+    this way.
+
+    The discriminator is what moved the tree, never a round counter: CRT-3W6P's
+    counter-example is a post-merge round that looked identical from a counter
+    and was genuinely required. Every negative case below is a shape that must
+    stay silent, because telling a builder their gap is self-inflicted when it
+    is real would send unreviewed work to merge."""
+
+    def _reviewed_feature(self, tmp_path, **fact_kw):
+        """feature.py reviewed at f1 with two non-blocking findings naming it."""
+        repo = _branch_repo(tmp_path)
+        rid = _fact(
+            repo,
+            _tree(repo, "main"),
+            _tree(repo),
+            ["feature.py"],
+            findings=[
+                {"fid": "R-1", "severity": "warning", "title": "w",
+                 "files": ["feature.py"]},
+                {"fid": "R-2", "severity": "note", "title": "n",
+                 "files": ["feature.py"]},
+            ],
+            counts={"blocking": 0, "warning": 1, "note": 1},
+            head_commit=_git(repo, "rev-parse", "HEAD"),
+            **fact_kw,
+        )
+        return repo, rid
+
+    def test_fix_commit_on_named_file_is_diagnosed_as_churn(self, tmp_path, capsys):
+        repo, rid = self._reviewed_feature(tmp_path)
+        _commit(repo, "feature.py", "y = 3  # addressed R-1\n", "fix the warning")
+        rc, _out, err = _run_gate(repo, capsys)
+        assert rc == 1
+        assert "uncovered" in err
+        assert "is your fix churn, not unreviewed work" in err
+        assert rid in err
+        assert "feature.py" in err
+        # Both routes out are named, and the cheap one is named first.
+        assert "prawduct-hook disposition" in err
+        assert err.index("fix churn") < err.index("/prawduct:critic cumulative")
+        # The counts it quotes come from the fact, not from a guess.
+        assert "1 warning + 1 note" in err
+
+    def test_change_outside_the_named_files_is_not_churn(self, tmp_path, capsys):
+        # CRT-3W6P's counter-example in miniature: the tree moved for a reason
+        # the review loop did not cause, so the round it needs is real.
+        repo, _rid = self._reviewed_feature(tmp_path)
+        _commit(repo, "other.py", "z = 9\n", "unrelated work")
+        rc, _out, err = _run_gate(repo, capsys)
+        assert rc == 1
+        assert "uncovered" in err
+        assert "fix churn" not in err
+
+    def test_partial_overlap_is_not_churn(self, tmp_path, capsys):
+        # One named file plus one nobody reviewed: not a subset, so the claim
+        # "this is only your churn" would be false. Stay silent.
+        repo, _rid = self._reviewed_feature(tmp_path)
+        (repo / "feature.py").write_text("y = 3\n")
+        (repo / "new.py").write_text("brand = 'new'\n")
+        _git(repo, "add", "-A")
+        _git(repo, "commit", "-q", "-m", "fix plus new work")
+        rc, _out, err = _run_gate(repo, capsys)
+        assert rc == 1
+        assert "fix churn" not in err
+
+    def test_unresolved_blocking_never_diagnoses_as_churn(self, tmp_path, capsys):
+        # The round IS required here, so the message must not suggest the
+        # builder could disposition their way out of it.
+        repo = _branch_repo(tmp_path)
+        _fact(
+            repo,
+            _tree(repo, "main"),
+            _tree(repo),
+            ["feature.py"],
+            findings=[{"fid": "R-1", "severity": "blocking", "title": "boom",
+                       "files": ["feature.py"]}],
+            counts={"blocking": 1, "warning": 0, "note": 0},
+            head_commit=_git(repo, "rev-parse", "HEAD"),
+        )
+        _commit(repo, "feature.py", "y = 3\n", "fix the blocker")
+        rc, _out, err = _run_gate(repo, capsys)
+        assert rc == 1
+        assert "fix churn" not in err
+
+    def test_sibling_branch_fact_does_not_anchor_the_diagnosis(self, tmp_path, capsys):
+        # The evidence store is shared by every worktree of a clone. A fact
+        # whose commit is not an ancestor of HEAD describes another lineage;
+        # anchoring on it would attribute this branch's gap to that branch's
+        # findings.
+        repo = _branch_repo(tmp_path)
+        _git(repo, "checkout", "-q", "-b", "sibling", "main")
+        _commit(repo, "feature.py", "sibling = 1\n", "sibling work")
+        _fact(
+            repo,
+            _tree(repo, "main"),
+            _tree(repo),
+            ["feature.py"],
+            findings=[{"fid": "R-1", "severity": "warning", "title": "w",
+                       "files": ["feature.py"]}],
+            counts={"blocking": 0, "warning": 1, "note": 0},
+            head_commit=_git(repo, "rev-parse", "HEAD"),
+        )
+        _git(repo, "checkout", "-q", "feature")
+        _commit(repo, "feature.py", "y = 3\n", "fix on feature")
+        rc, _out, err = _run_gate(repo, capsys)
+        assert rc == 1
+        assert "fix churn" not in err
+
+    def test_dirty_tree_fact_without_head_commit_is_skipped(self, tmp_path, capsys):
+        # A review of a dirty tree records `head_commit: null` — it vouches for
+        # a tree no commit materialized, so it cannot be placed on the lineage.
+        repo = _branch_repo(tmp_path)
+        _fact(
+            repo,
+            _tree(repo, "main"),
+            _tree(repo),
+            ["feature.py"],
+            findings=[{"fid": "R-1", "severity": "warning", "title": "w",
+                       "files": ["feature.py"]}],
+            counts={"blocking": 0, "warning": 1, "note": 0},
+        )  # no head_commit — the dirty-tree shape
+        _commit(repo, "feature.py", "y = 3\n", "fix")
+        rc, _out, err = _run_gate(repo, capsys)
+        assert rc == 1
+        assert "fix churn" not in err
+
+    def test_findings_with_no_file_attribution_are_not_enough(self, tmp_path, capsys):
+        # Without `files` there is nothing to compare the delta against, so the
+        # subset claim cannot be made honestly.
+        repo = _branch_repo(tmp_path)
+        _fact(
+            repo,
+            _tree(repo, "main"),
+            _tree(repo),
+            ["feature.py"],
+            findings=[{"fid": "R-1", "severity": "warning", "title": "w"}],
+            counts={"blocking": 0, "warning": 1, "note": 0},
+            head_commit=_git(repo, "rev-parse", "HEAD"),
+        )
+        _commit(repo, "feature.py", "y = 3\n", "fix")
+        rc, _out, err = _run_gate(repo, capsys)
+        assert rc == 1
+        assert "fix churn" not in err
 
 
 # ---------------------------------------------------------------------------

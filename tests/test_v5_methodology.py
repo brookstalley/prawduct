@@ -42,8 +42,8 @@ def estimate_tokens(text: str) -> int:
 #: lives here, where a wrong number fails instead of misleading.
 LAST_MEASURED_TOKENS = {
     "methodology/building.md": 4659,
-    "skills/critic/review-protocol.md": 3611,
-    "skills/critic/goals-1-3.md": 1960,
+    "skills/critic/review-protocol.md": 3612,
+    "skills/critic/goals-1-3.md": 1994,
 }
 
 
@@ -616,6 +616,14 @@ class TestCriticSkill:
         # keeping the template line to the bare imperative; the rationale and
         # full instruction live in agents/critic-reviewer.md, which every
         # dispatched reviewer loads anyway. 9 tokens of headroom remain.
+        #
+        # 3611 -> 3612 (2026-08-04) -- the reviewer must relay consolidate's
+        # `NEXT:` line, the only carrier of the loop-termination rule with a
+        # reader in the BUILDER role. Paid in full by the fourth application of
+        # this comment's own first rule: the `resolutions` schema arm was
+        # restated here for a mode that does not read this file, and where
+        # emitting one FAILS consolidation -- so it was not merely redundant,
+        # it invited a fail-closed error.
         tokens = estimate_tokens(self.content)
         assert tokens < 3620, f"review-protocol.md is ~{tokens} tokens, should be <3620"
 
@@ -681,9 +689,20 @@ class TestCriticGoals13:
         # payload.
         #
         # Standing trim candidates when the next editor needs room: the
-        # chunk-`Type:` paragraph, which restates a table `review-cycle.md` owns,
-        # and the normative-authority block, the longest passage that is not a
-        # per-finding severity.
+        # normative-authority block, the longest passage that is not a
+        # per-finding severity. (The chunk-`Type:` paragraph was the other
+        # standing candidate and has now been spent — see below.)
+        #
+        # 1960 -> 1994 (2026-08-04) -- the reviewer must relay consolidate's
+        # `NEXT:` line, the only carrier of the loop-termination rule with a
+        # reader in the BUILDER role: measured on a released version, one
+        # consumer branch ran ten Critic rounds while the rule sat in two files
+        # that branch never opened and in a directive that printed into seven
+        # reviewer forks and zero builder contexts. Bought at 34 tokens rather
+        # than ~160 by having CODE own the wording (`next_action_line`) and the
+        # prose only order the relay -- the ceiling held without a bump, which
+        # is this comment's standing rule. Paid by compressing the chunk-`Type:`
+        # paragraph, the candidate named directly above.
         tokens = estimate_tokens(self.content)
         assert tokens < 2000, f"goals-1-3.md is ~{tokens} tokens, should be <2000"
 

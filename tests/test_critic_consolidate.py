@@ -505,6 +505,106 @@ class TestMergeFindings:
         assert record["model"] == "opus"  # from the partial, not the manifest
         assert body["counts"] == {"blocking": 1, "warning": 0, "note": 0}
         assert body["roster"] == [{"role": "correctness", "model": "opus"}]
+        # The builder's copy of the termination rule rides in the same record.
+        assert "next_action" in record
+
+
+class TestNextActionLine:
+    """``.critic-findings.json`` is the one carrier of the loop-termination
+    rule that has a reader in the BUILDER role.
+
+    ``methodology/building.md`` states the rule but is reached only by entering
+    a build plan; ``review-cycle.md`` is read by nobody building; and
+    ``_BATCH_FIX_DIRECTIVE`` prints wherever ``critic-consolidate`` runs, which
+    on the always-single-pass modes is the reviewing FORK. Measured on the
+    consumer branch that ran ten rounds: zero reads of either prose file, zero
+    occurrences of the directive in the builder's context against seven inside
+    reviewer forks — and the builder did read the findings. So the field must
+    say what gates, in the record the builder already opens."""
+
+    def test_blocking_names_one_commit_and_one_verify_pass(self):
+        line = cc.next_action_line("rev-1", 2, 5, 3)
+        assert "2 BLOCKING" in line
+        assert "ONE commit" in line
+        assert "ONE `/prawduct:critic verify-resolutions`" in line
+        # The non-blocking findings are decided in the SAME pass — deferring
+        # them to a later round is the pump this field exists to stop.
+        assert "SAME pass" in line
+
+    def test_zero_blocking_says_the_review_is_over_and_names_disposition(self):
+        line = cc.next_action_line("rev-abc", 0, 4, 7)
+        assert "THE REVIEW IS OVER" in line
+        assert "gate NOTHING" in line
+        # The command arrives with this review's own id already substituted —
+        # an operator who has to go find the id is one who will not run it.
+        assert "prawduct-hook disposition rev-abc <fid> --accept" in line
+        assert "4 warning + 7 note" in line
+        # And the stale-gate-output trap is named where the decision is made.
+        assert "re-run the gate" in line
+
+    def test_clean_pass_has_nothing_to_disposition(self):
+        line = cc.next_action_line("rev-1", 0, 0, 0)
+        assert "THE REVIEW IS OVER" in line
+        assert "nothing" in line
+        assert "disposition" not in line.split("nothing to disposition")[-1]
+
+    def test_missing_fact_id_degrades_to_a_placeholder(self):
+        # A record with no id must still produce a runnable-shaped instruction
+        # rather than the string "None".
+        line = cc.next_action_line(None, 0, 1, 0)
+        assert "None" not in line
+        assert "<review-id>" in line
+
+
+class TestNextLineRelayContract:
+    """`NEXT:` is code-owned and relay-only — the design that made this
+    affordable inside two files at their token ceilings.
+
+    The alternative was quoting both gate-line variants in each protocol: ~160
+    tokens per file, duplicated, and paraphrasable. Owning the wording in
+    :func:`next_action_line` costs ~35 and cannot drift, so the same sentence
+    reaches the builder whether they read the fork's report (single-pass) or
+    `next_action` in the findings cache (coordinator).
+
+    Both protocols must carry the relay order, because mode decides which one a
+    reviewer reads — `goals-1-3.md` for chunk/verify-resolutions,
+    `review-protocol.md` for final/cumulative. The measured ten-round loop ran
+    on the verify-resolutions path, so pinning only the full protocol would
+    leave exactly the observed case uncovered."""
+
+    PROTOCOLS = ("goals-1-3.md", "review-protocol.md")
+
+    def _text(self, name):
+        """Wrap- and emphasis-insensitive. These two files are line-wrapped to
+        different widths and one bolds inside the clause, so a literal
+        substring pin would fail on a re-wrap that changed nothing — the kind
+        of false failure that gets a pin deleted rather than fixed."""
+        raw = (ROOT / "skills" / "critic" / name).read_text()
+        return re.sub(r"\s+", " ", raw.replace("*", "").replace("`", ""))
+
+    def test_both_protocols_order_the_relay(self):
+        for name in self.PROTOCOLS:
+            text = self._text(name)
+            assert "NEXT:" in text, name
+            assert "verbatim" in text, name
+
+    def test_both_protocols_say_why_the_relay_is_not_optional(self):
+        # Without the reason, a token-diet pass reads the order as redundant
+        # with "report to the user" and trims it. The reason is structural:
+        # on the single-pass path the reviewer runs consolidate, so its output
+        # lands in the reviewer's context and reaches the builder only if
+        # relayed.
+        for name in self.PROTOCOLS:
+            text = self._text(name)
+            assert "dies in your context" in text, name
+            assert "terminates the review loop" in text, name
+
+    def test_consolidate_emits_the_line_it_orders_relayed(self):
+        # The contract is only real if the command actually prints the token
+        # the protocols name. Pinned here rather than in an integration test so
+        # a rename of the prefix fails at the two ends together.
+        src = (ROOT / "lib" / "critic_consolidate.py").read_text()
+        assert '"NEXT: "' in src
 
 
 # ---------------------------------------------------------------------------
