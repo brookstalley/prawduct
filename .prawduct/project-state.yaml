@@ -432,7 +432,20 @@ views_enabled: true
 # merged to develop before it started, and nothing is orphaned by the move. The
 # CLEARED note above records the state this replaces — it is history now, not the
 # current reading.
-active_build_plan: artifacts/build-plan-release-verification-false-reds.md
+#
+# CLEARED 2026-08-04 in the release-verification-false-reds PR, at that plan's
+# completion rather than at the next merge conflict. Both its chunks are built
+# and reviewed, so carrying the pointer into develop would land precisely the
+# dormant-pointer state all three incidents above record — a finished plan that
+# record-lint, the stop-hook gate, regen-views and Critic mode inference each
+# report confidently about. The plan file itself is **RETAINED**: it is
+# release-pending under gitflow, and the develop->main promotion regenerates the
+# Status of every scope-tagged plan. Clearing the slot costs that nothing,
+# because this plan carries `scope: release-verification-false-reds` and the
+# gates resolve it by scope — which is the property the line above names as
+# what made the cleared state survivable last time. Next work sets this via
+# /prawduct:backlog pick.
+active_build_plan:
 
 # =============================================================================
 # BUILD-PLAN REF ROOT (opt-in)

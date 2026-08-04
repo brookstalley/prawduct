@@ -116,9 +116,23 @@ def _make_repo(
     return repo
 
 
+#: Gates an assertion that is literally false below Python 3.11.
+#:
+#: `_make_repo` mirrors prawduct's real layout, `pyproject.toml` included, so any
+#: fixture built from it carries a `toml` entry — unreadable without `tomllib`,
+#: where this check reports `unverifiable` by design. Tests asserting the full
+#: three-file verification are therefore interpreter-dependent *without saying so
+#: anywhere in their own body*, which is how four pre-existing ones landed on the
+#: 3.10 CI leg's red list at once.
+#:
+#: This is the fact's one home: the rationale lived at all four call sites in
+#: identical 5-line copies before, which is four places to edit when the floor
+#: moves. `test_the_floor_leg_degrades_instead_of_failing` is the compensating
+#: always-on case — skipping without it would leave the floor leg proving nothing
+#: about the shape it actually runs.
 needs_tomllib = pytest.mark.skipif(
     rv._toml_loader() is None,
-    reason="tomllib is 3.11+; the 3.10 floor leg proves the degraded path instead",
+    reason="tomllib is 3.11+; test_the_floor_leg_degrades_instead_of_failing covers that leg",
 )
 
 
@@ -373,11 +387,6 @@ class TestDeclarationReading:
 
 
 class TestVersionFiles:
-    # `_make_repo` mirrors prawduct's real layout, which includes a `toml`
-    # version file — unreadable below 3.11, where this check reports
-    # `unverifiable` by design. The full-verification outcome is therefore
-    # interpreter-dependent; `test_the_floor_leg_degrades_instead_of_failing`
-    # pins what the 3.10 leg sees instead, so the floor still proves something.
     @needs_tomllib
     def test_agreeing_tree_is_ok(self, tmp_path):
         repo = _make_repo(tmp_path, version="3.2.0")
@@ -658,11 +667,6 @@ class TestVersionFiles:
         state, _ = rv.check_version_files(repo, "v1.0.0")
         assert state == rv.UNVERIFIABLE
 
-    # `_make_repo` mirrors prawduct's real layout, which includes a `toml`
-    # version file — unreadable below 3.11, where this check reports
-    # `unverifiable` by design. The full-verification outcome is therefore
-    # interpreter-dependent; `test_the_floor_leg_degrades_instead_of_failing`
-    # pins what the 3.10 leg sees instead, so the floor still proves something.
     @needs_tomllib
     def test_reads_the_tag_tree_not_the_working_tree(self, tmp_path):
         """The regression this gate exists to prevent, in one test.
@@ -942,11 +946,6 @@ class TestCheckReleased:
 
         monkeypatch.setattr(rv, "_run", fake)
 
-    # `_make_repo` mirrors prawduct's real layout, which includes a `toml`
-    # version file — unreadable below 3.11, where this check reports
-    # `unverifiable` by design. The full-verification outcome is therefore
-    # interpreter-dependent; `test_the_floor_leg_degrades_instead_of_failing`
-    # pins what the 3.10 leg sees instead, so the floor still proves something.
     @needs_tomllib
     def test_complete_release_exits_zero(self, tmp_path, monkeypatch, capsys):
         repo = _make_repo(tmp_path, version="3.2.0")
@@ -982,11 +981,6 @@ class TestCheckReleased:
         assert "not-released" not in err
         assert "not a git repository" in err
 
-    # `_make_repo` mirrors prawduct's real layout, which includes a `toml`
-    # version file — unreadable below 3.11, where this check reports
-    # `unverifiable` by design. The full-verification outcome is therefore
-    # interpreter-dependent; `test_the_floor_leg_degrades_instead_of_failing`
-    # pins what the 3.10 leg sees instead, so the floor still proves something.
     @needs_tomllib
     def test_accepts_bare_version(self, tmp_path, monkeypatch):
         repo = _make_repo(tmp_path, version="3.2.0")

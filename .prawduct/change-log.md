@@ -39,11 +39,11 @@ interim rule ("new gate code delegates first") — so the repair *deletes* the p
 names instead of teaching it about tables. `tomllib` is 3.11+ and `requires-python` is `>=3.10`;
 on that floor a `toml` entry reports `unverifiable`, never `failed`, because an interpreter's
 stdlib is not evidence about a release. `[DECISION: delegate TOML reading to tomllib and degrade
-on 3.10, rather than grow the hand-rolled reader to honour a key path | honouring `project.version`
-requires tracking table headers, which is broader parsing and the exact ratchet LNG-5W8R exists to
-prevent; delegation discharges the retroactivity entry instead of deepening it, and the 3.10 cost
-is an honest `unverifiable` on one of three files | user chose this over the section-aware
-hand-rolled reader, 2026-08-04]`
+on 3.10, rather than grow the hand-rolled reader to honour a key path | honouring a declared key
+path requires tracking table headers, which is broader parsing and the exact ratchet LNG-5W8R
+exists to prevent; delegation discharges the retroactivity entry instead of deepening it, and the
+3.10 cost is an honest unverifiable on one of three files | user chose this over the
+section-aware hand-rolled reader, 2026-08-04]`
 
 **A test asserted the defect as a contract.** `test_toml_takes_the_first_assignment` pinned
 `[project]` above `[tool.other]` and its docstring called the ordering a guarantee. Correcting it
