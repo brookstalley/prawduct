@@ -288,6 +288,31 @@ class TestDeclarationReading:
         text = _state_yaml(_BARE) + "deprecated_terms:\n  - path: docs/old-name.md\n"
         assert rv._read_declaration(text) == [rv.VersionFile("plugin/VERSION", "bare", "")]
 
+    def test_a_comment_between_entries_does_not_end_the_block(self):
+        """A comment is inert at any indent — column 0 included.
+
+        The terminator looks for a column-0 line, and a full-line comment is
+        one. Before the skip, a product annotating its declaration lost every
+        entry below the comment: the check then reported `ok` over the survivors
+        while a declared version file went unread, which is a silent hole in a
+        gate whose entire purpose is catching version disagreement. Both indents
+        are exercised because only the column-0 one ever terminated.
+        """
+        text = (
+            "release_version_files:\n"
+            "  - path: plugin/VERSION\n"
+            "    format: bare\n"
+            "# added when the manifest moved\n"
+            "  # indented note\n"
+            "  - path: package.json\n"
+            "    format: json\n"
+            "    key: version\n"
+        )
+        assert rv._read_declaration(text) == [
+            rv.VersionFile("plugin/VERSION", "bare", ""),
+            rv.VersionFile("package.json", "json", "version"),
+        ]
+
     def test_comments_and_quotes_are_stripped(self):
         text = (
             "release_version_files:\n"
@@ -348,6 +373,12 @@ class TestDeclarationReading:
 
 
 class TestVersionFiles:
+    # `_make_repo` mirrors prawduct's real layout, which includes a `toml`
+    # version file — unreadable below 3.11, where this check reports
+    # `unverifiable` by design. The full-verification outcome is therefore
+    # interpreter-dependent; `test_the_floor_leg_degrades_instead_of_failing`
+    # pins what the 3.10 leg sees instead, so the floor still proves something.
+    @needs_tomllib
     def test_agreeing_tree_is_ok(self, tmp_path):
         repo = _make_repo(tmp_path, version="3.2.0")
         state, detail = rv.check_version_files(repo, "v3.2.0")
@@ -456,6 +487,31 @@ class TestVersionFiles:
         state, _ = rv.check_version_files(repo, "v1.0.0")
         assert state != rv.FAILED, "an assumed layout graded a product that never claimed it"
 
+    def test_the_floor_leg_degrades_instead_of_failing(self, tmp_path, monkeypatch):
+        """What Python 3.10 sees, asserted on every interpreter.
+
+        Four happy-path tests in this file assert prawduct's full three-file
+        verification, which is true only on 3.11+ — `_make_repo` mirrors the
+        real layout, `pyproject.toml` included. They now carry `@needs_tomllib`,
+        which would leave the CI floor leg (`tests.yml` runs 3.10 and 3.14) with
+        no coverage of the shape it actually runs. This is that coverage, and it
+        pins the property that matters: the floor **degrades**, it does not fail.
+
+        Found by simulating the loader's absence across the whole file. A
+        reviewer caught one test failing on 3.10; there were five, because the
+        fallback layout carries a toml entry for every fixture built from it.
+        """
+        monkeypatch.setattr(rv, "_toml_loader", lambda: None)
+        repo = _make_repo(tmp_path, version="3.2.0")
+        state, detail = rv.check_version_files(repo, "v3.2.0")
+        assert state == rv.UNVERIFIABLE, "the floor must not report a verdict it cannot support"
+        assert state != rv.FAILED, "an interpreter's stdlib is not evidence about a release"
+        assert "3.11+" in detail
+        # The two readable files still verified — the degradation is scoped to
+        # the entry that needs the missing module, not to the whole check.
+        assert "2 file(s) did agree" in detail
+        assert "plugin/VERSION" in detail
+
     def test_a_blocked_file_does_not_swallow_a_disagreement_beside_it(
         self, tmp_path, monkeypatch
     ):
@@ -555,6 +611,14 @@ class TestVersionFiles:
         fixed one level up, where a non-repository was reported as a question
         about the product's layout: the verdict was right and the reason was
         not, and a soft failure still owes its reader the real one.
+
+        **Built on a `json` file, not the `pyproject.toml` this defect was found
+        through.** The first cut used the latter and asserted `OK` — which is
+        true on 3.11+ and false on the 3.10 CI leg, where the toml entry is
+        `blocked` and the check returns UNVERIFIABLE without ever reaching the
+        detail string this greps. It was R-1's only test, so on the floor leg
+        the fix went from covered to red. The reason-split has nothing to do
+        with TOML, so it is proven on a format every interpreter can read.
         """
         repo = tmp_path / "mixed"
         repo.mkdir()
@@ -562,16 +626,23 @@ class TestVersionFiles:
         _git(repo, "config", "user.email", "t@example.com")
         _git(repo, "config", "user.name", "T")
         _write(repo / "plugin" / "VERSION", "1.0.0\n")
-        _write(repo / "pyproject.toml", '[project]\nname = "x"\ndynamic = ["version"]\n')
+        # Present, and carrying no version — the same shape as a tooling-only
+        # `pyproject.toml`, minus the interpreter dependency.
+        _write(repo / "plugin" / ".claude-plugin" / "plugin.json", '{"name": "x"}\n')
         _git(repo, "add", "-A")
-        _git(repo, "commit", "-qm", "scm-versioned")
+        _git(repo, "commit", "-qm", "no version key")
         _git(repo, "tag", "v1.0.0")
         state, detail = rv.check_version_files(repo, "v1.0.0")
         assert state == rv.OK
-        assert "present but carrying no version: pyproject.toml" in detail
-        assert "not in this tree: plugin/.claude-plugin/plugin.json" in detail
-        assert "not in this tree" not in detail.split("present but carrying no version")[1], (
-            "a file that is in the tree is still being announced as missing from it"
+        assert "present but carrying no version: plugin/.claude-plugin/plugin.json" in detail
+        assert "not in this tree: pyproject.toml" in detail
+        # The regression guard, and it has to read the ABSENT clause specifically.
+        # A first cut asserted "not in this tree" was absent from everything after
+        # the "present but carrying" marker — tautological, since the absent clause
+        # is always emitted first, so it could not catch the fold it names.
+        absent_clause = detail.split("not in this tree: ")[1].split(" — ")[0]
+        assert "plugin.json" not in absent_clause, (
+            "a file that IS in the tree is being announced as missing from it"
         )
 
     def test_tree_with_no_known_version_file_is_unverifiable(self, tmp_path):
@@ -587,6 +658,12 @@ class TestVersionFiles:
         state, _ = rv.check_version_files(repo, "v1.0.0")
         assert state == rv.UNVERIFIABLE
 
+    # `_make_repo` mirrors prawduct's real layout, which includes a `toml`
+    # version file — unreadable below 3.11, where this check reports
+    # `unverifiable` by design. The full-verification outcome is therefore
+    # interpreter-dependent; `test_the_floor_leg_degrades_instead_of_failing`
+    # pins what the 3.10 leg sees instead, so the floor still proves something.
+    @needs_tomllib
     def test_reads_the_tag_tree_not_the_working_tree(self, tmp_path):
         """The regression this gate exists to prevent, in one test.
 
@@ -865,6 +942,12 @@ class TestCheckReleased:
 
         monkeypatch.setattr(rv, "_run", fake)
 
+    # `_make_repo` mirrors prawduct's real layout, which includes a `toml`
+    # version file — unreadable below 3.11, where this check reports
+    # `unverifiable` by design. The full-verification outcome is therefore
+    # interpreter-dependent; `test_the_floor_leg_degrades_instead_of_failing`
+    # pins what the 3.10 leg sees instead, so the floor still proves something.
+    @needs_tomllib
     def test_complete_release_exits_zero(self, tmp_path, monkeypatch, capsys):
         repo = _make_repo(tmp_path, version="3.2.0")
         self._stub_gh(monkeypatch, (0, "https://example/v3.2.0", ""))
@@ -899,6 +982,12 @@ class TestCheckReleased:
         assert "not-released" not in err
         assert "not a git repository" in err
 
+    # `_make_repo` mirrors prawduct's real layout, which includes a `toml`
+    # version file — unreadable below 3.11, where this check reports
+    # `unverifiable` by design. The full-verification outcome is therefore
+    # interpreter-dependent; `test_the_floor_leg_degrades_instead_of_failing`
+    # pins what the 3.10 leg sees instead, so the floor still proves something.
+    @needs_tomllib
     def test_accepts_bare_version(self, tmp_path, monkeypatch):
         repo = _make_repo(tmp_path, version="3.2.0")
         self._stub_gh(monkeypatch, (0, "https://example/v3.2.0", ""))

@@ -226,6 +226,15 @@ def _read_declaration(text: str) -> list[VersionFile] | None:
             continue
         entries: list[dict[str, str]] = []
         for follow in lines[index + 1:]:
+            if follow.lstrip().startswith("#"):
+                # A comment is inert at ANY indent, column 0 included. Without
+                # this the terminator below fires on a full-line comment sitting
+                # between entries and the rest of the declaration is silently
+                # dropped — a product loses a version file it declared, and the
+                # check reports `ok` over what is left. `bin`'s sibling reader
+                # already documents comments as inert; the two `lib` readers
+                # truncate (backlog #590, which tracks reconciling all four).
+                continue
             if follow[:1] not in (" ", "\t") and follow.strip():
                 break  # next column-0 key — the block ended
             stripped = follow.split("#", 1)[0].strip()

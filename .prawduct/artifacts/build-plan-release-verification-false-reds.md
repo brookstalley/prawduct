@@ -109,6 +109,14 @@ Context: Plan authored 2026-08-04 on `fix/release-verification-false-reds`, cut 
 Blocks cutting v3.2.4: `release_verification` is new in that release, and Phase 0 of the
 release runbook asks whether everything is *fit* to ship, not merely present.
 
+**Both chunks are built and reviewed; the plan is complete and unmerged.** Chunk 01 at
+`f5e5aa6`/`90552d6`/`53ba138`, Chunk 02 at `7c99753`/`4f6cf58`. All three filed defects
+(#579, #576, #580) are closed at their real failure paths and stay **open** until the PR
+merges — Chunk 01 set that convention by leaving #579 open. The checkboxes above stay
+`[ ]` on purpose: Status is a derived view under `views_enabled`, and these entries are
+deliberately statusless because the work is release-pending. It flips at the promotion,
+not here, and never by hand.
+
 ## Build Chunks
 
 ### Chunk 01: A check that could not ask does not answer

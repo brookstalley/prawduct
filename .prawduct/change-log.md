@@ -57,6 +57,26 @@ discarded anyway, and a `[]` early-return that could not change an answer by any
 rather than left as a guard that only looked like one. Writing the missing multi-finding test also
 caught the soft-failure detail calling files "did agree" while they had just disagreed.
 
+**The verify pass returned one blocking finding, and it was the useful kind.** A test asserting
+the fallback's reason-split was built on `pyproject.toml` and would have gone red on the 3.10 CI
+leg, where that entry is `blocked` and the check never reaches the OK detail the test greps. It
+was that fix's only test, so on the floor leg the repair went from covered to red. Rebuilt on a
+`json` file, since the split has nothing to do with TOML.
+
+Simulating the missing loader across the whole file then showed the reviewer had caught **one of
+five**: every fixture built from `_make_repo` carries a toml entry, so four pre-existing
+happy-path tests asserted a full three-file verification that is only true on 3.11+. Those now
+declare the dependency, and a companion pins what the floor leg actually sees — degraded, never
+failed, with the two readable files still verified. That is the cost of the delegation decision
+made visible in the suite rather than discovered by CI.
+
+Also fixed from the same review round, found while verifying the filed follow-up rather than
+transcribing it: `_read_declaration` treated a full-line comment at column 0 as the end of the
+block, silently dropping every entry below it — a product annotating its declaration would lose a
+version file and the check would report `ok` over the survivors. Backlog #590 tracks reconciling
+all four of this repo's minimal-YAML readers, two of which truncate this way and two of which do
+not; #591 tracks the title-normalizer bug that filing #590 tripped.
+
 ## 2026-08-04: a check that could not ask does not answer
 
 <!-- prawduct: type=fix | scope=release-verification-false-reds | chunks=01 -->
