@@ -3,6 +3,38 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-08-04: a check that could not ask does not answer
+
+<!-- prawduct: type=fix | scope=release-verification-false-reds | chunks=01 -->
+
+`prawduct-hook check-released` ships as a new capability in v3.2.4, and three paths made it
+state a confident `not-released` about a release it never assessed. This closes the first.
+
+`git rev-parse <tag>^{commit}` exits **128** for two unrelated states — the tag is absent, and
+this is not a git repository — and `check_tag_on_main` read every non-zero as the first.
+Measured: running it from any non-repo directory printed `ERROR: tag-on-main: tag v3.2.4 does
+not resolve to a commit`, verdict `not-released`, exit 1. A finding about a release, from an
+environment that could not look at one. The module's own docstrings say twice that a false red
+is worse than no check, because it is the reading that teaches people to ignore the check.
+
+`_outside_repo_reason` now asks *why* the directory cannot answer, and only after a non-zero
+has already occurred, so the happy path costs nothing. **Three outcomes, not two** — "git is not
+installed" and "not a git repository" reach the same verdict but are not the same diagnosis, and
+an operator told the wrong one goes looking in the wrong place.
+
+Fixed one level down in the same spirit: `check_version_files` reached the right verdict by
+accident and named the wrong cause. Outside a repository every `git show` fails per-file exactly
+as an absent path does, so all three files "skipped" and the branch reported *"a different
+product layout"* — sending a product owner to inspect a layout that is fine. Advice failing soft
+is not advice failing silent.
+
+**#580 is deliberately not fixed here.** The first draft made the TOML branch table-aware;
+`architecture.md`'s in-transition LNG-5W8R norm forbids exactly that ("no gate acquires a
+language-specific parser") and names this file in its retroactivity list, with the remedy
+owner-ruled as *product declaration rather than broader parsing*. It moves to Chunk 02 and is
+closed by the same declaration that closes #576. Surfaced by `/prawduct:learnings` at plan time,
+before any code was written — which is where a norm is supposed to bite.
+
 ## 2026-08-04: a count nothing reads is not worth writing — or correcting
 
 <!-- prawduct: type=fix | scope=review-loop-carriers | chunks=03 -->
