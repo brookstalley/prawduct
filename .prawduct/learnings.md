@@ -383,3 +383,5 @@ dropping them.
 ## When you fix a defect of a named class, re-run that class's own check against your fix — the fix is the likeliest place to reintroduce the class, because attention sits on the content of the claim and not on its mechanics. A citation repaired by renaming it, then line-wrapped inside its backticks, is still unresolvable to the grep that would find it
 
 ## When a trim is justified by the surrounding prose's OWN instruction, that is exactly when to run the suite before trusting it — the dangerous cut is not the one you cannot justify but the one the file appears to endorse. A record-lint explanation read as redundant under its own "raise it, don't restate it" rule, and was the only witness to a two-shape contract
+
+## Making a capability conditional on the RUNTIME retroactively conditions every existing test whose fixture touches it — the affected set is not the set you wrote, since shared fixtures carry it into tests that never mention it. Simulate the degraded runtime over the whole file before commit; a reviewer surfaces one and it reads like the one — [learnings-detail.md]

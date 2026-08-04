@@ -2502,3 +2502,43 @@ line, where the vulnerable-dependency clause supplied a `**WARNING**` that made 
 promotion invisible. Verified by reverting the fix and re-running: the pre-fix assertion passes with
 the promotion applied. A slack-carrying drift detector is indistinguishable from the drift it
 watches for, and fixing one instance does not fix its siblings.
+
+## Making a capability conditional on the RUNTIME retroactively conditions every existing test whose fixture touches it
+
+Chunk 02 of `release-verification-false-reds` (2026-08-04). `_version_from`'s hand-rolled
+TOML branch was replaced by delegation to stdlib `tomllib`, which is 3.11+ — chosen over a
+section-aware hand-rolled reader because `architecture.md`'s LNG-5W8R forbids a gate
+acquiring a language-specific parser, and its own interim rule says new gate code delegates
+first. Below 3.11 a declared `toml` version file reports `unverifiable`, never `failed`.
+
+The cost was priced as "one of three files unread on 3.10." The actual cost included the
+test suite. `tests.yml` runs a deliberate `["3.10", "3.14"]` matrix, and **five** tests went
+red on the floor leg:
+
+* the new test for the fallback's absent-vs-present-but-unreadable split, built on
+  `pyproject.toml` — it was that fix's *only* test, so on 3.10 the repair went from covered
+  to red;
+* four **pre-existing** happy-path tests (`test_agreeing_tree_is_ok`,
+  `test_reads_the_tag_tree_not_the_working_tree`, `test_complete_release_exits_zero`,
+  `test_accepts_bare_version`) whose only connection to TOML was the shared `_make_repo`
+  fixture, which writes a `pyproject.toml` to mirror prawduct's real layout. None of them
+  mentions TOML. None was edited by the change.
+
+The `verify-resolutions` reviewer found the first and reported it as *the* problem — correct
+about the instance, and the instance framing is the trap. What found the other four was
+mechanical: substitute the loader lookup with one that returns `None` and run the whole
+file. That is a 30-second check and it is the only thing that enumerates the set.
+
+Two repairs, and the split matters. The new test was **rebuilt on a `json` file**, because
+its subject (the reason a skipped file was skipped) has nothing to do with TOML — a test
+should not inherit a dependency its subject does not have. The four pre-existing ones
+genuinely assert an outcome that is only true on 3.11+, so they declare it with `skipif`,
+paired with `test_the_floor_leg_degrades_instead_of_failing`, which asserts what 3.10 *does*
+see: unverifiable, never failed, two readable files still verified. Guarding without that
+companion would have left the floor leg with no coverage of the shape it actually runs,
+which is the failure mode the guard was supposed to prevent.
+
+Related: "A green suite is evidence about the ONE environment that ran it" — this is its
+active form. There, the second environment finds the dependency. Here *you* introduced the
+dependency, so you can enumerate it before CI does, and the enumeration is not optional
+because the affected set is invisible in the diff.
