@@ -15,7 +15,23 @@ green.
 **tag's own tree** (``git show <tag>:<path>``), never the working tree. What a
 release shipped is a fact about the tree that release names, and the checkout
 you happen to be standing in is a different question — a feature branch, or a
-later `develop`, answers it confidently and wrongly.
+later `develop`, answers it confidently and wrongly. That rule governs the
+``release_version_files:`` declaration too, not only the files it names: which
+files carried a release's version is itself a fact about that release's tree,
+so the declaration is read from ``<tag>:.prawduct/project-state.yaml``. A
+product that reorganises its layout afterwards therefore cannot retroactively
+misgrade an older release, and a release cut before the key existed falls back
+to the guess below — which, being a guess, cannot fail it.
+
+**Which files carry the version is the product's to state, not ours to infer**
+(``architecture.md`` § Direction, LNG-5W8R — no gate acquires a
+language-specific parser, remedy owner-ruled as declaration rather than broader
+parsing). A product declares ``release_version_files:`` as path + format + key
+path; the format names a *structural shape* (``bare``, ``json``, ``toml``) and
+the key path is descended literally, so nothing here decides which table of a
+manifest wins. Reading ``toml`` **delegates to stdlib** ``tomllib`` rather than
+hand-rolling a parser, which is that norm's interim rule applied as written;
+on an interpreter without it (3.10) such a file is *unverifiable*, never failed.
 
 **Failure posture is split on purpose** (``architecture.md`` § Direction — a
 command's posture follows what it produces). The local checks produce a verdict
@@ -35,6 +51,7 @@ import json
 import subprocess
 import sys
 from pathlib import Path
+from typing import Callable, NamedTuple
 
 from .release_readiness import normalize_version
 
@@ -48,14 +65,48 @@ OK = "ok"
 FAILED = "failed"
 UNVERIFIABLE = "unverifiable"
 
-#: Files carrying the release version, and how to find it in each. The bare
-#: semver (no ``v``) is what all three hold; the tag carries the ``v``.
-#: Keyed by repo-relative path because that is what ``git show <tag>:<path>``
-#: takes, and checking anything else would read the wrong tree.
-_VERSION_FILES = (
-    ("plugin/VERSION", "bare"),
-    ("plugin/.claude-plugin/plugin.json", "json"),
-    ("pyproject.toml", "toml"),
+class VersionFile(NamedTuple):
+    """One file that carries the release version, and how to read it.
+
+    ``fmt`` names a **structural shape, never a language** — ``bare`` (the whole
+    file is the value), ``json``, ``toml``. The distinction is the point: shapes
+    are shared across ecosystems (``package.json``, ``composer.json`` and
+    ``plugin.json`` are one shape), so this vocabulary does not grow a branch per
+    language the way a manifest-parser table does.
+
+    ``key`` is a dotted path descended literally through the decoded mapping and
+    is what makes the read *dumb*. The product names where its version lives, so
+    nothing here decides which table of a manifest is authoritative — the defect
+    that made ``[tool.myplugin] version = "9.9.9"`` above ``[project]`` report a
+    confident wrong number. Empty for ``bare``, which has no key to descend. A
+    literal dot inside a key name is not expressible, and deliberately so: the
+    escape hatch is to point at a ``bare`` or ``json`` file instead.
+    """
+
+    path: str
+    fmt: str
+    key: str = ""
+
+
+#: Where a release's own declaration lives, inside that release's tree.
+_STATE_PATH = ".prawduct/project-state.yaml"
+
+#: The declaration's key. Absent from a tree ⇒ that release never declared, and
+#: :data:`_FALLBACK_VERSION_FILES` applies as a guess.
+_DECLARATION_KEY = "release_version_files"
+
+#: The layout assumed when a release's tree declares nothing. This is
+#: **prawduct's own** layout, and this module ships to every governed product —
+#: so against any other product it is a guess, which is exactly why a
+#: disagreement found through it may never reach :data:`FAILED`
+#: (see :func:`check_version_files`). The bare semver (no ``v``) is what these
+#: hold; the tag carries the ``v``. Keyed by repo-relative path because that is
+#: what ``git show <tag>:<path>`` takes, and checking anything else would read
+#: the wrong tree.
+_FALLBACK_VERSION_FILES = (
+    VersionFile("plugin/VERSION", "bare"),
+    VersionFile("plugin/.claude-plugin/plugin.json", "json", "version"),
+    VersionFile("pyproject.toml", "toml", "project.version"),
 )
 
 
@@ -134,62 +185,235 @@ def _outside_repo_reason(project_dir: Path) -> str | None:
     return None if probe[0] == 0 else "not a git repository"
 
 
-def _version_from(kind: str, content: str) -> str | None:
-    """The version string a release file carries, or ``None`` if unparseable."""
-    if kind == "bare":
-        return content.strip() or None
-    if kind == "json":
-        try:
-            value = json.loads(content).get("version")
-        except (ValueError, AttributeError):
-            return None
-        return str(value) if value else None
-    for line in content.splitlines():
-        stripped = line.strip()
-        if "=" not in stripped:
+def _read_declaration(text: str) -> list[VersionFile] | None:
+    """``release_version_files:`` as declared, or ``None`` when undeclared.
+
+    Minimal-YAML by the same discipline as ``risk._read_list_yaml_key`` and
+    ``core.read_str_yaml_key`` — a column-0 key, indented ``- path: …`` entries
+    until the next column-0 key, inline comments stripped. No PyYAML: the
+    governance runtime is stdlib-only.
+
+    **Three outcomes, not two.** ``None`` (undeclared) and ``[]`` (declared
+    empty) are different facts and the caller reads them oppositely — the first
+    falls back to a guess that cannot fail the release, the second is a
+    deliberate "this product ships no version file" and is honoured exclusively.
+    ``risk_surfaces:`` draws the same line for the same reason.
+
+    **Block style only.** A flow-style ``release_version_files: [ … ]`` yields no
+    entries and so reads as *declared empty*, reporting "no version file to
+    check" rather than silently reverting to the guess — loud, and naming the
+    key, which is what an operator needs to spot the wrong syntax. An explicit
+    ``== "[]"`` branch sat here to make the empty case deliberate and was
+    removed: the block scan already returns ``[]`` for it by every route, so the
+    branch could not change an answer and no test could have caught its
+    deletion.
+    """
+    lines = text.splitlines()
+    needle = f"{_DECLARATION_KEY}:"
+    for index, raw in enumerate(lines):
+        if raw[:1] in (" ", "\t"):
             continue
-        key, _, value = stripped.partition("=")
-        # The key must *be* ``version``, not merely start with it — a prefix
-        # match reads ``versioning`` or ``version_scheme`` as the release
-        # version and reports a confident wrong number.
-        if key.strip() != "version":
+        line = raw.split("#", 1)[0].rstrip()
+        if not line.startswith(needle):
             continue
-        # The first assignment wins: ``[project].version`` sits above any
-        # ``[tool.*]`` table that might also carry the key.
-        return value.strip().strip('"').strip("'") or None
+        entries: list[dict[str, str]] = []
+        for follow in lines[index + 1:]:
+            if follow[:1] not in (" ", "\t") and follow.strip():
+                break  # next column-0 key — the block ended
+            stripped = follow.split("#", 1)[0].strip()
+            if not stripped:
+                continue
+            if stripped.startswith("- "):
+                entries.append({})
+                stripped = stripped[2:].strip()
+            if not entries or ":" not in stripped:
+                continue
+            field, _, value = stripped.partition(":")
+            entries[-1][field.strip()] = value.strip().strip("\"'")
+        # An entry with no `path` names no file and is dropped; one with no
+        # `format` is KEPT, and reports itself unreadable rather than being
+        # silently skipped — an unknown shape is "unchecked", never "passed"
+        # (`architecture.md` § Direction, the same clause that put the read
+        # under declaration in the first place).
+        return [
+            VersionFile(e["path"], e.get("format", ""), e.get("key", ""))
+            for e in entries
+            if e.get("path")
+        ]
     return None
+
+
+def _toml_loader() -> Callable[[str], dict] | None:
+    """``tomllib.loads``, or ``None`` on an interpreter without it.
+
+    **Delegation, not a parser.** ``architecture.md``'s in-transition LNG-5W8R
+    says no gate acquires a language-specific parser, and its interim rule says
+    new gate code *delegates first*. The branch this replaced was a hand-rolled
+    scan for one language's manifest format — named on that norm's own
+    retroactivity list — so the repair deletes it rather than teaching it about
+    tables. ``tomllib`` is 3.11+ and ``requires-python`` is ``>=3.10``; that
+    floor is a supported state here, not an error, and it degrades to
+    *unverifiable* because an interpreter's stdlib is not evidence about a
+    release.
+    """
+    try:
+        import tomllib  # noqa: PLC0415 -- 3.11+ only; its absence is a supported state
+    except ImportError:
+        return None
+    return tomllib.loads
+
+
+def _descend(data: object, key: str) -> object | None:
+    """The value at a dotted ``key``, or ``None`` if the path does not resolve."""
+    cursor = data
+    for part in key.split("."):
+        if not isinstance(cursor, dict) or part not in cursor:
+            return None
+        cursor = cursor[part]
+    return cursor
+
+
+class _Read(NamedTuple):
+    """The outcome of reading one version file.
+
+    ``blocked`` separates *we could not read this at all* from *we read it and
+    the version is not there*, because they are opposite verdicts: the first is
+    a limitation of this runtime and can only ever be ``UNVERIFIABLE``, while
+    the second is a statement about a file the product declared. Collapsing them
+    is the module's founding defect ("I could not ask" read as "the answer is
+    no") one level down.
+    """
+
+    value: str | None
+    problem: str | None
+    blocked: bool = False
+
+
+def _read_version(spec: VersionFile, content: str) -> _Read:
+    """The version ``spec`` names inside ``content``."""
+    if spec.fmt == "bare":
+        value = content.strip()
+        return _Read(value or None, None if value else "is empty")
+    if spec.fmt == "json":
+        loader: Callable[[str], object] | None = json.loads
+    elif spec.fmt == "toml":
+        loader = _toml_loader()
+        if loader is None:
+            return _Read(
+                None,
+                "reading toml needs Python 3.11+ (tomllib); this interpreter is "
+                f"{sys.version_info.major}.{sys.version_info.minor}",
+                blocked=True,
+            )
+    else:
+        named = f"format {spec.fmt!r}" if spec.fmt else "no format"
+        return _Read(None, f"declares {named}, which this check cannot read", blocked=True)
+    try:
+        data = loader(content)
+    except ValueError:
+        # Both `json.JSONDecodeError` and `tomllib.TOMLDecodeError` derive from
+        # ValueError, so one specific catch covers both loaders.
+        return _Read(None, f"is not valid {spec.fmt}")
+    if not spec.key:
+        return _Read(None, f"declares no key path, which {spec.fmt} needs")
+    value = _descend(data, spec.key)
+    if value is None or value == "":
+        return _Read(None, f"has no {spec.key}")
+    return _Read(str(value), None)
 
 
 def check_version_files(project_dir: Path, tag: str) -> tuple[str, str]:
     """Whether the version files in the tag's tree agree with the tag.
 
-    **A file absent from the tree is skipped, not failed.** This module ships to
-    every governed product, and :data:`_VERSION_FILES` is prawduct's own layout:
-    a product with no ``pyproject.toml`` is not a broken release, and printing
-    ``not-released`` while naming files that cannot exist there is the hazard
-    ``release_readiness`` already documented for its own messages. The verdict
-    is about files that are *present and disagree*.
+    **The posture splits on provenance, and that split is the whole point.**
+    When the release's tree declares ``release_version_files:``, the product has
+    stated a fact about itself: these files carry the version. A declared file
+    that is absent, or present and unreadable, is then a real defect in the
+    release and reaches ``FAILED``. When nothing is declared,
+    :data:`_FALLBACK_VERSION_FILES` is prawduct's own layout applied to a product
+    that never claimed it — a guess, which may reach ``OK`` or ``UNVERIFIABLE``
+    but **never** ``FAILED``. Without that asymmetry declaration is cosmetic:
+    the guess would keep grading products against a layout they never chose,
+    which is how a setuptools-scm project or a tooling-only ``pyproject.toml``
+    was told its release was broken.
 
-    A tree carrying none of them is ``UNVERIFIABLE`` — nothing was measured, and
-    saying so is not the same as passing.
+    **A file absent from the tree is skipped under the fallback, not failed.**
+    A product with no ``pyproject.toml`` is not a broken release, and printing
+    ``not-released`` while naming files that cannot exist there is the hazard
+    ``release_readiness`` already documented for its own messages.
+
+    A tree from which nothing could be measured is ``UNVERIFIABLE`` — saying so
+    is not the same as passing.
     """
     expected = tag[1:] if tag.startswith("v") else tag
+
+    shown_state = _run(["git", "show", f"{tag}:{_STATE_PATH}"], project_dir)
+    if shown_state == MISSING:
+        return UNVERIFIABLE, "git is not installed"
+    if shown_state == ERRORED:
+        return UNVERIFIABLE, "git could not read the tag's tree"
+    # A non-zero here is an absent declaration, not an error: most trees — every
+    # release cut before this key existed, and every product that never opted in
+    # — legitimately carry no `.prawduct/project-state.yaml` at this path.
+    declared = _read_declaration(shown_state[1]) if shown_state[0] == 0 else None
+    specs = declared if declared is not None else list(_FALLBACK_VERSION_FILES)
+    if not specs:
+        return UNVERIFIABLE, (
+            f"{tag}'s tree declares {_DECLARATION_KEY}: with no entries "
+            "— no version file to check"
+        )
+
     problems: list[str] = []
+    blocked: list[str] = []
     checked: list[str] = []
-    for rel_path, kind in _VERSION_FILES:
-        shown = _run(["git", "show", f"{tag}:{rel_path}"], project_dir)
+    for spec in specs:
+        shown = _run(["git", "show", f"{tag}:{spec.path}"], project_dir)
         if shown == MISSING:
             return UNVERIFIABLE, "git is not installed"
         if shown == ERRORED:
             return UNVERIFIABLE, "git could not read the tag's tree"
-        if shown[0] != 0:  # absent from this tree — not this product's layout
+        if shown[0] != 0:
+            if declared is not None:
+                problems.append(f"{spec.path}: declared, but not in {tag}'s tree")
+            continue  # under the guess, absent means "not this product's layout"
+        read = _read_version(spec, shown[1])
+        if read.blocked:
+            blocked.append(f"{spec.path}: {read.problem}")
             continue
-        checked.append(rel_path)
-        found = _version_from(kind, shown[1])
-        if found is None:
-            problems.append(f"{rel_path}: no version string found")
-        elif found != expected:
-            problems.append(f"{rel_path}: says {found}, tag says {expected}")
+        if read.value is None:
+            if declared is not None:
+                problems.append(f"{spec.path}: declared to carry the version but {read.problem}")
+            continue  # under the guess, an unreadable file is not this product's
+        if read.value != expected:
+            problems.append(f"{spec.path}: says {read.value}, tag says {expected}")
+            continue
+        # `checked` holds files that were read AND agreed, not merely read: it is
+        # reported as "did agree" in the soft-failure detail below, where a file
+        # that disagreed would make that sentence false.
+        checked.append(spec.path)
+
+    if problems and declared is not None:
+        # Failures dominate a blocked sibling: a file that genuinely disagrees is
+        # evidence about the release however many others could not be read.
+        return FAILED, "; ".join(problems)
+    if problems:
+        # Undeclared, so these are real disagreements found through a GUESSED
+        # layout. Worth reporting in full — the signal is the point — but not as
+        # a verdict about the release, and the one edit that would make it one
+        # gets named rather than left for the reader to deduce.
+        problems.append(
+            f"but {tag}'s tree declares no {_DECLARATION_KEY}:, so this layout is "
+            "prawduct's guess; declare it to make a disagreement a failure"
+        )
+    if blocked or problems:
+        # Report every soft finding, never just the first kind. Returning only
+        # `blocked` here would drop a live version disagreement because an
+        # unrelated sibling file could not be read — "advice fails soft" is not
+        # "advice fails silent", one level down again.
+        parts = [*blocked, *problems]
+        if checked:
+            parts.append(f"{len(checked)} file(s) did agree: {', '.join(checked)}")
+        return UNVERIFIABLE, "; ".join(parts)
     if not checked:
         # THREE very different causes land here, and the third was missing: a
         # `git show` outside a repository fails per-file exactly like an absent
@@ -198,15 +422,13 @@ def check_version_files(project_dir: Path, tag: str) -> tuple[str, str]:
         # naming the wrong cause is the same defect one level down — "advice
         # fails soft" is not "advice fails silent", and a soft failure still
         # owes its reader the real reason.
-        blocked = _outside_repo_reason(project_dir)
-        if blocked is not None:
-            return UNVERIFIABLE, f"{blocked} — no tree to read version files from"
+        outside = _outside_repo_reason(project_dir)
+        if outside is not None:
+            return UNVERIFIABLE, f"{outside} — no tree to read version files from"
         return UNVERIFIABLE, (
             f"no known version file present in {tag}'s tree "
             "(a different product layout, or a tag this clone has not fetched)"
         )
-    if problems:
-        return FAILED, "; ".join(problems)
     # Name what was read, and name what was not. A bare count cannot be acted on:
     # a tag tree missing `plugin/.claude-plugin/plugin.json` — the auto-update
     # cache key, and the root cause this whole check exists for — passes as
@@ -214,7 +436,7 @@ def check_version_files(project_dir: Path, tag: str) -> tuple[str, str]:
     # where a "3" should be. Skipping an absent file stays correct (this module
     # ships to products with other layouts); reporting the skip silently does not.
     detail = f"{len(checked)} version file(s) agree at {tag}: {', '.join(checked)}"
-    skipped = [path for path, _ in _VERSION_FILES if path not in checked]
+    skipped = [spec.path for spec in specs if spec.path not in checked]
     if skipped:
         detail += f" — not in this tree: {', '.join(skipped)}"
     return OK, detail

@@ -3,6 +3,60 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-08-04: the product declares which files carry its version — and where in them
+
+<!-- prawduct: type=fix | scope=release-verification-false-reds | chunks=02 -->
+
+Closes the remaining two false reds in `check-released` (#576, #580) with one mechanism, and
+retires the surface `architecture.md`'s LNG-5W8R names in its retroactivity list.
+
+`_VERSION_FILES` was prawduct's own layout applied to every governed product. A product using
+setuptools-scm, or carrying a tooling-only `pyproject.toml`, was graded against a layout it never
+claimed and told `not-released`. Products now declare `release_version_files:` — path, format,
+and the **key path** where the version lives.
+
+**The posture splits on provenance, and that split is the requirement.** A *declared* file that is
+absent, or present without the declared key, is a real defect and reaches `failed` — the product
+said it ships that file. Undeclared, the built-in tuple is a **guess**, so it may only reach `ok`
+or `unverifiable`, never `failed`. Without the asymmetry declaration is cosmetic and the guess
+keeps failing products for someone else's layout. A disagreement found through the guess is still
+reported in full, with the one edit that would make it a failure named.
+
+**The declaration is read from the tag's tree**, not the checkout — the rule this module already
+states for the version files themselves, applied to the statement about them. Which files carried
+a release's version is a fact about that release. So reorganising a layout cannot retroactively
+fail an old release, and a release cut before the key existed grades through the fallback, which
+by construction cannot produce a false red.
+
+**#580 is closed by declaration, not by a better parser.** `_version_from` scanned for the first
+line-level `version =` and the comment called the ordering a guarantee; TOML makes no such promise,
+and the measured repro is the reverse ordering — `[tool.myplugin] version = "9.9.9"` above
+`[project]` returned 9.9.9. With `key: project.version` the product names the authoritative table
+and both orderings now return the same answer.
+
+Reading TOML **delegates to stdlib `tomllib`** rather than hand-rolling, which is LNG-5W8R's own
+interim rule ("new gate code delegates first") — so the repair *deletes* the parser that norm
+names instead of teaching it about tables. `tomllib` is 3.11+ and `requires-python` is `>=3.10`;
+on that floor a `toml` entry reports `unverifiable`, never `failed`, because an interpreter's
+stdlib is not evidence about a release. `[DECISION: delegate TOML reading to tomllib and degrade
+on 3.10, rather than grow the hand-rolled reader to honour a key path | honouring `project.version`
+requires tracking table headers, which is broader parsing and the exact ratchet LNG-5W8R exists to
+prevent; delegation discharges the retroactivity entry instead of deepening it, and the 3.10 cost
+is an honest `unverifiable` on one of three files | user chose this over the section-aware
+hand-rolled reader, 2026-08-04]`
+
+**A test asserted the defect as a contract.** `test_toml_takes_the_first_assignment` pinned
+`[project]` above `[tool.other]` and its docstring called the ordering a guarantee. Correcting it
+is not weakening it — the assertion was true only of the example it chose; both orderings are now
+exercised, and the answer no longer depends on order at all.
+
+Three new guards initially could not fail for the regression they named, and were rebuilt before
+commit: a non-mapping descent test that only passed a top-level list (which the membership test
+survives without the `isinstance` guard), a block-terminator test whose trailing items were
+discarded anyway, and a `[]` early-return that could not change an answer by any route — deleted
+rather than left as a guard that only looked like one. Writing the missing multi-finding test also
+caught the soft-failure detail calling files "did agree" while they had just disagreed.
+
 ## 2026-08-04: a check that could not ask does not answer
 
 <!-- prawduct: type=fix | scope=release-verification-false-reds | chunks=01 -->

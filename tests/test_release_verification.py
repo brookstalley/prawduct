@@ -56,8 +56,44 @@ def _git(repo: Path, *args: str) -> None:
     )
 
 
-def _make_repo(tmp_path: Path, *, version: str = "3.2.0", tag: str | None = None) -> Path:
-    """A real repo whose tagged tree carries ``version`` in all three files."""
+#: The three shapes prawduct's own layout uses, as declaration entries.
+_BARE = ("plugin/VERSION", "bare", None)
+_JSON = ("plugin/.claude-plugin/plugin.json", "json", "version")
+_TOML = ("pyproject.toml", "toml", "project.version")
+
+
+def _state_yaml(*specs: tuple[str, str, str | None]) -> str:
+    """A `project-state.yaml` body declaring ``specs``.
+
+    Neighbouring column-0 keys are included on purpose: the reader scans for a
+    column-0 `release_version_files:` and must stop at the next one, so a block
+    with nothing after it would never exercise the terminator.
+    """
+    lines = ["base_branch: develop", "", "release_version_files:"]
+    for path, fmt, key in specs:
+        lines += [f"  - path: {path}", f"    format: {fmt}"]
+        if key:
+            lines.append(f"    key: {key}")
+    lines += ["", "views_enabled: true"]
+    return "\n".join(lines) + "\n"
+
+
+def _make_repo(
+    tmp_path: Path,
+    *,
+    version: str = "3.2.0",
+    tag: str | None = None,
+    declare: str | None = None,
+) -> Path:
+    """A real repo whose tagged tree carries ``version`` in all three files.
+
+    ``declare`` writes a `.prawduct/project-state.yaml` **into the tagged tree**,
+    because that is where the check reads it from — which files carried a
+    release's version is a fact about that release, not about the checkout you
+    are standing in. Left ``None``, the tree declares nothing and the check
+    falls back to its built-in guess, which is the pre-declaration behaviour and
+    what most cases here still exercise.
+    """
     repo = tmp_path / "repo"
     repo.mkdir(parents=True, exist_ok=True)
     _git(repo, "init", "-q", "-b", "main")
@@ -69,6 +105,8 @@ def _make_repo(tmp_path: Path, *, version: str = "3.2.0", tag: str | None = None
         json.dumps({"name": "prawduct", "version": version}) + "\n",
     )
     _write(repo / "pyproject.toml", f'[project]\nname = "x"\nversion = "{version}"\n')
+    if declare is not None:
+        _write(repo / ".prawduct" / "project-state.yaml", declare)
     _git(repo, "add", "-A")
     _git(repo, "commit", "-qm", "release")
     _git(repo, "tag", tag or f"v{version}")
@@ -78,42 +116,190 @@ def _make_repo(tmp_path: Path, *, version: str = "3.2.0", tag: str | None = None
     return repo
 
 
+needs_tomllib = pytest.mark.skipif(
+    rv._toml_loader() is None,
+    reason="tomllib is 3.11+; the 3.10 floor leg proves the degraded path instead",
+)
+
+
+def _read(fmt: str, content: str, key: str = "") -> rv._Read:
+    return rv._read_version(rv.VersionFile("f", fmt, key), content)
+
+
 class TestVersionParsing:
     @pytest.mark.parametrize(
-        ("kind", "content", "expected"),
+        ("kind", "key", "content", "expected"),
         [
-            ("bare", "3.2.0\n", "3.2.0"),
-            ("bare", "  3.2.0  ", "3.2.0"),
-            ("bare", "", None),
-            ("json", '{"version": "3.2.0"}', "3.2.0"),
-            ("json", '{"name": "x"}', None),
-            ("json", "not json at all", None),
-            ("toml", 'version = "3.2.0"\n', "3.2.0"),
-            ("toml", "version = '3.2.0'\n", "3.2.0"),
-            ("toml", "[project]\nname = 'x'\n", None),
+            ("bare", "", "3.2.0\n", "3.2.0"),
+            ("bare", "", "  3.2.0  ", "3.2.0"),
+            ("bare", "", "", None),
+            ("json", "version", '{"version": "3.2.0"}', "3.2.0"),
+            ("json", "version", '{"name": "x"}', None),
+            ("json", "version", "not json at all", None),
+            ("json", "a.b.version", '{"a": {"b": {"version": "3.2.0"}}}', "3.2.0"),
+            ("json", "a.b.version", '{"a": {"b": {}}}', None),
+            pytest.param("toml", "version", 'version = "3.2.0"\n', "3.2.0", marks=needs_tomllib),
+            pytest.param("toml", "version", "version = '3.2.0'\n", "3.2.0", marks=needs_tomllib),
+            pytest.param(
+                "toml", "project.version", "[project]\nname = 'x'\n", None, marks=needs_tomllib
+            ),
         ],
     )
-    def test_extracts_or_reports_absent(self, kind, content, expected):
-        assert rv._version_from(kind, content) == expected
+    def test_extracts_or_reports_absent(self, kind, key, content, expected):
+        assert _read(kind, content, key).value == expected
 
-    def test_toml_takes_the_first_assignment(self):
-        """`[project].version` sits above any `[tool.*]` table that repeats it."""
-        content = '[project]\nversion = "3.2.0"\n\n[tool.other]\nversion = "9.9.9"\n'
-        assert rv._version_from("toml", content) == "3.2.0"
+    @needs_tomllib
+    @pytest.mark.parametrize("first", ["project", "tool.other"])
+    def test_the_declared_table_wins_at_either_ordering(self, first):
+        """#580, and the test that used to assert the defect as a guarantee.
 
+        The replaced `test_toml_takes_the_first_assignment` asserted that
+        `[project]` above `[tool.other]` returns the project version, and its
+        docstring called the ordering a guarantee — *"`[project].version` sits
+        above any `[tool.*]` table that repeats it."* **TOML promises no such
+        thing**, and #580's measured repro is the reverse ordering: with
+        `[tool.myplugin] version = "9.9.9"` first, the line scanner returned
+        9.9.9 and reported a confident false mismatch.
+
+        Correcting that is not weakening it — the old assertion was true only of
+        the example it chose. Both orderings are exercised here, and the answer
+        no longer depends on the order at all, because `key: project.version`
+        says which table is authoritative instead of position implying it.
+        """
+        tables = {
+            "project": '[project]\nversion = "3.2.0"\n',
+            "tool.other": '[tool.other]\nversion = "9.9.9"\n',
+        }
+        second = "tool.other" if first == "project" else "project"
+        content = f"{tables[first]}\n{tables[second]}"
+        assert _read("toml", content, "project.version").value == "3.2.0"
+        # And the other table stays reachable by its own name — proof the key
+        # path is descended, not that `[project]` acquired a special case.
+        assert _read("toml", content, "tool.other.version").value == "9.9.9"
+
+    @needs_tomllib
     @pytest.mark.parametrize("key", ["versioning", "version_scheme", "versions"])
-    def test_toml_key_must_be_version_not_merely_start_with_it(self, key):
+    def test_a_neighbouring_key_is_not_read_as_the_version(self, key):
         """A prefix match reads a neighbouring key as the release version.
 
-        Red before the key comparison replaced `startswith`: each of these
-        returned its own value, so a `pyproject.toml` growing a `versioning`
-        key would have made the gate report a confident wrong number.
+        Red before the key comparison replaced `startswith`; now structural,
+        since a mapping lookup cannot prefix-match. Kept because the guarantee
+        is what matters, not the mechanism that provides it.
         """
-        assert rv._version_from("toml", f'{key} = "scheme-x"\n') is None
+        assert _read("toml", f'{key} = "scheme-x"\n', "version").value is None
 
-    def test_toml_finds_version_after_an_unrelated_prefix_key(self):
-        content = '[tool.x]\nversioning = "calver"\n\n[project]\nversion = "3.2.0"\n'
-        assert rv._version_from("toml", content) == "3.2.0"
+    @pytest.mark.parametrize(
+        ("content", "key"),
+        [
+            ('["3.2.0"]', "version"),  # top level is not a mapping at all
+            ('{"project": 3}', "project.version"),  # descends INTO a scalar
+            ('{"project": "3.2.0"}', "project.version.major"),  # and into a string
+        ],
+    )
+    def test_descending_through_a_non_mapping_reports_absent_not_a_crash(self, content, key):
+        """`_descend` must not assume every level is a dict.
+
+        **The first cut of this test only passed a top-level list**, which the
+        membership test alone survives (`"version" not in [...]` is merely
+        False), so it went green with the `isinstance` guard deleted. The cases
+        that actually raise are the ones that descend *into* a scalar —
+        `"version" not in 3` is a `TypeError`, thrown out of a release check.
+        A guard that cannot fail for the regression it names is not a guard.
+        """
+        assert _read("json", content, key).value is None
+
+    def test_an_unreadable_format_is_blocked_not_merely_absent(self):
+        """`blocked` is what keeps a runtime limitation out of the FAILED lane.
+
+        A declared file whose format this check cannot read must reach
+        UNVERIFIABLE, while a declared file it *can* read and finds no version
+        in is a real defect. Collapse the two and the module's founding error
+        returns one level down.
+        """
+        for fmt in ("xml", ""):
+            read = _read(fmt, "<v>1</v>", "version")
+            assert read.blocked is True, f"{fmt!r} must not be read as a verdict"
+            assert read.value is None
+        readable = _read("json", '{"name": "x"}', "version")
+        assert readable.blocked is False, "a readable file with no version is not blocked"
+
+    def test_toml_without_tomllib_is_blocked_naming_the_interpreter(self, monkeypatch):
+        """The 3.10 floor, exercised on every interpreter.
+
+        On 3.10 this path is reached for real and `needs_tomllib` skips the
+        cases above; on 3.11+ the import cannot be un-done, so the loader lookup
+        is substituted — the same split the suite already uses for a hung
+        toolchain, which likewise cannot be staged for real. What is asserted is
+        the caller's handling: an absent stdlib module is not evidence about a
+        release, so it must be `blocked`, never a version verdict.
+        """
+        monkeypatch.setattr(rv, "_toml_loader", lambda: None)
+        read = _read("toml", 'version = "3.2.0"\n', "version")
+        assert read.blocked is True
+        assert read.value is None
+        assert "3.11+" in read.problem
+
+
+class TestDeclarationReading:
+    """The minimal-YAML reader. Undeclared, declared-empty and declared are
+    three different facts and the caller reads them oppositely, so the
+    distinctions are pinned here rather than only through the check."""
+
+    def test_undeclared_is_none_not_empty(self):
+        """`None` falls back to a guess that cannot fail a release; `[]` is an
+        exclusive opt-out. Collapse them and either the guess starts failing
+        products or an explicit opt-out silently re-enables it."""
+        assert rv._read_declaration("base_branch: develop\n") is None
+
+    def test_declared_empty_is_a_list_not_none(self):
+        assert rv._read_declaration("release_version_files: []\n") == []
+
+    def test_entries_carry_path_format_and_key(self):
+        parsed = rv._read_declaration(_state_yaml(_BARE, _JSON, _TOML))
+        assert parsed == [
+            rv.VersionFile("plugin/VERSION", "bare", ""),
+            rv.VersionFile("plugin/.claude-plugin/plugin.json", "json", "version"),
+            rv.VersionFile("pyproject.toml", "toml", "project.version"),
+        ]
+
+    def test_the_block_stops_at_the_next_column_zero_key(self):
+        """Without the terminator the reader swallows the rest of the file.
+
+        **Pinned against a following block whose items carry `path:`**, because
+        that is the only shape that makes the terminator observable. An earlier
+        version of this test used `risk_surfaces:` with bare `- skills/` items,
+        and passed with the terminator deleted: those items parse to no `path`
+        and are dropped anyway, so the assertion could not tell a reader that
+        stopped from one that ran on and discarded what it found.
+        """
+        text = _state_yaml(_BARE) + "deprecated_terms:\n  - path: docs/old-name.md\n"
+        assert rv._read_declaration(text) == [rv.VersionFile("plugin/VERSION", "bare", "")]
+
+    def test_comments_and_quotes_are_stripped(self):
+        text = (
+            "release_version_files:\n"
+            '  - path: "pyproject.toml"  # the manifest\n'
+            "    format: toml\n"
+            "    key: 'project.version'\n"
+        )
+        assert rv._read_declaration(text) == [
+            rv.VersionFile("pyproject.toml", "toml", "project.version")
+        ]
+
+    def test_a_commented_out_block_is_undeclared(self):
+        """The template ships the key commented out as its schema legend. A
+        reader that matched it would give every scaffolded product a
+        declaration it never made."""
+        text = "# release_version_files:\n#   - path: pyproject.toml\n"
+        assert rv._read_declaration(text) is None
+
+    def test_an_entry_without_a_path_is_dropped_but_one_without_a_format_is_kept(self):
+        """Opposite handling, on purpose. A pathless entry names no file and
+        cannot be reported against; a formatless one names a file the product
+        says carries its version, so it must surface as unreadable rather than
+        vanish — unknown shapes report *unchecked*, never *passed*."""
+        text = "release_version_files:\n  - format: bare\n  - path: VERSION\n"
+        assert rv._read_declaration(text) == [rv.VersionFile("VERSION", "", "")]
 
 
 class TestVersionFiles:
@@ -129,11 +315,162 @@ class TestVersionFiles:
             assert path in detail
         assert "not in this tree" not in detail, "nothing was skipped in this tree"
 
-    def test_disagreeing_file_is_named_with_both_values(self, tmp_path):
-        repo = _make_repo(tmp_path, version="3.2.0", tag="v3.2.1")
+    def test_a_declared_file_that_disagrees_fails(self, tmp_path):
+        """The strong contract, and it now requires a declaration to reach.
+
+        **This assertion used to run without one.** The tree said nothing about
+        which files carried its version, prawduct guessed its own layout, and a
+        disagreement found through that guess exited 1 — which is #576: a
+        setuptools-scm project or a tooling-only `pyproject.toml` was told its
+        release was broken against a layout it never claimed. So FAILED is now
+        earned by the product *declaring* these files, and the sibling test
+        below pins what the undeclared half does instead. The contract is not
+        weakened — it is the same assertion, now with the premise that
+        justifies it, and the fallback it left behind is separately guarded.
+        """
+        repo = _make_repo(
+            tmp_path, version="3.2.0", tag="v3.2.1", declare=_state_yaml(_BARE, _JSON)
+        )
         state, detail = rv.check_version_files(repo, "v3.2.1")
         assert state == rv.FAILED
         assert "plugin/VERSION: says 3.2.0, tag says 3.2.1" in detail
+
+    def test_an_undeclared_disagreement_is_unverifiable_and_says_how_to_fix_that(
+        self, tmp_path
+    ):
+        """R2's whole point: an undeclared layout may not produce a failure.
+
+        `_FALLBACK_VERSION_FILES` is prawduct's own layout applied to a product
+        that never claimed it. A disagreement found through it is still worth
+        reporting — so the numbers stay in the detail — but it is not a verdict
+        about someone else's release, and the one edit that would make it one is
+        named rather than left to be deduced. Red if the fallback regains the
+        ability to reach FAILED, which is the #576 behaviour returning.
+        """
+        repo = _make_repo(tmp_path, version="3.2.0", tag="v3.2.1")
+        state, detail = rv.check_version_files(repo, "v3.2.1")
+        assert state == rv.UNVERIFIABLE, "a guessed layout produced a verdict about a release"
+        assert "plugin/VERSION: says 3.2.0, tag says 3.2.1" in detail, (
+            "the disagreement was softened into silence, not into a soft failure"
+        )
+        assert "release_version_files" in detail
+
+    def test_a_declared_file_missing_from_the_tree_fails(self, tmp_path):
+        """Declared and absent is a real defect — the product said it ships this.
+
+        The mirror of `test_absent_file_is_skipped_not_failed`: same tree state,
+        opposite verdict, and the only difference is who chose the layout.
+        """
+        repo = _make_repo(tmp_path, version="3.2.0", declare=_state_yaml(_BARE, _JSON))
+        _git(repo, "rm", "-q", "plugin/.claude-plugin/plugin.json")
+        _git(repo, "commit", "-qm", "drop the cache key")
+        _git(repo, "tag", "v3.2.4")
+        state, detail = rv.check_version_files(repo, "v3.2.4")
+        assert state == rv.FAILED
+        assert "plugin/.claude-plugin/plugin.json: declared, but not in v3.2.4's tree" in detail
+
+    def test_a_declared_file_present_but_unparseable_fails(self, tmp_path):
+        """#576's other half, and the reason declaration is not merely cosmetic.
+
+        A `pyproject.toml` with no `[project].version` is *skipped* under the
+        guess and *failed* under a declaration, because the product asserted the
+        version lives there. Driven through `json` rather than `toml` so the
+        3.10 floor leg exercises it too — the format is incidental here, the
+        provenance is the subject.
+        """
+        repo = tmp_path / "declared"
+        repo.mkdir()
+        _git(repo, "init", "-q", "-b", "main")
+        _git(repo, "config", "user.email", "t@example.com")
+        _git(repo, "config", "user.name", "T")
+        _write(repo / "plugin" / ".claude-plugin" / "plugin.json", '{"name": "prawduct"}\n')
+        _write(repo / ".prawduct" / "project-state.yaml", _state_yaml(_JSON))
+        _git(repo, "add", "-A")
+        _git(repo, "commit", "-qm", "no version key")
+        _git(repo, "tag", "v1.0.0")
+        state, detail = rv.check_version_files(repo, "v1.0.0")
+        assert state == rv.FAILED
+        assert "declared to carry the version but has no version" in detail
+
+    def test_an_undeclared_pyproject_without_a_project_version_is_not_failed(self, tmp_path):
+        """#576's measured repro: setuptools-scm, or a tooling-only pyproject.
+
+        The file is present and carries no literal version — under the guess
+        that is not a broken release, it is a layout prawduct assumed. Red if
+        this returns FAILED, which is the filed defect verbatim.
+        """
+        repo = tmp_path / "scm"
+        repo.mkdir()
+        _git(repo, "init", "-q", "-b", "main")
+        _git(repo, "config", "user.email", "t@example.com")
+        _git(repo, "config", "user.name", "T")
+        _write(repo / "pyproject.toml", '[project]\nname = "x"\ndynamic = ["version"]\n')
+        _git(repo, "add", "-A")
+        _git(repo, "commit", "-qm", "setuptools-scm")
+        _git(repo, "tag", "v1.0.0")
+        state, _ = rv.check_version_files(repo, "v1.0.0")
+        assert state != rv.FAILED, "an assumed layout graded a product that never claimed it"
+
+    def test_a_blocked_file_does_not_swallow_a_disagreement_beside_it(
+        self, tmp_path, monkeypatch
+    ):
+        """Every soft finding is reported, not just the first kind found.
+
+        The shape a 3.10 operator actually hits: `pyproject.toml` cannot be read
+        at all, and `plugin/VERSION` disagrees. Returning only the blocked list
+        drops a live version disagreement because an unrelated sibling could not
+        be parsed — "advice fails soft" is not "advice fails silent", one level
+        down from where this branch fixed it last chunk.
+
+        Writing this also caught the detail calling `checked` files "did agree"
+        while it still held files that had just disagreed.
+        """
+        monkeypatch.setattr(rv, "_toml_loader", lambda: None)
+        repo = _make_repo(tmp_path, version="3.2.0", tag="v3.2.1")
+        state, detail = rv.check_version_files(repo, "v3.2.1")
+        assert state == rv.UNVERIFIABLE
+        assert "3.11+" in detail, "the unreadable file went unreported"
+        assert "plugin/VERSION: says 3.2.0, tag says 3.2.1" in detail, (
+            "a real disagreement was dropped because a sibling file was unreadable"
+        )
+        assert "did agree" not in detail, "nothing agreed here"
+
+    def test_a_declaration_naming_no_files_is_unverifiable_not_a_pass(self, tmp_path):
+        """`release_version_files: []` is a deliberate opt-out, not a green light.
+
+        Nothing was measured, and the module's standing rule is that saying so
+        is not the same as passing. `risk_surfaces: []` draws the same line.
+        """
+        repo = _make_repo(tmp_path, version="3.2.0", declare="release_version_files: []\n")
+        state, detail = rv.check_version_files(repo, "v3.2.0")
+        assert state == rv.UNVERIFIABLE
+        assert "no version file to check" in detail
+
+    @needs_tomllib
+    def test_a_fully_declared_tree_agrees(self, tmp_path):
+        repo = _make_repo(tmp_path, version="3.2.0", declare=_state_yaml(_BARE, _JSON, _TOML))
+        state, detail = rv.check_version_files(repo, "v3.2.0")
+        assert state == rv.OK
+        assert "3 version file(s) agree" in detail
+        assert "not in this tree" not in detail
+
+    def test_the_declaration_is_read_from_the_tag_tree_not_the_checkout(self, tmp_path):
+        """The module's founding rule, applied to the declaration itself.
+
+        The tagged tree declares only `plugin/VERSION`; the working tree is then
+        rewritten to declare a file that would fail. A check reading the
+        checkout grades v3.2.0 against a layout that release never had — the
+        same class of error as reading the working tree's version files, which
+        this module already refuses to do.
+        """
+        repo = _make_repo(tmp_path, version="3.2.0", declare=_state_yaml(_BARE))
+        _write(
+            repo / ".prawduct" / "project-state.yaml",
+            _state_yaml(("does/not/exist.txt", "bare", None)),
+        )
+        state, detail = rv.check_version_files(repo, "v3.2.0")
+        assert state == rv.OK, "the working tree's declaration reached a tagged release"
+        assert "plugin/VERSION" in detail
 
     def test_absent_file_is_skipped_not_failed(self, tmp_path):
         """This module ships to products with a different layout.
