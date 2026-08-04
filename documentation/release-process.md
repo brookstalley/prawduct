@@ -218,7 +218,7 @@ git tag vX.Y.Z && git push origin vX.Y.Z
 # A pushed tag is NOT a published release — see below.
 awk '/^## vX.Y.Z$/{f=1;next} /^## v/{f=0} f' plugin/CHANGELOG.md > /tmp/notes-vX.Y.Z.md
 gh release create vX.Y.Z --title vX.Y.Z --notes-file /tmp/notes-vX.Y.Z.md
-prawduct-hook check-released vX.Y.Z           # exit 0 = released; 3 = a check could not run
+./plugin/bin/prawduct-hook check-released vX.Y.Z   # exit 0 = released; 3 = a check could not run
 ```
 
 **The tag is not the release.** A pushed tag lands on `/tags`; the Releases page is a separate
@@ -227,7 +227,9 @@ what they report as "no tag on GitHub" — so the publish step is part of the pr
 optional flourish. `check-released` verifies all of it (version files agreeing at the tag's own
 tree, the tag contained in `origin/main`, the Release present) and is the one command to run
 afterwards. Note the exit codes: **0** verified, **1** something failed, **3** nothing failed but a
-check could not run — a `3` is not a pass. The tag push runs the same check in CI
+check could not run — a `3` is not a pass. **Repo-local on purpose:** at this moment the *installed*
+plugin is the previous release, and a bare `prawduct-hook` resolves to it — an unknown subcommand
+there exits 1, which is this command's own code for *not-released*. The tag push runs the same check in CI
 (`.github/workflows/verify-release.yml`), which is the backstop for the release nobody verified by
 hand; it never publishes a Release, by owner ruling.
 

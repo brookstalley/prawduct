@@ -172,7 +172,17 @@ def check_version_files(project_dir: Path, tag: str) -> tuple[str, str]:
         )
     if problems:
         return FAILED, "; ".join(problems)
-    return OK, f"{len(checked)} version file(s) agree at {tag}"
+    # Name what was read, and name what was not. A bare count cannot be acted on:
+    # a tag tree missing `plugin/.claude-plugin/plugin.json` — the auto-update
+    # cache key, and the root cause this whole check exists for — passes as
+    # `released`, exit 0, distinguishable from a complete release only by a "2"
+    # where a "3" should be. Skipping an absent file stays correct (this module
+    # ships to products with other layouts); reporting the skip silently does not.
+    detail = f"{len(checked)} version file(s) agree at {tag}: {', '.join(checked)}"
+    skipped = [path for path, _ in _VERSION_FILES if path not in checked]
+    if skipped:
+        detail += f" — not in this tree: {', '.join(skipped)}"
+    return OK, detail
 
 
 def check_tag_on_main(project_dir: Path, tag: str) -> tuple[str, str]:

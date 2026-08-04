@@ -23,9 +23,10 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
-import pytest
-
-yaml = pytest.importorskip("yaml")
+# Imported plainly, not via `importorskip`. PyYAML is a declared dev dependency,
+# so its absence is a broken environment rather than a reason to skip — and a
+# guard that skips itself is indistinguishable from one that passes.
+import yaml
 
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 WORKFLOWS = REPO_ROOT / ".github" / "workflows"
@@ -135,7 +136,9 @@ class TestNoRestatedConfiguration:
         # Red if a future edit inlines `-n auto` / `--timeout` into the run step.
         # Those live in pyproject's addopts; two copies means tuning one of them.
         scalars = _scalars(_load(TESTS_WORKFLOW))
-        for flag in ("-n auto", "--dist", "--timeout ", "testpaths"):
+        # `--timeout` needs no trailing space: the job's own `timeout-minutes`
+        # key does not contain it, so the bare form still catches `--timeout=30`.
+        for flag in ("-n auto", "--dist", "--timeout", "testpaths"):
             offenders = [s for s in scalars if flag in s]
             assert not offenders, (
                 f"{flag!r} appears in tests.yml ({offenders}); pytest configuration "
@@ -167,6 +170,29 @@ class TestSuiteRunsOnEverything:
 
 
 class TestVerifyReleaseNeverPublishes:
+    def test_the_token_cannot_publish(self):
+        """The property, not the spelling.
+
+        `test_no_publish_step` below is a denylist of six literals, and a
+        denylist only ever catches what someone thought to list — `gh api
+        --method POST /repos/{owner}/{repo}/releases` or a bare `curl` walks
+        straight through it. What actually makes publishing impossible is the
+        token: the Releases API needs `contents: write`, so pinning the
+        workflow to `contents: read` enforces the owner's ruling against every
+        spelling at once, including ones that do not exist yet.
+        """
+        permissions = _load(VERIFY_WORKFLOW).get("permissions")
+        assert permissions == {"contents": "read"}, (
+            "verify-release.yml must grant exactly `contents: read`; publishing a "
+            f"Release needs `contents: write`, and this is what makes the no-publish "
+            f"ruling structural rather than a matter of spelling (found: {permissions!r})"
+        )
+        job = _load(VERIFY_WORKFLOW)["jobs"]["verify"]
+        assert "permissions" not in job, (
+            "the verify job overrides workflow-level permissions; the read-only "
+            "grant above is only binding while nothing widens it"
+        )
+
     def test_no_publish_step(self):
         # Red the moment a `gh release create` (or an upload/publish action)
         # appears. Publishing notifies watchers and is not cleanly retractable;

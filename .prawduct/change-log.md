@@ -19,8 +19,21 @@ skipping doc-only changes, and it reproduces a hole this repo has already fallen
 change really can turn the suite red, and both existing fast paths already miss it. A branch that
 never opens a PR is likewise the branch nobody is watching. Runs are cheap; the hole is not.
 
-**The matrix runs the declared floor and current — 3.10 and 3.14 — and both were green locally
-before the workflow was written.** `requires-python = ">=3.10"` had been a claim nothing exercised.
+**The first CI run was red, and that is the entry's most useful sentence.** Both matrix legs were
+green locally before the workflow was written — 3.10 and 3.14, full suite, twice — and CI still
+failed three tests that no local run could have shown. `test_plugin_packaging` demands every tracked
+top-level directory be shipped or explicitly excluded, and `.github/` became tracked only at commit
+time, *after* the last local suite run; `test_norm_index_scaffold` searches git history by content,
+which a depth-1 checkout answers "never shipped" with a straight face; and
+`test_operator_verification`'s C-locale round trip passed its non-ASCII source through `python -c`,
+which Linux decodes with the locale's ASCII codec and macOS always decodes as UTF-8 — a test that
+could only ever fail on a platform this project had never run it on. Fixed respectively by recording
+the deliberate exclusion, by `fetch-depth: 0` plus a shallow-clone guard that says so instead of
+accusing the code, and by handing the subprocess a UTF-8 source *file* so only ASCII crosses the
+command line. Three latent defects, first push, none of them in the feature.
+
+**The matrix runs the declared floor and current — 3.10 and 3.14.**
+`requires-python = ">=3.10"` had been a claim nothing exercised.
 A matrix cannot be computed from a constraint expression, so the floor is copied; a new
 `tests/preferences/test_ci_workflow_conventions.py` fails if the copy and `pyproject.toml` drift in
 either direction, and equally if a future edit inlines `-n auto` into the run step or replaces

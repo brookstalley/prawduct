@@ -179,7 +179,18 @@ def test_no_bytecode_in_tracked_package(shipped: set[str]):
 # Top-level tracked directories that are deliberately NOT distributed. Anything tracked at the
 # repo root that is neither shipped nor listed here fails the reachability test below — so a new
 # component directory cannot be added without an explicit decision either way.
-NOT_DISTRIBUTED_DIRS = {".claude", ".claude-plugin", ".prawduct", "documentation", "plugin", "tests"}
+#: ``.github`` is prawduct's own CI. It governs this repo's code and must never be
+#: copied into a governed product — prawduct guides and reviews, it does not write
+#: a product's tooling — so it is excluded rather than moved under ``plugin/``.
+NOT_DISTRIBUTED_DIRS = {
+    ".claude",
+    ".claude-plugin",
+    ".github",
+    ".prawduct",
+    "documentation",
+    "plugin",
+    "tests",
+}
 
 
 def test_every_top_level_directory_is_shipped_or_explicitly_excluded(shipped: set[str]):

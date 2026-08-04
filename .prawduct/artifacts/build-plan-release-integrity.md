@@ -323,7 +323,14 @@ someone remembers. That gap is independent of releases and is the larger half of
 >    — reproduces COV-4H7N exactly: `tests/test_norm_probes.py` reads the live
 >    `project-state.yaml`, so a docs-and-state change genuinely can turn the suite red. The filter
 >    would hide the one class of break the fast paths already miss.
-> 4. **`verify-release.yml` also takes a manual `tag` input.** Done-when 2 asks for a red run on a
+> 4. **Action pins are floating majors, and the majors were verified to exist.** `gh api
+>    repos/actions/checkout/releases/latest` → `v7.0.1`; `actions/setup-python` → `v7.0.0`; both
+>    workflows lint clean under `actionlint` 1.7.12. Floating majors are right for GitHub's own
+>    first-party actions — the major tag is the publisher's documented contract and carries security
+>    fixes without a bump — and a third-party action would be SHA-pinned instead, because there the
+>    exposure is somebody else's account rather than GitHub's own org. Recorded because this is the
+>    repo's first third-party code that executes on every push.
+> 5. **`verify-release.yml` also takes a manual `tag` input.** Done-when 2 asks for a red run on a
 >    deliberately broken input, and the honest way to get one is not to push a junk tag to a public
 >    repo. `workflow_dispatch` exercises the same job against any tag, which is also what an
 >    operator wants when re-checking an older release.
@@ -333,6 +340,19 @@ someone remembers. That gap is independent of releases and is the larger half of
 2. `check-released` runs on tag push and is red for a deliberately broken input.
 3. The workflow contains no publish step, and a reader can tell that is deliberate.
 4. `/prawduct:critic` passes.
+
+> **Done-when evidence, 2026-08-04.**
+> **1 — met, the hard way.** Run `30914556830` (push of `1edbf83`) was **red on both legs**, for
+> three latent defects unrelated to the feature; the follow-up push is green. The first run failing
+> is the acceptance criterion doing its job, not a caveat on it.
+> **2 — half met, and the other half is not reachable from this branch.** `check-released` is red
+> for a deliberately broken input (`v9.9.9` → exit 1, two ERROR lines) and green for `v3.2.3`
+> (exit 0), verified locally. The *workflow* cannot be exercised until it lands: GitHub registers a
+> workflow only from the default branch, so `verify-release.yml` does not appear in the repo's
+> workflow list and `workflow_dispatch` has nothing to dispatch. What can be checked from here has
+> been — `actionlint` passes, and the manual-tag input exists precisely so the red-on-broken-input
+> case can be exercised after merge without pushing a junk tag. **Owner ruled 2026-08-04: verify
+> after merge.** This remains open until someone dispatches it.
 
 ---
 

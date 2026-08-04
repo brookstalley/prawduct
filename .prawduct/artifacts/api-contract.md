@@ -133,6 +133,14 @@ dispatch); state-mutating lifecycle commands (`migrate-plugin`, `init-product`, 
     the key set is documented, and named as unconsumed on purpose: every sibling in this list binds
     a real reader that keeps its keys honest, and asserting a binding that does not exist is how a
     maintainer sizes a key change against a consumer that would never have noticed.
+  - `check-released --json` → **no skill consumer today** (`release`, `verdict` — one of
+    `released` / `not-released` / `unverified` — and `checks[]`, each `{check, state, detail}` with
+    `state` in `ok` / `failed` / `unverifiable`). The **human** form is what
+    `.github/workflows/verify-release.yml` and both release runbooks read, and what carries the
+    verdict; CI consumes the **exit code** (0/1/3), not this payload. Named as unconsumed on
+    purpose, per the rule this list already applies to `learnings-obligation`: asserting a binding
+    that does not exist is how a maintainer sizes a key change against a reader that would never
+    have noticed.
   - `migrate-plugin --json` → migrate skill; `init-product --json` → onboard skill;
     `audit-learnings --json` → doctor; `repo-disable --json` → repo-disable skill.
   - `review-stats --json` → the cross-project telemetry aggregator, carrying a top-level

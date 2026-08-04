@@ -125,6 +125,20 @@ class TestCheck:
         import subprocess
 
         repo = Path(__file__).resolve().parent.parent
+        # A shallow clone answers every content search with "never shipped",
+        # which this test would otherwise report as a wrong row — a confident
+        # accusation against the code when the truth is a truncated checkout.
+        # Measured on the first CI run: `actions/checkout` defaults to depth 1.
+        shallow = subprocess.run(
+            ["git", "rev-parse", "--is-shallow-repository"],
+            cwd=str(repo), capture_output=True, text=True,
+        )
+        if shallow.stdout.strip() == "true":
+            pytest.fail(
+                "this pin searches history by content and the checkout is "
+                "shallow, so it cannot run — fetch full history (CI: "
+                "`fetch-depth: 0`) rather than reading this as a wrong row"
+            )
         # Searched by CONTENT across all history rather than pinned to a
         # branch-local SHA. The first cut named `3bfd4bf~1`, which stops
         # resolving the moment this branch is squashed or rebased — and it

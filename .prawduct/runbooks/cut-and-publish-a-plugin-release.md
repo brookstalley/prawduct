@@ -500,7 +500,7 @@ the by-hand blocker check — `main`'s tree is a deliberately chosen subset of `
     gh release create vX.Y.Z --title vX.Y.Z --notes-file /tmp/notes-vX.Y.Z.md
     ```
 
-    **Expected:** one line — the release URL, ending `/releases/tag/v3.2.0`.
+    **Expected:** one line — the release URL, ending `/releases/tag/vX.Y.Z`.
     **If the notes look truncated or carry the previous release's text:** the `awk`
     boundary missed. Check that `## vX.Y.Z` is on its own line in `plugin/CHANGELOG.md`
     with nothing trailing it, then re-run with `gh release edit` rather than `create`.

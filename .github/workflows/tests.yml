@@ -12,6 +12,14 @@
 # paths untestable would hide exactly that class of break. Runs are cheap; the
 # hole is not.
 #
+# **Action pins are floating majors** (`actions/checkout@v7`, `actions/setup-python@v7`),
+# verified to exist on 2026-08-04 rather than recalled: `gh api
+# repos/actions/checkout/releases/latest` → v7.0.1, `actions/setup-python` →
+# v7.0.0. These are GitHub's own first-party actions, where the major tag is the
+# publisher's documented contract and picks up security fixes without a bump. A
+# third-party action would be pinned to a SHA instead — the supply-chain exposure
+# there is somebody else's account, not GitHub's own org.
+#
 # **No pytest flags here.** `-n auto`, `--dist loadfile`, `--timeout` and
 # `testpaths` all live in `pyproject.toml`, and repeating them in this file would
 # make it a second home for the same fact — the next person to tune parallelism
@@ -51,6 +59,13 @@ jobs:
         python-version: ["3.10", "3.14"]
     steps:
       - uses: actions/checkout@v7
+        with:
+          # The suite contains a pin that searches history by content —
+          # `test_norm_index_scaffold.py` asks whether a scaffold row was ever
+          # actually shipped in the template. A shallow clone answers "never"
+          # with a straight face, so the guard fails claiming the row is wrong
+          # when the truth is that CI truncated the history it reads.
+          fetch-depth: 0
 
       - uses: actions/setup-python@v7
         with:

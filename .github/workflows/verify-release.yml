@@ -67,6 +67,11 @@ jobs:
         run: git fetch --no-tags origin +refs/heads/main:refs/remotes/origin/main
 
       - name: Verify the release arrived
+        # No `setup-python` step, unlike tests.yml: the hook is stdlib-only and
+        # runs on whatever `python3` a machine already has, which is exactly how a
+        # consumer invokes it. Pinning an interpreter here would test a nicer
+        # environment than the one that matters.
+        #
         # The repo-local hook, not a PATH-resolved one: `prawduct-hook` on PATH is
         # whatever plugin copy is installed, which is a different tree from the one
         # under test.

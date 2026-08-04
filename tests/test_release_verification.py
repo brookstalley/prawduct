@@ -320,10 +320,18 @@ class TestCheckReleased:
         gate green in exactly the environment it exists for, since a tag-push
         job without a token gets a `gh` that cannot answer. Red if
         EXIT_UNVERIFIABLE collapses back into 0.
+
+        Asserted against the **literal 3**, not against `rv.EXIT_UNVERIFIABLE`.
+        Comparing the return value to the very constant under test passes for
+        whatever value that constant takes — including the 0 this docstring
+        names as its red-trigger, because the human-output branch keys off the
+        same constant and would still print "unverified". A guard that cannot
+        fail for the regression it names is not a guard.
         """
         repo = _make_repo(tmp_path, version="3.2.0")
         self._stub_gh(monkeypatch, rv.MISSING)
-        assert rv.check_released(repo, "v3.2.0") == rv.EXIT_UNVERIFIABLE
+        assert rv.check_released(repo, "v3.2.0") == 3
+        assert rv.EXIT_UNVERIFIABLE == 3, "the published exit-code contract moved"
         captured = capsys.readouterr()
         assert "unverified: v3.2.0" in captured.err
         assert "could not run" in captured.err
@@ -342,13 +350,14 @@ class TestCheckReleased:
         repo = _make_repo(tmp_path, version="3.2.0")
         _git(repo, "update-ref", "-d", "refs/remotes/origin/main")
         self._stub_gh(monkeypatch, (0, "https://example/v3.2.0", ""))
-        assert rv.check_released(repo, "v3.2.0") == rv.EXIT_UNVERIFIABLE
+        # Literal, for the reason spelled out on the sibling test above.
+        assert rv.check_released(repo, "v3.2.0") == 3
 
     def test_unauthenticated_gh_is_not_read_as_absence(self, tmp_path, monkeypatch):
         """A refused question is not a missing release."""
         repo = _make_repo(tmp_path, version="3.2.0")
         self._stub_gh(monkeypatch, (1, "", "gh: To use GitHub CLI, authenticate with gh auth login"))
-        assert rv.check_released(repo, "v3.2.0") == rv.EXIT_UNVERIFIABLE
+        assert rv.check_released(repo, "v3.2.0") == 3
 
     def test_json_output_carries_every_check(self, tmp_path, monkeypatch, capsys):
         repo = _make_repo(tmp_path, version="3.2.0")
