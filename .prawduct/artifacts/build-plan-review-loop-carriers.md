@@ -263,10 +263,13 @@ are pinned by test, because nothing else can observe them.
     endpoints and known-vulnerable dependencies are WARNING there, and fix-by-fudging is
     not rated in that file at all. Half the carve-out is therefore an *escalation* and
     the directive says so. Enforced across the file boundary by two guards, split so
-    neither half can drift silently: `test_the_carve_out_classes_the_protocol_rates_are
-    _still_blocking` (the citation half) and `test_the_escalated_carve_out_classes_are
-    _named_as_escalations` (the escalation half, which pins the protocol's *lower*
-    rating so stale wording fails).
+    neither half can drift silently — the citation half is
+    `test_the_carve_out_classes_the_protocol_rates_are_still_blocking` and the
+    escalation half is `test_the_escalated_carve_out_classes_are_named_as_escalations`,
+    which pins the protocol's *lower* rating so stale wording fails. Both judge per
+    clause, not per line. (Each name is on one line deliberately: wrapping inside the
+    backticks makes the plan un-greppable for the very guard it cites, which is R-7's
+    own failure mode reintroduced typographically — caught by the verify pass.)
   - `plugin/lib/critic_consolidate.py` — `VERIFY_RATES_BLOCKING_ONLY_DIRECTIVE`, a
     dispatch-time directive beside `RESOLUTION_IS_A_CLAIM_DIRECTIVE`, printed by
     `critic-begin` for this mode. It carries what the ceiling displaced: the worked
