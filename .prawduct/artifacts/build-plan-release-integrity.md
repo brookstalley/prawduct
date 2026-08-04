@@ -182,9 +182,23 @@ pattern, so the count of files to touch is 8 and the count of edits is at least 
 2. A test pins the invocation form across all 8 skills, so a ninth skill cannot regress silently.
 3. `/prawduct:critic` passes.
 
-## Chunk 03 — a repo running a stale plugin says so
+## Chunks 03a / 03b — a repo running a stale plugin says so
+
+<!-- Heading says "Chunks", plural, deliberately: `buildplan_refs._CHUNK_HEADING_RE` matches
+     `^#{2,3}\s+Chunk\s+(\w+)`, so a `## Chunk 03` parent above the two `### Chunk 03a|b`
+     headings would register a third chunk that no Status line rosters. The plural form
+     does not match, which is what keeps the narrative and the roster from disagreeing. -->
+
 
 **Type:** code
+
+> **Split into 03a / 03b, 2026-08-04, when 03a was built.** The two halves were always
+> separately shippable — the sequencing decision below defers the probe half behind
+> `feat/advisory-actionability` — but the Status list carried one line for both, and
+> `views.py` flips a chunk on its `chunks=` tag at release. A `chunks=03` entry would
+> therefore have marked the whole chunk shipped at the next promotion while the probe
+> half was still unbuilt. Two ids, two lines, no overclaim. (`Chunk 05b` in
+> `build-plan-v3.2.0-golive.md` is the precedent for the suffixed form.)
 
 > **Design corrected 2026-08-04 before any code, by reading the precedent.**
 > The plan originally put the whole check in an advisory probe reading the marketplace snapshot
@@ -223,10 +237,36 @@ the plan should not claim it does.**
 > advisory-actionability reaches `develop`.** Chunks 04 and 05 touch no advisory code and are
 > unblocked either way.
 
-**Deliverables — now**
+### Chunk 03a — the doctor half (built 2026-08-04)
+
+**Deliverables**
 - A new `/prawduct:doctor` health check for the behind-latest comparison (model-side, so it may
   read the machine-level marketplace snapshot; this is the half that answers "you are behind").
 - Health-check text carries the consequence in plain language and no internal ids.
+
+**Done when**
+1. The check resolves the config home through `CLAUDE_CONFIG_DIR` rather than a hardcoded
+   `~/.claude`, and finds the snapshot's plugin directory through the marketplace manifest's
+   *declared* `source` rather than a hardcoded `plugin/`.
+2. Every non-comparable input — a `directory:` marketplace, an unreadable or absent file —
+   grades as something other than healthy.
+3. The limitation is disclosed rather than discovered later, and the check names its expected
+   yield (Proportionality; it inherits Check #13's bounded exception to the *emission* arm only).
+4. Prose guards are verified red under mutation, not merely green.
+5. ~~The doctor half is exercised against this machine's install, which is currently stale
+   (3.2.3 recorded at the prep commit) and is therefore a live positive case.~~
+   **Corrected 2026-08-04 by measurement: this machine is not a positive case and cannot be one.**
+   Its marketplace entry is `source: directory` pointing at this very checkout, so
+   `installLocation` and the running plugin are the same tree and the check correctly returns
+   *not graded*. The 3.2.3 entry in `installed_plugins.json` is inert — the session banner renders
+   `<branch>@<sha>` provenance, which `banner.py` `checkout_provenance` emits **only** for a
+   non-managed install, so what governs this session is the checkout, not that cache. The
+   substitute, executed rather than promised: the procedure was followed literally against six
+   inputs — this machine plus five synthetic config homes — and returned the expected verdict for
+   each (not-graded · behind · snapshot-stale · healthy · unreadable-snapshot · absent-config-home).
+6. `/prawduct:critic` passes.
+
+### Chunk 03b — the probe half (deferred; see the sequencing decision above)
 
 **Deliverables — after `feat/advisory-actionability` lands on `develop`**
 - New `plugin/lib/staleness_probes.py`, registered via the established lazy-import pattern;
@@ -240,9 +280,7 @@ the plan should not claim it does.**
 3. At least one test reads a **real** artifact rather than only a hand-written fixture.
 4. Verified silent against this repo, *and* confirmed this repo is genuinely out of the target
    state — not that the probe was narrowed until quiet.
-5. The doctor half is exercised against this machine's install, which is currently stale
-   (3.2.3 recorded at the prep commit) and is therefore a live positive case.
-6. `/prawduct:critic` passes.
+5. `/prawduct:critic` passes.
 
 ## Chunk 04 — `check-released`, the mirror of `check-releasability`
 
@@ -373,17 +411,24 @@ someone remembers. That gap is independent of releases and is the larger half of
 
 - [ ] Chunk 01: `version` tells you when it cannot pin
 - [ ] Chunk 02: The skills stop asking PATH which prawduct they are governed by
-- [ ] Chunk 03: A repo running a stale plugin says so (doctor half now; probe half deferred)
+- [ ] Chunk 03a: A repo running a stale plugin says so — the doctor half
+- [ ] Chunk 03b: The same, ambiently — the probe half (deferred behind `feat/advisory-actionability`)
 - [ ] Chunk 04: `check-released`, the mirror of `check-releasability`
 - [ ] Chunk 05: CI — run the suite, and verify what shipped
 
 Context: Plan authored 2026-08-04 on `feat/release-integrity`, cut from `develop` at `dbb42f3`,
 after an investigation into "the v3.2.3 release was weird" found the release clean and three
 independent defects around it. **Build order is not chunk order:** 04 was built first because it
-is the keystone for 05 (the owner ruled on CI mid-plan), and 03's probe half is blocked behind
+is the keystone for 05 (the owner ruled on CI mid-plan), and 03b is blocked behind
 `feat/advisory-actionability`'s rewrite of the probe contract. 01 and 02 are the lowest-priority
 pair after the measurement showed PATH roulette is a weaker explanation for the reported symptom
 than the cache-key pin.
+
+Chunks 04 and 05 shipped to `develop` in PR #582. **03a was built 2026-08-04** on
+`feat/doctor-staleness-check`, cut from `develop` at `4f361f9`; it is the last chunk buildable
+without either an unmerged branch (03b) or the Chunk 01 resolution contract (02). Remaining:
+01, 02, 03b — and **#581**, which is not a chunk and opens only at the next `develop` → `main`
+promotion.
 
 ## Governance checkpoints
 

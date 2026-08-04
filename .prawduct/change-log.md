@@ -3,6 +3,46 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-08-04: a repo running last month's governance finds out from doctor
+
+<!-- prawduct: type=feature | scope=release-integrity | chunks=03a -->
+
+A repo can run months-old governance — old gates, old review protocols, old learnings — while every
+check `/prawduct:doctor` performs reports healthy, because nothing in the repo *is* wrong. The
+plugin is. Health Check #15 compares the version of the plugin that loaded the skill against the
+version its marketplace snapshot offers, and says so when the first is behind.
+
+**It lives in doctor because a probe may not read it.** No post-sync advisory probe reads
+machine-level state; `install_reference_probes.py` records that boundary, declines this exact read,
+and routes the machine-level half to doctor, "which is model-side and *can* read the machine-level
+file." This is that half. The ambient half stays deferred behind `feat/advisory-actionability`,
+which is why the plan's Chunk 03 is now two chunks: `views.py` flips a checkbox on its `chunks=`
+tag at release, so one id covering both halves would have marked the probe shipped while it was
+still unwritten.
+
+**Three of the five outcomes are not "healthy," and that is the point.** A `directory:` marketplace
+is *not graded* — `installLocation` is the checkout itself, so the comparison comes out equal by
+construction and reporting healthy would tell a maintainer their install is current on evidence
+that could not have said otherwise. An unreadable input is *degraded because ungraded*, matching
+Checks #11, #13 and #14. And a running plugin **newer** than the snapshot is a separate finding —
+the snapshot is stale, not the install — because reporting "you are behind" there sends someone to
+update something already ahead.
+
+Two things it deliberately does not do. It does not hardcode `~/.claude`: the config home resolves
+through `CLAUDE_CONFIG_DIR` exactly as `hooks/banner.py` `managed_plugin_home()` resolves it, and
+the machine this was written on runs three config homes, with the session that wrote it governed by
+the non-default one. It does not hardcode `plugin/` as the snapshot's plugin directory either —
+that path is *declared* in the marketplace manifest, and transcribing it is the failure Check #1
+has already paid for once.
+
+**Rejected: comparing commit shas.** It would catch what version comparison structurally cannot — a
+release that shipped a new tree without bumping `version`, which the release runbook warns about
+hardest. But the snapshot's `.gcs-sha` moves with every commit to the marketplace's tracked ref
+while an install re-resolves only when the cache key changes, so on a `ref: main` install the two
+differ almost always. A check that fires constantly is one nobody reads. The blind spot is
+disclosed in the check instead: `version` is the update cache key, so the one field this check
+reads is precisely the field a forgotten bump does not change.
+
 ## 2026-08-04: the suite stops running only when someone remembers
 
 <!-- prawduct: type=feature | scope=release-integrity | chunks=05 -->
