@@ -1045,12 +1045,14 @@ def check_cumulative_critic(project_dir: Path) -> int:
         print(f"no-head: cannot resolve HEAD^{{tree}} ({err}).", file=sys.stderr)
         return 1
 
+    diff_fn = _cached_diff_fn(project_dir)
+    key_fn = _tree_key_fn(project_dir)
     verdict = coverage_algebra.coverage_verdict(
         read.get("facts", []),
         base_tree,
         head_tree,
-        _cached_diff_fn(project_dir),
-        _tree_key_fn(project_dir),
+        diff_fn,
+        key_fn,
     )
 
     if verdict["status"] == "covered":
@@ -1126,6 +1128,8 @@ def check_cumulative_critic(project_dir: Path) -> int:
         head_tree,
         base_tree,
         resolved.get("merge_base", ""),
+        diff_fn,
+        key_fn,
     )
     if churn is not None and churn.get("status") == "unavailable":
         # A degraded advisory that says nothing is indistinguishable from one

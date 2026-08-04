@@ -170,6 +170,8 @@ def diagnose_fix_churn(
     head_tree: str,
     base_tree: str,
     merge_base: str,
+    diff_fn=None,
+    key_fn=None,
 ) -> "dict | None":
     """Detect the gap a builder dug for themselves: **the whole uncovered span**
     is a review of this branch, plus edits confined to files that review's own
@@ -296,10 +298,26 @@ def diagnose_fix_churn(
 
     # Everything below the anchor must already compose, or the gap is not the
     # last leg and the remedy this feeds would not close it.
-    def _diff_fn(a: str, b: str) -> "list[str] | None":
-        return evidence.tree_diff(project_dir, a, b)
+    #
+    # `diff_fn`/`key_fn` are threaded in rather than built here: without a
+    # `key_fn`, `_find_path` takes the pairwise free-edge branch, which
+    # `_tree_key_fn`'s own docstring measures on this repo's store at ~5.6k
+    # `git diff` subprocesses — twice per verdict, with no memo between the
+    # passes. This runs on the interactive `/prawduct:pr create` path, inside a
+    # diagnosis the gate message calls "the cheap check", so it has to use the
+    # n-key form every other gate uses. The caller already builds both.
+    if diff_fn is None:
+        def diff_fn(a: str, b: str) -> "list[str] | None":  # noqa: E306
+            return evidence.tree_diff(project_dir, a, b)
 
-    upstream = coverage_algebra.coverage_verdict(facts, base_tree, anchor_tree, _diff_fn)
+    upstream = coverage_algebra.coverage_verdict(
+        facts, base_tree, anchor_tree, diff_fn, key_fn
+    )
+    # Known gap, accepted: a `diff_fn` that fails renders here as "nothing
+    # composes", the same shape the status split above exists to separate.
+    # Distinguishing them needs the failure surfaced through `coverage_verdict`
+    # itself, which every gate shares — a wider change than this diagnosis, and
+    # the failure direction is the safe one (silence, not a false claim).
     if upstream.get("status") != "covered":
         return None
 

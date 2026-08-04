@@ -3,6 +3,45 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-08-04: the verify pass — the one carrier with no test was the one that outlives the session
+
+<!-- prawduct: type=fix | scope=review-loop-carriers | chunks=01 -->
+
+`verify-resolutions` over the resolution commit: **all ten resolutions verified `fixed`** against the
+files at HEAD, plus **1 blocking, 1 warning, 1 note** of its own. Two fixed, one accepted.
+
+**The blocking finding is this change's own thesis, applied to this change.** Every carrier added in
+the previous commit gained a pin — the emission against real stdout, the prefix collision by regex,
+the relay ordering by index, the coverage caveat across four count shapes, the judgeable condition.
+`_summarize_critic_findings`'s `next_action` append had none. And that is the carrier that survives
+`/clear`: its reader is *by definition* the builder who lost the reviewer's report, so its silent
+loss is unobservable in-session — in a plan whose entire thesis is that carriers fail silently. It
+also sat below an early `if not summary and not findings: return None`, harmless only because
+`fact_to_cache_record` always writes a summary, which nothing asserted. Three cases now: the warning
+list ordering, the clean pass, and a legacy record with no field.
+
+**The warning was a "cheap check" that was not cheap.** The upstream-composition guard added for R-1
+called `coverage_verdict` with an unmemoized `diff_fn` and **no `key_fn`**, which sends `_find_path`
+down the pairwise free-edge branch — the form `_tree_key_fn`'s own docstring measures on this repo's
+store at ~5,600 `git diff` subprocesses and ~316s, run twice per verdict with no memo between the
+passes. It sits on the interactive `/prawduct:pr create` path, inside a diagnosis whose gate message
+calls it cheap. Both are threaded in from the caller, which already builds them. Worth noting *why*
+threading beat editing prose: `_cached_diff_fn`'s docstring asserts that "every production call site
+pairs this with `_tree_key_fn`" — the new call site had made that false, and the choice was to
+restore the claim or weaken it.
+
+**Accepted (1):** the upstream check's own degraded path still returns the genuine-negative answer,
+which is the shape the status split exists to separate. Separating them needs the failure surfaced
+through `coverage_verdict`, shared by every gate — wider than this diagnosis, and silence is the safe
+direction. A half-measure catching only the missing-tree case was written and then removed: a fix
+that looks like one but does not catch the case it names is worse than an accepted gap.
+
+**One answer worth keeping.** Asked whether the new merge-base filter could suppress a *true*
+positive, the reviewer found the one shape and showed it fails closed: after a merge or rebase the
+branch's own genuine review also stops being a descendant of the new merge-base, so it is filtered
+too and the diagnosis goes silent rather than wrong — which is the desired direction, since the merge
+brought unreviewed lines in, and it self-heals at the next review on the branch.
+
 ## 2026-08-04: the cumulative's findings — a false positive that would have sent unreviewed work to merge
 
 <!-- prawduct: type=fix | scope=review-loop-carriers | chunks=01 -->

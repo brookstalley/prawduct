@@ -388,6 +388,48 @@ class TestSummarizeCriticFindings:
         assert "1 blocking" in out and "1 warning" in out and "1 note" in out
         assert "BLOCKING: must fix" in out and "WARNING: should fix" in out
 
+    def test_next_action_reaches_the_cross_session_builder(self, tmp_path):
+        """The handoff is the ONLY carrier of the loop-termination rule that
+        survives `/clear`, and its reader is by definition the one who lost the
+        reviewer's report — so a silent loss here is unobservable in-session,
+        which is the exact failure mode this whole change exists to close.
+        Every sibling carrier is pinned; this one was not."""
+        pr = _prawduct(tmp_path)
+        (pr / ".critic-findings.json").write_text(json.dumps({
+            "summary": "0 blocking, 4 warning, 2 note.",
+            "findings": [{"severity": "warning", "summary": "should fix"}],
+            "next_action": "0 blocking — THE REVIEW IS OVER. They gate NOTHING.",
+        }))
+        out = briefing._summarize_critic_findings(pr)
+        assert "NEXT-ACTION: 0 blocking — THE REVIEW IS OVER" in out
+        # Inheriting a warning list with no statement that warnings gate
+        # nothing is the state the measured ten-round failure started from.
+        assert out.index("1 warning") < out.index("NEXT-ACTION:")
+
+    def test_next_action_survives_a_clean_pass_with_no_findings(self, tmp_path):
+        """The clean pass is where "the review is over" is the entire message,
+        and it is the shape the early `not summary and not findings` return
+        sits above. That guard is harmless only because `fact_to_cache_record`
+        always writes a summary — which nothing asserted until now."""
+        pr = _prawduct(tmp_path)
+        (pr / ".critic-findings.json").write_text(json.dumps({
+            "summary": "0 blocking, 0 warning, 0 note across 1 reviewer(s).",
+            "findings": [],
+            "next_action": "0 blocking, 0 other findings — THE REVIEW IS OVER.",
+        }))
+        out = briefing._summarize_critic_findings(pr)
+        assert out is not None
+        assert "NEXT-ACTION: 0 blocking, 0 other findings" in out
+
+    def test_a_record_without_next_action_still_summarizes(self, tmp_path):
+        # Records written before the field existed must not lose their summary.
+        pr = _prawduct(tmp_path)
+        (pr / ".critic-findings.json").write_text(json.dumps({
+            "summary": "Legacy record.", "findings": [],
+        }))
+        out = briefing._summarize_critic_findings(pr)
+        assert out == "Legacy record."
+
 
 # --------------------------------------------------------------------------- #
 # generate_session_handoff
