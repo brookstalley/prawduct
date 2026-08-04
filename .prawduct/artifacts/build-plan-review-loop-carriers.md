@@ -377,4 +377,7 @@ claims, caught by `record_lint` on the tree that fixes it, and now citing
   1. Acceptance criteria met and tests pass
   2. Committed, then ONE `/prawduct:critic cumulative` — it is this chunk's review and
      the PR gate's evidence
-  3. Chunk marked `[x]` in Status
+  3. Chunk recorded complete in Status — under `views_enabled: true` that is a
+     tagged change-log entry plus `prawduct-hook regen-views`, NOT a hand-flipped
+     checkbox. Corrected 2026-08-04: hand-marking is what made
+     `_has_unfinished_chunk` false and killed scope inference at the PR gate (#587)

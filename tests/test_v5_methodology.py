@@ -88,6 +88,7 @@ LAST_MEASURED_TOKENS = {
     "skills/critic/review-protocol.md": 3589,
     "skills/critic/goals-1-3.md": 1994,
     "skills/critic/review-cycle.md": 9471,
+    "skills/critic/framework-checks.md": 1116,
 }
 
 
@@ -734,7 +735,7 @@ class TestCriticSkill:
         #
         # 3611 -> 3612 (2026-08-04) -- the reviewer must relay consolidate's
         # `NEXT-ACTION:` line, the only carrier of the loop-termination rule
-        # reader in the BUILDER role. Paid in full by the fourth application of
+        # with a reader in the BUILDER role. Paid in full by the fourth application of
         # this comment's own first rule: the `resolutions` schema arm was
         # restated here for a mode that does not read this file, and where
         # emitting one FAILS consolidation -- so it was not merely redundant,
@@ -1240,11 +1241,34 @@ class TestReviewCycle:
         # diet that nothing has argued for. It exists to make the NEXT growth a
         # decision, not to relitigate the current size. Same standing rule as
         # every other budget comment here: THE NEXT ADDITION TRIMS OR RELOCATES,
-        # IT DOES NOT BUMP -- and "relocate to the unbudgeted file" is no longer
-        # an available move anywhere in this skill.
+        # IT DOES NOT BUMP.
+        #
+        # The first draft of this comment closed with "'relocate to the
+        # unbudgeted file' is no longer an available move anywhere in this
+        # skill". That was FALSE when written -- `framework-checks.md` is listed
+        # at SKILL.md:27 as `final`/`cumulative` payload and had no ceiling
+        # either. Caught as an observation by the verify pass over the very
+        # commit that added this. It is true now because the sibling test below
+        # was added to MAKE it true, which is the only honest way to keep a
+        # universal claim: bound the last case, or do not make the claim.
         content = read_file("skills/critic/review-cycle.md")
         tokens = estimate_tokens(content)
         assert tokens < 9600, f"review-cycle.md is ~{tokens} tokens, should be <9600"
+
+    def test_framework_checks_token_budget(self):
+        # Ceiling 1150. The last `final`/`cumulative` payload file without one
+        # (SKILL.md:27 routes final/cumulative reviewers here for the four
+        # Framework-Specific Check definitions, and `review-protocol.md` names
+        # the file rather than restating them -- a deliberate relocation that
+        # this bound is what keeps honest).
+        #
+        # Small file, so the ceiling is proportionally looser than its siblings'
+        # few-token headroom: the point is that the NEXT addition is a decision,
+        # not to force a diet on 87 lines nothing has argued are too many. Same
+        # standing rule: THE NEXT ADDITION TRIMS OR RELOCATES, IT DOES NOT BUMP.
+        content = read_file("skills/critic/framework-checks.md")
+        tokens = estimate_tokens(content)
+        assert tokens < 1150, f"framework-checks.md is ~{tokens} tokens, should be <1150"
 
     def test_structure(self):
         content = read_file("skills/critic/review-cycle.md")

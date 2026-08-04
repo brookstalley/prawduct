@@ -1042,7 +1042,15 @@ def _git_session_commits(project_dir: Path) -> list[str]:
 
 
 def _summarize_critic_findings(prawduct_dir: Path) -> str | None:
-    """Extract a brief summary from .critic-findings.json. Returns None if unavailable."""
+    """Extract a brief summary from .critic-findings.json.
+
+    ``None`` means there is nothing to report — no record, or one that
+    parsed and held neither a summary nor findings. A record that EXISTS
+    but cannot be read returns a diagnostic STRING instead, because the
+    two are different answers and the caller renders them in the same
+    slot (see the except clause for why that difference decides whether a
+    round gets run).
+    """
     findings_path = prawduct_dir / ".critic-findings.json"
     if not findings_path.is_file():
         return None
