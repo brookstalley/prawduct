@@ -59,6 +59,39 @@ shape of Chunks 01–02 is not fully determined.
 `CLAUDE_PLUGIN_ROOT` and `CLAUDE_SKILL_DIR` actually substitute. That is a ten-minute probe, and
 it is deliberately the first thing this plan does.
 
+## Measurement — Chunk 01 step 1, run 2026-08-04
+
+Run before any edit, because two records assert what it measures.
+
+**Result.** In the Bash tool env, `CLAUDE_PLUGIN_ROOT`, `CLAUDE_SKILL_DIR` and
+`CLAUDE_PROJECT_DIR` are **all absent** — the env carries ten `CLAUDE_*` variables and none of
+them is a plugin, skill or project path. *A contradicting result would have printed a path for
+`CLAUDE_PLUGIN_ROOT`; it printed empty, and the variable is not in the environment at all.*
+
+**So there are three substitution mechanisms, not one, and only two of them pin anything:**
+
+| Caller | Mechanism | Pinned? |
+|---|---|---|
+| Hooks | Claude Code substitutes `${CLAUDE_PLUGIN_ROOT}` into the hook command (`hooks/hooks.json`) | yes |
+| Skill prose | Claude Code expands `${CLAUDE_SKILL_DIR}` **into the prose at load time** — observed twice this session, e.g. the methodology skill rendered as an absolute `…/plugin/skills/methodology/../../methodology/building.md` | yes |
+| Bare `prawduct-hook` in a Bash command | none — PATH decides, and `_plugin_root()` falls back to the script's own directory | **no** |
+
+**Both records this plan flagged are wrong, in different ways.** `_plugin_root()`'s docstring
+claims the variable reaches the Bash tool env: false. `learnings-detail.md` says it substitutes in
+"bash/subprocess env": true only of hook-spawned subprocesses, which is a much narrower claim than
+it reads as. And `${CLAUDE_SKILL_DIR}` is **not** an environment variable — it is a prose-time
+expansion, so Chunk 02's route works, but not for the reason the plan assumed.
+
+**Refinement to the diagnosis, recorded against my own earlier framing.** Claude Code appends the
+*installed* plugin's versioned `bin/` to PATH (measured: `…/cache/claude-plugins-official/swift-lsp/1.0.0/bin`
+is on PATH, and no shell profile puts it there). So a consumer's bare `prawduct-hook` normally
+resolves to the same tree the hooks use — which makes plain PATH roulette a *less* likely
+explanation for the "hook says 3.2.1, plugin says 3.2.3" report than I first said. The likelier
+single cause is the cache-key pin (Chunk 03's target): the install stays at 3.2.1 while the
+marketplace advertises 3.2.3. **This raises Chunk 03's priority above Chunks 01–02.** The
+unpinned-invocation defect is still real and still measured — it just probably is not what bit
+that user.
+
 ## Open assumptions
 
 - `[ASSUMPTION: CLAUDE_PLUGIN_ROOT is absent from the Bash tool env | HIGH impact | user can correct]`
