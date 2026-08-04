@@ -101,14 +101,36 @@ Context: Plan authored 2026-08-04 on `fix/review-loop-carriers`, cut from `devel
 Parent requirement #167 (CRT-3W6P) stays open — its structural-refusal half is
 explicitly out of scope here.
 
-Chunk 01 is built and green (suite passes; the fix-churn NOTE and `next_action` both
-verified against a scratch repo, not only unit tests). One design change during the
-build, worth carrying: the gate line is **code-owned** (`next_action_line`) and the
-protocols only order it relayed, rather than each quoting both variants. That was
-forced by the two protocol files sitting at their token ceilings — and it is the better
-shape anyway, since the builder now meets the same sentence whether they read the fork's
-report or `next_action`. Neither ceiling was raised; both additions were funded by
-trims the files' own budget comments had designated. Next: Chunk 02.
+Chunk 01 is **complete**: three commits (`a92ea7b`, `7a2b3c3`, `d7ba236`), suite green
+(3505 passed), and `check-cumulative-critic` **satisfied** — coverage spans merge-base
+to HEAD over 3 review facts with 0 unresolved blocking.
+
+Three review rounds, each one gate-required and none warning-driven: the cumulative
+(0 blocking, 7W/11N), a verify pass to record the resolution facts and close coverage
+after the fix batch (which raised 1 genuine BLOCKING — the handoff carrier had no
+test), and a third to clear that blocker. Every non-blocking finding was dispositioned
+rather than fixed-and-re-reviewed: **11 accepted as facts, 12 fixed in two batches**,
+zero filed. The third reviewer stated plainly that round 4 was not gate-required, and
+the loop stopped there.
+
+Design change worth carrying: the gate line is **code-owned** (`next_action_line`,
+emitted as `NEXT-ACTION:`) and the protocols only order it relayed. Forced by the two
+protocol files sitting at hard token ceilings, and better anyway — the builder meets
+the same sentence from the fork's report, from `.critic-findings.json`, and now from
+the generated handoff. Neither ceiling was raised; both additions were funded by trims
+the files' own budget comments designated. **Carry that pattern into Chunk 02**: put
+the verify-resolutions narrowing in a dispatch directive beside
+`RESOLUTION_IS_A_CLAIM_DIRECTIVE` (emission site `cmd_critic_begin`, already gated on
+the mode) rather than in `goals-1-3.md`, which has ~8 tokens of headroom.
+
+**Two accepted findings are owed to Chunk 02's batch** (recorded as dispositions on
+`rev-20260804T181325Z-071df9b4`, not filed): make `key_fn` required on
+`diagnose_fix_churn` and delete the unreachable n² fallback, so a dropped argument is
+a `TypeError` rather than a ~5-minute hang; and reword
+`test_next_action_survives_a_clean_pass_with_no_findings`'s docstring, which claims a
+coupling it does not assert.
+
+Next: Chunk 02.
 
 ## Verification Strategy
 
@@ -172,6 +194,12 @@ are pinned by test, because nothing else can observe them.
     the narrowing where the reviewer meets it.
   - `plugin/skills/critic/review-cycle.md` — the per-mode table and the termination
     section record the narrowed contract.
+  - Carried in from Chunk 01's accepted findings (dispositions on
+    `rev-20260804T181325Z-071df9b4`): make `key_fn` required on
+    `coverage.diagnose_fix_churn` and delete the unreachable unmemoized fallback —
+    a dropped argument should be a `TypeError`, not a ~5-minute hang on the
+    interactive PR path; and reword the test docstring that claims a
+    `fact_to_cache_record` coupling it does not assert.
 - **Tests:** prose pins that the mode-conditional rule exists and that the BLOCKING
   classes are named; a directive test in the shape of `TestResolutionIsAClaimDirective`.
 - **Acceptance criteria:** a `verify-resolutions` pass over a clean fix delta records
