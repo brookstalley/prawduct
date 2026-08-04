@@ -122,6 +122,12 @@ class TestVersionFiles:
         state, detail = rv.check_version_files(repo, "v3.2.0")
         assert state == rv.OK
         assert "3 version file(s) agree" in detail
+        # Names, not just a count. Red if the detail goes back to reporting a
+        # bare number: the count alone cannot be acted on, and this string is
+        # what reaches both the operator and the --json payload.
+        for path in ("plugin/VERSION", "plugin/.claude-plugin/plugin.json", "pyproject.toml"):
+            assert path in detail
+        assert "not in this tree" not in detail, "nothing was skipped in this tree"
 
     def test_disagreeing_file_is_named_with_both_values(self, tmp_path):
         repo = _make_repo(tmp_path, version="3.2.0", tag="v3.2.1")
@@ -150,6 +156,12 @@ class TestVersionFiles:
         state, detail = rv.check_version_files(repo, "v3.2.3")
         assert state == rv.OK
         assert "2 version file(s) agree" in detail
+        # The skip must be VISIBLE. A tag tree missing
+        # `plugin/.claude-plugin/plugin.json` — the auto-update cache key, and
+        # the root cause this whole check exists for — otherwise reports
+        # `released` / exit 0, distinguishable from a complete release only by a
+        # "2" where a "3" belongs. Red if the naming clause is dropped.
+        assert "not in this tree: pyproject.toml" in detail
 
     def test_tree_with_no_known_version_file_is_unverifiable(self, tmp_path):
         repo = tmp_path / "bare"

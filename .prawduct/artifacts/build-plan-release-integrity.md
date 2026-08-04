@@ -302,7 +302,7 @@ someone remembers. That gap is independent of releases and is the larger half of
 - **No publish step is built.** A forgotten publish surfaces as a failing `check-released`, which
   is the intended mechanism. The pruned-release hazard — its CHANGELOG section describes the whole
   cut, so publishing verbatim would announce withheld work — is therefore moot in CI and stays a
-  human-read warning in `runbooks/promote-a-pruned-release.md`.
+  human-read warning in `.prawduct/runbooks/promote-a-pruned-release.md`.
 
 > **Built 2026-08-04 — four things the plan did not anticipate, recorded rather than typed past.**
 >
@@ -324,7 +324,7 @@ someone remembers. That gap is independent of releases and is the larger half of
 >    `project-state.yaml`, so a docs-and-state change genuinely can turn the suite red. The filter
 >    would hide the one class of break the fast paths already miss.
 > 4. **Action pins are floating majors, and the majors were verified to exist.** `gh api
->    repos/actions/checkout/releases/latest` → `v7.0.1`; `actions/setup-python` → `v7.0.0`; both
+>    repos/actions/checkout/releases/latest` → `v7.0.1`; the setup-python action → `v7.0.0`; both
 >    workflows lint clean under `actionlint` 1.7.12. Floating majors are right for GitHub's own
 >    first-party actions — the major tag is the publisher's documented contract and carries security
 >    fixes without a bump — and a third-party action would be SHA-pinned instead, because there the
