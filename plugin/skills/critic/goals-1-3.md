@@ -19,8 +19,8 @@ observation, never in `findings`.
 4. Run `prawduct-hook test-status` and `prawduct-hook verify-coverage` (Goal 1). Nothing else executes.
 
 **Chunk `Type:`** (separate axis from mode; missing or unrecognized ⇒ `code` — never honor an
-unknown Type). `code`: all three goals full. `doc-only`: Goal 1 prose and numeric counts only,
-Goal 2 requirement coverage of prose deliverables, Goal 3 scope discipline; test-evidence skipped.
+unknown Type). `code`: all three goals full. `doc-only`: Goal 1 prose only, Goal 2 requirement
+coverage of prose deliverables, Goal 3 scope discipline; test-evidence skipped.
 `trivial`: full, plus Goal 3's rationale-vs-diff sub-check. `cleanup`: Goal 1 structural-only (no
 broken refs), Goal 2 requirement coverage, Goal 3 scope discipline tolerating a zero diff;
 test-evidence skipped. `designer-handoff` never reaches you.
@@ -89,7 +89,7 @@ chunk, and plan file. `null` there, or in any `counts` entry, means **no answer*
 
 - **BLOCKING** — must fix before proceeding.
 - **WARNING** — true *and* worth the builder's time. Name the consequence: *who does what wrong because of this?* No answer → NOTE. Confidence is not importance.
-- **NOTE** — genuinely ambiguous; or record-only prose (change-log, learnings, plan text) that neither ships as a false claim nor misleads anyone into a wrong action. Rating record prose WARNING turns it into a fix commit, which is how one round manufactures the next.
+- **NOTE** — genuinely ambiguous; or record-only prose (change-log, learnings, plan text) that neither ships as a false claim nor misleads anyone into a wrong action. Rating record prose WARNING turns it into a fix commit, which is how one round manufactures the next. An inert count is the recurring instance — state the true figure, that nothing reads it, and that no edit is wanted.
 
 **Never name the backlog as a finding's destination** — disposition is the builder's call.
 Proportionality: quick assessment for typos and formatting, full analysis for behavioral or
@@ -98,8 +98,7 @@ structural change.
 ## Record your judgment
 
 Write ONE partial to `.prawduct/.critic-partials/reviewer.json`, then run `prawduct-hook
-critic-consolidate` yourself — it appends the review fact, regenerates `.critic-findings.json`,
-anchors the ledger event, and clears the marker. You write nothing else. **Its `NEXT-ACTION:` line is the
+critic-consolidate` yourself. You write nothing else. **Its `NEXT-ACTION:` line is the
 builder's, not yours: relay it verbatim as your report's last line.** Everything else it printed
 dies in your context, and the builder is what terminates the review loop.
 

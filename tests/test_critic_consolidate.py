@@ -1042,6 +1042,17 @@ _COMMAND_HEADS = (
     "wc", "find", "ls", "cat", "sed", "awk", "make", "npm", "node", "bash",
 )
 
+#: Sentence openers that mark a DESCRIPTIVE closing rather than an instruction.
+#: Closed around the failure mode (a directive that trails off explaining
+#: itself) rather than enumerating acceptable verbs — a whitelist of verbs goes
+#: red on any correct rewording, which is how the previous version of this check
+#: ended up documenting four spellings while testing one.
+_DESCRIPTIVE_OPENERS = frozenset(
+    """a an and but everything anything nothing five four three two one the this
+    that these those there here it its they their his her your our so because
+    which what when where while since although however""".split()
+)
+
 _CRITIC_SKILL = ROOT / "skills" / "critic" / "SKILL.md"
 
 
@@ -1316,7 +1327,16 @@ class TestVerifyRatesBlockingOnlyDirective:
         """
         goals = (ROOT / "skills" / "critic" / "goals-1-3.md").read_text(encoding="utf-8")
         d = cc.VERIFY_RATES_BLOCKING_ONLY_DIRECTIVE
-        authz = next((ln for ln in goals.split("\n") if "auth/authz" in ln), None)
+        # Judged per CLAUSE, exactly like the sibling above — and for the same
+        # reason, which this test reintroduced one method over while fixing it
+        # there. `auth/authz` shares its line with four other verdicts, so a
+        # line-level `"**WARNING**" in authz` is satisfied by the vulnerable-
+        # dependency clause beside it: promote auth/authz to BLOCKING and this
+        # stays green while the escalation wording it guards goes stale.
+        authz = next(
+            (c for ln in goals.split("\n") for c in ln.split(";") if "auth/authz" in c),
+            None,
+        )
         assert authz is not None and "**WARNING**" in authz, (
             "goals-1-3.md's auth/authz rating moved. The directive escalates it "
             "to BLOCKING for verify-resolutions and says so explicitly — re-read "
@@ -1380,13 +1400,28 @@ class TestVerifyRatesBlockingOnlyDirective:
         satisfied by descriptive text. Imperatives are capitalized sentence
         openers here, which is what makes them matchable without pinning a
         spelling.
+
+        The second cut replaced that tuple with `("Rate ", "Apply ", "Report ",
+        "Say ")` and only `"Apply "` ever matched — a whitelist that documents
+        four spellings while checking one, and that goes spuriously red the
+        first time someone rewords to a correct imperative outside it. So the
+        check is derived from the directive's LAST sentence instead: the closing
+        move is where the rule is handed to the reader, and the failure mode is
+        an opener that describes ("The demotion is not politeness…") rather than
+        instructs. The exclusion list is closed around that failure mode; the
+        set of acceptable verbs stays open.
         """
         d = cc.VERIFY_RATES_BLOCKING_ONLY_DIRECTIVE
-        imperatives = [v for v in ("Rate ", "Apply ", "Report ", "Say ") if v in d]
-        assert imperatives, (
-            "the directive states a rule but never tells the reader what to DO "
-            "with the thing it just decided not to rate — agreement is not "
-            "application"
+        last = [s for s in re.split(r"(?<=[.!?])\s+", d.strip()) if s][-1]
+        opener = last.split()[0].strip("*_`,:").lower()
+        assert opener not in _DESCRIPTIVE_OPENERS and last[0].isupper(), (
+            f"the directive's closing sentence opens with {opener!r} — it "
+            "describes the rule instead of telling the reader what to DO with "
+            "the finding in front of it, and agreement is not application"
+        )
+        assert "you" in last, (
+            "the closing sentence no longer addresses the reader, so nothing "
+            "connects the rule to the finding being rated right now"
         )
         assert "you" in d and ("this " in d or "the one you" in d), (
             "the directive no longer aims at the decision the reader is making "

@@ -127,7 +127,7 @@ Applies proportionally — a 2-line helper needs no design review. Prioritize wh
 
 - **BLOCKING**: Must fix before proceeding (broken tests, dropped requirements, security vulnerabilities, unlisted deps).
 - **WARNING**: True *and* worth the builder's time (missing coverage, scope drift, stale artifacts, design problems). Name the consequence — *who does what wrong because of this?* No answer → NOTE. Confidence is not importance.
-- **NOTE**: Genuinely ambiguous; or record-only prose (change-log, learnings, plan text) that neither ships as a false claim nor misleads someone into a wrong action. Rating record prose WARNING turns it into a fix commit, which is how one round manufactures the next — `review-cycle.md`, "The review loop terminates."
+- **NOTE**: Genuinely ambiguous; or record-only prose (change-log, learnings, plan text) that neither ships as a false claim nor misleads someone into a wrong action. Rating record prose WARNING turns it into a fix commit, which is how one round manufactures the next — `review-cycle.md`, "The review loop terminates." An inert count is the recurring instance — state the true figure, that nothing reads it, and that no edit is wanted.
 
 ## Review Execution
 
@@ -199,7 +199,3 @@ If no findings: "No issues found. Changes are ready to proceed."
 ## Review Cycle
 
 Read `review-cycle.md` for the per-chunk lifecycle and mode selection. Framework changes follow the same protocol as product changes; framework-only fixes without a build plan run a single `final` review.
-
-## Extending This Skill
-
-Prefer strengthening existing goals over adding new ones. The 7 goals cover correctness (1-3), coherence and design (4, 7), and sustainability (5-6). When a new concern surfaces, first ask whether an existing goal can absorb it.

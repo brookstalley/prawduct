@@ -66,7 +66,7 @@ Each chunk also declares `Type:` — a separate axis from `Critic mode:`; defini
 | Chunk type | When to use | Goals 1 (Broken) | Goal 2 (Missing) | Goal 3 (Unintended) | Test-evidence check | Stop-hook Critic gate |
 |---|---|---|---|---|---|---|
 | `code` (default) | Code or behavior changes | full | full | full | required | fires |
-| `doc-only` | Methodology / template / prose-only edits | prose & numeric counts only | requirement coverage of prose deliverables | scope discipline | skipped | fires unless session is empirically doc-only too (file-extension based) |
+| `doc-only` | Methodology / template / prose-only edits | prose only | requirement coverage of prose deliverables | scope discipline | skipped | fires unless session is empirically doc-only too (file-extension based) |
 | `trivial` | Small-blast-radius code change within the file-set bounds | full | full | full + **rationale-vs-diff fit** sub-check (Goal 3) | required | fires (file-set bounds + `**Trivial because:**` rationale enforced structurally) |
 | `cleanup` | Branch hygiene, file moves, dead-code removal | structural-only (no broken refs) | requirement coverage | scope discipline; tolerate zero diff | skipped | fires |
 | `designer-handoff` | Visual / token / design-asset handoff to a human designer | skipped | skipped | skipped | skipped | **skipped** |
@@ -492,3 +492,9 @@ Each line is one event with an envelope/payload split:
 ```
 
 The envelope is shared by every event kind; the kind-specific payload nests under a family-named key (`review` for `review.critic` and `review.pr`). Consumers key on the envelope and **skip unknown event kinds and fields** — later kinds join without schema change. `duration_seconds` and `actor.model` are nullable, never invented; `scope` is the build-plan feature key (derived by `critic-begin` — see above; `active_build_plan` is only the last fallback). Every line is self-contained; a long-lived repo can truncate oldest lines.
+
+## Extending This Skill
+
+Prefer strengthening existing goals over adding new ones. The 7 goals cover correctness (1-3), coherence and design (4, 7), and sustainability (5-6). When a new concern surfaces, first ask whether an existing goal can absorb it.
+
+This guidance is addressed to whoever maintains the Critic, not to a reviewer mid-review, which is why it lives here rather than in `review-protocol.md` — that file is a payload every `final`/`cumulative` review loads under a token ceiling, and a reviewer never extends the skill while reviewing.
