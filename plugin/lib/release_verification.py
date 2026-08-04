@@ -6,7 +6,7 @@ That gate asks "is everything fit to ship?" before the promotion; this one asks
 
 **Why it exists.** Every check in the release runbook was expressed as a git
 command run by the person doing the release, and every one of them passed for
-thirty consecutive releases while the surface a consumer actually looks at — the
+every release this repo ever cut while the surface a consumer actually looks at — the
 repository's Releases page — stayed empty. Nothing verified the consumer's view,
 so nothing could report that it was wrong. Tag pushed, release invisible, gate
 green.

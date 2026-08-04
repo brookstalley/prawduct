@@ -1,9 +1,9 @@
 # Verify a release from the outside — the consumer's view, not the operator's.
 #
 # Every check in the release runbook was a git command run by the person doing
-# the release, and every one of them passed for thirty consecutive releases while
-# the page a consumer actually lands on stayed empty. This job asks the question
-# none of them did: did the whole thing arrive?
+# the release, and every one of them passed for every release this repo ever cut
+# while the page a consumer actually lands on stayed empty. This job asks the
+# question none of them did: did the whole thing arrive?
 #
 # **This workflow never publishes.** That is an owner ruling (2026-08-04), not an
 # omission, and not a step left for later. Publishing a Release notifies watchers

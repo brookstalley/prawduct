@@ -129,7 +129,7 @@ When `develop` is ready to release as `vX.Y.Z`:
 
 6. **Publish the GitHub Release — the tag is not the release.** A pushed tag lands on `/tags`;
    the Releases page is a separate surface and it stayed empty for this repository's first
-   thirty tags, which is what consumers reported as "no tag on GitHub".
+   every tag this repo had ever pushed, which is what consumers reported as "no tag on GitHub".
 
    ```
    awk '/^## vX.Y.Z$/{f=1;next} /^## v/{f=0} f' plugin/CHANGELOG.md > /tmp/notes-vX.Y.Z.md
@@ -222,7 +222,7 @@ gh release create vX.Y.Z --title vX.Y.Z --notes-file /tmp/notes-vX.Y.Z.md
 ```
 
 **The tag is not the release.** A pushed tag lands on `/tags`; the Releases page is a separate
-surface, and it stayed empty for the repository's first thirty tags. That is what consumers see and
+surface, and it stayed empty for every tag the repository had ever pushed. That is what consumers see and
 what they report as "no tag on GitHub" — so the publish step is part of the procedure, not an
 optional flourish. `check-released` verifies all of it (version files agreeing at the tag's own
 tree, the tag contained in `origin/main`, the Release present) and is the one command to run

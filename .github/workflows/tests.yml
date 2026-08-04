@@ -1,9 +1,9 @@
 # Run the suite — on every push, and on every pull request.
 #
 # Until this file existed, `tests/` ran only when someone remembered to run it.
-# Thirty releases shipped that way. The gap is independent of any one release and
-# is the larger half of the problem: a suite nothing invokes is a suite that is
-# green by assumption.
+# Every release this repo ever cut shipped that way. The gap is independent of any
+# one release and is the larger half of the problem: a suite nothing invokes is a
+# suite that is green by assumption.
 #
 # **No path filters, deliberately.** The obvious economy here — skip the run when
 # only `.md` or `.prawduct/**` changed — reproduces a hole this repo has already
@@ -31,6 +31,13 @@ name: tests
 on:
   # Unfiltered by branch as well as by path. A branch that never opens a PR is
   # precisely the branch nobody is watching.
+  #
+  # Weighed and kept: pairing these double-runs the matrix for any branch with an
+  # open PR, and the concurrency group below cannot collapse the pair because the
+  # two events carry different refs (`refs/heads/<branch>` vs `refs/pull/N/merge`).
+  # They test different trees — the branch tip, and the merge result — and on a
+  # public repo the minutes are free, so the duplication buys a real second answer
+  # at a cost of wall-clock only.
   push:
   pull_request:
 

@@ -345,14 +345,23 @@ someone remembers. That gap is independent of releases and is the larger half of
 > **1 — met, the hard way.** Run `30914556830` (push of `1edbf83`) was **red on both legs**, for
 > three latent defects unrelated to the feature; the follow-up push is green. The first run failing
 > is the acceptance criterion doing its job, not a caveat on it.
-> **2 — half met, and the other half is not reachable from this branch.** `check-released` is red
-> for a deliberately broken input (`v9.9.9` → exit 1, two ERROR lines) and green for `v3.2.3`
-> (exit 0), verified locally. The *workflow* cannot be exercised until it lands: GitHub registers a
-> workflow only from the default branch, so `verify-release.yml` does not appear in the repo's
-> workflow list and `workflow_dispatch` has nothing to dispatch. What can be checked from here has
-> been — `actionlint` passes, and the manual-tag input exists precisely so the red-on-broken-input
-> case can be exercised after merge without pushing a junk tag. **Owner ruled 2026-08-04: verify
-> after merge.** This remains open until someone dispatches it.
+> **2 — half met, and the other half unblocks at the RELEASE, not at this merge.** `check-released`
+> is red for a deliberately broken input (`v9.9.9` → exit 1, two ERROR lines) and green for `v3.2.3`
+> (exit 0), verified locally. The *workflow* cannot be exercised yet: GitHub registers a workflow
+> only from the **default branch**, which is `main` — so merging this scope to `develop` does not
+> unblock it, and neither route (a `workflow_dispatch`, or a tag push carrying the workflow in its
+> own tree) opens until the next `develop` → `main` promotion. An earlier revision of this block
+> said "after merge", which named the wrong event and would have sent someone looking for a
+> dispatch button that is not there. What can be checked from here has been — `actionlint` passes,
+> and the manual-tag input exists precisely so the red-on-broken-input case can be exercised after
+> the promotion without pushing a junk tag. **Owner ruled 2026-08-04: verify after the promotion.**
+>
+> **Tracked outside this plan, deliberately.** This file's Chunk 05 checkbox is flipped to `[x]` by
+> `regen-views` at that same promotion and `active_build_plan` is cleared at Phase 1, so a plan
+> comment is the one home guaranteed to stop existing exactly when the obligation comes due. The
+> durable home is **#581**, which carries the acceptance criteria — including deleting the "first
+> run only" caveat this scope added to both release runbooks, so a passing workflow stops being
+> described as one nobody should trust.
 
 ---
 

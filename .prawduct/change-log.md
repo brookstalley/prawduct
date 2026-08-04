@@ -7,7 +7,7 @@
 
 <!-- prawduct: type=feature | scope=release-integrity | chunks=05 -->
 
-This repository had no `.github/` of any kind. Thirty releases shipped on a suite that ran when a
+This repository had no `.github/` of any kind. Every release it ever cut shipped on a suite that ran when a
 human chose to run it, and eleven `tests/preferences/` guards were documented with an audit home of
 "CI (test)" against a runner that did not exist. `.github/workflows/tests.yml` runs the suite on
 every push and every pull request; `.github/workflows/verify-release.yml` runs `check-released` on
@@ -56,7 +56,7 @@ and without it the containment check correctly degrades to unverifiable — a pe
 reporting nothing about the release. `workflow_dispatch` takes a tag input so the check can be
 exercised, including against a deliberately bogus tag, without pushing a junk tag to prove it works.
 
-## 2026-08-04: the check that would have been red for thirty releases
+## 2026-08-04: the check that would have been red for every release this repo ever cut
 
 <!-- prawduct: type=feature | scope=release-integrity | chunks=04 -->
 
@@ -64,7 +64,7 @@ exercised, including against a deliberately bogus tag, without pushing a junk ta
 present in the tag's tree agrees with it — read **at the tag's own tree**, and a file the product
 does not carry is skipped rather than reported missing — the tag is contained in `origin/main`, and a GitHub Release
 exists. Run it against `v3.2.2` and it fails — as it does for every release before this one,
-because a pushed tag lands on `/tags` and the Releases page stayed empty for thirty of them. That
+because a pushed tag lands on `/tags` and the Releases page stayed empty for every one of them. That
 is the defect users reported as "no tag on GitHub", and nothing in the release process could see
 it: every check was a git command run by the person doing the release, so nothing ever asked what
 a consumer receives.

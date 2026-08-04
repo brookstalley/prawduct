@@ -533,7 +533,12 @@ mean the withheld work shipped.*
   (`gh run list --workflow verify-release.yml --limit 1`). It runs the same command with a token,
   so it is the check that still happens on the release where someone skipped the bullet above.
   A red run here means the release is incomplete — it never means CI failed to publish something,
-  because CI does not publish.
+  because CI does not publish. **First run only:** this workflow has never executed against a real
+  tag (it registers only from the default branch, so it could not run before the promotion that
+  ships it). On that one release, read a red run as *either* an incomplete release *or* a defect in
+  the workflow, and confirm against `./plugin/bin/prawduct-hook check-released vX.Y.Z` above before
+  acting. Delete this paragraph once it has passed once — that deletion is an acceptance criterion
+  of **#581**, which tracks exercising this workflow at the first promotion.
 - Your own install holds the released tree, not the prep tree — these two print the
   **same** 40-character sha:
 

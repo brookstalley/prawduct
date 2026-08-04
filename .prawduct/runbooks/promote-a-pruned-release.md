@@ -297,7 +297,10 @@ amended 2026-07-29). Step 10 is that test.
 - The `verify-release` workflow run for the tag is green
   (`gh run list --workflow verify-release.yml --limit 1`) — the same check, run with a token, on
   the release nobody verified by hand. It publishes nothing: the pruned-release hazard below is a
-  human-read warning precisely because no automation touches the Release text.
+  human-read warning precisely because no automation touches the Release text. **First run only:**
+  until this workflow has passed once against a real tag, read a red run as *either* an incomplete
+  release *or* a defect in the workflow, and confirm against the repo-local `check-released` above.
+  Deleting this caveat is an acceptance criterion of **#581**.
 - Your own install holds the released tree — these two print the **same** 40-character sha:
 
   ```
