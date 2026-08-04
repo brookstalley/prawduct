@@ -188,6 +188,38 @@ class TestVersionFiles:
         assert rv.check_version_files(repo, "v3.2.0")[0] == rv.OK
 
 
+class TestVersionFilesOutsideARepo:
+    def test_a_non_repository_names_its_real_cause(self, tmp_path):
+        """The verdict was already right; the REASON was not.
+
+        `git show <tag>:<path>` fails per-file outside a repository exactly as
+        it does for a path absent from the tree, so every file was "skipped" and
+        the no-files branch reported a layout question: *"a different product
+        layout, or a tag this clone has not fetched"*. Neither is true, and a
+        product owner reading it would go looking at their own layout.
+
+        Unverifiable was the correct verdict, so this is not a false red — it is
+        the rule one level down: *"advice fails soft" is not "advice fails
+        silent"*. A soft failure still owes its reader the real cause.
+        """
+        state, detail = rv.check_version_files(tmp_path, "v1.0.0")
+        assert state == rv.UNVERIFIABLE
+        assert "not a git repository" in detail
+        assert "product layout" not in detail, (
+            "a non-repository is still reported as a question about the "
+            "product's layout"
+        )
+
+    def test_a_real_repo_missing_the_files_still_says_layout(self, tmp_path):
+        """The pre-existing message is correct for the case it was written for,
+        and must survive the new branch above."""
+        repo = _make_repo(tmp_path, version="3.2.0")
+        state, detail = rv.check_version_files(repo, "v3.2.0")
+        assert state in (rv.OK, rv.UNVERIFIABLE)
+        if state == rv.UNVERIFIABLE:
+            assert "product layout" in detail
+
+
 class TestTagOnMain:
     def test_tag_on_main_is_ok(self, tmp_path):
         repo = _make_repo(tmp_path, version="3.2.0")
@@ -195,6 +227,43 @@ class TestTagOnMain:
         assert state == rv.OK
 
     def test_unresolvable_tag_fails(self, tmp_path):
+        repo = _make_repo(tmp_path, version="3.2.0")
+        state, detail = rv.check_tag_on_main(repo, "v9.9.9")
+        assert state == rv.FAILED
+        assert "does not resolve" in detail
+
+    def test_a_non_repository_is_unverifiable_not_a_broken_release(self, tmp_path):
+        """The check must not answer a question it could not ask.
+
+        `git rev-parse <tag>^{commit}` exits **128** for two unrelated states —
+        the tag is absent, and this is not a git repository — and the branch
+        below read every non-zero as the first. Measured before the fix:
+        `prawduct-hook check-released v3.2.4` from any non-repo directory printed
+        `ERROR: tag-on-main: tag v3.2.4 does not resolve to a commit`, verdict
+        `not-released`, exit 1 — a finding about a release, produced by an
+        environment that could not look at it. This module's own docstrings say
+        twice that a false red is worse than no check, because it is the reading
+        that teaches people to ignore the check.
+
+        Driven through the REAL failure — an ordinary empty directory, no
+        monkeypatch — because a stubbed return proves the caller reads a signal,
+        never that git produces it. The sibling test above patches `_run` and is
+        the right shape for a hung toolchain, which cannot be staged for real.
+        """
+        state, detail = rv.check_tag_on_main(tmp_path, "v1.0.0")
+        assert state == rv.UNVERIFIABLE, (
+            "a non-repository still reports a verdict about the release"
+        )
+        assert "not a git repository" in detail
+        assert "does not resolve" not in detail
+
+    def test_an_absent_tag_inside_a_real_repo_still_fails(self, tmp_path):
+        """The other half, and the one that keeps the fix honest: the repair
+        must not soften a TRUE finding into `unverifiable`.
+
+        Without this, returning UNVERIFIABLE unconditionally from the non-zero
+        branch would pass the test above and silently retire the check.
+        """
         repo = _make_repo(tmp_path, version="3.2.0")
         state, detail = rv.check_tag_on_main(repo, "v9.9.9")
         assert state == rv.FAILED

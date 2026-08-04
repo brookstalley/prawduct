@@ -400,7 +400,7 @@ views_enabled: true
 # plans are RETAINED on disk: they are release-pending under gitflow and the
 # develop->main promotion regenerates the Status of every scope-tagged plan.
 # Nothing is in flight to orphan. Next work sets this via /prawduct:backlog pick.
-active_build_plan:
+active_build_plan: artifacts/build-plan-release-verification-false-reds.md
 
 # =============================================================================
 # BUILD-PLAN REF ROOT (opt-in)

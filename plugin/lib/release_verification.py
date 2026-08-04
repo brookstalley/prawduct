@@ -106,6 +106,24 @@ def _scrub(text: str) -> str:
     return scrub_secrets(text)
 
 
+def _in_git_repo(project_dir: Path) -> bool:
+    """Whether ``project_dir`` sits inside a git working tree.
+
+    Exists because ``git rev-parse`` exits **128** for two unrelated states — the
+    ref does not exist, and this is not a repository — and every caller that
+    reads the first meaning out of a bare non-zero is stating a finding about
+    the release from an environment that could not ask the question. A false red
+    on a release check is worse than no check, because it is the reading that
+    teaches people to ignore it (this module's own docstrings, twice).
+
+    ``git`` missing or hanging answers ``False``: the callers turn that into
+    ``UNVERIFIABLE`` too, so the conservative direction is the same one, and a
+    separate outcome here would buy nothing they could act on differently.
+    """
+    probe = _run(["git", "rev-parse", "--git-dir"], project_dir)
+    return not isinstance(probe, str) and probe[0] == 0
+
+
 def _version_from(kind: str, content: str) -> str | None:
     """The version string a release file carries, or ``None`` if unparseable."""
     if kind == "bare":
@@ -163,9 +181,17 @@ def check_version_files(project_dir: Path, tag: str) -> tuple[str, str]:
         elif found != expected:
             problems.append(f"{rel_path}: says {found}, tag says {expected}")
     if not checked:
-        # Two very different causes land here — a product with a different
-        # layout, and a tag this clone has not fetched. Say both rather than
-        # asserting the first, which reads as a finding about the product.
+        # THREE very different causes land here, and the third was missing: a
+        # `git show` outside a repository fails per-file exactly like an absent
+        # path, so every file "skipped" and this branch reported a layout
+        # question. The verdict was already the right one (unverifiable), but
+        # naming the wrong cause is the same defect one level down — "advice
+        # fails soft" is not "advice fails silent", and a soft failure still
+        # owes its reader the real reason.
+        if not _in_git_repo(project_dir):
+            return UNVERIFIABLE, (
+                "not a git repository — no tree to read version files from"
+            )
         return UNVERIFIABLE, (
             f"no known version file present in {tag}'s tree "
             "(a different product layout, or a tag this clone has not fetched)"
@@ -201,6 +227,15 @@ def check_tag_on_main(project_dir: Path, tag: str) -> tuple[str, str]:
         # reporting it as one would blame the release for a broken toolchain.
         return UNVERIFIABLE, "git could not resolve the tag"
     if resolved[0] != 0:
+        # git exits 128 for BOTH "no such tag" and "not a git repository", so a
+        # non-zero here is not yet evidence about the tag. Ask which one it was.
+        # This mirrors the `origin/main` existence probe below: establish that the
+        # question CAN be asked before reading an answer into the silence.
+        if not _in_git_repo(project_dir):
+            return UNVERIFIABLE, (
+                "not a git repository — this directory cannot answer whether "
+                f"{tag} exists"
+            )
         return FAILED, f"tag {tag} does not resolve to a commit"
     commit = resolved[1]
     # Establish that the reference EXISTS before asking what it contains.
