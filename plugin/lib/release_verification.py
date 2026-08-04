@@ -59,20 +59,51 @@ _VERSION_FILES = (
 )
 
 
-def _run(args: list[str], cwd: Path) -> tuple[int, str, str] | None:
-    """Run ``args`` in ``cwd``. ``None`` when the executable is missing or hangs.
+#: Why a command produced no answer. ``_run`` returns one of these in place of
+#: a result, because "the tool is not installed" and "the tool hung" lead to
+#: different verdicts and the callers were reading a single ``None`` oppositely.
+MISSING = "missing"
+ERRORED = "errored"
 
-    ``None`` and a non-zero return code mean different things to every caller
-    here — "the tool is not installed" is not "the tool said no" — so they are
-    kept distinguishable rather than collapsed into a falsy result.
+
+def _run(args: list[str], cwd: Path) -> tuple[int, str, str] | str:
+    """Run ``args`` in ``cwd``.
+
+    Returns ``(returncode, stdout, stderr)``, or :data:`MISSING` when the
+    executable is not installed, or :data:`ERRORED` when it hung or the spawn
+    failed. Three outcomes, not two: the docstring used to promise that
+    distinction while the code collapsed both into ``None``, and the two callers
+    then read that ``None`` in opposite directions — one degraded to
+    *unverifiable*, the other fabricated three "not present in the tag's tree"
+    failures and exited 1. A false red out of the module whose own comments
+    argue that a false red is worse than no check.
     """
     try:
         result = subprocess.run(
             args, capture_output=True, text=True, cwd=str(cwd), timeout=_TIMEOUT
         )
+    except FileNotFoundError:
+        return MISSING
     except (OSError, subprocess.SubprocessError):
-        return None
+        return ERRORED
     return result.returncode, result.stdout.strip(), result.stderr.strip()
+
+
+def _scrub(text: str) -> str:
+    """Strip credentials from foreign-CLI stderr before it is echoed or logged.
+
+    ``gh``'s errors can carry a token or an authenticated URL, and this text
+    reaches both stderr and the ``--json`` payload. The backlog transport runs
+    the same denylist over the same class of output at its own egress boundary;
+    reusing it keeps one rule rather than two that drift. Degrades to returning
+    the text unchanged only if the helper cannot be imported — the scrub is a
+    backstop, and losing it must not lose the diagnostic.
+    """
+    try:
+        from .backlog.transport import scrub_secrets  # noqa: PLC0415 -- lazy: heavy import DAG
+    except ImportError:
+        return text
+    return scrub_secrets(text)
 
 
 def _version_from(kind: str, content: str) -> str | None:
@@ -101,24 +132,41 @@ def _version_from(kind: str, content: str) -> str | None:
     return None
 
 
-def check_version_files(project_dir: Path, tag: str) -> list[tuple[str, str]]:
-    """Disagreements between the tag's tree and the version the tag names.
+def check_version_files(project_dir: Path, tag: str) -> tuple[str, str]:
+    """Whether the version files in the tag's tree agree with the tag.
 
-    Returns ``(path, problem)`` pairs — empty when all three agree.
+    **A file absent from the tree is skipped, not failed.** This module ships to
+    every governed product, and :data:`_VERSION_FILES` is prawduct's own layout:
+    a product with no ``pyproject.toml`` is not a broken release, and printing
+    ``not-released`` while naming files that cannot exist there is the hazard
+    ``release_readiness`` already documented for its own messages. The verdict
+    is about files that are *present and disagree*.
+
+    A tree carrying none of them is ``UNVERIFIABLE`` — nothing was measured, and
+    saying so is not the same as passing.
     """
     expected = tag[1:] if tag.startswith("v") else tag
-    problems: list[tuple[str, str]] = []
+    problems: list[str] = []
+    checked: list[str] = []
     for rel_path, kind in _VERSION_FILES:
         shown = _run(["git", "show", f"{tag}:{rel_path}"], project_dir)
-        if shown is None or shown[0] != 0:
-            problems.append((rel_path, f"not present in {tag}'s tree"))
+        if shown == MISSING:
+            return UNVERIFIABLE, "git is not installed"
+        if shown == ERRORED:
+            return UNVERIFIABLE, "git could not read the tag's tree"
+        if shown[0] != 0:  # absent from this tree — not this product's layout
             continue
+        checked.append(rel_path)
         found = _version_from(kind, shown[1])
         if found is None:
-            problems.append((rel_path, "no version string found"))
+            problems.append(f"{rel_path}: no version string found")
         elif found != expected:
-            problems.append((rel_path, f"says {found}, tag says {expected}"))
-    return problems
+            problems.append(f"{rel_path}: says {found}, tag says {expected}")
+    if not checked:
+        return UNVERIFIABLE, f"no known version file present in {tag}'s tree"
+    if problems:
+        return FAILED, "; ".join(problems)
+    return OK, f"{len(checked)} version file(s) agree at {tag}"
 
 
 def check_tag_on_main(project_dir: Path, tag: str) -> tuple[str, str]:
@@ -130,7 +178,9 @@ def check_tag_on_main(project_dir: Path, tag: str) -> tuple[str, str]:
     that distinction is why this is scoped to the tag and nothing else.)
     """
     resolved = _run(["git", "rev-parse", f"{tag}^{{commit}}"], project_dir)
-    if resolved is None or resolved[0] != 0:
+    if resolved == MISSING:
+        return UNVERIFIABLE, "git is not installed"
+    if resolved == ERRORED or resolved[0] != 0:
         return FAILED, f"tag {tag} does not resolve to a commit"
     commit = resolved[1]
     # Establish that the reference EXISTS before asking what it contains.
@@ -140,14 +190,17 @@ def check_tag_on_main(project_dir: Path, tag: str) -> tuple[str, str]:
     # release check is worse than no check, because it is the reading that
     # teaches people to ignore it.
     main_ref = _run(["git", "rev-parse", "--verify", "--quiet", "origin/main"], project_dir)
-    if main_ref is None:
+    if isinstance(main_ref, str):
         return UNVERIFIABLE, "git unavailable"
     if main_ref[0] != 0:
-        return UNVERIFIABLE, "origin/main is not present in this clone"
+        return UNVERIFIABLE, (
+            "origin/main is not present in this clone — a shallow or "
+            "single-ref checkout cannot answer containment"
+        )
     ancestor = _run(
         ["git", "merge-base", "--is-ancestor", commit, "origin/main"], project_dir
     )
-    if ancestor is None:
+    if isinstance(ancestor, str):
         return UNVERIFIABLE, "git unavailable"
     if ancestor[0] != 0:
         return FAILED, f"{commit[:9]} is not contained in origin/main"
@@ -162,69 +215,91 @@ def check_github_release(project_dir: Path, tag: str) -> tuple[str, str]:
     how a check gets ignored.
     """
     viewed = _run(["gh", "release", "view", tag, "--json", "url", "--jq", ".url"], project_dir)
-    if viewed is None:
+    if viewed == MISSING:
         return UNVERIFIABLE, "gh is not installed"
+    if viewed == ERRORED:
+        return UNVERIFIABLE, "gh did not complete"
     if viewed[0] != 0:
-        detail = viewed[2] or "no release"
+        detail = _scrub(viewed[2]) or "no release"
+        # Measured against gh 2.x rather than assumed — an absent release prints
+        # `release not found`. Anything else (unauthenticated, rate-limited,
+        # 5xx) is deliberately NOT read as absence: this check cannot tell a
+        # missing release from a refused question, and guessing turns a broken
+        # token into "your release is fine".
         if "release not found" in detail.lower():
             return FAILED, f"no GitHub Release for {tag} — the tag alone is not a release"
-        return UNVERIFIABLE, f"gh could not answer: {detail.splitlines()[0][:120]}"
+        return UNVERIFIABLE, f"gh could not answer: {detail.splitlines()[0][:160]}"
     return OK, viewed[1]
 
 
-def check_released(project_dir: Path, release: str, json_output: bool = False) -> int:
-    """Verify a published release. ``0`` when complete, ``1`` when not.
+#: Exit code for "nothing failed, but not everything could be checked".
+#: Distinct from 0 on purpose — see :func:`check_released`.
+EXIT_UNVERIFIABLE = 3
 
-    ``UNVERIFIABLE`` results never fail the command — they are reported and the
-    exit code reflects only what could actually be established.
+
+def check_released(
+    project_dir: Path,
+    release: str,
+    json_output: bool = False,
+    allow_unverifiable: bool = False,
+) -> int:
+    """Verify a published release.
+
+    ``0`` verified · ``1`` a check failed · ``3`` nothing failed but something
+    could not be checked.
+
+    **Why unverifiable is not 0.** It was, and that made the gate green in
+    precisely the environment it exists for. A tag-push job using
+    ``actions/checkout`` has no ``origin/main`` — absent containment is the
+    *normal* state there, not an edge case — and a step without a token gets a
+    ``gh`` that cannot answer. Both routed to unverifiable, which exited 0: a
+    green build over an empty Releases page, which is the original defect with a
+    passing check on top. A separate code keeps the local operator's honest
+    answer ("I could not check the Releases page") distinct from a pass, while
+    CI, which fails on any non-zero, goes red. ``allow_unverifiable`` is the
+    explicit opt-out for someone who genuinely wants the local subset.
     """
     tag = normalize_version(release)
 
-    version_problems = check_version_files(project_dir, tag)
+    version_state, version_detail = check_version_files(project_dir, tag)
     tag_state, tag_detail = check_tag_on_main(project_dir, tag)
     release_state, release_detail = check_github_release(project_dir, tag)
 
     checks = [
-        {
-            "check": "version-files",
-            "state": FAILED if version_problems else OK,
-            "detail": (
-                "; ".join(f"{p}: {why}" for p, why in version_problems)
-                if version_problems
-                else f"all three agree at {tag}"
-            ),
-        },
+        {"check": "version-files", "state": version_state, "detail": version_detail},
         {"check": "tag-on-main", "state": tag_state, "detail": tag_detail},
         {"check": "github-release", "state": release_state, "detail": release_detail},
     ]
     failed = [c for c in checks if c["state"] == FAILED]
     unverifiable = [c for c in checks if c["state"] == UNVERIFIABLE]
 
+    if failed:
+        verdict, code = "not-released", 1
+    elif unverifiable and not allow_unverifiable:
+        verdict, code = "unverified", EXIT_UNVERIFIABLE
+    else:
+        verdict, code = "released", 0
+
     if json_output:
-        print(
-            json.dumps(
-                {
-                    "release": tag,
-                    "verdict": "not-released" if failed else "released",
-                    "checks": checks,
-                },
-                indent=2,
-            )
-        )
-        return 1 if failed else 0
+        print(json.dumps({"release": tag, "verdict": verdict, "checks": checks}, indent=2))
+        return code
 
     if failed:
         print(f"not-released: {tag}", file=sys.stderr)
-        for check in failed:
-            print(f"  ERROR: {check['check']}: {check['detail']}", file=sys.stderr)
-        for check in unverifiable:
-            print(f"  unverified: {check['check']}: {check['detail']}", file=sys.stderr)
-        return 1
+    elif code == EXIT_UNVERIFIABLE:
+        print(
+            f"unverified: {tag} — nothing failed, but "
+            f"{len(unverifiable)} of {len(checks)} checks could not run",
+            file=sys.stderr,
+        )
+    else:
+        print(f"released: {tag} — {len(checks) - len(unverifiable)} of {len(checks)} verified")
 
-    print(f"released: {tag} — {len(checks) - len(unverifiable)} of {len(checks)} checks verified")
     for check in checks:
         if check["state"] == OK:
             print(f"  ok: {check['check']}: {check['detail']}")
+    for check in failed:
+        print(f"  ERROR: {check['check']}: {check['detail']}", file=sys.stderr)
     for check in unverifiable:
         print(f"  unverified: {check['check']}: {check['detail']}", file=sys.stderr)
-    return 0
+    return code

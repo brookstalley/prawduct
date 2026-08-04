@@ -40,12 +40,19 @@ def _write(path: Path, content: str) -> None:
 
 
 def _git(repo: Path, *args: str) -> None:
+    """Run git with the developer's global config neutralised.
+
+    Sibling test files do the same: without it these repos inherit whatever the
+    machine sets — `commit.gpgsign`, hooks, a default branch name — and the
+    suite passes or fails on the author's dotfiles rather than on the code.
+    """
     subprocess.run(
         ["git", *args],
         cwd=str(repo),
         check=True,
         capture_output=True,
         text=True,
+        env={**os.environ, "GIT_CONFIG_GLOBAL": "/dev/null", "GIT_CONFIG_SYSTEM": "/dev/null"},
     )
 
 
@@ -110,20 +117,52 @@ class TestVersionParsing:
 
 
 class TestVersionFiles:
-    def test_agreeing_tree_has_no_problems(self, tmp_path):
+    def test_agreeing_tree_is_ok(self, tmp_path):
         repo = _make_repo(tmp_path, version="3.2.0")
-        assert rv.check_version_files(repo, "v3.2.0") == []
+        state, detail = rv.check_version_files(repo, "v3.2.0")
+        assert state == rv.OK
+        assert "3 version file(s) agree" in detail
 
     def test_disagreeing_file_is_named_with_both_values(self, tmp_path):
         repo = _make_repo(tmp_path, version="3.2.0", tag="v3.2.1")
-        problems = dict(rv.check_version_files(repo, "v3.2.1"))
-        assert set(problems) == {
-            "plugin/VERSION",
-            "plugin/.claude-plugin/plugin.json",
-            "pyproject.toml",
-        }
-        assert "says 3.2.0" in problems["plugin/VERSION"]
-        assert "tag says 3.2.1" in problems["plugin/VERSION"]
+        state, detail = rv.check_version_files(repo, "v3.2.1")
+        assert state == rv.FAILED
+        assert "plugin/VERSION: says 3.2.0, tag says 3.2.1" in detail
+
+    def test_absent_file_is_skipped_not_failed(self, tmp_path):
+        """This module ships to products with a different layout.
+
+        Red before the skip: a product with no `pyproject.toml` was reported
+        `not-released`, naming a file that cannot exist in its tree.
+        """
+        repo = _make_repo(tmp_path, version="3.2.0")
+        _git(repo, "rm", "-q", "pyproject.toml")
+        # Move the REMAINING files to the new version, so this test isolates the
+        # absent file rather than tripping on a version mismatch.
+        _write(repo / "plugin" / "VERSION", "3.2.3\n")
+        _write(
+            repo / "plugin" / ".claude-plugin" / "plugin.json",
+            json.dumps({"name": "prawduct", "version": "3.2.3"}) + "\n",
+        )
+        _git(repo, "add", "-A")
+        _git(repo, "commit", "-qm", "no pyproject")
+        _git(repo, "tag", "v3.2.3")
+        state, detail = rv.check_version_files(repo, "v3.2.3")
+        assert state == rv.OK
+        assert "2 version file(s) agree" in detail
+
+    def test_tree_with_no_known_version_file_is_unverifiable(self, tmp_path):
+        repo = tmp_path / "bare"
+        repo.mkdir()
+        _git(repo, "init", "-q", "-b", "main")
+        _git(repo, "config", "user.email", "t@example.com")
+        _git(repo, "config", "user.name", "T")
+        _write(repo / "readme.md", "hi\n")
+        _git(repo, "add", "-A")
+        _git(repo, "commit", "-qm", "x")
+        _git(repo, "tag", "v1.0.0")
+        state, _ = rv.check_version_files(repo, "v1.0.0")
+        assert state == rv.UNVERIFIABLE
 
     def test_reads_the_tag_tree_not_the_working_tree(self, tmp_path):
         """The regression this gate exists to prevent, in one test.
@@ -134,16 +173,7 @@ class TestVersionFiles:
         """
         repo = _make_repo(tmp_path, version="3.2.0")
         _write(repo / "plugin" / "VERSION", "9.9.9\n")
-        assert rv.check_version_files(repo, "v3.2.0") == []
-
-    def test_missing_file_in_tree_fails_closed(self, tmp_path):
-        repo = _make_repo(tmp_path, version="3.2.0")
-        _git(repo, "rm", "-q", "pyproject.toml")
-        _git(repo, "commit", "-qm", "drop")
-        _git(repo, "tag", "v3.2.2")
-        _git(repo, "update-ref", "refs/remotes/origin/main", "HEAD")
-        problems = dict(rv.check_version_files(repo, "v3.2.2"))
-        assert "not present" in problems["pyproject.toml"]
+        assert rv.check_version_files(repo, "v3.2.0")[0] == rv.OK
 
 
 class TestTagOnMain:
@@ -204,7 +234,7 @@ class TestGithubRelease:
 
     def test_missing_gh_is_unverifiable_not_failed(self, tmp_path, monkeypatch):
         """A machine without `gh` must not be told its release is broken."""
-        monkeypatch.setattr(rv, "_run", lambda *a, **k: None)
+        monkeypatch.setattr(rv, "_run", lambda *a, **k: rv.MISSING)
         state, detail = rv.check_github_release(tmp_path, "v1")
         assert state == rv.UNVERIFIABLE
         assert "not installed" in detail
@@ -232,7 +262,7 @@ class TestCheckReleased:
         assert rv.check_released(repo, "v3.2.0") == 0
         out = capsys.readouterr().out
         assert "released: v3.2.0" in out
-        assert "3 of 3 checks verified" in out
+        assert "3 of 3 verified" in out
 
     def test_accepts_bare_version(self, tmp_path, monkeypatch):
         repo = _make_repo(tmp_path, version="3.2.0")
@@ -247,14 +277,42 @@ class TestCheckReleased:
         assert "not-released: v3.2.0" in err
         assert "github-release" in err
 
-    def test_unverifiable_alone_does_not_fail(self, tmp_path, monkeypatch, capsys):
-        """`gh` absent, everything else good: exit 0, and say what went unchecked."""
+    def test_unverifiable_is_its_own_exit_code_not_success(self, tmp_path, monkeypatch, capsys):
+        """The finding that inverted the first design.
+
+        `gh` absent, everything else good. This used to exit 0 — which made the
+        gate green in exactly the environment it exists for, since a tag-push
+        job without a token gets a `gh` that cannot answer. Red if
+        EXIT_UNVERIFIABLE collapses back into 0.
+        """
         repo = _make_repo(tmp_path, version="3.2.0")
-        self._stub_gh(monkeypatch, None)
-        assert rv.check_released(repo, "v3.2.0") == 0
+        self._stub_gh(monkeypatch, rv.MISSING)
+        assert rv.check_released(repo, "v3.2.0") == rv.EXIT_UNVERIFIABLE
         captured = capsys.readouterr()
-        assert "2 of 3 checks verified" in captured.out
-        assert "unverified: github-release" in captured.err
+        assert "unverified: v3.2.0" in captured.err
+        assert "could not run" in captured.err
+
+    def test_allow_unverifiable_opts_back_into_zero(self, tmp_path, monkeypatch):
+        repo = _make_repo(tmp_path, version="3.2.0")
+        self._stub_gh(monkeypatch, rv.MISSING)
+        assert rv.check_released(repo, "v3.2.0", allow_unverifiable=True) == 0
+
+    def test_ci_shaped_checkout_without_origin_main_is_not_green(self, tmp_path, monkeypatch):
+        """`actions/checkout` on a tag has no `origin/main`. That must not pass.
+
+        This is the CI case Chunk 05 builds on, and the first design exited 0
+        for it while the Releases page could be empty.
+        """
+        repo = _make_repo(tmp_path, version="3.2.0")
+        _git(repo, "update-ref", "-d", "refs/remotes/origin/main")
+        self._stub_gh(monkeypatch, (0, "https://example/v3.2.0", ""))
+        assert rv.check_released(repo, "v3.2.0") == rv.EXIT_UNVERIFIABLE
+
+    def test_unauthenticated_gh_is_not_read_as_absence(self, tmp_path, monkeypatch):
+        """A refused question is not a missing release."""
+        repo = _make_repo(tmp_path, version="3.2.0")
+        self._stub_gh(monkeypatch, (1, "", "gh: To use GitHub CLI, authenticate with gh auth login"))
+        assert rv.check_released(repo, "v3.2.0") == rv.EXIT_UNVERIFIABLE
 
     def test_json_output_carries_every_check(self, tmp_path, monkeypatch, capsys):
         repo = _make_repo(tmp_path, version="3.2.0")

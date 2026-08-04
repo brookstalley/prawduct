@@ -261,10 +261,21 @@ amended 2026-07-29). Step 10 is that test.
 
     **Expected:** no output. `git worktree list` no longer shows it.
 
-15. Publish the GitHub Release, using the whole CHANGELOG section as the notes:
+15. Extract the notes — **and edit them before publishing**:
 
     ```
     awk '/^## vX.Y.Z$/{f=1;next} /^## v/{f=0} f' plugin/CHANGELOG.md > /tmp/notes-vX.Y.Z.md
+    ```
+
+    **Expected:** a file whose first line is the release headline.
+
+    > ⚠️ **This is a pruned release. Open `/tmp/notes-vX.Y.Z.md` and delete every paragraph
+    > describing withheld work.** The CHANGELOG section was written against the whole cut;
+    > publishing it verbatim announces a feature that is not in the tree.
+
+15a. Publish, using the file you just edited:
+
+    ```
     gh release create vX.Y.Z --title vX.Y.Z --notes-file /tmp/notes-vX.Y.Z.md
     ```
 
@@ -273,18 +284,13 @@ amended 2026-07-29). Step 10 is that test.
     > *Why the whole section: `plugin/CHANGELOG.md` ships inside the plugin, so the Releases
     > page is its only public copy. A pushed tag lands on `/tags` and nowhere else.*
 
-    > ⚠️ **Pruned release — read the notes before publishing.** The CHANGELOG section was
-    > written against the whole cut; a pruned promotion ships a subset. Delete any paragraph
-    > describing withheld work from `/tmp/notes-vX.Y.Z.md` before running `gh release create`,
-    > or the Releases page announces a feature that is not in the tree.
-
 ---
 
 ## Done when
 
 - `git show origin/main:plugin/VERSION` prints the new number.
 - `git ls-remote --tags origin` shows a line ending `refs/tags/vX.Y.Z`.
-- `gh release view vX.Y.Z --json url --jq .url` prints a URL ending `/releases/tag/vX.Y.Z`.
+- `prawduct-hook check-released vX.Y.Z` exits 0. **Exit 3 is not a pass** — a check could not run.
 - Your own install holds the released tree — these two print the **same** 40-character sha:
 
   ```

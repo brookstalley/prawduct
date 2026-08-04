@@ -3576,9 +3576,10 @@ def cmd_check_released(project_dir: Path, args: list[str] | None = None) -> int:
     The mirror of ``check-releasability``. Thin wrapper; the body lives in
     ``lib.release_verification``, reached lazily so the hook's top level stays
     lib-free."""
-    usage = "usage: prawduct-hook check-released vX.Y.Z [--json]"
+    usage = "usage: prawduct-hook check-released vX.Y.Z [--json] [--allow-unverifiable]"
     release = None
     json_output = False
+    allow_unverifiable = False
     argv = list(args or [])
     # Explicit scan for the same reason check-releasability uses one: a swallowed
     # token would verify a DIFFERENT release than the operator named, and this
@@ -3586,6 +3587,9 @@ def cmd_check_released(project_dir: Path, args: list[str] | None = None) -> int:
     for token in argv:
         if token == "--json":
             json_output = True
+            continue
+        if token == "--allow-unverifiable":
+            allow_unverifiable = True
             continue
         if token.startswith("-"):
             print(f"unknown argument: {token}\n{usage}", file=sys.stderr)
@@ -3597,7 +3601,9 @@ def cmd_check_released(project_dir: Path, args: list[str] | None = None) -> int:
     if not release:
         print(f"{usage}\na version argument is required", file=sys.stderr)
         return 2
-    return _release_verification().check_released(project_dir, release, json_output)
+    return _release_verification().check_released(
+        project_dir, release, json_output, allow_unverifiable
+    )
 
 
 def cmd_test_status(project_dir: Path) -> int:
@@ -4738,7 +4744,7 @@ _USAGE = (
     "check-operator-verification|accept-operator-verification <rationale>|"
     "verify-operator-verification <vrf-id>|"
     "check-pr-doc-only|check-change-log-entry|check-releasability [--release vX.Y.Z]|"
-    "check-released vX.Y.Z [--json]|"
+    "check-released vX.Y.Z [--json] [--allow-unverifiable]|"
     "regen-views [--check, deprecated]|stamp-merged|"
     "infer-critic-mode [args]|"
     "resolve-base|version|print-install-reference|"

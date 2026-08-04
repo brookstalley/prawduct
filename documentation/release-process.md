@@ -196,7 +196,20 @@ git commit -m "release: vX.Y.Z — <headline>" # single-parent commit on main, d
 git diff --stat origin/develop HEAD          # MUST be empty — this shape only, see below
 git push origin main
 git tag vX.Y.Z && git push origin vX.Y.Z
+
+# A pushed tag is NOT a published release — see below.
+awk '/^## vX.Y.Z$/{f=1;next} /^## v/{f=0} f' plugin/CHANGELOG.md > /tmp/notes-vX.Y.Z.md
+gh release create vX.Y.Z --title vX.Y.Z --notes-file /tmp/notes-vX.Y.Z.md
+prawduct-hook check-released vX.Y.Z           # exit 0 = released; 3 = a check could not run
 ```
+
+**The tag is not the release.** A pushed tag lands on `/tags`; the Releases page is a separate
+surface, and it stayed empty for the repository's first thirty tags. That is what consumers see and
+what they report as "no tag on GitHub" — so the publish step is part of the procedure, not an
+optional flourish. `check-released` verifies all of it (version files agreeing at the tag's own
+tree, the tag contained in `origin/main`, the Release present) and is the one command to run
+afterwards. Note the exit codes: **0** verified, **1** something failed, **3** nothing failed but a
+check could not run — a `3` is not a pass.
 
 **Pruned** — used for **v3.1.1 and v3.1.2**. The candidate is built as the previous release's tree
 plus `git diff <cut-point>..develop` applied with `--3way`, published by ref

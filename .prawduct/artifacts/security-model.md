@@ -66,6 +66,10 @@ decision, and prawduct's job is to be worthy of it. The posture we hold:
 - **Zero external dependencies, no network.** The governance runtime is standard-library Python with
   no third-party packages and makes no network calls — the entire coordination substrate is process
   spawn + local files + git. This shrinks the supply-chain surface to prawduct's own code plus git.
+  **Two commands sit outside that runtime and do reach the network**, both operator/CI-invoked and
+  neither on a hook path: the opt-in backlog backend (`lib/backlog/transport.py`) and
+  `check-released`'s `gh` call (`lib/release_verification.py`, 2026-08-04). Both scrub credentials
+  out of foreign-CLI stderr before it is echoed or serialised.
 - **Subprocess safety is enforced, not advised.** Every subprocess invocation passes arguments as an
   argv list; `shell=True` is **banned and mechanically enforced** by a test that AST-walks the
   codebase and fails on any occurrence. Compound shell logic (pipes, `&&`, env assignment) is not
